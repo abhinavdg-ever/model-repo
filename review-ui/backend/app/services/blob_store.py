@@ -40,7 +40,7 @@ def build_blob_key(
 
 
 def _normalize_account_url(raw: str) -> str:
-    """Accept full URL or bare account name (azsadve2aipoc)."""
+    """Accept a full URL or a bare account name (e.g. "mystorageaccount")."""
     value = raw.strip().rstrip("/")
     if not value:
         return ""

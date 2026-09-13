@@ -27,7 +27,11 @@ def env_path_optional(key: str, default: str = "") -> Path | None:
     return Path(raw).expanduser()
 
 
-STORAGE_ACCOUNT = env("AZURE_STORAGE_ACCOUNT", "azsadve2aipoc")
+# No default: an account name is deployment-specific and does not belong in a
+# public repo. Set AZURE_STORAGE_ACCOUNT in the environment. Only the
+# standalone batch CLI at the bottom of rotation.py reads this — the
+# pipeline itself uses core-pipeline/config.py.
+STORAGE_ACCOUNT = env("AZURE_STORAGE_ACCOUNT", "")
 CONTAINER_NAME = env("AZURE_CONTAINER_NAME", "imaging-pipeline")
 PREFIX = env("AZURE_BLOB_PREFIX", "Raw_Input/Run1/Batch1/DEID_PNGs/")
 if PREFIX and not PREFIX.endswith("/"):
