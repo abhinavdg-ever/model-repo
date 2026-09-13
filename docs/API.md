@@ -129,7 +129,7 @@ deactivate
 cd ../..
 python3.12 -m venv .venv-test && source .venv-test/bin/activate
 pip install -r tests/requirements.txt
-python -m pytest tests/ -q               # 116 tests, no database needed
+python -m pytest tests/ -q               # 122 tests, no database needed
 ```
 
 **Windows (PowerShell)**
@@ -155,7 +155,7 @@ cd ..\..
 py -3.12 -m venv .venv-test
 .venv-test\Scripts\Activate.ps1
 pip install -r tests/requirements.txt
-python -m pytest tests/ -q               # 116 tests, no database needed
+python -m pytest tests/ -q               # 122 tests, no database needed
 ```
 
 If `Activate.ps1` fails with *"running scripts is disabled on this system"*,
@@ -662,7 +662,7 @@ pip install -r tests/requirements.txt
 python -m pytest tests/ -q
 ```
 
-**116 passed** means the extraction is sound. Anything else — especially
+**122 passed** means the extraction is sound. Anything else — especially
 `ModuleNotFoundError` or `SyntaxError` — means re-download rather than debug.
 
 **5. Updating later**
@@ -762,6 +762,69 @@ curl -X POST localhost:8001/api/charts/register-local \
 
 Returns synchronously for registration (so you get the id) and runs the chain in
 the background.
+
+### `POST /api/charts/batch` → 202
+
+Scan a folder or blob prefix and run **every chart in it**, sequentially.
+
+```json
+{"local_root": "/data/inbox/2026-09-13", "limit": null, "run_pipeline": true}
+```
+```json
+{"blob_container": "imaging-pipeline", "blob_prefix": "Raw_Input/Run1/Batch1"}
+```
+
+Exactly one source: `local_root`, or `blob_container` + `blob_prefix`.
+
+**What counts as a chart:** each immediate subfolder holding at least one image.
+Folders with no images are skipped rather than attempted, dotfolders are
+ignored, and macOS `._` stubs do not make a folder count. Point it at a single
+chart folder and it runs just that one, so the same command works for a drop of
+fifty or a drop of one.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `limit` | all | Only the first N charts. **Use `limit: 1` for a dry run** before committing a large batch. |
+| `run_pipeline` | `true` | `false` imports/ingests without running the 8 stages — the cheap way to check the scan picked up what you expected. |
+| `move`, `force`, `load_manifest` | as `import-local` | Local mode only for `move`. |
+
+For a local root the chart list is resolved **before** returning, so a wrong
+path gives you `400` immediately rather than `202` and an empty batch an hour
+later. `charts_found` in the reply tells you how many will run.
+
+```json
+{
+  "status": "accepted",
+  "mode": "local",
+  "source": "/data/inbox/2026-09-13",
+  "charts_found": 37,
+  "limit": null,
+  "note": "runs sequentially; watch the server log for [n/total] progress"
+}
+```
+
+**Charts run one at a time, deliberately.** Each already fans out across pages
+(`STAGE_WORKERS`), and stage 5 is billed per page — overlapping charts
+multiplies memory and spend without finishing the batch sooner. A chart that
+fails is recorded and the batch continues, because the usual failure is one bad
+folder in a drop of fifty.
+
+A batch can run for hours, so the reply is `202` and progress goes to the log:
+
+```
+INFO Batch: 37 chart folder(s) under /data/inbox/2026-09-13
+INFO [1/37] 52743839_44976074
+INFO [2/37] 52743997_45500291
+...
+INFO Background batch finished: ... -> 36/37 completed, 1 failed in 4213.8s
+WARNING   failed: 52744171_44423942 — RuntimeError: No images in ...
+```
+
+The CLI equivalent runs inline and prints a per-chart JSON summary at the end:
+
+```bash
+python cli.py batch --local ./drops --limit 2
+```
 
 ### `POST /api/charts/import-local` → 202
 
@@ -963,6 +1026,12 @@ python cli.py import-folder "/Users/me/Desktop/52743839_44976074"
 python cli.py import-folder ./drop --chart-name 52743839_44976074
 python cli.py import-folder ./drop --move --recursive --force
 python cli.py import-folder ./drop --no-manifest --no-pipeline
+
+# Batch: scan a parent folder (or blob prefix) and run EVERY chart in it,
+# one at a time. One bad folder does not stop the rest.
+python cli.py batch --local "D:\drops\2026-09-13"
+python cli.py batch --local ./drops --limit 2 --no-pipeline   # dry run first
+python cli.py batch --blob-container imaging-pipeline --blob-prefix Raw_Input/Run1/Batch1
 
 # register-local is the narrower one: the folder must ALREADY be at
 # data/folders/<chart>/pages/. It copies nothing.

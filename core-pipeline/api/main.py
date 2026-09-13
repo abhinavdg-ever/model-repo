@@ -154,6 +154,31 @@ class ImportFolderRequest(BaseModel):
     run_pipeline: bool = True
 
 
+class BatchRequest(BaseModel):
+    """Scan a folder or blob prefix and run every chart found, one at a time."""
+
+    local_root: Optional[str] = Field(
+        None,
+        description=(
+            "Parent directory ON THE SERVER; each subfolder holding images is "
+            "one chart. Under Docker this must be a path inside the container."
+        ),
+    )
+    blob_container: Optional[str] = None
+    blob_prefix: Optional[str] = Field(
+        None, description="Each sub-folder under this prefix holding images is one chart"
+    )
+    move: bool = Field(False, description="Local only: move instead of copy")
+    force: bool = False
+    load_manifest: bool = True
+    run_pipeline: bool = True
+    limit: Optional[int] = Field(
+        None, description="Only the first N charts — use for a dry run first"
+    )
+    run_id: Optional[str] = None
+    batch_id: Optional[str] = None
+
+
 class RerunRequest(BaseModel):
     force: bool = Field(
         False, description="Reprocess completed pages instead of resuming"
@@ -217,6 +242,36 @@ def _bg_pipeline(chart_id: int, force: bool, only: Optional[list[str]]) -> None:
         logger.info("Background pipeline finished: chart_id=%s", chart_id)
     except Exception:
         logger.exception("Background pipeline FAILED for chart %s", chart_id)
+
+
+def _bg_batch(payload: "BatchRequest") -> None:
+    from jobs.batch_intake import run_batch
+
+    source = payload.local_root or f"{payload.blob_container}/{payload.blob_prefix}"
+    logger.info("Background batch starting: %s", source)
+    try:
+        result = run_batch(
+            local_root=payload.local_root,
+            blob_container=payload.blob_container,
+            blob_prefix=payload.blob_prefix,
+            move=payload.move,
+            force=payload.force,
+            load_manifest=payload.load_manifest,
+            run_pipeline=payload.run_pipeline,
+            limit=payload.limit,
+            run_id=payload.run_id,
+            batch_id=payload.batch_id,
+        )
+        logger.info(
+            "Background batch finished: %s -> %d/%d completed, %d failed in %.1fs",
+            source, result["completed"], result["charts_found"],
+            result["failed"], result["duration_seconds"],
+        )
+        for chart in result["charts"]:
+            if chart["status"] == "failed":
+                logger.warning("  failed: %s — %s", chart["name"], chart.get("error"))
+    except Exception:
+        logger.exception("Background batch FAILED: %s", source)
 
 
 def _bg_manifest(payload: ManifestSweepRequest) -> None:
@@ -382,6 +437,55 @@ def _chart_payload(conn: Any, chart_id: int, include_pages: bool) -> dict[str, A
     if include_pages:
         payload["pages"] = list_pages(conn, chart_id)
     return payload
+
+
+@app.post("/api/charts/batch", status_code=202, tags=["charts"])
+def batch_intake(
+    body: BatchRequest, background_tasks: BackgroundTasks
+) -> dict[str, Any]:
+    """Run every chart under a folder or blob prefix, sequentially.
+
+    Charts run one at a time on purpose: each already parallelises across pages,
+    and stage 5 is billed per page, so overlapping charts multiplies memory and
+    spend without finishing sooner. One bad folder does not stop the batch.
+
+    Returns 202 immediately — a batch can run for hours. Watch the server log
+    for `[n/total]` progress, or poll GET /api/charts/by-name/{chart_name}.
+    """
+    _require_db()
+    from jobs.batch_intake import find_local_chart_folders, run_batch
+
+    if bool(body.local_root) == bool(body.blob_container or body.blob_prefix):
+        raise HTTPException(
+            status_code=400,
+            detail="Provide either local_root, or both blob_container and blob_prefix",
+        )
+    # Resolve the chart list up front so the caller learns immediately that the
+    # path is wrong, instead of getting 202 and an empty batch an hour later.
+    found: Optional[int] = None
+    if body.local_root:
+        try:
+            found = len(find_local_chart_folders(body.local_root))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not found:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No chart folders with images under {body.local_root}",
+            )
+
+    background_tasks.add_task(
+        _bg_batch,
+        body,
+    )
+    return {
+        "status": "accepted",
+        "mode": "local" if body.local_root else "blob",
+        "source": body.local_root or f"{body.blob_container}/{body.blob_prefix}",
+        "charts_found": found,
+        "limit": body.limit,
+        "note": "runs sequentially; watch the server log for [n/total] progress",
+    }
 
 
 @app.post("/api/charts/import-local", status_code=202, tags=["charts"])

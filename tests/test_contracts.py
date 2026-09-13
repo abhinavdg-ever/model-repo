@@ -469,3 +469,72 @@ class TestDatabaseUrlScheme:
             "the two .env.example files disagree, so copying between them "
             f"breaks: {schemes}"
         )
+
+
+# --- batch intake discovery --------------------------------------------------
+
+
+class TestBatchFolderDiscovery:
+    """What counts as a chart folder in a drop directory.
+
+    Getting this wrong is expensive in both directions: a missed folder is a
+    chart that silently never runs, and a spurious one is an ingest that fails
+    on "no pages" halfway through an unattended batch.
+    """
+
+    @staticmethod
+    def _drop(tmp_path):
+        from PIL import Image
+
+        def img(path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            Image.new("RGB", (4, 4), "white").save(path)
+
+        img(tmp_path / "chart_a" / "p1.jpg")
+        img(tmp_path / "chart_b" / "p1.png")
+        img(tmp_path / ".hidden" / "p1.jpg")          # dotfolder: skipped
+        (tmp_path / "no_images").mkdir()
+        (tmp_path / "no_images" / "notes.txt").write_text("x", encoding="utf-8")
+        (tmp_path / "loose.txt").write_text("x", encoding="utf-8")
+        (tmp_path / "chart_a" / "._p1.jpg").write_text("", encoding="utf-8")
+        return tmp_path
+
+    def test_finds_only_subfolders_containing_images(self, tmp_path):
+        from jobs.batch_intake import find_local_chart_folders
+
+        names = [p.name for p in find_local_chart_folders(self._drop(tmp_path))]
+        assert names == ["chart_a", "chart_b"], names
+
+    def test_a_single_chart_folder_is_itself_the_chart(self, tmp_path):
+        """Pointing at one chart must work, not return its subfolders."""
+        from jobs.batch_intake import find_local_chart_folders
+
+        drop = self._drop(tmp_path)
+        found = find_local_chart_folders(drop / "chart_a")
+        assert [p.name for p in found] == ["chart_a"]
+
+    def test_appledouble_stubs_do_not_make_a_folder_a_chart(self, tmp_path):
+        """A folder holding only ._ stubs has no real images."""
+        from jobs.batch_intake import find_local_chart_folders
+
+        (tmp_path / "stubs_only").mkdir()
+        (tmp_path / "stubs_only" / "._p1.jpg").write_text("", encoding="utf-8")
+        assert find_local_chart_folders(tmp_path) == []
+
+    def test_missing_directory_is_an_error_not_an_empty_batch(self, tmp_path):
+        from jobs.batch_intake import find_local_chart_folders
+
+        with pytest.raises(RuntimeError, match="Not a directory"):
+            find_local_chart_folders(tmp_path / "nope")
+
+    def test_batch_rejects_both_sources_at_once(self):
+        from jobs.batch_intake import run_batch
+
+        with pytest.raises(ValueError, match="either local_root"):
+            run_batch(local_root="/x", blob_container="c", blob_prefix="p")
+
+    def test_batch_rejects_neither_source(self):
+        from jobs.batch_intake import run_batch
+
+        with pytest.raises(ValueError, match="either local_root"):
+            run_batch()

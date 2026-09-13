@@ -70,6 +70,28 @@ def main() -> None:
     p_import.add_argument("--batch-id")
     p_import.add_argument("--no-pipeline", action="store_true")
 
+    p_batch = sub.add_parser(
+        "batch",
+        help="Scan a folder or blob prefix and run EVERY chart in it, one by one",
+    )
+    src_b = p_batch.add_mutually_exclusive_group(required=True)
+    src_b.add_argument(
+        "--local", metavar="PATH",
+        help="Parent folder; each subfolder holding images is one chart",
+    )
+    src_b.add_argument(
+        "--blob-prefix",
+        help="Blob prefix; each sub-folder holding images is one chart",
+    )
+    p_batch.add_argument("--blob-container", help="Required with --blob-prefix")
+    p_batch.add_argument("--move", action="store_true", help="Local only: move instead of copy")
+    p_batch.add_argument("--force", action="store_true", help="Reprocess pages already done")
+    p_batch.add_argument("--no-manifest", action="store_true")
+    p_batch.add_argument("--no-pipeline", action="store_true", help="Import/ingest only")
+    p_batch.add_argument("--limit", type=int, help="Only the first N charts (dry runs)")
+    p_batch.add_argument("--run-id")
+    p_batch.add_argument("--batch-id")
+
     p_run = sub.add_parser("run", help="Run pipeline for existing chart_id")
     p_run.add_argument("chart_id", type=int)
     p_run.add_argument(
@@ -178,6 +200,31 @@ def main() -> None:
         if not args.no_pipeline:
             out["pipeline"] = run_pipeline_for_chart(reg["chart_id"])
         print(json.dumps(out, default=str, indent=2))
+        return
+
+    if args.cmd == "batch":
+        from jobs.batch_intake import run_batch
+
+        if args.blob_prefix and not args.blob_container:
+            parser.error("--blob-prefix requires --blob-container")
+        print(
+            json.dumps(
+                run_batch(
+                    local_root=args.local,
+                    blob_container=args.blob_container,
+                    blob_prefix=args.blob_prefix,
+                    move=args.move,
+                    force=args.force,
+                    load_manifest=not args.no_manifest,
+                    run_pipeline=not args.no_pipeline,
+                    limit=args.limit,
+                    run_id=args.run_id,
+                    batch_id=args.batch_id,
+                ),
+                default=str,
+                indent=2,
+            )
+        )
         return
 
     if args.cmd == "run":

@@ -1,6 +1,6 @@
 # Dependencies for the test suite only.
 #
-#     python -m pytest tests/ -q      -> 116 passed
+#     python -m pytest tests/ -q      -> 122 passed
 #
 # The tests import the real pipeline and review-ui modules, so they need
 # whatever those import AT MODULE LEVEL — which is more than pytest. They do

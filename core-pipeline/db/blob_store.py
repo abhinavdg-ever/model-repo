@@ -114,6 +114,28 @@ def list_blobs_with_suffixes(
     return sorted(out)
 
 
+def list_chart_prefixes(container: str, prefix: str) -> list[str]:
+    """Chart folders directly under `prefix` — those holding image blobs.
+
+    One listing pass over the whole prefix, grouping by the segment after it,
+    rather than a listing per candidate folder. Prefixes with no images (stray
+    manifest-only or thumbnail folders) are left out, so the caller does not
+    have to ingest something that would fail on "no pages".
+    """
+    pref = normalize_prefix(prefix)
+    client = get_container_client(container)
+    charts: set[str] = set()
+    for blob in client.list_blobs(name_starts_with=pref):
+        rest = blob.name[len(pref):] if blob.name.startswith(pref) else blob.name
+        parts = [p for p in rest.split("/") if p]
+        if len(parts) < 2:
+            continue  # a file sitting directly in the prefix, not in a folder
+        if Path(parts[-1]).suffix.lower() not in IMAGE_SUFFIXES:
+            continue
+        charts.add(f"{pref}{parts[0]}")
+    return sorted(charts)
+
+
 def download_blob_bytes(container: str, blob_name: str) -> bytes:
     client = get_container_client(container)
     return client.download_blob(blob_name).readall()
