@@ -789,7 +789,7 @@ registers the chart and starts the pipeline.
 | `move` | `false` | Copies by default, leaving your folder intact. `true` moves, so a failed import loses data — use only for a scratch drop directory. |
 | `recursive` | `false` | Also pick up images in subfolders. |
 | `force` | `false` | Replace pages already in the workspace for this chart. Without it, a non-empty `pages/` is an error rather than a silent merge. |
-| `load_manifest` | `true` | Load any CSV/XLSX in the folder **before** registering, so the chart links to its member row. Loading after would leave `manifest_member_list.chart_id` NULL. |
+| `load_manifest` | `true` | Load any CSV/XLSX found in the folder. Order does not matter — manifest rows key on `record_id`, which **is** the chart name, so there is no link step. |
 
 Non-image files are ignored, as are macOS `._` stubs. Accepted extensions are
 the same `IMAGE_SUFFIXES` the blob intake uses — jpg, png, tif, webp and the
