@@ -757,7 +757,7 @@ curl -X POST localhost:8001/api/charts/register-local \
 
 ```json
 { "status": "accepted", "chart_id": 7, "chart_name": "demo_chart_240315_1012",
-  "page_count": 3, "manifest_rows_linked": 1 }
+  "page_count": 3, "manifest_rows": 1 }
 ```
 
 Returns synchronously for registration (so you get the id) and runs the chain in
@@ -805,7 +805,7 @@ rest.
   "moved": false,
   "manifest": {"files": 1, "inserted": 0, "updated": 38},
   "page_count": 34,
-  "manifest_rows_linked": 1
+  "manifest_rows": 1
 }
 ```
 
