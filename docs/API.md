@@ -124,7 +124,7 @@ deactivate
 # test suite — from the repo root
 cd ../..
 python3.12 -m venv .venv-test && source .venv-test/bin/activate
-pip install pytest fastapi uvicorn psycopg[binary] pydantic-settings python-multipart python-dotenv
+pip install -r tests/requirements.txt
 python -m pytest tests/ -q               # 111 tests, no database needed
 ```
 
@@ -150,7 +150,7 @@ deactivate
 cd ..\..
 py -3.12 -m venv .venv-test
 .venv-test\Scripts\Activate.ps1
-pip install pytest fastapi uvicorn psycopg[binary] pydantic-settings python-multipart python-dotenv
+pip install -r tests/requirements.txt
 python -m pytest tests/ -q               # 111 tests, no database needed
 ```
 

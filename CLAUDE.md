@@ -397,6 +397,9 @@ python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 # tests, from the repo root — no database needed
+cd ../..
+python3.12 -m venv .venv-test && source .venv-test/bin/activate
+pip install -r tests/requirements.txt
 python -m pytest tests/ -q          # 111 tests
 ```
 
@@ -414,6 +417,10 @@ py -3.12 -m venv .venv
 pip install -r requirements.txt
 
 # tests, from the repo root — no database needed
+cd ..\..
+py -3.12 -m venv .venv-test
+.venv-test\Scripts\Activate.ps1
+pip install -r tests/requirements.txt
 python -m pytest tests/ -q          # 111 tests
 ```
 
@@ -624,8 +631,10 @@ alone. Prefer a path without spaces.
   record them in `page_stage_status.error_message`, and continue.
 - **CSVs are rebuilt from the database, never appended to.** A resumed run must
   not be able to leave a half-written file.
-- **Run the tests.** `python -m pytest tests/ -q` — 111 tests, no database
-  needed, under a second.
+- **Run the tests.** `pip install -r tests/requirements.txt` once, then
+  `python -m pytest tests/ -q` — 111 tests, no database needed. The suite
+  imports the real modules, so it needs more than pytest; it does not need
+  the OCR/ML stack, which is imported lazily.
 
 ## 10. Known gaps
 
