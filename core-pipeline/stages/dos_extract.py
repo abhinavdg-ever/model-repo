@@ -135,10 +135,10 @@ def _split_dates(raw: Optional[str]) -> list[str]:
 
 
 def _date_rows(hit: dict[str, Any]) -> list[dict[str, Any]]:
-    """Every date this page carries, for dos_extraction_dates.
+    """Every date this page carries, for the `dates` array on the DOS row.
 
     The reference emits comma-separated lists when a page names several dates;
-    v6's single from/to columns could only keep one pair.
+    a single from/to column pair can only keep one.
     """
     froms = _split_dates(hit.get("dos_from"))
     tos = _split_dates(hit.get("dos_to"))

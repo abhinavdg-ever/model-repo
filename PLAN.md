@@ -43,9 +43,10 @@
   their own `docker-compose.yml`. They share a Postgres database and the
   `data/folders` volume (pipeline writes, UI mounts read-only) and **never call
   each other**.
-- **Schema source of truth:** [`schema/schema.sql`](schema/schema.sql) (v8) —
-  the only schema file in the repo. No migrations directory, no second copy;
-  a pre-v8 database is recreated from it, not upgraded.
+- **Schema source of truth:** [`schema/v1.sql`](schema/v1.sql) — every table
+  that is implemented and running. [`schema/v2.sql`](schema/v2.sql) holds the
+  next phase and is not implemented; applying it is optional and V1 never
+  references it. No migrations directory; a pre-v8 database is recreated.
 - **Phase-1 scope:** intake → prelim OCR → quality → blank/junk ×2 → final OCR ×2
   → member verify → DOS. Later modules stay in the schema and the stage registry
   but are not orchestrated.
@@ -129,7 +130,8 @@ advantmed-imaging-pipeline/
 ├── docs/                       FLOW · LOGIC · API · ARCHITECTURE
 ├── Reference/                  prototypes — source of truth, never edited
 ├── schema/
-│   └── schema.sql              THE canonical DDL (v8) — the only one
+│   ├── v1.sql                  implemented: 12 tables + 2 views
+│   └── v2.sql                  next phase: 14 tables + 3 views, unused
 ├── tests/                      108 tests
 ├── core-pipeline/              own docker-compose, port 8001
 │   ├── api/ cli.py config.py
@@ -173,7 +175,8 @@ Stage 5 is billed per page. Stage 7 produces the accept/reject decision.
 
 ```bash
 # 1. Schema
-psql "$DATABASE_URL" -f schema/schema.sql
+psql "$DATABASE_URL" -f schema/v1.sql   # required — what is implemented
+psql "$DATABASE_URL" -f schema/v2.sql   # optional — next phase, nothing uses it yet
 
 # 2. core-pipeline
 cd core-pipeline && cp .env.example .env && docker compose up -d --build

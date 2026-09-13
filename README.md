@@ -28,7 +28,8 @@ They never call each other. Each has its own `docker-compose.yml`.
 
 ```bash
 # 1. Schema — once, before either service starts
-psql "$DATABASE_URL" -f schema/schema.sql   # the only schema file there is
+psql "$DATABASE_URL" -f schema/v1.sql   # required — what is implemented
+psql "$DATABASE_URL" -f schema/v2.sql   # optional — next phase, nothing uses it yet
 
 # 2. core-pipeline
 cd core-pipeline

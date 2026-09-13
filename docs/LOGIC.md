@@ -488,17 +488,17 @@ That lost three things:
 
 ### Multi-date pages
 
-The reference emits comma-separated lists when a page names several dates. v6's
-single from/to columns could hold one pair. v7 adds `dos_extraction_dates`, one
-row per date, and keeps the primary pair on `dos_extraction_results` with
-`date_count`.
+The reference emits comma-separated lists when a page names several dates,
+while a single from/to column pair can hold only one. `dos_extraction_results`
+therefore keeps the page-level and document-level pairs as **single-valued
+columns** and puts every date the page carries in the **multi-valued `dates`
+JSONB array** — one row per page, no child table.
 
 **Writes**
 
 | Target | Columns |
 |---|---|
-| `dos_extraction_results` | `date_of_service_from/to`, `..._doclevel`, `date_count`, `extraction_method` (`rules`\|`llm`\|`rules+llm`), `confidence` |
-| `dos_extraction_dates` | `seq`, `dos_from`, `dos_to`, `source_keyword`, `confidence` |
+| `dos_extraction_results` | `date_of_service_from/to`, `..._doclevel` (single-valued), `dates` (JSONB array of `{seq, date_of_service_from, date_of_service_to, source_keyword, confidence}`), `extraction_method` (`rules`\|`llm`\|`rules+llm`), `confidence`. `date_count` is generated from `dates`. |
 | disk | `imaging/<chart>_dos.csv` |
 
 Without Azure OpenAI the stage runs regex-only and stamps

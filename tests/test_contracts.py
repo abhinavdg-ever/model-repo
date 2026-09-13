@@ -35,7 +35,7 @@ class TestJunkSubtypeVocabulary:
         exactly those and nothing else, or rows become unrenderable."""
         from app.services.imaging_overlays import index_junk_rows  # noqa: F401
 
-        schema_sql = (REPO_ROOT / "schema" / "schema.sql").read_text()
+        schema_sql = (REPO_ROOT / "schema" / "v1.sql").read_text()
         for label in SCHEMA_SUBTYPES:
             assert f"'{label}'" in schema_sql, f"{label} missing from schema CHECK"
 
@@ -196,7 +196,9 @@ class TestStageRegistry:
         execution. If they disagree, a chart can never reach 'completed'."""
         from orchestrator.runner import STAGE_CHAIN
 
-        schema_sql = (REPO_ROOT / "schema" / "schema.sql").read_text()
+        # v1.sql seeds the implemented stages; v2.sql registers the four
+        # not-yet-orchestrated ones. The chain must match V1 exactly.
+        schema_sql = (REPO_ROOT / "schema" / "v1.sql").read_text()
         seed_start = schema_sql.index("INSERT INTO pipeline_stage")
         seed = schema_sql[seed_start : schema_sql.index(";", seed_start)]
 
@@ -224,3 +226,69 @@ class TestStageRegistry:
 
         assert "blank_junk:2" in STAGE_NAMES
         assert "member_verify:1" in STAGE_NAMES
+
+
+# --- V1 / V2 schema split ----------------------------------------------------
+
+
+class TestSchemaSplit:
+    """schema/v1.sql is what is implemented; schema/v2.sql is the next phase.
+
+    The split is only meaningful while it stays true, and nothing else enforces
+    it — a stage that starts writing a V2 table would leave V1 silently wrong.
+    """
+
+    @staticmethod
+    def _relations(path):
+        import re
+
+        text = (REPO_ROOT / "schema" / path).read_text()
+        code = "\n".join(re.sub(r"--.*$", "", ln) for ln in text.splitlines())
+        return set(re.findall(r"CREATE TABLE (\w+)", code)) | set(
+            re.findall(r"CREATE OR REPLACE VIEW (\w+)", code)
+        )
+
+    def test_no_relation_is_defined_in_both_files(self):
+        overlap = self._relations("v1.sql") & self._relations("v2.sql")
+        assert not overlap, f"defined twice: {sorted(overlap)}"
+
+    def test_v1_never_references_a_v2_relation(self):
+        """V1 must apply and run on its own — v2.sql is optional."""
+        import re
+
+        text = (REPO_ROOT / "schema" / "v1.sql").read_text()
+        code = "\n".join(re.sub(r"--.*$", "", ln) for ln in text.splitlines())
+        v1, v2 = self._relations("v1.sql"), self._relations("v2.sql")
+        referenced = set(re.findall(r"REFERENCES\s+(\w+)\s*\(", code)) | set(
+            re.findall(r"(?:FROM|JOIN)\s+([a-z_][a-z0-9_]*)\b", code)
+        )
+        assert not (referenced & v2), f"V1 depends on V2: {sorted(referenced & v2)}"
+        assert not (referenced - v1), f"V1 references undefined: {sorted(referenced - v1)}"
+
+    def test_no_code_touches_a_v2_relation(self):
+        """If this fails, the module is implemented — move its table to v1.sql."""
+        import ast
+        import re
+
+        v2 = self._relations("v2.sql")
+        offenders = []
+        roots = [REPO_ROOT / "core-pipeline", REPO_ROOT / "review-ui" / "backend"]
+        for root in roots:
+            for path in root.rglob("*.py"):
+                if "__pycache__" in str(path) or path.name.startswith("._"):
+                    continue
+                for node in ast.walk(ast.parse(path.read_text())):
+                    if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+                        continue
+                    sql = node.value
+                    if not re.search(r"\b(INSERT INTO|UPDATE|SELECT|DELETE FROM)\b", sql):
+                        continue
+                    hits = set(
+                        re.findall(
+                            r"(?:INSERT INTO|FROM|JOIN|UPDATE|DELETE FROM)\s+([a-z_][a-z0-9_]*)\b",
+                            sql,
+                        )
+                    )
+                    for rel in hits & v2:
+                        offenders.append(f"{path.name}:{node.lineno} -> {rel}")
+        assert not offenders, "code touches V2 relations:\n  " + "\n  ".join(sorted(offenders))

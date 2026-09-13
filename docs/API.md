@@ -30,12 +30,16 @@ They never call each other — they share a Postgres database and the
 **Database — do this once, before either service starts.**
 
 ```bash
-psql "$DATABASE_URL" -f schema/schema.sql
+psql "$DATABASE_URL" -f schema/v1.sql   # required — what is implemented
+psql "$DATABASE_URL" -f schema/v2.sql   # optional — next phase, nothing uses it yet
 ```
 
-`schema/schema.sql` is the **only** schema file in the repo — there is no
-migrations directory and no second copy. A pre-v8 database is recreated from
-this file, not upgraded in place.
+Two files, no migrations directory. **`v1.sql` is everything that is actually
+implemented** — 12 tables and 2 views, every one written or read by running
+code — and it is required. **`v2.sql` is the next phase**: 14 more tables that
+nothing reads or writes yet. Applying it is optional, and V1 never references
+it, so you can skip it until the modules land. A pre-v8 database is recreated
+from these files, not upgraded in place.
 
 Verify:
 
@@ -268,7 +272,8 @@ The full sequence from an empty machine:
 
 ```bash
 # 0. schema — once, before anything starts
-psql "$DATABASE_URL" -f schema/schema.sql
+psql "$DATABASE_URL" -f schema/v1.sql   # required — what is implemented
+psql "$DATABASE_URL" -f schema/v2.sql   # optional — next phase, nothing uses it yet
 
 # 1. core-pipeline (writes data/folders)
 cd core-pipeline
@@ -569,7 +574,8 @@ python cli.py manifest --blob-container imaging-pipeline --blob-prefix manifests
 ### First run against a new database
 
 ```bash
-psql "$DATABASE_URL" -f schema/schema.sql
+psql "$DATABASE_URL" -f schema/v1.sql   # required — what is implemented
+psql "$DATABASE_URL" -f schema/v2.sql   # optional — next phase, nothing uses it yet
 
 cd core-pipeline && cp .env.example .env && docker compose up -d --build
 curl -s localhost:8001/ready
@@ -624,7 +630,7 @@ done
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `/ready` → 503 "pipeline_stage is empty" | schema not applied | run `schema/schema.sql` or migration 002 |
+| `/ready` → 503 "pipeline_stage is empty" | schema not applied | run `schema/v1.sql` |
 | Chart stuck at `ocr_prelim` | Tesseract missing | install it, or set `TESSERACT_CMD` |
 | `final2` produces no text | Azure DI not configured | set the endpoint + key; until then handwritten pages get no pass-2 verdict |
 | `decision_reason: manifest_missing` | no manifest row for the record | sweep the manifest, then rerun `--only member_verify` |

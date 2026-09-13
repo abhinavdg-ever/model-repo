@@ -21,7 +21,8 @@ core-pipeline/     chart intake + the eight-stage imaging chain.  Port 8001.
                    WRITES review-ui/data/folders.
 review-ui/         read-only viewer over what the pipeline produced.
                    Ports 3000 (API) / 3001 (web).  MOUNTS that folder read-only.
-schema/schema.sql  THE schema. One file. See §5.
+schema/v1.sql      the schema that is IMPLEMENTED. See §5.
+schema/v2.sql      next phase. Defined, wired to nothing. Optional.
 Reference/         the V1 prototypes. Source of truth for ported logic.
                    NEVER EDIT — port from it, diff against it.
 tests/             108 tests, no database required.
@@ -78,7 +79,7 @@ integer-speed comparison.
 
 ### Where it appears
 
-| Column | Hashes | Why |
+| Column | Hashes | Intended for — see the status note below |
 |---|---|---|
 | `page_list.image_sha256` | the page image file's bytes | Download idempotency and image-level duplicate detection |
 | `ocr_results.text_sha256` | the extracted `raw_text` | Cheap change detection without re-reading a `TEXT` column |
@@ -88,30 +89,51 @@ Computed by `sha256_file()` and `sha256_text()` in
 streams the file in 1 MB chunks, so hashing a large scan never loads it whole
 into memory.
 
-### What it buys us concretely
+### Current status: written, never read
 
-- **Re-download is free.** A chart re-ingested from blob storage produces the
-  same digests, so `upsert_page` recognises every page as already-present rather
-  than duplicating rows.
-- **Duplicate pages are detectable before OCR.** Two pages of a chart with the
-  same `image_sha256` are byte-identical scans — the same fax page sent twice.
-  That is a stronger signal than the text-similarity duplicate check in
-  `blank_junk_classification`, and it costs nothing.
-- **"Did this page's OCR actually change?"** is one string comparison instead of
+**Nothing reads these columns today.** Every reference in the codebase is the
+column definition, its index, or a write path. No query selects, compares or
+joins on them. The same is true of `page_list.file_size_bytes`.
+
+The behaviours they were added to support are, today, provided by other
+mechanisms entirely:
+
+| Behaviour | What actually implements it |
+|---|---|
+| Skipping an already-downloaded page | `dest.is_file() and dest.stat().st_size > 0` in `stages/download_blob.py` — file existence on disk |
+| Not duplicating `page_list` rows on re-ingest | `ON CONFLICT (chart_id, page_name)` — the UNIQUE constraint on page *name* |
+| Duplicate page detection | `fingerprint()` in `stages/lib/junk/classify.py` — SHA-256 of whitespace-stripped lowercase **OCR text**, computed in memory and never stored |
+
+So the duplicate check does use SHA-256 — a hash of normalised *text*, not the
+stored image digest.
+
+**This is not free.** `sha256_file()` runs on every page of every ingest,
+including pages skipped as already-downloaded, so a re-ingest reads every file
+end-to-end to populate a column nothing consults. Before building on
+`image_sha256`, decide whether to use it or drop it.
+
+### What it would buy us, if something read it
+
+- **Byte-identical duplicate pages, detectable before OCR.** Two pages of a
+  chart sharing an `image_sha256` are the same scan — the same fax page sent
+  twice. Cheaper and more certain than the text fingerprint, which needs OCR
+  to have run first.
+- **True download idempotency.** Comparing the stored digest to the blob's
+  would catch a page whose *contents* changed under an unchanged filename —
+  which the current file-exists check cannot see.
+- **"Did this page's OCR actually change?"** — one string comparison instead of
   pulling two possibly-megabyte `raw_text` values across the wire.
 
-### What it does *not* buy us
+### What it could never do
 
-- **It does not detect near-duplicates.** A page rescanned at a different
-  brightness, or the same page rotated, has a completely different digest. That
-  is what the text-normalised duplicate check in
-  [`stages/lib/junk/classify.py`](core-pipeline/stages/lib/junk/classify.py)
-  is for — it hashes *normalised text*, not pixels.
-- **It is not an integrity guarantee against tampering here.** Nothing verifies
-  a digest against a trusted record; we only compare our own digests to each
+- **Detect near-duplicates.** A page rescanned at a different brightness, or
+  the same page rotated, has a completely different digest. That is precisely
+  why the duplicate check hashes normalised text rather than pixels.
+- **Guarantee integrity against tampering.** Nothing verifies a digest against
+  a trusted external record; we would only be comparing our own digests to each
   other.
-- **It says nothing about content.** Two pages with different digests may be
-  the same document. Two with the same digest are the same *file*.
+- **Say anything about content.** Two pages with different digests may be the
+  same document. Two with the same digest are the same *file*.
 
 `CHAR(64)` is the right column type: the output is always exactly 64 lowercase
 hex characters.
@@ -183,7 +205,7 @@ what a real model would write.
 
 ## 4. Column naming conventions
 
-Every table in `schema/schema.sql` obeys these. A new table that breaks one is a
+Every table in **both** schema files obeys these. A new table that breaks one is a
 bug, not a style preference. The conventions are repeated at the top of the
 schema file so they are visible where they are applied.
 
@@ -227,7 +249,7 @@ schema file so they are visible where they are applied.
 | `invoice_matching_results.similarity_score` | `confidence` |
 | `chunk_results.chunk_index` | `seq` |
 | `page_sequencing_results.sequence_no` | `seq` |
-| `dos_extraction_dates.dos_from` / `dos_to` | `date_of_service_from` / `date_of_service_to` |
+| `dos_extraction_dates` (whole table) | merged into `dos_extraction_results.dates` (JSONB array) |
 | `member_verification_summary.matched_member_id` | `matched_member_list_id` |
 | `member_verification_summary.decided_at` | `created_at` / `updated_at` |
 | `rejection_results.reviewed_by` | `user_id` |
@@ -236,6 +258,27 @@ schema file so they are visible where they are applied.
 | `model_accuracy_snapshots.evaluated_at` | `created_at` |
 | `manual_review.review_id` | `user_id` |
 | `pipeline_jobs.attempt_number` | `attempt` |
+
+### Date of service is one table
+
+`dos_extraction_results` is **one row per page**. The page-level and
+document-level dates are single-valued columns; every date the page carries
+lives in the multi-valued `dates` JSONB array:
+
+```json
+[{"seq": 1, "date_of_service_from": "2024-03-15",
+  "date_of_service_to": "2024-03-15",
+  "source_keyword": "Date of Service", "confidence": 0.95}]
+```
+
+`date_count` is `GENERATED ALWAYS AS (jsonb_array_length(dates)) STORED`, so it
+cannot drift from the array. JSON keys deliberately mirror the column names —
+one vocabulary, not two.
+
+v7 split this across a parent and a `dos_extraction_dates` child, which cost a
+DELETE plus one INSERT per date on every page (a 400-page chart with 3 dates
+each: 400 deletes + 1200 inserts) — and nothing ever read the child table back.
+It is now a single upsert per page.
 
 Also dropped: `member_extraction_results.page_name` (join `page_list` instead —
 no other result table denormalises it) and `v_chart_status_legacy` (no v6
@@ -259,16 +302,32 @@ purpose.
 
 ---
 
-## 5. The schema is one file
+## 5. The schema: V1 is implemented, V2 is not
 
 ```
 schema/
-└── schema.sql      ← THE schema. v8. There is nothing else.
+├── v1.sql          ← IMPLEMENTED. 12 tables + 2 views. Required.
+└── v2.sql          ← NEXT PHASE. 14 tables + 3 views. Nothing uses them.
 ```
 
 ```bash
-psql "$DATABASE_URL" -f schema/schema.sql
+psql "$DATABASE_URL" -f schema/v1.sql   # required
+psql "$DATABASE_URL" -f schema/v2.sql   # optional
 ```
+
+**The split is the point.** `v1.sql` contains only relations that running code
+writes or reads — enforced by `TestSchemaSplit` in `tests/test_contracts.py`,
+which fails if any module starts touching a V2 table, if a relation is defined
+in both files, or if V1 grows a reference into V2.
+
+`v2.sql` is a set of **proposals**. The tables are defined so the design is
+reviewable and so adding a module is a code change rather than a schema
+argument — but none has ever been exercised by real code, so revisit a table's
+columns before building the module that fills it. V1 references nothing in V2,
+so V2 is genuinely optional.
+
+When a V2 module ships, move its table block from `v2.sql` to `v1.sql`. The
+split test tells you the moment that is needed.
 
 There is **no migrations directory** and **no second copy**. `Reference/schema.sql`
 (a stale v6 duplicate) and `schema/migrations/002_v6_to_v7.sql` were deleted in
@@ -285,7 +344,7 @@ When you change the schema, the whole change is an edit to this file. Then:
 - update every reader and writer (`core-pipeline/db/__init__.py`, the stages,
   `review-ui/backend/app/adapters/postgres/repository.py`),
 - update the column tables in `docs/ARCHITECTURE.md` and `docs/LOGIC.md`,
-- add a line to the "WHAT CHANGED" block at the top of `schema.sql`,
+- add a line to the "WHAT CHANGED" block at the top of `v2.sql`,
 - run `python -m pytest tests/ -q`.
 
 Verify an applied schema:
@@ -400,7 +459,7 @@ From an empty machine:
 
 ```bash
 # 0. schema — once, before anything starts
-psql "$DATABASE_URL" -f schema/schema.sql
+psql "$DATABASE_URL" -f schema/v1.sql
 
 # 1. core-pipeline (writes data/folders)
 cd core-pipeline
@@ -482,7 +541,7 @@ equivalents: [`docs/API.md`](docs/API.md).
 - **No authentication on either service.** Charts carry member names and dates
   of birth. This is the blocker before any non-local deployment.
 - **Rejection is unreachable without GLiNER.** See §6.
-- **No Postgres in this dev environment.** `schema.sql` is validated
+- **No Postgres in this dev environment.** Both schema files are validated
   structurally (triggers, index columns, naming) but has not been executed
   against a live server from here — apply it to a scratch database before
   trusting it in place.

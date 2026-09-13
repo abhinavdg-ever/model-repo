@@ -91,7 +91,7 @@ resume matters), and **stage 7 produces the accept/reject decision**.
 | 5 | `ocr_final2` | not blank/junk, + all handwritten | page image | `ocr_results` (`azuredocintel`) | `ocr/<chart>_final2.json` |
 | 6 | `blank_junk` pass 2 | handwritten + surviving printed | final2 text | `blank_junk_classification` (pass 2), then `is_final` stamped | rewrites `_junk.csv` |
 | 7 | `member_verify` | not blank/junk/duplicate | best text + `manifest_member_list` | `member_extraction_results`, `member_verification_summary` | `_member_extraction.csv`, `_member_verification.csv`, `_member_v1_compare.csv` |
-| 8 | `dos_extract` | not blank/junk/duplicate | best text | `dos_extraction_results`, `dos_extraction_dates` | `imaging/<chart>_dos.csv` |
+| 8 | `dos_extract` | not blank/junk/duplicate | best text | `dos_extraction_results` | `imaging/<chart>_dos.csv` |
 
 Every stage also writes one `pipeline_jobs` row and updates
 `page_stage_status` per page.

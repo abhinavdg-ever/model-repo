@@ -87,7 +87,7 @@ service can be redeployed, scaled or taken down alone.
 
 ## 2. Data model
 
-Schema v8 — `schema/schema.sql`, the only schema file in the repo.
+Schema v8 — `schema/v1.sql` (implemented) and `schema/v2.sql` (next phase).
 
 ```mermaid
 erDiagram
@@ -100,8 +100,7 @@ erDiagram
   page_list       ||--o| ocr_quality_results : "rotation + HW"
   page_list       ||--o{ blank_junk_classification : "verdict × pass"
   page_list       ||--o| member_extraction_results : "per-page verdict"
-  page_list       ||--o| dos_extraction_results : "primary DOS"
-  page_list       ||--o{ dos_extraction_dates : "every DOS"
+  page_list       ||--o| dos_extraction_results : "DOS (dates[] inline)"
   pipeline_stage  ||--o{ page_stage_status : "defines"
   manifest_member_list ||--o{ member_extraction_results : "matched"
 ```
@@ -125,8 +124,7 @@ erDiagram
 | `blank_junk_classification` | `(page_id, pass_no)` | stages 3, 6 |
 | `member_extraction_results` | `page_id` | stage 7 |
 | `member_verification_summary` | `chart_id` | stage 7 |
-| `dos_extraction_results` | `page_id` | stage 8 |
-| `dos_extraction_dates` | `(page_id, seq)` | stage 8 |
+| `dos_extraction_results` | `page_id` | stage 8. Page/document pairs are single-valued columns; every date found sits in the `dates` JSONB array. |
 | `pipeline_jobs` | run | every stage |
 
 ### Views
@@ -213,7 +211,8 @@ still renders.
 
 | File | Role |
 |---|---|
-| `schema.sql` | **THE canonical DDL (v8).** The only file in `schema/` — no migrations directory, no second copy. Every table, index, constraint, trigger and view, plus the naming conventions every table obeys. |
+| `v1.sql` | **What is implemented.** 12 tables + 2 views, every one written or read by running code. Required. Stands alone — references nothing in v2.sql. |
+| `v2.sql` | **Next phase. Nothing implemented.** 14 tables + 3 views, plus the four unorchestrated `pipeline_stage` rows. Optional; apply after v1.sql. Treat each table as a proposal, not a contract. |
 
 ### `core-pipeline/` — top level
 
@@ -460,7 +459,7 @@ repository. Until both are installed, member verification runs rules-only and
 NER read off the page. `GET /health` names which of the three preconditions is
 unmet. Turning it on: [LOGIC.md](LOGIC.md#turning-it-on).
 
-**The SQL is syntax-validated, not run.** `schema.sql` and the migration parse
+**The SQL is syntax-validated, not run.** `v1.sql` and `v2.sql` parse
 clean under a real PostgreSQL parser (`pglast`), and the code paths that use them
 are unit-tested — but no PostgreSQL server was available in this environment, so
 neither file has been executed. Apply migration 002 to a restorable snapshot
