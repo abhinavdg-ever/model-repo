@@ -29,6 +29,14 @@ They never call each other. Each has its own `docker-compose.yml`.
 Runs on macOS, Linux and Windows. **Python 3.12** — 3.13+ does not work
 (`rapidocr-onnxruntime` requires `<3.13`).
 
+Two ways to run it, and they use different ports:
+**[Mode A — Local](docs/API.md#mode-a--local-macos--windows--linux)** (uvicorn,
+for development) and **[Mode B — VM](docs/API.md#mode-b--vm-linux-with-docker)**
+(docker compose, for deployment). The quick start below is Mode B.
+
+No `git clone` on your machine? See
+[Installing from a ZIP](docs/API.md#installing-from-a-zip).
+
 **macOS / Linux**
 
 ```bash

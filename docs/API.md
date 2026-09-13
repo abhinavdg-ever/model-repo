@@ -14,10 +14,13 @@ They never call each other — they share a Postgres database and the
 
 - [Prerequisites](#prerequisites)
 - [Installing dependencies](#installing-dependencies)
-- [Running core-pipeline](#running-core-pipeline)
-- [Starting the APIs](#starting-the-apis)
-- [Running review-ui](#running-review-ui)
+- [**Deployment modes**](#deployment-modes) — the two ways to run this
+  - [Mode A — Local (macOS / Windows / Linux)](#mode-a--local-macos--windows--linux)
+  - [Mode B — VM (Linux with Docker)](#mode-b--vm-linux-with-docker)
+- [Both modes: review-ui data source](#both-modes-review-ui-data-source)
+- [Health checks](#health-checks)
 - [Windows notes](#windows-notes)
+  - [Installing from a ZIP](#installing-from-a-zip) — when `git clone` is blocked
 - [core-pipeline API reference](#core-pipeline-api-reference)
 - [review-ui API reference](#review-ui-api-reference)
 - [CLI](#cli)
@@ -264,59 +267,220 @@ the rejection path does once it is `true`.
 
 ---
 
-## Running core-pipeline
+## Deployment modes
 
-### Docker (recommended)
+There are two, and they do not mix. Pick one per machine.
+
+| | **Mode A — Local** | **Mode B — VM** |
+|---|---|---|
+| For | development on your laptop | the deployed environment |
+| Platform | macOS, Windows, Linux | Linux with Docker |
+| How | uvicorn in your own venv | `docker compose` |
+| core-pipeline | :8001 | :8001 |
+| review-ui API | **:8002** | **:3000** |
+| review-ui web | **:5174** (Vite dev server) | **:3001** (nginx) |
+| Reload on edit | yes (`--reload`) | no — rebuild the image |
+| Python 3.12 needed | yes, on the host | no, it is in the image |
+| tesseract needed | yes, on the host | no, it is in the image |
+
+**The ports differ between modes.** That is the single most common source of
+confusion: `localhost:3000` is nothing in Mode A, and `localhost:8002` is
+nothing in Mode B.
+
+Both modes need the schema applied first, and both run the two services
+independently — neither calls the other.
+
+---
+
+## Mode A — Local (macOS / Windows / Linux)
+
+Four terminals: nothing daemonises, so each process holds its own.
+
+Prerequisites: the code (via `git clone`, or
+[Installing from a ZIP](#installing-from-a-zip) if cloning is blocked on your
+machine), Python 3.12, tesseract, and the two venvs from
+[Installing dependencies](#installing-dependencies).
+
+### 1. Schema — once
+
+**macOS / Linux**
 
 ```bash
-cd core-pipeline
-cp .env.example .env      # fill in DATABASE_URL and any Azure credentials
-docker compose up -d --build
-docker compose logs -f api
+psql "$DATABASE_URL" -f schema/v1.sql
+psql "$DATABASE_URL" -f schema/v2.sql   # optional
 ```
 
-Serves on **:8001**. Interactive docs at <http://localhost:8001/docs>.
+**Windows (PowerShell)**
 
-The compose file mounts:
+```powershell
+psql $env:DATABASE_URL -f schema/v1.sql
+psql $env:DATABASE_URL -f schema/v2.sql   # optional
+```
 
-| Host | Container | Mode | Why |
-|---|---|---|---|
-| `DATA_HOST_PATH` → `../review-ui/data/folders` | `/data/folders` | rw | the chart workspace this service writes |
-| `METADATA_HOST_PATH` | `/data/metadata` | rw | mirrored manifest CSVs |
-| `NER_MODELS_HOST_PATH` | `/app/models/ner` | ro | GLiNER checkpoints, if enabled |
+Skip this entirely if you only want the review UI in Local Mode — it reads
+files, not Postgres.
 
-> `DATA_HOST_PATH` must resolve to the **same storage** review-ui mounts. On one
-> host a relative path is enough; across hosts use a shared volume or NFS mount.
-
-### Local
+### 2. core-pipeline — :8001
 
 **macOS / Linux**
 
 ```bash
 cd core-pipeline
+cp .env.example .env          # DATABASE_URL + any Azure credentials
 source .venv/bin/activate
-cp .env.example .env
-python cli.py serve                       # or: uvicorn api.main:app --port 8001
+python cli.py serve           # or: uvicorn api.main:app --port 8001 --reload
 ```
 
 **Windows (PowerShell)**
 
 ```powershell
 cd core-pipeline
+Copy-Item .env.example .env   # DATABASE_URL + any Azure credentials
 .venv\Scripts\Activate.ps1
-Copy-Item .env.example .env
-python cli.py serve                       # or: uvicorn api.main:app --port 8001
+python cli.py serve           # or: uvicorn api.main:app --port 8001 --reload
 ```
 
-Needs `tesseract` reachable — on PATH, or via `TESSERACT_CMD` in `.env`
-(required on Windows; see [Installing dependencies](#installing-dependencies)).
+<http://localhost:8001/docs>. Needs `tesseract` on PATH or `TESSERACT_CMD` set
+in `.env` — mandatory on Windows.
 
-### Health
+### 3. review-ui backend — :8002
+
+**macOS / Linux**
+
+```bash
+cd review-ui/backend
+cp ../.env.example ../.env    # DATA_MODE=local needs no database
+source .venv/bin/activate
+uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
+```
+
+**Windows (PowerShell)**
+
+```powershell
+cd review-ui\backend
+Copy-Item ..\.env.example ..\.env
+.venv\Scripts\Activate.ps1
+uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
+```
+
+<http://localhost:8002/docs>.
+
+### 4. review-ui frontend — :5174
+
+```bash
+cd review-ui/frontend
+npm install
+npm run dev
+```
+
+<http://localhost:5174>. Vite proxies `/api` to **8002**, which is why the
+backend must be on that port in this mode.
+
+### Stopping
+
+Ctrl-C in each terminal. Nothing is left running.
+
+---
+
+## Mode B — VM (Linux with Docker)
+
+Two compose projects, deployed independently. Each brings up its own service and
+neither depends on the other being present.
+
+### 1. Schema — once, from anywhere that can reach the database
+
+```bash
+psql "$DATABASE_URL" -f schema/v1.sql
+psql "$DATABASE_URL" -f schema/v2.sql   # optional
+psql "$DATABASE_URL" -c "SELECT count(*) FROM pipeline_stage;"   # expect 8 (12 with v2)
+```
+
+### 2. core-pipeline — :8001
+
+```bash
+cd core-pipeline
+cp .env.example .env          # DATABASE_URL + Azure credentials
+docker compose up -d --build
+docker compose logs -f api
+curl -fsS localhost:8001/ready
+```
+
+Mounts:
+
+| Host | Container | Mode | Why |
+|---|---|---|---|
+| `DATA_HOST_PATH` → `../review-ui/data/folders` | `/data/folders` | rw | the chart workspace this service writes |
+| `METADATA_HOST_PATH` | `/data/metadata` | rw | mirrored manifest CSVs |
+| `NER_MODELS_HOST_PATH` → `./models/ner` | `/app/models/ner` | ro | GLiNER checkpoints, if enabled |
+
+> `DATA_HOST_PATH` must resolve to the **same storage** review-ui mounts. On one
+> VM a relative path is enough; across hosts use a shared volume or an NFS mount.
+> If they diverge, the pipeline writes charts the UI never sees, with no error
+> on either side.
+
+### 3. review-ui — :3000 API, :3001 web
+
+```bash
+cd ../review-ui
+cp .env.example .env
+docker compose up -d --build
+```
+
+<http://localhost:3001>. It mounts the chart workspace **read-only**.
+
+### Updating a deployed VM
+
+```bash
+git pull
+cd core-pipeline && docker compose up -d --build     # rebuild, recreate
+cd ../review-ui  && docker compose up -d --build
+```
+
+An image rebuild is required for any code change — there is no reload in this
+mode. Stop with `docker compose down` in either directory; they stop
+independently.
+
+### Behind a reverse proxy
+
+Both services bind all interfaces inside their containers and publish to the
+host. Neither terminates TLS and **neither has authentication** — put them
+behind nginx/Caddy with auth before exposing either port beyond the VM. See
+[ARCHITECTURE.md § Known limits](ARCHITECTURE.md#6-known-limits).
+
+---
+
+## Both modes: review-ui data source
+
+`DATA_MODE` decides where the UI reads results from. It is independent of
+whether you are in Mode A or Mode B.
+
+| `DATA_MODE` | OCR + imaging read from | Page images | Database needed |
+|---|---|---|---|
+| `local` | `data/folders` — `ocr/*.txt`, `imaging/*.csv` | `pages/` | no |
+| `production` (alias `postgres`) | Postgres v8 tables | `pages/` | yes |
+
+The mode shows as a pill in the top bar and is returned by `GET /api/config`.
+
+> The review UI is **read-only**. Every route is a `GET`; it records no review
+> decisions. `manual_review` and `rejection_results` exist in the schema for a
+> later phase and nothing writes them today.
+
+`LOCAL_CACHE_TTL_SECONDS` (default 5) is how long a scan of `data/folders` is
+trusted before being rechecked against file mtimes — relevant because
+core-pipeline writes that directory while the UI is serving.
+
+---
+
+## Health checks
+
+Same in both modes, on :8001.
 
 ```bash
 curl localhost:8001/health   # liveness + which optional features are on
 curl localhost:8001/ready    # 503 unless the database is reachable and seeded
 ```
+
+On Windows PowerShell use `curl.exe`, not `curl`.
 
 ```json
 {
@@ -337,150 +501,8 @@ curl localhost:8001/ready    # 503 unless the database is reachable and seeded
 
 `member_ner.ready: false` means member verification runs rules-only — no page
 can be marked `wrong_member`, so no document can be Rejected. `reason` names the
-one precondition to fix. Enabling it:
-
-```bash
-cd core-pipeline
-pip install -r requirements-ner.txt                                   # runtime
-python -m stages.lib.member.extractors.ner_based.model_downloader     # checkpoints
-python -m stages.lib.member.extractors.ner_based.model_downloader --check
-export MEMBER_NER_ENABLED=true
-```
-
-In Docker: `docker build --build-arg WITH_NER=true .` and mount the checkpoints
-at `MEMBER_NER_MODELS_PATH` (`NER_MODELS_HOST_PATH` in the compose file).
-
----
-
-## Starting the APIs
-
-Three processes, three ports. They start independently and in any order.
-
-| Service | Port | Start it | Check it |
-|---|---|---|---|
-| core-pipeline API | 8001 | `cd core-pipeline && docker compose up -d --build` | <http://localhost:8001/docs> |
-| review-ui backend | 3000 | `cd review-ui && docker compose up -d --build` | <http://localhost:3000/docs> |
-| review-ui frontend | 3001 | (same compose file) | <http://localhost:3001> |
-
-Ports differ outside Docker: run locally, the review-ui backend defaults to
-**8002** (`API_PORT` in `review-ui/.env`) and the Vite dev server to **5174**,
-which proxies `/api` to 8002.
-
-The full sequence from an empty machine.
-
-**macOS / Linux**
-
-```bash
-# 0. schema — once, before anything starts
-psql "$DATABASE_URL" -f schema/v1.sql   # required — what is implemented
-psql "$DATABASE_URL" -f schema/v2.sql   # optional — next phase, nothing uses it yet
-
-# 1. core-pipeline (writes data/folders)
-cd core-pipeline
-cp .env.example .env            # fill in DATABASE_URL + any Azure credentials
-docker compose up -d --build
-curl -fsS localhost:8001/ready  # 200 once the DB is reachable and seeded
-
-# 2. review-ui (reads data/folders, read-only)
-cd ../review-ui
-cp .env.example .env            # DATA_MODE=local needs no database at all
-docker compose up -d --build
-open http://localhost:3001
-```
-
-**Windows (PowerShell)**
-
-```powershell
-# 0. schema — once, before anything starts
-psql $env:DATABASE_URL -f schema/v1.sql
-psql $env:DATABASE_URL -f schema/v2.sql
-
-# 1. core-pipeline (writes data/folders)
-cd core-pipeline
-Copy-Item .env.example .env     # fill in DATABASE_URL + any Azure credentials
-docker compose up -d --build
-curl.exe -fsS localhost:8001/ready
-
-# 2. review-ui (reads data/folders, read-only)
-cd ..\review-ui
-Copy-Item .env.example .env     # DATA_MODE=local needs no database at all
-docker compose up -d --build
-start http://localhost:3001
-```
-
-> Use **`curl.exe`**, not `curl`. PowerShell aliases bare `curl` to
-> `Invoke-WebRequest`, which does not understand `-fsS` and fails with
-> *"A parameter cannot be found that matches parameter name 'fsS'"*.
-
-Logs and shutdown:
-
-```bash
-docker compose logs -f api        # in core-pipeline/
-docker compose logs -f backend    # in review-ui/
-docker compose down               # per service; they stop independently
-```
-
----
-
-## Running review-ui
-
-```bash
-cd review-ui
-cp .env.example .env
-docker compose up -d --build
-```
-
-Backend **:3000**, frontend **:3001** → <http://localhost:3001>.
-
-### Without Docker
-
-**macOS / Linux**
-
-```bash
-# backend — port 8002
-cd review-ui/backend
-source .venv/bin/activate
-uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
-
-# frontend — port 5174, proxies /api to 8002
-cd ../frontend
-npm install
-npm run dev
-```
-
-**Windows (PowerShell)**
-
-```powershell
-# backend — port 8002
-cd review-ui\backend
-.venv\Scripts\Activate.ps1
-uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
-
-# frontend — port 5174, proxies /api to 8002
-cd ..\frontend
-npm install
-npm run dev
-```
-
-Run each in its own terminal — both stay in the foreground.
-
-Two modes, set by `DATA_MODE`:
-
-| `DATA_MODE` | OCR + imaging read from | Page images |
-|---|---|---|
-| `local` | `data/folders` — `ocr/*.txt`, `imaging/*.csv` | `pages/` |
-| `production` (alias `postgres`) | Postgres v8 tables | `pages/` |
-
-Local Mode needs no database at all. The mode is shown as a pill in the top bar
-and returned by `GET /api/config`.
-
-> The review UI is **read-only**. Every route is a `GET`; it records no review
-> decisions. `manual_review` and `rejection_results` exist in the schema for a
-> later phase and nothing writes them today.
-
-`LOCAL_CACHE_TTL_SECONDS` (default 5) is how long a scan of `data/folders` is
-trusted before being rechecked against file mtimes — relevant because
-core-pipeline writes that directory while the UI is serving.
+one precondition to fix; see
+[Installing dependencies](#3-the-ner-layer-gliner--optional-and-it-gates-rejection).
 
 ---
 
@@ -522,20 +544,99 @@ activation is `source .venv/Scripts/activate` — `Scripts`, not `bin`.
 4. **`curl` is not curl.** PowerShell aliases it to `Invoke-WebRequest`. Use
    `curl.exe`.
 
-### Get the code with git, not by copying
+### Getting the code
+
+Two routes. Use the first if your machine permits it.
+
+**With git** — preferred, because every object is checksummed and `git status`
+tells you instantly whether anything drifted:
 
 ```powershell
 git clone https://github.com/abhinavdg-ever/pipeline-demo.git
 cd pipeline-demo
 ```
 
-Copying a working tree between machines has no integrity check — a single file
-landing with the wrong contents produces errors that look like code bugs rather
-than transfer damage. `git clone` verifies every object, and `git status` then
-tells you instantly whether anything has drifted.
+**Without git** — many locked-down corporate machines block `git clone`. Download
+the ZIP instead; see [Installing from a ZIP](#installing-from-a-zip) below for
+the full procedure, including how to verify the extraction and how to update
+later without losing your `.env` files.
 
 Prefer a path **without spaces** (`C:\Projects\pipeline-demo`). Paths with
 spaces work, but every unquoted command you paste from elsewhere will break.
+
+### Installing from a ZIP
+
+No `git` needed. The trade-off is that you lose the integrity check and the
+update path, so both are handled manually below.
+
+**1. Download**
+
+Browser: <https://github.com/abhinavdg-ever/pipeline-demo> → **Code** →
+**Download ZIP**. Or from PowerShell:
+
+```powershell
+curl.exe -L -o pipeline-demo.zip https://github.com/abhinavdg-ever/pipeline-demo/archive/refs/heads/main.zip
+```
+
+**2. Unblock before extracting**
+
+Windows tags anything downloaded from the internet with the Mark of the Web, and
+that tag propagates to every extracted file. Clear it on the ZIP first, so it is
+one operation rather than hundreds:
+
+```powershell
+Unblock-File .\pipeline-demo.zip
+```
+
+(Equivalently: right-click the ZIP → Properties → tick **Unblock** → OK.)
+
+**3. Extract**
+
+```powershell
+Expand-Archive .\pipeline-demo.zip -DestinationPath C:\Projects
+cd C:\Projects\pipeline-demo-main
+```
+
+GitHub names the folder `<repo>-<branch>`, so you get **`pipeline-demo-main`**,
+not `pipeline-demo`. Rename it if you prefer.
+
+**4. Verify the extraction — do not skip this**
+
+Without git there is nothing checksumming the transfer, and a partial or
+corrupted extraction produces `ImportError`s that read like code bugs. The test
+suite is the check: it imports every module and parses every source file, so it
+fails loudly if anything arrived damaged.
+
+```powershell
+py -3.12 -m venv .venv-test
+.venv-test\Scripts\Activate.ps1
+pip install -r tests/requirements.txt
+python -m pytest tests/ -q
+```
+
+**113 passed** means the extraction is sound. Anything else — especially
+`ModuleNotFoundError` or `SyntaxError` — means re-download rather than debug.
+
+**5. Updating later**
+
+There is no `git pull`. Re-download and re-extract to a *new* folder, then carry
+your configuration across — a fresh ZIP does not contain your `.env` files,
+because they are gitignored and were never in the repo:
+
+```powershell
+# keep these from the old folder
+copy C:\Projects\pipeline-demo-old\core-pipeline\.env      C:\Projects\pipeline-demo-main\core-pipeline\
+copy C:\Projects\pipeline-demo-old\review-ui\.env          C:\Projects\pipeline-demo-main\review-ui\
+copy C:\Projects\pipeline-demo-old\review-ui\frontend\.env C:\Projects\pipeline-demo-main\review-ui\frontend\
+```
+
+Also carry over anything large you do not want to fetch again:
+`core-pipeline\models\ner\` (the ~2 GB of GLiNER checkpoints) and
+`review-ui\data\folders\` (downloaded charts). Neither is in the ZIP.
+
+Extract to a new folder rather than over the old one — extracting on top leaves
+deleted files behind, which is how a tree ends up with a stale module that
+shadows a current one.
 
 ### Line endings
 
