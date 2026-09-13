@@ -78,12 +78,19 @@ def _startup() -> None:
     logger.info("  data root   : %s", DATA_ROOT)
     logger.info("  metadata    : %s", METADATA_ROOT)
     logger.info("  workers     : %s", STAGE_WORKERS)
+    # Short-timeout probe, NOT the pool: the pool retries for 30 seconds, which
+    # would hold up startup — and block /docs and /health, the two endpoints
+    # whose whole job is to work when the database does not.
     try:
-        with connect() as conn:
-            stages = list_stages(conn)
-        logger.info("  schema      : OK, %d stage(s) registered", len(stages))
+        import psycopg
+
+        with psycopg.connect(DATABASE_URL, connect_timeout=3) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT count(*) FROM pipeline_stage")
+                count = cur.fetchone()[0]
+        logger.info("  schema      : OK, %d stage(s) registered", count)
     except Exception as exc:
-        logger.warning("  database    : UNREACHABLE — %s", exc)
+        logger.warning("  database    : UNREACHABLE — %s", str(exc).splitlines()[0])
         logger.warning(
             "  Mutating endpoints will return 503 until this is fixed. "
             "DATABASE_URL is read once at startup, so restart after editing .env."

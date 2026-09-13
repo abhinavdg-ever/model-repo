@@ -18,6 +18,7 @@ They never call each other — they share a Postgres database and the
   - [Mode A — Local (macOS / Windows / Linux)](#mode-a--local-macos--windows--linux)
   - [Mode B — VM (Linux with Docker)](#mode-b--vm-linux-with-docker)
 - [Both modes: review-ui data source](#both-modes-review-ui-data-source)
+- [Startup banner](#startup-banner)
 - [Health checks](#health-checks)
 - [Windows notes](#windows-notes)
   - [Calling the API from Windows](#calling-the-api-from-windows) — curl/JSON quoting
@@ -471,6 +472,31 @@ core-pipeline writes that directory while the UI is serving.
 
 ---
 
+## Startup banner
+
+Every start logs what it resolved, so "am I even pointed at the right database?"
+is answerable without reading config. The password is masked.
+
+```
+INFO core-pipeline starting
+INFO   database    : postgresql://postgres:***@localhost:5432/imaging_outputs
+INFO   data root   : .../review-ui/data/folders
+INFO   metadata    : .../review-ui/data/metadata
+INFO   workers     : 4
+INFO   schema      : OK, 8 stage(s) registered
+```
+
+If the database is unreachable it says so and starts anyway — `/docs` and
+`/health` exist precisely to work when it does not:
+
+```
+WARNING   database    : UNREACHABLE — connection refused ...
+WARNING   Mutating endpoints will return 503 until this is fixed. DATABASE_URL
+          is read once at startup, so restart after editing .env.
+```
+
+---
+
 ## Health checks
 
 Same in both modes, on :8001.
@@ -487,17 +513,25 @@ On Windows PowerShell use `curl.exe`, not `curl`.
   "status": "ok",
   "member_ner": {
     "enabled": false,
+    "models_path": ".../core-pipeline/models/ner",
+    "enabled_models": [],
     "deps_installed": false,
     "deps_detail": "gliner not installed (…); pip install -r requirements-ner.txt",
+    "model_id": "gliner_medium",
     "weights_present": [],
-    "weights_missing": ["gliner_large", "gliner_medium", "gliner_low"],
+    "weights_missing": [],
     "ready": false,
-    "reason": "gliner not installed (…); pip install -r requirements-ner.txt"
+    "reason": "MEMBER_NER_ENABLED=false"
   },
-  "dos_llm_enabled": true,
+  "dos_llm_enabled": false,
   "stage_workers": 4
 }
 ```
+
+`reason` reports the *first* thing that stops NER working, in that order:
+switched off beats missing runtime beats missing checkpoints — so it never
+tells you to install 2.5 GB you have deliberately disabled. `model_id` is the
+single checkpoint this run needs; `weights_missing` lists it if absent.
 
 `member_ner.ready: false` means member verification runs rules-only — no page
 can be marked `wrong_member`, so no document can be Rejected. `reason` names the
