@@ -37,6 +37,39 @@ def main() -> None:
     p_local.add_argument("--force", action="store_true")
     p_local.add_argument("--no-pipeline", action="store_true")
 
+    p_import = sub.add_parser(
+        "import-folder",
+        help="Import any local folder of images into the workspace and run it",
+    )
+    p_import.add_argument("path", help="Folder containing .jpg/.png page images")
+    p_import.add_argument(
+        "--chart-name",
+        help="Chart name (default: the source folder's own name)",
+    )
+    p_import.add_argument(
+        "--move",
+        action="store_true",
+        help="Move the images instead of copying (default: copy, source kept)",
+    )
+    p_import.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Also pick up images in subfolders",
+    )
+    p_import.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace pages already in the workspace for this chart",
+    )
+    p_import.add_argument(
+        "--no-manifest",
+        action="store_true",
+        help="Ignore any CSV/XLSX manifest sitting in the source folder",
+    )
+    p_import.add_argument("--run-id")
+    p_import.add_argument("--batch-id")
+    p_import.add_argument("--no-pipeline", action="store_true")
+
     p_run = sub.add_parser("run", help="Run pipeline for existing chart_id")
     p_run.add_argument("chart_id", type=int)
     p_run.add_argument(
@@ -124,6 +157,26 @@ def main() -> None:
         out = {"register": reg}
         if not args.no_pipeline:
             out["pipeline"] = run_pipeline_for_chart(reg["chart_id"], force=args.force)
+        print(json.dumps(out, default=str, indent=2))
+        return
+
+    if args.cmd == "import-folder":
+        from stages.download_blob import import_local_folder
+        from orchestrator.runner import run_pipeline_for_chart
+
+        reg = import_local_folder(
+            args.path,
+            chart_name=args.chart_name,
+            move=args.move,
+            recursive=args.recursive,
+            force=args.force,
+            load_manifest=not args.no_manifest,
+            run_id=args.run_id,
+            batch_id=args.batch_id,
+        )
+        out = {"import": reg}
+        if not args.no_pipeline:
+            out["pipeline"] = run_pipeline_for_chart(reg["chart_id"])
         print(json.dumps(out, default=str, indent=2))
         return
 

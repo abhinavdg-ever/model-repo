@@ -15,6 +15,7 @@ something to key on.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -159,6 +160,153 @@ def run_download(
                 conn, job_id, status="failed", error_message=str(exc), completed=True
             )
         raise
+
+
+_SAFE_CHART_NAME = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _natural_key(path: Path) -> tuple:
+    """Sort page2.jpg before page10.jpg, which a plain string sort would not."""
+    return tuple(
+        int(part) if part.isdigit() else part.casefold()
+        for part in re.split(r"(\d+)", path.name)
+    )
+
+
+def _collect_images(source: Path, *, recursive: bool) -> list[Path]:
+    walker = source.rglob("*") if recursive else source.iterdir()
+    files = [
+        p for p in walker
+        if p.is_file()
+        and p.suffix.lower() in IMAGE_SUFFIXES
+        and not p.name.startswith("._")          # macOS AppleDouble stubs
+    ]
+    return sorted(files, key=_natural_key)
+
+
+def _collect_manifests(source: Path, *, recursive: bool) -> list[Path]:
+    """CSV/XLSX sitting alongside the images — the member roster for this drop."""
+    from jobs.manifest_sweeper import MANIFEST_SUFFIXES
+
+    walker = source.rglob("*") if recursive else source.iterdir()
+    return sorted(
+        p for p in walker
+        if p.is_file()
+        and p.suffix.casefold() in MANIFEST_SUFFIXES
+        and not p.name.startswith("._")
+    )
+
+
+def import_local_folder(
+    source: str | Path,
+    *,
+    chart_name: Optional[str] = None,
+    move: bool = False,
+    recursive: bool = False,
+    force: bool = False,
+    load_manifest: bool = True,
+    run_id: Optional[str] = None,
+    batch_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Copy a folder of images into the chart workspace and register it.
+
+    ``source`` is any directory containing page images — it does NOT have to be
+    under DATA_ROOT, which is what ``register_local_pages`` requires. Images are
+    renamed to ``1.jpg``, ``2.jpg`` … in natural-sort order, matching what the
+    blob intake produces, so every later stage sees the same shape either way.
+
+    ``move`` defaults to False: copying leaves the caller's folder intact, and a
+    failed import is then a no-op rather than data loss. Pass move=True only
+    when the source is a scratch drop directory.
+    """
+    import shutil
+
+    src = Path(source).expanduser().resolve()
+    if not src.is_dir():
+        raise RuntimeError(f"Not a directory: {src}")
+
+    images = _collect_images(src, recursive=recursive)
+    if not images:
+        raise RuntimeError(
+            f"No images in {src} (looked for {', '.join(sorted(IMAGE_SUFFIXES))}"
+            f"{'' if recursive else '; use recursive=True to search subfolders'})"
+        )
+
+    name = (chart_name or src.name).strip()
+    name = _SAFE_CHART_NAME.sub("_", name).strip("._-")
+    if not name:
+        raise RuntimeError(f"Cannot derive a chart name from {src}")
+
+    dest_dir = pages_dir(name)
+    if dest_dir.resolve() == src:
+        raise RuntimeError(
+            f"{src} is already the chart workspace for '{name}' — "
+            f"use register_local_pages('{name}') instead"
+        )
+
+    ensure_chart_dirs(name)
+    existing = [p for p in dest_dir.iterdir() if p.is_file()] if dest_dir.is_dir() else []
+    if existing and not force:
+        raise RuntimeError(
+            f"{dest_dir} already holds {len(existing)} file(s). "
+            "Pass force=True to replace them."
+        )
+    for stale in existing:
+        stale.unlink()
+
+    copied: list[str] = []
+    for index, path in enumerate(images, start=1):
+        target = dest_dir / _normalize_page_filename(index, path.name)
+        if move:
+            shutil.move(str(path), target)
+        else:
+            shutil.copy2(path, target)
+        copied.append(target.name)
+
+    logger.info(
+        "%s %d image(s) from %s -> %s",
+        "Moved" if move else "Copied", len(copied), src, dest_dir,
+    )
+
+    # Any manifest dropped in alongside the images is loaded FIRST, so the
+    # member rows exist before registration tries to link this chart to them.
+    # Loading afterwards would leave manifest_member_list.chart_id NULL until
+    # something re-linked it.
+    manifest_summary: dict[str, Any] = {"files": 0, "inserted": 0, "updated": 0}
+    if load_manifest:
+        manifests = _collect_manifests(src, recursive=recursive)
+        if manifests:
+            from config import METADATA_ROOT
+            from jobs.manifest_sweeper import run_load
+
+            METADATA_ROOT.mkdir(parents=True, exist_ok=True)
+            for man in manifests:
+                target = METADATA_ROOT / man.name
+                if move:
+                    shutil.move(str(man), target)
+                else:
+                    shutil.copy2(man, target)
+                loaded = run_load(
+                    local_path=target, run_id=run_id, batch_id=batch_id
+                )
+                # run_load flattens its counters at the top level, not under
+                # a "totals" key.
+                manifest_summary["files"] += loaded["files"]
+                manifest_summary["inserted"] += loaded["inserted"]
+                manifest_summary["updated"] += loaded["updated"]
+            logger.info(
+                "Loaded %d manifest file(s): +%d inserted, ~%d updated",
+                manifest_summary["files"],
+                manifest_summary["inserted"],
+                manifest_summary["updated"],
+            )
+
+    result = register_local_pages(name, run_id=run_id, batch_id=batch_id)
+    result["source"] = str(src)
+    result["imported"] = len(copied)
+    result["moved"] = move
+    result["manifest"] = manifest_summary
+    return result
 
 
 def register_local_pages(

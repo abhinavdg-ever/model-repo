@@ -40,7 +40,7 @@ from db import close_pool, connect, get_chart, get_chart_by_name, list_pages, li
 from db.chart_status import refresh_chart_status
 from jobs.manifest_sweeper import run_load
 from orchestrator.runner import STAGE_NAMES, ingest_and_run, run_pipeline_for_chart
-from stages.download_blob import register_local_pages
+from stages.download_blob import import_local_folder, register_local_pages
 
 logging.basicConfig(
     level=logging.INFO,
@@ -88,6 +88,38 @@ class LocalRegisterRequest(BaseModel):
     batch_id: Optional[str] = None
     run_pipeline: bool = True
     force: bool = False
+
+
+class ImportFolderRequest(BaseModel):
+    source_path: str = Field(
+        ...,
+        description=(
+            "Any directory ON THE SERVER holding page images. Under Docker this "
+            "must be a path inside the container, so the folder has to be "
+            "mounted first — the host's filesystem is not visible."
+        ),
+        examples=["/data/inbox/52743839_44976074"],
+    )
+    chart_name: Optional[str] = Field(
+        None, description="Defaults to the source folder's own name"
+    )
+    move: bool = Field(
+        False, description="Move instead of copy. Default copies, leaving the source intact"
+    )
+    recursive: bool = Field(False, description="Also pick up images in subfolders")
+    force: bool = Field(
+        False, description="Replace pages already in the workspace for this chart"
+    )
+    load_manifest: bool = Field(
+        True,
+        description=(
+            "Load any CSV/XLSX manifest found in the source folder before "
+            "registering, so the chart links to its member row"
+        ),
+    )
+    run_id: Optional[str] = None
+    batch_id: Optional[str] = None
+    run_pipeline: bool = True
 
 
 class RerunRequest(BaseModel):
@@ -265,6 +297,45 @@ def _chart_payload(conn: Any, chart_id: int, include_pages: bool) -> dict[str, A
     if include_pages:
         payload["pages"] = list_pages(conn, chart_id)
     return payload
+
+
+@app.post("/api/charts/import-local", status_code=202, tags=["charts"])
+def import_local(
+    body: ImportFolderRequest, background_tasks: BackgroundTasks
+) -> dict[str, Any]:
+    """Copy a server-side folder of images into the workspace and run it.
+
+    Unlike `/api/charts/register-local`, the source does **not** have to be
+    under `data/folders` already — images are copied in and renamed to
+    `1.jpg`, `2.jpg` … in natural-sort order, the same shape the blob intake
+    produces.
+    """
+    try:
+        result = import_local_folder(
+            body.source_path,
+            chart_name=body.chart_name,
+            move=body.move,
+            recursive=body.recursive,
+            force=body.force,
+            load_manifest=body.load_manifest,
+            run_id=body.run_id,
+            batch_id=body.batch_id,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if body.run_pipeline:
+        background_tasks.add_task(_bg_pipeline, result["chart_id"], False, None)
+    return {
+        "status": "accepted",
+        "chart_id": result["chart_id"],
+        "chart_name": result["chart_name"],
+        "source": result["source"],
+        "imported": result["imported"],
+        "moved": result["moved"],
+        "manifest": result["manifest"],
+        "page_count": result["page_count"],
+        "manifest_rows_linked": result["manifest_rows_linked"],
+    }
 
 
 @app.get("/api/charts/{chart_id}", tags=["charts"])

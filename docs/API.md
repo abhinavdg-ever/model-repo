@@ -715,6 +715,55 @@ curl -X POST localhost:8001/api/charts/register-local \
 Returns synchronously for registration (so you get the id) and runs the chain in
 the background.
 
+### `POST /api/charts/import-local` → 202
+
+Point it at **any folder on the server** holding page images. It copies them
+into the chart workspace, renames them `1.jpg`, `2.jpg` … in natural-sort order
+(so `page2.jpg` precedes `page10.jpg`), loads any manifest sitting beside them,
+registers the chart and starts the pipeline.
+
+```json
+{
+  "source_path": "/data/inbox/52743839_44976074",
+  "chart_name": null,
+  "move": false,
+  "recursive": false,
+  "force": false,
+  "load_manifest": true,
+  "run_pipeline": true
+}
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `source_path` | — | Any directory **on the server**. Under Docker it must be a path *inside the container*, so mount the folder first — the host filesystem is not visible to it. |
+| `chart_name` | the folder's own name | Sanitised to `[A-Za-z0-9._-]`, so `My Chart 001` becomes `My_Chart_001`. |
+| `move` | `false` | Copies by default, leaving your folder intact. `true` moves, so a failed import loses data — use only for a scratch drop directory. |
+| `recursive` | `false` | Also pick up images in subfolders. |
+| `force` | `false` | Replace pages already in the workspace for this chart. Without it, a non-empty `pages/` is an error rather than a silent merge. |
+| `load_manifest` | `true` | Load any CSV/XLSX in the folder **before** registering, so the chart links to its member row. Loading after would leave `manifest_member_list.chart_id` NULL. |
+
+Non-image files are ignored, as are macOS `._` stubs. Accepted extensions are
+the same `IMAGE_SUFFIXES` the blob intake uses — jpg, png, tif, webp and the
+rest.
+
+```json
+{
+  "status": "accepted",
+  "chart_id": 12,
+  "chart_name": "52743839_44976074",
+  "source": "/data/inbox/52743839_44976074",
+  "imported": 34,
+  "moved": false,
+  "manifest": {"files": 1, "inserted": 0, "updated": 38},
+  "page_count": 34,
+  "manifest_rows_linked": 1
+}
+```
+
+Use `register-local` instead when the folder is **already** at
+`data/folders/<chart>/pages/` — it registers in place and copies nothing.
+
 ### `GET /api/charts/{chart_id}` · `GET /api/charts/by-name/{chart_name}`
 
 Chart row, per-stage progress, and the member verification outcome.
@@ -860,15 +909,29 @@ python cli.py ingest --container imaging-pipeline \
                      --run-id R1 --batch-id B1
 python cli.py ingest ... --no-pipeline       # download only
 
+# Import ANY local folder of images: copies them in, renames to 1.jpg/2.jpg…,
+# loads any manifest sitting beside them, registers, runs.
+python cli.py import-folder "/Users/me/Desktop/52743839_44976074"
+python cli.py import-folder ./drop --chart-name 52743839_44976074
+python cli.py import-folder ./drop --move --recursive --force
+python cli.py import-folder ./drop --no-manifest --no-pipeline
+
+# register-local is the narrower one: the folder must ALREADY be at
+# data/folders/<chart>/pages/. It copies nothing.
 python cli.py register-local demo_chart_240315_1012
+
 python cli.py run 7                          # resume
 python cli.py run 7 --force                  # reprocess everything
 python cli.py run 7 --only member_verify     # one stage
 python cli.py run 7 --only blank_junk:2      # a specific pass
 
+# Manifests — a local file, a whole local directory, or a blob prefix.
+# All three upsert: re-running with a corrected CSV updates in place.
 python cli.py manifest --local ../review-ui/data/metadata/metadata_R1_B1.csv
 python cli.py manifest --local ../review-ui/data/metadata/   # whole directory
+python cli.py manifest --local "/Users/me/Desktop/manifests"  # any path
 python cli.py manifest --blob-container imaging-pipeline --blob-prefix manifests/run1
+python cli.py manifest --local ./m.csv --run-id R1 --batch-id B1   # override parsed ids
 ```
 
 ---
