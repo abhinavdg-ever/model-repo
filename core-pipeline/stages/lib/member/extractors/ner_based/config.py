@@ -18,7 +18,7 @@ Two adaptations for the pipeline:
 The GLiNER checkpoints are not in the repository. Download them with the
 reference downloader before enabling:
 
-    python -m Member_Verification.Models.model_downloader
+    python -m stages.lib.member.extractors.ner_based.model_downloader
 """
 
 from __future__ import annotations

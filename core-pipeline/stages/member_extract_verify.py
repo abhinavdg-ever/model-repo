@@ -215,6 +215,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             "wrong_member, so this chart cannot be Rejected on member evidence.",
             ner["reason"],
         )
+    # Honour that warning. Gating on MEMBER_NER_ENABLED alone let the flag be
+    # true while the checkpoints were absent, so the engine called NER anyway
+    # and ModelLoadError killed the whole chart — after five stages of work —
+    # having just logged that it would run rules-only.
+    ner_model_id = MEMBER_NER_MODEL_ID if ner["ready"] else None
 
     with stage_run(chart_id, STAGE, force=force) as ctx:
         chart_name = ctx.chart_name
@@ -308,7 +313,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             pages=engine_pages,
             expected=expected,
             name_mode=name_mode,
-            model_id=MEMBER_NER_MODEL_ID if MEMBER_NER_ENABLED else None,
+            model_id=ner_model_id,
             total_pages=len(ctx.pages),
         )
 

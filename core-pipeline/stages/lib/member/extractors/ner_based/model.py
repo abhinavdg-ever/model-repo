@@ -144,9 +144,10 @@ def get_backend(model_id: str | None = None):
     path = model_dir(spec)
     if not _looks_like_model(path, spec["kind"]):
         message = (
-            f"{model_id} is not in {path}. Download the checkpoints with the "
-            f"reference downloader, or set MEMBER_NER_ENABLED=false to run "
-            f"rules-only: python -m Member_Verification.Models.model_downloader"
+            f"{model_id} is not in {path}. Either download the checkpoints:\n"
+            f"    python -m stages.lib.member.extractors.ner_based.model_downloader\n"
+            f"or set MEMBER_NER_ENABLED=false in core-pipeline/.env to run "
+            f"rules-only."
         )
         _LOAD_FAILED.add(model_id)
         _LOAD_ERRORS[model_id] = message

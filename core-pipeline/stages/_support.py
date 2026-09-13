@@ -94,9 +94,9 @@ def stage_run(
         force=force,
     )
     logger.info(
-        "%s pass %s — chart %s: %s/%s pages to do%s",
-        stage_name, pass_no, ctx.chart_name, len(todo), len(pages),
-        " (forced)" if force else "",
+        "[%s] chart %s — starting, %s of %s page(s) to do%s",
+        stage_label(stage_name, pass_no), ctx.chart_name,
+        len(todo), len(pages), " (forced)" if force else "",
     )
 
     try:
@@ -144,6 +144,43 @@ def mark_skipped(
     ctx.todo.difference_update(ids)
 
 
+# Short display names for log lines. pipeline_stage.label is the long form for
+# the UI; these are the one-per-page form, kept here so every stage reports
+# identically instead of each inventing its own wording.
+STAGE_LABELS = {
+    "ocr_prelim": "Prelim OCR",
+    "ocr_quality": "Rotation + Handwriting",
+    "blank_junk": "Blank/Junk",
+    "ocr_final1": "Final OCR 1",
+    "ocr_final2": "Final OCR 2",
+    "member_verify": "Member Verify",
+    "dos_extract": "Date of Service",
+    "download_blob": "Download",
+}
+
+
+def stage_label(stage_name: str, pass_no: int = 1) -> str:
+    """'Blank/Junk pass 2' — the name a human reads in the log."""
+    label = STAGE_LABELS.get(stage_name, stage_name)
+    return f"{label} pass {pass_no}" if pass_no and pass_no > 1 else label
+
+
+def _progress(ctx: StageContext, outcome: str, page_name: str = "") -> None:
+    """One line per page, same shape for every stage.
+
+    Previously each stage logged only a start banner, so a long stage looked
+    identical to a hung one for minutes at a time — ocr_final1 on 16 pages is
+    nearly two minutes of silence.
+    """
+    total = len(ctx.todo) or len(ctx.pages)
+    seen = ctx.done + len(ctx.errors)
+    suffix = f" ({page_name})" if page_name else ""
+    logger.info(
+        "[%s] Page %d of %d %s%s",
+        stage_label(ctx.stage_name, ctx.pass_no), seen, total, outcome, suffix,
+    )
+
+
 def mark_processing(conn: Any, ctx: StageContext, page_id: int) -> None:
     set_page_stage(
         conn,
@@ -165,6 +202,7 @@ def mark_completed(conn: Any, ctx: StageContext, page_id: int) -> None:
         status="completed",
     )
     ctx.done += 1
+    _progress(ctx, "completed")
 
 
 def mark_failed(
@@ -180,6 +218,7 @@ def mark_failed(
         error_message=error[:2000],
     )
     ctx.errors.append(f"{page_name or page_id}: {error}")
+    _progress(ctx, "FAILED", page_name)
 
 
 def eligible_for_downstream(

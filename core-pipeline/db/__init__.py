@@ -989,6 +989,53 @@ def list_manifest_members(
     return []
 
 
+# Result tables wiped by reset_chart_results(). pipeline_jobs is deliberately
+# absent: it is the run log, and the point of a re-run is to be able to compare
+# it against the previous attempt. manifest_member_list is absent too — it is
+# the client's roster, not our output, and re-loading it is a separate action.
+CHART_RESULT_TABLES = (
+    "member_verification_summary",
+    "member_extraction_results",
+    "dos_extraction_results",
+    "blank_junk_classification",
+    "ocr_quality_results",
+    "ocr_results",
+    "page_stage_status",
+    "page_list",
+)
+
+
+def reset_chart_results(conn: Any, chart_id: int) -> dict[str, int]:
+    """Delete everything this chart produced, keeping the chart row and its id.
+
+    A re-ingest of the same chart name would otherwise merge into the previous
+    attempt: pages that vanished from the source keep their old rows and their
+    completed stage statuses, so the chart reports finished while serving stale
+    results. Wiping first makes a re-run mean what it says.
+
+    The chart_list row itself survives, so chart_id is stable and anything
+    holding that id still resolves. pipeline_jobs survives as the audit trail.
+    """
+    deleted: dict[str, int] = {}
+    for table in CHART_RESULT_TABLES:
+        result = conn.execute(
+            f"DELETE FROM {table} WHERE chart_id = %s", (chart_id,)
+        )
+        count = getattr(result, "rowcount", 0) or 0
+        if count:
+            deleted[table] = count
+    conn.execute(
+        """
+        UPDATE chart_list
+           SET status = 'received', current_stage = NULL, current_pass = NULL,
+               page_count = NULL, updated_at = now()
+         WHERE id = %s
+        """,
+        (chart_id,),
+    )
+    return deleted
+
+
 def count_manifest_members(conn: Any, record_id: str) -> int:
     """How many manifest rows exist for this chart name.
 

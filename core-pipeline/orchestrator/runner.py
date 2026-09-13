@@ -22,6 +22,7 @@ from typing import Any, Callable, Optional
 
 from db import connect, create_job, get_chart, set_chart_status, update_job
 from db.chart_status import refresh_chart_status
+from stages._support import stage_label
 from stages import (
     blank_junk_classify,
     dos_extract,
@@ -84,21 +85,27 @@ def run_pipeline_for_chart(
     }
 
     try:
-        for name, pass_no, fn in STAGE_CHAIN:
+        total_stages = len(STAGE_CHAIN)
+        for index, (name, pass_no, fn) in enumerate(STAGE_CHAIN, start=1):
             key = f"{name}:{pass_no}"
             if wanted and key not in wanted and name not in wanted:
                 results["skipped_stages"].append(key)
                 continue
 
-            logger.info("chart %s — stage %s", chart_id, key)
+            label = stage_label(name, pass_no)
+            logger.info(
+                "=== [%s]  stage %d of %d  —  chart %s ===",
+                label, index, total_stages, chart_id,
+            )
             results["stages"][key] = fn(chart_id, force=force)
 
             with connect() as conn:
                 progress = refresh_chart_status(conn, chart_id)
             results["progress"] = progress
             logger.info(
-                "chart %s — %s done → status=%s current_stage=%s",
-                chart_id, key, progress.get("status"), progress.get("current_stage"),
+                "[%s] done — chart status=%s, next=%s",
+                label, progress.get("status"),
+                progress.get("current_stage") or "finished",
             )
 
         with connect() as conn:

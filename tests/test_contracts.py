@@ -598,3 +598,85 @@ class TestIngestAcceptsBothModes:
         client, _ = self._client(monkeypatch)
         r = client.post("/api/charts/import-local", json={"source_path": "/x"})
         assert r.status_code in (404, 405)
+
+
+# --- operator-facing behaviour -----------------------------------------------
+
+
+class TestNerFallsBackInsteadOfCrashing:
+    """A rules-only run must actually run, not raise ModelLoadError.
+
+    The stage logs "NER layer INACTIVE — rules-only" from ner_status()["ready"],
+    but the model_id it passed to the engine was gated on MEMBER_NER_ENABLED
+    alone. With the flag true and checkpoints absent it announced rules-only and
+    then called NER anyway, killing the chart after five completed stages.
+    """
+
+    def test_model_id_is_gated_on_ready_not_on_the_flag(self):
+        src = (
+            REPO_ROOT / "core-pipeline" / "stages" / "member_extract_verify.py"
+        ).read_text(encoding="utf-8")
+        assert "ner_model_id = MEMBER_NER_MODEL_ID if ner[\"ready\"] else None" in src
+        assert "model_id=ner_model_id," in src
+        assert "MEMBER_NER_MODEL_ID if MEMBER_NER_ENABLED else None" not in src
+
+    def test_no_stale_downloader_command_in_any_message(self):
+        """The old path stopped existing when Reference/ was deleted."""
+        import re
+
+        offenders = []
+        for path in repo_python_files(REPO_ROOT / "core-pipeline"):
+            text = path.read_text(encoding="utf-8")
+            if "Member_Verification.Models.model_downloader" in text:
+                offenders.append(str(path.relative_to(REPO_ROOT)))
+        assert not offenders, f"stale downloader command in: {offenders}"
+
+
+class TestStageLabels:
+    """Every orchestrated stage has a display name, so logs read uniformly."""
+
+    def test_every_stage_in_the_chain_has_a_label(self):
+        from orchestrator.runner import STAGE_CHAIN
+        from stages._support import STAGE_LABELS, stage_label
+
+        for name, pass_no, _fn in STAGE_CHAIN:
+            assert name in STAGE_LABELS, f"{name} has no display label"
+            assert stage_label(name, pass_no)
+
+    def test_a_second_pass_is_distinguishable(self):
+        from stages._support import stage_label
+
+        assert stage_label("blank_junk", 1) == "Blank/Junk"
+        assert stage_label("blank_junk", 2) == "Blank/Junk pass 2"
+
+
+class TestChartResetKeepsTheAuditTrail:
+    """A re-run replaces results but must not erase the run log."""
+
+    def test_pipeline_jobs_is_not_wiped(self):
+        from db import CHART_RESULT_TABLES
+
+        assert "pipeline_jobs" not in CHART_RESULT_TABLES, (
+            "pipeline_jobs is the audit trail — the point of a re-run is being "
+            "able to compare it against the previous attempt"
+        )
+
+    def test_the_client_roster_is_not_wiped(self):
+        from db import CHART_RESULT_TABLES
+
+        assert "manifest_member_list" not in CHART_RESULT_TABLES, (
+            "the manifest is the client's data, not our output"
+        )
+
+    def test_every_wiped_table_actually_has_a_chart_id(self):
+        """A DELETE ... WHERE chart_id on a table without one is a runtime error."""
+        import re
+
+        from db import CHART_RESULT_TABLES
+
+        schema = (REPO_ROOT / "schema" / "v1.sql").read_text(encoding="utf-8")
+        code = "\n".join(re.sub(r"--.*$", "", ln) for ln in schema.splitlines())
+        for table in CHART_RESULT_TABLES:
+            m = re.search(rf"CREATE TABLE {table}\s*\((.*?)\n\);", code, re.S)
+            assert m, f"{table} is not in v1.sql"
+            assert "chart_id" in m.group(1), f"{table} has no chart_id column"

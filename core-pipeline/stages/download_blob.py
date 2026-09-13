@@ -19,12 +19,13 @@ import re
 from pathlib import Path
 from typing import Any, Optional
 
-from config import IMAGE_SUFFIXES, ensure_chart_dirs, pages_dir
+from config import IMAGE_SUFFIXES, chart_dir, ensure_chart_dirs, pages_dir
 from db import (
     connect,
     create_job,
     init_page_stages,
     count_manifest_members,
+    reset_chart_results,
     set_chart_status,
     sha256_file,
     update_job,
@@ -253,8 +254,35 @@ def import_local_folder(
             f"{dest_dir} already holds {len(existing)} file(s). "
             "Pass force=True to replace them."
         )
+
+    # A re-import replaces the chart rather than merging into it. Without the
+    # database reset, pages that disappeared from the source keep their old
+    # page_list rows AND their completed page_stage_status rows, so the chart
+    # reports finished while serving results for pages that no longer exist.
+    # The chart_list row and its id survive; pipeline_jobs is left as the log.
+    reset: dict[str, int] = {}
+    if existing:
+        with connect() as conn:
+            prior = conn.execute(
+                "SELECT id FROM chart_list WHERE chart_name = %s", (name,)
+            ).fetchone()
+            if prior:
+                reset = reset_chart_results(conn, prior["id"])
+                if reset:
+                    logger.info(
+                        "Re-import of %s: cleared %s",
+                        name,
+                        ", ".join(f"{v} {k}" for k, v in reset.items()),
+                    )
     for stale in existing:
         stale.unlink()
+    # Stale OCR text and imaging CSVs describe the old page set too.
+    for sub in ("ocr", "imaging"):
+        folder = chart_dir(name) / sub
+        if folder.is_dir():
+            for old_file in folder.iterdir():
+                if old_file.is_file():
+                    old_file.unlink()
 
     copied: list[str] = []
     for index, path in enumerate(images, start=1):
@@ -307,6 +335,7 @@ def import_local_folder(
     result["imported"] = len(copied)
     result["moved"] = move
     result["manifest"] = manifest_summary
+    result["reset"] = reset
     return result
 
 

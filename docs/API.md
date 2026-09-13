@@ -129,7 +129,7 @@ deactivate
 cd ../..
 python3.12 -m venv .venv-test && source .venv-test/bin/activate
 pip install -r tests/requirements.txt
-python -m pytest tests/ -q               # 127 tests, no database needed
+python -m pytest tests/ -q               # 134 tests, no database needed
 ```
 
 **Windows (PowerShell)**
@@ -155,7 +155,7 @@ cd ..\..
 py -3.12 -m venv .venv-test
 .venv-test\Scripts\Activate.ps1
 pip install -r tests/requirements.txt
-python -m pytest tests/ -q               # 127 tests, no database needed
+python -m pytest tests/ -q               # 134 tests, no database needed
 ```
 
 If `Activate.ps1` fails with *"running scripts is disabled on this system"*,
@@ -662,7 +662,7 @@ pip install -r tests/requirements.txt
 python -m pytest tests/ -q
 ```
 
-**127 passed** means the extraction is sound. Anything else — especially
+**134 passed** means the extraction is sound. Anything else — especially
 `ModuleNotFoundError` or `SyntaxError` — means re-download rather than debug.
 
 **5. Updating later**
@@ -741,7 +741,7 @@ stage is identical regardless of where the images came from.
 | `recursive` | local | `false` | Also pick up images in subfolders. |
 | `load_manifest` | local | `true` | Load any CSV/XLSX found in the folder. |
 | `run_pipeline` | both | `true` | `false` registers without running the 8 stages. |
-| `force` | both | `false` | Reprocess completed pages. **Stage 5 is billed per page.** |
+| `force` | both | `false` | **Replace** the chart, not merge into it: clears the old pages, OCR text and imaging CSVs on disk, deletes every result row for that chart, and reprocesses. `chart_id` and `pipeline_jobs` survive. **Stage 5 is billed per page.** |
 
 Errors are ordered so they point at the right problem: a malformed body is
 `400` whatever the database is doing, and `503` means the request was valid but
@@ -779,6 +779,17 @@ Blob mode downloads in the background, so it returns before the chart exists:
   "poll": "/api/charts/by-name/52743839_44976074"
 }
 ```
+
+**Re-running a chart that already exists.** Without `force` a non-empty
+`pages/` is an error, so you cannot half-overwrite by accident. With `force` the
+chart is *replaced*: pages, OCR text and imaging CSVs are deleted from disk, and
+`page_list`, `page_stage_status`, `ocr_results`, `ocr_quality_results`,
+`blank_junk_classification`, `member_extraction_results`,
+`member_verification_summary` and `dos_extraction_results` are cleared for that
+chart. The `chart_list` row keeps its `id`, and `pipeline_jobs` is kept as the
+audit trail so you can compare the new run against the old one. Merging instead
+would leave pages that vanished from the source still sitting there marked
+completed — the chart would report finished while serving stale results.
 
 > `POST /api/charts/import-local` was removed — `ingest` with `local_path`
 > replaces it. Two endpoints differing only in source is how they drift apart.
