@@ -1,0 +1,43 @@
+{
+  "patient_name": {
+    "keys": [
+      "patient name",
+      "pt name",
+      "member name",
+      "subscriber name",
+      "preferred name",
+      "caller name",
+      "new patient",
+      "patient",
+      "name"
+    ]
+  },
+  "date_of_birth": {
+    "keys": [
+      "date of birth",
+      "subscriber birth date",
+      "birth date",
+      "birthdate",
+      "d.o.b.",
+      "d.o.b",
+      "dob"
+    ]
+  },
+  "member_id": {
+    "keys": [
+      "member id",
+      "memberid",
+      "medicaid id",
+      "subscriber id",
+      "patient id",
+      "patientid",
+      "medical record number",
+      "medical record",
+      "mrn",
+      "chart",
+      "insurance id",
+      "enrollee id",
+      "health plan id"
+    ]
+  }
+}

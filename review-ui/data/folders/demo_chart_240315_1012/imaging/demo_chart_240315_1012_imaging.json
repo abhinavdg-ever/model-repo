@@ -1,0 +1,60 @@
+{
+  "manifest": {
+    "member": "Gonzalez Stephen",
+    "dob": "09/03/1942",
+    "memberId": "MEM-DEMO-240315"
+  },
+  "pages": [
+    {
+      "pageNumber": 1,
+      "fileName": "1.jpg",
+      "memberName": "Gonzalez Stephen",
+      "memberDob": "09/03/1942",
+      "memberConfidence": 0.96,
+      "handwrittenOrPrinted": "Printed",
+      "orientationAngle": 0.64,
+      "tiltAngle": 1.1,
+      "mirrored": false,
+      "dos": "01/03/2024",
+      "dosConfidence": 0.91,
+      "pageType": "Daily Note",
+      "pageTypeConfidence": 0.88,
+      "memberId": "MEM-DEMO-240315",
+      "pageQualityConfidence": 0.95
+    },
+    {
+      "pageNumber": 2,
+      "fileName": "2.jpg",
+      "memberName": "Gonzalez Stephen",
+      "memberDob": "09/03/1942",
+      "memberConfidence": 0.94,
+      "handwrittenOrPrinted": "Printed",
+      "orientationAngle": 0.2,
+      "tiltAngle": 0.5,
+      "mirrored": false,
+      "dos": "01/03/2024",
+      "dosConfidence": 0.89,
+      "pageType": "Progress Note",
+      "pageTypeConfidence": 0.85,
+      "memberId": "MEM-DEMO-240315",
+      "pageQualityConfidence": 0.93
+    },
+    {
+      "pageNumber": 3,
+      "fileName": "3.jpg",
+      "memberName": "Gonzalez Stephen",
+      "memberDob": "09/03/1942",
+      "memberConfidence": 0.93,
+      "handwrittenOrPrinted": "Handwritten",
+      "orientationAngle": 1.2,
+      "tiltAngle": 2.0,
+      "mirrored": false,
+      "dos": "01/04/2024",
+      "dosConfidence": 0.84,
+      "pageType": "Lab Report",
+      "pageTypeConfidence": 0.81,
+      "memberId": "MEM-DEMO-240315",
+      "pageQualityConfidence": 0.91
+    }
+  ]
+}

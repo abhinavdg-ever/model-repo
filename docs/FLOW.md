@@ -1,0 +1,239 @@
+# Flow — what happens when
+
+What moves through the system, in order, and what each step leaves behind.
+For *why* each step decides what it decides, see [LOGIC.md](LOGIC.md).
+For the HTTP surface, see [API.md](API.md).
+
+---
+
+## 1. The two deployments
+
+```mermaid
+flowchart LR
+  subgraph CP["core-pipeline (own docker-compose, port 8001)"]
+    API["FastAPI<br/>ingest · rerun · manifest"]
+    ORCH["Orchestrator<br/>8-stage chain"]
+    API --> ORCH
+  end
+
+  subgraph RU["review-ui (own docker-compose, ports 3000/3001)"]
+    RAPI["FastAPI viewer :3000"]
+    WEB["Vite + React :3001"]
+    WEB --> RAPI
+  end
+
+  BLOB[("Azure Blob<br/>chart folders + manifests")]
+  PG[("PostgreSQL<br/>schema v8")]
+  VOL[/"data/folders<br/>shared volume"/]
+
+  BLOB -- "download" --> ORCH
+  ORCH -- "writes" --> PG
+  ORCH -- "writes" --> VOL
+  RAPI -- "reads" --> PG
+  VOL -- "read-only" --> RAPI
+
+  style CP fill:#e8f0fe,stroke:#4a76c7
+  style RU fill:#eaf6ec,stroke:#4c9a5b
+```
+
+The two services **never call each other**. They share the database and the
+`data/folders` volume — core-pipeline writes it, review-ui mounts it read-only.
+Either can be redeployed without the other.
+
+---
+
+## 2. End-to-end chart flow
+
+```mermaid
+flowchart TD
+  START(["POST /api/charts/ingest<br/>{blob_container, blob_path}"]) --> DL
+
+  subgraph INTAKE["Intake"]
+    DL["Download pages<br/>→ data/folders/&lt;chart&gt;/pages/1.jpg…N"]
+    DL --> REG["chart_list + page_list<br/>sha256 + size per page"]
+    REG --> SEED["Seed page_stage_status<br/>(pending × pages × stages)"]
+    SEED --> LINK["Link manifest rows<br/>swept earlier"]
+  end
+
+  LINK --> S1
+
+  subgraph CHAIN["Stage chain — each stage resumes, skipping completed pages"]
+    S1["1 · ocr_prelim<br/>Tesseract, every page"]
+    S2["2 · ocr_quality<br/>rotation + handwriting"]
+    S3["3 · blank_junk pass 1<br/>printed pages, prelim text"]
+    S4["4 · ocr_final1<br/>RapidOCR"]
+    S5["5 · ocr_final2<br/>Azure DocIntel · billed"]
+    S6["6 · blank_junk pass 2<br/>handwritten + survivors"]
+    S7["7 · member_verify<br/>rules → NER → what-if"]
+    S8["8 · dos_extract<br/>regex → LLM → carry-forward"]
+    S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8
+  end
+
+  S8 --> DONE["refresh_chart_status<br/>→ completed / needs_review / rejected / failed"]
+
+  style S5 fill:#fde8e8,stroke:#c74a4a
+  style S7 fill:#fff4e0,stroke:#c78a4a
+```
+
+Stages 5 and 7 are highlighted: **stage 5 costs money per page** (which is why
+resume matters), and **stage 7 produces the accept/reject decision**.
+
+---
+
+## 3. What each stage reads and writes
+
+| # | Stage | Runs on | Reads | Writes to Postgres | Writes to disk |
+|---|-------|---------|-------|--------------------|----------------|
+| 1 | `ocr_prelim` | every page | page image | `ocr_results` (`tesseract`) | `ocr/<chart>_prelim.txt` |
+| 2 | `ocr_quality` | every page | page image | `ocr_quality_results` | `imaging/<chart>_rotation.csv`, `_hw_printed.csv` |
+| 3 | `blank_junk` pass 1 | printed only | prelim text | `blank_junk_classification` (pass 1) | `imaging/<chart>_junk.csv` |
+| 4 | `ocr_final1` | not blank/junk, + all handwritten | page image | `ocr_results` (`docling`) | `ocr/<chart>_final1.txt` |
+| 5 | `ocr_final2` | not blank/junk, + all handwritten | page image | `ocr_results` (`azuredocintel`) | `ocr/<chart>_final2.json` |
+| 6 | `blank_junk` pass 2 | handwritten + surviving printed | final2 text | `blank_junk_classification` (pass 2), then `is_final` stamped | rewrites `_junk.csv` |
+| 7 | `member_verify` | not blank/junk/duplicate | best text + `manifest_member_list` | `member_extraction_results`, `member_verification_summary` | `_member_extraction.csv`, `_member_verification.csv`, `_member_v1_compare.csv` |
+| 8 | `dos_extract` | not blank/junk/duplicate | best text | `dos_extraction_results`, `dos_extraction_dates` | `imaging/<chart>_dos.csv` |
+
+Every stage also writes one `pipeline_jobs` row and updates
+`page_stage_status` per page.
+
+**"Best text"** means final2 → final1 → prelim, first non-empty.
+
+---
+
+## 4. Skip rules — why a page drops out
+
+```mermaid
+flowchart TD
+  P["Page"] --> Q{"Handwritten?"}
+  Q -- yes --> HW["Skip blank/junk pass 1<br/>(Tesseract can't read it)"]
+  Q -- no --> BJ1["Blank/junk pass 1<br/>on prelim text"]
+
+  HW --> F["Final OCR 1 + 2"]
+  BJ1 --> D{"blank / junk /<br/>duplicate?"}
+  D -- yes --> STOP1(["Skipped: no final OCR,<br/>no member, no DOS"])
+  D -- no --> F
+
+  F --> BJ2["Blank/junk pass 2<br/>on final2 text"]
+  BJ2 --> D2{"blank / junk /<br/>duplicate?"}
+  D2 -- yes --> STOP2(["Skipped: no member, no DOS"])
+  D2 -- no --> EXTRACT["member_verify + dos_extract"]
+
+  style STOP1 fill:#f5f5f5,stroke:#999
+  style STOP2 fill:#f5f5f5,stroke:#999
+```
+
+Each skip is recorded — `page_stage_status.status='skipped'` with a
+`skip_reason` (`handwritten`, `blank_junk_pass1`, `blank_junk`,
+`no_final2_text`). A skipped page counts as *done* for chart-status purposes,
+so a chart of blank pages still reaches `completed`.
+
+---
+
+## 5. Manifest flow — runs independently
+
+```mermaid
+flowchart LR
+  M1[/"metadata_R1_B1.csv<br/>local file, directory, or blob prefix"/]
+  M1 --> SWEEP["POST /api/manifest/sweep"]
+  SWEEP --> PARSE["Parse rows<br/>split first / middle / last"]
+  PARSE --> UP["Upsert manifest_member_list<br/>keyed on record_id"]
+  UP --> LINKED{"Chart already<br/>ingested?"}
+  LINKED -- yes --> SETID["chart_id set now"]
+  LINKED -- no --> WAIT["chart_id stays NULL —<br/>ingest links it later"]
+
+  ING["Chart ingest"] --> LINK2["link_manifest_to_chart(record_id)"]
+  WAIT -.-> LINK2
+```
+
+The manifest is a fact about a **client RecordId**, not about a chart row we
+happen to hold. Sweeping does **not** create placeholder charts — v6 did, which
+filled the review UI with empty charts for records never ingested.
+
+Order does not matter: sweep before ingest or after, the link is made either
+way. `run_id` / `batch_id` come from the `R#`/`B#` in the filename unless
+overridden.
+
+---
+
+## 6. Resume — what a re-run actually does
+
+```mermaid
+sequenceDiagram
+  participant C as Caller
+  participant O as Orchestrator
+  participant DB as page_stage_status
+  participant AZ as Azure DocIntel
+
+  Note over O,AZ: First run — dies at page 401 of 500
+  C->>O: POST /api/charts/ingest
+  O->>AZ: analyse pages 1…400
+  AZ-->>DB: 400 rows 'completed'
+  O--xO: crash
+
+  Note over O,AZ: Re-run — resumes
+  C->>O: POST /api/charts/{id}/rerun
+  O->>DB: pages_needing_stage('ocr_final2')
+  DB-->>O: pages 401…500 only
+  O->>AZ: analyse 100 pages
+  Note right of AZ: 400 pages not re-billed
+```
+
+- `POST /rerun` with no body → **resume**: completed and skipped pages are left alone.
+- `{"force": true}` → reprocess everything.
+- `{"only": ["member_verify"]}` → run just that stage.
+
+---
+
+## 7. Chart status over time
+
+`chart_list.status` is lifecycle; `current_stage` is position. Both are derived
+after every stage from the page rows — never set by hand.
+
+```mermaid
+stateDiagram-v2
+  [*] --> received: chart row created
+  received --> downloading: intake starts
+  downloading --> processing: pages registered
+  processing --> processing: stage completes,<br/>current_stage advances
+  processing --> failed: a page failed in<br/>an incomplete stage
+  processing --> completed: all stages done
+  processing --> needs_review: done, but member<br/>verification unresolved
+  processing --> rejected: done, wrong-member pages<br/>≥ reject threshold
+  failed --> processing: rerun
+```
+
+**The rule:** `current_stage` is the earliest stage, in `pipeline_stage.seq`
+order, where not every page is `completed` or `skipped`.
+
+Because stage order lives in a table rather than in code, registering
+page-subtype / encounter / sequencing later is an `INSERT` plus a stage module —
+no migration, no change to this logic.
+
+---
+
+## 8. Timeline of one 500-page chart
+
+```mermaid
+gantt
+  title Where the wall-clock goes (indicative, STAGE_WORKERS=4)
+  dateFormat X
+  axisFormat %s
+  section Intake
+  Download 500 images        :0, 60
+  section OCR
+  Tesseract prelim           :60, 180
+  Rotation + handwriting     :240, 120
+  section Triage
+  Blank/junk pass 1          :360, 10
+  section Final OCR
+  RapidOCR (final1)          :370, 300
+  Azure DocIntel (final2)    :670, 400
+  section Triage
+  Blank/junk pass 2          :1070, 10
+  section Extraction
+  Member verify              :1080, 40
+  DOS extract                :1120, 60
+```
+
+Blank/junk pass 1 pays for itself: every page it rules out is a page the two
+final OCR stages never touch, and stage 5 is the billed one.
