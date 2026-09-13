@@ -94,6 +94,8 @@
 --      model_accuracy_snapshots.evaluated_at -> created_at
 --      manual_review.review_id               -> user_id
 --      pipeline_jobs.attempt_number          -> attempt
+--      manifest_member_list.source_blob_path -> source_path (it also holds
+--                                               local paths, not just blob)
 --  * created_at + updated_at + trigger on every table.
 --  * dos_extraction_dates MERGED into dos_extraction_results as the
 --    multi-valued `dates` JSONB column. One row per page.

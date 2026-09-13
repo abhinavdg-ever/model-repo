@@ -8,8 +8,12 @@ Inputs:
   * Azure blob prefix (all matching files under the prefix)
 
 Conflict key (first match wins):
-  1. (chart_id, external_member_id) when MemberID present
-  2. else (chart_id, member_name, member_dob)
+  1. (record_id, external_member_id) when MemberID present
+  2. else (record_id, lower(member_name), member_dob)
+
+record_id is the client's RecordId, which is also chart_list.chart_name and the
+chart folder name — so a manifest can be loaded before or after its charts are
+ingested, and nothing needs linking afterwards.
 
 Usage:
   python -m jobs.manifest_sweeper --local ../review-ui/data/metadata/metadata_R1_B1.csv
@@ -215,20 +219,15 @@ def _ingest_rows(
             continue
         first, middle, last = _name_parts(row)
 
-        # The manifest is a fact about a client RecordId, not about a chart row
-        # we happen to hold. v6 created a placeholder chart_list row per record,
-        # which filled the review UI with empty charts for records that were
-        # never ingested. Here the row is keyed on record_id and linked to a
-        # chart only if one already exists; ingest links the rest
-        # (db.link_manifest_to_chart).
-        existing = conn.execute(
-            "SELECT id FROM chart_list WHERE chart_name = %s", (rid,)
-        ).fetchone()
+        # record_id IS the chart name, so there is nothing to resolve and no
+        # chart row to create. v6 created a placeholder chart_list row per
+        # record, which filled the review UI with empty charts for records that
+        # were never ingested; a manifest here simply stands on its own until a
+        # chart with the same name is ingested.
         charts.add(rid)
         result = upsert_manifest_member(
             conn,
             record_id=rid,
-            chart_id=existing["id"] if existing else None,
             member_name=name,
             first_name=first or None,
             middle_name=middle or None,
@@ -238,7 +237,7 @@ def _ingest_rows(
             run_id=run_id,
             batch_id=batch_id,
             source_file=source_file,
-            source_blob_path=source_path,
+            source_path=source_path,
         )
         if result["action"] == "updated":
             updated += 1

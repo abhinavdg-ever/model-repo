@@ -24,7 +24,7 @@ from db import (
     connect,
     create_job,
     init_page_stages,
-    link_manifest_to_chart,
+    count_manifest_members,
     set_chart_status,
     sha256_file,
     update_job,
@@ -57,11 +57,13 @@ def _finish_registration(
     """Shared tail of blob ingest and local registration."""
     pages = upsert_pages(conn, chart_id, page_rows)
     init_page_stages(conn, chart_id)
-    linked = link_manifest_to_chart(conn, chart_id, chart_name)
-    if linked:
-        logger.info("chart %s: linked %s manifest row(s)", chart_name, linked)
+    # No manifest linking step: manifest_member_list.record_id IS the chart
+    # name, so the relationship is a join, never a column to populate.
+    manifest_rows = count_manifest_members(conn, chart_name)
+    if manifest_rows:
+        logger.info("chart %s: %s manifest row(s) match", chart_name, manifest_rows)
     progress = refresh_chart_status(conn, chart_id)
-    return {"pages": pages, "manifest_rows_linked": linked, "progress": progress}
+    return {"pages": pages, "manifest_rows": manifest_rows, "progress": progress}
 
 
 def run_download(
@@ -268,10 +270,9 @@ def import_local_folder(
         "Moved" if move else "Copied", len(copied), src, dest_dir,
     )
 
-    # Any manifest dropped in alongside the images is loaded FIRST, so the
-    # member rows exist before registration tries to link this chart to them.
-    # Loading afterwards would leave manifest_member_list.chart_id NULL until
-    # something re-linked it.
+    # Any manifest dropped in alongside the images is loaded here. Order no
+    # longer matters — manifest rows are keyed on record_id, which IS the chart
+    # name, so there is no link step that could run too early or too late.
     manifest_summary: dict[str, Any] = {"files": 0, "inserted": 0, "updated": 0}
     if load_manifest:
         manifests = _collect_manifests(src, recursive=recursive)

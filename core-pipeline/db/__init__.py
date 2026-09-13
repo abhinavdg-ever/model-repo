@@ -961,10 +961,11 @@ def list_manifest_members(
     chart_id: Optional[int] = None,
     record_id: Optional[str] = None,
 ) -> list[dict[str, Any]]:
-    """Manifest rows for a chart.
+    """Manifest rows for a chart, by record_id or by chart_id.
 
-    record_id is the real key — a manifest sweep can land before the chart is
-    ingested, so looking up by chart_id alone would miss those rows.
+    record_id IS the chart name, so the chart_id form is a join rather than a
+    stored foreign key. One spelling of the relationship instead of two that can
+    disagree, and a manifest loaded before its chart is still found either way.
     """
     if record_id:
         return list(
@@ -978,21 +979,33 @@ def list_manifest_members(
             conn.execute(
                 """
                 SELECT m.* FROM manifest_member_list m
-                 WHERE m.chart_id = %s
-                    OR m.record_id = (SELECT chart_name FROM chart_list WHERE id = %s)
+                  JOIN chart_list c ON c.chart_name = m.record_id
+                 WHERE c.id = %s
                  ORDER BY m.id
                 """,
-                (chart_id, chart_id),
+                (chart_id,),
             ).fetchall()
         )
     return []
+
+
+def count_manifest_members(conn: Any, record_id: str) -> int:
+    """How many manifest rows exist for this chart name.
+
+    Replaces the old link step: there is no chart_id to write, so ingest only
+    reports whether a roster is present for the chart it just registered.
+    """
+    row = conn.execute(
+        "SELECT count(*) AS n FROM manifest_member_list WHERE record_id = %s",
+        (record_id,),
+    ).fetchone()
+    return int(row["n"]) if row else 0
 
 
 def upsert_manifest_member(
     conn: Any,
     *,
     record_id: str,
-    chart_id: Optional[int],
     member_name: str,
     first_name: Optional[str],
     middle_name: Optional[str],
@@ -1002,7 +1015,7 @@ def upsert_manifest_member(
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
     source_file: Optional[str] = None,
-    source_blob_path: Optional[str] = None,
+    source_path: Optional[str] = None,
 ) -> dict[str, Any]:
     """Insert or update one manifest row. Returns {id, action}.
 
@@ -1013,9 +1026,9 @@ def upsert_manifest_member(
     """
     has_id = bool((external_member_id or "").strip())
     params = (
-        record_id, chart_id, member_name, first_name, middle_name, last_name,
+        record_id, member_name, first_name, middle_name, last_name,
         member_dob, (external_member_id or None) if has_id else None,
-        run_id, batch_id, source_file, source_blob_path,
+        run_id, batch_id, source_file, source_path,
     )
     conflict = (
         "(record_id, external_member_id) WHERE external_member_id IS NOT NULL AND external_member_id <> ''"
@@ -1026,12 +1039,11 @@ def upsert_manifest_member(
     row = conn.execute(
         f"""
         INSERT INTO manifest_member_list (
-            record_id, chart_id, member_name, first_name, middle_name, last_name,
+            record_id, member_name, first_name, middle_name, last_name,
             member_dob, external_member_id, run_id, batch_id,
-            source_file, source_blob_path
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s::date, %s, %s, %s, %s, %s)
+            source_file, source_path
+        ) VALUES (%s, %s, %s, %s, %s, %s::date, %s, %s, %s, %s, %s)
         ON CONFLICT {conflict} DO UPDATE SET
-            chart_id         = COALESCE(EXCLUDED.chart_id, manifest_member_list.chart_id),
             member_name      = EXCLUDED.member_name,
             first_name       = COALESCE(EXCLUDED.first_name, manifest_member_list.first_name),
             middle_name      = COALESCE(EXCLUDED.middle_name, manifest_member_list.middle_name),
@@ -1040,7 +1052,7 @@ def upsert_manifest_member(
             run_id           = COALESCE(EXCLUDED.run_id, manifest_member_list.run_id),
             batch_id         = COALESCE(EXCLUDED.batch_id, manifest_member_list.batch_id),
             source_file      = COALESCE(EXCLUDED.source_file, manifest_member_list.source_file),
-            source_blob_path = COALESCE(EXCLUDED.source_blob_path, manifest_member_list.source_blob_path),
+            source_path = COALESCE(EXCLUDED.source_path, manifest_member_list.source_path),
             updated_at       = now()
         RETURNING id, (xmax = 0) AS inserted
         """,
@@ -1050,16 +1062,3 @@ def upsert_manifest_member(
         "id": row["id"],
         "action": "inserted" if row["inserted"] else "updated",
     }
-
-
-def link_manifest_to_chart(conn: Any, chart_id: int, record_id: str) -> int:
-    """Attach manifest rows swept before the chart existed."""
-    result = conn.execute(
-        """
-        UPDATE manifest_member_list
-           SET chart_id = %s
-         WHERE record_id = %s AND chart_id IS DISTINCT FROM %s
-        """,
-        (chart_id, record_id, chart_id),
-    )
-    return getattr(result, "rowcount", 0) or 0

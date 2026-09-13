@@ -209,21 +209,18 @@ CREATE TRIGGER trg_page_stage_status_updated_at
 -- ---------------------------------------------------------------------
 -- MANIFEST (client-provided member roster)
 -- ---------------------------------------------------------------------
--- A manifest batch (metadata_R1_B1.csv) is a fact about a client RecordId,
--- not about a chart row we happen to have downloaded. record_id is therefore
--- the identity; chart_id is a nullable convenience link resolved on ingest.
+-- A manifest batch (metadata_R1_B1.csv) lists the members expected in a set of
+-- charts, keyed by the client's RecordId.
 --
--- Name parts are stored separately because the verification rules match
--- first / middle / last independently — a single "member_name" string cannot
--- drive classify_two_word_name / classify_three_word_name.
-
-
--- ---------------------------------------------------------------------
--- MANIFEST (client-provided member roster)
--- ---------------------------------------------------------------------
--- A manifest batch (metadata_R1_B1.csv) is a fact about a client RecordId,
--- not about a chart row we happen to have downloaded. record_id is therefore
--- the identity; chart_id is a nullable convenience link resolved on ingest.
+-- record_id IS the chart name: chart_list.chart_name holds the same RecordId,
+-- and the chart folder on disk is named after it. There is deliberately no
+-- chart_id column — it would be a second spelling of the same fact, NULL until
+-- ingest and needing a backfill. Join instead:
+--
+--     JOIN chart_list c ON c.chart_name = m.record_id
+--
+-- That also keeps a manifest loadable before its charts are ingested, which is
+-- the normal case: the roster usually arrives first.
 --
 -- Name parts are stored separately because the verification rules match
 -- first / middle / last independently — a single "member_name" string cannot
@@ -231,8 +228,9 @@ CREATE TRIGGER trg_page_stage_status_updated_at
 
 CREATE TABLE manifest_member_list (
     id                  BIGSERIAL PRIMARY KEY,
+    -- The client's RecordId, which is also chart_list.chart_name and the chart
+    -- folder name. This is the only identity the table needs.
     record_id           VARCHAR(150) NOT NULL,
-    chart_id            BIGINT REFERENCES chart_list(id) ON DELETE SET NULL,
 
     member_name         VARCHAR(255) NOT NULL,
     first_name          VARCHAR(100),
@@ -244,12 +242,14 @@ CREATE TABLE manifest_member_list (
     run_id              VARCHAR(50),
     batch_id            VARCHAR(50),
     source_file         VARCHAR(255),
-    source_blob_path    TEXT,
+    -- Where this row came from: a blob path, or a local filesystem path when
+    -- the manifest was loaded with --local or picked up by import-folder.
+    -- Named source_blob_path in v7, which was wrong for the local case.
+    source_path         TEXT,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_manifest_member_list_record_id ON manifest_member_list(record_id);
-CREATE INDEX idx_manifest_member_list_chart_id ON manifest_member_list(chart_id);
 CREATE INDEX idx_manifest_member_list_run_batch ON manifest_member_list(run_id, batch_id);
 
 -- Upsert key 1: MemberID present.

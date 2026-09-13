@@ -58,6 +58,38 @@ app = FastAPI(
 )
 
 
+def _safe_db_url(url: str) -> str:
+    """DATABASE_URL with the password replaced by ***, for logging.
+
+    Worth logging at all because the commonest failure is pointing at the wrong
+    database and not knowing it — but the password must never reach a log file.
+    """
+    import re
+
+    return re.sub(r"://([^:/@]+):[^@]*@", r"://\1:***@", url or "")
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    from config import DATA_ROOT, DATABASE_URL, METADATA_ROOT, STAGE_WORKERS
+
+    logger.info("core-pipeline starting")
+    logger.info("  database    : %s", _safe_db_url(DATABASE_URL))
+    logger.info("  data root   : %s", DATA_ROOT)
+    logger.info("  metadata    : %s", METADATA_ROOT)
+    logger.info("  workers     : %s", STAGE_WORKERS)
+    try:
+        with connect() as conn:
+            stages = list_stages(conn)
+        logger.info("  schema      : OK, %d stage(s) registered", len(stages))
+    except Exception as exc:
+        logger.warning("  database    : UNREACHABLE — %s", exc)
+        logger.warning(
+            "  Mutating endpoints will return 503 until this is fixed. "
+            "DATABASE_URL is read once at startup, so restart after editing .env."
+        )
+
+
 @app.on_event("shutdown")
 def _shutdown() -> None:
     close_pool()
@@ -153,9 +185,13 @@ class ManifestSweepRequest(BaseModel):
 # --- background wrappers ----------------------------------------------------
 
 
+# A BackgroundTask runs after the 202 has been sent, so its outcome can only
+# ever reach the operator through the log. Logging failures alone left a
+# successful run indistinguishable from one that never started.
 def _bg_ingest(payload: IngestRequest) -> None:
+    logger.info("Background ingest starting: %s", payload.blob_path)
     try:
-        ingest_and_run(
+        result = ingest_and_run(
             blob_container=payload.blob_container,
             blob_path=payload.blob_path,
             run_id=payload.run_id,
@@ -163,20 +199,31 @@ def _bg_ingest(payload: IngestRequest) -> None:
             run_pipeline=payload.run_pipeline,
             force=payload.force,
         )
+        logger.info(
+            "Background ingest finished: %s -> chart_id=%s",
+            payload.blob_path, (result or {}).get("chart_id"),
+        )
     except Exception:
-        logger.exception("Background ingest failed for %s", payload.blob_path)
+        logger.exception("Background ingest FAILED for %s", payload.blob_path)
 
 
 def _bg_pipeline(chart_id: int, force: bool, only: Optional[list[str]]) -> None:
+    logger.info(
+        "Background pipeline starting: chart_id=%s force=%s only=%s",
+        chart_id, force, only or "all stages",
+    )
     try:
         run_pipeline_for_chart(chart_id, force=force, only=only)
+        logger.info("Background pipeline finished: chart_id=%s", chart_id)
     except Exception:
-        logger.exception("Background pipeline failed for chart %s", chart_id)
+        logger.exception("Background pipeline FAILED for chart %s", chart_id)
 
 
 def _bg_manifest(payload: ManifestSweepRequest) -> None:
+    source = payload.local_path or f"{payload.blob_container}/{payload.blob_prefix}"
+    logger.info("Background manifest sweep starting: %s", source)
     try:
-        run_load(
+        result = run_load(
             local_path=payload.local_path,
             blob_container=payload.blob_container,
             blob_prefix=payload.blob_prefix,
@@ -184,8 +231,17 @@ def _bg_manifest(payload: ManifestSweepRequest) -> None:
             batch_id=payload.batch_id,
             mirror_local=payload.mirror_local,
         )
+        logger.info(
+            "Background manifest sweep finished: %s -> %s file(s), "
+            "+%s inserted, ~%s updated, %s skipped%s",
+            source,
+            result["files"], result["inserted"], result["updated"], result["skipped"],
+            f", {len(result['errors'])} error(s)" if result.get("errors") else "",
+        )
+        for err in result.get("errors") or []:
+            logger.warning("  manifest error: %s", err)
     except Exception:
-        logger.exception("Background manifest sweep failed")
+        logger.exception("Background manifest sweep FAILED: %s", source)
 
 
 def _require_db() -> None:
@@ -308,7 +364,7 @@ def register_local(
         "chart_id": result["chart_id"],
         "chart_name": result["chart_name"],
         "page_count": result["page_count"],
-        "manifest_rows_linked": result["manifest_rows_linked"],
+        "manifest_rows": result["manifest_rows"],
     }
 
 
@@ -364,7 +420,7 @@ def import_local(
         "moved": result["moved"],
         "manifest": result["manifest"],
         "page_count": result["page_count"],
-        "manifest_rows_linked": result["manifest_rows_linked"],
+        "manifest_rows": result["manifest_rows"],
     }
 
 
