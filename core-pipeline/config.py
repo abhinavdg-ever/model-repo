@@ -14,9 +14,31 @@ METADATA_ROOT = Path(
     os.environ.get("METADATA_ROOT") or (REVIEW_UI_ROOT / "data" / "metadata")
 ).resolve()
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://postgres:postgres@localhost:5432/imaging_outputs",
+def _psycopg_url(url: str) -> str:
+    """Accept SQLAlchemy-style postgresql+psycopg:// as well as plain postgresql://.
+
+    core-pipeline talks to psycopg directly, which rejects the "+psycopg"
+    dialect suffix with an error that does not say so:
+
+        missing "=" after "postgresql+psycopg://..." in connection info string
+
+    review-ui's .env.example uses the SQLAlchemy form, and the two services
+    share the variable name, so the wrong one gets copied across constantly.
+    Both forms are accepted here, as review-ui already accepts both.
+    """
+    url = (url or "").strip()
+    for prefix in ("postgresql+psycopg://", "postgres+psycopg://",
+                   "postgresql+psycopg2://", "postgres+psycopg2://"):
+        if url.startswith(prefix):
+            return "postgresql://" + url[len(prefix):]
+    return url
+
+
+DATABASE_URL = _psycopg_url(
+    os.environ.get(
+        "DATABASE_URL",
+        "postgresql://postgres:postgres@localhost:5432/imaging_outputs",
+    )
 )
 
 AZURE_STORAGE_AUTH = (os.environ.get("AZURE_STORAGE_AUTH") or "entra").strip().casefold()

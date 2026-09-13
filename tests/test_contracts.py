@@ -418,3 +418,54 @@ class TestTextIoDeclaresEncoding:
             "open() in text mode without encoding= (breaks on Windows cp1252):\n  "
             + "\n  ".join(offenders)
         )
+
+
+# --- database URL scheme -----------------------------------------------------
+
+
+class TestDatabaseUrlScheme:
+    """Both services must accept the same DATABASE_URL value.
+
+    They share the variable name but talk to psycopg directly, which rejects
+    SQLAlchemy's "+psycopg" dialect suffix with an error that never mentions the
+    scheme:
+
+        missing "=" after "postgresql+psycopg://..." in connection info string
+
+    review-ui always normalised it; core-pipeline did not, so a value copied
+    from one .env to the other silently failed to connect.
+    """
+
+    FORMS = [
+        "postgresql://u:p@h:5432/d",
+        "postgresql+psycopg://u:p@h:5432/d",
+        "postgres+psycopg://u:p@h:5432/d",
+        "postgresql+psycopg2://u:p@h:5432/d",
+    ]
+
+    def test_core_pipeline_accepts_every_form(self):
+        from config import _psycopg_url
+
+        for form in self.FORMS:
+            assert _psycopg_url(form) == "postgresql://u:p@h:5432/d", form
+
+    def test_review_ui_accepts_every_form(self):
+        from app.adapters.postgres.repository import _psycopg_url
+
+        for form in self.FORMS[:3]:  # review-ui does not claim psycopg2
+            assert _psycopg_url(form) == "postgresql://u:p@h:5432/d", form
+
+    def test_both_env_examples_use_the_same_scheme(self):
+        """A value copied between the two .env files must work in both."""
+        import re
+
+        schemes = {}
+        for name in ("core-pipeline/.env.example", "review-ui/.env.example"):
+            text = (REPO_ROOT / name).read_text(encoding="utf-8")
+            m = re.search(r"^DATABASE_URL=([a-z0-9+]+)://", text, re.M)
+            assert m, f"{name} has no DATABASE_URL line"
+            schemes[name] = m.group(1)
+        assert len(set(schemes.values())) == 1, (
+            "the two .env.example files disagree, so copying between them "
+            f"breaks: {schemes}"
+        )
