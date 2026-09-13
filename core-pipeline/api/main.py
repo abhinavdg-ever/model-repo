@@ -99,13 +99,50 @@ def _shutdown() -> None:
 
 
 class IngestRequest(BaseModel):
-    blob_container: str = Field(..., description="Azure Blob container name")
-    blob_path: str = Field(
-        ..., description="Prefix of the chart folder holding the page images"
+    """One chart, from either source. Give blob_container + blob_path, OR local_path.
+
+    The two modes converge: both end with the page images under
+    data/folders/<chart>/pages/ named 1.jpg, 2.jpg … and the chart registered,
+    so every later stage is identical regardless of where the pages came from.
+    """
+
+    # --- blob mode ---
+    blob_container: Optional[str] = Field(
+        None, description="Azure Blob container name. With blob_path."
     )
+    blob_path: Optional[str] = Field(
+        None, description="Prefix of the chart folder holding the page images"
+    )
+
+    # --- local mode ---
+    local_path: Optional[str] = Field(
+        None,
+        description=(
+            "A directory ON THE SERVER holding the page images. Under Docker "
+            "this must be a path inside the container, so mount the folder "
+            "first — the host filesystem is not visible."
+        ),
+        examples=["/data/inbox/52743839_44976074"],
+    )
+    chart_name: Optional[str] = Field(
+        None,
+        description="Local mode only. Defaults to the source folder's own name.",
+    )
+    move: bool = Field(
+        False,
+        description="Local mode only. Default copies, leaving your folder intact.",
+    )
+    recursive: bool = Field(
+        False, description="Local mode only. Also pick up images in subfolders."
+    )
+    load_manifest: bool = Field(
+        True, description="Local mode only. Load any CSV/XLSX found in the folder."
+    )
+
+    # --- both ---
     run_id: Optional[str] = None
     batch_id: Optional[str] = None
-    run_pipeline: bool = Field(True, description="Run the stage chain after download")
+    run_pipeline: bool = Field(True, description="Run the stage chain after intake")
     force: bool = Field(
         False,
         description="Reprocess pages already completed. Default resumes instead.",
@@ -120,38 +157,6 @@ class LocalRegisterRequest(BaseModel):
     batch_id: Optional[str] = None
     run_pipeline: bool = True
     force: bool = False
-
-
-class ImportFolderRequest(BaseModel):
-    source_path: str = Field(
-        ...,
-        description=(
-            "Any directory ON THE SERVER holding page images. Under Docker this "
-            "must be a path inside the container, so the folder has to be "
-            "mounted first — the host's filesystem is not visible."
-        ),
-        examples=["/data/inbox/52743839_44976074"],
-    )
-    chart_name: Optional[str] = Field(
-        None, description="Defaults to the source folder's own name"
-    )
-    move: bool = Field(
-        False, description="Move instead of copy. Default copies, leaving the source intact"
-    )
-    recursive: bool = Field(False, description="Also pick up images in subfolders")
-    force: bool = Field(
-        False, description="Replace pages already in the workspace for this chart"
-    )
-    load_manifest: bool = Field(
-        True,
-        description=(
-            "Load any CSV/XLSX manifest found in the source folder before "
-            "registering, so the chart links to its member row"
-        ),
-    )
-    run_id: Optional[str] = None
-    batch_id: Optional[str] = None
-    run_pipeline: bool = True
 
 
 class BatchRequest(BaseModel):
@@ -381,18 +386,71 @@ def get_stages() -> dict[str, Any]:
 def ingest_chart(
     body: IngestRequest, background_tasks: BackgroundTasks
 ) -> dict[str, Any]:
-    """Download a chart folder from blob and run the pipeline.
+    """Ingest one chart from blob storage OR from a local folder, then run it.
 
-    Returns immediately. Poll GET /api/charts/{chart_id} for progress; the
-    chart_id is derivable from the folder name, which is also returned here.
+    Pass either `blob_container` + `blob_path`, or `local_path` — not both.
+    Both paths end identically: pages under data/folders/<chart>/pages/ named
+    1.jpg, 2.jpg … with the chart registered.
+
+    Returns immediately. Poll GET /api/charts/by-name/{chart_name}.
     """
+    has_blob = bool(body.blob_container or body.blob_path)
+    has_local = bool(body.local_path)
+    if has_blob and has_local:
+        raise HTTPException(
+            status_code=400,
+            detail="Pass either blob_container + blob_path, or local_path, not both",
+        )
+    if not has_blob and not has_local:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide blob_container + blob_path, or local_path",
+        )
+    if has_blob and not (body.blob_container and body.blob_path):
+        raise HTTPException(
+            status_code=400,
+            detail="blob_container and blob_path must be given together",
+        )
     _require_db()
+
+    if has_local:
+        # Resolve up front: a bad path should be a 400 now, not a background
+        # failure the caller never sees.
+        try:
+            result = import_local_folder(
+                body.local_path,
+                chart_name=body.chart_name,
+                move=body.move,
+                recursive=body.recursive,
+                force=body.force,
+                load_manifest=body.load_manifest,
+                run_id=body.run_id,
+                batch_id=body.batch_id,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if body.run_pipeline:
+            background_tasks.add_task(_bg_pipeline, result["chart_id"], body.force, None)
+        return {
+            "status": "accepted",
+            "mode": "local",
+            "chart_id": result["chart_id"],
+            "chart_name": result["chart_name"],
+            "source": result["source"],
+            "imported": result["imported"],
+            "moved": result["moved"],
+            "manifest": result["manifest"],
+            "page_count": result["page_count"],
+            "poll": f"/api/charts/{result['chart_id']}",
+        }
+
     from db.blob_store import chart_name_from_blob_path
 
     chart_name = chart_name_from_blob_path(body.blob_path)
     background_tasks.add_task(_bg_ingest, body)
     return {
         "status": "accepted",
+        "mode": "blob",
         "chart_name": chart_name,
         "blob_container": body.blob_container,
         "blob_path": body.blob_path,
@@ -452,7 +510,6 @@ def batch_intake(
     Returns 202 immediately — a batch can run for hours. Watch the server log
     for `[n/total]` progress, or poll GET /api/charts/by-name/{chart_name}.
     """
-    _require_db()
     from jobs.batch_intake import find_local_chart_folders, run_batch
 
     if bool(body.local_root) == bool(body.blob_container or body.blob_prefix):
@@ -460,6 +517,7 @@ def batch_intake(
             status_code=400,
             detail="Provide either local_root, or both blob_container and blob_prefix",
         )
+    _require_db()
     # Resolve the chart list up front so the caller learns immediately that the
     # path is wrong, instead of getting 202 and an empty batch an hour later.
     found: Optional[int] = None
@@ -485,46 +543,6 @@ def batch_intake(
         "charts_found": found,
         "limit": body.limit,
         "note": "runs sequentially; watch the server log for [n/total] progress",
-    }
-
-
-@app.post("/api/charts/import-local", status_code=202, tags=["charts"])
-def import_local(
-    body: ImportFolderRequest, background_tasks: BackgroundTasks
-) -> dict[str, Any]:
-    """Copy a server-side folder of images into the workspace and run it.
-
-    Unlike `/api/charts/register-local`, the source does **not** have to be
-    under `data/folders` already — images are copied in and renamed to
-    `1.jpg`, `2.jpg` … in natural-sort order, the same shape the blob intake
-    produces.
-    """
-    _require_db()
-    try:
-        result = import_local_folder(
-            body.source_path,
-            chart_name=body.chart_name,
-            move=body.move,
-            recursive=body.recursive,
-            force=body.force,
-            load_manifest=body.load_manifest,
-            run_id=body.run_id,
-            batch_id=body.batch_id,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if body.run_pipeline:
-        background_tasks.add_task(_bg_pipeline, result["chart_id"], False, None)
-    return {
-        "status": "accepted",
-        "chart_id": result["chart_id"],
-        "chart_name": result["chart_name"],
-        "source": result["source"],
-        "imported": result["imported"],
-        "moved": result["moved"],
-        "manifest": result["manifest"],
-        "page_count": result["page_count"],
-        "manifest_rows": result["manifest_rows"],
     }
 
 
@@ -599,7 +617,6 @@ def manifest_sweep(
     describes exist. Rows are keyed on record_id and linked to a chart when that
     chart is ingested.
     """
-    _require_db()
     if not body.local_path and not (body.blob_container and body.blob_prefix):
         raise HTTPException(
             status_code=400,
@@ -609,6 +626,7 @@ def manifest_sweep(
         raise HTTPException(
             status_code=400, detail="Pass either local_path or blob_*, not both"
         )
+    _require_db()
     background_tasks.add_task(_bg_manifest, body)
     return {
         "status": "accepted",

@@ -538,3 +538,63 @@ class TestBatchFolderDiscovery:
 
         with pytest.raises(ValueError, match="either local_root"):
             run_batch()
+
+
+# --- ingest request shape ----------------------------------------------------
+
+
+class TestIngestAcceptsBothModes:
+    """POST /api/charts/ingest takes blob_container+blob_path OR local_path.
+
+    The mode check must run BEFORE the database probe: a malformed body is a 400
+    whatever the database is doing, and reporting "database unavailable" for a
+    request that was never valid sends the caller after the wrong problem.
+    """
+
+    @staticmethod
+    def _client(monkeypatch):
+        from fastapi.testclient import TestClient
+
+        import api.main as main
+
+        # Pretend the database is fine, so only the shape checks can fail.
+        monkeypatch.setattr(main, "_require_db", lambda: None)
+        return TestClient(main.app, raise_server_exceptions=False), main
+
+    def test_both_sources_at_once_is_rejected(self, monkeypatch):
+        client, _ = self._client(monkeypatch)
+        r = client.post(
+            "/api/charts/ingest",
+            json={"blob_container": "c", "blob_path": "p", "local_path": "/x"},
+        )
+        assert r.status_code == 400
+        assert "not both" in r.json()["detail"]
+
+    def test_neither_source_is_rejected(self, monkeypatch):
+        client, _ = self._client(monkeypatch)
+        r = client.post("/api/charts/ingest", json={})
+        assert r.status_code == 400
+        assert "local_path" in r.json()["detail"]
+
+    def test_half_a_blob_pair_is_rejected(self, monkeypatch):
+        client, _ = self._client(monkeypatch)
+        r = client.post("/api/charts/ingest", json={"blob_path": "p"})
+        assert r.status_code == 400
+        assert "together" in r.json()["detail"]
+
+    def test_blob_mode_is_accepted(self, monkeypatch):
+        client, main = self._client(monkeypatch)
+        monkeypatch.setattr(main, "_bg_ingest", lambda payload: None)
+        r = client.post(
+            "/api/charts/ingest",
+            json={"blob_container": "c", "blob_path": "run1/chart_x"},
+        )
+        assert r.status_code == 202, r.text
+        assert r.json()["mode"] == "blob"
+        assert r.json()["chart_name"] == "chart_x"
+
+    def test_the_removed_import_local_endpoint_is_gone(self, monkeypatch):
+        """Folded into ingest; two endpoints for one job is how they drift."""
+        client, _ = self._client(monkeypatch)
+        r = client.post("/api/charts/import-local", json={"source_path": "/x"})
+        assert r.status_code in (404, 405)

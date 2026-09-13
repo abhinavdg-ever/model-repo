@@ -129,7 +129,7 @@ deactivate
 cd ../..
 python3.12 -m venv .venv-test && source .venv-test/bin/activate
 pip install -r tests/requirements.txt
-python -m pytest tests/ -q               # 122 tests, no database needed
+python -m pytest tests/ -q               # 127 tests, no database needed
 ```
 
 **Windows (PowerShell)**
@@ -155,7 +155,7 @@ cd ..\..
 py -3.12 -m venv .venv-test
 .venv-test\Scripts\Activate.ps1
 pip install -r tests/requirements.txt
-python -m pytest tests/ -q               # 122 tests, no database needed
+python -m pytest tests/ -q               # 127 tests, no database needed
 ```
 
 If `Activate.ps1` fails with *"running scripts is disabled on this system"*,
@@ -662,7 +662,7 @@ pip install -r tests/requirements.txt
 python -m pytest tests/ -q
 ```
 
-**122 passed** means the extraction is sound. Anything else — especially
+**127 passed** means the extraction is sound. Anything else — especially
 `ModuleNotFoundError` or `SyntaxError` — means re-download rather than debug.
 
 **5. Updating later**
@@ -718,31 +718,70 @@ curl -s localhost:8001/api/stages | jq '.stages[] | {seq, stage_name, pass_no, i
 
 ### `POST /api/charts/ingest` → 202
 
-Download a chart folder from blob and run the chain.
+One chart, from **either** source. Pass `blob_container` + `blob_path`, **or**
+`local_path` — not both.
 
-```jsonc
+```json
+{"blob_container": "imaging-pipeline", "blob_path": "run1/batch1/52743839_44976074"}
+```
+```json
+{"local_path": "/data/inbox/52743839_44976074"}
+```
+
+Both modes converge: the pages end up under `data/folders/<chart>/pages/` named
+`1.jpg`, `2.jpg` … in natural-sort order, with the chart registered. Every later
+stage is identical regardless of where the images came from.
+
+| Field | Mode | Default | Meaning |
+|---|---|---|---|
+| `blob_container` + `blob_path` | blob | — | Container, and the prefix of the chart folder. Both or neither. |
+| `local_path` | local | — | A directory **on the server**. Under Docker it must be a path *inside the container* — mount the folder first; the host filesystem is not visible. |
+| `chart_name` | local | folder name | Sanitised to `[A-Za-z0-9._-]`, so `My Chart 001` becomes `My_Chart_001`. |
+| `move` | local | `false` | Copies by default, leaving your folder intact. |
+| `recursive` | local | `false` | Also pick up images in subfolders. |
+| `load_manifest` | local | `true` | Load any CSV/XLSX found in the folder. |
+| `run_pipeline` | both | `true` | `false` registers without running the 8 stages. |
+| `force` | both | `false` | Reprocess completed pages. **Stage 5 is billed per page.** |
+
+Errors are ordered so they point at the right problem: a malformed body is
+`400` whatever the database is doing, and `503` means the request was valid but
+Postgres is unreachable.
+
+| Body | Result |
+|---|---|
+| both sources | `400` — not both |
+| neither | `400` — provide one |
+| `blob_path` without `blob_container` | `400` — must be given together |
+
+Local mode resolves the folder **before** returning, so a bad path is a `400`
+immediately rather than a `202` and a silent background failure:
+
+```json
 {
-  "blob_container": "imaging-pipeline",   // required
-  "blob_path": "run1/batch1/52743839_44976074",  // required — folder of page images
-  "run_id": "R1",                          // optional
-  "batch_id": "B1",                        // optional
-  "run_pipeline": true,                    // default true
-  "force": false                           // default false — resume, don't redo
+  "status": "accepted", "mode": "local",
+  "chart_id": 12, "chart_name": "52743839_44976074",
+  "source": "/data/inbox/52743839_44976074",
+  "imported": 34, "moved": false,
+  "manifest": {"files": 1, "inserted": 0, "updated": 38},
+  "page_count": 34,
+  "poll": "/api/charts/12"
 }
 ```
 
-```bash
-curl -X POST localhost:8001/api/charts/ingest \
-  -H 'Content-Type: application/json' \
-  -d '{"blob_container":"imaging-pipeline","blob_path":"run1/batch1/52743839_44976074","run_id":"R1","batch_id":"B1"}'
-```
+Blob mode downloads in the background, so it returns before the chart exists:
 
 ```json
-{ "status": "accepted", "chart_name": "52743839_44976074",
-  "poll": "/api/charts/by-name/52743839_44976074" }
+{
+  "status": "accepted", "mode": "blob",
+  "chart_name": "52743839_44976074",
+  "blob_container": "imaging-pipeline",
+  "blob_path": "run1/batch1/52743839_44976074",
+  "poll": "/api/charts/by-name/52743839_44976074"
+}
 ```
 
-The chart id is not known yet — poll the `by-name` URL it hands back.
+> `POST /api/charts/import-local` was removed — `ingest` with `local_path`
+> replaces it. Two endpoints differing only in source is how they drift apart.
 
 ### `POST /api/charts/register-local` → 202
 
@@ -786,7 +825,7 @@ fifty or a drop of one.
 |---|---|---|
 | `limit` | all | Only the first N charts. **Use `limit: 1` for a dry run** before committing a large batch. |
 | `run_pipeline` | `true` | `false` imports/ingests without running the 8 stages — the cheap way to check the scan picked up what you expected. |
-| `move`, `force`, `load_manifest` | as `import-local` | Local mode only for `move`. |
+| `move`, `force`, `load_manifest` | as `ingest` | `move` is local mode only. |
 
 For a local root the chart list is resolved **before** returning, so a wrong
 path gives you `400` immediately rather than `202` and an empty batch an hour
@@ -825,55 +864,6 @@ The CLI equivalent runs inline and prints a per-chart JSON summary at the end:
 ```bash
 python cli.py batch --local ./drops --limit 2
 ```
-
-### `POST /api/charts/import-local` → 202
-
-Point it at **any folder on the server** holding page images. It copies them
-into the chart workspace, renames them `1.jpg`, `2.jpg` … in natural-sort order
-(so `page2.jpg` precedes `page10.jpg`), loads any manifest sitting beside them,
-registers the chart and starts the pipeline.
-
-```json
-{
-  "source_path": "/data/inbox/52743839_44976074",
-  "chart_name": null,
-  "move": false,
-  "recursive": false,
-  "force": false,
-  "load_manifest": true,
-  "run_pipeline": true
-}
-```
-
-| Field | Default | Meaning |
-|---|---|---|
-| `source_path` | — | Any directory **on the server**. Under Docker it must be a path *inside the container*, so mount the folder first — the host filesystem is not visible to it. |
-| `chart_name` | the folder's own name | Sanitised to `[A-Za-z0-9._-]`, so `My Chart 001` becomes `My_Chart_001`. |
-| `move` | `false` | Copies by default, leaving your folder intact. `true` moves, so a failed import loses data — use only for a scratch drop directory. |
-| `recursive` | `false` | Also pick up images in subfolders. |
-| `force` | `false` | Replace pages already in the workspace for this chart. Without it, a non-empty `pages/` is an error rather than a silent merge. |
-| `load_manifest` | `true` | Load any CSV/XLSX found in the folder. Order does not matter — manifest rows key on `record_id`, which **is** the chart name, so there is no link step. |
-
-Non-image files are ignored, as are macOS `._` stubs. Accepted extensions are
-the same `IMAGE_SUFFIXES` the blob intake uses — jpg, png, tif, webp and the
-rest.
-
-```json
-{
-  "status": "accepted",
-  "chart_id": 12,
-  "chart_name": "52743839_44976074",
-  "source": "/data/inbox/52743839_44976074",
-  "imported": 34,
-  "moved": false,
-  "manifest": {"files": 1, "inserted": 0, "updated": 38},
-  "page_count": 34,
-  "manifest_rows": 1
-}
-```
-
-Use `register-local` instead when the folder is **already** at
-`data/folders/<chart>/pages/` — it registers in place and copies nothing.
 
 ### `GET /api/charts/{chart_id}` · `GET /api/charts/by-name/{chart_name}`
 
@@ -1019,6 +1009,7 @@ python cli.py ingest --container imaging-pipeline \
                      --path run1/batch1/52743839_44976074 \
                      --run-id R1 --batch-id B1
 python cli.py ingest ... --no-pipeline       # download only
+python cli.py ingest --local "C:\drops\52743839_44976074"   # same command, local source
 
 # Import ANY local folder of images: copies them in, renames to 1.jpg/2.jpg…,
 # loads any manifest sitting beside them, registers, runs.

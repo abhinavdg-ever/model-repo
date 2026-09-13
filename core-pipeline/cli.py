@@ -23,9 +23,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Advantmed core-pipeline CLI")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_ingest = sub.add_parser("ingest", help="Download chart from blob and run pipeline")
-    p_ingest.add_argument("--container", required=True)
-    p_ingest.add_argument("--path", required=True, help="Blob path to chart folder")
+    p_ingest = sub.add_parser(
+        "ingest", help="Run one chart from blob OR a local folder"
+    )
+    src_i = p_ingest.add_mutually_exclusive_group(required=True)
+    src_i.add_argument("--path", help="Blob path to chart folder (with --container)")
+    src_i.add_argument("--local", metavar="PATH", help="Local folder of page images")
+    p_ingest.add_argument("--container", help="Blob container (required with --path)")
     p_ingest.add_argument("--run-id")
     p_ingest.add_argument("--batch-id")
     p_ingest.add_argument("--no-pipeline", action="store_true")
@@ -157,6 +161,20 @@ def main() -> None:
         return
 
     if args.cmd == "ingest":
+        if args.local:
+            # Same entry point the API's local mode uses, so both behave alike.
+            from stages.download_blob import import_local_folder
+            from orchestrator.runner import run_pipeline_for_chart
+
+            reg = import_local_folder(args.local, run_id=args.run_id, batch_id=args.batch_id)
+            out = {"import": reg}
+            if not args.no_pipeline:
+                out["pipeline"] = run_pipeline_for_chart(reg["chart_id"])
+            print(json.dumps(out, default=str, indent=2))
+            return
+
+        if not args.container:
+            parser.error("--path requires --container")
         from orchestrator.runner import ingest_and_run
 
         result = ingest_and_run(
