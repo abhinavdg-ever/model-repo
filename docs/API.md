@@ -17,6 +17,7 @@ They never call each other — they share a Postgres database and the
 - [Running core-pipeline](#running-core-pipeline)
 - [Starting the APIs](#starting-the-apis)
 - [Running review-ui](#running-review-ui)
+- [Windows notes](#windows-notes)
 - [core-pipeline API reference](#core-pipeline-api-reference)
 - [review-ui API reference](#review-ui-api-reference)
 - [CLI](#cli)
@@ -33,6 +34,15 @@ They never call each other — they share a Postgres database and the
 psql "$DATABASE_URL" -f schema/v1.sql   # required — what is implemented
 psql "$DATABASE_URL" -f schema/v2.sql   # optional — next phase, nothing uses it yet
 ```
+
+On **Windows PowerShell** the variable syntax differs — `$env:` not `$`:
+
+```powershell
+psql $env:DATABASE_URL -f schema/v1.sql
+psql $env:DATABASE_URL -f schema/v2.sql
+```
+
+and in **cmd.exe** it is `%DATABASE_URL%`.
 
 Two files, no migrations directory. **`v1.sql` is everything that is actually
 implemented** — 12 tables and 2 views, every one written or read by running
@@ -68,32 +78,91 @@ Three layers, installed in this order. Only the first is mandatory.
 
 ### 1. System tools
 
-| Tool | Needed by | Install |
-|---|---|---|
-| Python 3.11+ | everything | — |
-| `tesseract` | stage 1, preliminary OCR | `brew install tesseract` · `apt install tesseract-ocr` |
-| `psql` | applying the schema | `brew install libpq` · `apt install postgresql-client` |
-| Node 20+ | review-ui frontend, only if you run it outside Docker | — |
+| Tool | Needed by | macOS | Linux | Windows |
+|---|---|---|---|---|
+| **Python 3.12** (3.11 also fine, **not 3.13+**) | everything | `brew install python@3.12` | `apt install python3.12 python3.12-venv` | `winget install Python.Python.3.12` |
+| `tesseract` | stage 1, preliminary OCR | `brew install tesseract` | `apt install tesseract-ocr` | [UB Mannheim installer](https://github.com/UB-Mannheim/tesseract/wiki) |
+| `psql` | applying the schema | `brew install libpq` | `apt install postgresql-client` | ships with the [PostgreSQL installer](https://www.postgresql.org/download/windows/) |
+| Node 20+ | review-ui frontend, only outside Docker | `brew install node` | `apt install nodejs npm` | `winget install OpenJS.NodeJS.LTS` |
 
-If `tesseract` is not on `PATH`, set `TESSERACT_CMD` to its absolute path.
+> **Python 3.13+ does not work.** `rapidocr-onnxruntime` declares
+> `requires_python >=3.6,<3.13`, so pip refuses it with *"Could not find a
+> version that satisfies the requirement"* — which reads like the package is
+> missing rather than like a version conflict. The Docker image pins
+> `python:3.12-slim`; match it.
+
+**Tesseract on Windows** is not added to `PATH` by its installer. Set
+`TESSERACT_CMD` in `core-pipeline\.env` to the absolute path:
+
+```ini
+TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
+```
+
+The same variable works everywhere — set it on macOS/Linux too if `tesseract`
+is not on `PATH`.
 
 ### 2. Python packages
+
+Two services, two virtualenvs. Use `py -3.12` on Windows so the launcher picks
+3.12 rather than your newest install.
+
+**macOS / Linux**
 
 ```bash
 # core-pipeline
 cd core-pipeline
-python -m venv .venv && source .venv/bin/activate
+python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt          # ~400 MB
+deactivate
 
-# review-ui backend (separate service, separate venv)
+# review-ui backend — separate service, separate venv
 cd ../review-ui/backend
-python -m venv .venv && source .venv/bin/activate
+python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+deactivate
 
-# test suite — run from the repo root
-pip install pytest
-python -m pytest tests/ -q               # 108 tests, no database needed
+# test suite — from the repo root
+cd ../..
+python3.12 -m venv .venv-test && source .venv-test/bin/activate
+pip install pytest fastapi uvicorn psycopg[binary] pydantic-settings python-multipart python-dotenv
+python -m pytest tests/ -q               # 111 tests, no database needed
 ```
+
+**Windows (PowerShell)**
+
+```powershell
+# core-pipeline
+cd core-pipeline
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+python -V                                # confirm 3.12.x before installing
+pip install -r requirements.txt          # ~400 MB
+deactivate
+
+# review-ui backend — separate service, separate venv
+cd ..\review-ui\backend
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+deactivate
+
+# test suite — from the repo root
+cd ..\..
+py -3.12 -m venv .venv-test
+.venv-test\Scripts\Activate.ps1
+pip install pytest fastapi uvicorn psycopg[binary] pydantic-settings python-multipart python-dotenv
+python -m pytest tests/ -q               # 111 tests, no database needed
+```
+
+If `Activate.ps1` fails with *"running scripts is disabled on this system"*,
+allow local scripts once per user:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+In **cmd.exe** the activate command is `.venv\Scripts\activate.bat`; in **Git
+Bash** it is `source .venv/Scripts/activate` (note `Scripts`, not `bin`).
 
 ### 3. The NER layer (GLiNER) — optional, and it gates rejection
 
@@ -105,6 +174,8 @@ Rejected**. Every chart comes back Accepted or `needs_review`.
 
 It is not installed by default because the runtime is ~2.5 GB and the
 checkpoints another ~2 GB. Turning it on is three steps plus a flag:
+
+**macOS / Linux**
 
 ```bash
 cd core-pipeline
@@ -124,6 +195,24 @@ python -m stages.lib.member.extractors.ner_based.model_downloader --check
 # (d) switch it on
 export MEMBER_NER_ENABLED=true     # or set it in core-pipeline/.env
 ```
+
+**Windows (PowerShell)**
+
+```powershell
+cd core-pipeline
+.venv\Scripts\Activate.ps1
+
+pip install -r requirements-ner.txt
+python -m stages.lib.member.extractors.ner_based.model_downloader
+python -m stages.lib.member.extractors.ner_based.model_downloader --check
+
+$env:MEMBER_NER_ENABLED = "true"   # session only — set it in core-pipeline\.env to persist
+```
+
+> Setting an environment variable in a shell lasts only for that shell. Put
+> `MEMBER_NER_ENABLED=true` in `core-pipeline/.env` so it survives a restart;
+> the app loads that file on startup. In **cmd.exe** the session form is
+> `set MEMBER_NER_ENABLED=true`.
 
 Downloader flags: `--force` re-downloads checkpoints already on disk,
 `--check` verifies without downloading. It exits non-zero and names the failed
@@ -202,16 +291,26 @@ The compose file mounts:
 
 ### Local
 
+**macOS / Linux**
+
 ```bash
 cd core-pipeline
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+source .venv/bin/activate
 cp .env.example .env
 python cli.py serve                       # or: uvicorn api.main:app --port 8001
 ```
 
-Needs `tesseract` on PATH (`brew install tesseract` / `apt install tesseract-ocr`),
-or set `TESSERACT_CMD`.
+**Windows (PowerShell)**
+
+```powershell
+cd core-pipeline
+.venv\Scripts\Activate.ps1
+Copy-Item .env.example .env
+python cli.py serve                       # or: uvicorn api.main:app --port 8001
+```
+
+Needs `tesseract` reachable — on PATH, or via `TESSERACT_CMD` in `.env`
+(required on Windows; see [Installing dependencies](#installing-dependencies)).
 
 ### Health
 
@@ -268,7 +367,9 @@ Ports differ outside Docker: run locally, the review-ui backend defaults to
 **8002** (`API_PORT` in `review-ui/.env`) and the Vite dev server to **5174**,
 which proxies `/api` to 8002.
 
-The full sequence from an empty machine:
+The full sequence from an empty machine.
+
+**macOS / Linux**
 
 ```bash
 # 0. schema — once, before anything starts
@@ -287,6 +388,30 @@ cp .env.example .env            # DATA_MODE=local needs no database at all
 docker compose up -d --build
 open http://localhost:3001
 ```
+
+**Windows (PowerShell)**
+
+```powershell
+# 0. schema — once, before anything starts
+psql $env:DATABASE_URL -f schema/v1.sql
+psql $env:DATABASE_URL -f schema/v2.sql
+
+# 1. core-pipeline (writes data/folders)
+cd core-pipeline
+Copy-Item .env.example .env     # fill in DATABASE_URL + any Azure credentials
+docker compose up -d --build
+curl.exe -fsS localhost:8001/ready
+
+# 2. review-ui (reads data/folders, read-only)
+cd ..\review-ui
+Copy-Item .env.example .env     # DATA_MODE=local needs no database at all
+docker compose up -d --build
+start http://localhost:3001
+```
+
+> Use **`curl.exe`**, not `curl`. PowerShell aliases bare `curl` to
+> `Invoke-WebRequest`, which does not understand `-fsS` and fails with
+> *"A parameter cannot be found that matches parameter name 'fsS'"*.
 
 Logs and shutdown:
 
@@ -310,11 +435,12 @@ Backend **:3000**, frontend **:3001** → <http://localhost:3001>.
 
 ### Without Docker
 
+**macOS / Linux**
+
 ```bash
 # backend — port 8002
 cd review-ui/backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+source .venv/bin/activate
 uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
 
 # frontend — port 5174, proxies /api to 8002
@@ -322,6 +448,22 @@ cd ../frontend
 npm install
 npm run dev
 ```
+
+**Windows (PowerShell)**
+
+```powershell
+# backend — port 8002
+cd review-ui\backend
+.venv\Scripts\Activate.ps1
+uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
+
+# frontend — port 5174, proxies /api to 8002
+cd ..\frontend
+npm install
+npm run dev
+```
+
+Run each in its own terminal — both stay in the foreground.
 
 Two modes, set by `DATA_MODE`:
 
@@ -340,6 +482,68 @@ and returned by `GET /api/config`.
 `LOCAL_CACHE_TTL_SECONDS` (default 5) is how long a scan of `data/folders` is
 trusted before being rechecked against file mtimes — relevant because
 core-pipeline writes that directory while the UI is serving.
+
+---
+
+## Windows notes
+
+Everything runs on Windows — the Python is portable (all file IO declares
+`encoding="utf-8"`, CSV writers set `newline=""`, no POSIX-only modules, no
+shell-outs). What differs is the shell, not the code.
+
+### Command equivalents
+
+| Task | macOS / Linux | Windows PowerShell | cmd.exe |
+|---|---|---|---|
+| Create a venv | `python3.12 -m venv .venv` | `py -3.12 -m venv .venv` | same |
+| Activate it | `source .venv/bin/activate` | `.venv\Scripts\Activate.ps1` | `.venv\Scripts\activate.bat` |
+| Deactivate | `deactivate` | `deactivate` | `deactivate` |
+| Copy a file | `cp a b` | `Copy-Item a b` | `copy a b` |
+| Delete a tree | `rm -rf .venv` | `Remove-Item -Recurse -Force .venv` | `rmdir /s /q .venv` |
+| Empty a file | `: > file` | `Clear-Content file` | `type nul > file` |
+| Show a file | `cat file` | `Get-Content file` | `type file` |
+| Env var (session) | `export X=1` | `$env:X = "1"` | `set X=1` |
+| Use an env var | `"$X"` | `$env:X` | `%X%` |
+| Open a URL | `open URL` | `start URL` | `start URL` |
+| HTTP request | `curl -fsS URL` | `curl.exe -fsS URL` | `curl URL` |
+
+In **Git Bash** the macOS/Linux column works as-is, with one exception:
+activation is `source .venv/Scripts/activate` — `Scripts`, not `bin`.
+
+### The four things that actually bite
+
+1. **Python 3.13+ fails.** `rapidocr-onnxruntime` requires `<3.13`. Install
+   3.12 and create the venv with `py -3.12`, because plain `py` or `python`
+   selects your newest interpreter.
+2. **`Activate.ps1` is blocked by default.** Run
+   `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` once.
+3. **Tesseract is not on PATH.** Its installer does not add it. Set
+   `TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe` in
+   `core-pipeline\.env`.
+4. **`curl` is not curl.** PowerShell aliases it to `Invoke-WebRequest`. Use
+   `curl.exe`.
+
+### Get the code with git, not by copying
+
+```powershell
+git clone https://github.com/abhinavdg-ever/pipeline-demo.git
+cd pipeline-demo
+```
+
+Copying a working tree between machines has no integrity check — a single file
+landing with the wrong contents produces errors that look like code bugs rather
+than transfer damage. `git clone` verifies every object, and `git status` then
+tells you instantly whether anything has drifted.
+
+Prefer a path **without spaces** (`C:\Projects\pipeline-demo`). Paths with
+spaces work, but every unquoted command you paste from elsewhere will break.
+
+### Line endings
+
+`.gitattributes` normalises the repo to LF and checks out LF on every platform.
+Shell scripts, Dockerfiles and YAML are pinned to LF because CRLF breaks a
+shebang inside a Linux container; `.bat` and `.cmd` are pinned to CRLF. You do
+not need to set `core.autocrlf` — leave it alone and let `.gitattributes` win.
 
 ---
 

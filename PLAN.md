@@ -132,7 +132,7 @@ advantmed-imaging-pipeline/
 ├── schema/
 │   ├── v1.sql                  implemented: 12 tables + 2 views
 │   └── v2.sql                  next phase: 14 tables + 3 views, unused
-├── tests/                      108 tests
+├── tests/                      111 tests
 ├── core-pipeline/              own docker-compose, port 8001
 │   ├── api/ cli.py config.py
 │   ├── orchestrator/runner.py

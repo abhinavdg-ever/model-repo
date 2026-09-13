@@ -25,7 +25,7 @@ schema/v1.sql      the schema that is IMPLEMENTED. See §5.
 schema/v2.sql      next phase. Defined, wired to nothing. Optional.
 Reference/         the V1 prototypes. Source of truth for ported logic.
                    NEVER EDIT — port from it, diff against it.
-tests/             108 tests, no database required.
+tests/             111 tests, no database required.
 ```
 
 The stage chain, in order (`pipeline_stage` table is the authority):
@@ -365,29 +365,60 @@ The short version:
 
 ### System tools
 
-| Tool | Needed by | Install |
-|---|---|---|
-| Python 3.11+ | everything | — |
-| `tesseract` | stage 1 | `brew install tesseract` · `apt install tesseract-ocr` |
-| `psql` | applying the schema | `brew install libpq` |
-| Node 20+ | frontend outside Docker | — |
+| Tool | macOS | Linux | Windows |
+|---|---|---|---|
+| **Python 3.12** (3.11 ok, **not 3.13+**) | `brew install python@3.12` | `apt install python3.12 python3.12-venv` | `winget install Python.Python.3.12` |
+| `tesseract` (stage 1) | `brew install tesseract` | `apt install tesseract-ocr` | [UB Mannheim installer](https://github.com/UB-Mannheim/tesseract/wiki) |
+| `psql` (applying the schema) | `brew install libpq` | `apt install postgresql-client` | PostgreSQL installer |
+| Node 20+ (frontend outside Docker) | `brew install node` | `apt install nodejs npm` | `winget install OpenJS.NodeJS.LTS` |
 
-Set `TESSERACT_CMD` if `tesseract` is not on `PATH`.
+**Python 3.13+ does not work** — `rapidocr-onnxruntime` requires `<3.13` and
+pip reports it as "no matching distribution", which reads like a missing
+package rather than a version conflict. The Docker image pins `python:3.12-slim`.
+
+Set `TESSERACT_CMD` if `tesseract` is not on `PATH` — **always required on
+Windows**, where the installer does not add it:
+`TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe`
 
 ### Python
 
+Two services, two virtualenvs. Full commands for both platforms:
+[`docs/API.md § Installing dependencies`](docs/API.md#installing-dependencies).
+
+**macOS / Linux**
+
 ```bash
 cd core-pipeline
-python -m venv .venv && source .venv/bin/activate
+python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 cd ../review-ui/backend
-python -m venv .venv && source .venv/bin/activate
+python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 # tests, from the repo root — no database needed
-python -m pytest tests/ -q          # 108 tests
+python -m pytest tests/ -q          # 111 tests
 ```
+
+**Windows (PowerShell)**
+
+```powershell
+cd core-pipeline
+py -3.12 -m venv .venv              # -3.12: plain `py` picks your newest
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+cd ..\review-ui\backend
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# tests, from the repo root — no database needed
+python -m pytest tests/ -q          # 111 tests
+```
+
+If `Activate.ps1` is blocked:
+`Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`.
 
 ### The NER layer (GLiNER) — optional, and it gates rejection
 
@@ -401,12 +432,23 @@ It is off by default: the runtime is ~2.5 GB and the checkpoints ~2 GB, and
 neither is vendored.
 
 ```bash
+# macOS / Linux
 cd core-pipeline && source .venv/bin/activate
 
 pip install -r requirements-ner.txt                                     # runtime
 python -m stages.lib.member.extractors.ner_based.model_downloader        # ~2 GB
 python -m stages.lib.member.extractors.ner_based.model_downloader --check
 export MEMBER_NER_ENABLED=true          # or set it in core-pipeline/.env
+```
+
+```powershell
+# Windows (PowerShell)
+cd core-pipeline; .venv\Scripts\Activate.ps1
+
+pip install -r requirements-ner.txt
+python -m stages.lib.member.extractors.ner_based.model_downloader
+python -m stages.lib.member.extractors.ner_based.model_downloader --check
+$env:MEMBER_NER_ENABLED = "true"        # session only; use .env to persist
 ```
 
 The downloader fetches `gliner_large` / `gliner_medium` / `gliner_low`, skips
@@ -458,20 +500,33 @@ run is visible in the data rather than silent.
 From an empty machine:
 
 ```bash
-# 0. schema — once, before anything starts
-psql "$DATABASE_URL" -f schema/v1.sql
+# macOS / Linux
+psql "$DATABASE_URL" -f schema/v1.sql          # 0. schema, once
 
-# 1. core-pipeline (writes data/folders)
-cd core-pipeline
-cp .env.example .env            # DATABASE_URL + any Azure credentials
+cd core-pipeline                               # 1. writes data/folders
+cp .env.example .env
 docker compose up -d --build
-curl -fsS localhost:8001/ready  # 200 once the DB is reachable and seeded
+curl -fsS localhost:8001/ready
 
-# 2. review-ui (mounts data/folders read-only)
-cd ../review-ui
-cp .env.example .env            # DATA_MODE=local needs no database at all
+cd ../review-ui                                # 2. mounts it read-only
+cp .env.example .env                           # DATA_MODE=local needs no DB
 docker compose up -d --build
 open http://localhost:3001
+```
+
+```powershell
+# Windows (PowerShell)
+psql $env:DATABASE_URL -f schema/v1.sql
+
+cd core-pipeline
+Copy-Item .env.example .env
+docker compose up -d --build
+curl.exe -fsS localhost:8001/ready             # curl.exe, NOT curl
+
+cd ..\review-ui
+Copy-Item .env.example .env
+docker compose up -d --build
+start http://localhost:3001
 ```
 
 Order does not matter — the services are independent and neither calls the
@@ -480,16 +535,17 @@ other. `docker compose down` in either directory stops only that service.
 ### Without Docker
 
 ```bash
-# core-pipeline — 8001
-cd core-pipeline && source .venv/bin/activate
-python cli.py serve                  # or: uvicorn api.main:app --port 8001
-
-# review-ui backend — 8002
-cd review-ui/backend && source .venv/bin/activate
-uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
-
-# review-ui frontend — 5174, proxies /api to 8002
+# macOS / Linux — one terminal each
+cd core-pipeline && source .venv/bin/activate && python cli.py serve
+cd review-ui/backend && source .venv/bin/activate && uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
 cd review-ui/frontend && npm install && npm run dev
+```
+
+```powershell
+# Windows (PowerShell) — one terminal each
+cd core-pipeline; .venv\Scripts\Activate.ps1; python cli.py serve
+cd review-ui\backend; .venv\Scripts\Activate.ps1; uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
+cd review-ui\frontend; npm install; npm run dev
 ```
 
 ### Health endpoints
@@ -516,7 +572,42 @@ equivalents: [`docs/API.md`](docs/API.md).
 
 ---
 
-## 8. Working rules
+## 8. Windows
+
+The code is portable — every file read/write declares `encoding="utf-8"`, CSV
+writers set `newline=""`, there are no POSIX-only imports and no shell-outs.
+Only the shell commands differ. Full tables in
+[`docs/API.md § Windows notes`](docs/API.md#windows-notes); the four that
+actually bite:
+
+1. **Python 3.13+ fails** — `rapidocr-onnxruntime` requires `<3.13`. Create the
+   venv with `py -3.12`; plain `py`/`python` picks the newest interpreter.
+2. **`Activate.ps1` is blocked** until
+   `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`.
+3. **Tesseract is not on PATH** — set `TESSERACT_CMD` in `core-pipeline\.env`.
+4. **`curl` is `Invoke-WebRequest`** in PowerShell — use `curl.exe`.
+
+Quick reference:
+
+| | macOS / Linux | PowerShell | cmd.exe |
+|---|---|---|---|
+| activate venv | `source .venv/bin/activate` | `.venv\Scripts\Activate.ps1` | `.venv\Scripts\activate.bat` |
+| delete a tree | `rm -rf x` | `Remove-Item -Recurse -Force x` | `rmdir /s /q x` |
+| copy a file | `cp a b` | `Copy-Item a b` | `copy a b` |
+| env var | `export X=1` / `"$X"` | `$env:X = "1"` / `$env:X` | `set X=1` / `%X%` |
+
+Git Bash uses the macOS/Linux column, except activation is
+`source .venv/Scripts/activate` (`Scripts`, not `bin`).
+
+**Get the code with `git clone`, never by copying a working tree.** A copy has
+no integrity check; one file arriving with the wrong contents surfaces as an
+`ImportError` that looks like a code bug. `.gitattributes` pins the repo to LF
+(CRLF breaks shebangs inside the Linux containers), so leave `core.autocrlf`
+alone. Prefer a path without spaces.
+
+---
+
+## 9. Working rules
 
 - **`Reference/` is never edited.** It is the V1 prototype tree and the source
   of truth for ported logic. Port *from* it; diff *against* it. If ported code
@@ -533,10 +624,10 @@ equivalents: [`docs/API.md`](docs/API.md).
   record them in `page_stage_status.error_message`, and continue.
 - **CSVs are rebuilt from the database, never appended to.** A resumed run must
   not be able to leave a half-written file.
-- **Run the tests.** `python -m pytest tests/ -q` — 108 tests, no database
+- **Run the tests.** `python -m pytest tests/ -q` — 111 tests, no database
   needed, under a second.
 
-## 9. Known gaps
+## 10. Known gaps
 
 - **No authentication on either service.** Charts carry member names and dates
   of birth. This is the blocker before any non-local deployment.

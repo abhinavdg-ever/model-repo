@@ -26,6 +26,11 @@ They never call each other. Each has its own `docker-compose.yml`.
 
 ## Quick start
 
+Runs on macOS, Linux and Windows. **Python 3.12** — 3.13+ does not work
+(`rapidocr-onnxruntime` requires `<3.13`).
+
+**macOS / Linux**
+
 ```bash
 # 1. Schema — once, before either service starts
 psql "$DATABASE_URL" -f schema/v1.sql   # required — what is implemented
@@ -42,8 +47,32 @@ cp .env.example .env
 docker compose up -d --build  # http://localhost:3001
 
 # 4. Tests
-python -m pytest tests/ -q    # 108 tests
+python -m pytest tests/ -q    # 111 tests
 ```
+
+**Windows (PowerShell)**
+
+```powershell
+# 1. Schema
+psql $env:DATABASE_URL -f schema/v1.sql
+psql $env:DATABASE_URL -f schema/v2.sql
+
+# 2. core-pipeline
+cd core-pipeline
+Copy-Item .env.example .env
+docker compose up -d --build  # http://localhost:8001/docs
+
+# 3. review-ui
+cd ..\review-ui
+Copy-Item .env.example .env
+docker compose up -d --build  # http://localhost:3001
+
+# 4. Tests
+python -m pytest tests/ -q    # 111 tests
+```
+
+Windows specifics — venv activation, `TESSERACT_CMD`, `curl.exe`, the
+PowerShell execution policy: [`docs/API.md § Windows notes`](docs/API.md#windows-notes).
 
 Ingest a chart:
 

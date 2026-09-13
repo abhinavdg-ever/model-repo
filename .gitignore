@@ -17,3 +17,10 @@ core-pipeline/.venv/
 .pytest_cache/
 *.tmp
 .venv-test/
+
+# Windows
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+*.lnk
