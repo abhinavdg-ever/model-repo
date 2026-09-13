@@ -125,7 +125,7 @@ deactivate
 cd ../..
 python3.12 -m venv .venv-test && source .venv-test/bin/activate
 pip install -r tests/requirements.txt
-python -m pytest tests/ -q               # 111 tests, no database needed
+python -m pytest tests/ -q               # 113 tests, no database needed
 ```
 
 **Windows (PowerShell)**
@@ -151,7 +151,7 @@ cd ..\..
 py -3.12 -m venv .venv-test
 .venv-test\Scripts\Activate.ps1
 pip install -r tests/requirements.txt
-python -m pytest tests/ -q               # 111 tests, no database needed
+python -m pytest tests/ -q               # 113 tests, no database needed
 ```
 
 If `Activate.ps1` fails with *"running scripts is disabled on this system"*,

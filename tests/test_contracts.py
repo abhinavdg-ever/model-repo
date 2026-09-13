@@ -35,7 +35,7 @@ class TestJunkSubtypeVocabulary:
         exactly those and nothing else, or rows become unrenderable."""
         from app.services.imaging_overlays import index_junk_rows  # noqa: F401
 
-        schema_sql = (REPO_ROOT / "schema" / "v1.sql").read_text()
+        schema_sql = (REPO_ROOT / "schema" / "v1.sql").read_text(encoding="utf-8")
         for label in SCHEMA_SUBTYPES:
             assert f"'{label}'" in schema_sql, f"{label} missing from schema CHECK"
 
@@ -134,7 +134,7 @@ class TestPerChartCsvNamesAreRead:
         source = (
             REPO_ROOT / "review-ui" / "backend" / "app" / "adapters" / "local"
             / "repository.py"
-        ).read_text()
+        ).read_text(encoding="utf-8")
         # The per-chart override loop in _pipeline_streams.
         start = source.index("Per-chart overrides under data/folders")
         block = source[start : start + 2500]
@@ -148,7 +148,7 @@ class TestPerChartCsvNamesAreRead:
         source = (
             REPO_ROOT / "review-ui" / "backend" / "app" / "adapters" / "local"
             / "repository.py"
-        ).read_text()
+        ).read_text(encoding="utf-8")
         for suffix in self.STAGE_SUFFIXES:
             token = suffix.replace("_", "").replace(".csv", "")
             assert f'_{suffix.lstrip("_")}' in source or token in source
@@ -198,7 +198,7 @@ class TestStageRegistry:
 
         # v1.sql seeds the implemented stages; v2.sql registers the four
         # not-yet-orchestrated ones. The chain must match V1 exactly.
-        schema_sql = (REPO_ROOT / "schema" / "v1.sql").read_text()
+        schema_sql = (REPO_ROOT / "schema" / "v1.sql").read_text(encoding="utf-8")
         seed_start = schema_sql.index("INSERT INTO pipeline_stage")
         seed = schema_sql[seed_start : schema_sql.index(";", seed_start)]
 
@@ -242,7 +242,7 @@ class TestSchemaSplit:
     def _relations(path):
         import re
 
-        text = (REPO_ROOT / "schema" / path).read_text()
+        text = (REPO_ROOT / "schema" / path).read_text(encoding="utf-8")
         code = "\n".join(re.sub(r"--.*$", "", ln) for ln in text.splitlines())
         return set(re.findall(r"CREATE TABLE (\w+)", code)) | set(
             re.findall(r"CREATE OR REPLACE VIEW (\w+)", code)
@@ -256,7 +256,7 @@ class TestSchemaSplit:
         """V1 must apply and run on its own — v2.sql is optional."""
         import re
 
-        text = (REPO_ROOT / "schema" / "v1.sql").read_text()
+        text = (REPO_ROOT / "schema" / "v1.sql").read_text(encoding="utf-8")
         code = "\n".join(re.sub(r"--.*$", "", ln) for ln in text.splitlines())
         v1, v2 = self._relations("v1.sql"), self._relations("v2.sql")
         referenced = set(re.findall(r"REFERENCES\s+(\w+)\s*\(", code)) | set(
@@ -277,7 +277,7 @@ class TestSchemaSplit:
             for path in root.rglob("*.py"):
                 if "__pycache__" in str(path) or path.name.startswith("._"):
                     continue
-                for node in ast.walk(ast.parse(path.read_text())):
+                for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                     if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
                         continue
                     sql = node.value
@@ -292,3 +292,85 @@ class TestSchemaSplit:
                     for rel in hits & v2:
                         offenders.append(f"{path.name}:{node.lineno} -> {rel}")
         assert not offenders, "code touches V2 relations:\n  " + "\n  ".join(sorted(offenders))
+
+
+# --- cross-platform text IO --------------------------------------------------
+
+
+class TestTextIoDeclaresEncoding:
+    """Every text read/write must name its encoding.
+
+    Python defaults to the *locale* encoding: UTF-8 on macOS/Linux, cp1252 on
+    Windows. The repo's sources are UTF-8 and full of em-dashes, so a call that
+    omits the encoding works everywhere the author tested and then dies on
+    Windows with a UnicodeDecodeError about the 'charmap' codec.
+
+    Checked via AST, not regex, so prose in docstrings and comments cannot
+    trigger it — and neither can this docstring.
+    """
+
+    @staticmethod
+    def _calls():
+        """Yield (path, lineno, func_name, has_encoding_kwarg, args) per call."""
+        import ast
+        import itertools
+
+        roots = [
+            REPO_ROOT / "core-pipeline",
+            REPO_ROOT / "review-ui" / "backend",
+            REPO_ROOT / "tests",
+        ]
+        for path in itertools.chain.from_iterable(r.rglob("*.py") for r in roots):
+            if "__pycache__" in str(path) or path.name.startswith("._"):
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                if isinstance(func, ast.Attribute):
+                    name = func.attr
+                    # PIL's Image.open is binary and takes no encoding.
+                    owner = getattr(func.value, "id", None) or getattr(
+                        getattr(func.value, "attr", None), "__str__", lambda: ""
+                    )()
+                    if name == "open" and owner == "Image":
+                        continue
+                elif isinstance(func, ast.Name):
+                    name = func.id
+                else:
+                    continue
+                has_enc = any(k.arg == "encoding" for k in node.keywords)
+                yield path, node.lineno, name, has_enc, node.args
+
+    def test_read_text_and_write_text_declare_encoding(self):
+        offenders = [
+            f"{p.relative_to(REPO_ROOT)}:{ln} .{name}()"
+            for p, ln, name, has_enc, _ in self._calls()
+            if name in {"read_text", "write_text"} and not has_enc
+        ]
+        assert not offenders, (
+            "text IO without encoding= (breaks on Windows cp1252):\n  "
+            + "\n  ".join(offenders)
+        )
+
+    def test_open_in_text_mode_declares_encoding(self):
+        import ast
+
+        offenders = []
+        for p, ln, name, has_enc, args in self._calls():
+            if name != "open" or has_enc:
+                continue
+            # A binary mode carries no encoding, so those are fine.
+            mode = next(
+                (a.value for a in args if isinstance(a, ast.Constant)
+                 and isinstance(a.value, str)),
+                "r",
+            )
+            if "b" in mode:
+                continue
+            offenders.append(f"{p.relative_to(REPO_ROOT)}:{ln} open()")
+        assert not offenders, (
+            "open() in text mode without encoding= (breaks on Windows cp1252):\n  "
+            + "\n  ".join(offenders)
+        )

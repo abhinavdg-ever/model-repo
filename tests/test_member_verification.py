@@ -380,7 +380,7 @@ class TestNerPreflight:
 
         req = Path(__file__).resolve().parents[1] / "core-pipeline" / "requirements-ner.txt"
         assert req.is_file(), "requirements-ner.txt must ship with the NER port"
-        text = req.read_text()
+        text = req.read_text(encoding="utf-8")
         for package in ("gliner", "torch", "transformers", "huggingface_hub"):
             assert package in text, f"{package} missing from requirements-ner.txt"
 
