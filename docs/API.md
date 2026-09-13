@@ -20,6 +20,7 @@ They never call each other — they share a Postgres database and the
 - [Both modes: review-ui data source](#both-modes-review-ui-data-source)
 - [Health checks](#health-checks)
 - [Windows notes](#windows-notes)
+  - [Calling the API from Windows](#calling-the-api-from-windows) — curl/JSON quoting
   - [Installing from a ZIP](#installing-from-a-zip) — when `git clone` is blocked
 - [core-pipeline API reference](#core-pipeline-api-reference)
 - [review-ui API reference](#review-ui-api-reference)
@@ -543,6 +544,53 @@ activation is `source .venv/Scripts/activate` — `Scripts`, not `bin`.
    `core-pipeline\.env`.
 4. **`curl` is not curl.** PowerShell aliases it to `Invoke-WebRequest`. Use
    `curl.exe`.
+
+### Calling the API from Windows
+
+The `curl` examples in this document are written for bash. Pasted into cmd.exe
+or PowerShell they fail in three separate ways at once, and the errors do not
+name the cause:
+
+| bash | cmd.exe | PowerShell |
+|---|---|---|
+| `\` at end of line | `^` | `` ` `` (backtick) |
+| `'{"a":"b"}'` | `"{\"a\":\"b\"}"` | `'{"a":"b"}'` works |
+| `curl` | `curl` (real curl) | **`curl.exe`** — bare `curl` is `Invoke-WebRequest` |
+
+A fourth trap is JSON-specific: **a Windows path cannot be pasted raw into
+JSON.** `C:\Projects\x.csv` makes `\P` an invalid escape and the body is
+rejected before it reaches the endpoint. Either double every backslash, or —
+simpler — use forward slashes, which Windows accepts everywhere:
+
+```text
+"C:/Projects/Imaging Pipeline/review-ui/data/metadata/metadata_R1_B1.csv"
+```
+
+**cmd.exe** — one line, double quotes outside, escaped quotes inside:
+
+```bat
+curl -X POST http://localhost:8001/api/manifest/sweep -H "Content-Type: application/json" -d "{\"local_path\":\"C:/Projects/Imaging Pipeline/review-ui/data/metadata/metadata_R1_B1.csv\"}"
+```
+
+**PowerShell** — `Invoke-RestMethod` avoids the quoting entirely and pretty-prints
+the reply:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8001/api/manifest/sweep `
+  -ContentType 'application/json' `
+  -Body '{"local_path":"C:/Projects/Imaging Pipeline/review-ui/data/metadata/metadata_R1_B1.csv"}'
+```
+
+**Easier than either** — skip HTTP. The CLI takes the path as a normal argument,
+so the shell quotes it and no JSON is involved:
+
+```powershell
+cd core-pipeline
+python cli.py manifest --local "C:\Projects\Imaging Pipeline\review-ui\data\metadata\metadata_R1_B1.csv"
+```
+
+Or open <http://localhost:8001/docs>, pick the endpoint, **Try it out**, and
+edit the JSON in the browser — no shell quoting at all.
 
 ### Getting the code
 
