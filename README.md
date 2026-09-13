@@ -55,7 +55,7 @@ cp .env.example .env
 docker compose up -d --build  # http://localhost:3001
 
 # 4. Tests
-python -m pytest tests/ -q    # 134 tests
+python -m pytest tests/ -q    # 144 tests
 ```
 
 **Windows (PowerShell)**
@@ -76,7 +76,7 @@ Copy-Item .env.example .env
 docker compose up -d --build  # http://localhost:3001
 
 # 4. Tests
-python -m pytest tests/ -q    # 134 tests
+python -m pytest tests/ -q    # 144 tests
 ```
 
 Windows specifics — venv activation, `TESSERACT_CMD`, `curl.exe`, the

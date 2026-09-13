@@ -52,9 +52,17 @@ def _env_bool(key: str, default: bool = False) -> bool:
 # Master switch for the NER layer.
 ner_enabled = _env_bool("MEMBER_NER_ENABLED", False)
 
-gliner_large = _env_bool("GLINER_LARGE", True)
-gliner_medium = _env_bool("GLINER_MEDIUM", True)
-gliner_low = _env_bool("GLINER_LOW", True)
+# Which checkpoint the extractor loads. This is the ONLY model knob.
+#
+# v7 also had GLINER_LARGE / GLINER_MEDIUM / GLINER_LOW, which fed the
+# readiness check while MEMBER_NER_MODEL_ID drove what actually ran. With all
+# three true by default, `ready` demanded three checkpoints while extraction
+# used one — so a missing model you were never going to load reported the layer
+# as unavailable, and the warning named a different model from the error. Two
+# knobs for one decision; the flags are gone.
+MEMBER_NER_MODEL_ID = (
+    os.environ.get("MEMBER_NER_MODEL_ID") or "gliner_medium"
+).strip()
 
 # ~2 GB of checkpoints. core-pipeline/models/ is gitignored; keep it that way
 # if you change this default.
@@ -63,18 +71,15 @@ NER_MODELS_PATH = Path(
     or (CORE_ROOT / "models" / "ner")
 )
 
-_MODEL_FLAGS = (
-    ("gliner_large", gliner_large),
-    ("gliner_medium", gliner_medium),
-    ("gliner_low", gliner_low),
-)
-
-
 def enabled_model_ids() -> list[str]:
-    """Enabled model ids, or [] when the NER layer is switched off."""
+    """The model ids this run needs, or [] when the NER layer is switched off.
+
+    Exactly one: whichever MEMBER_NER_MODEL_ID names. Kept as a list because
+    ner_status() and model.py report several fields in list form.
+    """
     if not ner_enabled:
         return []
-    return [model_id for model_id, on in _MODEL_FLAGS if on]
+    return [MEMBER_NER_MODEL_ID]
 
 
 def deps_installed() -> tuple[bool, str]:
@@ -110,25 +115,35 @@ def ner_status() -> dict:
     installed, detail = deps_installed()
     status["deps_installed"] = installed
     status["deps_detail"] = detail
+    status["model_id"] = MEMBER_NER_MODEL_ID
+
+    # Switched off wins over everything below it. Reporting "gliner not
+    # installed" when the layer is deliberately disabled sends the reader off
+    # to install 2.5 GB they do not need.
+    if not ner_enabled:
+        status["weights_present"] = []
+        status["weights_missing"] = []
+        status["ready"] = False
+        status["reason"] = "MEMBER_NER_ENABLED=false"
+        return status
 
     if not installed:
         status["weights_present"] = []
-        status["weights_missing"] = [m for m, on in _MODEL_FLAGS if on]
+        status["weights_missing"] = enabled_model_ids()
         status["ready"] = False
         status["reason"] = detail
         return status
 
     from .model import missing_weights, weights_present
 
-    wanted = [m for m, on in _MODEL_FLAGS if on]
+    wanted = enabled_model_ids()
     missing = missing_weights(wanted)
     status["weights_present"] = [m for m in wanted if weights_present(m)]
     status["weights_missing"] = missing
+    status["model_id"] = MEMBER_NER_MODEL_ID
     status["ready"] = ner_enabled and not missing and bool(wanted)
 
-    if not ner_enabled:
-        status["reason"] = "MEMBER_NER_ENABLED=false"
-    elif missing:
+    if missing:
         status["reason"] = (
             f"checkpoints missing: {', '.join(missing)}. Download with: "
             "python -m stages.lib.member.extractors.ner_based.model_downloader"

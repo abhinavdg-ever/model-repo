@@ -129,7 +129,7 @@ deactivate
 cd ../..
 python3.12 -m venv .venv-test && source .venv-test/bin/activate
 pip install -r tests/requirements.txt
-python -m pytest tests/ -q               # 134 tests, no database needed
+python -m pytest tests/ -q               # 144 tests, no database needed
 ```
 
 **Windows (PowerShell)**
@@ -155,7 +155,7 @@ cd ..\..
 py -3.12 -m venv .venv-test
 .venv-test\Scripts\Activate.ps1
 pip install -r tests/requirements.txt
-python -m pytest tests/ -q               # 134 tests, no database needed
+python -m pytest tests/ -q               # 144 tests, no database needed
 ```
 
 If `Activate.ps1` fails with *"running scripts is disabled on this system"*,
@@ -227,8 +227,7 @@ Where the checkpoints land, and which models load:
 | Variable | Default | Meaning |
 |---|---|---|
 | `MEMBER_NER_MODELS_PATH` | `core-pipeline/models/ner` | Directory holding the checkpoints |
-| `MEMBER_NER_MODEL_ID` | `gliner_medium` | Which model the extractor uses |
-| `GLINER_LARGE` / `GLINER_MEDIUM` / `GLINER_LOW` | `true` | Which checkpoints are considered available |
+| `MEMBER_NER_MODEL_ID` | `gliner_medium` | **The only model knob.** One of `gliner_large`, `gliner_medium`, `gliner_low`. Readiness and the download both follow it. |
 | `MEMBER_NER_ENABLED` | `false` | Master switch. Everything above is inert while this is false |
 
 **In Docker**, the runtime is a build arg and the checkpoints are a mount — the
@@ -662,7 +661,7 @@ pip install -r tests/requirements.txt
 python -m pytest tests/ -q
 ```
 
-**134 passed** means the extraction is sound. Anything else — especially
+**144 passed** means the extraction is sound. Anything else — especially
 `ModuleNotFoundError` or `SyntaxError` — means re-download rather than debug.
 
 **5. Updating later**
