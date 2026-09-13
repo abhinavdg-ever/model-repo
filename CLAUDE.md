@@ -24,6 +24,11 @@ review-ui/         read-only viewer over what the pipeline produced.
 schema/v1.sql      the schema that is IMPLEMENTED. See §5.
 schema/v2.sql      next phase. Defined, wired to nothing. Optional.
 tests/             111 tests, no database required.
+
+`core-pipeline/stages/lib/` holds the ported engines: `imaging/` (rotation +
+handwriting, stage 2), `junk/`, `member/`, `dos/`. These are live code despite
+being ports — `imaging/` in particular was only reachable via a `sys.path`
+hack until it moved here.
 ```
 
 The stage chain, in order (`pipeline_stage` table is the authority):

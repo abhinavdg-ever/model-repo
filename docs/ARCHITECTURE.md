@@ -38,7 +38,7 @@ flowchart TB
     CLI["cli.py"]
     ORCH["orchestrator/runner.py"]
     ST["stages/ × 8"]
-    LIB["stages/lib/<br/>junk · member · dos"]
+    LIB["stages/lib/<br/>imaging · junk · member · dos"]
     DB["db/<br/>persistence + status"]
     API --> ORCH
     CLI --> ORCH
@@ -267,9 +267,22 @@ still renders.
 | `blank_junk_classify.py` | **Stages 3 and 6.** Both passes: eligibility, the cross-pass duplicate fingerprint table, the subtype mapping into the schema's constrained vocabulary, `mark_blank_junk_final`, and a full CSV rewrite from the database. |
 | `ocr_final1_docling.py` | **Stage 4.** RapidOCR (Tesseract fallback), engine built once. Stores as `ocr_type='docling'` — the UI's "Final (OSS)" slot. |
 | `ocr_final2_azure.py` | **Stage 5.** Azure Document Intelligence `prebuilt-read`, one shared client. The billed stage, so the resume path matters most here. Stores the page document as JSON. |
-| `member_extract_verify.py` | **Stage 7.** Plumbing around the ported engine: picks the manifest row, chooses eligible pages, assembles the best text per page, runs `verify_record`, persists page rows and the summary, writes three CSVs including the reference-shaped comparison file. |
-| `dos_extract.py` | **Stage 8.** Builds the marker-delimited text, calls the reference driver `detect_dos_per_page` (regex → LLM → carry-forward), persists the primary pair plus every date, writes the DOS CSV. |
+| `member_extract_verify.py` | **Stage 7.** Plumbing around the ported engine: picks the manifest row, chooses eligible pages, assembles the best text per page, runs `verify_record`, persists page rows and the summary, writes three CSVs including the V1-shaped comparison file. |
+| `dos_extract.py` | **Stage 8.** Builds the marker-delimited text, calls the ported driver `detect_dos_per_page` (regex → LLM → carry-forward), persists the primary pair plus every date, writes the DOS CSV. |
 | `__init__.py` | Package marker. |
+
+### `core-pipeline/stages/lib/imaging/` — rotation + handwriting
+
+Live code for stage 2, not reference material. Moved here from the V1
+`advantmed_imaging` prototype when that tree was removed; stage 2 previously
+reached it by inserting the prototype directory onto `sys.path`.
+
+| File | Role |
+|---|---|
+| `rotation.py` | `PageOrientationDetector` — coarse rotation, mirror and tilt detection from OpenCV/NumPy alone, plus `correct()`. The Azure blob batch CLI that used to occupy its last 227 lines was removed: it duplicated, worse, what stage 2 does. |
+| `hw_printed.py` | `load_model()` / `classify_image_type()` — printed vs handwritten from the bundled classifier. |
+| `image_type_classification.pkl` | The trained `RandomForestClassifier`. `HW_MODEL_PATH` points here by default. |
+| `__init__.py` | Package marker, and the note that this is live code. |
 
 ### `core-pipeline/stages/lib/junk/` — blank/junk classifier
 
@@ -278,7 +291,7 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/junk-classification/`.
 | File | Role |
 |---|---|
 | `classify.py` | The entry point: `classify_text()` tries each detector in priority order and returns a code; also the code constants, labels, `fingerprint()` and confidences. |
-| `classify_junk.py` | The fuller CLI-era classifier retained from the reference. |
+| `classify_junk.py` | The fuller CLI-era classifier retained from the V1 prototype. |
 | `blank.py` | Blank detection: empty OCR, declared-blank phrasing, near-empty image. |
 | `invoice.py`, `cover.py`, `record_request.py`, `instructions.py`, `letter_fax.py` | One junk category each. |
 | `others.py` | Catch-all: gibberish OCR, signature-only pages. |
@@ -289,7 +302,7 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/junk-classification/`.
 ### `core-pipeline/stages/lib/member/` — member verification
 
 Ported from the V1 `Member_Verification/` tree. **Logic is verbatim; only
-imports changed** (relative imports instead of the reference's `sys.path`
+imports changed** (relative imports instead of the prototype's `sys.path`
 inserts).
 
 | File | Role |
@@ -385,6 +398,7 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/`.
 | File | Role |
 |---|---|
 | `conftest.py` | Puts `core-pipeline`, `stages/lib` and the review-ui backend on `sys.path`, the way the services import them. |
+| `requirements.txt` | What the suite needs — more than pytest, because the tests import the real modules, but not the OCR/ML stack, which is imported lazily. |
 | `test_member_verification.py` | 52 tests pinning the ported engine against the reference: evidence combination, two/three-word classification, DOB and MemberID extraction, the three page buckets, the reject threshold formula, and end-to-end record verification. |
 | `test_chart_status.py` | Status derivation: earliest-incomplete-stage, the two blank/junk passes as distinct stages, skipped-counts-as-done, failure escalation, terminal states. |
 | `test_contracts.py` | The core-pipeline ↔ review-ui seam: every column the UI reads is a column a stage writes, the junk subtype vocabulary matches the schema CHECK, every per-chart CSV suffix is one the UI branches on, the OCR marker round-trips, and `STAGE_CHAIN` matches the `pipeline_stage` seed. |

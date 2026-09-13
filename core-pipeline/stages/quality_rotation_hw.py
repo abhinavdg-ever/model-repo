@@ -65,7 +65,7 @@ def _get_detector() -> Any:
 def _classify_hw(image_path: Path) -> tuple[str, float, str]:
     """Return (printed|handwritten, confidence, method)."""
     try:
-        from hw_printed import classify_image_type
+        from stages.lib.imaging.hw_printed import classify_image_type
 
         model = _get_hw_model()
         label, conf, method = classify_image_type(image_path.read_bytes(), model=model)
