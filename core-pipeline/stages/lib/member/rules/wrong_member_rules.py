@@ -1,4 +1,4 @@
-"""Ported verbatim from Reference/V1 Code/Member_Verification/Rules/wrong_member_rules.py.
+"""Ported verbatim from the V1 Member_Verification rule set (wrong_member_rules).
 
 Only the imports changed (relative instead of sys.path inserts).
 """

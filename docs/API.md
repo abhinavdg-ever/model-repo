@@ -222,7 +222,7 @@ Where the checkpoints land, and which models load:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MEMBER_NER_MODELS_PATH` | `Reference/V1 Code/Member_Verification/Models` | Directory holding the checkpoints |
+| `MEMBER_NER_MODELS_PATH` | `core-pipeline/models/ner` | Directory holding the checkpoints |
 | `MEMBER_NER_MODEL_ID` | `gliner_medium` | Which model the extractor uses |
 | `GLINER_LARGE` / `GLINER_MEDIUM` / `GLINER_LOW` | `true` | Which checkpoints are considered available |
 | `MEMBER_NER_ENABLED` | `false` | Master switch. Everything above is inert while this is false |
@@ -283,7 +283,6 @@ The compose file mounts:
 |---|---|---|---|
 | `DATA_HOST_PATH` → `../review-ui/data/folders` | `/data/folders` | rw | the chart workspace this service writes |
 | `METADATA_HOST_PATH` | `/data/metadata` | rw | mirrored manifest CSVs |
-| `REFERENCE_HOST_PATH` → `../Reference` | `/app/Reference` | ro | handwriting model + rotation detector |
 | `NER_MODELS_HOST_PATH` | `/app/models/ner` | ro | GLiNER checkpoints, if enabled |
 
 > `DATA_HOST_PATH` must resolve to the **same storage** review-ui mounts. On one

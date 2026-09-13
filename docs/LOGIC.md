@@ -4,7 +4,7 @@ The reasoning inside each stage, and the exact rows it produces.
 For the order things run in, see [FLOW.md](FLOW.md).
 
 Every algorithm here is ported from the reference implementations under
-`Reference/`. Where the port differs from the reference, it says so and why.
+the V1 prototypes. Where the port differs from them, it says so and why.
 
 ---
 
@@ -22,7 +22,7 @@ Every algorithm here is ported from the reference implementations under
 
 ## 1. Preliminary OCR
 
-**Source:** `Reference/advantmed_imaging/ts_ocr.py` · **Stage:** `stages/ocr_prelim_tesseract.py`
+**Source:** V1 `ts_ocr.py` · **Stage:** `stages/ocr_prelim_tesseract.py`
 
 Tesseract over every page. Deliberately cheap and deliberately first: its only
 job is to give the blank/junk classifier something to read, so pages can be
@@ -53,7 +53,7 @@ still produces a file covering all pages — not just the ones it touched.
 
 ## 2. Rotation and handwriting
 
-**Source:** `Reference/advantmed_imaging/rotation.py`, `hw_printed.py` · **Stage:** `stages/quality_rotation_hw.py`
+**Source:** `stages/lib/imaging/rotation.py`, `hw_printed.py` · **Stage:** `stages/quality_rotation_hw.py`
 
 Two independent measurements per page.
 
@@ -227,7 +227,7 @@ flowchart LR
 ```
 
 `ocr_type='docling'` is the slot the review UI labels "Final (OSS)"; the engine
-actually in use is RapidOCR, matching `Reference/advantmed_imaging/rapid_ocr.py`.
+actually in use is RapidOCR, matching the V1 `rapid_ocr.py` prototype.
 The module name is kept for continuity with the original plan.
 
 **final2 stores JSON**, not bare text: `{pageNumber, fileName, content, pagesMeta}`.
@@ -245,7 +245,7 @@ no pass-2 verdict, and member/DOS fall back to final1/prelim text.
 
 ## 5. Member verification
 
-**Source:** `Reference/V1 Code/Member_Verification/` (~2,800 lines) → `core-pipeline/stages/lib/member/`
+**Source:** V1 `Member_Verification/` (~2,800 lines) → `core-pipeline/stages/lib/member/`
 **Stage:** `stages/member_extract_verify.py`
 
 This stage produces the accept/reject decision. It is a faithful port — function

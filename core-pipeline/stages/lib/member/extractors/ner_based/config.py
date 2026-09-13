@@ -1,6 +1,6 @@
 """NER model toggles.
 
-Ported from Reference/V1 Code/Member_Verification/extractors/ner_based/config.py.
+Ported from the V1 Member_Verification NER extractor config.
 
 Two adaptations for the pipeline:
 
@@ -55,7 +55,7 @@ gliner_low = _env_bool("GLINER_LOW", True)
 
 NER_MODELS_PATH = Path(
     os.environ.get("MEMBER_NER_MODELS_PATH")
-    or (REPO_ROOT / "Reference" / "V1 Code" / "Member_Verification" / "Models")
+    or (REPO_ROOT / "models" / "ner")
 )
 
 _MODEL_FLAGS = (

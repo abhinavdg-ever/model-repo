@@ -1,7 +1,7 @@
 """Stage: date-of-service extraction.
 
 Runs the reference driver ``dos_logic.detect_dos_per_page`` over the chart's
-combined OCR text — the same entry point ``Reference`` /
+combined OCR text — the same entry point the V1
 ``02-imaging-pipeline/dos-extraction/extract_dos.py`` uses. That driver owns:
 
   * the regex pass over the whole page (``extract_dos_from_page_text``),

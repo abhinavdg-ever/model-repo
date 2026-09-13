@@ -1,1 +1,1 @@
-"""Field extractors ported from Reference/V1 Code/Member_Verification/extractors."""
+"""Field extractors ported from the V1 Member_Verification extractors."""

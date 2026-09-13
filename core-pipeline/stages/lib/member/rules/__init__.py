@@ -1,4 +1,4 @@
-"""Verification rules ported from Reference/V1 Code/Member_Verification/Rules."""
+"""Verification rules ported from the V1 Member_Verification rule set."""
 from .base_rules import combine_evidences, is_present
 from .name_2_words_rules import verify_two_word_name
 from .name_3_words_rules import verify_three_word_name

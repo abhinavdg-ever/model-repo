@@ -1,4 +1,4 @@
-"""Ported verbatim from Reference/V1 Code/Member_Verification/Rules/name_3_words_rules.py.
+"""Ported verbatim from the V1 Member_Verification rule set (name_3_words_rules).
 
 Only the imports changed (relative instead of sys.path inserts).
 """

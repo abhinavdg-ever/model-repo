@@ -1,9 +1,3 @@
-# Reference/ is the frozen V1 prototype tree — the source of truth for ported
-# logic, and the thing ported code is diffed against. It arrived with CRLF and
-# must stay byte-for-byte as received, so git does no conversion on it at all.
-# This rule is first because later rules would otherwise match it.
-Reference/**  -text
-
 # Normalise line endings. Without this, git on Windows checks files out with
 # CRLF and a Windows contributor commits CRLF back, so every file churns on the
 # next diff. The Docker images are Linux, so LF is the one true form.

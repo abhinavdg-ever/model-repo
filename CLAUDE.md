@@ -23,8 +23,6 @@ review-ui/         read-only viewer over what the pipeline produced.
                    Ports 3000 (API) / 3001 (web).  MOUNTS that folder read-only.
 schema/v1.sql      the schema that is IMPLEMENTED. See §5.
 schema/v2.sql      next phase. Defined, wired to nothing. Optional.
-Reference/         the V1 prototypes. Source of truth for ported logic.
-                   NEVER EDIT — port from it, diff against it.
 tests/             111 tests, no database required.
 ```
 
@@ -329,10 +327,9 @@ so V2 is genuinely optional.
 When a V2 module ships, move its table block from `v2.sql` to `v1.sql`. The
 split test tells you the moment that is needed.
 
-There is **no migrations directory** and **no second copy**. `Reference/schema.sql`
-(a stale v6 duplicate) and `schema/migrations/002_v6_to_v7.sql` were deleted in
-v8 — three files describing one database is three chances to describe it
-differently.
+There is **no migrations directory** and **no second copy**. The stale v6
+duplicate and `schema/migrations/002_v6_to_v7.sql` were deleted in v8 — three
+files describing one database is three chances to describe it differently.
 
 **A pre-v8 database is recreated from this file, not upgraded in place.** That
 is the trade accepted when the migration was deleted: there is no v6→v8 or
@@ -467,7 +464,7 @@ usable, or exits 1 naming the model that failed.
 | Variable | Default | Meaning |
 |---|---|---|
 | `MEMBER_NER_ENABLED` | `false` | Master switch. Everything else is inert while false |
-| `MEMBER_NER_MODELS_PATH` | `Reference/V1 Code/Member_Verification/Models` | Where checkpoints live |
+| `MEMBER_NER_MODELS_PATH` | `core-pipeline/models/ner` | Where checkpoints live |
 | `MEMBER_NER_MODEL_ID` | `gliner_medium` | Which model the extractor uses |
 | `GLINER_LARGE` / `_MEDIUM` / `_LOW` | `true` | Which checkpoints count as available |
 
@@ -616,10 +613,11 @@ alone. Prefer a path without spaces.
 
 ## 9. Working rules
 
-- **`Reference/` is never edited.** It is the V1 prototype tree and the source
-  of truth for ported logic. Port *from* it; diff *against* it. If ported code
-  and the reference disagree, the reference is right until someone decides
-  otherwise in `PLAN.md`.
+- **Ported logic is verbatim by intent.** The member-verification rules, junk
+  classifiers and DOS driver were ported from the V1 prototypes line for line.
+  Behaviour changes there are decisions to record in `PLAN.md`, not tidying.
+  The prototype tree itself is no longer in the repo — it is in git history up
+  to commit `4e6eeda` if you need to diff against it.
 - **Resume is the default; `--force` costs money.** Stage 5 (Azure Document
   Intelligence) is billed per page. `run_pipeline_for_chart(force=True)` and
   `cli.py run --force` reprocess pages already completed.

@@ -1,6 +1,6 @@
 """Stage: rotation + handwritten/printed quality → ocr_quality_results + CSVs.
 
-Uses the reference implementations under ``Reference/advantmed_imaging``
+Uses the rotation detector and handwriting classifier in ``stages/lib/imaging``
 (``rotation.PageOrientationDetector``, ``hw_printed.classify_image_type``).
 
 Both the handwriting model and the orientation detector are built once per
@@ -10,13 +10,12 @@ classifier once for every page in the chart.
 from __future__ import annotations
 
 import logging
-import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Optional
 
-from config import HW_MODEL_PATH, REPO_ROOT, STAGE_WORKERS, pages_dir
+from config import HW_MODEL_PATH, STAGE_WORKERS, pages_dir
 from db import connect, upsert_quality
 from db.paths import imaging_csv, write_csv
 from stages._support import mark_completed, mark_failed, mark_processing, stage_run
@@ -24,10 +23,6 @@ from stages._support import mark_completed, mark_failed, mark_processing, stage_
 logger = logging.getLogger(__name__)
 
 STAGE = "ocr_quality"
-
-_REF_IMAGING = REPO_ROOT / "Reference" / "advantmed_imaging"
-if str(_REF_IMAGING) not in sys.path:
-    sys.path.insert(0, str(_REF_IMAGING))
 
 _model_lock = threading.Lock()
 _hw_model: Any = None
@@ -44,7 +39,7 @@ def _get_hw_model() -> Any:
         if _hw_model_loaded:
             return _hw_model
         try:
-            from hw_printed import load_model
+            from stages.lib.imaging.hw_printed import load_model
 
             _hw_model = load_model(HW_MODEL_PATH if HW_MODEL_PATH.is_file() else None)
         except Exception as exc:
@@ -61,7 +56,7 @@ def _get_detector() -> Any:
         return _detector
     with _model_lock:
         if _detector is None:
-            from rotation import PageOrientationDetector
+            from stages.lib.imaging.rotation import PageOrientationDetector
 
             _detector = PageOrientationDetector()
         return _detector

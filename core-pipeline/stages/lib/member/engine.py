@@ -1,6 +1,6 @@
 """Member verification engine.
 
-Ported from ``Reference/V1 Code/Member_Verification/run.py``. Function names,
+Ported from the V1 ``Member_Verification/run.py``. Function names,
 call order and decision logic match the reference so a pipeline run is diffable
 against a V1 run page for page.
 

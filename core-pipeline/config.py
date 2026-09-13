@@ -81,7 +81,8 @@ STAGE_WORKERS = int(os.environ.get("STAGE_WORKERS") or "4")
 TESSERACT_CMD = (os.environ.get("TESSERACT_CMD") or "").strip() or None
 HW_MODEL_PATH = Path(
     os.environ.get("HW_MODEL_PATH")
-    or (REPO_ROOT / "Reference" / "advantmed_imaging" / "image_type_classification.pkl")
+    or (Path(__file__).resolve().parent / "stages" / "lib" / "imaging"
+        / "image_type_classification.pkl")
 )
 
 IMAGE_SUFFIXES = {

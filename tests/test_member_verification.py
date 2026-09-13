@@ -1,7 +1,7 @@
 """Fidelity tests for the ported V1 member verification engine.
 
 These pin the reference's decision logic. If a change here starts failing, the
-port has drifted from ``Reference/V1 Code/Member_Verification`` and the fix is
+port has drifted from the V1 ``Member_Verification`` behaviour and the fix is
 to bring it back, not to update the expectation.
 """
 from __future__ import annotations

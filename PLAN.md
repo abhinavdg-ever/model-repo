@@ -50,7 +50,7 @@
 - **Phase-1 scope:** intake → prelim OCR → quality → blank/junk ×2 → final OCR ×2
   → member verify → DOS. Later modules stay in the schema and the stage registry
   but are not orchestrated.
-- **The reference is authoritative.** Logic under `Reference/` is ported verbatim
+- **The V1 prototypes are authoritative.** Their logic is ported verbatim
   where possible; every adaptation is commented with what changed and why, and
   pinned by tests.
 - **Review UI is a viewer.** Read-only by design for this phase.
@@ -77,7 +77,7 @@
 
 ### Member verification — the real port
 
-`Reference/V1 Code/Member_Verification/` (~2,800 lines) is now in
+The V1 `Member_Verification/` tree (~2,800 lines) is now in
 `core-pipeline/stages/lib/member/`: rule-based extractors, the GLiNER NER layer,
 the wrong-member check and the what-if thresholds. Logic is verbatim; only
 imports changed.
@@ -128,7 +128,6 @@ preconditions is unmet. [Turning it on](docs/LOGIC.md#turning-it-on).
 advantmed-imaging-pipeline/
 ├── PLAN.md                     ← this file
 ├── docs/                       FLOW · LOGIC · API · ARCHITECTURE
-├── Reference/                  prototypes — source of truth, never edited
 ├── schema/
 │   ├── v1.sql                  implemented: 12 tables + 2 views
 │   └── v2.sql                  next phase: 14 tables + 3 views, unused

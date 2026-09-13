@@ -133,7 +133,7 @@ class TestDosDates:
         assert _split_dates(" 01-01-2024 ,02-02-2024 ") == ["01-01-2024", "02-02-2024"]
 
 
-class TestDosDriverIsTheReferenceOne:
+class TestDosDriverIsTheV1One:
     def test_document_level_carry_forward_happens(self):
         """A page with no DOS of its own inherits the previous encounter's —
         behaviour that lives in the reference driver the stage now calls."""

@@ -205,7 +205,6 @@ still renders.
 | `README.md` | Short orientation; detail lives in `docs/`. |
 | `.gitignore` | Excludes venvs, caches, `node_modules`, `dist`, and macOS `._*` / `.DS_Store` droppings. |
 | `docs/` | This documentation set. |
-| `Reference/` | Prototypes, kept verbatim as the source of truth for ported logic. Never edited. |
 
 ### `schema/`
 
@@ -284,12 +283,12 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/junk-classification/`.
 | `invoice.py`, `cover.py`, `record_request.py`, `instructions.py`, `letter_fax.py` | One junk category each. |
 | `others.py` | Catch-all: gibberish OCR, signature-only pages. |
 | `text_utils.py` | Shared text predicates — word count, gibberish, signature page. |
-| `requirements.txt` | Reference-era dependency list (the modules are pure stdlib). |
+| `requirements.txt` | Dependency list inherited from the V1 prototype (the modules are pure stdlib). |
 | `__init__.py` | Package marker. |
 
 ### `core-pipeline/stages/lib/member/` — member verification
 
-Ported from `Reference/V1 Code/Member_Verification/`. **Logic is verbatim; only
+Ported from the V1 `Member_Verification/` tree. **Logic is verbatim; only
 imports changed** (relative imports instead of the reference's `sys.path`
 inserts).
 
@@ -335,7 +334,7 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/`.
 | `dos_logic.py` | The whole DOS engine: page splitting, the regex passes (admit/discharge labels, keyword-anchored dates), confidence tiers, the LLM prompt and call, ISO normalisation, and `detect_dos_per_page` — the driver the stage calls, which owns the document-level carry-forward. |
 | `azure_llm.py` | Azure OpenAI client construction from env; returns `None` when unconfigured so the caller degrades to regex-only. |
 | `extract_dos.py` | The reference's standalone CLI, kept for running the engine outside the pipeline and for comparison. |
-| `requirements.txt` | Reference-era dependency list (`openai`). |
+| `requirements.txt` | Dependency list inherited from the V1 prototype (`openai`). |
 | `__init__.py` | Package marker. |
 
 ### `review-ui/backend/app/`

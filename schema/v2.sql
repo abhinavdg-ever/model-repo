@@ -73,7 +73,7 @@
 --
 -- WHAT CHANGED IN v8 (applies to both files)
 -- ---------------------------------------------------------------------
---  * schema/migrations/ and Reference/schema.sql deleted. The schema is
+--  * schema/migrations/ and the duplicate v6 copy deleted. The schema is
 --    these two files; a pre-v8 database is recreated, not upgraded.
 --  * Column names normalised to the conventions above:
 --      chart_list.blob_container_name        -> blob_container

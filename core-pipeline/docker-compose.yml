@@ -69,8 +69,6 @@ services:
       # Chart workspace — written here, read by review-ui.
       - ${DATA_HOST_PATH:-../review-ui/data/folders}:/data/folders
       - ${METADATA_HOST_PATH:-../review-ui/data/metadata}:/data/metadata
-      # Reference tree: handwriting model + rotation detector + junk/DOS libs.
-      - ${REFERENCE_HOST_PATH:-../Reference}:/app/Reference:ro
       # GLiNER checkpoints, when MEMBER_NER_ENABLED=true.
       - ${NER_MODELS_HOST_PATH:-./models/ner}:/app/models/ner:ro
     extra_hosts:

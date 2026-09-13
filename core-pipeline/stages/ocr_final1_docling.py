@@ -2,7 +2,7 @@
 
 Named ``…_docling`` for continuity with the original plan; the engine actually
 in use is RapidOCR (``rapidocr-onnxruntime``), matching
-``Reference/advantmed_imaging/rapid_ocr.py``. The ``ocr_results.ocr_type`` value
+the V1 ``rapid_ocr`` prototype. The ``ocr_results.ocr_type`` value
 stays ``'docling'`` because that is the slot the review UI reads for "Final
 (OSS)".
 

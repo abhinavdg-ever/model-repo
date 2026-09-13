@@ -1,4 +1,4 @@
-"""Ported verbatim from Reference/V1 Code/Member_Verification/Rules/name_2_words_rules.py.
+"""Ported verbatim from the V1 Member_Verification rule set (name_2_words_rules).
 
 Only the imports changed: V1 reached its siblings through sys.path inserts,
 this package uses relative imports. The decision logic is byte-for-byte the
