@@ -27,3 +27,11 @@ $RECYCLE.BIN/
 
 # Local working notes — kept on disk, not published
 CLAUDE.md
+
+# Downloaded ML checkpoints — ~2 GB, never committed.
+# core-pipeline/models/ner is where the GLiNER downloader writes.
+models/
+core-pipeline/models/
+*.safetensors
+*.onnx
+*.bin

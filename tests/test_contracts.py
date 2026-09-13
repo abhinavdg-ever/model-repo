@@ -29,6 +29,52 @@ SCHEMA_SUBTYPES = {
 }
 
 
+
+# --- shared source-file walker ----------------------------------------------
+
+
+# Directories that contain code we did not write. A virtualenv is the dangerous
+# one: docs/API.md tells you to create core-pipeline/.venv, so on any machine
+# that followed the setup, rglob("*.py") walks into site-packages and tries to
+# parse third-party sources — several of which carry a UTF-8 BOM and are not
+# valid input to ast.parse without it being stripped.
+_SKIP_DIRS = {
+    "__pycache__", ".git", "node_modules", "site-packages", "dist", "build",
+    ".mypy_cache", ".pytest_cache", ".tox", ".eggs",
+}
+
+
+def _is_venv(directory):
+    """A virtualenv is identified by pyvenv.cfg, whatever it is named."""
+    return (directory / "pyvenv.cfg").is_file()
+
+
+def repo_python_files(*roots):
+    """Every .py file we actually own under `roots`.
+
+    Walks manually rather than using rglob so an excluded directory is pruned
+    instead of merely filtered — descending into site-packages is slow even
+    when every result is discarded.
+    """
+    for root in roots:
+        stack = [Path(root)]
+        while stack:
+            directory = stack.pop()
+            try:
+                entries = list(directory.iterdir())
+            except (OSError, PermissionError):
+                continue
+            if any(e.name == "pyvenv.cfg" for e in entries):
+                continue
+            for entry in entries:
+                if entry.is_dir():
+                    if entry.name in _SKIP_DIRS or entry.name.startswith("."):
+                        continue
+                    stack.append(entry)
+                elif entry.suffix == ".py" and not entry.name.startswith("._"):
+                    yield entry
+
+
 class TestJunkSubtypeVocabulary:
     def test_schema_check_matches_the_ui_label_set(self):
         """The UI renders a fixed set of page types; the schema must allow
@@ -272,12 +318,14 @@ class TestSchemaSplit:
 
         v2 = self._relations("v2.sql")
         offenders = []
-        roots = [REPO_ROOT / "core-pipeline", REPO_ROOT / "review-ui" / "backend"]
-        for root in roots:
-            for path in root.rglob("*.py"):
-                if "__pycache__" in str(path) or path.name.startswith("._"):
-                    continue
-                for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        for path in repo_python_files(
+            REPO_ROOT / "core-pipeline", REPO_ROOT / "review-ui" / "backend"
+        ):
+            if True:
+                # utf-8-sig so a BOM is stripped rather than reaching ast.parse
+                for node in ast.walk(
+                    ast.parse(path.read_text(encoding="utf-8-sig"))
+                ):
                     if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
                         continue
                     sql = node.value
@@ -313,17 +361,13 @@ class TestTextIoDeclaresEncoding:
     def _calls():
         """Yield (path, lineno, func_name, has_encoding_kwarg, args) per call."""
         import ast
-        import itertools
 
-        roots = [
+        for path in repo_python_files(
             REPO_ROOT / "core-pipeline",
             REPO_ROOT / "review-ui" / "backend",
             REPO_ROOT / "tests",
-        ]
-        for path in itertools.chain.from_iterable(r.rglob("*.py") for r in roots):
-            if "__pycache__" in str(path) or path.name.startswith("._"):
-                continue
-            tree = ast.parse(path.read_text(encoding="utf-8"))
+        ):
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"))
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
                     continue

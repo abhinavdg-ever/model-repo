@@ -29,8 +29,11 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 # .../stages/lib/member/extractors/ner_based -> .../stages/lib/member
 MEMBER_ROOT = HERE.parents[1]
-# .../advantmed-imaging-pipeline
-REPO_ROOT = HERE.parents[5]
+# .../core-pipeline — the service that owns these checkpoints. NOT the repo
+# root: the compose file mounts ${NER_MODELS_HOST_PATH:-./models/ner} relative
+# to core-pipeline/, so anything else puts the download and the mount in two
+# different places.
+CORE_ROOT = HERE.parents[4]
 
 
 def _env_bool(key: str, default: bool = False) -> bool:
@@ -53,9 +56,11 @@ gliner_large = _env_bool("GLINER_LARGE", True)
 gliner_medium = _env_bool("GLINER_MEDIUM", True)
 gliner_low = _env_bool("GLINER_LOW", True)
 
+# ~2 GB of checkpoints. core-pipeline/models/ is gitignored; keep it that way
+# if you change this default.
 NER_MODELS_PATH = Path(
     os.environ.get("MEMBER_NER_MODELS_PATH")
-    or (REPO_ROOT / "models" / "ner")
+    or (CORE_ROOT / "models" / "ner")
 )
 
 _MODEL_FLAGS = (
