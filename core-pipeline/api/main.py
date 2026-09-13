@@ -188,6 +188,33 @@ def _bg_manifest(payload: ManifestSweepRequest) -> None:
         logger.exception("Background manifest sweep failed")
 
 
+def _require_db() -> None:
+    """Fail fast if Postgres is unreachable, instead of accepting work we cannot do.
+
+    The mutating endpoints return 202 and hand off to a BackgroundTask. Without
+    this check a bad DATABASE_URL produced a cheerful 202, then a PoolTimeout 30
+    seconds later that only ever appeared in the server log — so the caller saw
+    "accepted" and no rows, with nothing connecting the two. A short-timeout
+    probe turns that into an immediate 503 naming the real error.
+    """
+    import psycopg
+
+    from config import DATABASE_URL
+
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=5) as conn:
+            conn.execute("SELECT 1")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"database unavailable: {exc} "
+                "(check DATABASE_URL in core-pipeline/.env, and restart the API "
+                "after editing it — the value is read once at startup)"
+            ),
+        ) from exc
+
+
 # --- endpoints --------------------------------------------------------------
 
 
@@ -248,6 +275,7 @@ def ingest_chart(
     Returns immediately. Poll GET /api/charts/{chart_id} for progress; the
     chart_id is derivable from the folder name, which is also returned here.
     """
+    _require_db()
     from db.blob_store import chart_name_from_blob_path
 
     chart_name = chart_name_from_blob_path(body.blob_path)
@@ -266,6 +294,7 @@ def register_local(
     body: LocalRegisterRequest, background_tasks: BackgroundTasks
 ) -> dict[str, Any]:
     """Register a chart folder already present under data/folders and run it."""
+    _require_db()
     try:
         result = register_local_pages(
             body.chart_name, run_id=body.run_id, batch_id=body.batch_id
@@ -310,6 +339,7 @@ def import_local(
     `1.jpg`, `2.jpg` … in natural-sort order, the same shape the blob intake
     produces.
     """
+    _require_db()
     try:
         result = import_local_folder(
             body.source_path,
@@ -409,6 +439,7 @@ def manifest_sweep(
     describes exist. Rows are keyed on record_id and linked to a chart when that
     chart is ingested.
     """
+    _require_db()
     if not body.local_path and not (body.blob_container and body.blob_prefix):
         raise HTTPException(
             status_code=400,
