@@ -24,3 +24,6 @@ ehthumbs.db
 desktop.ini
 $RECYCLE.BIN/
 *.lnk
+
+# Local working notes — kept on disk, not published
+CLAUDE.md
