@@ -87,6 +87,22 @@ PROBE_DEADLINE_SECONDS = 5
 
 
 def _blob_round_trip(status: dict[str, Any], timeout: int) -> None:
+    """One call to the container, with the SDK's own commentary suppressed.
+
+    When no credential is available `DefaultAzureCredential` logs a ~20-line
+    WARNING listing all nine sources it tried. That is genuinely useful the
+    first time you see it and pure noise on every start after — and it is
+    redundant here, because the banner line this probe feeds says the same
+    thing in one line, with the reason attached.
+
+    Only for the duration of the probe. A credential failure during real chart
+    processing still warns in full, which is where the detail earns its space.
+    """
+    import logging
+
+    identity = logging.getLogger("azure.identity")
+    previous = identity.level
+    identity.setLevel(logging.ERROR)
     try:
         from db.blob_store import get_container_client
 
@@ -96,6 +112,8 @@ def _blob_round_trip(status: dict[str, Any], timeout: int) -> None:
     except Exception as exc:
         status["reachable"] = False
         status["reason"] = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+    finally:
+        identity.setLevel(previous)
 
 
 def probe_blob(timeout: int = PROBE_DEADLINE_SECONDS) -> dict[str, Any]:

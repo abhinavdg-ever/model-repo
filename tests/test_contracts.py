@@ -1463,6 +1463,43 @@ class TestStartupProbeCannotBlock:
         )
         assert "UNREACHABLE" in line
 
+    def test_the_probe_does_not_repeat_the_sdk_credential_dump(self, monkeypatch):
+        """DefaultAzureCredential logs ~20 lines naming all nine sources it
+        tried. The banner line this probe feeds says the same thing in one line
+        with the reason attached, so during the probe the dump is redundant —
+        and it lands on every single start."""
+        import logging
+
+        import capabilities
+
+        identity = logging.getLogger("azure.identity")
+        seen = []
+
+        class Capture(logging.Handler):
+            def emit(self, record):
+                seen.append(record.getMessage())
+
+        handler = Capture()
+        identity.addHandler(handler)
+        identity.setLevel(logging.WARNING)
+
+        def fail(*a, **k):
+            identity.warning("DefaultAzureCredential failed ... nine sources ...")
+            raise RuntimeError("ClientAuthenticationError")
+
+        import db.blob_store
+
+        monkeypatch.setattr(db.blob_store, "get_container_client", fail)
+        try:
+            status = {"ready": True}
+            capabilities._blob_round_trip(status, 1)
+            assert seen == [], "the SDK dump leaked through the probe"
+            assert status["reachable"] is False
+            # Restored, so a failure during real chart processing still warns.
+            assert identity.isEnabledFor(logging.WARNING)
+        finally:
+            identity.removeHandler(handler)
+
     def test_an_unconfigured_blob_never_starts_a_thread(self, monkeypatch):
         """No credentials means nothing to probe — it must not cost a thread
         or a second on every start."""
