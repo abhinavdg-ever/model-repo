@@ -27,6 +27,45 @@ import os
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+
+
+def _load_env() -> None:
+    """Load core-pipeline/.env, if it exists and python-dotenv is installed.
+
+    This module reads os.environ once, at import time, so whoever imports it
+    first decides what it sees — and the entrypoints did not agree. cli.py and
+    api/main.py load .env; the documented downloader command,
+
+        python -m stages.lib.member.extractors.ner_based.model_downloader
+
+    did not. So MEMBER_NER_MODEL_ID=gliner_low in .env meant the pipeline
+    demanded gliner_low while the downloader silently fetched the gliner_medium
+    default: a ~2 GB download of a model nothing would load, and then
+
+        NER layer INACTIVE (checkpoints missing: gliner_low)
+
+    naming a model the downloader was never going to fetch. MEMBER_NER_MODELS_PATH
+    split the same way — weights written to one directory, looked for in another.
+
+    Loading it here rather than in the downloader is what makes that class of
+    mismatch impossible: this is the module that reads the variables, so every
+    entrypoint agrees by construction rather than by remembering.
+
+    Never overrides a variable already set, which is load_dotenv's default. An
+    explicit `MEMBER_NER_MODEL_ID=x python -m ...` still wins, and a process
+    that already loaded .env is unaffected.
+    """
+    try:
+        from dotenv import load_dotenv
+    except ImportError:  # optional; the environment may be set directly
+        return
+    # .../stages/lib/member/extractors/ner_based -> core-pipeline
+    env_file = HERE.parents[4] / ".env"
+    if env_file.is_file():
+        load_dotenv(env_file)
+
+
+_load_env()
 # .../stages/lib/member/extractors/ner_based -> .../stages/lib/member
 MEMBER_ROOT = HERE.parents[1]
 # .../core-pipeline — the service that owns these checkpoints. NOT the repo
