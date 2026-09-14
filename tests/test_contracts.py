@@ -1515,3 +1515,69 @@ class TestStartupProbeCannotBlock:
 
         monkeypatch.setattr(capabilities, "_blob_round_trip", explode)
         assert capabilities.probe_blob()["ready"] is False
+
+
+class TestCredentialFailureReporting:
+    """One failed blob call produced four copies of an eighty-line dump.
+
+    The SDK's chained-credential logger emits ~20 lines naming all nine
+    sources, then raises a ClientAuthenticationError whose message is that same
+    text — and the retry policy repeats the whole thing once per attempt. Our
+    callers log the exception, so the warning is a verbatim duplicate.
+    """
+
+    def test_the_chained_credential_logger_is_always_quiet(self, monkeypatch):
+        import logging
+
+        monkeypatch.delenv("AZURE_LOG_LEVEL", raising=False)
+        from logging_setup import quiet_noisy_loggers
+
+        quiet_noisy_loggers()
+        chained = logging.getLogger("azure.identity._credentials.chained")
+        assert not chained.isEnabledFor(logging.WARNING)
+        assert chained.isEnabledFor(logging.ERROR), "a real error must still pass"
+
+    def test_debug_still_wins(self, monkeypatch):
+        """Someone deliberately debugging credentials must be able to see it."""
+        import logging
+
+        monkeypatch.setenv("AZURE_LOG_LEVEL", "DEBUG")
+        from logging_setup import quiet_noisy_loggers
+
+        quiet_noisy_loggers()
+        chained = logging.getLogger("azure.identity._credentials.chained")
+        assert chained.isEnabledFor(logging.DEBUG)
+        monkeypatch.delenv("AZURE_LOG_LEVEL")
+        quiet_noisy_loggers()
+
+    def test_a_credential_failure_is_recognised(self):
+        from api.main import _is_credential_failure
+
+        class ClientAuthenticationError(Exception):
+            pass
+
+        assert _is_credential_failure(ClientAuthenticationError("no token"))
+
+    def test_it_is_recognised_through_a_wrapping_exception(self):
+        """run_download may wrap it; the operator still needs the credential
+        advice rather than fifteen frames of SDK plumbing."""
+        from api.main import _is_credential_failure
+
+        class ClientAuthenticationError(Exception):
+            pass
+
+        try:
+            try:
+                raise ClientAuthenticationError("no token")
+            except Exception as inner:
+                raise RuntimeError("download failed") from inner
+        except Exception as exc:
+            assert _is_credential_failure(exc)
+
+    def test_an_unrelated_failure_keeps_its_traceback(self):
+        """Only auth failures get the short treatment — anything else still
+        needs the stack, and swallowing it would hide real bugs."""
+        from api.main import _is_credential_failure
+
+        assert not _is_credential_failure(ValueError("disk full"))
+        assert not _is_credential_failure(RuntimeError("No images in ..."))

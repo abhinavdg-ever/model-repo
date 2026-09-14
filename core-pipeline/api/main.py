@@ -285,6 +285,20 @@ class ManifestSweepRequest(BaseModel):
 # A BackgroundTask runs after the 202 has been sent, so its outcome can only
 # ever reach the operator through the log. Logging failures alone left a
 # successful run indistinguishable from one that never started.
+def _is_credential_failure(exc: BaseException) -> bool:
+    """Azure could not authenticate at all, as opposed to anything else.
+
+    Matched by name rather than by import so this works whether or not the
+    identity package is installed.
+    """
+    seen: BaseException | None = exc
+    while seen is not None:
+        if type(seen).__name__ == "ClientAuthenticationError":
+            return True
+        seen = seen.__cause__ or seen.__context__
+    return False
+
+
 def _bg_run(payload: "RunRequest") -> None:
     source = payload.local_path or f"{payload.blob_container}/{payload.blob_path}"
     logger.info("Background run starting: %s", source)
@@ -304,8 +318,22 @@ def _bg_run(payload: "RunRequest") -> None:
             "Background run finished: %s -> chart_id=%s",
             source, (result or {}).get("chart_id"),
         )
-    except Exception:
-        logger.exception("Background run FAILED for %s", source)
+    except Exception as exc:
+        if _is_credential_failure(exc):
+            # The traceback is fifteen frames of SDK plumbing and the message
+            # is the same nine-source list already in the log. Neither tells
+            # the operator the one thing to do.
+            logger.error(
+                "Background run FAILED for %s — no usable Azure Storage "
+                "credential. Set AZURE_STORAGE_AUTH=key with "
+                "AZURE_STORAGE_ACCOUNT_KEY, or make a managed identity / "
+                "`az login` available to THIS process (it reads PATH at "
+                "start, so a terminal opened before installing the CLI will "
+                "not see it). Local runs with local_path are unaffected.",
+                source,
+            )
+        else:
+            logger.exception("Background run FAILED for %s", source)
 
 
 def _bg_write(payload: "WriteRequest") -> None:

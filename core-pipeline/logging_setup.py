@@ -28,6 +28,14 @@ import os
 # loggers inherit the level they do not set themselves.
 NOISY_LOGGERS = ("azure", "urllib3", "msal")
 
+# Always quieted, regardless of AZURE_LOG_LEVEL: this logger emits a ~20-line
+# WARNING naming all nine credential sources, and then raises a
+# ClientAuthenticationError whose message is that same text. Our callers log
+# the exception, so the warning is a verbatim duplicate — and the SDK's retry
+# policy emits it once per attempt, so one failed blob call produced four
+# copies of eighty lines. Errors from it still pass.
+ALWAYS_QUIET = ("azure.identity._credentials.chained",)
+
 DEFAULT_AZURE_LOG_LEVEL = "WARNING"
 
 
@@ -48,6 +56,14 @@ def quiet_noisy_loggers() -> int:
     level = azure_log_level()
     for name in NOISY_LOGGERS:
         logging.getLogger(name).setLevel(level)
+    for name in ALWAYS_QUIET:
+        # Quiet by default, but honour a deliberate request for MORE detail.
+        # Levels are numeric and ascend with severity (DEBUG 10 < ERROR 40), so
+        # "more verbose than the default" is a LOWER number — max() would have
+        # pinned this at ERROR forever and silently ignored AZURE_LOG_LEVEL=DEBUG.
+        logging.getLogger(name).setLevel(
+            level if level < logging.WARNING else logging.ERROR
+        )
     return level
 
 
