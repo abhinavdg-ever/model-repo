@@ -2,7 +2,7 @@
 
 > Living document. Update it in the same change set as any architecture, schema,
 > mode or stage-order change, and bump the date.
-> Last updated: 2026-09-12 (schema v7, V1 member verification port, resumable stages)
+> Last updated: 2026-09-14 (API: run/batch/write + partial runs; batch sharding proposed)
 
 **Detailed documentation lives in [`docs/`](docs/):**
 
@@ -33,6 +33,7 @@
 | 7d | Review write actions (accept/reject/correct) | **Deliberately not built** — UI stays a viewer |
 | — | Auth / PHI handling | **Not addressed** — see [Known limits](docs/ARCHITECTURE.md#6-known-limits) |
 | — | Work queue (claim/lease worker over `pipeline_jobs`) | Schema ready, worker not built |
+| — | Batch sharding over N chart workers | **Designed, not built** — see [Proposed](#proposed-shard-a-batch-across-n-chart-workers) |
 | Later | Page subtype / encounter / sequencing / rejection | Registered in `pipeline_stage`, `is_phase1=false` |
 
 ---
@@ -58,6 +59,22 @@
 ---
 
 ## What changed in this revision
+
+### Chart API — three verbs (2026-09-14)
+
+| # | Change | Why |
+|---|---|---|
+| 1 | `POST /api/charts/run` replaces `ingest`, `import-local` and `register-local` | Three endpoints differing only in where the pages came from. One source argument covers all three, and endpoints that overlap are how they drift apart. |
+| 2 | `batch` now calls `ingest_and_run` per folder instead of keeping its own local branch | The duplicate branch silently dropped `force` on local charts. An option added to `run` now reaches `batch` without being plumbed twice. |
+| 3 | `POST /api/charts/write` — the reverse of run's intake step | `pages/` + `ocr/` + `imaging/` out to blob or local, so a destination is readable without the database. Copies; the workspace is left intact. |
+| 4 | `through` / `only` on `run`, `batch` and `rerun` | "Stop after this stage" and "run just this stage" are different questions. `resolve_stage()` is the single parser, so a bare name is always pass 1 and an unknown name is a 400, not a silent no-op. |
+| 5 | Removed `move`, `recursive`, `load_manifest`, `run_pipeline` | Each had one correct setting: always copy, always search subfolders, always load a manifest beside the images, always run. |
+| 6 | `chart_name` derives from the last path segment everywhere | Optional on `run`, absent from `batch`, required only on `write` where there is no source to derive it from. |
+| 7 | CLI mirrors the API: `run`, `batch`, `write`, `rerun` | `run <chart_id>` became `rerun <chart_id>`, freeing `run` for the intake command it names. The one breaking CLI change. |
+
+Also: Azure OpenAI authenticates by managed identity as well as by key
+(`AZURE_OPENAI_AUTH=key|entra|auto`), so a keyless VM can run the DOS LLM pass —
+previously `DOS_LLM_ENABLED` required an API key and gated itself off.
 
 ### Schema v6 → v7
 
@@ -132,12 +149,12 @@ advantmed-imaging-pipeline/
 ├── schema/
 │   ├── v1.sql                  implemented: 12 tables + 2 views
 │   └── v2.sql                  next phase: 14 tables + 3 views, unused
-├── tests/                      172 tests
+├── tests/                      192 tests
 ├── core-pipeline/              own docker-compose, port 8001
 │   ├── api/ cli.py config.py
 │   ├── orchestrator/runner.py
 │   ├── db/                     persistence · status · paths · blob
-│   ├── jobs/manifest_sweeper.py
+│   ├── jobs/                   manifest_sweeper · batch_intake · export_chart
 │   └── stages/
 │       ├── (8 stage modules) + _support.py
 │       └── lib/junk · lib/member · lib/dos
@@ -189,6 +206,119 @@ python -m pytest tests/ -q
 ```
 
 Full instructions: [docs/API.md](docs/API.md).
+
+---
+
+## Proposed: shard a batch across N chart workers
+
+**Status: designed, not built.** Decided 2026-09-14. Recorded here because it
+reverses a deliberate decision — `run_batch` runs charts one at a time, and the
+comment saying so is load-bearing. Anyone changing it should read this first.
+
+### What is being asked for
+
+`POST /api/charts/batch` gains `workers` (default 1, so nothing changes unless
+asked): N charts run concurrently inside the API process, instead of strictly
+one after another.
+
+### Why the original "one at a time" reasoning is only half right
+
+The existing comment argues that each chart already fans out across its pages
+(`STAGE_WORKERS`), so overlapping charts multiplies memory and spend without
+finishing sooner. Measured, that holds for **big** charts and fails for **small**
+ones:
+
+- A stage's page pool is `min(STAGE_WORKERS, len(todo))`. A 3-page chart with
+  `STAGE_WORKERS=4` uses **three** threads and leaves the fourth idle. A drop of
+  forty small charts therefore never saturates the box, and the serial loop is
+  the binding constraint, not the CPU.
+- A 400-page chart already saturates its pool. Running four of those
+  concurrently adds queueing, not throughput.
+
+So the win is real but **conditional: many small charts, or stages that wait**
+(Azure DI, blob download). It is not a general speedup, and the plan should not
+be sold as one.
+
+### What does NOT block this
+
+The per-chart engines are already process-wide singletons behind double-checked
+locks — `_get_hw_model()`, `_get_detector()`, `_get_engine()`, `_get_client()`.
+They are already called concurrently by `STAGE_WORKERS` threads today, so:
+
+- **Model memory does not multiply.** Four concurrent charts share one RapidOCR
+  engine and one handwriting classifier. This is the single biggest reason to
+  prefer threads over processes here.
+- **Chart-level concurrency is not a new class of hazard.** It is more threads
+  against objects that already take concurrent calls.
+- Charts share no mutable state otherwise: separate workspace directories,
+  separate `chart_list` rows, per-chart try/except already in the batch loop.
+
+### What DOES block it, in order
+
+1. **The connection pool, which will deadlock first.** `DB_POOL_MAX` is 8;
+   `workers × STAGE_WORKERS` is 16 at the proposed defaults. The symptom is a
+   `PoolTimeout` 30 seconds in, which reads like a database fault rather than a
+   configuration one. **`workers × STAGE_WORKERS + headroom ≤ DB_POOL_MAX` is
+   the invariant**, and the code should refuse to start a batch that violates it
+   rather than discovering it under load. `config.py` already tells the reader
+   to keep `STAGE_WORKERS <= DB_POOL_MAX`; this makes that arithmetic a
+   precondition instead of a comment.
+
+2. **CPU oversubscription.** Tesseract and RapidOCR are CPU-bound and release
+   the GIL, so threads do give real parallelism — up to the core count. Sixteen
+   threads on 8 cores is slower per chart, not faster overall. The useful
+   default is `workers × STAGE_WORKERS ≈ cores`, which for a 4-worker batch
+   means dropping `STAGE_WORKERS`, not raising the total.
+
+3. **Azure Document Intelligence.** Stage 5 is billed per page and rate-limited.
+   Four charts in stage 5 at once is 4× the in-flight requests; the failure is a
+   429 that currently surfaces as a per-page error. Cross-chart concurrency
+   needs a **global** cap on stage-5 calls, not a per-chart one — a module-level
+   semaphore in `ocr_final2_azure`, sized independently of `workers`.
+
+4. **Interleaved logs.** `[n/total]` progress and the per-stage `=== [Stage] ===`
+   banners assume one chart at a time. With four in flight the log stops being
+   readable as a narrative. Every line needs the chart name, and `[n/total]`
+   should become "started/completed" counters rather than a position.
+
+### Shape of the change
+
+| File | Change |
+|---|---|
+| `jobs/batch_intake.py` | The `for` loop becomes a `ThreadPoolExecutor(workers)` over the same `sources` list. `ingest_and_run` is already the single per-chart call, so this is the only place that changes. |
+| `api/main.py` | `workers` on `BatchRequest`; reject `workers × STAGE_WORKERS > DB_POOL_MAX - headroom` with a 400 naming both numbers. |
+| `cli.py` | `--workers` on `batch`. |
+| `stages/ocr_final2_azure.py` | Module-level semaphore capping concurrent Azure DI calls across all charts. |
+| `stages/_support.py` | Chart name in every per-stage log line. |
+| `config.py` | `BATCH_WORKERS` default 1; document the invariant next to `STAGE_WORKERS`. |
+
+Deliberately **not** in scope: process-level workers, and anything touching
+`pipeline_jobs` leases. See below.
+
+### Why this is not the claim/lease worker
+
+`pipeline_jobs` already carries `lease_expires_at`, `heartbeat_at` and `attempt`
+precisely so a worker process can claim charts —
+[ARCHITECTURE.md §6](docs/ARCHITECTURE.md#6-known-limits) records that as the
+intended answer. A thread pool inside one process is **not** that, and does not
+become that:
+
+- Work in flight is still lost on restart (resume makes a re-run cheap, but the
+  batch must be re-issued).
+- The cap is per batch call, not global — two concurrent `/batch` requests still
+  oversubscribe.
+- No automatic retry of a stage that raised.
+
+The thread pool is worth building first because it is small, reversible, and
+answers the actual complaint (a drop of small charts takes too long). It should
+be understood as a stopgap that the queue later replaces, not as the queue.
+
+### How we would know it worked
+
+Measure before changing anything: a drop of ~20 small charts, `workers=1` vs
+`workers=4`, wall-clock from the batch log. If the improvement is under ~1.5×,
+the bottleneck is CPU rather than the serial loop and the change is not worth
+its concurrency cost.
 
 ---
 
