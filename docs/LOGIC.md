@@ -24,6 +24,10 @@ the V1 prototypes. Where the port differs from them, it says so and why.
 
 **Source:** V1 `ts_ocr.py` · **Stage:** `stages/ocr_prelim_tesseract.py`
 
+> Reads `corrected-pages/<n>.jpg` when stage 1 wrote one, else `pages/<n>.jpg`.
+> A 270°-rotated page OCRs at ~0.01 text similarity to the same page upright;
+> corrected it is ~1.0. See [PLAN.md](../PLAN.md#resolved-rotation-correction-via-tesseract-osd).
+
 Tesseract over every page. Deliberately cheap and deliberately first: its only
 job is to give the blank/junk classifier something to read, so pages can be
 ruled out before the expensive OCR runs.

@@ -34,7 +34,7 @@
 | — | Auth / PHI handling | **Not addressed** — see [Known limits](docs/ARCHITECTURE.md#6-known-limits) |
 | — | Work queue (claim/lease worker over `pipeline_jobs`) | Schema ready, worker not built |
 | — | Batch sharding over N chart workers | **Designed, not built** — see [Proposed](#proposed-shard-a-batch-across-n-chart-workers) |
-| — | Rotation correction applied to the page image | Plumbing shipped; **disabled** — the detector cannot recover a rotated page, see [Blocked](#blocked-the-orientation-detector-cannot-recover-a-rotated-page) |
+| — | Rotation correction applied to the page image | **Done** — stage 1, via Tesseract OSD; see [Resolved](#resolved-rotation-correction-via-tesseract-osd) |
 | Later | Page subtype / encounter / sequencing / rejection | Registered in `pipeline_stage`, `is_phase1=false` |
 
 ---
@@ -210,62 +210,66 @@ Full instructions: [docs/API.md](docs/API.md).
 
 ---
 
-## Blocked: the orientation detector cannot recover a rotated page
+## Resolved: rotation correction, via Tesseract OSD
 
-**Status: measured 2026-09-14. Plumbing shipped, correction disabled.**
+**Status: shipped and enabled, 2026-09-14.**
 
-Rotation now runs as stage 1, ahead of every OCR pass, and writes corrected
-images to `<chart>/corrected-pages/` which all three OCR stages prefer over the
-original. That part is done and tested. The *writing* is off by default
-(`ROTATION_CORRECTION_ENABLED=false`) because the detector is not good enough
-to act on.
+Rotation runs as stage 1, ahead of every OCR pass, and writes corrected images
+to `<chart>/corrected-pages/` which all three OCR stages read in preference to
+the original. Coarse rotation comes from **Tesseract OSD**, not from the
+geometric detector in `rotation.py`.
 
-### The measurement
+### Why the detector was replaced rather than fixed
 
-Demo chart, three pages, each rotated to all four orientations, then detected,
-corrected, and compared with the original:
+Round trip on the demo chart — rotate a page, detect, correct, compare:
 
-| Input | Detected `rotation` | Outcome |
+| | geometric detector | Tesseract OSD |
 |---|---|---|
-| upright | 0 | correct — no-op |
-| 90° CW | 0 or 180, never 270 | **sideways page left sideways** |
-| 180° | 0 or 180 | sometimes right |
-| 270° CW | 0, never 90 | **sideways page left sideways** |
+| 90° CW | reported 0 or 180, never 270 | 270 ✓ |
+| 270° CW | reported 0, never 90 | 90 ✓ |
+| 180° | sometimes right | 180 ✓ |
+| sideways pages recovered | **0 of 6** | **9 of 9** with readable text |
+| spurious `mirror=true` | 3 of 12 | n/a — OSD does not judge mirror |
 
-**0 of 6 sideways pages recovered.** `mirror=true` was reported on 3 of 12
-cases that were not mirrored — applying that flips a page horizontally and
-makes OCR strictly worse than leaving it alone.
+The detector's `rotation_confidence` was **1.000 on its wrong answers**, so
+there was no threshold that could have salvaged it. OSD recognises character
+shapes rather than ink geometry, which is the right question for "which way is
+up".
 
-`rotation_confidence` was **1.000 on the wrong answers**, so it cannot gate the
-decision, and `needs_review` was `true` on every case including the upright
-one. There is no field in the result that separates the right answers from the
-wrong ones.
+### What it is worth
 
-### Why this matters more now than before
+OCR text similarity to the same page scanned upright:
 
-Before this change the detector's output was recorded in
-`imaging/<chart>_rotation.csv` and read by nobody — a wrong angle was a wrong
-number in a file. Now the same number would rewrite the page image that OCR
-reads. The blast radius changed; the accuracy did not.
+| Page | Uncorrected | Corrected |
+|---|---|---|
+| rotated 270° CW | **0.011 – 0.015** | **1.000** |
+| rotated 90° CW | 0.848 – 1.000 | 1.000 |
 
-### What would unblock it
+A 270° page OCRs to near-total garbage. Note that character *count* hides this
+completely — the garbage has more characters than the correct text — so the
+check compares the text itself. End to end through the pipeline, a 270° page
+went from 0.011 to 0.961 (the residual is the tilt correction resampling).
 
-The detector's coarse-rotation stage is what fails — tilt and the upright case
-are fine. Either:
+### The guards, and why each exists
 
-1. Fix `_detect_coarse_rotation` in `stages/lib/imaging/rotation.py` so a 90°
-   page reports 270 and a 270° page reports 90, or
-2. Replace the coarse step with Tesseract OSD (`--psm 0`), which reports
-   orientation directly and is already a dependency — note this would make
-   stage 1 depend on Tesseract, which it currently does not.
+- **OSD declines rather than guesses.** A near-blank page (6 characters) raises
+  "Too few characters"; we leave it untouched. Three of twelve round-trip cases
+  are that one page, and leaving it alone is the correct outcome.
+- **Confidence floor** (`MIN_CONFIDENCE = 1.0`). A wrongly rotated page is worse
+  than an uncorrected one.
+- **No fallback to the geometric coarse angle.** When OSD has no answer the
+  page stays as it is. Falling back would reinstate exactly the failure mode
+  this replaced, and a test asserts the fallback is absent.
+- **Mirror is measured but never applied.** The detector reported it on 3 of 12
+  unmirrored pages, and OSD cannot judge it. Recorded so a real mirroring
+  problem stays visible.
 
-Either way the acceptance test is the round trip: rotate a page, detect,
-correct, and assert the result matches the original. That test is cheap and
-should land with the fix.
+### What this now depends on
 
-Until then `rotation_applied` is always `false` and the angle columns record
-what was measured, so nothing is lost — the pipeline behaves exactly as it did
-before, and turning the flag on is a one-line change once the round trip passes.
+Stage 1 needs `tesseract` and its `osd` traineddata, which a standard install
+ships. It previously needed neither. Absent, orientation is simply not detected
+and pages pass through unrotated — the pre-existing behaviour — rather than
+failing.
 
 ---
 

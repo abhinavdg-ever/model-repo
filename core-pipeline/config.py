@@ -79,24 +79,31 @@ AZURE_OPENAI_AUTH = (os.environ.get("AZURE_OPENAI_AUTH") or "auto").strip().case
 
 
 # --- Rotation correction ----------------------------------------------------
-# Stage 1 always MEASURES orientation, tilt and mirror. This decides whether it
-# also WRITES a corrected image to corrected-pages/, which every later stage
-# then reads in place of the original.
+# Stage 1 measures orientation, tilt and mirror, and writes a corrected image
+# to corrected-pages/ which every later stage reads in place of the original.
 #
-# Default OFF, and that is a measurement, not caution. Round-tripping the demo
-# chart through all four orientations (rotate, detect, correct, compare):
+# ON by default, on measurement. Coarse rotation comes from Tesseract OSD
+# (stages/lib/imaging/osd.py), not the geometric detector, which recovered 0 of
+# 6 sideways pages while reporting confidence 1.000 on the wrong answers.
 #
-#     90 CW  -> detected 0 or 180   (never 270)  sideways page left sideways
-#     270 CW -> detected 0          (never 90)   sideways page left sideways
-#     mirror falsely reported on 3 of 12 cases
-#     rotation_confidence was 1.000 on wrong answers, so it cannot gate this
+# Round trip — rotate a page, detect, correct, compare with the original:
 #
-# 0 of 6 sideways pages were recovered, and a false mirror actively corrupts a
-# page that was fine. Writing corrections on that basis would cost accuracy
-# rather than gain it. The plumbing is in place and correct; turn this on once
-# the detector recovers a rotated page. See PLAN.md.
+#     exact pixel recovery   9 of 9 on pages with readable text
+#     the 3 non-recoveries are one near-blank page (6 characters) where OSD
+#     declines to judge and we leave the page untouched
+#
+# And what it is worth, as OCR text similarity to the upright page:
+#
+#     page rotated 270 CW   uncorrected 0.011-0.015   corrected 1.000
+#     page rotated  90 CW   uncorrected 0.848-1.000   corrected 1.000
+#
+# A 270-degree page OCRs to near-total garbage uncorrected. Character COUNT
+# hides this — the garbage has more characters than the correct text — which is
+# why the check compares the text itself.
+#
+# Set false to record orientation without rewriting any image.
 ROTATION_CORRECTION_ENABLED = (
-    os.environ.get("ROTATION_CORRECTION_ENABLED") or "false"
+    os.environ.get("ROTATION_CORRECTION_ENABLED") or "true"
 ).strip().casefold() in {"1", "true", "yes", "on"}
 
 

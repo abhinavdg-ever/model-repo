@@ -92,32 +92,44 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
         if image is None:
             raise RuntimeError(f"Could not read image: {image_path}")
         result = _get_detector().detect(image)
-        orientation = (
-            result.get("rotation")
-            or result.get("orientation_angle")
-            or result.get("rotation_deg")
-            or 0
-        )
-        tilt = result.get("tilt") or result.get("tilt_angle") or 0
+        tilt = float(result.get("tilt") or result.get("tilt_angle") or 0)
         mirrored = bool(result.get("mirror") or result.get("mirrored") or False)
-        applied = bool(
-            float(orientation) != 0
-            or float(tilt) != 0
-            or mirrored
-            or result.get("needs_correction")
-        )
+
+        # Coarse rotation comes from Tesseract OSD, not from the geometric
+        # detector. The detector recovered 0 of 6 sideways pages and reported
+        # confidence 1.000 on the wrong answers; OSD was exact on all four
+        # orientations. Tilt still comes from the detector, which measures it
+        # well, and OSD says nothing about it.
+        from stages.lib.imaging.osd import detect_rotation as osd_rotation
+
+        osd = osd_rotation(image)
+        if osd is not None:
+            orientation = float(osd["rotation"])
+            method = "osd"
+            osd_confidence = float(osd["confidence"])
+        else:
+            # No OSD answer — a sparse page, or Tesseract without the osd
+            # traineddata. Do NOT fall back to the detector's coarse rotation:
+            # it is wrong more often than it is right, and a confidently wrong
+            # rotation is worse than none. Leave the page unrotated.
+            orientation = 0.0
+            method = "osd_undecided"
+            osd_confidence = 0.0
+
         return {
-            "orientation_angle": float(orientation),
-            "tilt_angle": float(tilt),
+            "orientation_angle": orientation,
+            "tilt_angle": tilt,
             "mirrored": mirrored,
-            # Whether a correction LOOKS needed, from the measurement alone.
-            # Distinct from rotation_applied, which records whether one was
-            # actually written — they differ whenever correction is disabled.
-            "needs_correction": applied,
+            # Mirror is measured but never applied: the detector reported
+            # mirror on 3 of 12 pages that were not mirrored, and flipping a
+            # good page is strictly worse than leaving it. OSD cannot judge it.
+            # Recorded so a real mirroring problem is still visible in the data.
+            "needs_correction": bool(orientation != 0 or tilt != 0),
             "rotation_applied": False,
-            "method": "detector",
-            # The detector's own result object, kept so the correction can be
-            # applied at full resolution without re-detecting. Not persisted.
+            "method": method,
+            "osd_confidence": osd_confidence,
+            # Kept so the correction can be applied at full resolution without
+            # re-detecting. Not persisted.
             "_result": result,
             "_image": image,
         }
@@ -167,13 +179,26 @@ def _write_corrected(
         return None
     if not rot.get("needs_correction"):
         return None
-    result, image = rot.get("_result"), rot.get("_image")
-    if result is None or image is None:
+    image = rot.get("_image")
+    if image is None:
         return None
     try:
         import cv2
 
-        corrected = _get_detector().correct(image, result)
+        from stages.lib.imaging.rotation import correct_image
+
+        # Build the correction from what we trust: OSD's rotation, the
+        # detector's tilt, and no mirror. Passing the detector's own result
+        # object would reinstate both the coarse rotation OSD replaced and the
+        # spurious mirror.
+        corrected = correct_image(
+            image,
+            {
+                "rotation": int(rot["orientation_angle"]) % 360,
+                "tilt": float(rot["tilt_angle"]),
+                "mirror": False,
+            },
+        )
         dest = corrected_pages_dir(chart_name) / page_name
         dest.parent.mkdir(parents=True, exist_ok=True)
         if not cv2.imwrite(str(dest), corrected):

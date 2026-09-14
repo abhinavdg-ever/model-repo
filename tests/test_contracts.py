@@ -1238,24 +1238,43 @@ class TestCorrectedPages:
             (n, p) for n, p, _ in STAGE_CHAIN
         ], "STAGE_CHAIN and pipeline_stage.seq disagree"
 
-    def test_correction_is_off_by_default(self):
-        """On by default would ship a detector that leaves sideways pages
-        sideways and falsely mirrors others."""
+    def test_correction_is_on_by_default(self):
+        """Earned by measurement, not assumed: with OSD driving the coarse
+        angle the round trip recovers every page with readable text, and a
+        270-degree page goes from 0.011 OCR similarity to 1.000. It was off
+        while the geometric detector was the only option."""
         import importlib
 
-        import config
-
-        assert importlib.reload(config).ROTATION_CORRECTION_ENABLED is False
-
-    def test_the_flag_turns_it_on(self, monkeypatch):
-        import importlib
-
-        monkeypatch.setenv("ROTATION_CORRECTION_ENABLED", "true")
         import config
 
         assert importlib.reload(config).ROTATION_CORRECTION_ENABLED is True
+
+    def test_the_flag_can_turn_it_off(self, monkeypatch):
+        """Records orientation without rewriting any image — for a chart set
+        where the scans must stay byte-identical to what arrived."""
+        import importlib
+
+        monkeypatch.setenv("ROTATION_CORRECTION_ENABLED", "false")
+        import config
+
+        assert importlib.reload(config).ROTATION_CORRECTION_ENABLED is False
         monkeypatch.delenv("ROTATION_CORRECTION_ENABLED")
         importlib.reload(config)
+
+    def test_the_detectors_coarse_rotation_is_not_used(self):
+        """The whole point of the OSD route. If the stage ever falls back to
+        the geometric detector's coarse angle it will confidently rotate pages
+        the wrong way again — it scored 0 of 6 with confidence 1.000."""
+        import inspect
+
+        from stages import quality_rotation_hw
+
+        source = inspect.getsource(quality_rotation_hw._detect_rotation)
+        assert "osd_rotation" in source
+        # The detector's own result must not drive the correction.
+        correct_src = inspect.getsource(quality_rotation_hw._write_corrected)
+        assert "_get_detector().correct" not in correct_src
+        assert '"mirror": False' in correct_src
 
     def test_a_reimport_clears_stale_corrections(self):
         """A left-behind corrected-pages/1.jpg would be preferred by
@@ -1271,3 +1290,122 @@ class TestCorrectedPages:
         from jobs.export_chart import CHART_SUBDIRS
 
         assert "corrected-pages" in CHART_SUBDIRS
+
+
+def _tesseract_osd_available() -> bool:
+    try:
+        import cv2
+        import numpy as np
+        import pytesseract
+    except ImportError:
+        return False
+    try:
+        pytesseract.image_to_osd(np.full((100, 100, 3), 255, dtype=np.uint8))
+    except Exception as exc:
+        # "Too few characters" proves Tesseract AND the osd traineddata are
+        # present — it got far enough to judge the (blank) page.
+        return "Too few characters" in str(exc)
+    return True
+
+
+class TestOsdOrientation:
+    """Coarse rotation comes from Tesseract OSD, not the geometric detector.
+
+    The detector recovered 0 of 6 sideways pages while reporting confidence
+    1.000 on the wrong answers, so there was no way to tell its good answers
+    from its bad ones. These tests pin the guards that keep a bad answer from
+    reaching the image.
+    """
+
+    def test_no_pytesseract_returns_none_rather_than_raising(self, monkeypatch):
+        """Orientation is an optimisation, not a precondition: a missing
+        dependency must degrade to 'leave the page alone'."""
+        import builtins
+
+        from stages.lib.imaging import osd
+
+        real_import = builtins.__import__
+
+        def no_pytesseract(name, *args, **kwargs):
+            if name.startswith("pytesseract"):
+                raise ImportError("no pytesseract")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", no_pytesseract)
+        assert osd.detect_rotation(object()) is None
+
+    def test_a_non_quadrant_rotation_is_rejected(self, monkeypatch):
+        """Only 0/90/180/270 are meaningful here; anything else is a parse
+        problem, and acting on it would skew the page."""
+        from stages.lib.imaging import osd
+
+        monkeypatch.setattr(
+            osd, "detect_rotation",
+            osd.detect_rotation,  # keep the real one; patch its input instead
+        )
+        import pytesseract
+        from pytesseract import Output  # noqa: F401
+
+        monkeypatch.setattr(
+            pytesseract, "image_to_osd",
+            lambda *a, **k: {"rotate": 45, "orientation_conf": 9.0, "script": "Latin"},
+        )
+        assert osd.detect_rotation(object()) is None
+
+    def test_low_confidence_is_rejected(self, monkeypatch):
+        """A wrongly rotated page is worse than an uncorrected one."""
+        import pytesseract
+
+        from stages.lib.imaging import osd
+
+        monkeypatch.setattr(
+            pytesseract, "image_to_osd",
+            lambda *a, **k: {"rotate": 90, "orientation_conf": 0.1, "script": "Latin"},
+        )
+        assert osd.detect_rotation(object()) is None
+
+    def test_a_confident_quadrant_answer_is_accepted(self, monkeypatch):
+        import pytesseract
+
+        from stages.lib.imaging import osd
+
+        monkeypatch.setattr(
+            pytesseract, "image_to_osd",
+            lambda *a, **k: {"rotate": 270, "orientation_conf": 6.5, "script": "Latin"},
+        )
+        assert osd.detect_rotation(object())["rotation"] == 270
+
+    @pytest.mark.skipif(
+        not _tesseract_osd_available(), reason="tesseract + osd traineddata not here"
+    )
+    def test_the_round_trip_recovers_a_rotated_page(self):
+        """The acceptance test the geometric detector could not pass: rotate a
+        page, detect, correct, and get the original back pixel for pixel."""
+        import cv2
+        import numpy as np
+
+        from stages.lib.imaging.osd import detect_rotation
+        from stages.lib.imaging.rotation import correct_image
+
+        page = (
+            Path(__file__).resolve().parents[1]
+            / "review-ui" / "data" / "folders"
+            / "demo_chart_240315_1012" / "pages" / "3.jpg"
+        )
+        if not page.is_file():
+            pytest.skip("demo chart not present")
+        img = cv2.imread(str(page))
+
+        for code in (
+            cv2.ROTATE_90_CLOCKWISE,
+            cv2.ROTATE_180,
+            cv2.ROTATE_90_COUNTERCLOCKWISE,
+        ):
+            rotated = cv2.rotate(img, code)
+            found = detect_rotation(rotated)
+            assert found is not None, "OSD declined on a page full of text"
+            fixed = correct_image(
+                rotated,
+                {"rotation": found["rotation"], "tilt": 0.0, "mirror": False},
+            )
+            assert np.array_equal(fixed, img), "correction did not recover the original"

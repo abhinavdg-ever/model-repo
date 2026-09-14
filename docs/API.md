@@ -1517,6 +1517,7 @@ page to Azure Document Intelligence, which is billed per page.
 | `ModuleNotFoundError: No module named 'api'` | `uvicorn` run outside `core-pipeline/` | `cd core-pipeline` first, or use `python cli.py serve`, which works from anywhere |
 | `/ready` → 503 "pipeline_stage is empty" | schema not applied | run `schema/v1.sql` |
 | Chart stuck at `ocr_prelim` | Tesseract missing | install it, or set `TESSERACT_CMD` |
+| Rotated pages OCR as gibberish | Tesseract `osd` traineddata missing, so stage 1 cannot detect orientation | install the full Tesseract package; pages pass through unrotated until then |
 | `final2` produces no text | Azure DI not configured | set the endpoint + key; until then handwritten pages get no pass-2 verdict |
 | `decision_reason: manifest_missing` | no manifest row for the record | sweep the manifest, then rerun `--only member_verify` |
 | `decision_reason` ends `\|ner_disabled` | NER layer not ready | check `GET /health` → `member_ner.reason`; it names the missing piece |
