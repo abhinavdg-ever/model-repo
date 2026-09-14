@@ -381,7 +381,7 @@ files, not Postgres.
 cd core-pipeline
 cp .env.example .env          # DATABASE_URL + any Azure credentials
 source .venv/bin/activate
-python cli.py serve           # or: uvicorn api.main:app --port 8001 --reload
+python cli.py serve           # see the note below before reaching for uvicorn
 ```
 
 **Windows (PowerShell)**
@@ -390,8 +390,17 @@ python cli.py serve           # or: uvicorn api.main:app --port 8001 --reload
 cd core-pipeline
 Copy-Item .env.example .env   # DATABASE_URL + any Azure credentials
 .venv\Scripts\Activate.ps1
-python cli.py serve           # or: uvicorn api.main:app --port 8001 --reload
+python cli.py serve           # see the note below before reaching for uvicorn
 ```
+
+> **`ModuleNotFoundError: No module named 'api'`** means you ran `uvicorn`
+> from the wrong directory. `api/` lives under `core-pipeline/`, and uvicorn
+> puts the **current directory** on `sys.path` — so `uvicorn api.main:app`
+> works from `core-pipeline/` and fails from the repository root.
+> `python cli.py serve` works from anywhere, because `cli.py` puts its own
+> directory on the path itself. If you want uvicorn's `--reload`, run
+> `uvicorn api.main:app --port 8001 --reload` **from `core-pipeline/`**.
+> The Dockerfile does the same thing with `WORKDIR /app`.
 
 <http://localhost:8001/docs>. Needs `tesseract` on PATH or `TESSERACT_CMD` set
 in `.env` — mandatory on Windows.
@@ -1434,6 +1443,7 @@ page to Azure Document Intelligence, which is billed per page.
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| `ModuleNotFoundError: No module named 'api'` | `uvicorn` run outside `core-pipeline/` | `cd core-pipeline` first, or use `python cli.py serve`, which works from anywhere |
 | `/ready` → 503 "pipeline_stage is empty" | schema not applied | run `schema/v1.sql` |
 | Chart stuck at `ocr_prelim` | Tesseract missing | install it, or set `TESSERACT_CMD` |
 | `final2` produces no text | Azure DI not configured | set the endpoint + key; until then handwritten pages get no pass-2 verdict |
