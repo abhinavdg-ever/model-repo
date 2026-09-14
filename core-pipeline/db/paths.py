@@ -19,7 +19,14 @@ def list_local_pages(chart_name: str) -> list[Path]:
         return []
     files = [
         p for p in root.iterdir()
-        if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES
+        if p.is_file()
+        and p.suffix.lower() in IMAGE_SUFFIXES
+        # macOS AppleDouble stubs. `._1.jpg` carries the resource fork of
+        # `1.jpg`, not an image — copying onto exFAT/SMB creates one per page,
+        # so an intake that filtered them at the source (download_blob,
+        # batch_intake both do) still finds them here, on the destination.
+        # Registering them doubles page_count and fails every stage on them.
+        and not p.name.startswith("._")
     ]
 
     def sort_key(p: Path):

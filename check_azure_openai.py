@@ -16,6 +16,12 @@ This uses Azure's **v1 API surface**: the stock `OpenAI` client pointed at
 `api_version` — the path carries the version — which is why there is no such
 setting here any more.
 
+It calls **chat completions**, because that is what `dos_logic.py` calls. Azure
+authorises each API surface separately, so a check against `responses` can fail
+with "lacks the required data action .../OpenAI/responses/write" on an identity
+that runs the real pipeline without trouble. A check that tests a permission the
+pipeline never uses is worse than no check.
+
 Two ways to authenticate, set by AUTH below:
 
     "key"     paste a resource key into API_KEY.
@@ -122,19 +128,27 @@ def main() -> None:
 
     print(f"asking     : {PROMPT}")
     try:
-        response = client.responses.create(
+        # chat.completions, NOT responses — this is the call dos_logic.py makes,
+        # and the two need different data actions. Testing `responses` would
+        # fail with `lacks the required data action .../OpenAI/responses/write`
+        # on an identity that can run the pipeline perfectly well.
+        response = client.chat.completions.create(
             model=DEPLOYMENT.strip(),
-            input=PROMPT,
+            messages=[{"role": "user", "content": PROMPT}],
+            temperature=0.0,
+            max_tokens=16,
             timeout=30,
         )
     except Exception as exc:
-        # 401 = bad key, or — under entra — a token whose identity lacks the
-        #       Cognitive Services OpenAI User role on this resource.
+        # 401 "PermissionDenied ... lacks the required data action" = the token
+        #       is valid but the principal has no role granting it. Assign
+        #       Cognitive Services OpenAI User on the RESOURCE.
+        # 401 otherwise = bad key.
         # 404 = no deployment by that name — check the resource's deployment list.
         # APIConnectionError = the endpoint host is wrong.
         fail(f"{type(exc).__name__}: {exc}")
 
-    answer = (response.output_text or "").strip()
+    answer = ((response.choices[0].message.content if response.choices else "") or "").strip()
     print(f"answer     : {answer or '(empty)'}")
     print()
     if not answer:

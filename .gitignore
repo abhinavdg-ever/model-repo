@@ -35,3 +35,6 @@ core-pipeline/models/
 *.safetensors
 *.onnx
 *.bin
+
+# Smoke-test chart produced by running the demo through the API locally.
+review-ui/data/folders/demo_api_smoketest/
