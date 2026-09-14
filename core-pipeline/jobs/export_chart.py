@@ -28,15 +28,33 @@ logger = logging.getLogger(__name__)
 # The chart workspace layout, in the order a reader would want them.
 CHART_SUBDIRS = ("pages", "corrected-pages", "ocr", "imaging")
 
+# What a write sends. The default omits `pages/` — the originals came FROM the
+# source you are usually writing back to, so re-sending them doubles the
+# storage and the transfer for bytes already there. `corrected-pages/` is still
+# sent, because those the pipeline produced and the source does not have.
+SKIP_ORIG_PAGES = "skip_orig_pages"
+ALL_FILES = "all_files"
+WRITE_MODES = (SKIP_ORIG_PAGES, ALL_FILES)
 
-def _files_to_write(root: Path) -> list[Path]:
+
+def subdirs_for(write_mode: str) -> tuple[str, ...]:
+    if write_mode == ALL_FILES:
+        return CHART_SUBDIRS
+    if write_mode != SKIP_ORIG_PAGES:
+        raise ValueError(
+            f"unknown write_mode {write_mode!r} — use one of {', '.join(WRITE_MODES)}"
+        )
+    return tuple(d for d in CHART_SUBDIRS if d != "pages")
+
+
+def _files_to_write(root: Path, write_mode: str = SKIP_ORIG_PAGES) -> list[Path]:
     """Every file under the chart folder, excluding junk that is not content.
 
     macOS AppleDouble stubs (``._1.jpg``) are resource forks, not files anyone
     wants at the destination — the same exclusion intake applies on the way in.
     """
     out: list[Path] = []
-    for sub in CHART_SUBDIRS:
+    for sub in subdirs_for(write_mode):
         folder = root / sub
         if not folder.is_dir():
             continue
@@ -56,6 +74,7 @@ def write_chart(
     blob_container: Optional[str] = None,
     blob_path: Optional[str] = None,
     overwrite: bool = False,
+    write_mode: str = SKIP_ORIG_PAGES,
 ) -> dict[str, Any]:
     """Copy data/folders/<chart_name> to a local directory or a blob prefix.
 
@@ -75,13 +94,23 @@ def write_chart(
     if not root.is_dir():
         raise RuntimeError(f"No chart workspace at {root} — has '{chart_name}' been run?")
 
-    files = _files_to_write(root)
+    files = _files_to_write(root, write_mode)
     if not files:
-        raise RuntimeError(f"{root} holds no pages, OCR or imaging output to write")
+        sent = ", ".join(subdirs_for(write_mode))
+        raise RuntimeError(
+            f"{root} holds nothing to write under {sent}"
+            + (
+                " — the chart may have produced no output yet, or every page "
+                "was already upright so corrected-pages/ is empty; "
+                "write_mode=all_files would send the originals"
+                if write_mode == SKIP_ORIG_PAGES
+                else ""
+            )
+        )
 
     if local_path:
-        return _write_local(chart_name, root, files, Path(local_path), overwrite)
-    return _write_blob(chart_name, root, files, blob_container, blob_path, overwrite)
+        return _write_local(chart_name, root, files, Path(local_path), overwrite, write_mode)
+    return _write_blob(chart_name, root, files, blob_container, blob_path, overwrite, write_mode)
 
 
 def _write_local(
@@ -90,6 +119,7 @@ def _write_local(
     files: list[Path],
     dest_root: Path,
     overwrite: bool,
+    write_mode: str = SKIP_ORIG_PAGES,
 ) -> dict[str, Any]:
     dest = (dest_root.expanduser().resolve()) / chart_name
     if dest == root.resolve():
@@ -122,6 +152,7 @@ def _write_local(
         "chart_name": chart_name,
         "mode": "local",
         "destination": str(dest),
+        "write_mode": write_mode,
         "files_written": written,
         "bytes_written": total_bytes,
     }
@@ -134,6 +165,7 @@ def _write_blob(
     container: Optional[str],
     blob_path: Optional[str],
     overwrite: bool,
+    write_mode: str = SKIP_ORIG_PAGES,
 ) -> dict[str, Any]:
     from db.blob_store import get_container_client, normalize_prefix
 
@@ -167,6 +199,7 @@ def _write_blob(
         "chart_name": chart_name,
         "mode": "blob",
         "destination": f"{container}/{prefix}",
+        "write_mode": write_mode,
         "files_written": written,
         "bytes_written": total_bytes,
     }

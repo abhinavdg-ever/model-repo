@@ -38,16 +38,45 @@ def main() -> None:
                  "e.g. --only member_verify --only blank_junk:2",
         )
 
+    def add_write_flags(parser_obj) -> None:
+        """`--all-files` / `--skip-orig-pages`, spelled the same everywhere."""
+        mode = parser_obj.add_mutually_exclusive_group()
+        mode.add_argument(
+            "--skip-orig-pages",
+            dest="write_mode",
+            action="store_const",
+            const="skip_orig_pages",
+            help="Write corrected-pages/, ocr/, imaging/ but NOT pages/ (default)",
+        )
+        mode.add_argument(
+            "--all-files",
+            dest="write_mode",
+            action="store_const",
+            const="all_files",
+            help="Write everything, including the original pages/",
+        )
+        parser_obj.set_defaults(write_mode="skip_orig_pages")
+        parser_obj.add_argument(
+            "--overwrite",
+            action="store_true",
+            help="Replace files already at the write destination",
+        )
+
     p_run = sub.add_parser(
-        "run", help="Fetch one chart from blob OR a local folder and run the chain"
+        "run",
+        help="Read one chart (blob or local), run the chain, optionally write it out",
     )
     src_r = p_run.add_mutually_exclusive_group(required=True)
-    src_r.add_argument("--local", metavar="PATH", help="Local folder of page images")
-    src_r.add_argument("--blob-path", help="Blob path to chart folder (with --blob-container)")
-    p_run.add_argument("--blob-container", help="Required with --blob-path")
-    p_run.add_argument(
-        "--chart-name", help="Local only. Defaults to the source folder's own name."
-    )
+    src_r.add_argument("--local-read-path", metavar="PATH",
+                       help="Directory holding the chart folder")
+    src_r.add_argument("--blob-read-path",
+                       help="Prefix holding the chart folder (with --blob-container)")
+    p_run.add_argument("--folder-name", required=True,
+                       help="The chart folder under the read path. Becomes the chart name.")
+    p_run.add_argument("--blob-container", help="Required with --blob-read-path")
+    p_run.add_argument("--blob-write-path", help="Prefix to write results to")
+    p_run.add_argument("--local-write-path", help="Directory to write results to")
+    add_write_flags(p_run)
     p_run.add_argument(
         "--force", action="store_true", help="Reprocess pages already completed"
     )
@@ -79,16 +108,15 @@ def main() -> None:
 
     p_write = sub.add_parser(
         "write",
-        help="Write a finished chart folder back out to blob or a local folder",
+        help="Write an already-run chart out, without reprocessing it",
     )
     p_write.add_argument("chart_name", help="Folder name under data/folders")
     src_w = p_write.add_mutually_exclusive_group(required=True)
-    src_w.add_argument("--local", metavar="PATH", help="Destination directory")
-    src_w.add_argument("--blob-path", help="Destination prefix (with --blob-container)")
-    p_write.add_argument("--blob-container", help="Required with --blob-path")
-    p_write.add_argument(
-        "--overwrite", action="store_true", help="Replace files already at the destination"
-    )
+    src_w.add_argument("--local-write-path", metavar="PATH", help="Destination directory")
+    src_w.add_argument("--blob-write-path",
+                       help="Destination prefix (with --blob-container)")
+    p_write.add_argument("--blob-container", help="Required with --blob-write-path")
+    add_write_flags(p_write)
 
     p_rerun = sub.add_parser("rerun", help="Re-run the chain for an existing chart_id")
     p_rerun.add_argument("chart_id", type=int)
@@ -161,26 +189,45 @@ def main() -> None:
     if args.cmd == "run":
         from orchestrator.runner import ingest_and_run
 
-        if args.blob_path and not args.blob_container:
-            parser.error("--blob-path requires --blob-container")
-        print(
-            json.dumps(
-                ingest_and_run(
-                    local_path=args.local,
-                    blob_container=args.blob_container,
-                    blob_path=args.blob_path,
-                    chart_name=args.chart_name,
-                    run_id=args.run_id,
-                    batch_id=args.batch_id,
-                    run_pipeline=not args.no_pipeline,
-                    force=args.force,
-                    only=args.only,
-                    through=args.through,
-                ),
-                default=str,
-                indent=2,
-            )
+        if args.blob_read_path and not args.blob_container:
+            parser.error("--blob-read-path requires --blob-container")
+        if args.blob_read_path and args.local_write_path:
+            parser.error("a blob source writes to --blob-write-path")
+        if args.local_read_path and args.blob_write_path:
+            parser.error("a local source writes to --local-write-path")
+
+        folder = args.folder_name
+        if args.local_read_path:
+            source = str(Path(args.local_read_path) / folder)
+            blob_path = None
+        else:
+            source = None
+            blob_path = f"{args.blob_read_path.strip('/')}/{folder}"
+
+        result = ingest_and_run(
+            local_path=source,
+            blob_container=args.blob_container,
+            blob_path=blob_path,
+            chart_name=folder,
+            run_id=args.run_id,
+            batch_id=args.batch_id,
+            run_pipeline=not args.no_pipeline,
+            force=args.force,
+            only=args.only,
+            through=args.through,
         )
+        if args.blob_write_path or args.local_write_path:
+            from jobs.export_chart import write_chart
+
+            result["write"] = write_chart(
+                result.get("chart_name") or folder,
+                local_path=args.local_write_path,
+                blob_container=args.blob_container,
+                blob_path=args.blob_write_path,
+                overwrite=args.overwrite,
+                write_mode=args.write_mode,
+            )
+        print(json.dumps(result, default=str, indent=2))
         return
 
     if args.cmd == "batch":
@@ -211,16 +258,17 @@ def main() -> None:
     if args.cmd == "write":
         from jobs.export_chart import write_chart
 
-        if args.blob_path and not args.blob_container:
-            parser.error("--blob-path requires --blob-container")
+        if args.blob_write_path and not args.blob_container:
+            parser.error("--blob-write-path requires --blob-container")
         print(
             json.dumps(
                 write_chart(
                     args.chart_name,
-                    local_path=args.local,
+                    local_path=args.local_write_path,
                     blob_container=args.blob_container,
-                    blob_path=args.blob_path,
+                    blob_path=args.blob_write_path,
                     overwrite=args.overwrite,
+                    write_mode=args.write_mode,
                 ),
                 default=str,
                 indent=2,

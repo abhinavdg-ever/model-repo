@@ -39,6 +39,7 @@ from config import (
 from db import close_pool, connect, get_chart, get_chart_by_name, list_pages, list_stages
 from db.chart_status import refresh_chart_status
 from jobs.manifest_sweeper import run_load
+from jobs.export_chart import SKIP_ORIG_PAGES, WRITE_MODES
 from orchestrator.runner import (
     STAGE_NAMES,
     ingest_and_run,
@@ -154,39 +155,82 @@ class StageSelection(BaseModel):
 
 
 class RunRequest(StageSelection):
-    """One chart, from either source. Give blob_container + blob_path, OR local_path.
+    """One chart: read it, run the chain, and optionally write the results out.
 
-    The two modes converge: both end with the page images under
-    data/folders/<chart>/pages/ named 1.jpg, 2.jpg … and the chart registered,
-    so every later stage is identical regardless of where the pages came from.
+    A source is a **read path plus a folder name**, which resolve together:
 
-    The source folder is always copied, never moved; subfolders are always
-    searched; a manifest sitting alongside the images is always loaded. Those
-    were once switches, and every one of them had a single correct setting.
+        blob_read_path  Raw_Input/Run1/Batch1/DEID_PNGs
+        blob_read_folder_name              52754737_48221214
+        -> reads  Raw_Input/Run1/Batch1/DEID_PNGs/52754737_48221214/
+
+    **The folder name is the chart name.** It is what appears in `chart_list`,
+    names every output CSV, and is the key the member manifest joins on
+    (`record_id`), so it is given rather than inferred.
+
+    The write path resolves the same way, with the same folder name:
+
+        blob_write_path Processed/Run1
+        -> writes Processed/Run1/52754737_48221214/
+
+    so a chart keeps its identity on both sides and two charts written to one
+    destination cannot merge.
+
+    Give a blob source or a local source, not both. A write path is optional —
+    without one the chart still runs and the results stay in the workspace,
+    where `POST /api/charts/write` can send them later. **Read and write use
+    the same backend:** blob in, blob out; local in, local out.
     """
 
-    # --- blob mode ---
+    # --- blob ---
     blob_container: Optional[str] = Field(
-        None, description="Azure Blob container name. With blob_path."
+        None, description="Azure Blob container. Used for both read and write."
     )
-    blob_path: Optional[str] = Field(
-        None, description="Prefix of the chart folder holding the page images"
+    blob_read_path: Optional[str] = Field(
+        None,
+        description="Prefix holding the chart folder",
+        examples=["Raw_Input/Run1/Batch1/DEID_PNGs"],
+    )
+    blob_read_folder_name: Optional[str] = Field(
+        None,
+        description="The chart folder under blob_read_path. Becomes the chart name.",
+        examples=["52754737_48221214"],
+    )
+    blob_write_path: Optional[str] = Field(
+        None,
+        description="Prefix to write results to. Omit to run without writing.",
+        examples=["Processed/Run1"],
     )
 
-    # --- local mode ---
-    local_path: Optional[str] = Field(
+    # --- local ---
+    local_read_path: Optional[str] = Field(
         None,
         description=(
-            "A directory ON THE SERVER holding the page images, in the folder "
-            "itself or a subfolder. Under Docker this must be a path inside "
-            "the container, so mount the folder first — the host filesystem is "
-            "not visible."
+            "Directory ON THE SERVER holding the chart folder. Under Docker "
+            "this must be a path inside the container."
         ),
-        examples=["/data/inbox/52743839_44976074"],
+        examples=["/data/inbox"],
     )
-    chart_name: Optional[str] = Field(
+    local_folder_name: Optional[str] = Field(
         None,
-        description="Local mode only. Defaults to the source folder's own name.",
+        description="The chart folder under local_read_path. Becomes the chart name.",
+        examples=["52754737_48221214"],
+    )
+    local_write_path: Optional[str] = Field(
+        None, description="Directory to write results to. Omit to run without writing."
+    )
+
+    # --- write options ---
+    write_mode: str = Field(
+        SKIP_ORIG_PAGES,
+        description=(
+            "skip_orig_pages (default) omits pages/ — the originals came from "
+            "the source you are writing back to, so re-sending them doubles "
+            "storage and transfer. corrected-pages/, ocr/ and imaging/ are "
+            "still written. all_files sends everything."
+        ),
+    )
+    overwrite: bool = Field(
+        False, description="Replace files already at the write destination"
     )
 
     # --- both ---
@@ -226,26 +270,27 @@ class BatchRequest(StageSelection):
 
 
 class WriteRequest(BaseModel):
-    """Write a finished chart back out — the reverse of run's intake step.
+    """Write an already-run chart out, without reprocessing it.
 
-    Give a local destination, OR a blob container + path. The chart's own name
-    is appended to whichever you give, so two charts written to one destination
-    do not merge.
-
-    The whole workspace goes: pages/, ocr/ and imaging/ — the scans, the OCR
-    text and the per-stage CSVs, so the destination can be read without the
-    database.
+    Same write vocabulary as `/run`. Use this to send a chart to a second
+    destination, or to export one that ran before a write path was given.
     """
 
     chart_name: str = Field(
-        ..., description="Folder name under data/folders", examples=["52743839_44976074"]
+        ...,
+        description="Folder name under data/folders — the chart to write",
+        examples=["52743839_44976074"],
     )
-    local_path: Optional[str] = Field(
+    local_write_path: Optional[str] = Field(
         None, description="Destination directory ON THE SERVER"
     )
     blob_container: Optional[str] = None
-    blob_path: Optional[str] = Field(
+    blob_write_path: Optional[str] = Field(
         None, description="Destination prefix inside the container"
+    )
+    write_mode: str = Field(
+        SKIP_ORIG_PAGES,
+        description="skip_orig_pages (default) omits pages/; all_files sends everything",
     )
     overwrite: bool = Field(
         False,
@@ -299,15 +344,80 @@ def _is_credential_failure(exc: BaseException) -> bool:
     return False
 
 
+def _join(prefix: Optional[str], folder: str) -> str:
+    """`<prefix>/<folder>`, tolerant of a missing or slash-wrapped prefix."""
+    clean = (prefix or "").strip().strip("/")
+    return f"{clean}/{folder}" if clean else folder
+
+
+def _write_summary(
+    body: "RunRequest", folder: str, write_to: Optional[str]
+) -> Optional[dict[str, Any]]:
+    """What the run will write, echoed back so the caller can see it was read."""
+    if not write_to:
+        return None
+    destination = (
+        f"{body.blob_container}/{_join(body.blob_write_path, folder)}"
+        if body.blob_write_path
+        else str(Path(write_to) / folder)
+    )
+    return {
+        "destination": destination,
+        "write_mode": body.write_mode,
+        "overwrite": body.overwrite,
+    }
+
+
+def _write_after_run(payload: "RunRequest", chart_name: str) -> None:
+    """Write the chart out, if a write path was given.
+
+    Deliberately separate from the pipeline call: a write failure must not
+    make a completed run look failed. The chart is in the workspace either
+    way, and POST /api/charts/write can retry without reprocessing.
+    """
+    if not (payload.blob_write_path or payload.local_write_path):
+        return
+    from jobs.export_chart import write_chart
+
+    try:
+        result = write_chart(
+            chart_name,
+            local_path=payload.local_write_path,
+            blob_container=payload.blob_container,
+            blob_path=payload.blob_write_path,
+            overwrite=payload.overwrite,
+            write_mode=payload.write_mode,
+        )
+        logger.info(
+            "Wrote %s -> %s (%d file(s), %s)",
+            chart_name, result["destination"], result["files_written"],
+            result["write_mode"],
+        )
+    except Exception:
+        logger.exception(
+            "Chart %s ran, but writing it out FAILED. The results are in the "
+            "workspace; POST /api/charts/write can retry without reprocessing.",
+            chart_name,
+        )
+
+
+def _bg_pipeline_then_write(
+    chart_id: int, chart_name: str, payload: "RunRequest"
+) -> None:
+    _bg_pipeline(chart_id, payload.force, payload.only, payload.through)
+    _write_after_run(payload, chart_name)
+
+
 def _bg_run(payload: "RunRequest") -> None:
-    source = payload.local_path or f"{payload.blob_container}/{payload.blob_path}"
+    folder = payload.blob_read_folder_name or ""
+    blob_path = _join(payload.blob_read_path, folder)
+    source = f"{payload.blob_container}/{blob_path}"
     logger.info("Background run starting: %s", source)
     try:
         result = ingest_and_run(
             blob_container=payload.blob_container,
-            blob_path=payload.blob_path,
-            local_path=payload.local_path,
-            chart_name=payload.chart_name,
+            blob_path=blob_path,
+            chart_name=folder,
             run_id=payload.run_id,
             batch_id=payload.batch_id,
             force=payload.force,
@@ -318,6 +428,7 @@ def _bg_run(payload: "RunRequest") -> None:
             "Background run finished: %s -> chart_id=%s",
             source, (result or {}).get("chart_id"),
         )
+        _write_after_run(payload, result.get("chart_name") or folder)
     except Exception as exc:
         if _is_credential_failure(exc):
             # The traceback is fifteen frames of SDK plumbing and the message
@@ -343,10 +454,11 @@ def _bg_write(payload: "WriteRequest") -> None:
     try:
         result = write_chart(
             payload.chart_name,
-            local_path=payload.local_path,
+            local_path=payload.local_write_path,
             blob_container=payload.blob_container,
-            blob_path=payload.blob_path,
+            blob_path=payload.blob_write_path,
             overwrite=payload.overwrite,
+            write_mode=payload.write_mode,
         )
         logger.info(
             "Background write finished: %s -> %s (%d file(s))",
@@ -519,46 +631,85 @@ def _validate_stages(body: "StageSelection") -> None:
 
 @app.post("/api/charts/run", status_code=202, tags=["charts"])
 def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
-    """Fetch one chart's pages into the workspace and run the stage chain.
+    """Read one chart, run the stage chain, and optionally write the results.
 
-    Pass either `blob_container` + `blob_path`, or `local_path` — not both.
-    Both end identically: pages under data/folders/<chart>/pages/ named 1.jpg,
-    2.jpg … with the chart registered, then the chain runs.
+    Source is a read path plus a folder name, which resolve together; the
+    folder name becomes the chart name. The write path, when given, resolves
+    the same way — `<write_path>/<folder_name>/`.
 
-    Use `through` to stop after a stage, `only` to run particular stages alone.
+    Blob and local are separate worlds: give one or the other, and read and
+    write stay on the same backend.
 
-    Returns immediately. Poll GET /api/charts/by-name/{chart_name}.
+    Returns immediately. Poll GET /api/charts/by-name/{folder_name}.
     """
-    has_blob = bool(body.blob_container or body.blob_path)
-    has_local = bool(body.local_path)
+    has_blob = bool(body.blob_container or body.blob_read_path or body.blob_read_folder_name)
+    has_local = bool(body.local_read_path or body.local_folder_name)
     if has_blob and has_local:
         raise HTTPException(
-            status_code=400,
-            detail="Pass either blob_container + blob_path, or local_path, not both",
+            status_code=400, detail="Give a blob source or a local source, not both"
         )
     if not has_blob and not has_local:
         raise HTTPException(
             status_code=400,
-            detail="Provide blob_container + blob_path, or local_path",
+            detail=(
+                "Provide blob_container + blob_read_path + blob_read_folder_name, "
+                "or local_read_path + local_folder_name"
+            ),
         )
-    if has_blob and not (body.blob_container and body.blob_path):
+    if body.write_mode not in WRITE_MODES:
         raise HTTPException(
             status_code=400,
-            detail="blob_container and blob_path must be given together",
+            detail=f"write_mode must be one of {', '.join(WRITE_MODES)}",
         )
+
+    if has_blob:
+        missing = [
+            name
+            for name, value in (
+                ("blob_container", body.blob_container),
+                ("blob_read_path", body.blob_read_path),
+                ("blob_read_folder_name", body.blob_read_folder_name),
+            )
+            if not value
+        ]
+        if missing:
+            raise HTTPException(
+                status_code=400, detail=f"blob mode also needs: {', '.join(missing)}"
+            )
+        if body.local_write_path:
+            raise HTTPException(
+                status_code=400,
+                detail="A blob source writes to blob_write_path, not local_write_path",
+            )
+        folder = body.blob_read_folder_name
+    else:
+        if not (body.local_read_path and body.local_folder_name):
+            raise HTTPException(
+                status_code=400,
+                detail="local mode needs both local_read_path and local_folder_name",
+            )
+        if body.blob_write_path:
+            raise HTTPException(
+                status_code=400,
+                detail="A local source writes to local_write_path, not blob_write_path",
+            )
+        folder = body.local_folder_name
+
     _validate_stages(body)
     _require_db()
 
+    write_to = body.blob_write_path or body.local_write_path
     if has_local:
-        # Resolve the intake up front: a bad path should be a 400 now, not a
-        # background failure the caller never sees. The chain still runs in the
-        # background, because it is the part that takes minutes.
+        # Resolve the intake now: a bad path should be a 400 the caller sees,
+        # not a background failure in a log. The chain still runs in the
+        # background — that is the part that takes minutes.
         from stages.download_blob import import_local_folder
 
+        source = str(Path(body.local_read_path) / folder)
         try:
             result = import_local_folder(
-                body.local_path,
-                chart_name=body.chart_name,
+                source,
+                chart_name=folder,
                 force=body.force,
                 run_id=body.run_id,
                 batch_id=body.batch_id,
@@ -566,35 +717,33 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         background_tasks.add_task(
-            _bg_pipeline, result["chart_id"], body.force, body.only, body.through
+            _bg_pipeline_then_write, result["chart_id"], folder, body
         )
         return {
             "status": "accepted",
             "mode": "local",
             "chart_id": result["chart_id"],
-            "chart_name": result["chart_name"],
-            "source": result["source"],
+            "chart_name": folder,
+            "source": source,
             "imported": result["imported"],
             "manifest": result["manifest"],
             "page_count": result["page_count"],
             "through": body.through,
             "only": body.only,
+            "write": _write_summary(body, folder, write_to),
             "poll": f"/api/charts/{result['chart_id']}",
         }
 
-    from db.blob_store import chart_name_from_blob_path
-
-    chart_name = chart_name_from_blob_path(body.blob_path)
     background_tasks.add_task(_bg_run, body)
     return {
         "status": "accepted",
         "mode": "blob",
-        "chart_name": chart_name,
-        "blob_container": body.blob_container,
-        "blob_path": body.blob_path,
+        "chart_name": folder,
+        "source": f"{body.blob_container}/{_join(body.blob_read_path, folder)}",
         "through": body.through,
         "only": body.only,
-        "poll": f"/api/charts/by-name/{chart_name}",
+        "write": _write_summary(body, folder, write_to),
+        "poll": f"/api/charts/by-name/{folder}",
     }
 
 
@@ -604,22 +753,26 @@ def write_chart_out(
 ) -> dict[str, Any]:
     """Write a finished chart's folder back out to blob or local disk.
 
-    The reverse of run's intake step: data/folders/<chart> goes to the
-    destination, whole — pages/, ocr/ and imaging/.
+    The reverse of run's intake step. The chart name is appended to the
+    destination, exactly as `/run` does, so `<write_path>/<chart_name>/`.
+
+    `write_mode` defaults to skip_orig_pages: corrected-pages/, ocr/ and
+    imaging/ go, pages/ does not, because the originals came from the source
+    you are usually writing back to.
 
     Returns immediately; a large chart is a lot of bytes. Watch the server log.
     """
     from config import chart_dir
 
-    if bool(body.local_path) == bool(body.blob_path):
+    if bool(body.local_write_path) == bool(body.blob_write_path):
         raise HTTPException(
             status_code=400,
-            detail="Provide exactly one destination: local_path, or blob_container + blob_path",
+            detail="Provide exactly one destination: local_write_path, or blob_container + blob_write_path",
         )
-    if body.blob_path and not body.blob_container:
+    if body.blob_write_path and not body.blob_container:
         raise HTTPException(
             status_code=400,
-            detail="blob_container must be given with blob_path",
+            detail="blob_container must be given with blob_write_path",
         )
     # Check the source exists now rather than in the background, so a typo in
     # the chart name is a 404 the caller sees.
@@ -635,8 +788,8 @@ def write_chart_out(
     # background would hand the caller a 202 and put the refusal in a log they
     # never read. The blob equivalent is a network round trip, so it stays in
     # write_chart, where the same guard runs before a single byte is uploaded.
-    if body.local_path and not body.overwrite:
-        dest = (Path(body.local_path).expanduser() / body.chart_name)
+    if body.local_write_path and not body.overwrite:
+        dest = (Path(body.local_write_path).expanduser() / body.chart_name)
         clash = [q for q in dest.rglob("*") if q.is_file()] if dest.is_dir() else []
         if clash:
             raise HTTPException(
@@ -647,14 +800,25 @@ def write_chart_out(
                 ),
             )
 
+    if body.write_mode not in WRITE_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"write_mode must be one of {', '.join(WRITE_MODES)}",
+        )
+
     background_tasks.add_task(_bg_write, body)
-    destination = body.local_path or f"{body.blob_container}/{body.blob_path}"
+    destination = (
+        f"{body.blob_container}/{_join(body.blob_write_path, body.chart_name)}"
+        if body.blob_write_path
+        else str(Path(body.local_write_path) / body.chart_name)
+    )
     return {
         "status": "accepted",
-        "mode": "local" if body.local_path else "blob",
+        "mode": "local" if body.local_write_path else "blob",
         "chart_name": body.chart_name,
         "source": str(root),
-        "destination": f"{destination.rstrip('/')}/{body.chart_name}",
+        "destination": destination,
+        "write_mode": body.write_mode,
         "note": "runs in the background; watch the server log",
     }
 

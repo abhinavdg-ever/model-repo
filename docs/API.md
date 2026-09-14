@@ -883,48 +883,63 @@ curl -s localhost:8001/api/stages | jq '.stages[] | {seq, stage_name, pass_no, i
 
 ### `POST /api/charts/run` → 202
 
-One chart, from **either** source, fetched into the workspace and run. Pass
-`blob_container` + `blob_path`, **or** `local_path` — not both.
+Read one chart, run the chain, and optionally write the results — one call.
+
+A source is a **read path plus a folder name**, which resolve together, and the
+**folder name is the chart name**:
 
 ```json
-{"blob_container": "imaging-pipeline", "blob_path": "run1/batch1/52743839_44976074"}
+{
+  "blob_container": "imaging-pipeline",
+  "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+  "blob_read_folder_name": "52754737_48221214",
+  "blob_write_path": "Processed/Run1"
+}
 ```
 ```json
-{"local_path": "/data/inbox/52743839_44976074"}
+{
+  "local_read_path": "/data/inbox",
+  "local_folder_name": "52754737_48221214",
+  "local_write_path": "/data/outbox"
+}
 ```
 
-Both modes converge: the pages end up under `data/folders/<chart>/pages/` named
-`1.jpg`, `2.jpg` … in natural-sort order, with the chart registered. Every later
-stage is identical regardless of where the images came from.
+```
+reads   Raw_Input/Run1/Batch1/DEID_PNGs/52754737_48221214/
+writes  Processed/Run1/52754737_48221214/
+```
 
-| Field | Mode | Default | Meaning |
-|---|---|---|---|
-| `blob_container` + `blob_path` | blob | — | Container, and the prefix of the chart folder. Both or neither. |
-| `local_path` | local | — | A directory **on the server**, holding the images itself or in a subfolder. Under Docker it must be a path *inside the container* — mount the folder first; the host filesystem is not visible. |
-| `chart_name` | local | folder name | Sanitised to `[A-Za-z0-9._-]`, so `My Chart 001` becomes `My_Chart_001`. |
-| `through` | both | — | Run the chain and **stop after this stage**. See [Running part of the chain](#running-part-of-the-chain). |
-| `only` | both | — | Run **only** these stages, whatever ran before. |
-| `force` | both | `false` | **Replace** the chart, not merge into it: clears the old pages, OCR text and imaging CSVs on disk, deletes every result row for that chart, and reprocesses. `chart_id` and `pipeline_jobs` survive. **Stage 5 is billed per page.** |
+The write path resolves the same way, with the same folder name, so a chart
+keeps its identity on both sides and two charts written to one destination
+cannot merge.
 
-Three switches were removed, because each had one correct setting and the other
-only ever caused a support question:
+| Field | Mode | Meaning |
+|---|---|---|
+| `blob_container` | blob | Container, for **both** read and write |
+| `blob_read_path` + `blob_read_folder_name` | blob | Prefix, and the chart folder under it. Both required. |
+| `blob_write_path` | blob | Prefix to write to. Omit to run without writing. |
+| `local_read_path` + `local_folder_name` | local | Directory, and the chart folder under it. Both required. |
+| `local_write_path` | local | Directory to write to. Omit to run without writing. |
+| `write_mode` | both | `skip_orig_pages` (default) or `all_files` — see below |
+| `overwrite` | both | Replace files already at the destination |
+| `through`, `only` | both | Run part of the chain |
+| `force` | both | Reprocess completed pages. **Stage 5 is billed per page.** |
 
-| Removed | Now |
-|---|---|
-| `move` | The source is always **copied**. A failed import is then a no-op rather than data loss. |
-| `recursive` | Subfolders are **always** searched. A chart folder keeping its scans in `pages/` is the common shape, not a special case. |
-| `load_manifest` | A manifest beside the images is **always** loaded. The member stage cannot run without one. |
-| `run_pipeline` | `/run` runs. To register without running, use `through` with the first stage, or the CLI's `--no-pipeline`. |
+**The folder name is given, never inferred.** It becomes `chart_list.chart_name`,
+prefixes every output CSV, and is the key the member manifest joins on
+(`record_id`) — too load-bearing to guess from a path.
 
-Errors are ordered so they point at the right problem: a malformed body is
-`400` whatever the database is doing, and `503` means the request was valid but
-Postgres is unreachable.
+**Read and write stay on one backend.** Blob in, blob out; local in, local out.
+Mixing them is a `400`, because a write landing somewhere the caller did not
+mean is worse than an error.
 
 | Body | Result |
 |---|---|
-| both sources | `400` — not both |
-| neither | `400` — provide one |
-| `blob_path` without `blob_container` | `400` — must be given together |
+| both a blob and a local source | `400` |
+| neither | `400` |
+| read path without folder name, or vice versa | `400`, naming the missing field |
+| blob source with `local_write_path` (or the reverse) | `400` |
+| unknown `write_mode` | `400` |
 | unknown `through` / `only` stage | `400`, naming the known stages |
 
 Local mode resolves the folder **before** returning, so a bad path is a `400`
@@ -933,43 +948,38 @@ immediately rather than a `202` and a silent background failure:
 ```json
 {
   "status": "accepted", "mode": "local",
-  "chart_id": 12, "chart_name": "52743839_44976074",
-  "source": "/data/inbox/52743839_44976074",
+  "chart_id": 12, "chart_name": "52754737_48221214",
+  "source": "/data/inbox/52754737_48221214",
   "imported": 34,
-  "manifest": {"files": 1, "inserted": 0, "updated": 38},
   "page_count": 34,
-  "through": null, "only": null,
+  "write": {
+    "destination": "/data/outbox/52754737_48221214",
+    "write_mode": "skip_orig_pages",
+    "overwrite": false
+  },
   "poll": "/api/charts/12"
 }
 ```
 
-Blob mode downloads in the background, so it returns before the chart exists:
+`write` is `null` when no write path was given — the chart still runs, and
+`POST /api/charts/write` can send it later.
 
-```json
-{
-  "status": "accepted", "mode": "blob",
-  "chart_name": "52743839_44976074",
-  "blob_container": "imaging-pipeline",
-  "blob_path": "run1/batch1/52743839_44976074",
-  "through": null, "only": null,
-  "poll": "/api/charts/by-name/52743839_44976074"
-}
-```
+**A write failure does not fail the run.** The chart is in the workspace either
+way; the log says so, and `/api/charts/write` retries without reprocessing.
 
-**Re-running a chart that already exists.** Without `force` a non-empty
-`pages/` is an error, so you cannot half-overwrite by accident. With `force` the
-chart is *replaced*: pages, OCR text and imaging CSVs are deleted from disk, and
-`page_list`, `page_stage_status`, `ocr_results`, `ocr_quality_results`,
-`blank_junk_classification`, `member_extraction_results`,
-`member_verification_summary` and `dos_extraction_results` are cleared for that
-chart. The `chart_list` row keeps its `id`, and `pipeline_jobs` is kept as the
-audit trail so you can compare the new run against the old one. Merging instead
-would leave pages that vanished from the source still sitting there marked
-completed — the chart would report finished while serving stale results.
+#### `write_mode`
 
-> `POST /api/charts/ingest`, `/api/charts/import-local` and
-> `/api/charts/register-local` were all removed — `run` replaces all three.
-> Endpoints differing only in where the pages come from is how they drift apart.
+| | Sends | Use when |
+|---|---|---|
+| `skip_orig_pages` *(default)* | `corrected-pages/`, `ocr/`, `imaging/` | The originals came **from** the destination you are writing back to. Re-sending them doubles storage and transfer for bytes already there. |
+| `all_files` | those **plus** `pages/` | The destination is a handoff that must stand alone. |
+
+Corrected pages are sent in **both** modes: the pipeline produced those and the
+source does not have them. Measured on a 3-page chart: 3 files / 3 KB by
+default against 6 files / 885 KB with `all_files`.
+
+If a chart has produced no output yet, the default writes nothing and says so,
+naming `all_files` as the way to send the originals anyway.
 
 #### Running part of the chain
 
@@ -990,7 +1000,7 @@ does nothing.
 ```bash
 # Everything up to and including Final OCR 2, then stop
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{"local_path":"/data/inbox/chart_x","through":"ocr_final2"}'
+  -d '{"local_read_path":"/data/inbox","local_folder_name":"chart_x","through":"ocr_final2"}'
 
 # Just the DOS stage, on a chart whose OCR is already done
 curl -X POST localhost:8001/api/charts/3/rerun -H 'Content-Type: application/json' \
@@ -1003,46 +1013,37 @@ chart that has never run — the stage will find nothing to read.
 
 ### `POST /api/charts/write` → 202
 
-The reverse of `run`'s intake step: take `data/folders/<chart>` and write it
-back out to a blob prefix or a local directory. Give **one** destination.
+Write an already-run chart out, **without reprocessing it**. Use it to send a
+chart to a second destination, or to export one that ran before a write path
+was given.
 
 ```bash
 curl -X POST localhost:8001/api/charts/write -H 'Content-Type: application/json' \
-  -d '{"chart_name":"52743839_44976074","blob_container":"imaging-pipeline","blob_path":"run1/out"}'
+  -d '{"chart_name":"52754737_48221214","blob_container":"imaging-pipeline","blob_write_path":"Processed/Run1"}'
 ```
 
 | Field | Default | Meaning |
 |---|---|---|
-| `chart_name` | — | Folder name under `data/folders`. Required. |
-| `local_path` | — | Destination directory on the server. |
-| `blob_container` + `blob_path` | — | Destination container and prefix. Both or neither. |
-| `overwrite` | `false` | Replace files already at the destination. |
+| `chart_name` | — | Folder under `data/folders`. Required — this is the chart. |
+| `local_write_path` | — | Destination directory on the server |
+| `blob_container` + `blob_write_path` | — | Destination container and prefix |
+| `write_mode` | `skip_orig_pages` | As `/run` |
+| `overwrite` | `false` | Replace files already there |
 
-The **whole** workspace goes — `pages/`, `ocr/` and `imaging/` — so the
-destination is self-contained and readable without the database: the scans, the
-OCR text, and the per-stage CSVs together. Only what exists is written, so a
-chart run with `through` writes the outputs it actually produced.
-
-The chart's own name is **appended** to the destination, so two charts written
-to one place do not merge:
-
-```
-<destination>/<chart_name>/pages/1.jpg …
-<destination>/<chart_name>/ocr/<chart>_prelim.txt …
-<destination>/<chart_name>/imaging/<chart>_dos.csv …
-```
+The chart name is appended to the destination, exactly as `/run` does:
+`<write_path>/<chart_name>/`.
 
 | Body | Result |
 |---|---|
 | two destinations, or none | `400` |
-| `blob_path` without `blob_container` | `400` |
+| `blob_write_path` without `blob_container` | `400` |
+| unknown `write_mode` | `400` |
 | chart has no workspace on disk | `404`, naming the path it looked for |
 | destination not empty, no `overwrite` | `409` for a local destination |
 
-The local clash check runs in the request, so it is a `409` you see. The blob
-equivalent is a network round trip and stays in the background task — but it
-still runs before a single byte is uploaded. macOS AppleDouble stubs (`._1.jpg`)
-are never written out.
+`write` **copies** — the workspace is left intact, so review-ui keeps serving
+the chart and you can write it again elsewhere. macOS AppleDouble stubs
+(`._1.jpg`) are never written out.
 
 ### `POST /api/charts/batch` → 202
 
@@ -1305,35 +1306,38 @@ with the same flags, so you can work without the HTTP hop.
 ### The short version
 
 ```bash
-# 1. One chart from a folder on the server
+# One chart: read it, run it, write the results — one call
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{"local_path":"/data/inbox/52743839_44976074"}'
+  -d '{"local_read_path":"/data/inbox",
+       "local_folder_name":"52743839_44976074",
+       "local_write_path":"/data/outbox"}'
 
-# 2. Watch it
+# Watch it
 curl -s localhost:8001/api/charts/by-name/52743839_44976074 | jq '.chart.status'
-
-# 3. Send the finished folder somewhere
-curl -X POST localhost:8001/api/charts/write -H 'Content-Type: application/json' \
-  -d '{"chart_name":"52743839_44976074","local_path":"/data/outbox"}'
 ```
+
+Reads `/data/inbox/52743839_44976074/`, writes `/data/outbox/52743839_44976074/`.
+Drop `local_write_path` to run without writing.
 
 That is the whole happy path. Everything below is the detail behind it.
 
-### You do not name the chart
+### The folder name is the chart name
 
-`chart_name` is derived from the **last path segment** of whichever source you
-give, so you almost never pass it:
+A source is a read path **plus** a folder name, and they resolve together:
 
-| You send | Chart becomes |
-|---|---|
-| `"local_path": "/data/inbox/52743839_44976074"` | `52743839_44976074` |
-| `"blob_path": "run1/batch1/52743839_44976074"` | `52743839_44976074` |
+| You send | Reads | Chart name |
+|---|---|---|
+| `local_read_path: /data/inbox`, `local_folder_name: 52743839_44976074` | `/data/inbox/52743839_44976074/` | `52743839_44976074` |
+| `blob_read_path: run1/batch1`, `blob_read_folder_name: 52743839_44976074` | `run1/batch1/52743839_44976074/` | `52743839_44976074` |
 
-Pass `chart_name` only to **override** that — when the folder is called
-`scan_batch_3/` but the chart is not, or when you want two runs of one source to
-sit side by side instead of the second replacing the first. It is optional on
-`run`, absent from `batch` (each subfolder names its own), and required only on
-`write`, where there is no source folder to derive it from.
+The write path resolves the same way with the same folder name, so
+`/data/outbox/52743839_44976074/`.
+
+It is **given, not inferred**: the chart name becomes `chart_list.chart_name`,
+prefixes every output CSV, and is the key the member manifest joins on
+(`record_id`). Guessing it from a path would name the chart by accident, and a
+mismatch there is what makes a chart come back `needs_review` with
+`decision_reason='manifest_missing'`.
 
 The name is sanitised to `[A-Za-z0-9._-]`, so `My Chart 001` becomes
 `My_Chart_001`. That matters more than it looks: the member stage joins a chart
@@ -1364,7 +1368,7 @@ Both options work on `run`, `batch` and `rerun`, spelled identically.
 ```bash
 # Everything up to Final OCR 2, then stop — nothing past it is paid for
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{"local_path":"/data/inbox/chart_x","through":"ocr_final2"}'
+  -d '{"local_read_path":"/data/inbox","local_folder_name":"chart_x","through":"ocr_final2"}'
 
 # Just the DOS stage, against OCR that is already on disk
 curl -X POST localhost:8001/api/charts/3/rerun -H 'Content-Type: application/json' \
@@ -1423,10 +1427,17 @@ landed.
 
 ```bash
 cd core-pipeline
-python cli.py run --local /data/inbox/52743839_44976074
-python cli.py run --local ./drop --through ocr_final2
+python cli.py run --local-read-path /data/inbox --folder-name 52743839_44976074
+python cli.py run --local-read-path /data/inbox --folder-name 52743839_44976074 \
+                  --local-write-path /data/outbox            # run AND write
+python cli.py run --blob-container imaging-pipeline \
+                  --blob-read-path Raw_Input/Run1/Batch1/DEID_PNGs \
+                  --folder-name 52743839_44976074 \
+                  --blob-write-path Processed/Run1
+python cli.py run --local-read-path ./drops --folder-name chart_x --through ocr_final2
 python cli.py batch --local ./drops --limit 2 --through ocr_prelim
-python cli.py write 52743839_44976074 --local /data/outbox
+python cli.py write 52743839_44976074 --local-write-path /data/outbox
+python cli.py write 52743839_44976074 --local-write-path /data/outbox --all-files
 python cli.py rerun 7 --only member_verify --force
 ```
 

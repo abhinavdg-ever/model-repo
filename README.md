@@ -86,10 +86,13 @@ Run a chart — from blob, or from a folder on the server:
 
 ```bash
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{"blob_container":"imaging-pipeline","blob_path":"run1/batch1/52743839_44976074"}'
+  -d '{"blob_container":"imaging-pipeline",
+       "blob_read_path":"run1/batch1",
+       "blob_read_folder_name":"52743839_44976074",
+       "blob_write_path":"Processed/Run1"}'
 
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{"local_path":"/data/inbox/52743839_44976074"}'
+  -d '{"local_read_path":"/data/inbox","local_folder_name":"52743839_44976074"}'
 ```
 
 The chart names itself from the last path segment — `52743839_44976074` in both

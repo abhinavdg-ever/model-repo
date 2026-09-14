@@ -565,7 +565,11 @@ class TestRunAcceptsBothModes:
         client, _ = self._client(monkeypatch)
         r = client.post(
             "/api/charts/run",
-            json={"blob_container": "c", "blob_path": "p", "local_path": "/x"},
+            json={
+                "blob_container": "c", "blob_read_path": "p",
+                "blob_read_folder_name": "x",
+                "local_read_path": "/x", "local_folder_name": "x",
+            },
         )
         assert r.status_code == 400
         assert "not both" in r.json()["detail"]
@@ -574,24 +578,86 @@ class TestRunAcceptsBothModes:
         client, _ = self._client(monkeypatch)
         r = client.post("/api/charts/run", json={})
         assert r.status_code == 400
-        assert "local_path" in r.json()["detail"]
+        assert "local_read_path" in r.json()["detail"]
 
-    def test_half_a_blob_pair_is_rejected(self, monkeypatch):
+    def test_an_incomplete_blob_source_is_rejected(self, monkeypatch):
+        """A read path without a folder name is ambiguous: the folder name IS
+        the chart name, so guessing it would name the chart by accident."""
         client, _ = self._client(monkeypatch)
-        r = client.post("/api/charts/run", json={"blob_path": "p"})
+        r = client.post("/api/charts/run", json={"blob_read_path": "p"})
         assert r.status_code == 400
-        assert "together" in r.json()["detail"]
+        assert "blob_read_folder_name" in r.json()["detail"]
+        assert "blob_container" in r.json()["detail"]
 
-    def test_blob_mode_is_accepted(self, monkeypatch):
+    def test_a_local_source_without_a_folder_name_is_rejected(self, monkeypatch):
+        client, _ = self._client(monkeypatch)
+        r = client.post("/api/charts/run", json={"local_read_path": "/data/inbox"})
+        assert r.status_code == 400
+        assert "local_folder_name" in r.json()["detail"]
+
+    def test_blob_mode_is_accepted_and_the_folder_names_the_chart(self, monkeypatch):
         client, main = self._client(monkeypatch)
         monkeypatch.setattr(main, "_bg_run", lambda payload: None)
         r = client.post(
             "/api/charts/run",
-            json={"blob_container": "c", "blob_path": "run1/chart_x"},
+            json={
+                "blob_container": "c",
+                "blob_read_path": "Raw_Input/Run1",
+                "blob_read_folder_name": "chart_x",
+            },
         )
         assert r.status_code == 202, r.text
-        assert r.json()["mode"] == "blob"
-        assert r.json()["chart_name"] == "chart_x"
+        body = r.json()
+        assert body["mode"] == "blob"
+        assert body["chart_name"] == "chart_x"
+        assert body["source"] == "c/Raw_Input/Run1/chart_x"
+        assert body["write"] is None, "no write path given means no write"
+
+    def test_read_and_write_must_use_the_same_backend(self, monkeypatch):
+        """Blob in, blob out; local in, local out. Mixing them silently writes
+        somewhere the caller did not mean."""
+        client, main = self._client(monkeypatch)
+        monkeypatch.setattr(main, "_bg_run", lambda payload: None)
+        r = client.post(
+            "/api/charts/run",
+            json={
+                "blob_container": "c", "blob_read_path": "p",
+                "blob_read_folder_name": "x", "local_write_path": "/out",
+            },
+        )
+        assert r.status_code == 400
+        assert "blob_write_path" in r.json()["detail"]
+
+    def test_the_write_destination_appends_the_folder_name(self, monkeypatch):
+        """Read and write resolve the same way, so a chart keeps its identity
+        on both sides and two charts cannot merge at the destination."""
+        client, main = self._client(monkeypatch)
+        monkeypatch.setattr(main, "_bg_run", lambda payload: None)
+        r = client.post(
+            "/api/charts/run",
+            json={
+                "blob_container": "c",
+                "blob_read_path": "Raw_Input/Run1",
+                "blob_read_folder_name": "chart_x",
+                "blob_write_path": "Processed/Run1",
+            },
+        )
+        assert r.status_code == 202, r.text
+        write = r.json()["write"]
+        assert write["destination"] == "c/Processed/Run1/chart_x"
+        assert write["write_mode"] == "skip_orig_pages", "default omits pages/"
+
+    def test_an_unknown_write_mode_is_rejected(self, monkeypatch):
+        client, _ = self._client(monkeypatch)
+        r = client.post(
+            "/api/charts/run",
+            json={
+                "blob_container": "c", "blob_read_path": "p",
+                "blob_read_folder_name": "x", "write_mode": "everything",
+            },
+        )
+        assert r.status_code == 400
+        assert "write_mode" in r.json()["detail"]
 
     @pytest.mark.parametrize(
         "path", ["/api/charts/import-local", "/api/charts/ingest", "/api/charts/register-local"]
@@ -675,7 +741,8 @@ class TestStageSelection:
         client, _ = self._client(monkeypatch)
         r = client.post(
             "/api/charts/run",
-            json={"blob_container": "c", "blob_path": "p", "through": "ocr_final3"},
+            json={"blob_container": "c", "blob_read_path": "p",
+                  "blob_read_folder_name": "x", "through": "ocr_final3"},
         )
         assert r.status_code == 400
         assert "ocr_final3" in r.json()["detail"]
@@ -684,7 +751,8 @@ class TestStageSelection:
         client, _ = self._client(monkeypatch)
         r = client.post(
             "/api/charts/run",
-            json={"blob_container": "c", "blob_path": "p", "only": ["nope"]},
+            json={"blob_container": "c", "blob_read_path": "p",
+                  "blob_read_folder_name": "x", "only": ["nope"]},
         )
         assert r.status_code == 400
 
@@ -692,7 +760,8 @@ class TestStageSelection:
         client, _ = self._client(monkeypatch)
         r = client.post(
             "/api/charts/run",
-            json={"blob_container": "c", "blob_path": "run1/chart_x", "through": "ocr_final2"},
+            json={"blob_container": "c", "blob_read_path": "run1",
+                  "blob_read_folder_name": "chart_x", "through": "ocr_final2"},
         )
         assert r.status_code == 202, r.text
         assert r.json()["through"] == "ocr_final2"
@@ -806,7 +875,7 @@ class TestWriteChartOut:
         client, _ = self._client(monkeypatch)
         r = client.post(
             "/api/charts/write",
-            json={"chart_name": "c", "local_path": "/out", "blob_path": "p"},
+            json={"chart_name": "c", "local_write_path": "/out", "blob_write_path": "p"},
         )
         assert r.status_code == 400
         assert "exactly one" in r.json()["detail"]
@@ -822,7 +891,7 @@ class TestWriteChartOut:
         client, _ = self._client(monkeypatch)
         r = client.post(
             "/api/charts/write",
-            json={"chart_name": "no_such_chart_xyz", "local_path": "/tmp/out"},
+            json={"chart_name": "no_such_chart_xyz", "local_write_path": "/tmp/out"},
         )
         assert r.status_code == 404
 
@@ -831,9 +900,11 @@ class TestWriteChartOut:
         import api.main as main
         from fastapi.testclient import TestClient
 
-        chart = tmp_path / "folders" / "chart_a" / "pages"
-        chart.mkdir(parents=True)
-        (chart / "1.jpg").write_bytes(b"x")
+        chart = tmp_path / "folders" / "chart_a"
+        (chart / "pages").mkdir(parents=True)
+        (chart / "ocr").mkdir(parents=True)
+        (chart / "pages" / "1.jpg").write_bytes(b"x")
+        (chart / "ocr" / "chart_a_prelim.txt").write_text("t", encoding="utf-8")
         import config
 
         monkeypatch.setattr(main, "_require_db", lambda: None)
@@ -842,7 +913,7 @@ class TestWriteChartOut:
         client = TestClient(main.app, raise_server_exceptions=False)
         r = client.post(
             "/api/charts/write",
-            json={"chart_name": "chart_a", "local_path": "/out/dir"},
+            json={"chart_name": "chart_a", "local_write_path": "/out/dir"},
         )
         assert r.status_code == 202, r.text
         assert r.json()["destination"].endswith("/chart_a")
@@ -853,9 +924,8 @@ class TestWriteChartOut:
         from jobs.export_chart import write_chart
 
         root = tmp_path / "folders"
-        pages = root / "chart_b" / "pages"
-        pages.mkdir(parents=True)
-        (pages / "1.jpg").write_bytes(b"x")
+        (root / "chart_b" / "ocr").mkdir(parents=True)
+        (root / "chart_b" / "ocr" / "t.txt").write_text("t", encoding="utf-8")
         monkeypatch.setattr(config, "DATA_ROOT", root)
 
         with pytest.raises(RuntimeError, match="workspace itself"):
@@ -866,10 +936,10 @@ class TestWriteChartOut:
         from jobs.export_chart import write_chart
 
         root = tmp_path / "folders"
-        pages = root / "chart_c" / "pages"
-        pages.mkdir(parents=True)
-        (pages / "1.jpg").write_bytes(b"x")
-        (pages / "._1.jpg").write_bytes(b"junk")
+        corrected = root / "chart_c" / "corrected-pages"
+        corrected.mkdir(parents=True)
+        (corrected / "1.jpg").write_bytes(b"x")
+        (corrected / "._1.jpg").write_bytes(b"junk")
         monkeypatch.setattr(config, "DATA_ROOT", root)
 
         out = write_chart("chart_c", local_path=str(tmp_path / "out"))
@@ -883,9 +953,8 @@ class TestWriteChartOut:
         from jobs.export_chart import write_chart
 
         root = tmp_path / "folders"
-        pages = root / "chart_d" / "pages"
-        pages.mkdir(parents=True)
-        (pages / "1.jpg").write_bytes(b"x")
+        (root / "chart_d" / "ocr").mkdir(parents=True)
+        (root / "chart_d" / "ocr" / "t.txt").write_text("t", encoding="utf-8")
         monkeypatch.setattr(config, "DATA_ROOT", root)
 
         dest = tmp_path / "out"
@@ -904,8 +973,8 @@ class TestWriteChartOut:
         from fastapi.testclient import TestClient
 
         root = tmp_path / "folders"
-        (root / "chart_e" / "pages").mkdir(parents=True)
-        (root / "chart_e" / "pages" / "1.jpg").write_bytes(b"x")
+        (root / "chart_e" / "ocr").mkdir(parents=True)
+        (root / "chart_e" / "ocr" / "t.txt").write_text("t", encoding="utf-8")
         dest = tmp_path / "out"
         (dest / "chart_e").mkdir(parents=True)
         (dest / "chart_e" / "old.txt").write_text("previous run", encoding="utf-8")
@@ -917,14 +986,14 @@ class TestWriteChartOut:
 
         r = client.post(
             "/api/charts/write",
-            json={"chart_name": "chart_e", "local_path": str(dest)},
+            json={"chart_name": "chart_e", "local_write_path": str(dest)},
         )
         assert r.status_code == 409, r.text
         assert "overwrite" in r.json()["detail"]
 
         r = client.post(
             "/api/charts/write",
-            json={"chart_name": "chart_e", "local_path": str(dest), "overwrite": True},
+            json={"chart_name": "chart_e", "local_write_path": str(dest), "overwrite": True},
         )
         assert r.status_code == 202, r.text
 
@@ -1668,3 +1737,89 @@ class TestInteractiveBlobAuth:
         source = inspect.getsource(blob_store._interactive_credential)
         assert "cache_persistence_options" in source
         assert "_INTERACTIVE_CREDENTIAL" in source
+
+
+class TestWriteModes:
+    """`skip_orig_pages` (default) vs `all_files`.
+
+    The originals came FROM the source you are usually writing back to, so
+    re-sending them doubles storage and transfer for bytes already there.
+    corrected-pages/ is still sent, because the pipeline produced those and
+    the source does not have them.
+    """
+
+    @staticmethod
+    def _chart(tmp_path, monkeypatch):
+        import config
+
+        root = tmp_path / "folders"
+        chart = root / "c1"
+        for sub in ("pages", "corrected-pages", "ocr", "imaging"):
+            (chart / sub).mkdir(parents=True)
+        (chart / "pages" / "1.jpg").write_bytes(b"orig1")
+        (chart / "pages" / "2.jpg").write_bytes(b"orig2")
+        (chart / "corrected-pages" / "2.jpg").write_bytes(b"fixed2")
+        (chart / "ocr" / "c1_prelim.txt").write_text("text", encoding="utf-8")
+        (chart / "imaging" / "c1_dos.csv").write_text("a,b", encoding="utf-8")
+        monkeypatch.setattr(config, "DATA_ROOT", root)
+        return root
+
+    def test_the_default_omits_the_original_pages(self, tmp_path, monkeypatch):
+        from jobs.export_chart import write_chart
+
+        self._chart(tmp_path, monkeypatch)
+        out = write_chart("c1", local_path=str(tmp_path / "out"))
+        written = {
+            str(p.relative_to(tmp_path / "out" / "c1")).replace("\\", "/")
+            for p in (tmp_path / "out" / "c1").rglob("*")
+            if p.is_file()
+        }
+        assert written == {
+            "corrected-pages/2.jpg", "ocr/c1_prelim.txt", "imaging/c1_dos.csv",
+        }
+        assert out["write_mode"] == "skip_orig_pages"
+
+    def test_all_files_sends_the_originals_too(self, tmp_path, monkeypatch):
+        from jobs.export_chart import write_chart
+
+        self._chart(tmp_path, monkeypatch)
+        write_chart("c1", local_path=str(tmp_path / "out"), write_mode="all_files")
+        written = {
+            str(p.relative_to(tmp_path / "out" / "c1")).replace("\\", "/")
+            for p in (tmp_path / "out" / "c1").rglob("*")
+            if p.is_file()
+        }
+        assert "pages/1.jpg" in written and "pages/2.jpg" in written
+        assert "corrected-pages/2.jpg" in written
+
+    def test_a_corrected_page_is_sent_even_by_default(self, tmp_path, monkeypatch):
+        """The point of the default: skip what the source already has, keep
+        what the pipeline made."""
+        from jobs.export_chart import subdirs_for
+
+        assert "corrected-pages" in subdirs_for("skip_orig_pages")
+        assert "pages" not in subdirs_for("skip_orig_pages")
+        assert "pages" in subdirs_for("all_files")
+
+    def test_an_unknown_mode_raises_rather_than_guessing(self):
+        from jobs.export_chart import subdirs_for
+
+        with pytest.raises(ValueError, match="write_mode"):
+            subdirs_for("everything")
+
+    def test_a_chart_with_only_originals_says_why_nothing_was_written(
+        self, tmp_path, monkeypatch
+    ):
+        """Default mode on a chart that produced no output would silently write
+        an empty folder; the message names all_files as the way out."""
+        import config
+
+        from jobs.export_chart import write_chart
+
+        root = tmp_path / "folders"
+        (root / "c2" / "pages").mkdir(parents=True)
+        (root / "c2" / "pages" / "1.jpg").write_bytes(b"x")
+        monkeypatch.setattr(config, "DATA_ROOT", root)
+
+        with pytest.raises(RuntimeError, match="all_files"):
+            write_chart("c2", local_path=str(tmp_path / "out"))
