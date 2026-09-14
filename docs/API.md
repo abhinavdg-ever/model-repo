@@ -96,7 +96,7 @@ deactivate
 cd ../..                                            # tests, from the repo root
 python3.12 -m venv .venv-test && source .venv-test/bin/activate
 pip install -r tests/requirements.txt
-python -m pytest tests/ -q               # 172 tests, no database needed
+python -m pytest tests/ -q               # 253 tests, no database needed
 ```
 
 **Windows (PowerShell)**

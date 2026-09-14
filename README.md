@@ -1,14 +1,193 @@
 # Advantmed Imaging Pipeline
 
-Two independently deployable services over one Postgres database and one shared
-chart workspace:
+Turns scanned medical charts into structured, reviewable data.
 
-- **`core-pipeline/`** — chart intake and the eight-stage imaging chain (OCR,
-  quality, blank/junk, member verification, date of service). Port 8001.
-- **`review-ui/`** — a read-only viewer over what the pipeline produced.
-  Ports 3000 (API) and 3001 (web).
+Point it at a folder of chart page images — a local directory or an Azure Blob
+container — and it corrects each page, reads the text, discards the pages that
+carry no information, confirms the chart belongs to the member it is supposed to,
+and extracts the dates of service. Results land as CSVs beside the pages and in a
+Postgres database, and come with a web viewer for checking any page against the
+text that was read from it.
 
-They never call each other. Each has its own `docker-compose.yml`.
+---
+
+## What it produces
+
+For every chart, under its own folder name:
+
+| Output | Contains |
+|---|---|
+| `ocr/…_prelim.txt`, `…_final1.txt`, `…_final2.json` | the text read from the chart, at each of the three OCR passes |
+| `imaging/…_rotation.csv` | orientation and mirroring corrected per page |
+| `imaging/…_hw_printed.csv` | whether each page is printed, handwritten or mixed |
+| `imaging/…_junk.csv` | pages judged blank, junk or duplicate, and why |
+| `imaging/…_member_extraction.csv` | member names, dates of birth and ids found on each page |
+| `imaging/…_member_verification.csv` | per-page match against the expected member |
+| `imaging/…_dos.csv` | dates of service, with the keyword each was found near |
+| `corrected-pages/` | the de-skewed, correctly oriented page images |
+
+Each chart also gets an **accept / needs-review / reject** decision from member
+verification, with the reason recorded rather than implied.
+
+---
+
+## How a chart is processed
+
+Eight stages, in order. Every page carries its own status, so one unreadable page
+is recorded and skipped rather than failing the chart.
+
+| # | Stage | Runs on | Produces |
+|---|---|---|---|
+| 1 | Rotation + handwriting detection | every page | orientation correction, printed/handwritten label |
+| 2 | Preliminary OCR | every page | first-pass text |
+| 3 | Blank / junk / duplicate — pass 1 | printed pages | candidates to drop |
+| 4 | Final OCR 1 | survivors + handwritten | second-pass text |
+| 5 | Final OCR 2 | survivors + handwritten | third-pass text, for difficult pages |
+| 6 | Blank / junk / duplicate — pass 2 | handwritten + survivors | final keep/drop verdict |
+| 7 | Member extraction + verification | pages that survived | the accept/reject decision |
+| 8 | Date of service | pages that survived | service dates per page and per document |
+
+**Stage 5 is billed per page.** Re-running a chart therefore **resumes** by
+default: pages already completed are not sent again. Reprocessing everything is an
+explicit choice.
+
+The member manifest — the roster a chart is checked against — loads independently,
+before or after the pages. If it arrives late, re-run stage 7 alone.
+
+---
+
+## Requirements
+
+| | |
+|---|---|
+| Database | PostgreSQL 14+ |
+| Runtime | Docker, or Python 3.12 directly (3.13+ is not supported) |
+| Optional | Azure Blob Storage for intake, Azure Document Intelligence for stage 5, Azure OpenAI for date extraction |
+
+Every optional service is genuinely optional. When one is absent the affected
+stage degrades in a way the run records — the output says which path produced it,
+so a partially configured environment is visible in the data rather than silent.
+`GET /health` lists what is switched on and names the missing precondition for
+anything that is not.
+
+---
+
+## Quick start
+
+Two services, each with its own `docker-compose.yml`. They share a database and a
+chart workspace, and never call each other.
+
+- **`core-pipeline`** — intake and the eight stages. Port 8001.
+- **`review-ui`** — read-only viewer over the results. Ports 3000 (API) and 3001 (web).
+
+```bash
+# 1. Create the schema — once, before either service starts
+psql "$DATABASE_URL" -f schema/v1.sql
+
+# 2. The pipeline
+cd core-pipeline
+cp .env.example .env          # set DATABASE_URL, plus any Azure credentials
+docker compose up -d --build  # http://localhost:8001/docs
+
+# 3. The viewer
+cd ../review-ui
+cp .env.example .env
+docker compose up -d --build  # http://localhost:3001
+```
+
+On Windows PowerShell, use `$env:DATABASE_URL` and `Copy-Item .env.example .env`;
+everything else is identical.
+
+To run the services directly instead of in Docker — with reload, on any of the
+three platforms — see
+[Mode A — Local](docs/API.md#mode-a--local-macos--windows--linux).
+
+---
+
+## Running a chart
+
+Three operations cover the service. Each is an HTTP endpoint and a CLI subcommand
+with the same options.
+
+| | |
+|---|---|
+| `POST /api/charts/run` | one chart in, through the eight stages, optionally written back out |
+| `POST /api/charts/batch` | the same, once per subfolder of a drop, one chart at a time |
+| `POST /api/charts/write` | send a finished chart to another destination, without reprocessing |
+
+A source is a path plus a folder name, and **the folder name is the chart name** —
+it identifies the chart in the database, prefixes every output file, and is the key
+the member manifest is matched on.
+
+```bash
+# From a folder on the server
+curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
+  -d '{"local_read_path":"/data/inbox",
+       "local_folder_name":"52743839_44976074",
+       "local_write_path":"/data/outbox"}'
+
+# From Azure Blob Storage
+curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
+  -d '{"blob_container":"imaging-pipeline",
+       "blob_read_path":"run1/batch1",
+       "blob_read_folder_name":"52743839_44976074",
+       "blob_write_path":"Processed/Run1"}'
+```
+
+The call returns immediately; poll
+`GET /api/charts/by-name/52743839_44976074` for progress.
+
+Add `"through": "ocr_final2"` to stop after a stage, or `"only": ["dos_extract"]`
+to run one stage on its own against results already on disk.
+
+Full reference — every field, every status code, batches, partial runs and the CLI:
+[`docs/API.md`](docs/API.md#how-to-run-a-chart).
+
+---
+
+## Reviewing the results
+
+`review-ui` at <http://localhost:3001> lists every chart the pipeline has produced,
+and shows each page beside the text read from it, the stage badges it earned, and
+the member verification outcome. It mounts the chart workspace **read-only** and
+records no decisions — it is for checking the pipeline's work, not for annotating
+it.
+
+It can read results either from the database or straight from the output files, so
+it can be pointed at a finished drop without a database at all.
+
+---
+
+## Deploying this securely
+
+Two things to settle before this handles real charts outside a trusted network.
+Both are deliberate, current limitations rather than oversights:
+
+- **Neither service authenticates requests, and neither terminates TLS.** Charts
+  carry member names and dates of birth. Put both services behind a reverse proxy
+  that provides authentication and TLS before exposing either port beyond the host.
+  The viewer's login screen keeps a casual visitor off the page; it is not an
+  access control, and the API behind it is reachable without it.
+- **Rejecting a chart for wrong-member evidence requires the optional NER layer.**
+  It is off by default because the runtime and model weights are large (~4.5 GB
+  together) and are not shipped with the code. While it is off, member verification
+  still runs and still flags charts for review — but no chart can be *rejected*
+  outright, so every chart returns accepted or needs-review.
+  [`GET /health`](docs/API.md#get-health) reports whether it is active.
+
+Enabling the NER layer:
+[`docs/API.md § The NER layer`](docs/API.md#3-the-ner-layer-gliner--optional-and-it-gates-rejection).
+
+---
+
+## Verifying an installation
+
+```bash
+python -m pytest tests/ -q
+```
+
+253 tests, no database or cloud credentials required. A further 5 exercise the
+Azure OpenAI and NER paths and skip themselves when those are not configured.
 
 ---
 
@@ -16,148 +195,7 @@ They never call each other. Each has its own `docker-compose.yml`.
 
 | Document | Covers |
 |---|---|
-| [`PLAN.md`](PLAN.md) | Living architecture plan — status, decisions, what changed |
-| [`docs/FLOW.md`](docs/FLOW.md) | What runs when: end-to-end diagrams, skip rules, resume, status |
-| [`docs/LOGIC.md`](docs/LOGIC.md) | How each decision is made and exactly what it writes to the database |
-| [`docs/API.md`](docs/API.md) | Running both services, full API reference, CLI, troubleshooting |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System shape, data model, role of every file, known limits |
-
----
-
-## Quick start
-
-Runs on macOS, Linux and Windows. **Python 3.12** — 3.13+ does not work
-(`rapidocr-onnxruntime` requires `<3.13`).
-
-Two ways to run it, and they use different ports:
-**[Mode A — Local](docs/API.md#mode-a--local-macos--windows--linux)** (uvicorn,
-for development) and **[Mode B — VM](docs/API.md#mode-b--vm-linux-with-docker)**
-(docker compose, for deployment). The quick start below is Mode B.
-
-**macOS / Linux**
-
-```bash
-# 1. Schema — once, before either service starts
-psql "$DATABASE_URL" -f schema/v1.sql   # required — what is implemented
-psql "$DATABASE_URL" -f schema/v2.sql   # optional — next phase, nothing uses it yet
-
-# 2. core-pipeline
-cd core-pipeline
-cp .env.example .env          # fill in DATABASE_URL and any Azure credentials
-docker compose up -d --build  # http://localhost:8001/docs
-
-# 3. review-ui
-cd ../review-ui
-cp .env.example .env
-docker compose up -d --build  # http://localhost:3001
-
-# 4. Tests
-python -m pytest tests/ -q    # 172 tests
-```
-
-**Windows (PowerShell)**
-
-```powershell
-# 1. Schema
-psql $env:DATABASE_URL -f schema/v1.sql
-psql $env:DATABASE_URL -f schema/v2.sql
-
-# 2. core-pipeline
-cd core-pipeline
-Copy-Item .env.example .env
-docker compose up -d --build  # http://localhost:8001/docs
-
-# 3. review-ui
-cd ..\review-ui
-Copy-Item .env.example .env
-docker compose up -d --build  # http://localhost:3001
-
-# 4. Tests
-python -m pytest tests/ -q    # 172 tests
-```
-
-Windows specifics — venv activation, `TESSERACT_CMD`, `curl.exe`, the
-PowerShell execution policy:
-[`docs/API.md § Installing dependencies`](docs/API.md#installing-dependencies).
-
-Run a chart — from blob, or from a folder on the server:
-
-```bash
-curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{"blob_container":"imaging-pipeline",
-       "blob_read_path":"run1/batch1",
-       "blob_read_folder_name":"52743839_44976074",
-       "blob_write_path":"Processed/Run1"}'
-
-curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{"local_read_path":"/data/inbox","local_folder_name":"52743839_44976074"}'
-```
-
-The chart names itself from the last path segment — `52743839_44976074` in both
-cases — so there is nothing else to fill in. Poll
-`GET /api/charts/by-name/52743839_44976074` for progress.
-
-Three verbs cover the service:
-
-| | |
-|---|---|
-| `POST /api/charts/run` | one chart in, from blob or local, then the 8 stages |
-| `POST /api/charts/batch` | the same, once per subfolder of a drop, one at a time |
-| `POST /api/charts/write` | the finished folder back out to blob or local |
-
-Add `"through": "ocr_final2"` to stop after a stage, or `"only": ["dos_extract"]`
-to run one on its own. Every verb is also a CLI subcommand with the same flags.
-
-Full instructions — partial runs, batches, writing results back, running without
-Docker: [`docs/API.md § How to run a chart`](docs/API.md#how-to-run-a-chart).
-
----
-
-## The stage chain
-
-| # | Stage | Runs on | Writes |
-|---|---|---|---|
-| 1 | Rotation + handwriting | every page | `ocr_quality_results` (+ `corrected-pages/` when enabled) |
-| 2 | Preliminary OCR (Tesseract) | every page | `ocr_results` |
-| 3 | Blank/junk/duplicate — pass 1 | printed only | `blank_junk_classification` |
-| 4 | Final OCR 1 (RapidOCR) | survivors + handwritten | `ocr_results` |
-| 5 | Final OCR 2 (Azure DocIntel) | survivors + handwritten | `ocr_results` |
-| 6 | Blank/junk/duplicate — pass 2 | handwritten + survivors | final verdict |
-| 7 | Member extraction + verification | not blank/junk | member rows + summary |
-| 8 | Date of service | not blank/junk | DOS rows + dates |
-
-Stage 5 is billed per page — which is why re-runs **resume** by default rather
-than reprocessing. Stage 7 produces the accept/reject decision.
-
-The manifest loader runs independently, before or after ingest.
-
----
-
-## Shared workspace
-
-`core-pipeline` writes it; `review-ui` mounts it read-only.
-
-```text
-review-ui/data/folders/<chart_name>/
-  pages/1.jpg … N.jpg
-  ocr/<chart>_prelim.txt | _final1.txt | _final2.json
-  imaging/<chart>_rotation.csv | _hw_printed.csv | _junk.csv
-          _member_extraction.csv | _member_verification.csv | _dos.csv
-```
-
----
-
-## Before production
-
-Two limits worth knowing up front — both detailed in
-[`docs/ARCHITECTURE.md § Known limits`](docs/ARCHITECTURE.md#6-known-limits):
-
-- **There is no authentication** on either service. Charts carry member names
-  and dates of birth.
-- **Wrong-member rejection needs the GLiNER layer.** The code is ported and
-  wired, but the runtime (`pip install -r core-pipeline/requirements-ner.txt`,
-  ~2.5 GB) and the checkpoints (via the bundled downloader, ~2 GB) are not
-  vendored, so it is **off by default**. While off, member verification runs
-  rules-only and **no document can be Rejected**. `GET /health` reports exactly
-  which precondition is unmet — see
-  [`docs/LOGIC.md`](docs/LOGIC.md#turning-it-on).
+| [`docs/API.md`](docs/API.md) | Running both services, full API and CLI reference, troubleshooting |
+| [`docs/FLOW.md`](docs/FLOW.md) | What runs when — end-to-end diagrams, skip rules, resume behaviour |
+| [`docs/LOGIC.md`](docs/LOGIC.md) | How each decision is made, and exactly what it writes |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System shape, data model, the role of every file |

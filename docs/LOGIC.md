@@ -565,6 +565,6 @@ v8 uses lifecycle `status` + `current_stage` + `current_pass`, with order in the
 | Status derivation | `core-pipeline/db/chart_status.py` |
 | Persistence | `core-pipeline/db/__init__.py` |
 
-Behaviour above is pinned by `tests/` (172 tests). A failure there means the port
+Behaviour above is pinned by `tests/` (253 tests). A failure there means the port
 has drifted from the reference — the fix is to restore it, not to update the
 expectation.
