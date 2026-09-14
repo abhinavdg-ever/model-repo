@@ -243,24 +243,52 @@ class RunRequest(StageSelection):
 
 
 class BatchRequest(StageSelection):
-    """Every chart under one parent folder or blob prefix, run one at a time.
+    """Every chart under one read path, run one at a time, optionally written.
 
-    Deliberately the same shape as RunRequest: each subfolder holding images is
-    one chart, and each is handed to the same code path a single run uses, so
-    an option means the same thing in both places.
+    The same vocabulary as RunRequest **minus the folder name**: here every
+    sub-folder holding images IS a chart, so each supplies its own. A chart read
+    from `<read_path>/52754737_48221214/` is written to
+    `<write_path>/52754737_48221214/`.
+
+    Each chart goes through the same call a single `/run` makes, so an option
+    means the same thing in both places.
     """
 
-    local_root: Optional[str] = Field(
+    # --- blob ---
+    blob_container: Optional[str] = Field(
+        None, description="Azure Blob container. Used for both read and write."
+    )
+    blob_read_path: Optional[str] = Field(
+        None,
+        description="Prefix whose sub-folders are charts",
+        examples=["Raw_Input/Run1/Batch1/DEID_PNGs"],
+    )
+    blob_write_path: Optional[str] = Field(
+        None, description="Prefix to write each chart to. Omit to run without writing."
+    )
+
+    # --- local ---
+    local_read_path: Optional[str] = Field(
         None,
         description=(
-            "Parent directory ON THE SERVER; each subfolder holding images is "
+            "Parent directory ON THE SERVER; each sub-folder holding images is "
             "one chart. Under Docker this must be a path inside the container."
         ),
     )
-    blob_container: Optional[str] = None
-    blob_prefix: Optional[str] = Field(
-        None, description="Each sub-folder under this prefix holding images is one chart"
+    local_write_path: Optional[str] = Field(
+        None, description="Directory to write each chart to. Omit to run without writing."
     )
+
+    # --- write options ---
+    write_mode: str = Field(
+        SKIP_ORIG_PAGES,
+        description="skip_orig_pages (default) omits pages/; all_files sends everything",
+    )
+    overwrite: bool = Field(
+        False, description="Replace files already at the write destination"
+    )
+
+    # --- both ---
     force: bool = False
     limit: Optional[int] = Field(
         None, description="Only the first N charts — use for a dry run first"
@@ -488,13 +516,20 @@ def _bg_pipeline(
 def _bg_batch(payload: "BatchRequest") -> None:
     from jobs.batch_intake import run_batch
 
-    source = payload.local_root or f"{payload.blob_container}/{payload.blob_prefix}"
+    source = (
+        payload.local_read_path
+        or f"{payload.blob_container}/{payload.blob_read_path}"
+    )
     logger.info("Background batch starting: %s", source)
     try:
         result = run_batch(
-            local_root=payload.local_root,
+            local_read_path=payload.local_read_path,
             blob_container=payload.blob_container,
-            blob_prefix=payload.blob_prefix,
+            blob_read_path=payload.blob_read_path,
+            local_write_path=payload.local_write_path,
+            blob_write_path=payload.blob_write_path,
+            write_mode=payload.write_mode,
+            overwrite=payload.overwrite,
             force=payload.force,
             only=payload.only,
             through=payload.through,
@@ -843,50 +878,91 @@ def _chart_payload(conn: Any, chart_id: int, include_pages: bool) -> dict[str, A
 def batch_intake(
     body: BatchRequest, background_tasks: BackgroundTasks
 ) -> dict[str, Any]:
-    """Run every chart under a folder or blob prefix, sequentially.
+    """Run every chart under a read path, sequentially, and optionally write each.
+
+    Same fields as `/run` without the folder name — each sub-folder holding
+    images is one chart and names itself.
 
     Charts run one at a time on purpose: each already parallelises across pages,
     and stage 5 is billed per page, so overlapping charts multiplies memory and
-    spend without finishing sooner. One bad folder does not stop the batch.
+    spend without finishing sooner. One bad folder does not stop the batch, and
+    neither does one unwritable destination.
 
     Returns 202 immediately — a batch can run for hours. Watch the server log
     for `[n/total]` progress, or poll GET /api/charts/by-name/{chart_name}.
     """
     from jobs.batch_intake import find_local_chart_folders, run_batch
 
-    if bool(body.local_root) == bool(body.blob_container or body.blob_prefix):
+    has_blob = bool(body.blob_container or body.blob_read_path)
+    has_local = bool(body.local_read_path)
+    if has_blob == has_local:
         raise HTTPException(
             status_code=400,
-            detail="Provide either local_root, or both blob_container and blob_prefix",
+            detail=(
+                "Provide either local_read_path, or both blob_container and "
+                "blob_read_path"
+            ),
+        )
+    if has_blob and not (body.blob_container and body.blob_read_path):
+        raise HTTPException(
+            status_code=400,
+            detail="blob_container and blob_read_path must be given together",
+        )
+    if has_blob and body.local_write_path:
+        raise HTTPException(
+            status_code=400,
+            detail="A blob source writes to blob_write_path, not local_write_path",
+        )
+    if has_local and body.blob_write_path:
+        raise HTTPException(
+            status_code=400,
+            detail="A local source writes to local_write_path, not blob_write_path",
+        )
+    if body.write_mode not in WRITE_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"write_mode must be one of {', '.join(WRITE_MODES)}",
         )
     _validate_stages(body)
     _require_db()
+
     # Resolve the chart list up front so the caller learns immediately that the
     # path is wrong, instead of getting 202 and an empty batch an hour later.
     found: Optional[int] = None
-    if body.local_root:
+    if has_local:
         try:
-            found = len(find_local_chart_folders(body.local_root))
+            found = len(find_local_chart_folders(body.local_read_path))
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not found:
             raise HTTPException(
                 status_code=400,
-                detail=f"No chart folders with images under {body.local_root}",
+                detail=f"No chart folders with images under {body.local_read_path}",
             )
 
-    background_tasks.add_task(
-        _bg_batch,
-        body,
-    )
+    background_tasks.add_task(_bg_batch, body)
+    write_to = body.blob_write_path or body.local_write_path
     return {
         "status": "accepted",
-        "mode": "local" if body.local_root else "blob",
-        "source": body.local_root or f"{body.blob_container}/{body.blob_prefix}",
+        "mode": "local" if has_local else "blob",
+        "source": body.local_read_path or f"{body.blob_container}/{body.blob_read_path}",
         "charts_found": found,
         "limit": body.limit,
         "through": body.through,
         "only": body.only,
+        "write": (
+            {
+                "destination": (
+                    f"{body.blob_container}/{body.blob_write_path}"
+                    if body.blob_write_path
+                    else body.local_write_path
+                ),
+                "write_mode": body.write_mode,
+                "note": "each chart is written under its own folder name",
+            }
+            if write_to
+            else None
+        ),
         "note": "runs sequentially; watch the server log for [n/total] progress",
     }
 

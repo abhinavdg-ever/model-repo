@@ -1047,35 +1047,55 @@ the chart and you can write it again elsewhere. macOS AppleDouble stubs
 
 ### `POST /api/charts/batch` → 202
 
-Scan a folder or blob prefix and run **every chart in it**, sequentially.
+Run **every chart under a read path**, sequentially, and optionally write each.
+
+The same fields as `/run` **minus the folder name** — here every sub-folder
+holding images is one chart and names itself:
 
 ```json
-{"local_root": "/data/inbox/2026-09-13", "limit": null}
+{
+  "local_read_path": "/data/inbox/2026-09-13",
+  "local_write_path": "/data/outbox",
+  "limit": 1
+}
 ```
 ```json
-{"blob_container": "imaging-pipeline", "blob_prefix": "Raw_Input/Run1/Batch1"}
+{
+  "blob_container": "imaging-pipeline",
+  "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+  "blob_write_path": "Processed/Run1"
+}
 ```
 
-Exactly one source: `local_root`, or `blob_container` + `blob_prefix`.
+```
+reads   <read_path>/52754737_48221214/   ->  writes  <write_path>/52754737_48221214/
+        <read_path>/52755507_45500395/   ->          <write_path>/52755507_45500395/
+```
 
-**What counts as a chart:** each immediate subfolder holding at least one image.
-Folders with no images are skipped rather than attempted, dotfolders are
+**What counts as a chart:** each immediate sub-folder holding at least one
+image. Folders with no images are skipped rather than attempted, dotfolders are
 ignored, and macOS `._` stubs do not make a folder count. Point it at a single
 chart folder and it runs just that one, so the same command works for a drop of
 fifty or a drop of one.
 
-**Batch is `run`, once per folder.** It hands each chart to the same code path a
-single `/run` uses, so an option means the same thing in both places and a batch
-of one is indistinguishable from a single run.
+| Field | Meaning |
+|---|---|
+| `blob_container` + `blob_read_path` | Container, and the prefix whose sub-folders are charts |
+| `local_read_path` | Parent directory whose sub-folders are charts |
+| `blob_write_path` / `local_write_path` | Where each chart is written, under its own folder name. Omit to run without writing. |
+| `write_mode`, `overwrite` | As `/run` |
+| `through`, `only`, `force` | As `/run` |
+| `limit` | Only the first N charts. **Use `limit: 1` for a dry run.** |
 
-| Field | Default | Meaning |
-|---|---|---|
-| `limit` | all | Only the first N charts. **Use `limit: 1` for a dry run** before committing a large batch. |
-| `through`, `only`, `force` | as `run` | Identical spelling and meaning. `through: "ocr_prelim"` across a whole drop is the cheap way to check intake before paying for stage 5. |
+Read and write stay on the same backend, exactly as in `/run`.
 
-For a local root the chart list is resolved **before** returning, so a wrong
-path gives you `400` immediately rather than `202` and an empty batch an hour
-later. `charts_found` in the reply tells you how many will run.
+**Batch is `/run`, once per folder.** Each chart goes through the same call, so
+an option means the same thing in both places and a batch of one is
+indistinguishable from a single run.
+
+For a local read path the chart list is resolved **before** returning, so a
+wrong path gives `400` immediately rather than `202` and an empty batch an hour
+later. `charts_found` tells you how many will run.
 
 ```json
 {
@@ -1084,33 +1104,41 @@ later. `charts_found` in the reply tells you how many will run.
   "source": "/data/inbox/2026-09-13",
   "charts_found": 37,
   "limit": null,
-  "through": null,
-  "only": null,
+  "write": {
+    "destination": "/data/outbox",
+    "write_mode": "skip_orig_pages",
+    "note": "each chart is written under its own folder name"
+  },
   "note": "runs sequentially; watch the server log for [n/total] progress"
 }
 ```
 
 **Charts run one at a time, deliberately.** Each already fans out across pages
 (`STAGE_WORKERS`), and stage 5 is billed per page — overlapping charts
-multiplies memory and spend without finishing the batch sooner. A chart that
-fails is recorded and the batch continues, because the usual failure is one bad
-folder in a drop of fifty.
+multiplies memory and spend without finishing the batch sooner. See
+[PLAN.md](../PLAN.md#proposed-shard-a-batch-across-n-chart-workers) for the
+design that would change that, and why it is not built.
+
+**One bad folder does not stop the batch, and neither does one unwritable
+destination.** A chart that fails is recorded and the run continues; a chart
+that ran but could not be written is marked `write.status = "failed"` while
+staying `status = "completed"`, because the pipeline did its job and
+`/api/charts/write` can retry without reprocessing.
 
 A batch can run for hours, so the reply is `202` and progress goes to the log:
 
 ```
 INFO Batch: 37 chart folder(s) under /data/inbox/2026-09-13
 INFO [1/37] 52743839_44976074
-INFO [2/37] 52743997_45500291
-...
 INFO Background batch finished: ... -> 36/37 completed, 1 failed in 4213.8s
 WARNING   failed: 52744171_44423942 — RuntimeError: No images in ...
 ```
 
-The CLI equivalent runs inline and prints a per-chart JSON summary at the end:
+The CLI equivalent runs inline and prints a per-chart JSON summary, each entry
+carrying its own `write` result:
 
 ```bash
-python cli.py batch --local ./drops --limit 2
+python cli.py batch --local-read-path ./drops --local-write-path ./out --limit 2
 ```
 
 ### `GET /api/charts/{chart_id}` · `GET /api/charts/by-name/{chart_name}`
@@ -1270,10 +1298,13 @@ python cli.py run --local ./drop --through ocr_prelim        # cheapest intake c
 
 # Batch: scan a parent folder (or blob prefix) and run EVERY chart in it,
 # one at a time. One bad folder does not stop the rest. Same flags as run.
-python cli.py batch --local "D:\drops\2026-09-13"
-python cli.py batch --local ./drops --limit 2 --no-pipeline   # dry run first
-python cli.py batch --local ./drops --through ocr_prelim      # intake the whole drop, no paid OCR
-python cli.py batch --blob-container imaging-pipeline --blob-prefix Raw_Input/Run1/Batch1
+python cli.py batch --local-read-path "D:\drops\2026-09-13"
+python cli.py batch --local-read-path ./drops --local-write-path ./out
+python cli.py batch --local-read-path ./drops --limit 2 --no-pipeline   # dry run first
+python cli.py batch --local-read-path ./drops --through ocr_prelim      # no paid OCR
+python cli.py batch --blob-container imaging-pipeline \
+                    --blob-read-path Raw_Input/Run1/Batch1 \
+                    --blob-write-path Processed/Run1
 
 # write: the reverse of run's intake step — the whole chart folder back out.
 python cli.py write 52743839_44976074 --local /data/outbox
@@ -1383,7 +1414,7 @@ way to confirm intake picked up the right pages before committing to stage 5.
 
 ```bash
 curl -X POST localhost:8001/api/charts/batch -H 'Content-Type: application/json' \
-  -d '{"local_root":"/data/inbox/2026-09-13","limit":1}'
+  -d '{"local_read_path":"/data/inbox/2026-09-13","local_write_path":"/data/outbox","limit":1}'
 ```
 
 Each immediate subfolder holding at least one image is one chart. Charts run
@@ -1435,7 +1466,7 @@ python cli.py run --blob-container imaging-pipeline \
                   --folder-name 52743839_44976074 \
                   --blob-write-path Processed/Run1
 python cli.py run --local-read-path ./drops --folder-name chart_x --through ocr_final2
-python cli.py batch --local ./drops --limit 2 --through ocr_prelim
+python cli.py batch --local-read-path ./drops --limit 2 --through ocr_prelim
 python cli.py write 52743839_44976074 --local-write-path /data/outbox
 python cli.py write 52743839_44976074 --local-write-path /data/outbox --all-files
 python cli.py rerun 7 --only member_verify --force

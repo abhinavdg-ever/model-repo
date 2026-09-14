@@ -530,14 +530,89 @@ class TestBatchFolderDiscovery:
     def test_batch_rejects_both_sources_at_once(self):
         from jobs.batch_intake import run_batch
 
-        with pytest.raises(ValueError, match="either local_root"):
-            run_batch(local_root="/x", blob_container="c", blob_prefix="p")
+        with pytest.raises(ValueError, match="either local_read_path"):
+            run_batch(local_read_path="/x", blob_container="c", blob_read_path="p")
 
     def test_batch_rejects_neither_source(self):
         from jobs.batch_intake import run_batch
 
-        with pytest.raises(ValueError, match="either local_root"):
+        with pytest.raises(ValueError, match="either local_read_path"):
             run_batch()
+
+    def test_batch_read_and_write_must_share_a_backend(self):
+        """Same rule as /run: a write landing somewhere the caller did not mean
+        is worse than an error."""
+        from jobs.batch_intake import run_batch
+
+        with pytest.raises(ValueError, match="local_write_path"):
+            run_batch(local_read_path="/x", blob_write_path="out")
+        with pytest.raises(ValueError, match="blob_write_path"):
+            run_batch(
+                blob_container="c", blob_read_path="p", local_write_path="/out"
+            )
+
+    def test_batch_takes_the_same_write_options_as_run(self):
+        """Batch is run-per-folder. An option that means one thing in run and
+        another in batch is the bug this shape exists to prevent."""
+        from api.main import BatchRequest, RunRequest
+
+        for field in ("blob_container", "blob_read_path", "blob_write_path",
+                      "local_read_path", "local_write_path",
+                      "write_mode", "overwrite", "through", "only", "force"):
+            assert field in RunRequest.model_fields, field
+            assert field in BatchRequest.model_fields, field
+
+    def test_batch_has_no_folder_name(self):
+        """Each sub-folder IS a chart and names itself, so one folder name
+        could not mean anything across fifty of them."""
+        from api.main import BatchRequest
+
+        assert not [f for f in BatchRequest.model_fields if "folder_name" in f]
+
+    def test_a_write_failure_is_recorded_not_raised(self, tmp_path, monkeypatch):
+        """In a batch of fifty, one unwritable destination must be reported and
+        stepped over, not abort the other forty-nine — and the chart itself
+        still ran, so it must not be marked failed either."""
+        import config
+        from jobs.batch_intake import _write_one
+
+        # A chart that does not exist on disk: write_chart raises, and
+        # _write_one must turn that into a recorded outcome.
+        monkeypatch.setattr(config, "DATA_ROOT", tmp_path / "folders")
+        result = _write_one(
+            "no_such_chart",
+            local_write_path=str(tmp_path / "out"),
+            blob_container=None,
+            blob_write_path=None,
+            write_mode="skip_orig_pages",
+            overwrite=False,
+        )
+        assert result["status"] == "failed"
+        assert "error" in result
+
+    def test_a_successful_write_is_recorded_with_its_destination(
+        self, tmp_path, monkeypatch
+    ):
+        import config
+        from jobs.batch_intake import _write_one
+
+        root = tmp_path / "folders"
+        (root / "c1" / "ocr").mkdir(parents=True)
+        (root / "c1" / "ocr" / "t.txt").write_text("t", encoding="utf-8")
+        monkeypatch.setattr(config, "DATA_ROOT", root)
+
+        result = _write_one(
+            "c1",
+            local_write_path=str(tmp_path / "out"),
+            blob_container=None,
+            blob_write_path=None,
+            write_mode="skip_orig_pages",
+            overwrite=False,
+        )
+        assert result["status"] == "written"
+        assert result["files_written"] == 1
+        # Each chart lands under its own folder name, as in /run.
+        assert result["destination"].endswith("c1")
 
 
 # --- ingest request shape ----------------------------------------------------

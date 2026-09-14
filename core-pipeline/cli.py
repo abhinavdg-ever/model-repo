@@ -91,14 +91,17 @@ def main() -> None:
     )
     src_b = p_batch.add_mutually_exclusive_group(required=True)
     src_b.add_argument(
-        "--local", metavar="PATH",
+        "--local-read-path", metavar="PATH",
         help="Parent folder; each subfolder holding images is one chart",
     )
     src_b.add_argument(
-        "--blob-prefix",
+        "--blob-read-path",
         help="Blob prefix; each sub-folder holding images is one chart",
     )
-    p_batch.add_argument("--blob-container", help="Required with --blob-prefix")
+    p_batch.add_argument("--blob-container", help="Required with --blob-read-path")
+    p_batch.add_argument("--blob-write-path", help="Prefix to write each chart to")
+    p_batch.add_argument("--local-write-path", help="Directory to write each chart to")
+    add_write_flags(p_batch)
     p_batch.add_argument("--force", action="store_true", help="Reprocess pages already done")
     add_stage_flags(p_batch)
     p_batch.add_argument("--no-pipeline", action="store_true", help="Intake only")
@@ -233,14 +236,18 @@ def main() -> None:
     if args.cmd == "batch":
         from jobs.batch_intake import run_batch
 
-        if args.blob_prefix and not args.blob_container:
-            parser.error("--blob-prefix requires --blob-container")
+        if args.blob_read_path and not args.blob_container:
+            parser.error("--blob-read-path requires --blob-container")
         print(
             json.dumps(
                 run_batch(
-                    local_root=args.local,
+                    local_read_path=args.local_read_path,
                     blob_container=args.blob_container,
-                    blob_prefix=args.blob_prefix,
+                    blob_read_path=args.blob_read_path,
+                    local_write_path=args.local_write_path,
+                    blob_write_path=args.blob_write_path,
+                    write_mode=args.write_mode,
+                    overwrite=args.overwrite,
                     force=args.force,
                     run_pipeline=not args.no_pipeline,
                     only=args.only,
