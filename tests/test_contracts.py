@@ -927,3 +927,134 @@ class TestWriteChartOut:
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path / "folders")
         with pytest.raises(RuntimeError, match="No chart workspace"):
             write_chart("ghost", local_path=str(tmp_path / "out"))
+
+
+class TestCapabilityReporting:
+    """One source for the startup banner and /health.
+
+    They disagreed before `capabilities` existed: the banner named the database
+    and worker count, /health named NER and the DOS LLM, and neither mentioned
+    blob at all — so "can this box read from a container?" was only answerable
+    by submitting a chart and watching it fail.
+    """
+
+    @staticmethod
+    def _reload(monkeypatch, **env):
+        import importlib
+
+        for key, value in env.items():
+            if value is None:
+                monkeypatch.delenv(key, raising=False)
+            else:
+                monkeypatch.setenv(key, value)
+        import config
+
+        importlib.reload(config)
+        import capabilities
+
+        return importlib.reload(capabilities)
+
+    def test_blob_is_not_ready_without_an_account_name(self, monkeypatch):
+        caps = self._reload(
+            monkeypatch,
+            AZURE_STORAGE_ACCOUNT_NAME=None,
+            AZURE_STORAGE_CONNECTION_STRING=None,
+        )
+        blob = caps.blob_status()
+        assert blob["ready"] is False
+        assert "AZURE_STORAGE_ACCOUNT_NAME" in blob["reason"]
+
+    def test_a_connection_string_alone_is_enough(self, monkeypatch):
+        """It carries the account and the credential, so nothing else is needed."""
+        caps = self._reload(
+            monkeypatch,
+            AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=x;AccountKey=y;",
+            AZURE_STORAGE_ACCOUNT_NAME=None,
+        )
+        blob = caps.blob_status()
+        assert blob["ready"] is True
+        assert blob["auth"] == "connection_string"
+
+    def test_entra_needs_only_the_account_name(self, monkeypatch):
+        caps = self._reload(
+            monkeypatch,
+            AZURE_STORAGE_CONNECTION_STRING=None,
+            AZURE_STORAGE_AUTH="entra",
+            AZURE_STORAGE_ACCOUNT_NAME="acct",
+            AZURE_STORAGE_ACCOUNT_KEY=None,
+        )
+        blob = caps.blob_status()
+        assert blob["ready"] is True
+        assert blob["auth"] == "entra"
+
+    def test_key_auth_without_a_key_is_not_ready(self, monkeypatch):
+        caps = self._reload(
+            monkeypatch,
+            AZURE_STORAGE_CONNECTION_STRING=None,
+            AZURE_STORAGE_AUTH="key",
+            AZURE_STORAGE_ACCOUNT_NAME="acct",
+            AZURE_STORAGE_ACCOUNT_KEY=None,
+        )
+        blob = caps.blob_status()
+        assert blob["ready"] is False
+        assert "AZURE_STORAGE_ACCOUNT_KEY" in blob["reason"]
+
+    def test_the_precedence_matches_the_client_builder(self, monkeypatch):
+        """A connection string wins over entra, exactly as
+        get_blob_service_client does. If these drift, /health reports a
+        credential the code would not use."""
+        caps = self._reload(
+            monkeypatch,
+            AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=x;AccountKey=y;",
+            AZURE_STORAGE_AUTH="entra",
+            AZURE_STORAGE_ACCOUNT_NAME="acct",
+        )
+        assert caps.blob_status()["auth"] == "connection_string"
+
+    def test_every_not_ready_capability_names_a_reason(self, monkeypatch):
+        """`ready: false` with no reason sends the reader guessing — the whole
+        point of the endpoint is naming the one thing to fix."""
+        caps = self._reload(
+            monkeypatch,
+            AZURE_STORAGE_ACCOUNT_NAME=None,
+            AZURE_STORAGE_CONNECTION_STRING=None,
+            AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=None,
+            AZURE_DOCUMENT_INTELLIGENCE_KEY=None,
+            AZURE_OPENAI_ENDPOINT=None,
+        )
+        for name, status in caps.all_capabilities().items():
+            if not status.get("ready"):
+                assert status.get("reason"), f"{name} is not ready and says nothing"
+
+    def test_all_capabilities_opens_no_socket(self, monkeypatch):
+        """/health calls this on every request and must not hang on a network
+        that is down, so the no-probe path must never connect."""
+        import socket
+
+        caps = self._reload(monkeypatch)
+
+        def explode(*a, **k):
+            raise AssertionError("all_capabilities() opened a socket")
+
+        monkeypatch.setattr(socket.socket, "connect", explode)
+        caps.all_capabilities()  # probe=False by default
+
+    def test_health_and_the_banner_read_the_same_dict(self, monkeypatch):
+        """The banner is a rendering of all_capabilities(), not a second
+        opinion about the same environment."""
+        caps = self._reload(monkeypatch)
+        snapshot = caps.all_capabilities()
+        labels = [label for label, _ in caps.startup_lines(snapshot)]
+        assert labels == ["blob", "final2 OCR", "DOS LLM", "member NER"]
+
+    def test_health_still_exposes_member_ner_at_the_top_level(self, monkeypatch):
+        """docs and review-ui read `member_ner.ready`; moving it would be a
+        silent break."""
+        from fastapi.testclient import TestClient
+
+        import api.main as main
+
+        client = TestClient(main.app, raise_server_exceptions=False)
+        body = client.get("/health").json()
+        assert "member_ner" in body and "ready" in body["member_ner"]
+        assert "blob" in body

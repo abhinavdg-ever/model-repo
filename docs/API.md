@@ -797,7 +797,59 @@ Mutating endpoints are **asynchronous**: they return `202 Accepted` immediately
 and work continues in the background. Poll the chart endpoint for progress.
 
 ### `GET /health`
-Liveness plus the feature toggles that change what a run does.
+
+Liveness, plus **every optional feature and the one precondition each is
+missing**. Each of these degrades a stage rather than failing it, so without
+this the first sign of a misconfiguration is a chart that completed with less in
+it than expected.
+
+```jsonc
+{
+  "status": "ok",
+  "blob":        {"container": "imaging-pipeline", "account": "acct",
+                  "auth": "entra", "ready": true},
+  "azure_document_intelligence": {"endpoint": null, "ready": false,
+                  "reason": "not set: AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT, ..._KEY"},
+  "dos_llm":     {"enabled": true, "deployment": "gpt-4o", "auth": "entra",
+                  "ready": true},
+  "member_ner":  {"enabled": false, "ready": false,
+                  "reason": "MEMBER_NER_ENABLED=false"},
+  "stage_workers": 4
+}
+```
+
+Every capability that is not `ready` carries a `reason` naming the single thing
+to fix. What each one costs when off:
+
+| Not ready | Consequence |
+|---|---|
+| `blob` | `run`/`batch`/`write` work from local paths; blob mode fails |
+| `azure_document_intelligence` | final2 produces no text; handwritten pages get no pass-2 verdict |
+| `dos_llm` | DOS is regex-only, rows stamped `extraction_method='rules'` |
+| `member_ner` | no page can be `wrong_member`, so **no document can be Rejected** |
+
+**This endpoint opens no sockets.** It reports configuration — environment and
+installed packages — so it stays fast and cannot hang when Azure is down.
+Credentials being present is not proof the role is assigned; for blob, the
+**startup log** does one bounded round trip and reports that separately.
+
+The same values are logged once at startup, from the same function, so the
+banner and the endpoint cannot disagree:
+
+```
+  database    : postgresql://user@localhost:5432/imaging_outputs
+  workers     : 4
+  schema      : OK, 8 stage(s) registered
+  blob        : OK — entra, account=acct, container=imaging-pipeline
+  final2 OCR  : off — not set: AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT, ..._KEY
+  DOS LLM     : OK — deployment=gpt-4o, auth=entra
+  member NER  : off — MEMBER_NER_ENABLED=false
+```
+
+A blob line reading `configured but UNREACHABLE` means the credentials resolved
+and the call was refused — usually an Entra identity without **Storage Blob
+Data Reader** on the account, which is a 403 that reads like a missing
+container.
 
 ### `GET /ready`
 503 unless the database is reachable **and** `pipeline_stage` is seeded. Use as

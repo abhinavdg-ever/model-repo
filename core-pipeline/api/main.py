@@ -100,6 +100,19 @@ def _startup() -> None:
             "DATABASE_URL is read once at startup, so restart after editing .env."
         )
 
+    # Which optional features are actually on. Each of these degrades a stage
+    # rather than failing it, so without this line the first sign is a chart
+    # that completed with less in it than expected. probe=True allows one
+    # bounded round trip to the blob container: credentials being present is
+    # not the same as the role being assigned.
+    try:
+        from capabilities import all_capabilities, startup_lines
+
+        for label, value in startup_lines(all_capabilities(probe=True)):
+            logger.info("  %-11s : %s", label, value)
+    except Exception as exc:  # a status probe must never stop the server
+        logger.warning("  capabilities: probe failed — %s", exc)
+
 
 @app.on_event("shutdown")
 def _shutdown() -> None:
@@ -417,23 +430,22 @@ def _require_db() -> None:
 @app.get("/health", tags=["ops"])
 def health() -> dict[str, Any]:
     """Liveness plus the toggles that change what a run actually does."""
+    # Same source as the startup banner, so the two cannot disagree. No network
+    # here: /health must stay fast and must not hang when Azure is down.
     try:
-        import sys as _sys
+        from capabilities import all_capabilities
 
-        _lib = str(ROOT / "stages" / "lib")
-        if _lib not in _sys.path:
-            _sys.path.insert(0, _lib)
-        from member import ner_status
-
-        ner = ner_status()
+        caps = all_capabilities()
     except Exception as exc:  # never let a probe fail on an optional feature
-        ner = {"enabled": MEMBER_NER_ENABLED, "ready": False, "reason": str(exc)}
+        caps = {"member_ner": {"enabled": MEMBER_NER_ENABLED, "ready": False,
+                               "reason": str(exc)}}
 
     return {
         "status": "ok",
-        # ready=false means member verification runs rules-only: no page can be
-        # marked wrong_member, so no document can be Rejected.
-        "member_ner": ner,
+        # member_ner.ready=false means member verification runs rules-only: no
+        # page can be marked wrong_member, so no document can be Rejected.
+        # blob.ready=false means run/batch/write work locally but not from blob.
+        **caps,
         "dos_llm_enabled": DOS_LLM_ENABLED,
         "stage_workers": STAGE_WORKERS,
     }
