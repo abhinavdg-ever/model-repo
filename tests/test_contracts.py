@@ -1409,3 +1409,72 @@ class TestOsdOrientation:
                 {"rotation": found["rotation"], "tilt": 0.0, "mirror": False},
             )
             assert np.array_equal(fixed, img), "correction did not recover the original"
+
+
+class TestStartupProbeCannotBlock:
+    """The blob probe runs at startup and must never hold the server up.
+
+    Observed in the field: `DefaultAzureCredential` on a machine with no
+    managed identity and no `az login` tried nine credential sources with
+    backoff and took 96 seconds — with startup blocked behind it. The `timeout`
+    passed to the SDK call bounds only the HTTP request; credential acquisition
+    happens first and ignores it. Same failure the database probe was rewritten
+    to avoid.
+    """
+
+    def test_a_slow_probe_returns_at_the_deadline(self, monkeypatch):
+        import time
+
+        import capabilities
+
+        def slow(status, timeout):
+            time.sleep(30)
+            status["reachable"] = True
+
+        monkeypatch.setattr(capabilities, "_blob_round_trip", slow)
+        monkeypatch.setattr(
+            capabilities, "blob_status",
+            lambda: {"container": "c", "account": "a", "auth": "entra", "ready": True},
+        )
+        started = time.monotonic()
+        result = capabilities.probe_blob(timeout=1)
+        elapsed = time.monotonic() - started
+
+        assert elapsed < 5, f"probe blocked for {elapsed:.1f}s"
+        assert result["reachable"] is None, "a timeout is not a verdict"
+        assert "unverified" in result["reason"]
+
+    def test_a_timeout_is_not_reported_as_a_failure(self, monkeypatch):
+        """`reachable: None` means we did not find out. Rendering that as
+        UNREACHABLE would send someone debugging credentials that are fine."""
+        import capabilities
+
+        line = capabilities._one_line(
+            {"ready": True, "reachable": None, "reason": "probe exceeded 5s"}, "OK"
+        )
+        assert "UNREACHABLE" not in line
+        assert line.startswith("OK")
+
+    def test_a_real_failure_still_reads_as_unreachable(self, monkeypatch):
+        import capabilities
+
+        line = capabilities._one_line(
+            {"ready": True, "reachable": False, "reason": "AuthorizationFailure"}, "OK"
+        )
+        assert "UNREACHABLE" in line
+
+    def test_an_unconfigured_blob_never_starts_a_thread(self, monkeypatch):
+        """No credentials means nothing to probe — it must not cost a thread
+        or a second on every start."""
+        import capabilities
+
+        monkeypatch.setattr(
+            capabilities, "blob_status",
+            lambda: {"ready": False, "reason": "not configured"},
+        )
+
+        def explode(*a, **k):
+            raise AssertionError("probed an unconfigured blob")
+
+        monkeypatch.setattr(capabilities, "_blob_round_trip", explode)
+        assert capabilities.probe_blob()["ready"] is False

@@ -83,19 +83,10 @@ def blob_status() -> dict[str, Any]:
     return status
 
 
-def probe_blob(timeout: int = 5) -> dict[str, Any]:
-    """`blob_status()` plus one bounded round trip to the container.
+PROBE_DEADLINE_SECONDS = 5
 
-    Credentials being present is not the same as the role being assigned: an
-    Entra identity without **Storage Blob Data Reader** authenticates and then
-    fails with a 403 on the first real call. That is a chart-time failure this
-    turns into a startup line.
 
-    Called once, from startup. Never raises.
-    """
-    status = blob_status()
-    if not status["ready"]:
-        return status
+def _blob_round_trip(status: dict[str, Any], timeout: int) -> None:
     try:
         from db.blob_store import get_container_client
 
@@ -105,6 +96,45 @@ def probe_blob(timeout: int = 5) -> dict[str, Any]:
     except Exception as exc:
         status["reachable"] = False
         status["reason"] = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
+
+
+def probe_blob(timeout: int = PROBE_DEADLINE_SECONDS) -> dict[str, Any]:
+    """`blob_status()` plus one round trip to the container, under a hard deadline.
+
+    Credentials being present is not the same as the role being assigned: an
+    Entra identity without **Storage Blob Data Reader** authenticates and then
+    fails with a 403 on the first real call. That is a chart-time failure this
+    turns into a startup line.
+
+    **The deadline is the point.** Passing `timeout` to the SDK call bounds only
+    the HTTP request; `DefaultAzureCredential` runs first, tries nine credential
+    sources with its own retries and backoff, and ignores it completely. On a
+    machine with no managed identity and no `az login` that took 96 seconds —
+    during which startup blocked, which is precisely what the database probe
+    beside it was rewritten to stop doing. A daemon thread we stop waiting on
+    cannot hold the server up, whatever the SDK decides to do next.
+
+    Called once, from startup. Never raises.
+    """
+    status = blob_status()
+    if not status["ready"]:
+        return status
+
+    import threading
+
+    worker = threading.Thread(
+        target=_blob_round_trip, args=(status, timeout), daemon=True
+    )
+    worker.start()
+    worker.join(timeout)
+    if worker.is_alive():
+        # Still going. Leave it to finish into a dict nobody reads and move on:
+        # the answer is not worth delaying every start for.
+        status["reachable"] = None
+        status["reason"] = (
+            f"reachability unverified — probe exceeded {timeout}s "
+            "(credentials are configured; the round trip did not finish in time)"
+        )
     return status
 
 
@@ -192,6 +222,10 @@ def _one_line(status: dict[str, Any], on: str) -> str:
     if status.get("ready"):
         if status.get("reachable") is False:
             return f"configured but UNREACHABLE — {status.get('reason')}"
+        if status.get("reachable") is None and status.get("reason"):
+            # Probe timed out. Not the same as "broken" — say so rather than
+            # implying a verdict we never got.
+            return f"{on} ({status['reason']})"
         return on
     return f"off — {status.get('reason') or 'not configured'}"
 
