@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -45,6 +46,70 @@ def chart_name_from_blob_path(blob_path: str) -> str:
     return parts[-1]
 
 
+ENTRA_MODES = {"entra", "aad", "azuread"}
+# Opt-in, and deliberately NOT part of `entra`: this chain can open a browser
+# and wait for a human. On a service with no one watching, a hung prompt is
+# worse than a clean failure, so it never happens unless asked for by name.
+ENTRA_INTERACTIVE_MODES = {"entra_interactive", "entra-interactive", "browser"}
+
+_INTERACTIVE_CREDENTIAL = None
+_INTERACTIVE_LOCK = threading.Lock()
+
+
+def _interactive_credential():
+    """Managed identity, then Azure CLI, then a browser prompt.
+
+    `DefaultAzureCredential` deliberately excludes InteractiveBrowserCredential,
+    which is why a developer machine with no managed identity and no `az` on
+    PATH fails with a twenty-line list of things it tried. The V1 prototype
+    (`azure_blob/azure_blob_storage.py`) chained the browser in explicitly and
+    therefore worked on exactly those machines; this restores that, with two
+    changes.
+
+    **Order is reversed from V1.** V1 put the browser first, so it prompted even
+    where a non-interactive credential existed. Here the silent options are
+    tried first, so the Azure VM's managed identity answers and nobody ever sees
+    a browser — the prompt is the last resort, not the first.
+
+    **The token cache persists**, so the prompt happens once rather than per
+    process, and parallel workers share one login. Same cache name V1 used.
+
+    Each credential in the chain raises CredentialUnavailableError when it
+    cannot help, which is what lets ChainedTokenCredential move on — chaining
+    DefaultAzureCredential here would NOT work, because its own failure is a
+    ClientAuthenticationError and the chain stops on that.
+    """
+    global _INTERACTIVE_CREDENTIAL
+    if _INTERACTIVE_CREDENTIAL is not None:
+        return _INTERACTIVE_CREDENTIAL
+
+    with _INTERACTIVE_LOCK:
+        if _INTERACTIVE_CREDENTIAL is not None:
+            return _INTERACTIVE_CREDENTIAL
+
+        from azure.identity import (
+            AzureCliCredential,
+            ChainedTokenCredential,
+            InteractiveBrowserCredential,
+            ManagedIdentityCredential,
+            TokenCachePersistenceOptions,
+        )
+
+        cache = TokenCachePersistenceOptions(
+            name="advantmed_blob_storage", allow_unencrypted_storage=True
+        )
+        _INTERACTIVE_CREDENTIAL = ChainedTokenCredential(
+            ManagedIdentityCredential(),
+            AzureCliCredential(process_timeout=30),
+            InteractiveBrowserCredential(cache_persistence_options=cache),
+        )
+        logger.info(
+            "Azure Storage: interactive Entra auth — managed identity, then "
+            "az CLI, then a browser prompt if neither answers"
+        )
+        return _INTERACTIVE_CREDENTIAL
+
+
 def get_blob_service_client():
     from azure.storage.blob import BlobServiceClient
 
@@ -57,7 +122,9 @@ def get_blob_service_client():
 
     account_url = f"https://{account}.blob.core.windows.net"
     auth = AZURE_STORAGE_AUTH
-    if auth in {"entra", "aad", "azuread"}:
+    if auth in ENTRA_INTERACTIVE_MODES:
+        return BlobServiceClient(account_url, credential=_interactive_credential())
+    if auth in ENTRA_MODES:
         from azure.identity import DefaultAzureCredential
 
         return BlobServiceClient(account_url, credential=DefaultAzureCredential())

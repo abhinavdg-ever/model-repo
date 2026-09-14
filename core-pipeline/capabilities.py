@@ -65,12 +65,23 @@ def blob_status() -> dict[str, Any]:
         )
         return status
 
-    if AZURE_STORAGE_AUTH in {"entra", "aad", "azuread"}:
+    from db.blob_store import ENTRA_INTERACTIVE_MODES, ENTRA_MODES
+
+    if AZURE_STORAGE_AUTH in ENTRA_MODES | ENTRA_INTERACTIVE_MODES:
+        interactive = AZURE_STORAGE_AUTH in ENTRA_INTERACTIVE_MODES
+        label = "entra_interactive" if interactive else "entra"
         if find_spec("azure.identity") is None:
-            status["auth"] = "entra"
-            status["reason"] = "AZURE_STORAGE_AUTH=entra but azure-identity not installed"
+            status["auth"] = label
+            status["reason"] = (
+                f"AZURE_STORAGE_AUTH={label} but azure-identity not installed"
+            )
             return status
-        status.update(auth="entra", ready=True)
+        status.update(auth=label, ready=True)
+        if interactive:
+            # The probe must not be the thing that opens a browser. It runs at
+            # startup with nobody necessarily watching, and a prompt there would
+            # block a server start on a human.
+            status["probe"] = "skipped — would prompt"
         return status
 
     if AZURE_STORAGE_ACCOUNT_KEY:
@@ -136,6 +147,11 @@ def probe_blob(timeout: int = PROBE_DEADLINE_SECONDS) -> dict[str, Any]:
     """
     status = blob_status()
     if not status["ready"]:
+        return status
+    if status.get("probe") == "skipped — would prompt":
+        # Verifying reachability would trigger the browser prompt this mode
+        # exists to allow — at startup, where nobody asked for it. The first
+        # real chart does the login instead, which is when a human is present.
         return status
 
     import threading

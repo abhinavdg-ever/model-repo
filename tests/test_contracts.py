@@ -1581,3 +1581,90 @@ class TestCredentialFailureReporting:
 
         assert not _is_credential_failure(ValueError("disk full"))
         assert not _is_credential_failure(RuntimeError("No images in ..."))
+
+
+class TestInteractiveBlobAuth:
+    """`AZURE_STORAGE_AUTH=entra_interactive` adds a browser prompt as a last
+    resort, for a developer machine with no managed identity and no `az`.
+
+    `DefaultAzureCredential` deliberately excludes InteractiveBrowserCredential,
+    which is why such a machine fails with a twenty-line list of things it
+    tried. The V1 prototype chained the browser in explicitly and worked there.
+    """
+
+    @staticmethod
+    def _reload(monkeypatch, auth):
+        import importlib
+
+        monkeypatch.setenv("AZURE_STORAGE_AUTH", auth)
+        monkeypatch.setenv("AZURE_STORAGE_ACCOUNT_NAME", "acct")
+        monkeypatch.delenv("AZURE_STORAGE_CONNECTION_STRING", raising=False)
+        import config
+
+        importlib.reload(config)
+        import capabilities
+
+        return importlib.reload(capabilities)
+
+    def test_interactive_is_not_reached_by_plain_entra(self, monkeypatch):
+        """A service must never open a browser because someone wrote `entra`.
+        The interactive chain is opt-in by name, not a fallback."""
+        from db.blob_store import ENTRA_INTERACTIVE_MODES, ENTRA_MODES
+
+        assert not (ENTRA_MODES & ENTRA_INTERACTIVE_MODES)
+        assert "entra" not in ENTRA_INTERACTIVE_MODES
+
+    def test_the_mode_is_reported_distinctly(self, monkeypatch):
+        caps = self._reload(monkeypatch, "entra_interactive")
+        assert caps.blob_status()["auth"] == "entra_interactive"
+        assert caps.blob_status()["ready"] is True
+
+    def test_the_startup_probe_never_prompts(self, monkeypatch):
+        """The probe runs at startup with nobody necessarily watching. A browser
+        prompt there would block the server start on a human."""
+        caps = self._reload(monkeypatch, "entra_interactive")
+
+        def explode(*a, **k):
+            raise AssertionError("the startup probe tried to authenticate")
+
+        monkeypatch.setattr(caps, "_blob_round_trip", explode)
+        result = caps.probe_blob(timeout=1)
+        assert result["probe"].startswith("skipped")
+
+    def test_plain_entra_still_probes(self, monkeypatch):
+        """Non-interactive auth has nothing to prompt, so it is still checked."""
+        caps = self._reload(monkeypatch, "entra")
+        called = []
+        monkeypatch.setattr(
+            caps, "_blob_round_trip",
+            lambda status, timeout: called.append(True),
+        )
+        caps.probe_blob(timeout=1)
+        assert called, "plain entra should still be probed"
+
+    def test_the_chain_tries_silent_credentials_first(self):
+        """V1 put the browser first and prompted even where a silent credential
+        existed. On the Azure VM the managed identity must answer and nobody
+        should ever see a browser."""
+        import inspect
+
+        from db import blob_store
+
+        source = inspect.getsource(blob_store._interactive_credential)
+        order = [
+            source.index("ManagedIdentityCredential("),
+            source.index("AzureCliCredential("),
+            source.index("InteractiveBrowserCredential("),
+        ]
+        assert order == sorted(order), "browser must be the last resort"
+
+    def test_the_credential_is_built_once(self, monkeypatch):
+        """A prompt per call would be unusable; the cache and the singleton are
+        what make it one login for the process."""
+        import inspect
+
+        from db import blob_store
+
+        source = inspect.getsource(blob_store._interactive_credential)
+        assert "cache_persistence_options" in source
+        assert "_INTERACTIVE_CREDENTIAL" in source

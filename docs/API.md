@@ -275,6 +275,7 @@ The endpoint is always required; only the credential differs.
 |---|---|---|
 | `key` | `AZURE_OPENAI_API_KEY` | a laptop with a key pasted into `.env` |
 | `entra` | `DefaultAzureCredential` — no key at all | **an Azure VM with a managed identity**, or anywhere `az login` has run; the only option on a resource with `disableLocalAuth` |
+| `entra_interactive` *(blob only)* | managed identity → `az` CLI → **browser prompt**, token cached | a developer machine with no managed identity and no `az` on PATH. `DefaultAzureCredential` excludes the browser, which is why plain `entra` fails there. Never on a headless server — the prompt hangs instead of failing |
 | `auto` *(default)* | key if one is set, otherwise entra | leaving it alone keeps existing key setups working unchanged |
 
 Keyless needs `azure-identity`, which is already in
