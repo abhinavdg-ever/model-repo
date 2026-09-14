@@ -34,9 +34,6 @@ Two ways to run it, and they use different ports:
 for development) and **[Mode B — VM](docs/API.md#mode-b--vm-linux-with-docker)**
 (docker compose, for deployment). The quick start below is Mode B.
 
-No `git clone` on your machine? See
-[Installing from a ZIP](docs/API.md#installing-from-a-zip).
-
 **macOS / Linux**
 
 ```bash
@@ -80,7 +77,8 @@ python -m pytest tests/ -q    # 172 tests
 ```
 
 Windows specifics — venv activation, `TESSERACT_CMD`, `curl.exe`, the
-PowerShell execution policy: [`docs/API.md § Windows notes`](docs/API.md#windows-notes).
+PowerShell execution policy:
+[`docs/API.md § Installing dependencies`](docs/API.md#installing-dependencies).
 
 Run a chart — from blob, or from a folder on the server:
 
