@@ -2,7 +2,7 @@
 
 > Living document. Update it in the same change set as any architecture, schema,
 > mode or stage-order change, and bump the date.
-> Last updated: 2026-09-14 (API: run/batch/write + partial runs; batch sharding proposed)
+> Last updated: 2026-09-14 (rotation first + corrected-pages; API run/batch/write; sharding proposed)
 
 **Detailed documentation lives in [`docs/`](docs/):**
 
@@ -34,6 +34,7 @@
 | — | Auth / PHI handling | **Not addressed** — see [Known limits](docs/ARCHITECTURE.md#6-known-limits) |
 | — | Work queue (claim/lease worker over `pipeline_jobs`) | Schema ready, worker not built |
 | — | Batch sharding over N chart workers | **Designed, not built** — see [Proposed](#proposed-shard-a-batch-across-n-chart-workers) |
+| — | Rotation correction applied to the page image | Plumbing shipped; **disabled** — the detector cannot recover a rotated page, see [Blocked](#blocked-the-orientation-detector-cannot-recover-a-rotated-page) |
 | Later | Page subtype / encounter / sequencing / rejection | Registered in `pipeline_stage`, `is_phase1=false` |
 
 ---
@@ -206,6 +207,65 @@ python -m pytest tests/ -q
 ```
 
 Full instructions: [docs/API.md](docs/API.md).
+
+---
+
+## Blocked: the orientation detector cannot recover a rotated page
+
+**Status: measured 2026-09-14. Plumbing shipped, correction disabled.**
+
+Rotation now runs as stage 1, ahead of every OCR pass, and writes corrected
+images to `<chart>/corrected-pages/` which all three OCR stages prefer over the
+original. That part is done and tested. The *writing* is off by default
+(`ROTATION_CORRECTION_ENABLED=false`) because the detector is not good enough
+to act on.
+
+### The measurement
+
+Demo chart, three pages, each rotated to all four orientations, then detected,
+corrected, and compared with the original:
+
+| Input | Detected `rotation` | Outcome |
+|---|---|---|
+| upright | 0 | correct — no-op |
+| 90° CW | 0 or 180, never 270 | **sideways page left sideways** |
+| 180° | 0 or 180 | sometimes right |
+| 270° CW | 0, never 90 | **sideways page left sideways** |
+
+**0 of 6 sideways pages recovered.** `mirror=true` was reported on 3 of 12
+cases that were not mirrored — applying that flips a page horizontally and
+makes OCR strictly worse than leaving it alone.
+
+`rotation_confidence` was **1.000 on the wrong answers**, so it cannot gate the
+decision, and `needs_review` was `true` on every case including the upright
+one. There is no field in the result that separates the right answers from the
+wrong ones.
+
+### Why this matters more now than before
+
+Before this change the detector's output was recorded in
+`imaging/<chart>_rotation.csv` and read by nobody — a wrong angle was a wrong
+number in a file. Now the same number would rewrite the page image that OCR
+reads. The blast radius changed; the accuracy did not.
+
+### What would unblock it
+
+The detector's coarse-rotation stage is what fails — tilt and the upright case
+are fine. Either:
+
+1. Fix `_detect_coarse_rotation` in `stages/lib/imaging/rotation.py` so a 90°
+   page reports 270 and a 270° page reports 90, or
+2. Replace the coarse step with Tesseract OSD (`--psm 0`), which reports
+   orientation directly and is already a dependency — note this would make
+   stage 1 depend on Tesseract, which it currently does not.
+
+Either way the acceptance test is the round trip: rotate a page, detect,
+correct, and assert the result matches the original. That test is cheap and
+should land with the fix.
+
+Until then `rotation_applied` is always `false` and the angle columns record
+what was measured, so nothing is lost — the pipeline behaves exactly as it did
+before, and turning the flag on is a one-line change once the round trip passes.
 
 ---
 

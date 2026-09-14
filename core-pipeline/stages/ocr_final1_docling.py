@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Optional
 
-from config import STAGE_WORKERS, TESSERACT_CMD, pages_dir
+from config import STAGE_WORKERS, TESSERACT_CMD, page_image_path
 from db import (
     connect,
     get_blank_junk_flags,
@@ -110,14 +110,17 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             for page in todo:
                 mark_processing(conn, ctx, page["id"])
 
-        root = pages_dir(ctx.chart_name)
         results: list[tuple[int, str, str, str]] = []
         if todo:
             workers = max(1, min(STAGE_WORKERS, len(todo)))
             _get_engine()  # warm before fan-out
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 results = list(
-                    pool.map(_ocr_one, [(p, root / p["page_name"]) for p in todo])
+                    pool.map(
+                        _ocr_one,
+                        [(p, page_image_path(ctx.chart_name, p["page_name"]))
+                         for p in todo],
+                    )
                 )
 
         with connect() as conn:

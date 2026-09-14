@@ -632,10 +632,18 @@ class TestStageSelection:
         return TestClient(main.app, raise_server_exceptions=False), main
 
     def test_resolve_stage_accepts_both_spellings(self):
+        """Resolves to the right STAGE, not a fixed index — the chain order is
+        allowed to change (rotation moved ahead of prelim OCR), and a test that
+        pins positions fails for the wrong reason when it does."""
         from orchestrator.runner import STAGE_CHAIN, resolve_stage
 
-        assert resolve_stage("ocr_prelim") == 0
-        assert resolve_stage("blank_junk:2") == 5
+        def at(token):
+            name, pass_no, _fn = STAGE_CHAIN[resolve_stage(token)]
+            return name, pass_no
+
+        assert at("ocr_prelim") == ("ocr_prelim", 1)
+        assert at("blank_junk:2") == ("blank_junk", 2)
+        assert at("dos_extract") == ("dos_extract", 1)
         assert resolve_stage("dos_extract") == len(STAGE_CHAIN) - 1
 
     def test_a_bare_name_means_pass_1_not_whichever_pass_exists(self):
@@ -1153,3 +1161,113 @@ class TestAzureSdkLogging:
             assert root.level == logging.INFO
         finally:
             root.setLevel(previous)
+
+
+class TestCorrectedPages:
+    """Rotation correction writes corrected-pages/; every later stage reads it.
+
+    The plumbing is on; the *writing* is off by default because the detector
+    cannot recover a sideways page — see ROTATION_CORRECTION_ENABLED in
+    config.py for the measurement.
+    """
+
+    def test_page_image_path_prefers_a_corrected_page(self, tmp_path, monkeypatch):
+        import config
+
+        monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
+        (tmp_path / "c" / "pages").mkdir(parents=True)
+        (tmp_path / "c" / "corrected-pages").mkdir(parents=True)
+        (tmp_path / "c" / "pages" / "1.jpg").write_bytes(b"original")
+        (tmp_path / "c" / "corrected-pages" / "1.jpg").write_bytes(b"corrected")
+
+        assert config.page_image_path("c", "1.jpg").read_bytes() == b"corrected"
+
+    def test_it_falls_back_to_the_original(self, tmp_path, monkeypatch):
+        """Correction is sparse: an upright page is never copied, and a chart
+        processed before corrections existed has no folder at all."""
+        import config
+
+        monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
+        (tmp_path / "c" / "pages").mkdir(parents=True)
+        (tmp_path / "c" / "pages" / "1.jpg").write_bytes(b"original")
+
+        assert config.page_image_path("c", "1.jpg").read_bytes() == b"original"
+
+    def test_every_ocr_stage_goes_through_the_helper(self):
+        """Three stages open page images. If one keeps using pages_dir directly
+        it silently OCRs the uncorrected page, which is invisible in the data."""
+        import inspect
+
+        from stages import ocr_final1_docling, ocr_final2_azure, ocr_prelim_tesseract
+
+        for module in (ocr_prelim_tesseract, ocr_final1_docling, ocr_final2_azure):
+            source = inspect.getsource(module)
+            assert "page_image_path" in source, f"{module.__name__} bypasses the helper"
+            assert "pages_dir" not in source, f"{module.__name__} still uses pages_dir"
+
+    def test_rotation_runs_before_every_ocr_stage(self):
+        """The whole point of the reorder: a sideways page must be corrected
+        before anything reads it."""
+        from orchestrator.runner import STAGE_CHAIN
+
+        order = [name for name, _pass, _fn in STAGE_CHAIN]
+        quality = order.index("ocr_quality")
+        for ocr_stage in ("ocr_prelim", "ocr_final1", "ocr_final2"):
+            assert quality < order.index(ocr_stage), f"{ocr_stage} runs before rotation"
+
+    def test_the_chain_and_the_schema_seed_agree_on_order(self):
+        """pipeline_stage.seq drives progress reporting, STAGE_CHAIN drives
+        execution. Reordering one and not the other makes /api/charts report a
+        different stage from the one running."""
+        import re
+        from pathlib import Path
+
+        from orchestrator.runner import STAGE_CHAIN
+
+        sql = (Path(__file__).resolve().parents[1] / "schema" / "v1.sql").read_text(
+            encoding="utf-8"
+        )
+        block = sql[sql.index("INSERT INTO pipeline_stage") :]
+        block = block[: block.index(";")]
+        seeded = [
+            (m.group(1), int(m.group(2)), int(m.group(3)))
+            for m in re.finditer(r"\('(\w+)',\s*(\d+),\s*(\d+),", block)
+        ]
+        seeded.sort(key=lambda r: r[2])
+        assert [(n, p) for n, p, _ in seeded] == [
+            (n, p) for n, p, _ in STAGE_CHAIN
+        ], "STAGE_CHAIN and pipeline_stage.seq disagree"
+
+    def test_correction_is_off_by_default(self):
+        """On by default would ship a detector that leaves sideways pages
+        sideways and falsely mirrors others."""
+        import importlib
+
+        import config
+
+        assert importlib.reload(config).ROTATION_CORRECTION_ENABLED is False
+
+    def test_the_flag_turns_it_on(self, monkeypatch):
+        import importlib
+
+        monkeypatch.setenv("ROTATION_CORRECTION_ENABLED", "true")
+        import config
+
+        assert importlib.reload(config).ROTATION_CORRECTION_ENABLED is True
+        monkeypatch.delenv("ROTATION_CORRECTION_ENABLED")
+        importlib.reload(config)
+
+    def test_a_reimport_clears_stale_corrections(self):
+        """A left-behind corrected-pages/1.jpg would be preferred by
+        page_image_path, so a new scan would be OCR'd as the old one."""
+        import inspect
+
+        from stages import download_blob
+
+        source = inspect.getsource(download_blob.import_local_folder)
+        assert "corrected-pages" in source
+
+    def test_write_exports_the_corrected_pages(self):
+        from jobs.export_chart import CHART_SUBDIRS
+
+        assert "corrected-pages" in CHART_SUBDIRS

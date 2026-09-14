@@ -20,7 +20,7 @@ from config import (
     AZURE_DOCUMENT_INTELLIGENCE_KEY,
     AZURE_POLL_TIMEOUT_SECONDS,
     STAGE_WORKERS,
-    pages_dir,
+    page_image_path,
 )
 from db import (
     connect,
@@ -140,7 +140,6 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             for page in todo:
                 mark_processing(conn, ctx, page["id"])
 
-        root = pages_dir(ctx.chart_name)
         results: list[dict[str, Any]] = []
         if todo:
             # Azure DI is a network call, so more workers than CPUs is fine —
@@ -150,7 +149,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 results = list(
                     pool.map(
                         _ocr_one,
-                        [(p, root / p["page_name"], use_azure) for p in todo],
+                        [(p, page_image_path(ctx.chart_name, p["page_name"]), use_azure)
+                         for p in todo],
                     )
                 )
 

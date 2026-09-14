@@ -40,3 +40,6 @@ core-pipeline/models/
 review-ui/data/folders/demo_api_smoketest/
 review-ui/data/folders/chartA/
 review-ui/data/folders/chartB/
+
+# Chart produced by the rotation round-trip check.
+review-ui/data/folders/rot_test/

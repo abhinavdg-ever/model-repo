@@ -15,7 +15,13 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Optional
 
-from config import HW_MODEL_PATH, STAGE_WORKERS, pages_dir
+from config import (
+    HW_MODEL_PATH,
+    ROTATION_CORRECTION_ENABLED,
+    STAGE_WORKERS,
+    corrected_pages_dir,
+    pages_dir,
+)
 from db import connect, upsert_quality
 from db.paths import imaging_csv, write_csv
 from stages._support import mark_completed, mark_failed, mark_processing, stage_run
@@ -104,8 +110,16 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
             "orientation_angle": float(orientation),
             "tilt_angle": float(tilt),
             "mirrored": mirrored,
-            "rotation_applied": applied,
+            # Whether a correction LOOKS needed, from the measurement alone.
+            # Distinct from rotation_applied, which records whether one was
+            # actually written — they differ whenever correction is disabled.
+            "needs_correction": applied,
+            "rotation_applied": False,
             "method": "detector",
+            # The detector's own result object, kept so the correction can be
+            # applied at full resolution without re-detecting. Not persisted.
+            "_result": result,
+            "_image": image,
         }
     except Exception as exc:
         logger.warning("Rotation detect fallback for %s: %s", image_path, exc)
@@ -113,6 +127,7 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
             "orientation_angle": 0.0,
             "tilt_angle": 0.0,
             "mirrored": False,
+            "needs_correction": False,
             "rotation_applied": False,
             "method": "fallback",
         }
@@ -140,16 +155,55 @@ HW_COLS = [
 ]
 
 
-def _measure(args: tuple[dict[str, Any], Path]) -> dict[str, Any]:
-    page, image_path = args
+def _write_corrected(
+    chart_name: str, page_name: str, rot: dict[str, Any]
+) -> Path | None:
+    """Write the corrected page, or None when the scan is already upright.
+
+    Only pages that actually change are written, so corrected-pages/ holds
+    exactly the pages that were altered rather than a second copy of the chart.
+    """
+    if not ROTATION_CORRECTION_ENABLED:
+        return None
+    if not rot.get("needs_correction"):
+        return None
+    result, image = rot.get("_result"), rot.get("_image")
+    if result is None or image is None:
+        return None
+    try:
+        import cv2
+
+        corrected = _get_detector().correct(image, result)
+        dest = corrected_pages_dir(chart_name) / page_name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if not cv2.imwrite(str(dest), corrected):
+            raise RuntimeError(f"cv2.imwrite returned False for {dest}")
+        return dest
+    except Exception as exc:
+        # A page that cannot be corrected is still a page: fall back to the
+        # original rather than failing it, and record that we did.
+        logger.warning("Rotation correction failed for %s: %s", page_name, exc)
+        return None
+
+
+def _measure(args: tuple[dict[str, Any], Path, str]) -> dict[str, Any]:
+    page, image_path, chart_name = args
     try:
         rot = _detect_rotation(image_path)
-        hw_label, hw_conf, hw_method = _classify_hw(image_path)
+        # Correct FIRST, then classify: handwriting detection on a sideways
+        # page is measurably worse, and every stage after this one reads the
+        # corrected image, so the classifier should see what they see.
+        corrected = _write_corrected(chart_name, page["page_name"], rot)
+        # The column means "a corrected image exists for this page", not
+        # "this page looked crooked" — that stays in the angle columns.
+        rot["rotation_applied"] = corrected is not None
+        rot.pop("needs_correction", None)
+        hw_label, hw_conf, hw_method = _classify_hw(corrected or image_path)
         return {
             "page_id": page["id"],
             "page_name": page["page_name"],
             "page_number": page.get("page_number"),
-            "rot": rot,
+            "rot": {k: v for k, v in rot.items() if not k.startswith("_")},
             "hw_label": hw_label,
             "hw_conf": hw_conf,
             "hw_method": hw_method,
@@ -232,7 +286,10 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             _get_hw_model()
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 measured = list(
-                    pool.map(_measure, [(p, root / p["page_name"]) for p in todo])
+                    pool.map(
+                        _measure,
+                        [(p, root / p["page_name"], ctx.chart_name) for p in todo],
+                    )
                 )
 
         with connect() as conn:

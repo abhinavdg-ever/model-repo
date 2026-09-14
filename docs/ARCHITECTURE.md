@@ -218,6 +218,7 @@ still renders.
 | File | Role |
 |---|---|
 | `capabilities.py` | What each optional feature can actually do right now — blob, Azure DI, the DOS LLM, GLiNER — and the one precondition each is missing. Read by both the startup banner and `GET /health`, so they cannot disagree. Configuration only; opens no sockets, except `probe_blob()` which startup calls once, bounded. |
+| `quality_rotation_hw.py` | **Stage 1**, moved ahead of OCR so every pass reads an upright page. Always measures orientation/tilt/mirror; writes `corrected-pages/<n>.jpg` only when `ROTATION_CORRECTION_ENABLED` and only for pages that change. `rotation_applied` means a corrected file exists, not that the page looked crooked. |
 | `config.py` | Every environment-driven setting in one place: database URL, data roots, Azure credentials, feature flags (`MEMBER_NER_ENABLED`, `DOS_LLM_ENABLED`), `STAGE_WORKERS`, and the `chart_dir` / `pages_dir` / `ocr_dir` / `imaging_dir` path helpers. |
 | `cli.py` | Command-line entry: `serve`, `run`, `batch`, `write`, `rerun`, `stages`, `status`, `manifest`. Mirrors the API one-for-one, without the HTTP hop. |
 | `requirements.txt` | Python dependencies for the service. |
@@ -263,7 +264,7 @@ still renders.
 |---|---|
 | `_support.py` | Shared stage plumbing: the `stage_run()` context manager (job row, page load, resume set, job close), `mark_processing` / `mark_completed` / `mark_failed` / `mark_skipped`, and the shared eligibility rule. Keeps each stage about its actual work. |
 | `download_blob.py` | **Intake.** Upserts the chart, downloads page images (skipping bytes already on disk), records SHA-256 + size, seeds `page_stage_status`, links manifest rows swept earlier. `import_local_folder()` is the local-source equivalent; `register_local_pages()` registers a folder already under `data/folders`. |
-| `ocr_prelim_tesseract.py` | **Stage 1.** Tesseract over every page, threaded to `STAGE_WORKERS`. Writes `ocr_results` and rebuilds `_prelim.txt`. |
+| `ocr_prelim_tesseract.py` | **Stage 2.** Tesseract over every page (the corrected image when one exists), threaded to `STAGE_WORKERS`. Writes `ocr_results` and rebuilds `_prelim.txt`. |
 | `quality_rotation_hw.py` | **Stage 2.** Rotation and handwriting per page, using the reference detector and classifier — each built once per process. Writes `ocr_quality_results` and the rotation / hw CSVs. |
 | `blank_junk_classify.py` | **Stages 3 and 6.** Both passes: eligibility, the cross-pass duplicate fingerprint table, the subtype mapping into the schema's constrained vocabulary, `mark_blank_junk_final`, and a full CSV rewrite from the database. |
 | `ocr_final1_docling.py` | **Stage 4.** RapidOCR (Tesseract fallback), engine built once. Stores as `ocr_type='docling'` — the UI's "Final (OSS)" slot. |

@@ -275,8 +275,11 @@ def import_local_folder(
                     )
     for stale in existing:
         stale.unlink()
-    # Stale OCR text and imaging CSVs describe the old page set too.
-    for sub in ("ocr", "imaging"):
+    # Stale OCR text, imaging CSVs and corrected page images all describe the
+    # old page set. A left-behind corrected-pages/1.jpg is the worst of the
+    # three: page_image_path would prefer it, so the new scan would be OCR'd as
+    # the old one, silently.
+    for sub in ("ocr", "imaging", "corrected-pages"):
         folder = chart_dir(name) / sub
         if folder.is_dir():
             for old_file in folder.iterdir():

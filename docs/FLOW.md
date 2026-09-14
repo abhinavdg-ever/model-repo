@@ -58,8 +58,8 @@ flowchart TD
   LINK --> S1
 
   subgraph CHAIN["Stage chain — each stage resumes, skipping completed pages"]
-    S1["1 · ocr_prelim<br/>Tesseract, every page"]
-    S2["2 · ocr_quality<br/>rotation + handwriting"]
+    S1["1 · ocr_quality<br/>rotation + handwriting"]
+    S2["2 · ocr_prelim<br/>Tesseract, every page"]
     S3["3 · blank_junk pass 1<br/>printed pages, prelim text"]
     S4["4 · ocr_final1<br/>RapidOCR"]
     S5["5 · ocr_final2<br/>Azure DocIntel · billed"]
@@ -84,11 +84,11 @@ resume matters), and **stage 7 produces the accept/reject decision**.
 
 | # | Stage | Runs on | Reads | Writes to Postgres | Writes to disk |
 |---|-------|---------|-------|--------------------|----------------|
-| 1 | `ocr_prelim` | every page | page image | `ocr_results` (`tesseract`) | `ocr/<chart>_prelim.txt` |
-| 2 | `ocr_quality` | every page | page image | `ocr_quality_results` | `imaging/<chart>_rotation.csv`, `_hw_printed.csv` |
+| 1 | `ocr_quality` | every page | page image | `ocr_quality_results` | `imaging/<chart>_rotation.csv`, `_hw_printed.csv`, and `corrected-pages/<n>.jpg` when `ROTATION_CORRECTION_ENABLED` |
+| 2 | `ocr_prelim` | every page | corrected page if one exists, else page image | `ocr_results` (`tesseract`) | `ocr/<chart>_prelim.txt` |
 | 3 | `blank_junk` pass 1 | printed only | prelim text | `blank_junk_classification` (pass 1) | `imaging/<chart>_junk.csv` |
-| 4 | `ocr_final1` | not blank/junk, + all handwritten | page image | `ocr_results` (`docling`) | `ocr/<chart>_final1.txt` |
-| 5 | `ocr_final2` | not blank/junk, + all handwritten | page image | `ocr_results` (`azuredocintel`) | `ocr/<chart>_final2.json` |
+| 4 | `ocr_final1` | not blank/junk, + all handwritten | corrected page if one exists, else page image | `ocr_results` (`docling`) | `ocr/<chart>_final1.txt` |
+| 5 | `ocr_final2` | not blank/junk, + all handwritten | corrected page if one exists, else page image | `ocr_results` (`azuredocintel`) | `ocr/<chart>_final2.json` |
 | 6 | `blank_junk` pass 2 | handwritten + surviving printed | final2 text | `blank_junk_classification` (pass 2), then `is_final` stamped | rewrites `_junk.csv` |
 | 7 | `member_verify` | not blank/junk/duplicate | best text + `manifest_member_list` | `member_extraction_results`, `member_verification_summary` | `_member_extraction.csv`, `_member_verification.csv`, `_member_v1_compare.csv` |
 | 8 | `dos_extract` | not blank/junk/duplicate | best text | `dos_extraction_results` | `imaging/<chart>_dos.csv` |

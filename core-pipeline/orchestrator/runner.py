@@ -41,8 +41,12 @@ StageFn = Callable[..., Any]
 # (stage_name, pass_no, callable). Order matches pipeline_stage.seq; that table
 # is the source of truth for progress reporting, this list for execution.
 STAGE_CHAIN: list[tuple[str, int, StageFn]] = [
-    ("ocr_prelim", 1, ocr_prelim_tesseract.run),
+    # Rotation runs FIRST so every OCR pass reads an upright page. It needs no
+    # OCR output of its own — it works from pixels — and a 90-degree page OCRs
+    # badly in all three engines, so measuring before correcting was costing
+    # accuracy on every rotated scan.
     ("ocr_quality", 1, quality_rotation_hw.run),
+    ("ocr_prelim", 1, ocr_prelim_tesseract.run),
     ("blank_junk", 1, blank_junk_classify.run_pass1),
     ("ocr_final1", 1, ocr_final1_docling.run),
     ("ocr_final2", 1, ocr_final2_azure.run),

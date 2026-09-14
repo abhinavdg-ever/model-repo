@@ -96,8 +96,10 @@ CREATE TRIGGER trg_pipeline_stage_updated_at
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1) VALUES
-    ('ocr_prelim',       1, 10, 'Preliminary OCR (Tesseract)',   TRUE),
-    ('ocr_quality',      1, 20, 'Rotation + Handwriting',        TRUE),
+    -- Rotation is first: it corrects the page image, and every OCR pass below
+    -- reads the corrected copy when one exists. It needs no OCR of its own.
+    ('ocr_quality',      1, 10, 'Rotation + Handwriting',        TRUE),
+    ('ocr_prelim',       1, 20, 'Preliminary OCR (Tesseract)',   TRUE),
     ('blank_junk',       1, 30, 'Blank/Junk/Duplicate — pass 1',  TRUE),
     ('ocr_final1',       1, 40, 'Final OCR 1 (RapidOCR)',        TRUE),
     ('ocr_final2',       1, 50, 'Final OCR 2 (Azure DocIntel)',  TRUE),

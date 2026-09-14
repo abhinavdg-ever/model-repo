@@ -5,9 +5,10 @@ data/folders/<chart>. This takes the same folder back out to a destination that
 is, again, either blob or local disk. A chart handed to run from a blob prefix
 and then written back to one makes a round trip with the outputs added.
 
-What gets written is the whole chart folder — ``pages/``, ``ocr/`` and
-``imaging/`` — so the destination is self-contained: the scans, the OCR text
-and the per-stage CSVs together, readable without the database.
+What gets written is the whole chart folder — ``pages/``, ``corrected-pages/``,
+``ocr/`` and ``imaging/`` — so the destination is self-contained: the scans as
+received, the rotation-corrected copies of the ones that needed it, the OCR
+text and the per-stage CSVs, readable without the database.
 
 Nothing here consults the database. The workspace on disk is what the pipeline
 produced, and writing it out should not depend on a chart_list row still saying
@@ -25,7 +26,7 @@ from config import chart_dir
 logger = logging.getLogger(__name__)
 
 # The chart workspace layout, in the order a reader would want them.
-CHART_SUBDIRS = ("pages", "ocr", "imaging")
+CHART_SUBDIRS = ("pages", "corrected-pages", "ocr", "imaging")
 
 
 def _files_to_write(root: Path) -> list[Path]:

@@ -14,7 +14,7 @@ from typing import Any
 import pytesseract
 from PIL import Image
 
-from config import STAGE_WORKERS, TESSERACT_CMD, pages_dir
+from config import STAGE_WORKERS, TESSERACT_CMD, page_image_path
 from db import connect, get_ocr_texts, upsert_ocr_result
 from db.paths import write_combined_ocr_txt
 from stages._support import mark_completed, mark_failed, mark_processing, stage_run
@@ -51,7 +51,6 @@ def _ocr_one(args: tuple[dict[str, Any], Path]) -> tuple[int, str, str, str]:
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
     with stage_run(chart_id, STAGE, force=force) as ctx:
         todo = ctx.pages_todo
-        root = pages_dir(ctx.chart_name)
 
         with connect() as conn:
             for page in todo:
@@ -62,7 +61,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             workers = max(1, min(STAGE_WORKERS, len(todo)))
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 results = list(
-                    pool.map(_ocr_one, [(p, root / p["page_name"]) for p in todo])
+                    pool.map(
+                        _ocr_one,
+                        [(p, page_image_path(ctx.chart_name, p["page_name"]))
+                         for p in todo],
+                    )
                 )
 
         with connect() as conn:

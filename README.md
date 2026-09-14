@@ -116,8 +116,8 @@ Docker: [`docs/API.md § How to run a chart`](docs/API.md#how-to-run-a-chart).
 
 | # | Stage | Runs on | Writes |
 |---|---|---|---|
-| 1 | Preliminary OCR (Tesseract) | every page | `ocr_results` |
-| 2 | Rotation + handwriting | every page | `ocr_quality_results` |
+| 1 | Rotation + handwriting | every page | `ocr_quality_results` (+ `corrected-pages/` when enabled) |
+| 2 | Preliminary OCR (Tesseract) | every page | `ocr_results` |
 | 3 | Blank/junk/duplicate — pass 1 | printed only | `blank_junk_classification` |
 | 4 | Final OCR 1 (RapidOCR) | survivors + handwritten | `ocr_results` |
 | 5 | Final OCR 2 (Azure DocIntel) | survivors + handwritten | `ocr_results` |

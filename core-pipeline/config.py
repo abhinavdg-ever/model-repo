@@ -78,6 +78,28 @@ AZURE_OPENAI_DEPLOYMENT = (
 AZURE_OPENAI_AUTH = (os.environ.get("AZURE_OPENAI_AUTH") or "auto").strip().casefold()
 
 
+# --- Rotation correction ----------------------------------------------------
+# Stage 1 always MEASURES orientation, tilt and mirror. This decides whether it
+# also WRITES a corrected image to corrected-pages/, which every later stage
+# then reads in place of the original.
+#
+# Default OFF, and that is a measurement, not caution. Round-tripping the demo
+# chart through all four orientations (rotate, detect, correct, compare):
+#
+#     90 CW  -> detected 0 or 180   (never 270)  sideways page left sideways
+#     270 CW -> detected 0          (never 90)   sideways page left sideways
+#     mirror falsely reported on 3 of 12 cases
+#     rotation_confidence was 1.000 on wrong answers, so it cannot gate this
+#
+# 0 of 6 sideways pages were recovered, and a false mirror actively corrupts a
+# page that was fine. Writing corrections on that basis would cost accuracy
+# rather than gain it. The plumbing is in place and correct; turn this on once
+# the detector recovers a rotated page. See PLAN.md.
+ROTATION_CORRECTION_ENABLED = (
+    os.environ.get("ROTATION_CORRECTION_ENABLED") or "false"
+).strip().casefold() in {"1", "true", "yes", "on"}
+
+
 def _flag(name: str, default: bool) -> bool:
     raw = (os.environ.get(name) or "").strip().casefold()
     if not raw:
@@ -156,9 +178,31 @@ def imaging_dir(chart_name: str) -> Path:
     return chart_dir(chart_name) / "imaging"
 
 
+def corrected_pages_dir(chart_name: str) -> Path:
+    """Rotation/mirror/tilt-corrected page images, written by stage 1.
+
+    Sparse on purpose: a page that needed no correction is NOT copied here, so
+    the folder's contents are exactly the pages that were changed, and the
+    workspace does not carry a second copy of every scan.
+    """
+    return chart_dir(chart_name) / "corrected-pages"
+
+
+def page_image_path(chart_name: str, page_name: str) -> Path:
+    """The image a stage should actually read: corrected if one exists.
+
+    Every stage that opens a page image goes through here, so "use the
+    corrected page when there is one" is a single rule rather than four copies
+    of the same `if`. Pages needing no correction fall through to pages/, which
+    is also what happens for a chart processed before corrections existed.
+    """
+    corrected = corrected_pages_dir(chart_name) / page_name
+    return corrected if corrected.is_file() else pages_dir(chart_name) / page_name
+
+
 def ensure_chart_dirs(chart_name: str) -> Path:
     root = chart_dir(chart_name)
-    for sub in ("pages", "ocr", "imaging"):
+    for sub in ("pages", "ocr", "imaging", "corrected-pages"):
         (root / sub).mkdir(parents=True, exist_ok=True)
     return root
 
