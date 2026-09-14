@@ -39,8 +39,12 @@ from config import (
 from db import close_pool, connect, get_chart, get_chart_by_name, list_pages, list_stages
 from db.chart_status import refresh_chart_status
 from jobs.manifest_sweeper import run_load
-from orchestrator.runner import STAGE_NAMES, ingest_and_run, run_pipeline_for_chart
-from stages.download_blob import import_local_folder, register_local_pages
+from orchestrator.runner import (
+    STAGE_NAMES,
+    ingest_and_run,
+    resolve_stage,
+    run_pipeline_for_chart,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -105,12 +109,45 @@ def _shutdown() -> None:
 # --- request models ---------------------------------------------------------
 
 
-class IngestRequest(BaseModel):
+_STAGE_HELP = (
+    "Stage name, 'name' for pass 1 or 'name:2' for pass 2. "
+    f"Known: {', '.join(STAGE_NAMES)}"
+)
+
+
+class StageSelection(BaseModel):
+    """The two ways to run less than the whole chain.
+
+    They answer different questions. ``through`` is "take it this far and
+    stop" — the chain from the top, bounded. ``only`` is "just do this bit" —
+    whatever already happened before. A stage named in ``only`` runs against
+    whatever its inputs are on disk, so it is the right tool when an earlier
+    stage's output is good and the last step changed; it is the wrong tool on
+    a chart that has never run.
+    """
+
+    through: Optional[str] = Field(
+        None,
+        description=f"Run the chain and stop after this stage. {_STAGE_HELP}",
+        examples=["ocr_final2"],
+    )
+    only: Optional[list[str]] = Field(
+        None,
+        description=f"Run only these stages, in chain order. {_STAGE_HELP}",
+        examples=[["dos_extract"]],
+    )
+
+
+class RunRequest(StageSelection):
     """One chart, from either source. Give blob_container + blob_path, OR local_path.
 
     The two modes converge: both end with the page images under
     data/folders/<chart>/pages/ named 1.jpg, 2.jpg … and the chart registered,
     so every later stage is identical regardless of where the pages came from.
+
+    The source folder is always copied, never moved; subfolders are always
+    searched; a manifest sitting alongside the images is always loaded. Those
+    were once switches, and every one of them had a single correct setting.
     """
 
     # --- blob mode ---
@@ -125,9 +162,10 @@ class IngestRequest(BaseModel):
     local_path: Optional[str] = Field(
         None,
         description=(
-            "A directory ON THE SERVER holding the page images. Under Docker "
-            "this must be a path inside the container, so mount the folder "
-            "first — the host filesystem is not visible."
+            "A directory ON THE SERVER holding the page images, in the folder "
+            "itself or a subfolder. Under Docker this must be a path inside "
+            "the container, so mount the folder first — the host filesystem is "
+            "not visible."
         ),
         examples=["/data/inbox/52743839_44976074"],
     )
@@ -135,39 +173,23 @@ class IngestRequest(BaseModel):
         None,
         description="Local mode only. Defaults to the source folder's own name.",
     )
-    move: bool = Field(
-        False,
-        description="Local mode only. Default copies, leaving your folder intact.",
-    )
-    recursive: bool = Field(
-        False, description="Local mode only. Also pick up images in subfolders."
-    )
-    load_manifest: bool = Field(
-        True, description="Local mode only. Load any CSV/XLSX found in the folder."
-    )
 
     # --- both ---
     run_id: Optional[str] = None
     batch_id: Optional[str] = None
-    run_pipeline: bool = Field(True, description="Run the stage chain after intake")
     force: bool = Field(
         False,
         description="Reprocess pages already completed. Default resumes instead.",
     )
 
 
-class LocalRegisterRequest(BaseModel):
-    chart_name: str = Field(
-        ..., description="Folder name under data/folders that already holds pages/"
-    )
-    run_id: Optional[str] = None
-    batch_id: Optional[str] = None
-    run_pipeline: bool = True
-    force: bool = False
+class BatchRequest(StageSelection):
+    """Every chart under one parent folder or blob prefix, run one at a time.
 
-
-class BatchRequest(BaseModel):
-    """Scan a folder or blob prefix and run every chart found, one at a time."""
+    Deliberately the same shape as RunRequest: each subfolder holding images is
+    one chart, and each is handed to the same code path a single run uses, so
+    an option means the same thing in both places.
+    """
 
     local_root: Optional[str] = Field(
         None,
@@ -180,10 +202,7 @@ class BatchRequest(BaseModel):
     blob_prefix: Optional[str] = Field(
         None, description="Each sub-folder under this prefix holding images is one chart"
     )
-    move: bool = Field(False, description="Local only: move instead of copy")
     force: bool = False
-    load_manifest: bool = True
-    run_pipeline: bool = True
     limit: Optional[int] = Field(
         None, description="Only the first N charts — use for a dry run first"
     )
@@ -191,16 +210,42 @@ class BatchRequest(BaseModel):
     batch_id: Optional[str] = None
 
 
-class RerunRequest(BaseModel):
+class WriteRequest(BaseModel):
+    """Write a finished chart back out — the reverse of run's intake step.
+
+    Give a local destination, OR a blob container + path. The chart's own name
+    is appended to whichever you give, so two charts written to one destination
+    do not merge.
+
+    The whole workspace goes: pages/, ocr/ and imaging/ — the scans, the OCR
+    text and the per-stage CSVs, so the destination can be read without the
+    database.
+    """
+
+    chart_name: str = Field(
+        ..., description="Folder name under data/folders", examples=["52743839_44976074"]
+    )
+    local_path: Optional[str] = Field(
+        None, description="Destination directory ON THE SERVER"
+    )
+    blob_container: Optional[str] = None
+    blob_path: Optional[str] = Field(
+        None, description="Destination prefix inside the container"
+    )
+    overwrite: bool = Field(
+        False,
+        description=(
+            "Replace files already at the destination. Without it a "
+            "non-empty destination is an error rather than a silent merge."
+        ),
+    )
+
+
+class RerunRequest(StageSelection):
+    """Re-run an existing chart. Same stage vocabulary as run and batch."""
+
     force: bool = Field(
         False, description="Reprocess completed pages instead of resuming"
-    )
-    only: Optional[list[str]] = Field(
-        None,
-        description=(
-            "Restrict to these stages. Use 'name' for pass 1 or 'name:2' for "
-            f"pass 2. Known: {', '.join(STAGE_NAMES)}"
-        ),
     )
 
 
@@ -225,32 +270,61 @@ class ManifestSweepRequest(BaseModel):
 # A BackgroundTask runs after the 202 has been sent, so its outcome can only
 # ever reach the operator through the log. Logging failures alone left a
 # successful run indistinguishable from one that never started.
-def _bg_ingest(payload: IngestRequest) -> None:
-    logger.info("Background ingest starting: %s", payload.blob_path)
+def _bg_run(payload: "RunRequest") -> None:
+    source = payload.local_path or f"{payload.blob_container}/{payload.blob_path}"
+    logger.info("Background run starting: %s", source)
     try:
         result = ingest_and_run(
             blob_container=payload.blob_container,
             blob_path=payload.blob_path,
+            local_path=payload.local_path,
+            chart_name=payload.chart_name,
             run_id=payload.run_id,
             batch_id=payload.batch_id,
-            run_pipeline=payload.run_pipeline,
             force=payload.force,
+            only=payload.only,
+            through=payload.through,
         )
         logger.info(
-            "Background ingest finished: %s -> chart_id=%s",
-            payload.blob_path, (result or {}).get("chart_id"),
+            "Background run finished: %s -> chart_id=%s",
+            source, (result or {}).get("chart_id"),
         )
     except Exception:
-        logger.exception("Background ingest FAILED for %s", payload.blob_path)
+        logger.exception("Background run FAILED for %s", source)
 
 
-def _bg_pipeline(chart_id: int, force: bool, only: Optional[list[str]]) -> None:
+def _bg_write(payload: "WriteRequest") -> None:
+    from jobs.export_chart import write_chart
+
+    logger.info("Background write starting: %s", payload.chart_name)
+    try:
+        result = write_chart(
+            payload.chart_name,
+            local_path=payload.local_path,
+            blob_container=payload.blob_container,
+            blob_path=payload.blob_path,
+            overwrite=payload.overwrite,
+        )
+        logger.info(
+            "Background write finished: %s -> %s (%d file(s))",
+            payload.chart_name, result["destination"], result["files_written"],
+        )
+    except Exception:
+        logger.exception("Background write FAILED for %s", payload.chart_name)
+
+
+def _bg_pipeline(
+    chart_id: int,
+    force: bool,
+    only: Optional[list[str]],
+    through: Optional[str] = None,
+) -> None:
     logger.info(
-        "Background pipeline starting: chart_id=%s force=%s only=%s",
-        chart_id, force, only or "all stages",
+        "Background pipeline starting: chart_id=%s force=%s only=%s through=%s",
+        chart_id, force, only or "all stages", through or "end of chain",
     )
     try:
-        run_pipeline_for_chart(chart_id, force=force, only=only)
+        run_pipeline_for_chart(chart_id, force=force, only=only, through=through)
         logger.info("Background pipeline finished: chart_id=%s", chart_id)
     except Exception:
         logger.exception("Background pipeline FAILED for chart %s", chart_id)
@@ -266,10 +340,9 @@ def _bg_batch(payload: "BatchRequest") -> None:
             local_root=payload.local_root,
             blob_container=payload.blob_container,
             blob_prefix=payload.blob_prefix,
-            move=payload.move,
             force=payload.force,
-            load_manifest=payload.load_manifest,
-            run_pipeline=payload.run_pipeline,
+            only=payload.only,
+            through=payload.through,
             limit=payload.limit,
             run_id=payload.run_id,
             batch_id=payload.batch_id,
@@ -389,15 +462,28 @@ def get_stages() -> dict[str, Any]:
         return {"stages": list_stages(conn, phase1_only=False)}
 
 
-@app.post("/api/charts/ingest", status_code=202, tags=["charts"])
-def ingest_chart(
-    body: IngestRequest, background_tasks: BackgroundTasks
-) -> dict[str, Any]:
-    """Ingest one chart from blob storage OR from a local folder, then run it.
+def _validate_stages(body: "StageSelection") -> None:
+    """Reject an unknown stage name with a 400 naming the known ones.
+
+    Without this a typo reaches the background task, where it becomes a log
+    line the caller never sees — the run just does nothing.
+    """
+    for token in ([body.through] if body.through else []) + list(body.only or []):
+        try:
+            resolve_stage(token)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/charts/run", status_code=202, tags=["charts"])
+def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    """Fetch one chart's pages into the workspace and run the stage chain.
 
     Pass either `blob_container` + `blob_path`, or `local_path` — not both.
-    Both paths end identically: pages under data/folders/<chart>/pages/ named
-    1.jpg, 2.jpg … with the chart registered.
+    Both end identically: pages under data/folders/<chart>/pages/ named 1.jpg,
+    2.jpg … with the chart registered, then the chain runs.
+
+    Use `through` to stop after a stage, `only` to run particular stages alone.
 
     Returns immediately. Poll GET /api/charts/by-name/{chart_name}.
     """
@@ -418,26 +504,28 @@ def ingest_chart(
             status_code=400,
             detail="blob_container and blob_path must be given together",
         )
+    _validate_stages(body)
     _require_db()
 
     if has_local:
-        # Resolve up front: a bad path should be a 400 now, not a background
-        # failure the caller never sees.
+        # Resolve the intake up front: a bad path should be a 400 now, not a
+        # background failure the caller never sees. The chain still runs in the
+        # background, because it is the part that takes minutes.
+        from stages.download_blob import import_local_folder
+
         try:
             result = import_local_folder(
                 body.local_path,
                 chart_name=body.chart_name,
-                move=body.move,
-                recursive=body.recursive,
                 force=body.force,
-                load_manifest=body.load_manifest,
                 run_id=body.run_id,
                 batch_id=body.batch_id,
             )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        if body.run_pipeline:
-            background_tasks.add_task(_bg_pipeline, result["chart_id"], body.force, None)
+        background_tasks.add_task(
+            _bg_pipeline, result["chart_id"], body.force, body.only, body.through
+        )
         return {
             "status": "accepted",
             "mode": "local",
@@ -445,46 +533,87 @@ def ingest_chart(
             "chart_name": result["chart_name"],
             "source": result["source"],
             "imported": result["imported"],
-            "moved": result["moved"],
             "manifest": result["manifest"],
             "page_count": result["page_count"],
+            "through": body.through,
+            "only": body.only,
             "poll": f"/api/charts/{result['chart_id']}",
         }
 
     from db.blob_store import chart_name_from_blob_path
 
     chart_name = chart_name_from_blob_path(body.blob_path)
-    background_tasks.add_task(_bg_ingest, body)
+    background_tasks.add_task(_bg_run, body)
     return {
         "status": "accepted",
         "mode": "blob",
         "chart_name": chart_name,
         "blob_container": body.blob_container,
         "blob_path": body.blob_path,
+        "through": body.through,
+        "only": body.only,
         "poll": f"/api/charts/by-name/{chart_name}",
     }
 
 
-@app.post("/api/charts/register-local", status_code=202, tags=["charts"])
-def register_local(
-    body: LocalRegisterRequest, background_tasks: BackgroundTasks
+@app.post("/api/charts/write", status_code=202, tags=["charts"])
+def write_chart_out(
+    body: WriteRequest, background_tasks: BackgroundTasks
 ) -> dict[str, Any]:
-    """Register a chart folder already present under data/folders and run it."""
-    _require_db()
-    try:
-        result = register_local_pages(
-            body.chart_name, run_id=body.run_id, batch_id=body.batch_id
+    """Write a finished chart's folder back out to blob or local disk.
+
+    The reverse of run's intake step: data/folders/<chart> goes to the
+    destination, whole — pages/, ocr/ and imaging/.
+
+    Returns immediately; a large chart is a lot of bytes. Watch the server log.
+    """
+    from config import chart_dir
+
+    if bool(body.local_path) == bool(body.blob_path):
+        raise HTTPException(
+            status_code=400,
+            detail="Provide exactly one destination: local_path, or blob_container + blob_path",
         )
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if body.run_pipeline:
-        background_tasks.add_task(_bg_pipeline, result["chart_id"], body.force, None)
+    if body.blob_path and not body.blob_container:
+        raise HTTPException(
+            status_code=400,
+            detail="blob_container must be given with blob_path",
+        )
+    # Check the source exists now rather than in the background, so a typo in
+    # the chart name is a 404 the caller sees.
+    root = chart_dir(body.chart_name)
+    if not root.is_dir():
+        raise HTTPException(
+            status_code=404,
+            detail=f"No chart workspace at {root} — has '{body.chart_name}' been run?",
+        )
+
+    # A local destination can be checked here for free, and a clash is the most
+    # likely mistake — writing a second chart over the first. Checking it in the
+    # background would hand the caller a 202 and put the refusal in a log they
+    # never read. The blob equivalent is a network round trip, so it stays in
+    # write_chart, where the same guard runs before a single byte is uploaded.
+    if body.local_path and not body.overwrite:
+        dest = (Path(body.local_path).expanduser() / body.chart_name)
+        clash = [q for q in dest.rglob("*") if q.is_file()] if dest.is_dir() else []
+        if clash:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"{dest} already holds {len(clash)} file(s). "
+                    "Pass overwrite=true to replace them."
+                ),
+            )
+
+    background_tasks.add_task(_bg_write, body)
+    destination = body.local_path or f"{body.blob_container}/{body.blob_path}"
     return {
         "status": "accepted",
-        "chart_id": result["chart_id"],
-        "chart_name": result["chart_name"],
-        "page_count": result["page_count"],
-        "manifest_rows": result["manifest_rows"],
+        "mode": "local" if body.local_path else "blob",
+        "chart_name": body.chart_name,
+        "source": str(root),
+        "destination": f"{destination.rstrip('/')}/{body.chart_name}",
+        "note": "runs in the background; watch the server log",
     }
 
 
@@ -524,6 +653,7 @@ def batch_intake(
             status_code=400,
             detail="Provide either local_root, or both blob_container and blob_prefix",
         )
+    _validate_stages(body)
     _require_db()
     # Resolve the chart list up front so the caller learns immediately that the
     # path is wrong, instead of getting 202 and an empty batch an hour later.
@@ -549,6 +679,8 @@ def batch_intake(
         "source": body.local_root or f"{body.blob_container}/{body.blob_prefix}",
         "charts_found": found,
         "limit": body.limit,
+        "through": body.through,
+        "only": body.only,
         "note": "runs sequentially; watch the server log for [n/total] progress",
     }
 
@@ -590,26 +722,21 @@ def rerun_chart(
 
     By default this *resumes*: pages already completed are not redone, so a
     chart that failed part-way finishes without repeating paid OCR calls. Pass
-    force=true to reprocess everything, or `only` to re-run named stages.
+    force=true to reprocess everything, `through` to stop after a stage, or
+    `only` to re-run named stages.
     """
-    if body.only:
-        unknown = [
-            s for s in body.only
-            if s not in STAGE_NAMES and s not in {n.split(":")[0] for n in STAGE_NAMES}
-        ]
-        if unknown:
-            raise HTTPException(
-                status_code=400,
-                detail=f"unknown stage(s) {unknown}; known: {STAGE_NAMES}",
-            )
+    _validate_stages(body)
     with connect() as conn:
         if not get_chart(conn, chart_id):
             raise HTTPException(status_code=404, detail="chart not found")
-    background_tasks.add_task(_bg_pipeline, chart_id, body.force, body.only)
+    background_tasks.add_task(
+        _bg_pipeline, chart_id, body.force, body.only, body.through
+    )
     return {
         "status": "accepted",
         "chart_id": chart_id,
         "force": body.force,
+        "through": body.through,
         "only": body.only,
     }
 

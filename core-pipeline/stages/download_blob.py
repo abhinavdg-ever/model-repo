@@ -204,10 +204,7 @@ def import_local_folder(
     source: str | Path,
     *,
     chart_name: Optional[str] = None,
-    move: bool = False,
-    recursive: bool = False,
     force: bool = False,
-    load_manifest: bool = True,
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
 ) -> dict[str, Any]:
@@ -218,9 +215,11 @@ def import_local_folder(
     renamed to ``1.jpg``, ``2.jpg`` … in natural-sort order, matching what the
     blob intake produces, so every later stage sees the same shape either way.
 
-    ``move`` defaults to False: copying leaves the caller's folder intact, and a
-    failed import is then a no-op rather than data loss. Pass move=True only
-    when the source is a scratch drop directory.
+    The source is always **copied**, never moved: a failed import is then a
+    no-op rather than data loss. Subfolders are always searched, because a
+    chart folder that keeps its scans in ``pages/`` is the common shape, not a
+    special case. Any manifest alongside the images is always loaded — the
+    member stage cannot run without one.
     """
     import shutil
 
@@ -228,11 +227,11 @@ def import_local_folder(
     if not src.is_dir():
         raise RuntimeError(f"Not a directory: {src}")
 
-    images = _collect_images(src, recursive=recursive)
+    images = _collect_images(src, recursive=True)
     if not images:
         raise RuntimeError(
-            f"No images in {src} (looked for {', '.join(sorted(IMAGE_SUFFIXES))}"
-            f"{'' if recursive else '; use recursive=True to search subfolders'})"
+            f"No images in {src} or its subfolders "
+            f"(looked for {', '.join(sorted(IMAGE_SUFFIXES))})"
         )
 
     name = (chart_name or src.name).strip()
@@ -287,53 +286,40 @@ def import_local_folder(
     copied: list[str] = []
     for index, path in enumerate(images, start=1):
         target = dest_dir / _normalize_page_filename(index, path.name)
-        if move:
-            shutil.move(str(path), target)
-        else:
-            shutil.copy2(path, target)
+        shutil.copy2(path, target)
         copied.append(target.name)
 
-    logger.info(
-        "%s %d image(s) from %s -> %s",
-        "Moved" if move else "Copied", len(copied), src, dest_dir,
-    )
+    logger.info("Copied %d image(s) from %s -> %s", len(copied), src, dest_dir)
 
     # Any manifest dropped in alongside the images is loaded here. Order no
     # longer matters — manifest rows are keyed on record_id, which IS the chart
     # name, so there is no link step that could run too early or too late.
     manifest_summary: dict[str, Any] = {"files": 0, "inserted": 0, "updated": 0}
-    if load_manifest:
-        manifests = _collect_manifests(src, recursive=recursive)
-        if manifests:
-            from config import METADATA_ROOT
-            from jobs.manifest_sweeper import run_load
+    manifests = _collect_manifests(src, recursive=True)
+    if manifests:
+        from config import METADATA_ROOT
+        from jobs.manifest_sweeper import run_load
 
-            METADATA_ROOT.mkdir(parents=True, exist_ok=True)
-            for man in manifests:
-                target = METADATA_ROOT / man.name
-                if move:
-                    shutil.move(str(man), target)
-                else:
-                    shutil.copy2(man, target)
-                loaded = run_load(
-                    local_path=target, run_id=run_id, batch_id=batch_id
-                )
-                # run_load flattens its counters at the top level, not under
-                # a "totals" key.
-                manifest_summary["files"] += loaded["files"]
-                manifest_summary["inserted"] += loaded["inserted"]
-                manifest_summary["updated"] += loaded["updated"]
-            logger.info(
-                "Loaded %d manifest file(s): +%d inserted, ~%d updated",
-                manifest_summary["files"],
-                manifest_summary["inserted"],
-                manifest_summary["updated"],
-            )
+        METADATA_ROOT.mkdir(parents=True, exist_ok=True)
+        for man in manifests:
+            target = METADATA_ROOT / man.name
+            shutil.copy2(man, target)
+            loaded = run_load(local_path=target, run_id=run_id, batch_id=batch_id)
+            # run_load flattens its counters at the top level, not under
+            # a "totals" key.
+            manifest_summary["files"] += loaded["files"]
+            manifest_summary["inserted"] += loaded["inserted"]
+            manifest_summary["updated"] += loaded["updated"]
+        logger.info(
+            "Loaded %d manifest file(s): +%d inserted, ~%d updated",
+            manifest_summary["files"],
+            manifest_summary["inserted"],
+            manifest_summary["updated"],
+        )
 
     result = register_local_pages(name, run_id=run_id, batch_id=batch_id)
     result["source"] = str(src)
     result["imported"] = len(copied)
-    result["moved"] = move
     result["manifest"] = manifest_summary
     result["reset"] = reset
     return result

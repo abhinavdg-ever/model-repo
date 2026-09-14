@@ -36,5 +36,7 @@ core-pipeline/models/
 *.onnx
 *.bin
 
-# Smoke-test chart produced by running the demo through the API locally.
+# Smoke-test charts produced by running the demo through the API locally.
 review-ui/data/folders/demo_api_smoketest/
+review-ui/data/folders/chartA/
+review-ui/data/folders/chartB/

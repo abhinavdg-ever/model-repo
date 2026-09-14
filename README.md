@@ -85,7 +85,7 @@ PowerShell execution policy: [`docs/API.md § Windows notes`](docs/API.md#window
 Ingest a chart:
 
 ```bash
-curl -X POST localhost:8001/api/charts/ingest \
+curl -X POST localhost:8001/api/charts/run \
   -H 'Content-Type: application/json' \
   -d '{"blob_container":"imaging-pipeline","blob_path":"run1/batch1/52743839_44976074"}'
 ```

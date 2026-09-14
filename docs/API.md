@@ -70,7 +70,7 @@ specific stage in a way the run records:
 
 | Service | Needed for | Absent ⇒ |
 |---|---|---|
-| Azure Blob | chart intake, manifest sweep from blob | ingest fails; `register-local` still works |
+| Azure Blob | chart intake, manifest sweep from blob | `run`/`batch` fail in blob mode; `local_path` still works |
 | Azure Document Intelligence | final2 OCR | no final2 text; handwritten pages get no pass-2 verdict |
 | Azure OpenAI | the DOS LLM pass | DOS is regex-only, `extraction_method='rules'` |
 | GLiNER runtime + checkpoints | member NER layer | rules-only; **no document can be Rejected**. Code is present; install `requirements-ner.txt` and run the downloader — [LOGIC.md](LOGIC.md#turning-it-on) |
@@ -262,7 +262,7 @@ the rejection path does once it is `true`.
 
 | Feature | Enable with | Absent ⇒ |
 |---|---|---|
-| Azure Blob intake | `AZURE_STORAGE_*` in `.env` | `ingest` fails; `register-local` still works |
+| Azure Blob intake | `AZURE_STORAGE_*` in `.env` | `run`/`batch`/`write` fail in blob mode; local paths still work |
 | Final OCR 2 | `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT` + `_KEY` | no final2 text; handwritten pages get no pass-2 verdict |
 | DOS LLM pass | `AZURE_OPENAI_ENDPOINT` + a key **or** a managed identity, + `DOS_LLM_ENABLED=true` | DOS is regex-only, rows stamped `extraction_method='rules'` |
 
@@ -801,10 +801,10 @@ The pipeline's shape, straight from the `pipeline_stage` table.
 curl -s localhost:8001/api/stages | jq '.stages[] | {seq, stage_name, pass_no, is_phase1}'
 ```
 
-### `POST /api/charts/ingest` → 202
+### `POST /api/charts/run` → 202
 
-One chart, from **either** source. Pass `blob_container` + `blob_path`, **or**
-`local_path` — not both.
+One chart, from **either** source, fetched into the workspace and run. Pass
+`blob_container` + `blob_path`, **or** `local_path` — not both.
 
 ```json
 {"blob_container": "imaging-pipeline", "blob_path": "run1/batch1/52743839_44976074"}
@@ -820,13 +820,21 @@ stage is identical regardless of where the images came from.
 | Field | Mode | Default | Meaning |
 |---|---|---|---|
 | `blob_container` + `blob_path` | blob | — | Container, and the prefix of the chart folder. Both or neither. |
-| `local_path` | local | — | A directory **on the server**. Under Docker it must be a path *inside the container* — mount the folder first; the host filesystem is not visible. |
+| `local_path` | local | — | A directory **on the server**, holding the images itself or in a subfolder. Under Docker it must be a path *inside the container* — mount the folder first; the host filesystem is not visible. |
 | `chart_name` | local | folder name | Sanitised to `[A-Za-z0-9._-]`, so `My Chart 001` becomes `My_Chart_001`. |
-| `move` | local | `false` | Copies by default, leaving your folder intact. |
-| `recursive` | local | `false` | Also pick up images in subfolders. |
-| `load_manifest` | local | `true` | Load any CSV/XLSX found in the folder. |
-| `run_pipeline` | both | `true` | `false` registers without running the 8 stages. |
+| `through` | both | — | Run the chain and **stop after this stage**. See [Running part of the chain](#running-part-of-the-chain). |
+| `only` | both | — | Run **only** these stages, whatever ran before. |
 | `force` | both | `false` | **Replace** the chart, not merge into it: clears the old pages, OCR text and imaging CSVs on disk, deletes every result row for that chart, and reprocesses. `chart_id` and `pipeline_jobs` survive. **Stage 5 is billed per page.** |
+
+Three switches were removed, because each had one correct setting and the other
+only ever caused a support question:
+
+| Removed | Now |
+|---|---|
+| `move` | The source is always **copied**. A failed import is then a no-op rather than data loss. |
+| `recursive` | Subfolders are **always** searched. A chart folder keeping its scans in `pages/` is the common shape, not a special case. |
+| `load_manifest` | A manifest beside the images is **always** loaded. The member stage cannot run without one. |
+| `run_pipeline` | `/run` runs. To register without running, use `through` with the first stage, or the CLI's `--no-pipeline`. |
 
 Errors are ordered so they point at the right problem: a malformed body is
 `400` whatever the database is doing, and `503` means the request was valid but
@@ -837,6 +845,7 @@ Postgres is unreachable.
 | both sources | `400` — not both |
 | neither | `400` — provide one |
 | `blob_path` without `blob_container` | `400` — must be given together |
+| unknown `through` / `only` stage | `400`, naming the known stages |
 
 Local mode resolves the folder **before** returning, so a bad path is a `400`
 immediately rather than a `202` and a silent background failure:
@@ -846,9 +855,10 @@ immediately rather than a `202` and a silent background failure:
   "status": "accepted", "mode": "local",
   "chart_id": 12, "chart_name": "52743839_44976074",
   "source": "/data/inbox/52743839_44976074",
-  "imported": 34, "moved": false,
+  "imported": 34,
   "manifest": {"files": 1, "inserted": 0, "updated": 38},
   "page_count": 34,
+  "through": null, "only": null,
   "poll": "/api/charts/12"
 }
 ```
@@ -861,6 +871,7 @@ Blob mode downloads in the background, so it returns before the chart exists:
   "chart_name": "52743839_44976074",
   "blob_container": "imaging-pipeline",
   "blob_path": "run1/batch1/52743839_44976074",
+  "through": null, "only": null,
   "poll": "/api/charts/by-name/52743839_44976074"
 }
 ```
@@ -876,34 +887,89 @@ audit trail so you can compare the new run against the old one. Merging instead
 would leave pages that vanished from the source still sitting there marked
 completed — the chart would report finished while serving stale results.
 
-> `POST /api/charts/import-local` was removed — `ingest` with `local_path`
-> replaces it. Two endpoints differing only in source is how they drift apart.
+> `POST /api/charts/ingest`, `/api/charts/import-local` and
+> `/api/charts/register-local` were all removed — `run` replaces all three.
+> Endpoints differing only in where the pages come from is how they drift apart.
 
-### `POST /api/charts/register-local` → 202
+#### Running part of the chain
 
-Register a folder already present under `data/folders` (no blob needed). Useful
-for development and for re-processing a chart already on disk.
+`through` and `only` answer different questions, and both are accepted by
+`/run`, `/batch` and `/{chart_id}/rerun` with the same spelling.
+
+| | Means | Use when |
+|---|---|---|
+| `through` | Run from the top, **stop after** this stage | You want the first N stages and nothing paid for beyond them |
+| `only` | Run **just** these stages, whatever ran before | The earlier output on disk is good and one step changed |
+
+A stage is named `ocr_final2` for pass 1, or `blank_junk:2` for pass 2. A bare
+name always means pass 1 — never "whichever pass exists" — so `--only
+blank_junk` cannot mean different things on different days. An unknown name is
+a `400` naming the known stages, rather than a `202` and a run that silently
+does nothing.
 
 ```bash
-curl -X POST localhost:8001/api/charts/register-local \
-  -H 'Content-Type: application/json' \
-  -d '{"chart_name":"demo_chart_240315_1012"}'
+# Everything up to and including Final OCR 2, then stop
+curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
+  -d '{"local_path":"/data/inbox/chart_x","through":"ocr_final2"}'
+
+# Just the DOS stage, on a chart whose OCR is already done
+curl -X POST localhost:8001/api/charts/3/rerun -H 'Content-Type: application/json' \
+  -d '{"only":["dos_extract"]}'
 ```
 
-```json
-{ "status": "accepted", "chart_id": 7, "chart_name": "demo_chart_240315_1012",
-  "page_count": 3, "manifest_rows": 1 }
+`only` runs a stage against whatever its inputs are on disk. That makes it the
+right tool for re-running the last step after a fix, and the wrong tool on a
+chart that has never run — the stage will find nothing to read.
+
+### `POST /api/charts/write` → 202
+
+The reverse of `run`'s intake step: take `data/folders/<chart>` and write it
+back out to a blob prefix or a local directory. Give **one** destination.
+
+```bash
+curl -X POST localhost:8001/api/charts/write -H 'Content-Type: application/json' \
+  -d '{"chart_name":"52743839_44976074","blob_container":"imaging-pipeline","blob_path":"run1/out"}'
 ```
 
-Returns synchronously for registration (so you get the id) and runs the chain in
-the background.
+| Field | Default | Meaning |
+|---|---|---|
+| `chart_name` | — | Folder name under `data/folders`. Required. |
+| `local_path` | — | Destination directory on the server. |
+| `blob_container` + `blob_path` | — | Destination container and prefix. Both or neither. |
+| `overwrite` | `false` | Replace files already at the destination. |
+
+The **whole** workspace goes — `pages/`, `ocr/` and `imaging/` — so the
+destination is self-contained and readable without the database: the scans, the
+OCR text, and the per-stage CSVs together. Only what exists is written, so a
+chart run with `through` writes the outputs it actually produced.
+
+The chart's own name is **appended** to the destination, so two charts written
+to one place do not merge:
+
+```
+<destination>/<chart_name>/pages/1.jpg …
+<destination>/<chart_name>/ocr/<chart>_prelim.txt …
+<destination>/<chart_name>/imaging/<chart>_dos.csv …
+```
+
+| Body | Result |
+|---|---|
+| two destinations, or none | `400` |
+| `blob_path` without `blob_container` | `400` |
+| chart has no workspace on disk | `404`, naming the path it looked for |
+| destination not empty, no `overwrite` | `409` for a local destination |
+
+The local clash check runs in the request, so it is a `409` you see. The blob
+equivalent is a network round trip and stays in the background task — but it
+still runs before a single byte is uploaded. macOS AppleDouble stubs (`._1.jpg`)
+are never written out.
 
 ### `POST /api/charts/batch` → 202
 
 Scan a folder or blob prefix and run **every chart in it**, sequentially.
 
 ```json
-{"local_root": "/data/inbox/2026-09-13", "limit": null, "run_pipeline": true}
+{"local_root": "/data/inbox/2026-09-13", "limit": null}
 ```
 ```json
 {"blob_container": "imaging-pipeline", "blob_prefix": "Raw_Input/Run1/Batch1"}
@@ -917,11 +983,14 @@ ignored, and macOS `._` stubs do not make a folder count. Point it at a single
 chart folder and it runs just that one, so the same command works for a drop of
 fifty or a drop of one.
 
+**Batch is `run`, once per folder.** It hands each chart to the same code path a
+single `/run` uses, so an option means the same thing in both places and a batch
+of one is indistinguishable from a single run.
+
 | Field | Default | Meaning |
 |---|---|---|
 | `limit` | all | Only the first N charts. **Use `limit: 1` for a dry run** before committing a large batch. |
-| `run_pipeline` | `true` | `false` imports/ingests without running the 8 stages — the cheap way to check the scan picked up what you expected. |
-| `move`, `force`, `load_manifest` | as `ingest` | `move` is local mode only. |
+| `through`, `only`, `force` | as `run` | Identical spelling and meaning. `through: "ocr_prelim"` across a whole drop is the cheap way to check intake before paying for stage 5. |
 
 For a local root the chart list is resolved **before** returning, so a wrong
 path gives you `400` immediately rather than `202` and an empty batch an hour
@@ -934,6 +1003,8 @@ later. `charts_found` in the reply tells you how many will run.
   "source": "/data/inbox/2026-09-13",
   "charts_found": 37,
   "limit": null,
+  "through": null,
+  "only": null,
   "note": "runs sequentially; watch the server log for [n/total] progress"
 }
 ```
@@ -993,7 +1064,8 @@ curl -s localhost:8001/api/charts/7 | jq '{status: .chart.status, stage: .chart.
 ```jsonc
 {
   "force": false,                    // true = reprocess completed pages too
-  "only": ["member_verify"]          // optional; "name" = pass 1, "name:2" = pass 2
+  "only": ["member_verify"],         // optional; "name" = pass 1, "name:2" = pass 2
+  "through": null                    // optional; run from the top, stop after this stage
 }
 ```
 
@@ -1101,33 +1173,37 @@ python cli.py serve                          # start the API
 python cli.py stages                         # list the chain in order
 python cli.py status <chart_id>              # per-stage progress as JSON
 
-python cli.py ingest --container imaging-pipeline \
-                     --path run1/batch1/52743839_44976074 \
-                     --run-id R1 --batch-id B1
-python cli.py ingest ... --no-pipeline       # download only
-python cli.py ingest --local "C:\drops\52743839_44976074"   # same command, local source
+# run: one chart, from blob or a local folder. Copies the images in, renames
+# them 1.jpg/2.jpg…, loads any manifest beside them, registers, runs the chain.
+python cli.py run --blob-container imaging-pipeline \
+                  --blob-path run1/batch1/52743839_44976074 \
+                  --run-id R1 --batch-id B1
+python cli.py run --local "C:\drops\52743839_44976074"      # same command, local source
+python cli.py run --local ./drop --chart-name 52743839_44976074
+python cli.py run --local ./drop --force                     # replace an existing chart
+python cli.py run --local ./drop --no-pipeline               # intake only
 
-# Import ANY local folder of images: copies them in, renames to 1.jpg/2.jpg…,
-# loads any manifest sitting beside them, registers, runs.
-python cli.py import-folder "/Users/me/Desktop/52743839_44976074"
-python cli.py import-folder ./drop --chart-name 52743839_44976074
-python cli.py import-folder ./drop --move --recursive --force
-python cli.py import-folder ./drop --no-manifest --no-pipeline
+# Stop after a stage, or run one stage on its own.
+python cli.py run --local ./drop --through ocr_final2
+python cli.py run --local ./drop --through ocr_prelim        # cheapest intake check
 
 # Batch: scan a parent folder (or blob prefix) and run EVERY chart in it,
-# one at a time. One bad folder does not stop the rest.
+# one at a time. One bad folder does not stop the rest. Same flags as run.
 python cli.py batch --local "D:\drops\2026-09-13"
 python cli.py batch --local ./drops --limit 2 --no-pipeline   # dry run first
+python cli.py batch --local ./drops --through ocr_prelim      # intake the whole drop, no paid OCR
 python cli.py batch --blob-container imaging-pipeline --blob-prefix Raw_Input/Run1/Batch1
 
-# register-local is the narrower one: the folder must ALREADY be at
-# data/folders/<chart>/pages/. It copies nothing.
-python cli.py register-local demo_chart_240315_1012
+# write: the reverse of run's intake step — the whole chart folder back out.
+python cli.py write 52743839_44976074 --local /data/outbox
+python cli.py write 52743839_44976074 --blob-container imaging-pipeline \
+                                      --blob-path run1/out --overwrite
 
-python cli.py run 7                          # resume
-python cli.py run 7 --force                  # reprocess everything
-python cli.py run 7 --only member_verify     # one stage
-python cli.py run 7 --only blank_junk:2      # a specific pass
+python cli.py rerun 7                        # resume
+python cli.py rerun 7 --force                # reprocess everything
+python cli.py rerun 7 --only member_verify   # one stage
+python cli.py rerun 7 --only blank_junk:2    # a specific pass
+python cli.py rerun 7 --through ocr_final1   # from the top, stop after Final OCR 1
 
 # Manifests — a local file, a whole local directory, or a blob prefix.
 # All three upsert: re-running with a corrected CSV updates in place.
@@ -1156,7 +1232,7 @@ curl -X POST localhost:8001/api/manifest/sweep -H 'Content-Type: application/jso
   -d '{"local_path":"/data/metadata/metadata_R1_B1.csv"}'
 
 # Then the chart
-curl -X POST localhost:8001/api/charts/ingest -H 'Content-Type: application/json' \
+curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
   -d '{"blob_container":"imaging-pipeline","blob_path":"run1/batch1/52743839_44976074"}'
 
 # Watch it
@@ -1185,7 +1261,7 @@ The sweep links the manifest to the chart automatically.
 
 ```bash
 for path in $(az storage blob directory list ... ); do
-  curl -s -X POST localhost:8001/api/charts/ingest \
+  curl -s -X POST localhost:8001/api/charts/run \
     -H 'Content-Type: application/json' \
     -d "{\"blob_container\":\"imaging-pipeline\",\"blob_path\":\"$path\"}"
 done

@@ -46,7 +46,7 @@ Either can be redeployed without the other.
 
 ```mermaid
 flowchart TD
-  START(["POST /api/charts/ingest<br/>{blob_container, blob_path}"]) --> DL
+  START(["POST /api/charts/run<br/>{blob_container, blob_path}"]) --> DL
 
   subgraph INTAKE["Intake"]
     DL["Download pages<br/>→ data/folders/&lt;chart&gt;/pages/1.jpg…N"]
@@ -165,7 +165,7 @@ sequenceDiagram
   participant AZ as Azure DocIntel
 
   Note over O,AZ: First run — dies at page 401 of 500
-  C->>O: POST /api/charts/ingest
+  C->>O: POST /api/charts/run
   O->>AZ: analyse pages 1…400
   AZ-->>DB: 400 rows 'completed'
   O--xO: crash

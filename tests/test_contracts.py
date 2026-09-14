@@ -543,8 +543,8 @@ class TestBatchFolderDiscovery:
 # --- ingest request shape ----------------------------------------------------
 
 
-class TestIngestAcceptsBothModes:
-    """POST /api/charts/ingest takes blob_container+blob_path OR local_path.
+class TestRunAcceptsBothModes:
+    """POST /api/charts/run takes blob_container+blob_path OR local_path.
 
     The mode check must run BEFORE the database probe: a malformed body is a 400
     whatever the database is doing, and reporting "database unavailable" for a
@@ -564,7 +564,7 @@ class TestIngestAcceptsBothModes:
     def test_both_sources_at_once_is_rejected(self, monkeypatch):
         client, _ = self._client(monkeypatch)
         r = client.post(
-            "/api/charts/ingest",
+            "/api/charts/run",
             json={"blob_container": "c", "blob_path": "p", "local_path": "/x"},
         )
         assert r.status_code == 400
@@ -572,32 +572,131 @@ class TestIngestAcceptsBothModes:
 
     def test_neither_source_is_rejected(self, monkeypatch):
         client, _ = self._client(monkeypatch)
-        r = client.post("/api/charts/ingest", json={})
+        r = client.post("/api/charts/run", json={})
         assert r.status_code == 400
         assert "local_path" in r.json()["detail"]
 
     def test_half_a_blob_pair_is_rejected(self, monkeypatch):
         client, _ = self._client(monkeypatch)
-        r = client.post("/api/charts/ingest", json={"blob_path": "p"})
+        r = client.post("/api/charts/run", json={"blob_path": "p"})
         assert r.status_code == 400
         assert "together" in r.json()["detail"]
 
     def test_blob_mode_is_accepted(self, monkeypatch):
         client, main = self._client(monkeypatch)
-        monkeypatch.setattr(main, "_bg_ingest", lambda payload: None)
+        monkeypatch.setattr(main, "_bg_run", lambda payload: None)
         r = client.post(
-            "/api/charts/ingest",
+            "/api/charts/run",
             json={"blob_container": "c", "blob_path": "run1/chart_x"},
         )
         assert r.status_code == 202, r.text
         assert r.json()["mode"] == "blob"
         assert r.json()["chart_name"] == "chart_x"
 
-    def test_the_removed_import_local_endpoint_is_gone(self, monkeypatch):
-        """Folded into ingest; two endpoints for one job is how they drift."""
+    @pytest.mark.parametrize(
+        "path", ["/api/charts/import-local", "/api/charts/ingest", "/api/charts/register-local"]
+    )
+    def test_the_retired_intake_endpoints_are_gone(self, monkeypatch, path):
+        """All folded into /run. Two endpoints for one job is how they drift."""
         client, _ = self._client(monkeypatch)
-        r = client.post("/api/charts/import-local", json={"source_path": "/x"})
+        r = client.post(path, json={"chart_name": "x", "source_path": "/x"})
         assert r.status_code in (404, 405)
+
+    def test_the_removed_switches_are_not_silently_accepted(self, monkeypatch):
+        """move / recursive / load_manifest each had one correct setting.
+
+        Pydantic ignores unknown fields by default, so a caller still passing
+        move=true would get a cheerful 202 and a copy — the opposite of what
+        they asked for. Better that the field simply does not exist and the
+        request shape says so.
+        """
+        from api.main import RunRequest
+
+        assert not (
+            {"move", "recursive", "load_manifest", "run_pipeline"}
+            & set(RunRequest.model_fields)
+        )
+
+
+class TestStageSelection:
+    """`through` bounds the chain; `only` picks stages out of it."""
+
+    @staticmethod
+    def _client(monkeypatch):
+        from fastapi.testclient import TestClient
+
+        import api.main as main
+
+        monkeypatch.setattr(main, "_require_db", lambda: None)
+        monkeypatch.setattr(main, "_bg_run", lambda payload: None)
+        return TestClient(main.app, raise_server_exceptions=False), main
+
+    def test_resolve_stage_accepts_both_spellings(self):
+        from orchestrator.runner import STAGE_CHAIN, resolve_stage
+
+        assert resolve_stage("ocr_prelim") == 0
+        assert resolve_stage("blank_junk:2") == 5
+        assert resolve_stage("dos_extract") == len(STAGE_CHAIN) - 1
+
+    def test_a_bare_name_means_pass_1_not_whichever_pass_exists(self):
+        """blank_junk runs twice. A bare `blank_junk` must be the pass-1 one,
+        deterministically, or `--only blank_junk` means different things on
+        different days."""
+        from orchestrator.runner import STAGE_CHAIN, resolve_stage
+
+        name, pass_no, _ = STAGE_CHAIN[resolve_stage("blank_junk")]
+        assert (name, pass_no) == ("blank_junk", 1)
+
+    def test_an_unknown_stage_raises_naming_the_known_ones(self):
+        from orchestrator.runner import resolve_stage
+
+        with pytest.raises(ValueError) as exc:
+            resolve_stage("ocr_final3")
+        assert "ocr_final3" in str(exc.value)
+        assert "ocr_final1" in str(exc.value)
+
+    def test_a_non_numeric_pass_is_rejected(self):
+        from orchestrator.runner import resolve_stage
+
+        with pytest.raises(ValueError):
+            resolve_stage("blank_junk:two")
+
+    def test_a_bad_through_is_400_not_a_silent_no_op(self, monkeypatch):
+        """Unvalidated, a typo reaches the background task and becomes a log
+        line the caller never sees — the run simply does nothing."""
+        client, _ = self._client(monkeypatch)
+        r = client.post(
+            "/api/charts/run",
+            json={"blob_container": "c", "blob_path": "p", "through": "ocr_final3"},
+        )
+        assert r.status_code == 400
+        assert "ocr_final3" in r.json()["detail"]
+
+    def test_a_bad_only_is_400(self, monkeypatch):
+        client, _ = self._client(monkeypatch)
+        r = client.post(
+            "/api/charts/run",
+            json={"blob_container": "c", "blob_path": "p", "only": ["nope"]},
+        )
+        assert r.status_code == 400
+
+    def test_a_good_through_is_accepted_and_echoed(self, monkeypatch):
+        client, _ = self._client(monkeypatch)
+        r = client.post(
+            "/api/charts/run",
+            json={"blob_container": "c", "blob_path": "run1/chart_x", "through": "ocr_final2"},
+        )
+        assert r.status_code == 202, r.text
+        assert r.json()["through"] == "ocr_final2"
+
+    def test_batch_takes_the_same_stage_options_as_run(self, monkeypatch):
+        """Batch is run-per-folder; an option that means one thing in run and
+        another in batch is the bug this shape exists to prevent."""
+        from api.main import BatchRequest, RunRequest
+
+        for field in ("through", "only"):
+            assert field in RunRequest.model_fields
+            assert field in BatchRequest.model_fields
 
 
 # --- operator-facing behaviour -----------------------------------------------
@@ -680,3 +779,151 @@ class TestChartResetKeepsTheAuditTrail:
             m = re.search(rf"CREATE TABLE {table}\s*\((.*?)\n\);", code, re.S)
             assert m, f"{table} is not in v1.sql"
             assert "chart_id" in m.group(1), f"{table} has no chart_id column"
+
+
+class TestWriteChartOut:
+    """POST /api/charts/write — the reverse of run's intake step."""
+
+    @staticmethod
+    def _client(monkeypatch):
+        from fastapi.testclient import TestClient
+
+        import api.main as main
+
+        monkeypatch.setattr(main, "_require_db", lambda: None)
+        monkeypatch.setattr(main, "_bg_write", lambda payload: None)
+        return TestClient(main.app, raise_server_exceptions=False), main
+
+    def test_two_destinations_at_once_is_rejected(self, monkeypatch):
+        client, _ = self._client(monkeypatch)
+        r = client.post(
+            "/api/charts/write",
+            json={"chart_name": "c", "local_path": "/out", "blob_path": "p"},
+        )
+        assert r.status_code == 400
+        assert "exactly one" in r.json()["detail"]
+
+    def test_no_destination_is_rejected(self, monkeypatch):
+        client, _ = self._client(monkeypatch)
+        r = client.post("/api/charts/write", json={"chart_name": "c"})
+        assert r.status_code == 400
+
+    def test_an_unknown_chart_is_404_not_202(self, monkeypatch):
+        """A 202 for a chart that does not exist is a background log line the
+        caller never reads; the typo should come back immediately."""
+        client, _ = self._client(monkeypatch)
+        r = client.post(
+            "/api/charts/write",
+            json={"chart_name": "no_such_chart_xyz", "local_path": "/tmp/out"},
+        )
+        assert r.status_code == 404
+
+    def test_the_chart_name_is_appended_to_the_destination(self, tmp_path, monkeypatch):
+        """Two charts written to one destination must not merge into it."""
+        import api.main as main
+        from fastapi.testclient import TestClient
+
+        chart = tmp_path / "folders" / "chart_a" / "pages"
+        chart.mkdir(parents=True)
+        (chart / "1.jpg").write_bytes(b"x")
+        import config
+
+        monkeypatch.setattr(main, "_require_db", lambda: None)
+        monkeypatch.setattr(main, "_bg_write", lambda payload: None)
+        monkeypatch.setattr(config, "DATA_ROOT", tmp_path / "folders")
+        client = TestClient(main.app, raise_server_exceptions=False)
+        r = client.post(
+            "/api/charts/write",
+            json={"chart_name": "chart_a", "local_path": "/out/dir"},
+        )
+        assert r.status_code == 202, r.text
+        assert r.json()["destination"].endswith("/chart_a")
+
+    def test_writing_onto_the_workspace_itself_is_refused(self, tmp_path, monkeypatch):
+        """Otherwise the source is its own destination and the copy truncates."""
+        import config
+        from jobs.export_chart import write_chart
+
+        root = tmp_path / "folders"
+        pages = root / "chart_b" / "pages"
+        pages.mkdir(parents=True)
+        (pages / "1.jpg").write_bytes(b"x")
+        monkeypatch.setattr(config, "DATA_ROOT", root)
+
+        with pytest.raises(RuntimeError, match="workspace itself"):
+            write_chart("chart_b", local_path=str(root))
+
+    def test_apple_double_stubs_are_not_written_out(self, tmp_path, monkeypatch):
+        import config
+        from jobs.export_chart import write_chart
+
+        root = tmp_path / "folders"
+        pages = root / "chart_c" / "pages"
+        pages.mkdir(parents=True)
+        (pages / "1.jpg").write_bytes(b"x")
+        (pages / "._1.jpg").write_bytes(b"junk")
+        monkeypatch.setattr(config, "DATA_ROOT", root)
+
+        out = write_chart("chart_c", local_path=str(tmp_path / "out"))
+        assert out["files_written"] == 1
+        written = {p.name for p in (tmp_path / "out").rglob("*") if p.is_file()}
+        assert written == {"1.jpg"}
+
+    def test_a_non_empty_destination_needs_overwrite(self, tmp_path, monkeypatch):
+        """Without the guard, two runs silently merge into one folder."""
+        import config
+        from jobs.export_chart import write_chart
+
+        root = tmp_path / "folders"
+        pages = root / "chart_d" / "pages"
+        pages.mkdir(parents=True)
+        (pages / "1.jpg").write_bytes(b"x")
+        monkeypatch.setattr(config, "DATA_ROOT", root)
+
+        dest = tmp_path / "out"
+        write_chart("chart_d", local_path=str(dest))
+        with pytest.raises(RuntimeError, match="overwrite"):
+            write_chart("chart_d", local_path=str(dest))
+        write_chart("chart_d", local_path=str(dest), overwrite=True)
+
+    def test_a_local_clash_is_409_at_the_endpoint_not_a_202(
+        self, tmp_path, monkeypatch
+    ):
+        """The guard exists in write_chart too, but reaching it in the
+        background means a 202 and a refusal the caller never sees."""
+        import api.main as main
+        import config
+        from fastapi.testclient import TestClient
+
+        root = tmp_path / "folders"
+        (root / "chart_e" / "pages").mkdir(parents=True)
+        (root / "chart_e" / "pages" / "1.jpg").write_bytes(b"x")
+        dest = tmp_path / "out"
+        (dest / "chart_e").mkdir(parents=True)
+        (dest / "chart_e" / "old.txt").write_text("previous run", encoding="utf-8")
+
+        monkeypatch.setattr(config, "DATA_ROOT", root)
+        monkeypatch.setattr(main, "_require_db", lambda: None)
+        monkeypatch.setattr(main, "_bg_write", lambda payload: None)
+        client = TestClient(main.app, raise_server_exceptions=False)
+
+        r = client.post(
+            "/api/charts/write",
+            json={"chart_name": "chart_e", "local_path": str(dest)},
+        )
+        assert r.status_code == 409, r.text
+        assert "overwrite" in r.json()["detail"]
+
+        r = client.post(
+            "/api/charts/write",
+            json={"chart_name": "chart_e", "local_path": str(dest), "overwrite": True},
+        )
+        assert r.status_code == 202, r.text
+
+    def test_a_chart_with_no_workspace_raises(self, tmp_path, monkeypatch):
+        import config
+        from jobs.export_chart import write_chart
+
+        monkeypatch.setattr(config, "DATA_ROOT", tmp_path / "folders")
+        with pytest.raises(RuntimeError, match="No chart workspace"):
+            write_chart("ghost", local_path=str(tmp_path / "out"))

@@ -218,7 +218,7 @@ still renders.
 | File | Role |
 |---|---|
 | `config.py` | Every environment-driven setting in one place: database URL, data roots, Azure credentials, feature flags (`MEMBER_NER_ENABLED`, `DOS_LLM_ENABLED`), `STAGE_WORKERS`, and the `chart_dir` / `pages_dir` / `ocr_dir` / `imaging_dir` path helpers. |
-| `cli.py` | Command-line entry: `serve`, `ingest`, `register-local`, `run`, `stages`, `status`, `manifest`. Everything the API does, without the HTTP hop. |
+| `cli.py` | Command-line entry: `serve`, `run`, `batch`, `write`, `rerun`, `stages`, `status`, `manifest`. Mirrors the API one-for-one, without the HTTP hop. |
 | `requirements.txt` | Python dependencies for the service. |
 | `requirements-ner.txt` | **Optional** GLiNER runtime (`gliner`, `torch`, `transformers`, ~2.5 GB). Separate so the base image stays small; `docker build --build-arg WITH_NER=true` includes it. |
 | `Dockerfile` | Runtime image. Installs Tesseract and the OpenCV/ONNX system libraries the reference modules need. |
@@ -230,14 +230,14 @@ still renders.
 
 | File | Role |
 |---|---|
-| `main.py` | FastAPI app. Request models, the async 202 pattern, and the endpoints: `/health`, `/ready`, `/api/stages`, chart ingest / register-local / status / rerun, manifest sweep and lookup, `/api/jobs`. Closes the connection pool on shutdown. |
+| `main.py` | FastAPI app. Request models, the async 202 pattern, and the endpoints: `/health`, `/ready`, `/api/stages`, chart `run` / `batch` / `write` / status / `rerun`, manifest sweep and lookup, `/api/jobs`. Closes the connection pool on shutdown. |
 | `__init__.py` | Package marker. |
 
 ### `core-pipeline/orchestrator/`
 
 | File | Role |
 |---|---|
-| `runner.py` | `STAGE_CHAIN` — the eight stages in order — plus `run_pipeline_for_chart` (resume, `force`, `only`) and `ingest_and_run`. Refreshes chart status after each stage; aborts the chain on a stage exception, because every later stage reads what the failed one produced. |
+| `runner.py` | `STAGE_CHAIN` — the eight stages in order — plus `run_pipeline_for_chart` (resume, `force`, `only`, `through`), `resolve_stage` (the one place a stage name is parsed) and `ingest_and_run`, which both `/run` and `/batch` go through. Refreshes chart status after each stage; aborts the chain on a stage exception, because every later stage reads what the failed one produced. |
 | `__init__.py` | Package marker. |
 
 ### `core-pipeline/db/`
@@ -261,7 +261,7 @@ still renders.
 | File | Role |
 |---|---|
 | `_support.py` | Shared stage plumbing: the `stage_run()` context manager (job row, page load, resume set, job close), `mark_processing` / `mark_completed` / `mark_failed` / `mark_skipped`, and the shared eligibility rule. Keeps each stage about its actual work. |
-| `download_blob.py` | **Intake.** Upserts the chart, downloads page images (skipping bytes already on disk), records SHA-256 + size, seeds `page_stage_status`, links manifest rows swept earlier. Also `register_local_pages()` for folders already present. |
+| `download_blob.py` | **Intake.** Upserts the chart, downloads page images (skipping bytes already on disk), records SHA-256 + size, seeds `page_stage_status`, links manifest rows swept earlier. `import_local_folder()` is the local-source equivalent; `register_local_pages()` registers a folder already under `data/folders`. |
 | `ocr_prelim_tesseract.py` | **Stage 1.** Tesseract over every page, threaded to `STAGE_WORKERS`. Writes `ocr_results` and rebuilds `_prelim.txt`. |
 | `quality_rotation_hw.py` | **Stage 2.** Rotation and handwriting per page, using the reference detector and classifier — each built once per process. Writes `ocr_quality_results` and the rotation / hw CSVs. |
 | `blank_junk_classify.py` | **Stages 3 and 6.** Both passes: eligibility, the cross-pass duplicate fingerprint table, the subtype mapping into the schema's constrained vocabulary, `mark_blank_junk_final`, and a full CSV rewrite from the database. |

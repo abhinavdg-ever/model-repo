@@ -64,15 +64,27 @@ def run_batch(
     local_root: Optional[str | Path] = None,
     blob_container: Optional[str] = None,
     blob_prefix: Optional[str] = None,
-    move: bool = False,
     force: bool = False,
-    load_manifest: bool = True,
     run_pipeline: bool = True,
+    only: Optional[list[str]] = None,
+    through: Optional[str] = None,
     limit: Optional[int] = None,
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Scan a local folder or blob prefix and run every chart found, in order."""
+    """Scan a local folder or blob prefix and run every chart found, in order.
+
+    Each chart goes through exactly the same call ``/api/charts/run`` makes —
+    ``ingest_and_run`` — so a batch of one is indistinguishable from a single
+    run, and an option added to run works here without being plumbed twice.
+
+    Charts run one at a time on purpose: each already parallelises across its
+    pages, and stage 5 is billed per page, so overlapping charts multiplies
+    memory and spend without finishing sooner. One bad folder is recorded and
+    the batch carries on.
+    """
+    from orchestrator.runner import ingest_and_run
+
     if bool(local_root) == bool(blob_container or blob_prefix):
         raise ValueError(
             "Provide either local_root, or both blob_container and blob_prefix"
@@ -83,70 +95,49 @@ def run_batch(
     started = time.time()
     results: list[dict[str, Any]] = []
 
+    # Enumerate first, in whichever vocabulary the source speaks, then run one
+    # loop over the result. `source` is what ingest_and_run is given; `name` is
+    # only for the log and the summary.
     if local_root:
-        from stages.download_blob import import_local_folder
-
         folders = find_local_chart_folders(local_root)
-        if limit:
-            folders = folders[:limit]
-        logger.info("Batch: %d chart folder(s) under %s", len(folders), local_root)
-        for index, folder in enumerate(folders, start=1):
-            logger.info("[%d/%d] %s", index, len(folders), folder.name)
-            entry: dict[str, Any] = {"source": str(folder), "name": folder.name}
-            try:
-                imported = import_local_folder(
-                    folder,
-                    move=move,
-                    force=force,
-                    load_manifest=load_manifest,
-                    run_id=run_id,
-                    batch_id=batch_id,
-                )
-                entry.update(
-                    chart_id=imported["chart_id"],
-                    chart_name=imported["chart_name"],
-                    pages=imported["page_count"],
-                    status="completed",
-                )
-                if run_pipeline:
-                    _run_one(imported["chart_id"], entry)
-            except Exception as exc:
-                logger.exception("[%d/%d] FAILED %s", index, len(folders), folder.name)
-                entry.update(status="failed", error=f"{type(exc).__name__}: {exc}")
-            results.append(entry)
+        sources = [(str(f), f.name, "local") for f in folders]
+        where = str(local_root)
     else:
         from db.blob_store import chart_name_from_blob_path, list_chart_prefixes
-        from orchestrator.runner import ingest_and_run
 
         prefixes = list_chart_prefixes(blob_container, blob_prefix)
-        if limit:
-            prefixes = prefixes[:limit]
-        logger.info(
-            "Batch: %d chart folder(s) under %s/%s",
-            len(prefixes), blob_container, blob_prefix,
-        )
-        for index, prefix in enumerate(prefixes, start=1):
-            name = chart_name_from_blob_path(prefix)
-            logger.info("[%d/%d] %s", index, len(prefixes), name)
-            entry = {"source": prefix, "name": name}
-            try:
-                out = ingest_and_run(
-                    blob_container=blob_container,
-                    blob_path=prefix,
-                    run_id=run_id,
-                    batch_id=batch_id,
-                    run_pipeline=run_pipeline,
-                    force=force,
-                )
-                entry.update(
-                    chart_id=(out or {}).get("chart_id"),
-                    chart_name=name,
-                    status="completed",
-                )
-            except Exception as exc:
-                logger.exception("[%d/%d] FAILED %s", index, len(prefixes), name)
-                entry.update(status="failed", error=f"{type(exc).__name__}: {exc}")
-            results.append(entry)
+        sources = [(p, chart_name_from_blob_path(p), "blob") for p in prefixes]
+        where = f"{blob_container}/{blob_prefix}"
+
+    if limit:
+        sources = sources[:limit]
+    logger.info("Batch: %d chart folder(s) under %s", len(sources), where)
+
+    for index, (source, name, mode) in enumerate(sources, start=1):
+        logger.info("[%d/%d] %s", index, len(sources), name)
+        entry: dict[str, Any] = {"source": source, "name": name}
+        try:
+            out = ingest_and_run(
+                local_path=source if mode == "local" else None,
+                blob_container=blob_container if mode == "blob" else None,
+                blob_path=source if mode == "blob" else None,
+                run_id=run_id,
+                batch_id=batch_id,
+                run_pipeline=run_pipeline,
+                force=force,
+                only=only,
+                through=through,
+            )
+            entry.update(
+                chart_id=out.get("chart_id"),
+                chart_name=out.get("chart_name", name),
+                pages=out.get("page_count"),
+                status="completed",
+            )
+        except Exception as exc:
+            logger.exception("[%d/%d] FAILED %s", index, len(sources), name)
+            entry.update(status="failed", error=f"{type(exc).__name__}: {exc}")
+        results.append(entry)
 
     summary = _summarise(results, started)
     logger.info(
@@ -155,10 +146,3 @@ def run_batch(
         summary["failed"], summary["duration_seconds"],
     )
     return summary
-
-
-def _run_one(chart_id: int, entry: dict[str, Any]) -> None:
-    from orchestrator.runner import run_pipeline_for_chart
-
-    run_pipeline_for_chart(chart_id)
-    entry["pipeline"] = "ran"

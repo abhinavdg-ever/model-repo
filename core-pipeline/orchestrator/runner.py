@@ -54,17 +54,61 @@ STAGE_CHAIN: list[tuple[str, int, StageFn]] = [
 STAGE_NAMES = [f"{name}:{pass_no}" for name, pass_no, _ in STAGE_CHAIN]
 
 
+def _stage_key(name: str, pass_no: int) -> str:
+    return f"{name}:{pass_no}"
+
+
+def resolve_stage(token: str) -> int:
+    """Index into STAGE_CHAIN for a stage token, or raise ValueError.
+
+    Accepts "blank_junk:2" for an explicit pass and "dos_extract" for pass 1 —
+    the same spelling `only` takes, so callers learn one vocabulary, not two.
+    A bare name that exists only at pass 2 is NOT silently promoted: naming a
+    stage that does not exist should be an error the caller sees immediately,
+    not a run that quietly does something else.
+    """
+    token = (token or "").strip()
+    if not token:
+        raise ValueError("empty stage name")
+    if ":" in token:
+        name, _, raw_pass = token.partition(":")
+        try:
+            pass_no = int(raw_pass)
+        except ValueError:
+            raise ValueError(
+                f"unknown stage {token!r} — pass must be a number, e.g. blank_junk:2"
+            ) from None
+    else:
+        name, pass_no = token, 1
+    for index, (chain_name, chain_pass, _) in enumerate(STAGE_CHAIN):
+        if chain_name == name and chain_pass == pass_no:
+            return index
+    raise ValueError(
+        f"unknown stage {token!r} — known: {', '.join(STAGE_NAMES)}"
+    )
+
+
 def run_pipeline_for_chart(
     chart_id: int,
     *,
     force: bool = False,
     only: Optional[list[str]] = None,
+    through: Optional[str] = None,
 ) -> dict[str, Any]:
     """Run the stage chain for one chart.
 
-    `only` restricts execution to named stages ("blank_junk:2", or "dos_extract"
-    for pass 1) without disturbing the others' recorded progress.
+    Two independent ways to run less than the whole chain:
+
+    * ``through="ocr_final2"`` runs the chain from the top and stops after that
+      stage — "everything up to here".
+    * ``only=["dos_extract"]`` runs just those stages, whatever came before.
+      Useful when an earlier stage's output is already on disk and only the
+      last step changed.
+
+    They compose: ``through`` bounds the chain, ``only`` filters within it.
+    Neither disturbs the recorded progress of the stages it does not run.
     """
+    stop_at = resolve_stage(through) if through else None
     with connect() as conn:
         chart = get_chart(conn, chart_id)
         if not chart:
@@ -76,6 +120,7 @@ def run_pipeline_for_chart(
         progress = refresh_chart_status(conn, chart_id)
 
     wanted = set(only or [])
+    chain = STAGE_CHAIN if stop_at is None else STAGE_CHAIN[: stop_at + 1]
     results: dict[str, Any] = {
         "chart_id": chart_id,
         "chart_name": chart["chart_name"],
@@ -83,10 +128,21 @@ def run_pipeline_for_chart(
         "skipped_stages": [],
         "progress": progress,
     }
+    if stop_at is not None:
+        results["through"] = STAGE_NAMES[stop_at]
+        # The stages past the stop are not failures and not "skipped by filter"
+        # either — they were never in scope. Naming them keeps a partial run
+        # distinguishable from a chain that died early.
+        results["not_run"] = STAGE_NAMES[stop_at + 1 :]
+        logger.info(
+            "Chart %s: running through [%s] — %d of %d stage(s)",
+            chart_id, stage_label(*STAGE_CHAIN[stop_at][:2]), len(chain),
+            len(STAGE_CHAIN),
+        )
 
     try:
-        total_stages = len(STAGE_CHAIN)
-        for index, (name, pass_no, fn) in enumerate(STAGE_CHAIN, start=1):
+        total_stages = len(chain)
+        for index, (name, pass_no, fn) in enumerate(chain, start=1):
             key = f"{name}:{pass_no}"
             if wanted and key not in wanted and name not in wanted:
                 results["skipped_stages"].append(key)
@@ -142,25 +198,63 @@ def run_pipeline_for_chart(
 
 def ingest_and_run(
     *,
-    blob_container: str,
-    blob_path: str,
+    blob_container: Optional[str] = None,
+    blob_path: Optional[str] = None,
+    local_path: Optional[str] = None,
+    chart_name: Optional[str] = None,
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
     run_pipeline: bool = True,
     force: bool = False,
+    only: Optional[list[str]] = None,
+    through: Optional[str] = None,
 ) -> dict[str, Any]:
-    download = run_download(
-        blob_container=blob_container,
-        blob_path=blob_path,
-        run_id=run_id,
-        batch_id=batch_id,
-    )
-    chart_id = download["chart_id"]
-    out: dict[str, Any] = {
-        "chart_id": chart_id,
-        "chart_name": download["chart_name"],
-        "page_count": download["page_count"],
-    }
+    """Fetch one chart's pages into the workspace, then run the chain on it.
+
+    The source is either a blob prefix or a local directory; both end with the
+    pages under data/folders/<chart>/pages as 1.jpg, 2.jpg …, so everything
+    downstream is identical either way. This is the whole of what /api/charts/run
+    does, and what batch calls once per folder.
+    """
+    if bool(blob_path) == bool(local_path):
+        raise ValueError("Provide exactly one of blob_path (+ blob_container) or local_path")
+
+    if local_path:
+        from stages.download_blob import import_local_folder
+
+        intake = import_local_folder(
+            local_path,
+            chart_name=chart_name,
+            force=force,
+            run_id=run_id,
+            batch_id=batch_id,
+        )
+        out: dict[str, Any] = {
+            "chart_id": intake["chart_id"],
+            "chart_name": intake["chart_name"],
+            "page_count": intake["page_count"],
+            "source": intake["source"],
+            "imported": intake["imported"],
+            "manifest": intake["manifest"],
+        }
+    else:
+        if not blob_container:
+            raise ValueError("blob_container is required with blob_path")
+        download = run_download(
+            blob_container=blob_container,
+            blob_path=blob_path,
+            run_id=run_id,
+            batch_id=batch_id,
+        )
+        out = {
+            "chart_id": download["chart_id"],
+            "chart_name": download["chart_name"],
+            "page_count": download["page_count"],
+            "source": f"{blob_container}/{blob_path}",
+        }
+
     if run_pipeline:
-        out["pipeline"] = run_pipeline_for_chart(chart_id, force=force)
+        out["pipeline"] = run_pipeline_for_chart(
+            out["chart_id"], force=force, only=only, through=through
+        )
     return out

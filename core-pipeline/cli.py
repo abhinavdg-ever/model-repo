@@ -23,56 +23,38 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Advantmed core-pipeline CLI")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_ingest = sub.add_parser(
-        "ingest", help="Run one chart from blob OR a local folder"
-    )
-    src_i = p_ingest.add_mutually_exclusive_group(required=True)
-    src_i.add_argument("--path", help="Blob path to chart folder (with --container)")
-    src_i.add_argument("--local", metavar="PATH", help="Local folder of page images")
-    p_ingest.add_argument("--container", help="Blob container (required with --path)")
-    p_ingest.add_argument("--run-id")
-    p_ingest.add_argument("--batch-id")
-    p_ingest.add_argument("--no-pipeline", action="store_true")
+    def add_stage_flags(parser_obj) -> None:
+        """`--through` and `--only`, spelled the same everywhere they appear."""
+        parser_obj.add_argument(
+            "--through",
+            metavar="STAGE",
+            help="Run the chain and stop after this stage, e.g. --through ocr_final2",
+        )
+        parser_obj.add_argument(
+            "--only",
+            action="append",
+            metavar="STAGE",
+            help="Run only this stage, whatever ran before. Repeatable, "
+                 "e.g. --only member_verify --only blank_junk:2",
+        )
 
-    p_local = sub.add_parser("register-local", help="Register local chart folder and run")
-    p_local.add_argument("chart_name")
-    p_local.add_argument("--run-id")
-    p_local.add_argument("--batch-id")
-    p_local.add_argument("--force", action="store_true")
-    p_local.add_argument("--no-pipeline", action="store_true")
-
-    p_import = sub.add_parser(
-        "import-folder",
-        help="Import any local folder of images into the workspace and run it",
+    p_run = sub.add_parser(
+        "run", help="Fetch one chart from blob OR a local folder and run the chain"
     )
-    p_import.add_argument("path", help="Folder containing .jpg/.png page images")
-    p_import.add_argument(
-        "--chart-name",
-        help="Chart name (default: the source folder's own name)",
+    src_r = p_run.add_mutually_exclusive_group(required=True)
+    src_r.add_argument("--local", metavar="PATH", help="Local folder of page images")
+    src_r.add_argument("--blob-path", help="Blob path to chart folder (with --blob-container)")
+    p_run.add_argument("--blob-container", help="Required with --blob-path")
+    p_run.add_argument(
+        "--chart-name", help="Local only. Defaults to the source folder's own name."
     )
-    p_import.add_argument(
-        "--move",
-        action="store_true",
-        help="Move the images instead of copying (default: copy, source kept)",
+    p_run.add_argument(
+        "--force", action="store_true", help="Reprocess pages already completed"
     )
-    p_import.add_argument(
-        "--recursive",
-        action="store_true",
-        help="Also pick up images in subfolders",
-    )
-    p_import.add_argument(
-        "--force",
-        action="store_true",
-        help="Replace pages already in the workspace for this chart",
-    )
-    p_import.add_argument(
-        "--no-manifest",
-        action="store_true",
-        help="Ignore any CSV/XLSX manifest sitting in the source folder",
-    )
-    p_import.add_argument("--run-id")
-    p_import.add_argument("--batch-id")
-    p_import.add_argument("--no-pipeline", action="store_true")
+    add_stage_flags(p_run)
+    p_run.add_argument("--run-id")
+    p_run.add_argument("--batch-id")
+    p_run.add_argument("--no-pipeline", action="store_true", help="Intake only")
 
     p_batch = sub.add_parser(
         "batch",
@@ -88,28 +70,34 @@ def main() -> None:
         help="Blob prefix; each sub-folder holding images is one chart",
     )
     p_batch.add_argument("--blob-container", help="Required with --blob-prefix")
-    p_batch.add_argument("--move", action="store_true", help="Local only: move instead of copy")
     p_batch.add_argument("--force", action="store_true", help="Reprocess pages already done")
-    p_batch.add_argument("--no-manifest", action="store_true")
-    p_batch.add_argument("--no-pipeline", action="store_true", help="Import/ingest only")
+    add_stage_flags(p_batch)
+    p_batch.add_argument("--no-pipeline", action="store_true", help="Intake only")
     p_batch.add_argument("--limit", type=int, help="Only the first N charts (dry runs)")
     p_batch.add_argument("--run-id")
     p_batch.add_argument("--batch-id")
 
-    p_run = sub.add_parser("run", help="Run pipeline for existing chart_id")
-    p_run.add_argument("chart_id", type=int)
-    p_run.add_argument(
+    p_write = sub.add_parser(
+        "write",
+        help="Write a finished chart folder back out to blob or a local folder",
+    )
+    p_write.add_argument("chart_name", help="Folder name under data/folders")
+    src_w = p_write.add_mutually_exclusive_group(required=True)
+    src_w.add_argument("--local", metavar="PATH", help="Destination directory")
+    src_w.add_argument("--blob-path", help="Destination prefix (with --blob-container)")
+    p_write.add_argument("--blob-container", help="Required with --blob-path")
+    p_write.add_argument(
+        "--overwrite", action="store_true", help="Replace files already at the destination"
+    )
+
+    p_rerun = sub.add_parser("rerun", help="Re-run the chain for an existing chart_id")
+    p_rerun.add_argument("chart_id", type=int)
+    p_rerun.add_argument(
         "--force",
         action="store_true",
         help="Reprocess pages already completed (default: resume, skip them)",
     )
-    p_run.add_argument(
-        "--only",
-        action="append",
-        metavar="STAGE",
-        help="Run only these stages, e.g. --only member_verify --only blank_junk:2. "
-             "Repeatable.",
-    )
+    add_stage_flags(p_rerun)
 
     p_stages = sub.add_parser("stages", help="List the pipeline stages in order")
 
@@ -160,64 +148,29 @@ def main() -> None:
         serve_main()
         return
 
-    if args.cmd == "ingest":
-        if args.local:
-            # Same entry point the API's local mode uses, so both behave alike.
-            from stages.download_blob import import_local_folder
-            from orchestrator.runner import run_pipeline_for_chart
-
-            reg = import_local_folder(args.local, run_id=args.run_id, batch_id=args.batch_id)
-            out = {"import": reg}
-            if not args.no_pipeline:
-                out["pipeline"] = run_pipeline_for_chart(reg["chart_id"])
-            print(json.dumps(out, default=str, indent=2))
-            return
-
-        if not args.container:
-            parser.error("--path requires --container")
+    if args.cmd == "run":
         from orchestrator.runner import ingest_and_run
 
-        result = ingest_and_run(
-            blob_container=args.container,
-            blob_path=args.path,
-            run_id=args.run_id,
-            batch_id=args.batch_id,
-            run_pipeline=not args.no_pipeline,
+        if args.blob_path and not args.blob_container:
+            parser.error("--blob-path requires --blob-container")
+        print(
+            json.dumps(
+                ingest_and_run(
+                    local_path=args.local,
+                    blob_container=args.blob_container,
+                    blob_path=args.blob_path,
+                    chart_name=args.chart_name,
+                    run_id=args.run_id,
+                    batch_id=args.batch_id,
+                    run_pipeline=not args.no_pipeline,
+                    force=args.force,
+                    only=args.only,
+                    through=args.through,
+                ),
+                default=str,
+                indent=2,
+            )
         )
-        print(json.dumps(result, default=str, indent=2))
-        return
-
-    if args.cmd == "register-local":
-        from stages.download_blob import register_local_pages
-        from orchestrator.runner import run_pipeline_for_chart
-
-        reg = register_local_pages(
-            args.chart_name, run_id=args.run_id, batch_id=args.batch_id
-        )
-        out = {"register": reg}
-        if not args.no_pipeline:
-            out["pipeline"] = run_pipeline_for_chart(reg["chart_id"], force=args.force)
-        print(json.dumps(out, default=str, indent=2))
-        return
-
-    if args.cmd == "import-folder":
-        from stages.download_blob import import_local_folder
-        from orchestrator.runner import run_pipeline_for_chart
-
-        reg = import_local_folder(
-            args.path,
-            chart_name=args.chart_name,
-            move=args.move,
-            recursive=args.recursive,
-            force=args.force,
-            load_manifest=not args.no_manifest,
-            run_id=args.run_id,
-            batch_id=args.batch_id,
-        )
-        out = {"import": reg}
-        if not args.no_pipeline:
-            out["pipeline"] = run_pipeline_for_chart(reg["chart_id"])
-        print(json.dumps(out, default=str, indent=2))
         return
 
     if args.cmd == "batch":
@@ -231,10 +184,10 @@ def main() -> None:
                     local_root=args.local,
                     blob_container=args.blob_container,
                     blob_prefix=args.blob_prefix,
-                    move=args.move,
                     force=args.force,
-                    load_manifest=not args.no_manifest,
                     run_pipeline=not args.no_pipeline,
+                    only=args.only,
+                    through=args.through,
                     limit=args.limit,
                     run_id=args.run_id,
                     batch_id=args.batch_id,
@@ -245,13 +198,36 @@ def main() -> None:
         )
         return
 
-    if args.cmd == "run":
+    if args.cmd == "write":
+        from jobs.export_chart import write_chart
+
+        if args.blob_path and not args.blob_container:
+            parser.error("--blob-path requires --blob-container")
+        print(
+            json.dumps(
+                write_chart(
+                    args.chart_name,
+                    local_path=args.local,
+                    blob_container=args.blob_container,
+                    blob_path=args.blob_path,
+                    overwrite=args.overwrite,
+                ),
+                default=str,
+                indent=2,
+            )
+        )
+        return
+
+    if args.cmd == "rerun":
         from orchestrator.runner import run_pipeline_for_chart
 
         print(
             json.dumps(
                 run_pipeline_for_chart(
-                    args.chart_id, force=args.force, only=args.only
+                    args.chart_id,
+                    force=args.force,
+                    only=args.only,
+                    through=args.through,
                 ),
                 default=str,
                 indent=2,
