@@ -143,19 +143,43 @@ def get_container_client(container: Optional[str] = None):
 
 
 def list_image_blobs(container: str, blob_path: str) -> list[str]:
-    """List image blob names under a chart folder prefix."""
+    """Image blobs under a chart folder prefix, including sub-folders.
+
+    Sub-folders are included because the local side searches them: dropping the
+    `recursive` switch from `import_local_folder` made "look in sub-folders" the
+    only local behaviour, and a chart folder that keeps its scans in `pages/` is
+    a common shape. Blob intake kept an immediate-children-only rule, so the
+    same chart imported from a local path and found nothing from a container —
+    two sources that are supposed to converge, diverging on layout.
+
+    The cost of recursing is that pointing this at a PARENT of several chart
+    folders pulls all of their pages into one chart. That is true of the local
+    side too. `/api/charts/batch` is the tool for a folder of charts; this one
+    is for a folder that IS a chart.
+    """
     prefix = normalize_prefix(blob_path)
     client = get_container_client(container)
     names: list[str] = []
+    nested = 0
     for blob in client.list_blobs(name_starts_with=prefix):
         filename = Path(blob.name).name
         if Path(filename).suffix.lower() not in IMAGE_SUFFIXES:
             continue
-        # only immediate children of the chart folder
-        relative = blob.name[len(prefix) :] if blob.name.startswith(prefix) else blob.name
-        if "/" in relative.strip("/"):
+        if filename.startswith("._"):  # macOS AppleDouble stubs, as on disk
             continue
+        relative = (
+            blob.name[len(prefix) :] if blob.name.startswith(prefix) else blob.name
+        )
+        if "/" in relative.strip("/"):
+            nested += 1
         names.append(blob.name)
+    if nested:
+        # Worth saying: it explains a page count that does not match the
+        # container's top level, and it is how a parent prefix goes wrong.
+        logger.info(
+            "%s/%s: %d of %d image(s) came from sub-folders",
+            container, prefix, nested, len(names),
+        )
     names.sort(key=lambda n: filename_sort_key(Path(n).name))
     return names
 

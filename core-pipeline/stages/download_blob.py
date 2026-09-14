@@ -98,7 +98,38 @@ def run_download(
     try:
         blob_names = list_image_blobs(blob_container, blob_path)
         if not blob_names:
-            raise RuntimeError(f"No images found under {blob_container}/{blob_path}")
+            # "No images" has three quite different causes and the bare message
+            # distinguished none of them, so the next step was always guessing.
+            # One extra listing call, only on the failure path, says which.
+            from db.blob_store import get_container_client, normalize_prefix
+
+            prefix = normalize_prefix(blob_path)
+            try:
+                client = get_container_client(blob_container)
+                sample = [
+                    b.name
+                    for _, b in zip(
+                        range(5), client.list_blobs(name_starts_with=prefix)
+                    )
+                ]
+            except Exception:
+                sample = []
+
+            if not sample:
+                detail = (
+                    "nothing at all exists under that prefix — check the path, "
+                    "its capitalisation (blob names are case-sensitive), and "
+                    "that the container is right"
+                )
+            else:
+                detail = (
+                    "blobs exist there but none is a recognised image "
+                    f"({', '.join(sorted(IMAGE_SUFFIXES))}). First few: "
+                    + ", ".join(sample)
+                )
+            raise RuntimeError(
+                f"No images found under {blob_container}/{prefix} — {detail}"
+            )
 
         dest_root = pages_dir(chart_name)
         page_rows: list[dict[str, Any]] = []
