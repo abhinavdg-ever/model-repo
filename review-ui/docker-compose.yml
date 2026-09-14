@@ -53,9 +53,11 @@ services:
     build:
       context: ./frontend
       args:
-        # From review-ui/.env. Defaults to demo/demo when unset.
-        VITE_LOGIN_USERNAME: ${VITE_LOGIN_USERNAME:-demo}
-        VITE_LOGIN_PASSWORD: ${VITE_LOGIN_PASSWORD:-demo}
+        # From review-ui/.env; the shared POC pair when unset. Vite inlines
+        # these at BUILD time, so changing them needs `up -d --build`, not
+        # `up -d`. They are not a security control — see LoginPage.tsx.
+        VITE_LOGIN_USERNAME: ${VITE_LOGIN_USERNAME:-imaging-user}
+        VITE_LOGIN_PASSWORD: ${VITE_LOGIN_PASSWORD:-aipocpw2026}
     ports:
       - "3001:3001"
     depends_on:

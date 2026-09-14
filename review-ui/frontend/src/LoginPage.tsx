@@ -1,14 +1,23 @@
 import { FormEvent, useState } from "react";
 import { Eye, EyeOff, Lock, User } from "lucide-react";
 
-// Demo gate, NOT authentication. Vite inlines these into the JS bundle at
-// build time, so anyone who loads the page can read them. They exist only to
-// keep a casual visitor out of a POC deployment. Real auth is still to be
-// built — see the "no authentication" note in README.md.
-// PLACEHOLDER defaults (demo / demo). Override at build time with
-// VITE_LOGIN_USERNAME / VITE_LOGIN_PASSWORD.
-const VALID_USERNAME = import.meta.env.VITE_LOGIN_USERNAME ?? "demo";
-const VALID_PASSWORD = import.meta.env.VITE_LOGIN_PASSWORD ?? "demo";
+// Shared POC gate, NOT authentication. Vite inlines these into the JS bundle
+// at build time, so anyone who loads the page can read them — and they are in
+// this repository for the same reason, deliberately: the pair is shared with
+// everyone who uses the POC and protects nothing. It keeps a casual visitor
+// off the page; it does not keep anyone out.
+//
+// The backend has no auth on any route, so the data behind this screen is
+// reachable without ever seeing it. Real auth is still to be built — see the
+// "no authentication" note in README.md and docs/ARCHITECTURE.md § Known
+// limits. Before any deployment carrying real member data, this pair stops
+// being adequate and the gap is the backend, not this file.
+//
+// Override per deployment at BUILD time (Vite inlines at build, so a rebuild
+// is required — `docker compose up -d --build`):
+//   VITE_LOGIN_USERNAME / VITE_LOGIN_PASSWORD
+const VALID_USERNAME = import.meta.env.VITE_LOGIN_USERNAME ?? "imaging-user";
+const VALID_PASSWORD = import.meta.env.VITE_LOGIN_PASSWORD ?? "aipocpw2026";
 
 type Props = {
   onSuccess: () => void;

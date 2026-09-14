@@ -382,7 +382,7 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/`.
 | `ImagingPanel.tsx` | Renders the imaging results for the current page: blank/junk, page type, rotation, handwriting, member, DOS. |
 | `FullscreenPageChrome.tsx` | Fullscreen page-viewing controls. |
 | `PageJump.tsx` | Jump-to-page control. |
-| `LoginPage.tsx` | Login screen. **Credentials are hardcoded client-side and the backend has no auth** — see [Known limits](#6-known-limits). |
+| `LoginPage.tsx` | Login screen. Shared POC pair **`imaging-user` / `aipocpw2026`**, overridable at build time with `VITE_LOGIN_USERNAME` / `VITE_LOGIN_PASSWORD`. **Credentials are inlined into the JS bundle and the backend has no auth**, so this gate protects nothing — see [Known limits](#6-known-limits). |
 | `UserProfileMenu.tsx` | Profile/sign-out menu. |
 | `BlobAuthModal.tsx` | Collects a SAS token for direct blob viewing. |
 | `api.ts` | Typed client for the backend endpoints. |
@@ -443,7 +443,9 @@ reference's own column order so a run can be diffed directly against V1.
 Things a reader should know before relying on this in production.
 
 **No authentication anywhere.** `LoginPage.tsx` checks a credential pair
-compiled into the client bundle, and the review-ui backend has no auth on any
+compiled into the client bundle — `imaging-user` / `aipocpw2026`, committed to
+this repository on purpose because it is shared with every POC user and secures
+nothing — and the review-ui backend has no auth on any
 route — page images, OCR text and the full CSV export are open to anyone who can
 reach the port. core-pipeline's API is equally open. For charts carrying member
 names and dates of birth this needs a real answer before any non-private

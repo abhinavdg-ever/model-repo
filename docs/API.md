@@ -796,6 +796,24 @@ Base: `http://localhost:8001` · OpenAPI: `/openapi.json` · Swagger: `/docs`
 Mutating endpoints are **asynchronous**: they return `202 Accepted` immediately
 and work continues in the background. Poll the chart endpoint for progress.
 
+### Signing in to the review UI
+
+`imaging-user` / `aipocpw2026`. Shared with everyone using the POC, inlined
+into the JS bundle, and committed to this repository — it keeps a casual
+visitor off the page and is **not** a security control. The backend has no auth
+on any route, so everything behind the screen is reachable without it.
+
+Override per deployment with `VITE_LOGIN_USERNAME` / `VITE_LOGIN_PASSWORD` in
+`review-ui/.env`. Vite inlines these at **build** time, so they only take effect
+on a rebuild:
+
+```bash
+cd review-ui && docker compose up -d --build frontend   # --build is the point
+```
+
+`docker compose up -d` on its own keeps serving the previously built bundle
+with the old pair.
+
 ### `GET /health`
 
 Liveness, plus **every optional feature and the one precondition each is
