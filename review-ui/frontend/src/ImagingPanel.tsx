@@ -144,6 +144,24 @@ function fmtYesNo(
   return value ? "Yes" : "No";
 }
 
+// The classifier writes lowercase labels ("printed", "handwritten", "mixed").
+// They are shown next to title-case values like "Yes"/"No"/"Not Found", so
+// rendering them raw made the column look like leaked internals. Display only
+// — the stored value and the CSV export stay exactly as the pipeline wrote
+// them, because those are a contract with the V1 reference.
+function fmtHandwriting(
+  value: string | null | undefined,
+  processed = true,
+): string {
+  if (!processed) return YET_TO_PROCESS;
+  if (value === null || value === undefined || value === "") return NOT_FOUND;
+  const text = String(value).trim();
+  // Capitalise whatever comes back rather than mapping known labels, so a new
+  // label from a retrained classifier still displays sensibly instead of
+  // falling through to "Not Found".
+  return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+}
+
 function fmtPageType(value: string | null | undefined, processed = true): string {
   if (!processed) return YET_TO_PROCESS;
   if (value === null || value === undefined || value === "") return NOT_FOUND;
@@ -262,7 +280,7 @@ function PageDetails({
         rows={[
           {
             label: "Printed / Handwritten",
-            value: fmt(page.handwrittenOrPrinted, sections.hw),
+            value: fmtHandwriting(page.handwrittenOrPrinted, sections.hw),
             confidence: fmtConfidence(
               page.handwrittenOrPrintedConfidence ?? page.pageQualityConfidence,
               sections.hw,
@@ -462,7 +480,7 @@ function DocSummary({
                 <td>{fmt(p.memberName, sections.member)}</td>
                 <td>{fmt(p.memberDob, sections.member)}</td>
                 <td>{fmt(p.memberId, sections.member)}</td>
-                <td>{fmt(p.handwrittenOrPrinted, sections.hw)}</td>
+                <td>{fmtHandwriting(p.handwrittenOrPrinted, sections.hw)}</td>
                 <td>{fmtDegrees(p.orientationAngle, sections.rotation)}</td>
                 <td>{fmtDegrees(p.tiltAngle, sections.rotation)}</td>
                 <td>{fmt(p.mirrored, sections.rotation)}</td>
