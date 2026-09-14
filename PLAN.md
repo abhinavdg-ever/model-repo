@@ -127,11 +127,12 @@ preconditions is unmet. [Turning it on](docs/LOGIC.md#turning-it-on).
 ```text
 advantmed-imaging-pipeline/
 ├── PLAN.md                     ← this file
+├── check_azure_openai.py       ad-hoc, self-contained: does the LLM endpoint answer?
 ├── docs/                       FLOW · LOGIC · API · ARCHITECTURE
 ├── schema/
 │   ├── v1.sql                  implemented: 12 tables + 2 views
 │   └── v2.sql                  next phase: 14 tables + 3 views, unused
-├── tests/                      144 tests
+├── tests/                      160 tests
 ├── core-pipeline/              own docker-compose, port 8001
 │   ├── api/ cli.py config.py
 │   ├── orchestrator/runner.py

@@ -130,7 +130,7 @@ deactivate
 cd ../..
 python3.12 -m venv .venv-test && source .venv-test/bin/activate
 pip install -r tests/requirements.txt
-python -m pytest tests/ -q               # 144 tests, no database needed
+python -m pytest tests/ -q               # 160 tests, no database needed
 ```
 
 **Windows (PowerShell)**
@@ -156,7 +156,7 @@ cd ..\..
 py -3.12 -m venv .venv-test
 .venv-test\Scripts\Activate.ps1
 pip install -r tests/requirements.txt
-python -m pytest tests/ -q               # 144 tests, no database needed
+python -m pytest tests/ -q               # 160 tests, no database needed
 ```
 
 If `Activate.ps1` fails with *"running scripts is disabled on this system"*,
@@ -265,6 +265,20 @@ the rejection path does once it is `true`.
 | Azure Blob intake | `AZURE_STORAGE_*` in `.env` | `ingest` fails; `register-local` still works |
 | Final OCR 2 | `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT` + `_KEY` | no final2 text; handwritten pages get no pass-2 verdict |
 | DOS LLM pass | `AZURE_OPENAI_*` + `DOS_LLM_ENABLED=true` | DOS is regex-only, rows stamped `extraction_method='rules'` |
+
+To check the last one against the live service before running a chart, fill in
+the four constants at the top of `check_azure_openai.py` and run it:
+
+```bash
+python check_azure_openai.py      # one throwaway prompt; exits 1 naming what to fix
+```
+
+It reads nothing but itself — no `.env`, no environment, no pipeline imports —
+so it isolates the endpoint from the rest of the configuration. A wrong key is
+a 401, a deployment name that does not exist on the resource is a 404, and a
+wrong host is a connection error; all three reach the stage only as "regex
+only". `tests/test_azure_openai.py` runs the real DOS prompt under pytest and
+skips itself when the credentials are absent.
 
 ---
 
@@ -695,7 +709,7 @@ pip install -r tests/requirements.txt
 python -m pytest tests/ -q
 ```
 
-**144 passed** means the extraction is sound. Anything else — especially
+**160 passed** means the extraction is sound. Anything else — especially
 `ModuleNotFoundError` or `SyntaxError` — means re-download rather than debug.
 
 **5. Updating later**
