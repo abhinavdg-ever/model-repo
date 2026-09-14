@@ -81,10 +81,22 @@ def _llm_client() -> Optional[Any]:
         return None
     if client is None:
         logger.warning(
-            "DOS: AZURE_OPENAI_API_KEY / AZURE_OPENAI_ENDPOINT not set; regex only"
+            "DOS: no usable Azure OpenAI credentials; regex only. Set "
+            "AZURE_OPENAI_ENDPOINT plus either AZURE_OPENAI_API_KEY or, for "
+            "keyless auth, AZURE_OPENAI_AUTH=entra with azure-identity installed"
         )
         return None
-    logger.info("DOS: LLM pass enabled (deployment=%s)", AZURE_OPENAI_DEPLOYMENT)
+    try:
+        from azure_llm import resolved_auth
+
+        auth = resolved_auth() or "unknown"
+    except Exception:
+        auth = "unknown"
+    logger.info(
+        "DOS: LLM pass enabled (deployment=%s, auth=%s)",
+        AZURE_OPENAI_DEPLOYMENT,
+        auth,
+    )
     return client
 
 

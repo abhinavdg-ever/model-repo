@@ -8,9 +8,13 @@
 #   core-pipeline/requirements.txt      the eight-stage imaging chain
 #   core-pipeline/requirements-ner.txt  the optional GLiNER layer
 #   review-ui/backend/requirements.txt  the read-only viewer API
-#   tests/requirements.txt              the 160-test suite (no database)
+#   tests/requirements.txt              the 172-test suite (no database)
 #
 # check_azure_openai.py reads no .env and imports nothing from the pipeline,
-# so this one package is the whole dependency.
+# so these two packages are the whole dependency.
 
 openai>=1.40
+
+# Keyless auth only (AUTH = "entra"): the VM's managed identity, or an
+# `az login`. Not needed when you paste a key into API_KEY.
+azure-identity>=1.17

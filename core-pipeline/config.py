@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from importlib.util import find_spec
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -71,6 +72,10 @@ AZURE_OPENAI_API_VERSION = (
 AZURE_OPENAI_DEPLOYMENT = (
     os.environ.get("AZURE_OPENAI_DEPLOYMENT") or "gpt-4o-mini"
 ).strip()
+# key | entra | auto. `auto` means "key if there is one, else Entra ID" — so a
+# VM with a managed identity and no key still gets the LLM pass, and a laptop
+# with a key is unaffected. See stages/lib/dos/azure_llm.py.
+AZURE_OPENAI_AUTH = (os.environ.get("AZURE_OPENAI_AUTH") or "auto").strip().casefold()
 
 
 def _flag(name: str, default: bool) -> bool:
@@ -80,8 +85,24 @@ def _flag(name: str, default: bool) -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
-DOS_LLM_ENABLED = _flag("DOS_LLM_ENABLED", True) and bool(
-    AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT
+def _azure_openai_auth_usable() -> bool:
+    """Can we authenticate at all — by key, or by Entra ID with no key?
+
+    `find_spec` only asks whether azure-identity is installed; whether the VM's
+    managed identity actually holds the role is answered by the first call, and
+    a failure there degrades the stage to regex with a warning.
+    """
+    if AZURE_OPENAI_AUTH == "key":
+        return bool(AZURE_OPENAI_API_KEY)
+    if AZURE_OPENAI_AUTH == "entra":
+        return find_spec("azure.identity") is not None
+    return bool(AZURE_OPENAI_API_KEY) or find_spec("azure.identity") is not None
+
+
+DOS_LLM_ENABLED = (
+    _flag("DOS_LLM_ENABLED", True)
+    and bool(AZURE_OPENAI_ENDPOINT)
+    and _azure_openai_auth_usable()
 )
 
 # --- Member verification ----------------------------------------------------

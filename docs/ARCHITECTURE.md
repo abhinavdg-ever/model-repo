@@ -345,7 +345,7 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/`.
 | File | Role |
 |---|---|
 | `dos_logic.py` | The whole DOS engine: page splitting, the regex passes (admit/discharge labels, keyword-anchored dates), confidence tiers, the LLM prompt and call, ISO normalisation, and `detect_dos_per_page` — the driver the stage calls, which owns the document-level carry-forward. |
-| `azure_llm.py` | Azure OpenAI client construction from env; returns `None` when unconfigured so the caller degrades to regex-only. |
+| `azure_llm.py` | Azure OpenAI client construction from env, by API key or by Entra ID with no key at all (`AZURE_OPENAI_AUTH=key\|entra\|auto`, default `auto`); `resolved_auth()` is the one place that decides which. Returns `None` when unconfigured so the caller degrades to regex-only. |
 | `extract_dos.py` | The reference's standalone CLI, kept for running the engine outside the pipeline and for comparison. |
 | `requirements.txt` | Dependency list inherited from the V1 prototype (`openai`). |
 | `__init__.py` | Package marker. |

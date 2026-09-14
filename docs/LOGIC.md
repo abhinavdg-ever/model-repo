@@ -502,7 +502,11 @@ JSONB array** — one row per page, no child table.
 | disk | `imaging/<chart>_dos.csv` |
 
 Without Azure OpenAI the stage runs regex-only and stamps
-`extraction_method='rules'` — visible in the data, not silent.
+`extraction_method='rules'` — visible in the data, not silent. "Without" means
+no endpoint, or no usable credential: either an API key or, on a VM with a
+managed identity, an Entra token and no key. Which one was used is in the run
+log (`auth=key` / `auth=entra`); the setting is
+[`AZURE_OPENAI_AUTH`](API.md#azure-openai-key-or-no-key).
 
 ---
 
@@ -557,6 +561,6 @@ v8 uses lifecycle `status` + `current_stage` + `current_pass`, with order in the
 | Status derivation | `core-pipeline/db/chart_status.py` |
 | Persistence | `core-pipeline/db/__init__.py` |
 
-Behaviour above is pinned by `tests/` (160 tests). A failure there means the port
+Behaviour above is pinned by `tests/` (172 tests). A failure there means the port
 has drifted from the reference — the fix is to restore it, not to update the
 expectation.

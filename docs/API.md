@@ -130,7 +130,7 @@ deactivate
 cd ../..
 python3.12 -m venv .venv-test && source .venv-test/bin/activate
 pip install -r tests/requirements.txt
-python -m pytest tests/ -q               # 160 tests, no database needed
+python -m pytest tests/ -q               # 172 tests, no database needed
 ```
 
 **Windows (PowerShell)**
@@ -156,7 +156,7 @@ cd ..\..
 py -3.12 -m venv .venv-test
 .venv-test\Scripts\Activate.ps1
 pip install -r tests/requirements.txt
-python -m pytest tests/ -q               # 160 tests, no database needed
+python -m pytest tests/ -q               # 172 tests, no database needed
 ```
 
 If `Activate.ps1` fails with *"running scripts is disabled on this system"*,
@@ -264,21 +264,59 @@ the rejection path does once it is `true`.
 |---|---|---|
 | Azure Blob intake | `AZURE_STORAGE_*` in `.env` | `ingest` fails; `register-local` still works |
 | Final OCR 2 | `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT` + `_KEY` | no final2 text; handwritten pages get no pass-2 verdict |
-| DOS LLM pass | `AZURE_OPENAI_*` + `DOS_LLM_ENABLED=true` | DOS is regex-only, rows stamped `extraction_method='rules'` |
+| DOS LLM pass | `AZURE_OPENAI_ENDPOINT` + a key **or** a managed identity, + `DOS_LLM_ENABLED=true` | DOS is regex-only, rows stamped `extraction_method='rules'` |
 
-To check the last one against the live service before running a chart, fill in
-the four constants at the top of `check_azure_openai.py` and run it:
+#### Azure OpenAI: key or no key
+
+The DOS LLM pass authenticates one of two ways, chosen by `AZURE_OPENAI_AUTH`.
+The endpoint is always required; only the credential differs.
+
+| `AZURE_OPENAI_AUTH` | Uses | For |
+|---|---|---|
+| `key` | `AZURE_OPENAI_API_KEY` | a laptop with a key pasted into `.env` |
+| `entra` | `DefaultAzureCredential` — no key at all | **an Azure VM with a managed identity**, or anywhere `az login` has run; the only option on a resource with `disableLocalAuth` |
+| `auto` *(default)* | key if one is set, otherwise entra | leaving it alone keeps existing key setups working unchanged |
+
+Keyless needs `azure-identity`, which is already in
+`core-pipeline/requirements.txt`, and — the part that is easy to miss — an
+identity holding **Cognitive Services OpenAI User** *on the OpenAI resource*.
+Being in the subscription is not enough, and a missing role assignment comes
+back as a 401 that reads exactly like a wrong key.
+
+So on a VM with a managed identity, the whole configuration is:
+
+```bash
+AZURE_OPENAI_ENDPOINT=https://YOUR-RESOURCE.openai.azure.com/
+AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
+DOS_LLM_ENABLED=true
+# AZURE_OPENAI_AUTH defaults to auto; with no key set, that resolves to entra
+```
+
+The stage logs which one it resolved to — `DOS: LLM pass enabled
+(deployment=..., auth=entra)` — so a VM that quietly fell back to a stale key
+is visible in the run log rather than inferred.
+
+#### Checking it against the live service
+
+To test the endpoint before running a chart, fill in the constants at the top
+of `check_azure_openai.py` and run it:
 
 ```bash
 python check_azure_openai.py      # one throwaway prompt; exits 1 naming what to fix
 ```
 
 It reads nothing but itself — no `.env`, no environment, no pipeline imports —
-so it isolates the endpoint from the rest of the configuration. A wrong key is
-a 401, a deployment name that does not exist on the resource is a 404, and a
-wrong host is a connection error; all three reach the stage only as "regex
-only". `tests/test_azure_openai.py` runs the real DOS prompt under pytest and
-skips itself when the credentials are absent.
+so it isolates the endpoint from the rest of the configuration. It has the same
+`AUTH` choice: paste a key, or set `AUTH = "entra"` to use the VM's identity
+(`pip install -r requirements.txt` at the repo root brings `azure-identity` for
+that). A wrong key or an unassigned role is a 401, a deployment name that does
+not exist on the resource is a 404, and a wrong host is a connection error; all
+three reach the stage only as "regex only". When the token itself cannot be
+acquired it says so before making any call, and lists the credentials it tried.
+
+`tests/test_azure_openai.py` runs the real DOS prompt under pytest and skips
+itself when no credentials are usable — including the keyless case, so a VM
+with a managed identity exercises those tests rather than skipping them.
 
 ---
 
@@ -709,7 +747,7 @@ pip install -r tests/requirements.txt
 python -m pytest tests/ -q
 ```
 
-**160 passed** means the extraction is sound. Anything else — especially
+**172 passed** means the extraction is sound. Anything else — especially
 `ModuleNotFoundError` or `SyntaxError` — means re-download rather than debug.
 
 **5. Updating later**
