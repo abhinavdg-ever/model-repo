@@ -82,15 +82,33 @@ python -m pytest tests/ -q    # 172 tests
 Windows specifics — venv activation, `TESSERACT_CMD`, `curl.exe`, the
 PowerShell execution policy: [`docs/API.md § Windows notes`](docs/API.md#windows-notes).
 
-Ingest a chart:
+Run a chart — from blob, or from a folder on the server:
 
 ```bash
-curl -X POST localhost:8001/api/charts/run \
-  -H 'Content-Type: application/json' \
+curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
   -d '{"blob_container":"imaging-pipeline","blob_path":"run1/batch1/52743839_44976074"}'
+
+curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
+  -d '{"local_path":"/data/inbox/52743839_44976074"}'
 ```
 
-Full instructions, including running without Docker: [`docs/API.md`](docs/API.md).
+The chart names itself from the last path segment — `52743839_44976074` in both
+cases — so there is nothing else to fill in. Poll
+`GET /api/charts/by-name/52743839_44976074` for progress.
+
+Three verbs cover the service:
+
+| | |
+|---|---|
+| `POST /api/charts/run` | one chart in, from blob or local, then the 8 stages |
+| `POST /api/charts/batch` | the same, once per subfolder of a drop, one at a time |
+| `POST /api/charts/write` | the finished folder back out to blob or local |
+
+Add `"through": "ocr_final2"` to stop after a stage, or `"only": ["dos_extract"]`
+to run one on its own. Every verb is also a CLI subcommand with the same flags.
+
+Full instructions — partial runs, batches, writing results back, running without
+Docker: [`docs/API.md § How to run a chart`](docs/API.md#how-to-run-a-chart).
 
 ---
 

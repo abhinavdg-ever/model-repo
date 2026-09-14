@@ -1216,6 +1216,145 @@ python cli.py manifest --local ./m.csv --run-id R1 --batch-id B1   # override pa
 
 ---
 
+## How to run a chart
+
+Three verbs cover everything: **`run`** one chart, **`batch`** a folder of them,
+**`write`** the results back out. Every one of them is also a CLI subcommand
+with the same flags, so you can work without the HTTP hop.
+
+### The short version
+
+```bash
+# 1. One chart from a folder on the server
+curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
+  -d '{"local_path":"/data/inbox/52743839_44976074"}'
+
+# 2. Watch it
+curl -s localhost:8001/api/charts/by-name/52743839_44976074 | jq '.chart.status'
+
+# 3. Send the finished folder somewhere
+curl -X POST localhost:8001/api/charts/write -H 'Content-Type: application/json' \
+  -d '{"chart_name":"52743839_44976074","local_path":"/data/outbox"}'
+```
+
+That is the whole happy path. Everything below is the detail behind it.
+
+### You do not name the chart
+
+`chart_name` is derived from the **last path segment** of whichever source you
+give, so you almost never pass it:
+
+| You send | Chart becomes |
+|---|---|
+| `"local_path": "/data/inbox/52743839_44976074"` | `52743839_44976074` |
+| `"blob_path": "run1/batch1/52743839_44976074"` | `52743839_44976074` |
+
+Pass `chart_name` only to **override** that — when the folder is called
+`scan_batch_3/` but the chart is not, or when you want two runs of one source to
+sit side by side instead of the second replacing the first. It is optional on
+`run`, absent from `batch` (each subfolder names its own), and required only on
+`write`, where there is no source folder to derive it from.
+
+The name is sanitised to `[A-Za-z0-9._-]`, so `My Chart 001` becomes
+`My_Chart_001`. That matters more than it looks: the member stage joins a chart
+to its roster on `record_id = chart_name`. If the manifest carries the
+unsanitised string, nothing matches and the chart returns `needs_review` with
+`decision_reason='manifest_missing'` and no obvious cause. The response echoes
+the resolved name back — worth a glance on the first chart of a new drop.
+
+### Where the pages can live
+
+The source folder may hold the images directly or in a subfolder; subfolders are
+always searched, so a chart keeping its scans in `pages/` needs no flag. The
+source is always **copied**, never moved, so a failed run is a no-op rather than
+data loss.
+
+```
+/data/inbox/52743839_44976074/1.jpg          ← works
+/data/inbox/52743839_44976074/pages/1.jpg    ← also works
+```
+
+Under Docker, `local_path` must be a path **inside the container** — mount the
+folder first; the host filesystem is not visible to the service.
+
+### Running part of the chain
+
+Both options work on `run`, `batch` and `rerun`, spelled identically.
+
+```bash
+# Everything up to Final OCR 2, then stop — nothing past it is paid for
+curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
+  -d '{"local_path":"/data/inbox/chart_x","through":"ocr_final2"}'
+
+# Just the DOS stage, against OCR that is already on disk
+curl -X POST localhost:8001/api/charts/3/rerun -H 'Content-Type: application/json' \
+  -d '{"only":["dos_extract"]}'
+```
+
+`through` bounds the chain from the top; `only` picks stages out of it and runs
+them against whatever is already there. `through: "ocr_prelim"` is the cheapest
+way to confirm intake picked up the right pages before committing to stage 5.
+
+### A whole drop at once
+
+```bash
+curl -X POST localhost:8001/api/charts/batch -H 'Content-Type: application/json' \
+  -d '{"local_root":"/data/inbox/2026-09-13","limit":1}'
+```
+
+Each immediate subfolder holding at least one image is one chart. Charts run
+**one at a time** — each already fans out across its pages, and stage 5 is
+billed per page, so overlapping them multiplies memory and spend without
+finishing sooner. A chart that fails is recorded and the batch continues.
+
+**Use `limit: 1` first.** The reply tells you `charts_found` before anything
+runs, so a wrong path is a `400` immediately rather than an empty batch an hour
+later. Pair it with `"through": "ocr_prelim"` to dry-run a large drop for the
+price of Tesseract.
+
+Progress goes to the server log, not the response:
+
+```
+INFO Batch: 37 chart folder(s) under /data/inbox/2026-09-13
+INFO [1/37] 52743839_44976074
+INFO Background batch finished: ... -> 36/37 completed, 1 failed in 4213.8s
+WARNING   failed: 52744171_44423942 — RuntimeError: No images in ...
+```
+
+### Writing the results back out
+
+```bash
+# To blob
+curl -X POST localhost:8001/api/charts/write -H 'Content-Type: application/json' \
+  -d '{"chart_name":"52743839_44976074","blob_container":"imaging-pipeline","blob_path":"run1/out"}'
+```
+
+`write` **copies** — the workspace under `data/folders` is left intact, so
+review-ui keeps serving the chart and you can write the same chart to a second
+destination without re-running anything. The chart's name is appended to the
+destination, so two charts written to one place do not merge. A destination
+that already holds files needs `overwrite: true`.
+
+Note that nothing prunes `data/folders` after a write. On a long-running host it
+grows monotonically; cleanup is a manual `rm` once you have confirmed the write
+landed.
+
+### The same thing from the CLI
+
+```bash
+cd core-pipeline
+python cli.py run --local /data/inbox/52743839_44976074
+python cli.py run --local ./drop --through ocr_final2
+python cli.py batch --local ./drops --limit 2 --through ocr_prelim
+python cli.py write 52743839_44976074 --local /data/outbox
+python cli.py rerun 7 --only member_verify --force
+```
+
+The CLI runs **inline** and prints a JSON summary when the chain finishes; the
+API returns `202` and works in the background. Same code underneath.
+
+---
+
 ## Typical sessions
 
 ### First run against a new database
@@ -1225,7 +1364,7 @@ psql "$DATABASE_URL" -f schema/v1.sql   # required — what is implemented
 psql "$DATABASE_URL" -f schema/v2.sql   # optional — next phase, nothing uses it yet
 
 cd core-pipeline && cp .env.example .env && docker compose up -d --build
-curl -s localhost:8001/ready
+curl -s localhost:8001/ready            # {"status":"ready","stages":8}
 
 # Manifest first, so member verification has something to verify against
 curl -X POST localhost:8001/api/manifest/sweep -H 'Content-Type: application/json' \
@@ -1243,6 +1382,25 @@ cd ../review-ui && cp .env.example .env && docker compose up -d --build
 open http://localhost:3001
 ```
 
+### Local Postgres, no Docker
+
+A scratch database on the host, for development:
+
+```bash
+brew install postgresql@16 && brew services start postgresql@16   # macOS
+createdb imaging_outputs
+psql -d imaging_outputs -f schema/v1.sql
+
+# DATABASE_URL in core-pipeline/.env — brew's role is your own username,
+# not "postgres", so the packaged default will not connect as-is:
+#   DATABASE_URL=postgresql://$(whoami)@localhost:5432/imaging_outputs
+
+cd core-pipeline && source .venv/bin/activate && python cli.py serve
+```
+
+`/ready` returning `{"stages": 8}` means v1 applied. Twelve stages means you
+also applied v2 — the four extra are registered but not orchestrated.
+
 ### A manifest arrived after the chart
 
 Member verification will have recorded `decision_reason='manifest_missing'`.
@@ -1257,19 +1415,18 @@ curl -X POST localhost:8001/api/charts/7/rerun -H 'Content-Type: application/jso
 
 The sweep links the manifest to the chart automatically.
 
-### Batch ingest
+### A chart that died part-way
+
+Re-runs **resume**: pages already completed are not redone, so a chart that
+failed at DOS on page 400 of 500 finishes without repeating paid OCR.
 
 ```bash
-for path in $(az storage blob directory list ... ); do
-  curl -s -X POST localhost:8001/api/charts/run \
-    -H 'Content-Type: application/json' \
-    -d "{\"blob_container\":\"imaging-pipeline\",\"blob_path\":\"$path\"}"
-done
+curl -X POST localhost:8001/api/charts/7/rerun \
+  -H 'Content-Type: application/json' -d '{}'
 ```
 
-> Each request runs its chain in the same process. There is no queue and no
-> concurrency cap across charts yet — feed them in batches sized to the host, or
-> put a queue in front. See [ARCHITECTURE.md](ARCHITECTURE.md#known-limits).
+Reach for `force` only when you mean "reprocess everything" — it re-sends every
+page to Azure Document Intelligence, which is billed per page.
 
 ---
 
