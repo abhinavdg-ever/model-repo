@@ -142,6 +142,16 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    # The CLI runs the same stages in-process, so it wants the same logging:
+    # our progress lines visible, the Azure SDK request/response dump not.
+    # `serve` is excluded because api.main configures logging itself.
+    if args.cmd != "serve":
+        import logging
+
+        from logging_setup import configure_logging
+
+        configure_logging(logging.INFO)
+
     if args.cmd == "serve":
         from api.main import main as serve_main
 

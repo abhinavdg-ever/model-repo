@@ -46,10 +46,12 @@ from orchestrator.runner import (
     run_pipeline_for_chart,
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-)
+from logging_setup import configure_logging
+
+# Root at INFO for our own per-page progress lines; the Azure SDKs quieted to
+# WARNING, or they log every request and response header at INFO and bury them.
+# AZURE_LOG_LEVEL=INFO puts the dump back when debugging a 403 or a throttle.
+configure_logging(logging.INFO)
 logger = logging.getLogger("core-pipeline")
 
 app = FastAPI(

@@ -1495,6 +1495,7 @@ page to Azure Document Intelligence, which is billed per page.
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| Log flooded with `http_logging_policy: Request headers:` | Azure SDK logging at INFO | default is now `AZURE_LOG_LEVEL=WARNING`; if you see it, that variable is set to INFO/DEBUG somewhere |
 | `ModuleNotFoundError: No module named 'api'` | `uvicorn` run outside `core-pipeline/` | `cd core-pipeline` first, or use `python cli.py serve`, which works from anywhere |
 | `/ready` → 503 "pipeline_stage is empty" | schema not applied | run `schema/v1.sql` |
 | Chart stuck at `ocr_prelim` | Tesseract missing | install it, or set `TESSERACT_CMD` |

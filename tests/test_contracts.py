@@ -1058,3 +1058,98 @@ class TestCapabilityReporting:
         body = client.get("/health").json()
         assert "member_ner" in body and "ready" in body["member_ner"]
         assert "blob" in body
+
+
+class TestAzureSdkLogging:
+    """The SDK's INFO logging buries the pipeline's own progress lines.
+
+    `azure.core.pipeline.policies.http_logging_policy` logs every request and
+    response header at INFO. Our per-page progress is also INFO, so raising the
+    root logger to see ours turns on a few thousand lines of headers per chart.
+    """
+
+    def test_the_default_is_warning(self, monkeypatch):
+        import logging
+
+        monkeypatch.delenv("AZURE_LOG_LEVEL", raising=False)
+        from logging_setup import azure_log_level
+
+        assert azure_log_level() == logging.WARNING
+
+    def test_an_unknown_value_falls_back_to_warning(self, monkeypatch):
+        """logging.getLevelName returns the string 'Level banana' rather than
+        raising, so an unvalidated value would set a level of a str."""
+        import logging
+
+        monkeypatch.setenv("AZURE_LOG_LEVEL", "banana")
+        from logging_setup import azure_log_level
+
+        assert azure_log_level() == logging.WARNING
+
+    def test_it_can_be_turned_back_on_for_debugging(self, monkeypatch):
+        import logging
+
+        monkeypatch.setenv("AZURE_LOG_LEVEL", "debug")
+        from logging_setup import azure_log_level
+
+        assert azure_log_level() == logging.DEBUG
+
+    def test_quieting_covers_every_azure_child_logger(self, monkeypatch):
+        """Setting the parent `azure` logger is what makes one line cover
+        azure.core, azure.identity, azure.storage and the DI client."""
+        import logging
+
+        monkeypatch.delenv("AZURE_LOG_LEVEL", raising=False)
+        from logging_setup import quiet_noisy_loggers
+
+        quiet_noisy_loggers()
+        http_policy = logging.getLogger(
+            "azure.core.pipeline.policies.http_logging_policy"
+        )
+        assert not http_policy.isEnabledFor(logging.INFO)
+        assert not logging.getLogger("azure.identity").isEnabledFor(logging.INFO)
+
+    def test_warnings_and_errors_still_get_through(self, monkeypatch):
+        """A 429 or a 403 must not be silenced along with the header dump."""
+        import logging
+
+        monkeypatch.delenv("AZURE_LOG_LEVEL", raising=False)
+        from logging_setup import quiet_noisy_loggers
+
+        quiet_noisy_loggers()
+        policy = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
+        assert policy.isEnabledFor(logging.WARNING)
+        assert policy.isEnabledFor(logging.ERROR)
+
+    def test_our_own_loggers_are_untouched(self, monkeypatch):
+        """Quieting must not reach the pipeline's progress lines."""
+        import logging
+
+        monkeypatch.delenv("AZURE_LOG_LEVEL", raising=False)
+        from logging_setup import configure_logging
+
+        root = logging.getLogger()
+        previous = root.level
+        try:
+            configure_logging(logging.INFO)
+            assert logging.getLogger("stages._support").isEnabledFor(logging.INFO)
+            assert logging.getLogger("orchestrator.runner").isEnabledFor(logging.INFO)
+        finally:
+            root.setLevel(previous)
+
+    def test_the_level_applies_even_when_logging_is_already_configured(self):
+        """basicConfig is a no-op once a handler exists — pytest installs one,
+        and so does anything that configures logging before we import. The
+        requested level must still take effect, or progress lines vanish."""
+        import logging
+
+        from logging_setup import configure_logging
+
+        root = logging.getLogger()
+        previous = root.level
+        try:
+            root.setLevel(logging.WARNING)
+            configure_logging(logging.INFO)
+            assert root.level == logging.INFO
+        finally:
+            root.setLevel(previous)
