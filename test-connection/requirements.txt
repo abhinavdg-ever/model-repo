@@ -1,0 +1,4 @@
+# Managed-identity connectivity tests. Nothing here is imported by the pipeline.
+azure-identity>=1.17
+azure-storage-blob>=12.19
+openai>=1.40          # only needed by test_openai_mi.py

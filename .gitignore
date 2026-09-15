@@ -43,3 +43,9 @@ review-ui/data/folders/chartB/
 
 # Chart produced by the rotation round-trip check.
 review-ui/data/folders/rot_test/
+
+# Standalone managed-identity connection test. Its .env is committed on
+# purpose — it holds the identity's client/principal IDs and blanks, never a
+# key, a connection string or a SAS token. The venv is not.
+test-connection/.venv/
+!test-connection/.env
