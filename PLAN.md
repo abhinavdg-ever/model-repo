@@ -34,6 +34,7 @@
 | — | Auth / PHI handling | **Not addressed** — see [Known limits](docs/ARCHITECTURE.md#6-known-limits) |
 | — | Work queue (claim/lease worker over `pipeline_jobs`) | Schema ready, worker not built |
 | — | Batch sharding over N chart workers | **Designed, not built** — see [Proposed](#proposed-shard-a-batch-across-n-chart-workers) |
+| — | Multi-VM work queue (Service Bus or Postgres lease) | **Designed, not built** — see [docs/SCALING.md](docs/SCALING.md) |
 | — | Rotation correction applied to the page image | **Done** — stage 1, via Tesseract OSD; see [Resolved](#resolved-rotation-correction-via-tesseract-osd) |
 | Later | Page subtype / encounter / sequencing / rejection | Registered in `pipeline_stage`, `is_phase1=false` |
 
@@ -376,6 +377,10 @@ become that:
 The thread pool is worth building first because it is small, reversible, and
 answers the actual complaint (a drop of small charts takes too long). It should
 be understood as a stopgap that the queue later replaces, not as the queue.
+
+The queue itself — claim/lease on `pipeline_jobs`, Service Bus in front of it,
+what multi-VM breaks that single-VM hid, and why workers need no registration —
+is designed in [docs/SCALING.md](docs/SCALING.md).
 
 ### How we would know it worked
 
