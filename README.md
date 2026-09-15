@@ -199,4 +199,4 @@ Azure OpenAI and NER paths and skip themselves when those are not configured.
 | [`docs/FLOW.md`](docs/FLOW.md) | What runs when — end-to-end diagrams, skip rules, resume behaviour |
 | [`docs/LOGIC.md`](docs/LOGIC.md) | How each decision is made, and exactly what it writes |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System shape, data model, the role of every file |
-| [`docs/SCALING.md`](docs/SCALING.md) | Design: running across several machines — work queue, sharding, what breaks |
+| [`docs/SCALING.md`](docs/SCALING.md) | Design: running across several machines. Opens with a plain-language half for non-technical readers |

@@ -1,18 +1,190 @@
 # Scaling across machines
 
-How a work queue and chart-level sharding would let this run on more than one VM,
-what each actually buys, and in what order to build them.
+How to make this run on more than one computer: what would change, what it buys,
+what it costs, and in what order to do it.
 
 **Status: design, not built.** Nothing described here exists in the code. It
 extends [`PLAN.md § Proposed: shard a batch across N chart workers`](../PLAN.md#proposed-shard-a-batch-across-n-chart-workers),
 which covers the single-machine half of the same problem.
 
+**This document has two halves.** [Part 1](#part-1--in-plain-language) explains the
+whole proposal without assuming any technical background, and is meant to be read
+on its own. [Part 2](#part-2--the-technical-design) is the implementation detail.
+
 ---
+
+# Part 1 — in plain language
+
+## What the system does today
+
+Think of each patient chart as a box of scanned paper. The software is a
+processing line: it straightens each page, reads the text on it, discards the
+pages that carry nothing — blank sheets, fax cover pages, duplicates — checks that
+the chart really belongs to the patient it is filed under, and notes the dates of
+treatment.
+
+Right now **one computer does all of this, one box at a time.** Given a delivery
+of forty boxes it works through them in order: box one, then box two, and so on.
+
+## What is slow about that
+
+Two separate things, which is why there are two proposed changes.
+
+**Small boxes waste the machine.** The computer works on four pages at once. A box
+containing three pages uses three of those four slots and leaves the fourth idle.
+Forty small boxes in a row never keep the machine busy, and the delivery takes far
+longer than the work in it actually requires.
+
+**One computer is the entire capacity.** While it is busy, everything else waits.
+And if it restarts — a power cut, a software update — whatever it was working on is
+forgotten. Nothing is corrupted and no work is lost from the completed boxes, but
+somebody has to notice and start the delivery again.
+
+## The two changes, and what each one fixes
+
+**Change one: let the machine juggle several boxes at once.** Rather than finishing
+box one before starting box two, it keeps four boxes on the go and fills the idle
+slots. This only helps when boxes are small. A box of 400 pages already keeps the
+machine fully occupied, and juggling four of those simply makes all four slower.
+
+**Change two: let several machines share the delivery.** This is the larger change
+and the one that removes the ceiling. It needs somewhere for work to wait — a
+shared list of boxes that have arrived and nobody has picked up yet. That shared
+list is what the word **queue** means in the rest of this document. Azure Service
+Bus is one product that provides it; the central database can also do the job.
+
+```mermaid
+flowchart LR
+  subgraph TODAY["Today — one machine, one box at a time"]
+    direction TB
+    D1["A delivery of<br/>40 boxes"] --> M1["One computer"]
+    M1 --> O1["Finished"]
+  end
+
+  subgraph SHARED["With a shared list — as many machines as you like"]
+    direction TB
+    D2["A delivery of<br/>40 boxes"] --> L[["Shared list<br/>boxes waiting"]]
+    L -.-> N1["Computer 1"]
+    L -.-> N2["Computer 2"]
+    L -.-> N3["Computer 3"]
+    N1 --> O2["Finished"]
+    N2 --> O2
+    N3 --> O2
+  end
+
+  style TODAY fill:#fdecea,stroke:#c0392b
+  style SHARED fill:#eaf6ec,stroke:#4c9a5b
+```
+
+The dotted arrows are the whole idea: nothing *sends* a box to a particular
+computer. Each computer *takes* the next one whenever it is free.
+
+## How new machines join — the part that surprises people
+
+They do not announce themselves, and nothing anywhere keeps a list of them.
+
+Picture a ticket dispenser in a bank, and clerks behind the counter. A clerk who is
+free takes the next ticket. Nobody assigns tickets to particular clerks, and nobody
+maintains a roster of who is on shift. **To serve customers faster you put another
+clerk on the counter** — they start taking tickets, and the queue drains faster.
+
+A new machine is that new clerk. You switch it on and start the program; it
+connects to the same shared list and begins taking work. Nothing else in the system
+has to be told it exists. To remove a machine you stop the program — whatever it
+was holding returns to the list a few minutes later and another machine picks it
+up.
+
+This is why the design has no supervisor. A supervisor would have to know which
+machines are alive, notice when one dies, and redistribute its work — three things
+to build, and three things to get wrong. The queue removes the need for all three.
+
+## "What if two machines pick up the same box?"
+
+It costs nothing, by design.
+
+Every page already carries a note recording which steps have been done to it. When
+a box is opened, any page whose work is finished is simply passed over. So if a box
+is handed out twice, the second machine looks at it, finds the work already done,
+and moves on within seconds.
+
+This matters for one specific reason: **one of the text-reading steps is an outside
+service that charges per page.** If re-opening a box meant re-reading every page, an
+accidental duplicate would cost real money. Because finished pages are skipped, it
+does not.
+
+## What this will cost us
+
+Three things — and none of them is the queue itself, which is the cheap part.
+
+1. **A shared filing cabinet.** Today each machine keeps its working files on its
+   own disk. If several machines can work on the same box, they all need to read
+   and write the same files, so those files must move to storage every machine can
+   reach. **This is the largest piece of work in the plan**, larger than the queue.
+
+2. **A limit on the central database.** Every machine opens a number of
+   simultaneous connections to the database, and a database only accepts so many.
+   Past roughly a dozen machines it begins refusing *everyone* — including the
+   screen staff use to review charts. A standard piece of software solves this; it
+   needs to be in place before we get near the limit, not after.
+
+3. **A cap on the paid reading service.** The software already limits how many
+   pages it sends to that service at once, but the limit lives inside each machine.
+   Ten machines each politely limiting themselves still send ten times as much, and
+   the service responds by rejecting requests. The fix is to give that one step its
+   own queue, so the spend is controlled by how many machines are allowed to work
+   on it — a number you can see and change.
+
+## What this will not fix
+
+- **A single very large chart.** 400 pages already occupies a whole machine. More
+  machines do not make one chart finish sooner.
+- **The bill for the paid reading service.** Sharing work out changes *when* pages
+  are sent, never *how many*. That bill falls only by sending fewer pages.
+- **Knowing when a whole delivery is finished.** An empty queue means every box has
+  been handed out, not that every box is done. Anything waiting on a full delivery
+  has to check the boxes, not the list.
+
+## What we recommend
+
+**Do the cheap change first, and measure it.** Juggling several boxes on one machine
+is small, reversible, and answers the actual complaint — a delivery of small charts
+takes too long. If that turns out to be enough, stop there.
+
+If it is not enough, the shared list can be built **without buying anything**: the
+central database can act as the list, and the columns it needs already exist in the
+schema. Azure Service Bus is worth adding after that, when we want automatic
+retries, somewhere for repeatedly-failing boxes to go so a person can look at them,
+and the ability to switch on extra machines automatically when the list grows long.
+
+## The words used in Part 2
+
+| Term | Plain meaning |
+|---|---|
+| Chart | one patient's scanned records — the "box of paper" |
+| Page | one scanned sheet inside a chart |
+| Stage | one step on the processing line, such as reading the text |
+| Queue | the shared list of work waiting to be picked up |
+| Worker | a machine, or the program on it, that takes work off the list |
+| VM | virtual machine — one computer, rented from Azure rather than owned |
+| Lease, lock | a name tag with a timer, attached to a box while someone works on it |
+| Idempotent | safe to do twice; the second time changes nothing |
+| Shard | to split work into pieces that can be done at the same time |
+| Service Bus | Microsoft's product for holding the shared list |
+| Dead-letter | where a box is set aside after failing repeatedly, for a person to examine |
+| Throughput | how much gets finished per hour |
+| Resume | picking a chart up where it stopped, rather than starting it over |
+
+---
+
+# Part 2 — the technical design
+
+The same proposal, in implementation terms. Each section below corresponds to one
+in Part 1, in the same order.
 
 ## The short answer to "how do the VMs register?"
 
-**They don't.** That is the point of a queue, and it is the single most useful
-thing to understand before reading the rest.
+**They don't.** That is the point of a queue — the ticket dispenser from Part 1 —
+and it is the single most useful thing to settle before reading the rest.
 
 There is no coordinator, no leader election, no service discovery, and no list of
 machines anywhere in the system. Every worker VM opens a connection to the *same*
