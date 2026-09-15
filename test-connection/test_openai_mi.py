@@ -168,7 +168,7 @@ def main() -> None:
                     "    --assignee-object-id 8847dea2-3dd2-464b-9ae1-f0505c274f4e \\\n"
                     "    --assignee-principal-type ServicePrincipal \\\n"
                     '    --role "Cognitive Services OpenAI User" \\\n'
-                    "    --scope /subscriptions/<sub>/resourceGroups/<rg>/providers"
+                    "    --scope /subscriptions/b8049482-3053-448d-a59e-0a67b3238082/resourceGroups/<rg>/providers"
                     "/Microsoft.CognitiveServices/accounts/<resource>")
         elif status == 401 or status == 403:
             hint = ("Rejected. Either the role is missing (assign 'Cognitive\n"

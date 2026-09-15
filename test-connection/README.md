@@ -20,6 +20,9 @@ to the VM.
 | Identity | `az-mi-dv-e2-ai-poc` (User-Assigned Managed Identity) |
 | **Client ID** | `ad1f4c35-f64d-4cb8-a7bc-3f97d5f9f767` — what the code passes |
 | **Principal / Object ID** | `8847dea2-3dd2-464b-9ae1-f0505c274f4e` — what you pass to `az role assignment`. **Not a credential.** It never appears in a request and no script reads it |
+| Subscription | `b8049482-3053-448d-a59e-0a67b3238082` |
+| Resource group | `RG-DV-AIPOC` |
+| Resource ID | `/subscriptions/b8049482-3053-448d-a59e-0a67b3238082/resourcegroups/RG-DV-AIPOC/providers/Microsoft.ManagedIdentity/userAssignedIdentities/az-mi-dv-e2-ai-poc` — what `az vm identity assign --identities` wants |
 
 Two things must both be true, and they are assigned in different places:
 
@@ -33,6 +36,93 @@ not read a blob.
 
 This must run **on the Azure VM**. The identity endpoint is IMDS at
 `169.254.169.254`, which does not exist on a laptop.
+
+---
+
+## 0. Attach the identity to the VM
+
+Skip this if `az vm identity show` already lists the identity. Attaching is a
+control-plane operation, so run it as **yourself**, not as the identity, and
+from anywhere — not necessarily the VM.
+
+You need two permissions to do it: **Virtual Machine Contributor** (or write
+access) on the VM, *and* **Managed Identity Operator** on the identity. Missing
+the second gives an authorization error naming the identity's resource ID
+rather than the VM's.
+
+These are written with values inline rather than shell variables, so they work
+unchanged in `cmd.exe`, PowerShell and bash.
+
+**Confirm the identity, and where it lives:**
+
+```
+az ad sp show --id 8847dea2-3dd2-464b-9ae1-f0505c274f4e
+```
+
+`servicePrincipalType: ManagedIdentity` with `isExplicit=True` confirms it is
+user-assigned; `appId` must be `ad1f4c35-f64d-4cb8-a7bc-3f97d5f9f767`; the
+second entry in `alternativeNames` is the resource ID used below. A client ID
+that does not match there is the most common cause of "attached, but
+authentication fails".
+
+**Find the VM, and see what it already has:**
+
+```
+az vm list --subscription b8049482-3053-448d-a59e-0a67b3238082 --query "[].{name:name, rg:resourceGroup}" -o table
+az vm identity show -g <vm-rg> -n <vm-name> -o json
+```
+
+**Attach:**
+
+```
+az vm identity assign -g <vm-rg> -n <vm-name> --identities "/subscriptions/b8049482-3053-448d-a59e-0a67b3238082/resourcegroups/RG-DV-AIPOC/providers/Microsoft.ManagedIdentity/userAssignedIdentities/az-mi-dv-e2-ai-poc"
+```
+
+For a scale set it is `az vmss identity assign` with the same arguments,
+followed by `az vmss update-instances --instance-ids "*"`.
+
+The identity does **not** have to live in the VM's resource group — the
+resource ID handles that. Across *subscriptions* is the case worth checking
+with whoever owns the tenant first.
+
+No reboot is needed, but allow a minute before the token endpoint answers, and
+restart any process that already cached a token.
+
+**Attaching grants nothing.** It only lets the VM *ask* for tokens as that
+identity. The data-plane roles are step 5 below, and stopping one step short
+here is what produces state 3.
+
+**Find the resources, which also fills in `.env`:**
+
+```
+az storage account list --subscription b8049482-3053-448d-a59e-0a67b3238082 --query "[].{name:name, rg:resourceGroup}" -o table
+
+az cognitiveservices account list --subscription b8049482-3053-448d-a59e-0a67b3238082 --query "[].{name:name, rg:resourceGroup, kind:kind, endpoint:properties.endpoint}" -o table
+```
+
+**Grant the roles** (substitute the names and resource groups from above):
+
+```
+az role assignment create --assignee-object-id 8847dea2-3dd2-464b-9ae1-f0505c274f4e --assignee-principal-type ServicePrincipal --role "Storage Blob Data Reader" --scope /subscriptions/b8049482-3053-448d-a59e-0a67b3238082/resourceGroups/<storage-rg>/providers/Microsoft.Storage/storageAccounts/<account>
+
+az role assignment create --assignee-object-id 8847dea2-3dd2-464b-9ae1-f0505c274f4e --assignee-principal-type ServicePrincipal --role "Cognitive Services OpenAI User" --scope /subscriptions/b8049482-3053-448d-a59e-0a67b3238082/resourceGroups/<openai-rg>/providers/Microsoft.CognitiveServices/accounts/<resource>
+```
+
+`Storage Blob Data Contributor` instead of Reader if the pipeline must write or
+delete. Assignments take a few minutes to propagate, so one 403 immediately
+afterwards is not conclusive.
+
+Check what the identity holds at any point with:
+
+```
+az role assignment list --assignee 8847dea2-3dd2-464b-9ae1-f0505c274f4e --all --query "[].{role:roleDefinitionName, scope:scope}" -o table
+```
+
+An empty table means no data-plane access anywhere.
+
+**If the VM ends up with more than one identity attached**, the token endpoint
+refuses to guess between them: the request must name a client ID. Both scripts
+already do.
 
 ---
 
@@ -133,10 +223,10 @@ CONTAINER=<container>
 az vm identity show -g <rg> -n <vm> -o json
 # userAssignedIdentities must contain .../az-mi-dv-e2-ai-poc
 
-# attach it if not:
-az vm identity assign -g <rg> -n <vm> \
-  --identities /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/az-mi-dv-e2-ai-poc
 ```
+
+If it does not, go back to [section 0](#0-attach-the-identity-to-the-vm) — that
+is state 1, and nothing below it can pass until the attach is done.
 
 **B — can the VM get a token for it?** (IMDS directly, no CLI, no Python)
 
@@ -184,7 +274,7 @@ az storage account list --query "[].name" -o tsv
 | # | State | What you see | Fix |
 |---|---|---|---|
 | 1 | Identity **not attached** to the VM | **A** omits the identity; **B** returns `identity_not_found` or nothing | `az vm identity assign …` (above), then reboot is not needed but the token cache is per-process |
-| 2 | Attached, **authentication fails** | **B** returns an error other than `identity_not_found`; **C** fails | Wrong client ID, IMDS blocked by a firewall/proxy, or VM clock skew. Confirm the client ID against `az identity show -g <rg> -n az-mi-dv-e2-ai-poc --query clientId` |
+| 2 | Attached, **authentication fails** | **B** returns an error other than `identity_not_found`; **C** fails | Wrong client ID, IMDS blocked by a firewall/proxy, or VM clock skew. Confirm the client ID against `az identity show -g RG-DV-AIPOC -n az-mi-dv-e2-ai-poc --query clientId` |
 | 3 | Authenticated, **blob RBAC missing** | **B**/**C** fine; **E** returns `AuthorizationPermissionMismatch` / 403 | Assign a data role (below). Wait a few minutes — assignments are not instant |
 | 4 | RBAC fine, **wrong name** | **E** returns `ContainerNotFound`, or **F** does not resolve | Check the account and container names; container listing in **E** shows the real ones |
 | 5 | **Everything works** | **E** lists blobs | Run the Python tests |
@@ -196,7 +286,7 @@ az role assignment create \
   --assignee-object-id "$PRINCIPAL_ID" \
   --assignee-principal-type ServicePrincipal \
   --role "Storage Blob Data Reader" \
-  --scope /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/$ACCOUNT
+  --scope /subscriptions/b8049482-3053-448d-a59e-0a67b3238082/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/$ACCOUNT
 ```
 
 `Storage Blob Data Contributor` instead if the pipeline must write or delete.
@@ -212,7 +302,7 @@ az role assignment create \
   --assignee-object-id "$PRINCIPAL_ID" \
   --assignee-principal-type ServicePrincipal \
   --role "Cognitive Services OpenAI User" \
-  --scope /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<resource>
+  --scope /subscriptions/b8049482-3053-448d-a59e-0a67b3238082/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<resource>
 
 az cognitiveservices account deployment list -g <rg> -n <resource> -o table
 ```

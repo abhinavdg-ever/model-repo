@@ -134,9 +134,9 @@ def main() -> None:
              "attached is not the identity with this client ID.\n\n"
              "  az vm identity show -g <rg> -n <vm> -o json\n"
              "  az vm identity assign -g <rg> -n <vm> \\\n"
-             "      --identities /subscriptions/<sub>/resourceGroups/<rg>"
-             "/providers/Microsoft.ManagedIdentity/userAssignedIdentities/"
-             "az-mi-dv-e2-ai-poc\n\n"
+             "      --identities \"/subscriptions/b8049482-3053-448d-a59e-0a67b3238082"
+             "/resourcegroups/RG-DV-AIPOC/providers/Microsoft.ManagedIdentity"
+             "/userAssignedIdentities/az-mi-dv-e2-ai-poc\"\n\n"
              "This must run ON the Azure VM — the identity endpoint (IMDS,\n"
              "169.254.169.254) does not exist on a laptop.")
     except Exception as exc:
@@ -244,7 +244,7 @@ def main() -> None:
                  "    --assignee-object-id 8847dea2-3dd2-464b-9ae1-f0505c274f4e \\\n"
                  "    --assignee-principal-type ServicePrincipal \\\n"
                  '    --role "Storage Blob Data Reader" \\\n'
-                 "    --scope /subscriptions/<sub>/resourceGroups/<rg>/providers"
+                 "    --scope /subscriptions/b8049482-3053-448d-a59e-0a67b3238082/resourceGroups/<rg>/providers"
                  f"/Microsoft.Storage/storageAccounts/{account}\n\n"
                  "Use 'Storage Blob Data Contributor' if the pipeline must also\n"
                  "write. Role assignments can take a few minutes to take effect.")
