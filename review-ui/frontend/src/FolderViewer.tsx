@@ -705,12 +705,15 @@ export default function FolderViewer({
               {...stageProps}
             >
               {page ? (
-                <div className="page-image-wrap" style={imageStyle}>
+                <div
+                  className="page-image-wrap"
+                  style={imageStyle}
+                  onPointerDown={stageProps.onPointerDown}
+                >
                   <img
                     src={pageImageUrl(folderId, page.page_number)}
                     alt={page.filename}
                     draggable={false}
-                    onPointerDown={stageProps.onPointerDown}
                   />
                   {overlayBoxes.length > 0 ? (
                     <div className="page-header-overlay" aria-hidden="true">

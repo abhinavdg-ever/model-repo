@@ -1292,16 +1292,19 @@ input {
   cursor: grab;
 }
 
-.page-stage.is-zoom-pannable img {
+.page-stage.is-zoom-pannable img,
+.page-stage.is-zoom-pannable .page-image-wrap {
   cursor: grab;
   /* Native image drag / selection would steal the pan gesture */
   -webkit-user-drag: none;
   user-select: none;
   pointer-events: auto;
+  touch-action: none;
 }
 
 .page-stage.is-panning,
-.page-stage.is-panning img {
+.page-stage.is-panning img,
+.page-stage.is-panning .page-image-wrap {
   cursor: grabbing;
 }
 
@@ -1323,6 +1326,7 @@ input {
   max-height: 100%;
   line-height: 0;
   will-change: transform;
+  /* Pan/zoom transform lives here so header overlays move with the page. */
 }
 
 .page-image-wrap img {
@@ -1335,7 +1339,7 @@ input {
   box-shadow: 0 2px 10px rgba(19, 29, 17, 0.12);
   background: #fff;
   display: block;
-  pointer-events: auto;
+  pointer-events: none; /* pan handler is on the wrap (imaging-ui pattern + overlays) */
   -webkit-user-drag: none;
   user-select: none;
 }
