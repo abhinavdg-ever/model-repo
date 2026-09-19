@@ -107,7 +107,7 @@ Weight files are **not** on PyPI. Place them under `core-pipeline/models/`
 (gitignored):
 
 ```
-models/hw/handwritten_printed_convnext_tiny.pth
+models/hw/handwritten_printed_convnext_tiny.pth   # Git LFS — see below
 models/rapidocr/
   PP-OCRv6_det_small.pth
   PP-OCRv6_rec_small.pth
@@ -115,6 +115,16 @@ models/rapidocr/
   ppocrv6_dict.txt
 models/ner/          # GLiNER via model_downloader
 ```
+
+**Handwritten / printed (ConvNeXt)** — in the repo via Git LFS:
+
+```bash
+git lfs install
+git lfs pull          # after clone, or if models/hw/*.pth is a tiny pointer file
+```
+
+Place / verify: `core-pipeline/models/hw/handwritten_printed_convnext_tiny.pth`  
+Runtime: `pip install -r requirements-docling.txt` (torch + torchvision).
 
 | Missing | Fallback |
 |---|---|

@@ -37,10 +37,12 @@ check_azure_openai.py
 .claude/
 .cursor/
 
-# Downloaded ML checkpoints — ~2 GB, never committed.
-# core-pipeline/models/ner is where the GLiNER downloader writes.
-models/
-core-pipeline/models/
+# Downloaded ML checkpoints — NER / RapidOCR stay local (~GBs).
+# ConvNeXt HW weights are Git LFS (see .gitattributes) so a clone can pull them.
+/models/
+core-pipeline/models/*
+!core-pipeline/models/hw/
+!core-pipeline/models/hw/**
 *.safetensors
 *.onnx
 *.bin
