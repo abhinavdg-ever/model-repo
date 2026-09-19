@@ -92,6 +92,7 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
         "content": "",
         "markdown": "",
         "document": None,
+        "section_headers": [],
         "engine": "unknown",
         "error": "",
     }
@@ -120,6 +121,9 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
                         out["content"] = content
                         out["markdown"] = extracted.get("markdown") or content
                         out["document"] = extracted.get("document")
+                        out["section_headers"] = (
+                            extracted.get("section_headers") or []
+                        )
                         out["engine"] = "docling+rapidocr"
                         if elapsed is not None:
                             logger.info(
@@ -240,6 +244,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     "content": item.get("content") or "",
                     "markdown": item.get("markdown") or item.get("content") or "",
                     "engine": item.get("engine"),
+                    "section_headers": item.get("section_headers") or [],
                 }
                 if item.get("document") is not None:
                     page_doc["document"] = item["document"]

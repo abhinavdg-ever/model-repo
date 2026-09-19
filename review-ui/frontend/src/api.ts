@@ -37,10 +37,20 @@ export type OcrKind = "preliminary" | "final1" | "final2";
 
 export type OutputMode = "ocr" | "imaging";
 
+export type OcrSectionHeader = {
+  text: string;
+  level: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
 export type OcrTextResponse = {
   folder_id: string;
   kind: OcrKind;
   text: string;
+  section_headers_by_file?: Record<string, OcrSectionHeader[]>;
 };
 
 export type ImagingPageResult = {

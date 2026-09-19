@@ -9,3 +9,6 @@ docling>=2.0.0
 rapidocr>=2.0.0
 torch>=2.2
 torchvision>=0.17
+# MiniLM semantic filter for Final1 section_headers in *_final1.json
+# (falls back to lexical matching if this package is absent).
+sentence-transformers>=3.0.0

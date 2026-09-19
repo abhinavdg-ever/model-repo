@@ -198,6 +198,16 @@ DOCLING_WORKERS = int(os.environ.get("DOCLING_WORKERS") or "1")
 DOCLING_PAGE_TIMEOUT_SECONDS = float(
     os.environ.get("DOCLING_PAGE_TIMEOUT_SECONDS") or "90"
 )
+# Final1 section_headers JSON: keep only candidates ≥ threshold similar to a
+# known clinical header (MiniLM when sentence-transformers is installed).
+SECTION_HEADER_SEMANTIC_ENABLED = _flag("SECTION_HEADER_SEMANTIC_ENABLED", True)
+SECTION_HEADER_SEMANTIC_THRESHOLD = float(
+    os.environ.get("SECTION_HEADER_SEMANTIC_THRESHOLD") or "0.90"
+)
+SECTION_HEADER_MINILM_MODEL = (
+    os.environ.get("SECTION_HEADER_MINILM_MODEL")
+    or "sentence-transformers/all-MiniLM-L6-v2"
+).strip()
 # Charts processed concurrently inside one /batch call. Default 4 so a drop of
 # small charts saturates the box; set 1 to restore serial behaviour.
 # Invariant: BATCH_WORKERS × STAGE_WORKERS + BATCH_POOL_HEADROOM ≤ DB_POOL_MAX.
@@ -267,8 +277,22 @@ def corrected_pages_dir(chart_name: str) -> Path:
     Sparse on purpose: a page that needed no correction is NOT copied here, so
     the folder's contents are exactly the pages that were changed, and the
     workspace does not carry a second copy of every scan.
+
+    Exception: TIFF/TIF sources are always written here as ``{stem}.jpg`` so
+    later OCR stages (and the review-ui) never have to open a multi-page TIFF.
     """
     return chart_dir(chart_name) / "corrected-pages"
+
+
+_TIFF_SUFFIXES = {".tif", ".tiff"}
+
+
+def corrected_page_filename(page_name: str) -> str:
+    """Filename under corrected-pages/ — TIFF sources become ``.jpg``."""
+    path = Path(page_name)
+    if path.suffix.lower() in _TIFF_SUFFIXES:
+        return f"{path.stem}.jpg"
+    return page_name
 
 
 def page_image_path(chart_name: str, page_name: str) -> Path:
@@ -278,9 +302,17 @@ def page_image_path(chart_name: str, page_name: str) -> Path:
     corrected page when there is one" is a single rule rather than four copies
     of the same `if`. Pages needing no correction fall through to pages/, which
     is also what happens for a chart processed before corrections existed.
+
+    For TIFF originals, ``corrected-pages/{stem}.jpg`` is preferred when present.
     """
-    corrected = corrected_pages_dir(chart_name) / page_name
-    return corrected if corrected.is_file() else pages_dir(chart_name) / page_name
+    cdir = corrected_pages_dir(chart_name)
+    preferred = cdir / corrected_page_filename(page_name)
+    if preferred.is_file():
+        return preferred
+    same_name = cdir / page_name
+    if same_name.is_file():
+        return same_name
+    return pages_dir(chart_name) / page_name
 
 
 def ensure_chart_dirs(chart_name: str) -> Path:

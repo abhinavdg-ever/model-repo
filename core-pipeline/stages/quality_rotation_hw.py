@@ -19,6 +19,7 @@ from config import (
     HW_MODEL_PATH,
     ROTATION_CORRECTION_ENABLED,
     STAGE_WORKERS,
+    corrected_page_filename,
     corrected_pages_dir,
     pages_dir,
 )
@@ -216,11 +217,21 @@ QUALITY_COLS = [
 def _write_corrected(
     chart_name: str, page_name: str, rot: dict[str, Any]
 ) -> Path | None:
-    """Write the corrected page, or None when the scan is already upright."""
-    if not ROTATION_CORRECTION_ENABLED:
+    """Write a working image under corrected-pages/, or None when untouched.
+
+    Written when:
+      * rotation correction is enabled and the page needs it, or
+      * the source is TIFF/TIF (always re-encoded as ``{stem}.jpg`` so later
+        stages never open multi-page TIFF).
+    """
+    suffix = Path(page_name).suffix.lower()
+    is_tiff = suffix in {".tif", ".tiff"}
+    needs_rot = bool(
+        ROTATION_CORRECTION_ENABLED and rot.get("needs_correction")
+    )
+    if not needs_rot and not is_tiff:
         return None
-    if not rot.get("needs_correction"):
-        return None
+
     image = rot.get("_image")
     if image is None:
         return None
@@ -229,21 +240,29 @@ def _write_corrected(
 
         from stages.lib.imaging.rotation import correct_image
 
-        corrected = correct_image(
-            image,
-            {
-                "rotation": int(rot["orientation_angle"]) % 360,
-                "tilt": float(rot["tilt_angle"]),
-                "mirror": False,
-            },
-        )
-        dest = corrected_pages_dir(chart_name) / page_name
+        out_img = image
+        if needs_rot:
+            out_img = correct_image(
+                image,
+                {
+                    "rotation": int(rot["orientation_angle"]) % 360,
+                    "tilt": float(rot["tilt_angle"]),
+                    "mirror": False,
+                },
+            )
+        dest_name = corrected_page_filename(page_name)
+        dest = corrected_pages_dir(chart_name) / dest_name
         dest.parent.mkdir(parents=True, exist_ok=True)
-        if not cv2.imwrite(str(dest), corrected):
+        # Force JPEG for TIFF sources (and keep jpeg quality sane).
+        if dest.suffix.lower() in {".jpg", ".jpeg"}:
+            ok = cv2.imwrite(str(dest), out_img, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
+        else:
+            ok = cv2.imwrite(str(dest), out_img)
+        if not ok:
             raise RuntimeError(f"cv2.imwrite returned False for {dest}")
         return dest
     except Exception as exc:
-        logger.warning("Rotation correction failed for %s: %s", page_name, exc)
+        logger.warning("Rotation/TIFF correction failed for %s: %s", page_name, exc)
         return None
 
 
@@ -251,9 +270,14 @@ def _measure(args: tuple[dict[str, Any], Path, str]) -> dict[str, Any]:
     page, image_path, chart_name = args
     try:
         rot = _detect_rotation(image_path)
-        # Correct FIRST, then classify + score: both see what later stages OCR.
+        # Correct FIRST (and convert TIFF→JPG), then classify + score on the
+        # image later stages will OCR.
         corrected = _write_corrected(chart_name, page["page_name"], rot)
-        rot["rotation_applied"] = corrected is not None
+        rot["rotation_applied"] = bool(
+            corrected is not None
+            and ROTATION_CORRECTION_ENABLED
+            and rot.get("needs_correction")
+        )
         rot.pop("needs_correction", None)
         scored_path = corrected or image_path
         hw_label, hw_conf, hw_method = _classify_hw(scored_path)

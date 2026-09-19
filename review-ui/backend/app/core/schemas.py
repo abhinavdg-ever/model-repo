@@ -50,10 +50,25 @@ class FolderDetail(BaseModel):
     pages: list[PageSummary] = Field(default_factory=list)
 
 
+class OcrSectionHeader(BaseModel):
+    """Normalized header box for the page-image overlay (fractions 0–1)."""
+
+    text: str
+    level: int = 2
+    left: float
+    top: float
+    width: float
+    height: float
+
+
 class OcrTextResponse(BaseModel):
     folder_id: str
     kind: OcrKind
     text: str
+    # fileName → header boxes (Final1 Docling). Empty when unavailable.
+    section_headers_by_file: dict[str, list[OcrSectionHeader]] = Field(
+        default_factory=dict
+    )
 
 
 class ImagingPageResult(BaseModel):

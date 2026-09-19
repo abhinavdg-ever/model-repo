@@ -22,6 +22,7 @@ from app.core.schemas import (
     ImagingSectionsProcessed,
     OcrKind,
     OcrRunStatus,
+    OcrSectionHeader,
     OcrTextResponse,
     PageSummary,
 )
@@ -196,6 +197,80 @@ def _normalize_kind(kind: str) -> OcrKind:
     return kind  # type: ignore[return-value]
 
 
+# Shown in review-ui Final 2 when Azure was skipped for high-quality printed pages.
+FINAL2_QUALITY_SKIP_MESSAGE = "Skipped for High Quality Images"
+
+
+def _section_headers_from_page(page: dict[str, Any]) -> list[OcrSectionHeader]:
+    """Pull CSS-normalized header boxes from a final1/final2 page object."""
+    raw = page.get("section_headers") or page.get("sectionHeaders") or []
+    if not isinstance(raw, list):
+        return []
+    out: list[OcrSectionHeader] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        norm = item.get("norm") if isinstance(item.get("norm"), dict) else None
+        if not norm:
+            continue
+        try:
+            left = float(norm.get("left"))
+            top = float(norm.get("top"))
+            width = float(norm.get("width"))
+            height = float(norm.get("height"))
+        except (TypeError, ValueError):
+            continue
+        if width <= 0 or height <= 0:
+            continue
+        try:
+            level = int(item.get("level") or 2)
+        except (TypeError, ValueError):
+            level = 2
+        out.append(
+            OcrSectionHeader(
+                text=text,
+                level=level,
+                left=left,
+                top=top,
+                width=width,
+                height=height,
+            )
+        )
+    return out
+
+
+def section_headers_by_file_from_ocr_json(
+    data: Any,
+) -> dict[str, list[OcrSectionHeader]]:
+    """Map fileName → header boxes from a combined final1/final2 JSON doc."""
+    if isinstance(data, list):
+        pages = data
+    elif isinstance(data, dict):
+        pages = data.get("pages") or []
+    else:
+        return {}
+    if not isinstance(pages, list):
+        return {}
+    by_file: dict[str, list[OcrSectionHeader]] = {}
+    for idx, page in enumerate(pages, start=1):
+        if not isinstance(page, dict):
+            continue
+        filename = str(
+            page.get("fileName")
+            or page.get("filename")
+            or page.get("file_name")
+            or f"{page.get('pageNumber') or idx}.jpg"
+        )
+        headers = _section_headers_from_page(page)
+        if headers:
+            by_file[filename] = headers
+            by_file[filename.lower()] = headers
+    return by_file
+
+
 def _page_content_from_azdoc(page: dict[str, Any]) -> str:
     content = page.get("content")
     if isinstance(content, str) and content.strip():
@@ -212,6 +287,11 @@ def _page_content_from_azdoc(page: dict[str, Any]) -> str:
         ]
         if parts:
             return "\n".join(parts)
+    reason = str(
+        page.get("skippedReason") or page.get("skipped_reason") or ""
+    ).strip().lower()
+    if reason == "high_quality_printed":
+        return FINAL2_QUALITY_SKIP_MESSAGE
     return ""
 
 
@@ -892,8 +972,16 @@ class LocalFolderRepository(FolderRepository):
     def get_page_image_path(self, folder_id: str, page_number: int) -> Path:
         folder_dir = self._folder_dir(folder_id)
         for num, path in self._page_files(folder_dir):
-            if num == page_number:
-                return path
+            if num != page_number:
+                continue
+            # Prefer corrected-pages (incl. TIFF→JPG as {stem}.jpg).
+            corrected_dir = folder_dir / "corrected-pages"
+            if corrected_dir.is_dir():
+                for name in (f"{path.stem}.jpg", path.name):
+                    candidate = corrected_dir / name
+                    if candidate.is_file() and candidate.stat().st_size > 0:
+                        return candidate
+            return path
         raise HTTPException(status_code=404, detail=f"Page {page_number} not found in {folder_id}")
 
     def get_ocr_text(self, folder_id: str, kind: str) -> OcrTextResponse:
@@ -908,6 +996,7 @@ class LocalFolderRepository(FolderRepository):
             )
 
         raw = path.read_text(encoding="utf-8", errors="replace")
+        headers_by_file: dict[str, list[OcrSectionHeader]] = {}
         if path.suffix.lower() == ".json":
             try:
                 data = json.loads(raw)
@@ -917,10 +1006,16 @@ class LocalFolderRepository(FolderRepository):
                     detail=f"Invalid OCR JSON in {path.name}: {exc}",
                 ) from exc
             text = azdoc_json_to_ocr_text(data)
+            headers_by_file = section_headers_by_file_from_ocr_json(data)
         else:
             text = raw
 
-        return OcrTextResponse(folder_id=folder_id, kind=normalized, text=text)
+        return OcrTextResponse(
+            folder_id=folder_id,
+            kind=normalized,
+            text=text,
+            section_headers_by_file=headers_by_file,
+        )
 
     def _dos_overlay_for_folder(self, folder_dir: Path) -> dict[str, dict[str, str | None]]:
         """Prefer imaging/<chart>_dos.csv, else combined dos_extraction.csv for this chart."""

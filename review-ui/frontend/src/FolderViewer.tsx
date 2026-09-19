@@ -24,6 +24,7 @@ import {
   type ImagingDocumentResponse,
   type ImagingPageResult,
   type OcrKind,
+  type OcrSectionHeader,
   type OutputMode,
 } from "./api";
 import ImagingPanel, { type ImagingTab } from "./ImagingPanel";
@@ -131,6 +132,22 @@ function findImagingPage(
   return doc.pages.find((p) => p.pageNumber === page.page_number) ?? null;
 }
 
+/** Azure Final2 is skipped for high-quality printed pages (billed stage). */
+const FINAL2_QUALITY_SKIP_MESSAGE = "Skipped for High Quality Images";
+
+function isBlankOrJunkYes(page: ImagingPageResult | null): boolean {
+  const v = (page?.blankOrJunk || "").trim().toLowerCase();
+  return v.startsWith("yes");
+}
+
+/** Infer Final2 quality-skip from imaging when JSON has no skippedReason yet. */
+function isFinal2QualitySkip(page: ImagingPageResult | null): boolean {
+  if (!page || isBlankOrJunkYes(page)) return false;
+  const hw = (page.handwrittenOrPrinted || "").trim().toLowerCase();
+  const tag = (page.pageQualityTag || "").trim().toLowerCase();
+  return hw === "printed" && tag === "high";
+}
+
 export default function FolderViewer({
   folderId,
   initialMode = "ocr",
@@ -141,9 +158,12 @@ export default function FolderViewer({
   const [pageIndex, setPageIndex] = useState(0);
   const [outputMode, setOutputMode] = useState<OutputMode>(initialMode);
   const [ocrTab, setOcrTab] = useState<OcrKind>("preliminary");
-  const [showSectionHeaders, setShowSectionHeaders] = useState(true);
+  const [showSectionHeaders, setShowSectionHeaders] = useState(false);
   const [imagingTab, setImagingTab] = useState<ImagingTab>("page");
   const [ocrByKind, setOcrByKind] = useState<Partial<Record<OcrKind, string>>>({});
+  const [sectionHeadersByFile, setSectionHeadersByFile] = useState<
+    Record<string, OcrSectionHeader[]>
+  >({});
   const [imagingDoc, setImagingDoc] = useState<ImagingDocumentResponse | null>(null);
   const [loadingFolder, setLoadingFolder] = useState(true);
   const [loadingOcr, setLoadingOcr] = useState(false);
@@ -211,30 +231,37 @@ export default function FolderViewer({
   useEffect(() => {
     if (!folder || outputMode !== "ocr") {
       setOcrByKind({});
+      setSectionHeadersByFile({});
       return;
     }
     let cancelled = false;
     setLoadingOcr(true);
     setOcrByKind({});
+    setSectionHeadersByFile({});
     setCopied(false);
 
     Promise.all(
       OCR_TABS.map(async (kind) => {
         try {
           const data = await getFolderOcr(folder.id, kind);
-          return [kind, data.text] as const;
+          return [kind, data] as const;
         } catch {
-          return [kind, ""] as const;
+          return [kind, null] as const;
         }
       }),
     )
       .then((entries) => {
         if (cancelled) return;
         const next: Partial<Record<OcrKind, string>> = {};
-        for (const [kind, text] of entries) {
-          if (text.trim()) next[kind] = text;
+        let headers: Record<string, OcrSectionHeader[]> = {};
+        for (const [kind, data] of entries) {
+          if (data?.text?.trim()) next[kind] = data.text;
+          if (kind === "final1" && data?.section_headers_by_file) {
+            headers = data.section_headers_by_file;
+          }
         }
         setOcrByKind(next);
+        setSectionHeadersByFile(headers);
       })
       .finally(() => {
         if (!cancelled) setLoadingOcr(false);
@@ -249,7 +276,7 @@ export default function FolderViewer({
   const ocrMissingMessage = `No ${OCR_TAB_LABELS[ocrTab]} available.`;
 
   useEffect(() => {
-    if (!folder || outputMode !== "imaging") {
+    if (!folder) {
       return;
     }
     let cancelled = false;
@@ -273,16 +300,49 @@ export default function FolderViewer({
     return () => {
       cancelled = true;
     };
-  }, [folder, outputMode]);
+  }, [folder]);
+
+  const imagingPage = useMemo(
+    () => findImagingPage(imagingDoc, page),
+    [imagingDoc, page],
+  );
 
   const pageOcrText = useMemo(() => {
     if (loadingOcr) return "";
     if (!page) return "";
+    if (ocrTab === "final2" && folder?.has_final2_ocr) {
+      if (ocrFullText) {
+        const chunk = ocrTextForFilename(ocrFullText, page.filename);
+        if (chunk.trim() === FINAL2_QUALITY_SKIP_MESSAGE) {
+          return FINAL2_QUALITY_SKIP_MESSAGE;
+        }
+        if (chunk.trim()) {
+          return chunk;
+        }
+        // Empty page slot in Final2 JSON — quality skip (or blank/junk).
+        if (isFinal2QualitySkip(imagingPage)) {
+          return FINAL2_QUALITY_SKIP_MESSAGE;
+        }
+        return `No OCR text found for ${page.filename}.`;
+      }
+      // Final2 file exists but fetch empty — still allow imaging inference.
+      if (isFinal2QualitySkip(imagingPage)) {
+        return FINAL2_QUALITY_SKIP_MESSAGE;
+      }
+    }
     if (!ocrFullText) return ocrMissingMessage;
     if (!isUsableOcrPayload(ocrFullText)) return ocrFullText;
     const chunk = ocrTextForFilename(ocrFullText, page.filename);
     return chunk || `No OCR text found for ${page.filename}.`;
-  }, [loadingOcr, ocrFullText, ocrMissingMessage, page]);
+  }, [
+    loadingOcr,
+    ocrFullText,
+    ocrMissingMessage,
+    page,
+    ocrTab,
+    folder?.has_final2_ocr,
+    imagingPage,
+  ]);
 
   const showHeaderToggle = ocrTab === "final1" || ocrTab === "final2";
 
@@ -291,6 +351,7 @@ export default function FolderViewer({
       return null;
     }
     if (pageOcrText.startsWith("No OCR text found")) return null;
+    if (pageOcrText === FINAL2_QUALITY_SKIP_MESSAGE) return null;
     return prepareOcrLines(pageOcrText, {
       showSectionHeaders,
       // Final2 is often plain text; Final1 already has ## from Docling.
@@ -305,10 +366,22 @@ export default function FolderViewer({
     return pageMatchRate(ocrByKind, page.filename, OCR_TABS);
   }, [ocrByKind, page]);
 
-  const imagingPage = useMemo(
-    () => findImagingPage(imagingDoc, page),
-    [imagingDoc, page],
-  );
+  const pageHeaderBoxes = useMemo(() => {
+    if (!showSectionHeaders || !page) return [];
+    return (
+      sectionHeadersByFile[page.filename] ??
+      sectionHeadersByFile[page.filename.toLowerCase()] ??
+      []
+    );
+  }, [showSectionHeaders, page, sectionHeadersByFile]);
+
+  const pageQualityLabel = useMemo(() => {
+    const raw = (imagingPage?.pageQualityTag || "").trim().toLowerCase();
+    if (raw === "high" || raw === "medium" || raw === "low") {
+      return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+    return null;
+  }, [imagingPage]);
 
   const canUseFull = isUsableOcrPayload(ocrFullText);
   const pageCount = folder?.pages.length ?? 0;
@@ -595,13 +668,33 @@ export default function FolderViewer({
               {...stageProps}
             >
               {page ? (
-                <img
-                  src={pageImageUrl(folderId, page.page_number)}
-                  alt={page.filename}
-                  draggable={false}
-                  onPointerDown={stageProps.onPointerDown}
-                  style={imageStyle}
-                />
+                <div className="page-image-wrap" style={imageStyle}>
+                  <img
+                    src={pageImageUrl(folderId, page.page_number)}
+                    alt={page.filename}
+                    draggable={false}
+                    onPointerDown={stageProps.onPointerDown}
+                  />
+                  {pageHeaderBoxes.length > 0 ? (
+                    <div className="page-header-overlay" aria-hidden="true">
+                      {pageHeaderBoxes.map((box, i) => (
+                        <div
+                          key={`${box.text}-${i}`}
+                          className="page-header-box"
+                          title={box.text}
+                          style={{
+                            left: `${box.left * 100}%`,
+                            top: `${box.top * 100}%`,
+                            width: `${box.width * 100}%`,
+                            height: `${Math.max(box.height * 100, 0.8)}%`,
+                          }}
+                        >
+                          <span className="page-header-box-label">{box.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               ) : (
                 <div className="ocr-empty">
                   {loadingFolder ? "Loading pages…" : "No pages in this folder"}
@@ -726,11 +819,32 @@ export default function FolderViewer({
                     <span className="ocr-match-value">
                       {loadingOcr ? "…" : formatMatchRatePercent(ocrMatch.rate)}
                     </span>
-                    {!loadingOcr && ocrMatch.engines.length > 0 ? (
+                    {!loadingOcr && ocrMatch.count > 0 ? (
                       <span className="ocr-match-engines">
-                        {ocrMatch.engines.join(" · ")}
+                        ({ocrMatch.count}{" "}
+                        {ocrMatch.count === 1 ? "Method" : "Methods"})
                       </span>
                     ) : null}
+                  </div>
+                  <div
+                    className={`ocr-quality-badge ${
+                      pageQualityLabel
+                        ? `is-${pageQualityLabel.toLowerCase()}`
+                        : "is-na"
+                    }`}
+                    title={
+                      pageQualityLabel
+                        ? `Page quality from imaging analysis: ${pageQualityLabel}`
+                        : "Page quality not available"
+                    }
+                    aria-label={`Quality ${pageQualityLabel ?? "NA"}`}
+                  >
+                    <span className="ocr-quality-label">Quality</span>
+                    <span className="ocr-quality-value">
+                      {loadingImaging && !pageQualityLabel
+                        ? "…"
+                        : pageQualityLabel ?? "NA"}
+                    </span>
                   </div>
                   {showHeaderToggle ? (
                     <label className="ocr-section-headers-toggle">
@@ -739,7 +853,7 @@ export default function FolderViewer({
                         checked={showSectionHeaders}
                         onChange={(e) => setShowSectionHeaders(e.target.checked)}
                       />
-                      Show section headers
+                      Show Headers
                     </label>
                   ) : null}
                 </div>

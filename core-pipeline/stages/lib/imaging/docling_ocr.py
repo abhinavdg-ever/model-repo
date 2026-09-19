@@ -400,7 +400,8 @@ def convert_image(image_path: Path, converter: Any | None = None) -> dict[str, A
 
     Returns ``{markdown, document, content, section_headers}``. ``document``
     (full DoclingDocument dict) is omitted unless ``DOCLING_EXPORT_DOCUMENT=true``.
-    ``section_headers`` is always extracted for the review-ui bbox overlay.
+    ``section_headers`` is extracted then filtered to phrases ≥ the configured
+    semantic threshold against known clinical headers (MiniLM / lexical).
     """
     import time
 
@@ -412,6 +413,19 @@ def convert_image(image_path: Path, converter: Any | None = None) -> dict[str, A
     doc = result.document
     markdown = doc.export_to_markdown() or ""
     section_headers = extract_section_headers(doc)
+    try:
+        from stages.lib.imaging.section_header_match import filter_section_headers
+
+        before = len(section_headers)
+        section_headers = filter_section_headers(section_headers)
+        if before != len(section_headers):
+            logger.info(
+                "Section headers filtered %d → %d (semantic ≥ threshold)",
+                before,
+                len(section_headers),
+            )
+    except Exception as exc:
+        logger.warning("Section-header semantic filter skipped: %s", exc)
     export_doc = (
         os.environ.get("DOCLING_EXPORT_DOCUMENT") or "false"
     ).strip().casefold() in {"1", "true", "yes", "on"}

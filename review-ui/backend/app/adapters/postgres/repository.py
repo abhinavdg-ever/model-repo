@@ -22,6 +22,7 @@ from app.core.schemas import (
     ImagingPageResult,
     ImagingSectionsProcessed,
     ImagingVerificationDetails,
+    OcrSectionHeader,
     OcrTextResponse,
     PageSummary,
 )
@@ -352,24 +353,45 @@ class PostgresFolderRepository(FolderRepository):
 
     def get_ocr_text(self, folder_id: str, kind: str) -> OcrTextResponse:
         """Assemble OCR from ocr_results into ===== page ===== marker text for the UI."""
+        from app.adapters.local.repository import FINAL2_QUALITY_SKIP_MESSAGE
+
         normalized = _normalize_kind(kind)
         ocr_type = KIND_TO_OCR_TYPE[normalized]
 
         try:
             with self._connect() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        SELECT p.page_name, o.raw_text
-                        FROM ocr_results o
-                        JOIN chart_list c ON c.id = o.chart_id
-                        JOIN page_list p ON p.id = o.page_id
-                        WHERE c.chart_name = %s
-                          AND o.ocr_type = %s
-                        ORDER BY p.page_number NULLS LAST, p.id
-                        """,
-                        (folder_id, ocr_type),
-                    )
+                    if ocr_type == "azuredocintel":
+                        # Every page so Final2 quality-skips still appear in the UI.
+                        cur.execute(
+                            """
+                            SELECT p.page_name, o.raw_text, pss.skip_reason
+                            FROM page_list p
+                            JOIN chart_list c ON c.id = p.chart_id
+                            LEFT JOIN ocr_results o
+                              ON o.page_id = p.id AND o.ocr_type = %s
+                            LEFT JOIN page_stage_status pss
+                              ON pss.page_id = p.id
+                             AND pss.stage_name = 'ocr_final2'
+                             AND pss.pass_no = 1
+                            WHERE c.chart_name = %s
+                            ORDER BY p.page_number NULLS LAST, p.id
+                            """,
+                            (ocr_type, folder_id),
+                        )
+                    else:
+                        cur.execute(
+                            """
+                            SELECT p.page_name, o.raw_text, NULL::text AS skip_reason
+                            FROM ocr_results o
+                            JOIN chart_list c ON c.id = o.chart_id
+                            JOIN page_list p ON p.id = o.page_id
+                            WHERE c.chart_name = %s
+                              AND o.ocr_type = %s
+                            ORDER BY p.page_number NULLS LAST, p.id
+                            """,
+                            (folder_id, ocr_type),
+                        )
                     rows = cur.fetchall()
         except Exception as exc:
             raise HTTPException(
@@ -384,29 +406,54 @@ class PostgresFolderRepository(FolderRepository):
             )
 
         chunks: list[str] = []
-        for page_name, raw_text in rows:
+        headers_by_file: dict[str, list[OcrSectionHeader]] = {}
+        for page_name, raw_text, skip_reason in rows:
             body = (raw_text or "").strip()
+            parsed: dict[str, Any] | None = None
             if ocr_type in {"azuredocintel", "docling"} and body.startswith("{"):
                 try:
                     import json
 
-                    parsed = json.loads(body)
-                    if isinstance(parsed, dict) and (
-                        "content" in parsed or "markdown" in parsed
+                    maybe = json.loads(body)
+                    if isinstance(maybe, dict) and (
+                        "content" in maybe or "markdown" in maybe
                     ):
+                        parsed = maybe
                         body = str(
-                            parsed.get("content")
-                            or parsed.get("markdown")
+                            maybe.get("content")
+                            or maybe.get("markdown")
                             or ""
-                        )
+                        ).strip()
                 except Exception:
                     pass
+            if (
+                ocr_type == "azuredocintel"
+                and not body
+                and str(skip_reason or "").strip().lower() == "high_quality_printed"
+            ):
+                body = FINAL2_QUALITY_SKIP_MESSAGE
+            if ocr_type == "docling" and parsed is not None:
+                from app.adapters.local.repository import _section_headers_from_page
+
+                headers = _section_headers_from_page(parsed)
+                if headers:
+                    headers_by_file[str(page_name)] = headers
+                    headers_by_file[str(page_name).lower()] = headers
             chunks.append(f"===== {page_name} =====\n{body}".rstrip())
+
+        if ocr_type == "azuredocintel" and not any(
+            (c.split("\n", 1)[-1] if "\n" in c else "").strip() for c in chunks
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail=f"No ocr_results for chart={folder_id!r} ocr_type={ocr_type!r}",
+            )
 
         return OcrTextResponse(
             folder_id=folder_id,
             kind=normalized,
             text="\n\n".join(chunks),
+            section_headers_by_file=headers_by_file,
         )
 
     def _manifest_from_db(self, folder_id: str) -> ImagingManifestDetails | None:

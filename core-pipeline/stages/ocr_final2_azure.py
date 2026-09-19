@@ -215,6 +215,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         )
 
     with stage_run(chart_id, STAGE, force=force) as ctx:
+        hq_printed: set[int] = set()
         with connect() as conn:
             bj1 = get_blank_junk_flags(conn, chart_id, pass_no=1)
             pass1_skippers = non_printed_page_ids(conn, chart_id) | low_quality_page_ids(
@@ -278,6 +279,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             stored = get_ocr_texts(conn, chart_id, "azuredocintel")
 
         # Rebuild the combined JSON from the database, covering every page.
+        # HQ-printed skips are stamped so review-ui can show why Final2 is empty.
         out_pages: list[dict[str, Any]] = []
         for page in ctx.pages:
             raw = stored.get(page["id"])
@@ -292,15 +294,16 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     languages = list(parsed.get("languages") or [])
                 except (ValueError, AttributeError, TypeError):
                     content = raw
-            out_pages.append(
-                {
-                    "pageNumber": page.get("page_number"),
-                    "fileName": page["page_name"],
-                    "content": content,
-                    "pagesMeta": pages_meta,
-                    "languages": languages,
-                }
-            )
+            entry: dict[str, Any] = {
+                "pageNumber": page.get("page_number"),
+                "fileName": page["page_name"],
+                "content": content,
+                "pagesMeta": pages_meta,
+                "languages": languages,
+            }
+            if page["id"] in hq_printed and not str(content or "").strip():
+                entry["skippedReason"] = "high_quality_printed"
+            out_pages.append(entry)
         out = write_final2_json(ctx.chart_name, out_pages)
 
         return {
