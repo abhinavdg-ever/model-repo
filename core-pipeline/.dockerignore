@@ -1,0 +1,21 @@
+# Build context is `core-pipeline/`. Without this, `COPY .` ships the host
+# venv and weight files into the image (tens of GB).
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.env
+*.log
+.DS_Store
+._*
+.AppleDouble
+
+# Weights are mounted at runtime (MODELS_HOST_PATH), never baked in.
+models/
+!models/README.md
+
+# Editor / agent noise
+.claude/
+.cursor/
