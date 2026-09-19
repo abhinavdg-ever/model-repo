@@ -11,6 +11,12 @@ and `data/folders`.
 
 Algorithms: [LOGIC.md](LOGIC.md). Shape: [ARCHITECTURE.md](ARCHITECTURE.md).
 
+**Windows tips (every command below):** use `curl.exe` (not `curl`),
+`py -3.12` (not plain `python` if 3.13 is default),
+`.venv\Scripts\Activate.ps1`, and `$env:NAME = "value"` for env vars.
+If `Activate.ps1` is blocked:
+`Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`.
+
 ---
 
 ## Local: Environment set up
@@ -23,29 +29,48 @@ Algorithms: [LOGIC.md](LOGIC.md). Shape: [ARCHITECTURE.md](ARCHITECTURE.md).
 | `tesseract` | `brew install tesseract` | `apt install tesseract-ocr` | [UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki) |
 | `psql` | `brew install libpq` | `apt install postgresql-client` | PostgreSQL installer |
 | Node 20+ (frontend) | `brew install node` | `apt install nodejs npm` | `winget install OpenJS.NodeJS.LTS` |
+| Git LFS (HW `.pth`) | `brew install git-lfs` | `apt install git-lfs` | `winget install GitHub.GitLFS` |
 
-Set `TESSERACT_CMD` when `tesseract` is not on `PATH` (always on Windows).
+Set `TESSERACT_CMD` when `tesseract` is not on `PATH` (always on Windows), e.g.
+`TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe`.
 
 ### 2. Database schema
 
 `schema/` has three files: `clear_schema.sql`, `v1.sql`, `v2.sql`.
 
 ```bash
+# macOS / Linux
 psql "$DATABASE_URL" -f schema/v1.sql            # required
 psql "$DATABASE_URL" -f schema/v2.sql            # optional — next phase
 psql "$DATABASE_URL" -c "SELECT count(*) FROM pipeline_stage;"   # 8, or 12 with v2
 ```
 
+```powershell
+# Windows
+psql $env:DATABASE_URL -f schema/v1.sql
+psql $env:DATABASE_URL -f schema/v2.sql
+psql $env:DATABASE_URL -c "SELECT count(*) FROM pipeline_stage;"
+```
+
 Wipe and re-apply:
 
 ```bash
+# macOS / Linux
 psql "$DATABASE_URL" -f schema/clear_schema.sql
 psql "$DATABASE_URL" -f schema/v1.sql
 psql "$DATABASE_URL" -f schema/v2.sql
 # or: ./scripts/reset_db.sh --yes
 ```
 
-PowerShell: `$env:DATABASE_URL`. Empty `pipeline_stage` ⇒ `/ready` returns 503.
+```powershell
+# Windows
+psql $env:DATABASE_URL -f schema/clear_schema.sql
+psql $env:DATABASE_URL -f schema/v1.sql
+psql $env:DATABASE_URL -f schema/v2.sql
+# or: .\scripts\reset_db.ps1 -Yes   (if present)
+```
+
+Empty `pipeline_stage` ⇒ `/ready` returns 503.
 
 ### 3. Python packages + `.env`
 
@@ -62,7 +87,20 @@ pip install -r requirements.txt
 cp ../.env.example ../.env    # or review-ui/.env.example
 ```
 
-Windows: `py -3.12 -m venv .venv` then `.venv\Scripts\Activate.ps1`.
+```powershell
+# Windows
+cd core-pipeline
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item .env.example .env   # set DATABASE_URL at minimum
+
+cd ..\review-ui\backend
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item ..\.env.example ..\.env
+```
 
 Optional pip extras:
 
@@ -104,7 +142,7 @@ to `languages,barcodes` (`AZURE_DI_FEATURES=off` to disable).
 ## Prerequisites (Models)
 
 Weight files are **not** on PyPI. Place them under `core-pipeline/models/`
-(gitignored):
+(RapidOCR / NER gitignored; HW via Git LFS):
 
 ```
 models/hw/handwritten_printed_convnext_tiny.pth   # Git LFS — see below
@@ -119,8 +157,15 @@ models/ner/          # GLiNER via model_downloader
 **Handwritten / printed (ConvNeXt)** — in the repo via Git LFS:
 
 ```bash
+# macOS / Linux
 git lfs install
 git lfs pull          # after clone, or if models/hw/*.pth is a tiny pointer file
+```
+
+```powershell
+# Windows
+git lfs install
+git lfs pull
 ```
 
 Place / verify: `core-pipeline/models/hw/handwritten_printed_convnext_tiny.pth`  
@@ -132,7 +177,9 @@ Runtime: `pip install -r requirements-docling.txt` (torch + torchvision).
 | RapidOCR four files | **rapidocr-onnxruntime** (base `requirements.txt`) |
 | GLiNER | rules-only member verify — **no chart can be Rejected** |
 
-RapidOCR download (ModelScope v3.9.2):
+### RapidOCR download (ModelScope v3.9.2)
+
+**macOS / Linux**
 
 ```bash
 cd core-pipeline && mkdir -p models/rapidocr
@@ -146,16 +193,52 @@ curl -L -o models/rapidocr/ppocrv6_dict.txt \
 pip install -r requirements-docling.txt
 ```
 
-GLiNER:
+**Windows (PowerShell)** — `BASE=...` is bash-only; use `$base` and `curl.exe`:
+
+```powershell
+cd core-pipeline
+New-Item -ItemType Directory -Force -Path models\rapidocr | Out-Null
+$base = "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2"
+curl.exe -L -o models\rapidocr\PP-OCRv6_det_small.pth "$base/torch/PP-OCRv6/det/PP-OCRv6_det_small.pth"
+curl.exe -L -o models\rapidocr\PP-OCRv6_rec_small.pth "$base/torch/PP-OCRv6/rec/PP-OCRv6_rec_small.pth"
+curl.exe -L -o models\rapidocr\ch_ptocr_mobile_v2.0_cls_mobile.pth "$base/torch/PP-OCRv4/cls/ch_ptocr_mobile_v2.0_cls_mobile.pth"
+curl.exe -L -o models\rapidocr\ppocrv6_dict.txt "$base/paddle/PP-OCRv6/rec/PP-OCRv6_rec_small/ppocrv6_dict.txt"
+pip install -r requirements-docling.txt
+```
+
+### GLiNER
+
+Ids: `gliner_low` (smallest) · `gliner_medium` (default) · `gliner_large`.
 
 ```bash
+# macOS / Linux
 pip install -r requirements-ner.txt
+export MEMBER_NER_MODEL_ID=gliner_low    # or gliner_medium / gliner_large
 python -m stages.lib.member.extractors.ner_based.model_downloader
 export MEMBER_NER_ENABLED=true
 ```
 
-Confirm: `curl -s localhost:8001/health | python -m json.tool` — check
-`docling_final1.ready` / `member_ner.ready`.
+```powershell
+# Windows
+pip install -r requirements-ner.txt
+$env:MEMBER_NER_MODEL_ID = "gliner_low"   # or set in .env
+python -m stages.lib.member.extractors.ner_based.model_downloader
+$env:MEMBER_NER_ENABLED = "true"          # or MEMBER_NER_ENABLED=true in .env
+```
+
+Confirm:
+
+```bash
+# macOS / Linux
+curl -s localhost:8001/health | python -m json.tool
+```
+
+```powershell
+# Windows
+curl.exe -s localhost:8001/health | python -m json.tool
+```
+
+Check `docling_final1.ready` / `member_ner.ready`.
 
 ---
 
@@ -164,14 +247,23 @@ Confirm: `curl -s localhost:8001/health | python -m json.tool` — check
 ### core-pipeline (`:8001`)
 
 ```bash
+# macOS / Linux
 cd core-pipeline && source .venv/bin/activate
 python cli.py serve
 # equivalent: uvicorn api.main:app --host 0.0.0.0 --port 8001
 ```
 
+```powershell
+# Windows
+cd core-pipeline
+.venv\Scripts\Activate.ps1
+python cli.py serve
+```
+
 ### review-ui
 
 ```bash
+# macOS / Linux
 # API — :8002 locally (:3000 in Docker)
 cd review-ui/backend && source .venv/bin/activate
 uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
@@ -180,11 +272,30 @@ uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
 cd review-ui/frontend && npm install && npm run dev
 ```
 
+```powershell
+# Windows
+cd review-ui\backend
+.venv\Scripts\Activate.ps1
+uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
+
+# separate terminal
+cd review-ui\frontend
+npm install
+npm run dev
+```
+
 Checks:
 
 ```bash
+# macOS / Linux
 curl -fsS localhost:8001/health
 curl -fsS localhost:8001/ready    # 503 until DB + pipeline_stage are good
+```
+
+```powershell
+# Windows
+curl.exe -fsS localhost:8001/health
+curl.exe -fsS localhost:8001/ready
 ```
 
 `DATA_MODE=local` (review-ui default) reads `data/folders`.
@@ -232,7 +343,7 @@ Do not mix blob and local. Folder name **is** the chart name.
 | `through` / `only` / `force` | optional | — | See above |
 
 ```bash
-# Minimal local
+# macOS / Linux — minimal local
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
   -d '{"local_read_path":"/data/inbox","local_folder_name":"52743839_44976074"}'
 
@@ -248,6 +359,20 @@ curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
        "blob_read_folder_name":"52743839_44976074",
        "blob_write_path":"Processed/Run1",
        "run_id":"R1","batch_id":"B1"}'
+```
+
+```powershell
+# Windows — minimal local (use a Windows path inside the JSON)
+curl.exe -X POST localhost:8001/api/charts/run -H "Content-Type: application/json" `
+  -d "{\"local_read_path\":\"C:/data/inbox\",\"local_folder_name\":\"52743839_44976074\"}"
+
+# Local + write + stop before Azure OCR
+curl.exe -X POST localhost:8001/api/charts/run -H "Content-Type: application/json" `
+  -d "{\"local_read_path\":\"C:/data/inbox\",\"local_folder_name\":\"52743839_44976074\",\"local_write_path\":\"C:/data/outbox\",\"through\":\"ocr_final1\"}"
+
+# Blob
+curl.exe -X POST localhost:8001/api/charts/run -H "Content-Type: application/json" `
+  -d "{\"blob_container\":\"imaging-pipeline\",\"blob_read_path\":\"run1/batch1\",\"blob_read_folder_name\":\"52743839_44976074\",\"blob_write_path\":\"Processed/Run1\",\"run_id\":\"R1\",\"batch_id\":\"B1\"}"
 ```
 
 ### `POST /api/charts/batch` — every chart folder under a path
@@ -266,8 +391,15 @@ Same vocabulary as `/run` **without** a folder name (each subfolder is a chart).
 | `through` / `only` / `force` | optional | — | |
 
 ```bash
+# macOS / Linux
 curl -X POST localhost:8001/api/charts/batch -H 'Content-Type: application/json' \
   -d '{"local_read_path":"/data/inbox","limit":1,"through":"ocr_prelim","workers":2}'
+```
+
+```powershell
+# Windows
+curl.exe -X POST localhost:8001/api/charts/batch -H "Content-Type: application/json" `
+  -d "{\"local_read_path\":\"C:/data/inbox\",\"limit\":1,\"through\":\"ocr_prelim\",\"workers\":2}"
 ```
 
 Progress: `progress.txt` in the batch parent folder (`processing N/X charts…`)
@@ -289,8 +421,15 @@ and under each chart’s `imaging/progress.txt` (`processing N/X files…`).
 | `through` / `only` / `force` | optional | resume incomplete pages |
 
 ```bash
+# macOS / Linux
 curl -X POST localhost:8001/api/charts/7/rerun -H 'Content-Type: application/json' \
   -d '{"only":["dos_extract"]}'
+```
+
+```powershell
+# Windows
+curl.exe -X POST localhost:8001/api/charts/7/rerun -H "Content-Type: application/json" `
+  -d "{\"only\":[\"dos_extract\"]}"
 ```
 
 ### `POST /api/manifest/sweep`
@@ -328,6 +467,7 @@ curl -X POST localhost:8001/api/charts/7/rerun -H 'Content-Type: application/jso
 ### CLI (same options as the API)
 
 ```bash
+# macOS / Linux
 cd core-pipeline
 python cli.py serve
 python cli.py stages
@@ -338,12 +478,33 @@ python cli.py rerun 7 --only dos_extract
 python cli.py manifest --local ../review-ui/data/metadata/metadata_R1_B1.csv
 ```
 
+```powershell
+# Windows
+cd core-pipeline
+python cli.py serve
+python cli.py stages
+python cli.py run --local-read-path C:\data\inbox --folder-name 52743839_44976074
+python cli.py batch --local-read-path C:\data\inbox --limit 1 --through ocr_prelim
+python cli.py write 52743839_44976074 --local-write-path C:\data\outbox
+python cli.py rerun 7 --only dos_extract
+python cli.py manifest --local ..\review-ui\data\metadata\metadata_R1_B1.csv
+```
+
 ### Utilities — load a folder of `metadata_Rn_Bn` files
 
 ```bash
+# macOS / Linux
 cd core-pipeline && source .venv/bin/activate
 python ../utilities/load_metadata_manifests.py
 python ../utilities/load_metadata_manifests.py /path/to/metadata/
+```
+
+```powershell
+# Windows
+cd core-pipeline
+.venv\Scripts\Activate.ps1
+python ..\utilities\load_metadata_manifests.py
+python ..\utilities\load_metadata_manifests.py C:\path\to\metadata\
 ```
 
 See [`utilities/README.md`](../utilities/README.md).
@@ -355,10 +516,24 @@ See [`utilities/README.md`](../utilities/README.md).
 Each service has its own `docker-compose.yml`. Order does not matter.
 
 ```bash
+# macOS / Linux
 cd core-pipeline && cp .env.example .env && docker compose up -d --build
 curl -fsS localhost:8001/ready
 
 cd ../review-ui && cp .env.example .env && docker compose up -d --build
+# UI: http://localhost:3001   API: http://localhost:3000
+```
+
+```powershell
+# Windows
+cd core-pipeline
+Copy-Item .env.example .env
+docker compose up -d --build
+curl.exe -fsS localhost:8001/ready
+
+cd ..\review-ui
+Copy-Item .env.example .env
+docker compose up -d --build
 # UI: http://localhost:3001   API: http://localhost:3000
 ```
 
@@ -368,8 +543,17 @@ host folder first).
 NER in Docker:
 
 ```bash
+# macOS / Linux
 docker compose build --build-arg WITH_NER=true
 NER_MODELS_HOST_PATH=./models/ner MEMBER_NER_ENABLED=true docker compose up -d
+```
+
+```powershell
+# Windows
+docker compose build --build-arg WITH_NER=true
+$env:NER_MODELS_HOST_PATH = "./models/ner"
+$env:MEMBER_NER_ENABLED = "true"
+docker compose up -d
 ```
 
 ---
@@ -383,5 +567,8 @@ NER_MODELS_HOST_PATH=./models/ner MEMBER_NER_ENABLED=true docker compose up -d
 | `final2` empty | Set Azure DI endpoint + key |
 | `manifest_missing` | Sweep manifest, then `rerun` with `only: ["member_verify"]` |
 | No Rejected / `ner_disabled` | `GET /health` → `member_ner.reason` |
-| Python 3.13 pip failure | Use 3.12 |
+| Python 3.13 pip failure | Use 3.12 (`py -3.12` on Windows) |
 | PowerShell `curl` oddities | Use `curl.exe` |
+| `BASE is not recognized` | Bash-only; use `$base = "..."` in PowerShell |
+| `Activate.ps1` blocked | `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` |
+| HW `.pth` is ~1 KB after clone | `git lfs install` then `git lfs pull` |
