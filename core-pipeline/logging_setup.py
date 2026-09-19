@@ -17,11 +17,17 @@ and a 400-page chart buries its own progress under a few thousand lines of
 The SDK is not misbehaving — that output is genuinely useful when debugging a
 403 or a throttle. It is just three orders of magnitude noisier than the thing
 it is interleaved with. So it is off by default and one variable away.
+
+File logs (optional, on by default): daily rotation under ``LOG_DIR``
+(default ``core-pipeline/logs/``) as ``core-pipeline.log`` + dated backups.
+Stdout still works for ``docker compose logs``.
 """
 from __future__ import annotations
 
 import logging
 import os
+from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
 
 # Setting the parent `azure` logger covers azure.core, azure.identity,
 # azure.storage.blob and azure.ai.documentintelligence in one line — child
@@ -37,6 +43,9 @@ NOISY_LOGGERS = ("azure", "urllib3", "msal")
 ALWAYS_QUIET = ("azure.identity._credentials.chained",)
 
 DEFAULT_AZURE_LOG_LEVEL = "WARNING"
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+# Keep a month of daily files; older ones are removed on rotate.
+LOG_BACKUP_COUNT = int(os.environ.get("LOG_BACKUP_DAYS") or "30")
 
 
 def azure_log_level() -> int:
@@ -67,14 +76,64 @@ def quiet_noisy_loggers() -> int:
     return level
 
 
+def resolve_log_dir() -> Path:
+    """Directory for daily log files. ``LOG_DIR`` overrides the default."""
+    raw = (os.environ.get("LOG_DIR") or "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return Path(__file__).resolve().parent / "logs"
+
+
+def _flag(name: str, default: bool = True) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or not str(raw).strip():
+        return default
+    return str(raw).strip().casefold() not in {"0", "false", "no", "off"}
+
+
+def _attach_daily_file_handler(level: int) -> Path | None:
+    """Write ``logs/core-pipeline.log``, rotate at midnight to dated backups."""
+    if not _flag("LOG_TO_FILE", True):
+        return None
+
+    log_dir = resolve_log_dir()
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return None
+
+    path = log_dir / "core-pipeline.log"
+    absolute = str(path.resolve())
+    root = logging.getLogger()
+    for handler in root.handlers:
+        if isinstance(handler, TimedRotatingFileHandler) and getattr(
+            handler, "baseFilename", None
+        ) == absolute:
+            return path
+
+    handler = TimedRotatingFileHandler(
+        absolute,
+        when="midnight",
+        interval=1,
+        backupCount=max(1, LOG_BACKUP_COUNT),
+        encoding="utf-8",
+        utc=False,
+    )
+    handler.suffix = "%Y-%m-%d"
+    handler.setLevel(level)
+    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    root.addHandler(handler)
+    return path
+
+
 def configure_logging(level: int = logging.INFO) -> None:
-    """Root logger at `level`, SDK loggers quieted.
+    """Root logger at `level`, SDK loggers quieted, optional daily file log.
 
     Call once, at process start, before anything logs.
     """
     logging.basicConfig(
         level=level,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        format=LOG_FORMAT,
     )
     # basicConfig is a no-op when the root logger already has a handler — which
     # it does under pytest, and under anything that configured logging before
@@ -83,3 +142,11 @@ def configure_logging(level: int = logging.INFO) -> None:
     # directly does not disturb whatever handlers are already installed.
     logging.getLogger().setLevel(level)
     quiet_noisy_loggers()
+
+    log_path = _attach_daily_file_handler(level)
+    if log_path is not None:
+        logging.getLogger("core-pipeline").info(
+            "Daily file log: %s (rotates at midnight, keep %d days)",
+            log_path,
+            LOG_BACKUP_COUNT,
+        )

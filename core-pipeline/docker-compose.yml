@@ -80,6 +80,10 @@ services:
       SKIP_OCR: ${SKIP_OCR:-false}
 
       TESSERACT_CMD: /usr/bin/tesseract
+      # Daily file logs (also still on stdout for `docker compose logs`).
+      LOG_DIR: /app/core-pipeline/logs
+      LOG_TO_FILE: ${LOG_TO_FILE:-true}
+      LOG_BACKUP_DAYS: ${LOG_BACKUP_DAYS:-30}
     volumes:
       # Chart workspace — written here, read by review-ui.
       - ${DATA_HOST_PATH:-../review-ui/data/folders}:/data/folders
@@ -87,6 +91,7 @@ services:
       # Weights scp'd onto the host (hw/, rapidocr/, semantic-model/, ner/).
       # Packages are in the image; only the files live here.
       - ${MODELS_HOST_PATH:-./models}:/app/core-pipeline/models:ro
+      - ${LOGS_HOST_PATH:-./logs}:/app/core-pipeline/logs
     extra_hosts:
       # Lets DATABASE_URL point at a Postgres on the docker host.
       - "host.docker.internal:host-gateway"

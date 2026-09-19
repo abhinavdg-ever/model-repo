@@ -16,6 +16,10 @@ __pycache__/
 models/
 !models/README.md
 
+# Runtime daily logs (mounted in compose); never bake into the image.
+logs/
+!logs/README.md
+
 # Editor / agent noise
 .claude/
 .cursor/

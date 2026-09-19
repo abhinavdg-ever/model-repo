@@ -58,6 +58,11 @@ core-pipeline/models/**
 *.pth
 *.pkl
 
+# Daily pipeline logs (core-pipeline/logs/)
+core-pipeline/logs/**
+!core-pipeline/logs/README.md
+*.log
+
 # Standalone managed-identity connection test. Its .env is committed on
 # purpose — it holds the identity's client/principal IDs and blanks, never a
 # key, a connection string or a SAS token. The venv is not.

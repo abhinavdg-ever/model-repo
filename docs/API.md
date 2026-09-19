@@ -619,3 +619,8 @@ docker compose up -d
 | `BASE is not recognized` | Bash-only; use `$base = "..."` in PowerShell |
 | `Activate.ps1` blocked | `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` |
 | HW `.pth` is ~1 KB after clone | `git lfs install` then `git lfs pull` |
+
+**Pipeline file logs** (Docker): `core-pipeline/logs/core-pipeline.log`, rotated
+at midnight to `core-pipeline.log.YYYY-MM-DD` (keep `LOG_BACKUP_DAYS`, default
+30). Host path is `LOGS_HOST_PATH` (default `./logs`). Still also on stdout:
+`docker compose logs -f api`.
