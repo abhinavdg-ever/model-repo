@@ -354,7 +354,7 @@ One message per chart. It carries a *reference*, never page content:
   "write": { "blob_write_path": "Processed/Run1", "write_mode": "skip_orig_pages" },
   "through": null,
   "only": null,
-  "force": false,
+  "force": true,
   "run_id": "R1",
   "batch_id": "B1"
 }

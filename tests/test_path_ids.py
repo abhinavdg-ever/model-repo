@@ -58,15 +58,21 @@ def test_normalize_fs_and_blob_paths():
     assert normalize_folder_name("52743839_44976074/") == "52743839_44976074"
 
 
-def test_run_request_accepts_windows_local_paths():
+def test_run_request_force_defaults_true():
     from api.main import RunRequest
 
-    body = RunRequest(
-        local_read_path=r"C:\data\inbox",
-        local_folder_name=r"charts\52743839_44976074",
-        local_write_path=r"C:\data\outbox\\",
-        blob_read_path=None,
-    )
-    assert body.local_read_path == "C:/data/inbox"
-    assert body.local_folder_name == "52743839_44976074"
-    assert body.local_write_path == "C:/data/outbox"
+    body = RunRequest(chart_id=1)
+    assert body.force is True
+
+
+def test_dotenv_override_wins_for_ner_model_id(tmp_path, monkeypatch):
+    """Local uvicorn: .env beats a leftover shell export of gliner_low."""
+    import os
+
+    from dotenv import load_dotenv
+
+    env = tmp_path / ".env"
+    env.write_text("MEMBER_NER_MODEL_ID=gliner_medium\n", encoding="utf-8")
+    monkeypatch.setenv("MEMBER_NER_MODEL_ID", "gliner_low")
+    load_dotenv(env, override=True)
+    assert os.environ["MEMBER_NER_MODEL_ID"] == "gliner_medium"

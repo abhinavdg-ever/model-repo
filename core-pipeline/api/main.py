@@ -22,7 +22,10 @@ if str(ROOT) not in sys.path:
 try:
     from dotenv import load_dotenv
 
-    load_dotenv(ROOT / ".env")
+    # .env is the source of truth for local uvicorn. Without override=True a
+    # leftover shell export (e.g. MEMBER_NER_MODEL_ID=gliner_low from the docs)
+    # silently wins over the value in the file.
+    load_dotenv(ROOT / ".env", override=True)
 except ImportError:
     pass
 
@@ -266,8 +269,11 @@ class RunRequest(StageSelection):
         description="Override batch id. Default: inferred from path (Batch1/B1 → B1).",
     )
     force: bool = Field(
-        False,
-        description="Reprocess pages already completed. Default resumes instead.",
+        True,
+        description=(
+            "Reprocess pages already completed (default). "
+            "Set false to resume and skip completed pages (final2 is billed)."
+        ),
     )
 
     @field_validator(
@@ -344,7 +350,13 @@ class BatchRequest(StageSelection):
     )
 
     # --- both ---
-    force: bool = False
+    force: bool = Field(
+        True,
+        description=(
+            "Reprocess pages already completed (default). "
+            "Set false to resume and skip completed pages."
+        ),
+    )
     limit: Optional[int] = Field(
         None, description="Only the first N charts — use for a dry run first"
     )

@@ -51,9 +51,9 @@ def _load_env() -> None:
     mismatch impossible: this is the module that reads the variables, so every
     entrypoint agrees by construction rather than by remembering.
 
-    Never overrides a variable already set, which is load_dotenv's default. An
-    explicit `MEMBER_NER_MODEL_ID=x python -m ...` still wins, and a process
-    that already loaded .env is unaffected.
+    ``override=True`` so a leftover shell export (common after copying the old
+    docs' ``export MEMBER_NER_MODEL_ID=gliner_low``) cannot beat the value in
+    core-pipeline/.env when running under local uvicorn / CLI.
     """
     try:
         from dotenv import load_dotenv
@@ -62,7 +62,7 @@ def _load_env() -> None:
     # .../stages/lib/member/extractors/ner_based -> core-pipeline
     env_file = HERE.parents[4] / ".env"
     if env_file.is_file():
-        load_dotenv(env_file)
+        load_dotenv(env_file, override=True)
 
 
 _load_env()

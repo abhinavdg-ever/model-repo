@@ -132,6 +132,8 @@ def _write_local(
     overwrite: bool,
     write_mode: str = SKIP_ORIG_PAGES,
 ) -> dict[str, Any]:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     dest = (dest_root.expanduser().resolve()) / chart_name
     if dest == root.resolve():
         raise RuntimeError(
@@ -139,18 +141,36 @@ def _write_local(
             "onto itself would do nothing and risk truncating the source"
         )
 
-    written = 0
+    to_copy: list[Path] = []
     skipped = 0
-    total_bytes = 0
     for path in files:
         target = dest / path.relative_to(root)
         if not overwrite and _same_file(path, target):
             skipped += 1
             continue
+        to_copy.append(path)
+
+    written = 0
+    total_bytes = 0
+
+    def _one(path: Path) -> int:
+        target = dest / path.relative_to(root)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)
-        written += 1
-        total_bytes += path.stat().st_size
+        return path.stat().st_size
+
+    # Parallel copies help when the destination is a network share / slow disk.
+    workers = max(1, min(8, len(to_copy)))
+    if workers == 1:
+        for path in to_copy:
+            total_bytes += _one(path)
+            written += 1
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(_one, path) for path in to_copy]
+            for fut in as_completed(futures):
+                total_bytes += fut.result()
+                written += 1
 
     logger.info(
         "Wrote chart %s: %d file(s) written, %d skipped (already present), "
@@ -178,8 +198,15 @@ def _write_blob(
     overwrite: bool,
     write_mode: str = SKIP_ORIG_PAGES,
 ) -> dict[str, Any]:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     from azure_retry import call_with_retry
-    from config import AZURE_RETRY_ATTEMPTS, AZURE_RETRY_BASE_DELAY, AZURE_RETRY_MAX_DELAY
+    from config import (
+        AZURE_BLOB_CONNECTION_POOL_SIZE,
+        AZURE_RETRY_ATTEMPTS,
+        AZURE_RETRY_BASE_DELAY,
+        AZURE_RETRY_MAX_DELAY,
+    )
     from db.blob_store import (
         ensure_blob_ready,
         get_container_client,
@@ -207,24 +234,47 @@ def _write_blob(
             label=f"blob.list:{container}/{prefix}",
         )
 
-    written = 0
+    to_upload: list[tuple[Path, str, int]] = []
     skipped = 0
-    total_bytes = 0
     for path in files:
         name = f"{prefix}{path.relative_to(root).as_posix()}"
         size = path.stat().st_size
         if not overwrite and existing_sizes.get(name) == size:
             skipped += 1
             continue
+        to_upload.append((path, name, size))
+
+    written = 0
+    total_bytes = 0
+
+    def _one(item: tuple[Path, str, int]) -> int:
+        path, name, size = item
+        # Open inside the worker — shared file handles are not thread-safe
+        # across upload retries (seek(0) on a shared handle races).
         with path.open("rb") as handle:
             upload_blob(container or "", name, handle, overwrite=True)
-        written += 1
-        total_bytes += size
+        return size
+
+    # Sequential uploads were the bottleneck (one round-trip per page). Cap
+    # concurrency by the configured blob pool size so we do not stampede IMDS.
+    pool_cap = max(1, min(int(AZURE_BLOB_CONNECTION_POOL_SIZE or 50), 32))
+    workers = max(1, min(pool_cap, len(to_upload)))
+    if workers == 1:
+        for item in to_upload:
+            total_bytes += _one(item)
+            written += 1
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(_one, item) for item in to_upload]
+            for fut in as_completed(futures):
+                total_bytes += fut.result()
+                written += 1
 
     logger.info(
         "Wrote chart %s: %d file(s) written, %d skipped (already present), "
-        "%.1f MB -> %s/%s",
+        "%.1f MB -> %s/%s (workers=%d)",
         chart_name, written, skipped, total_bytes / 1_048_576, container, prefix,
+        workers,
     )
     return {
         "chart_name": chart_name,

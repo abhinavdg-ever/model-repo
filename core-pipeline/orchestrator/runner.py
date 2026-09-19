@@ -95,7 +95,7 @@ def resolve_stage(token: str) -> int:
 def run_pipeline_for_chart(
     chart_id: int,
     *,
-    force: bool = False,
+    force: bool = True,
     only: Optional[list[str]] = None,
     through: Optional[str] = None,
     skip_ocr: Optional[bool] = None,
@@ -240,7 +240,7 @@ def ingest_and_run(
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
     run_pipeline: bool = True,
-    force: bool = False,
+    force: bool = True,
     only: Optional[list[str]] = None,
     through: Optional[str] = None,
     skip_ocr: Optional[bool] = None,

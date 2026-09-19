@@ -325,7 +325,7 @@ Usable on `/run` and `/batch-run`:
 |---|---|---|---|
 | `through` | string | omit | Run from the top, **stop after** this stage |
 | `only` | string[] | omit | Run **just** these stages against existing outputs |
-| `force` | bool | `false` | Reprocess completed pages (**final2 is billed**) |
+| `force` | bool | `true` | Reprocess completed pages (**final2 is billed**). Set `false` to resume. |
 | `skip_ocr` | bool | omit | Per-request override for `SKIP_OCR`. `true` = reuse on-disk `ocr/` (even if `.env` has `SKIP_OCR=false`). `false` = always run OCR. omit = honour env. Ignored when `force=true` |
 
 ### `POST /api/charts/run` — one chart

@@ -14,7 +14,7 @@ if str(ROOT) not in sys.path:
 try:
     from dotenv import load_dotenv
 
-    load_dotenv(ROOT / ".env")
+    load_dotenv(ROOT / ".env", override=True)
 except ImportError:
     pass
 
@@ -106,8 +106,12 @@ def main() -> None:
     p_run.add_argument("--local-write-path", help="Directory to write results to")
     add_write_flags(p_run)
     p_run.add_argument(
-        "--force", action="store_true", help="Reprocess pages already completed"
+        "--resume",
+        dest="force",
+        action="store_false",
+        help="Skip pages already completed (default: reprocess / force=true)",
     )
+    p_run.set_defaults(force=True)
     add_stage_flags(p_run)
     p_run.add_argument("--run-id")
     p_run.add_argument("--batch-id")
@@ -127,7 +131,13 @@ def main() -> None:
         parser_obj.add_argument("--blob-write-path", help="Prefix to write each chart to")
         parser_obj.add_argument("--local-write-path", help="Directory to write each chart to")
         add_write_flags(parser_obj)
-        parser_obj.add_argument("--force", action="store_true", help="Reprocess pages already done")
+        parser_obj.add_argument(
+            "--resume",
+            dest="force",
+            action="store_false",
+            help="Skip pages already completed (default: reprocess / force=true)",
+        )
+        parser_obj.set_defaults(force=True)
         add_stage_flags(parser_obj)
         parser_obj.add_argument("--no-pipeline", action="store_true", help="Intake only")
         parser_obj.add_argument("--limit", type=int, help="Only the first N charts (dry runs)")

@@ -178,16 +178,20 @@ sequenceDiagram
   AZ-->>DB: 400 rows 'completed'
   O--xO: crash
 
-  Note over O,AZ: Re-run — resumes
+  Note over O,AZ: Re-run — force=true (default) reprocesses all
   C->>O: POST /api/charts/run {"chart_id":…}
+  O->>AZ: analyse pages 1…500 again
+  Note right of AZ: billed again
+
+  Note over O,AZ: Optional resume
+  C->>O: POST /api/charts/run {"chart_id":…,"force":false}
   O->>DB: pages_needing_stage('ocr_final2')
   DB-->>O: pages 401…500 only
   O->>AZ: analyse 100 pages
-  Note right of AZ: 400 pages not re-billed
 ```
 
-- `POST /run` with `chart_id` (or `chart_name`) and no body extras → **resume**: completed and skipped pages are left alone.
-- `{"force": true}` → reprocess everything.
+- Default / omit `force` → **reprocess** everything (`force=true`).
+- `{"force": false}` → **resume**: completed and skipped pages are left alone.
 - `{"only": ["member_verify"]}` → run just that stage.
 
 ---

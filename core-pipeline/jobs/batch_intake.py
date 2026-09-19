@@ -303,7 +303,7 @@ def run_batch(
     blob_write_path: Optional[str] = None,
     write_mode: str = "skip_orig_pages",
     overwrite: bool = False,
-    force: bool = False,
+    force: bool = True,
     run_pipeline: bool = True,
     only: Optional[list[str]] = None,
     through: Optional[str] = None,
