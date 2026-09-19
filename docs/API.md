@@ -315,6 +315,16 @@ python cli.py rerun 7 --only dos_extract
 python cli.py manifest --local ../review-ui/data/metadata/metadata_R1_B1.csv
 ```
 
+### Utilities — load a folder of `metadata_Rn_Bn` files
+
+```bash
+# From the repo root (uses core-pipeline/.env DATABASE_URL)
+python utilities/load_metadata_manifests.py
+python utilities/load_metadata_manifests.py /path/to/metadata/
+```
+
+See [`utilities/README.md`](../utilities/README.md).
+
 ---
 
 ## Docker
