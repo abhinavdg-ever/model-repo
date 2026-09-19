@@ -89,6 +89,7 @@ export function isUsableOcrPayload(text: string): boolean {
   if (text === "OCR unavailable") return false;
   if (text.startsWith("No OCR text found")) return false;
   if (text.startsWith("Skipped for High Quality")) return false;
+  if (text.startsWith("Skipped for Blank")) return false;
   if (text.startsWith("Skipped because of")) return false;
   return true;
 }

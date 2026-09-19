@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 from pathlib import Path
 from typing import Any, Optional
@@ -231,18 +232,57 @@ def converter_reason() -> Optional[str]:
     return _converter_reason
 
 
+def clean_docling_markdown(text: str) -> str:
+    """Strip Docling noise: image placeholders, empty tables, excess blank lines."""
+    import re
+
+    if not text:
+        return ""
+    out = re.sub(r"<!--\s*image\s*-->", "", text, flags=re.IGNORECASE)
+    # Drop lines that are only markdown table chrome (| --- | or empty cells).
+    cleaned_lines: list[str] = []
+    for line in out.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            cleaned_lines.append("")
+            continue
+        # Pure separator row: |---|---|
+        if re.fullmatch(r"\|?[\s\-:|]+\|?", stripped):
+            continue
+        # Row of only empty cells: | | | |
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if stripped.startswith("|") and all(c == "" for c in cells):
+            continue
+        cleaned_lines.append(line.rstrip())
+    # Collapse runs of blank lines to a single blank.
+    collapsed: list[str] = []
+    blank = False
+    for line in cleaned_lines:
+        if not line.strip():
+            if blank:
+                continue
+            collapsed.append("")
+            blank = True
+        else:
+            collapsed.append(line)
+            blank = False
+    return "\n".join(collapsed).strip() + ("\n" if collapsed else "")
+
+
 def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
     """Compact heading boxes for the review-ui overlay.
 
-    Always cheap relative to convert(); kept even when full document export is off.
-    Each item: ``{text, level, bbox: [l,t,r,b], page_width, page_height,
-    coord_origin, norm: {left,top,width,height}}`` where ``norm`` is CSS-ready
-    fractions (0–1) in top-left origin.
+    Collects Docling-labeled section headers/titles **and** short text lines that
+    look like form section labels (ALL CAPS / short phrases). Semantic filtering
+    happens afterward in ``filter_section_headers``.
+
+    Each item: ``{text, level, bbox, page_width, page_height, coord_origin, norm}``
+    where ``norm`` is CSS-ready fractions (0–1) when page size is known.
     """
     headers: list[dict[str, Any]] = []
+    seen: set[str] = set()
     page_sizes: dict[int, tuple[float, float]] = {}
 
-    # Page sizes from DoclingDocument.pages when available.
     try:
         for idx, page in enumerate(getattr(doc, "pages", None) or [], start=1):
             size = getattr(page, "size", None)
@@ -261,6 +301,15 @@ def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
         "section-header",
         "sectionheader",
     }
+    skip_labels = {
+        "page_header",
+        "page_footer",
+        "page_number",
+        "picture",
+        "table",
+        "caption",
+        "footnote",
+    }
 
     def _label_str(item: Any) -> str:
         lab = getattr(item, "label", None)
@@ -268,90 +317,130 @@ def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
             return ""
         return str(getattr(lab, "value", lab)).strip().casefold().replace(" ", "_")
 
+    def _looks_like_header_text(text: str) -> bool:
+        cleaned = (text or "").strip().replace(":", "").strip()
+        if not cleaned or len(cleaned) > 80:
+            return False
+        words = cleaned.split()
+        if len(words) > 6:
+            return False
+        letters = re.sub(r"[^A-Za-z]", "", cleaned)
+        if len(letters) < 2:
+            return False
+        if letters.upper() == letters:
+            return True
+        return len(words) <= 4
+
     def _append(text: str, level: int, prov: Any) -> None:
         text = (text or "").strip()
         if not text:
             return
-        if prov is None:
+        key = re.sub(r"\s+", " ", text).casefold()
+        if key in seen:
             return
-        # prov may be a list
-        first = prov[0] if isinstance(prov, (list, tuple)) and prov else prov
-        bbox = getattr(first, "bbox", None)
-        if bbox is None and isinstance(first, dict):
-            bbox = first.get("bbox")
-        if bbox is None:
-            return
-        if hasattr(bbox, "l"):
-            l, t, r, b = float(bbox.l), float(bbox.t), float(bbox.r), float(bbox.b)
-            origin = str(
-                getattr(getattr(first, "coord_origin", None), "value", None)
-                or getattr(first, "coord_origin", None)
-                or "BOTTOMLEFT"
-            )
-            page_no = int(getattr(first, "page_no", 1) or 1)
-        elif isinstance(bbox, dict):
-            l = float(bbox.get("l") or bbox.get("left") or 0)
-            t = float(bbox.get("t") or bbox.get("top") or 0)
-            r = float(bbox.get("r") or bbox.get("right") or 0)
-            b = float(bbox.get("b") or bbox.get("bottom") or 0)
-            origin = str(
-                first.get("coord_origin")
-                or bbox.get("coord_origin")
-                or "BOTTOMLEFT"
-            )
-            page_no = int(first.get("page_no") or 1)
-        else:
-            return
+        seen.add(key)
+
+        l = t = r = b = 0.0
+        origin = "BOTTOMLEFT"
+        page_no = 1
+        has_box = False
+        if prov is not None:
+            first = prov[0] if isinstance(prov, (list, tuple)) and prov else prov
+            bbox = getattr(first, "bbox", None)
+            if bbox is None and isinstance(first, dict):
+                bbox = first.get("bbox")
+            if bbox is not None:
+                if hasattr(bbox, "l"):
+                    l, t, r, b = float(bbox.l), float(bbox.t), float(bbox.r), float(bbox.b)
+                    origin = str(
+                        getattr(getattr(first, "coord_origin", None), "value", None)
+                        or getattr(first, "coord_origin", None)
+                        or "BOTTOMLEFT"
+                    )
+                    page_no = int(getattr(first, "page_no", 1) or 1)
+                    has_box = True
+                elif isinstance(bbox, dict):
+                    l = float(bbox.get("l") or bbox.get("left") or 0)
+                    t = float(bbox.get("t") or bbox.get("top") or 0)
+                    r = float(bbox.get("r") or bbox.get("right") or 0)
+                    b = float(bbox.get("b") or bbox.get("bottom") or 0)
+                    origin = str(
+                        first.get("coord_origin")
+                        or bbox.get("coord_origin")
+                        or "BOTTOMLEFT"
+                    )
+                    page_no = int(first.get("page_no") or 1)
+                    has_box = True
+
         pw, ph = page_sizes.get(page_no, (0.0, 0.0))
-        norm = _bbox_to_css_norm(l, t, r, b, pw, ph, origin)
+        norm = (
+            _bbox_to_css_norm(l, t, r, b, pw, ph, origin) if has_box and pw and ph else None
+        )
         headers.append(
             {
                 "text": text,
                 "level": int(level) if level else 2,
-                "bbox": [round(l, 2), round(t, 2), round(r, 2), round(b, 2)],
+                "bbox": [round(l, 2), round(t, 2), round(r, 2), round(b, 2)]
+                if has_box
+                else [],
                 "page_width": pw or None,
                 "page_height": ph or None,
-                "coord_origin": origin,
+                "coord_origin": origin if has_box else None,
                 "norm": norm,
             }
         )
 
-    # Preferred: iterate_items (DoclingDocument)
+    # Pass 1: Docling-labeled section headers / titles.
     try:
         iterate = getattr(doc, "iterate_items", None)
         if callable(iterate):
             for item, level in iterate():
                 lab = _label_str(item)
-                if lab not in header_labels and "header" not in lab and lab != "title":
-                    # Keep section_header / title only — skip page_header/footer.
-                    if lab not in {"section_header", "title"}:
-                        continue
-                if lab in {"page_header", "page_footer", "page_number"}:
+                if lab in skip_labels:
                     continue
-                if lab not in {"section_header", "title"} and "section" not in lab:
+                if lab not in header_labels and "section" not in lab and lab != "title":
                     continue
                 text = getattr(item, "text", None) or getattr(item, "orig", None) or ""
                 _append(str(text), int(level) if level else 1, getattr(item, "prov", None))
-            if headers:
-                return headers
     except Exception as exc:
-        logger.debug("iterate_items header extract failed: %s", exc)
+        logger.debug("iterate_items labeled header extract failed: %s", exc)
+
+    # Pass 2: short / ALL-CAPS text lines (form section labels) — semantic
+    # filter later decides which stay.
+    try:
+        iterate = getattr(doc, "iterate_items", None)
+        if callable(iterate):
+            for item, level in iterate():
+                lab = _label_str(item)
+                if lab in skip_labels or lab in header_labels:
+                    continue
+                text = str(
+                    getattr(item, "text", None) or getattr(item, "orig", None) or ""
+                ).strip()
+                if not _looks_like_header_text(text):
+                    continue
+                _append(text, int(level) if level else 2, getattr(item, "prov", None))
+    except Exception as exc:
+        logger.debug("iterate_items candidate header extract failed: %s", exc)
 
     # Fallback: walk export_to_dict texts[]
-    try:
-        data = doc.export_to_dict() if hasattr(doc, "export_to_dict") else doc
-        if not isinstance(data, dict):
-            return headers
-        for t in data.get("texts") or []:
-            if not isinstance(t, dict):
-                continue
-            lab = str(t.get("label") or "").strip().casefold().replace(" ", "_")
-            if lab not in {"section_header", "title"}:
-                continue
-            provs = t.get("prov") or []
-            _append(str(t.get("text") or ""), 1 if lab == "title" else 2, provs)
-    except Exception as exc:
-        logger.debug("dict header extract failed: %s", exc)
+    if not headers:
+        try:
+            data = doc.export_to_dict() if hasattr(doc, "export_to_dict") else doc
+            if isinstance(data, dict):
+                for t in data.get("texts") or []:
+                    if not isinstance(t, dict):
+                        continue
+                    lab = str(t.get("label") or "").strip().casefold().replace(" ", "_")
+                    text = str(t.get("text") or "").strip()
+                    if lab in header_labels or _looks_like_header_text(text):
+                        _append(
+                            text,
+                            1 if lab == "title" else 2,
+                            t.get("prov") or [],
+                        )
+        except Exception as exc:
+            logger.debug("dict header extract failed: %s", exc)
     return headers
 
 
@@ -411,7 +500,7 @@ def convert_image(image_path: Path, converter: Any | None = None) -> dict[str, A
     started = time.perf_counter()
     result = engine.convert(str(image_path))
     doc = result.document
-    markdown = doc.export_to_markdown() or ""
+    markdown = clean_docling_markdown(doc.export_to_markdown() or "")
     section_headers = extract_section_headers(doc)
     try:
         from stages.lib.imaging.section_header_match import filter_section_headers

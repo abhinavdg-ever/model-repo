@@ -197,12 +197,51 @@ def _normalize_kind(kind: str) -> OcrKind:
     return kind  # type: ignore[return-value]
 
 
-# Shown in review-ui Final 2 when Azure was skipped for high-quality printed pages.
+# Shown in review-ui when Final OCR was skipped.
 FINAL2_QUALITY_SKIP_MESSAGE = "Skipped for High Quality Images"
+FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE = "Skipped for Blank/Junk"
+
+
+def clean_ocr_display_text(text: str) -> str:
+    """Remove Docling image placeholders, empty tables, and excess blank lines."""
+    if not text:
+        return ""
+    out = re.sub(r"<!--\s*image\s*-->", "", text, flags=re.IGNORECASE)
+    out = re.sub(r"(?im)^\s*\[image\]\s*$", "", out)
+    cleaned_lines: list[str] = []
+    for line in out.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            cleaned_lines.append("")
+            continue
+        if re.fullmatch(r"\|?[\s\-:|]+\|?", stripped):
+            continue
+        if stripped.startswith("|"):
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            if all(c == "" for c in cells):
+                continue
+        cleaned_lines.append(line.rstrip())
+    collapsed: list[str] = []
+    blank = False
+    for line in cleaned_lines:
+        if not line.strip():
+            if blank:
+                continue
+            collapsed.append("")
+            blank = True
+        else:
+            collapsed.append(line)
+            blank = False
+    return "\n".join(collapsed).strip()
 
 
 def _section_headers_from_page(page: dict[str, Any]) -> list[OcrSectionHeader]:
-    """Pull CSS-normalized header boxes from a final1/final2 page object."""
+    """Pull CSS-normalized header boxes from a final1/final2 page object.
+
+    Headers without coordinates are still returned (left/top/width/height = 0)
+    so the UI can style them in the OCR text; only boxes with positive size
+    are drawn on the image.
+    """
     raw = page.get("section_headers") or page.get("sectionHeaders") or []
     if not isinstance(raw, list):
         return []
@@ -213,18 +252,27 @@ def _section_headers_from_page(page: dict[str, Any]) -> list[OcrSectionHeader]:
         text = str(item.get("text") or "").strip()
         if not text:
             continue
+        left = top = width = height = 0.0
         norm = item.get("norm") if isinstance(item.get("norm"), dict) else None
-        if not norm:
-            continue
-        try:
-            left = float(norm.get("left"))
-            top = float(norm.get("top"))
-            width = float(norm.get("width"))
-            height = float(norm.get("height"))
-        except (TypeError, ValueError):
-            continue
-        if width <= 0 or height <= 0:
-            continue
+        if norm:
+            try:
+                left = float(norm.get("left") or 0)
+                top = float(norm.get("top") or 0)
+                width = float(norm.get("width") or 0)
+                height = float(norm.get("height") or 0)
+            except (TypeError, ValueError):
+                left = top = width = height = 0.0
+        elif isinstance(item.get("bbox"), (list, tuple)) and len(item["bbox"]) >= 4:
+            try:
+                l, t, r, b = (float(x) for x in item["bbox"][:4])
+                pw = float(item.get("page_width") or 0) or 1.0
+                ph = float(item.get("page_height") or 0) or 1.0
+                left = min(l, r) / pw
+                top = min(t, b) / ph
+                width = abs(r - l) / pw
+                height = abs(b - t) / ph
+            except (TypeError, ValueError):
+                left = top = width = height = 0.0
         try:
             level = int(item.get("level") or 2)
         except (TypeError, ValueError):
@@ -274,10 +322,10 @@ def section_headers_by_file_from_ocr_json(
 def _page_content_from_azdoc(page: dict[str, Any]) -> str:
     content = page.get("content")
     if isinstance(content, str) and content.strip():
-        return content.strip()
+        return clean_ocr_display_text(content)
     markdown = page.get("markdown")
     if isinstance(markdown, str) and markdown.strip():
-        return markdown.strip()
+        return clean_ocr_display_text(markdown)
     lines = page.get("lines")
     if isinstance(lines, list):
         parts = [
@@ -286,17 +334,19 @@ def _page_content_from_azdoc(page: dict[str, Any]) -> str:
             if isinstance(line, dict) and line.get("content")
         ]
         if parts:
-            return "\n".join(parts)
+            return clean_ocr_display_text("\n".join(parts))
     reason = str(
         page.get("skippedReason") or page.get("skipped_reason") or ""
     ).strip().lower()
     if reason == "high_quality_printed":
         return FINAL2_QUALITY_SKIP_MESSAGE
+    if reason in {"blank_junk_pass1", "blank_junk", "blank_junk_pass2"}:
+        return FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE
     return ""
 
 
 def azdoc_json_to_ocr_text(data: Any) -> str:
-    """Convert AzDocInt JSON into marker-separated OCR text for the UI.
+    """Convert AzDocInt / Final1 JSON into marker-separated OCR text for the UI.
 
     Expected shape (per document):
       { "pages": [ { "fileName": "1.jpg", "content": "...", "lines": [...] }, ... ] }

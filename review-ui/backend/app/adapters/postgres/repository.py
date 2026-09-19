@@ -361,8 +361,10 @@ class PostgresFolderRepository(FolderRepository):
         try:
             with self._connect() as conn:
                 with conn.cursor() as cur:
-                    if ocr_type == "azuredocintel":
-                        # Every page so Final2 quality-skips still appear in the UI.
+                    if ocr_type in {"azuredocintel", "docling"}:
+                        stage_name = (
+                            "ocr_final2" if ocr_type == "azuredocintel" else "ocr_final1"
+                        )
                         cur.execute(
                             """
                             SELECT p.page_name, o.raw_text, pss.skip_reason
@@ -372,12 +374,12 @@ class PostgresFolderRepository(FolderRepository):
                               ON o.page_id = p.id AND o.ocr_type = %s
                             LEFT JOIN page_stage_status pss
                               ON pss.page_id = p.id
-                             AND pss.stage_name = 'ocr_final2'
+                             AND pss.stage_name = %s
                              AND pss.pass_no = 1
                             WHERE c.chart_name = %s
                             ORDER BY p.page_number NULLS LAST, p.id
                             """,
-                            (ocr_type, folder_id),
+                            (ocr_type, stage_name, folder_id),
                         )
                     else:
                         cur.execute(
@@ -427,11 +429,47 @@ class PostgresFolderRepository(FolderRepository):
                 except Exception:
                     pass
             if (
+                ocr_type in {"azuredocintel", "docling"}
+                and not body
+                and parsed is not None
+            ):
+                reason = str(
+                    parsed.get("skippedReason") or parsed.get("skipped_reason") or ""
+                ).strip().lower()
+                if reason == "high_quality_printed":
+                    body = FINAL2_QUALITY_SKIP_MESSAGE
+                elif reason in {
+                    "blank_junk_pass1",
+                    "blank_junk",
+                    "blank_junk_pass2",
+                }:
+                    from app.adapters.local.repository import (
+                        FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE,
+                    )
+
+                    body = FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE
+            if (
                 ocr_type == "azuredocintel"
                 and not body
                 and str(skip_reason or "").strip().lower() == "high_quality_printed"
             ):
                 body = FINAL2_QUALITY_SKIP_MESSAGE
+            if (
+                ocr_type in {"azuredocintel", "docling"}
+                and not body
+                and str(skip_reason or "").strip().lower()
+                in {"blank_junk_pass1", "blank_junk", "blank_junk_pass2"}
+            ):
+                from app.adapters.local.repository import (
+                    FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE,
+                )
+
+                body = FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE
+            if body and ocr_type in {"azuredocintel", "docling"}:
+                from app.adapters.local.repository import clean_ocr_display_text
+
+                if not body.startswith("Skipped for "):
+                    body = clean_ocr_display_text(body)
             if ocr_type == "docling" and parsed is not None:
                 from app.adapters.local.repository import _section_headers_from_page
 

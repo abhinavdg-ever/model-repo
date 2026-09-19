@@ -192,6 +192,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 if pid not in pass1_skippers
                 and bj1.get(pid, "not_blank_junk") in BJ_EXCLUDE
             ]
+            bj_skipped = set(drop)
             mark_skipped(conn, ctx, drop, "blank_junk_pass1")
 
             todo = [p for p in ctx.pages if p["id"] in ctx.todo]
@@ -268,6 +269,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "fileName": page["page_name"],
                 "content": "",
                 "markdown": "",
+                "section_headers": [],
             }
             if raw:
                 try:
@@ -282,6 +284,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 except (ValueError, TypeError):
                     page_doc["content"] = raw
                     page_doc["markdown"] = raw
+            if page["id"] in bj_skipped and not str(page_doc.get("content") or "").strip():
+                page_doc["skippedReason"] = "blank_junk_pass1"
+                page_doc["section_headers"] = []
             out_pages.append(page_doc)
 
         out = write_final1_json(ctx.chart_name, out_pages, model=engine_label)

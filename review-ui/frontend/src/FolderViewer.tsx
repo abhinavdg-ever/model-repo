@@ -134,6 +134,7 @@ function findImagingPage(
 
 /** Azure Final2 is skipped for high-quality printed pages (billed stage). */
 const FINAL2_QUALITY_SKIP_MESSAGE = "Skipped for High Quality Images";
+const FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE = "Skipped for Blank/Junk";
 
 function isBlankOrJunkYes(page: ImagingPageResult | null): boolean {
   const v = (page?.blankOrJunk || "").trim().toLowerCase();
@@ -146,6 +147,15 @@ function isFinal2QualitySkip(page: ImagingPageResult | null): boolean {
   const hw = (page.handwrittenOrPrinted || "").trim().toLowerCase();
   const tag = (page.pageQualityTag || "").trim().toLowerCase();
   return hw === "printed" && tag === "high";
+}
+
+function isOcrSkipMessage(text: string): boolean {
+  const t = text.trim();
+  return (
+    t === FINAL2_QUALITY_SKIP_MESSAGE ||
+    t === FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE ||
+    t.startsWith("Skipped for ")
+  );
 }
 
 export default function FolderViewer({
@@ -310,26 +320,41 @@ export default function FolderViewer({
   const pageOcrText = useMemo(() => {
     if (loadingOcr) return "";
     if (!page) return "";
-    if (ocrTab === "final2" && folder?.has_final2_ocr) {
-      if (ocrFullText) {
-        const chunk = ocrTextForFilename(ocrFullText, page.filename);
-        if (chunk.trim() === FINAL2_QUALITY_SKIP_MESSAGE) {
-          return FINAL2_QUALITY_SKIP_MESSAGE;
+
+    const resolveSkip = (chunk: string): string | null => {
+      const t = chunk.trim();
+      if (t === FINAL2_QUALITY_SKIP_MESSAGE) return FINAL2_QUALITY_SKIP_MESSAGE;
+      if (t === FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE) {
+        return FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE;
+      }
+      if (t.startsWith("Skipped for ")) return t;
+      return null;
+    };
+
+    if ((ocrTab === "final1" || ocrTab === "final2") && ocrFullText) {
+      const chunk = ocrTextForFilename(ocrFullText, page.filename);
+      const skip = resolveSkip(chunk);
+      if (skip) return skip;
+      if (chunk.trim()) return chunk;
+      if (ocrTab === "final2") {
+        if (isBlankOrJunkYes(imagingPage)) {
+          return FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE;
         }
-        if (chunk.trim()) {
-          return chunk;
-        }
-        // Empty page slot in Final2 JSON — quality skip (or blank/junk).
         if (isFinal2QualitySkip(imagingPage)) {
           return FINAL2_QUALITY_SKIP_MESSAGE;
         }
-        return `No OCR text found for ${page.filename}.`;
       }
-      // Final2 file exists but fetch empty — still allow imaging inference.
-      if (isFinal2QualitySkip(imagingPage)) {
-        return FINAL2_QUALITY_SKIP_MESSAGE;
+      if (ocrTab === "final1" && isBlankOrJunkYes(imagingPage)) {
+        return FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE;
       }
+      return `No OCR text found for ${page.filename}.`;
     }
+
+    if (ocrTab === "final2" && folder?.has_final2_ocr && !ocrFullText) {
+      if (isBlankOrJunkYes(imagingPage)) return FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE;
+      if (isFinal2QualitySkip(imagingPage)) return FINAL2_QUALITY_SKIP_MESSAGE;
+    }
+
     if (!ocrFullText) return ocrMissingMessage;
     if (!isUsableOcrPayload(ocrFullText)) return ocrFullText;
     const chunk = ocrTextForFilename(ocrFullText, page.filename);
@@ -346,26 +371,6 @@ export default function FolderViewer({
 
   const showHeaderToggle = ocrTab === "final1" || ocrTab === "final2";
 
-  const pageOcrLines = useMemo(() => {
-    if (!showHeaderToggle || !pageOcrText || pageOcrText === ocrMissingMessage) {
-      return null;
-    }
-    if (pageOcrText.startsWith("No OCR text found")) return null;
-    if (pageOcrText === FINAL2_QUALITY_SKIP_MESSAGE) return null;
-    return prepareOcrLines(pageOcrText, {
-      showSectionHeaders,
-      // Final2 is often plain text; Final1 already has ## from Docling.
-      detectPlainHeaders: ocrTab === "final2",
-    });
-  }, [showHeaderToggle, pageOcrText, ocrMissingMessage, showSectionHeaders, ocrTab]);
-
-  const ocrMatch = useMemo(() => {
-    if (!page) {
-      return { rate: null, count: 0, engines: [], pairs: [] };
-    }
-    return pageMatchRate(ocrByKind, page.filename, OCR_TABS);
-  }, [ocrByKind, page]);
-
   const pageHeaderBoxes = useMemo(() => {
     if (!showSectionHeaders || !page) return [];
     return (
@@ -374,6 +379,38 @@ export default function FolderViewer({
       []
     );
   }, [showSectionHeaders, page, sectionHeadersByFile]);
+
+  const overlayBoxes = useMemo(
+    () => pageHeaderBoxes.filter((b) => b.width > 0 && b.height > 0),
+    [pageHeaderBoxes],
+  );
+
+  const pageOcrLines = useMemo(() => {
+    if (!showHeaderToggle || !pageOcrText || pageOcrText === ocrMissingMessage) {
+      return null;
+    }
+    if (pageOcrText.startsWith("No OCR text found")) return null;
+    if (isOcrSkipMessage(pageOcrText)) return null;
+    const known = pageHeaderBoxes.map((h) => h.text);
+    return prepareOcrLines(pageOcrText, {
+      showSectionHeaders,
+      detectPlainHeaders: true,
+      knownHeaders: known,
+    });
+  }, [
+    showHeaderToggle,
+    pageOcrText,
+    ocrMissingMessage,
+    showSectionHeaders,
+    pageHeaderBoxes,
+  ]);
+
+  const ocrMatch = useMemo(() => {
+    if (!page) {
+      return { rate: null, count: 0, engines: [], pairs: [] };
+    }
+    return pageMatchRate(ocrByKind, page.filename, OCR_TABS);
+  }, [ocrByKind, page]);
 
   const pageQualityLabel = useMemo(() => {
     const raw = (imagingPage?.pageQualityTag || "").trim().toLowerCase();
@@ -675,9 +712,9 @@ export default function FolderViewer({
                     draggable={false}
                     onPointerDown={stageProps.onPointerDown}
                   />
-                  {pageHeaderBoxes.length > 0 ? (
+                  {overlayBoxes.length > 0 ? (
                     <div className="page-header-overlay" aria-hidden="true">
-                      {pageHeaderBoxes.map((box, i) => (
+                      {overlayBoxes.map((box, i) => (
                         <div
                           key={`${box.text}-${i}`}
                           className="page-header-box"
@@ -903,13 +940,6 @@ export default function FolderViewer({
                           className={`ocr-line ocr-heading ocr-heading-h${Math.min(line.level, 3)}`}
                         >
                           {line.text}
-                        </div>
-                      );
-                    }
-                    if (line.kind === "image") {
-                      return (
-                        <div key={i} className="ocr-line ocr-image-placeholder">
-                          [image]
                         </div>
                       );
                     }

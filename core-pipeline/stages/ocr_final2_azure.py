@@ -228,6 +228,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 if pid not in pass1_skippers
                 and bj1.get(pid, "not_blank_junk") in BJ_EXCLUDE
             ]
+            bj_skipped = set(drop)
             mark_skipped(conn, ctx, drop, "blank_junk_pass1")
             # High-quality printed pages already have usable final1 text —
             # skip the billed Azure call.
@@ -279,7 +280,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             stored = get_ocr_texts(conn, chart_id, "azuredocintel")
 
         # Rebuild the combined JSON from the database, covering every page.
-        # HQ-printed skips are stamped so review-ui can show why Final2 is empty.
+        # HQ-printed / blank-junk skips are stamped so review-ui can explain why.
         out_pages: list[dict[str, Any]] = []
         for page in ctx.pages:
             raw = stored.get(page["id"])
@@ -301,8 +302,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "pagesMeta": pages_meta,
                 "languages": languages,
             }
-            if page["id"] in hq_printed and not str(content or "").strip():
-                entry["skippedReason"] = "high_quality_printed"
+            if not str(content or "").strip():
+                if page["id"] in bj_skipped:
+                    entry["skippedReason"] = "blank_junk_pass1"
+                elif page["id"] in hq_printed:
+                    entry["skippedReason"] = "high_quality_printed"
             out_pages.append(entry)
         out = write_final2_json(ctx.chart_name, out_pages)
 

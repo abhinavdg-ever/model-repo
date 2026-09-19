@@ -56,8 +56,16 @@
   "Problem List",
   "Active Problems",
   "Patient Information",
+  "Patient Data",
   "Demographics",
   "Face Sheet",
+  "Emergency Contact",
+  "Guarantor",
+  "Insurance",
+  "Policy ID",
+  "Subscriber",
+  "Primary Care Physician",
+  "Referring Physician",
   "Immunizations",
   "Vaccinations"
 ]
