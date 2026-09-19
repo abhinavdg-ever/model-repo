@@ -21,11 +21,17 @@ it is interleaved with. So it is off by default and one variable away.
 File logs (optional, on by default): daily rotation under ``LOG_DIR``
 (default ``core-pipeline/logs/``) as ``core-pipeline.log`` + dated backups.
 Stdout still works for ``docker compose logs``.
+
+Console lines include the thread/worker name (e.g. ``batch-2``, ``page-0``)
+and optionally colour that tag so parallel charts are easy to tell apart.
+File logs stay plain (no ANSI).
 """
 from __future__ import annotations
 
 import logging
 import os
+import sys
+import threading
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
@@ -43,9 +49,28 @@ NOISY_LOGGERS = ("azure", "urllib3", "msal")
 ALWAYS_QUIET = ("azure.identity._credentials.chained",)
 
 DEFAULT_AZURE_LOG_LEVEL = "WARNING"
-LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+LOG_FORMAT = "%(asctime)s %(levelname)s [%(threadName)s] %(name)s: %(message)s"
+LOG_FORMAT_COLOR = (
+    "%(asctime)s %(levelname)s [%(worker_colored)s] %(name)s: %(message)s"
+)
 # Keep a month of daily files; older ones are removed on rotate.
 LOG_BACKUP_COUNT = int(os.environ.get("LOG_BACKUP_DAYS") or "30")
+
+# Stable palette for worker tags (not hash()-based — process-stable).
+_WORKER_COLORS = (
+    "\033[36m",   # cyan
+    "\033[33m",   # yellow
+    "\033[35m",   # magenta
+    "\033[32m",   # green
+    "\033[34m",   # blue
+    "\033[91m",   # bright red
+    "\033[96m",   # bright cyan
+    "\033[93m",   # bright yellow
+    "\033[95m",   # bright magenta
+    "\033[92m",   # bright green
+)
+_RESET = "\033[0m"
+_DIM = "\033[2m"
 
 
 def azure_log_level() -> int:
@@ -91,6 +116,44 @@ def _flag(name: str, default: bool = True) -> bool:
     return str(raw).strip().casefold() not in {"0", "false", "no", "off"}
 
 
+def _color_enabled(stream: object) -> bool:
+    """LOG_COLOR=true|false|auto (default auto: tty, or true under Docker)."""
+    raw = (os.environ.get("LOG_COLOR") or "auto").strip().casefold()
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    # auto
+    if os.environ.get("NO_COLOR"):
+        return False
+    try:
+        return bool(getattr(stream, "isatty", lambda: False)())
+    except Exception:
+        return False
+
+
+def _worker_color(name: str) -> str:
+    if not name or name in {"MainThread", "asyncio_0"}:
+        return f"{_DIM}{name or '-'}{_RESET}"
+    idx = sum(ord(c) for c in name) % len(_WORKER_COLORS)
+    return f"{_WORKER_COLORS[idx]}{name}{_RESET}"
+
+
+class _WorkerColorFormatter(logging.Formatter):
+    """Colour only the worker/thread tag; rest of the line stays normal."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        record.worker_colored = _worker_color(getattr(record, "threadName", "") or "-")
+        return super().format(record)
+
+
+def set_worker_name(label: str) -> str:
+    """Rename the current thread for log lines (e.g. ``batch-2``, ``page-0``)."""
+    name = (label or "").strip() or "worker"
+    threading.current_thread().name = name
+    return name
+
+
 def _attach_daily_file_handler(level: int) -> Path | None:
     """Write ``logs/core-pipeline.log``, rotate at midnight to dated backups."""
     if not _flag("LOG_TO_FILE", True):
@@ -126,6 +189,23 @@ def _attach_daily_file_handler(level: int) -> Path | None:
     return path
 
 
+def _configure_stream_handlers(level: int) -> None:
+    """Ensure stdout/stderr handlers show worker names (+ colour when enabled)."""
+    root = logging.getLogger()
+    color = _color_enabled(sys.stderr)
+    fmt: logging.Formatter = (
+        _WorkerColorFormatter(LOG_FORMAT_COLOR)
+        if color
+        else logging.Formatter(LOG_FORMAT)
+    )
+    for handler in root.handlers:
+        if isinstance(handler, TimedRotatingFileHandler):
+            continue
+        if isinstance(handler, logging.StreamHandler):
+            handler.setFormatter(fmt)
+            handler.setLevel(level)
+
+
 def configure_logging(level: int = logging.INFO) -> None:
     """Root logger at `level`, SDK loggers quieted, optional daily file log.
 
@@ -144,6 +224,7 @@ def configure_logging(level: int = logging.INFO) -> None:
     quiet_noisy_loggers()
 
     log_path = _attach_daily_file_handler(level)
+    _configure_stream_handlers(level)
     if log_path is not None:
         logging.getLogger("core-pipeline").info(
             "Daily file log: %s (rotates at midnight, keep %d days)",

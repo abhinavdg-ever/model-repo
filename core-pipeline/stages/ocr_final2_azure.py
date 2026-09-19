@@ -245,7 +245,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             # Azure DI is a network call, so more workers than CPUs is fine —
             # but the service throttles, so this stays on the same dial.
             workers = max(1, min(STAGE_WORKERS, len(todo)))
-            with ThreadPoolExecutor(max_workers=workers) as pool:
+            logger.info("Final2 Azure DI workers=%d", workers)
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="page") as pool:
                 results = list(
                     pool.map(
                         _ocr_one,

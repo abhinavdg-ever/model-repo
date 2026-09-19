@@ -387,7 +387,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         if todo:
             workers = max(1, min(STAGE_WORKERS, len(todo)))
             _get_hw_model()
-            with ThreadPoolExecutor(max_workers=workers) as pool:
+            logger.info("Quality/rotation/HW workers=%d", workers)
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="page") as pool:
                 measured = list(
                     pool.map(
                         _measure,

@@ -229,13 +229,18 @@ def _run_one_chart(
     counter_lock: threading.Lock,
     batch_progress_dir: Optional[str] = None,
 ) -> dict[str, Any]:
+    from logging_setup import set_worker_name
     from orchestrator.runner import ingest_and_run
 
+    set_worker_name(f"batch-{index}")
     with counter_lock:
         counters["started"] += 1
         started_n = counters["started"]
     # index = listing order; started_n = how many workers have begun (≠ when workers>1)
-    logger.info("[start %d/%d] %s (in flight %d)", index, total, name, started_n)
+    logger.info(
+        "[start %d/%d] %s (in flight %d)",
+        index, total, name, started_n,
+    )
     _note_progress(
         name,
         index,
@@ -397,7 +402,7 @@ def run_batch(
         summary["registered"] = registered
         return summary
 
-    with ThreadPoolExecutor(max_workers=worker_count) as pool:
+    with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="batch") as pool:
         futures = [
             pool.submit(
                 _run_one_chart,

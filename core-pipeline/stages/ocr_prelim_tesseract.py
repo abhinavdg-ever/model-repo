@@ -59,7 +59,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         results: list[tuple[int, str, str, str]] = []
         if todo:
             workers = max(1, min(STAGE_WORKERS, len(todo)))
-            with ThreadPoolExecutor(max_workers=workers) as pool:
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="page") as pool:
                 results = list(
                     pool.map(
                         _ocr_one,

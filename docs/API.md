@@ -634,4 +634,6 @@ docker compose up -d
 **Pipeline file logs** (Docker): `core-pipeline/logs/core-pipeline.log`, rotated
 at midnight to `core-pipeline.log.YYYY-MM-DD` (keep `LOG_BACKUP_DAYS`, default
 30). Host path is `LOGS_HOST_PATH` (default `./logs`). Still also on stdout:
-`docker compose logs -f api`.
+`docker compose logs -f api`. Log lines include a worker tag (`[batch-2]`,
+`[page-0]`); set `LOG_COLOR=true` (Docker default) to colour those tags in the
+terminal.

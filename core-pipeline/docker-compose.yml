@@ -84,6 +84,8 @@ services:
       LOG_DIR: /app/core-pipeline/logs
       LOG_TO_FILE: ${LOG_TO_FILE:-true}
       LOG_BACKUP_DAYS: ${LOG_BACKUP_DAYS:-30}
+      # Colour worker tags in stdout (docker compose logs preserves ANSI).
+      LOG_COLOR: ${LOG_COLOR:-true}
     volumes:
       # Chart workspace — written here, read by review-ui.
       - ${DATA_HOST_PATH:-../review-ui/data/folders}:/data/folders

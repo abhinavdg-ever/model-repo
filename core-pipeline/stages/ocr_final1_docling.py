@@ -217,7 +217,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     workers,
                     DOCLING_PAGE_TIMEOUT_SECONDS,
                 )
-            with ThreadPoolExecutor(max_workers=workers) as pool:
+            else:
+                logger.info("Final1 RapidOCR-onnx workers=%d", workers)
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="page") as pool:
                 results = list(
                     pool.map(
                         _ocr_one,
