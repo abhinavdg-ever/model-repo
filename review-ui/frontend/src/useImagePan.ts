@@ -9,8 +9,10 @@ import {
 type Pan = { x: number; y: number };
 
 /**
- * Drag-to-pan when zoomed (>100%). Wire stageProps onto the page-stage
- * and imageStyle onto the image (or a pan wrapper).
+ * Drag-to-pan for the page image (normal pane and fullscreen).
+ * Works at any zoom — including 100% — so the split viewer matches fullscreen.
+ * Wire stageProps onto the page-stage (and wrap if overlays sit above the img)
+ * and imageStyle onto the image or pan wrapper.
  */
 export function useImagePan(zoom: number, resetKey?: string | number) {
   const [pan, setPan] = useState<Pan>({ x: 0, y: 0 });
@@ -27,10 +29,6 @@ export function useImagePan(zoom: number, resetKey?: string | number) {
   const resetPan = useCallback(() => {
     syncPan({ x: 0, y: 0 });
   }, [syncPan]);
-
-  useEffect(() => {
-    if (zoom <= 1) resetPan();
-  }, [zoom, resetPan]);
 
   useEffect(() => {
     resetPan();
@@ -66,44 +64,36 @@ export function useImagePan(zoom: number, resetKey?: string | number) {
     };
   }, [dragging, syncPan]);
 
-  const onPointerDown = useCallback(
-    (e: ReactPointerEvent<HTMLElement>) => {
-      if (zoom <= 1 || e.button !== 0) return;
-      const t = e.target as HTMLElement | null;
-      if (t?.closest?.(".fs-chrome, button, a, input")) return;
+  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLElement>) => {
+    if (e.button !== 0) return;
+    const t = e.target as HTMLElement | null;
+    if (t?.closest?.(".fs-chrome, button, a, input, .pager-jump")) return;
 
-      e.preventDefault();
-      e.stopPropagation();
-      draggingRef.current = true;
-      lastRef.current = { x: e.clientX, y: e.clientY };
-      setDragging(true);
-    },
-    [zoom],
-  );
-
-  const canPan = zoom > 1;
+    e.preventDefault();
+    e.stopPropagation();
+    draggingRef.current = true;
+    lastRef.current = { x: e.clientX, y: e.clientY };
+    setDragging(true);
+  }, []);
 
   return {
     pan,
     dragging,
-    canPan,
+    canPan: true,
     resetPan,
     imageStyle: {
       transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
       transformOrigin: "center center",
-      cursor: canPan ? (dragging ? "grabbing" : "grab") : undefined,
-      transition: dragging || canPan ? "none" : "transform 0.12s ease",
+      cursor: dragging ? "grabbing" : "grab",
+      transition: dragging ? "none" : "transform 0.12s ease",
     } as const,
     stageProps: {
       onPointerDown,
-      role: canPan ? ("application" as const) : undefined,
-      "aria-label": canPan ? "Zoomed page — drag to pan" : undefined,
-      title: canPan ? "Drag to pan" : undefined,
+      role: "application" as const,
+      "aria-label": "Page image — drag to pan",
+      title: "Drag to pan",
     },
-    stageClassName: [
-      canPan ? "is-zoom-pannable" : "",
-      dragging ? "is-panning" : "",
-    ]
+    stageClassName: ["is-zoom-pannable", dragging ? "is-panning" : ""]
       .filter(Boolean)
       .join(" "),
   };
