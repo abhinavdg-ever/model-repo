@@ -900,7 +900,13 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
     }
 
 
-@app.post("/api/charts/write", status_code=410, tags=["charts"], deprecated=True)
+@app.post(
+    "/api/charts/write",
+    status_code=410,
+    tags=["charts"],
+    deprecated=True,
+    include_in_schema=False,
+)
 def write_chart_out(body: WriteRequest) -> dict[str, Any]:
     """Removed — write is part of ``POST /api/charts/run`` and ``/batch-run``.
 
@@ -920,15 +926,22 @@ def write_chart_out(body: WriteRequest) -> dict[str, Any]:
 
 
 @app.post("/api/charts/batch-run", status_code=202, tags=["charts"])
-@app.post("/api/charts/batch", status_code=202, tags=["charts"], deprecated=True)
+@app.post(
+    "/api/charts/batch",
+    status_code=202,
+    tags=["charts"],
+    deprecated=True,
+    include_in_schema=False,
+)
 def batch_run(
     body: BatchRequest, background_tasks: BackgroundTasks
 ) -> dict[str, Any]:
     """Every chart folder under a path: register, run, write if a path is set.
 
     Canonical path: ``POST /api/charts/batch-run``. ``/batch`` is a deprecated
-    alias. Write is part of this call when ``local_write_path`` /
-    ``blob_write_path`` is set (sync: missing files written, existing skipped).
+    alias (not listed in /docs). Write is part of this call when
+    ``local_write_path`` / ``blob_write_path`` is set (sync: missing files
+    written, existing skipped).
     """
     return _batch_run_impl(body, background_tasks)
 
@@ -1070,7 +1083,13 @@ def get_chart_status_by_name(
         return _chart_payload(conn, chart["id"], include_pages)
 
 
-@app.post("/api/charts/{chart_id}/rerun", status_code=410, tags=["charts"], deprecated=True)
+@app.post(
+    "/api/charts/{chart_id}/rerun",
+    status_code=410,
+    tags=["charts"],
+    deprecated=True,
+    include_in_schema=False,
+)
 def rerun_chart(chart_id: int) -> dict[str, Any]:
     """Removed — resume via ``POST /api/charts/run`` with ``chart_id``."""
     raise HTTPException(
