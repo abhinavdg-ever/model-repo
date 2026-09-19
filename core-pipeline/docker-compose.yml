@@ -89,8 +89,8 @@ services:
       - ${DATA_HOST_PATH:-../review-ui/data/folders}:/data/folders
       - ${METADATA_HOST_PATH:-../review-ui/data/metadata}:/data/metadata
       # Weights scp'd onto the host (hw/, rapidocr/, semantic-model/, ner/).
-      # Packages are in the image; only the files live here.
-      - ${MODELS_HOST_PATH:-./models}:/app/core-pipeline/models:ro
+      # Must be writable: GLiNER repairs encoder config.json on first load.
+      - ${MODELS_HOST_PATH:-./models}:/app/core-pipeline/models
       - ${LOGS_HOST_PATH:-./logs}:/app/core-pipeline/logs
     extra_hosts:
       # Lets DATABASE_URL point at a Postgres on the docker host.
