@@ -350,7 +350,7 @@ export default function FolderViewer({
       return `No OCR text found for ${page.filename}.`;
     }
 
-    if (ocrTab === "final2" && folder?.has_final2_ocr && !ocrFullText) {
+    if (ocrTab === "final2" && page.has_final2_ocr && !ocrFullText) {
       if (isBlankOrJunkYes(imagingPage)) return FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE;
       if (isFinal2QualitySkip(imagingPage)) return FINAL2_QUALITY_SKIP_MESSAGE;
     }
@@ -365,7 +365,6 @@ export default function FolderViewer({
     ocrMissingMessage,
     page,
     ocrTab,
-    folder?.has_final2_ocr,
     imagingPage,
   ]);
 

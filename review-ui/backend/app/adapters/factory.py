@@ -18,13 +18,15 @@ def get_repository() -> FolderRepository:
 def build_repository(settings: Settings) -> FolderRepository:
     if settings.is_production_mode:
         logger.info(
-            "repository=postgres schema=%s data_root=%s",
+            "repository=postgres schema=%s data_root=%s metadata_root=%s",
             settings.db_schema,
             settings.resolved_data_root,
+            settings.resolved_metadata_root,
         )
         return PostgresFolderRepository(
             settings.database_url,
             data_root=settings.resolved_data_root,
+            metadata_root=settings.resolved_metadata_root,
             db_schema=settings.db_schema,
         )
     logger.info(

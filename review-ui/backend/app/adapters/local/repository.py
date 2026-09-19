@@ -26,7 +26,7 @@ from app.core.schemas import (
     OcrTextResponse,
     PageSummary,
 )
-from app.services.metadata_csv import manifest_for_record
+from app.services.metadata_csv import manifest_for_record, run_batch_for_record
 
 PAGE_RE = re.compile(r"^page_(\d+)\.(jpe?g|png|webp|tif{1,2})$", re.IGNORECASE)
 PLAIN_NUM_RE = re.compile(r"^(\d+)\.(jpe?g|png|webp|tif{1,2})$", re.IGNORECASE)
@@ -957,6 +957,7 @@ class LocalFolderRepository(FolderRepository):
             pages = self._page_files(entry)
             page_count = len(pages)
             imaging_processed = self._imaging_processed_count(entry, page_count)
+            run_id, batch_id = run_batch_for_record(self.metadata_root, entry.name)
             summaries.append(
                 FolderSummary(
                     id=entry.name,
@@ -970,6 +971,8 @@ class LocalFolderRepository(FolderRepository):
                         page_count=page_count,
                     ),
                     last_updated_at=_latest_mtime(self._touch_paths(entry, pages)),
+                    run_id=run_id,
+                    batch_id=batch_id,
                 )
             )
         summaries.sort(
@@ -1004,6 +1007,7 @@ class LocalFolderRepository(FolderRepository):
             if imaging_full
             else sum(1 for p in page_summaries if p.has_imaging)
         )
+        run_id, batch_id = run_batch_for_record(self.metadata_root, folder_id)
         return FolderDetail(
             id=folder_id,
             name=folder_dir.name,
@@ -1016,6 +1020,8 @@ class LocalFolderRepository(FolderRepository):
                 page_count=len(pages),
             ),
             last_updated_at=_latest_mtime(self._touch_paths(folder_dir, pages)),
+            run_id=run_id,
+            batch_id=batch_id,
             pages=page_summaries,
         )
 

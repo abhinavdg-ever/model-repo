@@ -118,11 +118,16 @@ class PostgresFolderRepository(FolderRepository):
         self,
         database_url: str,
         data_root: Path | None = None,
+        metadata_root: Path | None = None,
         db_schema: str = "public",
     ):
         self.database_url = _psycopg_url(database_url)
         self.db_schema = (db_schema or "public").strip() or "public"
-        self._local = LocalFolderRepository(data_root) if data_root is not None else None
+        self._local = (
+            LocalFolderRepository(data_root, metadata_root=metadata_root)
+            if data_root is not None
+            else None
+        )
 
     def _require_local(self) -> LocalFolderRepository:
         if self._local is None:
@@ -191,6 +196,14 @@ class PostgresFolderRepository(FolderRepository):
             if local_f and ocr_status in {"QUEUED", "IN_PROGRESS"}:
                 # Prefer richer local disk-derived status when pipeline still early
                 ocr_status = local_f.ocr_status
+            resolved_run = (
+                (str(run_id) if run_id else None)
+                or (local_f.run_id if local_f else None)
+            )
+            resolved_batch = (
+                (str(batch_id) if batch_id else None)
+                or (local_f.batch_id if local_f else None)
+            )
             out.append(
                 FolderSummary(
                     id=name,
@@ -200,10 +213,8 @@ class PostgresFolderRepository(FolderRepository):
                     imaging_processed=local_f.imaging_processed if local_f else 0,
                     ocr_status=ocr_status,  # type: ignore[arg-type]
                     last_updated_at=updated_at or (local_f.last_updated_at if local_f else None),
-                    run_id=(str(run_id) if run_id else None)
-                    or (local_f.run_id if local_f else None),
-                    batch_id=(str(batch_id) if batch_id else None)
-                    or (local_f.batch_id if local_f else None),
+                    run_id=resolved_run,
+                    batch_id=resolved_batch,
                 )
             )
         # Include local-only folders not yet in chart_list

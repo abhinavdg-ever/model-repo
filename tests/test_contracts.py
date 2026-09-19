@@ -1117,6 +1117,24 @@ class TestManifestLookup:
         assert rows[0]["batch_id"] == "B1"
         assert rows[0]["source_file"] == "metadata_R1_B1.csv"
 
+    def test_review_ui_local_mode_reads_run_batch_from_metadata_filename(self, tmp_path):
+        """Landing page Run/Batch columns in DATA_MODE=local."""
+        from app.services.metadata_csv import (
+            clear_metadata_cache,
+            run_batch_for_record,
+        )
+
+        clear_metadata_cache()
+        (tmp_path / "metadata_R2_B3.csv").write_text(
+            "recordId,DummyFirstName,DummyLastName\n"
+            "52743839_44976074,Jane,Doe\n",
+            encoding="utf-8",
+        )
+        run_id, batch_id = run_batch_for_record(tmp_path, "52743839_44976074")
+        assert run_id == "R2"
+        assert batch_id == "B3"
+        assert run_batch_for_record(tmp_path, "missing") == (None, None)
+
     def test_endpoint_falls_back_to_metadata_when_db_empty(self, tmp_path, monkeypatch):
         from fastapi.testclient import TestClient
 
