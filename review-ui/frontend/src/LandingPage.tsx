@@ -11,6 +11,8 @@ import {
   Search,
 } from "lucide-react";
 import {
+  formatBatchLabel,
+  formatRunLabel,
   imagingExportCsvUrl,
   listFolders,
   OCR_STATUS_LABELS,
@@ -399,7 +401,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                 >
                   {runOptions.map((value) => (
                     <option key={value} value={value}>
-                      {value === "ALL" ? "All runs" : value}
+                      {value === "ALL" ? "All runs" : formatRunLabel(value)}
                     </option>
                   ))}
                 </select>
@@ -414,7 +416,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                 >
                   {batchOptions.map((value) => (
                     <option key={value} value={value}>
-                      {value === "ALL" ? "All batches" : value}
+                      {value === "ALL" ? "All batches" : formatBatchLabel(value)}
                     </option>
                   ))}
                 </select>
@@ -506,8 +508,8 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                       <td className="landing-col-name" title={folder.name}>
                         {folder.name}
                       </td>
-                      <td className="landing-col-num">{folder.run_id || "—"}</td>
-                      <td className="landing-col-num">{folder.batch_id || "—"}</td>
+                      <td className="landing-col-num">{formatRunLabel(folder.run_id)}</td>
+                      <td className="landing-col-num">{formatBatchLabel(folder.batch_id)}</td>
                       <td className="landing-col-num">{folder.page_count}</td>
                       <td className="landing-col-num">{folder.ocr_processed}</td>
                       <td className="landing-col-num">{folder.imaging_processed}</td>

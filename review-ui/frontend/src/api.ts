@@ -146,6 +146,22 @@ export const OCR_STATUS_LABELS: Record<OcrRunStatus, string> = {
   FAILED: "Failed",
 };
 
+/** R1 / Run1 / 1 → "Run 1". Pass-through when the shape is unknown. */
+export function formatRunLabel(raw: string | null | undefined): string {
+  const s = (raw || "").trim();
+  if (!s) return "—";
+  const m = /^(?:run[_.\-\s]*)?r?(\d+)$/i.exec(s);
+  return m ? `Run ${m[1]}` : s;
+}
+
+/** B1 / Batch1 / 1 → "Batch 1". Pass-through when the shape is unknown. */
+export function formatBatchLabel(raw: string | null | undefined): string {
+  const s = (raw || "").trim();
+  if (!s) return "—";
+  const m = /^(?:batch[_.\-\s]*)?b?(\d+)$/i.exec(s);
+  return m ? `Batch ${m[1]}` : s;
+}
+
 async function api<T>(path: string): Promise<T> {
   const res = await fetch(path);
   if (!res.ok) {
