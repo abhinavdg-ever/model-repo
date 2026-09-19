@@ -344,7 +344,6 @@ def index_rotation_rows(
                 or row.get("tilt")
             ),
             "mirrored": _parse_bool(row.get("mirrored")),
-            "pageQualityConfidence": _parse_confidence(row.get("confidence")),
         }
         fields = {k: v for k, v in fields.items() if v is not None}
         if not fields:
@@ -356,6 +355,35 @@ def index_rotation_rows(
             by_key[stem.lower()] = fields
             if stem.isdigit():
                 by_key[f"#{stem}"] = fields
+        raw_num = (row.get("page_number") or row.get("page_num") or "").strip()
+        if raw_num.isdigit():
+            by_key[f"#{raw_num}"] = fields
+            by_key[f"{raw_num}.jpg"] = fields
+            by_key[f"{raw_num}.png"] = fields
+    return by_key
+
+
+def index_quality_rows(
+    rows: list[dict[str, str]], chart_name: str
+) -> dict[str, dict[str, Any]]:
+    """<chart>_quality.csv → pageQualityTag + pageQualityConfidence."""
+    by_key: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        cname = (row.get("chart_name") or row.get("chart_id") or row.get("folder") or "").strip()
+        if cname and not _chart_row_matches(cname, chart_name):
+            continue
+        tag = (row.get("quality_tag") or row.get("quality") or "").strip()
+        score = _parse_confidence(
+            row.get("quality_score") or row.get("confidence") or row.get("score")
+        )
+        fields: dict[str, Any] = {}
+        if tag:
+            fields["pageQualityTag"] = tag
+        if score is not None:
+            fields["pageQualityConfidence"] = score
+        if not fields:
+            continue
+        _put_page_keys(by_key, row, fields)
         raw_num = (row.get("page_number") or row.get("page_num") or "").strip()
         if raw_num.isdigit():
             by_key[f"#{raw_num}"] = fields
@@ -649,7 +677,7 @@ def collect_rows(
     folder_dir: Path,
     data_root: Path,
     per_chart_name: str,
-    combined_rel: tuple[str, ...],
+    combined_rel: tuple[str, ...] | None,
     chart_name: str,
     chart_filter: str | None = None,
 ) -> list[dict[str, str]]:
@@ -658,6 +686,8 @@ def collect_rows(
     rows = read_csv_rows(per_chart)
     if rows:
         return rows
+    if not combined_rel:
+        return []
     combined = resolve_pipeline_csv(data_root, *combined_rel)
     rows = read_csv_rows(combined)
     if not rows:

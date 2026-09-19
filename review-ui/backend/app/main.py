@@ -3,10 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
 from app.core.config import get_settings
+from app.core.logging_setup import RequestLoggingMiddleware, configure_logging, logger
 
 settings = get_settings()
+configure_logging()
 
 app = FastAPI(title="Advantmed Imaging UI", version="0.1.0")
+app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins or ["*"],
@@ -15,6 +18,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router, prefix="/api")
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    logger.info(
+        "review-ui starting — data_mode=%s data_root=%s",
+        settings.data_mode,
+        settings.resolved_data_root,
+    )
 
 
 @app.get("/")

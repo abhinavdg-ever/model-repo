@@ -35,6 +35,7 @@ import {
   pageMatchRate,
 } from "./ocrMatchRate";
 import { ocrTextForFilename } from "./ocrPages";
+import { prepareOcrLines } from "./ocrFormat";
 import FullscreenPageChrome from "./FullscreenPageChrome";
 import PageJump from "./PageJump";
 import { useImagePan } from "./useImagePan";
@@ -140,6 +141,7 @@ export default function FolderViewer({
   const [pageIndex, setPageIndex] = useState(0);
   const [outputMode, setOutputMode] = useState<OutputMode>(initialMode);
   const [ocrTab, setOcrTab] = useState<OcrKind>("preliminary");
+  const [showSectionHeaders, setShowSectionHeaders] = useState(true);
   const [imagingTab, setImagingTab] = useState<ImagingTab>("page");
   const [ocrByKind, setOcrByKind] = useState<Partial<Record<OcrKind, string>>>({});
   const [imagingDoc, setImagingDoc] = useState<ImagingDocumentResponse | null>(null);
@@ -282,6 +284,20 @@ export default function FolderViewer({
     return chunk || `No OCR text found for ${page.filename}.`;
   }, [loadingOcr, ocrFullText, ocrMissingMessage, page]);
 
+  const showHeaderToggle = ocrTab === "final1" || ocrTab === "final2";
+
+  const pageOcrLines = useMemo(() => {
+    if (!showHeaderToggle || !pageOcrText || pageOcrText === ocrMissingMessage) {
+      return null;
+    }
+    if (pageOcrText.startsWith("No OCR text found")) return null;
+    return prepareOcrLines(pageOcrText, {
+      showSectionHeaders,
+      // Final2 is often plain text; Final1 already has ## from Docling.
+      detectPlainHeaders: ocrTab === "final2",
+    });
+  }, [showHeaderToggle, pageOcrText, ocrMissingMessage, showSectionHeaders, ocrTab]);
+
   const ocrMatch = useMemo(() => {
     if (!page) {
       return { rate: null, count: 0, engines: [], pairs: [] };
@@ -338,6 +354,7 @@ export default function FolderViewer({
       orientationAngle: p.orientationAngle,
       tiltAngle: p.tiltAngle,
       mirrored: p.mirrored,
+      pageQualityTag: p.pageQualityTag ?? null,
       pageQualityConfidence: p.pageQualityConfidence,
       blankOrJunk: p.blankOrJunk ?? null,
       isDuplicate: p.isDuplicate ?? null,
@@ -365,6 +382,7 @@ export default function FolderViewer({
       "orientationAngle",
       "tiltAngle",
       "mirrored",
+      "pageQualityTag",
       "pageQualityConfidence",
       "blankOrJunk",
       "isDuplicate",
@@ -397,6 +415,7 @@ export default function FolderViewer({
         p.orientationAngle,
         p.tiltAngle,
         p.mirrored,
+        p.pageQualityTag ?? "",
         p.pageQualityConfidence,
         p.blankOrJunk ?? "NA",
         p.isDuplicate == null ? "NA" : p.isDuplicate ? "Yes" : "No",
@@ -713,6 +732,16 @@ export default function FolderViewer({
                       </span>
                     ) : null}
                   </div>
+                  {showHeaderToggle ? (
+                    <label className="ocr-section-headers-toggle">
+                      <input
+                        type="checkbox"
+                        checked={showSectionHeaders}
+                        onChange={(e) => setShowSectionHeaders(e.target.checked)}
+                      />
+                      Show section headers
+                    </label>
+                  ) : null}
                 </div>
               )}
               {outputMode === "imaging" && (
@@ -750,6 +779,33 @@ export default function FolderViewer({
                 />
               ) : loadingOcr ? (
                 <div className="ocr-loading">Loading OCR output…</div>
+              ) : pageOcrLines ? (
+                <div className="ocr-formatted" aria-label="OCR text">
+                  {pageOcrLines.map((line, i) => {
+                    if (line.kind === "heading") {
+                      return (
+                        <div
+                          key={i}
+                          className={`ocr-line ocr-heading ocr-heading-h${Math.min(line.level, 3)}`}
+                        >
+                          {line.text}
+                        </div>
+                      );
+                    }
+                    if (line.kind === "image") {
+                      return (
+                        <div key={i} className="ocr-line ocr-image-placeholder">
+                          [image]
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={i} className="ocr-line ocr-text">
+                        {line.text || "\u00a0"}
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
                 <pre>{pageOcrText || "No OCR text for this page."}</pre>
               )}

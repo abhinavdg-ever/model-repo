@@ -51,6 +51,14 @@ AZURE_STORAGE_CONNECTION_STRING = (
 AZURE_STORAGE_CONTAINER = (
     os.environ.get("AZURE_STORAGE_CONTAINER") or "imaging-pipeline"
 ).strip()
+# Filled in on /run and /batch when the request omits them (blob mode only).
+# Leave blank to keep today's behaviour: missing paths are a 400.
+AZURE_BLOB_DEFAULT_READ_PATH = (
+    os.environ.get("AZURE_BLOB_DEFAULT_READ_PATH") or ""
+).strip()
+AZURE_BLOB_DEFAULT_WRITE_PATH = (
+    os.environ.get("AZURE_BLOB_DEFAULT_WRITE_PATH") or ""
+).strip()
 # User-assigned managed identity on a VM / App Service / AKS.
 # AZURE_CLIENT_ID is what the SDK needs (ManagedIdentityCredential).
 # AZURE_PRINCIPAL_ID is the object id used when assigning RBAC roles — stored
@@ -182,6 +190,14 @@ MEMBER_NER_MODELS_PATH = os.environ.get("MEMBER_NER_MODELS_PATH") or ""
 # are IO/CPU bound per page and independent, so this is the main throughput
 # lever. Keep STAGE_WORKERS <= DB_POOL_MAX.
 STAGE_WORKERS = int(os.environ.get("STAGE_WORKERS") or "4")
+# Docling + Torch RapidOCR is not safe/fast under heavy fan-out — default 1.
+DOCLING_WORKERS = int(os.environ.get("DOCLING_WORKERS") or "1")
+# Per-page wall clock for Docling; on timeout/empty content final1 falls back
+# to RapidOCR-onnx so the rest of the chain is not blocked forever.
+# 90s default: ACCURATE+cell-matching was measured at ~778s/page on large TIFFs.
+DOCLING_PAGE_TIMEOUT_SECONDS = float(
+    os.environ.get("DOCLING_PAGE_TIMEOUT_SECONDS") or "90"
+)
 # Charts processed concurrently inside one /batch call. Default 4 so a drop of
 # small charts saturates the box; set 1 to restore serial behaviour.
 # Invariant: BATCH_WORKERS × STAGE_WORKERS + BATCH_POOL_HEADROOM ≤ DB_POOL_MAX.

@@ -11,6 +11,7 @@ const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
   member: false,
   dos: false,
   hw: false,
+  quality: false,
   rotation: false,
   junk: false,
   verification: false,
@@ -162,6 +163,13 @@ function fmtHandwriting(
   return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
 }
 
+function fmtQualityTag(value: string | null | undefined, processed = true): string {
+  if (!processed) return YET_TO_PROCESS;
+  if (value === null || value === undefined || value === "") return NOT_FOUND;
+  const text = String(value).trim();
+  return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+}
+
 function fmtPageType(value: string | null | undefined, processed = true): string {
   if (!processed) return YET_TO_PROCESS;
   if (value === null || value === undefined || value === "") return NOT_FOUND;
@@ -282,24 +290,35 @@ function PageDetails({
             label: "Printed / Handwritten",
             value: fmtHandwriting(page.handwrittenOrPrinted, sections.hw),
             confidence: fmtConfidence(
-              page.handwrittenOrPrintedConfidence ?? page.pageQualityConfidence,
+              page.handwrittenOrPrintedConfidence ?? null,
               sections.hw,
+            ),
+          },
+          {
+            label: "Quality",
+            value: fmtQualityTag(
+              page.pageQualityTag,
+              sections.quality ?? sections.hw,
+            ),
+            confidence: fmtConfidence(
+              page.pageQualityConfidence,
+              sections.quality ?? sections.hw,
             ),
           },
           {
             label: "Orientation Angle (Page)",
             value: fmtDegrees(page.orientationAngle, sections.rotation),
-            confidence: fmtConfidence(page.pageQualityConfidence, sections.rotation),
+            confidence: fmtConfidence(null, sections.rotation),
           },
           {
             label: "Tilt Angle (Text)",
             value: fmtDegrees(page.tiltAngle, sections.rotation),
-            confidence: fmtConfidence(page.pageQualityConfidence, sections.rotation),
+            confidence: fmtConfidence(null, sections.rotation),
           },
           {
             label: "Mirrored (Text)",
             value: fmt(page.mirrored, sections.rotation),
-            confidence: fmtConfidence(page.pageQualityConfidence, sections.rotation),
+            confidence: fmtConfidence(null, sections.rotation),
           },
         ]}
       />
@@ -454,6 +473,7 @@ function DocSummary({
               <th scope="col">Extracted DOB</th>
               <th scope="col">Member ID</th>
               <th scope="col">HW/Printed</th>
+              <th scope="col">Quality</th>
               <th scope="col">Orient.</th>
               <th scope="col">Tilt</th>
               <th scope="col">Mirrored</th>
@@ -481,6 +501,12 @@ function DocSummary({
                 <td>{fmt(p.memberDob, sections.member)}</td>
                 <td>{fmt(p.memberId, sections.member)}</td>
                 <td>{fmtHandwriting(p.handwrittenOrPrinted, sections.hw)}</td>
+                <td>
+                  {fmtQualityTag(
+                    p.pageQualityTag,
+                    sections.quality ?? sections.hw,
+                  )}
+                </td>
                 <td>{fmtDegrees(p.orientationAngle, sections.rotation)}</td>
                 <td>{fmtDegrees(p.tiltAngle, sections.rotation)}</td>
                 <td>{fmt(p.mirrored, sections.rotation)}</td>

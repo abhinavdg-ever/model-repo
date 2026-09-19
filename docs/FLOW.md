@@ -179,14 +179,14 @@ sequenceDiagram
   O--xO: crash
 
   Note over O,AZ: Re-run — resumes
-  C->>O: POST /api/charts/{id}/rerun
+  C->>O: POST /api/charts/run {"chart_id":…}
   O->>DB: pages_needing_stage('ocr_final2')
   DB-->>O: pages 401…500 only
   O->>AZ: analyse 100 pages
   Note right of AZ: 400 pages not re-billed
 ```
 
-- `POST /rerun` with no body → **resume**: completed and skipped pages are left alone.
+- `POST /run` with `chart_id` (or `chart_name`) and no body extras → **resume**: completed and skipped pages are left alone.
 - `{"force": true}` → reprocess everything.
 - `{"only": ["member_verify"]}` → run just that stage.
 

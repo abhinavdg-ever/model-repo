@@ -258,7 +258,7 @@ One process does everything, and the work only exists in its memory.
 
 ```mermaid
 flowchart TD
-  REQ(["POST /api/charts/batch"]) --> API
+  REQ(["POST /api/charts/batch-run"]) --> API
 
   subgraph VM["One VM — one process"]
     API["FastAPI :8001"]
@@ -278,7 +278,7 @@ Three consequences, all recorded in
 
 - **Restart loses the batch.** The list of charts lives in a Python local. Resume
   makes re-running cheap, but the request must be re-issued by a human.
-- **No cap across requests.** Two concurrent `/batch` calls oversubscribe the box;
+- **No cap across requests.** Two concurrent `/batch-run` calls oversubscribe the box;
   nothing arbitrates between them.
 - **No retry.** A stage that raises is recorded against the page and the chart
   moves on. Nothing tries again later.
@@ -291,7 +291,7 @@ The API stops doing the work and starts describing it. Workers do the work.
 
 ```mermaid
 flowchart TD
-  REQ(["POST /api/charts/batch"]) --> API
+  REQ(["POST /api/charts/batch-run"]) --> API
 
   subgraph CTRL["Control VM"]
     API["FastAPI :8001<br/>enumerate folders, enqueue, return 202"]
@@ -333,7 +333,7 @@ flowchart TD
 ```
 
 `ingest_and_run` is unchanged — it is already the single per-chart entry point
-that both `/run` and `/batch` call. The worker is a loop around it.
+that both `/run` and `/batch-run` call. The worker is a loop around it.
 
 ---
 

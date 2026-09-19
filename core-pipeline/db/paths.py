@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-from config import IMAGE_SUFFIXES, imaging_dir, ocr_dir, pages_dir
+from config import IMAGE_SUFFIXES, chart_dir, imaging_dir, ocr_dir, pages_dir
 
 PAGE_MARKER_RE = re.compile(r"^=====\s*(.+?)\s*=====\s*$", re.MULTILINE)
 PAGE_NUM_RE = re.compile(r"^(\d+)\.(jpe?g|png|webp|tif{1,2})$", re.IGNORECASE)
@@ -36,6 +36,35 @@ def list_local_pages(chart_name: str) -> list[Path]:
         return (1, p.name.casefold())
 
     return sorted(files, key=sort_key)
+
+
+def clear_chart_workspace(chart_name: str) -> dict[str, int]:
+    """Delete on-disk outputs under data/folders/<chart>/ for a re-submit.
+
+    Clears ``pages/``, ``ocr/``, ``imaging/``, and ``corrected-pages/`` files.
+    Does not touch Postgres — callers reset result tables separately and keep
+    ``chart_list`` / ``page_list`` rows.
+    """
+    removed: dict[str, int] = {}
+    root = chart_dir(chart_name)
+    if not root.is_dir():
+        return removed
+    for label, folder in (
+        ("pages", pages_dir(chart_name)),
+        ("ocr", ocr_dir(chart_name)),
+        ("imaging", imaging_dir(chart_name)),
+        ("corrected-pages", root / "corrected-pages"),
+    ):
+        if not folder.is_dir():
+            continue
+        n = 0
+        for path in folder.iterdir():
+            if path.is_file():
+                path.unlink()
+                n += 1
+        if n:
+            removed[label] = n
+    return removed
 
 
 def write_combined_ocr_txt(

@@ -20,6 +20,7 @@ probe next to it.
 from __future__ import annotations
 
 from importlib.util import find_spec
+from pathlib import Path
 from typing import Any
 
 from config import (
@@ -267,6 +268,67 @@ def ner_status() -> dict[str, Any]:
         return {"enabled": MEMBER_NER_ENABLED, "ready": False, "reason": str(exc)}
 
 
+def hw_model_status() -> dict[str, Any]:
+    """Stage-1 handwriting classifier weights on disk (ConvNeXt preferred, RF backup)."""
+    from config import HW_MODEL_PATH, CORE_ROOT
+
+    convnext = Path(HW_MODEL_PATH)
+    if not convnext.is_file():
+        convnext = CORE_ROOT / "models" / "hw" / "handwritten_printed_convnext_tiny.pth"
+    rf = CORE_ROOT / "models" / "hw" / "image_type_classification.pkl"
+    torch_ok = find_spec("torch") is not None and find_spec("torchvision") is not None
+
+    if convnext.is_file() and torch_ok:
+        return {
+            "ready": True,
+            "engine": "convnext",
+            "path": str(convnext),
+            "backup": str(rf) if rf.is_file() else None,
+        }
+    if rf.is_file():
+        reason = None
+        if convnext.is_file() and not torch_ok:
+            reason = "ConvNeXt present but torch/torchvision missing — using RF"
+        return {
+            "ready": True,
+            "engine": "random_forest",
+            "path": str(rf),
+            "reason": reason,
+        }
+    return {
+        "ready": False,
+        "engine": "fallback",
+        "reason": (
+            f"no HW weights under models/hw/ "
+            f"(expected {convnext.name} or {rf.name})"
+        ),
+    }
+
+
+def rapidocr_models_status() -> dict[str, Any]:
+    """Local RapidOCR .pth files used by Docling final1."""
+    from stages.lib.imaging.docling_ocr import (
+        missing_model_files,
+        model_paths,
+        rapid_models_dir,
+    )
+
+    root = rapid_models_dir()
+    missing = missing_model_files(root)
+    present = [p.name for p in model_paths(root).values() if p.is_file()]
+    return {
+        "ready": not missing,
+        "models_dir": str(root),
+        "present": present,
+        "missing": [p.name for p in missing],
+        "reason": (
+            None
+            if not missing
+            else "missing: " + ", ".join(p.name for p in missing)
+        ),
+    }
+
+
 def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
     """Every optional feature at once. `probe=True` allows one blob round trip."""
     from stages.lib.imaging.docling_ocr import docling_status
@@ -277,6 +339,8 @@ def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
         "dos_llm": dos_llm_status(),
         "member_ner": ner_status(),
         "docling_final1": docling_status(),
+        "hw_model": hw_model_status(),
+        "rapidocr_models": rapidocr_models_status(),
         "skip_ocr": {
             "enabled": SKIP_OCR,
             "ready": True,
@@ -294,9 +358,10 @@ def _one_line(status: dict[str, Any], on: str) -> str:
     if status.get("ready"):
         if status.get("reachable") is False:
             return f"configured but UNREACHABLE — {status.get('reason')}"
-        if status.get("reachable") is None and status.get("reason"):
-            # Probe timed out. Not the same as "broken" — say so rather than
-            # implying a verdict we never got.
+        # Only the blob probe sets ``reachable``. Other features may carry a
+        # non-fatal ``reason`` (e.g. HW using RF because torch is missing) that
+        # is already folded into ``on`` by the caller — do not append twice.
+        if "reachable" in status and status.get("reachable") is None and status.get("reason"):
             return f"{on} ({status['reason']})"
         return on
     return f"off — {status.get('reason') or 'not configured'}"
@@ -304,12 +369,16 @@ def _one_line(status: dict[str, Any], on: str) -> str:
 
 def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     """(label, value) pairs for the startup banner, aligned by the caller."""
+    from pathlib import Path
+
     blob = caps["blob"]
     di = caps["azure_document_intelligence"]
     llm = caps["dos_llm"]
     ner = caps["member_ner"]
     docling = caps.get("docling_final1") or {}
     skip_ocr = caps.get("skip_ocr") or {}
+    hw = caps.get("hw_model") or {}
+    rapid = caps.get("rapidocr_models") or {}
 
     blob_on = f"OK — {blob.get('auth')}"
     if blob.get("account"):
@@ -327,11 +396,29 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     docling_on = f"OK — models={docling.get('models_dir')}"
     skip_on = "ON — reuse ocr/ when present"
 
+    hw_path = hw.get("path") or ""
+    hw_name = Path(hw_path).name if hw_path else "?"
+    hw_on = f"OK — {hw.get('engine')} ({hw_name})"
+    if hw.get("reason"):
+        hw_on += f" — {hw['reason']}"
+
+    rapid_on = (
+        f"OK — {len(rapid.get('present') or [])} file(s) in {rapid.get('models_dir')}"
+    )
+
+    skip_line = (
+        skip_on
+        if skip_ocr.get("enabled")
+        else f"off — {skip_ocr.get('reason') or 'SKIP_OCR=false'}"
+    )
+
     return [
         ("blob", _one_line(blob, blob_on)),
+        ("HW model", _one_line(hw, hw_on)),
+        ("RapidOCR", _one_line(rapid, rapid_on)),
         ("final1 Docling", _one_line(docling, docling_on)),
         ("final2 OCR", _one_line(di, di_on)),
         ("DOS LLM", _one_line(llm, llm_on)),
         ("member NER", _one_line(ner, ner_on)),
-        ("skip OCR", _one_line(skip_ocr, skip_on)),
+        ("skip OCR", skip_line),
     ]

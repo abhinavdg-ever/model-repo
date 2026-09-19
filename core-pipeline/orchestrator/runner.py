@@ -98,6 +98,7 @@ def run_pipeline_for_chart(
     force: bool = False,
     only: Optional[list[str]] = None,
     through: Optional[str] = None,
+    skip_ocr: Optional[bool] = None,
 ) -> dict[str, Any]:
     """Run the stage chain for one chart.
 
@@ -111,6 +112,8 @@ def run_pipeline_for_chart(
 
     They compose: ``through`` bounds the chain, ``only`` filters within it.
     Neither disturbs the recorded progress of the stages it does not run.
+
+    ``skip_ocr`` overrides the ``SKIP_OCR`` env for this run (``None`` = env).
     """
     stop_at = resolve_stage(through) if through else None
     with connect() as conn:
@@ -146,7 +149,7 @@ def run_pipeline_for_chart(
 
     try:
         total_stages = len(chain)
-        skip_ocr = False
+        skip_ocr_active = False
         ocr_hydrated = False
         for index, (name, pass_no, fn) in enumerate(chain, start=1):
             key = f"{name}:{pass_no}"
@@ -158,22 +161,24 @@ def run_pipeline_for_chart(
                 if not ocr_hydrated:
                     from stages.ocr_reuse import should_skip_ocr_stages, hydrate_ocr_from_disk
 
-                    skip_ocr = should_skip_ocr_stages(
-                        chart_name=chart["chart_name"], force=force
+                    skip_ocr_active = should_skip_ocr_stages(
+                        chart_name=chart["chart_name"],
+                        force=force,
+                        skip_ocr=skip_ocr,
                     )
-                    if skip_ocr:
+                    if skip_ocr_active:
                         results["ocr_reuse"] = hydrate_ocr_from_disk(
                             chart_id, chart["chart_name"]
                         )
                     ocr_hydrated = True
-                if skip_ocr:
+                if skip_ocr_active:
                     results["skipped_stages"].append(key)
                     results["stages"][key] = {
                         "skipped": True,
                         "reason": "skip_ocr_reuse_disk",
                     }
                     logger.info(
-                        "=== [%s]  skipped (SKIP_OCR, reusing ocr/)  —  chart %s ===",
+                        "=== [%s]  skipped (skip_ocr, reusing ocr/)  —  chart %s ===",
                         stage_label(name, pass_no), chart_id,
                     )
                     continue
@@ -238,6 +243,7 @@ def ingest_and_run(
     force: bool = False,
     only: Optional[list[str]] = None,
     through: Optional[str] = None,
+    skip_ocr: Optional[bool] = None,
 ) -> dict[str, Any]:
     """Fetch one chart's pages into the workspace, then run the chain on it.
 
@@ -281,6 +287,7 @@ def ingest_and_run(
             blob_path=blob_path,
             run_id=run_id,
             batch_id=batch_id,
+            force=force,
         )
         out = {
             "chart_id": download["chart_id"],
@@ -291,6 +298,10 @@ def ingest_and_run(
 
     if run_pipeline:
         out["pipeline"] = run_pipeline_for_chart(
-            out["chart_id"], force=force, only=only, through=through
+            out["chart_id"],
+            force=force,
+            only=only,
+            through=through,
+            skip_ocr=skip_ocr,
         )
     return out

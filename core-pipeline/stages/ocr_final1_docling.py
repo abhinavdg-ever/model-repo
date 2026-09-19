@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from config import (
+    DOCLING_PAGE_TIMEOUT_SECONDS,
+    DOCLING_WORKERS,
     STAGE_WORKERS,
     page_image_path,
 )
@@ -98,16 +100,48 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
             raise FileNotFoundError(f"Missing page image: {image_path}")
 
         if prefer_docling:
-            from stages.lib.imaging.docling_ocr import convert_image, get_converter
+            from stages.lib.imaging.docling_ocr import (
+                convert_image_with_timeout,
+                get_converter,
+                markdown_is_empty,
+            )
 
             converter = get_converter()
             if converter is not None:
-                extracted = convert_image(image_path, converter=converter)
-                out["content"] = extracted.get("content") or ""
-                out["markdown"] = extracted.get("markdown") or out["content"]
-                out["document"] = extracted.get("document")
-                out["engine"] = "docling+rapidocr"
-                return out
+                try:
+                    extracted = convert_image_with_timeout(
+                        image_path,
+                        converter=converter,
+                        timeout_seconds=DOCLING_PAGE_TIMEOUT_SECONDS,
+                    )
+                    content = extracted.get("content") or ""
+                    elapsed = extracted.get("elapsed_seconds")
+                    if not markdown_is_empty(content):
+                        out["content"] = content
+                        out["markdown"] = extracted.get("markdown") or content
+                        out["document"] = extracted.get("document")
+                        out["engine"] = "docling+rapidocr"
+                        if elapsed is not None:
+                            logger.info(
+                                "Final1 Docling ok %s in %.1fs",
+                                page["page_name"],
+                                elapsed,
+                            )
+                        return out
+                    logger.warning(
+                        "Docling empty/placeholder-only for %s (%.1fs) — "
+                        "falling back to RapidOCR-onnx",
+                        page["page_name"],
+                        elapsed or 0.0,
+                    )
+                except TimeoutError as exc:
+                    logger.warning("%s — falling back to RapidOCR-onnx", exc)
+                except Exception as exc:
+                    logger.warning(
+                        "Docling failed for %s (%s) — falling back to RapidOCR-onnx",
+                        page["page_name"],
+                        exc,
+                    )
 
         text = _ocr_onnx(image_path)
         out["content"] = text
@@ -170,6 +204,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             else:
                 _get_onnx_engine()
             workers = max(1, min(STAGE_WORKERS, len(todo)))
+            if prefer_docling:
+                # Torch RapidOCR + Docling thrash under fan-out; serial by default.
+                workers = max(1, min(DOCLING_WORKERS, workers))
+                logger.info(
+                    "Final1 Docling workers=%d timeout=%.0fs",
+                    workers,
+                    DOCLING_PAGE_TIMEOUT_SECONDS,
+                )
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 results = list(
                     pool.map(

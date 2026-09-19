@@ -96,8 +96,8 @@ def _write_one(
     """Write one finished chart, recording the outcome rather than raising.
 
     A write failure must not mark a chart failed: the pipeline ran, the results
-    are in the workspace, and POST /api/charts/write can retry without
-    reprocessing. In a batch of fifty it must also not stop the other
+    are in the workspace, and POST /api/charts/run with chart_name + a write
+    path can retry (sync skips files already at the destination). In a batch of fifty it must also not stop the other
     forty-nine — one unwritable destination is exactly the kind of thing that
     should be reported and stepped over.
     """
@@ -222,6 +222,7 @@ def _run_one_chart(
     run_pipeline: bool,
     only: Optional[list[str]],
     through: Optional[str],
+    skip_ocr: Optional[bool],
     run_id: Optional[str],
     batch_id: Optional[str],
     counters: dict[str, int],
@@ -256,6 +257,7 @@ def _run_one_chart(
             force=force,
             only=only,
             through=through,
+            skip_ocr=skip_ocr,
         )
         entry.update(
             chart_id=out.get("chart_id"),
@@ -305,6 +307,7 @@ def run_batch(
     run_pipeline: bool = True,
     only: Optional[list[str]] = None,
     through: Optional[str] = None,
+    skip_ocr: Optional[bool] = None,
     limit: Optional[int] = None,
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
@@ -412,6 +415,7 @@ def run_batch(
                 run_pipeline=run_pipeline,
                 only=only,
                 through=through,
+                skip_ocr=skip_ocr,
                 run_id=run_id,
                 batch_id=batch_id,
                 counters=counters,

@@ -19,12 +19,13 @@ import re
 from pathlib import Path
 from typing import Any, Optional
 
-from config import IMAGE_SUFFIXES, chart_dir, ensure_chart_dirs, pages_dir
+from config import IMAGE_SUFFIXES, ensure_chart_dirs, pages_dir
 from db import (
     connect,
     create_job,
     init_page_stages,
     count_manifest_members,
+    prune_orphan_pages,
     reset_chart_results,
     set_chart_status,
     sha256_file,
@@ -39,6 +40,7 @@ from db.blob_store import (
     list_image_blobs,
 )
 from db.chart_status import refresh_chart_status
+from db.paths import clear_chart_workspace
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,14 @@ def _finish_registration(
 ) -> dict[str, Any]:
     """Shared tail of blob ingest and local registration."""
     pages = upsert_pages(conn, chart_id, page_rows)
+    pruned = prune_orphan_pages(
+        conn, chart_id, [p["page_name"] for p in page_rows]
+    )
+    if pruned:
+        logger.info(
+            "chart %s: pruned %d orphan page_list row(s) after re-ingest",
+            chart_name, pruned,
+        )
     init_page_stages(conn, chart_id)
     # No manifest linking step: manifest_member_list.record_id IS the chart
     # name, so the relationship is a join, never a column to populate.
@@ -65,7 +75,12 @@ def _finish_registration(
     if manifest_rows:
         logger.info("chart %s: %s manifest row(s) match", chart_name, manifest_rows)
     progress = refresh_chart_status(conn, chart_id)
-    return {"pages": pages, "manifest_rows": manifest_rows, "progress": progress}
+    return {
+        "pages": pages,
+        "manifest_rows": manifest_rows,
+        "progress": progress,
+        "pruned_pages": pruned,
+    }
 
 
 def run_download(
@@ -75,6 +90,7 @@ def run_download(
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
     chart_id: Optional[int] = None,
+    force: bool = True,
 ) -> dict[str, Any]:
     from db.path_ids import resolve_run_batch
 
@@ -136,7 +152,22 @@ def run_download(
                 f"No images found under {blob_container}/{prefix} — {detail}"
             )
 
+        # Re-submit overwrites local workspace by default so resumed file-exists
+        # skips cannot serve a previous page set. chart_list / page_list kept.
+        reset: dict[str, int] = {}
+        cleared: dict[str, int] = {}
         dest_root = pages_dir(chart_name)
+        had_local = dest_root.is_dir() and any(dest_root.iterdir())
+        if force or had_local:
+            with connect() as conn:
+                reset = reset_chart_results(conn, chart_id)
+            cleared = clear_chart_workspace(chart_name)
+            if reset or cleared:
+                logger.info(
+                    "Blob re-ingest %s: reset=%s cleared=%s",
+                    chart_name, reset or "{}", cleared or "{}",
+                )
+
         page_rows: list[dict[str, Any]] = []
         reused = 0
         total_files = len(blob_names)
@@ -149,8 +180,7 @@ def run_download(
             write_folder_progress(
                 chart_name, idx, total_files, detail=f"download {local_name}"
             )
-            if dest.is_file() and dest.stat().st_size > 0:
-                # Already downloaded — a resumed ingest does not re-pull bytes.
+            if not force and dest.is_file() and dest.stat().st_size > 0:
                 reused += 1
             else:
                 logger.info(
@@ -248,7 +278,7 @@ def import_local_folder(
     source: str | Path,
     *,
     chart_name: Optional[str] = None,
-    force: bool = False,
+    force: bool = True,
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
 ) -> dict[str, Any]:
@@ -264,6 +294,10 @@ def import_local_folder(
     chart folder that keeps its scans in ``pages/`` is the common shape, not a
     special case. Any manifest alongside the images is always loaded — the
     member stage cannot run without one.
+
+    Re-submit **overwrites by default** (``force=True``): the local chart
+    workspace is cleared and stage result tables are wiped, while ``chart_list``
+    and ``page_list`` rows are kept (page ids stay stable via upsert).
     """
     import shutil
 
@@ -298,16 +332,14 @@ def import_local_folder(
     if existing and not force:
         raise RuntimeError(
             f"{dest_dir} already holds {len(existing)} file(s). "
-            "Pass force=True to replace them."
+            "Pass force=True to replace them (default on re-submit)."
         )
 
-    # A re-import replaces the chart rather than merging into it. Without the
-    # database reset, pages that disappeared from the source keep their old
-    # page_list rows AND their completed page_stage_status rows, so the chart
-    # reports finished while serving results for pages that no longer exist.
-    # The chart_list row and its id survive; pipeline_jobs is left as the log.
+    # Re-import replaces disk outputs and stage results; chart_list + page_list
+    # survive so ids stay stable. pipeline_jobs is left as the audit log.
     reset: dict[str, int] = {}
-    if existing:
+    cleared: dict[str, int] = {}
+    if existing or force:
         with connect() as conn:
             prior = conn.execute(
                 "SELECT id FROM chart_list WHERE chart_name = %s", (name,)
@@ -316,22 +348,17 @@ def import_local_folder(
                 reset = reset_chart_results(conn, prior["id"])
                 if reset:
                     logger.info(
-                        "Re-import of %s: cleared %s",
+                        "Re-import of %s: cleared DB results %s",
                         name,
                         ", ".join(f"{v} {k}" for k, v in reset.items()),
                     )
-    for stale in existing:
-        stale.unlink()
-    # Stale OCR text, imaging CSVs and corrected page images all describe the
-    # old page set. A left-behind corrected-pages/1.jpg is the worst of the
-    # three: page_image_path would prefer it, so the new scan would be OCR'd as
-    # the old one, silently.
-    for sub in ("ocr", "imaging", "corrected-pages"):
-        folder = chart_dir(name) / sub
-        if folder.is_dir():
-            for old_file in folder.iterdir():
-                if old_file.is_file():
-                    old_file.unlink()
+        cleared = clear_chart_workspace(name)
+        if cleared:
+            logger.info(
+                "Re-import of %s: cleared local workspace %s",
+                name,
+                ", ".join(f"{v} {k}" for k, v in cleared.items()),
+            )
 
     from db.paths import write_folder_progress
 
@@ -378,6 +405,7 @@ def import_local_folder(
     result["imported"] = len(copied)
     result["manifest"] = manifest_summary
     result["reset"] = reset
+    result["cleared_workspace"] = cleared
     return result
 
 

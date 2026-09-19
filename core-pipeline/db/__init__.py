@@ -413,7 +413,7 @@ def pages_needing_stage(
     This is what makes a re-run resumable: pages already `completed` or
     `skipped` are not redone, so a crash on page 400 of 500 does not re-bill
     Azure Document Intelligence for the first 399. `force=True` reprocesses
-    everything (the /rerun?force=true path).
+    everything (the /run?force=true resume path).
     """
     if force:
         rows = conn.execute(
@@ -1032,6 +1032,8 @@ def list_manifest_members(
 # absent: it is the run log, and the point of a re-run is to be able to compare
 # it against the previous attempt. manifest_member_list is absent too — it is
 # the client's roster, not our output, and re-loading it is a separate action.
+# page_list is also kept: re-ingest upserts pages in place so page ids stay
+# stable; only orphan page_names (gone from the new source) are pruned.
 CHART_RESULT_TABLES = (
     "member_verification_summary",
     "member_extraction_results",
@@ -1040,20 +1042,21 @@ CHART_RESULT_TABLES = (
     "ocr_quality_results",
     "ocr_results",
     "page_stage_status",
-    "page_list",
 )
 
 
 def reset_chart_results(conn: Any, chart_id: int) -> dict[str, int]:
-    """Delete everything this chart produced, keeping the chart row and its id.
+    """Clear stage outputs for a re-ingest, keeping chart_list and page_list.
 
     A re-ingest of the same chart name would otherwise merge into the previous
-    attempt: pages that vanished from the source keep their old rows and their
-    completed stage statuses, so the chart reports finished while serving stale
-    results. Wiping first makes a re-run mean what it says.
+    attempt: completed page_stage_status rows make the chart look finished
+    while serving stale OCR/member/DOS. Wiping results first makes a re-run
+    mean what it says.
 
-    The chart_list row itself survives, so chart_id is stable and anything
-    holding that id still resolves. pipeline_jobs survives as the audit trail.
+    The chart_list and page_list rows survive so chart_id / page_id stay
+    stable across re-submits. Orphan page_names (absent from the new source)
+    are pruned by the caller after upsert_pages. pipeline_jobs survives as
+    the audit trail.
     """
     deleted: dict[str, int] = {}
     for table in CHART_RESULT_TABLES:
@@ -1073,6 +1076,27 @@ def reset_chart_results(conn: Any, chart_id: int) -> dict[str, int]:
         (chart_id,),
     )
     return deleted
+
+
+def prune_orphan_pages(
+    conn: Any, chart_id: int, keep_page_names: list[str]
+) -> int:
+    """Delete page_list rows whose names are not in the new ingest set."""
+    keep = [n for n in keep_page_names if n]
+    if not keep:
+        result = conn.execute(
+            "DELETE FROM page_list WHERE chart_id = %s", (chart_id,)
+        )
+        return getattr(result, "rowcount", 0) or 0
+    result = conn.execute(
+        """
+        DELETE FROM page_list
+         WHERE chart_id = %s
+           AND page_name <> ALL(%s)
+        """,
+        (chart_id, keep),
+    )
+    return getattr(result, "rowcount", 0) or 0
 
 
 def count_manifest_members(conn: Any, record_id: str) -> int:

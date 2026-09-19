@@ -173,7 +173,7 @@ Runtime: `pip install -r requirements-docling.txt` (torch + torchvision).
 
 | Missing | Fallback |
 |---|---|
-| ConvNeXt `.pth` / torch | RandomForest `image_type_classification.pkl` |
+| ConvNeXt `.pth` / torch | RandomForest `models/hw/image_type_classification.pkl` |
 | RapidOCR four files | **rapidocr-onnxruntime** (base `requirements.txt`) |
 | GLiNER | rules-only member verify — **no chart can be Rejected** |
 
@@ -317,19 +317,23 @@ Unknown name → **400**.
 
 ### Shared optional stage selectors
 
-Usable on `/run`, `/batch`, and `/rerun`:
+Usable on `/run` and `/batch-run`:
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `through` | string | omit | Run from the top, **stop after** this stage |
 | `only` | string[] | omit | Run **just** these stages against existing outputs |
 | `force` | bool | `false` | Reprocess completed pages (**final2 is billed**) |
+| `skip_ocr` | bool | omit | Per-request override for `SKIP_OCR`. `true` = reuse on-disk `ocr/` (even if `.env` has `SKIP_OCR=false`). `false` = always run OCR. omit = honour env. Ignored when `force=true` |
 
 ### `POST /api/charts/run` — one chart
 
-**Required (local):** `local_read_path` + `local_folder_name`  
-**Required (blob):** `blob_container` + `blob_read_path` + `blob_read_folder_name`  
+**New chart (local):** `local_read_path` + `local_folder_name`  
+**New chart (blob):** `blob_container` + `blob_read_path` + `blob_read_folder_name`  
+**Resume** (replaces `/rerun`): `chart_id` or `chart_name` with no read path  
 Do not mix blob and local. Folder name **is** the chart name.
+
+Write is part of this call — pass `local_write_path` or `blob_write_path`. Default is a **sync**: missing destination files are written, existing ones skipped. `overwrite=true` replaces all.
 
 | Field | Required? | Default | Notes |
 |---|---|---|---|
@@ -337,10 +341,11 @@ Do not mix blob and local. Folder name **is** the chart name.
 | `local_write_path` | optional | omit | Write results; omit to keep workspace only |
 | `blob_container` / `blob_read_path` / `blob_read_folder_name` | blob source | — | |
 | `blob_write_path` | optional | omit | Write under this prefix |
+| `chart_id` / `chart_name` | resume | — | No read path; pipeline (+ write if set) |
 | `write_mode` | optional | `skip_orig_pages` | or `all_files` |
-| `overwrite` | optional | `false` | Replace files at destination |
+| `overwrite` | optional | `false` | Sync by default; true = replace destination files |
 | `run_id` / `batch_id` | optional | inferred | From path (`Run1`→`R1`, `Batch1`→`B1`) |
-| `through` / `only` / `force` | optional | — | See above |
+| `through` / `only` / `force` / `skip_ocr` | optional | — | See above |
 
 ```bash
 # macOS / Linux — minimal local
@@ -351,6 +356,10 @@ curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
   -d '{"local_read_path":"/data/inbox","local_folder_name":"52743839_44976074",
        "local_write_path":"/data/outbox","through":"ocr_final1"}'
+
+# Resume an existing chart (and write missing files)
+curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
+  -d '{"chart_id":7,"local_write_path":"/data/outbox","only":["dos_extract"]}'
 
 # Blob
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
@@ -370,67 +379,53 @@ curl.exe -X POST localhost:8001/api/charts/run -H "Content-Type: application/jso
 curl.exe -X POST localhost:8001/api/charts/run -H "Content-Type: application/json" `
   -d "{\"local_read_path\":\"C:/data/inbox\",\"local_folder_name\":\"52743839_44976074\",\"local_write_path\":\"C:/data/outbox\",\"through\":\"ocr_final1\"}"
 
+# Resume
+curl.exe -X POST localhost:8001/api/charts/run -H "Content-Type: application/json" `
+  -d "{\"chart_id\":7,\"local_write_path\":\"C:/data/outbox\",\"only\":[\"dos_extract\"]}"
+
 # Blob
 curl.exe -X POST localhost:8001/api/charts/run -H "Content-Type: application/json" `
   -d "{\"blob_container\":\"imaging-pipeline\",\"blob_read_path\":\"run1/batch1\",\"blob_read_folder_name\":\"52743839_44976074\",\"blob_write_path\":\"Processed/Run1\",\"run_id\":\"R1\",\"batch_id\":\"B1\"}"
 ```
 
-### `POST /api/charts/batch` — every chart folder under a path
+### `POST /api/charts/batch-run` — every chart folder under a path
 
-Same vocabulary as `/run` **without** a folder name (each subfolder is a chart).
+Canonical path: `/batch-run`. `/batch` is a deprecated alias.
+
+Same vocabulary as `/run` **without** a folder name (each subfolder is a chart). Write is part of this call when a write path is set (same sync behaviour).
 
 | Field | Required? | Default | Notes |
 |---|---|---|---|
 | `local_read_path` **or** blob pair | one source | — | |
 | `local_write_path` / `blob_write_path` | optional | omit | |
 | `write_mode` | optional | `skip_orig_pages` | |
-| `overwrite` | optional | `false` | |
+| `overwrite` | optional | `false` | Sync by default |
 | `limit` | optional | all | First N charts (dry run) |
 | `workers` | optional | `BATCH_WORKERS` (4) | Must fit DB pool |
 | `run_id` / `batch_id` | optional | inferred | |
-| `through` / `only` / `force` | optional | — | |
+| `through` / `only` / `force` / `skip_ocr` | optional | — | |
 
 ```bash
 # macOS / Linux
-curl -X POST localhost:8001/api/charts/batch -H 'Content-Type: application/json' \
+curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
   -d '{"local_read_path":"/data/inbox","limit":1,"through":"ocr_prelim","workers":2}'
 ```
 
 ```powershell
 # Windows
-curl.exe -X POST localhost:8001/api/charts/batch -H "Content-Type: application/json" `
+curl.exe -X POST localhost:8001/api/charts/batch-run -H "Content-Type: application/json" `
   -d "{\"local_read_path\":\"C:/data/inbox\",\"limit\":1,\"through\":\"ocr_prelim\",\"workers\":2}"
 ```
 
 Progress: `progress.txt` in the batch parent folder (`processing N/X charts…`)
 and under each chart’s `imaging/progress.txt` (`processing N/X files…`).
 
-### `POST /api/charts/write` — export without reprocessing
+### Removed endpoints
 
-| Field | Required? | Default |
+| Path | Status | Use instead |
 |---|---|---|
-| `chart_name` | **required** | — |
-| `local_write_path` **or** `blob_container`+`blob_write_path` | one dest | — |
-| `write_mode` | optional | `skip_orig_pages` |
-| `overwrite` | optional | `false` |
-
-### `POST /api/charts/{chart_id}/rerun`
-
-| Field | Required? | Default |
-|---|---|---|
-| `through` / `only` / `force` | optional | resume incomplete pages |
-
-```bash
-# macOS / Linux
-curl -X POST localhost:8001/api/charts/7/rerun -H 'Content-Type: application/json' \
-  -d '{"only":["dos_extract"]}'
-```
-
-```powershell
-# Windows
-curl.exe -X POST localhost:8001/api/charts/7/rerun -H "Content-Type: application/json" `
-  -d "{\"only\":[\"dos_extract\"]}"
-```
+| `POST /api/charts/write` | **410** | Pass `local_write_path` / `blob_write_path` on `/run` or `/batch-run` |
+| `POST /api/charts/{id}/rerun` | **410** | `POST /api/charts/run` with `{"chart_id":…}` |
 
 ### `POST /api/manifest/sweep`
 
@@ -449,7 +444,7 @@ curl.exe -X POST localhost:8001/api/charts/7/rerun -H "Content-Type: application
 | `GET` | `/api/stages` | Stage chain from DB |
 | `GET` | `/api/charts/{id}` | Progress / status |
 | `GET` | `/api/charts/by-name/{name}` | Same by chart name |
-| `GET` | `/api/manifest/{record_id}` | Manifest rows for a chart |
+| `GET` | `/api/manifest/{record_id}` | Manifest rows: Postgres first, else scan `METADATA_ROOT` |
 | `GET` | `/api/jobs?chart_id=` | Job log (`chart_id` optional) |
 
 ### review-ui (all `GET`, read-only)

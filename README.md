@@ -106,14 +106,14 @@ three platforms — see
 
 ## Running a chart
 
-Three operations cover the service. Each is an HTTP endpoint and a CLI subcommand
-with the same options.
+Two operations cover the service. Each is an HTTP endpoint and a CLI subcommand
+with the same options. Write is part of both — pass a write path and missing
+destination files are written, existing ones skipped.
 
 | | |
 |---|---|
-| `POST /api/charts/run` | one chart in, through the eight stages, optionally written back out |
-| `POST /api/charts/batch` | the same, once per subfolder of a drop, one chart at a time |
-| `POST /api/charts/write` | send a finished chart to another destination, without reprocessing |
+| `POST /api/charts/run` | one chart in, through the eight stages, optionally written back out; resume with `chart_id` / `chart_name` |
+| `POST /api/charts/batch-run` | the same, once per subfolder of a drop |
 
 A source is a path plus a folder name, and **the folder name is the chart name** —
 it identifies the chart in the database, prefixes every output file, and is the key

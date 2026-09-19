@@ -82,8 +82,8 @@ def write_chart(
     ``blob_path``. The chart's own name is appended to it, so writing two
     charts to one destination does not merge them.
 
-    ``overwrite`` guards the destination. Without it, a destination that
-    already holds files is an error rather than a silent merge of two runs.
+    By default this **syncs**: files already at the destination are left alone,
+    missing ones are written. Pass ``overwrite=true`` to replace everything.
     """
     if bool(local_path) == bool(blob_path):
         raise ValueError(
@@ -113,6 +113,17 @@ def write_chart(
     return _write_blob(chart_name, root, files, blob_container, blob_path, overwrite, write_mode)
 
 
+def _same_file(src: Path, dest: Path) -> bool:
+    """True when dest exists and looks like the same bytes (size + mtime)."""
+    try:
+        if not dest.is_file():
+            return False
+        s, d = src.stat(), dest.stat()
+        return s.st_size == d.st_size and int(s.st_mtime) == int(d.st_mtime)
+    except OSError:
+        return False
+
+
 def _write_local(
     chart_name: str,
     root: Path,
@@ -128,25 +139,23 @@ def _write_local(
             "onto itself would do nothing and risk truncating the source"
         )
 
-    existing = [p for p in dest.rglob("*") if p.is_file()] if dest.is_dir() else []
-    if existing and not overwrite:
-        raise RuntimeError(
-            f"{dest} already holds {len(existing)} file(s). "
-            "Pass overwrite=true to replace them."
-        )
-
     written = 0
+    skipped = 0
     total_bytes = 0
     for path in files:
         target = dest / path.relative_to(root)
+        if not overwrite and _same_file(path, target):
+            skipped += 1
+            continue
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)
         written += 1
         total_bytes += path.stat().st_size
 
     logger.info(
-        "Wrote chart %s: %d file(s), %.1f MB -> %s",
-        chart_name, written, total_bytes / 1_048_576, dest,
+        "Wrote chart %s: %d file(s) written, %d skipped (already present), "
+        "%.1f MB -> %s",
+        chart_name, written, skipped, total_bytes / 1_048_576, dest,
     )
     return {
         "chart_name": chart_name,
@@ -154,7 +163,9 @@ def _write_local(
         "destination": str(dest),
         "write_mode": write_mode,
         "files_written": written,
+        "files_skipped": skipped,
         "bytes_written": total_bytes,
+        "overwrite": overwrite,
     }
 
 
@@ -180,37 +191,40 @@ def _write_blob(
     prefix = f"{normalize_prefix(blob_path)}{chart_name}/"
     client = get_container_client(container)
 
+    existing_sizes: dict[str, int] = {}
     if not overwrite:
-        # One listing, not one existence check per file: a 400-page chart would
-        # otherwise cost 400 round trips before writing anything.
-        def _peek():
-            return next(iter(client.list_blobs(name_starts_with=prefix)), None)
+        def _list() -> dict[str, int]:
+            out: dict[str, int] = {}
+            for blob in client.list_blobs(name_starts_with=prefix):
+                out[blob.name] = int(getattr(blob, "size", 0) or 0)
+            return out
 
-        clash = call_with_retry(
-            _peek,
+        existing_sizes = call_with_retry(
+            _list,
             attempts=AZURE_RETRY_ATTEMPTS,
             base_delay=AZURE_RETRY_BASE_DELAY,
             max_delay=AZURE_RETRY_MAX_DELAY,
             label=f"blob.list:{container}/{prefix}",
         )
-        if clash is not None:
-            raise RuntimeError(
-                f"{container}/{prefix} already holds blobs (e.g. {clash.name}). "
-                "Pass overwrite=true to replace them."
-            )
 
     written = 0
+    skipped = 0
     total_bytes = 0
     for path in files:
         name = f"{prefix}{path.relative_to(root).as_posix()}"
+        size = path.stat().st_size
+        if not overwrite and existing_sizes.get(name) == size:
+            skipped += 1
+            continue
         with path.open("rb") as handle:
             upload_blob(container or "", name, handle, overwrite=True)
         written += 1
-        total_bytes += path.stat().st_size
+        total_bytes += size
 
     logger.info(
-        "Wrote chart %s: %d file(s), %.1f MB -> %s/%s",
-        chart_name, written, total_bytes / 1_048_576, container, prefix,
+        "Wrote chart %s: %d file(s) written, %d skipped (already present), "
+        "%.1f MB -> %s/%s",
+        chart_name, written, skipped, total_bytes / 1_048_576, container, prefix,
     )
     return {
         "chart_name": chart_name,
@@ -218,5 +232,7 @@ def _write_blob(
         "destination": f"{container}/{prefix}",
         "write_mode": write_mode,
         "files_written": written,
+        "files_skipped": skipped,
         "bytes_written": total_bytes,
+        "overwrite": overwrite,
     }

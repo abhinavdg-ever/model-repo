@@ -1097,6 +1097,58 @@ input {
   font-weight: 500;
 }
 
+.ocr-section-headers-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: var(--neutral-700);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.ocr-section-headers-toggle input {
+  margin: 0;
+  accent-color: var(--brand-800);
+}
+
+.ocr-formatted {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--neutral-800);
+}
+
+.ocr-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ocr-heading {
+  font-weight: 700;
+  color: var(--brand-800);
+  margin: 0.55rem 0 0.15rem;
+  letter-spacing: 0.01em;
+}
+
+.ocr-heading-h1 {
+  font-size: 0.95rem;
+}
+
+.ocr-heading-h2,
+.ocr-heading-h3 {
+  font-size: 0.88rem;
+}
+
+.ocr-image-placeholder {
+  color: var(--muted);
+  font-style: italic;
+  padding: 0.15rem 0;
+}
+
 .output-tabs button:disabled {
   opacity: 0.45;
   cursor: not-allowed;

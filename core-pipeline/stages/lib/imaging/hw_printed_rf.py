@@ -7,7 +7,7 @@ Uses RandomForest features from Tesseract word confidences:
 Preprocess matches autocoder /ocr flow before classify:
   crop top 5% + bottom 2.5% → Sauvola adaptive binarization → features → .pkl
 
-Model: models/image_type_classification.pkl
+Model: models/hw/image_type_classification.pkl
   classes: 0 = Handwritten, 1 = Printed
 """
 
@@ -22,17 +22,18 @@ import numpy as np
 from PIL import Image
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+_CORE_ROOT = SCRIPT_DIR.parents[2]  # …/core-pipeline
+_DEFAULT_RF = _CORE_ROOT / "models" / "hw" / "image_type_classification.pkl"
 try:
-    from config import HW_MODEL_PATH as DEFAULT_MODEL_PATH
+    from config import HW_MODEL_PATH as _CFG_HW
+
+    # Only honour HW_MODEL_PATH when it already points at a pickle.
+    if _CFG_HW and Path(_CFG_HW).suffix.lower() in {".pkl", ".joblib"}:
+        DEFAULT_MODEL_PATH = Path(_CFG_HW)
+    else:
+        DEFAULT_MODEL_PATH = _DEFAULT_RF
 except Exception:
-    _MODEL_CANDIDATES = (
-        SCRIPT_DIR / "models" / "image_type_classification.pkl",
-        SCRIPT_DIR / "image_type_classification.pkl",
-    )
-    DEFAULT_MODEL_PATH = next(
-        (p for p in _MODEL_CANDIDATES if p.is_file()),
-        _MODEL_CANDIDATES[0],
-    )
+    DEFAULT_MODEL_PATH = _DEFAULT_RF
 
 _rf_model: Any = None
 _model_load_attempted = False

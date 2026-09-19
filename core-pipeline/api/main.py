@@ -78,13 +78,40 @@ def _safe_db_url(url: str) -> str:
 
 @app.on_event("startup")
 def _startup() -> None:
-    from config import DATA_ROOT, DATABASE_URL, METADATA_ROOT, STAGE_WORKERS
+    from config import (
+        CORE_ROOT,
+        DATA_ROOT,
+        DATABASE_URL,
+        HW_MODEL_PATH,
+        MEMBER_NER_ENABLED,
+        MEMBER_NER_MODEL_ID,
+        MEMBER_NER_MODELS_PATH,
+        METADATA_ROOT,
+        RAPID_MODELS_DIR,
+        STAGE_WORKERS,
+    )
 
     logger.info("core-pipeline starting")
     logger.info("  database    : %s", _safe_db_url(DATABASE_URL))
     logger.info("  data root   : %s", DATA_ROOT)
     logger.info("  metadata    : %s", METADATA_ROOT)
     logger.info("  workers     : %s", STAGE_WORKERS)
+
+    # Model paths as resolved from .env (before probing what is actually on disk).
+    rf_backup = CORE_ROOT / "models" / "hw" / "image_type_classification.pkl"
+    logger.info(".env model paths")
+    logger.info("  %-14s : %s", "HW_MODEL_PATH", HW_MODEL_PATH)
+    logger.info("  %-14s : %s", "  ↳ HW RF", rf_backup)
+    logger.info("  %-14s : %s", "RAPID_MODELS", RAPID_MODELS_DIR)
+    ner_root = MEMBER_NER_MODELS_PATH or "(default models/ner)"
+    logger.info(
+        "  %-14s : enabled=%s model=%s path=%s",
+        "MEMBER_NER",
+        MEMBER_NER_ENABLED,
+        MEMBER_NER_MODEL_ID,
+        ner_root,
+    )
+
     # Short-timeout probe, NOT the pool: the pool retries for 30 seconds, which
     # would hold up startup — and block /docs and /health, the two endpoints
     # whose whole job is to work when the database does not.
@@ -103,16 +130,33 @@ def _startup() -> None:
             "DATABASE_URL is read once at startup, so restart after editing .env."
         )
 
-    # Which optional features are actually on. Each of these degrades a stage
-    # rather than failing it, so without this line the first sign is a chart
-    # that completed with less in it than expected. probe=True allows one
-    # bounded round trip to the blob container: credentials being present is
-    # not the same as the role being assigned.
+    # Which optional features / model weights are actually on disk / configured.
+    # probe=True allows one bounded round trip to the blob container.
     try:
         from capabilities import all_capabilities, startup_lines
 
-        for label, value in startup_lines(all_capabilities(probe=True)):
-            logger.info("  %-11s : %s", label, value)
+        caps = all_capabilities(probe=True)
+        logger.info("models & capabilities (loaded / ready)")
+        for label, value in startup_lines(caps):
+            logger.info("  %-14s : %s", label, value)
+        # Explicit weight files so ops can see exactly what is on disk.
+        hw = caps.get("hw_model") or {}
+        rapid = caps.get("rapidocr_models") or {}
+        if hw.get("path"):
+            logger.info("  %-14s : %s", "  ↳ HW file", hw["path"])
+        if hw.get("backup"):
+            logger.info("  %-14s : %s (backup)", "  ↳ HW RF", hw["backup"])
+        for name in rapid.get("present") or []:
+            logger.info("  %-14s : %s/%s", "  ↳ RapidOCR", rapid.get("models_dir"), name)
+        for name in rapid.get("missing") or []:
+            logger.info("  %-14s : MISSING %s", "  ↳ RapidOCR", name)
+        ner = caps.get("member_ner") or {}
+        if ner.get("models_path") or ner.get("path"):
+            logger.info(
+                "  %-14s : %s",
+                "  ↳ NER path",
+                ner.get("models_path") or ner.get("path"),
+            )
     except Exception as exc:  # a status probe must never stop the server
         logger.warning("  capabilities: probe failed — %s", exc)
 
@@ -152,10 +196,19 @@ class StageSelection(BaseModel):
         description=f"Run only these stages, in chain order. {_STAGE_HELP}",
         examples=[["dos_extract"]],
     )
+    skip_ocr: Optional[bool] = Field(
+        None,
+        description=(
+            "Per-request override for SKIP_OCR. true = reuse on-disk ocr/ and "
+            "skip prelim/final1/final2 (even if .env has SKIP_OCR=false). "
+            "false = always run OCR engines. omit = honour the SKIP_OCR env. "
+            "Ignored when force=true (force always re-OCRs)."
+        ),
+    )
 
 
 class RunRequest(StageSelection):
-    """One chart: read it, run the chain, and optionally write the results out.
+    """One chart: read it (or resume), run the chain, and write results if a path is set.
 
     A source is a **read path plus a folder name**, which resolve together:
 
@@ -172,14 +225,23 @@ class RunRequest(StageSelection):
         blob_write_path Processed/Run1
         -> writes Processed/Run1/52754737_48221214/
 
-    so a chart keeps its identity on both sides and two charts written to one
-    destination cannot merge.
+    Write is part of this call — there is no separate write endpoint. With a
+    write path set, missing destination files are written and existing ones
+    are skipped unless ``overwrite=true``.
 
-    Give a blob source or a local source, not both. A write path is optional —
-    without one the chart still runs and the results stay in the workspace,
-    where `POST /api/charts/write` can send them later. **Read and write use
-    the same backend:** blob in, blob out; local in, local out.
+    To **resume** an already-ingested chart (formerly ``/rerun``), pass
+    ``chart_id`` (or ``chart_name``) with no read path.
     """
+
+    # --- resume without re-intake ---
+    chart_id: Optional[int] = Field(
+        None,
+        description="Resume pipeline for an existing chart (no read path needed)",
+    )
+    chart_name: Optional[str] = Field(
+        None,
+        description="Resume by folder name when chart_id is unknown",
+    )
 
     # --- blob ---
     blob_container: Optional[str] = Field(
@@ -230,7 +292,11 @@ class RunRequest(StageSelection):
         ),
     )
     overwrite: bool = Field(
-        False, description="Replace files already at the write destination"
+        False,
+        description=(
+            "When a write path is set: false = sync (write missing, skip existing); "
+            "true = replace all at the destination"
+        ),
     )
 
     # Optional — when omitted, inferred from path segments like Run1/Batch1 → R1/B1
@@ -293,7 +359,11 @@ class BatchRequest(StageSelection):
         description="skip_orig_pages (default) omits pages/; all_files sends everything",
     )
     overwrite: bool = Field(
-        False, description="Replace files already at the write destination"
+        False,
+        description=(
+            "When a write path is set: false = sync (write missing, skip existing); "
+            "true = replace all at the destination"
+        ),
     )
 
     # --- both ---
@@ -320,11 +390,7 @@ class BatchRequest(StageSelection):
 
 
 class WriteRequest(BaseModel):
-    """Write an already-run chart out, without reprocessing it.
-
-    Same write vocabulary as `/run`. Use this to send a chart to a second
-    destination, or to export one that ran before a write path was given.
-    """
+    """Legacy body for the removed ``/write`` endpoint (returns 410)."""
 
     chart_name: str = Field(
         ...,
@@ -338,25 +404,8 @@ class WriteRequest(BaseModel):
     blob_write_path: Optional[str] = Field(
         None, description="Destination prefix inside the container"
     )
-    write_mode: str = Field(
-        SKIP_ORIG_PAGES,
-        description="skip_orig_pages (default) omits pages/; all_files sends everything",
-    )
-    overwrite: bool = Field(
-        False,
-        description=(
-            "Replace files already at the destination. Without it a "
-            "non-empty destination is an error rather than a silent merge."
-        ),
-    )
-
-
-class RerunRequest(StageSelection):
-    """Re-run an existing chart. Same stage vocabulary as run and batch."""
-
-    force: bool = Field(
-        False, description="Reprocess completed pages instead of resuming"
-    )
+    write_mode: str = Field(SKIP_ORIG_PAGES)
+    overwrite: bool = False
 
 
 class ManifestSweepRequest(BaseModel):
@@ -422,8 +471,8 @@ def _write_after_run(payload: "RunRequest", chart_name: str) -> None:
     """Write the chart out, if a write path was given.
 
     Deliberately separate from the pipeline call: a write failure must not
-    make a completed run look failed. The chart is in the workspace either
-    way, and POST /api/charts/write can retry without reprocessing.
+    make a completed run look failed. Retry by calling /run again with
+    chart_id/chart_name and the write path (sync skips files already there).
     """
     if not (payload.blob_write_path or payload.local_write_path):
         return
@@ -439,14 +488,19 @@ def _write_after_run(payload: "RunRequest", chart_name: str) -> None:
             write_mode=payload.write_mode,
         )
         logger.info(
-            "Wrote %s -> %s (%d file(s), %s)",
-            chart_name, result["destination"], result["files_written"],
+            "Wrote %s -> %s (%d written, %d skipped, %s)",
+            chart_name,
+            result["destination"],
+            result["files_written"],
+            result.get("files_skipped", 0),
             result["write_mode"],
         )
     except Exception:
         logger.exception(
             "Chart %s ran, but writing it out FAILED. The results are in the "
-            "workspace; POST /api/charts/write can retry without reprocessing.",
+            "workspace; retry with POST /api/charts/run "
+            '{"chart_name":"%s","local_write_path"|"blob_write_path":...}.',
+            chart_name,
             chart_name,
         )
 
@@ -454,7 +508,13 @@ def _write_after_run(payload: "RunRequest", chart_name: str) -> None:
 def _bg_pipeline_then_write(
     chart_id: int, chart_name: str, payload: "RunRequest"
 ) -> None:
-    _bg_pipeline(chart_id, payload.force, payload.only, payload.through)
+    _bg_pipeline(
+        chart_id,
+        payload.force,
+        payload.only,
+        payload.through,
+        skip_ocr=payload.skip_ocr,
+    )
     _write_after_run(payload, chart_name)
 
 
@@ -473,6 +533,7 @@ def _bg_run(payload: "RunRequest") -> None:
             force=payload.force,
             only=payload.only,
             through=payload.through,
+            skip_ocr=payload.skip_ocr,
         )
         logger.info(
             "Background run finished: %s -> chart_id=%s",
@@ -499,39 +560,29 @@ def _bg_run(payload: "RunRequest") -> None:
             logger.exception("Background run FAILED for %s", source)
 
 
-def _bg_write(payload: "WriteRequest") -> None:
-    from jobs.export_chart import write_chart
-
-    logger.info("Background write starting: %s", payload.chart_name)
-    try:
-        result = write_chart(
-            payload.chart_name,
-            local_path=payload.local_write_path,
-            blob_container=payload.blob_container,
-            blob_path=payload.blob_write_path,
-            overwrite=payload.overwrite,
-            write_mode=payload.write_mode,
-        )
-        logger.info(
-            "Background write finished: %s -> %s (%d file(s))",
-            payload.chart_name, result["destination"], result["files_written"],
-        )
-    except Exception:
-        logger.exception("Background write FAILED for %s", payload.chart_name)
-
-
 def _bg_pipeline(
     chart_id: int,
     force: bool,
     only: Optional[list[str]],
     through: Optional[str] = None,
+    skip_ocr: Optional[bool] = None,
 ) -> None:
     logger.info(
-        "Background pipeline starting: chart_id=%s force=%s only=%s through=%s",
-        chart_id, force, only or "all stages", through or "end of chain",
+        "Background pipeline starting: chart_id=%s force=%s only=%s through=%s skip_ocr=%s",
+        chart_id,
+        force,
+        only or "all stages",
+        through or "end of chain",
+        skip_ocr if skip_ocr is not None else "env",
     )
     try:
-        run_pipeline_for_chart(chart_id, force=force, only=only, through=through)
+        run_pipeline_for_chart(
+            chart_id,
+            force=force,
+            only=only,
+            through=through,
+            skip_ocr=skip_ocr,
+        )
         logger.info("Background pipeline finished: chart_id=%s", chart_id)
     except Exception:
         logger.exception("Background pipeline FAILED for chart %s", chart_id)
@@ -557,6 +608,7 @@ def _bg_batch(payload: "BatchRequest") -> None:
             force=payload.force,
             only=payload.only,
             through=payload.through,
+            skip_ocr=payload.skip_ocr,
             limit=payload.limit,
             run_id=payload.run_id,
             batch_id=payload.batch_id,
@@ -647,7 +699,7 @@ def health() -> dict[str, Any]:
         "status": "ok",
         # member_ner.ready=false means member verification runs rules-only: no
         # page can be marked wrong_member, so no document can be Rejected.
-        # blob.ready=false means run/batch/write work locally but not from blob.
+        # blob.ready=false means run/batch-run work locally but not from blob.
         **caps,
         "dos_llm_enabled": DOS_LLM_ENABLED,
         "stage_workers": STAGE_WORKERS,
@@ -692,29 +744,39 @@ def _validate_stages(body: "StageSelection") -> None:
 
 @app.post("/api/charts/run", status_code=202, tags=["charts"])
 def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
-    """Read one chart, run the stage chain, and optionally write the results.
+    """Read one chart (or resume), run the stage chain, write if a path is set.
 
-    Source is a read path plus a folder name, which resolve together; the
-    folder name becomes the chart name. The write path, when given, resolves
-    the same way — `<write_path>/<folder_name>/`.
+    - **New chart:** read path + folder name → intake → pipeline → write (if path).
+    - **Resume:** ``chart_id`` or ``chart_name`` with no read path → pipeline only
+      (replaces the old ``/rerun``). Write still runs when a write path is set.
 
-    Blob and local are separate worlds: give one or the other, and read and
-    write stay on the same backend.
+    Write is part of this call (no separate write endpoint). Default write is a
+    sync: missing destination files are written, existing ones skipped unless
+    ``overwrite=true``.
 
-    Returns immediately. Poll GET /api/charts/by-name/{folder_name}.
+    Returns immediately. Poll GET /api/charts/{id} or /api/charts/by-name/{name}.
     """
     has_blob = bool(body.blob_container or body.blob_read_path or body.blob_read_folder_name)
     has_local = bool(body.local_read_path or body.local_folder_name)
+    has_source = has_blob or has_local
+    resume_id = body.chart_id
+    resume_name = (body.chart_name or "").strip() or None
+
     if has_blob and has_local:
         raise HTTPException(
             status_code=400, detail="Give a blob source or a local source, not both"
         )
-    if not has_blob and not has_local:
+    if has_source and (resume_id or resume_name):
+        raise HTTPException(
+            status_code=400,
+            detail="Pass a read source, or chart_id/chart_name to resume — not both",
+        )
+    if not has_source and not resume_id and not resume_name:
         raise HTTPException(
             status_code=400,
             detail=(
-                "Provide blob_container + blob_read_path + blob_read_folder_name, "
-                "or local_read_path + local_folder_name"
+                "Provide a read source (blob_* or local_*), "
+                "or chart_id / chart_name to resume an existing chart"
             ),
         )
     if body.write_mode not in WRITE_MODES:
@@ -722,6 +784,41 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
             status_code=400,
             detail=f"write_mode must be one of {', '.join(WRITE_MODES)}",
         )
+
+    _validate_stages(body)
+    _require_db()
+    write_to = body.blob_write_path or body.local_write_path
+
+    # --- resume (was /rerun) ---
+    if not has_source:
+        with connect() as conn:
+            if resume_id:
+                chart = get_chart(conn, resume_id)
+            else:
+                chart = get_chart_by_name(conn, resume_name or "")
+            if not chart:
+                raise HTTPException(status_code=404, detail="chart not found")
+            chart_id = int(chart["id"])
+            folder = str(chart["chart_name"])
+        if write_to and body.blob_write_path and body.local_write_path:
+            raise HTTPException(
+                status_code=400, detail="Give one write destination, not both"
+            )
+        background_tasks.add_task(
+            _bg_pipeline_then_write, chart_id, folder, body
+        )
+        return {
+            "status": "accepted",
+            "mode": "resume",
+            "chart_id": chart_id,
+            "chart_name": folder,
+            "through": body.through,
+            "only": body.only,
+            "skip_ocr": body.skip_ocr,
+            "force": body.force,
+            "write": _write_summary(body, folder, write_to),
+            "poll": f"/api/charts/{chart_id}",
+        }
 
     if has_blob:
         missing = [
@@ -756,14 +853,7 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
             )
         folder = body.local_folder_name
 
-    _validate_stages(body)
-    _require_db()
-
-    write_to = body.blob_write_path or body.local_write_path
     if has_local:
-        # Resolve the intake now: a bad path should be a 400 the caller sees,
-        # not a background failure in a log. The chain still runs in the
-        # background — that is the part that takes minutes.
         from stages.download_blob import import_local_folder
 
         source = str(Path(body.local_read_path) / folder)
@@ -791,6 +881,7 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
             "page_count": result["page_count"],
             "through": body.through,
             "only": body.only,
+            "skip_ocr": body.skip_ocr,
             "write": _write_summary(body, folder, write_to),
             "poll": f"/api/charts/{result['chart_id']}",
         }
@@ -803,121 +894,49 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
         "source": f"{body.blob_container}/{_join(body.blob_read_path, folder)}",
         "through": body.through,
         "only": body.only,
+        "skip_ocr": body.skip_ocr,
         "write": _write_summary(body, folder, write_to),
         "poll": f"/api/charts/by-name/{folder}",
     }
 
 
-@app.post("/api/charts/write", status_code=202, tags=["charts"])
-def write_chart_out(
-    body: WriteRequest, background_tasks: BackgroundTasks
-) -> dict[str, Any]:
-    """Write a finished chart's folder back out to blob or local disk.
+@app.post("/api/charts/write", status_code=410, tags=["charts"], deprecated=True)
+def write_chart_out(body: WriteRequest) -> dict[str, Any]:
+    """Removed — write is part of ``POST /api/charts/run`` and ``/batch-run``.
 
-    The reverse of run's intake step. The chart name is appended to the
-    destination, exactly as `/run` does, so `<write_path>/<chart_name>/`.
-
-    `write_mode` defaults to skip_orig_pages: corrected-pages/, ocr/ and
-    imaging/ go, pages/ does not, because the originals came from the source
-    you are usually writing back to.
-
-    Returns immediately; a large chart is a lot of bytes. Watch the server log.
+    Pass ``local_write_path`` or ``blob_write_path`` on run/batch-run. Existing
+    destination files are skipped; missing ones are written (``overwrite=true``
+    replaces all).
     """
-    from config import chart_dir
-
-    if bool(body.local_write_path) == bool(body.blob_write_path):
-        raise HTTPException(
-            status_code=400,
-            detail="Provide exactly one destination: local_write_path, or blob_container + blob_write_path",
-        )
-    if body.blob_write_path and not body.blob_container:
-        raise HTTPException(
-            status_code=400,
-            detail="blob_container must be given with blob_write_path",
-        )
-    # Check the source exists now rather than in the background, so a typo in
-    # the chart name is a 404 the caller sees.
-    root = chart_dir(body.chart_name)
-    if not root.is_dir():
-        raise HTTPException(
-            status_code=404,
-            detail=f"No chart workspace at {root} — has '{body.chart_name}' been run?",
-        )
-
-    # A local destination can be checked here for free, and a clash is the most
-    # likely mistake — writing a second chart over the first. Checking it in the
-    # background would hand the caller a 202 and put the refusal in a log they
-    # never read. The blob equivalent is a network round trip, so it stays in
-    # write_chart, where the same guard runs before a single byte is uploaded.
-    if body.local_write_path and not body.overwrite:
-        dest = (Path(body.local_write_path).expanduser() / body.chart_name)
-        clash = [q for q in dest.rglob("*") if q.is_file()] if dest.is_dir() else []
-        if clash:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"{dest} already holds {len(clash)} file(s). "
-                    "Pass overwrite=true to replace them."
-                ),
-            )
-
-    if body.write_mode not in WRITE_MODES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"write_mode must be one of {', '.join(WRITE_MODES)}",
-        )
-
-    background_tasks.add_task(_bg_write, body)
-    destination = (
-        f"{body.blob_container}/{_join(body.blob_write_path, body.chart_name)}"
-        if body.blob_write_path
-        else str(Path(body.local_write_path) / body.chart_name)
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "POST /api/charts/write was removed. Pass local_write_path or "
+            "blob_write_path on POST /api/charts/run (or /batch-run). "
+            f"Example resume+write: "
+            f'{{"chart_name":"{body.chart_name}","local_write_path":"..."}}'
+        ),
     )
-    return {
-        "status": "accepted",
-        "mode": "local" if body.local_write_path else "blob",
-        "chart_name": body.chart_name,
-        "source": str(root),
-        "destination": destination,
-        "write_mode": body.write_mode,
-        "note": "runs in the background; watch the server log",
-    }
 
 
-def _chart_payload(conn: Any, chart_id: int, include_pages: bool) -> dict[str, Any]:
-    progress = refresh_chart_status(conn, chart_id)
-    chart = get_chart(conn, chart_id)
-    summary = conn.execute(
-        "SELECT * FROM member_verification_summary WHERE chart_id = %s", (chart_id,)
-    ).fetchone()
-    payload: dict[str, Any] = {
-        "chart": chart,
-        "progress": progress,
-        "member_verification": summary,
-    }
-    if include_pages:
-        payload["pages"] = list_pages(conn, chart_id)
-    return payload
-
-
-@app.post("/api/charts/batch", status_code=202, tags=["charts"])
-def batch_intake(
+@app.post("/api/charts/batch-run", status_code=202, tags=["charts"])
+@app.post("/api/charts/batch", status_code=202, tags=["charts"], deprecated=True)
+def batch_run(
     body: BatchRequest, background_tasks: BackgroundTasks
 ) -> dict[str, Any]:
-    """Register every chart under a read path, then run them with a worker pool.
+    """Every chart folder under a path: register, run, write if a path is set.
 
-    Same fields as `/run` without the folder name — each sub-folder holding
-    images is one chart and names itself.
-
-    All charts are upserted into ``chart_list`` (status ``received``) before
-    any ingest starts. Then up to ``workers`` charts run concurrently (default
-    ``BATCH_WORKERS``). One bad folder does not stop the batch, and neither
-    does one unwritable destination. Stage 5 (Azure DI) is globally capped by
-    ``AZURE_DI_MAX_CONCURRENT``.
-
-    Returns 202 immediately — a batch can run for hours. Watch the server log
-    for start/done progress, or poll GET /api/charts/by-name/{chart_name}.
+    Canonical path: ``POST /api/charts/batch-run``. ``/batch`` is a deprecated
+    alias. Write is part of this call when ``local_write_path`` /
+    ``blob_write_path`` is set (sync: missing files written, existing skipped).
     """
+    return _batch_run_impl(body, background_tasks)
+
+
+def _batch_run_impl(
+    body: BatchRequest, background_tasks: BackgroundTasks
+) -> dict[str, Any]:
+    """Register every chart under a read path, then run them with a worker pool."""
     from jobs.batch_intake import find_local_chart_folders, resolve_batch_workers
 
     has_blob = bool(body.blob_container or body.blob_read_path)
@@ -954,13 +973,10 @@ def batch_intake(
         workers = resolve_batch_workers(body.workers)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    # Reflect the resolved value so the background task and the 202 agree.
     body.workers = workers
     _validate_stages(body)
     _require_db()
 
-    # Resolve the chart list up front so the caller learns immediately that the
-    # path is wrong, instead of getting 202 and an empty batch an hour later.
     found: Optional[int] = None
     if has_local:
         try:
@@ -984,6 +1000,7 @@ def batch_intake(
         "limit": body.limit,
         "through": body.through,
         "only": body.only,
+        "skip_ocr": body.skip_ocr,
         "write": (
             {
                 "destination": (
@@ -992,16 +1009,36 @@ def batch_intake(
                     else body.local_write_path
                 ),
                 "write_mode": body.write_mode,
-                "note": "each chart is written under its own folder name",
+                "overwrite": body.overwrite,
+                "note": (
+                    "each chart is written under its own folder name; "
+                    "existing files skipped, missing ones written"
+                ),
             }
             if write_to
             else None
         ),
         "note": (
             f"charts pre-registered into chart_list, then run with "
-            f"{workers} worker(s); watch the server log for start/done progress"
+            f"{workers} worker(s); poll /api/charts/by-name/{{name}}"
         ),
     }
+
+
+def _chart_payload(conn: Any, chart_id: int, include_pages: bool) -> dict[str, Any]:
+    progress = refresh_chart_status(conn, chart_id)
+    chart = get_chart(conn, chart_id)
+    summary = conn.execute(
+        "SELECT * FROM member_verification_summary WHERE chart_id = %s", (chart_id,)
+    ).fetchone()
+    payload: dict[str, Any] = {
+        "chart": chart,
+        "progress": progress,
+        "member_verification": summary,
+    }
+    if include_pages:
+        payload["pages"] = list_pages(conn, chart_id)
+    return payload
 
 
 @app.get("/api/charts/{chart_id}", tags=["charts"])
@@ -1033,31 +1070,18 @@ def get_chart_status_by_name(
         return _chart_payload(conn, chart["id"], include_pages)
 
 
-@app.post("/api/charts/{chart_id}/rerun", status_code=202, tags=["charts"])
-def rerun_chart(
-    chart_id: int, body: RerunRequest, background_tasks: BackgroundTasks
-) -> dict[str, Any]:
-    """Re-run the chain for a chart.
-
-    By default this *resumes*: pages already completed are not redone, so a
-    chart that failed part-way finishes without repeating paid OCR calls. Pass
-    force=true to reprocess everything, `through` to stop after a stage, or
-    `only` to re-run named stages.
-    """
-    _validate_stages(body)
-    with connect() as conn:
-        if not get_chart(conn, chart_id):
-            raise HTTPException(status_code=404, detail="chart not found")
-    background_tasks.add_task(
-        _bg_pipeline, chart_id, body.force, body.only, body.through
+@app.post("/api/charts/{chart_id}/rerun", status_code=410, tags=["charts"], deprecated=True)
+def rerun_chart(chart_id: int) -> dict[str, Any]:
+    """Removed — resume via ``POST /api/charts/run`` with ``chart_id``."""
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "POST /api/charts/{id}/rerun was removed. Resume with "
+            f'POST /api/charts/run and {{"chart_id":{chart_id}}} '
+            "(optional: through, only, force, skip_ocr, local_write_path / "
+            "blob_write_path)."
+        ),
     )
-    return {
-        "status": "accepted",
-        "chart_id": chart_id,
-        "force": body.force,
-        "through": body.through,
-        "only": body.only,
-    }
 
 
 @app.post("/api/manifest/sweep", status_code=202, tags=["manifest"])
@@ -1094,15 +1118,47 @@ def manifest_sweep(
 
 @app.get("/api/manifest/{record_id}", tags=["manifest"])
 def get_manifest(record_id: str) -> dict[str, Any]:
-    """Manifest rows for one record id (= chart folder name)."""
-    with connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM manifest_member_list WHERE record_id = %s ORDER BY id",
-            (record_id,),
-        ).fetchall()
+    """Manifest rows for one record id (= chart folder name).
+
+    Prefers ``manifest_member_list`` in Postgres. If that has nothing for this
+    id, scans ``METADATA_ROOT`` (default ``review-ui/data/metadata``) for
+    matching rows in every CSV/XLSX there — the same files Local Mode reads.
+    """
+    from jobs.manifest_sweeper import lookup_manifest_members_on_disk
+
+    rid = (record_id or "").strip()
+    if not rid:
+        raise HTTPException(status_code=400, detail="record_id is required")
+
+    rows: list[dict[str, Any]] = []
+    source = "postgres"
+    try:
+        with connect() as conn:
+            rows = list(
+                conn.execute(
+                    "SELECT * FROM manifest_member_list WHERE record_id = %s ORDER BY id",
+                    (rid,),
+                ).fetchall()
+            )
+    except Exception:
+        logger.exception(
+            "Postgres unavailable for manifest %s — falling back to METADATA_ROOT",
+            rid,
+        )
+        rows = []
+
     if not rows:
-        raise HTTPException(status_code=404, detail="no manifest rows for record")
-    return {"record_id": record_id, "members": rows}
+        rows = lookup_manifest_members_on_disk(rid)
+        source = "metadata"
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"no manifest rows for record_id={rid!r} "
+                "(checked Postgres and METADATA_ROOT)"
+            ),
+        )
+    return {"record_id": rid, "source": source, "members": rows}
 
 
 @app.get("/api/jobs", tags=["ops"])

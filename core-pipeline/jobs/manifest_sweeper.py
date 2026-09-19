@@ -179,6 +179,71 @@ def parse_manifest_bytes(name: str, data: bytes) -> list[dict[str, str]]:
     return []
 
 
+def _row_to_member(row: dict[str, str], *, source_file: str, source_path: str) -> Optional[dict[str, Any]]:
+    """Shape a CSV/XLSX row like a ``manifest_member_list`` dict (no ``id``)."""
+    rid = _record_id(row)
+    name = _compose_name(row)
+    if not rid or not name:
+        return None
+    first, middle, last = _name_parts(row)
+    run_id, batch_id = parse_run_batch_from_name(source_file)
+    return {
+        "id": None,
+        "record_id": rid,
+        "member_name": name,
+        "first_name": first or None,
+        "middle_name": middle or None,
+        "last_name": last or None,
+        "member_dob": _dob(row),
+        "external_member_id": _member_id(row),
+        "run_id": run_id,
+        "batch_id": batch_id,
+        "source_file": source_file,
+        "source_path": source_path,
+    }
+
+
+def lookup_manifest_members_on_disk(
+    record_id: str,
+    *,
+    metadata_root: Optional[Path] = None,
+) -> list[dict[str, Any]]:
+    """Scan ``METADATA_ROOT`` (CSV/XLSX) for rows whose record_id matches.
+
+    Used when Postgres has no rows yet — same files review-ui Local Mode reads.
+    """
+    root = (metadata_root or METADATA_ROOT).expanduser()
+    if not root.is_dir():
+        return []
+    wanted = (record_id or "").strip()
+    if not wanted:
+        return []
+
+    matches: list[dict[str, Any]] = []
+    for path in sorted(p for p in root.iterdir() if _is_manifest_file(p)):
+        if path.name.startswith("._"):
+            continue
+        try:
+            rows = parse_manifest_bytes(path.name, path.read_bytes())
+        except Exception:
+            logger.exception("Skipping unreadable manifest %s", path)
+            continue
+        for row in rows:
+            # Normalise keys the same way as ingest (strip whitespace).
+            norm = {
+                (k or "").strip(): ("" if v is None else str(v)).strip()
+                for k, v in row.items()
+            }
+            if _record_id(norm) != wanted:
+                continue
+            member = _row_to_member(
+                norm, source_file=path.name, source_path=str(path.resolve())
+            )
+            if member:
+                matches.append(member)
+    return matches
+
+
 def _is_manifest_file(path: Path) -> bool:
     return path.is_file() and path.suffix.casefold() in MANIFEST_SUFFIXES
 

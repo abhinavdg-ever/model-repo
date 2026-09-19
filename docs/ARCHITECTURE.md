@@ -240,7 +240,7 @@ still renders.
 
 | File | Role |
 |---|---|
-| `runner.py` | `STAGE_CHAIN` — the eight stages in order — plus `run_pipeline_for_chart` (resume, `force`, `only`, `through`), `resolve_stage` (the one place a stage name is parsed) and `ingest_and_run`, which both `/run` and `/batch` go through. Refreshes chart status after each stage; aborts the chain on a stage exception, because every later stage reads what the failed one produced. |
+| `runner.py` | `STAGE_CHAIN` — the eight stages in order — plus `run_pipeline_for_chart` (resume, `force`, `only`, `through`), `resolve_stage` (the one place a stage name is parsed) and `ingest_and_run`, which both `/run` and `/batch-run` go through. Refreshes chart status after each stage; aborts the chain on a stage exception, because every later stage reads what the failed one produced. |
 | `__init__.py` | Package marker. |
 
 ### `core-pipeline/db/`
@@ -294,8 +294,8 @@ Weight files live under **`core-pipeline/models/`** (gitignored), not under
 | Path | Purpose |
 |---|---|
 | `models/hw/handwritten_printed_convnext_tiny.pth` | ConvNeXt HW (stage 1) |
+| `models/hw/image_type_classification.pkl` | RF HW fallback |
 | `models/rapidocr/*.pth` + `ppocrv6_dict.txt` | Docling final1 |
-| `stages/lib/imaging/image_type_classification.pkl` | RF HW fallback (in repo) |
 
 ### `core-pipeline/stages/lib/junk/` — blank/junk classifier
 

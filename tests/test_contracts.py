@@ -698,7 +698,8 @@ class TestRunAcceptsBothModes:
         client, _ = self._client(monkeypatch)
         r = client.post("/api/charts/run", json={})
         assert r.status_code == 400
-        assert "local_read_path" in r.json()["detail"]
+        detail = r.json()["detail"]
+        assert "chart_id" in detail or "chart_name" in detail
 
     def test_an_incomplete_blob_source_is_rejected(self, monkeypatch):
         """A read path without a folder name is ambiguous: the folder name IS
@@ -979,64 +980,44 @@ class TestChartResetKeepsTheAuditTrail:
 
 
 class TestWriteChartOut:
-    """POST /api/charts/write — the reverse of run's intake step."""
+    """Write is folded into run/batch-run; /write returns 410. Sync is in write_chart."""
 
-    @staticmethod
-    def _client(monkeypatch):
+    def test_write_endpoint_is_gone(self, monkeypatch):
         from fastapi.testclient import TestClient
 
         import api.main as main
 
         monkeypatch.setattr(main, "_require_db", lambda: None)
-        monkeypatch.setattr(main, "_bg_write", lambda payload: None)
-        return TestClient(main.app, raise_server_exceptions=False), main
-
-    def test_two_destinations_at_once_is_rejected(self, monkeypatch):
-        client, _ = self._client(monkeypatch)
-        r = client.post(
-            "/api/charts/write",
-            json={"chart_name": "c", "local_write_path": "/out", "blob_write_path": "p"},
-        )
-        assert r.status_code == 400
-        assert "exactly one" in r.json()["detail"]
-
-    def test_no_destination_is_rejected(self, monkeypatch):
-        client, _ = self._client(monkeypatch)
-        r = client.post("/api/charts/write", json={"chart_name": "c"})
-        assert r.status_code == 400
-
-    def test_an_unknown_chart_is_404_not_202(self, monkeypatch):
-        """A 202 for a chart that does not exist is a background log line the
-        caller never reads; the typo should come back immediately."""
-        client, _ = self._client(monkeypatch)
-        r = client.post(
-            "/api/charts/write",
-            json={"chart_name": "no_such_chart_xyz", "local_write_path": "/tmp/out"},
-        )
-        assert r.status_code == 404
-
-    def test_the_chart_name_is_appended_to_the_destination(self, tmp_path, monkeypatch):
-        """Two charts written to one destination must not merge into it."""
-        import api.main as main
-        from fastapi.testclient import TestClient
-
-        chart = tmp_path / "folders" / "chart_a"
-        (chart / "pages").mkdir(parents=True)
-        (chart / "ocr").mkdir(parents=True)
-        (chart / "pages" / "1.jpg").write_bytes(b"x")
-        (chart / "ocr" / "chart_a_prelim.txt").write_text("t", encoding="utf-8")
-        import config
-
-        monkeypatch.setattr(main, "_require_db", lambda: None)
-        monkeypatch.setattr(main, "_bg_write", lambda payload: None)
-        monkeypatch.setattr(config, "DATA_ROOT", tmp_path / "folders")
         client = TestClient(main.app, raise_server_exceptions=False)
         r = client.post(
             "/api/charts/write",
-            json={"chart_name": "chart_a", "local_write_path": "/out/dir"},
+            json={"chart_name": "c", "local_write_path": "/out"},
         )
-        assert r.status_code == 202, r.text
-        assert r.json()["destination"].endswith("/chart_a")
+        assert r.status_code == 410
+        assert "run" in r.json()["detail"].lower()
+
+    def test_rerun_endpoint_is_gone(self, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        import api.main as main
+
+        monkeypatch.setattr(main, "_require_db", lambda: None)
+        client = TestClient(main.app, raise_server_exceptions=False)
+        r = client.post("/api/charts/7/rerun", json={})
+        assert r.status_code == 410
+        assert "chart_id" in r.json()["detail"]
+
+    def test_the_chart_name_is_appended_to_the_destination(self, tmp_path, monkeypatch):
+        """Two charts written to one destination must not merge into it."""
+        import config
+        from jobs.export_chart import write_chart
+
+        chart = tmp_path / "folders" / "chart_a"
+        (chart / "ocr").mkdir(parents=True)
+        (chart / "ocr" / "chart_a_prelim.txt").write_text("t", encoding="utf-8")
+        monkeypatch.setattr(config, "DATA_ROOT", tmp_path / "folders")
+        out = write_chart("chart_a", local_path=str(tmp_path / "out" / "dir"))
+        assert out["destination"].endswith("/chart_a")
 
     def test_writing_onto_the_workspace_itself_is_refused(self, tmp_path, monkeypatch):
         """Otherwise the source is its own destination and the copy truncates."""
@@ -1067,55 +1048,32 @@ class TestWriteChartOut:
         written = {p.name for p in (tmp_path / "out").rglob("*") if p.is_file()}
         assert written == {"1.jpg"}
 
-    def test_a_non_empty_destination_needs_overwrite(self, tmp_path, monkeypatch):
-        """Without the guard, two runs silently merge into one folder."""
+    def test_sync_skips_existing_and_writes_missing(self, tmp_path, monkeypatch):
+        """Default write checks what is already at the destination."""
         import config
         from jobs.export_chart import write_chart
 
         root = tmp_path / "folders"
-        (root / "chart_d" / "ocr").mkdir(parents=True)
-        (root / "chart_d" / "ocr" / "t.txt").write_text("t", encoding="utf-8")
+        ocr = root / "chart_d" / "ocr"
+        ocr.mkdir(parents=True)
+        (ocr / "a.txt").write_text("a", encoding="utf-8")
+        (ocr / "b.txt").write_text("b", encoding="utf-8")
         monkeypatch.setattr(config, "DATA_ROOT", root)
 
         dest = tmp_path / "out"
-        write_chart("chart_d", local_path=str(dest))
-        with pytest.raises(RuntimeError, match="overwrite"):
-            write_chart("chart_d", local_path=str(dest))
-        write_chart("chart_d", local_path=str(dest), overwrite=True)
+        first = write_chart("chart_d", local_path=str(dest))
+        assert first["files_written"] == 2
+        assert first["files_skipped"] == 0
 
-    def test_a_local_clash_is_409_at_the_endpoint_not_a_202(
-        self, tmp_path, monkeypatch
-    ):
-        """The guard exists in write_chart too, but reaching it in the
-        background means a 202 and a refusal the caller never sees."""
-        import api.main as main
-        import config
-        from fastapi.testclient import TestClient
+        (ocr / "c.txt").write_text("c", encoding="utf-8")
+        second = write_chart("chart_d", local_path=str(dest))
+        assert second["files_written"] == 1
+        assert second["files_skipped"] == 2
+        assert (dest / "chart_d" / "ocr" / "c.txt").read_text(encoding="utf-8") == "c"
 
-        root = tmp_path / "folders"
-        (root / "chart_e" / "ocr").mkdir(parents=True)
-        (root / "chart_e" / "ocr" / "t.txt").write_text("t", encoding="utf-8")
-        dest = tmp_path / "out"
-        (dest / "chart_e").mkdir(parents=True)
-        (dest / "chart_e" / "old.txt").write_text("previous run", encoding="utf-8")
-
-        monkeypatch.setattr(config, "DATA_ROOT", root)
-        monkeypatch.setattr(main, "_require_db", lambda: None)
-        monkeypatch.setattr(main, "_bg_write", lambda payload: None)
-        client = TestClient(main.app, raise_server_exceptions=False)
-
-        r = client.post(
-            "/api/charts/write",
-            json={"chart_name": "chart_e", "local_write_path": str(dest)},
-        )
-        assert r.status_code == 409, r.text
-        assert "overwrite" in r.json()["detail"]
-
-        r = client.post(
-            "/api/charts/write",
-            json={"chart_name": "chart_e", "local_write_path": str(dest), "overwrite": True},
-        )
-        assert r.status_code == 202, r.text
+        third = write_chart("chart_d", local_path=str(dest), overwrite=True)
+        assert third["files_written"] == 3
+        assert third["files_skipped"] == 0
 
     def test_a_chart_with_no_workspace_raises(self, tmp_path, monkeypatch):
         import config
@@ -1124,6 +1082,124 @@ class TestWriteChartOut:
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path / "folders")
         with pytest.raises(RuntimeError, match="No chart workspace"):
             write_chart("ghost", local_path=str(tmp_path / "out"))
+
+
+class TestManifestLookup:
+    """GET /api/manifest/{record_id}: Postgres first, METADATA_ROOT fallback."""
+
+    def test_lookup_on_disk_finds_matching_rows(self, tmp_path):
+        from jobs.manifest_sweeper import lookup_manifest_members_on_disk
+
+        csv_path = tmp_path / "metadata_R1_B1.csv"
+        csv_path.write_text(
+            "recordId,DummyFirstName,DummyLastName,DummyDOB,MemberID\n"
+            "chart_a,Ada,Lovelace,1815-12-10,M1\n"
+            "chart_b,Grace,Hopper,1906-12-09,M2\n",
+            encoding="utf-8",
+        )
+        rows = lookup_manifest_members_on_disk("chart_a", metadata_root=tmp_path)
+        assert len(rows) == 1
+        assert rows[0]["member_name"] == "Ada Lovelace"
+        assert rows[0]["external_member_id"] == "M1"
+        assert rows[0]["run_id"] == "R1"
+        assert rows[0]["batch_id"] == "B1"
+        assert rows[0]["source_file"] == "metadata_R1_B1.csv"
+
+    def test_endpoint_falls_back_to_metadata_when_db_empty(self, tmp_path, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        import api.main as main
+        from jobs import manifest_sweeper as sweeper
+
+        meta = tmp_path / "metadata"
+        meta.mkdir()
+        (meta / "metadata_R2_B3.csv").write_text(
+            "recordId,DummyFirstName,DummyLastName\n"
+            "52743839_44976074,Jane,Doe\n",
+            encoding="utf-8",
+        )
+
+        class _EmptyConn:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def execute(self, *args, **kwargs):
+                return self
+
+            def fetchall(self):
+                return []
+
+        monkeypatch.setattr(main, "connect", lambda: _EmptyConn())
+        monkeypatch.setattr(sweeper, "METADATA_ROOT", meta)
+        client = TestClient(main.app, raise_server_exceptions=False)
+        r = client.get("/api/manifest/52743839_44976074")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["source"] == "metadata"
+        assert body["record_id"] == "52743839_44976074"
+        assert body["members"][0]["member_name"] == "Jane Doe"
+
+    def test_endpoint_prefers_postgres(self, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        import api.main as main
+
+        db_row = {
+            "id": 9,
+            "record_id": "chart_x",
+            "member_name": "From DB",
+            "first_name": "From",
+            "last_name": "DB",
+        }
+
+        class _DbConn:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def execute(self, *args, **kwargs):
+                return self
+
+            def fetchall(self):
+                return [db_row]
+
+        monkeypatch.setattr(main, "connect", lambda: _DbConn())
+        client = TestClient(main.app, raise_server_exceptions=False)
+        r = client.get("/api/manifest/chart_x")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["source"] == "postgres"
+        assert body["members"][0]["member_name"] == "From DB"
+
+    def test_endpoint_404_when_neither_has_rows(self, tmp_path, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        import api.main as main
+        from jobs import manifest_sweeper as sweeper
+
+        class _EmptyConn:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def execute(self, *args, **kwargs):
+                return self
+
+            def fetchall(self):
+                return []
+
+        monkeypatch.setattr(main, "connect", lambda: _EmptyConn())
+        monkeypatch.setattr(sweeper, "METADATA_ROOT", tmp_path / "empty")
+        client = TestClient(main.app, raise_server_exceptions=False)
+        r = client.get("/api/manifest/missing_chart")
+        assert r.status_code == 404
 
 
 class TestCapabilityReporting:
@@ -1244,12 +1320,16 @@ class TestCapabilityReporting:
         labels = [label for label, _ in caps.startup_lines(snapshot)]
         assert labels == [
             "blob",
+            "HW model",
+            "RapidOCR",
             "final1 Docling",
             "final2 OCR",
             "DOS LLM",
             "member NER",
             "skip OCR",
         ]
+        assert "hw_model" in snapshot
+        assert "rapidocr_models" in snapshot
 
     def test_health_still_exposes_member_ner_at_the_top_level(self, monkeypatch):
         """docs and review-ui read `member_ner.ready`; moving it would be a
@@ -1477,10 +1557,14 @@ class TestCorrectedPages:
         page_image_path, so a new scan would be OCR'd as the old one."""
         import inspect
 
+        from db.paths import clear_chart_workspace
         from stages import download_blob
 
+        # Re-submit clears via clear_chart_workspace (pages/ocr/imaging/corrected-pages).
         source = inspect.getsource(download_blob.import_local_folder)
-        assert "corrected-pages" in source
+        assert "clear_chart_workspace" in source
+        clear_src = inspect.getsource(clear_chart_workspace)
+        assert "corrected-pages" in clear_src
 
     def test_write_exports_the_corrected_pages(self):
         from jobs.export_chart import CHART_SUBDIRS

@@ -148,16 +148,26 @@ def hydrate_ocr_from_disk(chart_id: int, chart_name: str) -> dict[str, Any]:
     return summary
 
 
-def should_skip_ocr_stages(*, chart_name: str, force: bool) -> bool:
-    """Whether the orchestrator should bypass OCR engines for this chart."""
+def should_skip_ocr_stages(
+    *,
+    chart_name: str,
+    force: bool,
+    skip_ocr: Optional[bool] = None,
+) -> bool:
+    """Whether the orchestrator should bypass OCR engines for this chart.
+
+    ``skip_ocr`` is the per-request override (API/CLI). ``None`` falls back to
+    the ``SKIP_OCR`` env flag. ``force=True`` always runs OCR.
+    """
     from config import SKIP_OCR
 
-    if force or not SKIP_OCR:
+    enabled = SKIP_OCR if skip_ocr is None else bool(skip_ocr)
+    if force or not enabled:
         return False
     if ocr_artifacts_present(chart_name):
         return True
     logger.info(
-        "SKIP_OCR=true but no usable files under ocr/%s/ — running OCR",
+        "skip_ocr requested but no usable files under ocr/%s/ — running OCR",
         chart_name,
     )
     return False

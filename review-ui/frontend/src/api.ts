@@ -55,6 +55,7 @@ export type ImagingPageResult = {
   orientationAngle: number | null;
   tiltAngle: number | null;
   mirrored: boolean | null;
+  pageQualityTag?: string | null;
   pageQualityConfidence: number | null;
   dosFrom: string | null;
   dosTo: string | null;
@@ -90,6 +91,7 @@ export type ImagingSectionsProcessed = {
   member: boolean;
   dos: boolean;
   hw: boolean;
+  quality?: boolean;
   rotation: boolean;
   junk: boolean;
   verification: boolean;

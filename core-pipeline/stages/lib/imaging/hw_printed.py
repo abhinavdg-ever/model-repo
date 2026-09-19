@@ -54,10 +54,11 @@ DEFAULT_UNCERTAIN_MARGIN = 0.08
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 _CORE_ROOT = SCRIPT_DIR.parents[2]  # …/core-pipeline
-# ConvNeXt weights live under core-pipeline/models/hw/ only.
+# Both HW weights live under core-pipeline/models/hw/.
 _DEFAULT_HW = (
     _CORE_ROOT / "models" / "hw" / "handwritten_printed_convnext_tiny.pth"
 )
+_RF_HW = _CORE_ROOT / "models" / "hw" / "image_type_classification.pkl"
 try:
     from config import HW_MODEL_PATH as _CFG_HW
 
@@ -264,7 +265,7 @@ def load_model(model_path: Path | str | None = None, device=None):
 
             rf_path = path if path.suffix.lower() in {".pkl", ".joblib"} and path.is_file() else None
             if rf_path is None:
-                rf_path = SCRIPT_DIR / "image_type_classification.pkl"
+                rf_path = _RF_HW
             bundle = rf.load_model(rf_path if rf_path.is_file() else None)
             _bundle = bundle
             return bundle
@@ -279,7 +280,7 @@ def load_model(model_path: Path | str | None = None, device=None):
         LOGGER.warning("torch not installed (%s); falling back to RandomForest HW", exc)
         from stages.lib.imaging import hw_printed_rf as rf
 
-        bundle = rf.load_model(SCRIPT_DIR / "image_type_classification.pkl")
+        bundle = rf.load_model(_RF_HW if _RF_HW.is_file() else None)
         _bundle = bundle
         return bundle
 

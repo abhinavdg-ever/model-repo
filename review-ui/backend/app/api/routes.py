@@ -1,4 +1,6 @@
 from urllib.parse import quote
+import logging
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
@@ -16,7 +18,14 @@ from app.core.schemas import (
 )
 from app.services.blob_store import download_blob_bytes
 from app.services.imaging_csv import filter_folder, iter_csv_lines
+from app.services.page_images import (
+    is_tiff_name,
+    is_tiff_path,
+    tiff_bytes_to_jpeg_bytes,
+    tiff_path_to_jpeg_bytes,
+)
 
+logger = logging.getLogger("review_ui.api")
 router = APIRouter()
 
 
@@ -86,12 +95,20 @@ def app_config() -> AppConfigResponse:
 
 @router.get("/folders", response_model=list[FolderSummary])
 def list_folders(repo: FolderRepository = Depends(get_repository)) -> list[FolderSummary]:
-    return repo.list_folders()
+    folders = repo.list_folders()
+    logger.info("list_folders count=%d", len(folders))
+    return folders
 
 
 @router.get("/folders/{folder_id}", response_model=FolderDetail)
 def get_folder(folder_id: str, repo: FolderRepository = Depends(get_repository)) -> FolderDetail:
-    return repo.get_folder(folder_id)
+    detail = repo.get_folder(folder_id)
+    logger.info(
+        "get_folder id=%s pages=%d",
+        folder_id,
+        len(detail.pages),
+    )
+    return detail
 
 
 @router.get("/folders/{folder_id}/pages/{page_number}/image")
@@ -99,8 +116,28 @@ def get_page_image(
     folder_id: str,
     page_number: int,
     repo: FolderRepository = Depends(get_repository),
-) -> FileResponse:
+):
+    """Serve a page image. TIFF is re-encoded to JPEG — browsers cannot show it raw."""
     path = repo.get_page_image_path(folder_id, page_number)
+    if is_tiff_path(path):
+        try:
+            jpeg = tiff_path_to_jpeg_bytes(path)
+        except Exception as exc:
+            logger.exception(
+                "TIFF→JPEG failed folder=%s page=%s path=%s",
+                folder_id,
+                page_number,
+                path,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not convert TIFF for display: {exc}",
+            ) from exc
+        return Response(
+            content=jpeg,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "private, max-age=120"},
+        )
     return FileResponse(path, media_type=_media_type(path.suffix))
 
 
@@ -114,19 +151,55 @@ def get_blob_page_image(
 
     - blob_auth_mode=entra: proxy bytes using Microsoft Entra ID (works with Shared Key disabled)
     - blob_auth_mode=sas: redirect to object URL with server SAS (requires Shared Key allowed)
+    - TIFF always proxied + converted to JPEG (browsers cannot render image/tiff)
     """
     settings = get_settings()
     if not settings.file_viewer_blob_enabled:
         raise HTTPException(status_code=400, detail="Blob viewer is disabled")
 
     filename = _filename_for_page(repo, folder_id, page_number)
+    needs_tiff_convert = is_tiff_name(filename)
 
-    if settings.blob_auth_mode == "entra":
-        data, media_type = download_blob_bytes(
-            folder_id=folder_id,
-            filename=filename,
-            page_number=page_number,
-        )
+    if settings.blob_auth_mode == "entra" or needs_tiff_convert:
+        if settings.blob_auth_mode == "entra":
+            data, media_type = download_blob_bytes(
+                folder_id=folder_id,
+                filename=filename,
+                page_number=page_number,
+            )
+        else:
+            # SAS mode + TIFF: fetch via SAS URL then convert (no Entra client).
+            if not settings.blob_sas_token.strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail="Server SAS not configured; set BLOB_SAS_TOKEN or use BLOB_AUTH_MODE=entra",
+                )
+            url = _build_blob_url(
+                settings,
+                folder_id=folder_id,
+                filename=filename,
+                page_number=page_number,
+            )
+            data, media_type = _fetch_url_bytes(url, fallback_name=filename)
+
+        if needs_tiff_convert or (media_type or "").lower() in {
+            "image/tiff",
+            "image/tif",
+        }:
+            try:
+                data = tiff_bytes_to_jpeg_bytes(data)
+                media_type = "image/jpeg"
+            except Exception as exc:
+                logger.exception(
+                    "Blob TIFF→JPEG failed folder=%s page=%s file=%s",
+                    folder_id,
+                    page_number,
+                    filename,
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Could not convert TIFF for display: {exc}",
+                ) from exc
         return Response(
             content=data,
             media_type=media_type,
@@ -147,6 +220,28 @@ def get_blob_page_image(
     return RedirectResponse(url=url, status_code=307)
 
 
+def _fetch_url_bytes(url: str, *, fallback_name: str) -> tuple[bytes, str]:
+    """HTTP GET for SAS blob URLs (stdlib only)."""
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(url, timeout=60) as resp:
+            data = resp.read()
+            ctype = (resp.headers.get("Content-Type") or "").split(";")[0].strip()
+            return data, ctype or _media_type(Path(fallback_name).suffix)
+    except urllib.error.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Blob download via SAS failed: HTTP {exc.code}",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Blob download via SAS failed: {exc}",
+        ) from exc
+
+
 @router.get("/folders/{folder_id}/ocr", response_model=OcrTextResponse)
 def get_folder_ocr(
     folder_id: str,
@@ -162,7 +257,13 @@ def get_folder_imaging(
     repo: FolderRepository = Depends(get_repository),
 ) -> ImagingDocumentResponse:
     """Imaging page/document results (dummy/local JSON until Postgres schema lands)."""
-    return repo.get_imaging(folder_id)
+    doc = repo.get_imaging(folder_id)
+    logger.info(
+        "get_imaging id=%s pages=%d",
+        folder_id,
+        len(doc.pages),
+    )
+    return doc
 
 
 @router.get("/imaging/export.csv")
@@ -178,6 +279,7 @@ def export_imaging_csv(
     repo: FolderRepository = Depends(get_repository),
 ) -> StreamingResponse:
     """Download all imaging pipeline outputs as one CSV (one row per page)."""
+    logger.info("export_imaging_csv status=%s q=%s", status or "ALL", q or "")
 
     def docs():
         for folder in repo.list_folders():

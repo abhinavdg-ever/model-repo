@@ -149,13 +149,47 @@ def build_converter(models_dir: Path | None = None) -> Any:
             f"Set RAPID_MODELS_DIR to the folder holding all four."
         )
 
+    # ACCURATE TableFormer was measured at ~13 min/page on large TIFFs with
+    # empty RapidOCR regions. FAST keeps layout/tables usable without blocking
+    # the rest of the chain. Override with DOCLING_TABLE_MODE=accurate.
+    table_mode_raw = (
+        os.environ.get("DOCLING_TABLE_MODE") or "fast"
+    ).strip().casefold()
+    table_mode = (
+        TableFormerMode.ACCURATE
+        if table_mode_raw in {"accurate", "acc", "full"}
+        else TableFormerMode.FAST
+    )
+    do_tables = (os.environ.get("DOCLING_DO_TABLES") or "true").strip().casefold() not in {
+        "0",
+        "false",
+        "off",
+        "no",
+    }
+
     models = model_paths(models_dir)
     pipeline_options = PdfPipelineOptions()
     pipeline_options.do_ocr = True
-    pipeline_options.do_table_structure = True
-    pipeline_options.table_structure_options.mode = TableFormerMode.ACCURATE
-    pipeline_options.table_structure_options.do_cell_matching = True
+    pipeline_options.do_table_structure = do_tables
+    if do_tables:
+        pipeline_options.table_structure_options.mode = table_mode
+        # Cell matching is the expensive half of TableFormer; skip by default.
+        pipeline_options.table_structure_options.do_cell_matching = (
+            os.environ.get("DOCLING_TABLE_CELL_MATCHING") or "false"
+        ).strip().casefold() in {"1", "true", "yes", "on"}
     pipeline_options.ocr_options = _build_rapidocr_options(models)
+    logger.info(
+        "Docling pipeline: tables=%s mode=%s cell_matching=%s",
+        do_tables,
+        getattr(table_mode, "value", table_mode) if do_tables else "n/a",
+        getattr(
+            pipeline_options.table_structure_options,
+            "do_cell_matching",
+            False,
+        )
+        if do_tables
+        else False,
+    )
     return DocumentConverter(
         format_options={
             InputFormat.IMAGE: ImageFormatOption(pipeline_options=pipeline_options),
@@ -197,22 +231,256 @@ def converter_reason() -> Optional[str]:
     return _converter_reason
 
 
+def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
+    """Compact heading boxes for the review-ui overlay.
+
+    Always cheap relative to convert(); kept even when full document export is off.
+    Each item: ``{text, level, bbox: [l,t,r,b], page_width, page_height,
+    coord_origin, norm: {left,top,width,height}}`` where ``norm`` is CSS-ready
+    fractions (0–1) in top-left origin.
+    """
+    headers: list[dict[str, Any]] = []
+    page_sizes: dict[int, tuple[float, float]] = {}
+
+    # Page sizes from DoclingDocument.pages when available.
+    try:
+        for idx, page in enumerate(getattr(doc, "pages", None) or [], start=1):
+            size = getattr(page, "size", None)
+            if size is None:
+                continue
+            w = float(getattr(size, "width", 0) or 0)
+            h = float(getattr(size, "height", 0) or 0)
+            if w > 0 and h > 0:
+                page_sizes[idx] = (w, h)
+    except Exception:
+        pass
+
+    header_labels = {
+        "section_header",
+        "title",
+        "section-header",
+        "sectionheader",
+    }
+
+    def _label_str(item: Any) -> str:
+        lab = getattr(item, "label", None)
+        if lab is None:
+            return ""
+        return str(getattr(lab, "value", lab)).strip().casefold().replace(" ", "_")
+
+    def _append(text: str, level: int, prov: Any) -> None:
+        text = (text or "").strip()
+        if not text:
+            return
+        if prov is None:
+            return
+        # prov may be a list
+        first = prov[0] if isinstance(prov, (list, tuple)) and prov else prov
+        bbox = getattr(first, "bbox", None)
+        if bbox is None and isinstance(first, dict):
+            bbox = first.get("bbox")
+        if bbox is None:
+            return
+        if hasattr(bbox, "l"):
+            l, t, r, b = float(bbox.l), float(bbox.t), float(bbox.r), float(bbox.b)
+            origin = str(
+                getattr(getattr(first, "coord_origin", None), "value", None)
+                or getattr(first, "coord_origin", None)
+                or "BOTTOMLEFT"
+            )
+            page_no = int(getattr(first, "page_no", 1) or 1)
+        elif isinstance(bbox, dict):
+            l = float(bbox.get("l") or bbox.get("left") or 0)
+            t = float(bbox.get("t") or bbox.get("top") or 0)
+            r = float(bbox.get("r") or bbox.get("right") or 0)
+            b = float(bbox.get("b") or bbox.get("bottom") or 0)
+            origin = str(
+                first.get("coord_origin")
+                or bbox.get("coord_origin")
+                or "BOTTOMLEFT"
+            )
+            page_no = int(first.get("page_no") or 1)
+        else:
+            return
+        pw, ph = page_sizes.get(page_no, (0.0, 0.0))
+        norm = _bbox_to_css_norm(l, t, r, b, pw, ph, origin)
+        headers.append(
+            {
+                "text": text,
+                "level": int(level) if level else 2,
+                "bbox": [round(l, 2), round(t, 2), round(r, 2), round(b, 2)],
+                "page_width": pw or None,
+                "page_height": ph or None,
+                "coord_origin": origin,
+                "norm": norm,
+            }
+        )
+
+    # Preferred: iterate_items (DoclingDocument)
+    try:
+        iterate = getattr(doc, "iterate_items", None)
+        if callable(iterate):
+            for item, level in iterate():
+                lab = _label_str(item)
+                if lab not in header_labels and "header" not in lab and lab != "title":
+                    # Keep section_header / title only — skip page_header/footer.
+                    if lab not in {"section_header", "title"}:
+                        continue
+                if lab in {"page_header", "page_footer", "page_number"}:
+                    continue
+                if lab not in {"section_header", "title"} and "section" not in lab:
+                    continue
+                text = getattr(item, "text", None) or getattr(item, "orig", None) or ""
+                _append(str(text), int(level) if level else 1, getattr(item, "prov", None))
+            if headers:
+                return headers
+    except Exception as exc:
+        logger.debug("iterate_items header extract failed: %s", exc)
+
+    # Fallback: walk export_to_dict texts[]
+    try:
+        data = doc.export_to_dict() if hasattr(doc, "export_to_dict") else doc
+        if not isinstance(data, dict):
+            return headers
+        for t in data.get("texts") or []:
+            if not isinstance(t, dict):
+                continue
+            lab = str(t.get("label") or "").strip().casefold().replace(" ", "_")
+            if lab not in {"section_header", "title"}:
+                continue
+            provs = t.get("prov") or []
+            _append(str(t.get("text") or ""), 1 if lab == "title" else 2, provs)
+    except Exception as exc:
+        logger.debug("dict header extract failed: %s", exc)
+    return headers
+
+
+def _bbox_to_css_norm(
+    l: float,
+    t: float,
+    r: float,
+    b: float,
+    page_w: float,
+    page_h: float,
+    origin: str,
+) -> dict[str, float] | None:
+    """Convert Docling bbox to CSS top-left fractions (0–1)."""
+    if page_w <= 0 or page_h <= 0:
+        return None
+    origin_u = (origin or "BOTTOMLEFT").upper().replace("-", "").replace("_", "")
+    # Ensure l<=r; for BOTTOMLEFT y increases up so t is typically >= b.
+    left = min(l, r)
+    right = max(l, r)
+    if origin_u.startswith("BOTTOM"):
+        top_y = max(t, b)  # higher in bottom-left space = toward top of page
+        bot_y = min(t, b)
+        css_top = (page_h - top_y) / page_h
+        css_height = (top_y - bot_y) / page_h
+    else:
+        top_y = min(t, b)
+        bot_y = max(t, b)
+        css_top = top_y / page_h
+        css_height = (bot_y - top_y) / page_h
+    css_left = left / page_w
+    css_width = (right - left) / page_w
+    # Clamp
+    def clip(v: float) -> float:
+        return max(0.0, min(1.0, float(v)))
+
+    return {
+        "left": round(clip(css_left), 5),
+        "top": round(clip(css_top), 5),
+        "width": round(clip(css_width), 5),
+        "height": round(clip(css_height), 5),
+    }
+
+
 def convert_image(image_path: Path, converter: Any | None = None) -> dict[str, Any]:
     """Run Docling on one page image.
 
-    Returns ``{markdown, document, content}`` where ``content`` is the markdown
-    (plain text the rest of the pipeline reads) and ``document`` is the full
-    DoclingDocument dict (layout / bbox / tables / reading order).
+    Returns ``{markdown, document, content, section_headers}``. ``document``
+    (full DoclingDocument dict) is omitted unless ``DOCLING_EXPORT_DOCUMENT=true``.
+    ``section_headers`` is always extracted for the review-ui bbox overlay.
     """
+    import time
+
     engine = converter if converter is not None else get_converter()
     if engine is None:
         raise RuntimeError(converter_reason() or "Docling converter unavailable")
+    started = time.perf_counter()
     result = engine.convert(str(image_path))
     doc = result.document
     markdown = doc.export_to_markdown() or ""
-    document = doc.export_to_dict()
+    section_headers = extract_section_headers(doc)
+    export_doc = (
+        os.environ.get("DOCLING_EXPORT_DOCUMENT") or "false"
+    ).strip().casefold() in {"1", "true", "yes", "on"}
+    document = doc.export_to_dict() if export_doc else None
+    elapsed = time.perf_counter() - started
+    logger.info(
+        "Docling converted %s in %.1fs (chars=%d, headers=%d, document=%s)",
+        image_path.name,
+        elapsed,
+        len(markdown),
+        len(section_headers),
+        "yes" if document is not None else "skipped",
+    )
     return {
         "markdown": markdown,
         "content": markdown,
         "document": document,
+        "section_headers": section_headers,
+        "elapsed_seconds": elapsed,
     }
+
+
+def markdown_is_empty(markdown: str) -> bool:
+    """True when Docling produced no usable text (only placeholders / whitespace)."""
+    import re
+
+    stripped = (markdown or "").strip()
+    if not stripped:
+        return True
+    # Docling emits ``<!-- image -->`` for figures when OCR found no text.
+    without_placeholders = re.sub(
+        r"<!--\s*image\s*-->", "", stripped, flags=re.IGNORECASE
+    )
+    without_placeholders = re.sub(r"[|#\-\s]+", "", without_placeholders)
+    return len(without_placeholders) < 8
+
+
+def convert_image_with_timeout(
+    image_path: Path,
+    *,
+    converter: Any | None = None,
+    timeout_seconds: float = 90.0,
+) -> dict[str, Any]:
+    """``convert_image`` bounded by a wall-clock timeout.
+
+    On timeout raises ``TimeoutError`` and **does not wait** for the stuck
+    worker (``shutdown(wait=False)``). A prior bug used ``with ThreadPoolExecutor``
+    which always waits on exit — that is why a page could still burn ~13 minutes
+    after a "timeout". The orphan thread may keep using CPU until it finishes;
+    callers must fall back to RapidOCR-onnx and continue the chain.
+    """
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+
+    limit = max(1.0, float(timeout_seconds))
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        fut = pool.submit(convert_image, image_path, converter)
+        try:
+            return fut.result(timeout=limit)
+        except FuturesTimeout as exc:
+            logger.warning(
+                "Docling timeout after %.0fs on %s — abandoning worker, "
+                "caller should fall back",
+                limit,
+                image_path.name,
+            )
+            raise TimeoutError(
+                f"Docling exceeded {limit:.0f}s on {image_path.name}"
+            ) from exc
+    finally:
+        # Critical: wait=False or we block until the 13‑minute convert ends.
+        pool.shutdown(wait=False, cancel_futures=True)

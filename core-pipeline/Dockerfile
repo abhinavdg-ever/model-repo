@@ -39,7 +39,7 @@ WORKDIR /app/core-pipeline
 # The handwriting classifier and the rotation detector are imported from the
 # reference tree; the compose file mounts it at this path.
 ENV PYTHONPATH=/app/core-pipeline \
-    HW_MODEL_PATH=/app/stages/lib/imaging/image_type_classification.pkl \
+    HW_MODEL_PATH=/app/core-pipeline/models/hw/handwritten_printed_convnext_tiny.pth \
     API_HOST=0.0.0.0 \
     API_PORT=8001
 

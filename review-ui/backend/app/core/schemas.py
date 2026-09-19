@@ -70,6 +70,7 @@ class ImagingPageResult(BaseModel):
     orientationAngle: float | None = None
     tiltAngle: float | None = None
     mirrored: bool | None = None
+    pageQualityTag: str | None = None
     pageQualityConfidence: float | None = None
     dosFrom: str | None = None
     dosTo: str | None = None
@@ -129,6 +130,7 @@ class ImagingSectionsProcessed(BaseModel):
     member: bool = False
     dos: bool = False
     hw: bool = False
+    quality: bool = False
     rotation: bool = False
     junk: bool = False
     verification: bool = False

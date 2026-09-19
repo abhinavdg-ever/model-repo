@@ -64,7 +64,7 @@ Two independent measurements per page.
 ```mermaid
 flowchart TD
   IMG["pages/N.jpg"] --> R["PageOrientationDetector.detect()"]
-  IMG --> H["classify_image_type()<br/>image_type_classification.pkl"]
+  IMG --> H["classify_image_type()<br/>models/hw/*.pth or .pkl"]
   R --> RES["orientation · tilt · mirrored"]
   H --> HRES["printed | handwritten + confidence"]
   RES --> Q[("ocr_quality_results")]

@@ -278,7 +278,7 @@ def list_image_blobs(container: str, blob_path: str) -> list[str]:
 
     The cost of recursing is that pointing this at a PARENT of several chart
     folders pulls all of their pages into one chart. That is true of the local
-    side too. `/api/charts/batch` is the tool for a folder of charts; this one
+    side too. `/api/charts/batch-run` is the tool for a folder of charts; this one
     is for a folder that IS a chart.
     """
     from azure_retry import call_with_retry

@@ -37,6 +37,20 @@ def main() -> None:
             help="Run only this stage, whatever ran before. Repeatable, "
                  "e.g. --only member_verify --only blank_junk:2",
         )
+        parser_obj.add_argument(
+            "--skip-ocr",
+            dest="skip_ocr",
+            action="store_true",
+            default=None,
+            help="Reuse on-disk ocr/ and skip prelim/final1/final2 "
+                 "(overrides SKIP_OCR=false in .env). No-op if ocr/ is empty.",
+        )
+        parser_obj.add_argument(
+            "--no-skip-ocr",
+            dest="skip_ocr",
+            action="store_false",
+            help="Force OCR engines even if SKIP_OCR=true in .env",
+        )
 
     def add_write_flags(parser_obj) -> None:
         """`--all-files` / `--skip-orig-pages`, spelled the same everywhere."""
@@ -59,20 +73,34 @@ def main() -> None:
         parser_obj.add_argument(
             "--overwrite",
             action="store_true",
-            help="Replace files already at the write destination",
+            help="Replace files already at the write destination "
+                 "(default: write missing, skip existing)",
         )
 
     p_run = sub.add_parser(
         "run",
-        help="Read one chart (blob or local), run the chain, optionally write it out",
+        help=(
+            "One chart: intake+pipeline+optional write, or resume an existing "
+            "chart (pass --chart-id / --chart-name with no read path)"
+        ),
     )
-    src_r = p_run.add_mutually_exclusive_group(required=True)
+    src_r = p_run.add_mutually_exclusive_group(required=False)
     src_r.add_argument("--local-read-path", metavar="PATH",
                        help="Directory holding the chart folder")
     src_r.add_argument("--blob-read-path",
                        help="Prefix holding the chart folder (with --blob-container)")
-    p_run.add_argument("--folder-name", required=True,
-                       help="The chart folder under the read path. Becomes the chart name.")
+    p_run.add_argument(
+        "--folder-name",
+        help="The chart folder under the read path. Becomes the chart name.",
+    )
+    p_run.add_argument(
+        "--chart-id", type=int,
+        help="Resume an existing chart by id (no read path)",
+    )
+    p_run.add_argument(
+        "--chart-name",
+        help="Resume an existing chart by folder name (no read path)",
+    )
     p_run.add_argument("--blob-container", help="Required with --blob-read-path")
     p_run.add_argument("--blob-write-path", help="Prefix to write results to")
     p_run.add_argument("--local-write-path", help="Directory to write results to")
@@ -85,55 +113,41 @@ def main() -> None:
     p_run.add_argument("--batch-id")
     p_run.add_argument("--no-pipeline", action="store_true", help="Intake only")
 
+    def _configure_batch(parser_obj) -> None:
+        src_b = parser_obj.add_mutually_exclusive_group(required=True)
+        src_b.add_argument(
+            "--local-read-path", metavar="PATH",
+            help="Parent folder; each subfolder holding images is one chart",
+        )
+        src_b.add_argument(
+            "--blob-read-path",
+            help="Blob prefix; each sub-folder holding images is one chart",
+        )
+        parser_obj.add_argument("--blob-container", help="Required with --blob-read-path")
+        parser_obj.add_argument("--blob-write-path", help="Prefix to write each chart to")
+        parser_obj.add_argument("--local-write-path", help="Directory to write each chart to")
+        add_write_flags(parser_obj)
+        parser_obj.add_argument("--force", action="store_true", help="Reprocess pages already done")
+        add_stage_flags(parser_obj)
+        parser_obj.add_argument("--no-pipeline", action="store_true", help="Intake only")
+        parser_obj.add_argument("--limit", type=int, help="Only the first N charts (dry runs)")
+        parser_obj.add_argument(
+            "--workers", type=int, default=None,
+            help="Charts to run concurrently (default BATCH_WORKERS, usually 4)",
+        )
+        parser_obj.add_argument("--run-id")
+        parser_obj.add_argument("--batch-id")
+
     p_batch = sub.add_parser(
+        "batch-run",
+        help="Every chart under a path: register, run, optionally write",
+    )
+    _configure_batch(p_batch)
+    p_batch_alias = sub.add_parser(
         "batch",
-        help="Scan a folder or blob prefix: register all charts, then run with workers",
+        help="Alias for batch-run",
     )
-    src_b = p_batch.add_mutually_exclusive_group(required=True)
-    src_b.add_argument(
-        "--local-read-path", metavar="PATH",
-        help="Parent folder; each subfolder holding images is one chart",
-    )
-    src_b.add_argument(
-        "--blob-read-path",
-        help="Blob prefix; each sub-folder holding images is one chart",
-    )
-    p_batch.add_argument("--blob-container", help="Required with --blob-read-path")
-    p_batch.add_argument("--blob-write-path", help="Prefix to write each chart to")
-    p_batch.add_argument("--local-write-path", help="Directory to write each chart to")
-    add_write_flags(p_batch)
-    p_batch.add_argument("--force", action="store_true", help="Reprocess pages already done")
-    add_stage_flags(p_batch)
-    p_batch.add_argument("--no-pipeline", action="store_true", help="Intake only")
-    p_batch.add_argument("--limit", type=int, help="Only the first N charts (dry runs)")
-    p_batch.add_argument(
-        "--workers", type=int, default=None,
-        help="Charts to run concurrently (default BATCH_WORKERS, usually 4)",
-    )
-    p_batch.add_argument("--run-id")
-    p_batch.add_argument("--batch-id")
-
-    p_write = sub.add_parser(
-        "write",
-        help="Write an already-run chart out, without reprocessing it",
-    )
-    p_write.add_argument("chart_name", help="Folder name under data/folders")
-    src_w = p_write.add_mutually_exclusive_group(required=True)
-    src_w.add_argument("--local-write-path", metavar="PATH", help="Destination directory")
-    src_w.add_argument("--blob-write-path",
-                       help="Destination prefix (with --blob-container)")
-    p_write.add_argument("--blob-container", help="Required with --blob-write-path")
-    add_write_flags(p_write)
-
-    p_rerun = sub.add_parser("rerun", help="Re-run the chain for an existing chart_id")
-    p_rerun.add_argument("chart_id", type=int)
-    p_rerun.add_argument(
-        "--force",
-        action="store_true",
-        help="Reprocess pages already completed (default: resume, skip them)",
-    )
-    add_stage_flags(p_rerun)
-
+    _configure_batch(p_batch_alias)
     p_stages = sub.add_parser("stages", help="List the pipeline stages in order")
 
     p_status = sub.add_parser("status", help="Show a chart's stage progress")
@@ -194,40 +208,75 @@ def main() -> None:
         return
 
     if args.cmd == "run":
-        from orchestrator.runner import ingest_and_run
+        from db import connect, get_chart, get_chart_by_name
+        from jobs.export_chart import write_chart
+        from orchestrator.runner import ingest_and_run, run_pipeline_for_chart
 
+        has_source = bool(args.local_read_path or args.blob_read_path)
+        resume = bool(args.chart_id or args.chart_name)
+        if has_source and resume:
+            parser.error("pass a read source, or --chart-id/--chart-name to resume — not both")
+        if not has_source and not resume:
+            parser.error(
+                "provide --local-read-path/--blob-read-path + --folder-name, "
+                "or --chart-id / --chart-name to resume"
+            )
+        if has_source and not args.folder_name:
+            parser.error("--folder-name is required with a read path")
         if args.blob_read_path and not args.blob_container:
             parser.error("--blob-read-path requires --blob-container")
         if args.blob_read_path and args.local_write_path:
             parser.error("a blob source writes to --blob-write-path")
         if args.local_read_path and args.blob_write_path:
             parser.error("a local source writes to --local-write-path")
+        if args.blob_write_path and args.local_write_path:
+            parser.error("give one write destination, not both")
 
-        folder = args.folder_name
-        if args.local_read_path:
-            source = str(Path(args.local_read_path) / folder)
-            blob_path = None
+        if resume:
+            with connect() as conn:
+                if args.chart_id:
+                    chart = get_chart(conn, args.chart_id)
+                else:
+                    chart = get_chart_by_name(conn, args.chart_name)
+                if not chart:
+                    raise SystemExit("chart not found")
+                chart_id = int(chart["id"])
+                folder = str(chart["chart_name"])
+            result = run_pipeline_for_chart(
+                chart_id,
+                force=args.force,
+                only=args.only,
+                through=args.through,
+                skip_ocr=args.skip_ocr,
+            )
+            result = {"chart_id": chart_id, "chart_name": folder, "pipeline": result}
         else:
-            source = None
-            blob_path = f"{args.blob_read_path.strip('/')}/{folder}"
+            folder = args.folder_name
+            if args.local_read_path:
+                source = str(Path(args.local_read_path) / folder)
+                blob_path = None
+            else:
+                source = None
+                blob_path = f"{args.blob_read_path.strip('/')}/{folder}"
 
-        result = ingest_and_run(
-            local_path=source,
-            blob_container=args.blob_container,
-            blob_path=blob_path,
-            chart_name=folder,
-            run_id=args.run_id,
-            batch_id=args.batch_id,
-            run_pipeline=not args.no_pipeline,
-            force=args.force,
-            only=args.only,
-            through=args.through,
-        )
+            result = ingest_and_run(
+                local_path=source,
+                blob_container=args.blob_container,
+                blob_path=blob_path,
+                chart_name=folder,
+                run_id=args.run_id,
+                batch_id=args.batch_id,
+                run_pipeline=not args.no_pipeline,
+                force=args.force,
+                only=args.only,
+                through=args.through,
+                skip_ocr=args.skip_ocr,
+            )
+            folder = result.get("chart_name") or folder
+
         if args.blob_write_path or args.local_write_path:
-            from jobs.export_chart import write_chart
-
             result["write"] = write_chart(
-                result.get("chart_name") or folder,
+                folder,
                 local_path=args.local_write_path,
                 blob_container=args.blob_container,
                 blob_path=args.blob_write_path,
@@ -237,7 +286,7 @@ def main() -> None:
         print(json.dumps(result, default=str, indent=2))
         return
 
-    if args.cmd == "batch":
+    if args.cmd in ("batch-run", "batch"):
         from jobs.batch_intake import run_batch
 
         if args.blob_read_path and not args.blob_container:
@@ -256,48 +305,11 @@ def main() -> None:
                     run_pipeline=not args.no_pipeline,
                     only=args.only,
                     through=args.through,
+                    skip_ocr=args.skip_ocr,
                     limit=args.limit,
                     run_id=args.run_id,
                     batch_id=args.batch_id,
                     workers=args.workers,
-                ),
-                default=str,
-                indent=2,
-            )
-        )
-        return
-
-    if args.cmd == "write":
-        from jobs.export_chart import write_chart
-
-        if args.blob_write_path and not args.blob_container:
-            parser.error("--blob-write-path requires --blob-container")
-        print(
-            json.dumps(
-                write_chart(
-                    args.chart_name,
-                    local_path=args.local_write_path,
-                    blob_container=args.blob_container,
-                    blob_path=args.blob_write_path,
-                    overwrite=args.overwrite,
-                    write_mode=args.write_mode,
-                ),
-                default=str,
-                indent=2,
-            )
-        )
-        return
-
-    if args.cmd == "rerun":
-        from orchestrator.runner import run_pipeline_for_chart
-
-        print(
-            json.dumps(
-                run_pipeline_for_chart(
-                    args.chart_id,
-                    force=args.force,
-                    only=args.only,
-                    through=args.through,
                 ),
                 default=str,
                 indent=2,

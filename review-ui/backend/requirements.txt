@@ -3,6 +3,8 @@ uvicorn[standard]>=0.32.0
 python-multipart>=0.0.12
 pydantic-settings>=2.6.0
 python-dotenv>=1.0.1
+# TIFF → JPEG for browser <img> (Chrome/Firefox cannot render image/tiff)
+Pillow>=10.0.0
 # Azure Blob via Microsoft Entra ID (Shared Key not required)
 azure-identity>=1.19.0
 azure-storage-blob>=12.24.0

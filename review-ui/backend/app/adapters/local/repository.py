@@ -634,6 +634,9 @@ class LocalFolderRepository(FolderRepository):
                     if name.endswith("_hw_printed.csv"):
                         for row in read_csv_rows(path):
                             mark("hw", keys, page_num_from_row(row))
+                    elif name.endswith("_quality.csv"):
+                        for row in read_csv_rows(path):
+                            mark("quality", keys, page_num_from_row(row))
                     elif name.endswith("_rotation.csv"):
                         for row in read_csv_rows(path):
                             mark("rotation", keys, page_num_from_row(row))
@@ -970,6 +973,7 @@ class LocalFolderRepository(FolderRepository):
             index_hw_rows,
             index_junk_rows,
             index_member_extraction_rows,
+            index_quality_rows,
             index_rotation_rows,
             load_verification,
             load_verifications,
@@ -1028,6 +1032,13 @@ class LocalFolderRepository(FolderRepository):
             ),
             chart_name=chart,
         )
+        quality_rows = collect_rows(
+            folder_dir=folder_dir,
+            data_root=self.data_root,
+            per_chart_name=f"{chart}_quality.csv",
+            combined_rel=None,
+            chart_name=chart,
+        )
         member_rows = collect_rows(
             folder_dir=folder_dir,
             data_root=self.data_root,
@@ -1057,6 +1068,9 @@ class LocalFolderRepository(FolderRepository):
         imaging_pages = overlay_fields(imaging_pages, index_hw_rows(hw_rows, chart))
         imaging_pages = overlay_fields(
             imaging_pages, index_rotation_rows(rotation_rows, chart)
+        )
+        imaging_pages = overlay_fields(
+            imaging_pages, index_quality_rows(quality_rows, chart)
         )
         imaging_pages = overlay_fields(
             imaging_pages, index_member_extraction_rows(member_rows, chart)
@@ -1098,6 +1112,7 @@ class LocalFolderRepository(FolderRepository):
             member=bool(member_rows),
             dos=bool(dos_rows),
             hw=bool(hw_rows),
+            quality=bool(quality_rows),
             rotation=bool(rotation_rows),
             junk=bool(junk_rows),
             verification=bool(ver_rows),

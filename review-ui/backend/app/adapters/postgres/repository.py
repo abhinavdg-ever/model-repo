@@ -622,6 +622,7 @@ class PostgresFolderRepository(FolderRepository):
             member=any(p.memberName or p.memberId for p in merged),
             dos=any(p.dosFrom or p.dosTo or p.docDosFrom for p in merged),
             hw=any(p.handwrittenOrPrinted for p in merged),
+            quality=any(p.pageQualityTag or p.pageQualityConfidence is not None for p in merged),
             rotation=any(
                 p.orientationAngle is not None or p.tiltAngle is not None for p in merged
             ),
