@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -29,8 +30,8 @@ type SortDir = "asc" | "desc";
 type LandingFilters = {
   query: string;
   statusFilter: "ALL" | OcrRunStatus;
-  runFilter: string;
-  batchFilter: string;
+  runFilter: string[];
+  batchFilter: string[];
   sortKey: SortKey;
   sortDir: SortDir;
   page: number;
@@ -46,12 +47,27 @@ const STATUS_VALUES = new Set<string>([
   "FAILED",
 ]);
 
+function normalizeIdList(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw
+      .filter((v): v is string => typeof v === "string")
+      .map((v) => v.trim())
+      .filter((v) => v && v !== "ALL");
+  }
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    if (!s || s === "ALL") return [];
+    return [s];
+  }
+  return [];
+}
+
 function readLandingFilters(): LandingFilters {
   const defaults: LandingFilters = {
     query: "",
     statusFilter: "ALL",
-    runFilter: "ALL",
-    batchFilter: "ALL",
+    runFilter: [],
+    batchFilter: [],
     sortKey: "filename",
     sortDir: "asc",
     page: 1,
@@ -64,14 +80,6 @@ function readLandingFilters(): LandingFilters {
       typeof parsed.statusFilter === "string" && STATUS_VALUES.has(parsed.statusFilter)
         ? (parsed.statusFilter as LandingFilters["statusFilter"])
         : defaults.statusFilter;
-    const runFilter =
-      typeof parsed.runFilter === "string" && parsed.runFilter.trim()
-        ? parsed.runFilter.trim()
-        : defaults.runFilter;
-    const batchFilter =
-      typeof parsed.batchFilter === "string" && parsed.batchFilter.trim()
-        ? parsed.batchFilter.trim()
-        : defaults.batchFilter;
     const sortKey =
       parsed.sortKey === "filename" || parsed.sortKey === "pages" || parsed.sortKey === "updated"
         ? parsed.sortKey
@@ -84,8 +92,8 @@ function readLandingFilters(): LandingFilters {
     return {
       query: typeof parsed.query === "string" ? parsed.query : "",
       statusFilter,
-      runFilter,
-      batchFilter,
+      runFilter: normalizeIdList(parsed.runFilter),
+      batchFilter: normalizeIdList(parsed.batchFilter),
       sortKey,
       sortDir,
       page,
@@ -93,6 +101,101 @@ function readLandingFilters(): LandingFilters {
   } catch {
     return defaults;
   }
+}
+
+function toggleId(list: string[], value: string): string[] {
+  return list.includes(value)
+    ? list.filter((v) => v !== value)
+    : [...list, value].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+function MultiCheckFilter({
+  label,
+  ariaLabel,
+  options,
+  selected,
+  onChange,
+  formatOption,
+  emptyLabel,
+}: {
+  label: string;
+  ariaLabel: string;
+  options: string[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+  formatOption: (value: string) => string;
+  emptyLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const summary =
+    selected.length === 0
+      ? emptyLabel
+      : selected.length === 1
+        ? formatOption(selected[0])
+        : `${selected.length} selected`;
+
+  return (
+    <div className="landing-select-wrap landing-multi-wrap" ref={rootRef}>
+      <span>{label}</span>
+      <div className="landing-multi">
+        <button
+          type="button"
+          className="landing-multi-trigger"
+          aria-label={ariaLabel}
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span className="landing-multi-trigger-label">{summary}</span>
+          <ChevronDown size={12} aria-hidden="true" />
+        </button>
+        {open ? (
+          <div className="landing-multi-panel" role="listbox" aria-multiselectable="true">
+            <label className="landing-multi-option">
+              <input
+                type="checkbox"
+                checked={selected.length === 0}
+                onChange={() => onChange([])}
+              />
+              <span>{emptyLabel}</span>
+            </label>
+            {options.length === 0 ? (
+              <div className="landing-multi-empty">No values yet</div>
+            ) : (
+              options.map((value) => (
+                <label key={value} className="landing-multi-option">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(value)}
+                    onChange={() => onChange(toggleId(selected, value))}
+                  />
+                  <span>{formatOption(value)}</span>
+                </label>
+              ))
+            )}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 type Props = {
@@ -158,8 +261,8 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
   const [statusFilter, setStatusFilter] = useState<"ALL" | OcrRunStatus>(
     saved.statusFilter,
   );
-  const [runFilter, setRunFilter] = useState(saved.runFilter || "ALL");
-  const [batchFilter, setBatchFilter] = useState(saved.batchFilter || "ALL");
+  const [runFilter, setRunFilter] = useState<string[]>(saved.runFilter);
+  const [batchFilter, setBatchFilter] = useState<string[]>(saved.batchFilter);
   const skipFilterPageReset = useRef(true);
 
   async function load() {
@@ -201,7 +304,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
     for (const f of folders) {
       if (f.run_id) values.add(f.run_id);
     }
-    return ["ALL", ...[...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))];
+    return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   }, [folders]);
 
   const batchOptions = useMemo(() => {
@@ -209,7 +312,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
     for (const f of folders) {
       if (f.batch_id) values.add(f.batch_id);
     }
-    return ["ALL", ...[...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))];
+    return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   }, [folders]);
 
   const filtered = useMemo(() => {
@@ -221,11 +324,13 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
     if (statusFilter !== "ALL") {
       rows = rows.filter((f) => f.ocr_status === statusFilter);
     }
-    if (runFilter !== "ALL") {
-      rows = rows.filter((f) => (f.run_id || "") === runFilter);
+    if (runFilter.length > 0) {
+      const allowed = new Set(runFilter);
+      rows = rows.filter((f) => f.run_id != null && allowed.has(f.run_id));
     }
-    if (batchFilter !== "ALL") {
-      rows = rows.filter((f) => (f.batch_id || "") === batchFilter);
+    if (batchFilter.length > 0) {
+      const allowed = new Set(batchFilter);
+      rows = rows.filter((f) => f.batch_id != null && allowed.has(f.batch_id));
     }
     return [...rows].sort((a, b) => compareFolders(a, b, sortKey, sortDir));
   }, [folders, query, sortKey, sortDir, statusFilter, runFilter, batchFilter]);
@@ -392,35 +497,25 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                 </select>
               </label>
 
-              <label className="landing-select-wrap">
-                <span>Run</span>
-                <select
-                  value={runFilter}
-                  onChange={(e) => setRunFilter(e.target.value)}
-                  aria-label="Filter by run"
-                >
-                  {runOptions.map((value) => (
-                    <option key={value} value={value}>
-                      {value === "ALL" ? "All runs" : formatRunLabel(value)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <MultiCheckFilter
+                label="Run"
+                ariaLabel="Filter by run"
+                options={runOptions}
+                selected={runFilter}
+                onChange={setRunFilter}
+                formatOption={formatRunLabel}
+                emptyLabel="All runs"
+              />
 
-              <label className="landing-select-wrap">
-                <span>Batch</span>
-                <select
-                  value={batchFilter}
-                  onChange={(e) => setBatchFilter(e.target.value)}
-                  aria-label="Filter by batch"
-                >
-                  {batchOptions.map((value) => (
-                    <option key={value} value={value}>
-                      {value === "ALL" ? "All batches" : formatBatchLabel(value)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <MultiCheckFilter
+                label="Batch"
+                ariaLabel="Filter by batch"
+                options={batchOptions}
+                selected={batchFilter}
+                onChange={setBatchFilter}
+                formatOption={formatBatchLabel}
+                emptyLabel="All batches"
+              />
 
               <button
                 type="button"

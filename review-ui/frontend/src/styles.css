@@ -396,21 +396,93 @@ input {
 .landing-select-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.35rem;
   font-size: 0.72rem;
   color: var(--neutral-600);
   flex: 0 0 auto;
   white-space: nowrap;
 }
 
-.landing-select-wrap select {
+.landing-select-wrap select,
+.landing-multi-trigger {
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--card);
   color: var(--text);
-  font-size: 0.76rem;
-  padding: 0.28rem 0.45rem;
-  min-width: 7.5rem;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.5rem;
+  min-width: 8.5rem;
+}
+
+.landing-multi-wrap {
+  position: relative;
+  z-index: 1;
+}
+
+.landing-multi {
+  position: relative;
+}
+
+.landing-multi-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  max-width: 11rem;
+  text-align: left;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.landing-multi-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.landing-multi-trigger:hover {
+  border-color: var(--border);
+}
+
+.landing-multi-panel {
+  position: absolute;
+  top: calc(100% + 0.2rem);
+  left: 0;
+  z-index: 50;
+  min-width: 100%;
+  max-height: 14rem;
+  overflow: auto;
+  padding: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--card);
+}
+
+.landing-multi-option {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.4rem;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.landing-multi-option:hover {
+  background: var(--neutral-100, #f1f5f9);
+}
+
+.landing-multi-option input {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.landing-multi-empty {
+  padding: 0.35rem 0.4rem;
+  font-size: 0.75rem;
+  color: var(--neutral-500);
 }
 
 .th-sort {
@@ -437,26 +509,6 @@ input {
 
 .th-sort.active {
   color: var(--brand-800);
-}
-
-.landing-select-wrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.72rem;
-  color: var(--neutral-600);
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-.landing-select-wrap select {
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--card);
-  color: var(--text);
-  font-size: 0.78rem;
-  padding: 0.35rem 0.5rem;
-  min-width: 8.5rem;
 }
 
 .landing-pagination {
