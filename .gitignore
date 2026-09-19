@@ -34,11 +34,9 @@ check_azure_openai.py
 /requirements.txt
 
 # Chart workspace + manifests written by the pipeline / local runs.
-# Keep the directory, .gitkeep, and the small demo chart only.
+# Keep the directory shells empty in git (.gitkeep / README only).
 review-ui/data/folders/*
 !review-ui/data/folders/.gitkeep
-!review-ui/data/folders/demo_chart_240315_1012/
-!review-ui/data/folders/demo_chart_240315_1012/**
 review-ui/data/metadata/*
 !review-ui/data/metadata/.gitkeep
 review-ui/data/pipeline/*
