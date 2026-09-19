@@ -977,6 +977,30 @@ class TestChartResetKeepsTheAuditTrail:
             "the manifest is the client's data, not our output"
         )
 
+    def test_clear_results_keep_manifest_preserves_roster_and_stages(self):
+        """schema/clear_results_keep_manifest.sql must not wipe the roster."""
+        text = (
+            REPO_ROOT / "schema" / "clear_results_keep_manifest.sql"
+        ).read_text(encoding="utf-8")
+        # Strip SQL comments so a mention in a comment does not count.
+        code = "\n".join(
+            ln for ln in text.splitlines() if not ln.lstrip().startswith("--")
+        )
+        assert "manifest_member_list" not in code.split("TRUNCATE")[1].split(";")[0], (
+            "TRUNCATE must not include manifest_member_list"
+        )
+        assert "pipeline_stage" not in code.split("TRUNCATE")[1].split(";")[0], (
+            "TRUNCATE must not include pipeline_stage"
+        )
+        for table in (
+            "chart_list",
+            "page_list",
+            "ocr_results",
+            "member_extraction_results",
+            "pipeline_jobs",
+        ):
+            assert table in code, f"{table} should be truncated"
+
     def test_every_wiped_table_actually_has_a_chart_id(self):
         """A DELETE ... WHERE chart_id on a table without one is a runtime error."""
         import re

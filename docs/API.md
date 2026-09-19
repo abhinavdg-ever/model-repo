@@ -52,7 +52,7 @@ psql $env:DATABASE_URL -f schema/v2.sql
 psql $env:DATABASE_URL -c "SELECT count(*) FROM pipeline_stage;"
 ```
 
-Wipe and re-apply:
+Wipe and re-apply (full — drops roster too):
 
 ```bash
 # macOS / Linux
@@ -68,6 +68,17 @@ psql $env:DATABASE_URL -f schema/clear_schema.sql
 psql $env:DATABASE_URL -f schema/v1.sql
 psql $env:DATABASE_URL -f schema/v2.sql
 # or: .\scripts\reset_db.ps1 -Yes   (if present)
+```
+
+Empty chart/OCR/imaging rows but **keep the manifest roster** (and
+`pipeline_stage`):
+
+```bash
+psql "$DATABASE_URL" -f schema/clear_results_keep_manifest.sql
+```
+
+```powershell
+psql $env:DATABASE_URL -f schema/clear_results_keep_manifest.sql
 ```
 
 Empty `pipeline_stage` ⇒ `/ready` returns 503.
