@@ -12,7 +12,13 @@ Examples::
     python utilities/load_metadata_manifests.py /path/to/metadata/
     python utilities/load_metadata_manifests.py /path/to/metadata_R2_B3.csv
 
-Requires DATABASE_URL (env or core-pipeline/.env).
+Requires the **core-pipeline** virtualenv and ``DATABASE_URL`` (env or
+``core-pipeline/.env``)::
+
+    cd core-pipeline && source .venv/bin/activate
+    python ../utilities/load_metadata_manifests.py
+    python ../utilities/load_metadata_manifests.py /path/to/metadata/
+    python ../utilities/load_metadata_manifests.py /path/to/metadata_R2_B3.csv
 """
 from __future__ import annotations
 

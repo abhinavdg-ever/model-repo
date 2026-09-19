@@ -27,6 +27,11 @@ $RECYCLE.BIN/
 
 # Local working notes — kept on disk, not published
 CLAUDE.md
+PLAN.md
+
+# Ad-hoc Azure connectivity check (not part of the pipeline)
+check_azure_openai.py
+/requirements.txt
 
 # Editor / agent local config (skills live in ~/.cursor and ~/.claude)
 .claude/

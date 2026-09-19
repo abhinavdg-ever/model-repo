@@ -4,8 +4,8 @@ How to make this run on more than one computer: what would change, what it buys,
 what it costs, and in what order to do it.
 
 **Status: design, not built.** Nothing described here exists in the code. It
-extends [`PLAN.md § Proposed: shard a batch across N chart workers`](../PLAN.md#proposed-shard-a-batch-across-n-chart-workers),
-which covers the single-machine half of the same problem.
+extends the single-machine batch worker pool (``BATCH_WORKERS`` ×
+``STAGE_WORKERS``) to multiple machines.
 
 **This document has two halves.** [Part 1](#part-1--in-plain-language) explains the
 whole proposal without assuming any technical background, and is meant to be read
@@ -239,7 +239,7 @@ either can be built without the other.
 | Survives a restart | no — work in flight is lost | yes — the lease expires and another worker takes it |
 | Build cost | a thread pool and three guard rails | a worker process, a claim protocol, shared storage |
 
-The measured shape of the problem, from `PLAN.md`: a stage's page pool is
+The measured shape of the problem, from this design note: a stage's page pool is
 `min(STAGE_WORKERS, len(todo))`, so a **3-page chart with `STAGE_WORKERS=4` uses
 three threads and leaves the fourth idle**. A drop of forty small charts never
 saturates one box, and the serial loop is the constraint. A 400-page chart already
@@ -467,7 +467,7 @@ UPDATE pipeline_jobs
 
 ## Where sharding fits once there is a queue
 
-Inside each worker, the `workers` knob from `PLAN.md` still applies: one VM can
+Inside each worker, the `workers` knob from this design note still applies: one VM can
 hold several charts at once. The queue governs *how many charts a VM is given*;
 `STAGE_WORKERS` governs *how many pages a chart uses*. The product is what sizes
 the machine.
@@ -535,7 +535,7 @@ lower `DB_POOL_MAX` per worker and accept the contention.
 
 ### 3. The Azure DI cap can no longer be a semaphore
 
-`PLAN.md` proposes a module-level semaphore in `ocr_final2_azure` to bound
+this design note proposes a module-level semaphore in `ocr_final2_azure` to bound
 concurrent stage-5 calls. **That is a per-process object and it stops working the
 moment there is a second process.** Ten VMs each politely limiting themselves to 4
 in-flight calls is 40 in flight, and the failure is a 429 plus a bill.
@@ -623,7 +623,7 @@ flowchart LR
 **0 — Measure first.** A drop of ~20 small charts, serial. If the box is already
 CPU-saturated, none of this helps and the answer is a bigger box or fewer stages.
 
-**1 — Thread pool in one process.** `PLAN.md` has the full shape: `workers` on
+**1 — Thread pool in one process.** this design note has the full shape: `workers` on
 `BatchRequest`, `ThreadPoolExecutor` in `run_batch`, and the invariant
 `workers × STAGE_WORKERS + headroom ≤ DB_POOL_MAX` enforced at request time rather
 than discovered as a `PoolTimeout`. Small, reversible, and answers the actual

@@ -201,7 +201,7 @@ still renders.
 
 | File | Role |
 |---|---|
-| `PLAN.md` | Living architecture plan: status, decisions, phases. Update in the same change set as an architecture change. |
+| `README.md` | Project overview and quick start. |
 | `README.md` | Short orientation; detail lives in `docs/`. |
 | `.gitignore` | Excludes venvs, caches, `node_modules`, `dist`, and macOS `._*` / `.DS_Store` droppings. |
 | `docs/` | This documentation set. |
