@@ -25,7 +25,3 @@ Dockerfile  text eol=lf
 *.pdf   binary
 *.woff  binary
 *.woff2 binary
-
-# ConvNeXt handwritten/printed checkpoint (~106 MB) — GitHub rejects >100 MB
-# without LFS. Clone with: git lfs install && git lfs pull
-core-pipeline/models/hw/*.pth filter=lfs diff=lfs merge=lfs -text

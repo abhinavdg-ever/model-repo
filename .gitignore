@@ -48,15 +48,17 @@ review-ui/data/pipeline/*
 .claude/
 .cursor/
 
-# Downloaded ML checkpoints — NER / RapidOCR stay local (~GBs).
-# ConvNeXt HW weights are Git LFS (see .gitattributes) so a clone can pull them.
+# Downloaded ML checkpoints — keep local, never commit (~GBs).
+# Includes HW ConvNeXt, RapidOCR, GLiNER NER, and anything under models/.
+# MiniLM (section headers) lives in the HuggingFace cache, not here.
 /models/
-core-pipeline/models/*
-!core-pipeline/models/hw/
-!core-pipeline/models/hw/**
+core-pipeline/models/**
+!core-pipeline/models/README.md
 *.safetensors
 *.onnx
 *.bin
+*.pth
+*.pkl
 
 # Standalone managed-identity connection test. Its .env is committed on
 # purpose — it holds the identity's client/principal IDs and blanks, never a

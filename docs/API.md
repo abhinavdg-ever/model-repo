@@ -141,11 +141,12 @@ to `languages,barcodes` (`AZURE_DI_FEATURES=off` to disable).
 
 ## Prerequisites (Models)
 
-Weight files are **not** on PyPI. Place them under `core-pipeline/models/`
-(RapidOCR / NER gitignored; HW via Git LFS):
+Weight files are **not** on PyPI and **`core-pipeline/models/` is not in git**.
+Download them onto each machine under `core-pipeline/models/`:
 
 ```
-models/hw/handwritten_printed_convnext_tiny.pth   # Git LFS — see below
+models/hw/handwritten_printed_convnext_tiny.pth
+models/hw/image_type_classification.pkl          # RF fallback
 models/rapidocr/
   PP-OCRv6_det_small.pth
   PP-OCRv6_rec_small.pth
@@ -154,28 +155,50 @@ models/rapidocr/
 models/ner/          # GLiNER via model_downloader
 ```
 
-**Handwritten / printed (ConvNeXt)** — in the repo via Git LFS:
+**Handwritten / printed (ConvNeXt)** — copy the `.pth` into `models/hw/`, then:
 
 ```bash
 # macOS / Linux
-git lfs install
-git lfs pull          # after clone, or if models/hw/*.pth is a tiny pointer file
+cd core-pipeline && source .venv/bin/activate
+pip install -r requirements-docling.txt   # torch + torchvision + MiniLM
 ```
 
 ```powershell
 # Windows
-git lfs install
-git lfs pull
+cd core-pipeline; .venv\Scripts\Activate.ps1
+pip install -r requirements-docling.txt
 ```
-
-Place / verify: `core-pipeline/models/hw/handwritten_printed_convnext_tiny.pth`  
-Runtime: `pip install -r requirements-docling.txt` (torch + torchvision).
 
 | Missing | Fallback |
 |---|---|
 | ConvNeXt `.pth` / torch | RandomForest `models/hw/image_type_classification.pkl` |
 | RapidOCR four files | **rapidocr-onnxruntime** (base `requirements.txt`) |
 | GLiNER | rules-only member verify — **no chart can be Rejected** |
+| MiniLM / sentence-transformers | lexical header match (same 0.90 threshold) |
+
+### Section-header MiniLM
+
+Used only to filter Final1 `section_headers` in `*_final1.json` (≥90% match to
+`stages/lib/imaging/section_header_canon.json`). Weights are **not** under
+`models/` — HuggingFace downloads them on first use (~90 MB).
+
+```bash
+# macOS / Linux — already included in requirements-docling.txt
+cd core-pipeline && source .venv/bin/activate
+pip install -r requirements-docling.txt
+# or just: pip install "sentence-transformers>=3.0.0"
+```
+
+```powershell
+cd core-pipeline; .venv\Scripts\Activate.ps1
+pip install -r requirements-docling.txt
+# or: pip install "sentence-transformers>=3.0.0"
+```
+
+First Final1 run pulls `sentence-transformers/all-MiniLM-L6-v2` into the
+HuggingFace cache (`~/.cache/huggingface/`). Override with
+`SECTION_HEADER_MINILM_MODEL=…` or disable with
+`SECTION_HEADER_SEMANTIC_ENABLED=false`.
 
 ### RapidOCR download (ModelScope v3.9.2)
 
