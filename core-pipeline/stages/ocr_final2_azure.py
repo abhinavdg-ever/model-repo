@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from config import (
+    AZURE_DI_CONNECTION_POOL_SIZE,
+    AZURE_DI_FEATURES,
     AZURE_DI_MAX_CONCURRENT,
     AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT,
     AZURE_DOCUMENT_INTELLIGENCE_KEY,
@@ -30,7 +32,6 @@ from db import (
     connect,
     get_blank_junk_flags,
     get_ocr_texts,
-    get_quality_map,
     high_quality_printed_page_ids,
     low_quality_page_ids,
     non_printed_page_ids,
@@ -62,6 +63,15 @@ def _azure_configured() -> bool:
     )
 
 
+def _di_features() -> Optional[list[str]]:
+    """Parse AZURE_DI_FEATURES into a list, or None when disabled."""
+    raw = (AZURE_DI_FEATURES or "").strip()
+    if not raw or raw in {"0", "false", "off", "none", "-"}:
+        return None
+    features = [p.strip() for p in raw.split(",") if p.strip()]
+    return features or None
+
+
 def _get_di_semaphore() -> threading.Semaphore:
     """Process-wide cap on concurrent DI analyzes across all in-flight charts."""
     global _di_semaphore
@@ -87,34 +97,74 @@ def _get_client() -> Any:
             _client = DocumentIntelligenceClient(
                 endpoint=AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT,
                 credential=AzureKeyCredential(AZURE_DOCUMENT_INTELLIGENCE_KEY),
-                **azure_sdk_retry_kwargs(),
+                **azure_sdk_retry_kwargs(
+                    connection_pool_maxsize=AZURE_DI_CONNECTION_POOL_SIZE
+                ),
             )
         return _client
+
+
+def _barcode_dict(barcode: Any) -> dict[str, Any]:
+    return {
+        "kind": getattr(barcode, "kind", None),
+        "value": getattr(barcode, "value", None),
+        "confidence": getattr(barcode, "confidence", None),
+    }
+
+
+def _page_meta(page: Any) -> dict[str, Any]:
+    lines = getattr(page, "lines", None) or []
+    words = getattr(page, "words", None) or []
+    barcodes = getattr(page, "barcodes", None) or []
+    return {
+        "pageNumber": getattr(page, "page_number", None),
+        "angle": getattr(page, "angle", None),
+        "width": getattr(page, "width", None),
+        "height": getattr(page, "height", None),
+        "unit": getattr(page, "unit", None),
+        "lineCount": len(lines),
+        "wordCount": len(words),
+        "barcodes": [_barcode_dict(b) for b in barcodes],
+    }
+
+
+def _languages_meta(result: Any) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for lang in getattr(result, "languages", None) or []:
+        out.append(
+            {
+                "locale": getattr(lang, "locale", None),
+                "confidence": getattr(lang, "confidence", None),
+            }
+        )
+    return out
 
 
 def _ocr_azure(image_path: Path) -> dict[str, Any]:
     from azure_retry import call_with_retry
 
+    features = _di_features()
+
     def _call() -> dict[str, Any]:
         client = _get_client()
+        kwargs: dict[str, Any] = {
+            "content_type": "application/octet-stream",
+        }
+        if features:
+            kwargs["features"] = features
         with image_path.open("rb") as fh:
             poller = client.begin_analyze_document(
-                "prebuilt-read", body=fh, content_type="application/octet-stream"
+                "prebuilt-read", body=fh, **kwargs
             )
         result = poller.result(timeout=AZURE_POLL_TIMEOUT_SECONDS)
         pages_meta = [
-            {
-                "pageNumber": getattr(p, "page_number", None),
-                "angle": getattr(p, "angle", None),
-                "width": getattr(p, "width", None),
-                "height": getattr(p, "height", None),
-                "unit": getattr(p, "unit", None),
-            }
-            for p in (getattr(result, "pages", None) or [])
+            _page_meta(p) for p in (getattr(result, "pages", None) or [])
         ]
         return {
             "content": getattr(result, "content", None) or "",
             "pages_meta": pages_meta,
+            "languages": _languages_meta(result),
+            "features": features or [],
         }
 
     with _get_di_semaphore():
@@ -135,6 +185,8 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
         "page_number": page.get("page_number"),
         "content": "",
         "pages_meta": [],
+        "languages": [],
+        "features": [],
         "error": "",
         "engine": "azure" if use_azure else "fallback",
     }
@@ -143,6 +195,8 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
             extracted = _ocr_azure(image_path)
             out["content"] = extracted["content"]
             out["pages_meta"] = extracted["pages_meta"]
+            out["languages"] = extracted.get("languages") or []
+            out["features"] = extracted.get("features") or []
         else:
             out["content"] = ""
     except Exception as exc:
@@ -210,6 +264,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     "fileName": item["page_name"],
                     "content": item["content"],
                     "pagesMeta": item["pages_meta"],
+                    "languages": item.get("languages") or [],
+                    "features": item.get("features") or [],
                 }
                 upsert_ocr_result(
                     conn,
@@ -226,16 +282,23 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         for page in ctx.pages:
             raw = stored.get(page["id"])
             content = ""
+            pages_meta: list[Any] = []
+            languages: list[Any] = []
             if raw:
                 try:
-                    content = str(json.loads(raw).get("content") or "")
-                except (ValueError, AttributeError):
+                    parsed = json.loads(raw)
+                    content = str(parsed.get("content") or "")
+                    pages_meta = list(parsed.get("pagesMeta") or [])
+                    languages = list(parsed.get("languages") or [])
+                except (ValueError, AttributeError, TypeError):
                     content = raw
             out_pages.append(
                 {
                     "pageNumber": page.get("page_number"),
                     "fileName": page["page_name"],
                     "content": content,
+                    "pagesMeta": pages_meta,
+                    "languages": languages,
                 }
             )
         out = write_final2_json(ctx.chart_name, out_pages)

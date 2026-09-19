@@ -51,6 +51,19 @@ AZURE_STORAGE_CONNECTION_STRING = (
 AZURE_STORAGE_CONTAINER = (
     os.environ.get("AZURE_STORAGE_CONTAINER") or "imaging-pipeline"
 ).strip()
+# User-assigned managed identity on a VM / App Service / AKS.
+# AZURE_CLIENT_ID is what the SDK needs (ManagedIdentityCredential).
+# AZURE_PRINCIPAL_ID is the object id used when assigning RBAC roles — stored
+# for ops visibility only; it is not passed to the credential.
+AZURE_CLIENT_ID = (os.environ.get("AZURE_CLIENT_ID") or "").strip()
+AZURE_PRINCIPAL_ID = (os.environ.get("AZURE_PRINCIPAL_ID") or "").strip()
+# HTTP connection pools for parallel blob / DI calls (SDK default is ~10).
+AZURE_BLOB_CONNECTION_POOL_SIZE = int(
+    os.environ.get("AZURE_BLOB_CONNECTION_POOL_SIZE") or "50"
+)
+AZURE_DI_CONNECTION_POOL_SIZE = int(
+    os.environ.get("AZURE_DI_CONNECTION_POOL_SIZE") or "32"
+)
 
 AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT = (
     os.environ.get("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT") or ""
@@ -59,6 +72,11 @@ AZURE_DOCUMENT_INTELLIGENCE_KEY = (
     os.environ.get("AZURE_DOCUMENT_INTELLIGENCE_KEY") or ""
 ).strip()
 AZURE_POLL_TIMEOUT_SECONDS = int(os.environ.get("AZURE_POLL_TIMEOUT_SECONDS") or "180")
+# Comma-separated AnalyzeDocument features for final2 (prebuilt-read).
+# Empty ⇒ no features= kwarg (text only). Default matches the Azure V2 pack.
+AZURE_DI_FEATURES = (
+    os.environ.get("AZURE_DI_FEATURES") or "languages,barcodes"
+).strip()
 # Application-level retries around DI / Blob / OpenAI calls (on top of the SDK).
 AZURE_RETRY_ATTEMPTS = int(os.environ.get("AZURE_RETRY_ATTEMPTS") or "5")
 AZURE_RETRY_BASE_DELAY = float(os.environ.get("AZURE_RETRY_BASE_DELAY") or "1.0")

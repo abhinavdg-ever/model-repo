@@ -42,16 +42,23 @@ services:
       AZURE_RETRY_ATTEMPTS: ${AZURE_RETRY_ATTEMPTS:-5}
 
       # --- Azure Blob: chart intake + manifest sweep ---
+      # Auth: key | entra | entra_interactive | managed_identity
       AZURE_STORAGE_AUTH: ${AZURE_STORAGE_AUTH:-entra}
       AZURE_STORAGE_ACCOUNT_NAME: ${AZURE_STORAGE_ACCOUNT_NAME:-}
       AZURE_STORAGE_ACCOUNT_KEY: ${AZURE_STORAGE_ACCOUNT_KEY:-}
       AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-}
       AZURE_STORAGE_CONTAINER: ${AZURE_STORAGE_CONTAINER:-imaging-pipeline}
+      # User-assigned MI (system-assigned: leave blank)
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
+      AZURE_PRINCIPAL_ID: ${AZURE_PRINCIPAL_ID:-}
+      AZURE_BLOB_CONNECTION_POOL_SIZE: ${AZURE_BLOB_CONNECTION_POOL_SIZE:-50}
 
       # --- Azure Document Intelligence: final2 OCR (billed per page) ---
       AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT: ${AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT:-}
       AZURE_DOCUMENT_INTELLIGENCE_KEY: ${AZURE_DOCUMENT_INTELLIGENCE_KEY:-}
       AZURE_POLL_TIMEOUT_SECONDS: ${AZURE_POLL_TIMEOUT_SECONDS:-180}
+      AZURE_DI_FEATURES: ${AZURE_DI_FEATURES:-languages,barcodes}
+      AZURE_DI_CONNECTION_POOL_SIZE: ${AZURE_DI_CONNECTION_POOL_SIZE:-32}
 
       # --- Azure OpenAI: the DOS stage's LLM pass ---
       # Unset => DOS runs rules-only and stamps extraction_method='rules'.

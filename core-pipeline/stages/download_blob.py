@@ -35,6 +35,7 @@ from db import (
 from db.blob_store import (
     chart_name_from_blob_path,
     download_blob_to_path,
+    ensure_blob_ready,
     list_image_blobs,
 )
 from db.chart_status import refresh_chart_status
@@ -99,6 +100,7 @@ def run_download(
         update_job(conn, job_id, started=True)
 
     try:
+        ensure_blob_ready(blob_container)
         blob_names = list_image_blobs(blob_container, blob_path)
         if not blob_names:
             # "No images" has three quite different causes and the bare message

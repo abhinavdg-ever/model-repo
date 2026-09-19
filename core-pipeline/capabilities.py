@@ -23,10 +23,13 @@ from importlib.util import find_spec
 from typing import Any
 
 from config import (
+    AZURE_CLIENT_ID,
+    AZURE_DI_FEATURES,
     AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT,
     AZURE_DOCUMENT_INTELLIGENCE_KEY,
     AZURE_OPENAI_DEPLOYMENT,
     AZURE_OPENAI_ENDPOINT,
+    AZURE_PRINCIPAL_ID,
     AZURE_STORAGE_ACCOUNT_KEY,
     AZURE_STORAGE_ACCOUNT_NAME,
     AZURE_STORAGE_AUTH,
@@ -42,14 +45,16 @@ def blob_status() -> dict[str, Any]:
     """Can we reach a blob container at all, and as whom?
 
     Mirrors the precedence in `db.blob_store.get_blob_service_client` — connection
-    string, then Entra, then account key — so this cannot say "ready" for a
-    credential that function would not use.
+    string, then Entra / managed identity, then account key — so this cannot say
+    "ready" for a credential that function would not use.
     """
     status: dict[str, Any] = {
         "container": AZURE_STORAGE_CONTAINER,
         "account": AZURE_STORAGE_ACCOUNT_NAME or None,
         "auth": None,
         "ready": False,
+        "client_id": AZURE_CLIENT_ID or None,
+        "principal_id": AZURE_PRINCIPAL_ID or None,
     }
 
     if find_spec("azure.storage.blob") is None:
@@ -66,7 +71,21 @@ def blob_status() -> dict[str, Any]:
         )
         return status
 
-    from db.blob_store import ENTRA_INTERACTIVE_MODES, ENTRA_MODES
+    from db.blob_store import (
+        ENTRA_INTERACTIVE_MODES,
+        ENTRA_MODES,
+        MANAGED_IDENTITY_MODES,
+    )
+
+    if AZURE_STORAGE_AUTH in MANAGED_IDENTITY_MODES:
+        if find_spec("azure.identity") is None:
+            status["auth"] = "managed_identity"
+            status["reason"] = (
+                "AZURE_STORAGE_AUTH=managed_identity but azure-identity not installed"
+            )
+            return status
+        status.update(auth="managed_identity", ready=True)
+        return status
 
     if AZURE_STORAGE_AUTH in ENTRA_MODES | ENTRA_INTERACTIVE_MODES:
         interactive = AZURE_STORAGE_AUTH in ENTRA_INTERACTIVE_MODES
@@ -178,9 +197,15 @@ def azure_di_status() -> dict[str, Any]:
     ready = bool(
         AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT and AZURE_DOCUMENT_INTELLIGENCE_KEY
     )
+    features = [
+        p.strip()
+        for p in (AZURE_DI_FEATURES or "").split(",")
+        if p.strip() and p.strip().casefold() not in {"0", "false", "off", "none", "-"}
+    ]
     status: dict[str, Any] = {
         "endpoint": AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT or None,
         "ready": ready,
+        "features": features,
     }
     if not ready:
         missing = [
@@ -289,7 +314,13 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     blob_on = f"OK — {blob.get('auth')}"
     if blob.get("account"):
         blob_on += f", account={blob['account']}"
+    if blob.get("client_id"):
+        blob_on += f", client_id={blob['client_id']}"
     blob_on += f", container={blob.get('container')}"
+
+    di_on = f"OK — {di.get('endpoint')}"
+    if di.get("features"):
+        di_on += f", features={','.join(di['features'])}"
 
     llm_on = f"OK — deployment={llm.get('deployment')}, auth={llm.get('auth')}"
     ner_on = f"OK — model={ner.get('model_id')}"
@@ -299,7 +330,7 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     return [
         ("blob", _one_line(blob, blob_on)),
         ("final1 Docling", _one_line(docling, docling_on)),
-        ("final2 OCR", _one_line(di, f"OK — {di.get('endpoint')}")),
+        ("final2 OCR", _one_line(di, di_on)),
         ("DOS LLM", _one_line(llm, llm_on)),
         ("member NER", _one_line(ner, ner_on)),
         ("skip OCR", _one_line(skip_ocr, skip_on)),

@@ -169,8 +169,14 @@ def _write_blob(
 ) -> dict[str, Any]:
     from azure_retry import call_with_retry
     from config import AZURE_RETRY_ATTEMPTS, AZURE_RETRY_BASE_DELAY, AZURE_RETRY_MAX_DELAY
-    from db.blob_store import get_container_client, normalize_prefix, upload_blob
+    from db.blob_store import (
+        ensure_blob_ready,
+        get_container_client,
+        normalize_prefix,
+        upload_blob,
+    )
 
+    ensure_blob_ready(container)
     prefix = f"{normalize_prefix(blob_path)}{chart_name}/"
     client = get_container_client(container)
 

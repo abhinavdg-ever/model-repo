@@ -86,6 +86,19 @@ Key `.env` knobs (paths relative to `core-pipeline/`):
 Azure Blob / DocIntel / OpenAI are optional — missing ones degrade a stage in a
 way the run records (`GET /health` names the gap).
 
+Blob auth modes (`AZURE_STORAGE_AUTH`):
+
+| Mode | When |
+|---|---|
+| `entra` (default) | `DefaultAzureCredential` (MI → CLI → …). Set `AZURE_CLIENT_ID` for a **user-assigned** MI |
+| `managed_identity` | VM / App Service MI only — no CLI, no browser. Same `AZURE_CLIENT_ID` |
+| `entra_interactive` | MI → `az login` → browser (dev machines) |
+| `key` | `AZURE_STORAGE_ACCOUNT_KEY` |
+
+`AZURE_PRINCIPAL_ID` is the object id used when assigning **Storage Blob Data
+Reader/Contributor**; it is not passed to the SDK. Final2 DI features default
+to `languages,barcodes` (`AZURE_DI_FEATURES=off` to disable).
+
 ---
 
 ## Prerequisites (Models)

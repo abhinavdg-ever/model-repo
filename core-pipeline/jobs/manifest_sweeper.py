@@ -349,9 +349,14 @@ def run_load(
                     logger.exception("Failed local manifest %s", path)
                     errors.append(f"{path}: {exc}")
         else:
-            from db.blob_store import download_blob_bytes, list_blobs_with_suffixes
+            from db.blob_store import (
+                download_blob_bytes,
+                ensure_blob_ready,
+                list_blobs_with_suffixes,
+            )
 
             assert blob_container and blob_prefix
+            ensure_blob_ready(blob_container)
             blob_names = list_blobs_with_suffixes(
                 blob_container, blob_prefix, MANIFEST_SUFFIXES
             )

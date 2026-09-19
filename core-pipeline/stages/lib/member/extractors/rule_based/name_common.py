@@ -8,6 +8,7 @@ WORD = re.compile(r"[A-Za-z0-9]+")
 WINDOW = 5
 
 _MEMBER_KW = json.loads(
+    # name_common.py → rule_based → extractors → member → lib/keywords.json
     (Path(__file__).resolve().parents[3] / "keywords.json").read_text(encoding="utf-8")
 )["member"]
 

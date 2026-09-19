@@ -348,8 +348,15 @@ def run_batch(
         where = str(local_read_path)
         batch_progress_dir = str(Path(local_read_path).expanduser().resolve())
     else:
-        from db.blob_store import chart_name_from_blob_path, list_chart_prefixes
+        from db.blob_store import (
+            chart_name_from_blob_path,
+            ensure_blob_ready,
+            list_chart_prefixes,
+        )
 
+        # One token + container touch before workers fan out (avoids N parallel
+        # browser prompts on entra_interactive, and warms IMDS for MI).
+        ensure_blob_ready(blob_container)
         prefixes = list_chart_prefixes(blob_container, blob_read_path)
         sources = [(p, chart_name_from_blob_path(p), "blob") for p in prefixes]
         where = f"{blob_container}/{blob_read_path}"

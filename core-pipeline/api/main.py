@@ -486,11 +486,13 @@ def _bg_run(payload: "RunRequest") -> None:
             # the operator the one thing to do.
             logger.error(
                 "Background run FAILED for %s — no usable Azure Storage "
-                "credential. Set AZURE_STORAGE_AUTH=key with "
-                "AZURE_STORAGE_ACCOUNT_KEY, or make a managed identity / "
-                "`az login` available to THIS process (it reads PATH at "
-                "start, so a terminal opened before installing the CLI will "
-                "not see it). Local runs with local_path are unaffected.",
+                "credential. Set AZURE_STORAGE_AUTH=managed_identity with "
+                "AZURE_CLIENT_ID (user-assigned MI on a VM), or "
+                "AZURE_STORAGE_AUTH=key with AZURE_STORAGE_ACCOUNT_KEY, or "
+                "make a managed identity / `az login` available to THIS "
+                "process (it reads PATH at start, so a terminal opened "
+                "before installing the CLI will not see it). Local runs "
+                "with local_path are unaffected.",
                 source,
             )
         else:

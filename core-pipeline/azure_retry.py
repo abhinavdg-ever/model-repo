@@ -154,13 +154,16 @@ def azure_sdk_retry_kwargs(
     *,
     total: int = 5,
     backoff_factor: float = 0.8,
+    connection_pool_maxsize: Optional[int] = None,
 ) -> dict[str, Any]:
     """Keyword args for Azure SDK clients that accept ``retry_total`` etc.
 
     BlobServiceClient and DocumentIntelligenceClient honour these via
-    ``kwargs`` into the pipeline policy.
+    ``kwargs`` into the pipeline policy. When ``connection_pool_maxsize`` is
+    set, a shared ``RequestsTransport`` is attached so parallel workers do
+    not exhaust the default ~10-connection pool.
     """
-    return {
+    kwargs: dict[str, Any] = {
         "retry_total": total,
         "retry_connect": total,
         "retry_read": total,
@@ -168,3 +171,10 @@ def azure_sdk_retry_kwargs(
         "retry_backoff_factor": backoff_factor,
         "retry_on_status_codes": list(_RETRY_HTTP),
     }
+    if connection_pool_maxsize is not None and int(connection_pool_maxsize) > 0:
+        from azure.core.pipeline.transport import RequestsTransport
+
+        kwargs["transport"] = RequestsTransport(
+            connection_pool_maxsize=max(1, int(connection_pool_maxsize))
+        )
+    return kwargs

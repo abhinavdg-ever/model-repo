@@ -1242,7 +1242,14 @@ class TestCapabilityReporting:
         caps = self._reload(monkeypatch)
         snapshot = caps.all_capabilities()
         labels = [label for label, _ in caps.startup_lines(snapshot)]
-        assert labels == ["blob", "final2 OCR", "DOS LLM", "member NER"]
+        assert labels == [
+            "blob",
+            "final1 Docling",
+            "final2 OCR",
+            "DOS LLM",
+            "member NER",
+            "skip OCR",
+        ]
 
     def test_health_still_exposes_member_ner_at_the_top_level(self, monkeypatch):
         """docs and review-ui read `member_ner.ready`; moving it would be a
@@ -1857,6 +1864,93 @@ class TestInteractiveBlobAuth:
         source = inspect.getsource(blob_store._interactive_credential)
         assert "cache_persistence_options" in source
         assert "_INTERACTIVE_CREDENTIAL" in source
+
+
+class TestManagedIdentityBlobAuth:
+    """VM / App Service managed identity — explicit mode + client_id."""
+
+    def _reload(self, monkeypatch, **env):
+        import importlib
+
+        for key, value in env.items():
+            if value is None:
+                monkeypatch.delenv(key, raising=False)
+            else:
+                monkeypatch.setenv(key, value)
+        import config
+
+        importlib.reload(config)
+        import capabilities
+
+        return importlib.reload(capabilities)
+
+    def test_managed_identity_is_reported(self, monkeypatch):
+        caps = self._reload(
+            monkeypatch,
+            AZURE_STORAGE_CONNECTION_STRING=None,
+            AZURE_STORAGE_AUTH="managed_identity",
+            AZURE_STORAGE_ACCOUNT_NAME="acct",
+            AZURE_CLIENT_ID="11111111-2222-3333-4444-555555555555",
+            AZURE_PRINCIPAL_ID="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            AZURE_STORAGE_ACCOUNT_KEY=None,
+        )
+        blob = caps.blob_status()
+        assert blob["ready"] is True
+        assert blob["auth"] == "managed_identity"
+        assert blob["client_id"] == "11111111-2222-3333-4444-555555555555"
+        assert blob["principal_id"] == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+    def test_mi_alias_is_accepted(self, monkeypatch):
+        from db.blob_store import MANAGED_IDENTITY_MODES
+
+        assert "mi" in MANAGED_IDENTITY_MODES
+        assert "msi" in MANAGED_IDENTITY_MODES
+        caps = self._reload(
+            monkeypatch,
+            AZURE_STORAGE_CONNECTION_STRING=None,
+            AZURE_STORAGE_AUTH="mi",
+            AZURE_STORAGE_ACCOUNT_NAME="acct",
+            AZURE_STORAGE_ACCOUNT_KEY=None,
+        )
+        assert caps.blob_status()["auth"] == "managed_identity"
+
+    def test_managed_identity_is_not_interactive(self):
+        from db.blob_store import (
+            ENTRA_INTERACTIVE_MODES,
+            MANAGED_IDENTITY_MODES,
+        )
+
+        assert not (MANAGED_IDENTITY_MODES & ENTRA_INTERACTIVE_MODES)
+
+    def test_interactive_chain_passes_client_id_when_set(self, monkeypatch):
+        import inspect
+
+        from db import blob_store
+
+        source = inspect.getsource(blob_store._interactive_credential)
+        assert "client_id" in source
+        assert "_mi_client_id" in inspect.getsource(blob_store)
+
+
+class TestEnsureBlobReady:
+    def test_ensure_blob_ready_is_idempotent(self, monkeypatch):
+        from db import blob_store
+
+        monkeypatch.setattr(blob_store, "_BLOB_READY", False)
+        calls = {"n": 0}
+
+        class FakeClient:
+            def get_container_properties(self):
+                calls["n"] += 1
+
+            credential = None
+
+        monkeypatch.setattr(
+            blob_store, "get_container_client", lambda container=None: FakeClient()
+        )
+        blob_store.ensure_blob_ready("c")
+        blob_store.ensure_blob_ready("c")
+        assert calls["n"] == 1
 
 
 class TestWriteModes:

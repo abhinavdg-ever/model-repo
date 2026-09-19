@@ -8,7 +8,8 @@ from ..rule_based.name_common import is_ignore, is_label, tokenize
 
 HERE = Path(__file__).resolve().parent
 # Shared keyword file: stages/lib/keywords.json
-KEYWORDS_PATH = HERE.parents[3] / "keywords.json"
+# ner_based → extractors → member → lib
+KEYWORDS_PATH = HERE.parents[2] / "keywords.json"
 
 _GROUPS: dict[str, list[str]] | None = None
 

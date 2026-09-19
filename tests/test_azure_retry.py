@@ -46,3 +46,22 @@ def test_call_with_retry_does_not_retry_permanent_errors(monkeypatch):
     with pytest.raises(_FakeHttpError):
         call_with_retry(permanent, attempts=5, label="test")
     assert calls["n"] == 1
+
+
+def test_azure_sdk_retry_kwargs_can_set_a_connection_pool():
+    from azure_retry import azure_sdk_retry_kwargs
+
+    kwargs = azure_sdk_retry_kwargs(connection_pool_maxsize=32)
+    assert "transport" in kwargs
+    assert kwargs["retry_total"] == 5
+
+
+def test_di_features_parser():
+    from stages import ocr_final2_azure as mod
+
+    mod.AZURE_DI_FEATURES = "languages,barcodes"
+    assert mod._di_features() == ["languages", "barcodes"]
+    mod.AZURE_DI_FEATURES = "off"
+    assert mod._di_features() is None
+    mod.AZURE_DI_FEATURES = ""
+    assert mod._di_features() is None

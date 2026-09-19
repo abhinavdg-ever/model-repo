@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Any, BinaryIO, Optional, Union
 
 from config import (
+    AZURE_BLOB_CONNECTION_POOL_SIZE,
+    AZURE_CLIENT_ID,
+    AZURE_PRINCIPAL_ID,
     AZURE_STORAGE_ACCOUNT_KEY,
     AZURE_STORAGE_ACCOUNT_NAME,
     AZURE_STORAGE_AUTH,
@@ -18,6 +21,9 @@ from config import (
 
 logger = logging.getLogger(__name__)
 _FILENAME_PARTS = re.compile(r"(\d+)")
+
+# IMDS scope used to warm a managed-identity / Entra token before workers start.
+_BLOB_TOKEN_SCOPE = "https://storage.azure.com/.default"
 
 
 def filename_sort_key(name: str) -> tuple:
@@ -51,9 +57,55 @@ ENTRA_MODES = {"entra", "aad", "azuread"}
 # and wait for a human. On a service with no one watching, a hung prompt is
 # worse than a clean failure, so it never happens unless asked for by name.
 ENTRA_INTERACTIVE_MODES = {"entra_interactive", "entra-interactive", "browser"}
+# VM / App Service / AKS managed identity only — no CLI, no browser.
+# Pass AZURE_CLIENT_ID for a user-assigned identity; leave blank for system-assigned.
+MANAGED_IDENTITY_MODES = {
+    "managed_identity",
+    "managed-identity",
+    "mi",
+    "msi",
+}
 
 _INTERACTIVE_CREDENTIAL = None
 _INTERACTIVE_LOCK = threading.Lock()
+_MI_CREDENTIAL = None
+_MI_LOCK = threading.Lock()
+_BLOB_READY = False
+_BLOB_READY_LOCK = threading.Lock()
+
+
+def _mi_client_id() -> Optional[str]:
+    """Client id for a user-assigned managed identity, or None for system-assigned."""
+    return AZURE_CLIENT_ID or None
+
+
+def _managed_identity_credential():
+    """ManagedIdentityCredential, optionally scoped to AZURE_CLIENT_ID."""
+    global _MI_CREDENTIAL
+    if _MI_CREDENTIAL is not None:
+        return _MI_CREDENTIAL
+
+    with _MI_LOCK:
+        if _MI_CREDENTIAL is not None:
+            return _MI_CREDENTIAL
+
+        from azure.identity import ManagedIdentityCredential
+
+        client_id = _mi_client_id()
+        if client_id:
+            _MI_CREDENTIAL = ManagedIdentityCredential(client_id=client_id)
+            logger.info(
+                "Azure Storage: managed identity auth "
+                "(user-assigned client_id=%s%s)",
+                client_id,
+                f", principal_id={AZURE_PRINCIPAL_ID}" if AZURE_PRINCIPAL_ID else "",
+            )
+        else:
+            _MI_CREDENTIAL = ManagedIdentityCredential()
+            logger.info(
+                "Azure Storage: managed identity auth (system-assigned)"
+            )
+        return _MI_CREDENTIAL
 
 
 def _interactive_credential():
@@ -98,24 +150,37 @@ def _interactive_credential():
         cache = TokenCachePersistenceOptions(
             name="advantmed_blob_storage", allow_unencrypted_storage=True
         )
+        client_id = _mi_client_id()
+        mi = (
+            ManagedIdentityCredential(client_id=client_id)
+            if client_id
+            else ManagedIdentityCredential()
+        )
         _INTERACTIVE_CREDENTIAL = ChainedTokenCredential(
-            ManagedIdentityCredential(),
+            mi,
             AzureCliCredential(process_timeout=30),
             InteractiveBrowserCredential(cache_persistence_options=cache),
         )
         logger.info(
-            "Azure Storage: interactive Entra auth — managed identity, then "
-            "az CLI, then a browser prompt if neither answers"
+            "Azure Storage: interactive Entra auth — managed identity%s, then "
+            "az CLI, then a browser prompt if neither answers",
+            f" (client_id={client_id})" if client_id else "",
         )
         return _INTERACTIVE_CREDENTIAL
+
+
+def _blob_client_kwargs() -> dict:
+    from azure_retry import azure_sdk_retry_kwargs
+
+    return azure_sdk_retry_kwargs(
+        connection_pool_maxsize=AZURE_BLOB_CONNECTION_POOL_SIZE
+    )
 
 
 def get_blob_service_client():
     from azure.storage.blob import BlobServiceClient
 
-    from azure_retry import azure_sdk_retry_kwargs
-
-    retry = azure_sdk_retry_kwargs()
+    retry = _blob_client_kwargs()
 
     if AZURE_STORAGE_CONNECTION_STRING:
         return BlobServiceClient.from_connection_string(
@@ -128,6 +193,10 @@ def get_blob_service_client():
 
     account_url = f"https://{account}.blob.core.windows.net"
     auth = AZURE_STORAGE_AUTH
+    if auth in MANAGED_IDENTITY_MODES:
+        return BlobServiceClient(
+            account_url, credential=_managed_identity_credential(), **retry
+        )
     if auth in ENTRA_INTERACTIVE_MODES:
         return BlobServiceClient(
             account_url, credential=_interactive_credential(), **retry
@@ -135,14 +204,25 @@ def get_blob_service_client():
     if auth in ENTRA_MODES:
         from azure.identity import DefaultAzureCredential
 
+        client_id = _mi_client_id()
+        # When a user-assigned MI is configured, DefaultAzureCredential must
+        # be told which one — otherwise it only tries the system-assigned.
+        dac_kwargs: dict = {}
+        if client_id:
+            dac_kwargs["managed_identity_client_id"] = client_id
         return BlobServiceClient(
-            account_url, credential=DefaultAzureCredential(), **retry
+            account_url,
+            credential=DefaultAzureCredential(**dac_kwargs),
+            **retry,
         )
     if AZURE_STORAGE_ACCOUNT_KEY:
         return BlobServiceClient(
             account_url, credential=AZURE_STORAGE_ACCOUNT_KEY, **retry
         )
-    raise RuntimeError("No Azure Storage credentials configured")
+    raise RuntimeError(
+        f"No Azure Storage credentials configured "
+        f"(AZURE_STORAGE_AUTH={AZURE_STORAGE_AUTH!r})"
+    )
 
 
 def get_container_client(container: Optional[str] = None):
@@ -150,6 +230,40 @@ def get_container_client(container: Optional[str] = None):
     if not name:
         raise RuntimeError("blob container name is required")
     return get_blob_service_client().get_container_client(name)
+
+
+def ensure_blob_ready(container: Optional[str] = None) -> None:
+    """Warm the credential and touch the container once before parallel work.
+
+    Interactive Entra can open a browser; doing that from N workers at once
+    races the prompt. Managed identity / DefaultAzureCredential also benefit:
+    the first IMDS call is done here so chart workers inherit a cached token.
+
+    Safe to call repeatedly — only the first call per process talks to Azure.
+    """
+    global _BLOB_READY
+    if _BLOB_READY:
+        return
+    with _BLOB_READY_LOCK:
+        if _BLOB_READY:
+            return
+        client = get_container_client(container)
+        # Force a token acquisition for Entra modes before list/download.
+        credential = getattr(client, "credential", None)
+        if credential is not None and hasattr(credential, "get_token"):
+            try:
+                credential.get_token(_BLOB_TOKEN_SCOPE)
+            except Exception:
+                # Fall through to get_container_properties, which surfaces the
+                # same failure with a clearer Storage error.
+                logger.debug("blob token warm-up failed; probing container", exc_info=True)
+        client.get_container_properties()
+        _BLOB_READY = True
+        logger.info(
+            "Azure Storage ready: container=%s auth=%s",
+            (container or AZURE_STORAGE_CONTAINER),
+            AZURE_STORAGE_AUTH,
+        )
 
 
 def list_image_blobs(container: str, blob_path: str) -> list[str]:
