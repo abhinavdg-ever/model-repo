@@ -102,7 +102,8 @@ pip install -r requirements.txt
 Copy-Item ..\.env.example ..\.env
 ```
 
-Optional pip extras:
+Optional pip extras (local venv). **Docker always installs
+`requirements-docling.txt`**; GLiNER remains a build-arg.
 
 | File | Enables |
 |---|---|
@@ -577,18 +578,27 @@ docker compose up -d --build
 Local paths in API bodies must be paths **inside the container** (mount the
 host folder first).
 
-NER in Docker:
+**Models:** scp weights onto the host under `core-pipeline/models/` (or set
+`MODELS_HOST_PATH`). Compose mounts that tree at `/app/core-pipeline/models`.
+Docling packages are in the image already — rebuild once after pull:
+
+```bash
+docker compose up -d --build
+curl -s localhost:8001/health | python -m json.tool   # docling_final1.ready
+```
+
+NER (rejection) still needs the GLiNER runtime at build + checkpoints under
+`models/ner/`:
 
 ```bash
 # macOS / Linux
 docker compose build --build-arg WITH_NER=true
-NER_MODELS_HOST_PATH=./models/ner MEMBER_NER_ENABLED=true docker compose up -d
+MEMBER_NER_ENABLED=true docker compose up -d
 ```
 
 ```powershell
 # Windows
 docker compose build --build-arg WITH_NER=true
-$env:NER_MODELS_HOST_PATH = "./models/ner"
 $env:MEMBER_NER_ENABLED = "true"
 docker compose up -d
 ```

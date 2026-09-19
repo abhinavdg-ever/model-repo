@@ -23,12 +23,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
-# The NER layer (GLiNER + torch) roughly triples the image size, so it is
-# opt-in:  docker build --build-arg WITH_NER=true .
+# Docling + MiniLM packages are required for Final1 in-container — always
+# install. Weight files are NOT baked in; mount ./models (scp onto the host).
+#
+# The NER layer (GLiNER) is still opt-in — another ~2.5 GB of runtime:
+#   docker compose build --build-arg WITH_NER=true
 ARG WITH_NER=false
 
-COPY requirements.txt requirements-ner.txt ./
+COPY requirements.txt requirements-docling.txt requirements-ner.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
+ && pip install --no-cache-dir -r requirements-docling.txt \
  && if [ "$WITH_NER" = "true" ]; then \
         pip install --no-cache-dir -r requirements-ner.txt; \
     fi

@@ -69,9 +69,8 @@ _load_env()
 # .../stages/lib/member/extractors/ner_based -> .../stages/lib/member
 MEMBER_ROOT = HERE.parents[1]
 # .../core-pipeline — the service that owns these checkpoints. NOT the repo
-# root: the compose file mounts ${NER_MODELS_HOST_PATH:-./models/ner} relative
-# to core-pipeline/, so anything else puts the download and the mount in two
-# different places.
+# root: compose mounts ${MODELS_HOST_PATH:-./models} at
+# /app/core-pipeline/models, so ner/ lives next to hw/ and rapidocr/.
 CORE_ROOT = HERE.parents[4]
 
 

@@ -17,12 +17,11 @@ python-dotenv>=1.0
 psycopg_pool>=3.2
 openai>=1.40.0
 
-# Optional: Docling + Layout final1 + ConvNeXt HW runtime
-#   pip install -r requirements-docling.txt
-# Weight files are downloaded separately into core-pipeline/models/ — see docs/API.md.
-# Without packages/weights: final1 → rapidocr-onnxruntime; HW → RF .pkl.
-
-# Optional: member-verification NER (GLiNER + torch, ~2.5 GB)
-#   pip install -r requirements-ner.txt
+# Optional: member-verification NER (GLiNER). Docker needs WITH_NER=true.
+# Local: pip install -r requirements-ner.txt
 # Without it, member verification is rules-only and Rejection cannot fire.
+#
+# Docling packages: Docker installs requirements-docling.txt always.
+# Local: pip install -r requirements-docling.txt
+# Weight files stay under core-pipeline/models/ (scp / download) — see docs/API.md.
 
