@@ -1,0 +1,11 @@
+# Optional: Docling + Layout final1 + ConvNeXt HW runtime (packages only).
+# pip install -r requirements-docling.txt
+#
+# Weight files are NOT on PyPI — download separately into:
+#   models/rapidocr/   (four RapidOCR files — see docs/API.md)
+#   models/hw/handwritten_printed_convnext_tiny.pth
+# Without those files: final1 → rapidocr-onnxruntime; HW → RF .pkl.
+docling>=2.0.0
+rapidocr>=2.0.0
+torch>=2.2
+torchvision>=0.17

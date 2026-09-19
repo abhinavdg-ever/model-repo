@@ -1,0 +1,88 @@
+# core-pipeline — deployed on its own.
+#
+#   docker compose --env-file .env up -d --build
+#
+# Shares two things with the review-ui deployment, and nothing else:
+#   * the Postgres database (DATABASE_URL)
+#   * the chart workspace volume (DATA_HOST_PATH -> /data/folders)
+# This service WRITES that volume; review-ui mounts the same path read-only.
+# There is no HTTP call in either direction.
+#
+# Apply the schema once before the first run (one file, no migrations):
+#   psql "$DATABASE_URL" -f ../schema/schema.sql
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # true installs the GLiNER runtime (~2.5 GB). Needed for wrong-member
+        # detection; the checkpoints still come from NER_MODELS_HOST_PATH.
+        WITH_NER: ${WITH_NER:-false}
+    image: advantmed/core-pipeline:latest
+    ports:
+      - "${API_PORT:-8001}:8001"
+    env_file:
+      - ./.env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@host.docker.internal:5432/imaging_outputs}
+      DB_POOL_MIN: ${DB_POOL_MIN:-1}
+      DB_POOL_MAX: ${DB_POOL_MAX:-20}
+
+      # Chart workspace. Must resolve to the same storage review-ui mounts.
+      DATA_ROOT: /data/folders
+      METADATA_ROOT: /data/metadata
+
+      # Pages per chart × charts in a batch must fit the pool (see BATCH_*).
+      STAGE_WORKERS: ${STAGE_WORKERS:-4}
+      BATCH_WORKERS: ${BATCH_WORKERS:-4}
+      BATCH_POOL_HEADROOM: ${BATCH_POOL_HEADROOM:-2}
+      AZURE_DI_MAX_CONCURRENT: ${AZURE_DI_MAX_CONCURRENT:-4}
+      AZURE_RETRY_ATTEMPTS: ${AZURE_RETRY_ATTEMPTS:-5}
+
+      # --- Azure Blob: chart intake + manifest sweep ---
+      AZURE_STORAGE_AUTH: ${AZURE_STORAGE_AUTH:-entra}
+      AZURE_STORAGE_ACCOUNT_NAME: ${AZURE_STORAGE_ACCOUNT_NAME:-}
+      AZURE_STORAGE_ACCOUNT_KEY: ${AZURE_STORAGE_ACCOUNT_KEY:-}
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-}
+      AZURE_STORAGE_CONTAINER: ${AZURE_STORAGE_CONTAINER:-imaging-pipeline}
+
+      # --- Azure Document Intelligence: final2 OCR (billed per page) ---
+      AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT: ${AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT:-}
+      AZURE_DOCUMENT_INTELLIGENCE_KEY: ${AZURE_DOCUMENT_INTELLIGENCE_KEY:-}
+      AZURE_POLL_TIMEOUT_SECONDS: ${AZURE_POLL_TIMEOUT_SECONDS:-180}
+
+      # --- Azure OpenAI: the DOS stage's LLM pass ---
+      # Unset => DOS runs rules-only and stamps extraction_method='rules'.
+      DOS_LLM_ENABLED: ${DOS_LLM_ENABLED:-true}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-08-01-preview}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-4o-mini}
+
+      # --- Member verification NER layer ---
+      # OFF unless the GLiNER checkpoints are mounted. While off, no page can be
+      # marked wrong_member, so no document can be Rejected. See docs/LOGIC.md.
+      MEMBER_NER_ENABLED: ${MEMBER_NER_ENABLED:-false}
+      MEMBER_NER_MODEL_ID: ${MEMBER_NER_MODEL_ID:-gliner_medium}
+      MEMBER_NER_MODELS_PATH: /app/models/ner
+      SKIP_OCR: ${SKIP_OCR:-false}
+
+      TESSERACT_CMD: /usr/bin/tesseract
+    volumes:
+      # Chart workspace — written here, read by review-ui.
+      - ${DATA_HOST_PATH:-../review-ui/data/folders}:/data/folders
+      - ${METADATA_HOST_PATH:-../review-ui/data/metadata}:/data/metadata
+      # GLiNER checkpoints, when MEMBER_NER_ENABLED=true.
+      - ${NER_MODELS_HOST_PATH:-./models/ner}:/app/models/ner:ro
+    extra_hosts:
+      # Lets DATABASE_URL point at a Postgres on the docker host.
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

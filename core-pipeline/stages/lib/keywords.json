@@ -1,0 +1,296 @@
+{
+  "dos": {
+    "visit_keywords": [
+      "EVISIT",
+      "E-VISIT",
+      "ANNUAL WELNESS VISIT",
+      "AWV",
+      "TELEMEDICINE",
+      "OFFICEVISIT",
+      "OFFICE VISIT",
+      "DATEOFVISIT",
+      "DATE OF VISIT",
+      "DATEOFSERVICE",
+      "DATE OF SERVICE",
+      "DOS",
+      "DOS FROM",
+      "DOS TO",
+      "DOS FROM DATE",
+      "DOS TO DATE",
+      "SERVICEDATE",
+      "SERVICE DATE",
+      "ENCOUNTERDATE",
+      "ENCOUNTER DATE",
+      "EDVISITDATE",
+      "ED VISIT DATE",
+      "PRESENTATIONDATE",
+      "PRESENTATION DATE",
+      "ARRIVALDATE",
+      "ARRIVAL DATE",
+      "INJECTION VISIT",
+      "ADMIT",
+      "ADMITTED",
+      "ADMITDATE",
+      "ADMIT DATE",
+      "ADMITTED DATE",
+      "ADMITTED ON",
+      "DATE OF ADMIT",
+      "DATE OF ADMISSION",
+      "ADMISSIONDATE",
+      "ADMISSION DATE",
+      "ADMISSION ON",
+      "DISCHARGE",
+      "DISCHARGED",
+      "DISCHARGEDATE",
+      "DISCHARGE DATE",
+      "DISCHARGED ON",
+      "DATE OF DISCHARGE",
+      "DISCHARGE ON"
+    ],
+    "from_keywords": [
+      "ADMIT",
+      "ADMITTED",
+      "ADMITDATE",
+      "ADMIT DATE",
+      "ADMITTED DATE",
+      "ADMITTED ON",
+      "DATE OF ADMIT",
+      "DATE OF ADMISSION",
+      "ADMISSIONDATE",
+      "ADMISSION DATE",
+      "ADMISSION ON",
+      "DOS FROM",
+      "DOS FROM DATE",
+      "ARRIVALDATE",
+      "ARRIVAL DATE"
+    ],
+    "to_keywords": [
+      "DISCHARGE",
+      "DISCHARGED",
+      "DISCHARGEDATE",
+      "DISCHARGE DATE",
+      "DISCHARGED ON",
+      "DATE OF DISCHARGE",
+      "DISCHARGE ON",
+      "DOS TO",
+      "DOS TO DATE"
+    ],
+    "exclusion_patterns": [
+      "\\bdue\\s+again\\s+in\\b",
+      "\\bdue\\s+again\\s+on\\b",
+      "\\bdue\\s+in\\b",
+      "\\bdue\\s+on\\b",
+      "\\bdue\\s+\\d",
+      "\\breturn\\s+in\\b",
+      "\\breturn\\s+on\\b",
+      "\\breturn\\s+visit\\s+in\\b",
+      "\\breturn\\s+visit\\s+on\\b",
+      "\\bnext\\s+visit\\s+in\\b",
+      "\\bnext\\s+visit\\s+on\\b",
+      "\\bscheduled\\s+for\\b",
+      "\\bscheduled\\s+on\\b",
+      "\\badministered\\s+on\\s+date\\s+of\\s+service\\b",
+      "\\bon\\s+date\\s+of\\s+service\\s*:"
+    ],
+    "llm_section_cues": [
+      "chief\\s+complaint",
+      "history\\s+of\\s+present\\s+illness|\\bhpi\\b",
+      "discharge\\s+(summary|note|diagnos|instruction)",
+      "reason\\s+for\\s+(consult|visit|admission)",
+      "principal\\s+diagnosis",
+      "admission\\s+(date|note|diagnos)",
+      "hospital\\s+course",
+      "progress\\s+note",
+      "operative\\s+(note|report)",
+      "consult(?:ation)?\\s+note",
+      "emergency\\s+(department|room)\\s+note",
+      "\\bed\\s+note\\b"
+    ],
+    "discharge_cue": [
+      "discharge\\s+(summary|note|diagnos|date|instruction)",
+      "admission\\s+date",
+      "hospital\\s+course",
+      "date\\s+of\\s+admission",
+      "date\\s+of\\s+discharge"
+    ],
+    "non_encounter_cues": [
+      "immuni[sz]ation",
+      "vaccine|vaccination",
+      "flu\\s+shot",
+      "covid[- ]?19\\s+vacc",
+      "medication\\s+list",
+      "problem\\s+list",
+      "allergy\\s+list",
+      "vital\\s+signs",
+      "face\\s*sheet",
+      "demographics",
+      "patient\\s+information"
+    ]
+  },
+  "junk": {
+    "invoice": [
+      "invoice",
+      "bill to",
+      "ship to",
+      "unit price",
+      "amount due",
+      "payment due",
+      "remittance",
+      "statement of account",
+      "total due",
+      "billing statement",
+      "superbill",
+      "charge description",
+      "balance due",
+      "payments received",
+      "revenue reconciliation",
+      "revenue reconcilation",
+      "revenue recon"
+    ],
+    "record_request": [
+      "request letter",
+      "e-request letter",
+      "medical records attached",
+      "records attached",
+      "attached records",
+      "transmittal",
+      "transmitted",
+      "transmittal sheet",
+      "facimile transmittal sheet",
+      "medical records transmittal",
+      "urgent request for records",
+      "your records requested",
+      "records requested",
+      "request for medical records",
+      "medical records request",
+      "medical record request",
+      "risk adjustment request",
+      "send record",
+      "packet may contain",
+      "audit fulfillment",
+      "intended recipient",
+      "transmission contains",
+      "confidential medical records"
+    ],
+    "cover_phrases": [
+      "\\bcover\\s+pages?\\b",
+      "\\bdischarge\\s+summary\\b"
+    ],
+    "cover_single_words": ["accept", "unaccept", "summary"],
+    "instructions": [
+      "\\bwhat\\s+to\\s+send\\b",
+      "\\bprovide\\s+all\\s+documentation\\b",
+      "\\bprovide\\s+documentation\\b",
+      "\\binstructions?\\s+for\\s+(sending|submission|records)\\b",
+      "\\bplease\\s+send\\b",
+      "\\bdocuments?\\s+to\\s+(include|send|attach)\\b"
+    ],
+    "letter_fax": [
+      "\\bcover\\s+letter\\b",
+      "\\bfax\\s+transmission\\b",
+      "\\bfax\\s+cover\\b",
+      "\\bfacsimile\\b",
+      "\\bfacimile\\b",
+      "\\bfax\\s+sheet\\b",
+      "\\bthis\\s+fax\\b",
+      "\\bconfidentiality(\\s+notice)?\\b",
+      "\\badvantmed\\b"
+    ],
+    "others_toc": [
+      "\\btable\\s+of\\s+contents?\\b",
+      "\\bcontents?\\s+page\\b"
+    ],
+    "others_emr_toc_title": "\\bpatient\\s+medical\\s+record\\b",
+    "others_emr_toc_markers": [
+      "\\btotal\\s+pages\\b",
+      "\\b\\d{1,4}\\s+to\\s+\\d{1,4}\\b"
+    ],
+    "blank_phrase": "intentionally\\s+blank|\\bblank\\b",
+    "signature": [
+      "signature",
+      "signed\\s+by",
+      "electronically\\s+signed",
+      "e[\\s-]?sign",
+      "patient\\s+signature",
+      "provider\\s+signature",
+      "sign\\s+here"
+    ]
+  },
+  "member": {
+    "key_groups": {
+      "patient_name": {
+        "keys": [
+          "patient name",
+          "pt name",
+          "member name",
+          "subscriber name",
+          "preferred name",
+          "caller name",
+          "new patient",
+          "patient",
+          "name"
+        ]
+      },
+      "date_of_birth": {
+        "keys": [
+          "date of birth",
+          "subscriber birth date",
+          "birth date",
+          "birthdate",
+          "d.o.b.",
+          "d.o.b",
+          "dob"
+        ]
+      },
+      "member_id": {
+        "keys": [
+          "member id",
+          "memberid",
+          "medicaid id",
+          "subscriber id",
+          "patient id",
+          "patientid",
+          "medical record number",
+          "medical record",
+          "mrn",
+          "chart",
+          "insurance id",
+          "enrollee id",
+          "health plan id"
+        ]
+      }
+    },
+    "ignore": [
+      "jr", "sr", "ii", "iii", "iv", "md", "pa", "dr", "phd", "do",
+      "rn", "np", "dds", "dmd"
+    ],
+    "labels": [
+      "patient", "palient", "pälient", "dob", "mrn", "chart", "exam", "date",
+      "gender", "age", "member", "author", "editor", "signed", "print",
+      "occupation", "race", "ssn", "name", "for", "pcp", "attending",
+      "admitting", "admission", "discharge", "report", "page", "address",
+      "phone", "email", "history", "encounter", "note", "result", "comment",
+      "service", "status", "filed", "record", "examination", "demographics",
+      "identity", "birth", "subscriber", "coverage", "hospital", "area",
+      "group", "number", "id", "har"
+    ],
+    "non_name": [
+      "a", "an", "and", "or", "of", "no", "not", "the", "tha", "tne", "thc",
+      "this", "that", "these", "those", "my", "our", "your", "his", "her",
+      "their", "its", "is", "was", "with", "for", "who", "whom", "by", "to",
+      "in", "on", "at", "from", "during", "per", "via",
+      "patient", "patients", "caretaker", "caregiver", "assistant", "aide",
+      "physician", "doctor", "provider", "nurse", "practitioner", "clinician",
+      "member", "subscriber", "caller", "guardian", "spouse", "family",
+      "mother", "father", "parent", "son", "daughter", "wife", "husband",
+      "sibling", "brother", "sister", "staff", "technician", "tech",
+      "interpreter", "translator", "resident", "intern", "attending",
+      "examiner", "witness", "surgeon", "therapist", "counselor", "office",
+      "female", "male", "adult", "minor", "child", "infant", "diabetic",
+      "non", "other", "unknown", "none", "complex", "worker", "employee",
+      "name", "dob", "mrn", "fin", "ssn", "chart", "page", "bp", "pt",
+      "source", "reported", "present", "position", "location", "cognitive",
+      "impairment", "examination", "visit", "note", "history"
+    ]
+  }
+}

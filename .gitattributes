@@ -1,0 +1,27 @@
+# Normalise line endings. Without this, git on Windows checks files out with
+# CRLF and a Windows contributor commits CRLF back, so every file churns on the
+# next diff. The Docker images are Linux, so LF is the one true form.
+* text=auto eol=lf
+
+# Shell scripts and Dockerfiles MUST be LF — CRLF makes a shebang fail with
+# "bad interpreter: No such file or directory" inside a Linux container.
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+
+# Batch files are the opposite: cmd.exe wants CRLF.
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+
+# Never touch these.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pkl   binary
+*.onnx  binary
+*.pdf   binary
+*.woff  binary
+*.woff2 binary

@@ -1,0 +1,51 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+.DS_Store
+node_modules/
+dist/
+review-ui/frontend/node_modules/
+review-ui/frontend/dist/
+core-pipeline/.venv/
+*.log
+.pytest_cache/
+._*
+.AppleDouble
+.pytest_cache/
+*.tmp
+.venv-test/
+
+# Windows
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Local working notes — kept on disk, not published
+CLAUDE.md
+
+# Downloaded ML checkpoints — ~2 GB, never committed.
+# core-pipeline/models/ner is where the GLiNER downloader writes.
+models/
+core-pipeline/models/
+*.safetensors
+*.onnx
+*.bin
+
+# Smoke-test charts produced by running the demo through the API locally.
+review-ui/data/folders/demo_api_smoketest/
+review-ui/data/folders/chartA/
+review-ui/data/folders/chartB/
+
+# Chart produced by the rotation round-trip check.
+review-ui/data/folders/rot_test/
+
+# Standalone managed-identity connection test. Its .env is committed on
+# purpose — it holds the identity's client/principal IDs and blanks, never a
+# key, a connection string or a SAS token. The venv is not.
+test-connection/.venv/
+!test-connection/.env

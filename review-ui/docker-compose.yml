@@ -1,0 +1,66 @@
+# review-ui — deployed on its own.
+#
+#   docker compose --env-file .env up -d --build
+#
+# A read-only viewer over what core-pipeline produced. It shares exactly two
+# things with the core-pipeline deployment:
+#   * the Postgres database (Production Mode only)
+#   * the chart workspace volume, mounted READ-ONLY here
+# It never calls the core-pipeline API, and core-pipeline never calls this one.
+#
+# DATA_MODE=local       -> reads OCR text + imaging CSVs from /data/folders
+# DATA_MODE=production  -> reads them from Postgres; page images still from disk
+
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "4000:3000"
+    env_file:
+      - ./.env
+    environment:
+      DATA_MODE: ${DATA_MODE:-local}
+      DATA_ROOT: /data/folders
+      METADATA_ROOT: ${METADATA_ROOT:-/data/metadata}
+      PIPELINE_ROOT: /data/pipeline
+      MONOREPO_ROOT: /data/pipeline
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://127.0.0.1:4001,http://localhost:4001}
+      # Production Mode only. PLACEHOLDER default — set the real value as
+      # DATABASE_URL in review-ui/.env. Never commit a credential here.
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://USER:PASSWORD@HOST:5432/imaging_outputs}
+      DB_SCHEMA: ${DB_SCHEMA:-public}
+      # Seconds a scan of /data/folders is trusted before it is rechecked
+      # against file mtimes. core-pipeline writes this volume while the UI is
+      # serving, so a long TTL shows stale stage badges.
+      LOCAL_CACHE_TTL_SECONDS: ${LOCAL_CACHE_TTL_SECONDS:-5}
+      # Optional File Viewer (Azure Blob). Off unless FILE_VIEWER_BLOB_ENABLED=true.
+      FILE_VIEWER_BLOB_ENABLED: ${FILE_VIEWER_BLOB_ENABLED:-false}
+      BLOB_AUTH_MODE: ${BLOB_AUTH_MODE:-entra}
+      BLOB_ACCOUNT_URL: ${BLOB_ACCOUNT_URL:-}
+      BLOB_CONTAINER: ${BLOB_CONTAINER:-}
+      BLOB_PATH_TEMPLATE: ${BLOB_PATH_TEMPLATE:-{folder}/pages/{filename}}
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
+      BLOB_SAS_TOKEN: ${BLOB_SAS_TOKEN:-}
+    volumes:
+      - ${DATA_HOST_PATH:-./data/folders}:/data/folders:ro
+      - ${PIPELINE_HOST_PATH:-./data/pipeline}:/data/pipeline:ro
+      - ${METADATA_HOST_PATH:-./data/metadata}:/data/metadata:ro
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # From review-ui/.env; the shared POC pair when unset. Vite inlines
+        # these at BUILD time, so changing them needs `up -d --build`, not
+        # `up -d`. They are not a security control — see LoginPage.tsx.
+        VITE_LOGIN_USERNAME: ${VITE_LOGIN_USERNAME:-imaging-user}
+        VITE_LOGIN_PASSWORD: ${VITE_LOGIN_PASSWORD:-aipocpw2026}
+    ports:
+      - "4001:3001"
+    depends_on:
+      - backend
+    restart: unless-stopped
