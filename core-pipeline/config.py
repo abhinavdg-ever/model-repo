@@ -292,5 +292,6 @@ def ensure_chart_dirs(chart_name: str) -> Path:
 
 # The member NER package reads these from the environment at import time.
 os.environ.setdefault("MEMBER_NER_ENABLED", "true" if MEMBER_NER_ENABLED else "false")
+os.environ.setdefault("MEMBER_NER_MODEL_ID", MEMBER_NER_MODEL_ID)
 if MEMBER_NER_MODELS_PATH:
     os.environ.setdefault("MEMBER_NER_MODELS_PATH", MEMBER_NER_MODELS_PATH)

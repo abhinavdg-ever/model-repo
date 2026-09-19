@@ -71,8 +71,11 @@ services:
       # --- Member verification NER layer ---
       # OFF unless the GLiNER checkpoints are mounted. While off, no page can be
       # marked wrong_member, so no document can be Rejected. See docs/LOGIC.md.
-      MEMBER_NER_ENABLED: ${MEMBER_NER_ENABLED:-false}
-      MEMBER_NER_MODEL_ID: ${MEMBER_NER_MODEL_ID:-gliner_medium}
+      # NER toggles come from env_file (.env). Do NOT re-declare
+      # MEMBER_NER_MODEL_ID / MEMBER_NER_ENABLED here with ${VAR:-…} —
+      # Compose interpolates from the *host* shell first, so a leftover
+      # `export MEMBER_NER_MODEL_ID=gliner_low` (from the docs) would override
+      # gliner_medium in .env. Path is pinned to the mount below.
       MEMBER_NER_MODELS_PATH: /app/models/ner
       SKIP_OCR: ${SKIP_OCR:-false}
 

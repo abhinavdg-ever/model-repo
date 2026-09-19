@@ -30,3 +30,43 @@ def test_explicit_wins():
 
 def test_missing_segments():
     assert infer_run_batch_from_path("Raw_Input/DEID_PNGs") == (None, None)
+
+
+def test_windows_separators_in_run_batch_inference():
+    assert infer_run_batch_from_path(r"Raw_Input\Run1\Batch1\DEID_PNGs") == ("R1", "B1")
+
+
+def test_normalize_fs_and_blob_paths():
+    from db.paths import (
+        normalize_blob_path,
+        normalize_folder_name,
+        normalize_fs_path,
+    )
+
+    assert normalize_fs_path(r"C:\data\inbox") == "C:/data/inbox"
+    assert normalize_fs_path(r"C:\data\inbox\\") == "C:/data/inbox"
+    assert normalize_fs_path("/data/inbox/") == "/data/inbox"
+    assert normalize_fs_path(r"\\server\share\charts") == "//server/share/charts"
+    assert normalize_fs_path("  ") is None
+    assert normalize_fs_path(None) is None
+
+    assert normalize_blob_path(r"Raw_Input\Run1\Batch1") == "Raw_Input/Run1/Batch1"
+    assert normalize_blob_path("/Processed/Run1/") == "Processed/Run1"
+    assert normalize_blob_path("") is None
+
+    assert normalize_folder_name(r"inbox\52743839_44976074") == "52743839_44976074"
+    assert normalize_folder_name("52743839_44976074/") == "52743839_44976074"
+
+
+def test_run_request_accepts_windows_local_paths():
+    from api.main import RunRequest
+
+    body = RunRequest(
+        local_read_path=r"C:\data\inbox",
+        local_folder_name=r"charts\52743839_44976074",
+        local_write_path=r"C:\data\outbox\\",
+        blob_read_path=None,
+    )
+    assert body.local_read_path == "C:/data/inbox"
+    assert body.local_folder_name == "52743839_44976074"
+    assert body.local_write_path == "C:/data/outbox"

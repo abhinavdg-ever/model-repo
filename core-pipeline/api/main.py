@@ -27,7 +27,7 @@ except ImportError:
     pass
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from config import (
     API_HOST,
@@ -38,6 +38,7 @@ from config import (
 )
 from db import close_pool, connect, get_chart, get_chart_by_name, list_pages, list_stages
 from db.chart_status import refresh_chart_status
+from db.paths import normalize_blob_path, normalize_folder_name, normalize_fs_path
 from jobs.manifest_sweeper import run_load
 from jobs.export_chart import SKIP_ORIG_PAGES, WRITE_MODES
 from orchestrator.runner import (
@@ -78,39 +79,13 @@ def _safe_db_url(url: str) -> str:
 
 @app.on_event("startup")
 def _startup() -> None:
-    from config import (
-        CORE_ROOT,
-        DATA_ROOT,
-        DATABASE_URL,
-        HW_MODEL_PATH,
-        MEMBER_NER_ENABLED,
-        MEMBER_NER_MODEL_ID,
-        MEMBER_NER_MODELS_PATH,
-        METADATA_ROOT,
-        RAPID_MODELS_DIR,
-        STAGE_WORKERS,
-    )
+    from config import DATA_ROOT, DATABASE_URL, METADATA_ROOT, STAGE_WORKERS
 
     logger.info("core-pipeline starting")
     logger.info("  database    : %s", _safe_db_url(DATABASE_URL))
     logger.info("  data root   : %s", DATA_ROOT)
     logger.info("  metadata    : %s", METADATA_ROOT)
     logger.info("  workers     : %s", STAGE_WORKERS)
-
-    # Model paths as resolved from .env (before probing what is actually on disk).
-    rf_backup = CORE_ROOT / "models" / "hw" / "image_type_classification.pkl"
-    logger.info(".env model paths")
-    logger.info("  %-14s : %s", "HW_MODEL_PATH", HW_MODEL_PATH)
-    logger.info("  %-14s : %s", "  ↳ HW RF", rf_backup)
-    logger.info("  %-14s : %s", "RAPID_MODELS", RAPID_MODELS_DIR)
-    ner_root = MEMBER_NER_MODELS_PATH or "(default models/ner)"
-    logger.info(
-        "  %-14s : enabled=%s model=%s path=%s",
-        "MEMBER_NER",
-        MEMBER_NER_ENABLED,
-        MEMBER_NER_MODEL_ID,
-        ner_root,
-    )
 
     # Short-timeout probe, NOT the pool: the pool retries for 30 seconds, which
     # would hold up startup — and block /docs and /health, the two endpoints
@@ -130,33 +105,14 @@ def _startup() -> None:
             "DATABASE_URL is read once at startup, so restart after editing .env."
         )
 
-    # Which optional features / model weights are actually on disk / configured.
-    # probe=True allows one bounded round trip to the blob container.
+    # Optional features: OK / off only — no path dumps.
     try:
         from capabilities import all_capabilities, startup_lines
 
         caps = all_capabilities(probe=True)
-        logger.info("models & capabilities (loaded / ready)")
+        logger.info("capabilities")
         for label, value in startup_lines(caps):
             logger.info("  %-14s : %s", label, value)
-        # Explicit weight files so ops can see exactly what is on disk.
-        hw = caps.get("hw_model") or {}
-        rapid = caps.get("rapidocr_models") or {}
-        if hw.get("path"):
-            logger.info("  %-14s : %s", "  ↳ HW file", hw["path"])
-        if hw.get("backup"):
-            logger.info("  %-14s : %s (backup)", "  ↳ HW RF", hw["backup"])
-        for name in rapid.get("present") or []:
-            logger.info("  %-14s : %s/%s", "  ↳ RapidOCR", rapid.get("models_dir"), name)
-        for name in rapid.get("missing") or []:
-            logger.info("  %-14s : MISSING %s", "  ↳ RapidOCR", name)
-        ner = caps.get("member_ner") or {}
-        if ner.get("models_path") or ner.get("path"):
-            logger.info(
-                "  %-14s : %s",
-                "  ↳ NER path",
-                ner.get("models_path") or ner.get("path"),
-            )
     except Exception as exc:  # a status probe must never stop the server
         logger.warning("  capabilities: probe failed — %s", exc)
 
@@ -268,9 +224,10 @@ class RunRequest(StageSelection):
         None,
         description=(
             "Directory ON THE SERVER holding the chart folder. Under Docker "
-            "this must be a path inside the container."
+            "this must be a path inside the container. Windows ``\\\\`` and "
+            "``/`` are both accepted."
         ),
-        examples=["/data/inbox"],
+        examples=["/data/inbox", "C:/data/inbox"],
     )
     local_folder_name: Optional[str] = Field(
         None,
@@ -313,6 +270,25 @@ class RunRequest(StageSelection):
         description="Reprocess pages already completed. Default resumes instead.",
     )
 
+    @field_validator(
+        "local_read_path", "local_write_path", mode="before"
+    )
+    @classmethod
+    def _norm_local_paths(cls, value: Any) -> Any:
+        return normalize_fs_path(value) if value is not None else value
+
+    @field_validator("blob_read_path", "blob_write_path", mode="before")
+    @classmethod
+    def _norm_blob_paths(cls, value: Any) -> Any:
+        return normalize_blob_path(value) if value is not None else value
+
+    @field_validator(
+        "local_folder_name", "blob_read_folder_name", "chart_name", mode="before"
+    )
+    @classmethod
+    def _norm_folder_names(cls, value: Any) -> Any:
+        return normalize_folder_name(value) if value is not None else value
+
 
 class BatchRequest(StageSelection):
     """Every chart under one read path: register all, then run with a worker pool.
@@ -346,7 +322,8 @@ class BatchRequest(StageSelection):
         None,
         description=(
             "Parent directory ON THE SERVER; each sub-folder holding images is "
-            "one chart. Under Docker this must be a path inside the container."
+            "one chart. Under Docker this must be a path inside the container. "
+            "Windows ``\\\\`` and ``/`` are both accepted."
         ),
     )
     local_write_path: Optional[str] = Field(
@@ -388,6 +365,16 @@ class BatchRequest(StageSelection):
         ),
     )
 
+    @field_validator("local_read_path", "local_write_path", mode="before")
+    @classmethod
+    def _norm_local_paths(cls, value: Any) -> Any:
+        return normalize_fs_path(value) if value is not None else value
+
+    @field_validator("blob_read_path", "blob_write_path", mode="before")
+    @classmethod
+    def _norm_blob_paths(cls, value: Any) -> Any:
+        return normalize_blob_path(value) if value is not None else value
+
 
 class WriteRequest(BaseModel):
     """Legacy body for the removed ``/write`` endpoint (returns 410)."""
@@ -407,6 +394,21 @@ class WriteRequest(BaseModel):
     write_mode: str = Field(SKIP_ORIG_PAGES)
     overwrite: bool = False
 
+    @field_validator("local_write_path", mode="before")
+    @classmethod
+    def _norm_local_paths(cls, value: Any) -> Any:
+        return normalize_fs_path(value) if value is not None else value
+
+    @field_validator("blob_write_path", mode="before")
+    @classmethod
+    def _norm_blob_paths(cls, value: Any) -> Any:
+        return normalize_blob_path(value) if value is not None else value
+
+    @field_validator("chart_name", mode="before")
+    @classmethod
+    def _norm_folder_names(cls, value: Any) -> Any:
+        return normalize_folder_name(value) if value is not None else value
+
 
 class ManifestSweepRequest(BaseModel):
     """Load a batch manifest into manifest_member_list (upsert)."""
@@ -421,6 +423,16 @@ class ManifestSweepRequest(BaseModel):
     mirror_local: bool = Field(
         True, description="Copy blob manifests into review-ui/data/metadata"
     )
+
+    @field_validator("local_path", mode="before")
+    @classmethod
+    def _norm_local_paths(cls, value: Any) -> Any:
+        return normalize_fs_path(value) if value is not None else value
+
+    @field_validator("blob_prefix", mode="before")
+    @classmethod
+    def _norm_blob_paths(cls, value: Any) -> Any:
+        return normalize_blob_path(value) if value is not None else value
 
 
 # --- background wrappers ----------------------------------------------------
@@ -444,9 +456,10 @@ def _is_credential_failure(exc: BaseException) -> bool:
 
 
 def _join(prefix: Optional[str], folder: str) -> str:
-    """`<prefix>/<folder>`, tolerant of a missing or slash-wrapped prefix."""
-    clean = (prefix or "").strip().strip("/")
-    return f"{clean}/{folder}" if clean else folder
+    """`<prefix>/<folder>`, tolerant of missing / slash-wrapped / Windows ``\\``."""
+    clean = (prefix or "").replace("\\", "/").strip().strip("/")
+    name = (folder or "").replace("\\", "/").strip().strip("/")
+    return f"{clean}/{name}" if clean else name
 
 
 def _write_summary(

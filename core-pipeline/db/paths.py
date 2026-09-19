@@ -13,6 +13,49 @@ PAGE_MARKER_RE = re.compile(r"^=====\s*(.+?)\s*=====\s*$", re.MULTILINE)
 PAGE_NUM_RE = re.compile(r"^(\d+)\.(jpe?g|png|webp|tif{1,2})$", re.IGNORECASE)
 
 
+def normalize_fs_path(value: Optional[str]) -> Optional[str]:
+    """Local filesystem path from an API/CLI string — accept ``\\`` or ``/``.
+
+    Windows clients often send ``C:\\\\data\\\\inbox`` (or mixed separators).
+    ``pathlib`` on every platform accepts forward slashes, so we normalize to
+    ``/`` here once. Empty / whitespace → ``None``. Trailing separators are
+    stripped (``/`` alone stays as root).
+    """
+    if value is None:
+        return None
+    s = str(value).strip().strip('"').strip("'")
+    if not s:
+        return None
+    s = s.replace("\\", "/")
+    if s.startswith("//"):
+        # UNC: \\server\share\… → //server/share/…
+        rest = re.sub(r"/{2,}", "/", s[2:])
+        s = "//" + rest.rstrip("/")
+        return s or None
+    s = re.sub(r"/{2,}", "/", s).rstrip("/")
+    return s or "/"
+
+
+def normalize_blob_path(value: Optional[str]) -> Optional[str]:
+    """Azure blob prefix — always ``/``, no leading/trailing slash."""
+    if value is None:
+        return None
+    s = str(value).strip().strip('"').strip("'").replace("\\", "/")
+    s = re.sub(r"/{2,}", "/", s).strip("/")
+    return s or None
+
+
+def normalize_folder_name(value: Optional[str]) -> Optional[str]:
+    """Chart folder name only — basename if a path was pasted by mistake."""
+    if value is None:
+        return None
+    s = str(value).strip().strip('"').strip("'").replace("\\", "/")
+    s = s.strip("/")
+    if not s:
+        return None
+    return s.rsplit("/", 1)[-1]
+
+
 def list_local_pages(chart_name: str) -> list[Path]:
     root = pages_dir(chart_name)
     if not root.is_dir():

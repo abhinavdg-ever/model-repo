@@ -33,6 +33,17 @@ PLAN.md
 check_azure_openai.py
 /requirements.txt
 
+# Chart workspace + manifests written by the pipeline / local runs.
+# Keep the directory, .gitkeep, and the small demo chart only.
+review-ui/data/folders/*
+!review-ui/data/folders/.gitkeep
+!review-ui/data/folders/demo_chart_240315_1012/
+!review-ui/data/folders/demo_chart_240315_1012/**
+review-ui/data/metadata/*
+!review-ui/data/metadata/.gitkeep
+review-ui/data/pipeline/*
+!review-ui/data/pipeline/README.md
+
 # Editor / agent local config (skills live in ~/.cursor and ~/.claude)
 .claude/
 .cursor/
@@ -46,14 +57,6 @@ core-pipeline/models/*
 *.safetensors
 *.onnx
 *.bin
-
-# Smoke-test charts produced by running the demo through the API locally.
-review-ui/data/folders/demo_api_smoketest/
-review-ui/data/folders/chartA/
-review-ui/data/folders/chartB/
-
-# Chart produced by the rotation round-trip check.
-review-ui/data/folders/rot_test/
 
 # Standalone managed-identity connection test. Its .env is committed on
 # purpose — it holds the identity's client/principal IDs and blanks, never a

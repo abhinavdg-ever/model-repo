@@ -209,8 +209,28 @@ def main() -> None:
 
     if args.cmd == "run":
         from db import connect, get_chart, get_chart_by_name
+        from db.paths import (
+            normalize_blob_path,
+            normalize_folder_name,
+            normalize_fs_path,
+        )
         from jobs.export_chart import write_chart
         from orchestrator.runner import ingest_and_run, run_pipeline_for_chart
+
+        args.local_read_path = normalize_fs_path(args.local_read_path)
+        args.local_write_path = normalize_fs_path(
+            getattr(args, "local_write_path", None)
+        )
+        args.blob_read_path = normalize_blob_path(
+            getattr(args, "blob_read_path", None)
+        )
+        args.blob_write_path = normalize_blob_path(
+            getattr(args, "blob_write_path", None)
+        )
+        if getattr(args, "folder_name", None):
+            args.folder_name = normalize_folder_name(args.folder_name)
+        if getattr(args, "chart_name", None):
+            args.chart_name = normalize_folder_name(args.chart_name)
 
         has_source = bool(args.local_read_path or args.blob_read_path)
         resume = bool(args.chart_id or args.chart_name)
@@ -287,7 +307,19 @@ def main() -> None:
         return
 
     if args.cmd in ("batch-run", "batch"):
+        from db.paths import normalize_blob_path, normalize_fs_path
         from jobs.batch_intake import run_batch
+
+        args.local_read_path = normalize_fs_path(args.local_read_path)
+        args.local_write_path = normalize_fs_path(
+            getattr(args, "local_write_path", None)
+        )
+        args.blob_read_path = normalize_blob_path(
+            getattr(args, "blob_read_path", None)
+        )
+        args.blob_write_path = normalize_blob_path(
+            getattr(args, "blob_write_path", None)
+        )
 
         if args.blob_read_path and not args.blob_container:
             parser.error("--blob-read-path requires --blob-container")
@@ -338,7 +370,13 @@ def main() -> None:
         return
 
     if args.cmd == "manifest":
+        from db.paths import normalize_blob_path, normalize_fs_path
         from jobs.manifest_sweeper import run_load
+
+        args.local = normalize_fs_path(args.local)
+        args.blob_prefix = normalize_blob_path(
+            getattr(args, "blob_prefix", None)
+        )
 
         if args.blob_prefix and not args.blob_container:
             raise SystemExit("--blob-container is required with --blob-prefix")

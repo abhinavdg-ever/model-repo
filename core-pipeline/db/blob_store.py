@@ -40,7 +40,8 @@ def filename_sort_key(name: str) -> tuple:
 
 
 def normalize_prefix(path: str) -> str:
-    p = (path or "").strip().strip("/")
+    """Blob prefix with a trailing slash. Accepts Windows ``\\`` separators."""
+    p = (path or "").strip().replace("\\", "/").strip("/")
     return f"{p}/" if p else ""
 
 

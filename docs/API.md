@@ -210,22 +210,24 @@ pip install -r requirements-docling.txt
 
 Ids: `gliner_low` (smallest) · `gliner_medium` (default) · `gliner_large`.
 
+Prefer setting these in `core-pipeline/.env` (not a shell `export`) so Docker
+Compose cannot pick up a different value from the host environment.
+
 ```bash
 # macOS / Linux
 pip install -r requirements-ner.txt
-export MEMBER_NER_MODEL_ID=gliner_low    # or gliner_medium / gliner_large
+# in .env: MEMBER_NER_MODEL_ID=gliner_medium
 python -m stages.lib.member.extractors.ner_based.model_downloader
-export MEMBER_NER_ENABLED=true
+# in .env: MEMBER_NER_ENABLED=true
 ```
 
 ```powershell
 # Windows
 pip install -r requirements-ner.txt
-$env:MEMBER_NER_MODEL_ID = "gliner_low"   # or set in .env
+# in .env: MEMBER_NER_MODEL_ID=gliner_medium
 python -m stages.lib.member.extractors.ner_based.model_downloader
-$env:MEMBER_NER_ENABLED = "true"          # or MEMBER_NER_ENABLED=true in .env
+# in .env: MEMBER_NER_ENABLED=true
 ```
-
 Confirm:
 
 ```bash
@@ -331,7 +333,9 @@ Usable on `/run` and `/batch-run`:
 **New chart (local):** `local_read_path` + `local_folder_name`  
 **New chart (blob):** `blob_container` + `blob_read_path` + `blob_read_folder_name`  
 **Resume** (replaces `/rerun`): `chart_id` or `chart_name` with no read path  
-Do not mix blob and local. Folder name **is** the chart name.
+Do not mix blob and local. Folder name **is** the chart name. Local paths accept
+Windows `\` or `/` (normalized to `/` before use). JSON still needs escaped
+backslashes: `"C:\\\\data\\\\inbox"` or prefer `"C:/data/inbox"`.
 
 Write is part of this call — pass `local_write_path` or `blob_write_path`. Default is a **sync**: missing destination files are written, existing ones skipped. `overwrite=true` replaces all.
 

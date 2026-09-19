@@ -368,9 +368,7 @@ def _one_line(status: dict[str, Any], on: str) -> str:
 
 
 def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
-    """(label, value) pairs for the startup banner, aligned by the caller."""
-    from pathlib import Path
-
+    """(label, value) pairs for the startup banner — OK / off, no paths."""
     blob = caps["blob"]
     di = caps["azure_document_intelligence"]
     llm = caps["dos_llm"]
@@ -387,24 +385,16 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
         blob_on += f", client_id={blob['client_id']}"
     blob_on += f", container={blob.get('container')}"
 
-    di_on = f"OK — {di.get('endpoint')}"
+    di_on = "OK"
     if di.get("features"):
-        di_on += f", features={','.join(di['features'])}"
+        di_on += f" — features={','.join(di['features'])}"
 
-    llm_on = f"OK — deployment={llm.get('deployment')}, auth={llm.get('auth')}"
-    ner_on = f"OK — model={ner.get('model_id')}"
-    docling_on = f"OK — models={docling.get('models_dir')}"
-    skip_on = "ON — reuse ocr/ when present"
-
-    hw_path = hw.get("path") or ""
-    hw_name = Path(hw_path).name if hw_path else "?"
-    hw_on = f"OK — {hw.get('engine')} ({hw_name})"
-    if hw.get("reason"):
-        hw_on += f" — {hw['reason']}"
-
-    rapid_on = (
-        f"OK — {len(rapid.get('present') or [])} file(s) in {rapid.get('models_dir')}"
-    )
+    llm_on = f"OK — {llm.get('auth') or 'configured'}"
+    ner_on = f"OK — {ner.get('model_id') or 'ready'}"
+    docling_on = "OK"
+    hw_on = f"OK — {hw.get('engine') or 'ready'}"
+    rapid_on = "OK"
+    skip_on = "ON"
 
     skip_line = (
         skip_on
