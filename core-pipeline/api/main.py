@@ -357,8 +357,22 @@ class BatchRequest(StageSelection):
             "Set false to resume and skip completed pages."
         ),
     )
+    sample: Optional[int] = Field(
+        None,
+        ge=1,
+        description=(
+            "Smoke test: run only the first N chart folders under the read path "
+            "(sorted by name). Prefer this over limit for a small trial batch."
+        ),
+        examples=[1, 3, 5],
+    )
     limit: Optional[int] = Field(
-        None, description="Only the first N charts — use for a dry run first"
+        None,
+        ge=1,
+        description=(
+            "Only the first N charts (same as sample). Kept for compatibility; "
+            "when both are set, sample wins."
+        ),
     )
     run_id: Optional[str] = Field(
         None,
@@ -376,6 +390,14 @@ class BatchRequest(StageSelection):
             "Must satisfy workers × STAGE_WORKERS + headroom ≤ DB_POOL_MAX."
         ),
     )
+
+    def charts_cap(self) -> Optional[int]:
+        """Effective first-N cap: ``sample`` wins over ``limit``."""
+        if self.sample is not None:
+            return int(self.sample)
+        if self.limit is not None:
+            return int(self.limit)
+        return None
 
     @field_validator("local_read_path", "local_write_path", mode="before")
     @classmethod
@@ -634,7 +656,7 @@ def _bg_batch(payload: "BatchRequest") -> None:
             only=payload.only,
             through=payload.through,
             skip_ocr=payload.skip_ocr,
-            limit=payload.limit,
+            limit=payload.charts_cap(),
             run_id=payload.run_id,
             batch_id=payload.batch_id,
             workers=payload.workers,
@@ -1016,9 +1038,12 @@ def _batch_run_impl(
     _require_db()
 
     found: Optional[int] = None
+    queued: Optional[int] = None
+    cap = body.charts_cap()
     if has_local:
         try:
-            found = len(find_local_chart_folders(body.local_read_path))
+            folders = find_local_chart_folders(body.local_read_path)
+            found = len(folders)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not found:
@@ -1026,6 +1051,7 @@ def _batch_run_impl(
                 status_code=400,
                 detail=f"No chart folders with images under {body.local_read_path}",
             )
+        queued = min(found, cap) if cap else found
 
     background_tasks.add_task(_bg_batch, body)
     write_to = body.blob_write_path or body.local_write_path
@@ -1034,6 +1060,8 @@ def _batch_run_impl(
         "mode": "local" if has_local else "blob",
         "source": body.local_read_path or f"{body.blob_container}/{body.blob_read_path}",
         "charts_found": found,
+        "charts_queued": queued,
+        "sample": body.sample,
         "workers": workers,
         "limit": body.limit,
         "through": body.through,
@@ -1057,8 +1085,13 @@ def _batch_run_impl(
             else None
         ),
         "note": (
-            f"charts pre-registered into chart_list, then run with "
-            f"{workers} worker(s); poll /api/charts/by-name/{{name}}"
+            (
+                f"sample={cap}: first {queued} of {found} chart folder(s); "
+                if cap and found is not None and queued is not None
+                else ""
+            )
+            + f"charts pre-registered into chart_list, then run with "
+            + f"{workers} worker(s); poll /api/charts/by-name/{{name}}"
         ),
     }
 

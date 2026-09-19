@@ -439,22 +439,25 @@ Same vocabulary as `/run` **without** a folder name (each subfolder is a chart).
 | `local_write_path` / `blob_write_path` | optional | omit | |
 | `write_mode` | optional | `skip_orig_pages` | |
 | `overwrite` | optional | `false` | Sync by default |
-| `limit` | optional | all | First N charts (dry run) |
+| `sample` | optional | all | Smoke test: first N chart folders (sorted). Prefer over `limit` |
+| `limit` | optional | all | Same as `sample` (compat); `sample` wins if both set |
 | `workers` | optional | `BATCH_WORKERS` (4) | Must fit DB pool |
 | `run_id` / `batch_id` | optional | inferred | |
 | `through` / `only` / `force` / `skip_ocr` | optional | — | |
 
 ```bash
-# macOS / Linux
+# macOS / Linux — smoke-test the first 3 charts under the drop
 curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
-  -d '{"local_read_path":"/data/inbox","limit":1,"through":"ocr_prelim","workers":2}'
+  -d '{"local_read_path":"/data/inbox","sample":3,"through":"ocr_prelim","workers":2}'
 ```
 
 ```powershell
 # Windows
 curl.exe -X POST localhost:8001/api/charts/batch-run -H "Content-Type: application/json" `
-  -d "{\"local_read_path\":\"C:/data/inbox\",\"limit\":1,\"through\":\"ocr_prelim\",\"workers\":2}"
+  -d "{\"local_read_path\":\"C:/data/inbox\",\"sample\":3,\"through\":\"ocr_prelim\",\"workers\":2}"
 ```
+
+`202` response includes `charts_found`, `charts_queued` (after `sample`/`limit`), and echoes `sample`.
 
 Progress: `progress.txt` in the batch parent folder (`processing N/X charts…`)
 and under each chart’s `imaging/progress.txt` (`processing N/X files…`).
