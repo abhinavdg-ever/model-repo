@@ -8,7 +8,7 @@
 #   rapidocr/ch_ptocr_mobile_v2.0_cls_mobile.pth
 #   rapidocr/ppocrv6_dict.txt
 #   ner/   (GLiNER — via model_downloader)
+#   semantic-model/   (MiniLM — section_header_match --download)
 #
-# Section-header MiniLM is NOT stored here. Install sentence-transformers
-# (see requirements-docling.txt); weights download to the HuggingFace cache
-# on first Final1 run (~90 MB, all-MiniLM-L6-v2).
+# Section-header MiniLM prefers models/semantic-model when present; otherwise
+# falls back to the HuggingFace Hub id (SECTION_HEADER_MINILM_MODEL).

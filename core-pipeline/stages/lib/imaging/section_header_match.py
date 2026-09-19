@@ -70,6 +70,89 @@ def _ensure_catalog() -> None:
         _canon_norm = [_normalize(h) for h in _canon]
 
 
+def _local_model_dir() -> Path | None:
+    """Return ``models/semantic-model`` when it looks like a usable checkout."""
+    from config import SECTION_HEADER_MINILM_PATH
+
+    root = Path(SECTION_HEADER_MINILM_PATH)
+    if not root.is_dir():
+        return None
+    # sentence-transformers layouts vary; any of these means "downloaded".
+    markers = (
+        "config.json",
+        "modules.json",
+        "sentence_bert_config.json",
+        "pytorch_model.bin",
+        "model.safetensors",
+    )
+    if any((root / name).is_file() for name in markers):
+        return root
+    # Nested Hub snapshot layout: semantic-model/snapshots/<hash>/
+    snapshots = root / "snapshots"
+    if snapshots.is_dir():
+        for child in sorted(snapshots.iterdir()):
+            if child.is_dir() and any((child / name).is_file() for name in markers):
+                return child
+    return None
+
+
+def resolve_minilm_source() -> str:
+    """Local path string if present, else Hub model id."""
+    local = _local_model_dir()
+    if local is not None:
+        return str(local)
+    from config import SECTION_HEADER_MINILM_MODEL
+
+    return SECTION_HEADER_MINILM_MODEL
+
+
+def download_minilm(
+    *,
+    dest: Path | None = None,
+    model_id: str | None = None,
+    force: bool = False,
+) -> Path:
+    """Download MiniLM into ``models/semantic-model`` (gitignored).
+
+    Uses ``huggingface_hub.snapshot_download`` so the folder is offline-usable.
+    """
+    from config import SECTION_HEADER_MINILM_MODEL, SECTION_HEADER_MINILM_PATH
+
+    target = Path(dest) if dest is not None else Path(SECTION_HEADER_MINILM_PATH)
+    hub_id = (model_id or SECTION_HEADER_MINILM_MODEL).strip()
+    if not force:
+        existing = _local_model_dir()
+        if existing is not None:
+            logger.info("MiniLM already present at %s", existing)
+            return existing
+
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as exc:
+        raise RuntimeError(
+            "huggingface_hub is required to download MiniLM. "
+            "Install: pip install -r requirements-docling.txt"
+        ) from exc
+
+    target.mkdir(parents=True, exist_ok=True)
+    logger.info("Downloading %s → %s", hub_id, target)
+    snapshot_download(
+        repo_id=hub_id,
+        local_dir=str(target),
+        local_dir_use_symlinks=False,
+    )
+    # Clear any cached "missing" probe so the next load sees the new files.
+    global _model_tried
+    _model_tried = False
+    ready = _local_model_dir()
+    if ready is None:
+        raise RuntimeError(
+            f"Download finished but no MiniLM files found under {target}"
+        )
+    logger.info("MiniLM ready at %s", ready)
+    return ready
+
+
 def _get_model() -> Any:
     """Lazy-load MiniLM once. Returns None when unavailable."""
     global _model, _model_tried, _model_reason, _canon_embeddings
@@ -83,11 +166,9 @@ def _get_model() -> Any:
         try:
             from sentence_transformers import SentenceTransformer
 
-            from config import SECTION_HEADER_MINILM_MODEL
-
-            model_id = SECTION_HEADER_MINILM_MODEL
-            logger.info("Loading section-header MiniLM: %s", model_id)
-            _model = SentenceTransformer(model_id)
+            source = resolve_minilm_source()
+            logger.info("Loading section-header MiniLM from %s", source)
+            _model = SentenceTransformer(source)
             _canon_embeddings = _model.encode(
                 _canon,
                 normalize_embeddings=True,
@@ -212,3 +293,48 @@ def filter_section_headers(
         enriched["matched_canonical"] = canonical
         kept.append(enriched)
     return kept
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI: download or check the local MiniLM checkout."""
+    import argparse
+    import sys
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    parser = argparse.ArgumentParser(
+        description="Download / check MiniLM under models/semantic-model"
+    )
+    parser.add_argument(
+        "--download",
+        action="store_true",
+        help="Download all-MiniLM-L6-v2 into models/semantic-model",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-download even if the folder already looks complete",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Print whether a local checkout is present (exit 0/1)",
+    )
+    args = parser.parse_args(argv)
+
+    if args.download:
+        path = download_minilm(force=args.force)
+        print(f"ready: {path}")
+        return 0
+    if args.check:
+        local = _local_model_dir()
+        if local is None:
+            print("missing: models/semantic-model (run --download)")
+            return 1
+        print(f"ready: {local}")
+        return 0
+    parser.print_help()
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -119,6 +119,8 @@ Key `.env` knobs (paths relative to `core-pipeline/`):
 | `SKIP_OCR` | `false` — reuse on-disk `ocr/` when present |
 | `HW_MODEL_PATH` | `models/hw/handwritten_printed_convnext_tiny.pth` |
 | `RAPID_MODELS_DIR` | `models/rapidocr` |
+| `SECTION_HEADER_MINILM_PATH` | `models/semantic-model` — local MiniLM (preferred) |
+| `SECTION_HEADER_SEMANTIC_ENABLED` | `true` — filter Final1 `section_headers` ≥90% |
 | `MEMBER_NER_ENABLED` | `false` until GLiNER is installed |
 
 Azure Blob / DocIntel / OpenAI are optional — missing ones degrade a stage in a
@@ -152,7 +154,8 @@ models/rapidocr/
   PP-OCRv6_rec_small.pth
   ch_ptocr_mobile_v2.0_cls_mobile.pth
   ppocrv6_dict.txt
-models/ner/          # GLiNER via model_downloader
+models/ner/               # GLiNER via model_downloader
+models/semantic-model/    # MiniLM — section_header_match --download
 ```
 
 **Handwritten / printed (ConvNeXt)** — copy the `.pth` into `models/hw/`, then:
@@ -178,26 +181,35 @@ pip install -r requirements-docling.txt
 
 ### Section-header MiniLM
 
-Used only to filter Final1 `section_headers` in `*_final1.json` (≥90% match to
-`stages/lib/imaging/section_header_canon.json`). Weights are **not** under
-`models/` — HuggingFace downloads them on first use (~90 MB).
+Used to filter Final1 `section_headers` in `*_final1.json` (≥90% match to
+`stages/lib/imaging/section_header_canon.json`).
+
+**Recommended: keep weights under `models/semantic-model/`** (gitignored):
 
 ```bash
-# macOS / Linux — already included in requirements-docling.txt
+# macOS / Linux
 cd core-pipeline && source .venv/bin/activate
-pip install -r requirements-docling.txt
-# or just: pip install "sentence-transformers>=3.0.0"
+pip install -r requirements-docling.txt          # sentence-transformers + hub
+python -m stages.lib.imaging.section_header_match --download
+python -m stages.lib.imaging.section_header_match --check
 ```
 
 ```powershell
 cd core-pipeline; .venv\Scripts\Activate.ps1
 pip install -r requirements-docling.txt
-# or: pip install "sentence-transformers>=3.0.0"
+python -m stages.lib.imaging.section_header_match --download
+python -m stages.lib.imaging.section_header_match --check
 ```
 
-First Final1 run pulls `sentence-transformers/all-MiniLM-L6-v2` into the
-HuggingFace cache (`~/.cache/huggingface/`). Override with
-`SECTION_HEADER_MINILM_MODEL=…` or disable with
+Equivalent Hub CLI (same destination):
+
+```bash
+huggingface-cli download sentence-transformers/all-MiniLM-L6-v2 \
+  --local-dir models/semantic-model
+```
+
+Runtime load order: `SECTION_HEADER_MINILM_PATH` (default `models/semantic-model`)
+if present → else Hub id `SECTION_HEADER_MINILM_MODEL`. Disable with
 `SECTION_HEADER_SEMANTIC_ENABLED=false`.
 
 ### RapidOCR download (ModelScope v3.9.2)

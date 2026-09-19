@@ -242,6 +242,13 @@ RAPID_MODELS_DIR = _path_under_core(
     os.environ.get("RAPID_MODELS_DIR"),
     "models/rapidocr",
 )
+# Local MiniLM checkout for section-header filtering. Preferred over Hub id
+# when the directory exists. Download:
+#   python -m stages.lib.imaging.section_header_match --download
+SECTION_HEADER_MINILM_PATH = _path_under_core(
+    os.environ.get("SECTION_HEADER_MINILM_PATH"),
+    "models/semantic-model",
+)
 
 IMAGE_SUFFIXES = {
     ".bmp", ".dib", ".gif", ".j2k", ".jfif", ".jp2", ".jpe", ".jpeg", ".jpg",
