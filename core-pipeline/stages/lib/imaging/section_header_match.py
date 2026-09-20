@@ -27,7 +27,11 @@ logger = logging.getLogger(__name__)
 
 _CANON_PATH = Path(__file__).with_name("section_header_canon.json")
 
-_lock = threading.Lock()
+# Reentrant: _get_model() holds this while calling _ensure_catalog(), which
+# takes it again. With a plain Lock that thread deadlocked holding the lock,
+# so every later Docling page blocked in _ensure_catalog and hit the 90s
+# timeout for the life of the process.
+_lock = threading.RLock()
 _model: Any = None
 _model_tried = False
 _model_reason: Optional[str] = None

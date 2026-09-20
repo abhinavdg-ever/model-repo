@@ -101,3 +101,38 @@ def test_convert_busy_timeout_when_lock_held(tmp_path, monkeypatch):
         f_hold.result(timeout=5.0)
 
     assert raised
+
+
+def test_section_header_model_probe_does_not_deadlock():
+    """_get_model() takes the module lock and calls _ensure_catalog(), which
+    takes it again. A plain Lock hung there, holding it forever — every later
+    Final1 page then timed out in filter_section_headers."""
+    import stages.lib.imaging.section_header_match as shm
+
+    done = threading.Event()
+
+    def probe():
+        shm._get_model()
+        done.set()
+
+    threading.Thread(target=probe, daemon=True).start()
+    assert done.wait(timeout=20.0), "_get_model() deadlocked on the module lock"
+
+
+def test_filter_section_headers_with_minilm_path_completes():
+    """The Final1 call shape (use_minilm default) must return, model or not."""
+    import stages.lib.imaging.section_header_match as shm
+
+    out: list = []
+    done = threading.Event()
+
+    def probe():
+        out.extend(
+            shm.filter_section_headers(
+                [{"text": "Patient Data", "level": 2, "bbox": []}]
+            )
+        )
+        done.set()
+
+    threading.Thread(target=probe, daemon=True).start()
+    assert done.wait(timeout=30.0), "filter_section_headers deadlocked"
