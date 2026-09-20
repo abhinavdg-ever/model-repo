@@ -93,6 +93,9 @@ def stage_run(
         todo=todo,
         force=force,
     )
+    from logging_setup import reset_current_chart, set_current_chart
+
+    chart_token = set_current_chart(ctx.chart_name)
     logger.info(
         "[%s] chart %s — starting, %s of %s page(s) to do%s",
         stage_label(stage_name, pass_no), ctx.chart_name,
@@ -119,6 +122,8 @@ def stage_run(
                 pages_failed=len(ctx.errors),
                 pages_skipped=ctx.skipped,
             )
+    finally:
+        reset_current_chart(chart_token)
 
 
 def mark_skipped(
@@ -173,7 +178,10 @@ def _progress(ctx: StageContext, outcome: str, page_name: str = "") -> None:
     seen = ctx.done + len(ctx.errors)
     label = stage_label(ctx.stage_name, ctx.pass_no)
     suffix = f" ({page_name})" if page_name else ""
-    logger.info("[%s] Page %d of %d %s%s", label, seen, total, outcome, suffix)
+    logger.info(
+        "[%s] Page %d of %d %s%s",
+        label, seen, total, outcome, suffix,
+    )
     try:
         write_folder_progress(
             ctx.chart_name,

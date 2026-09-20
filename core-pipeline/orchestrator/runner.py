@@ -143,10 +143,13 @@ def run_pipeline_for_chart(
         results["not_run"] = STAGE_NAMES[stop_at + 1 :]
         logger.info(
             "Chart %s: running through [%s] — %d of %d stage(s)",
-            chart_id, stage_label(*STAGE_CHAIN[stop_at][:2]), len(chain),
+            chart["chart_name"], stage_label(*STAGE_CHAIN[stop_at][:2]), len(chain),
             len(STAGE_CHAIN),
         )
 
+    from logging_setup import reset_current_chart, set_current_chart
+
+    chart_token = set_current_chart(chart["chart_name"])
     try:
         total_stages = len(chain)
         skip_ocr_active = False
@@ -181,14 +184,14 @@ def run_pipeline_for_chart(
                     }
                     logger.info(
                         "=== [%s]  skipped (skip_ocr, %s)  —  chart %s ===",
-                        stage_label(name, pass_no), reason, chart_id,
+                        stage_label(name, pass_no), reason, chart["chart_name"],
                     )
                     continue
 
             label = stage_label(name, pass_no)
             logger.info(
                 "=== [%s]  stage %d of %d  —  chart %s ===",
-                label, index, total_stages, chart_id,
+                label, index, total_stages, chart["chart_name"],
             )
             results["stages"][key] = fn(chart_id, force=force)
 
@@ -210,7 +213,7 @@ def run_pipeline_for_chart(
         return results
 
     except Exception as exc:
-        logger.error("Pipeline failed for chart %s: %s", chart_id, exc)
+        logger.error("Pipeline failed for chart %s: %s", chart["chart_name"], exc)
         logger.debug(traceback.format_exc())
         with connect() as conn:
             progress = refresh_chart_status(conn, chart_id)
@@ -231,6 +234,8 @@ def run_pipeline_for_chart(
         results["progress"] = progress
         results["error"] = str(exc)
         raise
+    finally:
+        reset_current_chart(chart_token)
 
 
 def ingest_and_run(
@@ -258,52 +263,68 @@ def ingest_and_run(
         raise ValueError("Provide exactly one of blob_path (+ blob_container) or local_path")
 
     from db.path_ids import resolve_run_batch
+    from logging_setup import reset_current_chart, set_current_chart
+    from pathlib import Path as _Path
+
+    # Bind the folder name as early as possible so intake/download lines show it.
+    hint = (chart_name or "").strip()
+    if not hint and local_path:
+        hint = _Path(local_path).name
+    elif not hint and blob_path:
+        hint = _Path(str(blob_path).rstrip("/")).name
+    chart_token = set_current_chart(hint or None)
 
     run_id, batch_id = resolve_run_batch(
         run_id, batch_id, blob_path, local_path, blob_container
     )
 
-    if local_path:
-        from stages.download_blob import import_local_folder
+    try:
+        if local_path:
+            from stages.download_blob import import_local_folder
 
-        intake = import_local_folder(
-            local_path,
-            chart_name=chart_name,
-            force=force,
-            run_id=run_id,
-            batch_id=batch_id,
-        )
-        out: dict[str, Any] = {
-            "chart_id": intake["chart_id"],
-            "chart_name": intake["chart_name"],
-            "page_count": intake["page_count"],
-            "source": intake["source"],
-            "imported": intake["imported"],
-            "manifest": intake["manifest"],
-        }
-    else:
-        if not blob_container:
-            raise ValueError("blob_container is required with blob_path")
-        download = run_download(
-            blob_container=blob_container,
-            blob_path=blob_path,
-            run_id=run_id,
-            batch_id=batch_id,
-            force=force,
-        )
-        out = {
-            "chart_id": download["chart_id"],
-            "chart_name": download["chart_name"],
-            "page_count": download["page_count"],
-            "source": f"{blob_container}/{blob_path}",
-        }
+            intake = import_local_folder(
+                local_path,
+                chart_name=chart_name,
+                force=force,
+                run_id=run_id,
+                batch_id=batch_id,
+            )
+            out: dict[str, Any] = {
+                "chart_id": intake["chart_id"],
+                "chart_name": intake["chart_name"],
+                "page_count": intake["page_count"],
+                "source": intake["source"],
+                "imported": intake["imported"],
+                "manifest": intake["manifest"],
+            }
+        else:
+            if not blob_container:
+                raise ValueError("blob_container is required with blob_path")
+            download = run_download(
+                blob_container=blob_container,
+                blob_path=blob_path,
+                run_id=run_id,
+                batch_id=batch_id,
+                force=force,
+            )
+            out = {
+                "chart_id": download["chart_id"],
+                "chart_name": download["chart_name"],
+                "page_count": download["page_count"],
+                "source": f"{blob_container}/{blob_path}",
+            }
 
-    if run_pipeline:
-        out["pipeline"] = run_pipeline_for_chart(
-            out["chart_id"],
-            force=force,
-            only=only,
-            through=through,
-            skip_ocr=skip_ocr,
-        )
-    return out
+        # Prefer the registered chart name once intake finishes.
+        set_current_chart(out.get("chart_name") or hint or None)
+
+        if run_pipeline:
+            out["pipeline"] = run_pipeline_for_chart(
+                out["chart_id"],
+                force=force,
+                only=only,
+                through=through,
+                skip_ocr=skip_ocr,
+            )
+        return out
+    finally:
+        reset_current_chart(chart_token)

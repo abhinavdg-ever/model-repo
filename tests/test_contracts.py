@@ -1492,6 +1492,45 @@ class TestAzureSdkLogging:
         finally:
             root.setLevel(previous)
 
+    def test_log_lines_include_current_chart_name(self):
+        """Every terminal line should tag ``[batch#] [chart#]``."""
+        import io
+        import logging
+        import threading
+
+        from logging_setup import (
+            LOG_FORMAT,
+            _ChartAwareFormatter,
+            _ChartContextFilter,
+            configure_logging,
+            reset_current_chart,
+            set_current_chart,
+            set_worker_name,
+        )
+
+        configure_logging(logging.INFO)
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(_ChartAwareFormatter(LOG_FORMAT))
+        handler.addFilter(_ChartContextFilter())
+        log = logging.getLogger("test.chart_context")
+        log.addHandler(handler)
+        log.setLevel(logging.INFO)
+        log.propagate = False
+        prev_name = threading.current_thread().name
+        set_worker_name("batch-3")
+        token = set_current_chart("52743839_44976074")
+        try:
+            log.info("hello")
+        finally:
+            reset_current_chart(token)
+            threading.current_thread().name = prev_name
+            log.removeHandler(handler)
+        line = stream.getvalue()
+        assert "[batch-3]" in line
+        assert "[52743839_44976074]" in line
+        assert "hello" in line
+
 
 class TestCorrectedPages:
     """Rotation correction writes corrected-pages/; every later stage reads it.

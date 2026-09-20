@@ -314,10 +314,11 @@ def _run_one_chart(
     is_large: bool = False,
     large_limiter: Optional[LargeChartLimiter] = None,
 ) -> dict[str, Any]:
-    from logging_setup import set_worker_name
+    from logging_setup import reset_current_chart, set_worker_name, set_current_chart
     from orchestrator.runner import ingest_and_run
 
     set_worker_name(f"batch-{index}")
+    chart_token = set_current_chart(name)
     if large_limiter is not None:
         large_limiter.enter(is_large)
     try:
@@ -396,6 +397,7 @@ def _run_one_chart(
         )
         return entry
     finally:
+        reset_current_chart(chart_token)
         if large_limiter is not None:
             large_limiter.leave(is_large)
 

@@ -22,18 +22,20 @@ File logs (optional, on by default): daily rotation under ``LOG_DIR``
 (default ``core-pipeline/logs/``) as ``core-pipeline.log`` + dated backups.
 Stdout still works for ``docker compose logs``.
 
-Console lines include the thread/worker name (e.g. ``batch-2``, ``page-0``)
-and optionally colour that tag so parallel charts are easy to tell apart.
-File logs stay plain (no ANSI).
+Console lines tag every message as ``[batch-N] [chart_name]`` (worker +
+document) so parallel charts are easy to tell apart. Colour, when enabled,
+applies to the worker tag only. File logs stay plain (no ANSI).
 """
 from __future__ import annotations
 
+import contextvars
 import logging
 import os
 import sys
 import threading
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
+from typing import Optional
 
 # Setting the parent `azure` logger covers azure.core, azure.identity,
 # azure.storage.blob and azure.ai.documentintelligence in one line — child
@@ -49,9 +51,11 @@ NOISY_LOGGERS = ("azure", "urllib3", "msal")
 ALWAYS_QUIET = ("azure.identity._credentials.chained",)
 
 DEFAULT_AZURE_LOG_LEVEL = "WARNING"
-LOG_FORMAT = "%(asctime)s %(levelname)s [%(threadName)s] %(name)s: %(message)s"
+LOG_FORMAT = (
+    "%(asctime)s %(levelname)s [%(threadName)s] [%(chart)s] %(name)s: %(message)s"
+)
 LOG_FORMAT_COLOR = (
-    "%(asctime)s %(levelname)s [%(worker_colored)s] %(name)s: %(message)s"
+    "%(asctime)s %(levelname)s [%(worker_colored)s] [%(chart)s] %(name)s: %(message)s"
 )
 # Keep a month of daily files; older ones are removed on rotate.
 LOG_BACKUP_COUNT = int(os.environ.get("LOG_BACKUP_DAYS") or "30")
@@ -71,6 +75,38 @@ _WORKER_COLORS = (
 )
 _RESET = "\033[0m"
 _DIM = "\033[2m"
+
+# Chart currently being processed on this thread / asyncio task. Propagates
+# into every log line via ``_ChartContextFilter`` so batch/parallel runs are
+# attributable without editing every ``logger.info``.
+_current_chart: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "pipeline_chart", default=""
+)
+
+
+def set_current_chart(chart_name: Optional[str]) -> contextvars.Token:
+    """Bind the chart name into ``[batch#] [chart#]`` log tags for this context."""
+    return _current_chart.set((chart_name or "").strip())
+
+
+def reset_current_chart(token: contextvars.Token) -> None:
+    _current_chart.reset(token)
+
+
+def get_current_chart() -> str:
+    return _current_chart.get() or ""
+
+
+def _chart_tag() -> str:
+    return _current_chart.get() or "-"
+
+
+class _ChartContextFilter(logging.Filter):
+    """Inject ``record.chart`` so the format string always has a value."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.chart = _chart_tag()
+        return True
 
 
 def azure_log_level() -> int:
@@ -143,7 +179,18 @@ class _WorkerColorFormatter(logging.Formatter):
     """Colour only the worker/thread tag; rest of the line stays normal."""
 
     def format(self, record: logging.LogRecord) -> str:
+        if not hasattr(record, "chart"):
+            record.chart = _chart_tag()
         record.worker_colored = _worker_color(getattr(record, "threadName", "") or "-")
+        return super().format(record)
+
+
+class _ChartAwareFormatter(logging.Formatter):
+    """Plain formatter that never KeyErrors on missing ``chart``."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        if not hasattr(record, "chart"):
+            record.chart = _chart_tag()
         return super().format(record)
 
 
@@ -184,9 +231,15 @@ def _attach_daily_file_handler(level: int) -> Path | None:
     )
     handler.suffix = "%Y-%m-%d"
     handler.setLevel(level)
-    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    handler.setFormatter(_ChartAwareFormatter(LOG_FORMAT))
+    handler.addFilter(_ChartContextFilter())
     root.addHandler(handler)
     return path
+
+
+def _ensure_chart_filter(handler: logging.Handler) -> None:
+    if not any(isinstance(f, _ChartContextFilter) for f in handler.filters):
+        handler.addFilter(_ChartContextFilter())
 
 
 def _configure_stream_handlers(level: int) -> None:
@@ -196,14 +249,17 @@ def _configure_stream_handlers(level: int) -> None:
     fmt: logging.Formatter = (
         _WorkerColorFormatter(LOG_FORMAT_COLOR)
         if color
-        else logging.Formatter(LOG_FORMAT)
+        else _ChartAwareFormatter(LOG_FORMAT)
     )
     for handler in root.handlers:
         if isinstance(handler, TimedRotatingFileHandler):
+            # File handler already got the filter at attach time; keep format plain.
+            _ensure_chart_filter(handler)
             continue
         if isinstance(handler, logging.StreamHandler):
             handler.setFormatter(fmt)
             handler.setLevel(level)
+            _ensure_chart_filter(handler)
 
 
 def configure_logging(level: int = logging.INFO) -> None:
@@ -220,7 +276,16 @@ def configure_logging(level: int = logging.INFO) -> None:
     # we were imported. Without this the requested level is silently ignored
     # and the pipeline's progress lines never appear. Setting the level
     # directly does not disturb whatever handlers are already installed.
-    logging.getLogger().setLevel(level)
+    root = logging.getLogger()
+    root.setLevel(level)
+    # basicConfig's default handler has no chart filter / %(chart)s yet.
+    for handler in root.handlers:
+        _ensure_chart_filter(handler)
+        if isinstance(handler, logging.StreamHandler) and not isinstance(
+            handler, TimedRotatingFileHandler
+        ):
+            if not isinstance(handler.formatter, _WorkerColorFormatter):
+                handler.setFormatter(_ChartAwareFormatter(LOG_FORMAT))
     quiet_noisy_loggers()
 
     log_path = _attach_daily_file_handler(level)
