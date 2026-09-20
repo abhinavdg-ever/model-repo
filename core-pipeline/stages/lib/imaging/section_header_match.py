@@ -1,13 +1,16 @@
-"""Semantic filter for Final1 ``section_headers`` written into ``*_final1.json``.
+"""Semantic filter for OCR ``section_headers`` (Final1 / Final2 JSON).
 
-Docling (or heuristics) propose heading candidates. Only candidates whose text
-is ≥ ``SECTION_HEADER_SEMANTIC_THRESHOLD`` similar to a known clinical section
+Used by the standalone ``section_headers`` stage (and best-effort during OCR)
+to keep candidates ≥ threshold vs ``section_header_canon.json``. Docling (or
+Azure lines) propose heading candidates; only candidates whose text is ≥
+``SECTION_HEADER_SEMANTIC_THRESHOLD`` similar to a known clinical section
 header are kept — primarily by normalized lexical match against
 ``section_header_canon.json``. MiniLM embeddings are an optional assist for
 near-paraphrases, gated so unrelated bold labels cannot pass on cosine alone.
 
 The catalog reloads when the JSON file's mtime changes (edit the list → next
-filter call picks it up; review-ui re-filters on each OCR fetch).
+filter call picks it up). Re-run ``only=["section_headers"]`` to rewrite
+``*_final1.json`` / ``*_final2.json`` without OCR.
 
 Each kept header gains:
   ``match_score``       — similarity in [0, 1]

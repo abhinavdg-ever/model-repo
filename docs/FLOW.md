@@ -12,7 +12,7 @@ For the HTTP surface, see [API.md](API.md).
 flowchart LR
   subgraph CP["core-pipeline (own docker-compose, port 8001)"]
     API["FastAPI<br/>ingest · rerun · manifest"]
-    ORCH["Orchestrator<br/>8-stage chain"]
+    ORCH["Orchestrator<br/>9-stage chain"]
     API --> ORCH
   end
 
@@ -63,10 +63,11 @@ flowchart TD
     S3["3 · blank_junk pass 1<br/>printed pages, prelim text"]
     S4["4 · ocr_final1<br/>Docling+RapidOCR"]
     S5["5 · ocr_final2<br/>Azure DocIntel · billed"]
-    S6["6 · blank_junk pass 2<br/>handwritten + survivors"]
-    S7["7 · member_verify<br/>rules → NER → what-if"]
-    S8["8 · dos_extract<br/>regex → LLM → carry-forward"]
-    S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8
+    S5b["6 · section_headers<br/>canon match from JSON"]
+    S6["7 · blank_junk pass 2<br/>handwritten + survivors"]
+    S7["8 · member_verify<br/>rules → NER → what-if"]
+    S8["9 · dos_extract<br/>regex → LLM → carry-forward"]
+    S1 --> S2 --> S3 --> S4 --> S5 --> S5b --> S6 --> S7 --> S8
   end
 
   S8 --> DONE["refresh_chart_status<br/>→ completed / needs_review / failed"]
@@ -87,11 +88,12 @@ resume matters), and **stage 7 produces the accept/reject decision**.
 | 1 | `ocr_quality` | every page | page image | `ocr_quality_results` | `imaging/<chart>_rotation.csv`, `_hw_printed.csv`, `_quality.csv`, and `corrected-pages/<n>.jpg` when `ROTATION_CORRECTION_ENABLED` |
 | 2 | `ocr_prelim` | every page | corrected page if one exists, else page image | `ocr_results` (`tesseract`) | `ocr/<chart>_prelim.txt` |
 | 3 | `blank_junk` pass 1 | printed + non-low-quality only | prelim text | `blank_junk_classification` (pass 1) | `imaging/<chart>_junk.csv` |
-| 4 | `ocr_final1` | not blank/junk, + HW / low-quality | corrected page if one exists, else page image | `ocr_results` (`docling`) | `ocr/<chart>_final1.json` |
-| 5 | `ocr_final2` | not blank/junk, + HW / low-quality; **skips high-quality printed** | corrected page if one exists, else page image | `ocr_results` (`azuredocintel`) | `ocr/<chart>_final2.json` |
-| 6 | `blank_junk` pass 2 | HW + low-quality + surviving printed | final2 text, else final1 | `blank_junk_classification` (pass 2), then `is_final` stamped | rewrites `_junk.csv` |
-| 7 | `member_verify` | not blank/junk/duplicate | best text + `manifest_member_list` | `member_extraction_results`, `member_verification_summary` | `_member_extraction.csv`, `_member_verification.csv`, `_member_v1_compare.csv` |
-| 8 | `dos_extract` | not blank/junk/duplicate | best text | `dos_extraction_results` | `imaging/<chart>_dos.csv` |
+| 4 | `ocr_final1` | not blank/junk, + HW / low-quality | corrected page if one exists, else page image | `ocr_results` (`docling`) | `ocr/<chart>_final1.json` (incl. `section_header_candidates`) |
+| 5 | `ocr_final2` | not blank/junk, + HW / low-quality; **skips high-quality printed** | corrected page if one exists, else page image | `ocr_results` (`azuredocintel`) | `ocr/<chart>_final2.json` (incl. candidates / `pagesMeta`) |
+| 6 | `section_headers` | pages with Final1 or Final2 JSON | those JSON files | updates `ocr_results` JSON blobs | rewrites `section_headers` in `*_final1.json` / `*_final2.json` |
+| 7 | `blank_junk` pass 2 | HW + low-quality + surviving printed | final2 text, else final1 | `blank_junk_classification` (pass 2), then `is_final` stamped | rewrites `_junk.csv` |
+| 8 | `member_verify` | not blank/junk/duplicate | best text + `manifest_member_list` | `member_extraction_results`, `member_verification_summary` | `_member_extraction.csv`, `_member_verification.csv`, `_member_v1_compare.csv` |
+| 9 | `dos_extract` | not blank/junk/duplicate | best text | `dos_extraction_results` | `imaging/<chart>_dos.csv` |
 
 Every stage also writes one `pipeline_jobs` row and updates
 `page_stage_status` per page.

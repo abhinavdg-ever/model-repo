@@ -458,20 +458,86 @@ def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
         try:
             data = doc.export_to_dict() if hasattr(doc, "export_to_dict") else doc
             if isinstance(data, dict):
-                for t in data.get("texts") or []:
-                    if not isinstance(t, dict):
-                        continue
-                    lab = str(t.get("label") or "").strip().casefold().replace(" ", "_")
-                    if lab not in header_labels and "section" not in lab and lab != "title":
-                        continue
-                    text = str(t.get("text") or "").strip()
-                    _append(
-                        text,
-                        1 if lab == "title" else 2,
-                        t.get("prov") or [],
-                    )
+                headers.extend(extract_section_headers_from_dict(data, seen=seen))
         except Exception as exc:
             logger.debug("dict header extract failed: %s", exc)
+    return headers
+
+
+def extract_section_headers_from_dict(
+    data: dict[str, Any],
+    *,
+    seen: set[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Same shortlist as ``extract_section_headers``, from an exported dict.
+
+    Used by the standalone ``section_headers`` stage when Final1 JSON still
+    carries ``document`` (or when rebuilding candidates without re-OCR).
+    """
+    if not isinstance(data, dict):
+        return []
+    header_labels = {
+        "section_header",
+        "title",
+        "section-header",
+        "sectionheader",
+    }
+    headers: list[dict[str, Any]] = []
+    seen_keys = seen if seen is not None else set()
+
+    for t in data.get("texts") or []:
+        if not isinstance(t, dict):
+            continue
+        lab = str(t.get("label") or "").strip().casefold().replace(" ", "_")
+        if lab not in header_labels and "section" not in lab and lab != "title":
+            continue
+        text = str(t.get("text") or "").strip()
+        if not text:
+            continue
+        key = re.sub(r"\s+", " ", text).casefold()
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        l = t_coord = r = b = 0.0
+        origin = "TOPLEFT"
+        has_box = False
+        pw = ph = 0.0
+        prov = t.get("prov") or []
+        first = prov[0] if isinstance(prov, list) and prov else prov
+        bbox = None
+        if isinstance(first, dict):
+            bbox = first.get("bbox")
+            origin = str(first.get("coord_origin") or origin)
+        if isinstance(bbox, dict):
+            l = float(bbox.get("l") or bbox.get("left") or 0)
+            t_coord = float(bbox.get("t") or bbox.get("top") or 0)
+            r = float(bbox.get("r") or bbox.get("right") or 0)
+            b = float(bbox.get("b") or bbox.get("bottom") or 0)
+            has_box = True
+        page_sizes = data.get("pages") or {}
+        # Docling dict pages may be a list or map; best-effort size.
+        if isinstance(page_sizes, list) and page_sizes:
+            p0 = page_sizes[0] if isinstance(page_sizes[0], dict) else {}
+            size = p0.get("size") if isinstance(p0, dict) else None
+            if isinstance(size, dict):
+                pw = float(size.get("width") or 0)
+                ph = float(size.get("height") or 0)
+        norm = None
+        if has_box and pw > 0 and ph > 0:
+            norm = _bbox_to_css_norm(l, t_coord, r, b, pw, ph, origin)
+        headers.append(
+            {
+                "text": text,
+                "level": 1 if lab == "title" else 2,
+                "bbox": [round(l, 2), round(t_coord, 2), round(r, 2), round(b, 2)]
+                if has_box
+                else [],
+                "page_width": pw or None,
+                "page_height": ph or None,
+                "coord_origin": origin if has_box else None,
+                "norm": norm,
+            }
+        )
     return headers
 
 
@@ -630,10 +696,14 @@ def _bbox_to_css_norm(
 def convert_image(image_path: Path, converter: Any | None = None) -> dict[str, Any]:
     """Run Docling on one page image.
 
-    Returns ``{markdown, document, content, section_headers}``. ``document``
-    (full DoclingDocument dict) is omitted unless ``DOCLING_EXPORT_DOCUMENT=true``.
-    ``section_headers`` is extracted then filtered to phrases ≥ the configured
-    semantic threshold against known clinical headers (MiniLM / lexical).
+    Returns ``{markdown, document, content, section_header_candidates,
+    section_headers}``. ``document`` is omitted unless
+    ``DOCLING_EXPORT_DOCUMENT=true``.
+
+    Canon matching is owned by the ``section_headers`` stage (re-runnable from
+    JSON alone). This path still applies a best-effort filter so
+    ``through=ocr_final1`` has overlays before that stage runs; the stage
+    overwrites ``section_headers`` from ``section_header_candidates``.
     """
     import time
 
@@ -644,31 +714,31 @@ def convert_image(image_path: Path, converter: Any | None = None) -> dict[str, A
     result = engine.convert(str(image_path))
     doc = result.document
     markdown = clean_docling_markdown(doc.export_to_markdown() or "")
-    section_headers = extract_section_headers(doc)
+    candidates = _renorm_headers_for_image(extract_section_headers(doc), image_path)
+    section_headers = list(candidates)
     try:
-        from stages.lib.imaging.section_header_match import filter_section_headers
+        from stages.lib.imaging.section_headers_io import apply_header_filter
 
-        before = len(section_headers)
-        section_headers = filter_section_headers(section_headers)
-        if before != len(section_headers):
+        section_headers = apply_header_filter(candidates)
+        if len(candidates) != len(section_headers):
             logger.info(
                 "Section headers filtered %d → %d (semantic ≥ threshold)",
-                before,
+                len(candidates),
                 len(section_headers),
             )
     except Exception as exc:
         logger.warning("Section-header semantic filter skipped: %s", exc)
-    section_headers = _renorm_headers_for_image(section_headers, image_path)
     export_doc = (
         os.environ.get("DOCLING_EXPORT_DOCUMENT") or "false"
     ).strip().casefold() in {"1", "true", "yes", "on"}
     document = doc.export_to_dict() if export_doc else None
     elapsed = time.perf_counter() - started
     logger.info(
-        "Docling converted %s in %.1fs (chars=%d, headers=%d, document=%s)",
+        "Docling converted %s in %.1fs (chars=%d, candidates=%d, headers=%d, document=%s)",
         image_path.name,
         elapsed,
         len(markdown),
+        len(candidates),
         len(section_headers),
         "yes" if document is not None else "skipped",
     )
@@ -676,6 +746,7 @@ def convert_image(image_path: Path, converter: Any | None = None) -> dict[str, A
         "markdown": markdown,
         "content": markdown,
         "document": document,
+        "section_header_candidates": candidates,
         "section_headers": section_headers,
         "elapsed_seconds": elapsed,
     }

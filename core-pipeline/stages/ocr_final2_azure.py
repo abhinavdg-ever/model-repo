@@ -194,7 +194,7 @@ def _word_dict(word: Any) -> dict[str, Any]:
     }
 
 
-def _section_headers_from_lines(
+def candidates_from_lines(
     lines: list[dict[str, Any]],
     *,
     page_w: float,
@@ -202,11 +202,11 @@ def _section_headers_from_lines(
     unit: str | None = None,
     image_size: tuple[float, float] | None = None,
 ) -> list[dict[str, Any]]:
-    """OCR lines → ``section_headers`` kept only by canon match (no regex shortlist).
+    """OCR lines → raw header candidates (no canon filter).
 
-    Every non-empty line is a candidate; ``filter_section_headers`` keeps those
-    ≥ threshold vs ``section_header_canon.json``. Maps OCR coords → image
-    pixels via ``scale = image / page``, then stores fractions of the image.
+    Every non-empty line is a candidate. Maps OCR coords → image pixels via
+    ``scale = image / page``, then stores fractions of the image. The
+    ``section_headers`` stage filters these against the canon list.
     """
     iw = ih = 0.0
     if image_size:
@@ -248,18 +248,36 @@ def _section_headers_from_lines(
                 "norm": norm,
             }
         )
+    return candidates
 
+
+def _section_headers_from_lines(
+    lines: list[dict[str, Any]],
+    *,
+    page_w: float,
+    page_h: float,
+    unit: str | None = None,
+    image_size: tuple[float, float] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """OCR lines → ``(candidates, filtered section_headers)``.
+
+    Filtering is best-effort here so Final2 JSON is usable before the
+    standalone ``section_headers`` stage runs; that stage re-derives from
+    candidates / ``pagesMeta`` when the canon list changes.
+    """
+    candidates = candidates_from_lines(
+        lines,
+        page_w=page_w,
+        page_h=page_h,
+        unit=unit,
+        image_size=image_size,
+    )
     try:
-        from stages.lib.imaging.section_header_match import filter_section_headers
+        from stages.lib.imaging.section_headers_io import apply_header_filter
 
-        kept = filter_section_headers(candidates, use_minilm=False)
-        for item in kept:
-            canon = str(item.get("matched_canonical") or "").strip()
-            if canon:
-                item["text"] = canon
-        return kept
+        return candidates, apply_header_filter(candidates, use_minilm=False)
     except Exception:
-        return []
+        return candidates, []
 
 
 def _page_meta(page: Any) -> dict[str, Any]:
@@ -334,6 +352,7 @@ def _ocr_azure(image_path: Path) -> dict[str, Any]:
         ]
         image_size = _image_size()
         section_headers: list[dict[str, Any]] = []
+        section_header_candidates: list[dict[str, Any]] = []
         for meta in pages_meta:
             try:
                 pw = float(meta.get("width") or 0)
@@ -343,18 +362,19 @@ def _ocr_azure(image_path: Path) -> dict[str, Any]:
             unit = meta.get("unit")
             if unit is not None and hasattr(unit, "value"):
                 unit = getattr(unit, "value", unit)
-            section_headers.extend(
-                _section_headers_from_lines(
-                    list(meta.get("lines") or []),
-                    page_w=pw,
-                    page_h=ph,
-                    unit=str(unit) if unit is not None else None,
-                    image_size=image_size,
-                )
+            cands, kept = _section_headers_from_lines(
+                list(meta.get("lines") or []),
+                page_w=pw,
+                page_h=ph,
+                unit=str(unit) if unit is not None else None,
+                image_size=image_size,
             )
+            section_header_candidates.extend(cands)
+            section_headers.extend(kept)
         return {
             "content": getattr(result, "content", None) or "",
             "pages_meta": pages_meta,
+            "section_header_candidates": section_header_candidates,
             "section_headers": section_headers,
             "languages": _languages_meta(result),
             "features": features or [],
@@ -378,6 +398,7 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
         "page_number": page.get("page_number"),
         "content": "",
         "pages_meta": [],
+        "section_header_candidates": [],
         "section_headers": [],
         "languages": [],
         "features": [],
@@ -387,11 +408,15 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
     try:
         if use_azure and image_path.is_file():
             extracted = _ocr_azure(image_path)
-            out["content"] = extracted["content"]
-            out["pages_meta"] = extracted["pages_meta"]
+            out["content"] = extracted.get("content") or ""
+            out["pages_meta"] = extracted.get("pages_meta") or []
+            out["section_header_candidates"] = (
+                extracted.get("section_header_candidates") or []
+            )
             out["section_headers"] = extracted.get("section_headers") or []
             out["languages"] = extracted.get("languages") or []
             out["features"] = extracted.get("features") or []
+            return out
         else:
             out["content"] = ""
     except Exception as exc:
@@ -462,6 +487,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     "fileName": item["page_name"],
                     "content": item["content"],
                     "pagesMeta": item["pages_meta"],
+                    "section_header_candidates": item.get("section_header_candidates")
+                    or [],
                     "section_headers": item.get("section_headers") or [],
                     "languages": item.get("languages") or [],
                     "features": item.get("features") or [],
@@ -485,6 +512,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             pages_meta: list[Any] = []
             languages: list[Any] = []
             section_headers: list[Any] = []
+            section_header_candidates: list[Any] = []
             if raw:
                 try:
                     parsed = json.loads(raw)
@@ -496,6 +524,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         or parsed.get("sectionHeaders")
                         or []
                     )
+                    section_header_candidates = list(
+                        parsed.get("section_header_candidates")
+                        or parsed.get("sectionHeaderCandidates")
+                        or []
+                    )
                 except (ValueError, AttributeError, TypeError):
                     content = raw
             entry: dict[str, Any] = {
@@ -503,6 +536,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "fileName": page["page_name"],
                 "content": content,
                 "pagesMeta": pages_meta,
+                "section_header_candidates": section_header_candidates,
                 "section_headers": section_headers,
                 "languages": languages,
             }

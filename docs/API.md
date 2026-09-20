@@ -208,8 +208,27 @@ pip install -r requirements-docling.txt
 
 ### Section-header MiniLM
 
-Used to filter Final1 `section_headers` in `*_final1.json` (≥90% match to
-`stages/lib/imaging/section_header_canon.json`).
+Used by the ``section_headers`` stage to filter candidates in
+``*_final1.json`` / ``*_final2.json`` (≥90% match to
+`stages/lib/imaging/section_header_canon.json`). OCR stores raw candidates;
+re-run only that stage after editing the list — no re-OCR:
+
+```bash
+# API
+curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
+  -d '{"chart_id": 123, "only": ["section_headers"]}'
+
+# CLI
+python cli.py run --chart-id 123 --only section_headers
+```
+
+**Existing databases** (schema already applied): insert the new stage row once:
+
+```sql
+INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1)
+VALUES ('section_headers', 1, 55, 'Section Header Match', TRUE)
+ON CONFLICT (stage_name, pass_no) DO NOTHING;
+```
 
 **Recommended: keep weights under `models/semantic-model/`** (gitignored):
 

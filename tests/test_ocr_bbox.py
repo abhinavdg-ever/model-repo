@@ -140,7 +140,7 @@ def test_azure_section_headers_pixel_2x_uses_image():
             "polygon": [200.0, 400.0, 800.0, 400.0, 800.0, 480.0, 200.0, 480.0],
         }
     ]
-    headers = _section_headers_from_lines(
+    _cands, headers = _section_headers_from_lines(
         lines,
         page_w=2000.0,
         page_h=4000.0,
@@ -185,7 +185,7 @@ def test_azure_line_polygon_to_section_headers():
     ]
     assert meta["words"][0]["polygon"][:2] == [10.0, 20.0]
 
-    headers = _section_headers_from_lines(
+    _cands, headers = _section_headers_from_lines(
         meta["lines"], page_w=1000.0, page_h=2000.0
     )
     assert len(headers) == 1

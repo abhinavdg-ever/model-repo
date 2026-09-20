@@ -158,6 +158,7 @@ STAGE_LABELS = {
     "blank_junk": "Blank/Junk",
     "ocr_final1": "Final OCR 1",
     "ocr_final2": "Final OCR 2",
+    "section_headers": "Section Headers",
     "member_verify": "Member Verify",
     "dos_extract": "Date of Service",
     "download_blob": "Download",

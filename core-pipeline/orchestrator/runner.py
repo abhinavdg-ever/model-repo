@@ -31,6 +31,7 @@ from stages import (
     ocr_final2_azure,
     ocr_prelim_tesseract,
     quality_rotation_hw,
+    section_headers,
 )
 from stages.download_blob import run_download
 
@@ -50,6 +51,7 @@ STAGE_CHAIN: list[tuple[str, int, StageFn]] = [
     ("blank_junk", 1, blank_junk_classify.run_pass1),
     ("ocr_final1", 1, ocr_final1_docling.run),
     ("ocr_final2", 1, ocr_final2_azure.run),
+    ("section_headers", 1, section_headers.run),
     ("blank_junk", 2, blank_junk_classify.run_pass2),
     ("member_verify", 1, member_extract_verify.run),
     ("dos_extract", 1, dos_extract.run),

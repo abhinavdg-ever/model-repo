@@ -13,7 +13,7 @@
 --
 -- WHAT IS IN HERE — the eight orchestrated stages and what backs them
 -- ---------------------------------------------------------------------
---   pipeline_stage               stage registry (the 8 implemented stages)
+--   pipeline_stage               stage registry (the 9 implemented stages)
 --   chart_list / page_list       identity + lifecycle
 --   page_stage_status            per-page per-stage per-pass progress
 --   manifest_member_list         the client roster
@@ -103,6 +103,7 @@ INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1) VALUES
     ('blank_junk',       1, 30, 'Blank/Junk/Duplicate — pass 1',  TRUE),
     ('ocr_final1',       1, 40, 'Final OCR 1 (RapidOCR)',        TRUE),
     ('ocr_final2',       1, 50, 'Final OCR 2 (Azure DocIntel)',  TRUE),
+    ('section_headers',  1, 55, 'Section Header Match',          TRUE),
     ('blank_junk',       2, 60, 'Blank/Junk/Duplicate — pass 2',  TRUE),
     ('member_verify',    1, 70, 'Member Extraction + Verify',    TRUE),
     ('dos_extract',      1, 80, 'Date-of-Service Extraction',    TRUE);

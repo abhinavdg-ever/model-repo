@@ -240,7 +240,7 @@ still renders.
 
 | File | Role |
 |---|---|
-| `runner.py` | `STAGE_CHAIN` — the eight stages in order — plus `run_pipeline_for_chart` (resume, `force`, `only`, `through`), `resolve_stage` (the one place a stage name is parsed) and `ingest_and_run`, which both `/run` and `/batch-run` go through. Refreshes chart status after each stage; aborts the chain on a stage exception, because every later stage reads what the failed one produced. |
+| `runner.py` | `STAGE_CHAIN` — the nine stages in order — plus `run_pipeline_for_chart` (resume, `force`, `only`, `through`), `resolve_stage` (the one place a stage name is parsed) and `ingest_and_run`, which both `/run` and `/batch-run` go through. Refreshes chart status after each stage; aborts the chain on a stage exception, because every later stage reads what the failed one produced. |
 | `__init__.py` | Package marker. |
 
 ### `core-pipeline/db/`
@@ -259,7 +259,7 @@ still renders.
 | `manifest_sweeper.py` | Batch manifest loader. Parses CSV/XLSX from a file, directory or blob prefix; recognises the column aliases; splits name parts; derives `run_id`/`batch_id` from the `R#_B#` filename; upserts on `record_id`. Creates no placeholder charts. |
 | `__init__.py` | Package marker. |
 
-### `core-pipeline/stages/` — the eight stages
+### `core-pipeline/stages/` — the nine stages
 
 | File | Role |
 |---|---|
@@ -267,11 +267,12 @@ still renders.
 | `download_blob.py` | **Intake.** Upserts the chart, downloads page images (skipping bytes already on disk), records SHA-256 + size, seeds `page_stage_status`, links manifest rows swept earlier. `import_local_folder()` is the local-source equivalent; `register_local_pages()` registers a folder already under `data/folders`. |
 | `ocr_prelim_tesseract.py` | **Stage 2.** Tesseract over every page (the corrected image when one exists), threaded to `STAGE_WORKERS`. Writes `ocr_results` and rebuilds `_prelim.txt`. |
 | `quality_rotation_hw.py` | **Stage 1.** Rotation, handwriting (ConvNeXt or RF), and measured quality analyzer. Writes `ocr_quality_results` plus rotation / hw / quality CSVs. |
-| `blank_junk_classify.py` | **Stages 3 and 6.** Both passes: eligibility, the cross-pass duplicate fingerprint table, the subtype mapping into the schema's constrained vocabulary, `mark_blank_junk_final`, and a full CSV rewrite from the database. |
-| `ocr_final1_docling.py` | **Stage 4.** Docling+RapidOCR when ready; else RapidOCR-onnx only. Stores as `ocr_type='docling'` — the UI's "Final (OSS)" slot. |
+| `blank_junk_classify.py` | **Stages 3 and 7.** Both passes: eligibility, the cross-pass duplicate fingerprint table, the subtype mapping into the schema's constrained vocabulary, `mark_blank_junk_final`, and a full CSV rewrite from the database. |
+| `ocr_final1_docling.py` | **Stage 4.** Docling+RapidOCR when ready; else RapidOCR-onnx only. Stores as `ocr_type='docling'` — the UI's "Final (OSS)" slot. Writes `section_header_candidates`. |
 | `ocr_final2_azure.py` | **Stage 5.** Azure Document Intelligence `prebuilt-read`, one shared client. Skips high-quality printed pages. The billed stage, so the resume path matters most here. |
-| `member_extract_verify.py` | **Stage 7.** Plumbing around the ported engine: picks the manifest row, chooses eligible pages, assembles the best text per page, runs `verify_record`, persists page rows and the summary, writes three CSVs including the V1-shaped comparison file. |
-| `dos_extract.py` | **Stage 8.** Builds the marker-delimited text, calls the ported driver `detect_dos_per_page` (regex → LLM → carry-forward), persists the primary pair plus every date, writes the DOS CSV. |
+| `section_headers.py` | **Stage 6.** Re-derives `section_headers` from on-disk Final1/Final2 JSON (candidates / `pagesMeta` / `document`) against the canon list — no OCR. |
+| `member_extract_verify.py` | **Stage 8.** Plumbing around the ported engine: picks the manifest row, chooses eligible pages, assembles the best text per page, runs `verify_record`, persists page rows and the summary, writes three CSVs including the V1-shaped comparison file. |
+| `dos_extract.py` | **Stage 9.** Builds the marker-delimited text, calls the ported driver `detect_dos_per_page` (regex → LLM → carry-forward), persists the primary pair plus every date, writes the DOS CSV. |
 | `__init__.py` | Package marker. |
 
 ### `core-pipeline/stages/lib/imaging/` — rotation + handwriting + quality
