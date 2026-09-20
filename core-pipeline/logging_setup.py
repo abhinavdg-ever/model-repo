@@ -37,10 +37,9 @@ from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Optional
 
-# Setting the parent `azure` logger covers azure.core, azure.identity,
-# azure.storage.blob and azure.ai.documentintelligence in one line — child
-# loggers inherit the level they do not set themselves.
-NOISY_LOGGERS = ("azure", "urllib3", "msal")
+# Parent loggers: one setLevel covers every child. Azure HTTP dumps and Docling's
+# per-page "Going to convert document batch..." flood INFO the same way.
+NOISY_LOGGERS = ("azure", "urllib3", "msal", "docling", "rapidocr")
 
 # Always quieted, regardless of AZURE_LOG_LEVEL: this logger emits a ~20-line
 # WARNING naming all nine credential sources, and then raises a

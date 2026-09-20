@@ -1447,6 +1447,23 @@ class TestAzureSdkLogging:
         assert not http_policy.isEnabledFor(logging.INFO)
         assert not logging.getLogger("azure.identity").isEnabledFor(logging.INFO)
 
+    def test_quieting_covers_docling_progress_spam(self, monkeypatch):
+        """Docling logs every convert at INFO on ThreadPoolExecutor threads —
+        that buries the pipeline's [batch#] [chart#] progress lines."""
+        import logging
+
+        monkeypatch.delenv("AZURE_LOG_LEVEL", raising=False)
+        from logging_setup import quiet_noisy_loggers
+
+        quiet_noisy_loggers()
+        assert not logging.getLogger("docling.document_converter").isEnabledFor(
+            logging.INFO
+        )
+        assert not logging.getLogger("docling.pipeline.base_pipeline").isEnabledFor(
+            logging.INFO
+        )
+        assert logging.getLogger("docling").isEnabledFor(logging.WARNING)
+
     def test_warnings_and_errors_still_get_through(self, monkeypatch):
         """A 429 or a 403 must not be silenced along with the header dump."""
         import logging
