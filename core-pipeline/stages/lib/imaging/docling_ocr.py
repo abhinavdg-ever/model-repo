@@ -713,7 +713,7 @@ def convert_image_with_timeout(
     image_path: Path,
     *,
     converter: Any | None = None,
-    timeout_seconds: float = 90.0,
+    timeout_seconds: float = 30.0,
 ) -> dict[str, Any]:
     """``convert_image`` bounded by a wall-clock timeout.
 
