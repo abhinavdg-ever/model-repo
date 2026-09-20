@@ -200,10 +200,9 @@ STAGE_WORKERS = int(os.environ.get("STAGE_WORKERS") or "4")
 DOCLING_WORKERS = int(os.environ.get("DOCLING_WORKERS") or "1")
 # Per-page wall clock for Docling; on timeout/empty content final1 falls back
 # to RapidOCR-onnx so the rest of the chain is not blocked forever.
-# 30s default: cell-matching pages often crawl past this; RapidOCR-onnx then
-# finishes the page. Raise when you want Docling to keep trying longer.
+# 90s default: ACCURATE+cell-matching was measured at ~778s/page on large TIFFs.
 DOCLING_PAGE_TIMEOUT_SECONDS = float(
-    os.environ.get("DOCLING_PAGE_TIMEOUT_SECONDS") or "30"
+    os.environ.get("DOCLING_PAGE_TIMEOUT_SECONDS") or "90"
 )
 # Final1 section_headers JSON: keep only candidates ≥ threshold similar to a
 # known clinical header (MiniLM when sentence-transformers is installed).

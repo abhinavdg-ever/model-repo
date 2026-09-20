@@ -1,17 +1,9 @@
 """Stage: final OCR 1 (Docling layout + RapidOCR) → ocr_results + JSON file.
 
 Preferred engine is Docling with local RapidOCR ``.pth`` models (layout,
-TableFormer, reading order) — the V1 ``os_ocr.py`` path.
-
-Fallback rules (order matters):
-
-* **Timeout / Docling busy** → RapidOCR-onnx body only (no second Docling).
-  An abandoned Torch convert still holds the process lock; starting hybrid
-  Docling on top always times out and looks like "retries".
-* **Sparse/empty markdown** (Docling finished) → hybrid: Docling with
-  ``cell_matching=false`` for ``section_headers`` + RapidOCR-onnx for body
-  (``engine=docling-headers+rapidocr-onnx``).
-* **Other Docling errors** → same hybrid attempt; if that fails, Rapid only.
+TableFormer, reading order) — the V1 ``os_ocr.py`` path. When Docling or the
+model files are missing, falls back to RapidOCR-onnxruntime only (Tesseract is
+already stage 2 / prelim — it is not repeated here).
 
 ``ocr_results.ocr_type`` stays ``'docling'`` — that is the slot the review UI
 labels "Final (OSS)".
@@ -52,7 +44,6 @@ from stages._support import (
 logger = logging.getLogger(__name__)
 
 STAGE = "ocr_final1"
-HYBRID_ENGINE = "docling-headers+rapidocr-onnx"
 
 _engine_lock = threading.Lock()
 _onnx_engine: Any = None
@@ -92,86 +83,8 @@ def _ocr_onnx(image_path: Path) -> str:
     return "\n".join(line[1] for line in result if len(line) > 1)
 
 
-def _rapid_only(image_path: Path) -> dict[str, Any]:
-    text = _ocr_onnx(image_path)
-    return {
-        "content": text,
-        "markdown": text,
-        "document": None,
-        "section_headers": [],
-        "engine": "rapidocr-onnx",
-    }
-
-
-def _hybrid_headers_and_rapid(
-    image_path: Path,
-    *,
-    page_name: str,
-    reason: str,
-) -> dict[str, Any]:
-    """Fast Docling (no cell matching) for headers + RapidOCR-onnx for body.
-
-    Only call when the primary Docling pass **finished** (e.g. sparse). Never
-    after a timeout — the orphan still owns the Docling lock/CPU.
-    """
-    from stages.lib.imaging.docling_ocr import (
-        convert_image_with_timeout,
-        get_converter,
-    )
-
-    headers: list[dict[str, Any]] = []
-    fast = get_converter(cell_matching=False)
-    if fast is not None:
-        try:
-            extracted = convert_image_with_timeout(
-                image_path,
-                converter=fast,
-                timeout_seconds=DOCLING_PAGE_TIMEOUT_SECONDS,
-            )
-            headers = list(extracted.get("section_headers") or [])
-            logger.info(
-                "Final1 hybrid headers for %s (%s): %d header(s)",
-                page_name,
-                reason,
-                len(headers),
-            )
-        except Exception as exc:
-            logger.warning(
-                "Final1 hybrid Docling headers failed for %s (%s) — Rapid only",
-                page_name,
-                exc,
-            )
-    else:
-        logger.warning(
-            "Final1 hybrid: no cell_matching=false converter — Rapid only for %s",
-            page_name,
-        )
-
-    text = _ocr_onnx(image_path)
-    if headers:
-        return {
-            "content": text,
-            "markdown": text,
-            "document": None,
-            "section_headers": headers,
-            "engine": HYBRID_ENGINE,
-        }
-    return {
-        "content": text,
-        "markdown": text,
-        "document": None,
-        "section_headers": [],
-        "engine": "rapidocr-onnx",
-    }
-
-
-def _ocr_one(args: tuple[dict[str, Any], Path, bool, str]) -> dict[str, Any]:
-    page, image_path, prefer_docling, chart_name = args
-    from logging_setup import reset_current_chart, set_current_chart, set_worker_name
-
-    # Page pool threads do not inherit the batch thread's chart context.
-    set_worker_name(f"page-{page.get('page_number') or page['id']}")
-    chart_token = set_current_chart(chart_name)
+def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
+    page, image_path, prefer_docling = args
     out: dict[str, Any] = {
         "page_id": page["id"],
         "page_name": page["page_name"],
@@ -221,50 +134,29 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool, str]) -> dict[str, Any]:
                         return out
                     logger.warning(
                         "Docling sparse/empty for %s (%.1fs, chars=%d) — "
-                        "hybrid headers + RapidOCR-onnx",
+                        "falling back to RapidOCR-onnx",
                         page["page_name"],
                         elapsed or 0.0,
                         len(content or ""),
                     )
-                    out.update(
-                        _hybrid_headers_and_rapid(
-                            image_path,
-                            page_name=page["page_name"],
-                            reason=(
-                                f"sparse/empty "
-                                f"({elapsed or 0.0:.1f}s, chars={len(content)})"
-                            ),
-                        )
-                    )
-                    return out
                 except TimeoutError as exc:
-                    # Orphan Docling still running — do not start hybrid.
-                    logger.warning("%s — RapidOCR-onnx only (no hybrid)", exc)
-                    out.update(_rapid_only(image_path))
-                    return out
+                    logger.warning("%s — falling back to RapidOCR-onnx", exc)
                 except Exception as exc:
                     logger.warning(
-                        "Docling failed for %s (%s) — hybrid headers + RapidOCR-onnx",
+                        "Docling failed for %s (%s) — falling back to RapidOCR-onnx",
                         page["page_name"],
                         exc,
                     )
-                    out.update(
-                        _hybrid_headers_and_rapid(
-                            image_path,
-                            page_name=page["page_name"],
-                            reason=f"{type(exc).__name__}: {exc}",
-                        )
-                    )
-                    return out
 
-        out.update(_rapid_only(image_path))
+        text = _ocr_onnx(image_path)
+        out["content"] = text
+        out["markdown"] = text
+        out["engine"] = "rapidocr-onnx"
         return out
     except Exception as exc:
         logger.exception("Final1 OCR failed for %s", page["page_name"])
         out["error"] = str(exc)
         return out
-    finally:
-        reset_current_chart(chart_token)
 
 
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
@@ -278,8 +170,6 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         if get_converter() is not None:
             prefer_docling = True
             engine_label = "docling+rapidocr"
-            # Warm the fast (no cell-matching) converter for sparse hybrid.
-            get_converter(cell_matching=False)
         else:
             logger.info(
                 "Docling final1 not ready (%s); using RapidOCR-onnx. "
@@ -322,7 +212,6 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             workers = max(1, min(STAGE_WORKERS, len(todo)))
             if prefer_docling:
                 # Torch RapidOCR + Docling thrash under fan-out; serial by default.
-                # Process-wide Docling lock also serializes across batch charts.
                 workers = max(1, min(DOCLING_WORKERS, workers))
                 logger.info(
                     "Final1 Docling workers=%d timeout=%.0fs",
@@ -340,7 +229,6 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                                 p,
                                 page_image_path(ctx.chart_name, p["page_name"]),
                                 prefer_docling,
-                                ctx.chart_name,
                             )
                             for p in todo
                         ],
