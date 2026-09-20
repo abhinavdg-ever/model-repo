@@ -83,8 +83,12 @@ def _ocr_onnx(image_path: Path) -> str:
     return "\n".join(line[1] for line in result if len(line) > 1)
 
 
-def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
-    page, image_path, prefer_docling = args
+def _ocr_one(args: tuple[dict[str, Any], Path, bool, str]) -> dict[str, Any]:
+    page, image_path, prefer_docling, chart_name = args
+    from logging_setup import reset_current_chart, set_current_chart, set_worker_name
+
+    set_worker_name(f"page-{page.get('page_number') or page['id']}")
+    chart_token = set_current_chart(chart_name)
     out: dict[str, Any] = {
         "page_id": page["id"],
         "page_name": page["page_name"],
@@ -157,6 +161,8 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
         logger.exception("Final1 OCR failed for %s", page["page_name"])
         out["error"] = str(exc)
         return out
+    finally:
+        reset_current_chart(chart_token)
 
 
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
@@ -229,6 +235,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                                 p,
                                 page_image_path(ctx.chart_name, p["page_name"]),
                                 prefer_docling,
+                                ctx.chart_name,
                             )
                             for p in todo
                         ],

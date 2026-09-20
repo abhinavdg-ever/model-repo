@@ -46,6 +46,7 @@ NOISY_LOGGERS = (
     "msal",
     "docling",
     "rapidocr",
+    "RapidOCR",
     "httpx",
     "httpcore",
     "huggingface_hub",
