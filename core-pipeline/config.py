@@ -149,11 +149,16 @@ def _flag(name: str, default: bool) -> bool:
 
 
 # When true, ocr_prelim / ocr_final1 / ocr_final2 are skipped if the chart's
-# ocr/ folder already has usable files (re-hydrated into ocr_results), OR if
-# ocr_results already has rows (materialized back into the three ocr/ files).
-# If neither is available, SKIP_OCR is ignored and OCR runs normally.
-# force=True on run/batch always re-OCRs.
+# *output folder* ``ocr/`` (or workspace ``ocr/``) already has usable files
+# (re-hydrated into ocr_results), OR if ocr_results already has rows
+# (materialized back into the three ocr/ files). If neither is available,
+# SKIP_OCR is ignored and OCR runs normally. force=True always re-OCRs.
 SKIP_OCR = _flag("SKIP_OCR", False)
+
+# Batch: charts with this many pages (or more) share a single concurrency slot
+# while any smaller chart is still pending. When only large charts remain, the
+# normal worker pool applies. Override with LARGE_CHART_MIN_PAGES.
+LARGE_CHART_MIN_PAGES = int(os.environ.get("LARGE_CHART_MIN_PAGES") or "100")
 
 
 def _azure_openai_auth_usable() -> bool:

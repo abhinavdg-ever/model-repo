@@ -397,7 +397,8 @@ export default function FolderViewer({
     const known = pageHeaderBoxes.map((h) => h.text);
     return prepareOcrLines(pageOcrText, {
       showSectionHeaders,
-      detectPlainHeaders: true,
+      // Only lines that survived the ≥90% canon match (from the API).
+      detectPlainHeaders: false,
       knownHeaders: known,
     });
   }, [
@@ -729,11 +730,9 @@ export default function FolderViewer({
                             left: `${box.left * 100}%`,
                             top: `${box.top * 100}%`,
                             width: `${box.width * 100}%`,
-                            height: `${Math.max(box.height * 100, 0.8)}%`,
+                            height: `${Math.max(box.height * 100, 0.6)}%`,
                           }}
-                        >
-                          <span className="page-header-box-label">{box.text}</span>
-                        </div>
+                        />
                       ))}
                     </div>
                   ) : null}

@@ -35,6 +35,6 @@ def test_strips_image_placeholders_and_empty_tables():
 def test_patient_data_matches_canon():
     from stages.lib.imaging.section_header_match import best_header_match
 
-    score, label = best_header_match("PATIENT DATA")
+    score, label = best_header_match("PATIENT DATA", use_minilm=False)
     assert score >= 0.90
     assert "Patient" in label or "patient" in label.lower()

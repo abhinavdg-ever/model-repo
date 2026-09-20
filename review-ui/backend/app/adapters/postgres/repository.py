@@ -482,9 +482,14 @@ class PostgresFolderRepository(FolderRepository):
                 if not body.startswith("Skipped for "):
                     body = clean_ocr_display_text(body)
             if ocr_type in {"docling", "azuredocintel"} and parsed is not None:
-                from app.adapters.local.repository import _section_headers_from_page
+                from app.adapters.local.repository import (
+                    _filter_headers_against_canon,
+                    _section_headers_from_page,
+                )
 
-                headers = _section_headers_from_page(parsed)
+                headers = _filter_headers_against_canon(
+                    _section_headers_from_page(parsed)
+                )
                 if headers:
                     headers_by_file[str(page_name)] = headers
                     headers_by_file[str(page_name).lower()] = headers

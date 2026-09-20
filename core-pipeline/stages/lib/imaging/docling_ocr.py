@@ -376,7 +376,8 @@ def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
         seen.add(key)
 
         l = t = r = b = 0.0
-        origin = "BOTTOMLEFT"
+        # Image converts are TOPLEFT; PDF-style BOTTOMLEFT is the exception.
+        origin = "TOPLEFT"
         page_no = 1
         has_box = False
         if prov is not None:
@@ -389,8 +390,10 @@ def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
                     l, t, r, b = float(bbox.l), float(bbox.t), float(bbox.r), float(bbox.b)
                     origin = str(
                         getattr(getattr(first, "coord_origin", None), "value", None)
+                        or getattr(getattr(bbox, "coord_origin", None), "value", None)
                         or getattr(first, "coord_origin", None)
-                        or "BOTTOMLEFT"
+                        or getattr(bbox, "coord_origin", None)
+                        or "TOPLEFT"
                     )
                     raw_page = getattr(first, "page_no", None)
                     page_no = int(raw_page) if raw_page is not None else 1
@@ -403,7 +406,7 @@ def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
                     origin = str(
                         first.get("coord_origin")
                         or bbox.get("coord_origin")
-                        or "BOTTOMLEFT"
+                        or "TOPLEFT"
                     )
                     raw_page = first.get("page_no")
                     page_no = int(raw_page) if raw_page is not None else 1
@@ -496,11 +499,21 @@ def _bbox_to_css_norm(
     page_h: float,
     origin: str,
 ) -> dict[str, float] | None:
-    """Convert Docling bbox to CSS top-left fractions (0–1)."""
+    """Convert Docling bbox to CSS top-left fractions (0–1).
+
+    Image OCR almost always uses TOPLEFT (y down). PDF-style BOTTOMLEFT (y up)
+    is supported when declared. If the declared origin disagrees with whether
+    ``t`` is above ``b``, trust the geometry.
+    """
     if page_w <= 0 or page_h <= 0:
         return None
-    origin_u = (origin or "BOTTOMLEFT").upper().replace("-", "").replace("_", "")
-    # Ensure l<=r; for BOTTOMLEFT y increases up so t is typically >= b.
+    origin_u = (origin or "TOPLEFT").upper().replace("-", "").replace("_", "")
+    # t/b ordering is a reliable signal when the flag is missing or wrong.
+    if t < b and origin_u.startswith("BOTTOM"):
+        origin_u = "TOPLEFT"
+    elif t > b and origin_u.startswith("TOP"):
+        origin_u = "BOTTOMLEFT"
+
     left = min(l, r)
     right = max(l, r)
     if origin_u.startswith("BOTTOM"):
@@ -515,7 +528,7 @@ def _bbox_to_css_norm(
         css_height = (bot_y - top_y) / page_h
     css_left = left / page_w
     css_width = (right - left) / page_w
-    # Clamp
+
     def clip(v: float) -> float:
         return max(0.0, min(1.0, float(v)))
 

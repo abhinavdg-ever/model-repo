@@ -4,6 +4,7 @@ import csv
 import json
 import os
 import re
+import sys
 import threading
 import time
 from datetime import date, datetime, timezone
@@ -258,24 +259,30 @@ def _section_headers_from_page(page: dict[str, Any]) -> list[OcrSectionHeader]:
         if not text:
             continue
         left = top = width = height = 0.0
-        norm = item.get("norm") if isinstance(item.get("norm"), dict) else None
-        if norm:
-            try:
-                left = float(norm.get("left") or 0)
-                top = float(norm.get("top") or 0)
-                width = float(norm.get("width") or 0)
-                height = float(norm.get("height") or 0)
-            except (TypeError, ValueError):
-                left = top = width = height = 0.0
-        elif isinstance(item.get("bbox"), (list, tuple)) and len(item["bbox"]) >= 4:
+        # Prefer recomputing from raw bbox/polygon so older JSON written with a
+        # wrong coord_origin (BOTTOMLEFT default on image OCR) still lines up.
+        if isinstance(item.get("bbox"), (list, tuple)) and len(item["bbox"]) >= 4:
             try:
                 l, t, r, b = (float(x) for x in item["bbox"][:4])
                 pw = float(item.get("page_width") or 0) or 1.0
                 ph = float(item.get("page_height") or 0) or 1.0
+                origin = str(item.get("coord_origin") or "TOPLEFT").upper()
+                origin_key = origin.replace("-", "").replace("_", "")
+                # t < b ⇒ y grows downward (TOPLEFT); t > b ⇒ BOTTOMLEFT.
+                if t < b and origin_key.startswith("BOTTOM"):
+                    origin_key = "TOPLEFT"
+                elif t > b and origin_key.startswith("TOP"):
+                    origin_key = "BOTTOMLEFT"
                 left = min(l, r) / pw
-                top = min(t, b) / ph
+                if origin_key.startswith("BOTTOM"):
+                    top_y = max(t, b)
+                    bot_y = min(t, b)
+                    top = (ph - top_y) / ph
+                    height = (top_y - bot_y) / ph
+                else:
+                    top = min(t, b) / ph
+                    height = abs(b - t) / ph
                 width = abs(r - l) / pw
-                height = abs(b - t) / ph
             except (TypeError, ValueError):
                 left = top = width = height = 0.0
         elif isinstance(item.get("polygon"), (list, tuple)) and len(item["polygon"]) >= 8:
@@ -299,6 +306,16 @@ def _section_headers_from_page(page: dict[str, Any]) -> list[OcrSectionHeader]:
                 height = abs(b - t) / ph
             except (TypeError, ValueError):
                 left = top = width = height = 0.0
+        else:
+            norm = item.get("norm") if isinstance(item.get("norm"), dict) else None
+            if norm:
+                try:
+                    left = float(norm.get("left") or 0)
+                    top = float(norm.get("top") or 0)
+                    width = float(norm.get("width") or 0)
+                    height = float(norm.get("height") or 0)
+                except (TypeError, ValueError):
+                    left = top = width = height = 0.0
         try:
             level = int(item.get("level") or 2)
         except (TypeError, ValueError):
@@ -382,10 +399,110 @@ def _headers_from_azure_pages_meta(page: dict[str, Any]) -> list[dict[str, Any]]
     return out
 
 
+def _core_pipeline_dir() -> Path | None:
+    """Monorepo ``core-pipeline/`` when present (for live canon filtering)."""
+    try:
+        from app.core.config import get_settings
+
+        root = get_settings().resolved_monorepo_root
+        core = Path(root) / "core-pipeline"
+        if core.is_dir():
+            return core
+    except Exception:
+        pass
+    # review-ui/backend/app/adapters/local → parents[4] = monorepo
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        core = parent / "core-pipeline"
+        if core.is_dir() and (core / "stages" / "lib" / "imaging").is_dir():
+            return core
+    return None
+
+
+def _filter_headers_against_canon(
+    headers: list[OcrSectionHeader],
+) -> list[OcrSectionHeader]:
+    """Keep headers with ≥90% lexical/semantic match to ``section_header_canon.json``.
+
+    Re-runs on every OCR fetch so editing the list updates overlays without
+    re-OCR. Falls back to exact normalized match if the matcher cannot import.
+    """
+    if not headers:
+        return headers
+    core = _core_pipeline_dir()
+    if core is not None:
+        core_s = str(core)
+        if core_s not in sys.path:
+            sys.path.insert(0, core_s)
+        try:
+            from stages.lib.imaging.section_header_match import (  # type: ignore
+                filter_section_headers,
+            )
+
+            as_dicts = [
+                {
+                    "text": h.text,
+                    "level": h.level,
+                    "left": h.left,
+                    "top": h.top,
+                    "width": h.width,
+                    "height": h.height,
+                }
+                for h in headers
+            ]
+            kept = filter_section_headers(
+                as_dicts, threshold=0.90, enabled=True, use_minilm=False
+            )
+            out: list[OcrSectionHeader] = []
+            for item in kept:
+                out.append(
+                    OcrSectionHeader(
+                        text=str(item.get("text") or ""),
+                        level=int(item.get("level") or 2),
+                        left=float(item.get("left") or 0),
+                        top=float(item.get("top") or 0),
+                        width=float(item.get("width") or 0),
+                        height=float(item.get("height") or 0),
+                    )
+                )
+            return out
+        except Exception as exc:
+            logger = __import__("logging").getLogger(__name__)
+            logger.warning("Live section-header canon filter skipped: %s", exc)
+
+    # Exact-match fallback against the JSON list (no MiniLM / difflib).
+    canon_path = None
+    if core is not None:
+        canon_path = (
+            core / "stages" / "lib" / "imaging" / "section_header_canon.json"
+        )
+    if canon_path is None or not canon_path.is_file():
+        return headers
+    try:
+        raw = json.loads(canon_path.read_text(encoding="utf-8"))
+        if not isinstance(raw, list):
+            return headers
+
+        def _norm(s: str) -> str:
+            t = (s or "").strip().lower()
+            t = re.sub(r"[:*\-–—|/]+$", "", t)
+            t = re.sub(r"[^\w\s/+]+", " ", t)
+            return re.sub(r"\s+", " ", t).strip()
+
+        allowed = {_norm(str(x)) for x in raw if str(x).strip()}
+        return [h for h in headers if _norm(h.text) in allowed]
+    except Exception:
+        return headers
+
+
 def section_headers_by_file_from_ocr_json(
     data: Any,
 ) -> dict[str, list[OcrSectionHeader]]:
-    """Map fileName → header boxes from a combined final1/final2 JSON doc."""
+    """Map fileName → header boxes from a combined final1/final2 JSON doc.
+
+    Headers are re-filtered against the live canon list (≥90% match) so list
+    edits apply immediately without re-running Final1.
+    """
     if isinstance(data, list):
         pages = data
     elif isinstance(data, dict):
@@ -404,7 +521,7 @@ def section_headers_by_file_from_ocr_json(
             or page.get("file_name")
             or f"{page.get('pageNumber') or idx}.jpg"
         )
-        headers = _section_headers_from_page(page)
+        headers = _filter_headers_against_canon(_section_headers_from_page(page))
         if headers:
             by_file[filename] = headers
             by_file[filename.lower()] = headers

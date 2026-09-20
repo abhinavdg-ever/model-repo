@@ -1,4 +1,4 @@
-"""Tests for SKIP_OCR disk detection (no database)."""
+"""Tests for SKIP_OCR disk / output-folder detection (no database)."""
 from __future__ import annotations
 
 import json
@@ -93,3 +93,94 @@ def test_should_skip_prefers_disk_then_needs_db(tmp_path, monkeypatch):
     assert (
         should_skip_ocr_stages(chart_name=chart, force=True, skip_ocr=True) is False
     )
+
+
+def test_copy_ocr_from_output_folder_into_workspace(tmp_path, monkeypatch):
+    import config
+    from stages.ocr_reuse import (
+        _copy_ocr_dir_into_workspace,
+        _local_output_ocr_candidates,
+        ocr_artifacts_in_dir,
+        ocr_artifacts_present,
+    )
+
+    monkeypatch.setattr(config, "DATA_ROOT", tmp_path / "workspace")
+    chart = "FolderName"
+    out = tmp_path / "Processed" / "Run1" / "Batch1" / chart
+    out_ocr = out / "ocr"
+    out_ocr.mkdir(parents=True)
+    (out_ocr / f"{chart}_final1.json").write_text(
+        json.dumps({"pages": [{"fileName": "1.jpg", "content": "x"}]}),
+        encoding="utf-8",
+    )
+    assert ocr_artifacts_in_dir(out_ocr, chart) is True
+    assert any(
+        ocr_artifacts_in_dir(c, chart)
+        for c in _local_output_ocr_candidates(str(out), chart)
+    )
+    assert ocr_artifacts_present(chart) is False
+    assert _copy_ocr_dir_into_workspace(out_ocr, chart) == 1
+    assert ocr_artifacts_present(chart) is True
+
+
+def test_large_chart_limiter_serializes_large_while_smalls_remain():
+    import threading
+    import time
+
+    from jobs.batch_intake import LargeChartLimiter
+
+    limiter = LargeChartLimiter(small_remaining=1)
+    order: list[str] = []
+    lock = threading.Lock()
+    first_in = threading.Event()
+
+    def large(tag: str) -> None:
+        limiter.enter(True)
+        with lock:
+            order.append(f"{tag}-in")
+        if tag == "A":
+            first_in.set()
+            time.sleep(0.12)
+        with lock:
+            order.append(f"{tag}-out")
+        limiter.leave(True)
+
+    t_a = threading.Thread(target=large, args=("A",))
+    t_b = threading.Thread(target=large, args=("B",))
+    t_a.start()
+    assert first_in.wait(timeout=2)
+    t_b.start()
+    time.sleep(0.05)
+    with lock:
+        assert "B-in" not in order
+    t_a.join(timeout=2)
+    t_b.join(timeout=2)
+    assert order.index("A-out") < order.index("B-in")
+
+
+def test_large_chart_limiter_allows_parallel_large_when_only_large_left():
+    import threading
+    import time
+
+    from jobs.batch_intake import LargeChartLimiter
+
+    limiter = LargeChartLimiter(small_remaining=0)
+    both_in = threading.Event()
+    in_count = {"n": 0}
+    lock = threading.Lock()
+
+    def large() -> None:
+        limiter.enter(True)
+        with lock:
+            in_count["n"] += 1
+            if in_count["n"] >= 2:
+                both_in.set()
+        time.sleep(0.08)
+        limiter.leave(True)
+
+    threads = [threading.Thread(target=large) for _ in range(2)]
+    for t in threads:
+        t.start()
+    assert both_in.wait(timeout=2)
+    for t in threads:
+        t.join(timeout=2)

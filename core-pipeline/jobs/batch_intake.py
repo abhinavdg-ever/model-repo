@@ -27,10 +27,63 @@ from config import (
     BATCH_POOL_HEADROOM,
     BATCH_WORKERS,
     IMAGE_SUFFIXES,
+    LARGE_CHART_MIN_PAGES,
     STAGE_WORKERS,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class LargeChartLimiter:
+    """At most one ≥N-page chart while any smaller chart is still pending.
+
+    When only large charts remain, the normal worker pool runs them in parallel.
+    """
+
+    def __init__(self, small_remaining: int) -> None:
+        self._lock = threading.Lock()
+        self._cond = threading.Condition(self._lock)
+        self._small_remaining = max(0, int(small_remaining))
+        self._large_running = 0
+
+    def enter(self, is_large: bool) -> None:
+        if not is_large:
+            return
+        with self._cond:
+            while self._small_remaining > 0 and self._large_running >= 1:
+                self._cond.wait()
+            self._large_running += 1
+
+    def leave(self, is_large: bool) -> None:
+        with self._cond:
+            if is_large:
+                self._large_running = max(0, self._large_running - 1)
+                self._cond.notify_all()
+            else:
+                if self._small_remaining > 0:
+                    self._small_remaining -= 1
+                    self._cond.notify_all()
+
+
+def estimate_chart_pages(
+    source: str,
+    mode: str,
+    *,
+    blob_container: Optional[str] = None,
+) -> int:
+    """Best-effort page count before ingest (for large-chart scheduling)."""
+    try:
+        if mode == "local":
+            from stages.download_blob import _collect_images
+
+            return len(_collect_images(Path(source), recursive=True))
+        if mode == "blob" and blob_container:
+            from db.blob_store import list_image_blobs
+
+            return len(list_image_blobs(blob_container, source))
+    except Exception:
+        logger.debug("page estimate failed for %s", source, exc_info=True)
+    return 0
 
 
 def find_local_chart_folders(root: str | Path) -> list[Path]:
@@ -258,75 +311,93 @@ def _run_one_chart(
     counters: dict[str, int],
     counter_lock: threading.Lock,
     batch_progress_dir: Optional[str] = None,
+    is_large: bool = False,
+    large_limiter: Optional[LargeChartLimiter] = None,
 ) -> dict[str, Any]:
     from logging_setup import set_worker_name
     from orchestrator.runner import ingest_and_run
 
     set_worker_name(f"batch-{index}")
-    with counter_lock:
-        counters["started"] += 1
-        started_n = counters["started"]
-    # index = listing order; started_n = how many workers have begun (≠ when workers>1)
-    logger.info(
-        "[start %d/%d] %s (in flight %d)",
-        index, total, name, started_n,
-    )
-    _note_progress(
-        name,
-        index,
-        total,
-        batch_dir=batch_progress_dir,
-        detail=f"starting {name}",
-        batch_n=started_n,
-    )
-
-    entry: dict[str, Any] = {"source": source, "name": name, "index": index, "of": total}
+    if large_limiter is not None:
+        large_limiter.enter(is_large)
     try:
-        out = ingest_and_run(
-            local_path=source if mode == "local" else None,
-            blob_container=blob_container if mode == "blob" else None,
-            blob_path=source if mode == "blob" else None,
-            run_id=run_id,
-            batch_id=batch_id,
-            run_pipeline=run_pipeline,
-            force=force,
-            only=only,
-            through=through,
-            skip_ocr=skip_ocr,
+        with counter_lock:
+            counters["started"] += 1
+            started_n = counters["started"]
+        # index = listing order; started_n = how many workers have begun (≠ when workers>1)
+        logger.info(
+            "[start %d/%d] %s (in flight %d%s)",
+            index,
+            total,
+            name,
+            started_n,
+            f", large≥{LARGE_CHART_MIN_PAGES}" if is_large else "",
         )
-        entry.update(
-            chart_id=out.get("chart_id"),
-            chart_name=out.get("chart_name", name),
-            pages=out.get("page_count"),
-            status="completed",
+        _note_progress(
+            name,
+            index,
+            total,
+            batch_dir=batch_progress_dir,
+            detail=f"starting {name}",
+            batch_n=started_n,
         )
-        if local_write_path or blob_write_path:
-            entry["write"] = _write_one(
-                out.get("chart_name") or name,
-                local_write_path=local_write_path,
-                blob_container=blob_container,
-                blob_write_path=blob_write_path,
-                write_mode=write_mode,
-                overwrite=overwrite,
-            )
-    except Exception as exc:
-        logger.exception("[fail %s] %s", name, exc)
-        entry.update(status="failed", error=f"{type(exc).__name__}: {exc}")
 
-    with counter_lock:
-        counters["finished"] += 1
-        finished_n = counters["finished"]
-    logger.info("[done %d/%d] %s -> %s", finished_n, total, name, entry["status"])
-    _note_progress(
-        name,
-        finished_n,
-        total,
-        batch_dir=batch_progress_dir,
-        action="completed" if entry["status"] == "completed" else entry["status"],
-        detail=name,
-        batch_n=finished_n,
-    )
-    return entry
+        entry: dict[str, Any] = {
+            "source": source,
+            "name": name,
+            "index": index,
+            "of": total,
+            "large_chart": is_large,
+        }
+        try:
+            out = ingest_and_run(
+                local_path=source if mode == "local" else None,
+                blob_container=blob_container if mode == "blob" else None,
+                blob_path=source if mode == "blob" else None,
+                run_id=run_id,
+                batch_id=batch_id,
+                run_pipeline=run_pipeline,
+                force=force,
+                only=only,
+                through=through,
+                skip_ocr=skip_ocr,
+            )
+            entry.update(
+                chart_id=out.get("chart_id"),
+                chart_name=out.get("chart_name", name),
+                pages=out.get("page_count"),
+                status="completed",
+            )
+            if local_write_path or blob_write_path:
+                entry["write"] = _write_one(
+                    out.get("chart_name") or name,
+                    local_write_path=local_write_path,
+                    blob_container=blob_container,
+                    blob_write_path=blob_write_path,
+                    write_mode=write_mode,
+                    overwrite=overwrite,
+                )
+        except Exception as exc:
+            logger.exception("[fail %s] %s", name, exc)
+            entry.update(status="failed", error=f"{type(exc).__name__}: {exc}")
+
+        with counter_lock:
+            counters["finished"] += 1
+            finished_n = counters["finished"]
+        logger.info("[done %d/%d] %s -> %s", finished_n, total, name, entry["status"])
+        _note_progress(
+            name,
+            finished_n,
+            total,
+            batch_dir=batch_progress_dir,
+            action="completed" if entry["status"] == "completed" else entry["status"],
+            detail=name,
+            batch_n=finished_n,
+        )
+        return entry
+    finally:
+        if large_limiter is not None:
+            large_limiter.leave(is_large)
 
 
 def run_batch(
@@ -403,9 +474,34 @@ def run_batch(
     if limit:
         sources = sources[:limit]
     total = len(sources)
+
+    # Estimate pages so ≥LARGE_CHART_MIN_PAGES charts do not run together while
+    # smaller ones remain. Prefer small charts first in the submission order.
+    page_estimates: list[int] = [
+        estimate_chart_pages(source, mode, blob_container=blob_container)
+        for source, _name, mode in sources
+    ]
+    large_flags = [n >= LARGE_CHART_MIN_PAGES for n in page_estimates]
+    small_count = sum(1 for large in large_flags if not large)
+    large_count = total - small_count
+    # Stable partition: small first, then large (keeps relative order inside each).
+    ordered_jobs: list[tuple[int, str, str, str, bool, int]] = []
+    for index, ((source, name, mode), pages, is_large) in enumerate(
+        zip(sources, page_estimates, large_flags), start=1
+    ):
+        ordered_jobs.append((index, source, name, mode, is_large, pages))
+    ordered_jobs.sort(key=lambda row: (1 if row[4] else 0, row[0]))
+
     logger.info(
-        "Batch: %d chart folder(s) under %s (workers=%d, STAGE_WORKERS=%d)",
-        total, where, worker_count, STAGE_WORKERS,
+        "Batch: %d chart folder(s) under %s (workers=%d, STAGE_WORKERS=%d, "
+        "large≥%d: %d, small: %d)",
+        total,
+        where,
+        worker_count,
+        STAGE_WORKERS,
+        LARGE_CHART_MIN_PAGES,
+        large_count,
+        small_count,
     )
     if batch_progress_dir and total:
         try:
@@ -427,6 +523,7 @@ def run_batch(
     counters = {"started": 0, "finished": 0}
     counter_lock = threading.Lock()
     results: list[dict[str, Any]] = []
+    large_limiter = LargeChartLimiter(small_count)
 
     if total == 0:
         summary = _summarise(results, started)
@@ -435,10 +532,13 @@ def run_batch(
         return summary
 
     with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="batch") as pool:
-        futures = [
-            pool.submit(
+        futures = []
+        index_by_future: dict[Any, int] = {}
+        for _orig_index, source, name, mode, is_large, _pages in ordered_jobs:
+            # Summary order follows original listing (1..N), not small-first.
+            fut = pool.submit(
                 _run_one_chart,
-                index,
+                _orig_index,
                 total,
                 source,
                 name,
@@ -458,14 +558,14 @@ def run_batch(
                 counters=counters,
                 counter_lock=counter_lock,
                 batch_progress_dir=batch_progress_dir,
+                is_large=is_large,
+                large_limiter=large_limiter,
             )
-            for index, (source, name, mode) in enumerate(sources, start=1)
-        ]
-        # Preserve submission order in the summary, not completion order.
-        by_future = {fut: i for i, fut in enumerate(futures)}
+            futures.append(fut)
+            index_by_future[fut] = _orig_index - 1
         ordered: list[Optional[dict[str, Any]]] = [None] * total
         for fut in as_completed(futures):
-            ordered[by_future[fut]] = fut.result()
+            ordered[index_by_future[fut]] = fut.result()
         results = [r for r in ordered if r is not None]
 
     summary = _summarise(results, started)

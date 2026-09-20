@@ -2,11 +2,15 @@
 
 Docling (or heuristics) propose heading candidates. Only candidates whose text
 is ≥ ``SECTION_HEADER_SEMANTIC_THRESHOLD`` similar to a known clinical section
-header are kept — using MiniLM embeddings when ``sentence-transformers`` is
-installed, otherwise a normalized lexical ratio (tests / degraded path).
+header are kept — primarily by normalized lexical match against
+``section_header_canon.json``. MiniLM embeddings are an optional assist for
+near-paraphrases, gated so unrelated bold labels cannot pass on cosine alone.
+
+The catalog reloads when the JSON file's mtime changes (edit the list → next
+filter call picks it up; review-ui re-filters on each OCR fetch).
 
 Each kept header gains:
-  ``match_score``       — cosine / lexical similarity in [0, 1]
+  ``match_score``       — similarity in [0, 1]
   ``matched_canonical`` — the catalog phrase it matched
 """
 from __future__ import annotations
@@ -29,7 +33,9 @@ _model_tried = False
 _model_reason: Optional[str] = None
 _canon: list[str] = []
 _canon_norm: list[str] = []
+_canon_mtime: float | None = None
 _canon_embeddings: Any = None  # np.ndarray | None
+_canon_embeddings_len: int = 0
 
 
 def _normalize(text: str) -> str:
@@ -38,6 +44,14 @@ def _normalize(text: str) -> str:
     t = re.sub(r"[^\w\s/+]+", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
     return t
+
+
+def _token_jaccard(a: str, b: str) -> float:
+    ta = {t for t in a.split() if t}
+    tb = {t for t in b.split() if t}
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
 
 
 def load_canonical_headers(path: Path | None = None) -> list[str]:
@@ -59,15 +73,51 @@ def load_canonical_headers(path: Path | None = None) -> list[str]:
     return uniq
 
 
-def _ensure_catalog() -> None:
-    global _canon, _canon_norm
-    if _canon:
-        return
+def canon_path() -> Path:
+    return _CANON_PATH
+
+
+def _ensure_catalog(*, force: bool = False) -> None:
+    """Load / reload ``section_header_canon.json`` when missing or mtime changes."""
+    global _canon, _canon_norm, _canon_mtime, _canon_embeddings, _canon_embeddings_len
+    try:
+        mtime = _CANON_PATH.stat().st_mtime
+    except OSError:
+        mtime = None
     with _lock:
-        if _canon:
+        if (
+            not force
+            and _canon
+            and mtime is not None
+            and _canon_mtime is not None
+            and mtime == _canon_mtime
+        ):
             return
+        prev_len = len(_canon)
         _canon = load_canonical_headers()
         _canon_norm = [_normalize(h) for h in _canon]
+        changed = (
+            force
+            or _canon_mtime is None
+            or mtime != _canon_mtime
+            or len(_canon) != prev_len
+        )
+        _canon_mtime = mtime
+        if changed:
+            # Force MiniLM vectors to rebuild against the new phrase list.
+            _canon_embeddings = None
+            _canon_embeddings_len = 0
+            logger.info(
+                "Section-header catalog loaded (%d phrases) from %s",
+                len(_canon),
+                _CANON_PATH.name,
+            )
+
+
+def reload_catalog() -> list[str]:
+    """Force-reload the JSON catalog (tests / admin). Returns the phrases."""
+    _ensure_catalog(force=True)
+    return list(_canon)
 
 
 def _local_model_dir() -> Path | None:
@@ -155,7 +205,7 @@ def download_minilm(
 
 def _get_model() -> Any:
     """Lazy-load MiniLM once. Returns None when unavailable."""
-    global _model, _model_tried, _model_reason, _canon_embeddings
+    global _model, _model_tried, _model_reason
     if _model_tried:
         return _model
     with _lock:
@@ -163,30 +213,58 @@ def _get_model() -> Any:
             return _model
         _model_tried = True
         _ensure_catalog()
+        # Prefer a local checkout; do not block OCR on a Hub download.
+        if _local_model_dir() is None:
+            _model = None
+            _model_reason = "local MiniLM missing (run section_header_match --download)"
+            logger.warning(
+                "Section-header MiniLM unavailable (%s); using lexical fallback",
+                _model_reason,
+            )
+            return _model
         try:
             from sentence_transformers import SentenceTransformer
 
             source = resolve_minilm_source()
             logger.info("Loading section-header MiniLM from %s", source)
             _model = SentenceTransformer(source)
-            _canon_embeddings = _model.encode(
-                _canon,
-                normalize_embeddings=True,
-                show_progress_bar=False,
-            )
             _model_reason = None
-            logger.info(
-                "Section-header MiniLM ready (%d canonical phrases)", len(_canon)
-            )
+            logger.info("Section-header MiniLM ready")
         except Exception as exc:
             _model = None
-            _canon_embeddings = None
             _model_reason = f"{type(exc).__name__}: {exc}"
             logger.warning(
                 "Section-header MiniLM unavailable (%s); using lexical fallback",
                 _model_reason,
             )
         return _model
+
+
+def _get_canon_embeddings() -> Any:
+    """Encode (or re-encode) the current catalog; None when MiniLM is off."""
+    global _canon_embeddings, _canon_embeddings_len
+    _ensure_catalog()
+    model = _get_model()
+    if model is None:
+        return None
+    with _lock:
+        if (
+            _canon_embeddings is not None
+            and _canon_embeddings_len == len(_canon)
+            and len(_canon) > 0
+        ):
+            return _canon_embeddings
+        if not _canon:
+            _canon_embeddings = None
+            _canon_embeddings_len = 0
+            return None
+        _canon_embeddings = model.encode(
+            _canon,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+        _canon_embeddings_len = len(_canon)
+        return _canon_embeddings
 
 
 def minilm_ready() -> bool:
@@ -199,16 +277,25 @@ def minilm_reason() -> Optional[str]:
 
 
 def _lexical_score(a: str, b: str) -> float:
+    """Similarity of two normalized phrases.
+
+    Whole-phrase / token-set containment is allowed only when the shorter
+    side is a substantial fraction of the longer — so ``Plan`` does not
+    match ``Plan of day``, but ``History of Present Illness`` still matches
+    a lightly punctuated variant.
+    """
     if not a or not b:
         return 0.0
     if a == b:
         return 1.0
-    # Containment bonus for short abbreviations inside longer labels
-    if a in b or b in a:
+    ratio = SequenceMatcher(None, a, b).ratio()
+    a_toks = {t for t in a.split() if t}
+    b_toks = {t for t in b.split() if t}
+    if a_toks and b_toks and (a_toks <= b_toks or b_toks <= a_toks):
         shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
-        if len(shorter) >= 3 and len(shorter) / max(len(longer), 1) >= 0.35:
-            return max(0.92, SequenceMatcher(None, a, b).ratio())
-    return SequenceMatcher(None, a, b).ratio()
+        if len(shorter) >= 4 and len(shorter) / max(len(longer), 1) >= 0.55:
+            return max(ratio, 0.93)
+    return ratio
 
 
 def _best_lexical(text_norm: str) -> tuple[float, str]:
@@ -226,31 +313,50 @@ def _best_lexical(text_norm: str) -> tuple[float, str]:
 def _best_minilm(text: str) -> tuple[float, str]:
     import numpy as np
 
+    vectors = _get_canon_embeddings()
     model = _get_model()
-    if model is None or _canon_embeddings is None:
+    if model is None or vectors is None:
         return _best_lexical(_normalize(text))
     emb = model.encode([text], normalize_embeddings=True, show_progress_bar=False)
     # Cosine with L2-normalized vectors = dot product
-    scores = np.asarray(_canon_embeddings) @ np.asarray(emb[0])
+    scores = np.asarray(vectors) @ np.asarray(emb[0])
     idx = int(np.argmax(scores))
     return float(scores[idx]), _canon[idx]
 
 
-def best_header_match(text: str) -> tuple[float, str]:
-    """Return (score, canonical_label) for ``text`` against the catalog."""
+def best_header_match(
+    text: str,
+    *,
+    use_minilm: bool = True,
+) -> tuple[float, str]:
+    """Return (score, canonical_label) for ``text`` against the catalog.
+
+    Score is the better of:
+      - lexical similarity to a list phrase, or
+      - MiniLM cosine to a list phrase (only when the top match shares
+        enough tokens — stops unrelated bold labels from passing on
+        embedding cosine alone).
+
+    Callers keep a candidate when ``score >= threshold`` (default 0.90).
+    Pass ``use_minilm=False`` for a fast lexical-only pass (review-ui live
+    re-filter; unit tests).
+    """
     raw = (text or "").strip()
     if not raw:
         return 0.0, ""
     norm = _normalize(raw)
     if not norm:
         return 0.0, ""
-    # Exact / near-exact lexical short-circuit (cheap, deterministic)
+    _ensure_catalog()
     lex_score, lex_label = _best_lexical(norm)
-    if lex_score >= 0.98:
-        return lex_score, lex_label
-    if _get_model() is not None:
-        return _best_minilm(raw)
-    return lex_score, lex_label
+    best_score, best_label = lex_score, lex_label
+    if use_minilm and _get_model() is not None:
+        sem_score, sem_label = _best_minilm(raw)
+        jac = _token_jaccard(norm, _normalize(sem_label))
+        # Semantic counts only when it is clearly about the same list phrase.
+        if jac >= 0.40 and sem_score > best_score:
+            best_score, best_label = sem_score, sem_label
+    return best_score, best_label
 
 
 def filter_section_headers(
@@ -258,12 +364,14 @@ def filter_section_headers(
     *,
     threshold: float | None = None,
     enabled: bool | None = None,
+    use_minilm: bool = True,
 ) -> list[dict[str, Any]]:
-    """Keep only candidates that semantically match a canonical header.
+    """Keep only candidates with ≥ ``threshold`` lexical/semantic list match.
 
+    Default threshold is ``SECTION_HEADER_SEMANTIC_THRESHOLD`` (0.90).
     When filtering is disabled, candidates are returned unchanged (no scores).
     When enabled, each kept item is annotated with ``match_score`` and
-    ``matched_canonical``.
+    ``matched_canonical``. Reloads the catalog if the JSON file changed.
     """
     from config import (
         SECTION_HEADER_SEMANTIC_ENABLED,
@@ -278,6 +386,8 @@ def filter_section_headers(
         threshold = SECTION_HEADER_SEMANTIC_THRESHOLD
     threshold = float(threshold)
 
+    _ensure_catalog()  # pick up list edits before scoring
+
     kept: list[dict[str, Any]] = []
     for item in candidates:
         if not isinstance(item, dict):
@@ -285,7 +395,7 @@ def filter_section_headers(
         text = str(item.get("text") or "").strip()
         if not text:
             continue
-        score, canonical = best_header_match(text)
+        score, canonical = best_header_match(text, use_minilm=use_minilm)
         if score < threshold:
             continue
         enriched = dict(item)

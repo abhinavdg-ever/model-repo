@@ -386,7 +386,7 @@ Usable on `/run` and `/batch-run`:
 | `through` | string | omit | Run from the top, **stop after** this stage |
 | `only` | string[] | omit | Run **just** these stages against existing outputs |
 | `force` | bool | `true` | Reprocess completed pages (**final2 is billed**). Set `false` to resume. |
-| `skip_ocr` | bool | omit | Per-request override for `SKIP_OCR`. `true` = reuse on-disk `ocr/` if present, else materialize the three `ocr/` files from `ocr_results` in the DB; skip prelim/final1/final2. `false` = always run OCR. omit = honour env. Ignored when `force=true` |
+| `skip_ocr` | bool | omit | Per-request override for `SKIP_OCR`. `true` = reuse OCR from the chart **output folder** (or workspace `ocr/`) if present, else materialize the three `ocr/` files from `ocr_results`; skip prelim/final1/final2. `false` = always run OCR. omit = honour env. Ignored when `force=true` |
 
 ### `POST /api/charts/run` — one chart
 
@@ -466,7 +466,7 @@ Same vocabulary as `/run` **without** a folder name (each subfolder is a chart).
 | `overwrite` | optional | `false` | Sync by default |
 | `sample` | optional | all | Smoke test: first N chart folders (sorted). Prefer over `limit` |
 | `limit` | optional | all | Same as `sample` (compat); `sample` wins if both set |
-| `workers` | optional | `BATCH_WORKERS` (4) | Must fit DB pool |
+| `workers` | optional | `BATCH_WORKERS` (4) | Must fit DB pool. Charts with ≥`LARGE_CHART_MIN_PAGES` (default 100) pages run at most one-at-a-time while any smaller chart is still pending; when only large charts remain, workers parallelize them. |
 | `run_id` / `batch_id` | optional | inferred | |
 | `through` / `only` / `force` / `skip_ocr` | optional | — | |
 

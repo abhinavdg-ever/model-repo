@@ -26,11 +26,12 @@ def test_docling_header_norm_with_dict_pages():
     from stages.lib.imaging.docling_ocr import extract_section_headers
 
     class _BBox:
-        l, t, r, b = 100.0, 1800.0, 400.0, 1700.0  # BOTTOMLEFT-ish
+        # TOPLEFT image coords: t < b
+        l, t, r, b = 100.0, 200.0, 400.0, 240.0
 
     class _Prov:
         bbox = _BBox()
-        coord_origin = "BOTTOMLEFT"
+        coord_origin = "TOPLEFT"
         page_no = 0
 
     class _Item:
@@ -46,8 +47,22 @@ def test_docling_header_norm_with_dict_pages():
     headers = extract_section_headers(doc)
     assert len(headers) == 1
     assert headers[0]["norm"] is not None
-    assert headers[0]["norm"]["width"] > 0
-    assert headers[0]["norm"]["height"] > 0
+    assert headers[0]["norm"]["left"] == 0.1
+    assert headers[0]["norm"]["top"] == 0.1
+    assert headers[0]["norm"]["width"] == 0.3
+    assert abs(headers[0]["norm"]["height"] - 0.02) < 1e-6
+
+
+def test_bbox_to_css_norm_bottomleft():
+    from stages.lib.imaging.docling_ocr import _bbox_to_css_norm
+
+    # BOTTOMLEFT: t > b (y up). Box near top of a 2000-tall page.
+    norm = _bbox_to_css_norm(100, 1800, 400, 1700, 1000, 2000, "BOTTOMLEFT")
+    assert norm is not None
+    assert norm["left"] == 0.1
+    assert abs(norm["top"] - 0.1) < 1e-6  # (2000-1800)/2000
+    assert norm["width"] == 0.3
+    assert abs(norm["height"] - 0.05) < 1e-6
 
 
 def test_azure_line_polygon_to_section_headers():
@@ -117,6 +132,34 @@ def test_review_ui_headers_from_azure_polygon():
     assert headers[0].text == "ASSESSMENT"
     assert headers[0].width > 0
     assert headers[0].height > 0
+
+
+def test_review_ui_recomputes_norm_from_bbox_ignoring_bad_stored():
+    """Older Final1 JSON defaulted coord_origin to BOTTOMLEFT on image OCR."""
+    from app.adapters.local.repository import _section_headers_from_page
+
+    page = {
+        "fileName": "1.jpg",
+        "section_headers": [
+            {
+                "text": "PATIENT DATA",
+                "level": 2,
+                # TOPLEFT geometry (t < b) near the top of the page.
+                "bbox": [50.0, 100.0, 250.0, 140.0],
+                "page_width": 1000.0,
+                "page_height": 2000.0,
+                "coord_origin": "BOTTOMLEFT",
+                # Deliberately wrong stored norm (near the bottom).
+                "norm": {"left": 0.05, "top": 0.93, "width": 0.2, "height": 0.02},
+            }
+        ],
+    }
+    headers = _section_headers_from_page(page)
+    assert len(headers) == 1
+    assert abs(headers[0].left - 0.05) < 1e-6
+    assert abs(headers[0].top - 0.05) < 1e-6  # 100/2000, not the stored 0.93
+    assert abs(headers[0].width - 0.2) < 1e-6
+    assert abs(headers[0].height - 0.02) < 1e-6
 
 
 def test_review_ui_headers_from_pages_meta_lines():
