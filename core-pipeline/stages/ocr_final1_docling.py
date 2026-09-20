@@ -1,10 +1,18 @@
 """Stage: final OCR 1 (Docling layout + RapidOCR) → ocr_results + JSON file.
 
 Preferred engine is Docling with local RapidOCR ``.pth`` models (layout,
-TableFormer, reading order) — the V1 ``os_ocr.py`` path. When Docling is
-missing, times out, returns sparse/empty markdown, or raises, falls back to
-RapidOCR-onnxruntime only (Tesseract is already stage 2 / prelim — it is not
-repeated here).
+TableFormer, reading order) — the V1 ``os_ocr.py`` path.
+
+When the primary Docling pass (env cell-matching, usually on) times out,
+returns sparse/empty markdown, or raises, final1:
+
+1. Runs a second Docling pass with ``cell_matching=false`` for section headers.
+2. Takes body ``content`` / ``markdown`` from RapidOCR-onnxruntime.
+3. Stores the same page JSON shape (``engine=docling-headers+rapidocr-onnx``).
+
+If that header pass also fails, RapidOCR-onnx alone is used
+(``engine=rapidocr-onnx``, empty ``section_headers``). Tesseract is already
+stage 2 / prelim — it is not repeated here.
 
 ``ocr_results.ocr_type`` stays ``'docling'`` — that is the slot the review UI
 labels "Final (OSS)".
@@ -45,6 +53,7 @@ from stages._support import (
 logger = logging.getLogger(__name__)
 
 STAGE = "ocr_final1"
+HYBRID_ENGINE = "docling-headers+rapidocr-onnx"
 
 _engine_lock = threading.Lock()
 _onnx_engine: Any = None
@@ -84,6 +93,64 @@ def _ocr_onnx(image_path: Path) -> str:
     return "\n".join(line[1] for line in result if len(line) > 1)
 
 
+def _hybrid_headers_and_rapid(
+    image_path: Path,
+    *,
+    page_name: str,
+    reason: str,
+) -> dict[str, Any]:
+    """Fast Docling (no cell matching) for headers + RapidOCR-onnx for body."""
+    from stages.lib.imaging.docling_ocr import (
+        convert_image_with_timeout,
+        get_converter,
+    )
+
+    headers: list[dict[str, Any]] = []
+    fast = get_converter(cell_matching=False)
+    if fast is not None:
+        try:
+            extracted = convert_image_with_timeout(
+                image_path,
+                converter=fast,
+                timeout_seconds=DOCLING_PAGE_TIMEOUT_SECONDS,
+            )
+            headers = list(extracted.get("section_headers") or [])
+            logger.info(
+                "Final1 hybrid headers for %s (%s): %d header(s)",
+                page_name,
+                reason,
+                len(headers),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Final1 hybrid Docling headers failed for %s (%s) — Rapid only",
+                page_name,
+                exc,
+            )
+    else:
+        logger.warning(
+            "Final1 hybrid: no cell_matching=false converter — Rapid only for %s",
+            page_name,
+        )
+
+    text = _ocr_onnx(image_path)
+    if headers:
+        return {
+            "content": text,
+            "markdown": text,
+            "document": None,
+            "section_headers": headers,
+            "engine": HYBRID_ENGINE,
+        }
+    return {
+        "content": text,
+        "markdown": text,
+        "document": None,
+        "section_headers": [],
+        "engine": "rapidocr-onnx",
+    }
+
+
 def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
     page, image_path, prefer_docling = args
     out: dict[str, Any] = {
@@ -110,6 +177,7 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
 
             converter = get_converter()
             if converter is not None:
+                fallback_reason: Optional[str] = None
                 try:
                     extracted = convert_image_with_timeout(
                         image_path,
@@ -133,21 +201,35 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
                                 elapsed,
                             )
                         return out
+                    fallback_reason = (
+                        f"sparse/empty ({elapsed or 0.0:.1f}s, chars={len(content)})"
+                    )
                     logger.warning(
                         "Docling sparse/empty for %s (%.1fs, chars=%d) — "
-                        "falling back to RapidOCR-onnx",
+                        "hybrid headers + RapidOCR-onnx",
                         page["page_name"],
                         elapsed or 0.0,
                         len(content or ""),
                     )
                 except TimeoutError as exc:
-                    logger.warning("%s — falling back to RapidOCR-onnx", exc)
+                    fallback_reason = "timeout"
+                    logger.warning("%s — hybrid headers + RapidOCR-onnx", exc)
                 except Exception as exc:
+                    fallback_reason = f"{type(exc).__name__}: {exc}"
                     logger.warning(
-                        "Docling failed for %s (%s) — falling back to RapidOCR-onnx",
+                        "Docling failed for %s (%s) — hybrid headers + RapidOCR-onnx",
                         page["page_name"],
                         exc,
                     )
+
+                if fallback_reason is not None:
+                    merged = _hybrid_headers_and_rapid(
+                        image_path,
+                        page_name=page["page_name"],
+                        reason=fallback_reason,
+                    )
+                    out.update(merged)
+                    return out
 
         text = _ocr_onnx(image_path)
         out["content"] = text
@@ -171,6 +253,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         if get_converter() is not None:
             prefer_docling = True
             engine_label = "docling+rapidocr"
+            # Warm the fast (no cell-matching) converter for hybrid fallback.
+            get_converter(cell_matching=False)
         else:
             logger.info(
                 "Docling final1 not ready (%s); using RapidOCR-onnx. "

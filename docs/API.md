@@ -146,7 +146,7 @@ Key `.env` knobs (paths relative to `core-pipeline/`):
 | `RAPID_MODELS_DIR` | `models/rapidocr` |
 | `SECTION_HEADER_MINILM_PATH` | `models/semantic-model` — local MiniLM (preferred) |
 | `SECTION_HEADER_SEMANTIC_ENABLED` | `true` — filter Final1 `section_headers` ≥90% |
-| `DOCLING_TABLE_CELL_MATCHING` | `true` — fill table cells (dense forms); `false` is faster but often empty tables. On timeout, RapidOCR-onnx backs up final1. |
+| `DOCLING_TABLE_CELL_MATCHING` | `true` — fill table cells (dense forms) on the primary Final1 pass. On timeout/sparse, Final1 re-runs Docling with matching off for `section_headers` and takes body text from RapidOCR-onnx (`engine=docling-headers+rapidocr-onnx`). |
 | `DOCLING_IMAGES_SCALE` | `1.0` — keep at 1 for page images (`2` halves overlay boxes) |
 | `MEMBER_NER_ENABLED` | `false` until GLiNER is installed |
 

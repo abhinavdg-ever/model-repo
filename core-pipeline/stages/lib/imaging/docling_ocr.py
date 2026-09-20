@@ -20,9 +20,21 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 _converter_lock = threading.Lock()
-_converter: Any = None
-_converter_ready = False
+# Two process-wide converters: cell-matching on vs off. Primary final1 uses
+# the env default (usually True); hybrid fallback forces False for headers.
+_converters: dict[bool, Any] = {}
+_converter_ready: dict[bool, bool] = {}
 _converter_reason: Optional[str] = None
+
+
+def _env_cell_matching() -> bool:
+    return (
+        os.environ.get("DOCLING_TABLE_CELL_MATCHING") or "true"
+    ).strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _resolve_cell_matching(cell_matching: bool | None) -> bool:
+    return _env_cell_matching() if cell_matching is None else bool(cell_matching)
 
 
 def rapid_models_dir() -> Path:
@@ -133,7 +145,11 @@ def _build_rapidocr_options(models: dict[str, Path]) -> Any:
     )
 
 
-def build_converter(models_dir: Path | None = None) -> Any:
+def build_converter(
+    models_dir: Path | None = None,
+    *,
+    cell_matching: bool | None = None,
+) -> Any:
     from docling.datamodel.base_models import InputFormat
     from docling.datamodel.pipeline_options import (
         PdfPipelineOptions,
@@ -167,6 +183,7 @@ def build_converter(models_dir: Path | None = None) -> Any:
         "off",
         "no",
     }
+    use_cell_matching = _resolve_cell_matching(cell_matching)
 
     models = model_paths(models_dir)
     pipeline_options = PdfPipelineOptions()
@@ -183,23 +200,15 @@ def build_converter(models_dir: Path | None = None) -> Any:
         pipeline_options.table_structure_options.mode = table_mode
         # Cell matching fills TableFormer cells with OCR text. Without it,
         # dense form tables export as empty markdown rows and the page looks
-        # header-only in Final (OSS). Default ON; set false to trade quality
-        # for speed. On timeout/sparse Docling, final1 falls back to RapidOCR-onnx.
-        pipeline_options.table_structure_options.do_cell_matching = (
-            os.environ.get("DOCLING_TABLE_CELL_MATCHING") or "true"
-        ).strip().casefold() in {"1", "true", "yes", "on"}
+        # header-only in Final (OSS). Default ON for the primary pass; the
+        # hybrid fallback forces False for section headers after a timeout.
+        pipeline_options.table_structure_options.do_cell_matching = use_cell_matching
     pipeline_options.ocr_options = _build_rapidocr_options(models)
     logger.info(
         "Docling pipeline: tables=%s mode=%s cell_matching=%s images_scale=%s",
         do_tables,
         getattr(table_mode, "value", table_mode) if do_tables else "n/a",
-        getattr(
-            pipeline_options.table_structure_options,
-            "do_cell_matching",
-            False,
-        )
-        if do_tables
-        else False,
+        use_cell_matching if do_tables else False,
         getattr(pipeline_options, "images_scale", None),
     )
     return DocumentConverter(
@@ -209,33 +218,48 @@ def build_converter(models_dir: Path | None = None) -> Any:
     )
 
 
-def get_converter() -> Any | None:
-    """Process-wide Docling converter, or None when unavailable."""
-    global _converter, _converter_ready, _converter_reason
-    if _converter_ready:
-        return _converter
+def get_converter(cell_matching: bool | None = None) -> Any | None:
+    """Process-wide Docling converter for the requested cell-matching mode.
+
+    ``cell_matching=None`` uses ``DOCLING_TABLE_CELL_MATCHING`` (primary path).
+    Pass ``False`` for the hybrid header-only fallback after a primary timeout.
+    """
+    global _converter_reason
+    key = _resolve_cell_matching(cell_matching)
+    if _converter_ready.get(key):
+        return _converters.get(key)
     with _converter_lock:
-        if _converter_ready:
-            return _converter
+        if _converter_ready.get(key):
+            return _converters.get(key)
         status = docling_status()
         if not status["ready"]:
-            _converter = None
+            _converters[key] = None
             _converter_reason = status.get("reason")
             logger.warning("Docling final1 unavailable: %s", _converter_reason)
         else:
             try:
-                _converter = build_converter()
+                _converters[key] = build_converter(cell_matching=key)
                 _converter_reason = None
                 logger.info(
-                    "Docling + RapidOCR converter ready (models=%s)",
+                    "Docling + RapidOCR converter ready (models=%s, cell_matching=%s)",
                     status["models_dir"],
+                    key,
                 )
             except Exception as exc:
-                _converter = None
+                _converters[key] = None
                 _converter_reason = f"{type(exc).__name__}: {exc}"
                 logger.warning("Docling converter failed to build: %s", exc)
-        _converter_ready = True
-        return _converter
+        _converter_ready[key] = True
+        return _converters.get(key)
+
+
+def reset_converters_for_tests() -> None:
+    """Clear the converter cache (unit tests only)."""
+    global _converter_reason
+    with _converter_lock:
+        _converters.clear()
+        _converter_ready.clear()
+        _converter_reason = None
 
 
 def converter_reason() -> Optional[str]:
