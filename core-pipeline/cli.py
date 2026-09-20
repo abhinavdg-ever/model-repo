@@ -42,8 +42,9 @@ def main() -> None:
             dest="skip_ocr",
             action="store_true",
             default=None,
-            help="Reuse on-disk ocr/ and skip prelim/final1/final2 "
-                 "(overrides SKIP_OCR=false in .env). No-op if ocr/ is empty.",
+            help="Skip prelim/final1/final2 when ocr/ has files, else write "
+                 "the three ocr/ files from ocr_results in the DB "
+                 "(overrides SKIP_OCR=false). Runs OCR if neither exists.",
         )
         parser_obj.add_argument(
             "--no-skip-ocr",

@@ -69,7 +69,7 @@ flowchart TD
     S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8
   end
 
-  S8 --> DONE["refresh_chart_status<br/>→ completed / needs_review / rejected / failed"]
+  S8 --> DONE["refresh_chart_status<br/>→ completed / needs_review / failed"]
 
   style S5 fill:#fde8e8,stroke:#c74a4a
   style S7 fill:#fff4e0,stroke:#c78a4a
@@ -210,9 +210,11 @@ stateDiagram-v2
   processing --> failed: a page failed in<br/>an incomplete stage
   processing --> completed: all stages done
   processing --> needs_review: done, but member<br/>verification unresolved
-  processing --> rejected: done, wrong-member pages<br/>≥ reject threshold
   failed --> processing: rerun
 ```
+
+Accept/reject lives on `member_verification_summary`, not on `chart_list.status`
+(``rejected`` is legacy and is no longer written).
 
 **The rule:** `current_stage` is the earliest stage, in `pipeline_stage.seq`
 order, where not every page is `completed` or `skipped`.

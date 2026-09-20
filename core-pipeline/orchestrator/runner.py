@@ -159,27 +159,29 @@ def run_pipeline_for_chart(
 
             if name in {"ocr_prelim", "ocr_final1", "ocr_final2"}:
                 if not ocr_hydrated:
-                    from stages.ocr_reuse import should_skip_ocr_stages, hydrate_ocr_from_disk
+                    from stages.ocr_reuse import apply_skip_ocr, should_skip_ocr_stages
 
                     skip_ocr_active = should_skip_ocr_stages(
                         chart_name=chart["chart_name"],
+                        chart_id=chart_id,
                         force=force,
                         skip_ocr=skip_ocr,
                     )
                     if skip_ocr_active:
-                        results["ocr_reuse"] = hydrate_ocr_from_disk(
+                        results["ocr_reuse"] = apply_skip_ocr(
                             chart_id, chart["chart_name"]
                         )
                     ocr_hydrated = True
                 if skip_ocr_active:
+                    reason = (results.get("ocr_reuse") or {}).get("source") or "reuse"
                     results["skipped_stages"].append(key)
                     results["stages"][key] = {
                         "skipped": True,
-                        "reason": "skip_ocr_reuse_disk",
+                        "reason": f"skip_ocr_{reason}",
                     }
                     logger.info(
-                        "=== [%s]  skipped (skip_ocr, reusing ocr/)  —  chart %s ===",
-                        stage_label(name, pass_no), chart_id,
+                        "=== [%s]  skipped (skip_ocr, %s)  —  chart %s ===",
+                        stage_label(name, pass_no), reason, chart_id,
                     )
                     continue
 

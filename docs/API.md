@@ -38,6 +38,19 @@ Set `TESSERACT_CMD` when `tesseract` is not on `PATH` (always on Windows), e.g.
 
 `schema/` has three files: `clear_schema.sql`, `v1.sql`, `v2.sql`.
 
+Existing databases that already applied an older `v1.sql` can take the additive
+patch instead of recreating:
+
+```bash
+psql "$DATABASE_URL" -f schema/patch_output_path.sql
+```
+
+That adds `chart_list.output_path` and remaps any legacy `status='rejected'` →
+`completed`. When a write path is passed on run/batch-run it is stored **as-is**
+(chart folder appended if missing). Otherwise ingest derives e.g.
+`Raw_Input/Run1/Batch1/DEID_Images/<chart>` →
+`Processed/Run1/Batch1/<chart>`.
+
 ```bash
 # macOS / Linux
 psql "$DATABASE_URL" -f schema/v1.sql            # required
@@ -373,7 +386,7 @@ Usable on `/run` and `/batch-run`:
 | `through` | string | omit | Run from the top, **stop after** this stage |
 | `only` | string[] | omit | Run **just** these stages against existing outputs |
 | `force` | bool | `true` | Reprocess completed pages (**final2 is billed**). Set `false` to resume. |
-| `skip_ocr` | bool | omit | Per-request override for `SKIP_OCR`. `true` = reuse on-disk `ocr/` (even if `.env` has `SKIP_OCR=false`). `false` = always run OCR. omit = honour env. Ignored when `force=true` |
+| `skip_ocr` | bool | omit | Per-request override for `SKIP_OCR`. `true` = reuse on-disk `ocr/` if present, else materialize the three `ocr/` files from `ocr_results` in the DB; skip prelim/final1/final2. `false` = always run OCR. omit = honour env. Ignored when `force=true` |
 
 ### `POST /api/charts/run` — one chart
 

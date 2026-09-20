@@ -114,22 +114,23 @@ class TestTerminalStates:
         )
         assert out["status"] == "needs_review"
 
-    def test_member_reject_marks_the_chart_rejected(self):
+    def test_member_reject_does_not_set_chart_rejected(self):
+        """Accept/reject is on the summary; chart lifecycle stays completed."""
         out = compute_progress(
             rows(2, **self.all_done()),
             pages_total=2,
             member_document_decision="reject",
         )
-        assert out["status"] == "rejected"
+        assert out["status"] == "completed"
 
-    def test_reject_outranks_needs_review(self):
+    def test_reject_does_not_outrank_needs_review(self):
         out = compute_progress(
             rows(2, **self.all_done()),
             pages_total=2,
             member_final_status="needs_review",
             member_document_decision="reject",
         )
-        assert out["status"] == "rejected"
+        assert out["status"] == "needs_review"
 
 
 class TestFailures:

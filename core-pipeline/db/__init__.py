@@ -163,6 +163,7 @@ def upsert_chart(
     source: Optional[str] = None,
     blob_container: Optional[str] = None,
     blob_path: Optional[str] = None,
+    output_path: Optional[str] = None,
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
 ) -> dict[str, Any]:
@@ -175,10 +176,10 @@ def upsert_chart(
         """
         INSERT INTO chart_list (
             chart_name, page_count, status, current_stage, current_pass,
-            source, blob_container, blob_path, run_id, batch_id
+            source, blob_container, blob_path, output_path, run_id, batch_id
         ) VALUES (
             %s, %s, COALESCE(%s, 'received'), %s, %s,
-            COALESCE(%s, 'blob'), %s, %s, %s, %s
+            COALESCE(%s, 'blob'), %s, %s, %s, %s, %s
         )
         ON CONFLICT (chart_name) DO UPDATE SET
             page_count          = COALESCE(EXCLUDED.page_count, chart_list.page_count),
@@ -195,16 +196,24 @@ def upsert_chart(
                                   END,
             blob_container      = COALESCE(EXCLUDED.blob_container, chart_list.blob_container),
             blob_path           = COALESCE(EXCLUDED.blob_path, chart_list.blob_path),
+            output_path         = COALESCE(EXCLUDED.output_path, chart_list.output_path),
             run_id              = COALESCE(EXCLUDED.run_id, chart_list.run_id),
             batch_id            = COALESCE(EXCLUDED.batch_id, chart_list.batch_id)
         RETURNING *
         """,
         (
             chart_name, page_count, status, current_stage, current_pass,
-            source, blob_container, blob_path, run_id, batch_id,
+            source, blob_container, blob_path, output_path, run_id, batch_id,
             status, source,
         ),
     ).fetchone()
+
+
+def set_chart_output_path(conn: Any, chart_id: int, output_path: str) -> None:
+    conn.execute(
+        "UPDATE chart_list SET output_path = %s WHERE id = %s",
+        (output_path, chart_id),
+    )
 
 
 def set_chart_status(

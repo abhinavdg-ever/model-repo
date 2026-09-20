@@ -269,6 +269,53 @@ def clean_docling_markdown(text: str) -> str:
     return "\n".join(collapsed).strip() + ("\n" if collapsed else "")
 
 
+def _iter_doc_pages(doc: Any) -> list[tuple[int, Any]]:
+    """Yield ``(page_no_1based, page)`` from Docling ``doc.pages``.
+
+    DoclingDocument.pages is normally a ``dict[int, Page]`` keyed by 1-based
+    page number. Older shapes (list) still work. Mis-iterating a dict with
+    ``enumerate`` was discarding sizes, so every header lost its ``norm``.
+    """
+    pages = getattr(doc, "pages", None)
+    if pages is None:
+        return []
+    out: list[tuple[int, Any]] = []
+    if isinstance(pages, dict):
+        for key, page in pages.items():
+            try:
+                page_no = int(key) if not isinstance(key, int) else key
+            except (TypeError, ValueError):
+                page_no = len(out) + 1
+            if page_no < 1:
+                page_no = 1
+            out.append((page_no, page))
+        return out
+    if isinstance(pages, (list, tuple)):
+        for idx, page in enumerate(pages, start=1):
+            out.append((idx, page))
+    return out
+
+
+def _page_sizes_map(doc: Any) -> dict[int, tuple[float, float]]:
+    """Map 0- and 1-based page numbers → (width, height)."""
+    sizes: dict[int, tuple[float, float]] = {}
+    try:
+        for page_no, page in _iter_doc_pages(doc):
+            size = getattr(page, "size", None)
+            if size is None and isinstance(page, dict):
+                size = page.get("size")
+            if size is None:
+                continue
+            w = float(getattr(size, "width", None) or (size.get("width") if isinstance(size, dict) else 0) or 0)
+            h = float(getattr(size, "height", None) or (size.get("height") if isinstance(size, dict) else 0) or 0)
+            if w > 0 and h > 0:
+                sizes[page_no] = (w, h)
+                sizes[page_no - 1] = (w, h)  # Docling prov.page_no is often 0-based
+    except Exception:
+        pass
+    return sizes
+
+
 def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
     """Compact heading boxes for the review-ui overlay.
 
@@ -281,19 +328,7 @@ def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
     """
     headers: list[dict[str, Any]] = []
     seen: set[str] = set()
-    page_sizes: dict[int, tuple[float, float]] = {}
-
-    try:
-        for idx, page in enumerate(getattr(doc, "pages", None) or [], start=1):
-            size = getattr(page, "size", None)
-            if size is None:
-                continue
-            w = float(getattr(size, "width", 0) or 0)
-            h = float(getattr(size, "height", 0) or 0)
-            if w > 0 and h > 0:
-                page_sizes[idx] = (w, h)
-    except Exception:
-        pass
+    page_sizes = _page_sizes_map(doc)
 
     header_labels = {
         "section_header",
@@ -357,7 +392,8 @@ def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
                         or getattr(first, "coord_origin", None)
                         or "BOTTOMLEFT"
                     )
-                    page_no = int(getattr(first, "page_no", 1) or 1)
+                    raw_page = getattr(first, "page_no", None)
+                    page_no = int(raw_page) if raw_page is not None else 1
                     has_box = True
                 elif isinstance(bbox, dict):
                     l = float(bbox.get("l") or bbox.get("left") or 0)
@@ -369,10 +405,17 @@ def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
                         or bbox.get("coord_origin")
                         or "BOTTOMLEFT"
                     )
-                    page_no = int(first.get("page_no") or 1)
+                    raw_page = first.get("page_no")
+                    page_no = int(raw_page) if raw_page is not None else 1
                     has_box = True
 
         pw, ph = page_sizes.get(page_no, (0.0, 0.0))
+        if (not pw or not ph) and page_sizes:
+            for key in sorted(k for k in page_sizes if k >= 1):
+                pw, ph = page_sizes[key]
+                break
+            if not pw:
+                pw, ph = next(iter(page_sizes.values()))
         norm = (
             _bbox_to_css_norm(l, t, r, b, pw, ph, origin) if has_box and pw and ph else None
         )

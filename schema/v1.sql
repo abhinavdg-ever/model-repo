@@ -140,6 +140,10 @@ CREATE TABLE chart_list (
 
     blob_container      VARCHAR(150),
     blob_path           TEXT,
+    -- Derived Processed/… destination for this chart (see derive_output_path).
+    -- Example: Raw_Input/Run1/Batch1/DEID_PNGs/<chart>
+    --       →  Processed/Run1/Batch1/<chart>
+    output_path         TEXT,
     run_id              VARCHAR(50),
     batch_id            VARCHAR(50),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),

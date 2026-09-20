@@ -192,7 +192,7 @@ export function getFolderImaging(folderId: string): Promise<ImagingDocumentRespo
   return api(`/api/folders/${encodeURIComponent(folderId)}/imaging`);
 }
 
-/** URL for History “Download Imaging CSV” (optional status / search filters). */
+/** URL for History bulk imaging export (server-side stream; Landing uses client progress). */
 export function imagingExportCsvUrl(opts?: {
   status?: OcrRunStatus | "ALL";
   q?: string;

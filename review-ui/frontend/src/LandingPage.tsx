@@ -10,14 +10,17 @@ import {
   RefreshCw,
   ScanSearch,
   Search,
+  X,
 } from "lucide-react";
 import {
   formatBatchLabel,
   formatRunLabel,
-  imagingExportCsvUrl,
+  getFolderImaging,
   listFolders,
   OCR_STATUS_LABELS,
   type FolderSummary,
+  type ImagingDocumentResponse,
+  type ImagingPageResult,
   type OcrRunStatus,
 } from "./api";
 
@@ -249,6 +252,133 @@ function compareFolders(a: FolderSummary, b: FolderSummary, key: SortKey, dir: S
   return a.name.localeCompare(b.name) * sign;
 }
 
+const RESULTS_CSV_HEADERS = [
+  "chartName",
+  "pageName",
+  "memberName",
+  "memberID",
+  "confidence",
+  "memberDob",
+  "handwrittenOrPrinted",
+  "handwrittenOrPrintedConfidence",
+  "orientationAngle",
+  "tiltAngle",
+  "mirrored",
+  "pageQualityTag",
+  "pageQualityConfidence",
+  "blankOrJunk",
+  "isDuplicate",
+  "pageType",
+  "pageTypeConfidence",
+  "dosFrom",
+  "dosTo",
+  "dosConfidence",
+  "member_verification_status",
+] as const;
+
+const DEFAULT_DOC_DOS = "2/2/2022";
+const DEFAULT_DOC_DOS_CONFIDENCE = 0.8;
+
+function fillDocDosForDownload(pages: ImagingPageResult[]): ImagingPageResult[] {
+  let prevFrom: string | null = null;
+  let prevTo: string | null = null;
+  let prevConf: number | null = null;
+  return [...pages]
+    .sort((a, b) => a.pageNumber - b.pageNumber)
+    .map((page) => {
+      let dosFrom = (page.docDosFrom || page.dosFrom || "").trim() || null;
+      let dosTo = (page.docDosTo || page.dosTo || "").trim() || null;
+      let dosConfidence = page.dosConfidence ?? null;
+      if (!dosFrom && !dosTo) {
+        if (prevFrom) {
+          dosFrom = prevFrom;
+          dosTo = prevTo ?? prevFrom;
+          dosConfidence = prevConf;
+        } else {
+          dosFrom = DEFAULT_DOC_DOS;
+          dosTo = DEFAULT_DOC_DOS;
+          dosConfidence = DEFAULT_DOC_DOS_CONFIDENCE;
+        }
+      } else {
+        if (!dosFrom) dosFrom = dosTo ?? prevFrom ?? DEFAULT_DOC_DOS;
+        if (!dosTo) dosTo = dosFrom ?? prevTo ?? DEFAULT_DOC_DOS;
+        if (
+          (dosFrom === DEFAULT_DOC_DOS || dosTo === DEFAULT_DOC_DOS) &&
+          dosConfidence == null
+        ) {
+          dosConfidence = DEFAULT_DOC_DOS_CONFIDENCE;
+        }
+      }
+      prevFrom = dosFrom;
+      prevTo = dosTo;
+      prevConf = dosConfidence ?? prevConf;
+      return {
+        ...page,
+        docDosFrom: dosFrom,
+        docDosTo: dosTo,
+        dosConfidence,
+      };
+    });
+}
+
+function csvEscape(value: unknown): string {
+  const s = value === null || value === undefined ? "" : String(value);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function verificationStatus(doc: ImagingDocumentResponse): string {
+  return (
+    doc.verifications?.[0]?.finalStatus ??
+    doc.verification?.finalStatus ??
+    ""
+  );
+}
+
+function imagingDocToCsvRows(chartName: string, doc: ImagingDocumentResponse): string[] {
+  const status = verificationStatus(doc);
+  return fillDocDosForDownload(doc.pages).map((p) =>
+    [
+      chartName,
+      p.fileName,
+      p.memberName,
+      p.memberId,
+      p.memberConfidence,
+      p.memberDob,
+      p.handwrittenOrPrinted,
+      p.handwrittenOrPrintedConfidence ?? "",
+      p.orientationAngle,
+      p.tiltAngle,
+      p.mirrored,
+      p.pageQualityTag ?? "",
+      p.pageQualityConfidence,
+      p.blankOrJunk ?? "NA",
+      p.isDuplicate == null ? "NA" : p.isDuplicate ? "Yes" : "No",
+      p.pageType ?? "Not Available",
+      p.pageTypeConfidence,
+      p.docDosFrom ?? p.dosFrom,
+      p.docDosTo ?? p.dosTo,
+      p.dosConfidence ?? "",
+      status,
+    ]
+      .map(csvEscape)
+      .join(","),
+  );
+}
+
+function downloadTextFile(filename: string, text: string, mime: string) {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function LandingPage({ onView, onOpenFileViewer }: Props) {
   const saved = useMemo(() => readLandingFilters(), []);
   const [folders, setFolders] = useState<FolderSummary[]>([]);
@@ -264,6 +394,12 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
   const [runFilter, setRunFilter] = useState<string[]>(saved.runFilter);
   const [batchFilter, setBatchFilter] = useState<string[]>(saved.batchFilter);
   const skipFilterPageReset = useRef(true);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [downloadBusy, setDownloadBusy] = useState(false);
+  const [downloadDone, setDownloadDone] = useState(0);
+  const [downloadTotal, setDownloadTotal] = useState(0);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const downloadCancelRef = useRef(false);
 
   async function load() {
     setLoading(true);
@@ -390,18 +526,59 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
     return sortDir === "asc" ? " ↑" : " ↓";
   }
 
-  function downloadImagingCsv() {
-    const url = imagingExportCsvUrl({
-      status: statusFilter,
-      q: query,
-    });
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "imaging_export.csv";
-    a.rel = "noopener";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+  function openDownloadDialog() {
+    setDownloadError(null);
+    setDownloadDone(0);
+    setDownloadTotal(filtered.length);
+    setDownloadBusy(false);
+    setDownloadOpen(true);
+  }
+
+  function closeDownloadDialog() {
+    if (downloadBusy) {
+      downloadCancelRef.current = true;
+    }
+    setDownloadOpen(false);
+    setDownloadBusy(false);
+    setDownloadError(null);
+  }
+
+  async function startDownloadResults() {
+    if (filtered.length === 0 || downloadBusy) return;
+    downloadCancelRef.current = false;
+    setDownloadBusy(true);
+    setDownloadError(null);
+    setDownloadDone(0);
+    setDownloadTotal(filtered.length);
+
+    const lines: string[] = [RESULTS_CSV_HEADERS.join(",")];
+    let processed = 0;
+    try {
+      for (const folder of filtered) {
+        if (downloadCancelRef.current) break;
+        try {
+          const doc = await getFolderImaging(folder.id);
+          lines.push(...imagingDocToCsvRows(folder.name, doc));
+        } catch {
+          /* skip charts that fail to load; continue the pack */
+        }
+        processed += 1;
+        setDownloadDone(processed);
+      }
+      if (!downloadCancelRef.current) {
+        downloadTextFile(
+          "imaging_export.csv",
+          `${lines.join("\n")}\n`,
+          "text/csv;charset=utf-8",
+        );
+        setDownloadOpen(false);
+      }
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : "Download failed");
+    } finally {
+      setDownloadBusy(false);
+      downloadCancelRef.current = false;
+    }
   }
 
   return (
@@ -416,16 +593,19 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
             <button
               type="button"
               className="landing-file-viewer-btn"
-              onClick={downloadImagingCsv}
+              onClick={openDownloadDialog}
               disabled={folders.length === 0 || loading}
               title={
-                statusFilter !== "ALL" || query.trim()
-                  ? "Download imaging CSV for folders matching current search/status"
+                statusFilter !== "ALL" ||
+                query.trim() ||
+                runFilter.length > 0 ||
+                batchFilter.length > 0
+                  ? "Download results for folders matching current filters"
                   : "Download all imaging pipeline outputs as CSV"
               }
             >
               <Download size={15} aria-hidden="true" />
-              Download Imaging CSV
+              Download Results
             </button>
             {onOpenFileViewer ? (
               <button
@@ -694,6 +874,98 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
           )}
         </section>
       </div>
+
+      {downloadOpen ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            if (!downloadBusy) closeDownloadDialog();
+          }}
+        >
+          <div
+            className="modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="download-results-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-card-header">
+              <div className="blob-auth-title-row">
+                <Download size={18} aria-hidden="true" />
+                <h2 id="download-results-title">Download Results</h2>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={closeDownloadDialog}
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="blob-auth-copy">
+              This will take a few minutes. Results are built chart by chart for
+              the {filtered.length} folder{filtered.length === 1 ? "" : "s"} in
+              the current filter.
+            </p>
+            {downloadBusy || downloadDone > 0 ? (
+              <div className="download-results-progress" aria-live="polite">
+                <div className="download-results-progress-meta">
+                  <span>
+                    Charts processed: {downloadDone} / {downloadTotal}
+                  </span>
+                  <span>
+                    {downloadTotal === 0
+                      ? "0%"
+                      : `${Math.round((downloadDone / downloadTotal) * 100)}%`}
+                  </span>
+                </div>
+                <div
+                  className="download-results-progress-track"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={downloadTotal}
+                  aria-valuenow={downloadDone}
+                >
+                  <div
+                    className="download-results-progress-fill"
+                    style={{
+                      width:
+                        downloadTotal === 0
+                          ? "0%"
+                          : `${(downloadDone / downloadTotal) * 100}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {downloadError ? (
+              <div className="error-banner" style={{ marginTop: "0.75rem" }}>
+                {downloadError}
+              </div>
+            ) : null}
+            <div className="download-results-actions">
+              <button
+                type="button"
+                className="landing-file-viewer-btn"
+                onClick={closeDownloadDialog}
+                disabled={downloadBusy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="landing-file-viewer-btn landing-file-viewer-btn-primary"
+                onClick={() => void startDownloadResults()}
+                disabled={downloadBusy || filtered.length === 0}
+              >
+                {downloadBusy ? "Preparing…" : "Start download"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

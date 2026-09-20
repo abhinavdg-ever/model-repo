@@ -171,8 +171,8 @@ export default function FolderViewer({
   const [showSectionHeaders, setShowSectionHeaders] = useState(false);
   const [imagingTab, setImagingTab] = useState<ImagingTab>("page");
   const [ocrByKind, setOcrByKind] = useState<Partial<Record<OcrKind, string>>>({});
-  const [sectionHeadersByFile, setSectionHeadersByFile] = useState<
-    Record<string, OcrSectionHeader[]>
+  const [headersByKind, setHeadersByKind] = useState<
+    Partial<Record<OcrKind, Record<string, OcrSectionHeader[]>>>
   >({});
   const [imagingDoc, setImagingDoc] = useState<ImagingDocumentResponse | null>(null);
   const [loadingFolder, setLoadingFolder] = useState(true);
@@ -210,6 +210,7 @@ export default function FolderViewer({
     setImagingTab("page");
     setImagingDoc(null);
     setOcrByKind({});
+    setHeadersByKind({});
     setZoom(1);
     getFolder(folderId)
       .then((data) => {
@@ -241,13 +242,13 @@ export default function FolderViewer({
   useEffect(() => {
     if (!folder || outputMode !== "ocr") {
       setOcrByKind({});
-      setSectionHeadersByFile({});
+      setHeadersByKind({});
       return;
     }
     let cancelled = false;
     setLoadingOcr(true);
     setOcrByKind({});
-    setSectionHeadersByFile({});
+    setHeadersByKind({});
     setCopied(false);
 
     Promise.all(
@@ -263,15 +264,17 @@ export default function FolderViewer({
       .then((entries) => {
         if (cancelled) return;
         const next: Partial<Record<OcrKind, string>> = {};
-        let headers: Record<string, OcrSectionHeader[]> = {};
+        const nextHeaders: Partial<
+          Record<OcrKind, Record<string, OcrSectionHeader[]>>
+        > = {};
         for (const [kind, data] of entries) {
           if (data?.text?.trim()) next[kind] = data.text;
-          if (kind === "final1" && data?.section_headers_by_file) {
-            headers = data.section_headers_by_file;
+          if (data?.section_headers_by_file) {
+            nextHeaders[kind] = data.section_headers_by_file;
           }
         }
         setOcrByKind(next);
-        setSectionHeadersByFile(headers);
+        setHeadersByKind(nextHeaders);
       })
       .finally(() => {
         if (!cancelled) setLoadingOcr(false);
@@ -284,6 +287,7 @@ export default function FolderViewer({
 
   const ocrFullText = ocrByKind[ocrTab] ?? "";
   const ocrMissingMessage = `No ${OCR_TAB_LABELS[ocrTab]} available.`;
+  const sectionHeadersByFile = headersByKind[ocrTab] ?? {};
 
   useEffect(() => {
     if (!folder) {

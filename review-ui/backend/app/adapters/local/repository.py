@@ -241,15 +241,20 @@ def _section_headers_from_page(page: dict[str, Any]) -> list[OcrSectionHeader]:
     Headers without coordinates are still returned (left/top/width/height = 0)
     so the UI can style them in the OCR text; only boxes with positive size
     are drawn on the image.
+
+    Accepts ``section_headers`` with ``norm``, ``bbox``, or Azure ``polygon``.
+    When headers are missing, derives candidates from ``pagesMeta[].lines``.
     """
     raw = page.get("section_headers") or page.get("sectionHeaders") or []
+    if not isinstance(raw, list) or not raw:
+        raw = _headers_from_azure_pages_meta(page)
     if not isinstance(raw, list):
         return []
     out: list[OcrSectionHeader] = []
     for item in raw:
         if not isinstance(item, dict):
             continue
-        text = str(item.get("text") or "").strip()
+        text = str(item.get("text") or item.get("content") or "").strip()
         if not text:
             continue
         left = top = width = height = 0.0
@@ -273,6 +278,27 @@ def _section_headers_from_page(page: dict[str, Any]) -> list[OcrSectionHeader]:
                 height = abs(b - t) / ph
             except (TypeError, ValueError):
                 left = top = width = height = 0.0
+        elif isinstance(item.get("polygon"), (list, tuple)) and len(item["polygon"]) >= 8:
+            try:
+                poly = [float(x) for x in item["polygon"]]
+                xs, ys = poly[0::2], poly[1::2]
+                l, t, r, b = min(xs), min(ys), max(xs), max(ys)
+                pw = float(
+                    item.get("page_width")
+                    or item.get("pageWidth")
+                    or 0
+                ) or 1.0
+                ph = float(
+                    item.get("page_height")
+                    or item.get("pageHeight")
+                    or 0
+                ) or 1.0
+                left = min(l, r) / pw
+                top = min(t, b) / ph
+                width = abs(r - l) / pw
+                height = abs(b - t) / ph
+            except (TypeError, ValueError):
+                left = top = width = height = 0.0
         try:
             level = int(item.get("level") or 2)
         except (TypeError, ValueError):
@@ -287,6 +313,72 @@ def _section_headers_from_page(page: dict[str, Any]) -> list[OcrSectionHeader]:
                 height=height,
             )
         )
+    return out
+
+
+def _looks_like_header_line(text: str) -> bool:
+    cleaned = (text or "").strip().replace(":", "").strip()
+    if not cleaned or len(cleaned) > 80:
+        return False
+    words = cleaned.split()
+    if len(words) > 6:
+        return False
+    letters = "".join(c for c in cleaned if c.isalpha())
+    if len(letters) < 2:
+        return False
+    if letters.upper() == letters:
+        return True
+    return len(words) <= 3
+
+
+def _headers_from_azure_pages_meta(page: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build header candidates from Azure ``pagesMeta[].lines`` (with polygons)."""
+    metas = page.get("pagesMeta") or page.get("pages_meta") or []
+    if not isinstance(metas, list):
+        return []
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for meta in metas:
+        if not isinstance(meta, dict):
+            continue
+        try:
+            pw = float(meta.get("width") or 0) or 0.0
+            ph = float(meta.get("height") or 0) or 0.0
+        except (TypeError, ValueError):
+            pw = ph = 0.0
+        for line in meta.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            text = str(line.get("content") or "").strip()
+            if not _looks_like_header_line(text):
+                continue
+            key = " ".join(text.split()).casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            poly = line.get("polygon") or []
+            item: dict[str, Any] = {
+                "text": text,
+                "level": 2,
+                "polygon": poly,
+                "page_width": pw or None,
+                "page_height": ph or None,
+            }
+            if isinstance(poly, (list, tuple)) and len(poly) >= 8 and pw and ph:
+                try:
+                    vals = [float(x) for x in poly]
+                    xs, ys = vals[0::2], vals[1::2]
+                    l, t, r, b = min(xs), min(ys), max(xs), max(ys)
+                    item["bbox"] = [l, t, r, b]
+                    item["norm"] = {
+                        "left": max(0.0, min(1.0, min(l, r) / pw)),
+                        "top": max(0.0, min(1.0, min(t, b) / ph)),
+                        "width": max(0.0, min(1.0, abs(r - l) / pw)),
+                        "height": max(0.0, min(1.0, abs(b - t) / ph)),
+                    }
+                except (TypeError, ValueError):
+                    pass
+            out.append(item)
     return out
 
 

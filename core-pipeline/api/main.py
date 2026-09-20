@@ -158,10 +158,11 @@ class StageSelection(BaseModel):
     skip_ocr: Optional[bool] = Field(
         None,
         description=(
-            "Per-request override for SKIP_OCR. true = reuse on-disk ocr/ and "
-            "skip prelim/final1/final2 (even if .env has SKIP_OCR=false). "
-            "false = always run OCR engines. omit = honour the SKIP_OCR env. "
-            "Ignored when force=true (force always re-OCRs)."
+            "Per-request override for SKIP_OCR. true = skip prelim/final1/final2 "
+            "when ocr/ already has usable files, or when ocr_results in the DB "
+            "can be written out as the three ocr/ files (even if .env has "
+            "SKIP_OCR=false). false = always run OCR engines. omit = honour "
+            "the SKIP_OCR env. Ignored when force=true (force always re-OCRs)."
         ),
     )
 
@@ -523,6 +524,27 @@ def _write_after_run(payload: "RunRequest", chart_name: str) -> None:
     """
     if not (payload.blob_write_path or payload.local_write_path):
         return
+
+    write = payload.blob_write_path or payload.local_write_path
+    try:
+        from db import connect, set_chart_output_path
+        from db.path_ids import resolve_output_path
+
+        out_path = resolve_output_path(chart_name, write_path=write)
+        if out_path:
+            with connect() as conn:
+                row = conn.execute(
+                    "SELECT id FROM chart_list WHERE chart_name = %s",
+                    (chart_name,),
+                ).fetchone()
+                if row:
+                    # Explicit write path wins as-is (no Raw_Input→Processed remap).
+                    set_chart_output_path(conn, int(row["id"]), out_path)
+    except Exception:
+        logger.debug(
+            "could not persist output_path for %s", chart_name, exc_info=True
+        )
+
     from jobs.export_chart import write_chart
 
     try:

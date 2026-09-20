@@ -345,7 +345,7 @@ def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
             "enabled": SKIP_OCR,
             "ready": True,
             "reason": (
-                "reuse ocr/ when present; otherwise OCR still runs"
+                "reuse ocr/ when present, else materialize from ocr_results"
                 if SKIP_OCR
                 else "SKIP_OCR=false"
             ),

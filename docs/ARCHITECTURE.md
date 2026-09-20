@@ -110,7 +110,7 @@ erDiagram
 | Table | Grain | Role |
 |---|---|---|
 | `pipeline_stage` | stage × pass | **The pipeline's shape as data.** Order, labels, whether a stage is orchestrated. Adding a stage is an INSERT. |
-| `chart_list` | chart | Identity + lifecycle `status` + `current_stage`/`current_pass`. `UNIQUE (chart_name)`. |
+| `chart_list` | chart | Identity + lifecycle `status` + `current_stage`/`current_pass` + `output_path` (Processed/… write destination). `UNIQUE (chart_name)`. |
 | `page_list` | page | One row per image. `image_sha256` gives download idempotency and image-level dedup. |
 | `page_stage_status` | page × stage × pass | Progress. Replaces v6's 11 status columns. Drives resume and status derivation. |
 | `manifest_member_list` | record × member | The client roster, keyed on `record_id` — which **is** `chart_list.chart_name`. No `chart_id` column: the relationship is a join, so a sweep can precede ingest with nothing to link afterwards. |

@@ -101,7 +101,26 @@ def _write_one(
     forty-nine — one unwritable destination is exactly the kind of thing that
     should be reported and stepped over.
     """
+    from db import connect, set_chart_output_path
+    from db.path_ids import resolve_output_path
     from jobs.export_chart import write_chart
+
+    write = blob_write_path or local_write_path
+    if write:
+        out_path = resolve_output_path(chart_name, write_path=write)
+        if out_path:
+            try:
+                with connect() as conn:
+                    row = conn.execute(
+                        "SELECT id FROM chart_list WHERE chart_name = %s",
+                        (chart_name,),
+                    ).fetchone()
+                    if row:
+                        set_chart_output_path(conn, int(row["id"]), out_path)
+            except Exception:
+                logger.debug(
+                    "could not persist output_path for %s", chart_name, exc_info=True
+                )
 
     try:
         result = write_chart(
@@ -140,6 +159,8 @@ def _pre_register(
     blob_container: Optional[str],
     run_id: Optional[str],
     batch_id: Optional[str],
+    blob_write_path: Optional[str] = None,
+    local_write_path: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Insert every chart into chart_list before any ingest/run starts.
 
@@ -147,10 +168,17 @@ def _pre_register(
     ``GET /api/charts/by-name/...`` can see the full drop immediately.
     """
     from db import connect, upsert_chart
+    from db.path_ids import resolve_output_path
 
     registered: list[dict[str, Any]] = []
     with connect() as conn:
         for source, name, mode in sources:
+            write = blob_write_path if mode == "blob" else local_write_path
+            out_path = resolve_output_path(
+                name,
+                write_path=write,
+                read_path=source if mode == "blob" else (str(source) if source else None),
+            )
             chart = upsert_chart(
                 conn,
                 chart_name=name,
@@ -158,6 +186,7 @@ def _pre_register(
                 source=mode,
                 blob_container=blob_container if mode == "blob" else None,
                 blob_path=source if mode == "blob" else None,
+                output_path=out_path,
                 run_id=run_id,
                 batch_id=batch_id,
             )
@@ -168,6 +197,7 @@ def _pre_register(
                     "source": source,
                     "mode": mode,
                     "status": chart.get("status") or "received",
+                    "output_path": out_path,
                 }
             )
     logger.info("Pre-registered %d chart(s) into chart_list", len(registered))
@@ -390,6 +420,8 @@ def run_batch(
         blob_container=blob_container,
         run_id=run_id,
         batch_id=batch_id,
+        blob_write_path=blob_write_path,
+        local_write_path=local_write_path,
     )
 
     counters = {"started": 0, "finished": 0}

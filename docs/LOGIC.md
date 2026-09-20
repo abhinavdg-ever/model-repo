@@ -530,9 +530,11 @@ current_stage = earliest stage, in pipeline_stage.seq order,
 | No pages yet | `received` / `downloading` |
 | A page `failed` in a stage that is not otherwise complete | `failed` |
 | Some stage incomplete | `processing` (+ `current_stage`, `current_pass`) |
-| All done, member `document_decision='reject'` | `rejected` |
 | All done, member `final_status='needs_review'` | `needs_review` |
-| All done | `completed` |
+| All done (including member `document_decision='reject'`) | `completed` |
+
+Accept/reject is recorded on `member_verification_summary` only — `chart_list.status`
+is never set to `rejected` (legacy value remapped by `schema/patch_output_path.sql`).
 
 A page that `failed` in an otherwise-finished stage does **not** fail the chart —
 every page reached a terminal state, so the stage is done and the failure stays

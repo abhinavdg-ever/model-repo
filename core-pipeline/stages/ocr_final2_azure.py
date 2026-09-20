@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -112,18 +113,161 @@ def _barcode_dict(barcode: Any) -> dict[str, Any]:
     }
 
 
+def _flatten_polygon(raw: Any) -> list[float]:
+    """Azure DI polygon → flat ``[x1,y1,…,x4,y4]`` (pixels, top-left origin)."""
+    if raw is None:
+        return []
+    out: list[float] = []
+    if isinstance(raw, (list, tuple)):
+        for item in raw:
+            if hasattr(item, "x") and hasattr(item, "y"):
+                out.extend([float(item.x), float(item.y)])
+            else:
+                try:
+                    out.append(float(item))
+                except (TypeError, ValueError):
+                    return []
+    return out if len(out) >= 8 and len(out) % 2 == 0 else []
+
+
+def _polygon_bbox(polygon: list[float]) -> tuple[float, float, float, float] | None:
+    if len(polygon) < 8:
+        return None
+    xs = polygon[0::2]
+    ys = polygon[1::2]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _looks_like_section_header(text: str) -> bool:
+    cleaned = (text or "").strip().replace(":", "").strip()
+    if not cleaned or len(cleaned) > 80:
+        return False
+    words = cleaned.split()
+    if len(words) > 6:
+        return False
+    letters = re.sub(r"[^A-Za-z]", "", cleaned)
+    if len(letters) < 2:
+        return False
+    if letters.upper() == letters:
+        return True
+    return len(words) <= 3
+
+
+def _css_norm_topleft(
+    l: float, t: float, r: float, b: float, page_w: float, page_h: float
+) -> dict[str, float] | None:
+    """Azure Read coordinates are top-left pixel space → CSS fractions 0–1."""
+    if page_w <= 0 or page_h <= 0:
+        return None
+
+    def clip(v: float) -> float:
+        return max(0.0, min(1.0, float(v)))
+
+    left = min(l, r)
+    right = max(l, r)
+    top = min(t, b)
+    bottom = max(t, b)
+    return {
+        "left": round(clip(left / page_w), 5),
+        "top": round(clip(top / page_h), 5),
+        "width": round(clip((right - left) / page_w), 5),
+        "height": round(clip((bottom - top) / page_h), 5),
+    }
+
+
+def _line_dict(line: Any) -> dict[str, Any]:
+    content = getattr(line, "content", None)
+    if content is None and isinstance(line, dict):
+        content = line.get("content")
+    polygon = _flatten_polygon(
+        getattr(line, "polygon", None)
+        if not isinstance(line, dict)
+        else line.get("polygon")
+    )
+    return {
+        "content": str(content or ""),
+        "polygon": polygon,
+    }
+
+
+def _word_dict(word: Any) -> dict[str, Any]:
+    content = getattr(word, "content", None)
+    if content is None and isinstance(word, dict):
+        content = word.get("content")
+    conf = getattr(word, "confidence", None)
+    if conf is None and isinstance(word, dict):
+        conf = word.get("confidence")
+    polygon = _flatten_polygon(
+        getattr(word, "polygon", None)
+        if not isinstance(word, dict)
+        else word.get("polygon")
+    )
+    return {
+        "content": str(content or ""),
+        "confidence": conf,
+        "polygon": polygon,
+    }
+
+
+def _section_headers_from_lines(
+    lines: list[dict[str, Any]],
+    *,
+    page_w: float,
+    page_h: float,
+) -> list[dict[str, Any]]:
+    """Header-like Azure lines → review-ui ``section_headers`` with ``norm``."""
+    headers: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for line in lines:
+        text = str(line.get("content") or "").strip()
+        if not _looks_like_section_header(text):
+            continue
+        key = re.sub(r"\s+", " ", text).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        polygon = list(line.get("polygon") or [])
+        box = _polygon_bbox(polygon)
+        norm = None
+        bbox: list[float] = []
+        if box is not None:
+            l, t, r, b = box
+            bbox = [round(l, 2), round(t, 2), round(r, 2), round(b, 2)]
+            norm = _css_norm_topleft(l, t, r, b, page_w, page_h)
+        headers.append(
+            {
+                "text": text,
+                "level": 2,
+                "bbox": bbox,
+                "polygon": polygon,
+                "page_width": page_w or None,
+                "page_height": page_h or None,
+                "coord_origin": "TOPLEFT",
+                "norm": norm,
+            }
+        )
+    return headers
+
+
 def _page_meta(page: Any) -> dict[str, Any]:
-    lines = getattr(page, "lines", None) or []
-    words = getattr(page, "words", None) or []
+    lines_raw = getattr(page, "lines", None) or []
+    words_raw = getattr(page, "words", None) or []
     barcodes = getattr(page, "barcodes", None) or []
+    width = getattr(page, "width", None)
+    height = getattr(page, "height", None)
+    lines = [_line_dict(ln) for ln in lines_raw]
+    # Words carry polygons too — useful for precise boxes, but large. Keep them.
+    words = [_word_dict(w) for w in words_raw]
     return {
         "pageNumber": getattr(page, "page_number", None),
         "angle": getattr(page, "angle", None),
-        "width": getattr(page, "width", None),
-        "height": getattr(page, "height", None),
+        "width": width,
+        "height": height,
         "unit": getattr(page, "unit", None),
         "lineCount": len(lines),
         "wordCount": len(words),
+        "lines": lines,
+        "words": words,
         "barcodes": [_barcode_dict(b) for b in barcodes],
     }
 
@@ -160,9 +304,24 @@ def _ocr_azure(image_path: Path) -> dict[str, Any]:
         pages_meta = [
             _page_meta(p) for p in (getattr(result, "pages", None) or [])
         ]
+        section_headers: list[dict[str, Any]] = []
+        for meta in pages_meta:
+            try:
+                pw = float(meta.get("width") or 0)
+                ph = float(meta.get("height") or 0)
+            except (TypeError, ValueError):
+                pw = ph = 0.0
+            section_headers.extend(
+                _section_headers_from_lines(
+                    list(meta.get("lines") or []),
+                    page_w=pw,
+                    page_h=ph,
+                )
+            )
         return {
             "content": getattr(result, "content", None) or "",
             "pages_meta": pages_meta,
+            "section_headers": section_headers,
             "languages": _languages_meta(result),
             "features": features or [],
         }
@@ -185,6 +344,7 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
         "page_number": page.get("page_number"),
         "content": "",
         "pages_meta": [],
+        "section_headers": [],
         "languages": [],
         "features": [],
         "error": "",
@@ -195,6 +355,7 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
             extracted = _ocr_azure(image_path)
             out["content"] = extracted["content"]
             out["pages_meta"] = extracted["pages_meta"]
+            out["section_headers"] = extracted.get("section_headers") or []
             out["languages"] = extracted.get("languages") or []
             out["features"] = extracted.get("features") or []
         else:
@@ -267,6 +428,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     "fileName": item["page_name"],
                     "content": item["content"],
                     "pagesMeta": item["pages_meta"],
+                    "section_headers": item.get("section_headers") or [],
                     "languages": item.get("languages") or [],
                     "features": item.get("features") or [],
                 }
@@ -288,12 +450,18 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             content = ""
             pages_meta: list[Any] = []
             languages: list[Any] = []
+            section_headers: list[Any] = []
             if raw:
                 try:
                     parsed = json.loads(raw)
                     content = str(parsed.get("content") or "")
                     pages_meta = list(parsed.get("pagesMeta") or [])
                     languages = list(parsed.get("languages") or [])
+                    section_headers = list(
+                        parsed.get("section_headers")
+                        or parsed.get("sectionHeaders")
+                        or []
+                    )
                 except (ValueError, AttributeError, TypeError):
                     content = raw
             entry: dict[str, Any] = {
@@ -301,6 +469,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "fileName": page["page_name"],
                 "content": content,
                 "pagesMeta": pages_meta,
+                "section_headers": section_headers,
                 "languages": languages,
             }
             if not str(content or "").strip():

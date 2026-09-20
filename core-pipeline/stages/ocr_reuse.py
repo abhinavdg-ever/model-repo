@@ -1,8 +1,15 @@
-"""Reuse on-disk ``ocr/`` artifacts when ``SKIP_OCR`` is set.
+"""Reuse on-disk ``ocr/`` artifacts (or DB ``ocr_results``) when ``SKIP_OCR`` is set.
 
-Downstream stages read ``ocr_results`` in Postgres, so skipping the OCR stages
-also re-hydrates the DB from ``*_prelim.txt`` / ``*_final1.json`` /
-``*_final2.json`` when those files exist.
+When ``skip_ocr`` is true (or ``SKIP_OCR=true``):
+
+  1. If the chart's ``ocr/`` folder already has usable files → skip OCR engines
+     and re-hydrate ``ocr_results`` from disk.
+  2. Else if ``ocr_results`` already has rows → skip OCR engines and **write**
+     the three folder files (``*_prelim.txt``, ``*_final1.json``,
+     ``*_final2.json``) from the DB.
+  3. Else run OCR normally.
+
+``force=True`` always runs OCR.
 """
 from __future__ import annotations
 
@@ -10,11 +17,14 @@ import json
 import logging
 from typing import Any, Optional
 
-from db import connect, list_pages, set_pages_stage, upsert_ocr_result
+from db import connect, get_ocr_texts, list_pages, set_pages_stage, upsert_ocr_result
 from db.paths import (
     ocr_dir,
     parse_combined_ocr_txt,
     parse_ocr_json,
+    write_combined_ocr_txt,
+    write_final1_json,
+    write_final2_json,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,12 +53,150 @@ def ocr_artifacts_present(chart_name: str) -> bool:
     return False
 
 
+def ocr_results_present(chart_id: int) -> bool:
+    """True when ``ocr_results`` has at least one non-empty row for this chart."""
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT 1 AS ok
+              FROM ocr_results
+             WHERE chart_id = %s
+               AND COALESCE(char_count, 0) > 0
+             LIMIT 1
+            """,
+            (chart_id,),
+        ).fetchone()
+    return bool(row)
+
+
+def _page_doc_from_raw(
+    raw: str,
+    *,
+    page_name: str,
+    page_number: Any,
+    ocr_type: str,
+) -> dict[str, Any]:
+    """Rebuild a final1/final2 page object from a stored ``raw_text`` cell."""
+    base: dict[str, Any] = {
+        "pageNumber": page_number,
+        "fileName": page_name,
+        "content": "",
+    }
+    if not raw:
+        return base
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        base["content"] = raw
+        if ocr_type == "docling":
+            base["markdown"] = raw
+        return base
+    if isinstance(parsed, dict):
+        base.update(parsed)
+        base["fileName"] = page_name
+        base["pageNumber"] = page_number
+        if "content" not in base and "markdown" in base:
+            base["content"] = base.get("markdown") or ""
+        return base
+    base["content"] = str(parsed)
+    if ocr_type == "docling":
+        base["markdown"] = base["content"]
+    return base
+
+
+def materialize_ocr_from_db(chart_id: int, chart_name: str) -> dict[str, Any]:
+    """Write the three ``ocr/`` files from ``ocr_results`` and mark stages done."""
+    summary: dict[str, Any] = {
+        "chart_id": chart_id,
+        "chart_name": chart_name,
+        "source": "ocr_results",
+        "written": {},
+        "stages_marked": [],
+    }
+    with connect() as conn:
+        pages = list_pages(conn, chart_id)
+        page_ids = [p["id"] for p in pages]
+        loaded_kinds: list[str] = []
+
+        prelim = get_ocr_texts(conn, chart_id, "tesseract")
+        if prelim:
+            page_texts = [
+                (p["page_name"], prelim.get(p["id"], ""))
+                for p in pages
+                if p["id"] in prelim
+            ]
+            if page_texts:
+                path = write_combined_ocr_txt(chart_name, "prelim", page_texts)
+                summary["written"]["prelim"] = str(path)
+                loaded_kinds.append("ocr_prelim")
+
+        final1 = get_ocr_texts(conn, chart_id, "docling")
+        if final1:
+            out_pages = [
+                _page_doc_from_raw(
+                    final1.get(p["id"], ""),
+                    page_name=p["page_name"],
+                    page_number=p.get("page_number"),
+                    ocr_type="docling",
+                )
+                for p in pages
+                if p["id"] in final1
+            ]
+            if out_pages:
+                path = write_final1_json(chart_name, out_pages, model="skip_ocr_from_db")
+                summary["written"]["final1"] = str(path)
+                loaded_kinds.append("ocr_final1")
+
+        final2 = get_ocr_texts(conn, chart_id, "azuredocintel")
+        if final2:
+            out_pages = [
+                _page_doc_from_raw(
+                    final2.get(p["id"], ""),
+                    page_name=p["page_name"],
+                    page_number=p.get("page_number"),
+                    ocr_type="azuredocintel",
+                )
+                for p in pages
+                if p["id"] in final2
+            ]
+            if out_pages:
+                path = write_final2_json(chart_name, out_pages)
+                summary["written"]["final2"] = str(path)
+                loaded_kinds.append("ocr_final2")
+
+        for stage_name in OCR_STAGE_NAMES:
+            if not page_ids:
+                continue
+            set_pages_stage(
+                conn,
+                chart_id=chart_id,
+                page_ids=page_ids,
+                stage_name=stage_name,
+                pass_no=1,
+                status="completed" if stage_name in loaded_kinds else "skipped",
+                skip_reason=(
+                    None
+                    if stage_name in loaded_kinds
+                    else "skip_ocr_no_artifact"
+                ),
+            )
+            summary["stages_marked"].append(stage_name)
+
+    logger.info(
+        "SKIP_OCR: materialized chart %s ocr/ from DB — %s",
+        chart_name,
+        list(summary["written"]),
+    )
+    return summary
+
+
 def hydrate_ocr_from_disk(chart_id: int, chart_name: str) -> dict[str, Any]:
     """Load existing ocr/ files into ``ocr_results`` and mark OCR stages done."""
     root = ocr_dir(chart_name)
     summary: dict[str, Any] = {
         "chart_id": chart_id,
         "chart_name": chart_name,
+        "source": "disk",
         "loaded": {},
         "stages_marked": [],
     }
@@ -95,20 +243,16 @@ def hydrate_ocr_from_disk(chart_id: int, chart_name: str) -> dict[str, Any]:
                 page_id = by_name.get(name)
                 if page_id is None:
                     continue
-                # Store final JSON rows as the stage would (content envelope).
-                if ocr_type == "tesseract":
-                    raw = text
-                else:
-                    page = next((p for p in pages if p["page_name"] == name), None)
-                    raw = json.dumps(
-                        {
-                            "pageNumber": page.get("page_number") if page else None,
-                            "fileName": name,
-                            "content": text,
-                            "markdown": text,
-                            "engine": "skip_ocr_reuse",
-                        }
-                    )
+                page = next((p for p in pages if p["page_name"] == name), None)
+                raw = json.dumps(
+                    {
+                        "pageNumber": page.get("page_number") if page else None,
+                        "fileName": name,
+                        "content": text,
+                        "markdown": text,
+                        "engine": "skip_ocr_reuse",
+                    }
+                )
                 upsert_ocr_result(
                     conn,
                     chart_id=chart_id,
@@ -121,7 +265,6 @@ def hydrate_ocr_from_disk(chart_id: int, chart_name: str) -> dict[str, Any]:
             if count:
                 loaded_kinds.append(kind)
 
-        # Mark every OCR stage completed so chart progress advances past them.
         for stage_name in OCR_STAGE_NAMES:
             if not page_ids:
                 continue
@@ -148,9 +291,17 @@ def hydrate_ocr_from_disk(chart_id: int, chart_name: str) -> dict[str, Any]:
     return summary
 
 
+def apply_skip_ocr(chart_id: int, chart_name: str) -> dict[str, Any]:
+    """Disk first, then DB→folder. Caller already decided skip is active."""
+    if ocr_artifacts_present(chart_name):
+        return hydrate_ocr_from_disk(chart_id, chart_name)
+    return materialize_ocr_from_db(chart_id, chart_name)
+
+
 def should_skip_ocr_stages(
     *,
     chart_name: str,
+    chart_id: Optional[int] = None,
     force: bool,
     skip_ocr: Optional[bool] = None,
 ) -> bool:
@@ -166,8 +317,11 @@ def should_skip_ocr_stages(
         return False
     if ocr_artifacts_present(chart_name):
         return True
+    if chart_id is not None and ocr_results_present(chart_id):
+        return True
     logger.info(
-        "skip_ocr requested but no usable files under ocr/%s/ — running OCR",
+        "skip_ocr requested but no usable ocr/ files or ocr_results for %s — "
+        "running OCR",
         chart_name,
     )
     return False

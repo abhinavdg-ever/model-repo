@@ -32,6 +32,52 @@ def test_missing_segments():
     assert infer_run_batch_from_path("Raw_Input/DEID_PNGs") == (None, None)
 
 
+def test_derive_output_path_raw_input_deid():
+    from db.path_ids import derive_output_path, output_write_prefix, resolve_output_path
+
+    assert (
+        derive_output_path(
+            "Raw_Input/Run1/Batch1/DEID_Images",
+            "52743839_44976074",
+        )
+        == "Processed/Run1/Batch1/52743839_44976074"
+    )
+    assert (
+        derive_output_path(
+            "Raw_Input/Run1/Batch1/DEID_PNGs/52743839_44976074",
+            "52743839_44976074",
+        )
+        == "Processed/Run1/Batch1/52743839_44976074"
+    )
+    assert (
+        output_write_prefix("Processed/Run1/Batch1/52743839_44976074")
+        == "Processed/Run1/Batch1"
+    )
+    # Explicit write path is used as-is (no Raw_Input→Processed remap).
+    assert (
+        resolve_output_path(
+            "FolderName",
+            write_path="MyOut/Custom/Run9",
+            read_path="Raw_Input/Run1/Batch1/DEID_Images",
+        )
+        == "MyOut/Custom/Run9/FolderName"
+    )
+    assert (
+        resolve_output_path(
+            "FolderName",
+            write_path="MyOut/Custom/Run9/FolderName",
+        )
+        == "MyOut/Custom/Run9/FolderName"
+    )
+    assert (
+        resolve_output_path(
+            "FolderName",
+            read_path="Raw_Input/Run1/Batch1/DEID_Images",
+        )
+        == "Processed/Run1/Batch1/FolderName"
+    )
+
+
 def test_windows_separators_in_run_batch_inference():
     assert infer_run_batch_from_path(r"Raw_Input\Run1\Batch1\DEID_PNGs") == ("R1", "B1")
 

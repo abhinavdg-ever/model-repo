@@ -481,7 +481,7 @@ class PostgresFolderRepository(FolderRepository):
 
                 if not body.startswith("Skipped for "):
                     body = clean_ocr_display_text(body)
-            if ocr_type == "docling" and parsed is not None:
+            if ocr_type in {"docling", "azuredocintel"} and parsed is not None:
                 from app.adapters.local.repository import _section_headers_from_page
 
                 headers = _section_headers_from_page(parsed)

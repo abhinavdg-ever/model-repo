@@ -5,7 +5,9 @@ needed a CHECK-constraint migration and a stage that runs twice could not be
 represented at all. v7 splits it:
 
   * ``chart_list.status``        — lifecycle: received / downloading / processing /
-                                   completed / failed / needs_review / rejected
+                                   completed / failed / needs_review
+                                   (``rejected`` is legacy; no longer written —
+                                   accept/reject lives on member_verification_summary)
   * ``chart_list.current_stage`` — which stage is the bottleneck, plus
     ``current_pass`` so "blank/junk pass 2" is distinct from pass 1
 
@@ -65,8 +67,8 @@ def compute_progress(
       1. No pages  → keep received/downloading, else received.
       2. A page failed in a stage that is not otherwise complete → failed.
       3. Otherwise the earliest incomplete stage → processing, current_stage.
-      4. Every stage done → rejected / needs_review / completed, from the
-         member verification outcome.
+      4. Every stage done → needs_review / completed, from the member
+         verification outcome (never ``rejected`` on chart_list).
     """
     prev = (previous_status or "").lower() or None
     stages: list[dict[str, Any]] = []
@@ -111,9 +113,10 @@ def compute_progress(
     if any_failed:
         status = "failed"
     elif earliest is None:
-        if (member_document_decision or "").lower() == "reject":
-            status = "rejected"
-        elif member_final_status == "needs_review":
+        # Accept/reject lives on member_verification_summary only — chart
+        # lifecycle stays completed (or needs_review). Rejected/Accepted as a
+        # chart_list.status comes later; never stamp ``rejected`` here.
+        if member_final_status == "needs_review":
             status = "needs_review"
         else:
             status = "completed"

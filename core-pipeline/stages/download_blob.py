@@ -27,6 +27,7 @@ from db import (
     count_manifest_members,
     prune_orphan_pages,
     reset_chart_results,
+    set_chart_output_path,
     set_chart_status,
     sha256_file,
     update_job,
@@ -92,11 +93,12 @@ def run_download(
     chart_id: Optional[int] = None,
     force: bool = True,
 ) -> dict[str, Any]:
-    from db.path_ids import resolve_run_batch
+    from db.path_ids import resolve_output_path, resolve_run_batch
 
     run_id, batch_id = resolve_run_batch(run_id, batch_id, blob_path, blob_container)
     chart_name = chart_name_from_blob_path(blob_path)
     ensure_chart_dirs(chart_name)
+    out_path = resolve_output_path(chart_name, read_path=blob_path.strip("/"))
 
     with connect() as conn:
         chart = upsert_chart(
@@ -106,6 +108,7 @@ def run_download(
             source="blob",
             blob_container=blob_container,
             blob_path=blob_path.strip("/"),
+            output_path=out_path,
             run_id=run_id,
             batch_id=batch_id,
         )
@@ -205,6 +208,7 @@ def run_download(
                 source="blob",
                 blob_container=blob_container,
                 blob_path=blob_path.strip("/"),
+                output_path=out_path,
                 run_id=run_id,
                 batch_id=batch_id,
             )
@@ -301,7 +305,7 @@ def import_local_folder(
     """
     import shutil
 
-    from db.path_ids import resolve_run_batch
+    from db.path_ids import resolve_output_path, resolve_run_batch
 
     src = Path(source).expanduser().resolve()
     run_id, batch_id = resolve_run_batch(run_id, batch_id, str(src))
@@ -401,6 +405,11 @@ def import_local_folder(
         )
 
     result = register_local_pages(name, run_id=run_id, batch_id=batch_id)
+    out_path = resolve_output_path(name, read_path=str(src))
+    if out_path and result.get("chart_id") is not None:
+        with connect() as conn:
+            set_chart_output_path(conn, int(result["chart_id"]), out_path)
+        result["output_path"] = out_path
     result["source"] = str(src)
     result["imported"] = len(copied)
     result["manifest"] = manifest_summary
