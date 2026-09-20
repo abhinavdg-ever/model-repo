@@ -181,13 +181,12 @@ def build_converter(models_dir: Path | None = None) -> Any:
         )
     if do_tables:
         pipeline_options.table_structure_options.mode = table_mode
-        # Cell matching fills TableFormer cells with OCR text but is the
-        # expensive half — default OFF so pages finish under the 90s timeout.
-        # Set DOCLING_TABLE_CELL_MATCHING=true when dense form tables export
-        # empty; on timeout/sparse Docling, final1 already falls back to
-        # RapidOCR-onnx.
+        # Cell matching fills TableFormer cells with OCR text. Without it,
+        # dense form tables export as empty markdown rows and the page looks
+        # header-only in Final (OSS). Default ON; set false to trade quality
+        # for speed. On timeout/sparse Docling, final1 falls back to RapidOCR-onnx.
         pipeline_options.table_structure_options.do_cell_matching = (
-            os.environ.get("DOCLING_TABLE_CELL_MATCHING") or "false"
+            os.environ.get("DOCLING_TABLE_CELL_MATCHING") or "true"
         ).strip().casefold() in {"1", "true", "yes", "on"}
     pipeline_options.ocr_options = _build_rapidocr_options(models)
     logger.info(
