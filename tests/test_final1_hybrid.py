@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 CORE = ROOT / "core-pipeline"
@@ -56,7 +55,46 @@ def test_get_converter_none_follows_env(monkeypatch):
     docling_ocr.reset_converters_for_tests()
 
 
-def test_ocr_one_hybrid_on_primary_timeout(tmp_path, monkeypatch):
+def test_ocr_one_timeout_skips_hybrid_uses_rapid(tmp_path, monkeypatch):
+    """After a Docling timeout the orphan still runs — never start hybrid."""
+    from stages import ocr_final1_docling as final1
+
+    image = tmp_path / "1.jpg"
+    image.write_bytes(b"fake")
+    page = {"id": 7, "page_name": "1.jpg", "page_number": 1}
+    hybrid_calls: list[str] = []
+
+    primary = object()
+
+    def fake_get_converter(cell_matching=None):
+        return primary
+
+    def fake_convert(image_path, *, converter=None, timeout_seconds=30.0):
+        raise TimeoutError("Docling exceeded 30s on 1.jpg")
+
+    monkeypatch.setattr(
+        "stages.lib.imaging.docling_ocr.get_converter", fake_get_converter
+    )
+    monkeypatch.setattr(
+        "stages.lib.imaging.docling_ocr.convert_image_with_timeout", fake_convert
+    )
+    monkeypatch.setattr(final1, "_ocr_onnx", lambda path: "rapid body text")
+    monkeypatch.setattr(
+        final1,
+        "_hybrid_headers_and_rapid",
+        lambda *a, **k: hybrid_calls.append("no") or {},
+    )
+
+    out = final1._ocr_one((page, image, True, "chartA"))
+
+    assert out["error"] == ""
+    assert out["content"] == "rapid body text"
+    assert out["section_headers"] == []
+    assert out["engine"] == "rapidocr-onnx"
+    assert hybrid_calls == []
+
+
+def test_ocr_one_hybrid_on_sparse(tmp_path, monkeypatch):
     from stages import ocr_final1_docling as final1
 
     image = tmp_path / "1.jpg"
@@ -81,7 +119,13 @@ def test_ocr_one_hybrid_on_primary_timeout(tmp_path, monkeypatch):
 
     def fake_convert(image_path, *, converter=None, timeout_seconds=30.0):
         if converter is primary:
-            raise TimeoutError("Docling timed out after 30.0s")
+            return {
+                "content": "HDR",
+                "markdown": "HDR",
+                "section_headers": [],
+                "document": None,
+                "elapsed_seconds": 2.0,
+            }
         if converter is fast:
             return {
                 "content": "# Patient Data\n",
@@ -100,16 +144,12 @@ def test_ocr_one_hybrid_on_primary_timeout(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(final1, "_ocr_onnx", lambda path: "rapid body text")
 
-    # _ocr_one imports get_converter / convert from the module inside the
-    # function — patch those names on the docling_ocr module (already done).
-    out = final1._ocr_one((page, image, True))
+    out = final1._ocr_one((page, image, True, "chartA"))
 
     assert out["error"] == ""
     assert out["content"] == "rapid body text"
-    assert out["markdown"] == "rapid body text"
     assert out["section_headers"] == headers
     assert out["engine"] == final1.HYBRID_ENGINE
-    assert out["document"] is None
 
 
 def test_ocr_one_rapid_only_when_hybrid_headers_fail(tmp_path, monkeypatch):
@@ -127,7 +167,12 @@ def test_ocr_one_rapid_only_when_hybrid_headers_fail(tmp_path, monkeypatch):
 
     def fake_convert(image_path, *, converter=None, timeout_seconds=30.0):
         if converter is primary:
-            raise TimeoutError("Docling timed out after 30.0s")
+            return {
+                "content": "x",
+                "markdown": "x",
+                "section_headers": [],
+                "elapsed_seconds": 1.0,
+            }
         raise RuntimeError("fast Docling also failed")
 
     monkeypatch.setattr(
@@ -138,7 +183,7 @@ def test_ocr_one_rapid_only_when_hybrid_headers_fail(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(final1, "_ocr_onnx", lambda path: "rapid only")
 
-    out = final1._ocr_one((page, image, True))
+    out = final1._ocr_one((page, image, True, "chartB"))
     assert out["content"] == "rapid only"
     assert out["section_headers"] == []
     assert out["engine"] == "rapidocr-onnx"
@@ -177,7 +222,7 @@ def test_ocr_one_primary_success_skips_hybrid(tmp_path, monkeypatch):
         final1, "_ocr_onnx", lambda path: called_onnx.append(path) or "should-not"
     )
 
-    out = final1._ocr_one((page, image, True))
+    out = final1._ocr_one((page, image, True, "chartC"))
     assert out["engine"] == "docling+rapidocr"
     assert out["content"] == "A" * 200
     assert out["section_headers"] == [{"text": "H"}]

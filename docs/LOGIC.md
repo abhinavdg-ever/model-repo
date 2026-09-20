@@ -211,7 +211,7 @@ Downstream stages read `v_page_blank_junk_final` and never re-derive precedence.
 
 ## 4. Final OCR
 
-**Stages:** `stages/ocr_final1_docling.py` (Docling layout + RapidOCR; on timeout/sparse: hybrid headers from Docling without cell matching + RapidOCR-onnx body), `stages/ocr_final2_azure.py` (Azure Document Intelligence `prebuilt-read`)
+**Stages:** `stages/ocr_final1_docling.py` (Docling layout + RapidOCR; timeout → Rapid only; sparse → hybrid headers without cell matching + Rapid body), `stages/ocr_final2_azure.py` (Azure Document Intelligence `prebuilt-read`)
 
 Both run on pages not ruled out by pass 1, **plus every handwritten /
 low-quality page**. Azure final2 additionally **skips high-quality printed**

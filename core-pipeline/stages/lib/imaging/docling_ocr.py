@@ -20,6 +20,10 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 _converter_lock = threading.Lock()
+# Only one Docling ``convert`` at a time process-wide. BATCH_WORKERS>1 otherwise
+# runs several Torch converts in parallel, every page hits the timeout, and
+# abandoned workers keep burning CPU so hybrid looks like "retries".
+_docling_infer_lock = threading.Lock()
 # Two process-wide converters: cell-matching on vs off. Primary final1 uses
 # the env default (usually True); hybrid fallback forces False for headers.
 _converters: dict[bool, Any] = {}
@@ -741,30 +745,63 @@ def convert_image_with_timeout(
 ) -> dict[str, Any]:
     """``convert_image`` bounded by a wall-clock timeout.
 
-    On timeout raises ``TimeoutError`` and **does not wait** for the stuck
-    worker (``shutdown(wait=False)``). A prior bug used ``with ThreadPoolExecutor``
-    which always waits on exit — that is why a page could still burn ~13 minutes
-    after a "timeout". The orphan thread may keep using CPU until it finishes;
-    callers must fall back to RapidOCR-onnx and continue the chain.
+    Process-wide lock: only one Docling convert runs at a time across batch
+    charts. On timeout the orphan may keep the lock until it finishes — other
+    callers then fail fast with "Docling busy" instead of stacking more orphans.
+
+    Callers that hit ``TimeoutError`` must **not** start another Docling pass
+    on the same page (hybrid after timeout always loses to the orphan).
     """
+    import contextvars
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 
     limit = max(1.0, float(timeout_seconds))
-    pool = ThreadPoolExecutor(max_workers=1)
+    if not _docling_infer_lock.acquire(timeout=limit):
+        raise TimeoutError(
+            f"Docling busy >{limit:.0f}s (another page still converting) — "
+            f"skip {image_path.name}"
+        )
+
+    released = False
+
+    def _release(_fut: Any = None) -> None:
+        nonlocal released
+        if not released:
+            released = True
+            try:
+                _docling_infer_lock.release()
+            except RuntimeError:
+                pass
+
+    # Carry [batch#] [chart#] into the worker (ThreadPoolExecutor does not
+    # copy contextvars by default).
+    ctx = contextvars.copy_context()
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="docling")
     try:
-        fut = pool.submit(convert_image, image_path, converter)
+        fut = pool.submit(ctx.run, convert_image, image_path, converter)
         try:
-            return fut.result(timeout=limit)
+            out = fut.result(timeout=limit)
+            _release()
+            return out
         except FuturesTimeout as exc:
+            # Keep the lock until the orphan finishes so we do not start a
+            # second Torch convert on top of it.
+            fut.add_done_callback(_release)
             logger.warning(
-                "Docling timeout after %.0fs on %s — abandoning worker, "
-                "caller should fall back",
+                "Docling timeout after %.0fs on %s — abandoning worker "
+                "(lock held until it ends); caller must use Rapid only",
                 limit,
                 image_path.name,
             )
             raise TimeoutError(
                 f"Docling exceeded {limit:.0f}s on {image_path.name}"
             ) from exc
+        except Exception:
+            if not fut.done():
+                fut.add_done_callback(_release)
+            else:
+                _release()
+            raise
     finally:
-        # Critical: wait=False or we block until the 13‑minute convert ends.
+        # Critical: wait=False or we block until the stuck convert ends.
         pool.shutdown(wait=False, cancel_futures=True)

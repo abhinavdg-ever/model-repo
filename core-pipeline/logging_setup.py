@@ -37,9 +37,19 @@ from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Optional
 
-# Parent loggers: one setLevel covers every child. Azure HTTP dumps and Docling's
-# per-page "Going to convert document batch..." flood INFO the same way.
-NOISY_LOGGERS = ("azure", "urllib3", "msal", "docling", "rapidocr")
+# Parent loggers: one setLevel covers every child. Azure HTTP dumps, Docling
+# convert chatter, RapidOCR model-path INFO, and Hugging Face httpx GETs
+# otherwise bury [batch#] [chart#] progress.
+NOISY_LOGGERS = (
+    "azure",
+    "urllib3",
+    "msal",
+    "docling",
+    "rapidocr",
+    "httpx",
+    "httpcore",
+    "huggingface_hub",
+)
 
 # Always quieted, regardless of AZURE_LOG_LEVEL: this logger emits a ~20-line
 # WARNING naming all nine credential sources, and then raises a
