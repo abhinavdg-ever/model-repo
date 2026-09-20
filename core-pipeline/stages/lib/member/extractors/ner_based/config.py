@@ -29,6 +29,26 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 
+def _core_pipeline_root() -> Path:
+    """Locate ``core-pipeline/`` without hard-coding ``parents[N]``.
+
+    ``HERE.parents[4]`` is correct only when this file lives at the usual
+    depth under core-pipeline. Shallow checkouts, alternate layouts, and
+    Windows drive-root edge cases raise ``IndexError`` — walk up instead and
+    recognize the service root by ``cli.py`` + ``api/``.
+    """
+    for parent in (HERE, *HERE.parents):
+        if (parent / "cli.py").is_file() and (parent / "api").is_dir():
+            return parent
+    # Intact monorepo layout: ner_based → extractors → member → lib → stages → core-pipeline
+    if len(HERE.parents) > 4:
+        return HERE.parents[4]
+    raise RuntimeError(
+        f"Cannot locate core-pipeline root from {HERE} "
+        "(expected a parent containing cli.py and api/)"
+    )
+
+
 def _load_env() -> None:
     """Load core-pipeline/.env, if it exists and python-dotenv is installed.
 
@@ -59,19 +79,18 @@ def _load_env() -> None:
         from dotenv import load_dotenv
     except ImportError:  # optional; the environment may be set directly
         return
-    # .../stages/lib/member/extractors/ner_based -> core-pipeline
-    env_file = HERE.parents[4] / ".env"
+    env_file = _core_pipeline_root() / ".env"
     if env_file.is_file():
         load_dotenv(env_file, override=True)
 
 
 _load_env()
 # .../stages/lib/member/extractors/ner_based -> .../stages/lib/member
-MEMBER_ROOT = HERE.parents[1]
+MEMBER_ROOT = HERE.parents[1] if len(HERE.parents) > 1 else HERE
 # .../core-pipeline — the service that owns these checkpoints. NOT the repo
 # root: compose mounts ${MODELS_HOST_PATH:-./models} at
 # /app/core-pipeline/models, so ner/ lives next to hw/ and rapidocr/.
-CORE_ROOT = HERE.parents[4]
+CORE_ROOT = _core_pipeline_root()
 
 
 def _env_bool(key: str, default: bool = False) -> bool:
