@@ -108,7 +108,6 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool, str]) -> dict[str, Any]:
             from stages.lib.imaging.docling_ocr import (
                 convert_image_with_timeout,
                 get_converter,
-                markdown_is_sparse,
             )
 
             converter = get_converter()
@@ -121,28 +120,23 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool, str]) -> dict[str, Any]:
                     )
                     content = extracted.get("content") or ""
                     elapsed = extracted.get("elapsed_seconds")
-                    if not markdown_is_sparse(content):
-                        out["content"] = content
-                        out["markdown"] = extracted.get("markdown") or content
-                        out["document"] = extracted.get("document")
-                        out["section_headers"] = (
-                            extracted.get("section_headers") or []
-                        )
-                        out["engine"] = "docling+rapidocr"
-                        if elapsed is not None:
-                            logger.info(
-                                "Final1 Docling ok %s in %.1fs",
-                                page["page_name"],
-                                elapsed,
-                            )
-                        return out
-                    logger.warning(
-                        "Docling sparse/empty for %s (%.1fs, chars=%d) — "
-                        "falling back to RapidOCR-onnx",
+                    # Docling's result stands whatever its length. The only
+                    # fallback is a hard failure — the page timeout or an
+                    # exception. A thin page is reported, not replaced: with
+                    # cell matching on, short output is the page, not a
+                    # half-finished convert.
+                    out["content"] = content
+                    out["markdown"] = extracted.get("markdown") or content
+                    out["document"] = extracted.get("document")
+                    out["section_headers"] = extracted.get("section_headers") or []
+                    out["engine"] = "docling+rapidocr"
+                    logger.info(
+                        "Final1 Docling ok %s in %.1fs (chars=%d)",
                         page["page_name"],
                         elapsed or 0.0,
-                        len(content or ""),
+                        len(content),
                     )
+                    return out
                 except TimeoutError as exc:
                     logger.warning("%s — falling back to RapidOCR-onnx", exc)
                 except Exception as exc:

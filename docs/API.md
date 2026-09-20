@@ -146,7 +146,7 @@ Key `.env` knobs (paths relative to `core-pipeline/`):
 | `RAPID_MODELS_DIR` | `models/rapidocr` |
 | `SECTION_HEADER_MINILM_PATH` | `models/semantic-model` — local MiniLM (preferred) |
 | `SECTION_HEADER_SEMANTIC_ENABLED` | `true` — filter Final1 `section_headers` ≥90% |
-| `DOCLING_TABLE_CELL_MATCHING` | `true` (default) — fill dense form table cells. Slower per page; on timeout/sparse Final1 falls back to RapidOCR-onnx. Set `false` for speed. Unrelated to the section-header RLock deadlock. |
+| `DOCLING_TABLE_CELL_MATCHING` | `true` (default) — fill dense form table cells. Slower per page; Final1 falls back to RapidOCR-onnx only on a page timeout or a crash, never on short output. Set `false` for speed. Unrelated to the section-header RLock deadlock. |
 | `DOCLING_IMAGES_SCALE` | `1.0` — keep at 1 for page images (`2` halves overlay boxes) |
 | `MEMBER_NER_ENABLED` | `false` until GLiNER is installed |
 

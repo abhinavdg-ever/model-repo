@@ -186,9 +186,9 @@ def build_converter(models_dir: Path | None = None) -> Any:
     if do_tables:
         pipeline_options.table_structure_options.mode = table_mode
         # Cell matching fills TableFormer cells with OCR text — without it dense
-        # form tables export as structure with empty cells, which markdown_is_sparse
-        # rejects. It costs time per page, so a page can still hit
-        # DOCLING_PAGE_TIMEOUT_SECONDS; final1 then falls back to RapidOCR-onnx.
+        # form tables export as structure with empty cells. It costs time per
+        # page, so a page can still hit DOCLING_PAGE_TIMEOUT_SECONDS; that
+        # timeout is the only thing that sends final1 to RapidOCR-onnx.
         # Set false to trade table text for speed.
         pipeline_options.table_structure_options.do_cell_matching = (
             os.environ.get("DOCLING_TABLE_CELL_MATCHING") or "true"
@@ -679,39 +679,6 @@ def convert_image(image_path: Path, converter: Any | None = None) -> dict[str, A
         "section_headers": section_headers,
         "elapsed_seconds": elapsed,
     }
-
-
-def markdown_is_empty(markdown: str) -> bool:
-    """True when Docling produced no usable text (only placeholders / whitespace)."""
-    import re
-
-    stripped = (markdown or "").strip()
-    if not stripped:
-        return True
-    # Docling emits ``<!-- image -->`` for figures when OCR found no text.
-    without_placeholders = re.sub(
-        r"<!--\s*image\s*-->", "", stripped, flags=re.IGNORECASE
-    )
-    without_placeholders = re.sub(r"[|#\-\s]+", "", without_placeholders)
-    return len(without_placeholders) < 8
-
-
-def markdown_is_sparse(markdown: str, *, min_alnum: int = 120) -> bool:
-    """True when Docling kept headers/chrome but little body text (empty tables).
-
-    Form pages with TableFormer structure but no cell matching often look like
-    a handful of section titles and one address line — enough to skip the
-    empty check, not enough for member/DOS. Triggers RapidOCR-onnx fallback.
-    """
-    import re
-
-    if markdown_is_empty(markdown):
-        return True
-    # Drop markdown heading markers and table pipes; count real characters.
-    body = re.sub(r"^#+\s*", "", markdown or "", flags=re.MULTILINE)
-    body = re.sub(r"[|#*`>\-]+", " ", body)
-    alnum = re.sub(r"[^A-Za-z0-9]", "", body)
-    return len(alnum) < max(8, int(min_alnum))
 
 
 def convert_image_with_timeout(

@@ -79,27 +79,6 @@ def test_resolve_norm_page_size_halves_when_page_is_2x_image():
     assert h == 2000.0
 
 
-def test_markdown_is_sparse_header_only_form():
-    from stages.lib.imaging.docling_ocr import markdown_is_sparse
-
-    sparse = """
-Date (Printed): 5/22/2025
-
-## PATIENT DATA
-
-8220 STATE ROUTE 45 ORWELL OH
-
-## EMERGENCY CONTACT
-
-## GUARANTOR
-
-## COVERAGE
-"""
-    assert markdown_is_sparse(sparse) is True
-    rich = sparse + ("\nPatient Name Anderson Justin DOB 08/29/1954 " * 20)
-    assert markdown_is_sparse(rich) is False
-
-
 def test_review_ui_halves_page_dims_against_image():
     """OCR page_* 2× the file → scale = image/page maps boxes onto the image."""
     from app.adapters.local.repository import _section_headers_from_page
