@@ -104,7 +104,7 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
             from stages.lib.imaging.docling_ocr import (
                 convert_image_with_timeout,
                 get_converter,
-                markdown_is_empty,
+                markdown_is_sparse,
             )
 
             converter = get_converter()
@@ -117,7 +117,7 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
                     )
                     content = extracted.get("content") or ""
                     elapsed = extracted.get("elapsed_seconds")
-                    if not markdown_is_empty(content):
+                    if not markdown_is_sparse(content):
                         out["content"] = content
                         out["markdown"] = extracted.get("markdown") or content
                         out["document"] = extracted.get("document")
@@ -133,10 +133,11 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
                             )
                         return out
                     logger.warning(
-                        "Docling empty/placeholder-only for %s (%.1fs) — "
+                        "Docling sparse/empty for %s (%.1fs, chars=%d) — "
                         "falling back to RapidOCR-onnx",
                         page["page_name"],
                         elapsed or 0.0,
+                        len(content or ""),
                     )
                 except TimeoutError as exc:
                     logger.warning("%s — falling back to RapidOCR-onnx", exc)

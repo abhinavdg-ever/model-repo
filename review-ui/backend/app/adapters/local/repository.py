@@ -236,7 +236,104 @@ def clean_ocr_display_text(text: str) -> str:
     return "\n".join(collapsed).strip()
 
 
-def _section_headers_from_page(page: dict[str, Any]) -> list[OcrSectionHeader]:
+def _image_size_for_page_file(folder_dir: Path, filename: str) -> tuple[float, float] | None:
+    """Native pixel size of the page image the UI shows (corrected if present)."""
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    stem = Path(filename).stem
+    corrected = folder_dir / "corrected-pages"
+    candidates = [
+        corrected / f"{stem}.jpg",
+        corrected / filename,
+        folder_dir / "pages" / filename,
+        folder_dir / "pages" / f"{stem}.jpg",
+        folder_dir / filename,
+    ]
+    for path in candidates:
+        if path.is_file() and path.stat().st_size > 0:
+            try:
+                with Image.open(path) as im:
+                    w, h = im.size
+                    if w > 0 and h > 0:
+                        return float(w), float(h)
+            except Exception:
+                continue
+    return None
+
+
+def _page_dims_for_overlay(
+    page_w: float,
+    page_h: float,
+    image_size: tuple[float, float] | None,
+    *,
+    unit: str | None = None,
+    bboxes: list[tuple[float, float, float, float]] | None = None,
+) -> tuple[float, float]:
+    """Pick denominator for overlay fractions (Docling + Azure DI).
+
+    - Physical units (inch/cm/mm): polygons share that unit — never mix with
+      image pixels (that made Final2 boxes look half-sized / misplaced).
+    - Pixel / unknown: if page_* is ~2× the displayed image (or bbox extents
+      only fill ~half of page_* while matching the image), use the image size.
+    """
+    unit_l = str(unit or "").strip().lower().replace(" ", "")
+    if unit_l in {
+        "inch",
+        "inches",
+        "in",
+        "cm",
+        "mm",
+        "millimeter",
+        "millimeters",
+        "centimeter",
+        "centimeters",
+    }:
+        return page_w or 1.0, page_h or 1.0
+
+    # Heuristic: tiny page_* with a large raster ⇒ Azure inches without unit.
+    if (
+        image_size
+        and page_w > 0
+        and page_h > 0
+        and page_w < 50
+        and page_h < 50
+        and image_size[0] > 100
+    ):
+        return page_w, page_h
+
+    if not image_size or page_w <= 0 or page_h <= 0:
+        return page_w or 1.0, page_h or 1.0
+    iw, ih = image_size
+    if iw <= 0 or ih <= 0:
+        return page_w, page_h
+    if abs(page_w - iw) / iw <= 0.08 and abs(page_h - ih) / ih <= 0.08:
+        # Same nominal size as the file — but bboxes may still be half-scale.
+        if bboxes:
+            max_x = max(max(l, r) for l, t, r, b in bboxes)
+            max_y = max(max(t, b) for l, t, r, b in bboxes)
+            if (
+                max_x > 1
+                and max_y > 1
+                and 0.40 <= max_x / page_w <= 0.55
+                and 0.40 <= max_y / page_h <= 0.55
+            ):
+                return page_w / 2.0, page_h / 2.0
+        return page_w, page_h
+    # page_* ≈ 2× image (Docling images_scale / Azure downsample mismatch).
+    if abs(page_w / iw - 2.0) <= 0.15 and abs(page_h / ih - 2.0) <= 0.15:
+        return iw, ih
+    if abs(iw / page_w - 2.0) <= 0.15 and abs(ih / page_h - 2.0) <= 0.15:
+        return page_w, page_h
+    return page_w, page_h
+
+
+def _section_headers_from_page(
+    page: dict[str, Any],
+    *,
+    image_size: tuple[float, float] | None = None,
+) -> list[OcrSectionHeader]:
     """Pull CSS-normalized header boxes from a final1/final2 page object.
 
     Headers without coordinates are still returned (left/top/width/height = 0)
@@ -245,12 +342,43 @@ def _section_headers_from_page(page: dict[str, Any]) -> list[OcrSectionHeader]:
 
     Accepts ``section_headers`` with ``norm``, ``bbox``, or Azure ``polygon``.
     When headers are missing, derives candidates from ``pagesMeta[].lines``.
+    ``image_size`` corrects half-scale page_* vs the displayed file (pixel
+    units only — inch/cm from Azure DI are left alone).
     """
     raw = page.get("section_headers") or page.get("sectionHeaders") or []
     if not isinstance(raw, list) or not raw:
         raw = _headers_from_azure_pages_meta(page)
     if not isinstance(raw, list):
         return []
+
+    page_unit = str(page.get("unit") or page.get("coord_unit") or "").strip()
+    if not page_unit:
+        for meta in page.get("pagesMeta") or page.get("pages_meta") or []:
+            if isinstance(meta, dict) and meta.get("unit"):
+                page_unit = str(meta.get("unit") or "").strip()
+                break
+
+    # Gather bboxes once so half-scale detection sees the whole page.
+    page_bboxes: list[tuple[float, float, float, float]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        box = item.get("bbox")
+        if isinstance(box, (list, tuple)) and len(box) >= 4:
+            try:
+                page_bboxes.append(tuple(float(x) for x in box[:4]))  # type: ignore[arg-type]
+                continue
+            except (TypeError, ValueError):
+                pass
+        poly = item.get("polygon")
+        if isinstance(poly, (list, tuple)) and len(poly) >= 8:
+            try:
+                vals = [float(x) for x in poly]
+                xs, ys = vals[0::2], vals[1::2]
+                page_bboxes.append((min(xs), min(ys), max(xs), max(ys)))
+            except (TypeError, ValueError):
+                pass
+
     out: list[OcrSectionHeader] = []
     for item in raw:
         if not isinstance(item, dict):
@@ -259,6 +387,7 @@ def _section_headers_from_page(page: dict[str, Any]) -> list[OcrSectionHeader]:
         if not text:
             continue
         left = top = width = height = 0.0
+        item_unit = str(item.get("unit") or item.get("coord_unit") or page_unit or "")
         # Prefer recomputing from raw bbox/polygon so older JSON written with a
         # wrong coord_origin (BOTTOMLEFT default on image OCR) still lines up.
         if isinstance(item.get("bbox"), (list, tuple)) and len(item["bbox"]) >= 4:
@@ -266,6 +395,9 @@ def _section_headers_from_page(page: dict[str, Any]) -> list[OcrSectionHeader]:
                 l, t, r, b = (float(x) for x in item["bbox"][:4])
                 pw = float(item.get("page_width") or 0) or 1.0
                 ph = float(item.get("page_height") or 0) or 1.0
+                pw, ph = _page_dims_for_overlay(
+                    pw, ph, image_size, unit=item_unit, bboxes=page_bboxes
+                )
                 origin = str(item.get("coord_origin") or "TOPLEFT").upper()
                 origin_key = origin.replace("-", "").replace("_", "")
                 # t < b ⇒ y grows downward (TOPLEFT); t > b ⇒ BOTTOMLEFT.
@@ -300,6 +432,9 @@ def _section_headers_from_page(page: dict[str, Any]) -> list[OcrSectionHeader]:
                     or item.get("pageHeight")
                     or 0
                 ) or 1.0
+                pw, ph = _page_dims_for_overlay(
+                    pw, ph, image_size, unit=item_unit, bboxes=page_bboxes
+                )
                 left = min(l, r) / pw
                 top = min(t, b) / ph
                 width = abs(r - l) / pw
@@ -314,6 +449,37 @@ def _section_headers_from_page(page: dict[str, Any]) -> list[OcrSectionHeader]:
                     top = float(norm.get("top") or 0)
                     width = float(norm.get("width") or 0)
                     height = float(norm.get("height") or 0)
+                    # Stored norm from a 2× page.size run — scale up when we
+                    # know the displayed image is half of stored page_* (pixels).
+                    stored_pw = float(item.get("page_width") or 0)
+                    stored_ph = float(item.get("page_height") or 0)
+                    unit_l = item_unit.strip().lower()
+                    physical = unit_l in {
+                        "inch",
+                        "inches",
+                        "in",
+                        "cm",
+                        "mm",
+                        "millimeter",
+                        "millimeters",
+                        "centimeter",
+                        "centimeters",
+                    } or (stored_pw > 0 and stored_pw < 50 and stored_ph < 50)
+                    if (
+                        not physical
+                        and image_size
+                        and stored_pw > 0
+                        and stored_ph > 0
+                    ):
+                        iw, ih = image_size
+                        if (
+                            abs(stored_pw / iw - 2.0) <= 0.15
+                            and abs(stored_ph / ih - 2.0) <= 0.15
+                        ):
+                            left *= 2.0
+                            top *= 2.0
+                            width *= 2.0
+                            height *= 2.0
                 except (TypeError, ValueError):
                     left = top = width = height = 0.0
         try:
@@ -380,6 +546,8 @@ def _headers_from_azure_pages_meta(page: dict[str, Any]) -> list[dict[str, Any]]
                 "polygon": poly,
                 "page_width": pw or None,
                 "page_height": ph or None,
+                "unit": meta.get("unit"),
+                "coord_origin": "TOPLEFT",
             }
             if isinstance(poly, (list, tuple)) and len(poly) >= 8 and pw and ph:
                 try:
@@ -497,11 +665,15 @@ def _filter_headers_against_canon(
 
 def section_headers_by_file_from_ocr_json(
     data: Any,
+    *,
+    folder_dir: Path | None = None,
 ) -> dict[str, list[OcrSectionHeader]]:
     """Map fileName → header boxes from a combined final1/final2 JSON doc.
 
     Headers are re-filtered against the live canon list (≥90% match) so list
-    edits apply immediately without re-running Final1.
+    edits apply immediately without re-running Final1. When ``folder_dir`` is
+    set, boxes are rescaled against the displayed page image (fixes half-size
+    overlays from Docling ``images_scale=2``).
     """
     if isinstance(data, list):
         pages = data
@@ -521,7 +693,14 @@ def section_headers_by_file_from_ocr_json(
             or page.get("file_name")
             or f"{page.get('pageNumber') or idx}.jpg"
         )
-        headers = _filter_headers_against_canon(_section_headers_from_page(page))
+        image_size = (
+            _image_size_for_page_file(folder_dir, filename)
+            if folder_dir is not None
+            else None
+        )
+        headers = _filter_headers_against_canon(
+            _section_headers_from_page(page, image_size=image_size)
+        )
         if headers:
             by_file[filename] = headers
             by_file[filename.lower()] = headers
@@ -1271,7 +1450,9 @@ class LocalFolderRepository(FolderRepository):
                     detail=f"Invalid OCR JSON in {path.name}: {exc}",
                 ) from exc
             text = azdoc_json_to_ocr_text(data)
-            headers_by_file = section_headers_by_file_from_ocr_json(data)
+            headers_by_file = section_headers_by_file_from_ocr_json(
+                data, folder_dir=folder_dir
+            )
         else:
             text = raw
 

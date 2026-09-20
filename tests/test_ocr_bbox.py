@@ -65,6 +65,115 @@ def test_bbox_to_css_norm_bottomleft():
     assert abs(norm["height"] - 0.05) < 1e-6
 
 
+def test_resolve_norm_page_size_halves_when_page_is_2x_image():
+    from stages.lib.imaging.docling_ocr import _resolve_norm_page_size
+
+    # images_scale=2: page.size doubled, bboxes still in native pixels.
+    w, h = _resolve_norm_page_size(
+        2000.0,
+        4000.0,
+        (1000.0, 2000.0),
+        [(100.0, 200.0, 400.0, 240.0)],
+    )
+    assert w == 1000.0
+    assert h == 2000.0
+
+
+def test_markdown_is_sparse_header_only_form():
+    from stages.lib.imaging.docling_ocr import markdown_is_sparse
+
+    sparse = """
+Date (Printed): 5/22/2025
+
+## PATIENT DATA
+
+8220 STATE ROUTE 45 ORWELL OH
+
+## EMERGENCY CONTACT
+
+## GUARANTOR
+
+## COVERAGE
+"""
+    assert markdown_is_sparse(sparse) is True
+    rich = sparse + ("\nPatient Name Anderson Justin DOB 08/29/1954 " * 20)
+    assert markdown_is_sparse(rich) is False
+
+
+def test_review_ui_halves_page_dims_against_image():
+    from app.adapters.local.repository import _section_headers_from_page
+
+    page = {
+        "fileName": "1.jpg",
+        "section_headers": [
+            {
+                "text": "PATIENT DATA",
+                "level": 2,
+                # Native-pixel bbox on a 1000×2000 image…
+                "bbox": [100.0, 200.0, 400.0, 240.0],
+                # …but Docling stored page.size at 2×.
+                "page_width": 2000.0,
+                "page_height": 4000.0,
+                "coord_origin": "TOPLEFT",
+                "norm": {"left": 0.05, "top": 0.05, "width": 0.15, "height": 0.01},
+            }
+        ],
+    }
+    headers = _section_headers_from_page(page, image_size=(1000.0, 2000.0))
+    assert len(headers) == 1
+    assert abs(headers[0].left - 0.1) < 1e-6
+    assert abs(headers[0].top - 0.1) < 1e-6
+    assert abs(headers[0].width - 0.3) < 1e-6
+
+
+def test_review_ui_azure_inches_not_mixed_with_image_pixels():
+    """Final2 inch polygons must not be divided by image pixel width."""
+    from app.adapters.local.repository import _section_headers_from_page
+
+    page = {
+        "fileName": "1.jpg",
+        "unit": "inch",
+        "section_headers": [
+            {
+                "text": "PATIENT DATA",
+                "level": 2,
+                "bbox": [1.0, 2.0, 3.0, 2.4],
+                "page_width": 8.5,
+                "page_height": 11.0,
+                "unit": "inch",
+                "coord_origin": "TOPLEFT",
+            }
+        ],
+    }
+    headers = _section_headers_from_page(page, image_size=(2550.0, 3300.0))
+    assert len(headers) == 1
+    assert abs(headers[0].left - (1.0 / 8.5)) < 1e-6
+    assert abs(headers[0].width - (2.0 / 8.5)) < 1e-6
+
+
+def test_azure_section_headers_pixel_2x_uses_image():
+    from stages.ocr_final2_azure import _section_headers_from_lines
+
+    lines = [
+        {
+            "content": "MEDICATIONS",
+            "polygon": [100.0, 200.0, 400.0, 200.0, 400.0, 240.0, 100.0, 240.0],
+        }
+    ]
+    # Azure page_* at 2× the file; polygons in native pixels.
+    headers = _section_headers_from_lines(
+        lines,
+        page_w=2000.0,
+        page_h=4000.0,
+        unit="pixel",
+        image_size=(1000.0, 2000.0),
+    )
+    assert len(headers) == 1
+    assert abs(headers[0]["norm"]["left"] - 0.1) < 1e-6
+    assert abs(headers[0]["norm"]["width"] - 0.3) < 1e-6
+    assert headers[0]["page_width"] == 1000.0
+
+
 def test_azure_line_polygon_to_section_headers():
     from stages.ocr_final2_azure import (
         _flatten_polygon,

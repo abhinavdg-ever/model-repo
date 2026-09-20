@@ -214,8 +214,35 @@ def _section_headers_from_lines(
     *,
     page_w: float,
     page_h: float,
+    unit: str | None = None,
+    image_size: tuple[float, float] | None = None,
 ) -> list[dict[str, Any]]:
     """Header-like Azure lines → review-ui ``section_headers`` with ``norm``."""
+    # Pixel pages: if Azure page_* is ~2× the file we show, normalize against
+    # the image so overlays are not half-size. Inch/cm pages keep Azure dims.
+    use_w, use_h = page_w, page_h
+    unit_l = str(unit or "").strip().lower()
+    physical = unit_l in {
+        "inch",
+        "inches",
+        "in",
+        "cm",
+        "mm",
+        "millimeter",
+        "millimeters",
+        "centimeter",
+        "centimeters",
+    } or (page_w > 0 and page_w < 50 and page_h < 50 and (image_size or (0, 0))[0] > 100)
+    if (
+        not physical
+        and image_size
+        and page_w > 0
+        and page_h > 0
+        and abs(page_w / image_size[0] - 2.0) <= 0.15
+        and abs(page_h / image_size[1] - 2.0) <= 0.15
+    ):
+        use_w, use_h = image_size
+
     headers: list[dict[str, Any]] = []
     seen: set[str] = set()
     for line in lines:
@@ -233,15 +260,16 @@ def _section_headers_from_lines(
         if box is not None:
             l, t, r, b = box
             bbox = [round(l, 2), round(t, 2), round(r, 2), round(b, 2)]
-            norm = _css_norm_topleft(l, t, r, b, page_w, page_h)
+            norm = _css_norm_topleft(l, t, r, b, use_w, use_h)
         headers.append(
             {
                 "text": text,
                 "level": 2,
                 "bbox": bbox,
                 "polygon": polygon,
-                "page_width": page_w or None,
-                "page_height": page_h or None,
+                "page_width": use_w or None,
+                "page_height": use_h or None,
+                "unit": unit,
                 "coord_origin": "TOPLEFT",
                 "norm": norm,
             }
@@ -255,6 +283,9 @@ def _page_meta(page: Any) -> dict[str, Any]:
     barcodes = getattr(page, "barcodes", None) or []
     width = getattr(page, "width", None)
     height = getattr(page, "height", None)
+    unit = getattr(page, "unit", None)
+    if unit is not None and hasattr(unit, "value"):
+        unit = getattr(unit, "value", unit)
     lines = [_line_dict(ln) for ln in lines_raw]
     # Words carry polygons too — useful for precise boxes, but large. Keep them.
     words = [_word_dict(w) for w in words_raw]
@@ -263,7 +294,7 @@ def _page_meta(page: Any) -> dict[str, Any]:
         "angle": getattr(page, "angle", None),
         "width": width,
         "height": height,
-        "unit": getattr(page, "unit", None),
+        "unit": str(unit) if unit is not None else None,
         "lineCount": len(lines),
         "wordCount": len(words),
         "lines": lines,
@@ -289,6 +320,18 @@ def _ocr_azure(image_path: Path) -> dict[str, Any]:
 
     features = _di_features()
 
+    def _image_size() -> tuple[float, float] | None:
+        try:
+            from PIL import Image
+
+            with Image.open(image_path) as im:
+                w, h = im.size
+                if w > 0 and h > 0:
+                    return float(w), float(h)
+        except Exception:
+            return None
+        return None
+
     def _call() -> dict[str, Any]:
         client = _get_client()
         kwargs: dict[str, Any] = {
@@ -304,6 +347,7 @@ def _ocr_azure(image_path: Path) -> dict[str, Any]:
         pages_meta = [
             _page_meta(p) for p in (getattr(result, "pages", None) or [])
         ]
+        image_size = _image_size()
         section_headers: list[dict[str, Any]] = []
         for meta in pages_meta:
             try:
@@ -311,11 +355,16 @@ def _ocr_azure(image_path: Path) -> dict[str, Any]:
                 ph = float(meta.get("height") or 0)
             except (TypeError, ValueError):
                 pw = ph = 0.0
+            unit = meta.get("unit")
+            if unit is not None and hasattr(unit, "value"):
+                unit = getattr(unit, "value", unit)
             section_headers.extend(
                 _section_headers_from_lines(
                     list(meta.get("lines") or []),
                     page_w=pw,
                     page_h=ph,
+                    unit=str(unit) if unit is not None else None,
+                    image_size=image_size,
                 )
             )
         return {

@@ -172,15 +172,25 @@ def build_converter(models_dir: Path | None = None) -> Any:
     pipeline_options = PdfPipelineOptions()
     pipeline_options.do_ocr = True
     pipeline_options.do_table_structure = do_tables
+    # Image inputs must stay at scale 1.0. Docling's PDF default (2.0) doubles
+    # page.size while provenance bboxes stay in native image pixels — overlays
+    # then render at half width/height on the review-ui page image.
+    if hasattr(pipeline_options, "images_scale"):
+        pipeline_options.images_scale = float(
+            os.environ.get("DOCLING_IMAGES_SCALE") or "1.0"
+        )
     if do_tables:
         pipeline_options.table_structure_options.mode = table_mode
-        # Cell matching is the expensive half of TableFormer; skip by default.
+        # Cell matching fills TableFormer cells with OCR text. Without it,
+        # dense form tables export as empty markdown rows and the page looks
+        # header-only in Final (OSS). Default ON; set false only to trade
+        # quality for speed on huge batches.
         pipeline_options.table_structure_options.do_cell_matching = (
-            os.environ.get("DOCLING_TABLE_CELL_MATCHING") or "false"
+            os.environ.get("DOCLING_TABLE_CELL_MATCHING") or "true"
         ).strip().casefold() in {"1", "true", "yes", "on"}
     pipeline_options.ocr_options = _build_rapidocr_options(models)
     logger.info(
-        "Docling pipeline: tables=%s mode=%s cell_matching=%s",
+        "Docling pipeline: tables=%s mode=%s cell_matching=%s images_scale=%s",
         do_tables,
         getattr(table_mode, "value", table_mode) if do_tables else "n/a",
         getattr(
@@ -190,6 +200,7 @@ def build_converter(models_dir: Path | None = None) -> Any:
         )
         if do_tables
         else False,
+        getattr(pipeline_options, "images_scale", None),
     )
     return DocumentConverter(
         format_options={
@@ -490,6 +501,111 @@ def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
     return headers
 
 
+def _image_pixel_size(image_path: Path) -> tuple[float, float] | None:
+    """Return ``(width, height)`` of the page image, or None."""
+    try:
+        from PIL import Image
+
+        with Image.open(image_path) as im:
+            w, h = im.size
+            if w > 0 and h > 0:
+                return float(w), float(h)
+    except Exception:
+        pass
+    return None
+
+
+def _resolve_norm_page_size(
+    page_w: float,
+    page_h: float,
+    image_size: tuple[float, float] | None,
+    bboxes: list[tuple[float, float, float, float]],
+) -> tuple[float, float]:
+    """Pick the denominator for CSS norms so overlays match the displayed image.
+
+    When Docling's ``images_scale`` left ``page.size`` at ~2× the native image
+    (or bboxes stayed in native pixels while page.size grew), dividing by
+    page.size yields half-size boxes. Prefer the native image size when it
+    clearly fits the bbox extents better.
+    """
+    if page_w <= 0 or page_h <= 0:
+        if image_size:
+            return image_size
+        return page_w, page_h
+    if not image_size:
+        return page_w, page_h
+    iw, ih = image_size
+    if iw <= 0 or ih <= 0:
+        return page_w, page_h
+
+    # Same size (±8%) → already aligned.
+    if abs(page_w - iw) / iw <= 0.08 and abs(page_h - ih) / ih <= 0.08:
+        return page_w, page_h
+
+    # page ≈ 2× image (classic images_scale=2) → bboxes are usually in image
+    # pixels; normalize against the image so overlays match the file we show.
+    if abs(page_w / iw - 2.0) <= 0.15 and abs(page_h / ih - 2.0) <= 0.15:
+        return iw, ih
+
+    # image ≈ 2× page → bboxes in page space; keep Docling page size.
+    if abs(iw / page_w - 2.0) <= 0.15 and abs(ih / page_h - 2.0) <= 0.15:
+        return page_w, page_h
+
+    # Extent test: if every bbox fits the image but overflows half of page,
+    # page.size is the inflated one.
+    if bboxes:
+        max_x = max(max(l, r) for l, t, r, b in bboxes)
+        max_y = max(max(t, b) for l, t, r, b in bboxes)
+        fits_image = max_x <= iw * 1.02 and max_y <= ih * 1.02
+        overflows_half_page = max_x > page_w * 0.55 or max_y > page_h * 0.55
+        if fits_image and page_w > iw * 1.4:
+            return iw, ih
+        if fits_image and not overflows_half_page and page_w >= iw * 1.8:
+            return iw, ih
+
+    return page_w, page_h
+
+
+def _renorm_headers_for_image(
+    headers: list[dict[str, Any]],
+    image_path: Path,
+) -> list[dict[str, Any]]:
+    """Recompute ``norm`` / page_* using the page image when scale is off."""
+    image_size = _image_pixel_size(image_path)
+    if not image_size or not headers:
+        return headers
+    bboxes: list[tuple[float, float, float, float]] = []
+    for h in headers:
+        box = h.get("bbox")
+        if isinstance(box, (list, tuple)) and len(box) >= 4:
+            try:
+                bboxes.append(tuple(float(x) for x in box[:4]))  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                pass
+    out: list[dict[str, Any]] = []
+    for h in headers:
+        item = dict(h)
+        box = item.get("bbox")
+        if not isinstance(box, (list, tuple)) or len(box) < 4:
+            out.append(item)
+            continue
+        try:
+            l, t, r, b = (float(x) for x in box[:4])
+        except (TypeError, ValueError):
+            out.append(item)
+            continue
+        pw = float(item.get("page_width") or 0) or image_size[0]
+        ph = float(item.get("page_height") or 0) or image_size[1]
+        origin = str(item.get("coord_origin") or "TOPLEFT")
+        use_w, use_h = _resolve_norm_page_size(pw, ph, image_size, bboxes)
+        norm = _bbox_to_css_norm(l, t, r, b, use_w, use_h, origin)
+        item["page_width"] = use_w
+        item["page_height"] = use_h
+        item["norm"] = norm
+        out.append(item)
+    return out
+
+
 def _bbox_to_css_norm(
     l: float,
     t: float,
@@ -571,6 +687,7 @@ def convert_image(image_path: Path, converter: Any | None = None) -> dict[str, A
             )
     except Exception as exc:
         logger.warning("Section-header semantic filter skipped: %s", exc)
+    section_headers = _renorm_headers_for_image(section_headers, image_path)
     export_doc = (
         os.environ.get("DOCLING_EXPORT_DOCUMENT") or "false"
     ).strip().casefold() in {"1", "true", "yes", "on"}
@@ -606,6 +723,24 @@ def markdown_is_empty(markdown: str) -> bool:
     )
     without_placeholders = re.sub(r"[|#\-\s]+", "", without_placeholders)
     return len(without_placeholders) < 8
+
+
+def markdown_is_sparse(markdown: str, *, min_alnum: int = 120) -> bool:
+    """True when Docling kept headers/chrome but little body text (empty tables).
+
+    Form pages with TableFormer structure but no cell matching often look like
+    a handful of section titles and one address line — enough to skip the
+    empty check, not enough for member/DOS. Triggers RapidOCR-onnx fallback.
+    """
+    import re
+
+    if markdown_is_empty(markdown):
+        return True
+    # Drop markdown heading markers and table pipes; count real characters.
+    body = re.sub(r"^#+\s*", "", markdown or "", flags=re.MULTILINE)
+    body = re.sub(r"[|#*`>\-]+", " ", body)
+    alnum = re.sub(r"[^A-Za-z0-9]", "", body)
+    return len(alnum) < max(8, int(min_alnum))
 
 
 def convert_image_with_timeout(
