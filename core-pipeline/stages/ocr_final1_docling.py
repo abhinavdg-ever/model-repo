@@ -1,9 +1,10 @@
 """Stage: final OCR 1 (Docling layout + RapidOCR) → ocr_results + JSON file.
 
 Preferred engine is Docling with local RapidOCR ``.pth`` models (layout,
-TableFormer, reading order) — the V1 ``os_ocr.py`` path. When Docling or the
-model files are missing, falls back to RapidOCR-onnxruntime only (Tesseract is
-already stage 2 / prelim — it is not repeated here).
+TableFormer, reading order) — the V1 ``os_ocr.py`` path. When Docling is
+missing, times out, returns sparse/empty markdown, or raises, falls back to
+RapidOCR-onnxruntime only (Tesseract is already stage 2 / prelim — it is not
+repeated here).
 
 ``ocr_results.ocr_type`` stays ``'docling'`` — that is the slot the review UI
 labels "Final (OSS)".
