@@ -438,23 +438,13 @@ def _section_headers_from_page(
     return out
 
 
-def _looks_like_header_line(text: str) -> bool:
-    cleaned = (text or "").strip().replace(":", "").strip()
-    if not cleaned or len(cleaned) > 80:
-        return False
-    words = cleaned.split()
-    if len(words) > 6:
-        return False
-    letters = "".join(c for c in cleaned if c.isalpha())
-    if len(letters) < 2:
-        return False
-    if letters.upper() == letters:
-        return True
-    return len(words) <= 3
-
-
 def _headers_from_azure_pages_meta(page: dict[str, Any]) -> list[dict[str, Any]]:
-    """Build header candidates from Azure ``pagesMeta[].lines`` (with polygons)."""
+    """Build header candidates from Azure ``pagesMeta[].lines`` (with polygons).
+
+    Every non-empty line is a candidate; live canon filtering in
+    ``_filter_headers_against_canon`` / ``filter_section_headers`` decides
+    what stays — no regex / ALL-CAPS shortlist.
+    """
     metas = page.get("pagesMeta") or page.get("pages_meta") or []
     if not isinstance(metas, list):
         return []
@@ -472,7 +462,7 @@ def _headers_from_azure_pages_meta(page: dict[str, Any]) -> list[dict[str, Any]]
             if not isinstance(line, dict):
                 continue
             text = str(line.get("content") or "").strip()
-            if not _looks_like_header_line(text):
+            if not text:
                 continue
             key = " ".join(text.split()).casefold()
             if key in seen:
@@ -562,9 +552,13 @@ def _filter_headers_against_canon(
             )
             out: list[OcrSectionHeader] = []
             for item in kept:
+                # Prefer the canon label so OCR noise like "4 Allergies" → "Allergies".
+                label = str(
+                    item.get("matched_canonical") or item.get("text") or ""
+                ).strip()
                 out.append(
                     OcrSectionHeader(
-                        text=str(item.get("text") or ""),
+                        text=label,
                         level=int(item.get("level") or 2),
                         left=float(item.get("left") or 0),
                         top=float(item.get("top") or 0),

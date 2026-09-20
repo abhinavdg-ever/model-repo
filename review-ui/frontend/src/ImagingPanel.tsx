@@ -99,6 +99,8 @@ type Props = {
   /** True when the page is blank/junk — show skip message instead of coords. */
   sectionHeadersSkipped?: boolean;
   sectionHeadersLoading?: boolean;
+  /** Natural image size — used to show pixel bboxes like document-processing. */
+  imageNaturalSize?: { w: number; h: number } | null;
 };
 
 const YET_TO_PROCESS = "Yet to Process";
@@ -556,6 +558,7 @@ export default function ImagingPanel({
   sectionHeadersSource = null,
   sectionHeadersSkipped = false,
   sectionHeadersLoading = false,
+  imageNaturalSize = null,
 }: Props) {
   if (tab === "sections") {
     return (
@@ -566,6 +569,7 @@ export default function ImagingPanel({
           source={sectionHeadersSource}
           skipped={sectionHeadersSkipped}
           loading={sectionHeadersLoading}
+          imageNaturalSize={imageNaturalSize}
         />
       </div>
     );
@@ -636,12 +640,14 @@ function SectionCoordinates({
   source,
   skipped,
   loading,
+  imageNaturalSize,
 }: {
   fileName: string | null;
   headers: OcrSectionHeader[];
   source: "final1" | "final2" | null;
   skipped: boolean;
   loading: boolean;
+  imageNaturalSize: { w: number; h: number } | null;
 }) {
   if (loading) {
     return <div className="ocr-loading">Loading section coordinates…</div>;
@@ -661,6 +667,8 @@ function SectionCoordinates({
       : source === "final1"
         ? "Final (OSS)"
         : null;
+  const natW = imageNaturalSize?.w ?? 0;
+  const natH = imageNaturalSize?.h ?? 0;
 
   return (
     <div className="section-coords-panel">
@@ -679,20 +687,32 @@ function SectionCoordinates({
         </p>
       ) : (
         <div className="section-coords-list">
-          {withBox.map((h, i) => (
-            <div key={`${h.text}-${i}`} className="section-coords-row">
-              <span className="section-coords-text" title={h.text}>
-                {h.text}
-              </span>
-              <span className="section-coords-bbox" title="left, top, width, height (fractions of page)">
-                [
-                {[h.left, h.top, h.width, h.height]
-                  .map((n) => n.toFixed(3))
-                  .join(", ")}
-                ]
-              </span>
-            </div>
-          ))}
+          {withBox.map((h, i) => {
+            const bboxLabel =
+              natW > 0 && natH > 0
+                ? `[${[
+                    Math.round(h.left * natW),
+                    Math.round(h.top * natH),
+                    Math.round((h.left + h.width) * natW),
+                    Math.round((h.top + h.height) * natH),
+                  ].join(", ")}]`
+                : `[${[h.left, h.top, h.width, h.height]
+                    .map((n) => n.toFixed(3))
+                    .join(", ")}]`;
+            return (
+              <div key={`${h.text}-${i}`} className="section-coords-row">
+                <span className="section-coords-text" title={h.text}>
+                  {h.text}
+                </span>
+                <span
+                  className="section-coords-bbox"
+                  title="left, top, right, bottom (image pixels)"
+                >
+                  {bboxLabel}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

@@ -138,21 +138,6 @@ def _polygon_bbox(polygon: list[float]) -> tuple[float, float, float, float] | N
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def _looks_like_section_header(text: str) -> bool:
-    cleaned = (text or "").strip().replace(":", "").strip()
-    if not cleaned or len(cleaned) > 80:
-        return False
-    words = cleaned.split()
-    if len(words) > 6:
-        return False
-    letters = re.sub(r"[^A-Za-z]", "", cleaned)
-    if len(letters) < 2:
-        return False
-    if letters.upper() == letters:
-        return True
-    return len(words) <= 3
-
-
 def _css_norm_topleft(
     l: float, t: float, r: float, b: float, page_w: float, page_h: float
 ) -> dict[str, float] | None:
@@ -217,11 +202,11 @@ def _section_headers_from_lines(
     unit: str | None = None,
     image_size: tuple[float, float] | None = None,
 ) -> list[dict[str, Any]]:
-    """Header-like Azure lines → review-ui ``section_headers`` with ``norm``.
+    """OCR lines → ``section_headers`` kept only by canon match (no regex shortlist).
 
-    Maps OCR coords → displayed-image pixels via ``scale = image / page``
-    (same as advantmed-document-processing heading features), then stores
-    fractions of the image so the SVG overlay aligns without a re-run.
+    Every non-empty line is a candidate; ``filter_section_headers`` keeps those
+    ≥ threshold vs ``section_header_canon.json``. Maps OCR coords → image
+    pixels via ``scale = image / page``, then stores fractions of the image.
     """
     iw = ih = 0.0
     if image_size:
@@ -231,11 +216,11 @@ def _section_headers_from_lines(
     sx = (iw / page_w) if (iw > 0 and page_w > 0) else 1.0
     sy = (ih / page_h) if (ih > 0 and page_h > 0) else 1.0
 
-    headers: list[dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
     seen: set[str] = set()
     for line in lines:
         text = str(line.get("content") or "").strip()
-        if not _looks_like_section_header(text):
+        if not text:
             continue
         key = re.sub(r"\s+", " ", text).casefold()
         if key in seen:
@@ -250,7 +235,7 @@ def _section_headers_from_lines(
             l, t, r, b = l * sx, t * sy, r * sx, b * sy
             bbox = [round(l, 2), round(t, 2), round(r, 2), round(b, 2)]
             norm = _css_norm_topleft(l, t, r, b, use_w, use_h)
-        headers.append(
+        candidates.append(
             {
                 "text": text,
                 "level": 2,
@@ -263,7 +248,18 @@ def _section_headers_from_lines(
                 "norm": norm,
             }
         )
-    return headers
+
+    try:
+        from stages.lib.imaging.section_header_match import filter_section_headers
+
+        kept = filter_section_headers(candidates, use_minilm=False)
+        for item in kept:
+            canon = str(item.get("matched_canonical") or "").strip()
+            if canon:
+                item["text"] = canon
+        return kept
+    except Exception:
+        return []
 
 
 def _page_meta(page: Any) -> dict[str, Any]:

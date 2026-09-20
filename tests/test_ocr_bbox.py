@@ -210,7 +210,7 @@ def test_azure_line_polygon_to_section_headers():
         meta["lines"], page_w=1000.0, page_h=2000.0
     )
     assert len(headers) == 1
-    assert headers[0]["text"] == "CHIEF COMPLAINT"
+    assert headers[0]["text"] == "Chief Complaint"
     assert headers[0]["norm"]["left"] == 0.01
     assert headers[0]["norm"]["top"] == 0.01
     assert headers[0]["norm"]["width"] == 0.2
@@ -272,7 +272,10 @@ def test_review_ui_recomputes_norm_from_bbox_ignoring_bad_stored():
 
 
 def test_review_ui_headers_from_pages_meta_lines():
-    from app.adapters.local.repository import _section_headers_from_page
+    from app.adapters.local.repository import (
+        _filter_headers_against_canon,
+        _section_headers_from_page,
+    )
 
     page = {
         "fileName": "14.jpg",
@@ -294,7 +297,10 @@ def test_review_ui_headers_from_pages_meta_lines():
             }
         ],
     }
-    headers = _section_headers_from_page(page)
+    # Raw shortlist = all lines; canon match keeps Medications only.
+    raw = _section_headers_from_page(page)
+    assert len(raw) == 2
+    headers = _filter_headers_against_canon(raw)
     assert len(headers) == 1
-    assert headers[0].text == "MEDICATIONS"
+    assert headers[0].text == "Medications"
     assert headers[0].left == 0.05

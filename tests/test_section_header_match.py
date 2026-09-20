@@ -93,6 +93,28 @@ def test_short_token_containment_does_not_pass_plan():
     assert score < 0.90
 
 
+def test_short_ocr_cannot_match_longer_canon_label():
+    """``Note:`` / ``Notes`` must not claim the catalog phrase ``ED Note``."""
+    from stages.lib.imaging.section_header_match import best_header_match
+
+    for text in ("Note:", "Note", "Notes", "notes"):
+        score, label = best_header_match(text, use_minilm=False)
+        assert score < 0.90, (text, score, label)
+
+    score, label = best_header_match("ED Note", use_minilm=False)
+    assert score >= 0.90
+    assert label == "ED Note"
+
+
+def test_longer_ocr_can_match_shorter_canon_label():
+    """``QB Problem List`` may match catalog ``Problem List`` (OCR longer)."""
+    from stages.lib.imaging.section_header_match import best_header_match
+
+    score, label = best_header_match("QB Problem List", use_minilm=False)
+    assert score >= 0.90
+    assert label == "Problem List"
+
+
 def test_filter_disabled_keeps_all():
     from stages.lib.imaging.section_header_match import filter_section_headers
 

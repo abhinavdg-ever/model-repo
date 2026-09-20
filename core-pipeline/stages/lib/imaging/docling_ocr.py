@@ -330,9 +330,9 @@ def _page_sizes_map(doc: Any) -> dict[int, tuple[float, float]]:
 def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
     """Compact heading boxes for the review-ui overlay.
 
-    Collects Docling-labeled section headers/titles **and** short text lines that
-    look like form section labels (ALL CAPS / short phrases). Semantic filtering
-    happens afterward in ``filter_section_headers``.
+    Shortlist = Docling-labeled ``section_header`` / ``title`` items only.
+    Canon matching happens afterward in ``filter_section_headers`` — no
+    regex / ALL-CAPS heuristics invent extra candidates.
 
     Each item: ``{text, level, bbox, page_width, page_height, coord_origin, norm}``
     where ``norm`` is CSS-ready fractions (0–1) when page size is known.
@@ -362,20 +362,6 @@ def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
         if lab is None:
             return ""
         return str(getattr(lab, "value", lab)).strip().casefold().replace(" ", "_")
-
-    def _looks_like_header_text(text: str) -> bool:
-        cleaned = (text or "").strip().replace(":", "").strip()
-        if not cleaned or len(cleaned) > 80:
-            return False
-        words = cleaned.split()
-        if len(words) > 6:
-            return False
-        letters = re.sub(r"[^A-Za-z]", "", cleaned)
-        if len(letters) < 2:
-            return False
-        if letters.upper() == letters:
-            return True
-        return len(words) <= 4
 
     def _append(text: str, level: int, prov: Any) -> None:
         text = (text or "").strip()
@@ -447,7 +433,7 @@ def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
             }
         )
 
-    # Pass 1: Docling-labeled section headers / titles.
+    # Docling-labeled section headers / titles only (shortlist).
     try:
         iterate = getattr(doc, "iterate_items", None)
         if callable(iterate):
@@ -462,25 +448,7 @@ def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
     except Exception as exc:
         logger.debug("iterate_items labeled header extract failed: %s", exc)
 
-    # Pass 2: short / ALL-CAPS text lines (form section labels) — semantic
-    # filter later decides which stay.
-    try:
-        iterate = getattr(doc, "iterate_items", None)
-        if callable(iterate):
-            for item, level in iterate():
-                lab = _label_str(item)
-                if lab in skip_labels or lab in header_labels:
-                    continue
-                text = str(
-                    getattr(item, "text", None) or getattr(item, "orig", None) or ""
-                ).strip()
-                if not _looks_like_header_text(text):
-                    continue
-                _append(text, int(level) if level else 2, getattr(item, "prov", None))
-    except Exception as exc:
-        logger.debug("iterate_items candidate header extract failed: %s", exc)
-
-    # Fallback: walk export_to_dict texts[]
+    # Fallback: export_to_dict texts[] with the same labels only.
     if not headers:
         try:
             data = doc.export_to_dict() if hasattr(doc, "export_to_dict") else doc
@@ -489,13 +457,14 @@ def extract_section_headers(doc: Any) -> list[dict[str, Any]]:
                     if not isinstance(t, dict):
                         continue
                     lab = str(t.get("label") or "").strip().casefold().replace(" ", "_")
+                    if lab not in header_labels and "section" not in lab and lab != "title":
+                        continue
                     text = str(t.get("text") or "").strip()
-                    if lab in header_labels or _looks_like_header_text(text):
-                        _append(
-                            text,
-                            1 if lab == "title" else 2,
-                            t.get("prov") or [],
-                        )
+                    _append(
+                        text,
+                        1 if lab == "title" else 2,
+                        t.get("prov") or [],
+                    )
         except Exception as exc:
             logger.debug("dict header extract failed: %s", exc)
     return headers

@@ -187,6 +187,7 @@ export default function FolderViewer({
   const [imageNaturalSize, setImageNaturalSize] = useState<{ w: number; h: number } | null>(
     null,
   );
+  const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null);
   const pageStageRef = useRef<HTMLDivElement>(null);
   const pageImageRef = useRef<HTMLImageElement>(null);
   const {
@@ -204,6 +205,50 @@ export default function FolderViewer({
   useEffect(() => {
     setImageNaturalSize(null);
   }, [folderId, pageIndex]);
+
+  // Cached images often skip onLoad — pick up natural size when the page flips.
+  useEffect(() => {
+    const img = pageImageRef.current;
+    if (img?.complete && img.naturalWidth > 0) {
+      setImageNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+    }
+  }, [folderId, pageIndex, folder]);
+
+  // Fit the page image into the stage (document-processing pattern) so the
+  // overlay container matches the displayed image — not a clipped wrap.
+  useEffect(() => {
+    const el = pageStageRef.current;
+    if (!el) return;
+    const measure = () => {
+      const style = getComputedStyle(el);
+      const padX =
+        (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+      const padY =
+        (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+      setStageSize({
+        w: Math.max(0, el.clientWidth - padX),
+        h: Math.max(0, el.clientHeight - padY),
+      });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [folderId, outputExpanded, isFullscreen]);
+
+  const fittedImageSize = useMemo(() => {
+    if (!imageNaturalSize?.w || !imageNaturalSize?.h || !stageSize?.w || !stageSize?.h) {
+      return null;
+    }
+    const fit = Math.min(
+      stageSize.w / imageNaturalSize.w,
+      stageSize.h / imageNaturalSize.h,
+    );
+    return {
+      w: Math.max(1, imageNaturalSize.w * fit),
+      h: Math.max(1, imageNaturalSize.h * fit),
+    };
+  }, [imageNaturalSize, stageSize]);
 
   useEffect(() => {
     setOutputMode(initialMode);
@@ -764,11 +809,17 @@ export default function FolderViewer({
               {page ? (
                 <div
                   className="page-image-wrap"
-                  style={imageStyle}
+                  style={{
+                    ...(fittedImageSize
+                      ? { width: fittedImageSize.w, height: fittedImageSize.h }
+                      : { visibility: "hidden", width: 1, height: 1 }),
+                    ...imageStyle,
+                  }}
                   onPointerDown={stageProps.onPointerDown}
                 >
                   <img
                     ref={pageImageRef}
+                    className="page-image"
                     src={pageImageUrl(folderId, page.page_number)}
                     alt={page.filename}
                     draggable={false}
@@ -780,41 +831,23 @@ export default function FolderViewer({
                       });
                     }}
                   />
-                  {overlayBoxes.length > 0
-                  && (imageNaturalSize?.w || pageImageRef.current?.naturalWidth)
-                    ? (() => {
-                        const natW =
-                          imageNaturalSize?.w ||
-                          pageImageRef.current?.naturalWidth ||
-                          0;
-                        const natH =
-                          imageNaturalSize?.h ||
-                          pageImageRef.current?.naturalHeight ||
-                          0;
-                        if (!natW || !natH) return null;
-                        return (
-                          <svg
-                            className="page-header-overlay"
-                            viewBox={`0 0 ${natW} ${natH}`}
-                            preserveAspectRatio="none"
-                            aria-hidden="true"
-                          >
-                            {overlayBoxes.map((box, i) => (
-                              <rect
-                                key={`${box.text}-${i}`}
-                                className="page-header-box"
-                                x={box.left * natW}
-                                y={box.top * natH}
-                                width={Math.max(box.width * natW, 1)}
-                                height={Math.max(box.height * natH, 1)}
-                              >
-                                <title>{box.text}</title>
-                              </rect>
-                            ))}
-                          </svg>
-                        );
-                      })()
-                    : null}
+                  {overlayBoxes.length > 0 && fittedImageSize ? (
+                    <div className="page-header-overlay" aria-hidden="true">
+                      {overlayBoxes.map((box, i) => (
+                        <div
+                          key={`${box.text}-${i}`}
+                          className="page-header-box"
+                          title={box.text}
+                          style={{
+                            left: `${box.left * 100}%`,
+                            top: `${box.top * 100}%`,
+                            width: `${box.width * 100}%`,
+                            height: `${Math.max(box.height * 100, 0.35)}%`,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="ocr-empty">
@@ -1024,6 +1057,7 @@ export default function FolderViewer({
                   sectionHeadersSource={imagingSectionInfo.source}
                   sectionHeadersSkipped={imagingSectionInfo.skipped}
                   sectionHeadersLoading={loadingOcr}
+                  imageNaturalSize={imageNaturalSize}
                 />
               ) : loadingOcr ? (
                 <div className="ocr-loading">Loading OCR output…</div>

@@ -277,33 +277,42 @@ def minilm_reason() -> Optional[str]:
 
 
 def _lexical_score(a: str, b: str) -> float:
-    """Similarity of two normalized phrases.
-
-    Whole-phrase / token-set containment is allowed only when the shorter
-    side is a substantial fraction of the longer — so ``Plan`` does not
-    match ``Plan of day``, but ``History of Present Illness`` still matches
-    a lightly punctuated variant.
-    """
+    """Raw similarity of two normalized phrases (no containment boost)."""
     if not a or not b:
         return 0.0
     if a == b:
         return 1.0
-    ratio = SequenceMatcher(None, a, b).ratio()
-    a_toks = {t for t in a.split() if t}
-    b_toks = {t for t in b.split() if t}
-    if a_toks and b_toks and (a_toks <= b_toks or b_toks <= a_toks):
-        shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
-        if len(shorter) >= 4 and len(shorter) / max(len(longer), 1) >= 0.55:
-            return max(ratio, 0.93)
-    return ratio
+    return SequenceMatcher(None, a, b).ratio()
 
 
 def _best_lexical(text_norm: str) -> tuple[float, str]:
+    """Best catalog match for normalized OCR ``text_norm``.
+
+    Rules:
+      - OCR must be at least as long as the catalog phrase (blocks
+        ``Note`` / ``Notes`` → ``ED Note``).
+      - If the catalog tokens are a subset of the OCR tokens and the
+        catalog phrase is a substantial fraction of the OCR text, boost
+        (keeps ``QB Problem List`` → ``Problem List``).
+    """
     _ensure_catalog()
     best_score = 0.0
     best_label = ""
+    ocr_toks = {t for t in text_norm.split() if t}
     for label, label_norm in zip(_canon, _canon_norm):
+        # OCR text must not be shorter than the catalog phrase it matches.
+        if len(text_norm) < len(label_norm):
+            continue
         score = _lexical_score(text_norm, label_norm)
+        lab_toks = {t for t in label_norm.split() if t}
+        if (
+            lab_toks
+            and ocr_toks
+            and lab_toks <= ocr_toks
+            and len(label_norm) >= 4
+            and len(label_norm) / max(len(text_norm), 1) >= 0.55
+        ):
+            score = max(score, 0.93)
         if score > best_score:
             best_score = score
             best_label = label
@@ -352,10 +361,13 @@ def best_header_match(
     best_score, best_label = lex_score, lex_label
     if use_minilm and _get_model() is not None:
         sem_score, sem_label = _best_minilm(raw)
-        jac = _token_jaccard(norm, _normalize(sem_label))
-        # Semantic counts only when it is clearly about the same list phrase.
-        if jac >= 0.40 and sem_score > best_score:
-            best_score, best_label = sem_score, sem_label
+        sem_norm = _normalize(sem_label)
+        # Same length guard as lexical: OCR must not be shorter than the label.
+        if sem_norm and len(norm) >= len(sem_norm):
+            jac = _token_jaccard(norm, sem_norm)
+            # Semantic counts only when it is clearly about the same list phrase.
+            if jac >= 0.40 and sem_score > best_score:
+                best_score, best_label = sem_score, sem_label
     return best_score, best_label
 
 
