@@ -116,6 +116,9 @@ def run_pipeline_for_chart(
     Neither disturbs the recorded progress of the stages it does not run.
 
     ``skip_ocr`` overrides the ``SKIP_OCR`` env for this run (``None`` = env).
+    With ``skip_ocr`` active and ``force=false``, quality is refreshed and
+    gate-delta reopens only the blank/junk / OCR pages whose path changed
+    (or that are missing artifacts the new gate requires).
     """
     stop_at = resolve_stage(through) if through else None
     with connect() as conn:
@@ -156,16 +159,87 @@ def run_pipeline_for_chart(
         total_stages = len(chain)
         skip_ocr_active = False
         ocr_hydrated = False
+        adaptive_gates = False
+        old_gates: dict[int, Any] = {}
+        old_presence: dict[int, Any] = {}
+        gate_delta_applied = False
+
+        quality_in_scope = (not wanted) or (
+            "ocr_quality" in wanted or "ocr_quality:1" in wanted
+        )
+        from stages.ocr_reuse import apply_skip_ocr, should_skip_ocr_stages
+
+        will_skip_ocr = should_skip_ocr_stages(
+            chart_name=chart["chart_name"],
+            chart_id=chart_id,
+            force=force,
+            skip_ocr=skip_ocr,
+        )
+        # Adaptive: skip_ocr + force:false + quality in this run → refresh
+        # quality, then reopen only gate-impacted pages (OCR engines stay
+        # skipped for unchanged pages).
+        if will_skip_ocr and quality_in_scope:
+            from stages.gate_delta import snapshot_gates, snapshot_ocr_presence
+
+            adaptive_gates = True
+            skip_ocr_active = True
+            with connect() as conn:
+                old_gates = snapshot_gates(conn, chart_id)
+                old_presence = snapshot_ocr_presence(conn, chart_id)
+            results["ocr_reuse"] = apply_skip_ocr(chart_id, chart["chart_name"])
+            ocr_hydrated = True
+            logger.info(
+                "Adaptive skip_ocr for chart %s — quality refresh + gate-delta",
+                chart["chart_name"],
+            )
+
         for index, (name, pass_no, fn) in enumerate(chain, start=1):
             key = f"{name}:{pass_no}"
             if wanted and key not in wanted and name not in wanted:
                 results["skipped_stages"].append(key)
                 continue
 
+            # Adaptive path: always re-measure quality, then invalidate by delta.
+            if adaptive_gates and name == "ocr_quality" and not gate_delta_applied:
+                label = stage_label(name, pass_no)
+                logger.info(
+                    "=== [%s]  stage %d of %d  —  chart %s (force quality) ===",
+                    label, index, total_stages, chart["chart_name"],
+                )
+                results["stages"][key] = fn(chart_id, force=True)
+                from stages.gate_delta import apply_adaptive_gate_delta
+
+                with connect() as conn:
+                    plan = apply_adaptive_gate_delta(
+                        conn,
+                        chart_id,
+                        old_gates=old_gates,
+                        old_presence=old_presence,
+                    )
+                results["gate_delta"] = {
+                    "pages_reopened": len(plan.reasons),
+                    "reasons": {str(k): v for k, v in plan.reasons.items()},
+                    "force_prelim": sorted(plan.force_prelim),
+                    "force_final1": sorted(plan.force_final1),
+                    "force_final2": sorted(plan.force_final2),
+                    "invalidate": {
+                        f"{s}:{p}": sorted(pids)
+                        for (s, p), pids in plan.invalidate.items()
+                    },
+                }
+                gate_delta_applied = True
+                with connect() as conn:
+                    progress = refresh_chart_status(conn, chart_id)
+                results["progress"] = progress
+                logger.info(
+                    "[%s] done — gate-delta reopened %d page(s)",
+                    label,
+                    len(plan.reasons),
+                )
+                continue
+
             if name in {"ocr_prelim", "ocr_final1", "ocr_final2"}:
                 if not ocr_hydrated:
-                    from stages.ocr_reuse import apply_skip_ocr, should_skip_ocr_stages
-
                     skip_ocr_active = should_skip_ocr_stages(
                         chart_name=chart["chart_name"],
                         chart_id=chart_id,
@@ -177,6 +251,24 @@ def run_pipeline_for_chart(
                             chart_id, chart["chart_name"]
                         )
                     ocr_hydrated = True
+                if skip_ocr_active and adaptive_gates:
+                    # Per-page: only pages reset to pending by gate-delta run.
+                    label = stage_label(name, pass_no)
+                    logger.info(
+                        "=== [%s]  stage %d of %d  —  chart %s "
+                        "(skip_ocr + gate-delta pending only) ===",
+                        label, index, total_stages, chart["chart_name"],
+                    )
+                    results["stages"][key] = fn(chart_id, force=False)
+                    with connect() as conn:
+                        progress = refresh_chart_status(conn, chart_id)
+                    results["progress"] = progress
+                    logger.info(
+                        "[%s] done — chart status=%s, next=%s",
+                        label, progress.get("status"),
+                        progress.get("current_stage") or "finished",
+                    )
+                    continue
                 if skip_ocr_active:
                     reason = (results.get("ocr_reuse") or {}).get("source") or "reuse"
                     results["skipped_stages"].append(key)
@@ -195,7 +287,10 @@ def run_pipeline_for_chart(
                 "=== [%s]  stage %d of %d  —  chart %s ===",
                 label, index, total_stages, chart["chart_name"],
             )
-            results["stages"][key] = fn(chart_id, force=force)
+            # Under adaptive skip_ocr, downstream stages also honour resume
+            # (force=False) so only gate-delta-invalidated pages re-run.
+            stage_force = False if adaptive_gates else force
+            results["stages"][key] = fn(chart_id, force=stage_force)
 
             with connect() as conn:
                 progress = refresh_chart_status(conn, chart_id)

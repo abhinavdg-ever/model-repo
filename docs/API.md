@@ -141,7 +141,7 @@ Key `.env` knobs (paths relative to `core-pipeline/`):
 | `DATABASE_URL` | required |
 | `DATA_ROOT` | `../review-ui/data/folders` |
 | `STAGE_WORKERS` / `BATCH_WORKERS` | `4` / `4` — keep `workers × STAGE_WORKERS ≤ DB_POOL_MAX` |
-| `SKIP_OCR` | `false` — reuse on-disk `ocr/` when present |
+| `SKIP_OCR` | `false` — reuse on-disk `ocr/`; with `force:false` also gate-delta |
 | `HW_MODEL_PATH` | `models/hw/handwritten_printed_convnext_tiny.pth` |
 | `RAPID_MODELS_DIR` | `models/rapidocr` |
 | `SECTION_HEADER_MINILM_PATH` | `models/semantic-model` — local MiniLM (preferred) |
@@ -407,7 +407,7 @@ Usable on `/run` and `/batch-run`:
 | `through` | string | omit | Run from the top, **stop after** this stage |
 | `only` | string[] | omit | Run **just** these stages against existing outputs |
 | `force` | bool | `true` | Reprocess completed pages (**final2 is billed**). Set `false` to resume. |
-| `skip_ocr` | bool | omit | Per-request override for `SKIP_OCR`. `true` = reuse OCR from the chart **output folder** (or workspace `ocr/`) if present, else materialize the three `ocr/` files from `ocr_results`; skip prelim/final1/final2. `false` = always run OCR. omit = honour env. Ignored when `force=true` |
+| `skip_ocr` | bool | omit | Per-request override for `SKIP_OCR`. `true` = reuse OCR from the chart **output folder** (or workspace `ocr/`) if present, else materialize the three `ocr/` files from `ocr_results`. With **`force: false`**, also refreshes quality/rotation and **gate-delta**: only pages whose HW/quality/rotation gate flipped (or that are missing OCR the new gate needs) re-open blank/junk and OCR engines — Final2 may still bill for pages that leave `high+printed`. `false` = always run OCR. omit = honour env. Ignored when `force=true` |
 
 ### `POST /api/charts/run` — one chart
 

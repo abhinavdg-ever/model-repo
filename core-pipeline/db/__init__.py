@@ -456,6 +456,34 @@ def reset_stage(conn: Any, chart_id: int, stage_name: str, pass_no: int = 1) -> 
     )
 
 
+def reset_pages_stage(
+    conn: Any,
+    chart_id: int,
+    page_ids: Sequence[int],
+    stage_name: str,
+    pass_no: int = 1,
+) -> int:
+    """Put selected pages back to pending for one stage (gate-delta reopen)."""
+    if not page_ids:
+        return 0
+    result = conn.execute(
+        """
+        INSERT INTO page_stage_status (
+            chart_id, page_id, stage_name, pass_no, status,
+            error_message, skip_reason, completed_at
+        )
+        SELECT %s, unnest(%s::bigint[]), %s, %s, 'pending', NULL, NULL, NULL
+        ON CONFLICT (page_id, stage_name, pass_no) DO UPDATE SET
+            status        = 'pending',
+            error_message = NULL,
+            skip_reason   = NULL,
+            completed_at  = NULL
+        """,
+        (chart_id, list(page_ids), stage_name, pass_no),
+    )
+    return getattr(result, "rowcount", 0) or 0
+
+
 # ---------------------------------------------------------------------------
 # pipeline_jobs
 # ---------------------------------------------------------------------------

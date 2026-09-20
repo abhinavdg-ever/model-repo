@@ -158,11 +158,13 @@ class StageSelection(BaseModel):
     skip_ocr: Optional[bool] = Field(
         None,
         description=(
-            "Per-request override for SKIP_OCR. true = skip prelim/final1/final2 "
-            "when ocr/ already has usable files, or when ocr_results in the DB "
-            "can be written out as the three ocr/ files (even if .env has "
-            "SKIP_OCR=false). false = always run OCR engines. omit = honour "
-            "the SKIP_OCR env. Ignored when force=true (force always re-OCRs)."
+            "Per-request override for SKIP_OCR. true = reuse OCR artifacts when "
+            "present. With force=false, also refreshes quality and applies "
+            "gate-delta: only pages whose HW/quality/rotation path changed (or "
+            "that lack OCR the new gate needs) re-run blank/junk and OCR "
+            "engines — Final2 may still bill when a page leaves high+printed. "
+            "false = always run OCR. omit = honour the SKIP_OCR env. Ignored "
+            "when force=true (force always re-OCRs)."
         ),
     )
 

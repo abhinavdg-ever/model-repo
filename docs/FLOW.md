@@ -137,6 +137,26 @@ Each skip is recorded — `page_stage_status.status='skipped'` with a
 `no_final2_text`). A skipped page counts as *done* for chart-status purposes,
 so a chart of blank pages still reaches `completed`.
 
+### Adaptive skip_ocr (`skip_ocr=true`, `force=false`)
+
+When OCR artifacts already exist, the orchestrator:
+
+1. Hydrates `ocr/` / `ocr_results` (same as plain skip_ocr).
+2. **Force-refreshes** `ocr_quality` (rotation + HW + measured quality).
+3. Compares each page’s gate signature
+   `(hw_class, quality_tag, rotation_applied, orientation_bucket)` to the
+   pre-run snapshot (`core-pipeline/stages/gate_delta.py`).
+4. Sets only the affected `page_stage_status` rows back to pending — blank/junk,
+   OCR engines, section headers, member/DOS as required.
+5. Runs the rest of the chain with resume semantics so unchanged pages keep
+   their OCR; pages that **lost** `high+printed` and have no Final2 text will
+   call Azure for that page only.
+
+```bash
+curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
+  -d '{"chart_id": 123, "skip_ocr": true, "force": false}'
+```
+
 ---
 
 ## 5. Manifest flow — runs independently
