@@ -101,6 +101,7 @@ Date (Printed): 5/22/2025
 
 
 def test_review_ui_halves_page_dims_against_image():
+    """OCR page_* 2× the file → scale = image/page maps boxes onto the image."""
     from app.adapters.local.repository import _section_headers_from_page
 
     page = {
@@ -109,25 +110,24 @@ def test_review_ui_halves_page_dims_against_image():
             {
                 "text": "PATIENT DATA",
                 "level": 2,
-                # Native-pixel bbox on a 1000×2000 image…
-                "bbox": [100.0, 200.0, 400.0, 240.0],
-                # …but Docling stored page.size at 2×.
+                # Coords in OCR page space (0..2000); image is 1000×2000.
+                "bbox": [200.0, 400.0, 800.0, 480.0],
                 "page_width": 2000.0,
                 "page_height": 4000.0,
                 "coord_origin": "TOPLEFT",
-                "norm": {"left": 0.05, "top": 0.05, "width": 0.15, "height": 0.01},
             }
         ],
     }
     headers = _section_headers_from_page(page, image_size=(1000.0, 2000.0))
     assert len(headers) == 1
+    # scale_x=0.5 → image box [100,200,400,240] → fractions of 1000×2000
     assert abs(headers[0].left - 0.1) < 1e-6
     assert abs(headers[0].top - 0.1) < 1e-6
     assert abs(headers[0].width - 0.3) < 1e-6
 
 
 def test_review_ui_azure_inches_not_mixed_with_image_pixels():
-    """Final2 inch polygons must not be divided by image pixel width."""
+    """Final2 inch polygons scale onto image pixels (document-processing pattern)."""
     from app.adapters.local.repository import _section_headers_from_page
 
     page = {
@@ -157,10 +157,10 @@ def test_azure_section_headers_pixel_2x_uses_image():
     lines = [
         {
             "content": "MEDICATIONS",
-            "polygon": [100.0, 200.0, 400.0, 200.0, 400.0, 240.0, 100.0, 240.0],
+            # OCR page space at 2× native image pixels.
+            "polygon": [200.0, 400.0, 800.0, 400.0, 800.0, 480.0, 200.0, 480.0],
         }
     ]
-    # Azure page_* at 2× the file; polygons in native pixels.
     headers = _section_headers_from_lines(
         lines,
         page_w=2000.0,

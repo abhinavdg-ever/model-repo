@@ -184,7 +184,11 @@ export default function FolderViewer({
   const [zoom, setZoom] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [outputExpanded, setOutputExpanded] = useState(false);
+  const [imageNaturalSize, setImageNaturalSize] = useState<{ w: number; h: number } | null>(
+    null,
+  );
   const pageStageRef = useRef<HTMLDivElement>(null);
+  const pageImageRef = useRef<HTMLImageElement>(null);
   const {
     resetPan,
     imageStyle,
@@ -196,6 +200,10 @@ export default function FolderViewer({
     setZoom(1);
     resetPan();
   }
+
+  useEffect(() => {
+    setImageNaturalSize(null);
+  }, [folderId, pageIndex]);
 
   useEffect(() => {
     setOutputMode(initialMode);
@@ -240,9 +248,10 @@ export default function FolderViewer({
   const page = folder?.pages[pageIndex] ?? null;
 
   useEffect(() => {
-    if (!folder || outputMode !== "ocr") {
+    if (!folder) {
       setOcrByKind({});
       setHeadersByKind({});
+      setLoadingOcr(false);
       return;
     }
     let cancelled = false;
@@ -283,7 +292,7 @@ export default function FolderViewer({
     return () => {
       cancelled = true;
     };
-  }, [folder, outputMode]);
+  }, [folder]);
 
   const ocrFullText = ocrByKind[ocrTab] ?? "";
   const ocrMissingMessage = `No ${OCR_TAB_LABELS[ocrTab]} available.`;
@@ -383,10 +392,54 @@ export default function FolderViewer({
     );
   }, [showSectionHeaders, page, sectionHeadersByFile]);
 
-  const overlayBoxes = useMemo(
-    () => pageHeaderBoxes.filter((b) => b.width > 0 && b.height > 0),
-    [pageHeaderBoxes],
-  );
+  /** Imaging → Section coordinates: Final2 first, else Final1; skip blank/junk. */
+  const imagingSectionInfo = useMemo(() => {
+    if (!page) {
+      return {
+        headers: [] as OcrSectionHeader[],
+        source: null as "final1" | "final2" | null,
+        skipped: false,
+      };
+    }
+    if (isBlankOrJunkYes(imagingPage)) {
+      return { headers: [] as OcrSectionHeader[], source: null, skipped: true };
+    }
+    const pick = (kind: "final1" | "final2"): OcrSectionHeader[] => {
+      const byFile = headersByKind[kind] ?? {};
+      return (
+        byFile[page.filename] ??
+        byFile[page.filename.toLowerCase()] ??
+        []
+      );
+    };
+    const f2 = pick("final2");
+    if (f2.length > 0) {
+      return { headers: f2, source: "final2" as const, skipped: false };
+    }
+    const f1 = pick("final1");
+    if (f1.length > 0) {
+      return { headers: f1, source: "final1" as const, skipped: false };
+    }
+    return { headers: [] as OcrSectionHeader[], source: null, skipped: false };
+  }, [page, imagingPage, headersByKind]);
+
+  const overlayBoxes = useMemo(() => {
+    if (outputMode === "imaging" && imagingTab === "sections") {
+      if (imagingSectionInfo.skipped) return [];
+      return imagingSectionInfo.headers.filter(
+        (b) => b.width > 0 && b.height > 0,
+      );
+    }
+    if (outputMode === "ocr") {
+      return pageHeaderBoxes.filter((b) => b.width > 0 && b.height > 0);
+    }
+    return [];
+  }, [
+    outputMode,
+    imagingTab,
+    imagingSectionInfo,
+    pageHeaderBoxes,
+  ]);
 
   const pageOcrLines = useMemo(() => {
     if (!showHeaderToggle || !pageOcrText || pageOcrText === ocrMissingMessage) {
@@ -715,27 +768,53 @@ export default function FolderViewer({
                   onPointerDown={stageProps.onPointerDown}
                 >
                   <img
+                    ref={pageImageRef}
                     src={pageImageUrl(folderId, page.page_number)}
                     alt={page.filename}
                     draggable={false}
+                    onLoad={(e) => {
+                      const img = e.currentTarget;
+                      setImageNaturalSize({
+                        w: img.naturalWidth,
+                        h: img.naturalHeight,
+                      });
+                    }}
                   />
-                  {overlayBoxes.length > 0 ? (
-                    <div className="page-header-overlay" aria-hidden="true">
-                      {overlayBoxes.map((box, i) => (
-                        <div
-                          key={`${box.text}-${i}`}
-                          className="page-header-box"
-                          title={box.text}
-                          style={{
-                            left: `${box.left * 100}%`,
-                            top: `${box.top * 100}%`,
-                            width: `${box.width * 100}%`,
-                            height: `${Math.max(box.height * 100, 0.6)}%`,
-                          }}
-                        />
-                      ))}
-                    </div>
-                  ) : null}
+                  {overlayBoxes.length > 0
+                  && (imageNaturalSize?.w || pageImageRef.current?.naturalWidth)
+                    ? (() => {
+                        const natW =
+                          imageNaturalSize?.w ||
+                          pageImageRef.current?.naturalWidth ||
+                          0;
+                        const natH =
+                          imageNaturalSize?.h ||
+                          pageImageRef.current?.naturalHeight ||
+                          0;
+                        if (!natW || !natH) return null;
+                        return (
+                          <svg
+                            className="page-header-overlay"
+                            viewBox={`0 0 ${natW} ${natH}`}
+                            preserveAspectRatio="none"
+                            aria-hidden="true"
+                          >
+                            {overlayBoxes.map((box, i) => (
+                              <rect
+                                key={`${box.text}-${i}`}
+                                className="page-header-box"
+                                x={box.left * natW}
+                                y={box.top * natH}
+                                width={Math.max(box.width * natW, 1)}
+                                height={Math.max(box.height * natH, 1)}
+                              >
+                                <title>{box.text}</title>
+                              </rect>
+                            ))}
+                          </svg>
+                        );
+                      })()
+                    : null}
                 </div>
               ) : (
                 <div className="ocr-empty">
@@ -920,6 +999,15 @@ export default function FolderViewer({
                   >
                     Doc Summary
                   </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={imagingTab === "sections"}
+                    className={imagingTab === "sections" ? "active" : ""}
+                    onClick={() => setImagingTab("sections")}
+                  >
+                    Section coordinates
+                  </button>
                 </div>
               )}
             </div>
@@ -932,6 +1020,10 @@ export default function FolderViewer({
                   document={imagingDoc}
                   currentPage={imagingPage}
                   currentFileName={page?.filename ?? null}
+                  sectionHeaders={imagingSectionInfo.headers}
+                  sectionHeadersSource={imagingSectionInfo.source}
+                  sectionHeadersSkipped={imagingSectionInfo.skipped}
+                  sectionHeadersLoading={loadingOcr}
                 />
               ) : loadingOcr ? (
                 <div className="ocr-loading">Loading OCR output…</div>

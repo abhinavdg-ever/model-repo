@@ -271,62 +271,77 @@ def _page_dims_for_overlay(
     unit: str | None = None,
     bboxes: list[tuple[float, float, float, float]] | None = None,
 ) -> tuple[float, float]:
-    """Pick denominator for overlay fractions (Docling + Azure DI).
+    """Return ``(page_w, page_h)`` used with OCR coords (same unit as bbox).
 
-    - Physical units (inch/cm/mm): polygons share that unit — never mix with
-      image pixels (that made Final2 boxes look half-sized / misplaced).
-    - Pixel / unknown: if page_* is ~2× the displayed image (or bbox extents
-      only fill ~half of page_* while matching the image), use the image size.
+    When ``image_size`` is known, callers should map OCR→image via
+    ``scale = image / page`` (document-processing pattern) rather than replacing
+    page_* with pixel dims — that broke Azure inch pages and consistent 2×
+    Docling page spaces.
     """
-    unit_l = str(unit or "").strip().lower().replace(" ", "")
-    if unit_l in {
-        "inch",
-        "inches",
-        "in",
-        "cm",
-        "mm",
-        "millimeter",
-        "millimeters",
-        "centimeter",
-        "centimeters",
-    }:
-        return page_w or 1.0, page_h or 1.0
-
-    # Heuristic: tiny page_* with a large raster ⇒ Azure inches without unit.
-    if (
-        image_size
-        and page_w > 0
-        and page_h > 0
-        and page_w < 50
-        and page_h < 50
-        and image_size[0] > 100
-    ):
-        return page_w, page_h
-
-    if not image_size or page_w <= 0 or page_h <= 0:
-        return page_w or 1.0, page_h or 1.0
-    iw, ih = image_size
-    if iw <= 0 or ih <= 0:
-        return page_w, page_h
-    if abs(page_w - iw) / iw <= 0.08 and abs(page_h - ih) / ih <= 0.08:
-        # Same nominal size as the file — but bboxes may still be half-scale.
-        if bboxes:
-            max_x = max(max(l, r) for l, t, r, b in bboxes)
-            max_y = max(max(t, b) for l, t, r, b in bboxes)
-            if (
-                max_x > 1
-                and max_y > 1
-                and 0.40 <= max_x / page_w <= 0.55
-                and 0.40 <= max_y / page_h <= 0.55
-            ):
-                return page_w / 2.0, page_h / 2.0
-        return page_w, page_h
-    # page_* ≈ 2× image (Docling images_scale / Azure downsample mismatch).
-    if abs(page_w / iw - 2.0) <= 0.15 and abs(page_h / ih - 2.0) <= 0.15:
-        return iw, ih
-    if abs(iw / page_w - 2.0) <= 0.15 and abs(ih / page_h - 2.0) <= 0.15:
-        return page_w, page_h
+    del unit, bboxes  # kept for call-site compatibility
+    if page_w <= 0 or page_h <= 0:
+        if image_size:
+            return image_size
+        return 1.0, 1.0
     return page_w, page_h
+
+
+def _ocr_box_to_image_fractions(
+    l: float,
+    t: float,
+    r: float,
+    b: float,
+    page_w: float,
+    page_h: float,
+    image_size: tuple[float, float] | None,
+    *,
+    origin: str = "TOPLEFT",
+) -> tuple[float, float, float, float]:
+    """OCR-space box → CSS fractions of the *displayed* page image.
+
+    Same mapping as advantmed-document-processing headings features::
+
+        scale_x = image_w / page_w
+        scale_y = image_h / page_h
+
+    Then divide by image size. When page_* and the polygon share a unit
+    (pixels or inches), fractions land on the file the UI shows — no re-OCR
+    required for overlay alignment.
+    """
+    pw = page_w if page_w > 0 else 0.0
+    ph = page_h if page_h > 0 else 0.0
+    if image_size and pw > 0 and ph > 0:
+        iw, ih = image_size
+        if iw > 0 and ih > 0:
+            sx = iw / pw
+            sy = ih / ph
+            l, t, r, b = l * sx, t * sy, r * sx, b * sy
+            pw, ph = iw, ih
+
+    origin_u = (origin or "TOPLEFT").upper().replace("-", "").replace("_", "")
+    if t < b and origin_u.startswith("BOTTOM"):
+        origin_u = "TOPLEFT"
+    elif t > b and origin_u.startswith("TOP"):
+        origin_u = "BOTTOMLEFT"
+
+    if pw <= 0 or ph <= 0:
+        return 0.0, 0.0, 0.0, 0.0
+
+    left = min(l, r) / pw
+    width = abs(r - l) / pw
+    if origin_u.startswith("BOTTOM"):
+        top_y = max(t, b)
+        bot_y = min(t, b)
+        top = (ph - top_y) / ph
+        height = (top_y - bot_y) / ph
+    else:
+        top = min(t, b) / ph
+        height = abs(b - t) / ph
+
+    def clip(v: float) -> float:
+        return max(0.0, min(1.0, float(v)))
+
+    return clip(left), clip(top), clip(width), clip(height)
 
 
 def _section_headers_from_page(
@@ -351,34 +366,6 @@ def _section_headers_from_page(
     if not isinstance(raw, list):
         return []
 
-    page_unit = str(page.get("unit") or page.get("coord_unit") or "").strip()
-    if not page_unit:
-        for meta in page.get("pagesMeta") or page.get("pages_meta") or []:
-            if isinstance(meta, dict) and meta.get("unit"):
-                page_unit = str(meta.get("unit") or "").strip()
-                break
-
-    # Gather bboxes once so half-scale detection sees the whole page.
-    page_bboxes: list[tuple[float, float, float, float]] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        box = item.get("bbox")
-        if isinstance(box, (list, tuple)) and len(box) >= 4:
-            try:
-                page_bboxes.append(tuple(float(x) for x in box[:4]))  # type: ignore[arg-type]
-                continue
-            except (TypeError, ValueError):
-                pass
-        poly = item.get("polygon")
-        if isinstance(poly, (list, tuple)) and len(poly) >= 8:
-            try:
-                vals = [float(x) for x in poly]
-                xs, ys = vals[0::2], vals[1::2]
-                page_bboxes.append((min(xs), min(ys), max(xs), max(ys)))
-            except (TypeError, ValueError):
-                pass
-
     out: list[OcrSectionHeader] = []
     for item in raw:
         if not isinstance(item, dict):
@@ -387,34 +374,17 @@ def _section_headers_from_page(
         if not text:
             continue
         left = top = width = height = 0.0
-        item_unit = str(item.get("unit") or item.get("coord_unit") or page_unit or "")
-        # Prefer recomputing from raw bbox/polygon so older JSON written with a
-        # wrong coord_origin (BOTTOMLEFT default on image OCR) still lines up.
+        # Prefer recomputing from raw bbox/polygon. Map OCR space → image
+        # fractions via scale = image/page (document-processing pattern).
         if isinstance(item.get("bbox"), (list, tuple)) and len(item["bbox"]) >= 4:
             try:
                 l, t, r, b = (float(x) for x in item["bbox"][:4])
-                pw = float(item.get("page_width") or 0) or 1.0
-                ph = float(item.get("page_height") or 0) or 1.0
-                pw, ph = _page_dims_for_overlay(
-                    pw, ph, image_size, unit=item_unit, bboxes=page_bboxes
+                pw = float(item.get("page_width") or 0) or 0.0
+                ph = float(item.get("page_height") or 0) or 0.0
+                origin = str(item.get("coord_origin") or "TOPLEFT")
+                left, top, width, height = _ocr_box_to_image_fractions(
+                    l, t, r, b, pw, ph, image_size, origin=origin
                 )
-                origin = str(item.get("coord_origin") or "TOPLEFT").upper()
-                origin_key = origin.replace("-", "").replace("_", "")
-                # t < b ⇒ y grows downward (TOPLEFT); t > b ⇒ BOTTOMLEFT.
-                if t < b and origin_key.startswith("BOTTOM"):
-                    origin_key = "TOPLEFT"
-                elif t > b and origin_key.startswith("TOP"):
-                    origin_key = "BOTTOMLEFT"
-                left = min(l, r) / pw
-                if origin_key.startswith("BOTTOM"):
-                    top_y = max(t, b)
-                    bot_y = min(t, b)
-                    top = (ph - top_y) / ph
-                    height = (top_y - bot_y) / ph
-                else:
-                    top = min(t, b) / ph
-                    height = abs(b - t) / ph
-                width = abs(r - l) / pw
             except (TypeError, ValueError):
                 left = top = width = height = 0.0
         elif isinstance(item.get("polygon"), (list, tuple)) and len(item["polygon"]) >= 8:
@@ -426,19 +396,15 @@ def _section_headers_from_page(
                     item.get("page_width")
                     or item.get("pageWidth")
                     or 0
-                ) or 1.0
+                ) or 0.0
                 ph = float(
                     item.get("page_height")
                     or item.get("pageHeight")
                     or 0
-                ) or 1.0
-                pw, ph = _page_dims_for_overlay(
-                    pw, ph, image_size, unit=item_unit, bboxes=page_bboxes
+                ) or 0.0
+                left, top, width, height = _ocr_box_to_image_fractions(
+                    l, t, r, b, pw, ph, image_size, origin="TOPLEFT"
                 )
-                left = min(l, r) / pw
-                top = min(t, b) / ph
-                width = abs(r - l) / pw
-                height = abs(b - t) / ph
             except (TypeError, ValueError):
                 left = top = width = height = 0.0
         else:
@@ -449,37 +415,10 @@ def _section_headers_from_page(
                     top = float(norm.get("top") or 0)
                     width = float(norm.get("width") or 0)
                     height = float(norm.get("height") or 0)
-                    # Stored norm from a 2× page.size run — scale up when we
-                    # know the displayed image is half of stored page_* (pixels).
-                    stored_pw = float(item.get("page_width") or 0)
-                    stored_ph = float(item.get("page_height") or 0)
-                    unit_l = item_unit.strip().lower()
-                    physical = unit_l in {
-                        "inch",
-                        "inches",
-                        "in",
-                        "cm",
-                        "mm",
-                        "millimeter",
-                        "millimeters",
-                        "centimeter",
-                        "centimeters",
-                    } or (stored_pw > 0 and stored_pw < 50 and stored_ph < 50)
-                    if (
-                        not physical
-                        and image_size
-                        and stored_pw > 0
-                        and stored_ph > 0
-                    ):
-                        iw, ih = image_size
-                        if (
-                            abs(stored_pw / iw - 2.0) <= 0.15
-                            and abs(stored_ph / ih - 2.0) <= 0.15
-                        ):
-                            left *= 2.0
-                            top *= 2.0
-                            width *= 2.0
-                            height *= 2.0
+                    # If we have image + page_* and a bbox was missing, stored
+                    # norm is already a fraction of page_* — remap when page
+                    # aspect was used as if it were the image (rare). Prefer
+                    # bbox/polygon paths above whenever present.
                 except (TypeError, ValueError):
                     left = top = width = height = 0.0
         try:

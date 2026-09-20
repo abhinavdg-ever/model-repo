@@ -570,18 +570,11 @@ def _renorm_headers_for_image(
     headers: list[dict[str, Any]],
     image_path: Path,
 ) -> list[dict[str, Any]]:
-    """Recompute ``norm`` / page_* using the page image when scale is off."""
+    """Recompute ``norm`` in displayed-image fractions (OCR→image scale)."""
     image_size = _image_pixel_size(image_path)
     if not image_size or not headers:
         return headers
-    bboxes: list[tuple[float, float, float, float]] = []
-    for h in headers:
-        box = h.get("bbox")
-        if isinstance(box, (list, tuple)) and len(box) >= 4:
-            try:
-                bboxes.append(tuple(float(x) for x in box[:4]))  # type: ignore[arg-type]
-            except (TypeError, ValueError):
-                pass
+    iw, ih = image_size
     out: list[dict[str, Any]] = []
     for h in headers:
         item = dict(h)
@@ -594,13 +587,17 @@ def _renorm_headers_for_image(
         except (TypeError, ValueError):
             out.append(item)
             continue
-        pw = float(item.get("page_width") or 0) or image_size[0]
-        ph = float(item.get("page_height") or 0) or image_size[1]
+        pw = float(item.get("page_width") or 0) or iw
+        ph = float(item.get("page_height") or 0) or ih
         origin = str(item.get("coord_origin") or "TOPLEFT")
-        use_w, use_h = _resolve_norm_page_size(pw, ph, image_size, bboxes)
-        norm = _bbox_to_css_norm(l, t, r, b, use_w, use_h, origin)
-        item["page_width"] = use_w
-        item["page_height"] = use_h
+        # document-processing: scale_x = image_w / page_w
+        if pw > 0 and ph > 0:
+            sx, sy = iw / pw, ih / ph
+            l, t, r, b = l * sx, t * sy, r * sx, b * sy
+        norm = _bbox_to_css_norm(l, t, r, b, iw, ih, origin)
+        item["page_width"] = iw
+        item["page_height"] = ih
+        item["bbox"] = [round(l, 2), round(t, 2), round(r, 2), round(b, 2)]
         item["norm"] = norm
         out.append(item)
     return out

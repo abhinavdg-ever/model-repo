@@ -217,31 +217,19 @@ def _section_headers_from_lines(
     unit: str | None = None,
     image_size: tuple[float, float] | None = None,
 ) -> list[dict[str, Any]]:
-    """Header-like Azure lines → review-ui ``section_headers`` with ``norm``."""
-    # Pixel pages: if Azure page_* is ~2× the file we show, normalize against
-    # the image so overlays are not half-size. Inch/cm pages keep Azure dims.
-    use_w, use_h = page_w, page_h
-    unit_l = str(unit or "").strip().lower()
-    physical = unit_l in {
-        "inch",
-        "inches",
-        "in",
-        "cm",
-        "mm",
-        "millimeter",
-        "millimeters",
-        "centimeter",
-        "centimeters",
-    } or (page_w > 0 and page_w < 50 and page_h < 50 and (image_size or (0, 0))[0] > 100)
-    if (
-        not physical
-        and image_size
-        and page_w > 0
-        and page_h > 0
-        and abs(page_w / image_size[0] - 2.0) <= 0.15
-        and abs(page_h / image_size[1] - 2.0) <= 0.15
-    ):
-        use_w, use_h = image_size
+    """Header-like Azure lines → review-ui ``section_headers`` with ``norm``.
+
+    Maps OCR coords → displayed-image pixels via ``scale = image / page``
+    (same as advantmed-document-processing heading features), then stores
+    fractions of the image so the SVG overlay aligns without a re-run.
+    """
+    iw = ih = 0.0
+    if image_size:
+        iw, ih = image_size
+    use_w = iw if iw > 0 else page_w
+    use_h = ih if ih > 0 else page_h
+    sx = (iw / page_w) if (iw > 0 and page_w > 0) else 1.0
+    sy = (ih / page_h) if (ih > 0 and page_h > 0) else 1.0
 
     headers: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -259,6 +247,7 @@ def _section_headers_from_lines(
         bbox: list[float] = []
         if box is not None:
             l, t, r, b = box
+            l, t, r, b = l * sx, t * sy, r * sx, b * sy
             bbox = [round(l, 2), round(t, 2), round(r, 2), round(b, 2)]
             norm = _css_norm_topleft(l, t, r, b, use_w, use_h)
         headers.append(
@@ -269,7 +258,7 @@ def _section_headers_from_lines(
                 "polygon": polygon,
                 "page_width": use_w or None,
                 "page_height": use_h or None,
-                "unit": unit,
+                "unit": "pixel" if iw > 0 else unit,
                 "coord_origin": "TOPLEFT",
                 "norm": norm,
             }

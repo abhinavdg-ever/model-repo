@@ -1400,16 +1400,16 @@ input {
 .page-header-overlay {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
 }
 
 .page-header-box {
-  position: absolute;
-  border: 1.5px solid var(--brand-500);
-  background: color-mix(in srgb, var(--brand-200) 70%, transparent);
-  box-sizing: border-box;
-  border-radius: 2px;
-  /* No text labels — boxes only. Hover title is set in the markup. */
+  fill: color-mix(in srgb, var(--brand-200) 70%, transparent);
+  stroke: var(--brand-500);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
 }
 
 .ocr-quality-badge {
@@ -1663,6 +1663,82 @@ input {
   flex-direction: column;
   gap: 0.85rem;
   min-height: 0;
+}
+
+.section-coords-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.section-coords-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--brand-200, #1a3a4a);
+}
+
+.section-coords-source {
+  font-weight: 500;
+  color: var(--muted, #6b7c86);
+  font-size: 0.8rem;
+}
+
+.section-coords-file {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted, #6b7c86);
+  word-break: break-all;
+}
+
+.section-coords-skip {
+  margin: 0.35rem 0 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 6px;
+  background: var(--surface-2, #f3f5f7);
+  color: var(--muted, #5a6b74);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.section-coords-empty {
+  margin: 0.25rem 0 0;
+  color: var(--muted, #6b7c86);
+  font-size: 0.85rem;
+}
+
+.section-coords-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  overflow: auto;
+  min-height: 0;
+}
+
+.section-coords-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem 0.75rem;
+  align-items: baseline;
+  padding: 0.4rem 0.55rem;
+  border-radius: 5px;
+  background: var(--surface-2, #f6f8f9);
+  font-size: 0.8rem;
+}
+
+.section-coords-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--text, #1c2b33);
+}
+
+.section-coords-bbox {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  color: var(--muted, #5a6b74);
+  white-space: nowrap;
 }
 
 .imaging-doc-tabs {

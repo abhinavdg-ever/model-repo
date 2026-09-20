@@ -5,6 +5,7 @@ import type {
   ImagingPageResult,
   ImagingSectionsProcessed,
   ImagingVerificationDetails,
+  OcrSectionHeader,
 } from "./api";
 
 const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
@@ -81,7 +82,7 @@ function fillDosForward(
     });
 }
 
-type ImagingTab = "page" | "doc";
+type ImagingTab = "page" | "doc" | "sections";
 type DocView = "values" | "confidence" | "rejection";
 
 type Props = {
@@ -91,6 +92,13 @@ type Props = {
   document: ImagingDocumentResponse | null;
   currentPage: ImagingPageResult | null;
   currentFileName: string | null;
+  /** Section headers for the current page (Final2 preferred, else Final1). */
+  sectionHeaders?: OcrSectionHeader[];
+  /** Which OCR kind supplied ``sectionHeaders``. */
+  sectionHeadersSource?: "final1" | "final2" | null;
+  /** True when the page is blank/junk — show skip message instead of coords. */
+  sectionHeadersSkipped?: boolean;
+  sectionHeadersLoading?: boolean;
 };
 
 const YET_TO_PROCESS = "Yet to Process";
@@ -544,7 +552,25 @@ export default function ImagingPanel({
   document,
   currentPage,
   currentFileName,
+  sectionHeaders = [],
+  sectionHeadersSource = null,
+  sectionHeadersSkipped = false,
+  sectionHeadersLoading = false,
 }: Props) {
+  if (tab === "sections") {
+    return (
+      <div className="imaging-panel-stack">
+        <SectionCoordinates
+          fileName={currentFileName}
+          headers={sectionHeaders}
+          source={sectionHeadersSource}
+          skipped={sectionHeadersSkipped}
+          loading={sectionHeadersLoading}
+        />
+      </div>
+    );
+  }
+
   if (loading) {
     return <div className="ocr-loading">Loading imaging results…</div>;
   }
@@ -598,6 +624,77 @@ export default function ImagingPanel({
     <div className="imaging-panel-stack">
       <ManifestDetails manifest={manifest} />
       <PageDetails page={currentPage} sections={sections} />
+    </div>
+  );
+}
+
+const SECTION_SKIP_MESSAGE = "Skipped for Junk/Blank";
+
+function SectionCoordinates({
+  fileName,
+  headers,
+  source,
+  skipped,
+  loading,
+}: {
+  fileName: string | null;
+  headers: OcrSectionHeader[];
+  source: "final1" | "final2" | null;
+  skipped: boolean;
+  loading: boolean;
+}) {
+  if (loading) {
+    return <div className="ocr-loading">Loading section coordinates…</div>;
+  }
+  if (skipped) {
+    return (
+      <div className="section-coords-panel">
+        <div className="section-coords-title">Section coordinates</div>
+        <p className="section-coords-skip">{SECTION_SKIP_MESSAGE}</p>
+      </div>
+    );
+  }
+  const withBox = headers.filter((h) => h.width > 0 && h.height > 0);
+  const sourceLabel =
+    source === "final2"
+      ? "Final (AzDocInt)"
+      : source === "final1"
+        ? "Final (OSS)"
+        : null;
+
+  return (
+    <div className="section-coords-panel">
+      <div className="section-coords-title">
+        Section coordinates
+        {sourceLabel ? (
+          <span className="section-coords-source"> · {sourceLabel}</span>
+        ) : null}
+      </div>
+      {fileName ? (
+        <p className="section-coords-file">{fileName}</p>
+      ) : null}
+      {!withBox.length ? (
+        <p className="section-coords-empty">
+          No section headers with coordinates for this page.
+        </p>
+      ) : (
+        <div className="section-coords-list">
+          {withBox.map((h, i) => (
+            <div key={`${h.text}-${i}`} className="section-coords-row">
+              <span className="section-coords-text" title={h.text}>
+                {h.text}
+              </span>
+              <span className="section-coords-bbox" title="left, top, width, height (fractions of page)">
+                [
+                {[h.left, h.top, h.width, h.height]
+                  .map((n) => n.toFixed(3))
+                  .join(", ")}
+                ]
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
