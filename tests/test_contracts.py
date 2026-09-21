@@ -175,6 +175,9 @@ class TestPerChartCsvNamesAreRead:
         "_member_extraction.csv",
         "_member_verification.csv",
         "_dos.csv",
+        "_codeable.csv",
+        "_encounter.csv",
+        "_sequencing.csv",
     }
 
     def test_folder_list_marks_every_stage_stream(self):
@@ -184,7 +187,7 @@ class TestPerChartCsvNamesAreRead:
         ).read_text(encoding="utf-8")
         # The per-chart override loop in _pipeline_streams.
         start = source.index("Per-chart overrides under data/folders")
-        block = source[start : start + 2500]
+        block = source[start : start + 4500]
         for suffix in self.STAGE_SUFFIXES:
             assert suffix in block, (
                 f"{suffix} is written by a stage but the folder list never "

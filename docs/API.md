@@ -36,34 +36,45 @@ Set `TESSERACT_CMD` when `tesseract` is not on `PATH` (always on Windows), e.g.
 
 ### 2. Database schema
 
-`schema/` has three files: `clear_schema.sql`, `v1.sql`, `v2.sql`.
+`schema/` has: `clear_schema.sql`, `v1.sql`, `v2.sql`, `patch_output_path.sql`.
 
-Existing databases that already applied an older `v1.sql` can take the additive
-patch instead of recreating:
-
-```bash
-psql "$DATABASE_URL" -f schema/patch_output_path.sql
-```
-
-That adds `chart_list.output_path` and remaps any legacy `status='rejected'` →
-`completed`. When a write path is passed on run/batch-run it is stored **as-is**
-(chart folder appended if missing). Otherwise ingest derives e.g.
-`Raw_Input/Run1/Batch1/DEID_Images/<chart>` →
-`Processed/Run1/Batch1/<chart>`.
+**First-time setup** (empty database) — apply V1; V2 is optional:
 
 ```bash
 # macOS / Linux
-psql "$DATABASE_URL" -f schema/v1.sql            # required
-psql "$DATABASE_URL" -f schema/v2.sql            # optional — next phase
-psql "$DATABASE_URL" -c "SELECT count(*) FROM pipeline_stage;"   # 8, or 12 with v2
+psql "$DATABASE_URL" -f schema/v1.sql            # required — all implemented tables
+psql "$DATABASE_URL" -f schema/v2.sql            # optional — proposals only
+psql "$DATABASE_URL" -c "SELECT stage_name, pass_no, seq, is_phase1 FROM pipeline_stage ORDER BY seq;"
+# Expect 12 phase-1 rows from v1; + rejection_logic if v2 was applied.
 ```
 
 ```powershell
 # Windows
 psql $env:DATABASE_URL -f schema/v1.sql
 psql $env:DATABASE_URL -f schema/v2.sql
-psql $env:DATABASE_URL -c "SELECT count(*) FROM pipeline_stage;"
+psql $env:DATABASE_URL -c "SELECT stage_name, pass_no, seq, is_phase1 FROM pipeline_stage ORDER BY seq;"
 ```
+
+**Existing database** (already applied an older v1 / early v2) — do **not** re-run
+`v1.sql` (CREATE TABLE will fail). Apply the additive patch instead:
+
+```bash
+psql "$DATABASE_URL" -f schema/patch_output_path.sql
+```
+
+That patch is idempotent and:
+
+| Change | Detail |
+|---|---|
+| `chart_list.output_path` | Column if missing; write path stored on ingest |
+| `chart_list.status` | Legacy `'rejected'` → `'completed'` |
+| `pipeline_stage` | Registers / promotes `page_subtype`, `encounter_type`, `page_sequencing` (phase-1) |
+| **New tables** | `encounter_type_results`, `page_sequencing_results` (moved out of older v2 proposals) |
+| `page_stage_status` | Seeds `pending` rows for those three stages on existing pages |
+
+When a write path is passed on run/batch-run it is stored **as-is** (chart folder
+appended if missing). Otherwise ingest derives e.g.
+`Raw_Input/Run1/Batch1/DEID_Images/<chart>` → `Processed/Run1/Batch1/<chart>`.
 
 Wipe and re-apply (full — drops roster too):
 
@@ -395,7 +406,8 @@ Mutating chart calls return **202** and run in the background. Poll
 `GET /api/charts/{id}` or `GET /api/charts/by-name/{name}`.
 
 Stage names: `ocr_quality`, `ocr_prelim`, `blank_junk`, `ocr_final1`,
-`ocr_final2`, `member_verify`, `dos_extract`. Pass 2: `blank_junk:2`.
+`ocr_final2`, `member_verify`, `dos_extract`, `page_subtype`, `encounter_type`,
+`page_sequencing`. Pass 2: `blank_junk:2`.
 Unknown name → **400**.
 
 ### Shared optional stage selectors

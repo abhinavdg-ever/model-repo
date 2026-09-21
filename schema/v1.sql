@@ -4,29 +4,41 @@
 -- Everything in this file is built, wired and running today. Every table
 -- here is written or read by core-pipeline or review-ui.
 --
---     psql "$DATABASE_URL" -f schema/v1.sql        # required
---     psql "$DATABASE_URL" -f schema/v2.sql        # optional, next phase
---
--- Apply V1 first: V2 depends on it (its tables carry chart_id / page_id
--- foreign keys into these). V1 stands alone — the pipeline and the viewer
--- run with V1 only, and nothing in V1 references a V2 table.
---
--- WHAT IS IN HERE — the eight orchestrated stages and what backs them
+-- FIRST-TIME SETUP (empty database)
 -- ---------------------------------------------------------------------
---   pipeline_stage               stage registry (the 9 implemented stages)
---   chart_list / page_list       identity + lifecycle
+--     psql "$DATABASE_URL" -f schema/v1.sql        # required — all of this
+--     psql "$DATABASE_URL" -f schema/v2.sql        # optional — proposals only
+--
+-- EXISTING DATABASE (already applied an older v1 / early v2)
+-- ---------------------------------------------------------------------
+--     psql "$DATABASE_URL" -f schema/patch_output_path.sql
+-- Do not re-apply v1.sql on a live DB — CREATE TABLE will fail. The patch
+-- is additive and idempotent (output_path, encounter/sequencing tables,
+-- stage registry, page_stage_status seeds).
+--
+-- Apply V1 first: V2 depends on it. V1 stands alone — nothing in V1
+-- references a V2 table.
+--
+-- WHAT IS IN HERE — tables + the 12 phase-1 stages that write them
+-- ---------------------------------------------------------------------
+--   pipeline_stage               stage registry (12 phase-1 stages)
+--   chart_list / page_list       identity + lifecycle (+ output_path)
 --   page_stage_status            per-page per-stage per-pass progress
 --   manifest_member_list         the client roster
---   ocr_results                  stages 1, 4, 5
---   ocr_quality_results          stage 2  (rotation + handwriting)
---   blank_junk_classification    stages 3, 6  (+ v_page_blank_junk_final)
---   member_extraction_results    stage 7
---   member_verification_summary  stage 7  (the accept/reject decision)
---   dos_extraction_results       stage 8  (ONE table — see its comment)
+--   ocr_results                  ocr_prelim / ocr_final1 / ocr_final2
+--   ocr_quality_results          ocr_quality
+--   blank_junk_classification    blank_junk pass 1+2 (+ v_page_blank_junk_final)
+--   member_extraction_results    member_verify
+--   member_verification_summary  member_verify
+--   dos_extraction_results       dos_extract
+--   page_classification          page_subtype (codeable / non-codeable / discharge)
+--   encounter_type_results       encounter_type  (was a V2 proposal)
+--   page_sequencing_results      page_sequencing (was a V2 proposal)
 --   pipeline_jobs                run log
 --   v_chart_stage_progress       chart status rollup
 --
--- Anything not listed above lives in v2.sql and is not implemented yet.
+-- Stage page_subtype (codeable TF) writes page_classification + CSV.
+-- Anything else not listed above lives in v2.sql.
 --
 -- ---------------------------------------------------------------------
 -- NAMING CONVENTIONS — every table in BOTH files obeys these. A new table
@@ -77,7 +89,6 @@ $$ LANGUAGE plpgsql;
 -- ---------------------------------------------------------------------
 -- The pipeline's shape as data. Orchestrator reads execution order from
 -- here; chart status is derived by joining page_stage_status against it.
--- Adding page-subtype / encounter / sequencing later is an INSERT.
 
 CREATE TABLE pipeline_stage (
     stage_name   VARCHAR(50)  NOT NULL,
@@ -106,14 +117,11 @@ INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1) VALUES
     ('section_headers',  1, 55, 'Section Header Match',          TRUE),
     ('blank_junk',       2, 60, 'Blank/Junk/Duplicate — pass 2',  TRUE),
     ('member_verify',    1, 70, 'Member Extraction + Verify',    TRUE),
-    ('dos_extract',      1, 80, 'Date-of-Service Extraction',    TRUE);
--- The four not-yet-orchestrated stages (seq 90-120, is_phase1 = FALSE) are
--- registered by v2.sql, alongside the tables that back them.
-
--- ---------------------------------------------------------------------
--- MASTER + REFERENCE TABLES
--- ---------------------------------------------------------------------
-
+    ('dos_extract',      1, 80, 'Date-of-Service Extraction',    TRUE),
+    ('page_subtype',     1, 85, 'Codeable / Non-Codeable (TF)',  TRUE),
+    ('encounter_type',   1, 90, 'Encounter Type (TF)',           TRUE),
+    ('page_sequencing',  1, 95, 'Page Sequencing',               TRUE);
+-- rejection_logic (seq 120, is_phase1 = FALSE) remains in v2.sql.
 
 -- ---------------------------------------------------------------------
 -- MASTER + REFERENCE TABLES
@@ -425,6 +433,82 @@ CREATE INDEX idx_dos_extraction_results_page_id ON dos_extraction_results(page_i
 
 CREATE TRIGGER trg_dos_extraction_results_updated_at
     BEFORE UPDATE ON dos_extraction_results
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+-- Codeable / non-codeable / discharge (page_subtype stage).
+-- classification_category uses discharge_summary (schema name); UI shows
+-- "Discharge Frequency". page_subtype holds the matched keyword page type.
+CREATE TABLE page_classification (
+    id                        BIGSERIAL PRIMARY KEY,
+    chart_id                  BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
+    page_id                   BIGINT NOT NULL REFERENCES page_list(id) ON DELETE CASCADE,
+    page_subtype              VARCHAR(200),
+    classification_category   VARCHAR(20) NOT NULL CHECK (classification_category IN (
+                                  'codeable','non_codeable','discharge_summary'
+                              )),
+    duplicate_flag            BOOLEAN NOT NULL DEFAULT FALSE,
+    confidence                NUMERIC(5,4),
+    confidence_level          VARCHAR(10) CHECK (confidence_level IS NULL OR confidence_level IN (
+                                  'high','medium','low'
+                              )),
+    created_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (page_id)
+);
+CREATE INDEX idx_page_classification_chart_id ON page_classification(chart_id);
+CREATE INDEX idx_page_classification_page_id ON page_classification(page_id);
+
+CREATE TRIGGER trg_page_classification_updated_at
+    BEFORE UPDATE ON page_classification
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+-- Encounter type: one label for all pages that share a page-level DOS.
+CREATE TABLE encounter_type_results (
+    id                BIGSERIAL PRIMARY KEY,
+    chart_id          BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
+    page_id           BIGINT NOT NULL REFERENCES page_list(id) ON DELETE CASCADE,
+    encounter_type    VARCHAR(30) NOT NULL CHECK (encounter_type IN (
+                          'outpatient_f2f',
+                          'outpatient_tele',
+                          'inpatient',
+                          'home'
+                      )),
+    confidence        NUMERIC(5,4),
+    matched_keyword   VARCHAR(200),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (page_id)
+);
+CREATE INDEX idx_encounter_type_results_chart_id ON encounter_type_results(chart_id);
+CREATE INDEX idx_encounter_type_results_page_id ON encounter_type_results(page_id);
+
+CREATE TRIGGER trg_encounter_type_results_updated_at
+    BEFORE UPDATE ON encounter_type_results
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+-- Suggested page order (does not reorder files on disk). Ported from
+-- advantmed-document-processing sequencing (markers → streams → headers → CE).
+CREATE TABLE page_sequencing_results (
+    id                     BIGSERIAL PRIMARY KEY,
+    chart_id               BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
+    page_id                BIGINT NOT NULL REFERENCES page_list(id) ON DELETE CASCADE,
+    original_page_number   INT,
+    seq                    INT,
+    confidence             NUMERIC(5,4),
+    sequence_method        VARCHAR(64),
+    review_flag            BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (page_id)
+);
+CREATE INDEX idx_page_sequencing_results_chart_id ON page_sequencing_results(chart_id);
+CREATE INDEX idx_page_sequencing_results_page_id ON page_sequencing_results(page_id);
+
+CREATE TRIGGER trg_page_sequencing_results_updated_at
+    BEFORE UPDATE ON page_sequencing_results
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 

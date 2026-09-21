@@ -243,6 +243,9 @@ def page_has_imaging(page: ImagingPageResult) -> bool:
             page.pageType,
             page.blankOrJunk is not None,
             page.isDuplicate is not None,
+            page.isCodeable is not None,
+            page.encounterType is not None,
+            page.actualSequence is not None,
         ]
     )
 
@@ -669,6 +672,88 @@ def index_junk_rows(
             by_key[f"#{raw_num}"] = fields
             by_key[f"{raw_num}.jpg"] = fields
             by_key[f"{raw_num}.png"] = fields
+    return by_key
+
+
+def index_codeable_rows(
+    rows: list[dict[str, str]], chart_name: str
+) -> dict[str, dict[str, Any]]:
+    """``*_codeable.csv`` → isCodeable (Codeable | Non Codeable | Discharge Frequency)."""
+    by_key: dict[str, dict[str, Any]] = {}
+    display = {
+        "codeable": "Codeable",
+        "non_codeable": "Non Codeable",
+        "discharge_frequency": "Discharge Frequency",
+        "discharge_summary": "Discharge Frequency",
+    }
+    for row in rows:
+        cname = (
+            row.get("chart_name") or row.get("chart_id") or row.get("folder") or ""
+        ).strip()
+        if cname and not _chart_row_matches(cname, chart_name):
+            continue
+        label = (
+            row.get("is_codeable")
+            or row.get("isCodeable")
+            or display.get((row.get("tag") or "").strip().casefold())
+            or ""
+        ).strip()
+        if not label:
+            continue
+        fields: dict[str, Any] = {"isCodeable": label}
+        _put_page_keys(by_key, row, fields)
+    return by_key
+
+
+def index_encounter_rows(
+    rows: list[dict[str, str]], chart_name: str
+) -> dict[str, dict[str, Any]]:
+    """``*_encounter.csv`` → encounterType display label."""
+    by_key: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        cname = (
+            row.get("chart_name") or row.get("chart_id") or row.get("folder") or ""
+        ).strip()
+        if cname and not _chart_row_matches(cname, chart_name):
+            continue
+        label = (
+            row.get("encounter_label")
+            or row.get("encounterType")
+            or row.get("encounter_type")
+            or ""
+        ).strip()
+        if not label:
+            continue
+        fields: dict[str, Any] = {"encounterType": label}
+        _put_page_keys(by_key, row, fields)
+    return by_key
+
+
+def index_sequencing_rows(
+    rows: list[dict[str, str]], chart_name: str
+) -> dict[str, dict[str, Any]]:
+    """``*_sequencing.csv`` → currentSequence / actualSequence."""
+    by_key: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        cname = (
+            row.get("chart_name") or row.get("chart_id") or row.get("folder") or ""
+        ).strip()
+        if cname and not _chart_row_matches(cname, chart_name):
+            continue
+        current = _parse_int(
+            row.get("current_sequence") or row.get("page_number")
+        )
+        actual = _parse_int(
+            row.get("actual_sequence") or row.get("seq") or row.get("sequence_position")
+        )
+        if current is None and actual is None:
+            continue
+        fields: dict[str, Any] = {}
+        if current is not None:
+            fields["currentSequence"] = current
+        if actual is not None:
+            fields["actualSequence"] = actual
+        _put_page_keys(by_key, row, fields)
     return by_key
 
 

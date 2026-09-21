@@ -112,6 +112,9 @@ export type ImagingSectionsProcessed = {
   quality?: boolean;
   rotation: boolean;
   junk: boolean;
+  codeable?: boolean;
+  encounter?: boolean;
+  sequencing?: boolean;
   verification: boolean;
 };
 

@@ -210,8 +210,9 @@ still renders.
 
 | File | Role |
 |---|---|
-| `v1.sql` | **What is implemented.** 12 tables + 2 views, every one written or read by running code. Required. Stands alone — references nothing in v2.sql. |
-| `v2.sql` | **Next phase. Nothing implemented.** 14 tables + 3 views, plus the four unorchestrated `pipeline_stage` rows. Optional; apply after v1.sql. Treat each table as a proposal, not a contract. |
+| `v1.sql` | **What is implemented.** Required. Includes `page_classification`, `encounter_type_results`, `page_sequencing_results`, and 12 phase-1 stages. |
+| `v2.sql` | **Next phase. Nothing implemented.** Optional; apply after v1.sql. Proposals only (chunking, rejection, models, …) + `rejection_logic` stage. |
+| `patch_output_path.sql` | **Existing DBs only.** Idempotent upgrade: `output_path`, classification/encounter/sequencing tables, stage registry, page_stage_status seeds. |
 
 ### `core-pipeline/` — top level
 

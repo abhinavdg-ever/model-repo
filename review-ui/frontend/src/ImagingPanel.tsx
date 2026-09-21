@@ -15,6 +15,9 @@ const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
   quality: false,
   rotation: false,
   junk: false,
+  codeable: false,
+  encounter: false,
+  sequencing: false,
   verification: false,
 };
 
@@ -343,7 +346,7 @@ function PageDetails({
               page.encounterType,
               page.encounterType != null && String(page.encounterType).trim() !== "",
             ),
-            confidence: fmtConfidence(null, false),
+            confidence: fmtConfidence(null, Boolean(sections.encounter)),
           },
           {
             label: "DOS From",
@@ -382,7 +385,7 @@ function PageDetails({
               page.isCodeable,
               page.isCodeable != null && String(page.isCodeable).trim() !== "",
             ),
-            confidence: fmtConfidence(null, false),
+            confidence: fmtConfidence(null, Boolean(sections.codeable)),
           },
         ]}
       />

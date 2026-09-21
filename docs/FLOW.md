@@ -67,10 +67,13 @@ flowchart TD
     S6["7 · blank_junk pass 2<br/>handwritten + survivors"]
     S7["8 · member_verify<br/>rules → NER → what-if"]
     S8["9 · dos_extract<br/>regex → LLM → carry-forward"]
-    S1 --> S2 --> S3 --> S4 --> S5 --> S5b --> S6 --> S7 --> S8
+    S9["10 · page_subtype<br/>TF codeable / continue-until-DOS"]
+    S10["11 · encounter_type<br/>F2F / Tele / IP / Home per DOS"]
+    S11["12 · page_sequencing<br/>markers → streams → suggested order"]
+    S1 --> S2 --> S3 --> S4 --> S5 --> S5b --> S6 --> S7 --> S8 --> S9 --> S10 --> S11
   end
 
-  S8 --> DONE["refresh_chart_status<br/>→ completed / needs_review / failed"]
+  S11 --> DONE["refresh_chart_status<br/>→ completed / needs_review / failed"]
 
   style S5 fill:#fde8e8,stroke:#c74a4a
   style S7 fill:#fff4e0,stroke:#c78a4a
@@ -94,6 +97,9 @@ resume matters), and **stage 7 produces the accept/reject decision**.
 | 7 | `blank_junk` pass 2 | HW + low-quality + surviving printed | final2 text, else final1 | `blank_junk_classification` (pass 2), then `is_final` stamped | rewrites `_junk.csv` |
 | 8 | `member_verify` | not blank/junk/duplicate | best text + `manifest_member_list` | `member_extraction_results`, `member_verification_summary` | `_member_extraction.csv`, `_member_verification.csv`, `_member_v1_compare.csv` |
 | 9 | `dos_extract` | not blank/junk/duplicate | best text | `dos_extraction_results` | `imaging/<chart>_dos.csv` |
+| 10 | `page_subtype` | every page | best text + DOS + blank/junk | `page_classification` (main = TF; blank/junk/dup = `non_codeable` + junk subtype) | `imaging/<chart>_codeable.csv` |
+| 11 | `encounter_type` | not blank/junk/duplicate | best text + DOS | `encounter_type_results` | `imaging/<chart>_encounter.csv` |
+| 12 | `page_sequencing` | all pages (junk flagged) | best text | `page_sequencing_results` | `imaging/<chart>_sequencing.csv` |
 
 Every stage also writes one `pipeline_jobs` row and updates
 `page_stage_status` per page.

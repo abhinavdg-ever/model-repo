@@ -183,6 +183,11 @@ DOS_LLM_ENABLED = (
     and _azure_openai_auth_usable()
 )
 
+# Page sequencing cross-encoder (optional ONNX). Off by default — markers /
+# header groups / original order still run. Drop cross_encoder_mini_lm.onnx
+# under stages/lib/sequencing/artifacts/ and set true to enable.
+SEQUENCING_CROSS_ENCODER = _flag("SEQUENCING_CROSS_ENCODER", False)
+
 # --- Member verification ----------------------------------------------------
 # The NER layer needs the GLiNER checkpoints, which are not in the repo. With it
 # off the pipeline runs the reference's rule pass only — and no page can be

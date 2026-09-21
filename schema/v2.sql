@@ -1,28 +1,27 @@
 -- =====================================================================
 -- AI Imaging & Coding Pipeline — PostgreSQL Schema  ·  V2 (NEXT PHASE)
 -- =====================================================================
--- NOTHING IN THIS FILE IS IMPLEMENTED YET. Every table here is defined and
--- ready, and no code writes or reads any of it. It is the shape the next
--- phase is expected to take, kept in the repo so the design is reviewable
--- and so adding a module is a code change rather than a schema argument.
+-- NOTHING IN THIS FILE IS IMPLEMENTED YET. Every table here is a proposal:
+-- defined so the design is reviewable, but no running code writes or reads
+-- any of it (except the consolidated_chart_results view, which joins V1
+-- tables that already exist after v1.sql).
 --
+-- FIRST-TIME SETUP
+-- ---------------------------------------------------------------------
 --     psql "$DATABASE_URL" -f schema/v1.sql        # FIRST — required
---     psql "$DATABASE_URL" -f schema/v2.sql        # then this
+--     psql "$DATABASE_URL" -f schema/v2.sql        # optional
 --
--- Applying it is optional. V1 runs without it. Do not apply it before
--- v1.sql: every table here carries foreign keys into V1 tables.
+-- EXISTING DATABASE
+-- ---------------------------------------------------------------------
+--     psql "$DATABASE_URL" -f schema/patch_output_path.sql   # V1 upgrades
+--     psql "$DATABASE_URL" -f schema/v2.sql                  # still optional
 --
--- Treat a table in here as a PROPOSAL, not a contract. Before the module
--- that fills one is written, revisit its columns — a design that has never
--- been exercised by real code has never been tested.
+-- Do not apply v2.sql before v1.sql: every table here FKs into V1.
 --
--- WHAT IS IN HERE
+-- WHAT IS IN HERE (proposals only)
 -- ---------------------------------------------------------------------
 --   users                        reviewer identity (V2 tables FK to it)
---   page_classification          page subtype / codeability
 --   chunk_results                OCR text chunking
---   encounter_type_results       encounter classification
---   page_sequencing_results      page reordering
 --   rejection_results            reviewer accept/reject/flag
 --   provider_signature_results   signature detection
 --   invoice_matching_results     invoice reconciliation
@@ -36,9 +35,9 @@
 --   pipeline_stage_performance   stage timings and success rates
 --   model_accuracy_latest        newest metric per model
 --
--- It also registers the four not-yet-orchestrated stages in
--- pipeline_stage with is_phase1 = FALSE, which keeps them out of the
--- chart-status rollup until their stage modules land.
+-- Registers only rejection_logic in pipeline_stage (is_phase1 = FALSE).
+-- page_classification / encounter_type_results / page_sequencing_results
+-- live in v1.sql now.
 --
 -- ---------------------------------------------------------------------
 -- NAMING CONVENTIONS — every table in BOTH files obeys these. A new table
@@ -70,6 +69,12 @@
 --     rotation_applied, signature_present.
 -- 10. Indexes:  idx_<table>_<columns>.  Views:  v_<name> for helper views;
 --     report views keep their business name (consolidated_chart_results).
+--
+-- WHAT CHANGED
+-- ---------------------------------------------------------------------
+--  * page_classification moved to v1.sql (page_subtype writes it).
+--  * encounter_type_results + page_sequencing_results moved to v1.sql.
+--    Existing DBs: schema/patch_output_path.sql.
 --
 -- WHAT CHANGED IN v8 (applies to both files)
 -- ---------------------------------------------------------------------
@@ -109,16 +114,12 @@ SET search_path TO public;
 
 
 -- ---------------------------------------------------------------------
--- STAGE REGISTRY — the not-yet-orchestrated stages
+-- STAGE REGISTRY — unorchestrated stages only
 -- ---------------------------------------------------------------------
--- v1.sql seeds the eight stages that actually run. These four are the
--- modules this file's tables are for. is_phase1 = FALSE keeps them out of
--- the chart-status rollup, so registering them cannot stall a chart.
+-- v1.sql seeds the twelve phase-1 stages. rejection_logic stays here with
+-- is_phase1 = FALSE so registering it cannot stall a chart.
 
 INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1) VALUES
-    ('page_subtype',     1, 90,  'Page Subtype Classification',  FALSE),
-    ('encounter_type',   1, 100, 'Encounter Type',               FALSE),
-    ('page_sequencing',  1, 110, 'Page Sequencing',              FALSE),
     ('rejection_logic',  1, 120, 'Rejection Logic',              FALSE)
 ON CONFLICT (stage_name, pass_no) DO NOTHING;
 
@@ -142,30 +143,7 @@ ON CONFLICT (email) DO NOTHING;
 -- ---------------------------------------------------------------------
 -- PAGE-LEVEL RESULT TABLES
 -- ---------------------------------------------------------------------
-
-
-CREATE TABLE page_classification (
-    id                        BIGSERIAL PRIMARY KEY,
-    chart_id                  BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
-    page_id                   BIGINT NOT NULL REFERENCES page_list(id) ON DELETE CASCADE,
-    page_subtype              VARCHAR(50),
-    classification_category   VARCHAR(20) CHECK (classification_category IN (
-                                  'codeable','non_codeable','discharge_summary'
-                              )),
-    duplicate_flag            BOOLEAN NOT NULL DEFAULT FALSE,
-    confidence                NUMERIC(5,4),
-    confidence_level          VARCHAR(10) CHECK (confidence_level IN ('high','medium','low')),
-    created_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (page_id)
-);
-CREATE INDEX idx_page_classification_chart_id ON page_classification(chart_id);
-CREATE INDEX idx_page_classification_page_id ON page_classification(page_id);
-
-CREATE TRIGGER trg_page_classification_updated_at
-    BEFORE UPDATE ON page_classification
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
+-- page_classification lives in v1.sql (codeable / non-codeable / discharge).
 
 CREATE TABLE chunk_results (
     id           BIGSERIAL PRIMARY KEY,
@@ -186,45 +164,7 @@ CREATE TRIGGER trg_chunk_results_updated_at
 CREATE INDEX idx_chunk_results_chart_id ON chunk_results(chart_id);
 CREATE INDEX idx_chunk_results_page_id ON chunk_results(page_id);
 
--- ONE table for date of service. The page-level and document-level values are
--- single-valued columns; every date the page carries lives in the multi-valued
--- `dates` field. v7 split this across dos_extraction_results +
--- dos_extraction_dates, which cost a DELETE plus one INSERT per date on every
--- page, and nothing ever read the child table back.
-
-CREATE TABLE encounter_type_results (
-    id              BIGSERIAL PRIMARY KEY,
-    chart_id        BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
-    page_id         BIGINT REFERENCES page_list(id) ON DELETE CASCADE,
-    encounter_type  VARCHAR(100),
-    confidence      NUMERIC(5,4),
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TRIGGER trg_encounter_type_results_updated_at
-    BEFORE UPDATE ON encounter_type_results
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE INDEX idx_encounter_type_results_chart_id ON encounter_type_results(chart_id);
-
-
-CREATE TABLE page_sequencing_results (
-    id                     BIGSERIAL PRIMARY KEY,
-    chart_id               BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
-    page_id                BIGINT NOT NULL REFERENCES page_list(id) ON DELETE CASCADE,
-    original_page_number   INT,
-    seq                    INT,
-    confidence             NUMERIC(5,4),
-    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (page_id)
-);
-
-CREATE TRIGGER trg_page_sequencing_results_updated_at
-    BEFORE UPDATE ON page_sequencing_results
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE INDEX idx_page_sequencing_results_chart_id ON page_sequencing_results(chart_id);
-CREATE INDEX idx_page_sequencing_results_page_id ON page_sequencing_results(page_id);
+-- encounter_type_results + page_sequencing_results live in v1.sql now.
 
 -- ---------------------------------------------------------------------
 -- VERIFICATION & DECISION

@@ -100,6 +100,13 @@ class ImagingPageResult(BaseModel):
     # Blank / Main / Duplicate → "Not Available"; Invoice|Cover → that label
     pageType: str | None = None
     pageTypeConfidence: float | None = None
+    # Codeable | Non Codeable | Discharge Frequency (from page_subtype CSV)
+    isCodeable: str | None = None
+    # Outpatient (F2F) | Outpatient (Tele) | Inpatient | Home
+    encounterType: str | None = None
+    # File/page order (1-based) vs suggested sequence from page_sequencing
+    currentSequence: int | None = None
+    actualSequence: int | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -148,6 +155,9 @@ class ImagingSectionsProcessed(BaseModel):
     quality: bool = False
     rotation: bool = False
     junk: bool = False
+    codeable: bool = False
+    encounter: bool = False
+    sequencing: bool = False
     verification: bool = False
 
 

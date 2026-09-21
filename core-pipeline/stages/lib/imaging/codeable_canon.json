@@ -1,0 +1,2244 @@
+{
+  "version": 1,
+  "tags": [
+    "codeable",
+    "non_codeable",
+    "discharge_frequency"
+  ],
+  "display": {
+    "codeable": "Codeable",
+    "non_codeable": "Non Codeable",
+    "discharge_frequency": "Discharge Frequency"
+  },
+  "note": "continue=y means the matched tag carries forward to later pages until the page DOS changes.",
+  "entries": [
+    {
+      "page_type": "Prenatal Records(ACOG Form/Prenatal Visit Flow chart/ Prenatal Flow/ Prenatal Form )",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "prenatal records(acog form/prenatal visit flow chart/ prenatal flow/ prenatal form )",
+        "prenatal visit flow chart",
+        "prenatal records",
+        "prenatal form",
+        "prenatal flow",
+        "acog form"
+      ]
+    },
+    {
+      "page_type": "Any Messages",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "any messages"
+      ]
+    },
+    {
+      "page_type": "Depart Note",
+      "tag": "discharge_frequency",
+      "continue": "y",
+      "keywords": [
+        "depart note"
+      ]
+    },
+    {
+      "page_type": "Antepartum Record",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "antepartum record"
+      ]
+    },
+    {
+      "page_type": "Application Form",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "application form"
+      ]
+    },
+    {
+      "page_type": "Depart Summary",
+      "tag": "discharge_frequency",
+      "continue": "y",
+      "keywords": [
+        "depart summary"
+      ]
+    },
+    {
+      "page_type": "Postpartum/PP Exam/PP Visit",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "postpartum/pp exam/pp visit",
+        "postpartum",
+        "pp visit",
+        "pp exam"
+      ]
+    },
+    {
+      "page_type": "Billing Page from the Doctor",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "billing page from the doctor"
+      ]
+    },
+    {
+      "page_type": "Discharge instructions",
+      "tag": "discharge_frequency",
+      "continue": "n",
+      "keywords": [
+        "discharge instructions"
+      ]
+    },
+    {
+      "page_type": "Activity Evaluation",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "activity evaluation"
+      ]
+    },
+    {
+      "page_type": "Blood Glucose",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "blood glucose"
+      ]
+    },
+    {
+      "page_type": "Discharge Medication",
+      "tag": "discharge_frequency",
+      "continue": "n",
+      "keywords": [
+        "discharge medication"
+      ]
+    },
+    {
+      "page_type": "All EYE exam report/records (OD or OS evidance)",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "all eye exam report/records (od or os evidance)",
+        "all eye exam report/records",
+        "all eye exam report",
+        "od or os evidance",
+        "records"
+      ]
+    },
+    {
+      "page_type": "Bone Mineral Density (DEXA) Report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "bone mineral density (dexa) report",
+        "bone mineral density report",
+        "dexa"
+      ]
+    },
+    {
+      "page_type": "Discharge Summary",
+      "tag": "discharge_frequency",
+      "continue": "y",
+      "keywords": [
+        "discharge summary"
+      ]
+    },
+    {
+      "page_type": "Ophthalmology Report or Records / Ocular Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "ophthalmology report or records / ocular note",
+        "ophthalmology report or records",
+        "ocular note"
+      ]
+    },
+    {
+      "page_type": "Telephone or Call - Messages",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "telephone or call - messages"
+      ]
+    },
+    {
+      "page_type": "Transfer Summary",
+      "tag": "discharge_frequency",
+      "continue": "n",
+      "keywords": [
+        "transfer summary"
+      ]
+    },
+    {
+      "page_type": "Optometry note/Visual field activity/retinopathy",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "optometry note/visual field activity/retinopathy",
+        "visual field activity",
+        "optometry note",
+        "retinopathy"
+      ]
+    },
+    {
+      "page_type": "Chemistry Report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "chemistry report"
+      ]
+    },
+    {
+      "page_type": "Transition of care Summary",
+      "tag": "discharge_frequency",
+      "continue": "n",
+      "keywords": [
+        "transition of care summary"
+      ]
+    },
+    {
+      "page_type": "Anesthesia Record",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "anesthesia record"
+      ]
+    },
+    {
+      "page_type": "Chest View",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "chest view"
+      ]
+    },
+    {
+      "page_type": "Resumen de Alta/ Resumen de Instruccion/ Plannifaction de Alta",
+      "tag": "discharge_frequency",
+      "continue": "n",
+      "keywords": [
+        "resumen de alta/ resumen de instruccion/ plannifaction de alta",
+        "resumen de instruccion",
+        "plannifaction de alta",
+        "resumen de alta"
+      ]
+    },
+    {
+      "page_type": "Annual Health Assessment",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "annual health assessment"
+      ]
+    },
+    {
+      "page_type": "Consent form",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "consent form"
+      ]
+    },
+    {
+      "page_type": "Interim Summaries",
+      "tag": "discharge_frequency",
+      "continue": "n",
+      "keywords": [
+        "interim summaries"
+      ]
+    },
+    {
+      "page_type": "Annual Wellnes Visit",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "annual wellnes visit"
+      ]
+    },
+    {
+      "page_type": "Consent/Authorization pages -all",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "consent/authorization pages -all",
+        "authorization pages -all",
+        "consent"
+      ]
+    },
+    {
+      "page_type": "Discharge Note",
+      "tag": "discharge_frequency",
+      "continue": "y",
+      "keywords": [
+        "discharge note"
+      ]
+    },
+    {
+      "page_type": "Any type of Letter",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "any type of letter"
+      ]
+    },
+    {
+      "page_type": "Fluorescence in situ Hybridization (FISH)",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "fluorescence in situ hybridization (fish)",
+        "fluorescence in situ hybridization",
+        "fish"
+      ]
+    },
+    {
+      "page_type": "Transfer of Care Note",
+      "tag": "discharge_frequency",
+      "continue": "n",
+      "keywords": [
+        "transfer of care note"
+      ]
+    },
+    {
+      "page_type": "Assessment notes/Forms/Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "assessment notes/forms/report",
+        "assessment notes",
+        "report",
+        "forms"
+      ]
+    },
+    {
+      "page_type": "Lab Flow Sheet",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "lab flow sheet"
+      ]
+    },
+    {
+      "page_type": "Cardiac Catheterization",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "cardiac catheterization"
+      ]
+    },
+    {
+      "page_type": "Lab Form",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "lab form"
+      ]
+    },
+    {
+      "page_type": "Cardiology",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "cardiology"
+      ]
+    },
+    {
+      "page_type": "Laboratory Data",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "laboratory data"
+      ]
+    },
+    {
+      "page_type": "Short Stay Summary",
+      "tag": "discharge_frequency",
+      "continue": "n",
+      "keywords": [
+        "short stay summary"
+      ]
+    },
+    {
+      "page_type": "Cardiovascular report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "cardiovascular report"
+      ]
+    },
+    {
+      "page_type": "Lab Requisation",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "lab requisation"
+      ]
+    },
+    {
+      "page_type": "Occupational Therapy Discharge Note/summary",
+      "tag": "discharge_frequency",
+      "continue": "y",
+      "keywords": [
+        "occupational therapy discharge note/summary",
+        "occupational therapy discharge note",
+        "summary"
+      ]
+    },
+    {
+      "page_type": "(CC) Chief Complaint/(HPI) History of Present Illness/Physical exam",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "(cc) chief complaint/(hpi) history of present illness/physical exam",
+        "chief complaint/ history of present illness/physical exam",
+        "history of present illness",
+        "chief complaint",
+        "physical exam",
+        "hpi"
+      ]
+    },
+    {
+      "page_type": "Lab work (Blood, Cholesterol, etc.)",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "lab work (blood, cholesterol, etc.)",
+        "cholesterol",
+        "lab work",
+        "blood",
+        "etc."
+      ]
+    },
+    {
+      "page_type": "Physical Therapy Discharge Note/Summary",
+      "tag": "discharge_frequency",
+      "continue": "y",
+      "keywords": [
+        "physical therapy discharge note/summary",
+        "physical therapy discharge note",
+        "summary"
+      ]
+    },
+    {
+      "page_type": "Colonoscopy/Sigmoidoscopy",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "colonoscopy/sigmoidoscopy",
+        "sigmoidoscopy",
+        "colonoscopy"
+      ]
+    },
+    {
+      "page_type": "Mammograms / MG/ Mammo",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "mammograms / mg/ mammo",
+        "mammograms",
+        "mammo"
+      ]
+    },
+    {
+      "page_type": "Interim Note",
+      "tag": "discharge_frequency",
+      "continue": "n",
+      "keywords": [
+        "interim note"
+      ]
+    },
+    {
+      "page_type": "Colposcopic Examination",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "colposcopic examination"
+      ]
+    },
+    {
+      "page_type": "Medication List",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "medication list"
+      ]
+    },
+    {
+      "page_type": "BH-OP Discharge",
+      "tag": "discharge_frequency",
+      "continue": "n",
+      "keywords": [
+        "bh-op discharge"
+      ]
+    },
+    {
+      "page_type": "Consultations",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "consultations"
+      ]
+    },
+    {
+      "page_type": "Microbiology",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "microbiology"
+      ]
+    },
+    {
+      "page_type": "Principal Dignosis",
+      "tag": "discharge_frequency",
+      "continue": "n",
+      "keywords": [
+        "principal dignosis"
+      ]
+    },
+    {
+      "page_type": "Cytology Report/Molecular Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "cytology report/molecular report",
+        "molecular report",
+        "cytology report"
+      ]
+    },
+    {
+      "page_type": "Mini Mental examination",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "mini mental examination"
+      ]
+    },
+    {
+      "page_type": "Anesthesia Transfer of Care note",
+      "tag": "discharge_frequency",
+      "continue": "n",
+      "keywords": [
+        "anesthesia transfer of care note"
+      ]
+    },
+    {
+      "page_type": "Dermatology / Skin Test",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "dermatology / skin test",
+        "dermatology",
+        "skin test"
+      ]
+    },
+    {
+      "page_type": "Patient Education",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "patient education"
+      ]
+    },
+    {
+      "page_type": "Final Case Summary",
+      "tag": "discharge_frequency",
+      "continue": "n",
+      "keywords": [
+        "final case summary"
+      ]
+    },
+    {
+      "page_type": "Echocardiogram/ Transthorsic Echocadiography",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "echocardiogram/ transthorsic echocadiography",
+        "transthorsic echocadiography",
+        "echocardiogram"
+      ]
+    },
+    {
+      "page_type": "Plethysmography Report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "plethysmography report"
+      ]
+    },
+    {
+      "page_type": "EEG Report/Neurophysiology Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "eeg report/neurophysiology report",
+        "neurophysiology report",
+        "eeg report"
+      ]
+    },
+    {
+      "page_type": "Prothrombin time",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "prothrombin time"
+      ]
+    },
+    {
+      "page_type": "EKG /ECG graph",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "ekg /ecg graph",
+        "ecg graph",
+        "ekg"
+      ]
+    },
+    {
+      "page_type": "Pulmonary function Test/ Spirometry",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "pulmonary function test/ spirometry",
+        "pulmonary function test",
+        "spirometry"
+      ]
+    },
+    {
+      "page_type": "Emegency visit records",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "emegency visit records"
+      ]
+    },
+    {
+      "page_type": "Referral Authorization Form",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "referral authorization form"
+      ]
+    },
+    {
+      "page_type": "EMG Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "emg report"
+      ]
+    },
+    {
+      "page_type": "Refill Record",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "refill record"
+      ]
+    },
+    {
+      "page_type": "Encounter Form/visit",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "encounter form/visit",
+        "encounter form",
+        "visit"
+      ]
+    },
+    {
+      "page_type": "social report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "social report"
+      ]
+    },
+    {
+      "page_type": "Endoscopy",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "endoscopy"
+      ]
+    },
+    {
+      "page_type": "Sonograms Report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "sonograms report"
+      ]
+    },
+    {
+      "page_type": "ER reports/ Emergency Department Note/ ED Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "er reports/ emergency department note/ ed note",
+        "emergency department note",
+        "er reports",
+        "ed note"
+      ]
+    },
+    {
+      "page_type": "Telephone Messages",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "telephone messages"
+      ]
+    },
+    {
+      "page_type": "Established patient note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "established patient note"
+      ]
+    },
+    {
+      "page_type": "Tomography",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "tomography"
+      ]
+    },
+    {
+      "page_type": "Evaluation form",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "evaluation form"
+      ]
+    },
+    {
+      "page_type": "Triage call",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "triage call"
+      ]
+    },
+    {
+      "page_type": "Functional assessment",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "functional assessment"
+      ]
+    },
+    {
+      "page_type": "Ultrasounds Report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "ultrasounds report"
+      ]
+    },
+    {
+      "page_type": "Gastroenterology (GI Procedure Note)(EGD Report)",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "gastroenterology (gi procedure note)(egd report)",
+        "gi procedure note",
+        "gastroenterology",
+        "egd report"
+      ]
+    },
+    {
+      "page_type": "Urinalysis",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "urinalysis"
+      ]
+    },
+    {
+      "page_type": "History & Physical",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "history & physical"
+      ]
+    },
+    {
+      "page_type": "All types of order",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "all types of order"
+      ]
+    },
+    {
+      "page_type": "Lower Extremity (Lower Extremity Doppler\\Duplex report) / Upper Extremity",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "lower extremity (lower extremity doppler\\duplex report) / upper extremity",
+        "lower extremity doppler\\duplex report",
+        "lower extremity / upper extremity",
+        "upper extremity",
+        "lower extremity"
+      ]
+    },
+    {
+      "page_type": "Order note",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "order note"
+      ]
+    },
+    {
+      "page_type": "Medical Status Visit form/Status visit",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "medical status visit form/status visit",
+        "medical status visit form",
+        "status visit"
+      ]
+    },
+    {
+      "page_type": "Physician Order",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "physician order"
+      ]
+    },
+    {
+      "page_type": "Myocardial perfusion",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "myocardial perfusion"
+      ]
+    },
+    {
+      "page_type": "Patient Instruction",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "patient instruction"
+      ]
+    },
+    {
+      "page_type": "Nephrology",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "nephrology"
+      ]
+    },
+    {
+      "page_type": "Any Type of Request",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "any type of request"
+      ]
+    },
+    {
+      "page_type": "Neurology / EMG Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "neurology / emg note",
+        "neurology",
+        "emg note"
+      ]
+    },
+    {
+      "page_type": "INR result/ INR (International Normalized Ratio) Value",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "inr result/ inr (international normalized ratio) value",
+        "international normalized ratio",
+        "inr result/ inr value",
+        "inr result",
+        "inr value"
+      ]
+    },
+    {
+      "page_type": "Nurses notes",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "nurses notes"
+      ]
+    },
+    {
+      "page_type": "MR Brain Report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "mr brain report"
+      ]
+    },
+    {
+      "page_type": "Nutrition Assessment",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "nutrition assessment"
+      ]
+    },
+    {
+      "page_type": "MRI",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "mri"
+      ]
+    },
+    {
+      "page_type": "Occupational Therapy",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "occupational therapy"
+      ]
+    },
+    {
+      "page_type": "CT Scans Report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "ct scans report"
+      ]
+    },
+    {
+      "page_type": "Office visits/followup Visits",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "office visits/followup visits",
+        "followup visits",
+        "office visits"
+      ]
+    },
+    {
+      "page_type": "Prescriptions/RX Page",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "prescriptions/rx page",
+        "prescriptions",
+        "rx page"
+      ]
+    },
+    {
+      "page_type": "Oncology",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "oncology"
+      ]
+    },
+    {
+      "page_type": "Radiology Report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "radiology report"
+      ]
+    },
+    {
+      "page_type": "Operative Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "operative report"
+      ]
+    },
+    {
+      "page_type": "X-Ray Report (Foot Exam)",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "x-ray report (foot exam)",
+        "x-ray report",
+        "foot exam"
+      ]
+    },
+    {
+      "page_type": "Oximetry report/note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "oximetry report/note",
+        "oximetry report",
+        "note"
+      ]
+    },
+    {
+      "page_type": "Allergies report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "allergies report"
+      ]
+    },
+    {
+      "page_type": "Pacemaker / Device monitor report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "pacemaker / device monitor report",
+        "device monitor report",
+        "pacemaker"
+      ]
+    },
+    {
+      "page_type": "Carotid Duplex Report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "carotid duplex report"
+      ]
+    },
+    {
+      "page_type": "PAP Report/Pap Smear",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "pap report/pap smear",
+        "pap report",
+        "pap smear"
+      ]
+    },
+    {
+      "page_type": "All Doppler/Duplex Report(Example echo doppler report)",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "all doppler/duplex report(example echo doppler report)",
+        "example echo doppler report",
+        "all doppler/duplex report",
+        "duplex report",
+        "all doppler"
+      ]
+    },
+    {
+      "page_type": "Pathology Report/Tissue Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "pathology report/tissue report",
+        "pathology report",
+        "tissue report"
+      ]
+    },
+    {
+      "page_type": "Esophageal Manometry",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "esophageal manometry"
+      ]
+    },
+    {
+      "page_type": "Physical Therapy Assessement/Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "physical therapy assessement/note",
+        "physical therapy assessement",
+        "note"
+      ]
+    },
+    {
+      "page_type": "Health Review sheet\\Health Maintenance Report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "health review sheet\\health maintenance report"
+      ]
+    },
+    {
+      "page_type": "Physician Notes",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "physician notes"
+      ]
+    },
+    {
+      "page_type": "Holter report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "holter report"
+      ]
+    },
+    {
+      "page_type": "Plan of Care",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "plan of care"
+      ]
+    },
+    {
+      "page_type": "ADL/IADL flow sheet (Activity of daily living)",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "adl/iadl flow sheet (activity of daily living)",
+        "activity of daily living",
+        "adl/iadl flow sheet",
+        "iadl flow sheet",
+        "adl"
+      ]
+    },
+    {
+      "page_type": "Procedure Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "procedure note"
+      ]
+    },
+    {
+      "page_type": "Ankle-Brachial Index (ABI)",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "ankle-brachial index (abi)",
+        "ankle-brachial index",
+        "abi"
+      ]
+    },
+    {
+      "page_type": "Progress notes",
+      "tag": "codeable",
+      "continue": "y",
+      "keywords": [
+        "progress notes"
+      ]
+    },
+    {
+      "page_type": "Check List",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "check list"
+      ]
+    },
+    {
+      "page_type": "Rehabitation Daily Treatment Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "rehabitation daily treatment note"
+      ]
+    },
+    {
+      "page_type": "Immunization List/ Vaccine / flu Shot",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "immunization list/ vaccine / flu shot",
+        "immunization list",
+        "flu shot",
+        "vaccine"
+      ]
+    },
+    {
+      "page_type": "Sleep Study /Polysomnography Report(PSG Report)",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "sleep study /polysomnography report(psg report)",
+        "sleep study /polysomnography report",
+        "polysomnography report",
+        "sleep study",
+        "psg report"
+      ]
+    },
+    {
+      "page_type": "Questionnaire(Stand Alone)",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "questionnaire(stand alone)",
+        "questionnaire",
+        "stand alone"
+      ]
+    },
+    {
+      "page_type": "SOAP Note (Subjective, Objective, Assessment, Plan)",
+      "tag": "codeable",
+      "continue": "y",
+      "keywords": [
+        "soap note (subjective, objective, assessment, plan)",
+        "assessment",
+        "subjective",
+        "soap note",
+        "objective",
+        "plan"
+      ]
+    },
+    {
+      "page_type": "After Visit Summary",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "after visit summary"
+      ]
+    },
+    {
+      "page_type": "Staying Healthy Assessment",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "staying healthy assessment"
+      ]
+    },
+    {
+      "page_type": "Any Type of Notification",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "any type of notification"
+      ]
+    },
+    {
+      "page_type": "Stress Test / Exercise report / treadmill exercise report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "stress test / exercise report / treadmill exercise report",
+        "treadmill exercise report",
+        "exercise report",
+        "stress test"
+      ]
+    },
+    {
+      "page_type": "Any Type of Notice",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "any type of notice"
+      ]
+    },
+    {
+      "page_type": "surgery report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "surgery report"
+      ]
+    },
+    {
+      "page_type": "Problem List",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "problem list"
+      ]
+    },
+    {
+      "page_type": "Treatment Plan Record",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "treatment plan record"
+      ]
+    },
+    {
+      "page_type": "Out Of Time Frame Records",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "out of time frame records"
+      ]
+    },
+    {
+      "page_type": "Triage Note/Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "triage note/report",
+        "triage note",
+        "report"
+      ]
+    },
+    {
+      "page_type": "Invoice Page when Soruce is: Imaging Client Upload, Client Retrieval,Client FTP, RF Support, Remote Download/EMR",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "invoice page when soruce is: imaging client upload, client retrieval,client ftp, rf support, remote download/emr",
+        "invoice page when soruce is: imaging client upload, client retrieval,client ftp, rf support, remote download",
+        "emr"
+      ]
+    },
+    {
+      "page_type": "Triage surgery report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "triage surgery report"
+      ]
+    },
+    {
+      "page_type": "Patient summary-If Stand Alone",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "patient summary-if stand alone"
+      ]
+    },
+    {
+      "page_type": "Urgent Care Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "urgent care note"
+      ]
+    },
+    {
+      "page_type": "Appointment Note",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "appointment note"
+      ]
+    },
+    {
+      "page_type": "Urology",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "urology"
+      ]
+    },
+    {
+      "page_type": "Appointment Summary",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "appointment summary"
+      ]
+    },
+    {
+      "page_type": "Nuclear Medicine Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "nuclear medicine report"
+      ]
+    },
+    {
+      "page_type": "AMB - Correspondence",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "amb - correspondence"
+      ]
+    },
+    {
+      "page_type": "Cytometry Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "cytometry report"
+      ]
+    },
+    {
+      "page_type": "Clinical Diagnoses",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "clinical diagnoses"
+      ]
+    },
+    {
+      "page_type": "Telephone Encounter\\Visit\\Note\\Phone note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "telephone encounter\\visit\\note\\phone note"
+      ]
+    },
+    {
+      "page_type": "Protocols",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "protocols"
+      ]
+    },
+    {
+      "page_type": "Patient Information\\Demographic",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "patient information\\demographic"
+      ]
+    },
+    {
+      "page_type": "Vaccination Administration Record",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "vaccination administration record"
+      ]
+    },
+    {
+      "page_type": "\\Face sheet\\Registration",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "\\face sheet\\registration"
+      ]
+    },
+    {
+      "page_type": "Immunization Consent",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "immunization consent"
+      ]
+    },
+    {
+      "page_type": "Audiology / Hearing Report/Audiology Notes",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "audiology / hearing report/audiology notes",
+        "audiology notes",
+        "hearing report",
+        "audiology"
+      ]
+    },
+    {
+      "page_type": "Allergy Testing Report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "allergy testing report"
+      ]
+    },
+    {
+      "page_type": "Patient Summary-If received along with the Progress note,Office Visit/Notes",
+      "tag": "codeable",
+      "continue": "y",
+      "keywords": [
+        "patient summary-if received along with the progress note,office visit/notes",
+        "patient summary-if received along with the progress note,office visit",
+        "notes"
+      ]
+    },
+    {
+      "page_type": "Genetic Test Report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "genetic test report"
+      ]
+    },
+    {
+      "page_type": "Visit summary",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "visit summary"
+      ]
+    },
+    {
+      "page_type": "Insurance Authorization Note",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "insurance authorization note"
+      ]
+    },
+    {
+      "page_type": "Initial office note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "initial office note"
+      ]
+    },
+    {
+      "page_type": "Surgical Consent Form",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "surgical consent form"
+      ]
+    },
+    {
+      "page_type": "Occupational Therapy Daily Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "occupational therapy daily note"
+      ]
+    },
+    {
+      "page_type": "Blood Transfusion Record",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "blood transfusion record"
+      ]
+    },
+    {
+      "page_type": "Retinal Office Procedure Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "retinal office procedure note"
+      ]
+    },
+    {
+      "page_type": "Transfusion Consent",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "transfusion consent"
+      ]
+    },
+    {
+      "page_type": "Initial Psychiatric Evaluation",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "initial psychiatric evaluation"
+      ]
+    },
+    {
+      "page_type": "Screening Test Record",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "screening test record"
+      ]
+    },
+    {
+      "page_type": "inform Evaluation Visual",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "inform evaluation visual"
+      ]
+    },
+    {
+      "page_type": "Preventive Health Checklist",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "preventive health checklist"
+      ]
+    },
+    {
+      "page_type": "Fundas Photography(EYE REPORT)",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "fundas photography(eye report)",
+        "fundas photography",
+        "eye report"
+      ]
+    },
+    {
+      "page_type": "Glucose Report",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "glucose report"
+      ]
+    },
+    {
+      "page_type": "Case History Update",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "case history update"
+      ]
+    },
+    {
+      "page_type": "HIPAA Form",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "hipaa form"
+      ]
+    },
+    {
+      "page_type": "Biopsy report/Pathology report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "biopsy report/pathology report",
+        "pathology report",
+        "biopsy report"
+      ]
+    },
+    {
+      "page_type": "Patient Portal Communication Summary",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "patient portal communication summary"
+      ]
+    },
+    {
+      "page_type": "Patient Encounter",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "patient encounter"
+      ]
+    },
+    {
+      "page_type": "Discharge Notice",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "discharge notice"
+      ]
+    },
+    {
+      "page_type": "Laryngoscopy Procedure Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "laryngoscopy procedure report"
+      ]
+    },
+    {
+      "page_type": "Hematology",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "hematology"
+      ]
+    },
+    {
+      "page_type": "Tissue Examination Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "tissue examination report"
+      ]
+    },
+    {
+      "page_type": "Molecular Diagnostics Test",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "molecular diagnostics test"
+      ]
+    },
+    {
+      "page_type": "Therapy report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "therapy report"
+      ]
+    },
+    {
+      "page_type": "Radiation Therapy Record",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "radiation therapy record"
+      ]
+    },
+    {
+      "page_type": "Chemotherapy Administration Record",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "chemotherapy administration record"
+      ]
+    },
+    {
+      "page_type": "Infusion Therapy Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "infusion therapy note"
+      ]
+    },
+    {
+      "page_type": "Pain Management Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "pain management note"
+      ]
+    },
+    {
+      "page_type": "Palliative Care Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "palliative care note"
+      ]
+    },
+    {
+      "page_type": "Hospice Care Record",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "hospice care record"
+      ]
+    },
+    {
+      "page_type": "Critical Care Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "critical care note"
+      ]
+    },
+    {
+      "page_type": "ICU Flow Sheet",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "icu flow sheet"
+      ]
+    },
+    {
+      "page_type": "Ventilator Management Record",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "ventilator management record"
+      ]
+    },
+    {
+      "page_type": "Respiratory Therapy Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "respiratory therapy note"
+      ]
+    },
+    {
+      "page_type": "Dialysis Treatment Record",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "dialysis treatment record"
+      ]
+    },
+    {
+      "page_type": "Hemodialysis Flow Sheet",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "hemodialysis flow sheet"
+      ]
+    },
+    {
+      "page_type": "Peritoneal Dialysis Record",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "peritoneal dialysis record"
+      ]
+    },
+    {
+      "page_type": "Wound Care Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "wound care note"
+      ]
+    },
+    {
+      "page_type": "Burn Treatment Record",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "burn treatment record"
+      ]
+    },
+    {
+      "page_type": "Infection Control Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "infection control note"
+      ]
+    },
+    {
+      "page_type": "Genetic Counseling Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "genetic counseling note"
+      ]
+    },
+    {
+      "page_type": "Sleep Clinic Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "sleep clinic note"
+      ]
+    },
+    {
+      "page_type": "Behavioral Health Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "behavioral health note"
+      ]
+    },
+    {
+      "page_type": "Psychotherapy Session Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "psychotherapy session note"
+      ]
+    },
+    {
+      "page_type": "Substance Abuse Treatment Record",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "substance abuse treatment record"
+      ]
+    },
+    {
+      "page_type": "Rehabilitation Plan",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "rehabilitation plan"
+      ]
+    },
+    {
+      "page_type": "Speech Therapy Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "speech therapy note"
+      ]
+    },
+    {
+      "page_type": "Chiropractic Treatment Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "chiropractic treatment note"
+      ]
+    },
+    {
+      "page_type": "Acupuncture Treatment Record",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "acupuncture treatment record"
+      ]
+    },
+    {
+      "page_type": "Home Health Visit Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "home health visit note"
+      ]
+    },
+    {
+      "page_type": "Skilled Nursing Visit Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "skilled nursing visit note"
+      ]
+    },
+    {
+      "page_type": "Case Management Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "case management note"
+      ]
+    },
+    {
+      "page_type": "Care Coordination Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "care coordination note"
+      ]
+    },
+    {
+      "page_type": "Utilization Review Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "utilization review note"
+      ]
+    },
+    {
+      "page_type": "Preoperative Evaluation",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "preoperative evaluation"
+      ]
+    },
+    {
+      "page_type": "Postoperative Follow-up Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "postoperative follow-up note"
+      ]
+    },
+    {
+      "page_type": "Anesthesia Pre-op Assessment",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "anesthesia pre-op assessment"
+      ]
+    },
+    {
+      "page_type": "Anesthesia Post-op Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "anesthesia post-op note"
+      ]
+    },
+    {
+      "page_type": "Implant Record",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "implant record"
+      ]
+    },
+    {
+      "page_type": "Device Implant Log",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "device implant log"
+      ]
+    },
+    {
+      "page_type": "Emergency Medical Services (EMS) Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "emergency medical services (ems) report",
+        "emergency medical services report",
+        "ems"
+      ]
+    },
+    {
+      "page_type": "Occupational Health Record",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "occupational health record"
+      ]
+    },
+    {
+      "page_type": "Work Injury Evaluation",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "work injury evaluation"
+      ]
+    },
+    {
+      "page_type": "Fitness for Duty Evaluation",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "fitness for duty evaluation"
+      ]
+    },
+    {
+      "page_type": "School Physical Form",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "school physical form"
+      ]
+    },
+    {
+      "page_type": "Sports Physical Examination",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "sports physical examination"
+      ]
+    },
+    {
+      "page_type": "Travel Medicine Consultation",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "travel medicine consultation"
+      ]
+    },
+    {
+      "page_type": "Chronic Disease Management Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "chronic disease management note"
+      ]
+    },
+    {
+      "page_type": "Hypertension Follow-up Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "hypertension follow-up note"
+      ]
+    },
+    {
+      "page_type": "Cardiac Rehabilitation Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "cardiac rehabilitation note"
+      ]
+    },
+    {
+      "page_type": "Madicare Annual Wellness",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "madicare annual wellness"
+      ]
+    },
+    {
+      "page_type": "patient care Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "patient care report"
+      ]
+    },
+    {
+      "page_type": "Clinical Summary",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "clinical summary"
+      ]
+    },
+    {
+      "page_type": "Consulta (Spanish)",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "consulta (spanish)",
+        "consulta",
+        "spanish"
+      ]
+    },
+    {
+      "page_type": "PAP/HPV Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "pap/hpv report",
+        "hpv report",
+        "pap"
+      ]
+    },
+    {
+      "page_type": "Treadmill Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "treadmill report"
+      ]
+    },
+    {
+      "page_type": "Face to Face Evaluation Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "face to face evaluation note"
+      ]
+    },
+    {
+      "page_type": "Lens Parameters",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "lens parameters"
+      ]
+    },
+    {
+      "page_type": "Neurocognitive Screening Examination",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "neurocognitive screening examination"
+      ]
+    },
+    {
+      "page_type": "Split Night Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "split night report"
+      ]
+    },
+    {
+      "page_type": "Group Note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "group note"
+      ]
+    },
+    {
+      "page_type": "SPECT Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "spect report"
+      ]
+    },
+    {
+      "page_type": "Event Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "event report"
+      ]
+    },
+    {
+      "page_type": "Housecalls Visit Summary",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "housecalls visit summary"
+      ]
+    },
+    {
+      "page_type": "Videonystagmography",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "videonystagmography"
+      ]
+    },
+    {
+      "page_type": "Device Specialist notes",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "device specialist notes"
+      ]
+    },
+    {
+      "page_type": "Titration Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "titration report"
+      ]
+    },
+    {
+      "page_type": "Sural Nerve Conduction Study",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "sural nerve conduction study"
+      ]
+    },
+    {
+      "page_type": "Visual Field interpretation",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "visual field interpretation"
+      ]
+    },
+    {
+      "page_type": "MOHS Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "mohs report"
+      ]
+    },
+    {
+      "page_type": "Client note",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "client note"
+      ]
+    },
+    {
+      "page_type": "Sudoscan Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "sudoscan report"
+      ]
+    },
+    {
+      "page_type": "DPN Results",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "dpn results"
+      ]
+    },
+    {
+      "page_type": "intial psychiatric Evaluation",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "intial psychiatric evaluation"
+      ]
+    },
+    {
+      "page_type": "Visit Report",
+      "tag": "codeable",
+      "continue": "y",
+      "keywords": [
+        "visit report"
+      ]
+    },
+    {
+      "page_type": "Progress Note",
+      "tag": "codeable",
+      "continue": "y",
+      "keywords": [
+        "progress note"
+      ]
+    },
+    {
+      "page_type": "Discharge Report",
+      "tag": "discharge_frequency",
+      "continue": "y",
+      "keywords": [
+        "discharge report"
+      ]
+    }
+  ]
+}

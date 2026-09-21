@@ -26,10 +26,13 @@ from stages._support import stage_label
 from stages import (
     blank_junk_classify,
     dos_extract,
+    encounter_type,
     member_extract_verify,
     ocr_final1_docling,
     ocr_final2_azure,
     ocr_prelim_tesseract,
+    page_sequencing,
+    page_subtype,
     quality_rotation_hw,
     section_headers,
 )
@@ -55,6 +58,9 @@ STAGE_CHAIN: list[tuple[str, int, StageFn]] = [
     ("blank_junk", 2, blank_junk_classify.run_pass2),
     ("member_verify", 1, member_extract_verify.run),
     ("dos_extract", 1, dos_extract.run),
+    ("page_subtype", 1, page_subtype.run),
+    ("encounter_type", 1, encounter_type.run),
+    ("page_sequencing", 1, page_sequencing.run),
 ]
 
 STAGE_NAMES = [f"{name}:{pass_no}" for name, pass_no, _ in STAGE_CHAIN]

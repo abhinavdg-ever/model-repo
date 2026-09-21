@@ -1100,6 +1100,15 @@ class LocalFolderRepository(FolderRepository):
                         # chart that had been classified showed no badge.
                         for row in read_csv_rows(path):
                             mark("junk", keys, page_num_from_row(row))
+                    elif name.endswith("_codeable.csv"):
+                        for row in read_csv_rows(path):
+                            mark("codeable", keys, page_num_from_row(row))
+                    elif name.endswith("_encounter.csv"):
+                        for row in read_csv_rows(path):
+                            mark("encounter", keys, page_num_from_row(row))
+                    elif name.endswith("_sequencing.csv"):
+                        for row in read_csv_rows(path):
+                            mark("sequencing", keys, page_num_from_row(row))
                     elif name.endswith("_member_extraction.csv"):
                         for row in read_csv_rows(path):
                             mark("member", keys, page_num_from_row(row))
@@ -1446,6 +1455,9 @@ class LocalFolderRepository(FolderRepository):
             index_dos_rows,
             index_hw_rows,
             index_junk_rows,
+            index_codeable_rows,
+            index_encounter_rows,
+            index_sequencing_rows,
             index_member_extraction_rows,
             index_quality_rows,
             index_rotation_rows,
@@ -1537,6 +1549,27 @@ class LocalFolderRepository(FolderRepository):
             ),
             chart_name=chart,
         )
+        codeable_rows = collect_rows(
+            folder_dir=folder_dir,
+            data_root=self.data_root,
+            per_chart_name=f"{chart}_codeable.csv",
+            combined_rel=None,
+            chart_name=chart,
+        )
+        encounter_rows = collect_rows(
+            folder_dir=folder_dir,
+            data_root=self.data_root,
+            per_chart_name=f"{chart}_encounter.csv",
+            combined_rel=None,
+            chart_name=chart,
+        )
+        sequencing_rows = collect_rows(
+            folder_dir=folder_dir,
+            data_root=self.data_root,
+            per_chart_name=f"{chart}_sequencing.csv",
+            combined_rel=None,
+            chart_name=chart,
+        )
 
         imaging_pages = overlay_fields(imaging_pages, index_dos_rows(dos_rows, chart))
         imaging_pages = overlay_fields(imaging_pages, index_hw_rows(hw_rows, chart))
@@ -1550,6 +1583,15 @@ class LocalFolderRepository(FolderRepository):
             imaging_pages, index_member_extraction_rows(member_rows, chart)
         )
         imaging_pages = overlay_fields(imaging_pages, index_junk_rows(junk_rows, chart))
+        imaging_pages = overlay_fields(
+            imaging_pages, index_codeable_rows(codeable_rows, chart)
+        )
+        imaging_pages = overlay_fields(
+            imaging_pages, index_encounter_rows(encounter_rows, chart)
+        )
+        imaging_pages = overlay_fields(
+            imaging_pages, index_sequencing_rows(sequencing_rows, chart)
+        )
 
         ver_rows = collect_rows(
             folder_dir=folder_dir,
@@ -1589,6 +1631,9 @@ class LocalFolderRepository(FolderRepository):
             quality=bool(quality_rows),
             rotation=bool(rotation_rows),
             junk=bool(junk_rows),
+            codeable=bool(codeable_rows),
+            encounter=bool(encounter_rows),
+            sequencing=bool(sequencing_rows),
             verification=bool(ver_rows),
         )
 

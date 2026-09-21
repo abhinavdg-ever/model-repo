@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "types": [
+    "outpatient_f2f",
+    "outpatient_tele",
+    "inpatient",
+    "home"
+  ],
+  "display": {
+    "outpatient_f2f": "Outpatient (F2F)",
+    "outpatient_tele": "Outpatient (Tele)",
+    "inpatient": "Inpatient",
+    "home": "Home"
+  },
+  "note": "One encounter type per page-level DOS. Score keywords across all pages in the DOS, then stamp every page with the winner. Keywords with establishes=false never set the type alone (e.g. diagnostic imaging — valid only when the DOS is already Outpatient F2F).",
+  "entries": [
+    {
+      "encounter_type": "outpatient_f2f",
+      "label": "Office visit / SOAP / CHEDDAR",
+      "establishes": true,
+      "keywords": [
+        "office visit",
+        "office visits",
+        "office visit note",
+        "office visit report",
+        "face to face",
+        "face-to-face",
+        "f2f",
+        "soap note",
+        "soap notes",
+        "s.o.a.p",
+        "subjective objective assessment plan",
+        "subjective:",
+        "objective:",
+        "assessment and plan",
+        "assessment & plan",
+        "a/p:",
+        "cheddar",
+        "chief complaint",
+        "history of present illness",
+        "hpi:",
+        "examination:",
+        "details:",
+        "drugs:",
+        "return visit"
+      ]
+    },
+    {
+      "encounter_type": "outpatient_tele",
+      "label": "Telehealth",
+      "establishes": true,
+      "keywords": [
+        "telehealth",
+        "tele-health",
+        "telemedicine",
+        "tele-medicine",
+        "tele visit",
+        "televisit",
+        "virtual visit",
+        "video visit",
+        "video encounter",
+        "telephone visit",
+        "phone visit",
+        "remote visit",
+        "audio only visit",
+        "audiovisual visit"
+      ]
+    },
+    {
+      "encounter_type": "inpatient",
+      "label": "Inpatient clinical notes",
+      "establishes": true,
+      "keywords": [
+        "discharge summary",
+        "discharge note",
+        "discharge report",
+        "emergency note",
+        "emergency department note",
+        "ed note",
+        "er note",
+        "history and physical",
+        "history & physical",
+        "h&p",
+        "h and p",
+        "admission h&p",
+        "operative note",
+        "operative notes",
+        "operative report",
+        "op note",
+        "consultation",
+        "consult note",
+        "consultation note",
+        "progress note",
+        "progress notes"
+      ]
+    },
+    {
+      "encounter_type": "inpatient",
+      "label": "Diagnostic imaging (invalid alone)",
+      "establishes": false,
+      "keywords": [
+        "diagnostic imaging",
+        "radiology report",
+        "imaging report",
+        "x-ray report",
+        "ct scan report",
+        "mri report",
+        "ultrasound report"
+      ]
+    },
+    {
+      "encounter_type": "home",
+      "label": "Home / skilled nurse visit",
+      "establishes": true,
+      "keywords": [
+        "skilled nurse visit",
+        "skilled nursing visit",
+        "skilled nursing visit note",
+        "home visit",
+        "home visit note",
+        "home health visit",
+        "home health visit note",
+        "housecalls visit",
+        "house call visit"
+      ]
+    }
+  ]
+}

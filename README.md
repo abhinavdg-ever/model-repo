@@ -195,6 +195,7 @@ Azure OpenAI and NER paths and skip themselves when those are not configured.
 
 | Document | Covers |
 |---|---|
+| [`docs/HOW_TO_RUN.md`](docs/HOW_TO_RUN.md) | **Re-run recipes** — skip OCR, `only` / `force` / batch on charts that already finished OCR |
 | [`docs/API.md`](docs/API.md) | Running both services, full API and CLI reference, troubleshooting |
 | [`docs/FLOW.md`](docs/FLOW.md) | What runs when — end-to-end diagrams, skip rules, resume behaviour |
 | [`docs/LOGIC.md`](docs/LOGIC.md) | How each decision is made, and exactly what it writes |

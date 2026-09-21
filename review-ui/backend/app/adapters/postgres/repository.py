@@ -689,6 +689,70 @@ class PostgresFolderRepository(FolderRepository):
                         fields["docDosTo"] = _fmt_date(doc_to)
                         if conf is not None:
                             fields["dosConfidence"] = float(conf)
+
+                    # Codeable / non-codeable / discharge (page_classification)
+                    cur.execute(
+                        """
+                        SELECT p.page_name, pc.classification_category, pc.confidence
+                        FROM page_classification pc
+                        JOIN page_list p ON p.id = pc.page_id
+                        JOIN chart_list c ON c.id = pc.chart_id
+                        WHERE c.chart_name = %s
+                        """,
+                        (folder_id,),
+                    )
+                    codeable_display = {
+                        "codeable": "Codeable",
+                        "non_codeable": "Non Codeable",
+                        "discharge_summary": "Discharge Frequency",
+                        "discharge_frequency": "Discharge Frequency",
+                    }
+                    for page_name, cat, conf in cur.fetchall():
+                        fields = _ensure(str(page_name))
+                        key = str(cat or "").strip()
+                        fields["isCodeable"] = codeable_display.get(key, key)
+
+                    # Encounter type (DOS-wide TF)
+                    cur.execute(
+                        """
+                        SELECT p.page_name, e.encounter_type, e.confidence
+                        FROM encounter_type_results e
+                        JOIN page_list p ON p.id = e.page_id
+                        JOIN chart_list c ON c.id = e.chart_id
+                        WHERE c.chart_name = %s
+                        """,
+                        (folder_id,),
+                    )
+                    enc_display = {
+                        "outpatient_f2f": "Outpatient (F2F)",
+                        "outpatient_tele": "Outpatient (Tele)",
+                        "inpatient": "Inpatient",
+                        "home": "Home",
+                    }
+                    for page_name, et, conf in cur.fetchall():
+                        fields = _ensure(str(page_name))
+                        key = str(et or "").strip()
+                        fields["encounterType"] = enc_display.get(key, key)
+
+                    # Page sequencing
+                    cur.execute(
+                        """
+                        SELECT p.page_name, p.page_number,
+                               s.original_page_number, s.seq, s.confidence
+                        FROM page_sequencing_results s
+                        JOIN page_list p ON p.id = s.page_id
+                        JOIN chart_list c ON c.id = s.chart_id
+                        WHERE c.chart_name = %s
+                        """,
+                        (folder_id,),
+                    )
+                    for page_name, page_num, orig, seq, conf in cur.fetchall():
+                        fields = _ensure(str(page_name))
+                        current = orig if orig is not None else page_num
+                        if current is not None:
+                            fields["currentSequence"] = int(current)
+                        if seq is not None:
+                            fields["actualSequence"] = int(seq)
         except Exception:
             return by_page
 
@@ -728,6 +792,9 @@ class PostgresFolderRepository(FolderRepository):
                 p.orientationAngle is not None or p.tiltAngle is not None for p in merged
             ),
             junk=any(p.blankOrJunk is not None or p.isDuplicate is not None for p in merged),
+            codeable=any(p.isCodeable is not None for p in merged),
+            encounter=any(p.encounterType is not None for p in merged),
+            sequencing=any(p.actualSequence is not None for p in merged),
             verification=verification is not None,
         )
 

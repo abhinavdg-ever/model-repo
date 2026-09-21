@@ -834,11 +834,11 @@ def get_blank_junk_flags(
     final_only: bool = False,
 ) -> dict[int, str]:
     if final_only:
-        rows = conn.execute(
-            "SELECT page_id, blank_junk_flag FROM v_page_blank_junk_final WHERE chart_id = %s",
-            (chart_id,),
-        ).fetchall()
-    elif pass_no is not None:
+        return {
+            pid: row["blank_junk_flag"]
+            for pid, row in get_blank_junk_final(conn, chart_id).items()
+        }
+    if pass_no is not None:
         rows = conn.execute(
             """
             SELECT page_id, blank_junk_flag FROM blank_junk_classification
@@ -857,6 +857,19 @@ def get_blank_junk_flags(
             (chart_id,),
         ).fetchall()
     return {r["page_id"]: r["blank_junk_flag"] for r in rows}
+
+
+def get_blank_junk_final(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
+    """Final blank/junk verdict per page: flag, junk_subtype, confidence."""
+    rows = conn.execute(
+        """
+        SELECT page_id, blank_junk_flag, junk_subtype, confidence
+          FROM v_page_blank_junk_final
+         WHERE chart_id = %s
+        """,
+        (chart_id,),
+    ).fetchall()
+    return {int(r["page_id"]): dict(r) for r in rows}
 
 
 # ---------------------------------------------------------------------------
@@ -917,6 +930,125 @@ def upsert_dos(
             date_of_service_from, date_of_service_to,
             date_of_service_from_doclevel, date_of_service_to_doclevel,
             json.dumps(dates), extraction_method, confidence,
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Page classification (codeable) + encounter type + page sequencing
+# ---------------------------------------------------------------------------
+
+
+def _confidence_level(confidence: Optional[float]) -> Optional[str]:
+    if confidence is None:
+        return None
+    if confidence >= 0.75:
+        return "high"
+    if confidence >= 0.45:
+        return "medium"
+    return "low"
+
+
+def upsert_page_classification(
+    conn: Any,
+    *,
+    chart_id: int,
+    page_id: int,
+    page_subtype: Optional[str],
+    classification_category: str,
+    confidence: Optional[float] = None,
+    duplicate_flag: bool = False,
+) -> None:
+    """Write codeable / non_codeable / discharge_summary for one page."""
+    conn.execute(
+        """
+        INSERT INTO page_classification (
+            chart_id, page_id, page_subtype, classification_category,
+            duplicate_flag, confidence, confidence_level
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (page_id) DO UPDATE SET
+            page_subtype            = EXCLUDED.page_subtype,
+            classification_category = EXCLUDED.classification_category,
+            duplicate_flag          = EXCLUDED.duplicate_flag,
+            confidence              = EXCLUDED.confidence,
+            confidence_level        = EXCLUDED.confidence_level,
+            updated_at              = now()
+        """,
+        (
+            chart_id,
+            page_id,
+            (page_subtype or "")[:200] or None,
+            classification_category,
+            bool(duplicate_flag),
+            confidence,
+            _confidence_level(confidence),
+        ),
+    )
+
+
+def upsert_encounter(
+    conn: Any,
+    *,
+    chart_id: int,
+    page_id: int,
+    encounter_type: str,
+    confidence: Optional[float] = None,
+    matched_keyword: Optional[str] = None,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO encounter_type_results (
+            chart_id, page_id, encounter_type, confidence, matched_keyword
+        ) VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (page_id) DO UPDATE SET
+            encounter_type  = EXCLUDED.encounter_type,
+            confidence      = EXCLUDED.confidence,
+            matched_keyword = EXCLUDED.matched_keyword,
+            updated_at      = now()
+        """,
+        (
+            chart_id,
+            page_id,
+            encounter_type,
+            confidence,
+            (matched_keyword or "")[:200] or None,
+        ),
+    )
+
+
+def upsert_sequencing(
+    conn: Any,
+    *,
+    chart_id: int,
+    page_id: int,
+    original_page_number: Optional[int],
+    seq: Optional[int],
+    confidence: Optional[float] = None,
+    sequence_method: Optional[str] = None,
+    review_flag: bool = False,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO page_sequencing_results (
+            chart_id, page_id, original_page_number, seq,
+            confidence, sequence_method, review_flag
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (page_id) DO UPDATE SET
+            original_page_number = EXCLUDED.original_page_number,
+            seq                  = EXCLUDED.seq,
+            confidence           = EXCLUDED.confidence,
+            sequence_method      = EXCLUDED.sequence_method,
+            review_flag          = EXCLUDED.review_flag,
+            updated_at           = now()
+        """,
+        (
+            chart_id,
+            page_id,
+            original_page_number,
+            seq,
+            confidence,
+            (sequence_method or "")[:64] or None,
+            bool(review_flag),
         ),
     )
 
@@ -1094,6 +1226,9 @@ CHART_RESULT_TABLES = (
     "member_verification_summary",
     "member_extraction_results",
     "dos_extraction_results",
+    "page_classification",
+    "encounter_type_results",
+    "page_sequencing_results",
     "blank_junk_classification",
     "ocr_quality_results",
     "ocr_results",
