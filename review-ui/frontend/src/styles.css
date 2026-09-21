@@ -1751,6 +1751,10 @@ input {
   padding-bottom: 0.35rem;
 }
 
+.imaging-additional-tabs {
+  margin-bottom: 0.35rem;
+}
+
 .imaging-doc-summary {
   /* Let .ocr-panel be the single scroll container */
   overflow: visible;
