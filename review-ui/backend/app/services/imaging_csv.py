@@ -8,6 +8,7 @@ from collections.abc import Iterable, Iterator
 from typing import Any
 
 from app.core.schemas import ImagingDocumentResponse, ImagingPageResult, OcrRunStatus
+from app.services.duplicate_label import format_duplicate_label
 
 CSV_HEADERS = [
     "chartName",
@@ -118,7 +119,7 @@ def document_rows(chart_name: str, doc: ImagingDocumentResponse) -> list[list[st
                 _cell(page.pageQualityTag),
                 _cell(page.pageQualityConfidence),
                 "NA" if blank is None or blank == "" else _cell(blank),
-                "NA" if dup is None else ("Yes" if dup else "No"),
+                format_duplicate_label(dup, page.pageTypeConfidence),
                 page.pageType or "Not Available",
                 _cell(page.pageTypeConfidence),
                 _cell(page.docDosFrom or page.dosFrom),

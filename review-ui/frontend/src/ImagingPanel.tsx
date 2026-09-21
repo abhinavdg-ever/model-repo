@@ -7,6 +7,10 @@ import type {
   ImagingVerificationDetails,
   OcrSectionHeader,
 } from "./api";
+import {
+  duplicateDisplayConfidence,
+  formatDuplicateLabel,
+} from "./duplicateLabel";
 
 const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
   member: false,
@@ -150,13 +154,15 @@ function fmtBlankOrJunk(
   return String(value);
 }
 
-function fmtYesNo(
-  value: boolean | null | undefined,
+function fmtDuplicate(
+  isDuplicate: boolean | null | undefined,
+  confidence: number | null | undefined,
   processed = true,
 ): string {
-  if (!processed) return YET_TO_PROCESS;
-  if (value === null || value === undefined) return NOT_FOUND;
-  return value ? "Yes" : "No";
+  return formatDuplicateLabel(isDuplicate, confidence, processed, {
+    yetToProcess: YET_TO_PROCESS,
+    notFound: NOT_FOUND,
+  });
 }
 
 // The classifier writes lowercase labels ("printed", "handwritten", "mixed").
@@ -371,8 +377,18 @@ function PageDetails({
           },
           {
             label: "Is Duplicate",
-            value: fmtYesNo(page.isDuplicate, sections.junk),
-            confidence: fmtConfidence(page.pageTypeConfidence, sections.junk),
+            value: fmtDuplicate(
+              page.isDuplicate,
+              page.pageTypeConfidence,
+              sections.junk,
+            ),
+            confidence: fmtConfidence(
+              duplicateDisplayConfidence(
+                page.isDuplicate,
+                page.pageTypeConfidence,
+              ),
+              sections.junk,
+            ),
           },
           {
             label: "Page Type",
@@ -546,7 +562,13 @@ function DocSummary({
                 <td>{fmt(p.dosFrom, sections.dos)}</td>
                 <td>{fmt(p.dosTo, sections.dos)}</td>
                 <td>{fmtBlankOrJunk(p.blankOrJunk, sections.junk)}</td>
-                <td>{fmtYesNo(p.isDuplicate, sections.junk)}</td>
+                <td>
+                  {fmtDuplicate(
+                    p.isDuplicate,
+                    p.pageTypeConfidence,
+                    sections.junk,
+                  )}
+                </td>
                 <td>{fmtPageType(p.pageType, sections.junk)}</td>
                 <td>{fmt(p.isCodeable, p.isCodeable != null && String(p.isCodeable).trim() !== "")}</td>
                 <td>{fmt(p.currentSequence ?? p.pageNumber, true)}</td>
@@ -566,7 +588,17 @@ function DocSummary({
                       )}
                     </td>
                     <td>{fmtConfidence(p.dosConfidence, sections.dos)}</td>
-                    <td>{fmtConfidence(p.pageTypeConfidence, sections.junk)}</td>
+                    <td>
+                      {fmtConfidence(
+                        p.isDuplicate
+                          ? duplicateDisplayConfidence(
+                              p.isDuplicate,
+                              p.pageTypeConfidence,
+                            )
+                          : p.pageTypeConfidence,
+                        sections.junk,
+                      )}
+                    </td>
                   </>
                 ) : null}
               </tr>

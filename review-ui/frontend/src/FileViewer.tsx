@@ -153,11 +153,23 @@ export default function FileViewer({ onBack, initialFolderId = null }: Props) {
 
   useEffect(() => {
     function onFsChange() {
-      setIsFullscreen(document.fullscreenElement === pageStageRef.current);
+      const on = document.fullscreenElement === pageStageRef.current;
+      setIsFullscreen(on);
+      if (on) {
+        setZoom(1);
+        resetPan();
+      }
     }
     document.addEventListener("fullscreenchange", onFsChange);
     return () => document.removeEventListener("fullscreenchange", onFsChange);
-  }, []);
+  }, [resetPan]);
+
+  function goToPage(idx: number | ((i: number) => number)) {
+    setPageIndex(idx);
+    if (!isFullscreen) {
+      resetZoom();
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -210,6 +222,8 @@ export default function FileViewer({ onBack, initialFolderId = null }: Props) {
       if (document.fullscreenElement === el) {
         await document.exitFullscreen();
       } else {
+        setZoom(1);
+        resetPan();
         await el.requestFullscreen();
       }
     } catch {
@@ -226,7 +240,7 @@ export default function FileViewer({ onBack, initialFolderId = null }: Props) {
   usePageViewerHotkeys({
     enabled: Boolean(detail && pageCount > 0 && !(source === "blob" && !blobReady)),
     pageCount,
-    setPageIndex,
+    setPageIndex: goToPage,
     zoomBy,
     setZoom,
     zoomStep: ZOOM_STEP,
@@ -417,10 +431,7 @@ export default function FileViewer({ onBack, initialFolderId = null }: Props) {
                     <button
                       type="button"
                       disabled={pageIndex <= 0}
-                      onClick={() => {
-                        setPageIndex((i) => Math.max(0, i - 1));
-                        resetZoom();
-                      }}
+                      onClick={() => goToPage((i) => Math.max(0, i - 1))}
                       aria-label="Previous page"
                     >
                       <ChevronLeft size={16} />
@@ -428,18 +439,12 @@ export default function FileViewer({ onBack, initialFolderId = null }: Props) {
                     <PageJump
                       pageIndex={pageIndex}
                       pageCount={pageCount}
-                      onJump={(idx) => {
-                        setPageIndex(idx);
-                        resetZoom();
-                      }}
+                      onJump={(idx) => goToPage(idx)}
                     />
                     <button
                       type="button"
                       disabled={pageIndex >= pageCount - 1}
-                      onClick={() => {
-                        setPageIndex((i) => Math.min(pageCount - 1, i + 1));
-                        resetZoom();
-                      }}
+                      onClick={() => goToPage((i) => Math.min(pageCount - 1, i + 1))}
                       aria-label="Next page"
                     >
                       <ChevronRight size={16} />
@@ -476,18 +481,9 @@ export default function FileViewer({ onBack, initialFolderId = null }: Props) {
                       onZoomOut={() => zoomBy(-ZOOM_STEP)}
                       onZoomIn={() => zoomBy(ZOOM_STEP)}
                       onZoomReset={resetZoom}
-                      onPrev={() => {
-                        setPageIndex((i) => Math.max(0, i - 1));
-                        resetZoom();
-                      }}
-                      onNext={() => {
-                        setPageIndex((i) => Math.min(pageCount - 1, i + 1));
-                        resetZoom();
-                      }}
-                      onJump={(idx) => {
-                        setPageIndex(idx);
-                        resetZoom();
-                      }}
+                      onPrev={() => goToPage((i) => Math.max(0, i - 1))}
+                      onNext={() => goToPage((i) => Math.min(pageCount - 1, i + 1))}
+                      onJump={(idx) => goToPage(idx)}
                       onExitFullscreen={exitFullscreen}
                     />
                   ) : null}
@@ -504,10 +500,7 @@ export default function FileViewer({ onBack, initialFolderId = null }: Props) {
                         key={p.filename}
                         type="button"
                         className={`filmstrip-thumb${idx === pageIndex ? " active" : ""}`}
-                        onClick={() => {
-                          setPageIndex(idx);
-                          setZoom(1);
-                        }}
+                        onClick={() => goToPage(idx)}
                         aria-label={`Go to ${p.filename}`}
                         aria-selected={idx === pageIndex}
                         title={p.filename}

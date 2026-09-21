@@ -51,7 +51,10 @@ JUNK_CODES = frozenset(
 )
 
 _MIN_FINGERPRINT_CHARS = 50
+# Minimum similarity to flag a neighbor as a duplicate (May Be or Yes).
 DUPLICATE_SIMILARITY_THRESHOLD = 0.95
+# Exact normalized match → UI "Yes"; [THRESHOLD, 1.0) → "May Be".
+DUPLICATE_YES_THRESHOLD = 1.0
 DUPLICATE_NEIGHBOR_WINDOW = 2
 
 DEFAULT_SETTINGS = {

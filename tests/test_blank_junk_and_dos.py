@@ -1,8 +1,9 @@
 """Blank/junk duplicate scoping and DOS date handling.
 
-Duplicate detection uses ±2 neighbor similarity (>95%), not exact hashes.
+Duplicate detection uses ±2 neighbor similarity (≥98%), not exact hashes.
 Blank / short pages are excluded from comparison; on a match the higher
 character-count page stays the original (earlier page on a tie).
+UI: similarity 100% → Yes; [95%, 100%) → May Be; else No.
 """
 from __future__ import annotations
 

@@ -13,7 +13,7 @@ Classifies pages from **existing preliminary OCR** (`ocr/<chart>_prelim.txt`) �
 | **Record Request/Transmittal** | Yes (Junk) | Record Request/Transmittal | request letter; records↔request (any order); attached; transmittal/transmitted; Urgent Request for Records; Your Records requested |
 | **Instructions** | Yes (Junk) | Instructions | “what to send”, provide documentation, please send, … |
 | **Others** | Yes (Junk) | Others | Table of contents; **&lt; 20 words** and not a signature page; **gibberish Tesseract OCR** (many no-vowel tokens / junk symbols) |
-| **Duplicate** | No | Not Available | >95% similar OCR text to a ±2 neighbor; longer (or earlier) page kept |
+| **Duplicate** | No | Not Available | ≥95% similar OCR text to a ±2 neighbor; longer (or earlier) page kept; UI Yes at 100% / May Be at 95–<100% |
 | **Main** | No | Not Available | Everything else |
 
 ### Priority order

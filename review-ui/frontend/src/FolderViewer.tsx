@@ -28,6 +28,7 @@ import {
   type OutputMode,
 } from "./api";
 import ImagingPanel, { type ImagingTab } from "./ImagingPanel";
+import { formatDuplicateLabel } from "./duplicateLabel";
 import {
   formatMatchRatePercent,
   isUsableOcrPayload,
@@ -284,11 +285,25 @@ export default function FolderViewer({
 
   useEffect(() => {
     function onFsChange() {
-      setIsFullscreen(document.fullscreenElement === pageStageRef.current);
+      const on = document.fullscreenElement === pageStageRef.current;
+      setIsFullscreen(on);
+      // Entering fullscreen always starts at 100%; zoom then persists across pages.
+      if (on) {
+        setZoom(1);
+        resetPan();
+      }
     }
     document.addEventListener("fullscreenchange", onFsChange);
     return () => document.removeEventListener("fullscreenchange", onFsChange);
-  }, []);
+  }, [resetPan]);
+
+  function goToPage(idx: number | ((i: number) => number)) {
+    setPageIndex(idx);
+    // Outside fullscreen, new pages open at 100%. In fullscreen, keep the zoom.
+    if (!isFullscreen) {
+      resetZoom();
+    }
+  }
 
   const page = folder?.pages[pageIndex] ?? null;
 
@@ -638,7 +653,9 @@ export default function FolderViewer({
         p.pageQualityTag ?? "",
         p.pageQualityConfidence,
         p.blankOrJunk ?? "NA",
-        p.isDuplicate == null ? "NA" : p.isDuplicate ? "Yes" : "No",
+        p.isDuplicate == null
+          ? "NA"
+          : formatDuplicateLabel(p.isDuplicate, p.pageTypeConfidence),
         p.pageType ?? "Not Available",
         p.pageTypeConfidence,
         p.isCodeable ?? "",
@@ -671,6 +688,8 @@ export default function FolderViewer({
       if (document.fullscreenElement === el) {
         await document.exitFullscreen();
       } else {
+        setZoom(1);
+        resetPan();
         await el.requestFullscreen();
       }
     } catch {
@@ -687,7 +706,7 @@ export default function FolderViewer({
   usePageViewerHotkeys({
     enabled: pageCount > 0,
     pageCount,
-    setPageIndex,
+    setPageIndex: goToPage,
     zoomBy,
     setZoom,
     zoomStep: ZOOM_STEP,
@@ -789,7 +808,7 @@ export default function FolderViewer({
                   <button
                     type="button"
                     disabled={pageIndex <= 0}
-                    onClick={() => setPageIndex((i) => Math.max(0, i - 1))}
+                    onClick={() => goToPage((i) => Math.max(0, i - 1))}
                     aria-label="Previous page"
                   >
                     <ChevronLeft size={16} />
@@ -797,15 +816,12 @@ export default function FolderViewer({
                   <PageJump
                     pageIndex={pageIndex}
                     pageCount={pageCount}
-                    onJump={(idx) => {
-                      setPageIndex(idx);
-                      resetZoom();
-                    }}
+                    onJump={(idx) => goToPage(idx)}
                   />
                   <button
                     type="button"
                     disabled={pageIndex >= pageCount - 1}
-                    onClick={() => setPageIndex((i) => Math.min(pageCount - 1, i + 1))}
+                    onClick={() => goToPage((i) => Math.min(pageCount - 1, i + 1))}
                     aria-label="Next page"
                   >
                     <ChevronRight size={16} />
@@ -877,18 +893,9 @@ export default function FolderViewer({
                   onZoomOut={() => zoomBy(-ZOOM_STEP)}
                   onZoomIn={() => zoomBy(ZOOM_STEP)}
                   onZoomReset={resetZoom}
-                  onPrev={() => {
-                    setPageIndex((i) => Math.max(0, i - 1));
-                    resetZoom();
-                  }}
-                  onNext={() => {
-                    setPageIndex((i) => Math.min(pageCount - 1, i + 1));
-                    resetZoom();
-                  }}
-                  onJump={(idx) => {
-                    setPageIndex(idx);
-                    resetZoom();
-                  }}
+                  onPrev={() => goToPage((i) => Math.max(0, i - 1))}
+                  onNext={() => goToPage((i) => Math.min(pageCount - 1, i + 1))}
+                  onJump={(idx) => goToPage(idx)}
                   onExitFullscreen={exitFullscreen}
                 />
               ) : null}
@@ -900,10 +907,7 @@ export default function FolderViewer({
                     key={p.filename}
                     type="button"
                     className={`filmstrip-thumb${idx === pageIndex ? " active" : ""}`}
-                    onClick={() => {
-                      setPageIndex(idx);
-                      setZoom(1);
-                    }}
+                    onClick={() => goToPage(idx)}
                     aria-label={`Go to ${p.filename}`}
                     aria-selected={idx === pageIndex}
                     title={p.filename}

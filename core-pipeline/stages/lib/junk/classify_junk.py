@@ -241,12 +241,13 @@ def classify_folder(
             }
         )
 
-    # Second pass: ±2 neighbor similarity (>95%); longer page wins, earlier on tie.
+    # Second pass: ±2 neighbor similarity (≥98%); longer page wins, earlier on tie.
     codes = [int(item["code"]) for item in pending]
     reasons = [str(item["reason"]) for item in pending]
     texts = [str(item["page_text"]) for item in pending]
     n = len(pending)
     dup_of: dict[int, int] = {}
+    dup_sim: dict[int, float] = {}
 
     def _comparable(i: int) -> bool:
         return codes[i] == CODE_MAIN and text_is_comparable(texts[i])
@@ -266,7 +267,8 @@ def classify_folder(
             j = i + offset
             if j >= n or not _comparable(j):
                 continue
-            if text_similarity(texts[i], texts[j]) <= DUPLICATE_SIMILARITY_THRESHOLD:
+            sim = text_similarity(texts[i], texts[j])
+            if sim < DUPLICATE_SIMILARITY_THRESHOLD:
                 continue
             orig, dup = _prefer(i, j)
             while orig in dup_of:
@@ -276,17 +278,22 @@ def classify_folder(
             for other, pointed in list(dup_of.items()):
                 if pointed == dup:
                     dup_of[other] = orig
-            dup_of[dup] = orig
+                    if other in dup_sim:
+                        dup_sim[other] = max(dup_sim[other], sim)
+            if sim >= dup_sim.get(dup, 0.0):
+                dup_of[dup] = orig
+                dup_sim[dup] = sim
 
     for dup_i, orig_i in dup_of.items():
         while orig_i in dup_of:
             orig_i = dup_of[orig_i]
         if dup_i == orig_i:
             continue
+        sim = dup_sim.get(dup_i, DUPLICATE_SIMILARITY_THRESHOLD)
         codes[dup_i] = CODE_DUPLICATE
         reasons[dup_i] = (
             f"duplicate_of_page:{pending[orig_i]['page_name']} "
-            f"(similarity>{DUPLICATE_SIMILARITY_THRESHOLD:.0%} within ±"
+            f"(similarity={sim:.4f} ≥{DUPLICATE_SIMILARITY_THRESHOLD:.0%} within ±"
             f"{DUPLICATE_NEIGHBOR_WINDOW})"
         )
 
@@ -295,9 +302,12 @@ def classify_folder(
         code = codes[i]
         reason = reasons[i]
         label = CLASSIFICATION_LABELS.get(code, "Main")
-        conf = classification_confidence(
-            code, blank_via_image=bool(item["blank_via_image"] and code == CODE_BLANK)
-        )
+        if code == CODE_DUPLICATE and i in dup_sim:
+            conf = float(dup_sim[i])
+        else:
+            conf = classification_confidence(
+                code, blank_via_image=bool(item["blank_via_image"] and code == CODE_BLANK)
+            )
         # Duplicate is not junk — content may be valid; flag separately.
         if code in JUNK_CODES:
             page_group = "junk"
@@ -312,7 +322,7 @@ def classify_folder(
                 "page_number": page_number_from_name(str(item["page_name"])),
                 "page_classification": label,
                 "page_classification_confidence": (
-                    f"{conf:.2f}" if conf is not None else ""
+                    f"{conf:.4f}" if conf is not None else ""
                 ),
                 "page_group": page_group,
                 "reason": reason,

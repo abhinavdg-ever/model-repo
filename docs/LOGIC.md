@@ -179,7 +179,7 @@ A page is a duplicate when its normalized OCR text is **> 95% similar**
 | Rule | Behaviour |
 |---|---|
 | Window | Compare only pages 2 before / 2 after (page order) |
-| Threshold | Similarity **> 0.95** on whitespace-stripped lowercase text |
+| Threshold | Similarity **≥ 0.95** on whitespace-stripped lowercase text (UI: 100% → Yes, [95%, 100%) → May Be; May Be display confidence = `1 + (sim − 1) × 10`, e.g. 98%→80% / 99%→90% / 95%→50%) |
 | Who wins | Higher normalized character count stays **main**; on a tie, the **earlier** page |
 | Excluded | Blank pages and texts shorter than 50 normalized characters |
 | Cross-pass | Prior-pass `main` pages are neighbors in pass 2 (so HW can match a printed original) |

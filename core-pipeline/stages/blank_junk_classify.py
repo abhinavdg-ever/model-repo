@@ -12,7 +12,8 @@ Two passes, as the pipeline spec requires:
 Duplicate detection (after blank/junk rules):
 
 * Compare each comparable page only to neighbors **±2** in page order.
-* Match when normalized-text similarity is **> 95%** (SequenceMatcher).
+* Match when normalized-text similarity is **≥ 98%** (SequenceMatcher).
+* Store that ratio as ``confidence`` (UI: 100% → Yes, [95%, 100%) → May Be).
 * On a match, keep the page with the **higher character count** as the
   original; on a tie, keep the **earlier** page. The other is ``duplicate``.
 * Blank pages and texts shorter than 50 normalized chars are never compared.
@@ -142,6 +143,7 @@ def _row_for(
     code: int,
     reason: str,
     duplicate_of: Optional[int] = None,
+    confidence: Optional[float] = None,
 ) -> dict[str, Any]:
     flag, subtype = _to_db_flag(code)
     return {
@@ -152,7 +154,7 @@ def _row_for(
         "flag": flag,
         "subtype": subtype,
         "duplicate_of": duplicate_of,
-        "confidence": _confidence(code),
+        "confidence": float(confidence) if confidence is not None else _confidence(code),
         "label": CLASSIFICATION_LABELS.get(code, "Main"),
         "group": _page_group(code),
         "reason": reason,
@@ -198,11 +200,12 @@ def _classify(
     todo: set[int],
     prior_main_ids: Optional[set[int]] = None,
 ) -> list[dict[str, Any]]:
-    """Classify ``todo`` pages; duplicates use ±2 neighbor similarity > 95%.
+    """Classify ``todo`` pages; duplicates use ±2 neighbor similarity ≥ 98%.
 
     ``prior_main_ids`` are pages already ``not_blank_junk`` from an earlier pass;
     they participate as comparison neighbors (and may be demoted to duplicate
-    when a longer later page matches).
+    when a longer later page matches). Similarity is stored as ``confidence``
+    (1.0 → UI Yes; [0.95, 1.0) → May Be).
     """
     prior = set(prior_main_ids or ())
     # Phase 1 — blank / junk / main from text rules (no duplicates yet).
@@ -225,6 +228,7 @@ def _classify(
 
     # Phase 2 — pairwise ±2 window among comparable pages.
     dup_of: dict[int, int] = {}
+    dup_sim: dict[int, float] = {}
     n = len(pages)
     for i, page in enumerate(pages):
         pid = page["id"]
@@ -238,7 +242,7 @@ def _classify(
             if not _comparable(nid):
                 continue
             sim = text_similarity(texts.get(pid) or "", texts.get(nid) or "")
-            if sim <= DUPLICATE_SIMILARITY_THRESHOLD:
+            if sim < DUPLICATE_SIMILARITY_THRESHOLD:
                 continue
             orig, dup = _prefer_original(
                 i,
@@ -254,7 +258,12 @@ def _classify(
             for other, pointed in list(dup_of.items()):
                 if pointed == dup:
                     dup_of[other] = orig
-            dup_of[dup] = orig
+                    if other in dup_sim:
+                        dup_sim[other] = max(dup_sim[other], sim)
+            prev = dup_sim.get(dup, 0.0)
+            if sim >= prev:
+                dup_of[dup] = orig
+                dup_sim[dup] = sim
 
     # Apply duplicate marks (including demoting prior-main pages not in todo).
     page_by_id = {p["id"]: p for p in pages}
@@ -262,9 +271,10 @@ def _classify(
         orig_id = _ultimate_original(dup_of, orig_id)
         if dup_id == orig_id:
             continue
+        sim = dup_sim.get(dup_id, DUPLICATE_SIMILARITY_THRESHOLD)
         reason = (
             f"duplicate_of_page_id:{orig_id} "
-            f"(similarity>{DUPLICATE_SIMILARITY_THRESHOLD:.0%} within ±"
+            f"(similarity={sim:.4f} ≥{DUPLICATE_SIMILARITY_THRESHOLD:.0%} within ±"
             f"{DUPLICATE_NEIGHBOR_WINDOW})"
         )
         page = page_by_id[dup_id]
@@ -273,6 +283,7 @@ def _classify(
             code=CODE_DUPLICATE,
             reason=reason,
             duplicate_of=orig_id,
+            confidence=sim,
         )
 
     rows: list[dict[str, Any]] = []

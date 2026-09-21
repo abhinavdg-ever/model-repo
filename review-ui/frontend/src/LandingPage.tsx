@@ -23,6 +23,7 @@ import {
   type ImagingPageResult,
   type OcrRunStatus,
 } from "./api";
+import { formatDuplicateLabel } from "./duplicateLabel";
 
 const PAGE_SIZE = 15;
 const LANDING_FILTERS_KEY = "advantmed_imaging_landing_filters";
@@ -354,7 +355,9 @@ function imagingDocToCsvRows(chartName: string, doc: ImagingDocumentResponse): s
       p.pageQualityTag ?? "",
       p.pageQualityConfidence,
       p.blankOrJunk ?? "NA",
-      p.isDuplicate == null ? "NA" : p.isDuplicate ? "Yes" : "No",
+      p.isDuplicate == null
+        ? "NA"
+        : formatDuplicateLabel(p.isDuplicate, p.pageTypeConfidence),
       p.pageType ?? "Not Available",
       p.pageTypeConfidence,
       p.docDosFrom ?? p.dosFrom,
