@@ -136,7 +136,11 @@ def main() -> None:
             "--resume",
             dest="force",
             action="store_false",
-            help="Skip pages already completed (default: reprocess / force=true)",
+            help=(
+                "Resume after a partial/timeout batch: skip charts already "
+                "complete, keep OCR on disk, only re-run incomplete pages "
+                "(default: reprocess / force=true)"
+            ),
         )
         parser_obj.set_defaults(force=True)
         add_stage_flags(parser_obj)

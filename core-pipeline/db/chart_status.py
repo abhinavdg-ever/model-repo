@@ -132,6 +132,33 @@ def compute_progress(
     }
 
 
+def chart_is_pipeline_complete(conn: Any, chart_id: int) -> bool:
+    """True when every phase-1 stage is completed|skipped for all pages.
+
+    Used by batch ``force=false`` to skip charts that already finished (e.g.
+    after a timeout left some charts done and others mid-flight).
+    """
+    chart = conn.execute(
+        "SELECT id, page_count FROM chart_list WHERE id = %s", (chart_id,)
+    ).fetchone()
+    if not chart:
+        return False
+    pages_total = int(chart["page_count"] or 0)
+    if pages_total <= 0:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM page_list WHERE chart_id = %s",
+            (chart_id,),
+        ).fetchone()
+        pages_total = int((row or {}).get("n") or 0)
+    if pages_total <= 0:
+        return False
+    progress = compute_progress(_stage_rows(conn, chart_id), pages_total=pages_total)
+    return progress.get("current_stage") is None and progress.get("status") in {
+        "completed",
+        "needs_review",
+    }
+
+
 def refresh_chart_status(conn: Any, chart_id: int) -> dict[str, Any]:
     """Recompute and persist chart_list.status / current_stage / current_pass."""
     chart = conn.execute(

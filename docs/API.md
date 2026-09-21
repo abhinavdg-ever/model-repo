@@ -406,7 +406,7 @@ Usable on `/run` and `/batch-run`:
 |---|---|---|---|
 | `through` | string | omit | Run from the top, **stop after** this stage |
 | `only` | string[] | omit | Run **just** these stages against existing outputs |
-| `force` | bool | `true` | Reprocess completed pages (**final2 is billed**). Set `false` to resume. |
+| `force` | bool | `true` | Reprocess completed pages (**final2 is billed**). Set `false` to **resume**: keep OCR, skip finished charts (batch), only incomplete pages. |
 | `skip_ocr` | bool | omit | Per-request override for `SKIP_OCR`. `true` = reuse OCR from the chart **output folder** (or workspace `ocr/`) if present, else materialize the three `ocr/` files from `ocr_results`. With **`force: false`**, also refreshes quality/rotation and **gate-delta**: only pages whose HW/quality/rotation gate flipped (or that are missing OCR the new gate needs) re-open blank/junk and OCR engines — Final2 may still bill for pages that leave `high+printed`. `false` = always run OCR. omit = honour env. Ignored when `force=true` |
 
 ### `POST /api/charts/run` — one chart
@@ -489,7 +489,7 @@ Same vocabulary as `/run` **without** a folder name (each subfolder is a chart).
 | `limit` | optional | all | Same as `sample` (compat); `sample` wins if both set |
 | `workers` | optional | `BATCH_WORKERS` (4) | Must fit DB pool. Charts with ≥`LARGE_CHART_MIN_PAGES` (default 100) pages run at most one-at-a-time while any smaller chart is still pending; when only large charts remain, workers parallelize them. |
 | `run_id` / `batch_id` | optional | inferred | |
-| `through` / `only` / `force` / `skip_ocr` | optional | — | |
+| `through` / `only` / `force` / `skip_ocr` | optional | — | `force: false` = **resume** (below) |
 
 ```bash
 # macOS / Linux — smoke-test the first 3 charts under the drop
@@ -502,6 +502,23 @@ curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/j
 curl.exe -X POST localhost:8001/api/charts/batch-run -H "Content-Type: application/json" `
   -d "{\"local_read_path\":\"C:/data/inbox\",\"sample\":3,\"through\":\"ocr_prelim\",\"workers\":2}"
 ```
+
+**Resume after a timeout / partial batch** — same read path, `force: false`:
+
+```bash
+curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
+  -d '{"local_read_path":"/data/inbox","force":false,"workers":2}'
+
+python cli.py batch-run --local-read-path /data/inbox --resume --workers 2
+```
+
+With `force: false` the batch:
+1. **Skips charts** that already finished every phase-1 stage (`already_complete`).
+2. **Keeps** workspace + OCR/results (does not wipe on re-ingest).
+3. **Clears** stuck `processing` page rows left by a killed worker.
+4. **Re-runs only** pages that are not yet `completed`/`skipped` (Final2 billed only for those).
+
+`force: true` (default) still means full reprocess / wipe on re-ingest.
 
 `202` response includes `charts_found`, `charts_queued` (after `sample`/`limit`), and echoes `sample`.
 

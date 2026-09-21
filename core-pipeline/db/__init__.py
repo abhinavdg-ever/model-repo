@@ -484,6 +484,25 @@ def reset_pages_stage(
     return getattr(result, "rowcount", 0) or 0
 
 
+def clear_stuck_processing(conn: Any, chart_id: int) -> int:
+    """Turn abandoned ``processing`` page rows back to ``pending`` (resume).
+
+    A killed worker / timeout can leave pages stuck in ``processing``; resume
+    must treat them as still todo. ``pages_needing_stage`` already includes
+    them; this cleans the status so the UI does not show a forever-running page.
+    """
+    result = conn.execute(
+        """
+        UPDATE page_stage_status
+           SET status = 'pending', error_message = NULL, skip_reason = NULL,
+               completed_at = NULL
+         WHERE chart_id = %s AND status = 'processing'
+        """,
+        (chart_id,),
+    )
+    return getattr(result, "rowcount", 0) or 0
+
+
 # ---------------------------------------------------------------------------
 # pipeline_jobs
 # ---------------------------------------------------------------------------

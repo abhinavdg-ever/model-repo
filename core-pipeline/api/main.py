@@ -357,7 +357,9 @@ class BatchRequest(StageSelection):
         True,
         description=(
             "Reprocess pages already completed (default). "
-            "Set false to resume and skip completed pages."
+            "Set false to resume: keep workspace/OCR, skip charts that already "
+            "finished every phase-1 stage, and only re-run incomplete pages "
+            "(final2 is billed only for those pages)."
         ),
     )
     sample: Optional[int] = Field(

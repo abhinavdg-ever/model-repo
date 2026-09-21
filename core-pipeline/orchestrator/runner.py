@@ -125,6 +125,16 @@ def run_pipeline_for_chart(
         chart = get_chart(conn, chart_id)
         if not chart:
             raise RuntimeError(f"chart_id={chart_id} not found")
+        if not force:
+            from db import clear_stuck_processing
+
+            stuck = clear_stuck_processing(conn, chart_id)
+            if stuck:
+                logger.info(
+                    "Resume chart %s: cleared %d stuck processing page-stage row(s)",
+                    chart["chart_name"],
+                    stuck,
+                )
         job_id = create_job(
             conn, chart_id=chart_id, stage_name="pipeline_full", status="running"
         )

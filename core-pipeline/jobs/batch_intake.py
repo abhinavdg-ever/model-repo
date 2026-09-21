@@ -197,10 +197,12 @@ def _write_one(
 def _summarise(results: list[dict[str, Any]], started: float) -> dict[str, Any]:
     ok = [r for r in results if r["status"] == "completed"]
     failed = [r for r in results if r["status"] == "failed"]
+    skipped = [r for r in results if r["status"] == "skipped"]
     return {
         "charts_found": len(results),
         "completed": len(ok),
         "failed": len(failed),
+        "skipped": len(skipped),
         "duration_seconds": round(time.time() - started, 1),
         "charts": results,
     }
@@ -351,6 +353,41 @@ def _run_one_chart(
             "large_chart": is_large,
         }
         try:
+            # Resume: skip charts that already finished every phase-1 stage.
+            if not force:
+                from db import connect, get_chart_by_name
+                from db.chart_status import chart_is_pipeline_complete
+
+                with connect() as conn:
+                    existing = get_chart_by_name(conn, name)
+                    if existing and chart_is_pipeline_complete(conn, int(existing["id"])):
+                        entry.update(
+                            chart_id=existing["id"],
+                            chart_name=existing.get("chart_name") or name,
+                            pages=existing.get("page_count"),
+                            status="skipped",
+                            skip_reason="already_complete",
+                        )
+                        logger.info(
+                            "[skip %d/%d] %s already complete (resume)",
+                            index,
+                            total,
+                            name,
+                        )
+                        with counter_lock:
+                            counters["finished"] += 1
+                            finished_n = counters["finished"]
+                        _note_progress(
+                            name,
+                            finished_n,
+                            total,
+                            batch_dir=batch_progress_dir,
+                            action="skipped",
+                            detail=f"{name} already complete",
+                            batch_n=finished_n,
+                        )
+                        return entry
+
             out = ingest_and_run(
                 local_path=source if mode == "local" else None,
                 blob_container=blob_container if mode == "blob" else None,

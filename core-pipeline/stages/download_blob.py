@@ -155,13 +155,13 @@ def run_download(
                 f"No images found under {blob_container}/{prefix} — {detail}"
             )
 
-        # Re-submit overwrites local workspace by default so resumed file-exists
-        # skips cannot serve a previous page set. chart_list / page_list kept.
+        # Re-submit with force=True wipes local results so a new page set cannot
+        # be served from stale files. force=False is resume: keep workspace +
+        # stage results and only download missing page files.
         reset: dict[str, int] = {}
         cleared: dict[str, int] = {}
         dest_root = pages_dir(chart_name)
-        had_local = dest_root.is_dir() and any(dest_root.iterdir())
-        if force or had_local:
+        if force:
             with connect() as conn:
                 reset = reset_chart_results(conn, chart_id)
             cleared = clear_chart_workspace(chart_name)
@@ -170,6 +170,12 @@ def run_download(
                     "Blob re-ingest %s: reset=%s cleared=%s",
                     chart_name, reset or "{}", cleared or "{}",
                 )
+        else:
+            logger.info(
+                "Blob resume %s: keeping existing workspace/results "
+                "(force=false)",
+                chart_name,
+            )
 
         page_rows: list[dict[str, Any]] = []
         reused = 0
@@ -302,6 +308,10 @@ def import_local_folder(
     Re-submit **overwrites by default** (``force=True``): the local chart
     workspace is cleared and stage result tables are wiped, while ``chart_list``
     and ``page_list`` rows are kept (page ids stay stable via upsert).
+
+    ``force=False`` is **resume**: if ``pages/`` already has files, they are
+    kept (no wipe, no re-copy) and the chart is only re-registered so the
+    pipeline can continue incomplete pages.
     """
     import shutil
 
@@ -333,17 +343,35 @@ def import_local_folder(
 
     ensure_chart_dirs(name)
     existing = [p for p in dest_dir.iterdir() if p.is_file()] if dest_dir.is_dir() else []
+
+    # force=False + existing workspace = resume: do not wipe OCR/results or
+    # re-copy pages. force=True (default) clears and re-imports.
     if existing and not force:
-        raise RuntimeError(
-            f"{dest_dir} already holds {len(existing)} file(s). "
-            "Pass force=True to replace them (default on re-submit)."
+        logger.info(
+            "Resume import %s: keeping %d existing page file(s) under %s",
+            name,
+            len(existing),
+            dest_dir,
         )
+        result = register_local_pages(name, run_id=run_id, batch_id=batch_id)
+        out_path = resolve_output_path(name, read_path=str(src))
+        if out_path and result.get("chart_id") is not None:
+            with connect() as conn:
+                set_chart_output_path(conn, int(result["chart_id"]), out_path)
+            result["output_path"] = out_path
+        result["source"] = str(src)
+        result["imported"] = 0
+        result["resumed"] = True
+        result["manifest"] = {"files": 0, "inserted": 0, "updated": 0}
+        result["reset"] = {}
+        result["cleared_workspace"] = {}
+        return result
 
     # Re-import replaces disk outputs and stage results; chart_list + page_list
     # survive so ids stay stable. pipeline_jobs is left as the audit log.
     reset: dict[str, int] = {}
     cleared: dict[str, int] = {}
-    if existing or force:
+    if force:
         with connect() as conn:
             prior = conn.execute(
                 "SELECT id FROM chart_list WHERE chart_name = %s", (name,)
