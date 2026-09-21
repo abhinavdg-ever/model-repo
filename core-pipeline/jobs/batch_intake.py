@@ -308,6 +308,7 @@ def _run_one_chart(
     only: Optional[list[str]],
     through: Optional[str],
     skip_ocr: Optional[bool],
+    redownload_pages: bool,
     run_id: Optional[str],
     batch_id: Optional[str],
     counters: dict[str, int],
@@ -399,6 +400,7 @@ def _run_one_chart(
                 only=only,
                 through=through,
                 skip_ocr=skip_ocr,
+                redownload_pages=redownload_pages,
             )
             entry.update(
                 chart_id=out.get("chart_id"),
@@ -453,6 +455,7 @@ def run_batch(
     only: Optional[list[str]] = None,
     through: Optional[str] = None,
     skip_ocr: Optional[bool] = None,
+    redownload_pages: bool = False,
     limit: Optional[int] = None,
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
@@ -592,6 +595,7 @@ def run_batch(
                 only=only,
                 through=through,
                 skip_ocr=skip_ocr,
+                redownload_pages=redownload_pages,
                 run_id=run_id,
                 batch_id=batch_id,
                 counters=counters,

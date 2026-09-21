@@ -111,7 +111,7 @@ erDiagram
 |---|---|---|
 | `pipeline_stage` | stage × pass | **The pipeline's shape as data.** Order, labels, whether a stage is orchestrated. Adding a stage is an INSERT. |
 | `chart_list` | chart | Identity + lifecycle `status` + `current_stage`/`current_pass` + `output_path` (Processed/… write destination). `UNIQUE (chart_name)`. |
-| `page_list` | page | One row per image. `image_sha256` gives download idempotency and image-level dedup. |
+| `page_list` | page | One row per image. `image_sha256` for download idempotency / image-level dedup. `use_corrected` + `image_path` record which workspace file stages should read (`pages/…` vs `corrected-pages/…`). |
 | `page_stage_status` | page × stage × pass | Progress. Replaces v6's 11 status columns. Drives resume and status derivation. |
 | `manifest_member_list` | record × member | The client roster, keyed on `record_id` — which **is** `chart_list.chart_name`. No `chart_id` column: the relationship is a join, so a sweep can precede ingest with nothing to link afterwards. |
 
@@ -268,7 +268,7 @@ still renders.
 | `download_blob.py` | **Intake.** Upserts the chart, downloads page images (skipping bytes already on disk), records SHA-256 + size, seeds `page_stage_status`, links manifest rows swept earlier. `import_local_folder()` is the local-source equivalent; `register_local_pages()` registers a folder already under `data/folders`. |
 | `ocr_prelim_tesseract.py` | **Stage 2.** Tesseract over every page (the corrected image when one exists), threaded to `STAGE_WORKERS`. Writes `ocr_results` and rebuilds `_prelim.txt`. |
 | `quality_rotation_hw.py` | **Stage 1.** Rotation, handwriting (ConvNeXt or RF), and measured quality analyzer. Writes `ocr_quality_results` plus rotation / hw / quality CSVs. |
-| `blank_junk_classify.py` | **Stages 3 and 7.** Both passes: eligibility, the cross-pass duplicate fingerprint table, the subtype mapping into the schema's constrained vocabulary, `mark_blank_junk_final`, and a full CSV rewrite from the database. |
+| `blank_junk_classify.py` | **Stages 3 and 7.** Both passes: eligibility, ±2-neighbor similarity duplicates, the subtype mapping into the schema's constrained vocabulary, `mark_blank_junk_final`, and a full CSV rewrite from the database. |
 | `ocr_final1_docling.py` | **Stage 4.** Docling+RapidOCR when ready; else RapidOCR-onnx only. Stores as `ocr_type='docling'` — the UI's "Final (OSS)" slot. Writes `section_header_candidates`. |
 | `ocr_final2_azure.py` | **Stage 5.** Azure Document Intelligence `prebuilt-read`, one shared client. Skips high-quality printed pages. The billed stage, so the resume path matters most here. |
 | `section_headers.py` | **Stage 6.** Re-derives `section_headers` from on-disk Final1/Final2 JSON (candidates / `pagesMeta` / `document`) against the canon list — no OCR. |
@@ -306,7 +306,7 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/junk-classification/`.
 
 | File | Role |
 |---|---|
-| `classify.py` | The entry point: `classify_text()` tries each detector in priority order and returns a code; also the code constants, labels, `fingerprint()` and confidences. |
+| `classify.py` | The entry point: `classify_text()` tries each detector in priority order and returns a code; also the code constants, labels, `text_similarity()` / `fingerprint()` helpers and confidences. |
 | `classify_junk.py` | The fuller CLI-era classifier retained from the V1 prototype. |
 | `blank.py` | Blank detection: empty OCR, declared-blank phrasing, near-empty image. |
 | `invoice.py`, `cover.py`, `record_request.py`, `instructions.py`, `letter_fax.py` | One junk category each. |

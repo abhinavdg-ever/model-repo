@@ -11,7 +11,8 @@ On each page's prelim text:
   2) short text with “blank” / “intentionally blank” → Blank
   3) invoice keywords → Invoice
   4) cover / fax keywords → Cover
-  5) duplicate fingerprint vs earlier page in same chart → Duplicate
+  5) >95% similar OCR text vs ±2 neighbors → Duplicate
+     (higher char count kept; earlier page on a tie; blank/short skipped)
   else → Main
 
 Optional ``--image``: also treat near-white page images as Blank (usually unnecessary
@@ -49,10 +50,14 @@ from classify import (  # noqa: E402
     CODE_BLANK,
     CODE_DUPLICATE,
     CODE_MAIN,
+    DUPLICATE_NEIGHBOR_WINDOW,
+    DUPLICATE_SIMILARITY_THRESHOLD,
     JUNK_CODES,
     classification_confidence,
     classify_text,
-    fingerprint,
+    duplicate_char_count,
+    text_is_comparable,
+    text_similarity,
 )
 
 UI_PAGE_MARKER_RE = re.compile(r"^=====\s*(.+?)\s*=====\s*$", re.MULTILINE)
@@ -236,21 +241,59 @@ def classify_folder(
             }
         )
 
-    # Second pass: duplicates in page order (first occurrence stays Main)
-    seen_fp: set[str] = set()
-    rows: list[dict[str, str]] = []
-    for item in pending:
-        code = int(item["code"])
-        reason = str(item["reason"])
-        if code == CODE_MAIN:
-            fp = fingerprint(str(item["page_text"]))
-            if fp is not None:
-                if fp in seen_fp:
-                    code = CODE_DUPLICATE
-                    reason = "duplicate"
-                else:
-                    seen_fp.add(fp)
+    # Second pass: ±2 neighbor similarity (>95%); longer page wins, earlier on tie.
+    codes = [int(item["code"]) for item in pending]
+    reasons = [str(item["reason"]) for item in pending]
+    texts = [str(item["page_text"]) for item in pending]
+    n = len(pending)
+    dup_of: dict[int, int] = {}
 
+    def _comparable(i: int) -> bool:
+        return codes[i] == CODE_MAIN and text_is_comparable(texts[i])
+
+    def _prefer(i: int, j: int) -> tuple[int, int]:
+        ci, cj = duplicate_char_count(texts[i]), duplicate_char_count(texts[j])
+        if ci > cj:
+            return i, j
+        if cj > ci:
+            return j, i
+        return (i, j) if i <= j else (j, i)
+
+    for i in range(n):
+        if not _comparable(i):
+            continue
+        for offset in range(1, DUPLICATE_NEIGHBOR_WINDOW + 1):
+            j = i + offset
+            if j >= n or not _comparable(j):
+                continue
+            if text_similarity(texts[i], texts[j]) <= DUPLICATE_SIMILARITY_THRESHOLD:
+                continue
+            orig, dup = _prefer(i, j)
+            while orig in dup_of:
+                orig = dup_of[orig]
+            if dup == orig:
+                continue
+            for other, pointed in list(dup_of.items()):
+                if pointed == dup:
+                    dup_of[other] = orig
+            dup_of[dup] = orig
+
+    for dup_i, orig_i in dup_of.items():
+        while orig_i in dup_of:
+            orig_i = dup_of[orig_i]
+        if dup_i == orig_i:
+            continue
+        codes[dup_i] = CODE_DUPLICATE
+        reasons[dup_i] = (
+            f"duplicate_of_page:{pending[orig_i]['page_name']} "
+            f"(similarity>{DUPLICATE_SIMILARITY_THRESHOLD:.0%} within ±"
+            f"{DUPLICATE_NEIGHBOR_WINDOW})"
+        )
+
+    rows: list[dict[str, str]] = []
+    for i, item in enumerate(pending):
+        code = codes[i]
+        reason = reasons[i]
         label = CLASSIFICATION_LABELS.get(code, "Main")
         conf = classification_confidence(
             code, blank_via_image=bool(item["blank_via_image"] and code == CODE_BLANK)

@@ -3,23 +3,27 @@
 The chart folder on blob holds one image per page. This stage:
 
   1. upserts ``chart_list`` (atomic on UNIQUE (chart_name)),
-  2. downloads each image into ``review-ui/data/folders/<chart>/pages/{n}.ext``,
+  2. ensures ``pages/`` (+ sparse ``corrected-pages/``) under the workspace —
+     prefer files already in ``review-ui/data/folders/<chart>/``, else hydrate
+     from ``chart_list.output_path`` (Processed), else download missing pages
+     from Raw_Input ``blob_path``,
   3. upserts ``page_list`` with a SHA-256 and size per page,
   4. seeds ``page_stage_status`` so every later stage has a pending row,
   5. links any manifest rows swept before this chart existed.
 
-The SHA-256 makes the download idempotent: a re-ingest of an unchanged chart
-skips bytes already on disk, and gives image-level duplicate detection
-something to key on.
+By default existing workspace pages are **not** re-downloaded. ``force`` only
+resets stage result tables; pass ``redownload_pages=True`` to wipe and re-fetch
+``pages/`` + ``corrected-pages/``.
 """
 from __future__ import annotations
 
 import logging
 import re
+import shutil
 from pathlib import Path
 from typing import Any, Optional
 
-from config import IMAGE_SUFFIXES, ensure_chart_dirs, pages_dir
+from config import IMAGE_SUFFIXES, corrected_pages_dir, ensure_chart_dirs, pages_dir
 from db import (
     connect,
     create_job,
@@ -41,7 +45,7 @@ from db.blob_store import (
     list_image_blobs,
 )
 from db.chart_status import refresh_chart_status
-from db.paths import clear_chart_workspace
+from db.paths import clear_page_image_dirs, list_local_pages
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +88,418 @@ def _finish_registration(
     }
 
 
+def _page_rows_from_workspace(chart_name: str) -> list[dict[str, Any]]:
+    files = list_local_pages(chart_name)
+    return [
+        {
+            "page_name": path.name,
+            "page_number": index,
+            "image_sha256": sha256_file(path),
+            "file_size_bytes": path.stat().st_size,
+        }
+        for index, path in enumerate(files, start=1)
+    ]
+
+
+def _local_output_subdir_candidates(
+    output_path: str, chart_name: str, subdir: str
+) -> list[Path]:
+    """Possible on-disk directories for ``pages/`` or ``corrected-pages/`` under output."""
+    raw = (output_path or "").strip().rstrip("/\\")
+    if not raw:
+        return []
+    base = Path(raw)
+    candidates = [base / subdir, base]
+    if base.name != chart_name:
+        candidates.insert(0, base / chart_name / subdir)
+        candidates.insert(1, base / chart_name)
+    seen: set[str] = set()
+    out: list[Path] = []
+    for path in candidates:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(path)
+    return out
+
+
+def _iter_image_files(folder: Path) -> list[Path]:
+    if not folder.is_dir():
+        return []
+    files = [
+        p
+        for p in folder.iterdir()
+        if p.is_file()
+        and p.suffix.lower() in IMAGE_SUFFIXES
+        and not p.name.startswith("._")
+    ]
+    return sorted(files, key=lambda p: p.name.casefold())
+
+
+def _copy_images_into(
+    src: Path, dest: Path, *, only_missing: bool = True
+) -> int:
+    """Copy image files from ``src`` into ``dest``. Returns files written/kept."""
+    dest.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for src_file in _iter_image_files(src):
+        target = dest / src_file.name
+        if only_missing and target.is_file() and target.stat().st_size > 0:
+            copied += 1
+            continue
+        if src_file.resolve() == target.resolve():
+            copied += 1
+            continue
+        shutil.copy2(src_file, target)
+        copied += 1
+    return copied
+
+
+def _hydrate_subdir_from_local_output(
+    *,
+    chart_name: str,
+    output_path: str,
+    subdir: str,
+    dest: Path,
+    only_missing: bool = True,
+) -> int:
+    for candidate in _local_output_subdir_candidates(output_path, chart_name, subdir):
+        # Candidate may be the subdir itself or the chart root (copy from …/subdir).
+        src = candidate if candidate.name == subdir else candidate / subdir
+        if not src.is_dir():
+            # Flat folder of images under output_path — only for pages/.
+            if (
+                subdir == "pages"
+                and candidate.is_dir()
+                and _iter_image_files(candidate)
+            ):
+                src = candidate
+            else:
+                continue
+        n = _copy_images_into(src, dest, only_missing=only_missing)
+        if n:
+            logger.info(
+                "Hydrated %d file(s) into %s/%s from local output %s",
+                n,
+                chart_name,
+                subdir,
+                src,
+            )
+            return n
+    return 0
+
+
+def _pull_subdir_from_blob_output(
+    *,
+    container: str,
+    output_path: str,
+    chart_name: str,
+    subdir: str,
+    dest: Path,
+    only_missing: bool = True,
+) -> int:
+    prefix = output_path.strip().strip("/").replace("\\", "/")
+    prefixes = [f"{prefix}/{subdir}", prefix]
+    dest.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for pref in prefixes:
+        try:
+            names = list_image_blobs(container, pref)
+        except Exception as exc:
+            logger.warning(
+                "Could not list %s images under %s/%s (%s)",
+                subdir,
+                container,
+                pref,
+                exc,
+            )
+            continue
+        filtered: list[str] = []
+        for blob_name in names:
+            parts = [p for p in blob_name.replace("\\", "/").split("/") if p]
+            if not parts:
+                continue
+            if pref.rstrip("/").endswith(subdir) or (
+                len(parts) >= 2 and parts[-2] == subdir
+            ):
+                filtered.append(blob_name)
+            elif pref == prefix and len(parts) == 1 and subdir == "pages":
+                filtered.append(blob_name)
+        for blob_name in filtered:
+            filename = Path(blob_name).name
+            if filename.startswith("._"):
+                continue
+            target = dest / filename
+            if only_missing and target.is_file() and target.stat().st_size > 0:
+                copied += 1
+                continue
+            try:
+                download_blob_to_path(container, blob_name, target)
+                copied += 1
+            except Exception as exc:
+                logger.warning("Failed to download %s (%s)", blob_name, exc)
+        if copied:
+            logger.info(
+                "Pulled %d %s file(s) from blob %s/%s → workspace",
+                copied,
+                subdir,
+                container,
+                pref,
+            )
+            break
+    return copied
+
+
+def _hydrate_corrected_pages(
+    *,
+    chart_name: str,
+    output_path: Optional[str],
+    blob_container: Optional[str],
+) -> int:
+    """Fill gaps in corrected-pages/ from output_path (local then blob)."""
+    out = (output_path or "").strip()
+    if not out:
+        return 0
+    dest = corrected_pages_dir(chart_name)
+    n = _hydrate_subdir_from_local_output(
+        chart_name=chart_name,
+        output_path=out,
+        subdir="corrected-pages",
+        dest=dest,
+        only_missing=True,
+    )
+    if n:
+        return n
+    container = (blob_container or "").strip()
+    if not container:
+        return 0
+    try:
+        ensure_blob_ready(container)
+    except Exception as exc:
+        logger.warning("Blob not ready for corrected-pages hydrate: %s", exc)
+        return 0
+    return _pull_subdir_from_blob_output(
+        container=container,
+        output_path=out,
+        chart_name=chart_name,
+        subdir="corrected-pages",
+        dest=dest,
+        only_missing=True,
+    )
+
+
+def _hydrate_pages_from_output(
+    *,
+    chart_name: str,
+    output_path: Optional[str],
+    blob_container: Optional[str],
+) -> int:
+    out = (output_path or "").strip()
+    if not out:
+        return 0
+    dest = pages_dir(chart_name)
+    n = _hydrate_subdir_from_local_output(
+        chart_name=chart_name,
+        output_path=out,
+        subdir="pages",
+        dest=dest,
+        only_missing=True,
+    )
+    if list_local_pages(chart_name):
+        return max(n, len(list_local_pages(chart_name)))
+    container = (blob_container or "").strip()
+    if not container:
+        return 0
+    try:
+        ensure_blob_ready(container)
+    except Exception as exc:
+        logger.warning("Blob not ready for pages hydrate: %s", exc)
+        return 0
+    return _pull_subdir_from_blob_output(
+        container=container,
+        output_path=out,
+        chart_name=chart_name,
+        subdir="pages",
+        dest=dest,
+        only_missing=True,
+    )
+
+
+def _download_missing_from_raw_input(
+    *,
+    chart_name: str,
+    blob_container: str,
+    blob_path: str,
+) -> tuple[int, int]:
+    """Download Raw_Input images into pages/, skipping files already present.
+
+    Returns ``(total_registered, reused_count)``.
+    """
+    ensure_blob_ready(blob_container)
+    blob_names = list_image_blobs(blob_container, blob_path)
+    if not blob_names:
+        from db.blob_store import get_container_client, normalize_prefix
+
+        prefix = normalize_prefix(blob_path)
+        try:
+            client = get_container_client(blob_container)
+            sample = [
+                b.name
+                for _, b in zip(range(5), client.list_blobs(name_starts_with=prefix))
+            ]
+        except Exception:
+            sample = []
+        if not sample:
+            detail = (
+                "nothing at all exists under that prefix — check the path, "
+                "its capitalisation (blob names are case-sensitive), and "
+                "that the container is right"
+            )
+        else:
+            detail = (
+                "blobs exist there but none is a recognised image "
+                f"({', '.join(sorted(IMAGE_SUFFIXES))}). First few: "
+                + ", ".join(sample)
+            )
+        raise RuntimeError(
+            f"No images found under {blob_container}/{prefix} — {detail}"
+        )
+
+    dest_root = pages_dir(chart_name)
+    dest_root.mkdir(parents=True, exist_ok=True)
+    reused = 0
+    total = len(blob_names)
+    from db.paths import write_folder_progress
+
+    for idx, blob_name in enumerate(blob_names, start=1):
+        local_name = _normalize_page_filename(idx, Path(blob_name).name)
+        dest = dest_root / local_name
+        write_folder_progress(
+            chart_name, idx, total, detail=f"download {local_name}"
+        )
+        if dest.is_file() and dest.stat().st_size > 0:
+            reused += 1
+            continue
+        logger.info(
+            "Downloading %d/%d %s -> %s", idx, total, blob_name, dest
+        )
+        download_blob_to_path(blob_container, blob_name, dest)
+    return total, reused
+
+
+def ensure_chart_images(
+    chart_name: str,
+    *,
+    chart_id: Optional[int] = None,
+    blob_container: Optional[str] = None,
+    blob_path: Optional[str] = None,
+    output_path: Optional[str] = None,
+    force_redownload_pages: bool = False,
+    register: bool = True,
+    run_id: Optional[str] = None,
+    batch_id: Optional[str] = None,
+    source: str = "blob",
+) -> dict[str, Any]:
+    """Ensure workspace ``pages/`` for this chart.
+
+    Prefer ``data/folders/<chart>/pages/``. If missing, download from Raw_Input
+    (``blob_path``). Corrected images are **not** hydrated here — quality/
+    rotation recreates ``corrected-pages/``. ``output_path`` is unused for pages
+    (Processed usually omits originals under ``skip_orig_pages``).
+    """
+    ensure_chart_dirs(chart_name)
+    cleared: dict[str, int] = {}
+    if force_redownload_pages:
+        cleared = clear_page_image_dirs(chart_name)
+        if cleared:
+            logger.info(
+                "Redownload pages for %s: cleared %s",
+                chart_name,
+                cleared,
+            )
+
+    tried: list[str] = []
+    source_label = "workspace"
+    reused = 0
+    downloaded = 0
+
+    local_pages = list_local_pages(chart_name)
+    if local_pages:
+        tried.append("workspace")
+        source_label = "workspace"
+    else:
+        tried.append("workspace(empty)")
+        container = (blob_container or "").strip()
+        raw = (blob_path or "").strip()
+        if container and raw:
+            tried.append(f"raw_input:{container}/{raw}")
+            total, reused = _download_missing_from_raw_input(
+                chart_name=chart_name,
+                blob_container=container,
+                blob_path=raw,
+            )
+            downloaded = total - reused
+            source_label = f"raw_input:{container}/{raw}"
+        else:
+            tried.append("raw_input(unavailable)")
+
+    local_pages = list_local_pages(chart_name)
+    if not local_pages:
+        raise RuntimeError(
+            f"No page images for chart '{chart_name}' — tried: "
+            + ", ".join(tried)
+            + ". Put files under data/folders/<chart>/pages/ or provide "
+            "blob_container + blob_path (Raw_Input)."
+        )
+
+    page_rows = _page_rows_from_workspace(chart_name)
+    result: dict[str, Any] = {
+        "chart_name": chart_name,
+        "page_count": len(page_rows),
+        "pages_reused": (
+            reused if source_label.startswith("raw_input") else len(page_rows)
+        ),
+        "pages_downloaded": (
+            downloaded if source_label.startswith("raw_input") else 0
+        ),
+        "image_source": source_label,
+        "tried": tried,
+        "cleared_pages": cleared,
+    }
+
+    if not register:
+        result["page_rows"] = page_rows
+        return result
+
+    blob_path_norm = (blob_path or "").strip().strip("/") or None
+    with connect() as conn:
+        chart = upsert_chart(
+            conn,
+            chart_name=chart_name,
+            page_count=len(page_rows),
+            status="processing",
+            source=source,
+            blob_container=blob_container,
+            blob_path=blob_path_norm,
+            output_path=output_path,
+            run_id=run_id,
+            batch_id=batch_id,
+        )
+        resolved_id = int(chart["id"] if chart_id is None else chart_id)
+        tail = _finish_registration(conn, resolved_id, chart_name, page_rows)
+
+    result["chart_id"] = resolved_id
+    result.update(tail)
+    logger.info(
+        "chart %s: %d page(s) ready via %s",
+        chart_name,
+        len(page_rows),
+        source_label,
+    )
+    return result
+
+
 def run_download(
     *,
     blob_container: str,
@@ -92,6 +508,7 @@ def run_download(
     batch_id: Optional[str] = None,
     chart_id: Optional[int] = None,
     force: bool = True,
+    redownload_pages: bool = False,
 ) -> dict[str, Any]:
     from db.path_ids import resolve_output_path, resolve_run_batch
 
@@ -119,56 +536,17 @@ def run_download(
         update_job(conn, job_id, started=True)
 
     try:
-        ensure_blob_ready(blob_container)
-        blob_names = list_image_blobs(blob_container, blob_path)
-        if not blob_names:
-            # "No images" has three quite different causes and the bare message
-            # distinguished none of them, so the next step was always guessing.
-            # One extra listing call, only on the failure path, says which.
-            from db.blob_store import get_container_client, normalize_prefix
-
-            prefix = normalize_prefix(blob_path)
-            try:
-                client = get_container_client(blob_container)
-                sample = [
-                    b.name
-                    for _, b in zip(
-                        range(5), client.list_blobs(name_starts_with=prefix)
-                    )
-                ]
-            except Exception:
-                sample = []
-
-            if not sample:
-                detail = (
-                    "nothing at all exists under that prefix — check the path, "
-                    "its capitalisation (blob names are case-sensitive), and "
-                    "that the container is right"
-                )
-            else:
-                detail = (
-                    "blobs exist there but none is a recognised image "
-                    f"({', '.join(sorted(IMAGE_SUFFIXES))}). First few: "
-                    + ", ".join(sample)
-                )
-            raise RuntimeError(
-                f"No images found under {blob_container}/{prefix} — {detail}"
-            )
-
-        # Re-submit with force=True wipes local results so a new page set cannot
-        # be served from stale files. force=False is resume: keep workspace +
-        # stage results and only download missing page files.
+        # force resets stage DB rows so the chain reprocesses; it does NOT wipe
+        # pages/corrected-pages. Use redownload_pages for a full image re-fetch.
         reset: dict[str, int] = {}
-        cleared: dict[str, int] = {}
-        dest_root = pages_dir(chart_name)
         if force:
             with connect() as conn:
                 reset = reset_chart_results(conn, chart_id)
-            cleared = clear_chart_workspace(chart_name)
-            if reset or cleared:
+            if reset:
                 logger.info(
-                    "Blob re-ingest %s: reset=%s cleared=%s",
-                    chart_name, reset or "{}", cleared or "{}",
+                    "Blob re-ingest %s: reset stage results %s (pages kept)",
+                    chart_name,
+                    reset,
                 )
         else:
             logger.info(
@@ -177,68 +555,43 @@ def run_download(
                 chart_name,
             )
 
-        page_rows: list[dict[str, Any]] = []
-        reused = 0
-        total_files = len(blob_names)
-
-        from db.paths import write_folder_progress
-
-        for idx, blob_name in enumerate(blob_names, start=1):
-            local_name = _normalize_page_filename(idx, Path(blob_name).name)
-            dest = dest_root / local_name
-            write_folder_progress(
-                chart_name, idx, total_files, detail=f"download {local_name}"
-            )
-            if not force and dest.is_file() and dest.stat().st_size > 0:
-                reused += 1
-            else:
-                logger.info(
-                    "Downloading %d/%d %s -> %s", idx, total_files, blob_name, dest
-                )
-                download_blob_to_path(blob_container, blob_name, dest)
-            page_rows.append(
-                {
-                    "page_name": local_name,
-                    "page_number": idx,
-                    "image_sha256": sha256_file(dest),
-                    "file_size_bytes": dest.stat().st_size,
-                }
-            )
+        ensured = ensure_chart_images(
+            chart_name,
+            chart_id=chart_id,
+            blob_container=blob_container,
+            blob_path=blob_path.strip("/"),
+            output_path=out_path,
+            force_redownload_pages=redownload_pages,
+            register=True,
+            run_id=run_id,
+            batch_id=batch_id,
+            source="blob",
+        )
 
         with connect() as conn:
-            upsert_chart(
-                conn,
-                chart_name=chart_name,
-                page_count=len(page_rows),
-                status="processing",
-                source="blob",
-                blob_container=blob_container,
-                blob_path=blob_path.strip("/"),
-                output_path=out_path,
-                run_id=run_id,
-                batch_id=batch_id,
-            )
-            tail = _finish_registration(conn, chart_id, chart_name, page_rows)
             update_job(
                 conn,
                 job_id,
                 status="completed",
                 completed=True,
-                pages_total=len(page_rows),
-                pages_done=len(page_rows),
+                pages_total=ensured["page_count"],
+                pages_done=ensured["page_count"],
             )
 
-        logger.info(
-            "chart %s: %s page(s) registered (%s reused from disk)",
-            chart_name, len(page_rows), reused,
-        )
         return {
             "chart_id": chart_id,
             "chart_name": chart_name,
-            "page_count": len(page_rows),
-            "pages_reused": reused,
+            "page_count": ensured["page_count"],
+            "pages_reused": ensured.get("pages_reused", 0),
+            "pages_downloaded": ensured.get("pages_downloaded", 0),
+            "image_source": ensured.get("image_source"),
             "job_id": job_id,
-            **tail,
+            "reset": reset,
+            "cleared_pages": ensured.get("cleared_pages") or {},
+            "pages": ensured.get("pages"),
+            "manifest_rows": ensured.get("manifest_rows"),
+            "progress": ensured.get("progress"),
+            "pruned_pages": ensured.get("pruned_pages"),
         }
     except Exception as exc:
         with connect() as conn:
@@ -289,6 +642,7 @@ def import_local_folder(
     *,
     chart_name: Optional[str] = None,
     force: bool = True,
+    redownload_pages: bool = False,
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
 ) -> dict[str, Any]:
@@ -305,16 +659,10 @@ def import_local_folder(
     special case. Any manifest alongside the images is always loaded — the
     member stage cannot run without one.
 
-    Re-submit **overwrites by default** (``force=True``): the local chart
-    workspace is cleared and stage result tables are wiped, while ``chart_list``
-    and ``page_list`` rows are kept (page ids stay stable via upsert).
-
-    ``force=False`` is **resume**: if ``pages/`` already has files, they are
-    kept (no wipe, no re-copy) and the chart is only re-registered so the
-    pipeline can continue incomplete pages.
+    Existing workspace ``pages/`` are kept by default (even when ``force=True``,
+    which only resets stage result tables). Pass ``redownload_pages=True`` to
+    wipe ``pages/`` + ``corrected-pages/`` and re-copy from ``source``.
     """
-    import shutil
-
     from db.path_ids import resolve_output_path, resolve_run_batch
 
     src = Path(source).expanduser().resolve()
@@ -342,13 +690,38 @@ def import_local_folder(
         )
 
     ensure_chart_dirs(name)
-    existing = [p for p in dest_dir.iterdir() if p.is_file()] if dest_dir.is_dir() else []
+    existing = list_local_pages(name)
 
-    # force=False + existing workspace = resume: do not wipe OCR/results or
-    # re-copy pages. force=True (default) clears and re-imports.
-    if existing and not force:
+    reset: dict[str, int] = {}
+    cleared: dict[str, int] = {}
+    if force:
+        with connect() as conn:
+            prior = conn.execute(
+                "SELECT id FROM chart_list WHERE chart_name = %s", (name,)
+            ).fetchone()
+            if prior:
+                reset = reset_chart_results(conn, prior["id"])
+                if reset:
+                    logger.info(
+                        "Re-import of %s: cleared DB results %s (pages kept)",
+                        name,
+                        ", ".join(f"{v} {k}" for k, v in reset.items()),
+                    )
+
+    if redownload_pages:
+        cleared = clear_page_image_dirs(name)
+        if cleared:
+            logger.info(
+                "Re-import of %s: cleared page images %s",
+                name,
+                ", ".join(f"{v} {k}" for k, v in cleared.items()),
+            )
+        existing = []
+
+    # Prefer existing workspace pages — do not re-copy from source.
+    if existing:
         logger.info(
-            "Resume import %s: keeping %d existing page file(s) under %s",
+            "Import %s: keeping %d existing page file(s) under %s",
             name,
             len(existing),
             dest_dir,
@@ -363,34 +736,9 @@ def import_local_folder(
         result["imported"] = 0
         result["resumed"] = True
         result["manifest"] = {"files": 0, "inserted": 0, "updated": 0}
-        result["reset"] = {}
-        result["cleared_workspace"] = {}
+        result["reset"] = reset
+        result["cleared_workspace"] = cleared
         return result
-
-    # Re-import replaces disk outputs and stage results; chart_list + page_list
-    # survive so ids stay stable. pipeline_jobs is left as the audit log.
-    reset: dict[str, int] = {}
-    cleared: dict[str, int] = {}
-    if force:
-        with connect() as conn:
-            prior = conn.execute(
-                "SELECT id FROM chart_list WHERE chart_name = %s", (name,)
-            ).fetchone()
-            if prior:
-                reset = reset_chart_results(conn, prior["id"])
-                if reset:
-                    logger.info(
-                        "Re-import of %s: cleared DB results %s",
-                        name,
-                        ", ".join(f"{v} {k}" for k, v in reset.items()),
-                    )
-        cleared = clear_chart_workspace(name)
-        if cleared:
-            logger.info(
-                "Re-import of %s: cleared local workspace %s",
-                name,
-                ", ".join(f"{v} {k}" for k, v in cleared.items()),
-            )
 
     from db.paths import write_folder_progress
 
@@ -453,8 +801,6 @@ def register_local_pages(
     batch_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Register an already-present ``data/folders/<chart>`` (dev / demo)."""
-    from db.paths import list_local_pages
-
     ensure_chart_dirs(chart_name)
     files = list_local_pages(chart_name)
     if not files:

@@ -77,11 +77,33 @@ curl -fsS localhost:8001/api/stages | python -m json.tool
 
 | Field | Default | Use when |
 |---|---|---|
-| `force` | **`true`** | Reprocess pages even if already `completed`. **With OCR stages this re-bills Final2.** |
-| `force: false` | — | **Resume**: leave completed pages alone; only unfinished work runs. |
-| `only: ["stage", …]` | omit | Run **just** those stages (in chain order) against what is already on disk / in DB. Best for “OCR is done.” |
-| `skip_ocr: true` | env `SKIP_OCR` | Reuse `ocr/` (or hydrate from `ocr_results`). Ignored when `force: true` (force always re-OCRs). |
+| `force` | **`true`** | Reprocess stages even if already `completed`. **Re-bills Final2.** Does **not** wipe `pages/`. |
+| `force: false` | — | **Resume** incomplete work. Required for `skip_ocr` to take effect. |
+| `only: ["stage", …]` | omit | Run **just** those stages (quality still runs under `skip_ocr`). |
+| `skip_ocr: true` | env `SKIP_OCR` | See § skip_ocr below. Ignored when `force: true`. |
+| `redownload_pages: true` | `false` | Wipe `pages/` + `corrected-pages/` and re-fetch pages from Raw_Input. |
 | `through: "stage"` | omit | Run from the top of the chain and **stop after** that stage. |
+
+### What `skip_ocr` does
+
+Looks under `data/folders/<chart>/` (review-ui workspace):
+
+1. **`pages/` present** → use it. **Missing** → download from **Raw_Input** (`blob_path`).
+2. **`ocr/` present** → use it. **Missing** → pull from **Processed** (`output_path`). **Still missing** → materialize from Postgres `ocr_results`. **Still missing** → **re-run OCR engines**.
+3. **Quality + rotation always re-run** → rewrite `corrected-pages/`. Gate-delta may reopen OCR only for pages whose HW/quality/rotation path flipped.
+4. **Write** (if a write path is set) **overwrites** destination `ocr/`, `corrected-pages/`, `imaging/` (default write mode still omits `pages/`).
+
+```bash
+curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
+  -d '{"chart_id": 123, "skip_ocr": true, "force": false,
+       "blob_write_path": "Processed/Run1/Batch1"}'
+```
+
+Rule of thumb for a large blob batch that already finished OCR:
+
+- Want new classifiers only → **`only`** + `chart_id` / `chart_name` (no re-download), optional `blob_write_path` to sync CSVs out.
+- Want “everything after OCR again” → **`only`** listing post-OCR stages (§5A).
+- Never set `force: true` on a full chain (no `only`) unless you intend to pay for Final2 again.
 
 Rule of thumb for a large blob batch that already finished OCR:
 

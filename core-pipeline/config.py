@@ -335,6 +335,21 @@ def page_image_path(chart_name: str, page_name: str) -> Path:
     return pages_dir(chart_name) / page_name
 
 
+def page_image_source(chart_name: str, page_name: str) -> tuple[bool, str]:
+    """``(use_corrected, chart-relative image_path)`` matching ``page_image_path``.
+
+    Paths use forward slashes: ``pages/1.jpg`` or ``corrected-pages/1.jpg``.
+    """
+    path = page_image_path(chart_name, page_name)
+    root = chart_dir(chart_name)
+    try:
+        rel = path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        rel = f"pages/{page_name}"
+    use_corrected = rel.startswith("corrected-pages/")
+    return use_corrected, rel
+
+
 def ensure_chart_dirs(chart_name: str) -> Path:
     root = chart_dir(chart_name)
     for sub in ("pages", "ocr", "imaging", "corrected-pages"):

@@ -21,9 +21,10 @@ from config import (
     STAGE_WORKERS,
     corrected_page_filename,
     corrected_pages_dir,
+    page_image_source,
     pages_dir,
 )
-from db import connect, upsert_quality
+from db import connect, set_page_image_source, upsert_quality
 from db.paths import imaging_csv, write_csv
 from stages._support import mark_completed, mark_failed, mark_processing, stage_run
 
@@ -280,6 +281,7 @@ def _measure(args: tuple[dict[str, Any], Path, str]) -> dict[str, Any]:
         )
         rot.pop("needs_correction", None)
         scored_path = corrected or image_path
+        use_corrected, image_relpath = page_image_source(chart_name, page["page_name"])
         hw_label, hw_conf, hw_method = _classify_hw(scored_path)
         quality = _measure_quality(scored_path)
         return {
@@ -291,6 +293,8 @@ def _measure(args: tuple[dict[str, Any], Path, str]) -> dict[str, Any]:
             "hw_conf": hw_conf,
             "hw_method": hw_method,
             "quality": quality,
+            "use_corrected": use_corrected,
+            "image_path": image_relpath,
             "error": "",
         }
     except Exception as exc:
@@ -420,6 +424,13 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     quality_score=q.get("quality_score"),
                     quality_detail=q.get("quality_detail"),
                     input_dpi=q.get("input_dpi"),
+                )
+                set_page_image_source(
+                    conn,
+                    item["page_id"],
+                    use_corrected=bool(item.get("use_corrected")),
+                    image_path=item.get("image_path")
+                    or f"pages/{item['page_name']}",
                 )
                 mark_completed(conn, ctx, item["page_id"])
 

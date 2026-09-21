@@ -107,6 +107,7 @@ def run_pipeline_for_chart(
     only: Optional[list[str]] = None,
     through: Optional[str] = None,
     skip_ocr: Optional[bool] = None,
+    redownload_pages: bool = False,
 ) -> dict[str, Any]:
     """Run the stage chain for one chart.
 
@@ -125,6 +126,10 @@ def run_pipeline_for_chart(
     With ``skip_ocr`` active and ``force=false``, quality is refreshed and
     gate-delta reopens only the blank/junk / OCR pages whose path changed
     (or that are missing artifacts the new gate requires).
+
+    Before stages run, ``ensure_chart_images`` prefers workspace ``pages/``,
+    then hydrates from ``output_path``, then Raw_Input — and does not
+    re-download when local pages already exist unless ``redownload_pages``.
     """
     stop_at = resolve_stage(through) if through else None
     with connect() as conn:
@@ -147,6 +152,33 @@ def run_pipeline_for_chart(
         update_job(conn, job_id, started=True)
         progress = refresh_chart_status(conn, chart_id)
 
+    from stages.download_blob import ensure_chart_images
+
+    try:
+        image_info = ensure_chart_images(
+            chart["chart_name"],
+            chart_id=chart_id,
+            blob_container=chart.get("blob_container"),
+            blob_path=chart.get("blob_path"),
+            output_path=chart.get("output_path"),
+            force_redownload_pages=redownload_pages,
+            register=True,
+            source=chart.get("source") or "blob",
+            run_id=chart.get("run_id"),
+            batch_id=chart.get("batch_id"),
+        )
+    except Exception as exc:
+        with connect() as conn:
+            set_chart_status(conn, chart_id, "failed")
+            update_job(
+                conn,
+                job_id,
+                status="failed",
+                error_message=str(exc),
+                completed=True,
+            )
+        raise
+
     wanted = set(only or [])
     chain = STAGE_CHAIN if stop_at is None else STAGE_CHAIN[: stop_at + 1]
     results: dict[str, Any] = {
@@ -155,6 +187,12 @@ def run_pipeline_for_chart(
         "stages": {},
         "skipped_stages": [],
         "progress": progress,
+        "images": {
+            "source": image_info.get("image_source"),
+            "page_count": image_info.get("page_count"),
+            "pages_reused": image_info.get("pages_reused"),
+            "pages_downloaded": image_info.get("pages_downloaded"),
+        },
     }
     if stop_at is not None:
         results["through"] = STAGE_NAMES[stop_at]
@@ -180,78 +218,108 @@ def run_pipeline_for_chart(
         old_presence: dict[int, Any] = {}
         gate_delta_applied = False
 
-        quality_in_scope = (not wanted) or (
-            "ocr_quality" in wanted or "ocr_quality:1" in wanted
-        )
+        from config import SKIP_OCR
         from stages.ocr_reuse import apply_skip_ocr, should_skip_ocr_stages
 
-        will_skip_ocr = should_skip_ocr_stages(
+        skip_requested = (SKIP_OCR if skip_ocr is None else bool(skip_ocr)) and not force
+        will_reuse_ocr = should_skip_ocr_stages(
             chart_name=chart["chart_name"],
             chart_id=chart_id,
             force=force,
             skip_ocr=skip_ocr,
         )
-        # Adaptive: skip_ocr + force:false + quality in this run → refresh
-        # quality, then reopen only gate-impacted pages (OCR engines stay
-        # skipped for unchanged pages).
-        if will_skip_ocr and quality_in_scope:
+        force_quality_for_skip = False
+
+        # skip_ocr always refreshes quality/rotation/corrected-pages.
+        if skip_requested:
+            force_quality_for_skip = True
             from stages.gate_delta import snapshot_gates, snapshot_ocr_presence
 
-            adaptive_gates = True
-            skip_ocr_active = True
             with connect() as conn:
                 old_gates = snapshot_gates(conn, chart_id)
                 old_presence = snapshot_ocr_presence(conn, chart_id)
-            results["ocr_reuse"] = apply_skip_ocr(chart_id, chart["chart_name"])
-            ocr_hydrated = True
-            logger.info(
-                "Adaptive skip_ocr for chart %s — quality refresh + gate-delta",
-                chart["chart_name"],
-            )
+
+            if will_reuse_ocr:
+                results["ocr_reuse"] = apply_skip_ocr(chart_id, chart["chart_name"])
+                ocr_hydrated = True
+                if (results["ocr_reuse"] or {}).get("source") == "none":
+                    will_reuse_ocr = False
+                    logger.info(
+                        "skip_ocr for chart %s — no OCR to reuse; engines will "
+                        "run after quality",
+                        chart["chart_name"],
+                    )
+                else:
+                    skip_ocr_active = True
+                    adaptive_gates = True
+                    logger.info(
+                        "skip_ocr for chart %s — reuse OCR + refresh quality",
+                        chart["chart_name"],
+                    )
+            else:
+                logger.info(
+                    "skip_ocr for chart %s — no OCR on disk/Processed/DB; "
+                    "quality then full OCR",
+                    chart["chart_name"],
+                )
 
         for index, (name, pass_no, fn) in enumerate(chain, start=1):
             key = f"{name}:{pass_no}"
-            if wanted and key not in wanted and name not in wanted:
+            # Under skip_ocr, quality always runs even when `only` omits it.
+            if (
+                wanted
+                and key not in wanted
+                and name not in wanted
+                and not (force_quality_for_skip and name == "ocr_quality")
+            ):
                 results["skipped_stages"].append(key)
                 continue
 
-            # Adaptive path: always re-measure quality, then invalidate by delta.
-            if adaptive_gates and name == "ocr_quality" and not gate_delta_applied:
+            # Always re-measure quality under skip_ocr; with reuse, gate-delta
+            # reopens only pages whose path changed.
+            if (
+                (adaptive_gates or force_quality_for_skip)
+                and name == "ocr_quality"
+                and not gate_delta_applied
+            ):
                 label = stage_label(name, pass_no)
                 logger.info(
                     "=== [%s]  stage %d of %d  —  chart %s (force quality) ===",
                     label, index, total_stages, chart["chart_name"],
                 )
                 results["stages"][key] = fn(chart_id, force=True)
-                from stages.gate_delta import apply_adaptive_gate_delta
+                if adaptive_gates:
+                    from stages.gate_delta import apply_adaptive_gate_delta
 
-                with connect() as conn:
-                    plan = apply_adaptive_gate_delta(
-                        conn,
-                        chart_id,
-                        old_gates=old_gates,
-                        old_presence=old_presence,
+                    with connect() as conn:
+                        plan = apply_adaptive_gate_delta(
+                            conn,
+                            chart_id,
+                            old_gates=old_gates,
+                            old_presence=old_presence,
+                        )
+                    results["gate_delta"] = {
+                        "pages_reopened": len(plan.reasons),
+                        "reasons": {str(k): v for k, v in plan.reasons.items()},
+                        "force_prelim": sorted(plan.force_prelim),
+                        "force_final1": sorted(plan.force_final1),
+                        "force_final2": sorted(plan.force_final2),
+                        "invalidate": {
+                            f"{s}:{p}": sorted(pids)
+                            for (s, p), pids in plan.invalidate.items()
+                        },
+                    }
+                    logger.info(
+                        "[%s] done — gate-delta reopened %d page(s)",
+                        label,
+                        len(plan.reasons),
                     )
-                results["gate_delta"] = {
-                    "pages_reopened": len(plan.reasons),
-                    "reasons": {str(k): v for k, v in plan.reasons.items()},
-                    "force_prelim": sorted(plan.force_prelim),
-                    "force_final1": sorted(plan.force_final1),
-                    "force_final2": sorted(plan.force_final2),
-                    "invalidate": {
-                        f"{s}:{p}": sorted(pids)
-                        for (s, p), pids in plan.invalidate.items()
-                    },
-                }
+                else:
+                    logger.info("[%s] done — quality refreshed (OCR will re-run)", label)
                 gate_delta_applied = True
                 with connect() as conn:
                     progress = refresh_chart_status(conn, chart_id)
                 results["progress"] = progress
-                logger.info(
-                    "[%s] done — gate-delta reopened %d page(s)",
-                    label,
-                    len(plan.reasons),
-                )
                 continue
 
             if name in {"ocr_prelim", "ocr_final1", "ocr_final2"}:
@@ -266,6 +334,8 @@ def run_pipeline_for_chart(
                         results["ocr_reuse"] = apply_skip_ocr(
                             chart_id, chart["chart_name"]
                         )
+                        if (results["ocr_reuse"] or {}).get("source") == "none":
+                            skip_ocr_active = False
                     ocr_hydrated = True
                 if skip_ocr_active and adaptive_gates:
                     # Per-page: only pages reset to pending by gate-delta run.
@@ -364,6 +434,7 @@ def ingest_and_run(
     only: Optional[list[str]] = None,
     through: Optional[str] = None,
     skip_ocr: Optional[bool] = None,
+    redownload_pages: bool = False,
 ) -> dict[str, Any]:
     """Fetch one chart's pages into the workspace, then run the chain on it.
 
@@ -371,6 +442,11 @@ def ingest_and_run(
     pages under data/folders/<chart>/pages as 1.jpg, 2.jpg …, so everything
     downstream is identical either way. This is the whole of what /api/charts/run
     does, and what batch calls once per folder.
+
+    Page images prefer the workspace; missing ones hydrate from output_path then
+    Raw_Input. OCR/imaging are not fetched here — stages reconstruct them
+    (or ``skip_ocr`` reuses OCR artifacts). ``force`` reprocesses stages without
+    wiping ``pages/``; ``redownload_pages`` is the escape hatch to re-fetch images.
     """
     if bool(blob_path) == bool(local_path):
         raise ValueError("Provide exactly one of blob_path (+ blob_container) or local_path")
@@ -399,6 +475,7 @@ def ingest_and_run(
                 local_path,
                 chart_name=chart_name,
                 force=force,
+                redownload_pages=redownload_pages,
                 run_id=run_id,
                 batch_id=batch_id,
             )
@@ -419,12 +496,14 @@ def ingest_and_run(
                 run_id=run_id,
                 batch_id=batch_id,
                 force=force,
+                redownload_pages=redownload_pages,
             )
             out = {
                 "chart_id": download["chart_id"],
                 "chart_name": download["chart_name"],
                 "page_count": download["page_count"],
                 "source": f"{blob_container}/{blob_path}",
+                "image_source": download.get("image_source"),
             }
 
         # Prefer the registered chart name once intake finishes.
@@ -437,6 +516,7 @@ def ingest_and_run(
                 only=only,
                 through=through,
                 skip_ocr=skip_ocr,
+                redownload_pages=False,  # intake already ensured images
             )
         return out
     finally:

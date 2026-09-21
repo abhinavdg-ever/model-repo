@@ -9,21 +9,18 @@ Two passes, as the pipeline spec requires:
           RapidOCR), for handwritten + low-quality pages plus any printed
           page pass 1 did not already rule out.
 
-Three things are fixed relative to v6:
+Duplicate detection (after blank/junk rules):
 
-1. **Duplicate scope.** v6 rebuilt the fingerprint table inside each pass over
-   only that pass's pages, so a printed page duplicating a handwritten page was
-   invisible. The fingerprint table is now seeded from every page that already
-   has a verdict, in page order, so pass 2 sees pass 1's pages and duplicates
-   are found across the whole chart.
+* Compare each comparable page only to neighbors **±2** in page order.
+* Match when normalized-text similarity is **> 95%** (SequenceMatcher).
+* On a match, keep the page with the **higher character count** as the
+  original; on a tie, keep the **earlier** page. The other is ``duplicate``.
+* Blank pages and texts shorter than 50 normalized chars are never compared.
+* Prior-pass ``main`` pages are included as neighbors so pass 2 can still
+  match a handwritten page to a printed one from pass 1.
 
-2. **One final verdict per page.** Each pass writes its own row (pass_no), then
-   ``mark_blank_junk_final`` stamps the winning row. Downstream stages read
-   ``v_page_blank_junk_final`` and never re-implement precedence.
-
-3. **Idempotent CSV.** v6 truncated in pass 1 and appended in pass 2, so
-   re-running pass 2 alone duplicated every row. The CSV is now rebuilt from the
-   database after each pass, so it always matches the stored verdicts.
+Also: one final verdict per page (``mark_blank_junk_final``), and the junk CSV
+is fully rewritten from the database after each pass.
 """
 from __future__ import annotations
 
@@ -64,10 +61,14 @@ from classify import (  # noqa: E402
     CODE_BLANK,
     CODE_DUPLICATE,
     CODE_MAIN,
+    DUPLICATE_NEIGHBOR_WINDOW,
+    DUPLICATE_SIMILARITY_THRESHOLD,
     JUNK_CODES,
     classification_confidence,
     classify_text,
-    fingerprint,
+    duplicate_char_count,
+    text_is_comparable,
+    text_similarity,
 )
 
 STAGE = "blank_junk"
@@ -135,72 +136,158 @@ def _confidence(code: int) -> float:
     return 0.85 if code != CODE_MAIN else 0.7
 
 
-def _seed_fingerprints(
-    conn: Any, chart_id: int, pages: list[dict[str, Any]], texts: dict[int, str]
-) -> dict[str, int]:
-    """Fingerprints of pages already judged 'main', so a later pass can spot a
-    duplicate of a page an earlier pass handled.
+def _row_for(
+    page: dict[str, Any],
+    *,
+    code: int,
+    reason: str,
+    duplicate_of: Optional[int] = None,
+) -> dict[str, Any]:
+    flag, subtype = _to_db_flag(code)
+    return {
+        "page_id": page["id"],
+        "page_name": page["page_name"],
+        "page_number": page.get("page_number"),
+        "code": code,
+        "flag": flag,
+        "subtype": subtype,
+        "duplicate_of": duplicate_of,
+        "confidence": _confidence(code),
+        "label": CLASSIFICATION_LABELS.get(code, "Main"),
+        "group": _page_group(code),
+        "reason": reason,
+    }
 
-    Only 'main' pages seed the table: a page that is itself blank or junk is not
-    an original worth marking others as copies of.
-    """
+
+def _prefer_original(
+    idx_a: int,
+    id_a: int,
+    chars_a: int,
+    idx_b: int,
+    id_b: int,
+    chars_b: int,
+) -> tuple[int, int]:
+    """Return ``(original_id, duplicate_id)`` — higher chars wins; tie → earlier."""
+    if chars_a > chars_b:
+        return id_a, id_b
+    if chars_b > chars_a:
+        return id_b, id_a
+    if idx_a <= idx_b:
+        return id_a, id_b
+    return id_b, id_a
+
+
+def _ultimate_original(dup_of: dict[int, int], page_id: int) -> int:
+    seen: set[int] = set()
+    cur = page_id
+    while cur in dup_of and cur not in seen:
+        seen.add(cur)
+        cur = dup_of[cur]
+    return cur
+
+
+def _prior_main_ids(conn: Any, chart_id: int) -> set[int]:
+    """Pages already judged main in an earlier pass (eligible duplicate targets)."""
     existing = get_blank_junk_flags(conn, chart_id)
-    seen: dict[str, int] = {}
-    for page in pages:  # page order, so the earliest copy stays the original
-        page_id = page["id"]
-        if existing.get(page_id) != "not_blank_junk":
-            continue
-        fp = fingerprint(texts.get(page_id) or "")
-        if fp:
-            seen.setdefault(fp, page_id)
-    return seen
+    return {pid for pid, flag in existing.items() if flag == "not_blank_junk"}
 
 
 def _classify(
     pages: list[dict[str, Any]],
     texts: dict[int, str],
     todo: set[int],
-    seen_fps: dict[str, int],
+    prior_main_ids: Optional[set[int]] = None,
 ) -> list[dict[str, Any]]:
-    """Classify the pages in `todo`, walking `pages` in page order.
+    """Classify ``todo`` pages; duplicates use ±2 neighbor similarity > 95%.
 
-    `seen_fps` is carried in and mutated, so duplicates are detected against
-    every page judged so far — this pass and any earlier one.
+    ``prior_main_ids`` are pages already ``not_blank_junk`` from an earlier pass;
+    they participate as comparison neighbors (and may be demoted to duplicate
+    when a longer later page matches).
     """
-    rows: list[dict[str, Any]] = []
+    prior = set(prior_main_ids or ())
+    # Phase 1 — blank / junk / main from text rules (no duplicates yet).
+    by_id: dict[int, dict[str, Any]] = {}
     for page in pages:
         page_id = page["id"]
         if page_id not in todo:
             continue
         text = texts.get(page_id) or ""
         code, reason = classify_text(text)
-        duplicate_of: Optional[int] = None
+        by_id[page_id] = _row_for(page, code=code, reason=reason)
 
-        fp = fingerprint(text)
-        if code == CODE_MAIN and fp:
-            if fp in seen_fps and seen_fps[fp] != page_id:
-                code = CODE_DUPLICATE
-                duplicate_of = seen_fps[fp]
-                reason = f"duplicate_of_page_id:{duplicate_of}"
-            else:
-                seen_fps.setdefault(fp, page_id)
+    def _comparable(page_id: int) -> bool:
+        text = texts.get(page_id) or ""
+        if not text_is_comparable(text):
+            return False
+        if page_id in by_id:
+            return by_id[page_id]["code"] == CODE_MAIN
+        return page_id in prior
 
-        flag, subtype = _to_db_flag(code)
-        rows.append(
-            {
-                "page_id": page_id,
-                "page_name": page["page_name"],
-                "page_number": page.get("page_number"),
-                "code": code,
-                "flag": flag,
-                "subtype": subtype,
-                "duplicate_of": duplicate_of,
-                "confidence": _confidence(code),
-                "label": CLASSIFICATION_LABELS.get(code, "Main"),
-                "group": _page_group(code),
-                "reason": reason,
-            }
+    # Phase 2 — pairwise ±2 window among comparable pages.
+    dup_of: dict[int, int] = {}
+    n = len(pages)
+    for i, page in enumerate(pages):
+        pid = page["id"]
+        if not _comparable(pid):
+            continue
+        for offset in range(1, DUPLICATE_NEIGHBOR_WINDOW + 1):
+            j = i + offset
+            if j >= n:
+                break
+            nid = pages[j]["id"]
+            if not _comparable(nid):
+                continue
+            sim = text_similarity(texts.get(pid) or "", texts.get(nid) or "")
+            if sim <= DUPLICATE_SIMILARITY_THRESHOLD:
+                continue
+            orig, dup = _prefer_original(
+                i,
+                pid,
+                duplicate_char_count(texts.get(pid) or ""),
+                j,
+                nid,
+                duplicate_char_count(texts.get(nid) or ""),
+            )
+            orig = _ultimate_original(dup_of, orig)
+            if dup == orig:
+                continue
+            for other, pointed in list(dup_of.items()):
+                if pointed == dup:
+                    dup_of[other] = orig
+            dup_of[dup] = orig
+
+    # Apply duplicate marks (including demoting prior-main pages not in todo).
+    page_by_id = {p["id"]: p for p in pages}
+    for dup_id, orig_id in dup_of.items():
+        orig_id = _ultimate_original(dup_of, orig_id)
+        if dup_id == orig_id:
+            continue
+        reason = (
+            f"duplicate_of_page_id:{orig_id} "
+            f"(similarity>{DUPLICATE_SIMILARITY_THRESHOLD:.0%} within ±"
+            f"{DUPLICATE_NEIGHBOR_WINDOW})"
         )
+        page = page_by_id[dup_id]
+        by_id[dup_id] = _row_for(
+            page,
+            code=CODE_DUPLICATE,
+            reason=reason,
+            duplicate_of=orig_id,
+        )
+
+    rows: list[dict[str, Any]] = []
+    emitted: set[int] = set()
+    for page in pages:
+        pid = page["id"]
+        if pid in todo and pid in by_id:
+            rows.append(by_id[pid])
+            emitted.add(pid)
+    for page in pages:
+        pid = page["id"]
+        if pid in emitted or pid not in by_id:
+            continue
+        if pid in dup_of:
+            rows.append(by_id[pid])
     return rows
 
 
@@ -313,9 +400,11 @@ def _run_pass(
                 ]
                 mark_skipped(conn, ctx, no_text, "no_final_ocr_text")
 
-            seen_fps = _seed_fingerprints(conn, chart_id, ctx.pages, texts)
+            prior_mains = _prior_main_ids(conn, chart_id)
 
-        classified = _classify(ctx.pages, texts, ctx.todo, seen_fps)
+        classified = _classify(
+            ctx.pages, texts, ctx.todo, prior_main_ids=prior_mains
+        )
 
         with connect() as conn:
             for row in classified:
@@ -334,7 +423,9 @@ def _run_pass(
                     confidence=row["confidence"],
                     reason=row["reason"],
                 )
-                mark_completed(conn, ctx, row["page_id"])
+                # Demoted prior-main pages are upserted but were not in todo.
+                if row["page_id"] in ctx.todo:
+                    mark_completed(conn, ctx, row["page_id"])
             mark_blank_junk_final(conn, chart_id)
             path = _rewrite_csv(conn, chart_id, ctx.chart_name)
 

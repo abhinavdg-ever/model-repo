@@ -51,6 +51,8 @@ JUNK_CODES = frozenset(
 )
 
 _MIN_FINGERPRINT_CHARS = 50
+DUPLICATE_SIMILARITY_THRESHOLD = 0.95
+DUPLICATE_NEIGHBOR_WINDOW = 2
 
 DEFAULT_SETTINGS = {
     "blank_detection": True,
@@ -98,11 +100,43 @@ def classify_text(
 
 
 def fingerprint(text: str) -> str | None:
-    """SHA-256 of whitespace-stripped lowercase OCR; None if too short."""
-    norm = re.sub(r"\s+", "", text or "").lower()
+    """SHA-256 of whitespace-stripped lowercase OCR; None if too short.
+
+    Kept for callers that still want an exact-content key. Live duplicate
+    detection uses :func:`text_similarity` instead.
+    """
+    norm = normalize_duplicate_text(text)
     if len(norm) < _MIN_FINGERPRINT_CHARS:
         return None
     return hashlib.sha256(norm.encode("utf-8")).hexdigest()
+
+
+def normalize_duplicate_text(text: str) -> str:
+    """Whitespace-stripped lowercase form used for duplicate comparisons."""
+    return re.sub(r"\s+", "", text or "").lower()
+
+
+def duplicate_char_count(text: str) -> int:
+    """Comparable character count (same normalization as similarity)."""
+    return len(normalize_duplicate_text(text))
+
+
+def text_is_comparable(text: str) -> bool:
+    """True when text is long enough to enter duplicate comparison."""
+    return duplicate_char_count(text) >= _MIN_FINGERPRINT_CHARS
+
+
+def text_similarity(a: str, b: str) -> float:
+    """SequenceMatcher ratio on normalized OCR text, in [0, 1]."""
+    from difflib import SequenceMatcher
+
+    na = normalize_duplicate_text(a)
+    nb = normalize_duplicate_text(b)
+    if not na or not nb:
+        return 0.0
+    if na == nb:
+        return 1.0
+    return SequenceMatcher(None, na, nb).ratio()
 
 
 def classification_confidence(code: int, *, blank_via_image: bool = False) -> float | None:

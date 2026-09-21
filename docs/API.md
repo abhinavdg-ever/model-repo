@@ -418,8 +418,9 @@ Usable on `/run` and `/batch-run`:
 |---|---|---|---|
 | `through` | string | omit | Run from the top, **stop after** this stage |
 | `only` | string[] | omit | Run **just** these stages against existing outputs |
-| `force` | bool | `true` | Reprocess completed pages (**final2 is billed**). Set `false` to **resume**: keep OCR, skip finished charts (batch), only incomplete pages. |
-| `skip_ocr` | bool | omit | Per-request override for `SKIP_OCR`. `true` = reuse OCR from the chart **output folder** (or workspace `ocr/`) if present, else materialize the three `ocr/` files from `ocr_results`. With **`force: false`**, also refreshes quality/rotation and **gate-delta**: only pages whose HW/quality/rotation gate flipped (or that are missing OCR the new gate needs) re-open blank/junk and OCR engines — Final2 may still bill for pages that leave `high+printed`. `false` = always run OCR. omit = honour env. Ignored when `force=true` |
+| `force` | bool | `true` | Reprocess completed pages (**final2 is billed**). Set `false` to **resume**. Required for `skip_ocr`. Does **not** re-download `pages/` by itself. |
+| `skip_ocr` | bool | omit | With `force: false`: use workspace `pages/` + `ocr/` when present; else download `pages/` from Raw_Input and `ocr/` from Processed; else materialize OCR from DB; else re-run OCR. **Always** re-runs quality/rotation (`corrected-pages/`). Write after this run **overwrites** destination outputs. Ignored when `force=true`. |
+| `redownload_pages` | bool | `false` | Wipe workspace `pages/` + `corrected-pages/` and re-fetch pages from Raw_Input. |
 
 ### `POST /api/charts/run` — one chart
 

@@ -1570,6 +1570,7 @@ class TestCorrectedPages:
         (tmp_path / "c" / "corrected-pages" / "1.jpg").write_bytes(b"corrected")
 
         assert config.page_image_path("c", "1.jpg").read_bytes() == b"corrected"
+        assert config.page_image_source("c", "1.jpg") == (True, "corrected-pages/1.jpg")
 
     def test_it_falls_back_to_the_original(self, tmp_path, monkeypatch):
         """Correction is sparse: an upright page is never copied, and a chart
@@ -1581,6 +1582,34 @@ class TestCorrectedPages:
         (tmp_path / "c" / "pages" / "1.jpg").write_bytes(b"original")
 
         assert config.page_image_path("c", "1.jpg").read_bytes() == b"original"
+        assert config.page_image_source("c", "1.jpg") == (False, "pages/1.jpg")
+
+    def test_page_list_records_which_image_to_use(self):
+        """page_list.use_corrected + image_path mirror page_image_path for SQL."""
+        import re
+        from pathlib import Path
+
+        sql = (Path(__file__).resolve().parents[1] / "schema" / "v1.sql").read_text(
+            encoding="utf-8"
+        )
+        m = re.search(r"CREATE TABLE page_list\s*\((.*?)\n\);", sql, re.S)
+        assert m, "page_list missing from v1.sql"
+        body = m.group(1)
+        assert "use_corrected" in body
+        assert "image_path" in body
+
+        patch = (
+            Path(__file__).resolve().parents[1] / "schema" / "patch_output_path.sql"
+        ).read_text(encoding="utf-8")
+        assert "use_corrected" in patch
+        assert "image_path" in patch
+
+        import inspect
+        from stages import quality_rotation_hw
+
+        src = inspect.getsource(quality_rotation_hw)
+        assert "set_page_image_source" in src
+        assert "page_image_source" in src
 
     def test_every_ocr_stage_goes_through_the_helper(self):
         """Three stages open page images. If one keeps using pages_dir directly
@@ -1667,17 +1696,81 @@ class TestCorrectedPages:
 
     def test_a_reimport_clears_stale_corrections(self):
         """A left-behind corrected-pages/1.jpg would be preferred by
-        page_image_path, so a new scan would be OCR'd as the old one."""
+        page_image_path, so a new scan would be OCR'd as the old one —
+        but only when the operator asks to redownload pages."""
         import inspect
 
-        from db.paths import clear_chart_workspace
+        from db.paths import clear_page_image_dirs
         from stages import download_blob
 
-        # Re-submit clears via clear_chart_workspace (pages/ocr/imaging/corrected-pages).
         source = inspect.getsource(download_blob.import_local_folder)
-        assert "clear_chart_workspace" in source
-        clear_src = inspect.getsource(clear_chart_workspace)
+        assert "clear_page_image_dirs" in source
+        assert "redownload_pages" in source
+        # force alone must not wipe pages (prefer workspace).
+        assert "clear_chart_workspace" not in source
+        clear_src = inspect.getsource(clear_page_image_dirs)
         assert "corrected-pages" in clear_src
+
+    def test_ensure_chart_images_prefers_workspace(self, tmp_path, monkeypatch):
+        """Existing pages/ are reused; no Raw_Input fetch when local is present."""
+        import config
+        from stages.download_blob import ensure_chart_images
+
+        monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
+        pages = tmp_path / "chart_a" / "pages"
+        pages.mkdir(parents=True)
+        (pages / "1.jpg").write_bytes(b"local-page")
+
+        calls: list[str] = []
+
+        def _boom(*_a, **_k):
+            calls.append("download")
+            raise AssertionError("must not download when workspace has pages")
+
+        monkeypatch.setattr(
+            "stages.download_blob._download_missing_from_raw_input", _boom
+        )
+
+        out = ensure_chart_images(
+            "chart_a",
+            register=False,
+            blob_container="c",
+            blob_path="Raw_Input/chart_a",
+            output_path="Processed/chart_a",
+        )
+        assert out["image_source"] == "workspace"
+        assert out["page_count"] == 1
+        assert calls == []
+
+    def test_ensure_chart_images_downloads_pages_from_raw_input(
+        self, tmp_path, monkeypatch
+    ):
+        """Empty workspace → Raw_Input only (not Processed pages)."""
+        import config
+        from stages.download_blob import ensure_chart_images
+
+        monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
+
+        def _fake_download(*, chart_name, blob_container, blob_path):
+            dest = tmp_path / chart_name / "pages"
+            dest.mkdir(parents=True, exist_ok=True)
+            (dest / "1.jpg").write_bytes(b"from-raw")
+            return 1, 0
+
+        monkeypatch.setattr(
+            "stages.download_blob._download_missing_from_raw_input",
+            _fake_download,
+        )
+
+        out = ensure_chart_images(
+            "chart_c",
+            register=False,
+            blob_container="c",
+            blob_path="Raw_Input/Run1/chart_c",
+            output_path="Processed/chart_c",
+        )
+        assert out["image_source"].startswith("raw_input:")
+        assert (tmp_path / "chart_c" / "pages" / "1.jpg").read_bytes() == b"from-raw"
 
     def test_write_exports_the_corrected_pages(self):
         from jobs.export_chart import CHART_SUBDIRS

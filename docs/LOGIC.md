@@ -171,24 +171,21 @@ any junk code → `junk` (+ `junk_subtype`), else `not_blank_junk`.
 renders. Anything else the classifier produces maps to `Others` rather than
 becoming an unrenderable string.
 
-### Duplicate detection — and the v6 bug
+### Duplicate detection
 
-A page is a duplicate when its text fingerprint matches an earlier page already
-judged `main`. Two properties matter:
+A page is a duplicate when its normalized OCR text is **> 95% similar**
+(`difflib.SequenceMatcher`) to a neighbor **within ±2 pages** in chart order.
 
-- **Only `main` pages seed the table.** A blank page is not an "original" that
-  later blanks are copies of.
-- **Fingerprints carry across passes.** The table is seeded from every page that
-  already has a verdict, in page order.
+| Rule | Behaviour |
+|---|---|
+| Window | Compare only pages 2 before / 2 after (page order) |
+| Threshold | Similarity **> 0.95** on whitespace-stripped lowercase text |
+| Who wins | Higher normalized character count stays **main**; on a tie, the **earlier** page |
+| Excluded | Blank pages and texts shorter than 50 normalized characters |
+| Cross-pass | Prior-pass `main` pages are neighbors in pass 2 (so HW can match a printed original) |
 
-v6 rebuilt the table inside each pass over only that pass's pages. A printed
-page duplicating a handwritten page was therefore invisible — the handwritten
-page had been skipped in pass 1 and never entered the table. Fixed in
-`_seed_fingerprints()`; pinned by
-`test_duplicate_of_a_page_judged_in_an_earlier_pass_is_found`.
-
-The earliest page always stays the original; `duplicate_of_page_id` records
-which page was copied.
+`duplicate_of_page_id` records the kept original. A demoted prior-main page gets
+an updated row on the current pass.
 
 ### One final verdict
 

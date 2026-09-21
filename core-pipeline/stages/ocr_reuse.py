@@ -515,14 +515,33 @@ def hydrate_ocr_from_disk(
 
 
 def apply_skip_ocr(chart_id: int, chart_name: str) -> dict[str, Any]:
-    """Output folder → workspace disk → DB materialize. Skip already decided."""
+    """Reuse OCR for skip_ocr, in this order:
+
+    1. Workspace ``ocr/`` already present → hydrate into ``ocr_results``
+    2. Else pull ``ocr/`` from Processed ``output_path`` (local or blob) → hydrate
+    3. Else materialize the three ``ocr/`` files from ``ocr_results`` in Postgres
+    4. Caller re-runs OCR engines if none of the above worked
+    """
+    if ocr_artifacts_present(chart_name):
+        result = hydrate_ocr_from_disk(chart_id, chart_name)
+        result["output_sync"] = "workspace"
+        return result
+
     synced = sync_ocr_from_output_folder(chart_id, chart_name)
     if ocr_artifacts_present(chart_name):
         result = hydrate_ocr_from_disk(chart_id, chart_name)
         if synced:
             result["output_sync"] = synced
         return result
-    return materialize_ocr_from_db(chart_id, chart_name)
+
+    if ocr_results_present(chart_id):
+        return materialize_ocr_from_db(chart_id, chart_name)
+
+    return {
+        "source": "none",
+        "hydrated": False,
+        "message": "no workspace/Processed/DB OCR — engines will run",
+    }
 
 
 def should_skip_ocr_stages(
@@ -536,6 +555,10 @@ def should_skip_ocr_stages(
 
     ``skip_ocr`` is the per-request override (API/CLI). ``None`` falls back to
     the ``SKIP_OCR`` env flag. ``force=True`` always runs OCR.
+
+    Returns True when skip is requested and OCR can be obtained from workspace,
+    Processed ``output_path``, or Postgres (``apply_skip_ocr`` does the fetch).
+    If nothing is available, returns False so engines re-run.
     """
     from config import SKIP_OCR
 
@@ -549,8 +572,8 @@ def should_skip_ocr_stages(
     if chart_id is not None and ocr_results_present(chart_id):
         return True
     logger.info(
-        "skip_ocr requested but no usable output/workspace ocr/ or ocr_results "
-        "for %s — running OCR",
+        "skip_ocr requested but no usable workspace/Processed ocr/ or "
+        "ocr_results for %s — running OCR",
         chart_name,
     )
     return False

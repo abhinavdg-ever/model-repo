@@ -251,29 +251,60 @@ def upsert_pages(
     chart_id: int,
     pages: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """pages: [{page_name, page_number, image_sha256?, file_size_bytes?}, ...]"""
+    """pages: [{page_name, page_number, image_sha256?, file_size_bytes?}, ...]
+
+    New rows default to ``use_corrected=false`` and ``image_path=pages/<name>``.
+    On conflict those two columns are left alone so a resume does not wipe
+    values written by the quality stage.
+    """
     if not pages:
         return []
     for page in pages:
+        page_name = page["page_name"]
+        image_path = page.get("image_path") or f"pages/{page_name}"
+        use_corrected = bool(page.get("use_corrected", False))
         conn.execute(
             """
             INSERT INTO page_list (
-                chart_id, page_name, page_number, image_sha256, file_size_bytes
-            ) VALUES (%s, %s, %s, %s, %s)
+                chart_id, page_name, page_number, image_sha256, file_size_bytes,
+                use_corrected, image_path
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (chart_id, page_name) DO UPDATE SET
                 page_number     = EXCLUDED.page_number,
                 image_sha256    = COALESCE(EXCLUDED.image_sha256, page_list.image_sha256),
-                file_size_bytes = COALESCE(EXCLUDED.file_size_bytes, page_list.file_size_bytes)
+                file_size_bytes = COALESCE(EXCLUDED.file_size_bytes, page_list.file_size_bytes),
+                image_path      = COALESCE(page_list.image_path, EXCLUDED.image_path)
             """,
             (
                 chart_id,
-                page["page_name"],
+                page_name,
                 page.get("page_number"),
                 page.get("image_sha256"),
                 page.get("file_size_bytes"),
+                use_corrected,
+                image_path,
             ),
         )
     return list_pages(conn, chart_id)
+
+
+def set_page_image_source(
+    conn: Any,
+    page_id: int,
+    *,
+    use_corrected: bool,
+    image_path: str,
+) -> None:
+    """Record which workspace image stages should read for this page."""
+    conn.execute(
+        """
+        UPDATE page_list
+           SET use_corrected = %s,
+               image_path    = %s
+         WHERE id = %s
+        """,
+        (bool(use_corrected), image_path, page_id),
+    )
 
 
 def list_pages(conn: Any, chart_id: int) -> list[dict[str, Any]]:

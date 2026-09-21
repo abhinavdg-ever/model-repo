@@ -52,6 +52,15 @@ def main() -> None:
             action="store_false",
             help="Force OCR engines even if SKIP_OCR=true in .env",
         )
+        parser_obj.add_argument(
+            "--redownload-pages",
+            dest="redownload_pages",
+            action="store_true",
+            default=False,
+            help="Wipe pages/ + corrected-pages/ and re-fetch images "
+                 "(default: reuse workspace images; hydrate from "
+                 "output_path / Raw_Input only when missing)",
+        )
 
     def add_write_flags(parser_obj) -> None:
         """`--all-files` / `--skip-orig-pages`, spelled the same everywhere."""
@@ -283,6 +292,7 @@ def main() -> None:
                 only=args.only,
                 through=args.through,
                 skip_ocr=args.skip_ocr,
+                redownload_pages=args.redownload_pages,
             )
             result = {"chart_id": chart_id, "chart_name": folder, "pipeline": result}
         else:
@@ -306,6 +316,7 @@ def main() -> None:
                 only=args.only,
                 through=args.through,
                 skip_ocr=args.skip_ocr,
+                redownload_pages=args.redownload_pages,
             )
             folder = result.get("chart_name") or folder
 
@@ -353,6 +364,7 @@ def main() -> None:
                     only=args.only,
                     through=args.through,
                     skip_ocr=args.skip_ocr,
+                    redownload_pages=args.redownload_pages,
                     limit=args.limit,
                     run_id=args.run_id,
                     batch_id=args.batch_id,

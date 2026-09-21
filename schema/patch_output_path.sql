@@ -17,6 +17,8 @@
 -- ---------------------------------------------------------------------
 --   chart_list.output_path              (if missing)
 --   chart_list.status 'rejected'→'completed'
+--   page_list.use_corrected             (if missing)
+--   page_list.image_path                (if missing; backfill pages/<name>)
 --   pipeline_stage rows:
 --       page_subtype    seq 85  phase-1   (codeable CSV; no result table yet)
 --       encounter_type  seq 90  phase-1
@@ -47,6 +49,26 @@ UPDATE chart_list
 
 COMMENT ON COLUMN chart_list.output_path IS
     'Blob/local write destination for this chart, e.g. Processed/Run1/Batch1/<chart_name>';
+
+-- ---------------------------------------------------------------------
+-- page_list: which workspace image stages should read
+-- ---------------------------------------------------------------------
+
+ALTER TABLE page_list
+    ADD COLUMN IF NOT EXISTS use_corrected BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE page_list
+    ADD COLUMN IF NOT EXISTS image_path TEXT;
+
+UPDATE page_list
+   SET image_path = 'pages/' || page_name
+ WHERE image_path IS NULL
+   AND page_name IS NOT NULL
+   AND page_name <> '';
+
+COMMENT ON COLUMN page_list.use_corrected IS
+    'True when stages should read corrected-pages/ instead of pages/';
+COMMENT ON COLUMN page_list.image_path IS
+    'Chart-relative image path: pages/<page_name> or corrected-pages/<file>';
 
 -- ---------------------------------------------------------------------
 -- pipeline_stage — promote / register the three new phase-1 stages

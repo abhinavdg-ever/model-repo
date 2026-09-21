@@ -1,11 +1,8 @@
 """Blank/junk duplicate scoping and DOS date handling.
 
-Both cover defects the v6 implementation had:
-
-* duplicate detection rebuilt its fingerprint table per pass over only that
-  pass's pages, so a page duplicating one handled in an earlier pass was missed;
-* the DOS stage bypassed the reference driver, losing the LLM pass, the
-  document-level carry-forward, and real ISO normalisation.
+Duplicate detection uses ±2 neighbor similarity (>95%), not exact hashes.
+Blank / short pages are excluded from comparison; on a match the higher
+character-count page stays the original (earlier page on a tie).
 """
 from __future__ import annotations
 
@@ -19,57 +16,102 @@ def page(page_id: int, number: int):
     return {"id": page_id, "page_name": f"{number}.jpg", "page_number": number}
 
 
+def _body(n: int = 6) -> str:
+    return "Office visit note for the patient. Assessment and plan follow. " * n
+
+
 class TestDuplicateScope:
     def test_duplicate_within_one_pass_is_found(self):
         pages = [page(1, 1), page(2, 2)]
-        body = "Office visit note for the patient. Assessment and plan follow. " * 6
+        body = _body()
         texts = {1: body, 2: body}
-        rows = _classify(pages, texts, {1, 2}, {})
+        rows = _classify(pages, texts, {1, 2})
         flags = {r["page_id"]: r["flag"] for r in rows}
         assert flags[1] == "not_blank_junk"
         assert flags[2] == "duplicate"
         assert next(r for r in rows if r["page_id"] == 2)["duplicate_of"] == 1
 
     def test_duplicate_of_a_page_judged_in_an_earlier_pass_is_found(self):
-        """The v6 bug: page 2 is classified in a later pass, and page 1's
-        fingerprint has to be carried in for the match to happen."""
-        body = "Consultation note. History of present illness. Plan documented. " * 6
-        seeded = {}
-        # Pass 1 judged page 1.
-        rows1 = _classify([page(1, 1)], {1: body}, {1}, seeded)
+        """Pass 2 can still match a neighbor that was main in pass 1."""
+        body = _body()
+        pages = [page(1, 1), page(2, 2)]
+        rows1 = _classify(pages, {1: body, 2: "x"}, {1})
         assert rows1[0]["flag"] == "not_blank_junk"
-        # Pass 2 judges page 2, carrying the fingerprint table forward.
-        rows2 = _classify([page(2, 2)], {2: body}, {2}, seeded)
+        rows2 = _classify(
+            pages, {1: body, 2: body}, {2}, prior_main_ids={1}
+        )
         assert rows2[0]["flag"] == "duplicate"
         assert rows2[0]["duplicate_of"] == 1
 
     def test_a_page_is_never_a_duplicate_of_itself(self):
-        body = "Progress note with enough content to fingerprint properly. " * 6
-        seeded: dict = {}
-        _classify([page(1, 1)], {1: body}, {1}, seeded)
-        again = _classify([page(1, 1)], {1: body}, {1}, seeded)
+        body = _body()
+        again = _classify([page(1, 1)], {1: body}, {1})
         assert again[0]["flag"] == "not_blank_junk"
 
-    def test_earliest_page_stays_the_original(self):
+    def test_equal_length_keeps_earlier_as_original(self):
         pages = [page(1, 1), page(2, 2), page(3, 3)]
-        body = "Discharge summary text repeated across several pages of the chart. " * 6
+        body = _body()
         texts = {1: body, 2: body, 3: body}
-        rows = _classify(pages, texts, {1, 2, 3}, {})
+        rows = _classify(pages, texts, {1, 2, 3})
         by_id = {r["page_id"]: r for r in rows}
         assert by_id[1]["flag"] == "not_blank_junk"
         assert by_id[2]["duplicate_of"] == 1
+        # page 3 is within ±2 of page 1 and page 2
+        assert by_id[3]["flag"] == "duplicate"
         assert by_id[3]["duplicate_of"] == 1
+
+    def test_longer_later_page_wins_as_original(self):
+        pages = [page(1, 1), page(2, 2)]
+        long = _body(8)
+        # Tiny truncation keeps SequenceMatcher ratio well above 95%.
+        short = long[:-3]
+        rows = _classify(pages, {1: short, 2: long}, {1, 2})
+        by_id = {r["page_id"]: r for r in rows}
+        assert by_id[2]["flag"] == "not_blank_junk"
+        assert by_id[1]["flag"] == "duplicate"
+        assert by_id[1]["duplicate_of"] == 2
+
+    def test_pages_more_than_two_apart_are_not_compared(self):
+        pages = [page(1, 1), page(2, 2), page(3, 3), page(4, 4)]
+        body = _body()
+        # page 1 and page 4 are identical but 3 steps apart (> ±2)
+        texts = {
+            1: body,
+            2: "Completely different progress note content here. " * 6,
+            3: "Another unrelated assessment and plan page text. " * 6,
+            4: body,
+        }
+        rows = _classify(pages, texts, {1, 2, 3, 4})
+        flags = {r["page_id"]: r["flag"] for r in rows}
+        assert flags[1] == "not_blank_junk"
+        assert flags[4] == "not_blank_junk"
+
+    def test_similarity_below_threshold_is_not_duplicate(self):
+        pages = [page(1, 1), page(2, 2)]
+        a = ("Alpha clinical history. " * 20)
+        b = ("Beta surgical findings. " * 20)
+        rows = _classify(pages, {1: a, 2: b}, {1, 2})
+        flags = {r["page_id"]: r["flag"] for r in rows}
+        assert flags[1] == "not_blank_junk"
+        assert flags[2] == "not_blank_junk"
+
+    def test_blank_and_short_pages_are_not_compared(self):
+        pages = [page(1, 1), page(2, 2)]
+        body = _body()
+        rows = _classify(pages, {1: body, 2: "   "}, {1, 2})
+        by_id = {r["page_id"]: r for r in rows}
+        assert by_id[1]["flag"] == "not_blank_junk"
+        assert by_id[2]["flag"] == "blank"
 
     def test_only_requested_pages_are_classified(self):
         pages = [page(1, 1), page(2, 2)]
-        texts = {1: "alpha content here", 2: "beta content here"}
-        rows = _classify(pages, texts, {2}, {})
+        texts = {1: "alpha content here " * 10, 2: "beta content here " * 10}
+        rows = _classify(pages, texts, {2})
         assert [r["page_id"] for r in rows] == [2]
 
     def test_blank_page_is_flagged_blank(self):
-        rows = _classify([page(1, 1)], {1: "   "}, {1}, {})
+        rows = _classify([page(1, 1)], {1: "   "}, {1})
         assert rows[0]["flag"] == "blank"
-
 
 class TestSubtypeMapping:
     def test_junk_always_gets_a_legal_subtype(self):

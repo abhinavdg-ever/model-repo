@@ -158,13 +158,20 @@ class StageSelection(BaseModel):
     skip_ocr: Optional[bool] = Field(
         None,
         description=(
-            "Per-request override for SKIP_OCR. true = reuse OCR artifacts when "
-            "present. With force=false, also refreshes quality and applies "
-            "gate-delta: only pages whose HW/quality/rotation path changed (or "
-            "that lack OCR the new gate needs) re-run blank/junk and OCR "
-            "engines — Final2 may still bill when a page leaves high+printed. "
-            "false = always run OCR. omit = honour the SKIP_OCR env. Ignored "
-            "when force=true (force always re-OCRs)."
+            "Reuse OCR when possible (requires force=false). Looks up "
+            "data/folders/<chart>/pages and ocr/; if pages missing, downloads "
+            "from Raw_Input; if ocr missing, pulls from Processed output_path, "
+            "else materializes from DB, else re-runs OCR. Quality/rotation "
+            "always re-runs and rewrites corrected-pages/. Write after this run "
+            "overwrites ocr/corrected-pages/imaging on the destination. "
+            "omit = SKIP_OCR env. Ignored when force=true."
+        ),
+    )
+    redownload_pages: bool = Field(
+        False,
+        description=(
+            "Wipe workspace pages/ + corrected-pages/ and re-fetch pages from "
+            "Raw_Input. Default false: reuse workspace pages when present."
         ),
     )
 
@@ -275,7 +282,8 @@ class RunRequest(StageSelection):
         True,
         description=(
             "Reprocess pages already completed (default). "
-            "Set false to resume and skip completed pages (final2 is billed)."
+            "Set false to resume and skip completed pages (final2 is billed). "
+            "Does not wipe or re-download pages/ — use redownload_pages for that."
         ),
     )
 
@@ -551,13 +559,17 @@ def _write_after_run(payload: "RunRequest", chart_name: str) -> None:
 
     from jobs.export_chart import write_chart
 
+    # After skip_ocr, quality refreshed corrected-pages/; push outputs over
+    # whatever is already on Processed (ocr / corrected-pages / imaging).
+    overwrite = bool(payload.overwrite) or bool(payload.skip_ocr)
+
     try:
         result = write_chart(
             chart_name,
             local_path=payload.local_write_path,
             blob_container=payload.blob_container,
             blob_path=payload.blob_write_path,
-            overwrite=payload.overwrite,
+            overwrite=overwrite,
             write_mode=payload.write_mode,
         )
         logger.info(
@@ -587,6 +599,7 @@ def _bg_pipeline_then_write(
         payload.only,
         payload.through,
         skip_ocr=payload.skip_ocr,
+        redownload_pages=payload.redownload_pages,
     )
     _write_after_run(payload, chart_name)
 
@@ -607,6 +620,7 @@ def _bg_run(payload: "RunRequest") -> None:
             only=payload.only,
             through=payload.through,
             skip_ocr=payload.skip_ocr,
+            redownload_pages=payload.redownload_pages,
         )
         logger.info(
             "Background run finished: %s -> chart_id=%s",
@@ -639,14 +653,17 @@ def _bg_pipeline(
     only: Optional[list[str]],
     through: Optional[str] = None,
     skip_ocr: Optional[bool] = None,
+    redownload_pages: bool = False,
 ) -> None:
     logger.info(
-        "Background pipeline starting: chart_id=%s force=%s only=%s through=%s skip_ocr=%s",
+        "Background pipeline starting: chart_id=%s force=%s only=%s through=%s "
+        "skip_ocr=%s redownload_pages=%s",
         chart_id,
         force,
         only or "all stages",
         through or "end of chain",
         skip_ocr if skip_ocr is not None else "env",
+        redownload_pages,
     )
     try:
         run_pipeline_for_chart(
@@ -655,6 +672,7 @@ def _bg_pipeline(
             only=only,
             through=through,
             skip_ocr=skip_ocr,
+            redownload_pages=redownload_pages,
         )
         logger.info("Background pipeline finished: chart_id=%s", chart_id)
     except Exception:
@@ -682,6 +700,7 @@ def _bg_batch(payload: "BatchRequest") -> None:
             only=payload.only,
             through=payload.through,
             skip_ocr=payload.skip_ocr,
+            redownload_pages=payload.redownload_pages,
             limit=payload.charts_cap(),
             run_id=payload.run_id,
             batch_id=payload.batch_id,
@@ -889,6 +908,7 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
             "only": body.only,
             "skip_ocr": body.skip_ocr,
             "force": body.force,
+            "redownload_pages": body.redownload_pages,
             "write": _write_summary(body, folder, write_to),
             "poll": f"/api/charts/{chart_id}",
         }
@@ -935,6 +955,7 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
                 source,
                 chart_name=folder,
                 force=body.force,
+                redownload_pages=body.redownload_pages,
                 run_id=body.run_id,
                 batch_id=body.batch_id,
             )
@@ -955,6 +976,8 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
             "through": body.through,
             "only": body.only,
             "skip_ocr": body.skip_ocr,
+            "redownload_pages": body.redownload_pages,
+            "force": body.force,
             "write": _write_summary(body, folder, write_to),
             "poll": f"/api/charts/{result['chart_id']}",
         }
@@ -968,6 +991,8 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
         "through": body.through,
         "only": body.only,
         "skip_ocr": body.skip_ocr,
+        "redownload_pages": body.redownload_pages,
+        "force": body.force,
         "write": _write_summary(body, folder, write_to),
         "poll": f"/api/charts/by-name/{folder}",
     }

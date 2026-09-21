@@ -66,12 +66,13 @@
 --     pass_no SMALLINT.  A retry counter is  attempt INT.
 --  8. Blob location is  blob_container VARCHAR(150) + blob_path TEXT.
 --  9. Booleans read as assertions: is_final, is_active, mirrored,
---     rotation_applied, signature_present.
+--     rotation_applied, signature_present, use_corrected.
 -- 10. Indexes:  idx_<table>_<columns>.  Views:  v_<name> for helper views;
 --     report views keep their business name (consolidated_chart_results).
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * page_list.use_corrected + image_path (workspace image source).
 --  * page_classification moved to v1.sql (page_subtype writes it).
 --  * encounter_type_results + page_sequencing_results moved to v1.sql.
 --    Existing DBs: schema/patch_output_path.sql.

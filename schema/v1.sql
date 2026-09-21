@@ -67,7 +67,7 @@
 --     pass_no SMALLINT.  A retry counter is  attempt INT.
 --  8. Blob location is  blob_container VARCHAR(150) + blob_path TEXT.
 --  9. Booleans read as assertions: is_final, is_active, mirrored,
---     rotation_applied, signature_present.
+--     rotation_applied, signature_present, use_corrected.
 -- 10. Indexes:  idx_<table>_<columns>.  Views:  v_<name> for helper views;
 --     report views keep their business name (consolidated_chart_results).
 --
@@ -180,6 +180,14 @@ CREATE TABLE page_list (
     -- Image identity: image-level duplicate detection and download idempotency.
     image_sha256     CHAR(64),
     file_size_bytes  BIGINT,
+
+    -- Which workspace image OCR/stages should read. Mirrors page_image_path():
+    --   use_corrected=false → image_path = pages/<page_name>     (Raw_Input ingest)
+    --   use_corrected=true  → image_path = corrected-pages/<file> (stage 1 wrote one)
+    -- Not the same as ocr_quality_results.rotation_applied: a TIFF→JPG copy can
+    -- set use_corrected without a geometric rotation having been applied.
+    use_corrected    BOOLEAN NOT NULL DEFAULT FALSE,
+    image_path       TEXT,
 
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),

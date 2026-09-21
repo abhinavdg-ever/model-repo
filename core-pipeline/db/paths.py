@@ -88,17 +88,28 @@ def clear_chart_workspace(chart_name: str) -> dict[str, int]:
     Does not touch Postgres — callers reset result tables separately and keep
     ``chart_list`` / ``page_list`` rows.
     """
+    return clear_chart_subdirs(
+        chart_name, ("pages", "ocr", "imaging", "corrected-pages")
+    )
+
+
+def clear_chart_subdirs(
+    chart_name: str, subdirs: tuple[str, ...]
+) -> dict[str, int]:
+    """Delete files under selected chart workspace subfolders."""
     removed: dict[str, int] = {}
     root = chart_dir(chart_name)
     if not root.is_dir():
         return removed
-    for label, folder in (
-        ("pages", pages_dir(chart_name)),
-        ("ocr", ocr_dir(chart_name)),
-        ("imaging", imaging_dir(chart_name)),
-        ("corrected-pages", root / "corrected-pages"),
-    ):
-        if not folder.is_dir():
+    folder_for = {
+        "pages": pages_dir(chart_name),
+        "ocr": ocr_dir(chart_name),
+        "imaging": imaging_dir(chart_name),
+        "corrected-pages": root / "corrected-pages",
+    }
+    for label in subdirs:
+        folder = folder_for.get(label)
+        if folder is None or not folder.is_dir():
             continue
         n = 0
         for path in folder.iterdir():
@@ -108,6 +119,11 @@ def clear_chart_workspace(chart_name: str) -> dict[str, int]:
         if n:
             removed[label] = n
     return removed
+
+
+def clear_page_image_dirs(chart_name: str) -> dict[str, int]:
+    """Wipe only ``pages/`` and ``corrected-pages/`` (redownload escape hatch)."""
+    return clear_chart_subdirs(chart_name, ("pages", "corrected-pages"))
 
 
 def write_combined_ocr_txt(
