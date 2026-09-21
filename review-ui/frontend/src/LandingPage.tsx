@@ -32,7 +32,7 @@ type SortDir = "asc" | "desc";
 
 type LandingFilters = {
   query: string;
-  statusFilter: "ALL" | OcrRunStatus;
+  statusFilter: OcrRunStatus[];
   runFilter: string[];
   batchFilter: string[];
   sortKey: SortKey;
@@ -40,15 +40,16 @@ type LandingFilters = {
   page: number;
 };
 
-const STATUS_VALUES = new Set<string>([
-  "ALL",
+const STATUS_OPTIONS: OcrRunStatus[] = [
   "QUEUED",
   "IN_PROGRESS",
   "COMPLETED",
   "IMAGING_IN_PROGRESS",
   "IMAGING_COMPLETED",
   "FAILED",
-]);
+];
+
+const STATUS_VALUES = new Set<string>(STATUS_OPTIONS);
 
 function normalizeIdList(raw: unknown): string[] {
   if (Array.isArray(raw)) {
@@ -65,10 +66,14 @@ function normalizeIdList(raw: unknown): string[] {
   return [];
 }
 
+function normalizeStatusList(raw: unknown): OcrRunStatus[] {
+  return normalizeIdList(raw).filter((v): v is OcrRunStatus => STATUS_VALUES.has(v));
+}
+
 function readLandingFilters(): LandingFilters {
   const defaults: LandingFilters = {
     query: "",
-    statusFilter: "ALL",
+    statusFilter: [],
     runFilter: [],
     batchFilter: [],
     sortKey: "filename",
@@ -79,10 +84,6 @@ function readLandingFilters(): LandingFilters {
     const raw = sessionStorage.getItem(LANDING_FILTERS_KEY);
     if (!raw) return defaults;
     const parsed = JSON.parse(raw) as Partial<LandingFilters>;
-    const statusFilter =
-      typeof parsed.statusFilter === "string" && STATUS_VALUES.has(parsed.statusFilter)
-        ? (parsed.statusFilter as LandingFilters["statusFilter"])
-        : defaults.statusFilter;
     const sortKey =
       parsed.sortKey === "filename" || parsed.sortKey === "pages" || parsed.sortKey === "updated"
         ? parsed.sortKey
@@ -94,7 +95,7 @@ function readLandingFilters(): LandingFilters {
         : 1;
     return {
       query: typeof parsed.query === "string" ? parsed.query : "",
-      statusFilter,
+      statusFilter: normalizeStatusList(parsed.statusFilter),
       runFilter: normalizeIdList(parsed.runFilter),
       batchFilter: normalizeIdList(parsed.batchFilter),
       sortKey,
@@ -388,7 +389,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
   const [query, setQuery] = useState(saved.query);
   const [sortKey, setSortKey] = useState<SortKey>(saved.sortKey);
   const [sortDir, setSortDir] = useState<SortDir>(saved.sortDir);
-  const [statusFilter, setStatusFilter] = useState<"ALL" | OcrRunStatus>(
+  const [statusFilter, setStatusFilter] = useState<OcrRunStatus[]>(
     saved.statusFilter,
   );
   const [runFilter, setRunFilter] = useState<string[]>(saved.runFilter);
@@ -457,8 +458,9 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
     if (q) {
       rows = rows.filter((f) => f.name.toLowerCase().includes(q));
     }
-    if (statusFilter !== "ALL") {
-      rows = rows.filter((f) => f.ocr_status === statusFilter);
+    if (statusFilter.length > 0) {
+      const allowed = new Set(statusFilter);
+      rows = rows.filter((f) => allowed.has(f.ocr_status));
     }
     if (runFilter.length > 0) {
       const allowed = new Set(runFilter);
@@ -596,7 +598,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
               onClick={openDownloadDialog}
               disabled={folders.length === 0 || loading}
               title={
-                statusFilter !== "ALL" ||
+                statusFilter.length > 0 ||
                 query.trim() ||
                 runFilter.length > 0 ||
                 batchFilter.length > 0
@@ -660,22 +662,15 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                 />
               </label>
 
-              <label className="landing-select-wrap">
-                <span>Status</span>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as "ALL" | OcrRunStatus)}
-                  aria-label="Filter by status"
-                >
-                  <option value="ALL">All</option>
-                  <option value="QUEUED">Queued</option>
-                  <option value="IN_PROGRESS">OCR in Progress</option>
-                  <option value="COMPLETED">OCR Completed</option>
-                  <option value="IMAGING_IN_PROGRESS">Imaging in Progress</option>
-                  <option value="IMAGING_COMPLETED">Imaging Completed</option>
-                  <option value="FAILED">Failed</option>
-                </select>
-              </label>
+              <MultiCheckFilter
+                label="Status"
+                ariaLabel="Filter by status"
+                options={STATUS_OPTIONS}
+                selected={statusFilter}
+                onChange={(next) => setStatusFilter(next as OcrRunStatus[])}
+                formatOption={(v) => OCR_STATUS_LABELS[v as OcrRunStatus] ?? v}
+                emptyLabel="All statuses"
+              />
 
               <MultiCheckFilter
                 label="Run"
