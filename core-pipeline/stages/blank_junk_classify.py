@@ -297,19 +297,9 @@ def _rewrite_csv(conn: Any, chart_id: int, chart_name: str) -> Path:
     Always a full rewrite, so re-running either pass converges instead of
     appending duplicate rows.
     """
-    rows = conn.execute(
-        """
-        SELECT c.chart_name, p.page_name, p.page_number,
-               b.blank_junk_flag, b.junk_subtype, b.confidence, b.reason,
-               b.ocr_source, b.pass_no, b.is_final
-          FROM blank_junk_classification b
-          JOIN page_list p  ON p.id = b.page_id
-          JOIN chart_list c ON c.id = b.chart_id
-         WHERE b.chart_id = %s
-         ORDER BY p.page_number NULLS LAST, p.page_name, b.pass_no
-        """,
-        (chart_id,),
-    ).fetchall()
+    from db import list_blank_junk_for_csv
+
+    rows = list_blank_junk_for_csv(conn, chart_id)
 
     out: list[dict[str, Any]] = []
     for row in rows:

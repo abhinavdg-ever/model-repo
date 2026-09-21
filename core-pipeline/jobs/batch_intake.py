@@ -154,7 +154,7 @@ def _write_one(
     forty-nine — one unwritable destination is exactly the kind of thing that
     should be reported and stepped over.
     """
-    from db import connect, set_chart_output_path
+    from db import connect, get_chart_by_name, set_chart_output_path
     from db.path_ids import resolve_output_path
     from jobs.export_chart import write_chart
 
@@ -164,10 +164,7 @@ def _write_one(
         if out_path:
             try:
                 with connect() as conn:
-                    row = conn.execute(
-                        "SELECT id FROM chart_list WHERE chart_name = %s",
-                        (chart_name,),
-                    ).fetchone()
+                    row = get_chart_by_name(conn, chart_name)
                     if row:
                         set_chart_output_path(conn, int(row["id"]), out_path)
             except Exception:
@@ -309,6 +306,7 @@ def _run_one_chart(
     through: Optional[str],
     skip_ocr: Optional[bool],
     redownload_pages: bool,
+    skip_db_write: bool = False,
     run_id: Optional[str],
     batch_id: Optional[str],
     counters: dict[str, int],
@@ -355,7 +353,8 @@ def _run_one_chart(
         }
         try:
             # Resume: skip charts that already finished every phase-1 stage.
-            if not force:
+            # skip_db_write has no durable Postgres status — always re-run.
+            if not force and not skip_db_write:
                 from db import connect, get_chart_by_name
                 from db.chart_status import chart_is_pipeline_complete
 
@@ -401,6 +400,7 @@ def _run_one_chart(
                 through=through,
                 skip_ocr=skip_ocr,
                 redownload_pages=redownload_pages,
+                skip_db_write=skip_db_write,
             )
             entry.update(
                 chart_id=out.get("chart_id"),
@@ -456,6 +456,7 @@ def run_batch(
     through: Optional[str] = None,
     skip_ocr: Optional[bool] = None,
     redownload_pages: bool = False,
+    skip_db_write: bool = False,
     limit: Optional[int] = None,
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
@@ -471,6 +472,8 @@ def run_batch(
     Each chart goes through exactly the same call ``/api/charts/run`` makes —
     ``ingest_and_run`` — so a batch of one is indistinguishable from a single
     run, and an option added to run works here without being plumbed twice.
+
+    ``skip_db_write`` keeps charts in one in-memory store (local only; no Postgres).
     """
     if bool(local_read_path) == bool(blob_container or blob_read_path):
         raise ValueError(
@@ -482,8 +485,14 @@ def run_batch(
         raise ValueError("a local source writes to local_write_path")
     if blob_read_path and local_write_path:
         raise ValueError("a blob source writes to blob_write_path")
+    if skip_db_write and not local_read_path:
+        raise ValueError("skip_db_write requires local_read_path (no Postgres / blob)")
 
+    from db import disable_skip_db_write, enable_skip_db_write
     from db.path_ids import resolve_run_batch
+
+    if skip_db_write:
+        enable_skip_db_write(reset=True)
 
     run_id, batch_id = resolve_run_batch(
         run_id, batch_id, blob_read_path, local_read_path
@@ -493,6 +502,55 @@ def run_batch(
 
     started = time.time()
 
+    try:
+        return _run_batch_inner(
+            local_read_path=local_read_path,
+            blob_container=blob_container,
+            blob_read_path=blob_read_path,
+            local_write_path=local_write_path,
+            blob_write_path=blob_write_path,
+            write_mode=write_mode,
+            overwrite=overwrite,
+            force=force,
+            run_pipeline=run_pipeline,
+            only=only,
+            through=through,
+            skip_ocr=skip_ocr,
+            redownload_pages=redownload_pages,
+            skip_db_write=skip_db_write,
+            limit=limit,
+            run_id=run_id,
+            batch_id=batch_id,
+            worker_count=worker_count,
+            started=started,
+        )
+    finally:
+        if skip_db_write:
+            disable_skip_db_write()
+
+
+def _run_batch_inner(
+    *,
+    local_read_path: Optional[str | Path],
+    blob_container: Optional[str],
+    blob_read_path: Optional[str],
+    local_write_path: Optional[str],
+    blob_write_path: Optional[str],
+    write_mode: str,
+    overwrite: bool,
+    force: bool,
+    run_pipeline: bool,
+    only: Optional[list[str]],
+    through: Optional[str],
+    skip_ocr: Optional[bool],
+    redownload_pages: bool,
+    skip_db_write: bool,
+    limit: Optional[int],
+    run_id: Optional[str],
+    batch_id: Optional[str],
+    worker_count: int,
+    started: float,
+) -> dict[str, Any]:
     if local_read_path:
         folders = find_local_chart_folders(local_read_path)
         sources = [(str(f), f.name, "local") for f in folders]
@@ -596,6 +654,7 @@ def run_batch(
                 through=through,
                 skip_ocr=skip_ocr,
                 redownload_pages=redownload_pages,
+                skip_db_write=skip_db_write,
                 run_id=run_id,
                 batch_id=batch_id,
                 counters=counters,

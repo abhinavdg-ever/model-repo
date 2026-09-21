@@ -421,6 +421,7 @@ Usable on `/run` and `/batch-run`:
 | `force` | bool | `true` | Reprocess completed pages (**final2 is billed**). Set `false` to **resume**. Required for `skip_ocr`. Does **not** re-download `pages/` by itself. |
 | `skip_ocr` | bool | omit | With `force: false`: use workspace `pages/` + `ocr/` when present; else download `pages/` from Raw_Input and `ocr/` from Processed; else materialize OCR from DB; else re-run OCR. **Always** re-runs quality/rotation (`corrected-pages/`). Write after this run **overwrites** destination outputs. Ignored when `force=true`. |
 | `redownload_pages` | bool | `false` | Wipe workspace `pages/` + `corrected-pages/` and re-fetch pages from Raw_Input. |
+| `skip_db_write` | bool | `false` | **Local only.** Never open Postgres; in-memory chart/page/stage store for the process. Workspace + `local_write_path` still write to disk. Rejected with blob or `chart_id`/`chart_name` resume. Env `SKIP_DB_WRITE=true` also enables. |
 
 ### `POST /api/charts/run` — one chart
 

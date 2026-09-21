@@ -71,14 +71,19 @@ def ocr_artifacts_present(chart_name: str) -> bool:
 
 
 def _chart_row(chart_id: int) -> Optional[dict[str, Any]]:
+    from db import get_chart
+
     with connect() as conn:
-        return conn.execute(
-            """
-            SELECT id, chart_name, output_path, blob_container, source
-              FROM chart_list WHERE id = %s
-            """,
-            (chart_id,),
-        ).fetchone()
+        chart = get_chart(conn, chart_id)
+        if not chart:
+            return None
+        return {
+            "id": chart["id"],
+            "chart_name": chart["chart_name"],
+            "output_path": chart.get("output_path"),
+            "blob_container": chart.get("blob_container"),
+            "source": chart.get("source"),
+        }
 
 
 def _local_output_ocr_candidates(output_path: str, chart_name: str) -> list[Path]:
@@ -244,18 +249,10 @@ def output_or_workspace_ocr_ready(chart_id: int, chart_name: str) -> bool:
 
 def ocr_results_present(chart_id: int) -> bool:
     """True when ``ocr_results`` has at least one non-empty row for this chart."""
+    from db import has_ocr_results
+
     with connect() as conn:
-        row = conn.execute(
-            """
-            SELECT 1 AS ok
-              FROM ocr_results
-             WHERE chart_id = %s
-               AND COALESCE(char_count, 0) > 0
-             LIMIT 1
-            """,
-            (chart_id,),
-        ).fetchone()
-    return bool(row)
+        return has_ocr_results(conn, chart_id)
 
 
 def _page_doc_from_raw(

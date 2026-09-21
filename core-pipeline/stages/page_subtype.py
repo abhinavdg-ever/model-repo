@@ -59,19 +59,9 @@ CODEABLE_COLS = [
 
 
 def _dos_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
-    rows = conn.execute(
-        """
-        SELECT page_id,
-               date_of_service_from,
-               date_of_service_to,
-               date_of_service_from_doclevel,
-               date_of_service_to_doclevel
-          FROM dos_extraction_results
-         WHERE chart_id = %s
-        """,
-        (chart_id,),
-    ).fetchall()
-    return {int(row["page_id"]): dict(row) for row in rows}
+    from db import get_dos_map
+
+    return get_dos_map(conn, chart_id)
 
 
 def _ocr_source_label(

@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from db.memory_store import MemoryStore
+
 DONE = frozenset({"completed", "skipped"})
 
 CHART_STATUS_VALUES = frozenset(
@@ -39,6 +41,8 @@ CHART_STATUS_VALUES = frozenset(
 
 def _stage_rows(conn: Any, chart_id: int) -> list[dict[str, Any]]:
     """Per-stage page rollup for one chart, in execution order."""
+    if isinstance(conn, MemoryStore):
+        return conn.stage_progress_rows(chart_id)
     return list(
         conn.execute(
             """
@@ -138,6 +142,23 @@ def chart_is_pipeline_complete(conn: Any, chart_id: int) -> bool:
     Used by batch ``force=false`` to skip charts that already finished (e.g.
     after a timeout left some charts done and others mid-flight).
     """
+    if isinstance(conn, MemoryStore):
+        chart = conn.get_chart(chart_id)
+        if not chart:
+            return False
+        pages_total = int(chart.get("page_count") or 0)
+        if pages_total <= 0:
+            pages_total = len(conn.list_pages(chart_id))
+        if pages_total <= 0:
+            return False
+        progress = compute_progress(
+            conn.stage_progress_rows(chart_id), pages_total=pages_total
+        )
+        return progress.get("current_stage") is None and progress.get("status") in {
+            "completed",
+            "needs_review",
+        }
+
     chart = conn.execute(
         "SELECT id, page_count FROM chart_list WHERE id = %s", (chart_id,)
     ).fetchone()
@@ -161,6 +182,32 @@ def chart_is_pipeline_complete(conn: Any, chart_id: int) -> bool:
 
 def refresh_chart_status(conn: Any, chart_id: int) -> dict[str, Any]:
     """Recompute and persist chart_list.status / current_stage / current_pass."""
+    if isinstance(conn, MemoryStore):
+        chart = conn.get_chart(chart_id)
+        if not chart:
+            raise RuntimeError(f"chart_id={chart_id} not found")
+        pages_total = len(conn.list_pages(chart_id))
+        summary = conn.get_member_summary(chart_id)
+        progress = compute_progress(
+            conn.stage_progress_rows(chart_id),
+            pages_total=pages_total,
+            previous_status=chart.get("status"),
+            member_final_status=(summary or {}).get("final_status"),
+            member_document_decision=(summary or {}).get("document_decision"),
+        )
+        status = progress["status"]
+        if status not in CHART_STATUS_VALUES:
+            status = "processing"
+        conn.set_chart_status(
+            chart_id,
+            status,
+            current_stage=progress["current_stage"],
+            current_pass=progress["current_pass"],
+        )
+        progress["status"] = status
+        progress["chart_id"] = chart_id
+        return progress
+
     chart = conn.execute(
         "SELECT id, status FROM chart_list WHERE id = %s", (chart_id,)
     ).fetchone()

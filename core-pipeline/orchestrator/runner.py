@@ -435,6 +435,7 @@ def ingest_and_run(
     through: Optional[str] = None,
     skip_ocr: Optional[bool] = None,
     redownload_pages: bool = False,
+    skip_db_write: bool = False,
 ) -> dict[str, Any]:
     """Fetch one chart's pages into the workspace, then run the chain on it.
 
@@ -447,13 +448,27 @@ def ingest_and_run(
     Raw_Input. OCR/imaging are not fetched here — stages reconstruct them
     (or ``skip_ocr`` reuses OCR artifacts). ``force`` reprocesses stages without
     wiping ``pages/``; ``redownload_pages`` is the escape hatch to re-fetch images.
+
+    ``skip_db_write`` runs against an in-memory store (no Postgres). Local path
+    only — blob sources are rejected.
     """
     if bool(blob_path) == bool(local_path):
         raise ValueError("Provide exactly one of blob_path (+ blob_container) or local_path")
+    if skip_db_write and not local_path:
+        raise ValueError("skip_db_write requires local_path (no Postgres / blob)")
 
+    from db import disable_skip_db_write, enable_skip_db_write, is_skip_db_write
     from db.path_ids import resolve_run_batch
     from logging_setup import reset_current_chart, set_current_chart
     from pathlib import Path as _Path
+
+    # Own the memory store only when we turned it on (batch may enable once).
+    owned_memory = False
+    if skip_db_write and not is_skip_db_write():
+        enable_skip_db_write(reset=True)
+        owned_memory = True
+    elif skip_db_write:
+        enable_skip_db_write(reset=False)
 
     # Bind the folder name as early as possible so intake/download lines show it.
     hint = (chart_name or "").strip()
@@ -518,6 +533,10 @@ def ingest_and_run(
                 skip_ocr=skip_ocr,
                 redownload_pages=False,  # intake already ensured images
             )
+        if skip_db_write:
+            out["skip_db_write"] = True
         return out
     finally:
         reset_current_chart(chart_token)
+        if owned_memory:
+            disable_skip_db_write()

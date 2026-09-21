@@ -27,6 +27,8 @@ from config import IMAGE_SUFFIXES, corrected_pages_dir, ensure_chart_dirs, pages
 from db import (
     connect,
     create_job,
+    get_chart,
+    get_chart_by_name,
     init_page_stages,
     count_manifest_members,
     prune_orphan_pages,
@@ -696,9 +698,7 @@ def import_local_folder(
     cleared: dict[str, int] = {}
     if force:
         with connect() as conn:
-            prior = conn.execute(
-                "SELECT id FROM chart_list WHERE chart_name = %s", (name,)
-            ).fetchone()
+            prior = get_chart_by_name(conn, name)
             if prior:
                 reset = reset_chart_results(conn, prior["id"])
                 if reset:
@@ -828,9 +828,7 @@ def register_local_pages(
         )
         chart_id = chart["id"]
         tail = _finish_registration(conn, chart_id, chart_name, page_rows)
-        chart = conn.execute(
-            "SELECT * FROM chart_list WHERE id = %s", (chart_id,)
-        ).fetchone()
+        chart = get_chart(conn, chart_id)
 
     return {
         "chart_id": chart_id,

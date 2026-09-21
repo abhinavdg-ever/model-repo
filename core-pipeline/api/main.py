@@ -174,6 +174,15 @@ class StageSelection(BaseModel):
             "Raw_Input. Default false: reuse workspace pages when present."
         ),
     )
+    skip_db_write: bool = Field(
+        False,
+        description=(
+            "Local runs only: never open Postgres. Chart/page/stage state stays "
+            "in memory for the process; workspace pages/ocr/imaging (and "
+            "local_write_path) still write to disk. Rejected with blob sources "
+            "or chart_id/chart_name resume. Env SKIP_DB_WRITE=true also enables."
+        ),
+    )
 
 
 class RunRequest(StageSelection):
@@ -593,15 +602,21 @@ def _write_after_run(payload: "RunRequest", chart_name: str) -> None:
 def _bg_pipeline_then_write(
     chart_id: int, chart_name: str, payload: "RunRequest"
 ) -> None:
-    _bg_pipeline(
-        chart_id,
-        payload.force,
-        payload.only,
-        payload.through,
-        skip_ocr=payload.skip_ocr,
-        redownload_pages=payload.redownload_pages,
-    )
-    _write_after_run(payload, chart_name)
+    try:
+        _bg_pipeline(
+            chart_id,
+            payload.force,
+            payload.only,
+            payload.through,
+            skip_ocr=payload.skip_ocr,
+            redownload_pages=payload.redownload_pages,
+        )
+        _write_after_run(payload, chart_name)
+    finally:
+        if getattr(payload, "skip_db_write", False):
+            from db import disable_skip_db_write
+
+            disable_skip_db_write()
 
 
 def _bg_run(payload: "RunRequest") -> None:
@@ -701,6 +716,7 @@ def _bg_batch(payload: "BatchRequest") -> None:
             through=payload.through,
             skip_ocr=payload.skip_ocr,
             redownload_pages=payload.redownload_pages,
+            skip_db_write=bool(payload.skip_db_write),
             limit=payload.charts_cap(),
             run_id=payload.run_id,
             batch_id=payload.batch_id,
@@ -878,7 +894,30 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
         )
 
     _validate_stages(body)
-    _require_db()
+    if body.skip_db_write:
+        if has_blob or body.blob_write_path:
+            raise HTTPException(
+                status_code=400,
+                detail="skip_db_write is local-only (no blob read/write)",
+            )
+        if resume_id or resume_name:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "skip_db_write cannot resume by chart_id/chart_name; "
+                    "pass local_read_path + local_folder_name"
+                ),
+            )
+        if not has_local:
+            raise HTTPException(
+                status_code=400,
+                detail="skip_db_write requires local_read_path + local_folder_name",
+            )
+        from db import enable_skip_db_write
+
+        enable_skip_db_write(reset=True)
+    else:
+        _require_db()
     write_to = body.blob_write_path or body.local_write_path
 
     # --- resume (was /rerun) ---
@@ -977,6 +1016,7 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
             "only": body.only,
             "skip_ocr": body.skip_ocr,
             "redownload_pages": body.redownload_pages,
+            "skip_db_write": body.skip_db_write,
             "force": body.force,
             "write": _write_summary(body, folder, write_to),
             "poll": f"/api/charts/{result['chart_id']}",
@@ -1086,7 +1126,19 @@ def _batch_run_impl(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     body.workers = workers
     _validate_stages(body)
-    _require_db()
+    if body.skip_db_write:
+        if has_blob or body.blob_write_path:
+            raise HTTPException(
+                status_code=400,
+                detail="skip_db_write is local-only (no blob read/write)",
+            )
+        if not has_local:
+            raise HTTPException(
+                status_code=400,
+                detail="skip_db_write requires local_read_path",
+            )
+    else:
+        _require_db()
 
     found: Optional[int] = None
     queued: Optional[int] = None

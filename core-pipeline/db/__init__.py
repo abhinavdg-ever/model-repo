@@ -25,7 +25,43 @@ from typing import Any, Iterator, Optional, Sequence
 
 from config import DATABASE_URL
 
+from db.memory_store import (  # noqa: E402
+    MemoryStore,
+    disable_skip_db_write,
+    enable_skip_db_write,
+    get_memory_store,
+    is_skip_db_write,
+)
+
 logger = logging.getLogger(__name__)
+
+# Re-export for callers (cli / runner / api).
+__all_memory__ = (
+    "MemoryStore",
+    "disable_skip_db_write",
+    "enable_skip_db_write",
+    "get_memory_store",
+    "is_skip_db_write",
+)
+
+
+def _mem(conn: Any) -> bool:
+    return isinstance(conn, MemoryStore)
+
+
+def _dispatch(fn):
+    """Route to MemoryStore.<same name> when conn is the in-memory backend."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(conn, *args, **kwargs):
+        if _mem(conn):
+            method = getattr(conn, fn.__name__)
+            return method(*args, **kwargs)
+        return fn(conn, *args, **kwargs)
+
+    return wrapper
+
 
 DB_POOL_MIN = int(os.environ.get("DB_POOL_MIN") or "1")
 # Default sized for BATCH_WORKERS=4 × STAGE_WORKERS=4 + headroom. A batch that
@@ -87,7 +123,15 @@ def close_pool() -> None:
 
 @contextlib.contextmanager
 def connect() -> Iterator[Any]:
-    """Lease a connection. Commits on clean exit, rolls back on exception."""
+    """Lease a connection. Commits on clean exit, rolls back on exception.
+
+    When ``--skip-db-write`` / ``SKIP_DB_WRITE`` is active, yields the process
+    MemoryStore and never opens Postgres.
+    """
+    if is_skip_db_write():
+        yield get_memory_store()
+        return
+
     pool = _get_pool()
     if pool:
         with pool.connection() as conn:
@@ -138,6 +182,7 @@ PAGE_STAGE_STATUSES = ("pending", "processing", "completed", "failed", "skipped"
 DONE_STATUSES = frozenset({"completed", "skipped"})
 
 
+@_dispatch
 def list_stages(conn: Any, *, phase1_only: bool = True) -> list[dict[str, Any]]:
     """Ordered pipeline stages, straight out of the pipeline_stage table."""
     sql = "SELECT * FROM pipeline_stage"
@@ -152,6 +197,7 @@ def list_stages(conn: Any, *, phase1_only: bool = True) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+@_dispatch
 def upsert_chart(
     conn: Any,
     *,
@@ -209,6 +255,7 @@ def upsert_chart(
     ).fetchone()
 
 
+@_dispatch
 def set_chart_output_path(conn: Any, chart_id: int, output_path: str) -> None:
     conn.execute(
         "UPDATE chart_list SET output_path = %s WHERE id = %s",
@@ -216,6 +263,7 @@ def set_chart_output_path(conn: Any, chart_id: int, output_path: str) -> None:
     )
 
 
+@_dispatch
 def set_chart_status(
     conn: Any,
     chart_id: int,
@@ -234,18 +282,21 @@ def set_chart_status(
     )
 
 
+@_dispatch
 def get_chart(conn: Any, chart_id: int) -> Optional[dict[str, Any]]:
     return conn.execute(
         "SELECT * FROM chart_list WHERE id = %s", (chart_id,)
     ).fetchone()
 
 
+@_dispatch
 def get_chart_by_name(conn: Any, chart_name: str) -> Optional[dict[str, Any]]:
     return conn.execute(
         "SELECT * FROM chart_list WHERE chart_name = %s", (chart_name,)
     ).fetchone()
 
 
+@_dispatch
 def upsert_pages(
     conn: Any,
     chart_id: int,
@@ -288,6 +339,7 @@ def upsert_pages(
     return list_pages(conn, chart_id)
 
 
+@_dispatch
 def set_page_image_source(
     conn: Any,
     page_id: int,
@@ -307,6 +359,7 @@ def set_page_image_source(
     )
 
 
+@_dispatch
 def list_pages(conn: Any, chart_id: int) -> list[dict[str, Any]]:
     return list(
         conn.execute(
@@ -325,6 +378,7 @@ def list_pages(conn: Any, chart_id: int) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+@_dispatch
 def init_page_stages(
     conn: Any,
     chart_id: int,
@@ -350,6 +404,7 @@ def init_page_stages(
     return count
 
 
+@_dispatch
 def set_page_stage(
     conn: Any,
     *,
@@ -395,6 +450,7 @@ def set_page_stage(
     )
 
 
+@_dispatch
 def set_pages_stage(
     conn: Any,
     *,
@@ -427,6 +483,7 @@ def set_pages_stage(
     )
 
 
+@_dispatch
 def get_stage_status_map(
     conn: Any, chart_id: int, stage_name: str, pass_no: int = 1
 ) -> dict[int, str]:
@@ -440,6 +497,7 @@ def get_stage_status_map(
     return {r["page_id"]: r["status"] for r in rows}
 
 
+@_dispatch
 def pages_needing_stage(
     conn: Any,
     chart_id: int,
@@ -474,6 +532,7 @@ def pages_needing_stage(
     return {r["id"] for r in rows}
 
 
+@_dispatch
 def reset_stage(conn: Any, chart_id: int, stage_name: str, pass_no: int = 1) -> None:
     """Put a stage back to pending for every page (targeted re-run)."""
     conn.execute(
@@ -487,6 +546,7 @@ def reset_stage(conn: Any, chart_id: int, stage_name: str, pass_no: int = 1) -> 
     )
 
 
+@_dispatch
 def reset_pages_stage(
     conn: Any,
     chart_id: int,
@@ -515,6 +575,7 @@ def reset_pages_stage(
     return getattr(result, "rowcount", 0) or 0
 
 
+@_dispatch
 def clear_stuck_processing(conn: Any, chart_id: int) -> int:
     """Turn abandoned ``processing`` page rows back to ``pending`` (resume).
 
@@ -539,6 +600,7 @@ def clear_stuck_processing(conn: Any, chart_id: int) -> int:
 # ---------------------------------------------------------------------------
 
 
+@_dispatch
 def create_job(
     conn: Any,
     *,
@@ -561,6 +623,7 @@ def create_job(
     ).fetchone()["id"]
 
 
+@_dispatch
 def update_job(
     conn: Any,
     job_id: int,
@@ -609,6 +672,7 @@ def update_job(
     )
 
 
+@_dispatch
 def heartbeat_job(conn: Any, job_id: int, *, lease_seconds: int = 300) -> None:
     conn.execute(
         """
@@ -626,6 +690,7 @@ def heartbeat_job(conn: Any, job_id: int, *, lease_seconds: int = 300) -> None:
 # ---------------------------------------------------------------------------
 
 
+@_dispatch
 def upsert_ocr_result(
     conn: Any,
     *,
@@ -651,6 +716,7 @@ def upsert_ocr_result(
     )
 
 
+@_dispatch
 def get_ocr_texts(conn: Any, chart_id: int, ocr_type: str) -> dict[int, str]:
     """All page text for one engine in one query — no per-page file re-parsing."""
     rows = conn.execute(
@@ -663,6 +729,7 @@ def get_ocr_texts(conn: Any, chart_id: int, ocr_type: str) -> dict[int, str]:
     return {r["page_id"]: (r["raw_text"] or "") for r in rows}
 
 
+@_dispatch
 def upsert_quality(
     conn: Any,
     *,
@@ -717,6 +784,7 @@ def upsert_quality(
     )
 
 
+@_dispatch
 def get_quality_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
     rows = conn.execute(
         "SELECT * FROM ocr_quality_results WHERE chart_id = %s", (chart_id,)
@@ -724,6 +792,7 @@ def get_quality_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
     return {r["page_id"]: r for r in rows}
 
 
+@_dispatch
 def handwritten_page_ids(conn: Any, chart_id: int) -> set[int]:
     rows = conn.execute(
         """
@@ -735,6 +804,7 @@ def handwritten_page_ids(conn: Any, chart_id: int) -> set[int]:
     return {r["page_id"] for r in rows}
 
 
+@_dispatch
 def non_printed_page_ids(conn: Any, chart_id: int) -> set[int]:
     """Handwritten / uncertain / mixed — prelim blank/junk pass 1 is skipped."""
     rows = conn.execute(
@@ -749,6 +819,7 @@ def non_printed_page_ids(conn: Any, chart_id: int) -> set[int]:
     return {r["page_id"] for r in rows}
 
 
+@_dispatch
 def low_quality_page_ids(conn: Any, chart_id: int) -> set[int]:
     """Pages with measured quality_tag = low — skip blank/junk pass 1."""
     rows = conn.execute(
@@ -761,6 +832,7 @@ def low_quality_page_ids(conn: Any, chart_id: int) -> set[int]:
     return {r["page_id"] for r in rows}
 
 
+@_dispatch
 def high_quality_printed_page_ids(conn: Any, chart_id: int) -> set[int]:
     """High-quality printed pages — Azure final2 is skipped (final1 is enough)."""
     rows = conn.execute(
@@ -795,6 +867,7 @@ def page_blocks_prelim(
 # ---------------------------------------------------------------------------
 
 
+@_dispatch
 def upsert_blank_junk(
     conn: Any,
     *,
@@ -833,6 +906,7 @@ def upsert_blank_junk(
     )
 
 
+@_dispatch
 def mark_blank_junk_final(conn: Any, chart_id: int) -> None:
     """Stamp the highest pass per page as the final verdict.
 
@@ -857,6 +931,7 @@ def mark_blank_junk_final(conn: Any, chart_id: int) -> None:
     )
 
 
+@_dispatch
 def get_blank_junk_flags(
     conn: Any,
     chart_id: int,
@@ -890,6 +965,7 @@ def get_blank_junk_flags(
     return {r["page_id"]: r["blank_junk_flag"] for r in rows}
 
 
+@_dispatch
 def get_blank_junk_final(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
     """Final blank/junk verdict per page: flag, junk_subtype, confidence."""
     rows = conn.execute(
@@ -908,6 +984,7 @@ def get_blank_junk_final(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+@_dispatch
 def upsert_dos(
     conn: Any,
     *,
@@ -980,6 +1057,7 @@ def _confidence_level(confidence: Optional[float]) -> Optional[str]:
     return "low"
 
 
+@_dispatch
 def upsert_page_classification(
     conn: Any,
     *,
@@ -1017,6 +1095,7 @@ def upsert_page_classification(
     )
 
 
+@_dispatch
 def upsert_encounter(
     conn: Any,
     *,
@@ -1047,6 +1126,7 @@ def upsert_encounter(
     )
 
 
+@_dispatch
 def upsert_sequencing(
     conn: Any,
     *,
@@ -1089,6 +1169,7 @@ def upsert_sequencing(
 # ---------------------------------------------------------------------------
 
 
+@_dispatch
 def upsert_member_extraction(
     conn: Any,
     *,
@@ -1156,6 +1237,7 @@ def upsert_member_extraction(
     )
 
 
+@_dispatch
 def upsert_member_summary(
     conn: Any,
     *,
@@ -1201,6 +1283,7 @@ def upsert_member_summary(
     )
 
 
+@_dispatch
 def get_member_summary(conn: Any, chart_id: int) -> Optional[dict[str, Any]]:
     return conn.execute(
         "SELECT * FROM member_verification_summary WHERE chart_id = %s",
@@ -1213,6 +1296,7 @@ def get_member_summary(conn: Any, chart_id: int) -> Optional[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+@_dispatch
 def list_manifest_members(
     conn: Any,
     *,
@@ -1267,6 +1351,7 @@ CHART_RESULT_TABLES = (
 )
 
 
+@_dispatch
 def reset_chart_results(conn: Any, chart_id: int) -> dict[str, int]:
     """Clear stage outputs for a re-ingest, keeping chart_list and page_list.
 
@@ -1300,6 +1385,7 @@ def reset_chart_results(conn: Any, chart_id: int) -> dict[str, int]:
     return deleted
 
 
+@_dispatch
 def prune_orphan_pages(
     conn: Any, chart_id: int, keep_page_names: list[str]
 ) -> int:
@@ -1321,6 +1407,7 @@ def prune_orphan_pages(
     return getattr(result, "rowcount", 0) or 0
 
 
+@_dispatch
 def count_manifest_members(conn: Any, record_id: str) -> int:
     """How many manifest rows exist for this chart name.
 
@@ -1334,6 +1421,7 @@ def count_manifest_members(conn: Any, record_id: str) -> int:
     return int(row["n"]) if row else 0
 
 
+@_dispatch
 def upsert_manifest_member(
     conn: Any,
     *,
@@ -1394,3 +1482,86 @@ def upsert_manifest_member(
         "id": row["id"],
         "action": "inserted" if row["inserted"] else "updated",
     }
+
+
+# ---------------------------------------------------------------------------
+# Helpers shared by Postgres + MemoryStore (CSV rebuild / stage queries)
+# ---------------------------------------------------------------------------
+
+
+def list_blank_junk_for_csv(conn: Any, chart_id: int) -> list[dict[str, Any]]:
+    """Rows for the junk CSV rewrite."""
+    if _mem(conn):
+        return conn.list_blank_junk_for_csv(chart_id)
+    return list(
+        conn.execute(
+            """
+            SELECT c.chart_name, p.page_name, p.page_number,
+                   b.blank_junk_flag, b.junk_subtype, b.confidence, b.reason,
+                   b.ocr_source, b.pass_no, b.is_final
+              FROM blank_junk_classification b
+              JOIN page_list p  ON p.id = b.page_id
+              JOIN chart_list c ON c.id = b.chart_id
+             WHERE b.chart_id = %s
+             ORDER BY p.page_number NULLS LAST, p.page_name, b.pass_no
+            """,
+            (chart_id,),
+        ).fetchall()
+    )
+
+
+def list_quality_for_csv(conn: Any, chart_id: int) -> list[dict[str, Any]]:
+    """Joined quality + page rows for rotation/hw/quality CSV rebuild."""
+    if _mem(conn):
+        return conn.list_quality_for_csv(chart_id)
+    return list(
+        conn.execute(
+            """
+            SELECT p.page_name, p.page_number, q.printed_or_handwritten,
+                   q.orientation_angle, q.tilt_angle, q.mirrored,
+                   q.rotation_applied, q.hw_confidence, q.hw_method,
+                   q.quality_tag, q.quality_score, q.input_dpi
+              FROM ocr_quality_results q
+              JOIN page_list p ON p.id = q.page_id
+             WHERE q.chart_id = %s
+             ORDER BY p.page_number NULLS LAST, p.page_name
+            """,
+            (chart_id,),
+        ).fetchall()
+    )
+
+
+def get_dos_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
+    """DOS extraction rows keyed by page_id."""
+    if _mem(conn):
+        return conn.get_dos_map(chart_id)
+    rows = conn.execute(
+        """
+        SELECT page_id,
+               date_of_service_from,
+               date_of_service_to,
+               date_of_service_from_doclevel,
+               date_of_service_to_doclevel
+          FROM dos_extraction_results
+         WHERE chart_id = %s
+        """,
+        (chart_id,),
+    ).fetchall()
+    return {int(row["page_id"]): dict(row) for row in rows}
+
+
+def has_ocr_results(conn: Any, chart_id: int) -> bool:
+    """True when ocr_results has at least one non-empty row for this chart."""
+    if _mem(conn):
+        return conn.has_ocr_results(chart_id)
+    row = conn.execute(
+        """
+        SELECT 1 AS ok
+          FROM ocr_results
+         WHERE chart_id = %s
+           AND COALESCE(char_count, 0) > 0
+         LIMIT 1
+        """,
+        (chart_id,),
+    ).fetchone()
+    return bool(row)

@@ -82,7 +82,25 @@ curl -fsS localhost:8001/api/stages | python -m json.tool
 | `only: ["stage", …]` | omit | Run **just** those stages (quality still runs under `skip_ocr`). |
 | `skip_ocr: true` | env `SKIP_OCR` | See § skip_ocr below. Ignored when `force: true`. |
 | `redownload_pages: true` | `false` | Wipe `pages/` + `corrected-pages/` and re-fetch pages from Raw_Input. |
+| `skip_db_write: true` | `false` | **Local only.** Never open Postgres; chart/page/stage state stays in memory. Still writes workspace `pages/` / `ocr/` / `imaging/` and optional `local_write_path`. No cross-process resume. Env: `SKIP_DB_WRITE=true`. |
 | `through: "stage"` | omit | Run from the top of the chain and **stop after** that stage. |
+
+### What `skip_db_write` does
+
+For laptop / folder experiments when Postgres is unavailable:
+
+```bash
+cd core-pipeline && source .venv/bin/activate
+python cli.py run \
+  --local-read-path /data/inbox \
+  --folder-name 52743839_44976074 \
+  --local-write-path /data/out \
+  --skip-db-write
+```
+
+- Rejects blob sources and `--chart-id` / `--chart-name` resume.
+- Stages still run; CSVs and OCR files are written under `data/folders/<chart>/` as usual.
+- review-ui Local Mode can open that folder afterward — it never needed the DB to *read*.
 
 ### What `skip_ocr` does
 

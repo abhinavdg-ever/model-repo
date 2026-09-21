@@ -309,19 +309,9 @@ def _measure(args: tuple[dict[str, Any], Path, str]) -> dict[str, Any]:
 
 def _rewrite_csvs(conn: Any, chart_id: int, chart_name: str) -> tuple[Path, Path, Path]:
     """Rebuild CSVs from stored rows, so a resumed run stays consistent."""
-    rows = conn.execute(
-        """
-        SELECT p.page_name, p.page_number, q.printed_or_handwritten,
-               q.orientation_angle, q.tilt_angle, q.mirrored,
-               q.rotation_applied, q.hw_confidence, q.hw_method,
-               q.quality_tag, q.quality_score, q.input_dpi
-          FROM ocr_quality_results q
-          JOIN page_list p ON p.id = q.page_id
-         WHERE q.chart_id = %s
-         ORDER BY p.page_number NULLS LAST, p.page_name
-        """,
-        (chart_id,),
-    ).fetchall()
+    from db import list_quality_for_csv
+
+    rows = list_quality_for_csv(conn, chart_id)
 
     rotation_rows: list[dict[str, Any]] = []
     hw_rows: list[dict[str, Any]] = []
