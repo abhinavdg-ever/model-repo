@@ -469,7 +469,7 @@ export default function FolderViewer({
   }, [page, imagingPage, headersByKind]);
 
   const overlayBoxes = useMemo(() => {
-    if (outputMode === "imaging" && imagingTab === "sections") {
+    if (outputMode === "imaging" && imagingTab === "additional") {
       if (imagingSectionInfo.skipped) return [];
       return imagingSectionInfo.headers.filter(
         (b) => b.width > 0 && b.height > 0,
@@ -572,6 +572,10 @@ export default function FolderViewer({
       isDuplicate: p.isDuplicate ?? null,
       pageType: p.pageType,
       pageTypeConfidence: p.pageTypeConfidence,
+      isCodeable: p.isCodeable ?? null,
+      currentSequence: p.currentSequence ?? p.pageNumber,
+      actualSequence: p.actualSequence ?? null,
+      encounterType: p.encounterType ?? null,
       dosFrom: p.docDosFrom ?? p.dosFrom,
       dosTo: p.docDosTo ?? p.dosTo,
       dosConfidence: p.dosConfidence ?? null,
@@ -600,6 +604,10 @@ export default function FolderViewer({
       "isDuplicate",
       "pageType",
       "pageTypeConfidence",
+      "isCodeable",
+      "currentSequence",
+      "actualSequence",
+      "encounterType",
       "dosFrom",
       "dosTo",
       "dosConfidence",
@@ -633,6 +641,10 @@ export default function FolderViewer({
         p.isDuplicate == null ? "NA" : p.isDuplicate ? "Yes" : "No",
         p.pageType ?? "Not Available",
         p.pageTypeConfidence,
+        p.isCodeable ?? "",
+        p.currentSequence ?? p.pageNumber,
+        p.actualSequence ?? "",
+        p.encounterType ?? "",
         p.docDosFrom ?? p.dosFrom,
         p.docDosTo ?? p.dosTo,
         p.dosConfidence ?? "",
@@ -1035,11 +1047,11 @@ export default function FolderViewer({
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={imagingTab === "sections"}
-                    className={imagingTab === "sections" ? "active" : ""}
-                    onClick={() => setImagingTab("sections")}
+                    aria-selected={imagingTab === "additional"}
+                    className={imagingTab === "additional" ? "active" : ""}
+                    onClick={() => setImagingTab("additional")}
                   >
-                    Section coordinates
+                    Additional
                   </button>
                 </div>
               )}

@@ -67,6 +67,8 @@ export type ImagingPageResult = {
   mirrored: boolean | null;
   pageQualityTag?: string | null;
   pageQualityConfidence: number | null;
+  /** Encounter classification — logic TBD; UI shows Yet to Process when absent. */
+  encounterType?: string | null;
   dosFrom: string | null;
   dosTo: string | null;
   dosConfidence: number | null;
@@ -79,6 +81,12 @@ export type ImagingPageResult = {
   /** Blank/Main/Duplicate → Not Available; Invoice|Cover → type */
   pageType: string | null;
   pageTypeConfidence: number | null;
+  /** Codeable | Non Codeable — logic TBD. */
+  isCodeable?: string | null;
+  /** Pipeline / file order (1-based). */
+  currentSequence?: number | null;
+  /** Reordered sequence — logic TBD. */
+  actualSequence?: number | null;
 };
 
 export type ImagingManifestDetails = {

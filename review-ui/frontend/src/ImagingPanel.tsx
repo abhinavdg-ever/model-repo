@@ -82,7 +82,8 @@ function fillDosForward(
     });
 }
 
-type ImagingTab = "page" | "doc" | "sections";
+type ImagingTab = "page" | "doc" | "additional";
+type AdditionalSubTab = "sections" | "sequencing";
 type DocView = "values" | "confidence" | "rejection";
 
 type Props = {
@@ -333,9 +334,17 @@ function PageDetails({
         ]}
       />
       <DetailSection
-        title="DOS Extraction"
+        title="Encounter Details"
         showConfidence
         rows={[
+          {
+            label: "Encounter Type",
+            value: fmt(
+              page.encounterType,
+              page.encounterType != null && String(page.encounterType).trim() !== "",
+            ),
+            confidence: fmtConfidence(null, false),
+          },
           {
             label: "DOS From",
             value: fmt(page.dosFrom, sections.dos),
@@ -353,7 +362,7 @@ function PageDetails({
         showConfidence
         rows={[
           {
-            label: "Blank or Junk",
+            label: "Is Blank or Junk?",
             value: fmtBlankOrJunk(page.blankOrJunk, sections.junk),
             confidence: fmtConfidence(page.pageTypeConfidence, sections.junk),
           },
@@ -366,6 +375,14 @@ function PageDetails({
             label: "Page Type",
             value: fmtPageType(page.pageType, sections.junk),
             confidence: fmtConfidence(page.pageTypeConfidence, sections.junk),
+          },
+          {
+            label: "Is Codeable or Non Codeable",
+            value: fmt(
+              page.isCodeable,
+              page.isCodeable != null && String(page.isCodeable).trim() !== "",
+            ),
+            confidence: fmtConfidence(null, false),
           },
         ]}
       />
@@ -489,9 +506,12 @@ function DocSummary({
               <th scope="col">Mirrored</th>
               <th scope="col">DOS From</th>
               <th scope="col">DOS To</th>
-              <th scope="col">Blank/Junk</th>
+              <th scope="col">Is Blank or Junk?</th>
               <th scope="col">Duplicate</th>
               <th scope="col">Page Type</th>
+              <th scope="col">Codeable</th>
+              <th scope="col">Current Sequence</th>
+              <th scope="col">Actual Sequence</th>
               {showConfidence ? (
                 <>
                   <th scope="col">Member Conf.</th>
@@ -525,6 +545,14 @@ function DocSummary({
                 <td>{fmtBlankOrJunk(p.blankOrJunk, sections.junk)}</td>
                 <td>{fmtYesNo(p.isDuplicate, sections.junk)}</td>
                 <td>{fmtPageType(p.pageType, sections.junk)}</td>
+                <td>{fmt(p.isCodeable, p.isCodeable != null && String(p.isCodeable).trim() !== "")}</td>
+                <td>{fmt(p.currentSequence ?? p.pageNumber, true)}</td>
+                <td>
+                  {fmt(
+                    p.actualSequence,
+                    p.actualSequence != null,
+                  )}
+                </td>
                 {showConfidence ? (
                   <>
                     <td>{fmtConfidence(p.memberConfidence, sections.member)}</td>
@@ -560,17 +588,51 @@ export default function ImagingPanel({
   sectionHeadersLoading = false,
   imageNaturalSize = null,
 }: Props) {
-  if (tab === "sections") {
+  const [additionalSubTab, setAdditionalSubTab] =
+    useState<AdditionalSubTab>("sections");
+
+  if (tab === "additional") {
     return (
       <div className="imaging-panel-stack">
-        <SectionCoordinates
-          fileName={currentFileName}
-          headers={sectionHeaders}
-          source={sectionHeadersSource}
-          skipped={sectionHeadersSkipped}
-          loading={sectionHeadersLoading}
-          imageNaturalSize={imageNaturalSize}
-        />
+        <div
+          className="output-tabs imaging-additional-tabs"
+          role="tablist"
+          aria-label="Additional views"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={additionalSubTab === "sections"}
+            className={additionalSubTab === "sections" ? "active" : ""}
+            onClick={() => setAdditionalSubTab("sections")}
+          >
+            Section Coordinates
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={additionalSubTab === "sequencing"}
+            className={additionalSubTab === "sequencing" ? "active" : ""}
+            onClick={() => setAdditionalSubTab("sequencing")}
+          >
+            Sequencing
+          </button>
+        </div>
+        {additionalSubTab === "sections" ? (
+          <SectionCoordinates
+            fileName={currentFileName}
+            headers={sectionHeaders}
+            source={sectionHeadersSource}
+            skipped={sectionHeadersSkipped}
+            loading={sectionHeadersLoading}
+            imageNaturalSize={imageNaturalSize}
+          />
+        ) : (
+          <SequencingPanel
+            page={currentPage}
+            fileName={currentFileName}
+          />
+        )}
       </div>
     );
   }
@@ -634,6 +696,39 @@ export default function ImagingPanel({
 
 const SECTION_SKIP_MESSAGE = "Skipped for Junk/Blank";
 
+function SequencingPanel({
+  page,
+  fileName,
+}: {
+  page: ImagingPageResult | null;
+  fileName: string | null;
+}) {
+  const current = page?.currentSequence ?? page?.pageNumber ?? null;
+  return (
+    <div className="section-coords-panel">
+      <div className="section-coords-title">Sequencing</div>
+      {fileName ? (
+        <p className="section-coords-file">{fileName}</p>
+      ) : null}
+      <table className="imaging-detail-table">
+        <tbody>
+          <tr>
+            <th scope="row">Current Sequence</th>
+            <td>{fmt(current, true)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Actual Sequence</th>
+            <td>{fmt(page?.actualSequence, false)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="section-coords-empty">
+        Sequencing logic will be wired next — Actual Sequence stays Yet to Process until then.
+      </p>
+    </div>
+  );
+}
+
 function SectionCoordinates({
   fileName,
   headers,
@@ -655,7 +750,7 @@ function SectionCoordinates({
   if (skipped) {
     return (
       <div className="section-coords-panel">
-        <div className="section-coords-title">Section coordinates</div>
+        <div className="section-coords-title">Section Coordinates</div>
         <p className="section-coords-skip">{SECTION_SKIP_MESSAGE}</p>
       </div>
     );
@@ -673,7 +768,7 @@ function SectionCoordinates({
   return (
     <div className="section-coords-panel">
       <div className="section-coords-title">
-        Section coordinates
+        Section Coordinates
         {sourceLabel ? (
           <span className="section-coords-source"> · {sourceLabel}</span>
         ) : null}
