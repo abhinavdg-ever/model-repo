@@ -404,7 +404,11 @@ curl.exe -fsS localhost:8001/ready
 ```
 
 `DATA_MODE=local` (review-ui default) reads `data/folders`.
-`DATA_MODE=production` reads Postgres.
+`DATA_MODE=production` reads Postgres for OCR/imaging and **page images from
+Azure Blob** using each chart’s `blob_container` + `blob_path` (set
+`BLOB_ACCOUNT_URL` or `AZURE_STORAGE_ACCOUNT_NAME`, plus Entra credentials /
+Managed Identity). Local `DATA_ROOT` is only a fallback when a workspace copy
+exists.
 
 POC login (not a security control): `imaging-user` / `aipocpw2026` — override
 with `VITE_LOGIN_*` and rebuild the frontend.

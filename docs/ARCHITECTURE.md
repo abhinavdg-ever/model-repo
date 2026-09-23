@@ -378,7 +378,7 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/`.
 | `adapters/base.py` | The `FolderRepository` interface both modes implement. |
 | `adapters/factory.py` | Chooses the adapter from `DATA_MODE`. |
 | `adapters/local/repository.py` | **Local Mode.** Reads charts from `data/folders`: pages, OCR files, per-chart imaging CSVs with the legacy-pack fallback. Owns the scan cache and its mtime-based invalidation, and the per-chart stream marking that drives the folder-list badges. |
-| `adapters/postgres/repository.py` | **Production Mode.** The same interface over the v8 tables. Maps `status` + `current_stage` to the UI pill, reads blank/junk from `v_page_blank_junk_final`, looks manifests up by `record_id`. Page images still come from disk. |
+| `adapters/postgres/repository.py` | **Production Mode.** The same interface over the v8 tables. Maps `status` + `current_stage` to the UI pill, reads blank/junk from `v_page_blank_junk_final`, looks manifests up by `record_id`. **Page images** come from Azure Blob via `chart_list.blob_container` + `blob_path` (Raw_Input ingest order); Processed `output_path` is a fallback. `DATA_ROOT` is optional. |
 | `services/imaging_overlays.py` | The CSV → UI field mapping: per-result `index_*_rows` functions, the column aliases each accepts, the canonical page-type labels, date formatting, and `collect_rows`' per-chart-then-legacy precedence. |
 | `services/imaging_csv.py` | Streams the combined export CSV. |
 | `services/metadata_csv.py` | Reads manifest CSVs for Local Mode. |

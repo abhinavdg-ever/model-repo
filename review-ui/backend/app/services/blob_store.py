@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import logging
+import os
+import re
 import time
 from functools import lru_cache
+from pathlib import Path
 from urllib.parse import urlparse
 
 from azure.core.exceptions import ResourceNotFoundError
@@ -11,12 +15,54 @@ from fastapi import HTTPException
 
 from app.core.config import Settings, get_settings
 
+logger = logging.getLogger("review_ui.blob")
+
+_FILENAME_PARTS = re.compile(r"(\d+)")
+_IMAGE_SUFFIXES = {
+    ".bmp",
+    ".dib",
+    ".gif",
+    ".j2k",
+    ".jfif",
+    ".jp2",
+    ".jpe",
+    ".jpeg",
+    ".jpg",
+    ".pbm",
+    ".pgm",
+    ".png",
+    ".pnm",
+    ".ppm",
+    ".tif",
+    ".tiff",
+    ".webp",
+}
+
 
 def account_name_from_url(account_url: str) -> str:
     host = (urlparse(account_url).hostname or "").strip().lower()
     if not host:
         return ""
     return host.split(".")[0]
+
+
+def filename_sort_key(name: str) -> tuple:
+    """Natural sort matching core-pipeline ingest order for Raw_Input pages."""
+    text = str(name or "").casefold()
+    parts: list = []
+    for part in _FILENAME_PARTS.split(text):
+        if not part:
+            continue
+        if part.isdigit():
+            parts.append((0, int(part)))
+        else:
+            parts.append((1, part))
+    return tuple(parts)
+
+
+def normalize_blob_prefix(path: str) -> str:
+    p = (path or "").strip().replace("\\", "/").strip("/")
+    return f"{p}/" if p else ""
 
 
 def build_blob_key(
@@ -50,6 +96,15 @@ def _normalize_account_url(raw: str) -> str:
     return f"https://{value}.blob.core.windows.net"
 
 
+def resolved_blob_account_url(settings: Settings | None = None) -> str:
+    """BLOB_ACCOUNT_URL, else AZURE_STORAGE_ACCOUNT_NAME (same account as pipeline)."""
+    cfg = settings or get_settings()
+    raw = (cfg.blob_account_url or "").strip()
+    if not raw:
+        raw = (os.environ.get("AZURE_STORAGE_ACCOUNT_NAME") or "").strip()
+    return _normalize_account_url(raw)
+
+
 def _credential(settings: Settings):
     tenant = settings.azure_tenant_id.strip()
     client_id = settings.azure_client_id.strip()
@@ -67,9 +122,11 @@ def _credential(settings: Settings):
 @lru_cache
 def _blob_service_client() -> BlobServiceClient:
     settings = get_settings()
-    account_url = _normalize_account_url(settings.blob_account_url)
+    account_url = resolved_blob_account_url(settings)
     if not account_url:
-        raise RuntimeError("BLOB_ACCOUNT_URL is not configured")
+        raise RuntimeError(
+            "BLOB_ACCOUNT_URL (or AZURE_STORAGE_ACCOUNT_NAME) is not configured"
+        )
     return BlobServiceClient(account_url=account_url, credential=_credential(settings))
 
 
@@ -77,35 +134,44 @@ def clear_blob_client_cache() -> None:
     _blob_service_client.cache_clear()
 
 
-def download_blob_bytes(
+def list_image_blob_keys(container: str, blob_path: str) -> list[str]:
+    """Image blob keys under a chart prefix, sorted like pipeline ingest."""
+    container = (container or "").strip().strip("/")
+    prefix = normalize_blob_prefix(blob_path)
+    if not container or not prefix:
+        return []
+    client = _blob_service_client()
+    names: list[str] = []
+    for blob in client.get_container_client(container).list_blobs(
+        name_starts_with=prefix
+    ):
+        filename = Path(blob.name).name
+        if Path(filename).suffix.lower() not in _IMAGE_SUFFIXES:
+            continue
+        if filename.startswith("._"):
+            continue
+        names.append(blob.name)
+    names.sort(key=lambda n: filename_sort_key(Path(n).name))
+    return names
+
+
+def download_blob_at(
     *,
-    folder_id: str,
-    filename: str,
-    page_number: int,
+    container: str,
+    key: str,
+    filename: str | None = None,
 ) -> tuple[bytes, str]:
-    """Download a page image from Azure Blob using Entra ID credentials.
-
-    Returns (content_bytes, media_type).
-    """
-    settings = get_settings()
-    if not settings.file_viewer_blob_enabled:
-        raise HTTPException(status_code=400, detail="Blob viewer is disabled")
-    if settings.blob_auth_mode != "entra":
-        raise HTTPException(status_code=400, detail="Blob auth mode is not entra")
-
-    container = settings.blob_container.strip().strip("/")
-    if not settings.blob_account_url.strip() or not container:
+    """Download one blob by container + key (Entra / DefaultAzureCredential)."""
+    container = (container or "").strip().strip("/")
+    key = (key or "").lstrip("/")
+    if not container or not key:
+        raise HTTPException(status_code=400, detail="Blob container and key are required")
+    if not resolved_blob_account_url():
         raise HTTPException(
             status_code=400,
-            detail="BLOB_ACCOUNT_URL and BLOB_CONTAINER must be set for Entra blob access",
+            detail="BLOB_ACCOUNT_URL (or AZURE_STORAGE_ACCOUNT_NAME) must be set",
         )
-
-    key = build_blob_key(
-        settings.blob_path_template,
-        folder_id=folder_id,
-        filename=filename,
-        page_number=page_number,
-    )
+    display_name = filename or Path(key).name
 
     try:
         client = _blob_service_client()
@@ -118,9 +184,8 @@ def download_blob_bytes(
                 content_type = downloader.properties.content_settings.content_type
             except Exception:  # noqa: BLE001
                 content_type = None
-            return data, content_type or _guess_media_type(filename)
+            return data, content_type or _guess_media_type(display_name)
 
-        # Short retry for transient Azure faults (429 / 5xx / dropped connection).
         last_exc: Exception | None = None
         for attempt in range(1, 4):
             try:
@@ -143,11 +208,43 @@ def download_blob_bytes(
         ) from exc
     except HTTPException:
         raise
-    except Exception as exc:  # noqa: BLE001 — surface Azure auth/network errors to API clients
+    except Exception as exc:  # noqa: BLE001
         raise HTTPException(
             status_code=502,
             detail=f"Blob download failed via Entra ID: {exc}",
         ) from exc
+
+
+def download_blob_bytes(
+    *,
+    folder_id: str,
+    filename: str,
+    page_number: int,
+) -> tuple[bytes, str]:
+    """Download a page image via File Viewer template (Entra).
+
+    Returns (content_bytes, media_type).
+    """
+    settings = get_settings()
+    if not settings.file_viewer_blob_enabled:
+        raise HTTPException(status_code=400, detail="Blob viewer is disabled")
+    if settings.blob_auth_mode != "entra":
+        raise HTTPException(status_code=400, detail="Blob auth mode is not entra")
+
+    container = settings.blob_container.strip().strip("/")
+    if not resolved_blob_account_url(settings) or not container:
+        raise HTTPException(
+            status_code=400,
+            detail="BLOB_ACCOUNT_URL and BLOB_CONTAINER must be set for Entra blob access",
+        )
+
+    key = build_blob_key(
+        settings.blob_path_template,
+        folder_id=folder_id,
+        filename=filename,
+        page_number=page_number,
+    )
+    return download_blob_at(container=container, key=key, filename=filename)
 
 
 def _guess_media_type(filename: str) -> str:

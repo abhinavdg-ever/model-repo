@@ -1,11 +1,16 @@
 """Production Mode repository — read pipeline outputs from Postgres.
 
-Page images still come from DATA_ROOT (local folders). OCR text, manifest,
-quality, blank/junk, member, verification, and DOS come from schema v6 tables.
+Page images come from Azure Blob using ``chart_list.blob_container`` +
+``blob_path`` (Raw_Input), with Processed ``output_path`` pages/corrected as
+fallbacks. OCR text, manifest, quality, blank/junk, member, verification, and
+DOS come from schema tables. ``DATA_ROOT`` is optional (used when a local
+workspace copy exists).
 """
 
 from __future__ import annotations
 
+import logging
+import time
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -27,6 +32,8 @@ from app.core.schemas import (
     PageSummary,
 )
 from app.services.imaging_overlays import empty_imaging_pages
+
+logger = logging.getLogger("review_ui.postgres")
 
 # API kind → ocr_results.ocr_type
 KIND_TO_OCR_TYPE: dict[str, str] = {
@@ -60,6 +67,9 @@ CHART_STATUS_TO_OCR: dict[str, str] = {
 IMAGING_STAGES = frozenset(
     {"blank_junk", "member_verify", "dos_extract"}
 )
+
+# Cache Raw_Input blob listings briefly (same order as ingest → page_number).
+_BLOB_LIST_TTL_SEC = 300.0
 
 
 def _ocr_status_for(status: str | None, current_stage: str | None) -> str:
@@ -128,12 +138,17 @@ class PostgresFolderRepository(FolderRepository):
             if data_root is not None
             else None
         )
+        # folder_id → (monotonic_ts, sorted blob keys under Raw_Input prefix)
+        self._raw_blob_lists: dict[str, tuple[float, list[str]]] = {}
+
+    def _optional_local(self) -> LocalFolderRepository | None:
+        return self._local
 
     def _require_local(self) -> LocalFolderRepository:
         if self._local is None:
             raise HTTPException(
                 status_code=501,
-                detail="Production Mode needs DATA_ROOT for page images.",
+                detail="Production Mode needs DATA_ROOT for this local-only operation.",
             )
         return self._local
 
@@ -155,9 +170,9 @@ class PostgresFolderRepository(FolderRepository):
         return conn
 
     def list_folders(self) -> list[FolderSummary]:
-        """Prefer charts known to Postgres; fall back to local DATA_ROOT listing."""
-        local = self._require_local()
-        local_by_id = {f.id: f for f in local.list_folders()}
+        """Prefer charts known to Postgres; merge local DATA_ROOT when present."""
+        local = self._optional_local()
+        local_by_id = {f.id: f for f in local.list_folders()} if local else {}
         try:
             with self._connect() as conn:
                 with conn.cursor() as cur:
@@ -223,9 +238,100 @@ class PostgresFolderRepository(FolderRepository):
                 out.append(folder)
         return out
 
+    def _pages_from_db(self, folder_id: str) -> list[tuple[int, str]]:
+        """(page_number, page_name) from page_list, ordered for the viewer."""
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT p.page_number, p.page_name
+                          FROM page_list p
+                          JOIN chart_list c ON c.id = p.chart_id
+                         WHERE c.chart_name = %s
+                         ORDER BY p.page_number NULLS LAST, p.id
+                        """,
+                        (folder_id,),
+                    )
+                    rows = cur.fetchall()
+        except Exception as exc:
+            logger.warning("page_list lookup failed for %s: %s", folder_id, exc)
+            return []
+        out: list[tuple[int, str]] = []
+        for idx, (num, name) in enumerate(rows, start=1):
+            out.append((int(num or idx), str(name)))
+        return out
+
+    def _folder_from_db(self, folder_id: str) -> FolderDetail | None:
+        pages = self._pages_from_db(folder_id)
+        if not pages:
+            return None
+        flags = self._ocr_flags_from_db(folder_id) or {}
+        page_summaries = [
+            PageSummary(
+                page_number=num,
+                filename=name,
+                image_url=f"/api/folders/{folder_id}/pages/{num}/image",
+                has_preliminary_ocr=bool(flags.get(name, {}).get("tesseract")),
+                has_final1_ocr=bool(flags.get(name, {}).get("docling")),
+                has_final2_ocr=bool(flags.get(name, {}).get("azuredocintel")),
+                has_imaging=False,
+            )
+            for num, name in pages
+        ]
+        kinds_present = {
+            k
+            for page_flags in flags.values()
+            for k, ok in page_flags.items()
+            if ok
+        }
+        ocr_processed = sum(
+            1
+            for k in ("tesseract", "docling", "azuredocintel")
+            if k in kinds_present
+        )
+        chart_status = self._chart_status(folder_id)
+        ocr_status = CHART_STATUS_TO_OCR.get(
+            str(chart_status or "").lower(), "QUEUED"
+        )
+        if ocr_status == "IN_PROGRESS" and ocr_processed == 3:
+            ocr_status = "IMAGING_IN_PROGRESS"
+        elif ocr_status == "QUEUED" and ocr_processed > 0:
+            ocr_status = "IN_PROGRESS"
+        run_id, batch_id = self._chart_run_batch(folder_id)
+        return FolderDetail(
+            id=folder_id,
+            name=folder_id,
+            page_count=len(pages),
+            ocr_processed=ocr_processed,
+            imaging_processed=0,
+            ocr_status=ocr_status,  # type: ignore[arg-type]
+            last_updated_at=None,
+            run_id=run_id,
+            batch_id=batch_id,
+            pages=page_summaries,
+        )
+
     def get_folder(self, folder_id: str) -> FolderDetail:
-        """Page images from local; OCR presence flags from ocr_results when available."""
-        detail = self._require_local().get_folder(folder_id)
+        """Pages from local workspace when present; else page_list. OCR flags from DB."""
+        local = self._optional_local()
+        detail: FolderDetail | None = None
+        if local is not None:
+            try:
+                detail = local.get_folder(folder_id)
+            except HTTPException:
+                detail = None
+            except Exception:
+                detail = None
+        if detail is None or not detail.pages:
+            db_detail = self._folder_from_db(folder_id)
+            if db_detail is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Chart not found: {folder_id}",
+                )
+            return db_detail
+
         flags = self._ocr_flags_from_db(folder_id)
         if flags is None:
             return detail
@@ -291,7 +397,163 @@ class PostgresFolderRepository(FolderRepository):
         )
 
     def get_page_image_path(self, folder_id: str, page_number: int) -> Path:
-        return self._require_local().get_page_image_path(folder_id, page_number)
+        """Local path when a workspace copy exists (fallback for the image route)."""
+        local = self._optional_local()
+        if local is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No local page image; Production Mode serves images from blob",
+            )
+        return local.get_page_image_path(folder_id, page_number)
+
+    def resolve_page_blob(
+        self, folder_id: str, page_number: int
+    ) -> dict[str, str] | None:
+        """Locate the Azure blob for a page using chart_list + page_list.
+
+        Preference order:
+          1. Raw_Input ``blob_path`` entry at the same ingest index as ``page_number``
+          2. Processed ``output_path/corrected-pages/…`` when ``use_corrected``
+          3. Processed ``output_path/pages/{page_name}``
+        """
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT c.blob_container, c.blob_path, c.output_path,
+                               p.page_name, p.page_number, p.use_corrected, p.image_path
+                          FROM page_list p
+                          JOIN chart_list c ON c.id = p.chart_id
+                         WHERE c.chart_name = %s
+                         ORDER BY p.page_number NULLS LAST, p.id
+                        """,
+                        (folder_id,),
+                    )
+                    rows = cur.fetchall()
+        except Exception as exc:
+            logger.warning("resolve_page_blob DB failed for %s: %s", folder_id, exc)
+            return None
+
+        if not rows:
+            return None
+
+        hit = None
+        for idx, row in enumerate(rows, start=1):
+            (
+                container,
+                blob_path,
+                output_path,
+                page_name,
+                db_num,
+                use_corrected,
+                image_path,
+            ) = row
+            num = int(db_num or idx)
+            if num == page_number:
+                hit = (
+                    (container or "").strip(),
+                    blob_path,
+                    output_path,
+                    str(page_name),
+                    bool(use_corrected),
+                    str(image_path or ""),
+                    idx,
+                )
+                break
+        if hit is None:
+            return None
+
+        container, blob_path, output_path, page_name, use_corrected, image_path, idx = hit
+        if not container:
+            return None
+
+        out = (output_path or "").strip().strip("/")
+        stem = Path(page_name).stem
+
+        # Prefer chart_list.blob_path (Raw_Input) — the path the pipeline ingested.
+        # Processed output_path is a fallback when originals were written there.
+        candidates: list[str] = []
+        raw_key = self._raw_input_blob_key(folder_id, container, blob_path, idx)
+        if raw_key:
+            candidates.append(raw_key)
+        if use_corrected and out:
+            candidates.append(f"{out}/corrected-pages/{stem}.jpg")
+            candidates.append(f"{out}/corrected-pages/{page_name}")
+            rel = image_path.replace("\\", "/").lstrip("/")
+            if rel.startswith("corrected-pages/"):
+                candidates.append(f"{out}/{rel}")
+        if out:
+            candidates.append(f"{out}/pages/{page_name}")
+
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for key in candidates:
+            key = key.lstrip("/")
+            if key and key not in seen:
+                seen.add(key)
+                ordered.append(key)
+
+        if not ordered:
+            return None
+
+        key = self._first_existing_blob(container, ordered) or ordered[0]
+        return {
+            "container": container,
+            "key": key,
+            "filename": Path(key).name or page_name,
+        }
+
+    def _first_existing_blob(self, container: str, keys: list[str]) -> str | None:
+        try:
+            from app.services.blob_store import _blob_service_client
+
+            client = _blob_service_client()
+            for key in keys:
+                blob = client.get_blob_client(container=container, blob=key)
+                try:
+                    blob.get_blob_properties()
+                    return key
+                except Exception:
+                    continue
+        except Exception as exc:
+            logger.debug("blob existence probe skipped: %s", exc)
+            return keys[0] if keys else None
+        return None
+
+    def _raw_input_blob_key(
+        self,
+        folder_id: str,
+        container: str,
+        blob_path: str | None,
+        page_index_1based: int,
+    ) -> str | None:
+        """Map page index → Raw_Input blob key (same sort order as ingest)."""
+        prefix = (blob_path or "").strip()
+        if not container or not prefix:
+            return None
+        now = time.monotonic()
+        cached = self._raw_blob_lists.get(folder_id)
+        if cached and (now - cached[0]) < _BLOB_LIST_TTL_SEC:
+            names = cached[1]
+        else:
+            try:
+                from app.services.blob_store import list_image_blob_keys
+
+                names = list_image_blob_keys(container, prefix)
+                self._raw_blob_lists[folder_id] = (now, names)
+            except Exception as exc:
+                logger.warning(
+                    "Raw_Input blob list failed for %s (%s/%s): %s",
+                    folder_id,
+                    container,
+                    prefix,
+                    exc,
+                )
+                return None
+        if page_index_1based < 1 or page_index_1based > len(names):
+            return None
+        return names[page_index_1based - 1]
 
     def _chart_run_batch(self, folder_id: str) -> tuple[str | None, str | None]:
         try:
@@ -759,10 +1021,17 @@ class PostgresFolderRepository(FolderRepository):
         return by_page
 
     def get_imaging(self, folder_id: str) -> ImagingDocumentResponse:
-        """Build imaging panel entirely from Postgres; page skeleton from local files."""
-        local = self._require_local()
-        folder_dir = local._folder_dir(folder_id)  # noqa: SLF001 — shared path helper
-        page_files = local._page_files(folder_dir)  # noqa: SLF001
+        """Build imaging panel entirely from Postgres; page skeleton from local or page_list."""
+        page_files: list[tuple[int, Path]] = []
+        local = self._optional_local()
+        if local is not None:
+            try:
+                folder_dir = local._folder_dir(folder_id)  # noqa: SLF001
+                page_files = local._page_files(folder_dir)  # noqa: SLF001
+            except Exception:
+                page_files = []
+        if not page_files:
+            page_files = [(num, Path(name)) for num, name in self._pages_from_db(folder_id)]
         pages = empty_imaging_pages(page_files)
 
         db_fields = self._page_imaging_from_db(folder_id)

@@ -198,10 +198,13 @@ class Settings(BaseSettings):
 
     @property
     def blob_entra_ready(self) -> bool:
+        from app.services.blob_store import resolved_blob_account_url
+
+        account_ok = bool(resolved_blob_account_url(self))
         return bool(
             self.file_viewer_blob_enabled
             and self.blob_auth_mode == "entra"
-            and self.blob_account_url.strip()
+            and account_ok
             and self.blob_container.strip()
         )
 

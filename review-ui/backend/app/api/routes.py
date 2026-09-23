@@ -117,8 +117,58 @@ def get_page_image(
     page_number: int,
     repo: FolderRepository = Depends(get_repository),
 ):
-    """Serve a page image. TIFF is re-encoded to JPEG — browsers cannot show it raw."""
-    path = repo.get_page_image_path(folder_id, page_number)
+    """Serve a page image. TIFF is re-encoded to JPEG — browsers cannot show it raw.
+
+    Production Mode prefers Azure Blob via ``chart_list.blob_path`` (and
+    Processed ``output_path`` when present). Falls back to DATA_ROOT when a
+    local workspace copy exists.
+    """
+    settings = get_settings()
+    if settings.is_production_mode:
+        from app.adapters.postgres.repository import PostgresFolderRepository
+        from app.services.blob_store import download_blob_at
+
+        if isinstance(repo, PostgresFolderRepository):
+            loc = repo.resolve_page_blob(folder_id, page_number)
+            if loc:
+                data, media_type = download_blob_at(
+                    container=loc["container"],
+                    key=loc["key"],
+                    filename=loc.get("filename"),
+                )
+                if is_tiff_name(loc.get("filename") or loc["key"]) or (
+                    media_type or ""
+                ).lower() in {"image/tiff", "image/tif"}:
+                    try:
+                        data = tiff_bytes_to_jpeg_bytes(data)
+                        media_type = "image/jpeg"
+                    except Exception as exc:
+                        logger.exception(
+                            "Blob TIFF→JPEG failed folder=%s page=%s key=%s",
+                            folder_id,
+                            page_number,
+                            loc["key"],
+                        )
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Could not convert TIFF for display: {exc}",
+                        ) from exc
+                return Response(
+                    content=data,
+                    media_type=media_type or "application/octet-stream",
+                    headers={"Cache-Control": "private, max-age=120"},
+                )
+
+    try:
+        path = repo.get_page_image_path(folder_id, page_number)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Page image not found: {folder_id} #{page_number}",
+        ) from exc
+
     if is_tiff_path(path):
         try:
             jpeg = tiff_path_to_jpeg_bytes(path)
