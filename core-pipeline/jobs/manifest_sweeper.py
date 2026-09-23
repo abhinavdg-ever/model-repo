@@ -331,7 +331,7 @@ def _ingest_rows(
             }
         )
 
-    # One round-trip per 1000 rows (MemberID / name+DOB groups separately).
+    # One round-trip per 100 rows (MemberID / name+DOB groups separately).
     stats = upsert_manifest_members(conn, members)
 
     return {

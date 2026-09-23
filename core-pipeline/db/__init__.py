@@ -1443,7 +1443,7 @@ def upsert_manifest_member(
 ) -> dict[str, Any]:
     """Insert or update one manifest row. Returns {id, action}.
 
-    Prefer :func:`upsert_manifest_members` for bulk loads (batches of 1000).
+    Prefer :func:`upsert_manifest_members` for bulk loads (batches of 100).
     """
     stats = upsert_manifest_members(
         conn,
@@ -1470,7 +1470,7 @@ def upsert_manifest_member(
     }
 
 
-MANIFEST_UPSERT_BATCH = 1000
+MANIFEST_UPSERT_BATCH = 100
 
 _MANIFEST_VALUE = "(%s, %s, %s, %s, %s, %s::date, %s, %s, %s, %s, %s)"
 
@@ -1531,7 +1531,7 @@ def upsert_manifest_members(
     *,
     batch_size: int = MANIFEST_UPSERT_BATCH,
 ) -> dict[str, int]:
-    """Bulk upsert manifesto rows in chunks of ``batch_size`` (default 1000).
+    """Bulk upsert manifesto rows in chunks of ``batch_size`` (default 100).
 
     Splits MemberID vs name+DOB keys (different partial unique indexes).
     Returns ``{inserted, updated}``.

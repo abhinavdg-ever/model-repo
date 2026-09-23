@@ -1136,7 +1136,7 @@ class MemoryStore:
         self,
         members: list[dict[str, Any]],
         *,
-        batch_size: int = 1000,
+        batch_size: int = 100,
     ) -> dict[str, int]:
         """Bulk upsert — in-memory path still goes row-by-row (API parity)."""
         _ = batch_size
