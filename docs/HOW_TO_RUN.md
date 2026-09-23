@@ -105,6 +105,9 @@ python cli.py run \
 - Never opens Postgres (in-memory stage state for this process only)
 - Rejects blob sources and `--chart-id` / `--chart-name` resume
 - review-ui Local Mode: open the `…-test` folder to inspect
+- Member verify: if MemoryStore has no manifesto row, loads matching
+  `recordId` from on-disk CSVs under `review-ui/data/metadata/` or
+  `review-ui/data/folders/manifest/` (strips the `-test` suffix for the lookup)
 
 `--skip-db-write` is a deprecated alias for the same behaviour.
 

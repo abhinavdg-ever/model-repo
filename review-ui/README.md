@@ -40,12 +40,12 @@ npm install
 npm run dev
 ```
 
-Docker: host ports **4000** (API) / **4001** (web).
+Docker: host ports **4000** (API) / **4001** (web). Compose is **Local Mode
+only** for now (`DATA_MODE=local` pinned).
 
 ```bash
-cp .env.example .env   # set DATA_MODE, DATABASE_URL, BLOB_* for production
+cp .env.example .env
 docker compose up -d --build
 ```
 
-`DATA_ROOT` defaults to `./data/folders` (Local Mode / fallback). In Production
-Mode, page images are proxied from blob — the folders volume is optional.
+`DATA_ROOT` defaults to `./data/folders` — core-pipeline writes there.

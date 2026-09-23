@@ -27,6 +27,18 @@ def test_chart_name(name: str) -> str:
     return f"{n}{TEST_CHART_SUFFIX}"
 
 
+def source_record_id(chart_name: str) -> str:
+    """Manifest ``record_id`` for a chart — strips the test-mode ``-test`` suffix.
+
+    Manifest CSVs key on the real chart / RecordId. Test-mode workspaces are
+    named ``<chart>-test``, so member verify must look up without the suffix.
+    """
+    n = (chart_name or "").strip()
+    if n.endswith(TEST_CHART_SUFFIX) and len(n) > len(TEST_CHART_SUFFIX):
+        return n[: -len(TEST_CHART_SUFFIX)]
+    return n
+
+
 # Seeded to match schema/v1.sql pipeline_stage (phase-1 rows).
 DEFAULT_PIPELINE_STAGES: list[dict[str, Any]] = [
     {"stage_name": "ocr_quality", "pass_no": 1, "seq": 10,
@@ -1033,7 +1045,11 @@ class MemoryStore:
                 chart = self.charts.get(chart_id)
                 if not chart:
                     return []
-                return self.list_manifest_members(record_id=chart["chart_name"])
+                # Manifest CSVs key on the real RecordId; test workspaces are
+                # named <chart>-test — strip before joining.
+                return self.list_manifest_members(
+                    record_id=source_record_id(chart["chart_name"])
+                )
             return []
 
     def count_manifest_members(self, record_id: str) -> int:

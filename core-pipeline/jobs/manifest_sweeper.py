@@ -208,39 +208,65 @@ def lookup_manifest_members_on_disk(
     *,
     metadata_root: Optional[Path] = None,
 ) -> list[dict[str, Any]]:
-    """Scan ``METADATA_ROOT`` (CSV/XLSX) for rows whose record_id matches.
+    """Scan on-disk manifesto CSVs/XLSX for rows whose record_id matches.
 
-    Used when Postgres has no rows yet — same files review-ui Local Mode reads.
+    Search order (first root that yields hits wins — we merge all hits from
+    every readable root so a split drop still finds the row):
+
+      1. ``metadata_root`` or ``METADATA_ROOT`` (``review-ui/data/metadata``)
+      2. ``DATA_ROOT/manifest`` (``review-ui/data/folders/manifest``)
+      3. sibling ``…/data/manifest`` next to the folders tree
+
+    Used when Postgres / MemoryStore has no rows yet — same files review-ui
+    Local Mode reads for Manifest Details.
     """
-    root = (metadata_root or METADATA_ROOT).expanduser()
-    if not root.is_dir():
-        return []
+    from config import DATA_ROOT
+
     wanted = (record_id or "").strip()
     if not wanted:
         return []
 
+    roots: list[Path] = []
+    primary = (metadata_root or METADATA_ROOT).expanduser()
+    roots.append(primary)
+    # User drop: folders/manifest next to chart workspaces
+    roots.append((DATA_ROOT / "manifest").expanduser())
+    roots.append((DATA_ROOT.parent / "manifest").expanduser())
+    # Sibling metadata if METADATA_ROOT was overridden away from data/metadata
+    sibling_meta = (DATA_ROOT.parent / "metadata").expanduser()
+    if sibling_meta.resolve() != primary.resolve():
+        roots.append(sibling_meta)
+
     matches: list[dict[str, Any]] = []
-    for path in sorted(p for p in root.iterdir() if _is_manifest_file(p)):
-        if path.name.startswith("._"):
-            continue
+    seen_paths: set[Path] = set()
+    for root in roots:
         try:
-            rows = parse_manifest_bytes(path.name, path.read_bytes())
-        except Exception:
-            logger.exception("Skipping unreadable manifest %s", path)
+            resolved = root.resolve()
+        except OSError:
             continue
-        for row in rows:
-            # Normalise keys the same way as ingest (strip whitespace).
-            norm = {
-                (k or "").strip(): ("" if v is None else str(v)).strip()
-                for k, v in row.items()
-            }
-            if _record_id(norm) != wanted:
+        if resolved in seen_paths or not resolved.is_dir():
+            continue
+        seen_paths.add(resolved)
+        for path in sorted(p for p in resolved.iterdir() if _is_manifest_file(p)):
+            if path.name.startswith("._"):
                 continue
-            member = _row_to_member(
-                norm, source_file=path.name, source_path=str(path.resolve())
-            )
-            if member:
-                matches.append(member)
+            try:
+                rows = parse_manifest_bytes(path.name, path.read_bytes())
+            except Exception:
+                logger.exception("Skipping unreadable manifest %s", path)
+                continue
+            for row in rows:
+                norm = {
+                    (k or "").strip(): ("" if v is None else str(v)).strip()
+                    for k, v in row.items()
+                }
+                if _record_id(norm) != wanted:
+                    continue
+                member = _row_to_member(
+                    norm, source_file=path.name, source_path=str(path.resolve())
+                )
+                if member:
+                    matches.append(member)
     return matches
 
 

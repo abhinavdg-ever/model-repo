@@ -20,7 +20,8 @@
 --   page_list.use_corrected             (if missing)
 --   page_list.image_path                (if missing; backfill pages/<name>)
 --   pipeline_stage rows:
---       page_subtype    seq 85  phase-1   (codeable CSV; no result table yet)
+--       section_headers seq 55  phase-1   (OCR JSON only; no new table)
+--       page_subtype    seq 85  phase-1   (codeable CSV; page_classification)
 --       encounter_type  seq 90  phase-1
 --       page_sequencing seq 95  phase-1
 --   TABLES (were proposals in older v2.sql — now required V1):
@@ -29,6 +30,10 @@
 --       page_sequencing_results
 --   page_stage_status pending rows for those three stages on existing pages
 --
+-- NOT created here (already in older v1.sql — apply full v1.sql on empty DBs):
+--   chart_list, page_list, page_stage_status, manifest_member_list,
+--   ocr_results, ocr_quality_results, blank_junk_classification,
+--   member_*, dos_extraction_results, pipeline_jobs, …
 -- NOT created here (still V2 proposals — only if you apply v2.sql):
 --   chunk_results, rejection_results, users, …
 -- =====================================================================
@@ -77,6 +82,7 @@ COMMENT ON COLUMN page_list.image_path IS
 -- page_subtype as is_phase1=FALSE at different seq values. Upsert fixes that.
 
 INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1) VALUES
+    ('section_headers',  1, 55, 'Section Header Match',          TRUE),
     ('page_subtype',     1, 85, 'Codeable / Non-Codeable (TF)',  TRUE),
     ('encounter_type',   1, 90, 'Encounter Type (TF)',           TRUE),
     ('page_sequencing',  1, 95, 'Page Sequencing',               TRUE)
@@ -266,6 +272,7 @@ SELECT p.chart_id, p.id, s.stage_name, s.pass_no, 'pending'
   FROM page_list p
   CROSS JOIN (
       VALUES
+          ('section_headers', 1::smallint),
           ('page_subtype',    1::smallint),
           ('encounter_type',  1::smallint),
           ('page_sequencing', 1::smallint)

@@ -34,8 +34,10 @@ from db import (
     get_ocr_texts,
     get_quality_map,
     list_manifest_members,
+    source_record_id,
     upsert_member_extraction,
     upsert_member_summary,
+    upsert_manifest_member,
 )
 from db.paths import imaging_csv, write_csv
 from stages._support import (
@@ -219,6 +221,50 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             manifest_rows = list_manifest_members(conn, chart_id=chart_id)
             bj_flags = get_blank_junk_flags(conn, chart_id, final_only=True)
             texts = _ocr_text_map(conn, chart_id)
+
+        if not manifest_rows:
+            # Test mode / empty MemoryStore / unswept Postgres: same CSVs
+            # review-ui Local Mode reads under data/metadata or folders/manifest.
+            from jobs.manifest_sweeper import lookup_manifest_members_on_disk
+
+            rid = source_record_id(chart_name)
+            disk_rows = lookup_manifest_members_on_disk(rid)
+            if not disk_rows and rid != chart_name:
+                disk_rows = lookup_manifest_members_on_disk(chart_name)
+            if disk_rows:
+                logger.info(
+                    "chart %s: loaded %d manifest row(s) from disk for record_id=%s",
+                    chart_id,
+                    len(disk_rows),
+                    rid,
+                )
+                # Seed the in-memory / DB store so later lookups (and review-ui
+                # Production Mode) see the same row without re-scanning CSVs.
+                with connect() as conn:
+                    for row in disk_rows:
+                        try:
+                            upsert_manifest_member(
+                                conn,
+                                record_id=str(row.get("record_id") or rid),
+                                member_name=str(row.get("member_name") or ""),
+                                first_name=row.get("first_name"),
+                                middle_name=row.get("middle_name"),
+                                last_name=row.get("last_name"),
+                                member_dob=row.get("member_dob"),
+                                external_member_id=row.get("external_member_id"),
+                                run_id=row.get("run_id"),
+                                batch_id=row.get("batch_id"),
+                                source_file=row.get("source_file"),
+                                source_path=row.get("source_path"),
+                            )
+                        except Exception:
+                            logger.exception(
+                                "Failed to cache disk manifest row for %s", rid
+                            )
+                    manifest_rows = list_manifest_members(conn, chart_id=chart_id)
+                if not manifest_rows:
+                    # Upsert shape differed; use the disk dicts directly.
+                    manifest_rows = disk_rows
 
         manifest = _pick_manifest_row(manifest_rows)
         if manifest is None:

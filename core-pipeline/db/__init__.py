@@ -32,6 +32,7 @@ from db.memory_store import (  # noqa: E402
     get_memory_store,
     is_skip_db_write,
     test_chart_name,
+    source_record_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ __all_memory__ = (
     "get_memory_store",
     "is_skip_db_write",
     "test_chart_name",
+    "source_record_id",
 )
 
 

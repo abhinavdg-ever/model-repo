@@ -687,9 +687,7 @@ curl -fsS localhost:8001/ready
 
 cd ../review-ui && cp .env.example .env && docker compose up -d --build
 # UI: http://localhost:4001   API: http://localhost:4000
-# Production Mode: set DATA_MODE=production, DATABASE_URL, and
-# BLOB_ACCOUNT_URL (or AZURE_STORAGE_ACCOUNT_NAME) + Entra in review-ui/.env
-# so page images come from chart_list.blob_path.
+# Compose pins DATA_MODE=local (disk). Production Mode is code-ready separately.
 ```
 
 ```powershell

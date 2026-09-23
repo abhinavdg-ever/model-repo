@@ -90,8 +90,7 @@ function fillDosForward(
 }
 
 type ImagingTab = "page" | "doc" | "additional";
-type AdditionalSubTab = "sections" | "sequencing";
-type DocView = "values" | "confidence" | "rejection";
+type DocView = "sequencing" | "values" | "confidence" | "rejection";
 
 type Props = {
   tab: ImagingTab;
@@ -465,16 +464,29 @@ function DocSummary({
   verifications: ImagingVerificationDetails[];
   sections: ImagingSectionsProcessed;
 }) {
-  const [view, setView] = useState<DocView>("values");
+  const [view, setView] = useState<DocView>("sequencing");
   const rows = useMemo(
     () => fillDosForward(pages, sections.dos),
     [pages, sections.dos],
   );
   const showConfidence = view === "confidence";
+  const seqRows = useMemo(
+    () => [...pages].sort((a, b) => a.pageNumber - b.pageNumber),
+    [pages],
+  );
 
   return (
     <div className="imaging-doc-summary">
       <div className="output-tabs imaging-doc-tabs" role="tablist" aria-label="Doc summary view">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "sequencing"}
+          className={view === "sequencing" ? "active" : ""}
+          onClick={() => setView("sequencing")}
+        >
+          Sequencing
+        </button>
         <button
           type="button"
           role="tab"
@@ -504,7 +516,9 @@ function DocSummary({
         </button>
       </div>
 
-      {view === "rejection" ? (
+      {view === "sequencing" ? (
+        <SequencingTable pages={seqRows} sequencingProcessed={Boolean(sections.sequencing)} />
+      ) : view === "rejection" ? (
         <RejectionRulesTable
           rows={verifications}
           verificationProcessed={sections.verification}
@@ -572,12 +586,7 @@ function DocSummary({
                 <td>{fmtPageType(p.pageType, sections.junk)}</td>
                 <td>{fmt(p.isCodeable, p.isCodeable != null && String(p.isCodeable).trim() !== "")}</td>
                 <td>{fmt(p.currentSequence ?? p.pageNumber, true)}</td>
-                <td>
-                  {fmt(
-                    p.actualSequence,
-                    p.actualSequence != null,
-                  )}
-                </td>
+                <td>{fmt(p.actualSequence, Boolean(sections.sequencing))}</td>
                 {showConfidence ? (
                   <>
                     <td>{fmtConfidence(p.memberConfidence, sections.member)}</td>
@@ -623,51 +632,17 @@ export default function ImagingPanel({
   sectionHeadersLoading = false,
   imageNaturalSize = null,
 }: Props) {
-  const [additionalSubTab, setAdditionalSubTab] =
-    useState<AdditionalSubTab>("sections");
-
   if (tab === "additional") {
     return (
       <div className="imaging-panel-stack">
-        <div
-          className="output-tabs imaging-additional-tabs"
-          role="tablist"
-          aria-label="Additional views"
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={additionalSubTab === "sections"}
-            className={additionalSubTab === "sections" ? "active" : ""}
-            onClick={() => setAdditionalSubTab("sections")}
-          >
-            Section Coordinates
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={additionalSubTab === "sequencing"}
-            className={additionalSubTab === "sequencing" ? "active" : ""}
-            onClick={() => setAdditionalSubTab("sequencing")}
-          >
-            Sequencing
-          </button>
-        </div>
-        {additionalSubTab === "sections" ? (
-          <SectionCoordinates
-            fileName={currentFileName}
-            headers={sectionHeaders}
-            source={sectionHeadersSource}
-            skipped={sectionHeadersSkipped}
-            loading={sectionHeadersLoading}
-            imageNaturalSize={imageNaturalSize}
-          />
-        ) : (
-          <SequencingPanel
-            page={currentPage}
-            fileName={currentFileName}
-          />
-        )}
+        <SectionCoordinates
+          fileName={currentFileName}
+          headers={sectionHeaders}
+          source={sectionHeadersSource}
+          skipped={sectionHeadersSkipped}
+          loading={sectionHeadersLoading}
+          imageNaturalSize={imageNaturalSize}
+        />
       </div>
     );
   }
@@ -731,35 +706,42 @@ export default function ImagingPanel({
 
 const SECTION_SKIP_MESSAGE = "Skipped for Junk/Blank";
 
-function SequencingPanel({
-  page,
-  fileName,
+function SequencingTable({
+  pages,
+  sequencingProcessed,
 }: {
-  page: ImagingPageResult | null;
-  fileName: string | null;
+  pages: ImagingPageResult[];
+  sequencingProcessed: boolean;
 }) {
-  const current = page?.currentSequence ?? page?.pageNumber ?? null;
   return (
     <div className="section-coords-panel">
-      <div className="section-coords-title">Sequencing</div>
-      {fileName ? (
-        <p className="section-coords-file">{fileName}</p>
+      <div className="section-coords-title">Page Sequencing</div>
+      {!sequencingProcessed ? (
+        <p className="section-coords-empty">
+          Sequencing has not run for this chart yet — Actual Sequence stays Yet
+          to Process until the page_sequencing stage writes results.
+        </p>
       ) : null}
-      <table className="imaging-detail-table">
+      <table className="imaging-summary-table">
+        <thead>
+          <tr>
+            <th scope="col">Page #</th>
+            <th scope="col">File</th>
+            <th scope="col">Current Sequence</th>
+            <th scope="col">Actual Sequence</th>
+          </tr>
+        </thead>
         <tbody>
-          <tr>
-            <th scope="row">Current Sequence</th>
-            <td>{fmt(current, true)}</td>
-          </tr>
-          <tr>
-            <th scope="row">Actual Sequence</th>
-            <td>{fmt(page?.actualSequence, false)}</td>
-          </tr>
+          {pages.map((p) => (
+            <tr key={`seq-${p.pageNumber}-${p.fileName}`}>
+              <td>{p.pageNumber}</td>
+              <td className="imaging-mono">{p.fileName}</td>
+              <td>{fmt(p.currentSequence ?? p.pageNumber, true)}</td>
+              <td>{fmt(p.actualSequence, sequencingProcessed)}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
-      <p className="section-coords-empty">
-        Sequencing logic will be wired next — Actual Sequence stays Yet to Process until then.
-      </p>
     </div>
   );
 }
