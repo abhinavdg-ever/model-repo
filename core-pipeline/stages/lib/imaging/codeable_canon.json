@@ -921,7 +921,8 @@
       "keywords": [
         "office visits/followup visits",
         "followup visits",
-        "office visits"
+        "office visits",
+        "office visit"
       ]
     },
     {
@@ -1121,7 +1122,8 @@
       "tag": "codeable",
       "continue": "y",
       "keywords": [
-        "progress notes"
+        "progress notes",
+        "progress note"
       ]
     },
     {
@@ -2248,7 +2250,9 @@
       "tag": "codeable",
       "continue": "y",
       "keywords": [
-        "visit report"
+        "visit report",
+        "office visit",
+        "office visits"
       ]
     },
     {
@@ -2256,7 +2260,8 @@
       "tag": "codeable",
       "continue": "y",
       "keywords": [
-        "progress note"
+        "progress note",
+        "progress notes"
       ]
     },
     {

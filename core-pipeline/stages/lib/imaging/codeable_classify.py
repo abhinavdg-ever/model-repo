@@ -187,9 +187,11 @@ def _prefer_demographics(
     demo: MatchResult,
     other: Optional[MatchResult],
 ) -> MatchResult:
-    """Demographics wins unless a continue=y clinical type already scored higher."""
+    """Demographics wins unless Progress/Office Visit (or stronger continue) also matched."""
     if other is None:
         return demo
+    if _clinical_priority(other.page_type) > 0:
+        return other
     if other.continue_ == "y" and other.score > demo.score:
         return other
     if other.page_type.casefold() in {
@@ -205,6 +207,42 @@ def _phrase_weight(phrase: str) -> int:
     """Longer phrases beat short accidental tokens."""
     tokens = max(1, phrase.count(" ") + 1)
     return tokens * tokens
+
+
+def _clinical_priority(page_type: str) -> int:
+    """Prefer Progress Note / Office Visit when several types match.
+
+    Higher wins. 0 = no clinical boost.
+    """
+    n = _clean_label(page_type).casefold()
+    if "progress note" in n:
+        return 100
+    if "office visit" in n or n in {
+        "visit report",
+        "initial office note",
+        "office visits/followup visits",
+    }:
+        return 90
+    if n == "visit report" or n.startswith("visit report"):
+        return 90
+    return 0
+
+
+def _better_match(a: MatchResult, b: MatchResult) -> MatchResult:
+    """Pick the winner when two types both scored on the same page."""
+    pa, pb = _clinical_priority(a.page_type), _clinical_priority(b.page_type)
+    if pa != pb:
+        return a if pa > pb else b
+    if a.score != b.score:
+        return a if a.score > b.score else b
+    # Prefer continue=y, then longer page_type name, on remaining ties.
+    if a.continue_ == "y" and b.continue_ != "y":
+        return a
+    if b.continue_ == "y" and a.continue_ != "y":
+        return b
+    if len(a.page_type) != len(b.page_type):
+        return a if len(a.page_type) > len(b.page_type) else b
+    return a
 
 
 def score_text(text: str, entries: Sequence[CanonEntry] | None = None) -> Optional[MatchResult]:
@@ -239,17 +277,7 @@ def score_text(text: str, entries: Sequence[CanonEntry] | None = None) -> Option
             continue_applied=False,
             matched_keyword=best_kw,
         )
-        if best is None or candidate.score > best.score:
-            best = candidate
-            continue
-        if candidate.score == best.score:
-            # Prefer continue=y, then longer page_type name, on ties.
-            if candidate.continue_ == "y" and best.continue_ != "y":
-                best = candidate
-            elif len(candidate.page_type) > len(best.page_type) and (
-                candidate.continue_ == best.continue_
-            ):
-                best = candidate
+        best = candidate if best is None else _better_match(best, candidate)
     return best
 
 

@@ -171,3 +171,25 @@ def test_demographics_canon_entry_exists(canon):
     types = {e.page_type for e in canon}
     assert "Demographics" in types
     assert not any("\\" in e.page_type for e in canon)
+
+
+def test_progress_note_beats_other_matches(canon):
+    """When several types hit, Progress Note / Office Visit win."""
+    text = (
+        "PROGRESS NOTE\nOffice visit today.\nConsent form authorization.\n"
+        "Patient Education handout attached."
+    )
+    hit = score_text(text, canon)
+    assert hit is not None
+    assert "progress note" in hit.page_type.casefold()
+
+
+def test_office_visit_beats_weaker_matches(canon):
+    text = (
+        "Office visit follow-up.\nPrescriptions/RX Page refill list.\n"
+        "Check List of vitals."
+    )
+    hit = score_text(text, canon)
+    assert hit is not None
+    n = hit.page_type.casefold()
+    assert "office visit" in n or n == "visit report"
