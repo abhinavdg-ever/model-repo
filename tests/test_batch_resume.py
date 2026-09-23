@@ -85,3 +85,57 @@ def test_batch_summarise_counts_skipped():
     assert summary["completed"] == 1
     assert summary["skipped"] == 1
     assert summary["failed"] == 1
+
+
+def test_select_batch_sources_skips_complete_when_enough_incomplete(monkeypatch):
+    from jobs import batch_intake
+
+    sources = [
+        ("/a", "chart_a", "local"),
+        ("/b", "chart_b", "local"),
+        ("/c", "chart_c", "local"),
+        ("/d", "chart_d", "local"),
+    ]
+    monkeypatch.setattr(
+        batch_intake,
+        "_chart_names_pipeline_complete",
+        lambda names: {"chart_a", "chart_b"},
+    )
+    picked = batch_intake.select_batch_sources(sources, 2)
+    assert [n for _s, n, _m in picked] == ["chart_c", "chart_d"]
+
+
+def test_select_batch_sources_fills_with_complete_when_needed(monkeypatch):
+    from jobs import batch_intake
+
+    sources = [
+        ("/a", "chart_a", "local"),
+        ("/b", "chart_b", "local"),
+        ("/c", "chart_c", "local"),
+    ]
+    monkeypatch.setattr(
+        batch_intake,
+        "_chart_names_pipeline_complete",
+        lambda names: {"chart_a", "chart_b"},
+    )
+    picked = batch_intake.select_batch_sources(sources, 2)
+    assert [n for _s, n, _m in picked] == ["chart_c", "chart_a"]
+
+
+def test_select_batch_sources_keeps_all_when_drop_fits():
+    from jobs.batch_intake import select_batch_sources
+
+    sources = [
+        ("/a", "chart_a", "local"),
+        ("/b", "chart_b", "local"),
+    ]
+    # Even if both were complete, the drop fits in sample=2 — keep both.
+    picked = select_batch_sources(sources, 2, prefer_incomplete=True)
+    assert picked == sources
+
+
+def test_select_batch_sources_no_sample_returns_all():
+    from jobs.batch_intake import select_batch_sources
+
+    sources = [("/a", "a", "local"), ("/b", "b", "local")]
+    assert select_batch_sources(sources, None) == sources

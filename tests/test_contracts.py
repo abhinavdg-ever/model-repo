@@ -598,17 +598,17 @@ class TestBatchFolderDiscovery:
             assert field in BatchRequest.model_fields, field
         assert "workers" in BatchRequest.model_fields
         assert "sample" in BatchRequest.model_fields
-        assert "limit" in BatchRequest.model_fields
+        assert "limit" not in BatchRequest.model_fields
 
-    def test_batch_sample_wins_over_limit(self):
+    def test_batch_sample_field(self):
         from api.main import BatchRequest
 
-        body = BatchRequest(local_read_path="/data/inbox", sample=2, limit=10)
+        body = BatchRequest(local_read_path="/data/inbox", sample=2)
         assert body.charts_cap() == 2
-        body2 = BatchRequest(local_read_path="/data/inbox", limit=5)
-        assert body2.charts_cap() == 5
-        body3 = BatchRequest(local_read_path="/data/inbox")
-        assert body3.charts_cap() is None
+        body2 = BatchRequest(local_read_path="/data/inbox")
+        assert body2.charts_cap() is None
+        assert "limit" not in BatchRequest.model_fields
+        assert "sample" in BatchRequest.model_fields
 
     def test_batch_workers_must_fit_the_db_pool(self, monkeypatch):
         from jobs import batch_intake as bi

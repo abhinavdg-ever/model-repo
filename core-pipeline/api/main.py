@@ -174,15 +174,28 @@ class StageSelection(BaseModel):
             "Raw_Input. Default false: reuse workspace pages when present."
         ),
     )
+    test_mode: bool = Field(
+        False,
+        description=(
+            "Local runs only: never open Postgres; chart/page/stage state stays "
+            "in memory. Workspace writes under data/folders/<chart>-test so you "
+            "can open it in review-ui without touching the real chart folder. "
+            "Rejected with blob sources or chart_id/chart_name resume. "
+            "Env TEST_MODE=true also enables."
+        ),
+    )
     skip_db_write: bool = Field(
         False,
         description=(
-            "Local runs only: never open Postgres. Chart/page/stage state stays "
-            "in memory for the process; workspace pages/ocr/imaging (and "
-            "local_write_path) still write to disk. Rejected with blob sources "
-            "or chart_id/chart_name resume. Env SKIP_DB_WRITE=true also enables."
+            "Deprecated alias for test_mode (same behaviour, including the "
+            "-test workspace suffix). Prefer test_mode. Env SKIP_DB_WRITE=true "
+            "still enables."
         ),
     )
+
+    def wants_offline(self) -> bool:
+        """True when test_mode or legacy skip_db_write is set."""
+        return bool(self.test_mode or self.skip_db_write)
 
 
 class RunRequest(StageSelection):
@@ -383,18 +396,12 @@ class BatchRequest(StageSelection):
         None,
         ge=1,
         description=(
-            "Smoke test: run only the first N chart folders under the read path "
-            "(sorted by name). Prefer this over limit for a small trial batch."
+            "Smoke test: run at most N chart folders under the read path "
+            "(sorted by name). When more than N folders exist, prefer charts "
+            "that are not yet pipeline-complete; completed ones are included "
+            "only if needed to fill N."
         ),
         examples=[1, 3, 5],
-    )
-    limit: Optional[int] = Field(
-        None,
-        ge=1,
-        description=(
-            "Only the first N charts (same as sample). Kept for compatibility; "
-            "when both are set, sample wins."
-        ),
     )
     run_id: Optional[str] = Field(
         None,
@@ -414,11 +421,9 @@ class BatchRequest(StageSelection):
     )
 
     def charts_cap(self) -> Optional[int]:
-        """Effective first-N cap: ``sample`` wins over ``limit``."""
+        """Effective first-N cap from ``sample``."""
         if self.sample is not None:
             return int(self.sample)
-        if self.limit is not None:
-            return int(self.limit)
         return None
 
     @field_validator("local_read_path", "local_write_path", mode="before")
@@ -613,7 +618,7 @@ def _bg_pipeline_then_write(
         )
         _write_after_run(payload, chart_name)
     finally:
-        if getattr(payload, "skip_db_write", False):
+        if getattr(payload, "wants_offline", lambda: False)():
             from db import disable_skip_db_write
 
             disable_skip_db_write()
@@ -716,8 +721,8 @@ def _bg_batch(payload: "BatchRequest") -> None:
             through=payload.through,
             skip_ocr=payload.skip_ocr,
             redownload_pages=payload.redownload_pages,
-            skip_db_write=bool(payload.skip_db_write),
-            limit=payload.charts_cap(),
+            skip_db_write=bool(payload.wants_offline()),
+            sample=payload.sample,
             run_id=payload.run_id,
             batch_id=payload.batch_id,
             workers=payload.workers,
@@ -894,24 +899,24 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
         )
 
     _validate_stages(body)
-    if body.skip_db_write:
+    if body.wants_offline():
         if has_blob or body.blob_write_path:
             raise HTTPException(
                 status_code=400,
-                detail="skip_db_write is local-only (no blob read/write)",
+                detail="test_mode is local-only (no blob read/write)",
             )
         if resume_id or resume_name:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "skip_db_write cannot resume by chart_id/chart_name; "
+                    "test_mode cannot resume by chart_id/chart_name; "
                     "pass local_read_path + local_folder_name"
                 ),
             )
         if not has_local:
             raise HTTPException(
                 status_code=400,
-                detail="skip_db_write requires local_read_path + local_folder_name",
+                detail="test_mode requires local_read_path + local_folder_name",
             )
         from db import enable_skip_db_write
 
@@ -986,13 +991,15 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
         folder = body.local_folder_name
 
     if has_local:
+        from db import test_chart_name
         from stages.download_blob import import_local_folder
 
         source = str(Path(body.local_read_path) / folder)
+        workspace_name = test_chart_name(folder) if body.wants_offline() else folder
         try:
             result = import_local_folder(
                 source,
-                chart_name=folder,
+                chart_name=workspace_name,
                 force=body.force,
                 redownload_pages=body.redownload_pages,
                 run_id=body.run_id,
@@ -1001,13 +1008,13 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         background_tasks.add_task(
-            _bg_pipeline_then_write, result["chart_id"], folder, body
+            _bg_pipeline_then_write, result["chart_id"], workspace_name, body
         )
         return {
             "status": "accepted",
             "mode": "local",
             "chart_id": result["chart_id"],
-            "chart_name": folder,
+            "chart_name": workspace_name,
             "source": source,
             "imported": result["imported"],
             "manifest": result["manifest"],
@@ -1016,10 +1023,16 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
             "only": body.only,
             "skip_ocr": body.skip_ocr,
             "redownload_pages": body.redownload_pages,
+            "test_mode": body.wants_offline(),
             "skip_db_write": body.skip_db_write,
             "force": body.force,
-            "write": _write_summary(body, folder, write_to),
+            "write": _write_summary(body, workspace_name, write_to),
             "poll": f"/api/charts/{result['chart_id']}",
+            "note": (
+                f"test_mode: workspace at data/folders/{workspace_name}"
+                if body.wants_offline()
+                else None
+            ),
         }
 
     background_tasks.add_task(_bg_run, body)
@@ -1126,16 +1139,16 @@ def _batch_run_impl(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     body.workers = workers
     _validate_stages(body)
-    if body.skip_db_write:
+    if body.wants_offline():
         if has_blob or body.blob_write_path:
             raise HTTPException(
                 status_code=400,
-                detail="skip_db_write is local-only (no blob read/write)",
+                detail="test_mode is local-only (no blob read/write)",
             )
         if not has_local:
             raise HTTPException(
                 status_code=400,
-                detail="skip_db_write requires local_read_path",
+                detail="test_mode requires local_read_path",
             )
     else:
         _require_db()
@@ -1166,10 +1179,10 @@ def _batch_run_impl(
         "charts_queued": queued,
         "sample": body.sample,
         "workers": workers,
-        "limit": body.limit,
         "through": body.through,
         "only": body.only,
         "skip_ocr": body.skip_ocr,
+        "test_mode": body.wants_offline(),
         "write": (
             {
                 "destination": (
@@ -1189,7 +1202,8 @@ def _batch_run_impl(
         ),
         "note": (
             (
-                f"sample={cap}: first {queued} of {found} chart folder(s); "
+                f"sample={cap}: up to {queued} of {found} chart folder(s) "
+                f"(incomplete preferred when the drop is larger than N); "
                 if cap and found is not None and queued is not None
                 else ""
             )

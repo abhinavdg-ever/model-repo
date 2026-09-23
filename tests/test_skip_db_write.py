@@ -158,3 +158,11 @@ class TestOfflineIntakeNoPostgres:
         assert result["chart_id"]
         assert result["page_count"] == 1
         assert (tmp_path / "folders" / "offline_chart" / "pages" / "1.jpg").is_file()
+
+
+def test_test_chart_name_suffix():
+    from db.memory_store import test_chart_name
+
+    assert test_chart_name("52743839_44976074") == "52743839_44976074-test"
+    assert test_chart_name("52743839_44976074-test") == "52743839_44976074-test"
+    assert test_chart_name("") == ""

@@ -1,7 +1,10 @@
-"""In-process store for ``--skip-db-write`` local runs (no Postgres).
+"""In-process store for ``--test-mode`` / ``--skip-db-write`` local runs (no Postgres).
 
 Implements the same operations as ``db`` helpers so stages and CSV rebuilds
 keep working. State lives only for the process lifetime.
+
+Workspace charts are stored under ``data/folders/<chart_name>-test`` so a
+test run never overwrites a production chart folder.
 """
 from __future__ import annotations
 
@@ -10,6 +13,19 @@ import os
 import threading
 from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
+
+TEST_CHART_SUFFIX = "-test"
+
+
+def test_chart_name(name: str) -> str:
+    """Append ``-test`` so workspace lands under ``data/folders/<name>-test``."""
+    n = (name or "").strip()
+    if not n:
+        return n
+    if n.endswith(TEST_CHART_SUFFIX):
+        return n
+    return f"{n}{TEST_CHART_SUFFIX}"
+
 
 # Seeded to match schema/v1.sql pipeline_stage (phase-1 rows).
 DEFAULT_PIPELINE_STAGES: list[dict[str, Any]] = [
@@ -70,8 +86,11 @@ def _truthy_env(name: str) -> bool:
 
 def is_skip_db_write() -> bool:
     with _lock:
-        return _enabled or _truthy_env("SKIP_DB_WRITE")
-
+        return (
+            _enabled
+            or _truthy_env("SKIP_DB_WRITE")
+            or _truthy_env("TEST_MODE")
+        )
 
 def enable_skip_db_write(*, reset: bool = True) -> "MemoryStore":
     """Activate the in-memory backend. Never opens Postgres."""

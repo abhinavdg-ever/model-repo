@@ -82,25 +82,31 @@ curl -fsS localhost:8001/api/stages | python -m json.tool
 | `only: ["stage", …]` | omit | Run **just** those stages (quality still runs under `skip_ocr`). |
 | `skip_ocr: true` | env `SKIP_OCR` | See § skip_ocr below. Ignored when `force: true`. |
 | `redownload_pages: true` | `false` | Wipe `pages/` + `corrected-pages/` and re-fetch pages from Raw_Input. |
-| `skip_db_write: true` | `false` | **Local only.** Never open Postgres; chart/page/stage state stays in memory. Still writes workspace `pages/` / `ocr/` / `imaging/` and optional `local_write_path`. No cross-process resume. Env: `SKIP_DB_WRITE=true`. |
+| `test_mode` / `--test-mode` | `false` | **Local only.** No Postgres. Workspace under `data/folders/<chart>-test` for review-ui. Env `TEST_MODE=true`. |
+| `skip_db_write` | `false` | Deprecated alias for `test_mode` |
 | `through: "stage"` | omit | Run from the top of the chain and **stop after** that stage. |
 
-### What `skip_db_write` does
+### What `test_mode` does
 
-For laptop / folder experiments when Postgres is unavailable:
+For laptop / folder experiments when Postgres is unavailable — or when you
+want a side-by-side folder you can open in review-ui without touching the
+real chart:
 
 ```bash
 cd core-pipeline && source .venv/bin/activate
 python cli.py run \
   --local-read-path /data/inbox \
   --folder-name 52743839_44976074 \
-  --local-write-path /data/out \
-  --skip-db-write
+  --test-mode
 ```
 
-- Rejects blob sources and `--chart-id` / `--chart-name` resume.
-- Stages still run; CSVs and OCR files are written under `data/folders/<chart>/` as usual.
-- review-ui Local Mode can open that folder afterward — it never needed the DB to *read*.
+- Reads images from `/data/inbox/52743839_44976074/`
+- Writes workspace to `data/folders/52743839_44976074-test/` (pages, ocr, imaging)
+- Never opens Postgres (in-memory stage state for this process only)
+- Rejects blob sources and `--chart-id` / `--chart-name` resume
+- review-ui Local Mode: open the `…-test` folder to inspect
+
+`--skip-db-write` is a deprecated alias for the same behaviour.
 
 ### What `skip_ocr` does
 
@@ -172,24 +178,15 @@ curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
 
 ---
 
-## 4. Your case: OCR already done — run the new stages
+## 4. Your case: OCR already done — run new stages + refreshed quality
 
 Charts already exist in Postgres (`chart_id` / `chart_name`). No need to
 re-download pages from blob unless you also want a write sync.
 
-### One chart — codeable + encounter + sequencing
+### A. New stages only (codeable + encounter + sequencing) — **no OCR**
 
-```bash
-curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{
-    "chart_id": 123,
-    "force": true,
-    "only": ["page_subtype", "encounter_type", "page_sequencing"],
-    "blob_write_path": "Processed/Run1/Batch1"
-  }'
-```
-
-Or by name:
+Safe when HW/quality is fine and you only need the new classifiers. `only`
+means Final2 is **not** re-billed even with `force: true`:
 
 ```bash
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
@@ -201,22 +198,70 @@ curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
   }'
 ```
 
-CLI:
+Batch (sample of 10, or omit `sample` for the whole drop):
 
 ```bash
-python cli.py run --chart-id 123 --force \
-  --only page_subtype --only encounter_type --only page_sequencing \
-  --blob-write-path Processed/Run1/Batch1
+curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
+  -d '{
+    "blob_container": "imaging-pipeline",
+    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "blob_write_path": "Processed/Run1/Batch1",
+    "sample": 10,
+    "force": true,
+    "only": ["page_subtype", "encounter_type", "page_sequencing"],
+    "workers": 2
+  }'
 ```
 
-`force: true` here only re-runs those stages (not OCR), because `only` limits
-the chain. Outputs (workspace + optional blob write):
+```bash
+python cli.py batch-run \
+  --blob-container imaging-pipeline \
+  --blob-read-path Raw_Input/Run1/Batch1/DEID_PNGs \
+  --blob-write-path Processed/Run1/Batch1 \
+  --sample 10 --force \
+  --only page_subtype --only encounter_type --only page_sequencing \
+  --workers 2
+```
 
-- `imaging/<chart>_codeable.csv`
-- `imaging/<chart>_encounter.csv` + `encounter_type_results`
-- `imaging/<chart>_sequencing.csv` + `page_sequencing_results`
+Outputs: `imaging/<chart>_codeable.csv`, `*_encounter.csv`, `*_sequencing.csv`
+(+ matching Postgres tables).
 
-### One chart — also refresh DOS first (encounter needs DOS)
+### B. Better printed/HW + quality model — **reuse OCR unless quality switches**
+
+Deploy the new weights under `models/hw/`, then:
+
+```bash
+curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
+  -d '{
+    "blob_container": "imaging-pipeline",
+    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "blob_write_path": "Processed/Run1/Batch1",
+    "force": false,
+    "skip_ocr": true,
+    "only": [
+      "ocr_quality",
+      "page_subtype",
+      "encounter_type",
+      "page_sequencing"
+    ],
+    "workers": 2
+  }'
+```
+
+What this does:
+
+1. **`skip_ocr: true` + `force: false`** — reuse workspace / Processed / DB OCR.
+2. **Quality always re-runs** (even if you omit `ocr_quality` from `only` when
+   `skip_ocr` is on) → new HW/quality model writes fresh tags + `corrected-pages/`.
+3. **Gate-delta** — OCR engines re-open **only** for pages whose
+   printed/HW/quality/rotation path flipped; everyone else keeps existing OCR.
+4. Then codeable / encounter / sequencing run on the refreshed quality +
+   existing text.
+
+If encounter needs fresh DOS first, add `"dos_extract"` to `only` (still no
+Final2 unless a page is gate-reopened into `ocr_final2`).
+
+### C. Also refresh DOS first (encounter often needs it)
 
 ```bash
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
@@ -226,36 +271,6 @@ curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
     "only": ["dos_extract", "page_subtype", "encounter_type", "page_sequencing"],
     "blob_write_path": "Processed/Run1/Batch1"
   }'
-```
-
-### Batch — same stages on every chart under a blob prefix
-
-Use the **same** `blob_container` + `blob_read_path` you ingested from. With
-`only` set, OCR stages are not in the chain (so Final2 is not re-billed) even
-when `force: true`:
-
-```bash
-curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
-  -d '{
-    "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_Images",
-    "blob_write_path": "Processed/Run1/Batch1",
-    "force": true,
-    "only": ["page_subtype", "encounter_type", "page_sequencing"],
-    "workers": 2
-  }'
-```
-
-CLI:
-
-```bash
-python cli.py batch-run \
-  --blob-container imaging-pipeline \
-  --blob-read-path Raw_Input/Run1/Batch1/DEID_Images \
-  --blob-write-path Processed/Run1/Batch1 \
-  --force \
-  --only page_subtype --only encounter_type --only page_sequencing \
-  --workers 2
 ```
 
 Poll: `GET /api/charts/{id}` or core-pipeline logs / `progress.txt` under the chart.
@@ -408,18 +423,33 @@ Production Mode reads Postgres (`encounter_type_results`,
 
 ## 10. Quick checklist for “500 docs on blob, OCR done, add new classifiers”
 
-1. `psql … -f schema/patch_output_path.sql`
-2. Confirm `GET /ready` and `blob.ready` on `GET /health`
-3. Batch:
+1. Confirm `GET /ready` and `blob.ready` on `GET /health`
+2. Deploy new HW/quality weights under `models/hw/` if refreshing quality
+3. Batch — **new stages only** (no OCR bill):
 
 ```bash
 curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
   -d '{
     "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_Images",
+    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
     "blob_write_path": "Processed/Run1/Batch1",
     "force": true,
     "only": ["page_subtype", "encounter_type", "page_sequencing"],
+    "workers": 2
+  }'
+```
+
+   Or **refresh quality + reuse OCR** (§4B):
+
+```bash
+curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
+  -d '{
+    "blob_container": "imaging-pipeline",
+    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "blob_write_path": "Processed/Run1/Batch1",
+    "force": false,
+    "skip_ocr": true,
+    "only": ["ocr_quality", "page_subtype", "encounter_type", "page_sequencing"],
     "workers": 2
   }'
 ```

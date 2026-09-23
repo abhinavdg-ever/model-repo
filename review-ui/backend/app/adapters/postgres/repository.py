@@ -783,18 +783,31 @@ class PostgresFolderRepository(FolderRepository):
 
         manifest = self._manifest_from_db(folder_id) or ImagingManifestDetails()
         verification = self._verification_from_db(folder_id)
+        # "Processed" means the stage wrote rows — not that it found a value.
+        # Using non-empty memberName/dosFrom here made empty-but-finished charts
+        # show "Yet to Process" instead of "Not Found".
+        stage_flags = self._sections_from_db(folder_id)
         sections = ImagingSectionsProcessed(
-            member=any(p.memberName or p.memberId for p in merged),
-            dos=any(p.dosFrom or p.dosTo or p.docDosFrom for p in merged),
-            hw=any(p.handwrittenOrPrinted for p in merged),
-            quality=any(p.pageQualityTag or p.pageQualityConfidence is not None for p in merged),
-            rotation=any(
+            member=stage_flags["member"] or verification is not None,
+            dos=stage_flags["dos"],
+            hw=stage_flags["hw"]
+            or any(p.handwrittenOrPrinted for p in merged),
+            quality=stage_flags["quality"]
+            or any(
+                p.pageQualityTag or p.pageQualityConfidence is not None for p in merged
+            ),
+            rotation=stage_flags["rotation"]
+            or any(
                 p.orientationAngle is not None or p.tiltAngle is not None for p in merged
             ),
-            junk=any(p.blankOrJunk is not None or p.isDuplicate is not None for p in merged),
-            codeable=any(p.isCodeable is not None for p in merged),
-            encounter=any(p.encounterType is not None for p in merged),
-            sequencing=any(p.actualSequence is not None for p in merged),
+            junk=stage_flags["junk"]
+            or any(p.blankOrJunk is not None or p.isDuplicate is not None for p in merged),
+            codeable=stage_flags["codeable"]
+            or any(p.isCodeable is not None for p in merged),
+            encounter=stage_flags["encounter"]
+            or any(p.encounterType is not None for p in merged),
+            sequencing=stage_flags["sequencing"]
+            or any(p.actualSequence is not None for p in merged),
             verification=verification is not None,
         )
 
@@ -806,3 +819,50 @@ class PostgresFolderRepository(FolderRepository):
             pages=merged,
             sectionsProcessed=sections,
         )
+
+    def _sections_from_db(self, folder_id: str) -> dict[str, bool]:
+        """Which imaging sections have any result rows for this chart."""
+        flags = {
+            "member": False,
+            "dos": False,
+            "hw": False,
+            "quality": False,
+            "rotation": False,
+            "junk": False,
+            "codeable": False,
+            "encounter": False,
+            "sequencing": False,
+        }
+        checks = (
+            ("member", "member_extraction_results"),
+            ("member", "member_verification_summary"),
+            ("dos", "dos_extraction_results"),
+            ("hw", "ocr_quality_results"),
+            ("quality", "ocr_quality_results"),
+            ("rotation", "ocr_quality_results"),
+            ("junk", "blank_junk_classification"),
+            ("codeable", "page_classification"),
+            ("encounter", "encounter_type_results"),
+            ("sequencing", "page_sequencing_results"),
+        )
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    for key, table in checks:
+                        if flags.get(key):
+                            continue
+                        cur.execute(
+                            f"""
+                            SELECT 1
+                              FROM {table} t
+                              JOIN chart_list c ON c.id = t.chart_id
+                             WHERE c.chart_name = %s
+                             LIMIT 1
+                            """,
+                            (folder_id,),
+                        )
+                        if cur.fetchone():
+                            flags[key] = True
+        except Exception:
+            return flags
+        return flags

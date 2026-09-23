@@ -62,14 +62,19 @@ def main() -> None:
                  "output_path / Raw_Input only when missing)",
         )
         parser_obj.add_argument(
+            "--test-mode",
+            dest="test_mode",
+            action="store_true",
+            default=False,
+            help="Local only: no Postgres; write workspace under "
+                 "data/folders/<chart>-test for review-ui. Env TEST_MODE=true.",
+        )
+        parser_obj.add_argument(
             "--skip-db-write",
             dest="skip_db_write",
             action="store_true",
             default=False,
-            help="Local runs only: never open Postgres; keep chart/page/"
-                 "stage state in memory. Still writes workspace pages/ocr/"
-                 "imaging and optional --local-write-path. No cross-process "
-                 "resume.",
+            help="Deprecated alias for --test-mode",
         )
 
     def add_write_flags(parser_obj) -> None:
@@ -164,7 +169,14 @@ def main() -> None:
         parser_obj.set_defaults(force=True)
         add_stage_flags(parser_obj)
         parser_obj.add_argument("--no-pipeline", action="store_true", help="Intake only")
-        parser_obj.add_argument("--limit", type=int, help="Only the first N charts (dry runs)")
+        parser_obj.add_argument(
+            "--sample",
+            type=int,
+            help=(
+                "Run at most N charts (incomplete preferred when the drop is "
+                "larger than N)"
+            ),
+        )
         parser_obj.add_argument(
             "--workers", type=int, default=None,
             help="Charts to run concurrently (default BATCH_WORKERS, usually 4)",
@@ -285,14 +297,17 @@ def main() -> None:
             parser.error("a local source writes to --local-write-path")
         if args.blob_write_path and args.local_write_path:
             parser.error("give one write destination, not both")
-        if getattr(args, "skip_db_write", False):
+        offline = bool(
+            getattr(args, "test_mode", False) or getattr(args, "skip_db_write", False)
+        )
+        if offline:
             if not args.local_read_path:
-                parser.error("--skip-db-write requires --local-read-path")
+                parser.error("--test-mode requires --local-read-path")
             if args.blob_read_path or args.blob_write_path:
-                parser.error("--skip-db-write is local-only (no blob)")
+                parser.error("--test-mode is local-only (no blob)")
             if resume:
                 parser.error(
-                    "--skip-db-write cannot resume by --chart-id/--chart-name "
+                    "--test-mode cannot resume by --chart-id/--chart-name "
                     "(no Postgres); pass --local-read-path + --folder-name"
                 )
 
@@ -337,7 +352,7 @@ def main() -> None:
                 through=args.through,
                 skip_ocr=args.skip_ocr,
                 redownload_pages=args.redownload_pages,
-                skip_db_write=bool(getattr(args, "skip_db_write", False)),
+                skip_db_write=offline,
             )
             folder = result.get("chart_name") or folder
 
@@ -370,11 +385,14 @@ def main() -> None:
 
         if args.blob_read_path and not args.blob_container:
             parser.error("--blob-read-path requires --blob-container")
-        if getattr(args, "skip_db_write", False):
+        offline = bool(
+            getattr(args, "test_mode", False) or getattr(args, "skip_db_write", False)
+        )
+        if offline:
             if not args.local_read_path:
-                parser.error("--skip-db-write requires --local-read-path")
+                parser.error("--test-mode requires --local-read-path")
             if args.blob_read_path or args.blob_write_path:
-                parser.error("--skip-db-write is local-only (no blob)")
+                parser.error("--test-mode is local-only (no blob)")
         print(
             json.dumps(
                 run_batch(
@@ -391,8 +409,8 @@ def main() -> None:
                     through=args.through,
                     skip_ocr=args.skip_ocr,
                     redownload_pages=args.redownload_pages,
-                    skip_db_write=bool(getattr(args, "skip_db_write", False)),
-                    limit=args.limit,
+                    skip_db_write=offline,
+                    sample=args.sample,
                     run_id=args.run_id,
                     batch_id=args.batch_id,
                     workers=args.workers,

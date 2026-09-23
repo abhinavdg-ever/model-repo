@@ -41,6 +41,11 @@ services:
       AZURE_DI_MAX_CONCURRENT: ${AZURE_DI_MAX_CONCURRENT:-4}
       AZURE_RETRY_ATTEMPTS: ${AZURE_RETRY_ATTEMPTS:-5}
 
+      # Docling / ONNX abort diagnostics (see .env.example). Must be in the
+      # process environment at startup — faulthandler dumps to stderr on SIGABRT.
+      PYTHONFAULTHANDLER: ${PYTHONFAULTHANDLER:-1}
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-1}
+
       # --- Azure Blob: chart intake + manifest sweep ---
       # Auth: key | entra | entra_interactive | managed_identity
       AZURE_STORAGE_AUTH: ${AZURE_STORAGE_AUTH:-entra}

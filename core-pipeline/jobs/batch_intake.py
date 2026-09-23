@@ -112,6 +112,73 @@ def find_local_chart_folders(root: str | Path) -> list[Path]:
     )
 
 
+def _chart_names_pipeline_complete(names: list[str]) -> set[str]:
+    """Return chart names that already finished every phase-1 stage.
+
+    Best-effort: an unreachable DB or unknown name means "not complete", so
+    sample selection falls through to including them rather than blocking.
+    """
+    if not names:
+        return set()
+    try:
+        from db import connect, get_chart_by_name, is_skip_db_write
+        from db.chart_status import chart_is_pipeline_complete
+    except Exception:
+        return set()
+    if is_skip_db_write():
+        return set()
+    done: set[str] = set()
+    try:
+        with connect() as conn:
+            for name in names:
+                try:
+                    row = get_chart_by_name(conn, name)
+                    if row and chart_is_pipeline_complete(conn, int(row["id"])):
+                        done.add(name)
+                except Exception:
+                    logger.debug(
+                        "complete-check failed for %s", name, exc_info=True
+                    )
+    except Exception:
+        logger.debug("complete-check connect failed", exc_info=True)
+        return set()
+    return done
+
+
+def select_batch_sources(
+    sources: list[tuple[str, str, str]],
+    sample: Optional[int],
+    *,
+    prefer_incomplete: bool = True,
+) -> list[tuple[str, str, str]]:
+    """Apply ``sample``: prefer charts that are not yet complete.
+
+    When more folders exist than ``sample``:
+    - take incomplete charts first (original sort order);
+    - include completed ones only to fill the remaining slots.
+
+    When the drop fits in ``sample`` (or there is no cap), every folder is kept
+    — completed samples may come again.
+    """
+    if not sources:
+        return []
+    if sample is None or int(sample) <= 0:
+        return list(sources)
+    cap = int(sample)
+    if len(sources) <= cap:
+        return list(sources)
+    if not prefer_incomplete:
+        return list(sources[:cap])
+
+    names = [name for _src, name, _mode in sources]
+    complete = _chart_names_pipeline_complete(names)
+    incomplete = [s for s in sources if s[1] not in complete]
+    completed = [s for s in sources if s[1] in complete]
+    if len(incomplete) >= cap:
+        return incomplete[:cap]
+    need = cap - len(incomplete)
+    return incomplete + completed[:need]
+
 def resolve_batch_workers(requested: Optional[int] = None) -> int:
     """Return the worker count to use, or raise if it cannot fit the DB pool.
 
@@ -457,7 +524,7 @@ def run_batch(
     skip_ocr: Optional[bool] = None,
     redownload_pages: bool = False,
     skip_db_write: bool = False,
-    limit: Optional[int] = None,
+    sample: Optional[int] = None,
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
     workers: Optional[int] = None,
@@ -473,7 +540,8 @@ def run_batch(
     ``ingest_and_run`` — so a batch of one is indistinguishable from a single
     run, and an option added to run works here without being plumbed twice.
 
-    ``skip_db_write`` keeps charts in one in-memory store (local only; no Postgres).
+    ``skip_db_write`` / test mode keeps charts in one in-memory store (local
+    only; no Postgres) and writes each workspace under ``<chart>-test``.
     """
     if bool(local_read_path) == bool(blob_container or blob_read_path):
         raise ValueError(
@@ -486,7 +554,7 @@ def run_batch(
     if blob_read_path and local_write_path:
         raise ValueError("a blob source writes to blob_write_path")
     if skip_db_write and not local_read_path:
-        raise ValueError("skip_db_write requires local_read_path (no Postgres / blob)")
+        raise ValueError("test_mode / skip_db_write requires local_read_path (no Postgres / blob)")
 
     from db import disable_skip_db_write, enable_skip_db_write
     from db.path_ids import resolve_run_batch
@@ -518,7 +586,7 @@ def run_batch(
             skip_ocr=skip_ocr,
             redownload_pages=redownload_pages,
             skip_db_write=skip_db_write,
-            limit=limit,
+            sample=sample,
             run_id=run_id,
             batch_id=batch_id,
             worker_count=worker_count,
@@ -545,7 +613,7 @@ def _run_batch_inner(
     skip_ocr: Optional[bool],
     redownload_pages: bool,
     skip_db_write: bool,
-    limit: Optional[int],
+    sample: Optional[int],
     run_id: Optional[str],
     batch_id: Optional[str],
     worker_count: int,
@@ -571,8 +639,22 @@ def _run_batch_inner(
         where = f"{blob_container}/{blob_read_path}"
         batch_progress_dir = None
 
-    if limit:
-        sources = sources[:limit]
+    if skip_db_write:
+        from db import test_chart_name
+
+        sources = [(src, test_chart_name(name), mode) for src, name, mode in sources]
+
+    if sample:
+        before = len(sources)
+        sources = select_batch_sources(sources, sample)
+        if before > len(sources):
+            logger.info(
+                "sample=%d: queued %d of %d chart folder(s) "
+                "(incomplete preferred when enough remain)",
+                int(sample),
+                len(sources),
+                before,
+            )
     total = len(sources)
 
     # Estimate pages so ≥LARGE_CHART_MIN_PAGES charts do not run together while

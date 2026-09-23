@@ -151,7 +151,8 @@ Key `.env` knobs (paths relative to `core-pipeline/`):
 |---|---|
 | `DATABASE_URL` | required |
 | `DATA_ROOT` | `../review-ui/data/folders` |
-| `STAGE_WORKERS` / `BATCH_WORKERS` | `4` / `4` — keep `workers × STAGE_WORKERS ≤ DB_POOL_MAX` |
+| `STAGE_WORKERS` / `BATCH_WORKERS` | `4` / `4` — keep `workers × STAGE_WORKERS ≤ DB_POOL_MAX`. For Docling heap corruption, try `BATCH_WORKERS=1` |
+| `PYTHONFAULTHANDLER` / `OMP_NUM_THREADS` | `1` / `1` — abort dumps a Python traceback to stderr (`docker compose logs`); OpenMP stays single-threaded |
 | `SKIP_OCR` | `false` — reuse on-disk `ocr/`; with `force:false` also gate-delta |
 | `HW_MODEL_PATH` | `models/hw/handwritten_printed_convnext_tiny.pth` |
 | `RAPID_MODELS_DIR` | `models/rapidocr` |
@@ -421,7 +422,8 @@ Usable on `/run` and `/batch-run`:
 | `force` | bool | `true` | Reprocess completed pages (**final2 is billed**). Set `false` to **resume**. Required for `skip_ocr`. Does **not** re-download `pages/` by itself. |
 | `skip_ocr` | bool | omit | With `force: false`: use workspace `pages/` + `ocr/` when present; else download `pages/` from Raw_Input and `ocr/` from Processed; else materialize OCR from DB; else re-run OCR. **Always** re-runs quality/rotation (`corrected-pages/`). Write after this run **overwrites** destination outputs. Ignored when `force=true`. |
 | `redownload_pages` | bool | `false` | Wipe workspace `pages/` + `corrected-pages/` and re-fetch pages from Raw_Input. |
-| `skip_db_write` | bool | `false` | **Local only.** Never open Postgres; in-memory chart/page/stage store for the process. Workspace + `local_write_path` still write to disk. Rejected with blob or `chart_id`/`chart_name` resume. Env `SKIP_DB_WRITE=true` also enables. |
+| `test_mode` | bool | `false` | **Local only.** No Postgres; workspace under `data/folders/<chart>-test`. Env `TEST_MODE=true`. |
+| `skip_db_write` | bool | `false` | Deprecated alias for `test_mode` |
 
 ### `POST /api/charts/run` — one chart
 
@@ -499,14 +501,13 @@ Same vocabulary as `/run` **without** a folder name (each subfolder is a chart).
 | `local_write_path` / `blob_write_path` | optional | omit | |
 | `write_mode` | optional | `skip_orig_pages` | |
 | `overwrite` | optional | `false` | Sync by default |
-| `sample` | optional | all | Smoke test: first N chart folders (sorted). Prefer over `limit` |
-| `limit` | optional | all | Same as `sample` (compat); `sample` wins if both set |
+| `sample` | optional | all | At most N chart folders (sorted). When the drop is larger than N, prefer incomplete charts; completed ones fill only if needed |
 | `workers` | optional | `BATCH_WORKERS` (4) | Must fit DB pool. Charts with ≥`LARGE_CHART_MIN_PAGES` (default 100) pages run at most one-at-a-time while any smaller chart is still pending; when only large charts remain, workers parallelize them. |
 | `run_id` / `batch_id` | optional | inferred | |
 | `through` / `only` / `force` / `skip_ocr` | optional | — | `force: false` = **resume** (below) |
 
 ```bash
-# macOS / Linux — smoke-test the first 3 charts under the drop
+# macOS / Linux — smoke-test up to 3 charts (incomplete preferred on re-run)
 curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
   -d '{"local_read_path":"/data/inbox","sample":3,"through":"ocr_prelim","workers":2}'
 ```
@@ -517,6 +518,42 @@ curl.exe -X POST localhost:8001/api/charts/batch-run -H "Content-Type: applicati
   -d "{\"local_read_path\":\"C:/data/inbox\",\"sample\":3,\"through\":\"ocr_prelim\",\"workers\":2}"
 ```
 
+```bash
+# Blob smoke sample of 5, full chain, write results
+curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
+  -d '{
+    "blob_container": "imaging-pipeline",
+    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "blob_write_path": "Processed/Run1/Batch1",
+    "sample": 5,
+    "workers": 2
+  }'
+
+# Resume a partial batch (same path); sample again picks incomplete first
+curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
+  -d '{
+    "blob_container": "imaging-pipeline",
+    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "blob_write_path": "Processed/Run1/Batch1",
+    "sample": 5,
+    "force": false,
+    "workers": 2
+  }'
+
+# New classifiers only (no OCR / Final2 bill) on a sample of 10
+curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
+  -d '{
+    "blob_container": "imaging-pipeline",
+    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "blob_write_path": "Processed/Run1/Batch1",
+    "sample": 10,
+    "force": true,
+    "only": ["page_subtype", "encounter_type", "page_sequencing"],
+    "workers": 2
+  }'
+```
+
+Re-running with the same `sample` skips already-complete charts when enough incomplete folders remain; if fewer than N incomplete charts exist, completed ones may be included to fill N.
 **Resume after a timeout / partial batch** — same read path, `force: false`:
 
 ```bash
@@ -534,7 +571,7 @@ With `force: false` the batch:
 
 `force: true` (default) still means full reprocess / wipe on re-ingest.
 
-`202` response includes `charts_found`, `charts_queued` (after `sample`/`limit`), and echoes `sample`.
+`202` response includes `charts_found`, `charts_queued` (after `sample`), and echoes `sample`.
 
 Progress: `progress.txt` in the batch parent folder (`processing N/X charts…`)
 and under each chart’s `imaging/progress.txt` (`processing N/X files…`).
@@ -586,7 +623,7 @@ cd core-pipeline
 python cli.py serve
 python cli.py stages
 python cli.py run --local-read-path /data/inbox --folder-name 52743839_44976074
-python cli.py batch --local-read-path /data/inbox --limit 1 --through ocr_prelim
+python cli.py batch-run --local-read-path /data/inbox --sample 1 --through ocr_prelim
 python cli.py write 52743839_44976074 --local-write-path /data/outbox
 python cli.py rerun 7 --only dos_extract
 python cli.py manifest --local ../review-ui/data/metadata/metadata_R1_B1.csv
@@ -598,7 +635,7 @@ cd core-pipeline
 python cli.py serve
 python cli.py stages
 python cli.py run --local-read-path C:\data\inbox --folder-name 52743839_44976074
-python cli.py batch --local-read-path C:\data\inbox --limit 1 --through ocr_prelim
+python cli.py batch-run --local-read-path C:\data\inbox --sample 1 --through ocr_prelim
 python cli.py write 52743839_44976074 --local-write-path C:\data\outbox
 python cli.py rerun 7 --only dos_extract
 python cli.py manifest --local ..\review-ui\data\metadata\metadata_R1_B1.csv
