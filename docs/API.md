@@ -154,7 +154,7 @@ Key `.env` knobs (paths relative to `core-pipeline/`):
 | `STAGE_WORKERS` / `BATCH_WORKERS` | `4` / `4` — keep `workers × STAGE_WORKERS ≤ DB_POOL_MAX`. For Docling heap corruption, try `BATCH_WORKERS=1` |
 | `PYTHONFAULTHANDLER` / `OMP_NUM_THREADS` | `1` / `1` — abort dumps a Python traceback to stderr (`docker compose logs`); OpenMP stays single-threaded |
 | `SKIP_OCR` | `false` — reuse on-disk `ocr/`; with `force:false` also gate-delta |
-| `HW_MODEL_PATH` | `models/hw/handwritten_printed_convnext_tiny.pth` |
+| `HW_MODEL_PATH` | `models/hw/handwritten_printed_convnext_tiny.pth` (falls back to `…_tiny_backup.pth`) |
 | `RAPID_MODELS_DIR` | `models/rapidocr` |
 | `SECTION_HEADER_MINILM_PATH` | `models/semantic-model` — local MiniLM (preferred) |
 | `SECTION_HEADER_SEMANTIC_ENABLED` | `true` — filter Final1 `section_headers` ≥90% |
@@ -183,11 +183,16 @@ to `languages,barcodes` (`AZURE_DI_FEATURES=off` to disable).
 ## Prerequisites (Models)
 
 Weight files are **not** on PyPI and **`core-pipeline/models/` is not in git**.
-Download them onto each machine under `core-pipeline/models/`:
+Download them onto each machine under `core-pipeline/models/`.
+
+Teammate preprocessing drop / HW+quality refresh checklist:
+[`IMAGE_PREPROCESSING.md`](IMAGE_PREPROCESSING.md).
 
 ```
-models/hw/handwritten_printed_convnext_tiny.pth
-models/hw/image_type_classification.pkl          # RF fallback
+models/hw/handwritten_printed_convnext_tiny.pth         # preferred ConvNeXt (2026-09 drop)
+models/hw/handwritten_printed_convnext_tiny_backup.pth  # prior ConvNeXt fallback
+models/hw/metadata.json                                 # thresholds next to the .pth
+models/hw/image_type_classification.pkl                 # RF fallback
 models/rapidocr/
   PP-OCRv6_det_small.pth
   PP-OCRv6_rec_small.pth
@@ -197,7 +202,8 @@ models/ner/               # GLiNER via model_downloader
 models/semantic-model/    # MiniLM — section_header_match --download
 ```
 
-**Handwritten / printed (ConvNeXt)** — copy the `.pth` into `models/hw/`, then:
+**Handwritten / printed (ConvNeXt)** — copy the preferred `.pth` (+ `metadata.json`) into
+`models/hw/`, then install torch:
 
 ```bash
 # macOS / Linux
@@ -210,6 +216,10 @@ pip install -r requirements-docling.txt   # torch + torchvision + MiniLM
 cd core-pipeline; .venv\Scripts\Activate.ps1
 pip install -r requirements-docling.txt
 ```
+
+Stage 1 also applies the preprocessing rule **Handwritten + High → Medium** on
+`quality_tag` (score unchanged). After dropping new HW weights, refresh with
+`skip_ocr: true` + `force: false` (see [`HOW_TO_RUN.md` §4B](HOW_TO_RUN.md)).
 
 | Missing | Fallback |
 |---|---|

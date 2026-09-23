@@ -105,6 +105,12 @@ Stage 2 runs `quality_analyzer` (engineering submetrics, 0–10). The stored
 | ≥ 0.40 | `medium` |
 | else | `low` |
 
+**Post-process (teammate `image_preprocessing` rule):** if the page is
+`handwritten` and the tag would be `high`, store **`medium`** instead. The
+numeric `quality_score` is unchanged — only the discrete label moves. That
+keeps Final2's `high_quality_printed` skip honest (handwritten pages never
+qualified anyway) while the UI does not show a handwritten page as “high”.
+
 Submetrics and warnings live in `quality_detail` JSONB. Handwriting is separate
 (`printed_or_handwritten` / `hw_method` / `hw_confidence`) — ConvNeXt when the
 `.pth` is present, otherwise the RF pickle. In v7 `quality_tag` wrongly held the

@@ -1,7 +1,8 @@
 # Place downloaded weight files here. See docs/API.md.
 # This directory is gitignored — do not commit checkpoints.
 #
-#   hw/handwritten_printed_convnext_tiny.pth   # ConvNeXt (preferred)
+#   hw/handwritten_printed_convnext_tiny.pth         # ConvNeXt (preferred)
+#   hw/handwritten_printed_convnext_tiny_backup.pth  # prior ConvNeXt fallback
 #   hw/image_type_classification.pkl           # RandomForest backup
 #   rapidocr/PP-OCRv6_det_small.pth
 #   rapidocr/PP-OCRv6_rec_small.pth

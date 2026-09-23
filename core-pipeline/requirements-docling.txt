@@ -4,6 +4,7 @@
 # Weight files are NOT on PyPI — download separately into:
 #   models/rapidocr/   (four RapidOCR files — see docs/API.md)
 #   models/hw/handwritten_printed_convnext_tiny.pth
+#   models/hw/handwritten_printed_convnext_tiny_backup.pth  # optional prior
 # Without those files: final1 → rapidocr-onnxruntime; HW → RF .pkl.
 docling>=2.0.0
 rapidocr>=2.0.0

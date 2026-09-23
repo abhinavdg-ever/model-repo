@@ -55,19 +55,19 @@ DEFAULT_UNCERTAIN_MARGIN = 0.08
 SCRIPT_DIR = Path(__file__).resolve().parent
 _CORE_ROOT = SCRIPT_DIR.parents[2]  # …/core-pipeline
 # Both HW weights live under core-pipeline/models/hw/.
-_DEFAULT_HW = (
-    _CORE_ROOT / "models" / "hw" / "handwritten_printed_convnext_tiny.pth"
-)
-_RF_HW = _CORE_ROOT / "models" / "hw" / "image_type_classification.pkl"
+_HW_DIR = _CORE_ROOT / "models" / "hw"
+_DEFAULT_HW = _HW_DIR / "handwritten_printed_convnext_tiny.pth"
+_BACKUP_HW = _HW_DIR / "handwritten_printed_convnext_tiny_backup.pth"
+_RF_HW = _HW_DIR / "image_type_classification.pkl"
 try:
     from config import HW_MODEL_PATH as _CFG_HW
 
     if _CFG_HW and Path(_CFG_HW).suffix.lower() in {".pth", ".pt"}:
-        _MODEL_CANDIDATES = (Path(_CFG_HW), _DEFAULT_HW)
+        _MODEL_CANDIDATES = (Path(_CFG_HW), _DEFAULT_HW, _BACKUP_HW)
     else:
-        _MODEL_CANDIDATES = (_DEFAULT_HW,)
+        _MODEL_CANDIDATES = (_DEFAULT_HW, _BACKUP_HW)
 except Exception:
-    _MODEL_CANDIDATES = (_DEFAULT_HW,)
+    _MODEL_CANDIDATES = (_DEFAULT_HW, _BACKUP_HW)
 DEFAULT_MODEL_PATH = next(
     (p for p in _MODEL_CANDIDATES if p.is_file()),
     _MODEL_CANDIDATES[0],

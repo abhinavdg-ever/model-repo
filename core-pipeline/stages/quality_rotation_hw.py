@@ -4,8 +4,7 @@ Uses:
   * Tesseract OSD + geometric tilt (``stages.lib.imaging.rotation`` / ``osd``)
   * ConvNeXt HW classifier (``hw_printed``), with RF pickle fallback
   * Engineering quality analyzer (``quality_analyzer``) — real scores, not a placeholder
-
-HW and quality run on the corrected page when one is written.
+  * Label post-process: Handwritten + High → Medium (score unchanged)
 """
 from __future__ import annotations
 
@@ -121,6 +120,29 @@ def _measure_quality(image_path: Path) -> dict[str, Any]:
             "quality_detail": {"error": str(exc)},
             "input_dpi": None,
         }
+
+
+def _apply_quality_postprocess(
+    quality: dict[str, Any],
+    hw_label: str,
+) -> dict[str, Any]:
+    """Handwritten + High → Medium (teammate image_preprocessing rule)."""
+    from stages.lib.imaging.quality_label_postprocess import (
+        apply_quality_label_postprocess,
+    )
+
+    tag = apply_quality_label_postprocess(
+        quality_tag=quality.get("quality_tag"),
+        quality_score=quality.get("quality_score"),
+        printed_or_handwritten=hw_label,
+    )
+    if tag and tag != quality.get("quality_tag"):
+        detail = dict(quality.get("quality_detail") or {})
+        detail["label_postprocess"] = (
+            f"{quality.get('quality_tag')}→{tag} (handwritten)"
+        )
+        quality = {**quality, "quality_tag": tag, "quality_detail": detail}
+    return quality
 
 
 def _detect_rotation(image_path: Path) -> dict[str, Any]:
@@ -283,7 +305,7 @@ def _measure(args: tuple[dict[str, Any], Path, str]) -> dict[str, Any]:
         scored_path = corrected or image_path
         use_corrected, image_relpath = page_image_source(chart_name, page["page_name"])
         hw_label, hw_conf, hw_method = _classify_hw(scored_path)
-        quality = _measure_quality(scored_path)
+        quality = _apply_quality_postprocess(_measure_quality(scored_path), hw_label)
         return {
             "page_id": page["id"],
             "page_name": page["page_name"],

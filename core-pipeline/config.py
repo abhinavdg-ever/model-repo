@@ -244,6 +244,7 @@ def _path_under_core(raw: str | None, default_rel: str) -> Path:
 
 
 # ConvNeXt HW weights (not pip-installable). Place the .pth under models/hw/.
+# Preferred: handwritten_printed_convnext_tiny.pth; optional prior weights as *_backup.pth.
 HW_MODEL_PATH = _path_under_core(
     os.environ.get("HW_MODEL_PATH"),
     "models/hw/handwritten_printed_convnext_tiny.pth",

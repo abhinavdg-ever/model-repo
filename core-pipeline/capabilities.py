@@ -274,7 +274,15 @@ def hw_model_status() -> dict[str, Any]:
 
     convnext = Path(HW_MODEL_PATH)
     if not convnext.is_file():
-        convnext = CORE_ROOT / "models" / "hw" / "handwritten_printed_convnext_tiny.pth"
+        hw = CORE_ROOT / "models" / "hw"
+        for name in (
+            "handwritten_printed_convnext_tiny.pth",
+            "handwritten_printed_convnext_tiny_backup.pth",
+        ):
+            candidate = hw / name
+            if candidate.is_file():
+                convnext = candidate
+                break
     rf = CORE_ROOT / "models" / "hw" / "image_type_classification.pkl"
     torch_ok = find_spec("torch") is not None and find_spec("torchvision") is not None
 

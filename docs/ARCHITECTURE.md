@@ -296,7 +296,8 @@ Weight files live under **`core-pipeline/models/`** (gitignored), not under
 
 | Path | Purpose |
 |---|---|
-| `models/hw/handwritten_printed_convnext_tiny.pth` | ConvNeXt HW (stage 1) |
+| `models/hw/handwritten_printed_convnext_tiny.pth` | ConvNeXt HW (stage 1, preferred) |
+| `models/hw/handwritten_printed_convnext_tiny_backup.pth` | prior ConvNeXt HW fallback |
 | `models/hw/image_type_classification.pkl` | RF HW fallback |
 | `models/rapidocr/*.pth` + `ppocrv6_dict.txt` | Docling final1 |
 
