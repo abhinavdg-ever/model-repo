@@ -1780,7 +1780,11 @@ input {
 
 .imaging-sequencing-table th:nth-child(2),
 .imaging-sequencing-table td:nth-child(2) {
-  width: auto;
+  width: 1%;
+  max-width: 6.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .imaging-rejection-table {
