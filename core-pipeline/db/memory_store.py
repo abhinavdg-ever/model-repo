@@ -1132,6 +1132,36 @@ class MemoryStore:
             self.manifest_by_record.setdefault(record_id, []).append(mid)
             return {"id": mid, "action": "inserted"}
 
+    def upsert_manifest_members(
+        self,
+        members: list[dict[str, Any]],
+        *,
+        batch_size: int = 1000,
+    ) -> dict[str, int]:
+        """Bulk upsert — in-memory path still goes row-by-row (API parity)."""
+        _ = batch_size
+        inserted = 0
+        updated = 0
+        for m in members:
+            result = self.upsert_manifest_member(
+                record_id=str(m["record_id"]),
+                member_name=str(m["member_name"]),
+                first_name=m.get("first_name"),
+                middle_name=m.get("middle_name"),
+                last_name=m.get("last_name"),
+                member_dob=m.get("member_dob"),
+                external_member_id=m.get("external_member_id"),
+                run_id=m.get("run_id"),
+                batch_id=m.get("batch_id"),
+                source_file=m.get("source_file"),
+                source_path=m.get("source_path"),
+            )
+            if result["action"] == "updated":
+                updated += 1
+            else:
+                inserted += 1
+        return {"inserted": inserted, "updated": updated}
+
     # -- reset / prune / progress --------------------------------------------
 
     def reset_chart_results(self, chart_id: int) -> dict[str, int]:

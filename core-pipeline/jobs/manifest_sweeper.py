@@ -49,7 +49,7 @@ from db import (
     connect,
     create_job,
     update_job,
-    upsert_manifest_member,
+    upsert_manifest_members,
 )
 
 logger = logging.getLogger(__name__)
@@ -297,10 +297,9 @@ def _ingest_rows(
     run_id: Optional[str],
     batch_id: Optional[str],
 ) -> dict[str, Any]:
-    inserted = 0
-    updated = 0
     skipped = 0
     charts: set[str] = set()
+    members: list[dict[str, Any]] = []
 
     for row in rows:
         rid = _record_id(row)
@@ -316,28 +315,28 @@ def _ingest_rows(
         # were never ingested; a manifest here simply stands on its own until a
         # chart with the same name is ingested.
         charts.add(rid)
-        result = upsert_manifest_member(
-            conn,
-            record_id=rid,
-            member_name=name,
-            first_name=first or None,
-            middle_name=middle or None,
-            last_name=last or None,
-            member_dob=_dob(row),
-            external_member_id=_member_id(row),
-            run_id=run_id,
-            batch_id=batch_id,
-            source_file=source_file,
-            source_path=source_path,
+        members.append(
+            {
+                "record_id": rid,
+                "member_name": name,
+                "first_name": first or None,
+                "middle_name": middle or None,
+                "last_name": last or None,
+                "member_dob": _dob(row),
+                "external_member_id": _member_id(row),
+                "run_id": run_id,
+                "batch_id": batch_id,
+                "source_file": source_file,
+                "source_path": source_path,
+            }
         )
-        if result["action"] == "updated":
-            updated += 1
-        else:
-            inserted += 1
+
+    # One round-trip per 1000 rows (MemberID / name+DOB groups separately).
+    stats = upsert_manifest_members(conn, members)
 
     return {
-        "inserted": inserted,
-        "updated": updated,
+        "inserted": stats["inserted"],
+        "updated": stats["updated"],
         "skipped": skipped,
         "records": len(charts),
         "record_ids": sorted(charts),

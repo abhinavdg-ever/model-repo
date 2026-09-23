@@ -1443,31 +1443,38 @@ def upsert_manifest_member(
 ) -> dict[str, Any]:
     """Insert or update one manifest row. Returns {id, action}.
 
-    Two partial unique indexes back this: (record_id, external_member_id) when a
-    MemberID is present, (record_id, lower(member_name), dob) when it is not.
-    Which index applies is decided by the same predicate, so exactly one
-    ON CONFLICT target is valid per row.
+    Prefer :func:`upsert_manifest_members` for bulk loads (batches of 1000).
     """
-    has_id = bool((external_member_id or "").strip())
-    params = (
-        record_id, member_name, first_name, middle_name, last_name,
-        member_dob, (external_member_id or None) if has_id else None,
-        run_id, batch_id, source_file, source_path,
+    stats = upsert_manifest_members(
+        conn,
+        [
+            {
+                "record_id": record_id,
+                "member_name": member_name,
+                "first_name": first_name,
+                "middle_name": middle_name,
+                "last_name": last_name,
+                "member_dob": member_dob,
+                "external_member_id": external_member_id,
+                "run_id": run_id,
+                "batch_id": batch_id,
+                "source_file": source_file,
+                "source_path": source_path,
+            }
+        ],
     )
-    conflict = (
-        "(record_id, external_member_id) WHERE external_member_id IS NOT NULL AND external_member_id <> ''"
-        if has_id
-        else "(record_id, lower(member_name), COALESCE(member_dob, 'epoch'::date)) "
-             "WHERE external_member_id IS NULL OR external_member_id = ''"
-    )
-    row = conn.execute(
-        f"""
-        INSERT INTO manifest_member_list (
-            record_id, member_name, first_name, middle_name, last_name,
-            member_dob, external_member_id, run_id, batch_id,
-            source_file, source_path
-        ) VALUES (%s, %s, %s, %s, %s, %s::date, %s, %s, %s, %s, %s)
-        ON CONFLICT {conflict} DO UPDATE SET
+    # Single-row callers only need action; id is not required by current uses.
+    return {
+        "id": None,
+        "action": "inserted" if stats["inserted"] else "updated",
+    }
+
+
+MANIFEST_UPSERT_BATCH = 1000
+
+_MANIFEST_VALUE = "(%s, %s, %s, %s, %s, %s::date, %s, %s, %s, %s, %s)"
+
+_MANIFEST_UPDATE = """
             member_name      = EXCLUDED.member_name,
             first_name       = COALESCE(EXCLUDED.first_name, manifest_member_list.first_name),
             middle_name      = COALESCE(EXCLUDED.middle_name, manifest_member_list.middle_name),
@@ -1476,16 +1483,107 @@ def upsert_manifest_member(
             run_id           = COALESCE(EXCLUDED.run_id, manifest_member_list.run_id),
             batch_id         = COALESCE(EXCLUDED.batch_id, manifest_member_list.batch_id),
             source_file      = COALESCE(EXCLUDED.source_file, manifest_member_list.source_file),
-            source_path = COALESCE(EXCLUDED.source_path, manifest_member_list.source_path),
+            source_path      = COALESCE(EXCLUDED.source_path, manifest_member_list.source_path),
             updated_at       = now()
-        RETURNING id, (xmax = 0) AS inserted
-        """,
-        params,
-    ).fetchone()
-    return {
-        "id": row["id"],
-        "action": "inserted" if row["inserted"] else "updated",
-    }
+"""
+
+
+def _manifest_conflict(has_id: bool) -> str:
+    if has_id:
+        return (
+            "(record_id, external_member_id) "
+            "WHERE external_member_id IS NOT NULL AND external_member_id <> ''"
+        )
+    return (
+        "(record_id, lower(member_name), COALESCE(member_dob, 'epoch'::date)) "
+        "WHERE external_member_id IS NULL OR external_member_id = ''"
+    )
+
+
+def _manifest_row_params(m: dict[str, Any], *, has_id: bool) -> tuple[Any, ...]:
+    ext = (m.get("external_member_id") or "").strip() or None
+    return (
+        m["record_id"],
+        m["member_name"],
+        m.get("first_name"),
+        m.get("middle_name"),
+        m.get("last_name"),
+        m.get("member_dob"),
+        ext if has_id else None,
+        m.get("run_id"),
+        m.get("batch_id"),
+        m.get("source_file"),
+        m.get("source_path"),
+    )
+
+
+def _manifest_dedupe_key(m: dict[str, Any], *, has_id: bool) -> tuple[Any, ...]:
+    if has_id:
+        return (m["record_id"], (m.get("external_member_id") or "").strip())
+    dob = m.get("member_dob") or "epoch"
+    return (m["record_id"], (m["member_name"] or "").casefold(), dob)
+
+
+@_dispatch
+def upsert_manifest_members(
+    conn: Any,
+    members: list[dict[str, Any]],
+    *,
+    batch_size: int = MANIFEST_UPSERT_BATCH,
+) -> dict[str, int]:
+    """Bulk upsert manifesto rows in chunks of ``batch_size`` (default 1000).
+
+    Splits MemberID vs name+DOB keys (different partial unique indexes).
+    Returns ``{inserted, updated}``.
+    """
+    if not members:
+        return {"inserted": 0, "updated": 0}
+
+    with_id: list[dict[str, Any]] = []
+    without_id: list[dict[str, Any]] = []
+    for m in members:
+        if bool((m.get("external_member_id") or "").strip()):
+            with_id.append(m)
+        else:
+            without_id.append(m)
+
+    inserted = 0
+    updated = 0
+    chunk_n = max(1, int(batch_size) or MANIFEST_UPSERT_BATCH)
+
+    for group, has_id in ((with_id, True), (without_id, False)):
+        # Last row wins within a chunk — Postgres rejects double ON CONFLICT.
+        deduped: dict[tuple[Any, ...], dict[str, Any]] = {}
+        for m in group:
+            deduped[_manifest_dedupe_key(m, has_id=has_id)] = m
+        ordered = list(deduped.values())
+        conflict = _manifest_conflict(has_id)
+        for i in range(0, len(ordered), chunk_n):
+            chunk = ordered[i : i + chunk_n]
+            values_sql = ",".join([_MANIFEST_VALUE] * len(chunk))
+            params: list[Any] = []
+            for m in chunk:
+                params.extend(_manifest_row_params(m, has_id=has_id))
+            rows = conn.execute(
+                f"""
+                INSERT INTO manifest_member_list (
+                    record_id, member_name, first_name, middle_name, last_name,
+                    member_dob, external_member_id, run_id, batch_id,
+                    source_file, source_path
+                ) VALUES {values_sql}
+                ON CONFLICT {conflict} DO UPDATE SET
+                {_MANIFEST_UPDATE}
+                RETURNING id, (xmax = 0) AS inserted
+                """,
+                params,
+            ).fetchall()
+            for row in rows:
+                if row["inserted"]:
+                    inserted += 1
+                else:
+                    updated += 1
+
+    return {"inserted": inserted, "updated": updated}
 
 
 # ---------------------------------------------------------------------------
