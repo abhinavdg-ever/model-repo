@@ -7,15 +7,18 @@ Vite + React frontend and FastAPI backend for chart OCR/imaging review.
 | `DATA_MODE` | UI label | OCR / imaging source | Page images |
 |-------------|----------|----------------------|-------------|
 | `local` | Local Mode | `data/folders/*/ocr` + `imaging/*.csv` | `data/folders/*/pages` |
-| `production` (alias: `postgres`) | Production Mode | Postgres v1 tables | `data/folders/*/pages` |
+| `production` (alias: `postgres`) | Production Mode | Postgres v1 tables | Azure Blob via `chart_list.blob_container` + `blob_path` (Processed `output_path` fallback) |
 
 ```bash
 # Local Mode (default)
 DATA_MODE=local
 
-# Production Mode — frontend talks to Postgres
+# Production Mode — OCR/imaging from Postgres; images from blob_path
 DATA_MODE=production
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/imaging_outputs
+BLOB_ACCOUNT_URL=https://<account>.blob.core.windows.net
+# or: AZURE_STORAGE_ACCOUNT_NAME=<account>
+# AZURE_TENANT_ID= / AZURE_CLIENT_ID= / AZURE_CLIENT_SECRET=  (or MI / az login)
 ```
 
 Restart the backend after changing `.env`. The top bar shows **Local Mode** or
@@ -37,5 +40,12 @@ npm install
 npm run dev
 ```
 
-Docker: host ports **4000** (API) / **4001** (web). `DATA_ROOT` defaults to
-`./data/folders` — core-pipeline writes there.
+Docker: host ports **4000** (API) / **4001** (web).
+
+```bash
+cp .env.example .env   # set DATA_MODE, DATABASE_URL, BLOB_* for production
+docker compose up -d --build
+```
+
+`DATA_ROOT` defaults to `./data/folders` (Local Mode / fallback). In Production
+Mode, page images are proxied from blob — the folders volume is optional.

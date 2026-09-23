@@ -686,7 +686,10 @@ cd core-pipeline && cp .env.example .env && docker compose up -d --build
 curl -fsS localhost:8001/ready
 
 cd ../review-ui && cp .env.example .env && docker compose up -d --build
-# UI: http://localhost:3001   API: http://localhost:3000
+# UI: http://localhost:4001   API: http://localhost:4000
+# Production Mode: set DATA_MODE=production, DATABASE_URL, and
+# BLOB_ACCOUNT_URL (or AZURE_STORAGE_ACCOUNT_NAME) + Entra in review-ui/.env
+# so page images come from chart_list.blob_path.
 ```
 
 ```powershell
@@ -699,7 +702,7 @@ curl.exe -fsS localhost:8001/ready
 cd ..\review-ui
 Copy-Item .env.example .env
 docker compose up -d --build
-# UI: http://localhost:3001   API: http://localhost:3000
+# UI: http://localhost:4001   API: http://localhost:4000
 ```
 
 Local paths in API bodies must be paths **inside the container** (mount the

@@ -5,11 +5,13 @@
 # A read-only viewer over what core-pipeline produced. It shares exactly two
 # things with the core-pipeline deployment:
 #   * the Postgres database (Production Mode only)
-#   * the chart workspace volume, mounted READ-ONLY here
+#   * optionally the chart workspace volume (Local Mode / local image fallback)
 # It never calls the core-pipeline API, and core-pipeline never calls this one.
 #
-# DATA_MODE=local       -> reads OCR text + imaging CSVs from /data/folders
-# DATA_MODE=production  -> reads them from Postgres; page images still from disk
+# DATA_MODE=local       -> OCR text + imaging CSVs + page images from /data/folders
+# DATA_MODE=production  -> OCR/imaging from Postgres; page images from Azure Blob
+#                          via chart_list.blob_container + blob_path (set
+#                          BLOB_ACCOUNT_URL or AZURE_STORAGE_ACCOUNT_NAME + Entra)
 
 services:
   backend:
@@ -34,17 +36,22 @@ services:
       # against file mtimes. core-pipeline writes this volume while the UI is
       # serving, so a long TTL shows stale stage badges.
       LOCAL_CACHE_TTL_SECONDS: ${LOCAL_CACHE_TTL_SECONDS:-5}
-      # Optional File Viewer (Azure Blob). Off unless FILE_VIEWER_BLOB_ENABLED=true.
-      FILE_VIEWER_BLOB_ENABLED: ${FILE_VIEWER_BLOB_ENABLED:-false}
-      BLOB_AUTH_MODE: ${BLOB_AUTH_MODE:-entra}
+      # Production Mode page images (chart_list.blob_path) + optional File Viewer.
+      # Entra / Managed Identity / az login — same account as core-pipeline.
       BLOB_ACCOUNT_URL: ${BLOB_ACCOUNT_URL:-}
-      BLOB_CONTAINER: ${BLOB_CONTAINER:-}
-      BLOB_PATH_TEMPLATE: ${BLOB_PATH_TEMPLATE:-{folder}/pages/{filename}}
+      AZURE_STORAGE_ACCOUNT_NAME: ${AZURE_STORAGE_ACCOUNT_NAME:-}
+      BLOB_CONTAINER: ${BLOB_CONTAINER:-imaging-pipeline}
+      BLOB_AUTH_MODE: ${BLOB_AUTH_MODE:-entra}
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
+      # Optional File Viewer (/api/blob/… template path). Off unless enabled.
+      FILE_VIEWER_BLOB_ENABLED: ${FILE_VIEWER_BLOB_ENABLED:-false}
+      BLOB_PATH_TEMPLATE: ${BLOB_PATH_TEMPLATE:-{folder}/pages/{filename}}
       BLOB_SAS_TOKEN: ${BLOB_SAS_TOKEN:-}
     volumes:
+      # Local Mode / fallback. Production Mode images come from blob; mount still
+      # helps when a workspace copy exists under DATA_ROOT.
       - ${DATA_HOST_PATH:-./data/folders}:/data/folders:ro
       - ${PIPELINE_HOST_PATH:-./data/pipeline}:/data/pipeline:ro
       - ${METADATA_HOST_PATH:-./data/metadata}:/data/metadata:ro
