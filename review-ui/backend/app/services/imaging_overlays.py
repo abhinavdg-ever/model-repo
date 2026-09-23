@@ -678,13 +678,19 @@ def index_junk_rows(
 def index_codeable_rows(
     rows: list[dict[str, str]], chart_name: str
 ) -> dict[str, dict[str, Any]]:
-    """``*_codeable.csv`` → isCodeable (Codeable | Non Codeable | Discharge Frequency)."""
+    """``*_codeable.csv`` → pageType + isCodeable.
+
+    Junk leaves Main pages as pageType=\"Not Available\". This overlay writes
+    the TF page_type when present. Unmatched main pages keep Not Available and
+    get isCodeable=\"Not Sure\".
+    """
     by_key: dict[str, dict[str, Any]] = {}
     display = {
         "codeable": "Codeable",
         "non_codeable": "Non Codeable",
         "discharge_frequency": "Discharge Frequency",
         "discharge_summary": "Discharge Frequency",
+        "not_sure": "Not Sure",
     }
     for row in rows:
         cname = (
@@ -692,15 +698,30 @@ def index_codeable_rows(
         ).strip()
         if cname and not _chart_row_matches(cname, chart_name):
             continue
+        page_type = (
+            row.get("page_type") or row.get("pageType") or row.get("page_subtype") or ""
+        ).strip()
+        tag = (row.get("tag") or "").strip().casefold()
         label = (
             row.get("is_codeable")
             or row.get("isCodeable")
-            or display.get((row.get("tag") or "").strip().casefold())
+            or display.get(tag)
             or ""
         ).strip()
+        # Blank/Duplicate rows always have a page_type (Blank / Duplicate / …).
+        # Empty or Not Available → Not Sure for codeability.
         if not label:
-            continue
+            if not page_type or page_type.casefold() == "not available":
+                label = "Not Sure"
+            else:
+                continue
+        elif page_type.casefold() == "not available" and tag in {"", "not_sure"}:
+            label = "Not Sure"
         fields: dict[str, Any] = {"isCodeable": label}
+        if page_type:
+            fields["pageType"] = page_type
+        elif label == "Not Sure":
+            fields["pageType"] = "Not Available"
         _put_page_keys(by_key, row, fields)
     return by_key
 

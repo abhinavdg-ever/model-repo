@@ -21,13 +21,59 @@ TAG_DISPLAY = {
     "codeable": "Codeable",
     "non_codeable": "Non Codeable",
     "discharge_frequency": "Discharge Frequency",
+    "not_sure": "Not Sure",
 }
 
+# Patient-data / demographic field phrases. Pages 1–2 with several of these
+# (or any page with many) prefer page_type=Demographics over weaker matches.
+DEMOGRAPHIC_KEYWORDS: tuple[str, ...] = (
+    "patient information",
+    "demographic",
+    "demographics",
+    "patient demographics",
+    "date of birth",
+    "dob",
+    "patient name",
+    "member name",
+    "member id",
+    "mrn",
+    "medical record",
+    "address",
+    "phone number",
+    "home phone",
+    "cell phone",
+    "emergency contact",
+    "sex",
+    "gender",
+    "marital status",
+    "insurance",
+    "subscriber",
+    "guarantor",
+    "ssn",
+    "social security",
+    "face sheet",
+    "facesheet",
+    "registration",
+)
+
+DEMOGRAPHICS_PAGE_TYPE = "Demographics"
+# Pages 1–2: this many distinct demographic hits → Demographics.
+_DEMO_EARLY_PAGE_MIN_HITS = 2
+# Any page: this many distinct hits → Demographics.
+_DEMO_ANY_PAGE_MIN_HITS = 4
+_EARLY_PAGE_MAX = 2
+
 _WS_RE = re.compile(r"\s+")
+_SLASH_RE = re.compile(r"\\+")
 
 
 def normalize_text(text: str) -> str:
     return _WS_RE.sub(" ", (text or "").casefold()).strip()
+
+
+def _clean_label(text: str) -> str:
+    """CSV used backslashes as separators (Patient Information\\Demographic)."""
+    return _SLASH_RE.sub(" / ", (text or "").strip()).strip(" /")
 
 
 @dataclass(frozen=True)
@@ -66,13 +112,15 @@ def load_canon(path: str | None = None) -> tuple[CanonEntry, ...]:
         TAG_DISPLAY.update({str(k): str(v) for k, v in display.items()})
     entries: list[CanonEntry] = []
     for item in raw.get("entries") or []:
-        page_type = str(item.get("page_type") or "").strip()
+        page_type = _clean_label(str(item.get("page_type") or ""))
         tag = str(item.get("tag") or "").strip()
         if not page_type or not tag:
             continue
         kws = item.get("keywords") or [page_type]
         normalized = tuple(
-            normalize_text(str(k)) for k in kws if normalize_text(str(k))
+            normalize_text(_clean_label(str(k)))
+            for k in kws
+            if normalize_text(_clean_label(str(k)))
         )
         if not normalized:
             continue
@@ -85,6 +133,72 @@ def load_canon(path: str | None = None) -> tuple[CanonEntry, ...]:
             )
         )
     return tuple(entries)
+
+
+def demographic_hit_count(text: str) -> tuple[int, str]:
+    """Distinct demographic keyword hits in ``text`` and the longest hit."""
+    hay = normalize_text(text)
+    if not hay:
+        return 0, ""
+    hits = 0
+    best_kw = ""
+    for kw in DEMOGRAPHIC_KEYWORDS:
+        needle = normalize_text(kw)
+        if needle and needle in hay:
+            hits += 1
+            if len(needle) > len(best_kw):
+                best_kw = needle
+    return hits, best_kw
+
+
+def demographics_match(
+    text: str,
+    *,
+    page_number: Optional[int] = None,
+) -> Optional[MatchResult]:
+    """Prefer Demographics when patient-data keywords cluster (esp. pages 1–2)."""
+    hits, best_kw = demographic_hit_count(text)
+    if hits <= 0:
+        return None
+    early = (
+        page_number is not None
+        and 1 <= int(page_number) <= _EARLY_PAGE_MAX
+    )
+    if early and hits >= _DEMO_EARLY_PAGE_MIN_HITS:
+        pass
+    elif hits >= _DEMO_ANY_PAGE_MIN_HITS:
+        pass
+    else:
+        return None
+    score = float(hits * hits)
+    confidence = round(min(0.99, score / (score + 4.0)), 4)
+    return MatchResult(
+        page_type=DEMOGRAPHICS_PAGE_TYPE,
+        tag="codeable",
+        confidence=confidence,
+        score=score,
+        continue_="n",
+        continue_applied=False,
+        matched_keyword=best_kw,
+    )
+
+
+def _prefer_demographics(
+    demo: MatchResult,
+    other: Optional[MatchResult],
+) -> MatchResult:
+    """Demographics wins unless a continue=y clinical type already scored higher."""
+    if other is None:
+        return demo
+    if other.continue_ == "y" and other.score > demo.score:
+        return other
+    if other.page_type.casefold() in {
+        DEMOGRAPHICS_PAGE_TYPE.casefold(),
+        "face sheet / registration",
+        "patient information / demographic",
+    }:
+        return other if other.score >= demo.score else demo
+    return demo
 
 
 def _phrase_weight(phrase: str) -> int:
@@ -189,6 +303,12 @@ def classify_pages(
             carry = None
 
         match = score_text(text, catalog)
+        demo = demographics_match(
+            text, page_number=page.get("page_number")
+        )
+        if demo is not None:
+            match = _prefer_demographics(demo, match)
+
         continue_applied = False
         result: Optional[MatchResult] = match
 
@@ -216,20 +336,37 @@ def classify_pages(
         elif match is None:
             result = None
 
+        if result is None:
+            page_type = "Not Available"
+            tag = "not_sure"
+            is_codeable = TAG_DISPLAY["not_sure"]
+            confidence: Any = ""
+            continue_flag = "n"
+            matched_keyword = ""
+            score: Any = 0.0
+        else:
+            page_type = result.page_type
+            tag = result.tag
+            is_codeable = result.display_tag
+            confidence = result.confidence
+            continue_flag = result.continue_
+            matched_keyword = result.matched_keyword
+            score = result.score
+
         row = {
             "page_id": page.get("page_id"),
             "page_name": page.get("page_name"),
             "page_number": page.get("page_number"),
             "dos_from": page.get("dos_from") or "",
             "dos_to": page.get("dos_to") or "",
-            "page_type": result.page_type if result else "",
-            "tag": result.tag if result else "",
-            "is_codeable": result.display_tag if result else "",
-            "confidence": result.confidence if result else "",
-            "continue": result.continue_ if result else "n",
+            "page_type": page_type,
+            "tag": tag,
+            "is_codeable": is_codeable,
+            "confidence": confidence,
+            "continue": continue_flag,
             "continue_applied": "y" if continue_applied else "n",
-            "matched_keyword": result.matched_keyword if result else "",
-            "score": result.score if result else 0.0,
+            "matched_keyword": matched_keyword,
+            "score": score,
         }
         out.append(row)
     return out

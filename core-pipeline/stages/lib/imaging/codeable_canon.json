@@ -1378,11 +1378,34 @@
       ]
     },
     {
-      "page_type": "Patient Information\\Demographic",
+      "page_type": "Demographics",
       "tag": "codeable",
       "continue": "n",
       "keywords": [
-        "patient information\\demographic"
+        "patient information",
+        "demographic",
+        "demographics",
+        "patient demographics",
+        "date of birth",
+        "dob",
+        "patient name",
+        "member name",
+        "member id",
+        "mrn",
+        "medical record",
+        "address",
+        "phone number",
+        "home phone",
+        "cell phone",
+        "emergency contact",
+        "sex",
+        "gender",
+        "marital status",
+        "insurance",
+        "subscriber",
+        "guarantor",
+        "ssn",
+        "social security"
       ]
     },
     {
@@ -1394,11 +1417,15 @@
       ]
     },
     {
-      "page_type": "\\Face sheet\\Registration",
+      "page_type": "Face sheet / Registration",
       "tag": "codeable",
       "continue": "n",
       "keywords": [
-        "\\face sheet\\registration"
+        "face sheet",
+        "facesheet",
+        "registration",
+        "patient registration",
+        "admission registration"
       ]
     },
     {

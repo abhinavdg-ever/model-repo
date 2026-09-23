@@ -20,6 +20,7 @@ from stages.lib.imaging.codeable_classify import (  # noqa: E402
 
 @pytest.fixture(scope="module")
 def canon():
+    load_canon.cache_clear()
     return load_canon()
 
 
@@ -118,3 +119,55 @@ def test_continue_switches_on_new_continue_type_same_dos(canon):
     assert rows[1]["continue_applied"] == "n"
     assert rows[2]["tag"] == "discharge_frequency"
     assert rows[2]["continue_applied"] == "y"
+
+
+def test_unmatched_page_is_not_sure(canon):
+    pages = [
+        {
+            "page_id": 1,
+            "page_name": "1.jpg",
+            "page_number": 5,
+            "text": "zzzz unrelated scribbles with no clinical headers",
+            "dos_from": "",
+            "dos_to": "",
+        }
+    ]
+    rows = classify_pages(pages, entries=canon)
+    assert rows[0]["page_type"] == "Not Available"
+    assert rows[0]["tag"] == "not_sure"
+    assert rows[0]["is_codeable"] == "Not Sure"
+
+
+def test_early_pages_with_patient_data_are_demographics(canon):
+    text = (
+        "Patient Name: Jane Doe\nDate of Birth: 01/01/1980\n"
+        "Address: 1 Main St\nMember ID: 12345\nInsurance: Aetna"
+    )
+    pages = [
+        {
+            "page_id": 1,
+            "page_name": "1.jpg",
+            "page_number": 1,
+            "text": text,
+            "dos_from": "",
+            "dos_to": "",
+        },
+        {
+            "page_id": 2,
+            "page_name": "2.jpg",
+            "page_number": 2,
+            "text": text,
+            "dos_from": "",
+            "dos_to": "",
+        },
+    ]
+    rows = classify_pages(pages, entries=canon)
+    assert rows[0]["page_type"] == "Demographics"
+    assert rows[0]["is_codeable"] == "Codeable"
+    assert rows[1]["page_type"] == "Demographics"
+
+
+def test_demographics_canon_entry_exists(canon):
+    types = {e.page_type for e in canon}
+    assert "Demographics" in types
+    assert not any("\\" in e.page_type for e in canon)

@@ -955,7 +955,8 @@ class PostgresFolderRepository(FolderRepository):
                     # Codeable / non-codeable / discharge (page_classification)
                     cur.execute(
                         """
-                        SELECT p.page_name, pc.classification_category, pc.confidence
+                        SELECT p.page_name, pc.page_subtype,
+                               pc.classification_category, pc.confidence
                         FROM page_classification pc
                         JOIN page_list p ON p.id = pc.page_id
                         JOIN chart_list c ON c.id = pc.chart_id
@@ -968,11 +969,27 @@ class PostgresFolderRepository(FolderRepository):
                         "non_codeable": "Non Codeable",
                         "discharge_summary": "Discharge Frequency",
                         "discharge_frequency": "Discharge Frequency",
+                        "not_sure": "Not Sure",
                     }
-                    for page_name, cat, conf in cur.fetchall():
+                    for page_name, subtype, cat, conf in cur.fetchall():
                         fields = _ensure(str(page_name))
                         key = str(cat or "").strip()
-                        fields["isCodeable"] = codeable_display.get(key, key)
+                        subtype_s = str(subtype or "").strip()
+                        if subtype_s:
+                            fields["pageType"] = subtype_s
+                        fields["isCodeable"] = codeable_display.get(key, key or "Not Sure")
+                        if conf is not None:
+                            fields["pageTypeConfidence"] = float(conf)
+
+                    # Main pages with no page_classification row keep junk's
+                    # pageType=\"Not Available\" — stamp Not Sure for codeability.
+                    for fields in by_page.values():
+                        pt = str(fields.get("pageType") or "").strip()
+                        if (
+                            pt == "Not Available"
+                            and not fields.get("isCodeable")
+                        ):
+                            fields["isCodeable"] = "Not Sure"
 
                     # Encounter type (DOS-wide TF)
                     cur.execute(

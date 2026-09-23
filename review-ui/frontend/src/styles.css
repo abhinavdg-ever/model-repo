@@ -1765,6 +1765,24 @@ input {
   min-width: 980px;
 }
 
+.imaging-sequencing-table {
+  width: auto;
+  min-width: 0;
+  table-layout: auto;
+}
+
+.imaging-sequencing-table th,
+.imaging-sequencing-table td {
+  width: 1%;
+  white-space: nowrap;
+  padding: 0.35rem 0.5rem;
+}
+
+.imaging-sequencing-table th:nth-child(2),
+.imaging-sequencing-table td:nth-child(2) {
+  width: auto;
+}
+
 .imaging-rejection-table {
   min-width: 0;
   width: 100%;

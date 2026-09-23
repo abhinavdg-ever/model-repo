@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 STAGE = "page_subtype"
 
 # Canon tags → page_classification.classification_category CHECK values.
+# ``not_sure`` is CSV/UI only (no DB row) until a schema value exists.
 _TAG_TO_CATEGORY = {
     "codeable": "codeable",
     "non_codeable": "non_codeable",

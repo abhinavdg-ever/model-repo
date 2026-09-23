@@ -195,6 +195,19 @@ function fmtPageType(value: string | null | undefined, processed = true): string
   return String(value);
 }
 
+function fmtCodeable(
+  value: string | null | undefined,
+  pageType: string | null | undefined,
+  processed = true,
+): string {
+  if (!processed) return YET_TO_PROCESS;
+  const label = value != null && String(value).trim() !== "" ? String(value).trim() : "";
+  if (label) return label;
+  const pt = pageType != null ? String(pageType).trim() : "";
+  if (!pt || pt === "Not Available") return "Not Sure";
+  return NOT_FOUND;
+}
+
 function fmtPagesMatched(
   v: ImagingVerificationDetails,
   processed = true,
@@ -391,14 +404,23 @@ function PageDetails({
           },
           {
             label: "Page Type",
-            value: fmtPageType(page.pageType, sections.junk),
-            confidence: fmtConfidence(page.pageTypeConfidence, sections.junk),
+            value: fmtPageType(
+              page.pageType,
+              Boolean(sections.junk || sections.codeable),
+            ),
+            confidence: fmtConfidence(
+              page.pageTypeConfidence,
+              Boolean(sections.junk || sections.codeable),
+            ),
           },
           {
             label: "Is Codeable or Non Codeable",
-            value: fmt(
+            value: fmtCodeable(
               page.isCodeable,
-              page.isCodeable != null && String(page.isCodeable).trim() !== "",
+              page.pageType,
+              page.isCodeable != null && String(page.isCodeable).trim() !== ""
+                ? true
+                : Boolean(sections.codeable),
             ),
             confidence: fmtConfidence(null, Boolean(sections.codeable)),
           },
@@ -583,8 +605,15 @@ function DocSummary({
                     sections.junk,
                   )}
                 </td>
-                <td>{fmtPageType(p.pageType, sections.junk)}</td>
-                <td>{fmt(p.isCodeable, p.isCodeable != null && String(p.isCodeable).trim() !== "")}</td>
+                <td>{fmtPageType(p.pageType, sections.junk || sections.codeable)}</td>
+                <td>
+                  {fmtCodeable(
+                    p.isCodeable,
+                    p.pageType,
+                    Boolean(sections.codeable) ||
+                      (p.isCodeable != null && String(p.isCodeable).trim() !== ""),
+                  )}
+                </td>
                 <td>{fmt(p.currentSequence ?? p.pageNumber, true)}</td>
                 <td>{fmt(p.actualSequence, Boolean(sections.sequencing))}</td>
                 {showConfidence ? (
@@ -722,7 +751,7 @@ function SequencingTable({
           to Process until the page_sequencing stage writes results.
         </p>
       ) : null}
-      <table className="imaging-summary-table">
+      <table className="imaging-summary-table imaging-sequencing-table">
         <thead>
           <tr>
             <th scope="col">Page #</th>
