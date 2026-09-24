@@ -479,6 +479,30 @@ input {
   flex: 0 0 auto;
 }
 
+button.landing-multi-select-all {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  border-bottom: 1px solid var(--border);
+  border-radius: 5px 5px 0 0;
+  margin-bottom: 0.15rem;
+  padding-bottom: 0.35rem;
+}
+
+button.landing-multi-select-all.is-active {
+  font-weight: 600;
+}
+
+.landing-multi-select-all-mark {
+  display: inline-flex;
+  width: 0.9rem;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--primary, #2563eb);
+}
+
 .landing-multi-empty {
   padding: 0.35rem 0.4rem;
   font-size: 0.75rem;

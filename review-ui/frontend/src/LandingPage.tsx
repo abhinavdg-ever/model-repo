@@ -150,12 +150,12 @@ function MultiCheckFilter({
     };
   }, [open]);
 
-  const summary =
-    selected.length === 0
-      ? emptyLabel
-      : selected.length === 1
-        ? formatOption(selected[0])
-        : `${selected.length} selected`;
+  const allSelected = selected.length === 0;
+  const summary = allSelected
+    ? emptyLabel
+    : selected.length === 1
+      ? formatOption(selected[0])
+      : `${selected.length} selected`;
 
   return (
     <div className="landing-select-wrap landing-multi-wrap" ref={rootRef}>
@@ -174,14 +174,22 @@ function MultiCheckFilter({
         </button>
         {open ? (
           <div className="landing-multi-panel" role="listbox" aria-multiselectable="true">
-            <label className="landing-multi-option">
-              <input
-                type="checkbox"
-                checked={selected.length === 0}
-                onChange={() => onChange([])}
-              />
-              <span>{emptyLabel}</span>
-            </label>
+            <button
+              type="button"
+              className={
+                allSelected
+                  ? "landing-multi-option landing-multi-select-all is-active"
+                  : "landing-multi-option landing-multi-select-all"
+              }
+              role="option"
+              aria-selected={allSelected}
+              onClick={() => onChange([])}
+            >
+              <span className="landing-multi-select-all-mark" aria-hidden="true">
+                {allSelected ? "✓" : ""}
+              </span>
+              <span>Select all</span>
+            </button>
             {options.length === 0 ? (
               <div className="landing-multi-empty">No values yet</div>
             ) : (
