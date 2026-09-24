@@ -29,6 +29,7 @@
 --       encounter_type_results
 --       page_sequencing_results
 --   page_stage_status pending rows for those three stages on existing pages
+--   member_verification_summary.final_status CHECK includes 'skipped'
 --
 -- NOT created here (already in older v1.sql — apply full v1.sql on empty DBs):
 --   chart_list, page_list, page_stage_status, manifest_member_list,
