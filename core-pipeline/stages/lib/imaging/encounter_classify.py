@@ -38,11 +38,38 @@ TYPE_PRIORITY = {
     "inpatient": 1,
 }
 
+# DOS engine stamps this on preamble / non-encounter pages — not a real visit.
+_DEFAULT_DOC_DOS_ISO = "2022-02-02"
+
 _WS_RE = re.compile(r"\s+")
 
 
 def normalize_text(text: str) -> str:
     return _WS_RE.sub(" ", (text or "").casefold()).strip()
+
+
+def effective_dos_pair(
+    *,
+    page_from: Optional[str] = None,
+    page_to: Optional[str] = None,
+    doc_from: Optional[str] = None,
+    doc_to: Optional[str] = None,
+) -> tuple[str, str]:
+    """DOS identity for encounter grouping.
+
+    Prefer **document-level** (DOS carry-forward) so continuation pages of the
+    same visit share one encounter type with the establishing page. Ignore the
+    DOS engine's preamble default date.
+    """
+    d_from = (doc_from or "").strip()
+    d_to = (doc_to or "").strip()
+    p_from = (page_from or "").strip()
+    p_to = (page_to or "").strip()
+    if d_from and d_from != _DEFAULT_DOC_DOS_ISO:
+        return d_from, d_to or d_from
+    if p_from and p_from != _DEFAULT_DOC_DOS_ISO:
+        return p_from, p_to or p_from
+    return "", ""
 
 
 @dataclass(frozen=True)
@@ -173,6 +200,11 @@ def classify_pages(
 
     Each input dict needs:
       page_id, page_name, page_number (optional), text, dos_from, dos_to
+
+    After DOS-wide scoring, pages that still have no type inherit the previous
+    page's type in page-number order (same idea as DOS carry-forward) so a
+    continuation page of an OP visit stays OP even when its own OCR has no
+    establishing keywords.
     """
     catalog = entries if entries is not None else load_canon()
     page_list = list(pages)
@@ -192,13 +224,12 @@ def classify_pages(
         combined = "\n".join(texts)
         dos_scores[key] = score_text(combined, catalog)
 
-    # If diagnostic-imaging-only IP score exists with no establishing IP, drop it
-    # (establishes=false already excluded from pick). F2F parent keeps the DOS.
     dos_winner: dict[str, Optional[TypeScore]] = {
         key: pick_encounter(scores) for key, scores in dos_scores.items()
     }
 
-    out: list[dict[str, Any]] = []
+    # Stamp DOS winners first.
+    provisional: list[dict[str, Any]] = []
     for page in page_list:
         key = dos_key(
             page.get("dos_from"),
@@ -218,7 +249,7 @@ def classify_pages(
                 min(0.99, winner.establishing_score / (winner.establishing_score + 4.0)),
                 4,
             )
-        out.append(
+        provisional.append(
             {
                 "page_id": page.get("page_id"),
                 "page_name": page.get("page_name"),
@@ -235,6 +266,39 @@ def classify_pages(
                 "matched_keyword": winner.matched_keyword if winner else "",
                 "continue_applied": "y" if continue_applied and winner else "n",
                 "score": winner.establishing_score if winner else 0.0,
+                "_page_hit": page_hit,
             }
         )
-    return out
+
+    # Sequential carry-forward: untyped continuation → previous page's type.
+    def _sort_key(row: dict[str, Any]) -> tuple[int, int]:
+        try:
+            n = int(row.get("page_number") or 0)
+        except (TypeError, ValueError):
+            n = 0
+        try:
+            pid = int(row.get("page_id") or 0)
+        except (TypeError, ValueError):
+            pid = 0
+        return (n, pid)
+
+    ordered = sorted(provisional, key=_sort_key)
+    carry: Optional[dict[str, Any]] = None
+    for row in ordered:
+        page_hit = row.pop("_page_hit", None)
+        et = (row.get("encounter_type") or "").strip()
+        if et:
+            carry = row
+            continue
+        # Page with its own establishing cue but no DOS winner stays blank
+        # (caller / reviewer); only fill pure continuations.
+        if carry is None or page_hit is not None:
+            continue
+        row["encounter_type"] = carry["encounter_type"]
+        row["encounter_label"] = carry["encounter_label"]
+        row["confidence"] = carry["confidence"]
+        row["matched_keyword"] = carry["matched_keyword"]
+        row["score"] = carry["score"]
+        row["continue_applied"] = "y"
+
+    return provisional

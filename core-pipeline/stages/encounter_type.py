@@ -1,7 +1,9 @@
 """Stage: encounter type (Outpatient F2F / Tele / Inpatient / Home).
 
 Term-frequency match against ``encounter_canon.json``. One type is chosen for
-each page-level DOS and stamped on every page that shares it.
+each document-level DOS (the DOS carry-forward identity) and stamped on every
+page that shares it; untyped continuation pages inherit the previous page's
+type in page order.
 
 Runs after ``page_subtype``. Writes DB + ``imaging/<chart>_encounter.csv``.
 """
@@ -25,7 +27,7 @@ from stages._support import (
     mark_skipped,
     stage_run,
 )
-from stages.lib.imaging.encounter_classify import classify_pages
+from stages.lib.imaging.encounter_classify import classify_pages, effective_dos_pair
 
 logger = logging.getLogger(__name__)
 
@@ -103,11 +105,13 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 quality_row=quality.get(page_id),
             )
             dos = dos_by_page.get(page_id) or {}
-            dos_from = dos.get("date_of_service_from") or dos.get(
-                "date_of_service_from_doclevel"
-            )
-            dos_to = dos.get("date_of_service_to") or dos.get(
-                "date_of_service_to_doclevel"
+            # Group by document-level DOS (carry-forward identity) so
+            # continuation pages of the same visit share one encounter type.
+            dos_from, dos_to = effective_dos_pair(
+                page_from=str(dos.get("date_of_service_from") or ""),
+                page_to=str(dos.get("date_of_service_to") or ""),
+                doc_from=str(dos.get("date_of_service_from_doclevel") or ""),
+                doc_to=str(dos.get("date_of_service_to_doclevel") or ""),
             )
             sources[page_id] = _ocr_source_label(final2=f2, final1=f1, prelim=pr)
             page_inputs.append(
@@ -116,8 +120,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     "page_name": page["page_name"],
                     "page_number": page.get("page_number"),
                     "text": text,
-                    "dos_from": str(dos_from or ""),
-                    "dos_to": str(dos_to or ""),
+                    "dos_from": dos_from,
+                    "dos_to": dos_to,
                 }
             )
 

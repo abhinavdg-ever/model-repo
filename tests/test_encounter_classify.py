@@ -89,6 +89,7 @@ def test_entire_dos_gets_same_type(canon):
         {
             "page_id": 1,
             "page_name": "1.jpg",
+            "page_number": 1,
             "text": "Office visit SOAP Note",
             "dos_from": "2024-05-01",
             "dos_to": "2024-05-01",
@@ -96,6 +97,7 @@ def test_entire_dos_gets_same_type(canon):
         {
             "page_id": 2,
             "page_name": "2.jpg",
+            "page_number": 2,
             "text": "continuation page with no keywords",
             "dos_from": "2024-05-01",
             "dos_to": "2024-05-01",
@@ -103,6 +105,7 @@ def test_entire_dos_gets_same_type(canon):
         {
             "page_id": 3,
             "page_name": "3.jpg",
+            "page_number": 3,
             "text": "Discharge Summary",
             "dos_from": "2024-06-01",
             "dos_to": "2024-06-01",
@@ -113,3 +116,45 @@ def test_entire_dos_gets_same_type(canon):
     assert rows[1]["encounter_type"] == "outpatient_f2f"
     assert rows[1]["encounter_label"] == "Outpatient (F2F)"
     assert rows[2]["encounter_type"] == "inpatient"
+
+
+def test_sequential_carry_forward_when_dos_missing(canon):
+    """Continuation page with no DOS / no cues inherits prior page's type."""
+    pages = [
+        {
+            "page_id": 10,
+            "page_name": "1.jpg",
+            "page_number": 1,
+            "text": "Reason for Appointment: follow up\nHistory of Present Illness",
+            "dos_from": "2024-09-16",
+            "dos_to": "2024-09-16",
+        },
+        {
+            "page_id": 11,
+            "page_name": "2.jpg",
+            "page_number": 2,
+            "text": "meds continued — no encounter cues",
+            "dos_from": "",
+            "dos_to": "",
+        },
+    ]
+    rows = classify_pages(pages, entries=canon)
+    by_id = {r["page_id"]: r for r in rows}
+    assert by_id[10]["encounter_type"] == "outpatient_f2f"
+    assert by_id[11]["encounter_type"] == "outpatient_f2f"
+    assert by_id[11]["continue_applied"] == "y"
+
+
+def test_effective_dos_prefers_doclevel():
+    from stages.lib.imaging.encounter_classify import effective_dos_pair
+
+    assert effective_dos_pair(
+        page_from="2024-01-01",
+        page_to="2024-01-01",
+        doc_from="2024-09-16",
+        doc_to="2024-09-16",
+    ) == ("2024-09-16", "2024-09-16")
+    assert effective_dos_pair(
+        page_from="",
+        doc_from="2022-02-02",
+    ) == ("", "")
