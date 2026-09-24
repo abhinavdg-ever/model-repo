@@ -27,6 +27,10 @@ from app.core.schemas import (
     OcrTextResponse,
     PageSummary,
 )
+from app.services.chart_run_batch import (
+    fetch_chart_run_batch_map,
+    prefer_db_run_batch,
+)
 from app.services.metadata_csv import manifest_for_record, run_batch_for_record
 
 PAGE_RE = re.compile(r"^page_(\d+)\.(jpe?g|png|webp|tif{1,2})$", re.IGNORECASE)
@@ -710,8 +714,8 @@ class LocalFolderRepository(FolderRepository):
       # text OCR sections (API response): ===== 1.jpg =====
       # Legacy: ocr/<folder_name>_final1.txt is still accepted.
 
-    Manifest Details (DATA_MODE=local): metadata_R{n}_B{n}.csv under data/pipeline
-    (falls back to 06-postgres-db/manifest). Postgres mode reads manifest_member_list.
+    Manifest Details (DATA_MODE=local): metadata_R{n}_B{n}.csv under METADATA_ROOT.
+    Run/Batch: chart_list when DATABASE_URL is set, else metadata filename.
     """
 
     # How long a cached scan of data/folders is trusted before it is rechecked.
@@ -720,9 +724,18 @@ class LocalFolderRepository(FolderRepository):
     # disk when the process started.
     CACHE_TTL_SECONDS = float(os.environ.get("LOCAL_CACHE_TTL_SECONDS") or "5")
 
-    def __init__(self, data_root: Path, metadata_root: Path | None = None):
+    def __init__(
+        self,
+        data_root: Path,
+        metadata_root: Path | None = None,
+        *,
+        database_url: str | None = None,
+        db_schema: str = "public",
+    ):
         self.data_root = data_root
         self.metadata_root = metadata_root
+        self.database_url = (database_url or "").strip() or None
+        self.db_schema = (db_schema or "public").strip() or "public"
         self._overlay_chart_ids: set[str] | None = None
         # chart → which of the pipeline outputs are present (excl. manifest)
         self._pipeline_streams: dict[str, set[str]] | None = None
@@ -730,6 +743,24 @@ class LocalFolderRepository(FolderRepository):
         self._pipeline_pages: dict[str, set[int]] | None = None
         self._cache_stamp: tuple[float, tuple] | None = None
         self._cache_lock = threading.Lock()
+
+    def _db_run_batch_map(self) -> dict[str, tuple[str | None, str | None]]:
+        if not self.database_url:
+            return {}
+        return fetch_chart_run_batch_map(
+            self.database_url, db_schema=self.db_schema
+        )
+
+    def _run_batch_for_folder(
+        self,
+        folder_id: str,
+        *,
+        db_map: dict[str, tuple[str | None, str | None]] | None = None,
+    ) -> tuple[str | None, str | None]:
+        """Prefer chart_list; fall back to metadata_R*_B*.csv."""
+        resolved = db_map if db_map is not None else self._db_run_batch_map()
+        meta = run_batch_for_record(self.metadata_root, folder_id)
+        return prefer_db_run_batch(resolved.get(folder_id), meta)
 
     def _scan_signature(self) -> tuple:
         """Cheap fingerprint of the imaging outputs on disk.
@@ -1281,13 +1312,14 @@ class LocalFolderRepository(FolderRepository):
             return []
 
         summaries: list[FolderSummary] = []
+        db_map = self._db_run_batch_map()
         for entry in sorted(self.data_root.iterdir(), key=lambda p: p.name.lower()):
             if not entry.is_dir() or entry.name.startswith("."):
                 continue
             pages = self._page_files(entry)
             page_count = len(pages)
             imaging_processed = self._imaging_processed_count(entry, page_count)
-            run_id, batch_id = run_batch_for_record(self.metadata_root, entry.name)
+            run_id, batch_id = self._run_batch_for_folder(entry.name, db_map=db_map)
             summaries.append(
                 FolderSummary(
                     id=entry.name,
@@ -1337,7 +1369,7 @@ class LocalFolderRepository(FolderRepository):
             if imaging_full
             else sum(1 for p in page_summaries if p.has_imaging)
         )
-        run_id, batch_id = run_batch_for_record(self.metadata_root, folder_id)
+        run_id, batch_id = self._run_batch_for_folder(folder_id)
         return FolderDetail(
             id=folder_id,
             name=folder_dir.name,

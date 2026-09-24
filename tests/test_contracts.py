@@ -1162,6 +1162,62 @@ class TestManifestLookup:
         assert batch_id == "B3"
         assert run_batch_for_record(tmp_path, "missing") == (None, None)
 
+    def test_local_mode_prefers_db_run_batch_over_metadata(self, tmp_path, monkeypatch):
+        """Local Mode landing Run/Batch come from chart_list when DATABASE_URL is set."""
+        from app.adapters.local import repository as local_repo
+        from app.adapters.local.repository import LocalFolderRepository
+        from app.services.metadata_csv import clear_metadata_cache
+
+        clear_metadata_cache()
+        folders = tmp_path / "folders"
+        meta = tmp_path / "metadata"
+        folders.mkdir()
+        meta.mkdir()
+        chart = folders / "52743839_44976074"
+        chart.mkdir()
+        (chart / "pages").mkdir()
+        (chart / "pages" / "1.jpg").write_bytes(b"x")
+        (meta / "metadata_R1_B1.csv").write_text(
+            "recordId,DummyFirstName,DummyLastName\n"
+            "52743839_44976074,Jane,Doe\n",
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(
+            local_repo,
+            "fetch_chart_run_batch_map",
+            lambda *a, **k: {"52743839_44976074": ("R2", "B4")},
+        )
+        repo = LocalFolderRepository(
+            folders,
+            metadata_root=meta,
+            database_url="postgresql://aiuser:x@127.0.0.1:5432/imaging_outputs",
+        )
+        summaries = repo.list_folders()
+        assert len(summaries) == 1
+        assert summaries[0].run_id == "R2"
+        assert summaries[0].batch_id == "B4"
+
+        # No DB hit → metadata filename still works.
+        monkeypatch.setattr(
+            local_repo, "fetch_chart_run_batch_map", lambda *a, **k: {}
+        )
+        repo2 = LocalFolderRepository(
+            folders,
+            metadata_root=meta,
+            database_url="postgresql://aiuser:x@127.0.0.1:5432/imaging_outputs",
+        )
+        summaries2 = repo2.list_folders()
+        assert summaries2[0].run_id == "R1"
+        assert summaries2[0].batch_id == "B1"
+
+    def test_prefer_db_run_batch_fills_gaps(self):
+        from app.services.chart_run_batch import prefer_db_run_batch
+
+        assert prefer_db_run_batch(("R2", None), ("R1", "B1")) == ("R2", "B1")
+        assert prefer_db_run_batch((None, "B4"), ("R9", "B1")) == ("R9", "B4")
+        assert prefer_db_run_batch(None, ("R1", "B1")) == ("R1", "B1")
+
     def test_endpoint_falls_back_to_metadata_when_db_empty(self, tmp_path, monkeypatch):
         from fastapi.testclient import TestClient
 

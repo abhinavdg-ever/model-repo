@@ -30,11 +30,14 @@ def build_repository(settings: Settings) -> FolderRepository:
             db_schema=settings.db_schema,
         )
     logger.info(
-        "repository=local data_root=%s metadata_root=%s",
+        "repository=local data_root=%s metadata_root=%s database_url=%s",
         settings.resolved_data_root,
         settings.resolved_metadata_root,
+        "set" if (settings.database_url or "").strip() else "unset",
     )
     return LocalFolderRepository(
         settings.resolved_data_root,
         metadata_root=settings.resolved_metadata_root,
+        database_url=settings.database_url,
+        db_schema=settings.db_schema,
     )
