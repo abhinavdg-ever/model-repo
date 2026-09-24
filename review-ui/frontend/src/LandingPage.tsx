@@ -158,7 +158,14 @@ function MultiCheckFilter({
       : `${selected.length} selected`;
 
   return (
-    <div className="landing-select-wrap landing-multi-wrap" ref={rootRef}>
+    <div
+      className={
+        open
+          ? "landing-select-wrap landing-multi-wrap is-open"
+          : "landing-select-wrap landing-multi-wrap"
+      }
+      ref={rootRef}
+    >
       <span>{label}</span>
       <div className="landing-multi">
         <button
@@ -173,38 +180,39 @@ function MultiCheckFilter({
           <ChevronDown size={12} aria-hidden="true" />
         </button>
         {open ? (
-          <div className="landing-multi-panel" role="listbox" aria-multiselectable="true">
-            <button
-              type="button"
-              className={
-                allSelected
-                  ? "landing-multi-option landing-multi-select-all is-active"
-                  : "landing-multi-option landing-multi-select-all"
-              }
-              role="option"
-              aria-selected={allSelected}
-              onClick={() => onChange([])}
-            >
-              <span className="landing-multi-select-all-mark" aria-hidden="true">
-                {allSelected ? "✓" : ""}
-              </span>
-              <span>Select all</span>
-            </button>
-            {options.length === 0 ? (
-              <div className="landing-multi-empty">No values yet</div>
-            ) : (
-              options.map((value) => (
-                <label key={value} className="landing-multi-option">
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(value)}
-                    onChange={() => onChange(toggleId(selected, value))}
-                  />
-                  <span>{formatOption(value)}</span>
-                </label>
-              ))
-            )}
-          </div>
+          <>
+            <div
+              className="landing-multi-backdrop"
+              aria-hidden="true"
+              onMouseDown={() => setOpen(false)}
+            />
+            <div className="landing-multi-panel" role="listbox" aria-multiselectable="true">
+              <label className="landing-multi-option landing-multi-select-all">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={() => {
+                    if (!allSelected) onChange([]);
+                  }}
+                />
+                <span>Select all</span>
+              </label>
+              {options.length === 0 ? (
+                <div className="landing-multi-empty">No values yet</div>
+              ) : (
+                options.map((value) => (
+                  <label key={value} className="landing-multi-option">
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(value)}
+                      onChange={() => onChange(toggleId(selected, value))}
+                    />
+                    <span>{formatOption(value)}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </>
         ) : null}
       </div>
     </div>
