@@ -9,6 +9,10 @@ COPY index.html tsconfig.json vite.config.ts ./
 COPY public ./public
 COPY src ./src
 
+# Fail the build if Page Sequencing equal-column CSS did not land in the bundle.
+RUN grep -q 'imaging-sequencing-table' src/styles.css \
+ && grep -q 'width: 25%' src/styles.css
+
 # Demo gate, inlined into the bundle by Vite. Placeholders unless compose
 # passes real values through from review-ui/.env. This is NOT authentication —
 # anyone who loads the page can read them.

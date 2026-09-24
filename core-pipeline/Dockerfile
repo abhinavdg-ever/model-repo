@@ -11,8 +11,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-# tesseract-ocr        — preliminary OCR (stage 1)
-# libgl1 / libglib2.0  — OpenCV runtime, used by the rotation detector
+# tesseract-ocr        — preliminary OCR (stage 2)
+# libgl1 / libglib2.0  — OpenCV runtime (rotation / quality)
 # libgomp1             — ONNX Runtime (RapidOCR) and scikit-learn
 RUN apt-get update && apt-get install -y --no-install-recommends \
         tesseract-ocr \
@@ -40,8 +40,28 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY . /app/core-pipeline
 WORKDIR /app/core-pipeline
 
-# The handwriting classifier and the rotation detector are imported from the
-# reference tree; the compose file mounts it at this path.
+# Fail the build if junk keywords / clinical short-circuit did not land in the
+# image (same logic as local / Windows — keywords.json + text_utils).
+RUN python -c "\
+import sys; \
+sys.path.insert(0, 'stages/lib/junk'); \
+from classify import CODE_MAIN, classify_text; \
+from kw import JUNK; \
+assert 'letter_fax' in JUNK and 'invoice' in JUNK; \
+text = ( \
+    'Progress Note\\n' \
+    'Reason for Appointment: 6 month follow up.\\n' \
+    'History of Present Illness: Patient presents with SOB.\\n' \
+    'Current Medications: Amlodipine, Apixaban.\\n' \
+    'Vital Signs: BP 132/64. Assessment: Hypertension.\\n' \
+    'CONFIDENTIALITY NOTICE: This transmission is intended only ' \
+    'for the intended recipient and may contain confidential medical records.\\n' \
+); \
+code, reason = classify_text(text); \
+assert code == CODE_MAIN and reason == 'clinical_content', (code, reason); \
+print('junk clinical short-circuit ok')"
+
+# Engines live under stages/lib/imaging/; weights are bind-mounted at runtime.
 ENV PYTHONPATH=/app/core-pipeline \
     HW_MODEL_PATH=/app/core-pipeline/models/hw/handwritten_printed_convnext_tiny.pth \
     API_HOST=0.0.0.0 \
