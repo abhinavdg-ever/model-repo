@@ -152,11 +152,12 @@ When OCR artifacts already exist, the orchestrator:
 3. Compares each page’s gate signature
    `(hw_class, quality_tag, rotation_applied, orientation_bucket)` to the
    pre-run snapshot (`core-pipeline/stages/gate_delta.py`).
-4. Sets only the affected `page_stage_status` rows back to pending — blank/junk,
-   OCR engines, section headers, member/DOS as required.
-5. Runs the rest of the chain with resume semantics so unchanged pages keep
-   their OCR; pages that **lost** `high+printed` and have no Final2 text will
-   call Azure for that page only.
+4. Sets OCR-related `page_stage_status` rows back to pending only when
+   artifacts are missing or the gate path changed (so OCR engines may re-run
+   for those pages).
+5. **Force-re-runs every non-OCR stage** — blank/junk (both passes), section
+   headers, member, DOS, codeable, encounter, sequencing — regardless of
+   prior completion.
 
 ```bash
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \

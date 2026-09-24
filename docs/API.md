@@ -434,7 +434,7 @@ Usable on `/run` and `/batch-run`:
 | `through` | string | omit | Run from the top, **stop after** this stage |
 | `only` | string[] | omit | Run **just** these stages against existing outputs |
 | `force` | bool | `true` | Reprocess completed pages (**final2 is billed**). Set `false` to **resume**. Required for `skip_ocr`. Does **not** re-download `pages/` by itself. |
-| `skip_ocr` | bool | omit | With `force: false`: use workspace `pages/` + `ocr/` when present; else download `pages/` from Raw_Input and `ocr/` from Processed; else materialize OCR from DB; else re-run OCR. **Always** re-runs quality/rotation (`corrected-pages/`). Write after this run **overwrites** destination outputs. Ignored when `force=true`. |
+| `skip_ocr` | bool | omit | With `force: false`: reuse OCR from workspace / Processed / DB. **Always** re-runs quality/rotation and **force-re-runs every non-OCR stage** (blank/junk, headers, member, DOS, codeable, …). OCR engines only re-run for gate-delta pending pages. Write **overwrites** destination outputs. Ignored when `force=true`. |
 | `redownload_pages` | bool | `false` | Wipe workspace `pages/` + `corrected-pages/` and re-fetch pages from Raw_Input. |
 | `test_mode` | bool | `false` | **Local only.** No Postgres; workspace under `data/folders/<chart>-test`. Env `TEST_MODE=true`. |
 | `skip_db_write` | bool | `false` | Deprecated alias for `test_mode` |

@@ -1,9 +1,10 @@
-"""Gate-delta: reopen stages when quality/rotation gates flip under skip_ocr.
+"""Gate-delta: reopen OCR stages when quality/rotation gates flip under skip_ocr.
 
 Used by the orchestrator when ``skip_ocr=true`` and ``force=false``: re-run
 quality, compare each page's gate signature to the pre-run snapshot, and set
-only the affected ``page_stage_status`` rows back to pending so blank/junk and
-OCR engines re-fire for those pages — leaving reusable OCR alone.
+only the affected OCR ``page_stage_status`` rows back to pending so engines
+re-fire for those pages. Non-OCR stages (blank/junk, member, DOS, …) are
+force-re-run by the orchestrator separately — they do not rely on this module.
 """
 from __future__ import annotations
 

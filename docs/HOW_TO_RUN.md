@@ -117,8 +117,9 @@ Looks under `data/folders/<chart>/` (review-ui workspace):
 
 1. **`pages/` present** → use it. **Missing** → download from **Raw_Input** (`blob_path`).
 2. **`ocr/` present** → use it. **Missing** → pull from **Processed** (`output_path`). **Still missing** → materialize from Postgres `ocr_results`. **Still missing** → **re-run OCR engines**.
-3. **Quality + rotation always re-run** → rewrite `corrected-pages/`. Gate-delta may reopen OCR only for pages whose HW/quality/rotation path flipped.
-4. **Write** (if a write path is set) **overwrites** destination `ocr/`, `corrected-pages/`, `imaging/` (default write mode still omits `pages/`).
+3. **Quality + rotation always re-run** → rewrite `corrected-pages/`.
+4. **Every non-OCR stage force-re-runs** — blank/junk (both passes), section headers, member, DOS, codeable, encounter, sequencing. Gate-delta may still reopen OCR engines for a page whose HW/quality/rotation path flipped or whose reused OCR is missing.
+5. **Write** (if a write path is set) **overwrites** destination `ocr/`, `corrected-pages/`, `imaging/` (default write mode still omits `pages/`).
 
 ```bash
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
@@ -348,10 +349,10 @@ curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/j
   }'
 ```
 
-### B. Adaptive `skip_ocr` + resume (gate-delta)
+### B. `skip_ocr` — reuse OCR, re-run everything else
 
-Reuses OCR on disk; refreshes quality; only re-opens OCR engines for pages
-whose HW/quality/rotation **gate** changed:
+Reuses OCR on disk; refreshes quality; **force-re-runs blank/junk and all
+later stages**. OCR engines only re-run for pages gate-delta marks pending:
 
 ```bash
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
@@ -363,8 +364,8 @@ curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
   }'
 ```
 
-Most completed pages stay skipped. Final2 may still bill for pages that leave
-the `high+printed` skip path. Prefer §6A when you want **zero** OCR billing.
+Final2 may still bill for pages that leave the `high+printed` skip path or
+lack Final2 text. Prefer §6A when you want **zero** OCR billing.
 
 ---
 

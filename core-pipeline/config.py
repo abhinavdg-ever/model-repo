@@ -153,8 +153,9 @@ def _flag(name: str, default: bool) -> bool:
 # usable files (re-hydrated into ocr_results), OR if ocr_results already has
 # rows (materialized back into the three ocr/ files). If neither is available,
 # SKIP_OCR is ignored and OCR runs normally. force=True always re-OCRs.
-# With skip_ocr + force=False, quality is refreshed and gate-delta reopens
-# only pages whose HW/quality/rotation path changed (see stages/gate_delta.py).
+# With skip_ocr + force=False, quality is refreshed, OCR engines are reused
+# (gate-delta may reopen a page if artifacts are missing or rotation/HW flipped),
+# and every other stage is force-re-run (blank/junk, headers, member, DOS, …).
 SKIP_OCR = _flag("SKIP_OCR", False)
 
 # Batch: charts with this many pages (or more) share a single concurrency slot

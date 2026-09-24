@@ -162,8 +162,10 @@ class StageSelection(BaseModel):
             "data/folders/<chart>/pages and ocr/; if pages missing, downloads "
             "from Raw_Input; if ocr missing, pulls from Processed output_path, "
             "else materializes from DB, else re-runs OCR. Quality/rotation "
-            "always re-runs and rewrites corrected-pages/. Write after this run "
-            "overwrites ocr/corrected-pages/imaging on the destination. "
+            "always re-runs; every non-OCR stage (blank/junk, headers, member, "
+            "DOS, …) is force-re-run. OCR engines only re-run for gate-delta "
+            "pending pages. Write after this run overwrites "
+            "ocr/corrected-pages/imaging on the destination. "
             "omit = SKIP_OCR env. Ignored when force=true."
         ),
     )

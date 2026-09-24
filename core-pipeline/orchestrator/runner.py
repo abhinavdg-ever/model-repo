@@ -123,9 +123,11 @@ def run_pipeline_for_chart(
     Neither disturbs the recorded progress of the stages it does not run.
 
     ``skip_ocr`` overrides the ``SKIP_OCR`` env for this run (``None`` = env).
-    With ``skip_ocr`` active and ``force=false``, quality is refreshed and
-    gate-delta reopens only the blank/junk / OCR pages whose path changed
-    (or that are missing artifacts the new gate requires).
+    With ``skip_ocr`` active and ``force=false``: reuse OCR artifacts, always
+    refresh quality, and **force-re-run every non-OCR stage** (blank/junk,
+    headers, member, DOS, codeable, encounter, sequencing). OCR engines only
+    re-run for pages gate-delta marks pending (missing artifacts or a
+    rotation/HW/quality path change that invalidates reused text).
 
     Before stages run, ``ensure_chart_images`` prefers workspace ``pages/``,
     then hydrates from ``output_path``, then Raw_Input — and does not
@@ -253,7 +255,8 @@ def run_pipeline_for_chart(
                     skip_ocr_active = True
                     adaptive_gates = True
                     logger.info(
-                        "skip_ocr for chart %s — reuse OCR + refresh quality",
+                        "skip_ocr for chart %s — reuse OCR; re-run quality + "
+                        "all non-OCR stages",
                         chart["chart_name"],
                     )
             else:
@@ -369,13 +372,16 @@ def run_pipeline_for_chart(
                     continue
 
             label = stage_label(name, pass_no)
+            # skip_ocr skips OCR engines only — blank/junk and every later
+            # stage re-run (force=True). Plain resume keeps force as passed.
+            stage_force = True if skip_requested else force
+            force_note = ""
+            if skip_requested and stage_force:
+                force_note = " (skip_ocr: force non-OCR)"
             logger.info(
-                "=== [%s]  stage %d of %d  —  chart %s ===",
-                label, index, total_stages, chart["chart_name"],
+                "=== [%s]  stage %d of %d  —  chart %s%s ===",
+                label, index, total_stages, chart["chart_name"], force_note,
             )
-            # Under adaptive skip_ocr, downstream stages also honour resume
-            # (force=False) so only gate-delta-invalidated pages re-run.
-            stage_force = False if adaptive_gates else force
             results["stages"][key] = fn(chart_id, force=stage_force)
 
             with connect() as conn:
