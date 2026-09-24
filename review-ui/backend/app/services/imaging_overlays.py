@@ -10,11 +10,27 @@ Sources (first hit wins):
 from __future__ import annotations
 
 import csv
+import re
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from app.core.schemas import ImagingPageResult, ImagingVerificationDetails
+
+_PAREN_RE = re.compile(r"\([^)]*\)")
+_WS_RE = re.compile(r"\s+")
+
+
+def display_page_type(label: str) -> str:
+    """Hide parenthetical annotations from Page Type (e.g. ``SOAP Note (...)``)."""
+    text = (label or "").strip()
+    if not text:
+        return text
+    prev = None
+    while prev != text:
+        prev = text
+        text = _PAREN_RE.sub("", text)
+    return _WS_RE.sub(" ", text).strip(" /")
 
 
 def read_csv_rows(path: Path) -> list[dict[str, str]]:
@@ -719,7 +735,7 @@ def index_codeable_rows(
             label = "Not Sure"
         fields: dict[str, Any] = {"isCodeable": label}
         if page_type:
-            fields["pageType"] = page_type
+            fields["pageType"] = display_page_type(page_type)
         elif label == "Not Sure":
             fields["pageType"] = "Not Available"
         _put_page_keys(by_key, row, fields)

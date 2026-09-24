@@ -173,6 +173,69 @@ def test_demographics_canon_entry_exists(canon):
     assert not any("\\" in e.page_type for e in canon)
 
 
+def test_page_type_labels_hide_parentheticals(canon):
+    assert not any("(" in e.page_type or ")" in e.page_type for e in canon)
+    soap = next(e for e in canon if e.page_type.casefold().startswith("soap note"))
+    assert soap.page_type == "SOAP Note"
+
+
+def test_consultations_and_consulta_are_one_type(canon):
+    types = {e.page_type for e in canon}
+    assert "Consultations / Consulta" in types
+    assert "Consultations" not in types
+    assert "Consulta (Spanish)" not in types
+    assert "Consulta" not in types
+    hit = score_text("CONSULTA medica del paciente", canon)
+    assert hit is not None
+    assert hit.page_type == "Consultations / Consulta"
+    hit2 = score_text("Consultations follow-up note", canon)
+    assert hit2 is not None
+    assert hit2.page_type == "Consultations / Consulta"
+
+
+def test_strong_near_duplicates_merged(canon):
+    types = {e.page_type for e in canon}
+    assert "Progress Note" in types
+    assert "Progress notes" not in types
+    assert not any(t == "Progress notes" for t in types)
+
+    assert "Initial Psychiatric Evaluation" in types
+    assert not any(t.casefold().startswith("intial") for t in types)
+
+    assert "Telephone Messages" in types
+    assert "Telephone or Call - Messages" not in types
+
+    assert "Any Type of Notice" in types
+    assert "Any Type of Notification" not in types
+
+    assert "PAP / HPV Report" in types
+    assert "PAP Report/Pap Smear" not in types
+    assert "PAP/HPV Report" not in types
+
+    assert "Annual Wellness Visit" in types
+    assert "Annual Wellnes Visit" not in types
+    assert "Madicare Annual Wellness" not in types
+
+    assert "Emergency / ED Visit" in types
+    assert "Emegency visit records" not in types
+
+
+def test_spelling_fixes_in_canon(canon):
+    types = {e.page_type for e in canon}
+    assert "Lab Requisition" in types
+    assert "Principal Diagnosis" in types
+    assert "Rehabilitation Daily Treatment Note" in types
+    assert "Physical Therapy Assessment/Note" in types
+    assert "Echocardiogram / Transthoracic Echocardiography" in types
+    # Typo aliases still match
+    hit = score_text("Lab requisation form attached", canon)
+    assert hit is not None
+    assert hit.page_type == "Lab Requisition"
+    hit2 = score_text("intial psychiatric evaluation note", canon)
+    assert hit2 is not None
+    assert hit2.page_type == "Initial Psychiatric Evaluation"
+
+
 def test_progress_note_beats_other_matches(canon):
     """When several types hit, Progress Note / Office Visit win."""
     text = (

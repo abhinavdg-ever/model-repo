@@ -65,15 +65,27 @@ _EARLY_PAGE_MAX = 2
 
 _WS_RE = re.compile(r"\s+")
 _SLASH_RE = re.compile(r"\\+")
+_PAREN_RE = re.compile(r"\([^)]*\)")
 
 
 def normalize_text(text: str) -> str:
     return _WS_RE.sub(" ", (text or "").casefold()).strip()
 
 
+def _strip_parentheticals(text: str) -> str:
+    """Drop ``(...)`` annotations from display labels (and nested leftovers)."""
+    prev = None
+    while prev != text:
+        prev = text
+        text = _PAREN_RE.sub("", text)
+    return text
+
+
 def _clean_label(text: str) -> str:
-    """CSV used backslashes as separators (Patient Information\\Demographic)."""
-    return _SLASH_RE.sub(" / ", (text or "").strip()).strip(" /")
+    """Normalize separators; hide parenthetical annotations from page_type."""
+    text = _SLASH_RE.sub(" / ", (text or "").strip())
+    text = _strip_parentheticals(text)
+    return _WS_RE.sub(" ", text).strip(" /")
 
 
 @dataclass(frozen=True)

@@ -31,7 +31,7 @@ from app.core.schemas import (
     OcrTextResponse,
     PageSummary,
 )
-from app.services.imaging_overlays import empty_imaging_pages
+from app.services.imaging_overlays import display_page_type, empty_imaging_pages
 
 logger = logging.getLogger("review_ui.postgres")
 
@@ -976,7 +976,7 @@ class PostgresFolderRepository(FolderRepository):
                         key = str(cat or "").strip()
                         subtype_s = str(subtype or "").strip()
                         if subtype_s:
-                            fields["pageType"] = subtype_s
+                            fields["pageType"] = display_page_type(subtype_s)
                         fields["isCodeable"] = codeable_display.get(key, key or "Not Sure")
                         if conf is not None:
                             fields["pageTypeConfidence"] = float(conf)

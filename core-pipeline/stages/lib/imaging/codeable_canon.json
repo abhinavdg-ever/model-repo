@@ -10,8 +10,87 @@
     "non_codeable": "Non Codeable",
     "discharge_frequency": "Discharge Frequency"
   },
-  "note": "continue=y means the matched tag carries forward to later pages until the page DOS changes.",
+  "note": "continue=y means the matched tag carries forward to later pages until the page DOS changes. Near-duplicate page_types merged; parentheticals stripped at display.",
   "entries": [
+    {
+      "page_type": "Progress Note",
+      "tag": "codeable",
+      "continue": "y",
+      "keywords": [
+        "progress note",
+        "progress notes"
+      ]
+    },
+    {
+      "page_type": "Initial Psychiatric Evaluation",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "initial psychiatric evaluation",
+        "intial psychiatric evaluation"
+      ]
+    },
+    {
+      "page_type": "Telephone Messages",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "telephone messages",
+        "telephone or call - messages",
+        "call messages",
+        "telephone or call"
+      ]
+    },
+    {
+      "page_type": "Any Type of Notice",
+      "tag": "non_codeable",
+      "continue": "n",
+      "keywords": [
+        "any type of notice",
+        "any type of notification"
+      ]
+    },
+    {
+      "page_type": "PAP / HPV Report",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "pap / hpv report",
+        "pap/hpv report",
+        "pap report/pap smear",
+        "pap report",
+        "pap smear",
+        "hpv report",
+        "pap"
+      ]
+    },
+    {
+      "page_type": "Annual Wellness Visit",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "annual wellness visit",
+        "annual wellnes visit",
+        "medicare annual wellness",
+        "madicare annual wellness",
+        "annual wellness"
+      ]
+    },
+    {
+      "page_type": "Emergency / ED Visit",
+      "tag": "codeable",
+      "continue": "n",
+      "keywords": [
+        "emergency / ed visit",
+        "er reports/ emergency department note/ ed note",
+        "emergency department note",
+        "emegency visit records",
+        "emergency visit records",
+        "er reports",
+        "ed note",
+        "emergency department"
+      ]
+    },
     {
       "page_type": "Prenatal Records(ACOG Form/Prenatal Visit Flow chart/ Prenatal Flow/ Prenatal Form )",
       "tag": "codeable",
@@ -157,14 +236,6 @@
       ]
     },
     {
-      "page_type": "Telephone or Call - Messages",
-      "tag": "non_codeable",
-      "continue": "n",
-      "keywords": [
-        "telephone or call - messages"
-      ]
-    },
-    {
       "page_type": "Transfer Summary",
       "tag": "discharge_frequency",
       "continue": "n",
@@ -216,14 +287,16 @@
       ]
     },
     {
-      "page_type": "Resumen de Alta/ Resumen de Instruccion/ Plannifaction de Alta",
+      "page_type": "Resumen de Alta / Resumen de Instruccion / Planificacion de Alta",
       "tag": "discharge_frequency",
       "continue": "n",
       "keywords": [
+        "resumen de alta / resumen de instruccion / planificacion de alta",
         "resumen de alta/ resumen de instruccion/ plannifaction de alta",
-        "resumen de instruccion",
+        "resumen de alta",
+        "planificacion de alta",
         "plannifaction de alta",
-        "resumen de alta"
+        "resumen de instruccion"
       ]
     },
     {
@@ -248,14 +321,6 @@
       "continue": "n",
       "keywords": [
         "interim summaries"
-      ]
-    },
-    {
-      "page_type": "Annual Wellnes Visit",
-      "tag": "codeable",
-      "continue": "n",
-      "keywords": [
-        "annual wellnes visit"
       ]
     },
     {
@@ -370,10 +435,11 @@
       ]
     },
     {
-      "page_type": "Lab Requisation",
+      "page_type": "Lab Requisition",
       "tag": "non_codeable",
       "continue": "n",
       "keywords": [
+        "lab requisition",
         "lab requisation"
       ]
     },
@@ -475,11 +541,14 @@
       ]
     },
     {
-      "page_type": "Consultations",
+      "page_type": "Consultations / Consulta",
       "tag": "codeable",
       "continue": "n",
       "keywords": [
-        "consultations"
+        "consultations",
+        "consultation",
+        "consulta",
+        "consulta (spanish)"
       ]
     },
     {
@@ -491,10 +560,11 @@
       ]
     },
     {
-      "page_type": "Principal Dignosis",
+      "page_type": "Principal Diagnosis",
       "tag": "discharge_frequency",
       "continue": "n",
       "keywords": [
+        "principal diagnosis",
         "principal dignosis"
       ]
     },
@@ -551,11 +621,13 @@
       ]
     },
     {
-      "page_type": "Echocardiogram/ Transthorsic Echocadiography",
+      "page_type": "Echocardiogram / Transthoracic Echocardiography",
       "tag": "codeable",
       "continue": "n",
       "keywords": [
+        "echocardiogram / transthoracic echocardiography",
         "echocardiogram/ transthorsic echocadiography",
+        "transthoracic echocardiography",
         "transthorsic echocadiography",
         "echocardiogram"
       ]
@@ -604,14 +676,6 @@
         "pulmonary function test/ spirometry",
         "pulmonary function test",
         "spirometry"
-      ]
-    },
-    {
-      "page_type": "Emegency visit records",
-      "tag": "codeable",
-      "continue": "n",
-      "keywords": [
-        "emegency visit records"
       ]
     },
     {
@@ -670,25 +734,6 @@
       "continue": "n",
       "keywords": [
         "sonograms report"
-      ]
-    },
-    {
-      "page_type": "ER reports/ Emergency Department Note/ ED Note",
-      "tag": "codeable",
-      "continue": "n",
-      "keywords": [
-        "er reports/ emergency department note/ ed note",
-        "emergency department note",
-        "er reports",
-        "ed note"
-      ]
-    },
-    {
-      "page_type": "Telephone Messages",
-      "tag": "non_codeable",
-      "continue": "n",
-      "keywords": [
-        "telephone messages"
       ]
     },
     {
@@ -1006,16 +1051,6 @@
       ]
     },
     {
-      "page_type": "PAP Report/Pap Smear",
-      "tag": "codeable",
-      "continue": "n",
-      "keywords": [
-        "pap report/pap smear",
-        "pap report",
-        "pap smear"
-      ]
-    },
-    {
       "page_type": "All Doppler/Duplex Report(Example echo doppler report)",
       "tag": "non_codeable",
       "continue": "n",
@@ -1046,11 +1081,13 @@
       ]
     },
     {
-      "page_type": "Physical Therapy Assessement/Note",
+      "page_type": "Physical Therapy Assessment/Note",
       "tag": "codeable",
       "continue": "n",
       "keywords": [
+        "physical therapy assessment/note",
         "physical therapy assessement/note",
+        "physical therapy assessment",
         "physical therapy assessement",
         "note"
       ]
@@ -1118,15 +1155,6 @@
       ]
     },
     {
-      "page_type": "Progress notes",
-      "tag": "codeable",
-      "continue": "y",
-      "keywords": [
-        "progress notes",
-        "progress note"
-      ]
-    },
-    {
       "page_type": "Check List",
       "tag": "non_codeable",
       "continue": "n",
@@ -1135,10 +1163,11 @@
       ]
     },
     {
-      "page_type": "Rehabitation Daily Treatment Note",
+      "page_type": "Rehabilitation Daily Treatment Note",
       "tag": "codeable",
       "continue": "n",
       "keywords": [
+        "rehabilitation daily treatment note",
         "rehabitation daily treatment note"
       ]
     },
@@ -1205,14 +1234,6 @@
       ]
     },
     {
-      "page_type": "Any Type of Notification",
-      "tag": "non_codeable",
-      "continue": "n",
-      "keywords": [
-        "any type of notification"
-      ]
-    },
-    {
       "page_type": "Stress Test / Exercise report / treadmill exercise report",
       "tag": "codeable",
       "continue": "n",
@@ -1221,14 +1242,6 @@
         "treadmill exercise report",
         "exercise report",
         "stress test"
-      ]
-    },
-    {
-      "page_type": "Any Type of Notice",
-      "tag": "non_codeable",
-      "continue": "n",
-      "keywords": [
-        "any type of notice"
       ]
     },
     {
@@ -1540,14 +1553,6 @@
       ]
     },
     {
-      "page_type": "Initial Psychiatric Evaluation",
-      "tag": "codeable",
-      "continue": "n",
-      "keywords": [
-        "initial psychiatric evaluation"
-      ]
-    },
-    {
       "page_type": "Screening Test Record",
       "tag": "non_codeable",
       "continue": "n",
@@ -1556,11 +1561,12 @@
       ]
     },
     {
-      "page_type": "inform Evaluation Visual",
+      "page_type": "Inform Evaluation Visual",
       "tag": "codeable",
       "continue": "n",
       "keywords": [
-        "inform evaluation visual"
+        "inform evaluation visual",
+        "visual evaluation"
       ]
     },
     {
@@ -2050,14 +2056,6 @@
       ]
     },
     {
-      "page_type": "Madicare Annual Wellness",
-      "tag": "codeable",
-      "continue": "n",
-      "keywords": [
-        "madicare annual wellness"
-      ]
-    },
-    {
       "page_type": "patient care Report",
       "tag": "codeable",
       "continue": "n",
@@ -2071,26 +2069,6 @@
       "continue": "n",
       "keywords": [
         "clinical summary"
-      ]
-    },
-    {
-      "page_type": "Consulta (Spanish)",
-      "tag": "codeable",
-      "continue": "n",
-      "keywords": [
-        "consulta (spanish)",
-        "consulta",
-        "spanish"
-      ]
-    },
-    {
-      "page_type": "PAP/HPV Report",
-      "tag": "codeable",
-      "continue": "n",
-      "keywords": [
-        "pap/hpv report",
-        "hpv report",
-        "pap"
       ]
     },
     {
@@ -2238,14 +2216,6 @@
       ]
     },
     {
-      "page_type": "intial psychiatric Evaluation",
-      "tag": "codeable",
-      "continue": "n",
-      "keywords": [
-        "intial psychiatric evaluation"
-      ]
-    },
-    {
       "page_type": "Visit Report",
       "tag": "codeable",
       "continue": "y",
@@ -2253,15 +2223,6 @@
         "visit report",
         "office visit",
         "office visits"
-      ]
-    },
-    {
-      "page_type": "Progress Note",
-      "tag": "codeable",
-      "continue": "y",
-      "keywords": [
-        "progress note",
-        "progress notes"
       ]
     },
     {
