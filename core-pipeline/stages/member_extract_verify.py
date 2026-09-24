@@ -222,6 +222,60 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             bj_flags = get_blank_junk_flags(conn, chart_id, final_only=True)
             texts = _ocr_text_map(conn, chart_id)
 
+        # Every page blank/junk/duplicate → nothing to verify; skip and complete.
+        all_blank_junk = bool(ctx.pages) and all(
+            bj_flags.get(p["id"], "not_blank_junk") in BJ_EXCLUDE for p in ctx.pages
+        )
+        if all_blank_junk:
+            logger.info(
+                "chart %s: all %d page(s) blank/junk/duplicate — member stage skipped",
+                chart_id,
+                len(ctx.pages),
+            )
+            with connect() as conn:
+                mark_skipped(conn, ctx, sorted(ctx.todo), "blank_junk")
+                upsert_member_summary(
+                    conn,
+                    chart_id=chart_id,
+                    final_status="completed",
+                    document_decision=None,
+                    matched_member_list_id=None,
+                    matched_name=None,
+                    name_mode=None,
+                    confidence=None,
+                    pages_checked=0,
+                    pages_matched=0,
+                    wrong_member_pages=0,
+                    reject_threshold=None,
+                    decision_reason="all_blank_junk",
+                )
+            write_csv(
+                imaging_csv(chart_name, "member_extraction"),
+                MEMBER_EXTRACT_COLS,
+                [],
+            )
+            write_csv(
+                imaging_csv(chart_name, "member_verification"),
+                MEMBER_SUMMARY_COLS,
+                [
+                    {
+                        "chart_name": chart_name,
+                        "final_status": "completed",
+                        "decision_reason": "all_blank_junk",
+                        "ner_enabled": MEMBER_NER_ENABLED,
+                        "pages_checked": 0,
+                        "pages_matched": 0,
+                    }
+                ],
+            )
+            return {
+                "chart_id": chart_id,
+                "status": "completed",
+                "reason": "all_blank_junk",
+                "pages_checked": 0,
+                "skipped": ctx.skipped,
+            }
+
         if not manifest_rows:
             # Test mode / empty MemoryStore / unswept Postgres: same CSVs
             # review-ui Local Mode reads under data/metadata or folders/manifest.
@@ -268,14 +322,20 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
 
         manifest = _pick_manifest_row(manifest_rows)
         if manifest is None:
-            # No roster to verify against. The pages are not "done" — they are
-            # waiting on a manifest sweep — so they stay pending and the chart
-            # reports needs_review rather than silently completing.
+            # No roster to verify against. Blank/junk pages are still skipped so
+            # they do not leave the stage pending; remaining main pages wait on
+            # a manifesto sweep.
             logger.warning(
                 "chart %s: no manifest rows for record_id=%s; member stage cannot run",
                 chart_id, chart_name,
             )
+            excluded = [
+                pid
+                for pid in ctx.todo
+                if bj_flags.get(pid, "not_blank_junk") in BJ_EXCLUDE
+            ]
             with connect() as conn:
+                mark_skipped(conn, ctx, excluded, "blank_junk")
                 upsert_member_summary(
                     conn,
                     chart_id=chart_id,
@@ -308,6 +368,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "status": "needs_review",
                 "reason": "manifest_missing",
                 "pages_checked": 0,
+                "skipped": ctx.skipped,
             }
 
         expected = expected_from_manifest(manifest)

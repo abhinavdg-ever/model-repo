@@ -232,6 +232,25 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     }
                 )
 
+            # Eligible pages with no DOS hit still finish the stage (empty DOS).
+            for page in ctx.pages:
+                page_id = page["id"]
+                if page_id not in ctx.todo:
+                    continue
+                upsert_dos(
+                    conn,
+                    chart_id=chart_id,
+                    page_id=page_id,
+                    date_of_service_from=None,
+                    date_of_service_to=None,
+                    date_of_service_from_doclevel=None,
+                    date_of_service_to_doclevel=None,
+                    confidence=None,
+                    all_dates=[],
+                    extraction_method=method,
+                )
+                mark_completed(conn, ctx, page_id)
+
         path = write_csv(imaging_csv(ctx.chart_name, "dos"), DOS_COLS, csv_rows)
 
         llm_pages = sum(1 for r in csv_rows if r["match_type"] == "llm")

@@ -112,11 +112,23 @@ type Props = {
 
 const YET_TO_PROCESS = "Yet to Process";
 const NOT_FOUND = "Not Found";
+const SKIPPED = "Skipped";
+
+/** Blank / junk / duplicate — downstream member/DOS/encounter metrics were skipped. */
+function isBlankJunkPage(page: ImagingPageResult): boolean {
+  const bj = (page.blankOrJunk || "").trim().toLowerCase();
+  if (bj.startsWith("yes")) return true;
+  if (page.isDuplicate === true) return true;
+  const pt = (page.pageType || "").trim().toLowerCase();
+  return pt === "blank" || pt === "duplicate";
+}
 
 function fmt(
   value: string | number | boolean | null | undefined,
   processed = true,
+  opts?: { skipped?: boolean },
 ): string {
+  if (opts?.skipped) return SKIPPED;
   if (!processed) return YET_TO_PROCESS;
   if (value === null || value === undefined || value === "") return NOT_FOUND;
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -126,7 +138,12 @@ function fmt(
   return String(value);
 }
 
-function fmtDegrees(value: number | null | undefined, processed = true): string {
+function fmtDegrees(
+  value: number | null | undefined,
+  processed = true,
+  opts?: { skipped?: boolean },
+): string {
+  if (opts?.skipped) return SKIPPED;
   if (!processed) return YET_TO_PROCESS;
   if (value === null || value === undefined) return NOT_FOUND;
   const n = Number.isInteger(value) ? String(value) : value.toFixed(2);
@@ -136,7 +153,9 @@ function fmtDegrees(value: number | null | undefined, processed = true): string 
 function fmtConfidence(
   value: number | null | undefined,
   processed = true,
+  opts?: { skipped?: boolean },
 ): string {
+  if (opts?.skipped) return SKIPPED;
   if (!processed) return YET_TO_PROCESS;
   if (value === null || value === undefined) return "NA";
   const pct = value <= 1 ? value * 100 : value;
@@ -281,7 +300,10 @@ function PageDetails({
   page: ImagingPageResult;
   sections: ImagingSectionsProcessed;
 }) {
-  const memberConf = fmtConfidence(page.memberConfidence, sections.member);
+  const skipped = isBlankJunkPage(page);
+  const skip = skipped ? { skipped: true } : undefined;
+  // Blank/junk pages still ran junk classification — don't mark those Skipped.
+  const memberConf = fmtConfidence(page.memberConfidence, sections.member, skip);
 
   return (
     <div className="imaging-page-details">
@@ -298,17 +320,17 @@ function PageDetails({
           <tbody>
             <tr>
               <th scope="row">Extracted Name</th>
-              <td>{fmt(page.memberName, sections.member)}</td>
+              <td>{fmt(page.memberName, sections.member, skip)}</td>
               <td>{memberConf}</td>
             </tr>
             <tr>
               <th scope="row">Extracted DOB</th>
-              <td>{fmt(page.memberDob, sections.member)}</td>
+              <td>{fmt(page.memberDob, sections.member, skip)}</td>
               <td>{memberConf}</td>
             </tr>
             <tr>
               <th scope="row">Member ID</th>
-              <td>{fmt(page.memberId, sections.member)}</td>
+              <td>{fmt(page.memberId, sections.member, skip)}</td>
               <td>{memberConf}</td>
             </tr>
           </tbody>
@@ -362,19 +384,22 @@ function PageDetails({
             label: "Encounter Type",
             value: fmt(
               page.encounterType,
-              page.encounterType != null && String(page.encounterType).trim() !== "",
+              Boolean(sections.encounter) ||
+                (page.encounterType != null &&
+                  String(page.encounterType).trim() !== ""),
+              skip,
             ),
-            confidence: fmtConfidence(null, Boolean(sections.encounter)),
+            confidence: fmtConfidence(null, Boolean(sections.encounter), skip),
           },
           {
             label: "DOS From",
-            value: fmt(page.dosFrom, sections.dos),
-            confidence: fmtConfidence(page.dosConfidence, sections.dos),
+            value: fmt(page.dosFrom, sections.dos, skip),
+            confidence: fmtConfidence(page.dosConfidence, sections.dos, skip),
           },
           {
             label: "DOS To",
-            value: fmt(page.dosTo, sections.dos),
-            confidence: fmtConfidence(page.dosConfidence, sections.dos),
+            value: fmt(page.dosTo, sections.dos, skip),
+            confidence: fmtConfidence(page.dosConfidence, sections.dos, skip),
           },
         ]}
       />
@@ -578,13 +603,15 @@ function DocSummary({
             </tr>
           </thead>
           <tbody>
-            {rows.map((p) => (
+            {rows.map((p) => {
+              const skip = isBlankJunkPage(p) ? { skipped: true } : undefined;
+              return (
               <tr key={`${p.pageNumber}-${p.fileName}`}>
                 <td>{p.pageNumber}</td>
                 <td className="imaging-mono">{p.fileName}</td>
-                <td>{fmt(p.memberName, sections.member)}</td>
-                <td>{fmt(p.memberDob, sections.member)}</td>
-                <td>{fmt(p.memberId, sections.member)}</td>
+                <td>{fmt(p.memberName, sections.member, skip)}</td>
+                <td>{fmt(p.memberDob, sections.member, skip)}</td>
+                <td>{fmt(p.memberId, sections.member, skip)}</td>
                 <td>{fmtHandwriting(p.handwrittenOrPrinted, sections.hw)}</td>
                 <td>
                   {fmtQualityTag(
@@ -595,8 +622,8 @@ function DocSummary({
                 <td>{fmtDegrees(p.orientationAngle, sections.rotation)}</td>
                 <td>{fmtDegrees(p.tiltAngle, sections.rotation)}</td>
                 <td>{fmt(p.mirrored, sections.rotation)}</td>
-                <td>{fmt(p.dosFrom, sections.dos)}</td>
-                <td>{fmt(p.dosTo, sections.dos)}</td>
+                <td>{fmt(p.dosFrom, sections.dos, skip)}</td>
+                <td>{fmt(p.dosTo, sections.dos, skip)}</td>
                 <td>{fmtBlankOrJunk(p.blankOrJunk, sections.junk)}</td>
                 <td>
                   {fmtDuplicate(
@@ -615,17 +642,17 @@ function DocSummary({
                   )}
                 </td>
                 <td>{fmt(p.currentSequence ?? p.pageNumber, true)}</td>
-                <td>{fmt(p.actualSequence, Boolean(sections.sequencing))}</td>
+                <td>{fmt(p.actualSequence, Boolean(sections.sequencing), skip)}</td>
                 {showConfidence ? (
                   <>
-                    <td>{fmtConfidence(p.memberConfidence, sections.member)}</td>
+                    <td>{fmtConfidence(p.memberConfidence, sections.member, skip)}</td>
                     <td>
                       {fmtConfidence(
                         p.pageQualityConfidence,
                         sections.hw || sections.rotation,
                       )}
                     </td>
-                    <td>{fmtConfidence(p.dosConfidence, sections.dos)}</td>
+                    <td>{fmtConfidence(p.dosConfidence, sections.dos, skip)}</td>
                     <td>
                       {fmtConfidence(
                         p.isDuplicate
@@ -640,7 +667,8 @@ function DocSummary({
                   </>
                 ) : null}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -761,14 +789,17 @@ function SequencingTable({
           </tr>
         </thead>
         <tbody>
-          {pages.map((p) => (
+          {pages.map((p) => {
+            const skip = isBlankJunkPage(p) ? { skipped: true } : undefined;
+            return (
             <tr key={`seq-${p.pageNumber}-${p.fileName}`}>
               <td>{p.pageNumber}</td>
               <td className="imaging-mono">{p.fileName}</td>
               <td>{fmt(p.currentSequence ?? p.pageNumber, true)}</td>
-              <td>{fmt(p.actualSequence, sequencingProcessed)}</td>
+              <td>{fmt(p.actualSequence, sequencingProcessed, skip)}</td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
