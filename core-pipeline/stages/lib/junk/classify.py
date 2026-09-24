@@ -12,6 +12,7 @@ from invoice import detect_invoice_page
 from letter_fax import detect_letter_fax_page
 from others import detect_others_page, others_reason
 from record_request import detect_record_request_page
+from text_utils import looks_like_clinical_content
 
 CODE_MAIN = 0
 CODE_BLANK = 1
@@ -80,6 +81,10 @@ def classify_text(
     Priority:
       blank → cover page → letter/fax → invoice → record request →
       instructions → others → main
+
+    Substantive clinical notes (progress note / HPI / meds / …) short-circuit
+    to Main so footer "confidentiality notice" or a stray billing phrase cannot
+    mark a real chart page as junk.
     """
     cfg = {**DEFAULT_SETTINGS, **(settings or {})}
 
@@ -87,8 +92,11 @@ def classify_text(
         return CODE_BLANK, "blank_ocr"
     if cfg.get("declared_blank_detection") and is_declared_blank_page(text=full_text):
         return CODE_BLANK, "declared_blank"
+    # Cover is length-gated (<20 words); still allow it before the clinical guard.
     if cfg.get("cover_page_detection") and detect_cover_page(full_text):
         return CODE_COVER_PAGE, "cover_page"
+    if looks_like_clinical_content(full_text):
+        return CODE_MAIN, "clinical_content"
     if cfg.get("letter_fax_detection") and detect_letter_fax_page(full_text):
         return CODE_LETTER_FAX, "letter_fax"
     if cfg.get("invoice_detection") and detect_invoice_page(full_text):

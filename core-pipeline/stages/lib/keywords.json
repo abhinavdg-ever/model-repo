@@ -167,10 +167,7 @@
       "risk adjustment request",
       "send record",
       "packet may contain",
-      "audit fulfillment",
-      "intended recipient",
-      "transmission contains",
-      "confidential medical records"
+      "audit fulfillment"
     ],
     "cover_phrases": [
       "\\bcover\\s+pages?\\b",
@@ -193,8 +190,8 @@
       "\\bfacimile\\b",
       "\\bfax\\s+sheet\\b",
       "\\bthis\\s+fax\\b",
-      "\\bconfidentiality(\\s+notice)?\\b",
-      "\\badvantmed\\b"
+      "\\bfax\\s+confidentiality\\s+notice\\b",
+      "\\bconfidentiality\\s+notice\\b.{0,80}\\b(fax|facsimile|intended\\s+recipient)\\b"
     ],
     "others_toc": [
       "\\btable\\s+of\\s+contents?\\b",

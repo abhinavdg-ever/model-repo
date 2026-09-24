@@ -14,9 +14,51 @@ _SIGNATURE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Dense clinical notes often carry fax "confidentiality notice" footers and
+# occasional billing words — those must not flip the page to junk.
+_CLINICAL_CUE_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r"\bprogress\s+notes?\b",
+        r"\bhistory\s+of\s+present\s+illness\b",
+        r"\bhpi\b",
+        r"\bchief\s+complaint\b",
+        r"\breason\s+for\s+(appointment|visit|consult(?:ation)?)\b",
+        r"\bcurrent\s+medications?\b",
+        r"\bmedication\s+list\b",
+        r"\bvital\s+signs?\b",
+        r"\bphysical\s+exam(?:ination)?\b",
+        r"\breview\s+of\s+systems\b",
+        r"\bassessment\s+and\s+plan\b",
+        r"\bassessments?\b",
+        r"\btreatment\s+plan\b",
+        r"\boffice\s+visit\b",
+        r"\bfollow[\s-]?up\b",
+        r"\bhospital\s+course\b",
+        r"\bdischarge\s+(summary|note|diagnos\w*|instructions?)\b",
+        r"\bconsult(?:ation)?\s+note\b",
+        r"\bpast\s+medical\s+history\b",
+        r"\bsocial\s+history\b",
+        r"\bfamily\s+history\b",
+    )
+]
+
 
 def word_count(text: str) -> int:
     return len(_WORD_RE.findall(text or ""))
+
+
+def looks_like_clinical_content(text: str) -> bool:
+    """True for substantive clinical notes — junk rules should not fire."""
+    words = word_count(text)
+    if words < 25:
+        return False
+    hits = sum(1 for p in _CLINICAL_CUE_PATTERNS if p.search(text or ""))
+    # Two clinical section cues on a short-but-real note (e.g. one-page H&P).
+    if hits >= 2:
+        return True
+    # One strong section header on a long page is enough.
+    return hits >= 1 and words >= 100
 
 
 def is_signature_page(text: str) -> bool:

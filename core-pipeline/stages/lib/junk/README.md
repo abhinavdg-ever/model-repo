@@ -8,8 +8,9 @@ Classifies pages from **existing preliminary OCR** (`ocr/<chart>_prelim.txt`) �
 |----------------|---------------|-----------|--------------|
 | **Blank** | Yes (Blank) | Not Available | Empty OCR or &lt; 5 alphanumeric chars; “intentionally blank” |
 | **Cover Page** | Yes (Junk) | Cover Page | Accept / Unaccept / Cover page(s) / Discharge Summary with **&lt; 20 words** |
-| **Letter/Fax** | Yes (Junk) | Letter/Fax | Cover letter, fax transmission / facsimile / fax cover |
-| **Invoice** | Yes (Junk) | Invoice | invoice, amount due, unit price, superbill, remittance, **revenue reconciliation**, … (not bare “price”) |
+| **Main (clinical)** | No | Not Available | Progress note / HPI / meds / vitals / … — **short-circuits before junk rules** so a fax confidentiality footer cannot flip them |
+| **Letter/Fax** | Yes (Junk) | Letter/Fax | Cover letter, fax transmission / facsimile / fax cover; confidentiality notice only when paired with fax language |
+| **Invoice** | Yes (Junk) | Invoice | invoice, amount due, unit price, superbill, remittance, **revenue reconciliation**, … (not bare “price”; weak phrases need ≥2 hits) |
 | **Record Request/Transmittal** | Yes (Junk) | Record Request/Transmittal | request letter; records↔request (any order); attached; transmittal/transmitted; Urgent Request for Records; Your Records requested |
 | **Instructions** | Yes (Junk) | Instructions | “what to send”, provide documentation, please send, … |
 | **Others** | Yes (Junk) | Others | Table of contents; **&lt; 20 words** and not a signature page; **gibberish Tesseract OCR** (many no-vowel tokens / junk symbols) |
@@ -17,7 +18,7 @@ Classifies pages from **existing preliminary OCR** (`ocr/<chart>_prelim.txt`) �
 | **Main** | No | Not Available | Everything else |
 
 ### Priority order
-Blank → Cover Page → Letter/Fax → Invoice → Record Request → Instructions → Others → Main  
+Blank → Cover Page → **clinical Main** → Letter/Fax → Invoice → Record Request → Instructions → Others → Main  
 (then Duplicate is applied across the chart)
 
 ## Run

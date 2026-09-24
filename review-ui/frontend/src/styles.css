@@ -1766,22 +1766,15 @@ input {
 }
 
 .imaging-sequencing-table {
-  width: auto;
+  width: 100%;
   min-width: 0;
-  table-layout: auto;
+  table-layout: fixed;
 }
 
 .imaging-sequencing-table th,
 .imaging-sequencing-table td {
-  width: 1%;
-  white-space: nowrap;
+  width: 25%;
   padding: 0.35rem 0.5rem;
-}
-
-.imaging-sequencing-table th:nth-child(2),
-.imaging-sequencing-table td:nth-child(2) {
-  width: 1%;
-  max-width: 6.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

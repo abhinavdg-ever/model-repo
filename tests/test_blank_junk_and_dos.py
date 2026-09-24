@@ -114,6 +114,68 @@ class TestDuplicateScope:
         rows = _classify([page(1, 1)], {1: "   "}, {1})
         assert rows[0]["flag"] == "blank"
 
+
+class TestClinicalNotJunk:
+    """Clinical progress notes must not become Letter/Fax or Invoice junk."""
+
+    def test_progress_note_with_confidentiality_footer_is_main(self):
+        import sys
+        from pathlib import Path
+
+        junk = Path("core-pipeline/stages/lib/junk").resolve()
+        if str(junk) not in sys.path:
+            sys.path.insert(0, str(junk))
+        from classify import CLASSIFICATION_LABELS, CODE_MAIN, classify_text
+
+        text = (
+            "Progress Note\n"
+            "Reason for Appointment: 6 month follow up.\n"
+            "History of Present Illness: Patient presents with SOB.\n"
+            "Current Medications: Amlodipine, Apixaban.\n"
+            "Vital Signs: BP 132/64. Assessment: Hypertension.\n"
+            "CONFIDENTIALITY NOTICE: This transmission is intended only "
+            "for the intended recipient and may contain confidential "
+            "medical records.\n"
+        )
+        code, reason = classify_text(text)
+        assert code == CODE_MAIN
+        assert reason == "clinical_content"
+        assert CLASSIFICATION_LABELS[code] == "Main"
+
+    def test_short_fax_cover_still_junk(self):
+        import sys
+        from pathlib import Path
+
+        junk = Path("core-pipeline/stages/lib/junk").resolve()
+        if str(junk) not in sys.path:
+            sys.path.insert(0, str(junk))
+        from classify import CLASSIFICATION_LABELS, classify_text
+
+        text = "Fax cover sheet\nThis fax is for the intended recipient only.\n"
+        code, reason = classify_text(text)
+        assert CLASSIFICATION_LABELS[code] == "Letter/Fax"
+        assert reason == "letter_fax"
+
+    def test_fax_footer_alone_is_letter_fax_not_record_request(self):
+        """Bare confidentiality footers must not become Record Request junk."""
+        import sys
+        from pathlib import Path
+
+        junk = Path("core-pipeline/stages/lib/junk").resolve()
+        if str(junk) not in sys.path:
+            sys.path.insert(0, str(junk))
+        from classify import CLASSIFICATION_LABELS, classify_text
+
+        text = (
+            "CONFIDENTIALITY NOTICE: This fax transmission is intended "
+            "only for the intended recipient. If you are not the intended "
+            "recipient please destroy this transmission.\n"
+        )
+        code, reason = classify_text(text)
+        assert CLASSIFICATION_LABELS[code] == "Letter/Fax"
+        assert reason == "letter_fax"
+
+
 class TestSubtypeMapping:
     def test_junk_always_gets_a_legal_subtype(self):
         """JUNK_CODES includes CODE_BLANK; blank is its own flag and takes
