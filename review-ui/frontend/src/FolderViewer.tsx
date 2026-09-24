@@ -404,28 +404,27 @@ export default function FolderViewer({
       return null;
     };
 
+    // Current imaging wins over leftover OCR files (e.g. skip_ocr kept
+    // final2.json while quality re-ran to High+Printed, or junk flipped).
+    if (ocrTab === "final1" || ocrTab === "final2") {
+      if (isBlankOrJunkYes(imagingPage)) {
+        return FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE;
+      }
+      if (ocrTab === "final2" && isFinal2QualitySkip(imagingPage)) {
+        return FINAL2_QUALITY_SKIP_MESSAGE;
+      }
+    }
+
     if ((ocrTab === "final1" || ocrTab === "final2") && ocrFullText) {
       const chunk = ocrTextForFilename(ocrFullText, page.filename);
       const skip = resolveSkip(chunk);
       if (skip) return skip;
       if (chunk.trim()) return chunk;
-      if (ocrTab === "final2") {
-        if (isBlankOrJunkYes(imagingPage)) {
-          return FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE;
-        }
-        if (isFinal2QualitySkip(imagingPage)) {
-          return FINAL2_QUALITY_SKIP_MESSAGE;
-        }
-      }
-      if (ocrTab === "final1" && isBlankOrJunkYes(imagingPage)) {
-        return FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE;
-      }
       return `No OCR text found for ${page.filename}.`;
     }
 
     if (ocrTab === "final2" && page.has_final2_ocr && !ocrFullText) {
-      if (isBlankOrJunkYes(imagingPage)) return FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE;
-      if (isFinal2QualitySkip(imagingPage)) return FINAL2_QUALITY_SKIP_MESSAGE;
+      return `No OCR text found for ${page.filename}.`;
     }
 
     if (!ocrFullText) return ocrMissingMessage;
@@ -445,12 +444,20 @@ export default function FolderViewer({
 
   const pageHeaderBoxes = useMemo(() => {
     if (!showSectionHeaders || !page) return [];
+    // Don't overlay headers from a Final2 file the UI is treating as skipped.
+    if (ocrTab === "final2" && isFinal2QualitySkip(imagingPage)) return [];
+    if (
+      (ocrTab === "final1" || ocrTab === "final2") &&
+      isBlankOrJunkYes(imagingPage)
+    ) {
+      return [];
+    }
     return (
       sectionHeadersByFile[page.filename] ??
       sectionHeadersByFile[page.filename.toLowerCase()] ??
       []
     );
-  }, [showSectionHeaders, page, sectionHeadersByFile]);
+  }, [showSectionHeaders, page, sectionHeadersByFile, ocrTab, imagingPage]);
 
   /** Imaging → Section coordinates: Final2 first, else Final1; skip blank/junk. */
   const imagingSectionInfo = useMemo(() => {
@@ -472,9 +479,13 @@ export default function FolderViewer({
         []
       );
     };
-    const f2 = pick("final2");
-    if (f2.length > 0) {
-      return { headers: f2, source: "final2" as const, skipped: false };
+    // High+Printed → Final2 was (or should be) skipped; prefer Final1 coords.
+    const preferFinal1 = isFinal2QualitySkip(imagingPage);
+    if (!preferFinal1) {
+      const f2 = pick("final2");
+      if (f2.length > 0) {
+        return { headers: f2, source: "final2" as const, skipped: false };
+      }
     }
     const f1 = pick("final1");
     if (f1.length > 0) {
