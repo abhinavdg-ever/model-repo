@@ -234,10 +234,12 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             )
             with connect() as conn:
                 mark_skipped(conn, ctx, sorted(ctx.todo), "blank_junk")
+                # final_status is triage (verified|failed|needs_review|skipped),
+                # not chart_list.status. All-junk → skipped; chart still completes.
                 upsert_member_summary(
                     conn,
                     chart_id=chart_id,
-                    final_status="completed",
+                    final_status="skipped",
                     document_decision=None,
                     matched_member_list_id=None,
                     matched_name=None,
@@ -260,7 +262,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 [
                     {
                         "chart_name": chart_name,
-                        "final_status": "completed",
+                        "final_status": "skipped",
                         "decision_reason": "all_blank_junk",
                         "ner_enabled": MEMBER_NER_ENABLED,
                         "pages_checked": 0,

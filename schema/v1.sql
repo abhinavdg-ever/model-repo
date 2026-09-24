@@ -580,7 +580,9 @@ CREATE TABLE member_verification_summary (
     chart_id            BIGINT NOT NULL UNIQUE REFERENCES chart_list(id) ON DELETE CASCADE,
 
     final_status        VARCHAR(20) NOT NULL
-                        CHECK (final_status IN ('verified','failed','needs_review')),
+                        CHECK (final_status IN (
+                            'verified','failed','needs_review','skipped'
+                        )),
     -- Accept / Reject from what_if_rules: wrong-member pages >= reject_threshold.
     document_decision   VARCHAR(10)
                         CHECK (document_decision IS NULL OR document_decision IN ('accept','reject')),

@@ -76,6 +76,8 @@
 --  * page_classification moved to v1.sql (page_subtype writes it).
 --  * encounter_type_results + page_sequencing_results moved to v1.sql.
 --    Existing DBs: schema/patch_output_path.sql.
+--  * member_verification_summary.final_status also allows 'skipped'
+--    (all-blank/junk charts; Existing DBs: same patch file).
 --
 -- WHAT CHANGED IN v8 (applies to both files)
 -- ---------------------------------------------------------------------

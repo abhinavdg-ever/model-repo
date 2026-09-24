@@ -278,3 +278,15 @@ SELECT p.chart_id, p.id, s.stage_name, s.pass_no, 'pending'
           ('page_sequencing', 1::smallint)
   ) AS s(stage_name, pass_no)
 ON CONFLICT (page_id, stage_name, pass_no) DO NOTHING;
+
+-- ---------------------------------------------------------------------
+-- member_verification_summary.final_status: allow 'skipped'
+-- (all pages blank/junk/duplicate — verification N/A; chart still completes)
+-- ---------------------------------------------------------------------
+
+ALTER TABLE member_verification_summary
+    DROP CONSTRAINT IF EXISTS member_verification_summary_final_status_check;
+
+ALTER TABLE member_verification_summary
+    ADD CONSTRAINT member_verification_summary_final_status_check
+    CHECK (final_status IN ('verified', 'failed', 'needs_review', 'skipped'));

@@ -436,6 +436,7 @@ outcome:
 |---|---|---|
 | wrong-member pages ≥ threshold | `failed` | `reject` |
 | ≥ 1 page verified | `verified` | `accept` |
+| every page blank/junk/duplicate | `skipped` | *(null)* — chart still `completed` |
 | no manifest row for the record | `needs_review` | *(null)* |
 | manifest has no usable name | `needs_review` | `accept` |
 | pages checked, none verified | `needs_review` | `accept` |
