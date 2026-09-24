@@ -130,13 +130,7 @@ curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
 Rule of thumb for a large blob batch that already finished OCR:
 
 - Want new classifiers only → **`only`** + `chart_id` / `chart_name` (no re-download), optional `blob_write_path` to sync CSVs out.
-- Want “everything after OCR again” → **`only`** listing post-OCR stages (§5A).
-- Never set `force: true` on a full chain (no `only`) unless you intend to pay for Final2 again.
-
-Rule of thumb for a large blob batch that already finished OCR:
-
-- Want new classifiers only → **`only`** + `chart_id` / `chart_name` (no re-download), optional `blob_write_path` to sync CSVs out.
-- Want “everything after OCR again” → **`only`** listing post-OCR stages (§5A).
+- Want “reuse OCR, re-run everything else” → **`skip_ocr: true`** + `force: false` (§4 / §6B).
 - Never set `force: true` on a full chain (no `only`) unless you intend to pay for Final2 again.
 
 ---
