@@ -12,19 +12,17 @@
     "inpatient": "Inpatient",
     "home": "Home"
   },
-  "note": "One encounter type per page-level DOS. Score keywords across all pages in the DOS, then stamp every page with the winner. Keywords with establishes=false never set the type alone (e.g. diagnostic imaging — valid only when the DOS is already Outpatient F2F). Office 'Progress Notes' are outpatient F2F — bare 'progress note' must not establish inpatient (hospital progress notes need admission/discharge/hospital-course cues).",
+  "note": "One encounter type per page-level DOS. Score keywords across all pages in the DOS, then stamp every page with the winner. Keywords with establishes=false never set the type alone (e.g. diagnostic imaging — valid only when the DOS is already Outpatient F2F). Do NOT use 'progress note(s)' — they appear in every setting.",
   "entries": [
     {
       "encounter_type": "outpatient_f2f",
-      "label": "Office visit / SOAP / CHEDDAR / clinic progress note",
+      "label": "Office visit / SOAP / CHEDDAR / clinic appointment",
       "establishes": true,
       "keywords": [
         "office visit",
         "office visits",
         "office visit note",
         "office visit report",
-        "progress note",
-        "progress notes",
         "appointment facility",
         "reason for appointment",
         "reason for visit",
