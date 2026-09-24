@@ -50,6 +50,29 @@ def test_discharge_summary_is_inpatient(canon):
     assert hit.encounter_type == "inpatient"
 
 
+def test_clinic_progress_note_is_outpatient_f2f(canon):
+    """Office Progress Notes must not classify as inpatient."""
+    text = (
+        "Progress Notes: Miriam P. Zidehsarai, D.O.\n"
+        "Appointment Facility: AKI 19 Ravenna\n"
+        "Reason for Appointment: 6 month follow up\n"
+        "History of Present Illness: Patient here for hospital follow up. "
+        "Was admitted to hospital with shortness of breath.\n"
+        "Examination: alert and oriented\n"
+    )
+    scores = score_text(text, canon)
+    hit = pick_encounter(scores)
+    assert hit is not None
+    assert hit.encounter_type == "outpatient_f2f"
+
+
+def test_bare_progress_notes_title_is_outpatient_f2f(canon):
+    scores = score_text("Progress Notes\nCurrent Medications: lisinopril", canon)
+    hit = pick_encounter(scores)
+    assert hit is not None
+    assert hit.encounter_type == "outpatient_f2f"
+
+
 def test_home_visit_is_home(canon):
     scores = score_text("Skilled Nursing Visit Note", canon)
     hit = pick_encounter(scores)

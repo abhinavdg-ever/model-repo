@@ -28,12 +28,14 @@ TYPE_DISPLAY = {
     "home": "Home",
 }
 
-# Prefer more specific settings on near-ties.
+# Prefer more specific settings on near-ties. Outpatient F2F outranks
+# inpatient so a clinic Progress Note with incidental hospital-history
+# wording does not lose to a weak inpatient cue.
 TYPE_PRIORITY = {
     "home": 4,
     "outpatient_tele": 3,
-    "inpatient": 2,
-    "outpatient_f2f": 1,
+    "outpatient_f2f": 2,
+    "inpatient": 1,
 }
 
 _WS_RE = re.compile(r"\s+")

@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "types": [
     "outpatient_f2f",
     "outpatient_tele",
@@ -12,17 +12,29 @@
     "inpatient": "Inpatient",
     "home": "Home"
   },
-  "note": "One encounter type per page-level DOS. Score keywords across all pages in the DOS, then stamp every page with the winner. Keywords with establishes=false never set the type alone (e.g. diagnostic imaging — valid only when the DOS is already Outpatient F2F).",
+  "note": "One encounter type per page-level DOS. Score keywords across all pages in the DOS, then stamp every page with the winner. Keywords with establishes=false never set the type alone (e.g. diagnostic imaging — valid only when the DOS is already Outpatient F2F). Office 'Progress Notes' are outpatient F2F — bare 'progress note' must not establish inpatient (hospital progress notes need admission/discharge/hospital-course cues).",
   "entries": [
     {
       "encounter_type": "outpatient_f2f",
-      "label": "Office visit / SOAP / CHEDDAR",
+      "label": "Office visit / SOAP / CHEDDAR / clinic progress note",
       "establishes": true,
       "keywords": [
         "office visit",
         "office visits",
         "office visit note",
         "office visit report",
+        "progress note",
+        "progress notes",
+        "appointment facility",
+        "reason for appointment",
+        "reason for visit",
+        "reason for consult",
+        "follow up",
+        "follow-up",
+        "6 month follow",
+        "outpatient",
+        "clinic visit",
+        "clinic note",
         "face to face",
         "face-to-face",
         "f2f",
@@ -74,6 +86,12 @@
         "discharge summary",
         "discharge note",
         "discharge report",
+        "hospital course",
+        "hospitalization",
+        "admission date",
+        "date of admission",
+        "inpatient",
+        "in-patient",
         "emergency note",
         "emergency department note",
         "ed note",
@@ -89,9 +107,7 @@
         "op note",
         "consultation",
         "consult note",
-        "consultation note",
-        "progress note",
-        "progress notes"
+        "consultation note"
       ]
     },
     {
