@@ -448,6 +448,16 @@ input {
   border-color: var(--border);
 }
 
+.landing-multi.is-disabled .landing-multi-trigger {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--neutral-100, #f1f5f9);
+}
+
+.landing-multi.is-disabled .landing-multi-trigger:hover {
+  border-color: var(--border);
+}
+
 .landing-multi-backdrop {
   position: fixed;
   inset: 0;

@@ -56,7 +56,12 @@ def test_filter_sort_page_paginates_and_facets():
     assert result.items[0].id == "b_chart"
     assert result.page_count_sum == 11
     assert result.run_options == ["R1", "R2"]
-    assert result.batch_options == ["B1", "B4"]
+    assert result.batch_options == ["B4"]
+
+    # No run selected → batch facet locked empty
+    unlocked = filter_sort_page(rows, FolderListParams())
+    assert unlocked.batch_options == []
+    assert unlocked.run_options == ["R1", "R2"]
 
     page2 = filter_sort_page(
         rows,

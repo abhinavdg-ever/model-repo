@@ -122,6 +122,8 @@ function MultiCheckFilter({
   onChange,
   formatOption,
   emptyLabel,
+  disabled = false,
+  lockedHint,
 }: {
   label: string;
   ariaLabel: string;
@@ -130,12 +132,14 @@ function MultiCheckFilter({
   onChange: (next: string[]) => void;
   formatOption: (value: string) => string;
   emptyLabel: string;
+  disabled?: boolean;
+  lockedHint?: string;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || disabled) return;
     const onDoc = (e: MouseEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
     };
@@ -148,14 +152,20 @@ function MultiCheckFilter({
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, disabled]);
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
 
   const allSelected = selected.length === 0;
-  const summary = allSelected
-    ? emptyLabel
-    : selected.length === 1
-      ? formatOption(selected[0])
-      : `${selected.length} selected`;
+  const summary = disabled
+    ? lockedHint || "Select a run first"
+    : allSelected
+      ? emptyLabel
+      : selected.length === 1
+        ? formatOption(selected[0])
+        : `${selected.length} selected`;
 
   return (
     <div
@@ -167,19 +177,24 @@ function MultiCheckFilter({
       ref={rootRef}
     >
       <span>{label}</span>
-      <div className="landing-multi">
+      <div className={`landing-multi${disabled ? " is-disabled" : ""}`}>
         <button
           type="button"
           className="landing-multi-trigger"
           aria-label={ariaLabel}
           aria-expanded={open}
           aria-haspopup="listbox"
-          onClick={() => setOpen((v) => !v)}
+          aria-disabled={disabled}
+          disabled={disabled}
+          title={disabled ? lockedHint || "Select a run first" : undefined}
+          onClick={() => {
+            if (!disabled) setOpen((v) => !v);
+          }}
         >
           <span className="landing-multi-trigger-label">{summary}</span>
           <ChevronDown size={12} aria-hidden="true" />
         </button>
-        {open ? (
+        {open && !disabled ? (
           <>
             <div
               className="landing-multi-backdrop"
@@ -402,7 +417,9 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
     saved.statusFilter,
   );
   const [runFilter, setRunFilter] = useState<string[]>(saved.runFilter);
-  const [batchFilter, setBatchFilter] = useState<string[]>(saved.batchFilter);
+  const [batchFilter, setBatchFilter] = useState<string[]>(
+    saved.runFilter.length > 0 ? saved.batchFilter : [],
+  );
   const skipFilterPageReset = useRef(true);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
@@ -434,6 +451,13 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
       setOcrSum(data.ocr_processed_sum);
       setRunOptions(data.run_options);
       setBatchOptions(data.batch_options);
+      // Drop batch picks that are no longer valid for the selected run(s).
+      setBatchFilter((prev) => {
+        if (runFilter.length === 0) return [];
+        const allowed = new Set(data.batch_options);
+        const next = prev.filter((b) => allowed.has(b));
+        return next.length === prev.length ? prev : next;
+      });
     } catch (err) {
       if (seq !== loadSeq.current) return;
       setError(err instanceof Error ? err.message : "Failed to load history");
@@ -675,7 +699,10 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                 ariaLabel="Filter by run"
                 options={runOptions}
                 selected={runFilter}
-                onChange={setRunFilter}
+                onChange={(next) => {
+                  setRunFilter(next);
+                  if (next.length === 0) setBatchFilter([]);
+                }}
                 formatOption={formatRunLabel}
                 emptyLabel="All runs"
               />
@@ -688,6 +715,8 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                 onChange={setBatchFilter}
                 formatOption={formatBatchLabel}
                 emptyLabel="All batches"
+                disabled={runFilter.length === 0}
+                lockedHint="Select a run first"
               />
 
               <button

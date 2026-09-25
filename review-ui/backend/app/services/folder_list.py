@@ -218,13 +218,13 @@ def filter_sort_page(
     rows: Sequence[FolderSummary],
     params: FolderListParams,
 ) -> FolderListResult:
-    """Apply q/status/run/batch filters, sort, then paginate. Facets from full set."""
+    """Apply q/status/run/batch filters, sort, then paginate.
+
+    Run facets come from the full set. Batch facets are empty until a run is
+    selected, then only batches that appear on charts in those run(s).
+    """
     run_options = sorted(
         {f.run_id for f in rows if f.run_id},
-        key=lambda s: s.casefold(),
-    )
-    batch_options = sorted(
-        {f.batch_id for f in rows if f.batch_id},
         key=lambda s: s.casefold(),
     )
 
@@ -232,6 +232,19 @@ def filter_sort_page(
     status_set = {s for s in params.status if s}
     run_set = {s for s in params.run if s}
     batch_set = {s for s in params.batch if s}
+
+    # Batch options are locked to selected run(s).
+    if run_set:
+        batch_options = sorted(
+            {
+                f.batch_id
+                for f in rows
+                if f.batch_id and f.run_id in run_set
+            },
+            key=lambda s: s.casefold(),
+        )
+    else:
+        batch_options = []
 
     filtered: list[FolderSummary] = []
     for f in rows:
