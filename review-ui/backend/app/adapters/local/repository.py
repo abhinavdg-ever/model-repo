@@ -29,6 +29,8 @@ from app.core.schemas import (
 )
 from app.services.chart_run_batch import (
     fetch_chart_run_batch_map,
+    fetch_manifest_for_record,
+    prefer_db_manifest,
     prefer_db_run_batch,
 )
 from app.services.metadata_csv import manifest_for_record, run_batch_for_record
@@ -714,7 +716,8 @@ class LocalFolderRepository(FolderRepository):
       # text OCR sections (API response): ===== 1.jpg =====
       # Legacy: ocr/<folder_name>_final1.txt is still accepted.
 
-    Manifest Details (DATA_MODE=local): metadata_R{n}_B{n}.csv under METADATA_ROOT.
+    Manifest Details: ``manifest_member_list`` when DATABASE_URL is set, else
+    metadata_R{n}_B{n}.csv under METADATA_ROOT.
     Run/Batch: chart_list when DATABASE_URL is set, else metadata filename.
     """
 
@@ -1170,12 +1173,31 @@ class LocalFolderRepository(FolderRepository):
         )
 
     def _manifest_for_folder(self, folder_id: str) -> ImagingManifestDetails:
-        """DATA_MODE=local: read from 06-postgres-db/manifest metadata_Rn_Bn CSVs."""
+        """Prefer manifest_member_list; fall back to metadata_R*_B*.csv."""
+        db: dict[str, str | None] | None = None
+        if self.database_url:
+            db = fetch_manifest_for_record(
+                self.database_url,
+                folder_id,
+                db_schema=self.db_schema,
+            )
+        csv_fields: dict[str, str | None] | None = None
         if self.metadata_root is not None:
             found = manifest_for_record(self.metadata_root, folder_id)
             if found is not None:
-                return found
-        return self._dummy_manifest()
+                csv_fields = {
+                    "member": found.member,
+                    "dob": found.dob,
+                    "memberId": found.memberId,
+                }
+        merged = prefer_db_manifest(db, csv_fields)
+        if not (merged.get("member") or merged.get("dob") or merged.get("memberId")):
+            return self._dummy_manifest()
+        return ImagingManifestDetails(
+            member=merged.get("member"),
+            dob=merged.get("dob"),
+            memberId=merged.get("memberId"),
+        )
 
     def _empty_imaging_pages(
         self, folder_dir: Path, pages: list[tuple[int, Path]]
@@ -1186,10 +1208,10 @@ class LocalFolderRepository(FolderRepository):
         return empty_imaging_pages(pages)
 
     def _parse_imaging_manifest(self, data: Any, folder_id: str) -> ImagingManifestDetails:
-        # Prefer CSV metadata (local mode); fall back to JSON embedded manifest, then empty
-        from_csv = self._manifest_for_folder(folder_id)
-        if from_csv.member or from_csv.dob or from_csv.memberId:
-            return from_csv
+        # Prefer DB / CSV metadata; fall back to JSON embedded manifest, then empty
+        from_meta = self._manifest_for_folder(folder_id)
+        if from_meta.member or from_meta.dob or from_meta.memberId:
+            return from_meta
         if isinstance(data, dict):
             raw = data.get("manifest")
             if isinstance(raw, dict):
@@ -1197,7 +1219,7 @@ class LocalFolderRepository(FolderRepository):
                     return ImagingManifestDetails.model_validate(raw)
                 except Exception:
                     pass
-        return from_csv
+        return from_meta
 
     def _parse_imaging_pages(self, data: Any, folder_dir: Path) -> list[ImagingPageResult]:
         raw_pages = data.get("pages") if isinstance(data, dict) else data

@@ -125,8 +125,8 @@ class ImagingPageResult(BaseModel):
 class ImagingManifestDetails(BaseModel):
     """Expected manifest identity for the chart.
 
-    Local Mode → data/metadata/metadata_R*_B*.csv
-    Production Mode → manifest_member_list
+    Local Mode → manifest_member_list when DATABASE_URL is set, else
+    data/metadata/metadata_R*_B*.csv. Production Mode → manifest_member_list.
     """
 
     member: str | None = None

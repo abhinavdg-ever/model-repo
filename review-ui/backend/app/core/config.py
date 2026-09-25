@@ -31,8 +31,8 @@ class Settings(BaseSettings):
     monorepo_root: str = ""
     # PLACEHOLDER — substitute your own values via DATABASE_URL in
     # review-ui/.env. Never commit a real credential here.
-    # Local Mode: optional — used for Run/Batch (chart_list) when set.
-    # Production Mode: required for OCR/imaging reads.
+    # Local Mode: optional — Run/Batch (chart_list) and Manifest
+    # (manifest_member_list) when set. Production Mode: required.
     database_url: str = "postgresql+psycopg://USER:PASSWORD@HOST:5432/imaging_outputs"
     # POC tables are in public (database name is imaging_outputs)
     db_schema: str = "public"

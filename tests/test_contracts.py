@@ -1218,6 +1218,57 @@ class TestManifestLookup:
         assert prefer_db_run_batch((None, "B4"), ("R9", "B1")) == ("R9", "B4")
         assert prefer_db_run_batch(None, ("R1", "B1")) == ("R1", "B1")
 
+    def test_prefer_db_manifest_fills_gaps(self):
+        from app.services.chart_run_batch import prefer_db_manifest
+
+        assert prefer_db_manifest(
+            {"member": "From DB", "dob": None, "memberId": "M9"},
+            {"member": "From CSV", "dob": "01/01/1950", "memberId": "M1"},
+        ) == {"member": "From DB", "dob": "01/01/1950", "memberId": "M9"}
+
+    def test_local_mode_prefers_db_manifest_over_metadata(self, tmp_path, monkeypatch):
+        from app.adapters.local import repository as local_repo
+        from app.adapters.local.repository import LocalFolderRepository
+        from app.services.metadata_csv import clear_metadata_cache
+
+        clear_metadata_cache()
+        folders = tmp_path / "folders"
+        meta = tmp_path / "metadata"
+        folders.mkdir()
+        meta.mkdir()
+        chart = folders / "52743839_44976074"
+        chart.mkdir()
+        (meta / "metadata_R1_B1.csv").write_text(
+            "recordId,DummyFirstName,DummyLastName,DummyDOB,MemberID\n"
+            "52743839_44976074,Jane,Doe,01/01/1950,M-CSV\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            local_repo,
+            "fetch_manifest_for_record",
+            lambda *a, **k: {
+                "member": "From DB",
+                "dob": "02/02/1960",
+                "memberId": "M-DB",
+            },
+        )
+        repo = LocalFolderRepository(
+            folders,
+            metadata_root=meta,
+            database_url="postgresql://aiuser:x@127.0.0.1:5432/imaging_outputs",
+        )
+        man = repo._manifest_for_folder("52743839_44976074")
+        assert man.member == "From DB"
+        assert man.memberId == "M-DB"
+        assert man.dob == "02/02/1960"
+
+        monkeypatch.setattr(
+            local_repo, "fetch_manifest_for_record", lambda *a, **k: None
+        )
+        man2 = repo._manifest_for_folder("52743839_44976074")
+        assert man2.member == "Jane Doe"
+        assert man2.memberId == "M-CSV"
+
     def test_endpoint_falls_back_to_metadata_when_db_empty(self, tmp_path, monkeypatch):
         from fastapi.testclient import TestClient
 
