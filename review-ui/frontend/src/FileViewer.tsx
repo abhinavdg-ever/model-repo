@@ -107,7 +107,7 @@ export default function FileViewer({ onBack, initialFolderId = null }: Props) {
     setLoadingList(true);
     listFolders()
       .then((data) => {
-        if (!cancelled) setFolders(data);
+        if (!cancelled) setFolders(data.items);
       })
       .catch((err) => {
         if (!cancelled) {

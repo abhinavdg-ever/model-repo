@@ -170,73 +170,23 @@ class PostgresFolderRepository(FolderRepository):
         return conn
 
     def list_folders(self) -> list[FolderSummary]:
-        """Prefer charts known to Postgres; merge local DATA_ROOT when present."""
-        local = self._optional_local()
-        local_by_id = {f.id: f for f in local.list_folders()} if local else {}
-        try:
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        SELECT chart_name, page_count, status, updated_at,
-                               current_stage, source, run_id, batch_id
-                        FROM chart_list
-                        WHERE source <> 'manifest' OR page_count > 0
-                        ORDER BY updated_at DESC NULLS LAST, id DESC
-                        """
-                    )
-                    rows = cur.fetchall()
-        except Exception:
-            return list(local_by_id.values())
+        """DB chart_list summaries; light disk merge for local-only folders.
 
-        if not rows:
-            return list(local_by_id.values())
+        Avoids a full LocalFolderRepository scan (pages/ocr/imaging per chart).
+        """
+        from app.services.folder_list import (
+            FolderListParams,
+            build_folder_list,
+        )
 
-        out: list[FolderSummary] = []
-        seen: set[str] = set()
-        for (
-            chart_name,
-            page_count,
-            status,
-            updated_at,
-            current_stage,
-            _source,
-            run_id,
-            batch_id,
-        ) in rows:
-            name = str(chart_name)
-            seen.add(name)
-            local_f = local_by_id.get(name)
-            ocr_status = _ocr_status_for(status, current_stage)
-            if local_f and ocr_status in {"QUEUED", "IN_PROGRESS"}:
-                # Prefer richer local disk-derived status when pipeline still early
-                ocr_status = local_f.ocr_status
-            resolved_run = (
-                (str(run_id) if run_id else None)
-                or (local_f.run_id if local_f else None)
-            )
-            resolved_batch = (
-                (str(batch_id) if batch_id else None)
-                or (local_f.batch_id if local_f else None)
-            )
-            out.append(
-                FolderSummary(
-                    id=name,
-                    name=name,
-                    page_count=int(page_count or (local_f.page_count if local_f else 0) or 0),
-                    ocr_processed=local_f.ocr_processed if local_f else 0,
-                    imaging_processed=local_f.imaging_processed if local_f else 0,
-                    ocr_status=ocr_status,  # type: ignore[arg-type]
-                    last_updated_at=updated_at or (local_f.last_updated_at if local_f else None),
-                    run_id=resolved_run,
-                    batch_id=resolved_batch,
-                )
-            )
-        # Include local-only folders not yet in chart_list
-        for fid, folder in local_by_id.items():
-            if fid not in seen:
-                out.append(folder)
-        return out
+        result = build_folder_list(
+            database_url=self.database_url,
+            db_schema=self.db_schema,
+            data_root=self._local.data_root if self._local else None,
+            full_local_rows=None,
+            params=FolderListParams(limit=None, offset=0, sort="updated", sort_dir="desc"),
+        )
+        return result.items
 
     def _pages_from_db(self, folder_id: str) -> list[tuple[int, str]]:
         """(page_number, page_name) from page_list, ordered for the viewer."""
@@ -299,6 +249,11 @@ class PostgresFolderRepository(FolderRepository):
         elif ocr_status == "QUEUED" and ocr_processed > 0:
             ocr_status = "IN_PROGRESS"
         run_id, batch_id = self._chart_run_batch(folder_id)
+        manifest = None
+        try:
+            manifest = self._manifest_from_db(folder_id)
+        except HTTPException:
+            manifest = None
         return FolderDetail(
             id=folder_id,
             name=folder_id,
@@ -309,6 +264,7 @@ class PostgresFolderRepository(FolderRepository):
             last_updated_at=None,
             run_id=run_id,
             batch_id=batch_id,
+            manifest=manifest,
             pages=page_summaries,
         )
 
@@ -334,6 +290,11 @@ class PostgresFolderRepository(FolderRepository):
 
         flags = self._ocr_flags_from_db(folder_id)
         if flags is None:
+            if detail.manifest is None:
+                try:
+                    detail.manifest = self._manifest_from_db(folder_id)
+                except HTTPException:
+                    pass
             return detail
 
         pages: list[PageSummary] = []
@@ -383,6 +344,11 @@ class PostgresFolderRepository(FolderRepository):
             ocr_status = "QUEUED"
 
         run_id, batch_id = self._chart_run_batch(folder_id)
+        manifest = None
+        try:
+            manifest = self._manifest_from_db(folder_id)
+        except HTTPException:
+            manifest = detail.manifest if detail else None
         return FolderDetail(
             id=detail.id,
             name=detail.name,
@@ -393,6 +359,7 @@ class PostgresFolderRepository(FolderRepository):
             last_updated_at=detail.last_updated_at,
             run_id=run_id or detail.run_id,
             batch_id=batch_id or detail.batch_id,
+            manifest=manifest or detail.manifest,
             pages=pages,
         )
 

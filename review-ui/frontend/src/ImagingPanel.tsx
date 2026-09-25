@@ -97,6 +97,8 @@ type Props = {
   loading: boolean;
   error: string | null;
   document: ImagingDocumentResponse | null;
+  /** Manifest from folder shell (SQL) — shown while imaging payload loads. */
+  shellManifest?: ImagingManifestDetails | null;
   currentPage: ImagingPageResult | null;
   currentFileName: string | null;
   /** Section headers for the current page (Final2 preferred, else Final1). */
@@ -681,6 +683,7 @@ export default function ImagingPanel({
   loading,
   error,
   document,
+  shellManifest = null,
   currentPage,
   currentFileName,
   sectionHeaders = [],
@@ -704,21 +707,39 @@ export default function ImagingPanel({
     );
   }
 
-  if (loading) {
-    return <div className="ocr-loading">Loading imaging results…</div>;
-  }
-  if (error) {
-    return <div className="ocr-empty">{error}</div>;
-  }
-  if (!document || document.pages.length === 0) {
-    return <div className="ocr-empty">No imaging results for this folder.</div>;
-  }
-
-  const manifest = document.manifest ?? {
+  const emptyManifest: ImagingManifestDetails = {
     member: null,
     dob: null,
     memberId: null,
   };
+  const shell = shellManifest ?? emptyManifest;
+
+  if (loading) {
+    return (
+      <div className="imaging-panel-stack">
+        <ManifestDetails manifest={shell} />
+        <div className="ocr-loading">Loading imaging results…</div>
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="imaging-panel-stack">
+        <ManifestDetails manifest={shell} />
+        <div className="ocr-empty">{error}</div>
+      </div>
+    );
+  }
+  if (!document || document.pages.length === 0) {
+    return (
+      <div className="imaging-panel-stack">
+        <ManifestDetails manifest={shell} />
+        <div className="ocr-empty">No imaging results for this folder.</div>
+      </div>
+    );
+  }
+
+  const manifest = document.manifest ?? shell;
   const sections = document.sectionsProcessed ?? DEFAULT_SECTIONS;
   const verifications =
     document.verifications && document.verifications.length > 0

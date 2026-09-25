@@ -307,21 +307,84 @@ export default function FolderViewer({
 
   const page = folder?.pages[pageIndex] ?? null;
 
+  const ocrFetchedRef = useRef<Set<OcrKind>>(new Set());
+  const imagingFetchedRef = useRef(false);
+
   useEffect(() => {
-    if (!folder) {
-      setOcrByKind({});
-      setHeadersByKind({});
-      setLoadingOcr(false);
-      return;
-    }
-    let cancelled = false;
-    setLoadingOcr(true);
+    // Reset payloads when the chart changes; OCR/imaging load only when that mode is open.
+    setImagingDoc(null);
     setOcrByKind({});
     setHeadersByKind({});
+    setImagingError(null);
+    ocrFetchedRef.current = new Set();
+    imagingFetchedRef.current = false;
+  }, [folderId]);
+
+  useEffect(() => {
+    if (!folder || outputMode !== "ocr") {
+      return;
+    }
+    if (ocrFetchedRef.current.has(ocrTab)) {
+      return;
+    }
+    ocrFetchedRef.current.add(ocrTab);
+    let cancelled = false;
+    setLoadingOcr(true);
     setCopied(false);
 
+    getFolderOcr(folder.id, ocrTab)
+      .then((data) => {
+        if (cancelled) return;
+        setOcrByKind((prev) => ({
+          ...prev,
+          [ocrTab]: data?.text?.trim() ? data.text : "",
+        }));
+        if (data?.section_headers_by_file) {
+          setHeadersByKind((prev) => ({
+            ...prev,
+            [ocrTab]: data.section_headers_by_file,
+          }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOcrByKind((prev) => ({ ...prev, [ocrTab]: "" }));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingOcr(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [folder, outputMode, ocrTab]);
+
+  const ocrFullText = ocrByKind[ocrTab] ?? "";
+  const ocrMissingMessage = `No ${OCR_TAB_LABELS[ocrTab]} available.`;
+  const sectionHeadersByFile = headersByKind[ocrTab] ?? {};
+
+  useEffect(() => {
+    if (!folder || outputMode !== "imaging" || imagingTab !== "additional") {
+      return;
+    }
+    const needFinal1 = !ocrFetchedRef.current.has("final1");
+    const needFinal2 = !ocrFetchedRef.current.has("final2");
+    if (!needFinal1 && !needFinal2) {
+      return;
+    }
+    const kinds = (
+      [
+        needFinal1 ? "final1" : null,
+        needFinal2 ? "final2" : null,
+      ] as const
+    ).filter((k): k is "final1" | "final2" => k != null);
+    for (const k of kinds) ocrFetchedRef.current.add(k);
+
+    let cancelled = false;
+    setLoadingOcr(true);
     Promise.all(
-      OCR_TABS.map(async (kind) => {
+      kinds.map(async (kind) => {
         try {
           const data = await getFolderOcr(folder.id, kind);
           return [kind, data] as const;
@@ -332,36 +395,43 @@ export default function FolderViewer({
     )
       .then((entries) => {
         if (cancelled) return;
-        const next: Partial<Record<OcrKind, string>> = {};
-        const nextHeaders: Partial<
-          Record<OcrKind, Record<string, OcrSectionHeader[]>>
-        > = {};
-        for (const [kind, data] of entries) {
-          if (data?.text?.trim()) next[kind] = data.text;
-          if (data?.section_headers_by_file) {
-            nextHeaders[kind] = data.section_headers_by_file;
+        setOcrByKind((prev) => {
+          const next = { ...prev };
+          for (const [kind, data] of entries) {
+            if (next[kind] === undefined) {
+              next[kind] = data?.text?.trim() ? data.text : "";
+            }
           }
-        }
-        setOcrByKind(next);
-        setHeadersByKind(nextHeaders);
+          return next;
+        });
+        setHeadersByKind((prev) => {
+          const next = { ...prev };
+          for (const [kind, data] of entries) {
+            if (data?.section_headers_by_file) {
+              next[kind] = data.section_headers_by_file;
+            } else if (next[kind] === undefined) {
+              next[kind] = {};
+            }
+          }
+          return next;
+        });
       })
       .finally(() => {
         if (!cancelled) setLoadingOcr(false);
       });
-
     return () => {
       cancelled = true;
     };
-  }, [folder]);
-
-  const ocrFullText = ocrByKind[ocrTab] ?? "";
-  const ocrMissingMessage = `No ${OCR_TAB_LABELS[ocrTab]} available.`;
-  const sectionHeadersByFile = headersByKind[ocrTab] ?? {};
+  }, [folder, outputMode, imagingTab]);
 
   useEffect(() => {
-    if (!folder) {
+    if (!folder || outputMode !== "imaging") {
       return;
     }
+    if (imagingFetchedRef.current) {
+      return;
+    }
+    imagingFetchedRef.current = true;
     let cancelled = false;
     setLoadingImaging(true);
     setImagingError(null);
@@ -383,7 +453,7 @@ export default function FolderViewer({
     return () => {
       cancelled = true;
     };
-  }, [folder]);
+  }, [folder, outputMode]);
 
   const imagingPage = useMemo(
     () => findImagingPage(imagingDoc, page),
@@ -1078,6 +1148,7 @@ export default function FolderViewer({
                   loading={loadingImaging}
                   error={imagingError}
                   document={imagingDoc}
+                  shellManifest={folder?.manifest ?? null}
                   currentPage={imagingPage}
                   currentFileName={page?.filename ?? null}
                   sectionHeaders={imagingSectionInfo.headers}

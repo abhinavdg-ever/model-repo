@@ -18,6 +18,28 @@ export type FolderSummary = {
   batch_id?: string | null;
 };
 
+export type FolderListParams = {
+  limit?: number | null;
+  offset?: number;
+  q?: string;
+  status?: OcrRunStatus[];
+  run?: string[];
+  batch?: string[];
+  sort?: "filename" | "pages" | "updated";
+  sort_dir?: "asc" | "desc";
+};
+
+export type FolderListResponse = {
+  items: FolderSummary[];
+  total: number;
+  page_count_sum: number;
+  ocr_processed_sum: number;
+  run_options: string[];
+  batch_options: string[];
+  limit: number | null;
+  offset: number;
+};
+
 export type PageSummary = {
   page_number: number;
   filename: string;
@@ -30,6 +52,8 @@ export type PageSummary = {
 
 export type FolderDetail = FolderSummary & {
   pages: PageSummary[];
+  /** From manifest_member_list (SQL) or metadata CSV — available with folder shell. */
+  manifest?: ImagingManifestDetails | null;
 };
 
 /** preliminary = Tess (_prelim), final1 = OSS/Docling (_final1.json), final2 = AzDocInt (_final2.json) */
@@ -186,8 +210,22 @@ export function getAppConfig(): Promise<AppConfig> {
   return api("/api/config");
 }
 
-export function listFolders(): Promise<FolderSummary[]> {
-  return api("/api/folders");
+export function listFolders(params?: FolderListParams): Promise<FolderListResponse> {
+  const sp = new URLSearchParams();
+  if (params?.limit != null && params.limit > 0) {
+    sp.set("limit", String(params.limit));
+  }
+  if (params?.offset != null && params.offset > 0) {
+    sp.set("offset", String(params.offset));
+  }
+  if (params?.q?.trim()) sp.set("q", params.q.trim());
+  for (const s of params?.status ?? []) sp.append("status", s);
+  for (const s of params?.run ?? []) sp.append("run", s);
+  for (const s of params?.batch ?? []) sp.append("batch", s);
+  if (params?.sort) sp.set("sort", params.sort);
+  if (params?.sort_dir) sp.set("sort_dir", params.sort_dir);
+  const qs = sp.toString();
+  return api(`/api/folders${qs ? `?${qs}` : ""}`);
 }
 
 export function getFolder(folderId: string): Promise<FolderDetail> {

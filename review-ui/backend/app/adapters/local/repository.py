@@ -1406,6 +1406,7 @@ class LocalFolderRepository(FolderRepository):
             last_updated_at=_latest_mtime(self._touch_paths(folder_dir, pages)),
             run_id=run_id,
             batch_id=batch_id,
+            manifest=self._manifest_for_folder(folder_id),
             pages=page_summaries,
         )
 

@@ -255,21 +255,6 @@ function statusClass(status: OcrRunStatus): string {
   }
 }
 
-function compareFolders(a: FolderSummary, b: FolderSummary, key: SortKey, dir: SortDir): number {
-  const sign = dir === "asc" ? 1 : -1;
-  if (key === "filename") {
-    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) * sign;
-  }
-  if (key === "pages") {
-    if (a.page_count !== b.page_count) return (a.page_count - b.page_count) * sign;
-    return a.name.localeCompare(b.name) * sign;
-  }
-  const at = a.last_updated_at ? Date.parse(a.last_updated_at) : 0;
-  const bt = b.last_updated_at ? Date.parse(b.last_updated_at) : 0;
-  if (at !== bt) return (at - bt) * sign;
-  return a.name.localeCompare(b.name) * sign;
-}
-
 const RESULTS_CSV_HEADERS = [
   "chartName",
   "pageName",
@@ -402,6 +387,11 @@ function downloadTextFile(filename: string, text: string, mime: string) {
 export default function LandingPage({ onView, onOpenFileViewer }: Props) {
   const saved = useMemo(() => readLandingFilters(), []);
   const [folders, setFolders] = useState<FolderSummary[]>([]);
+  const [total, setTotal] = useState(0);
+  const [pageCountSum, setPageCountSum] = useState(0);
+  const [ocrSum, setOcrSum] = useState(0);
+  const [runOptions, setRunOptions] = useState<string[]>([]);
+  const [batchOptions, setBatchOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(saved.page);
@@ -420,23 +410,45 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
   const [downloadTotal, setDownloadTotal] = useState(0);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const downloadCancelRef = useRef(false);
+  const loadSeq = useRef(0);
 
   async function load() {
+    const seq = ++loadSeq.current;
     setLoading(true);
     setError(null);
     try {
-      const data = await listFolders();
-      setFolders(data);
+      const data = await listFolders({
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+        q: query,
+        status: statusFilter,
+        run: runFilter,
+        batch: batchFilter,
+        sort: sortKey,
+        sort_dir: sortDir,
+      });
+      if (seq !== loadSeq.current) return;
+      setFolders(data.items);
+      setTotal(data.total);
+      setPageCountSum(data.page_count_sum);
+      setOcrSum(data.ocr_processed_sum);
+      setRunOptions(data.run_options);
+      setBatchOptions(data.batch_options);
     } catch (err) {
+      if (seq !== loadSeq.current) return;
       setError(err instanceof Error ? err.message : "Failed to load history");
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }
 
   useEffect(() => {
-    void load();
-  }, []);
+    const t = window.setTimeout(() => {
+      void load();
+    }, query.trim() ? 200 : 0);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload on list controls
+  }, [page, query, statusFilter, runFilter, batchFilter, sortKey, sortDir]);
 
   useEffect(() => {
     try {
@@ -455,50 +467,12 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
     }
   }, [query, statusFilter, runFilter, batchFilter, sortKey, sortDir, page]);
 
-  const runOptions = useMemo(() => {
-    const values = new Set<string>();
-    for (const f of folders) {
-      if (f.run_id) values.add(f.run_id);
-    }
-    return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  }, [folders]);
+  const totals = useMemo(
+    () => ({ folders: total, pages: pageCountSum, ocr: ocrSum }),
+    [total, pageCountSum, ocrSum],
+  );
 
-  const batchOptions = useMemo(() => {
-    const values = new Set<string>();
-    for (const f of folders) {
-      if (f.batch_id) values.add(f.batch_id);
-    }
-    return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  }, [folders]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let rows = folders;
-    if (q) {
-      rows = rows.filter((f) => f.name.toLowerCase().includes(q));
-    }
-    if (statusFilter.length > 0) {
-      const allowed = new Set(statusFilter);
-      rows = rows.filter((f) => allowed.has(f.ocr_status));
-    }
-    if (runFilter.length > 0) {
-      const allowed = new Set(runFilter);
-      rows = rows.filter((f) => f.run_id != null && allowed.has(f.run_id));
-    }
-    if (batchFilter.length > 0) {
-      const allowed = new Set(batchFilter);
-      rows = rows.filter((f) => f.batch_id != null && allowed.has(f.batch_id));
-    }
-    return [...rows].sort((a, b) => compareFolders(a, b, sortKey, sortDir));
-  }, [folders, query, sortKey, sortDir, statusFilter, runFilter, batchFilter]);
-
-  const totals = useMemo(() => {
-    const pages = filtered.reduce((sum, f) => sum + f.page_count, 0);
-    const ocr = filtered.reduce((sum, f) => sum + f.ocr_processed, 0);
-    return { folders: filtered.length, pages, ocr };
-  }, [filtered]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   useEffect(() => {
     if (skipFilterPageReset.current) {
@@ -512,13 +486,10 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
-  const pageFolders = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return filtered.slice(start, start + PAGE_SIZE);
-  }, [filtered, page]);
+  const pageFolders = folders;
 
-  const rangeStart = filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const rangeEnd = Math.min(page * PAGE_SIZE, filtered.length);
+  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * PAGE_SIZE, total);
 
   const pageNumbers = useMemo(() => {
     const maxButtons = 7;
@@ -550,7 +521,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
   function openDownloadDialog() {
     setDownloadError(null);
     setDownloadDone(0);
-    setDownloadTotal(filtered.length);
+    setDownloadTotal(total);
     setDownloadBusy(false);
     setDownloadOpen(true);
   }
@@ -565,17 +536,25 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
   }
 
   async function startDownloadResults() {
-    if (filtered.length === 0 || downloadBusy) return;
+    if (total === 0 || downloadBusy) return;
     downloadCancelRef.current = false;
     setDownloadBusy(true);
     setDownloadError(null);
     setDownloadDone(0);
-    setDownloadTotal(filtered.length);
 
     const lines: string[] = [RESULTS_CSV_HEADERS.join(",")];
     let processed = 0;
     try {
-      for (const folder of filtered) {
+      const all = await listFolders({
+        q: query,
+        status: statusFilter,
+        run: runFilter,
+        batch: batchFilter,
+        sort: sortKey,
+        sort_dir: sortDir,
+      });
+      setDownloadTotal(all.items.length);
+      for (const folder of all.items) {
         if (downloadCancelRef.current) break;
         try {
           const doc = await getFolderImaging(folder.id);
@@ -615,7 +594,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
               type="button"
               className="landing-file-viewer-btn"
               onClick={openDownloadDialog}
-              disabled={folders.length === 0 || loading}
+              disabled={total === 0 || loading}
               title={
                 statusFilter.length > 0 ||
                 query.trim() ||
@@ -641,7 +620,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
           </div>
         </div>
 
-        {folders.length > 0 && (
+        {total > 0 && (
           <div className="landing-stats" aria-label="Summary">
             <div className="landing-stat">
               <span className="landing-stat-value">{totals.folders}</span>
@@ -666,7 +645,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
           <div className="landing-history-header">
             <div className="landing-history-title">
               <h2>History</h2>
-              <span className="landing-history-count">{filtered.length}</span>
+              <span className="landing-history-count">{total}</span>
             </div>
 
             <div className="landing-toolbar">
@@ -775,16 +754,26 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                       </div>
                     </td>
                   </tr>
-                ) : filtered.length === 0 ? (
+                ) : total === 0 ? (
                   <tr>
                     <td colSpan={9} className="landing-history-empty">
                       <div className="landing-empty-state">
                         <div className="landing-empty-icon">
                           <Inbox size={18} />
                         </div>
-                        <h3>{folders.length === 0 ? "No history found" : "No matching folders"}</h3>
+                        <h3>
+                          {!query.trim() &&
+                          statusFilter.length === 0 &&
+                          runFilter.length === 0 &&
+                          batchFilter.length === 0
+                            ? "No history found"
+                            : "No matching folders"}
+                        </h3>
                         <p>
-                          {folders.length === 0
+                          {!query.trim() &&
+                          statusFilter.length === 0 &&
+                          runFilter.length === 0 &&
+                          batchFilter.length === 0
                             ? "Add folders under DATA_ROOT with pages/ and ocr/ outputs."
                             : "Try a different search, status, run, or batch filter."}
                         </p>
@@ -841,10 +830,10 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
             </table>
           </div>
 
-          {filtered.length > 0 && (
+          {total > 0 && (
             <div className="landing-pagination" aria-label="History pagination">
               <span className="landing-pagination-meta">
-                {rangeStart}–{rangeEnd} of {filtered.length}
+                {rangeStart}–{rangeEnd} of {total}
               </span>
               <div className="landing-pagination-controls">
                 <button
@@ -920,7 +909,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
             </div>
             <p className="blob-auth-copy">
               This will take a few minutes. Results are built chart by chart for
-              the {filtered.length} folder{filtered.length === 1 ? "" : "s"} in
+              the {total} folder{total === 1 ? "" : "s"} in
               the current filter.
             </p>
             {downloadBusy || downloadDone > 0 ? (
@@ -972,7 +961,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                 type="button"
                 className="landing-file-viewer-btn landing-file-viewer-btn-primary"
                 onClick={() => void startDownloadResults()}
-                disabled={downloadBusy || filtered.length === 0}
+                disabled={downloadBusy || total === 0}
               >
                 {downloadBusy ? "Preparing…" : "Start download"}
               </button>

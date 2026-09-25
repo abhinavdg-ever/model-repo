@@ -27,6 +27,19 @@ class FolderSummary(BaseModel):
     batch_id: str | None = None
 
 
+class FolderListResponse(BaseModel):
+    """Paginated landing list. ``limit`` null/omitted on the request → all matches."""
+
+    items: list[FolderSummary]
+    total: int = 0
+    page_count_sum: int = 0
+    ocr_processed_sum: int = 0
+    run_options: list[str] = Field(default_factory=list)
+    batch_options: list[str] = Field(default_factory=list)
+    limit: int | None = None
+    offset: int = 0
+
+
 class PageSummary(BaseModel):
     page_number: int
     filename: str
@@ -35,6 +48,18 @@ class PageSummary(BaseModel):
     has_final1_ocr: bool = False
     has_final2_ocr: bool = False
     has_imaging: bool = False
+
+
+class ImagingManifestDetails(BaseModel):
+    """Expected manifest identity for the chart.
+
+    Local Mode → manifest_member_list when DATABASE_URL is set, else
+    data/metadata/metadata_R*_B*.csv. Production Mode → manifest_member_list.
+    """
+
+    member: str | None = None
+    dob: str | None = None
+    memberId: str | None = None
 
 
 class FolderDetail(BaseModel):
@@ -47,6 +72,9 @@ class FolderDetail(BaseModel):
     last_updated_at: datetime | None = None
     run_id: str | None = None
     batch_id: str | None = None
+    # Expected member identity (manifest_member_list / metadata CSV) — cheap SQL
+    # on folder open so the UI can show Manifest Details before /imaging loads.
+    manifest: ImagingManifestDetails | None = None
     pages: list[PageSummary] = Field(default_factory=list)
 
 
@@ -120,18 +148,6 @@ class ImagingPageResult(BaseModel):
             out["dosFrom"] = legacy
             out["dosTo"] = legacy
         return out
-
-
-class ImagingManifestDetails(BaseModel):
-    """Expected manifest identity for the chart.
-
-    Local Mode → manifest_member_list when DATABASE_URL is set, else
-    data/metadata/metadata_R*_B*.csv. Production Mode → manifest_member_list.
-    """
-
-    member: str | None = None
-    dob: str | None = None
-    memberId: str | None = None
 
 
 class ImagingVerificationDetails(BaseModel):

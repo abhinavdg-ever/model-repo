@@ -11,13 +11,17 @@ from app.core.config import Settings, get_settings
 from app.core.schemas import (
     AppConfigResponse,
     FolderDetail,
+    FolderListResponse,
     FolderSummary,
     HealthResponse,
     ImagingDocumentResponse,
+    ImagingManifestDetails,
     OcrTextResponse,
 )
 from app.services.blob_store import download_blob_bytes
+from app.services.folder_list import FolderListParams, build_folder_list
 from app.services.imaging_csv import filter_folder, iter_csv_lines
+from app.services.chart_run_batch import database_url_usable
 from app.services.page_images import (
     is_tiff_name,
     is_tiff_path,
@@ -93,11 +97,67 @@ def app_config() -> AppConfigResponse:
     )
 
 
-@router.get("/folders", response_model=list[FolderSummary])
-def list_folders(repo: FolderRepository = Depends(get_repository)) -> list[FolderSummary]:
-    folders = repo.list_folders()
-    logger.info("list_folders count=%d", len(folders))
-    return folders
+@router.get("/folders", response_model=FolderListResponse)
+def list_folders(
+    repo: FolderRepository = Depends(get_repository),
+    settings: Settings = Depends(get_settings),
+    limit: int | None = Query(
+        None,
+        description="Page size. Omit or <=0 to return all matching rows.",
+    ),
+    offset: int = Query(0, ge=0),
+    q: str = Query("", description="Case-insensitive chart name substring"),
+    status: list[str] | None = Query(
+        None, description="Repeatable OCR status filter (QUEUED, …)"
+    ),
+    run: list[str] | None = Query(None, description="Repeatable run_id filter (R2, …)"),
+    batch: list[str] | None = Query(
+        None, description="Repeatable batch_id filter (B4, …)"
+    ),
+    sort: str = Query("updated", pattern="^(filename|pages|updated)$"),
+    sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
+) -> FolderListResponse:
+    """Landing list: DB-backed summaries when DATABASE_URL is set; paginated."""
+    params = FolderListParams(
+        q=q or "",
+        status=list(status or []),
+        run=list(run or []),
+        batch=list(batch or []),
+        sort=sort,  # type: ignore[arg-type]
+        sort_dir=sort_dir,  # type: ignore[arg-type]
+        limit=limit,
+        offset=offset,
+    )
+    data_root = settings.resolved_data_root
+    db_url = settings.database_url
+    full_local = None
+    # Expensive full disk scan only when Postgres is unavailable.
+    if not database_url_usable(db_url):
+        full_local = repo.list_folders()
+    result = build_folder_list(
+        database_url=db_url,
+        db_schema=settings.db_schema,
+        data_root=data_root if data_root.is_dir() else None,
+        full_local_rows=full_local,
+        params=params,
+    )
+    logger.info(
+        "list_folders total=%d returned=%d limit=%s offset=%d",
+        result.total,
+        len(result.items),
+        result.limit,
+        result.offset,
+    )
+    return FolderListResponse(
+        items=result.items,
+        total=result.total,
+        page_count_sum=result.page_count_sum,
+        ocr_processed_sum=result.ocr_processed_sum,
+        run_options=result.run_options,
+        batch_options=result.batch_options,
+        limit=result.limit,
+        offset=result.offset,
+    )
 
 
 @router.get("/folders/{folder_id}", response_model=FolderDetail)
@@ -109,6 +169,16 @@ def get_folder(folder_id: str, repo: FolderRepository = Depends(get_repository))
         len(detail.pages),
     )
     return detail
+
+
+@router.get("/folders/{folder_id}/manifest", response_model=ImagingManifestDetails)
+def get_folder_manifest(
+    folder_id: str,
+    repo: FolderRepository = Depends(get_repository),
+) -> ImagingManifestDetails:
+    """Expected member identity from ``manifest_member_list`` (SQL) / metadata CSV."""
+    detail = repo.get_folder(folder_id)
+    return detail.manifest or ImagingManifestDetails()
 
 
 @router.get("/folders/{folder_id}/pages/{page_number}/image")
