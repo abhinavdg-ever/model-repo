@@ -77,6 +77,19 @@ def test_filter_sort_page_paginates_and_facets():
     assert page2.items[0].id == "c_chart"
 
 
+def test_filter_sort_page_hides_queued():
+    rows = [
+        _f("ready", status="IN_PROGRESS", run="R1", batch="B1"),
+        _f("waiting", status="QUEUED", run="R1", batch="B1"),
+        _f("only_queued_run", status="QUEUED", run="R9", batch="B9"),
+    ]
+    result = filter_sort_page(rows, FolderListParams())
+    assert [f.id for f in result.items] == ["ready"]
+    assert result.total == 1
+    assert result.run_options == ["R1"]
+    assert "R9" not in result.run_options
+
+
 def test_merge_db_and_disk_prefers_db():
     db = [_f("x", pages=5, run="R2", batch="B4")]
     disk = [

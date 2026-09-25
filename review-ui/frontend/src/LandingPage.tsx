@@ -42,7 +42,6 @@ type LandingFilters = {
 };
 
 const STATUS_OPTIONS: OcrRunStatus[] = [
-  "QUEUED",
   "IN_PROGRESS",
   "COMPLETED",
   "IMAGING_IN_PROGRESS",

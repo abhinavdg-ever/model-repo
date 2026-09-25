@@ -223,8 +223,11 @@ def filter_sort_page(
     Run facets come from the full set. Batch facets are empty until a run is
     selected, then only batches that appear on charts in those run(s).
     """
+    # Review UI never lists Queued charts — drop them before facets/filters.
+    active = [f for f in rows if f.ocr_status != "QUEUED"]
+
     run_options = sorted(
-        {f.run_id for f in rows if f.run_id},
+        {f.run_id for f in active if f.run_id},
         key=lambda s: s.casefold(),
     )
 
@@ -238,7 +241,7 @@ def filter_sort_page(
         batch_options = sorted(
             {
                 f.batch_id
-                for f in rows
+                for f in active
                 if f.batch_id and f.run_id in run_set
             },
             key=lambda s: s.casefold(),
@@ -247,7 +250,7 @@ def filter_sort_page(
         batch_options = []
 
     filtered: list[FolderSummary] = []
-    for f in rows:
+    for f in active:
         if q and q not in (f.name or "").casefold():
             continue
         if status_set and f.ocr_status not in status_set:
