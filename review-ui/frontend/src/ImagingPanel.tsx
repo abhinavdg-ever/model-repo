@@ -716,9 +716,22 @@ export default function ImagingPanel({
 
   if (loading) {
     return (
-      <div className="imaging-panel-stack">
+      <div className="imaging-panel-stack" aria-busy="true">
         <ManifestDetails manifest={shell} />
-        <div className="ocr-loading">Loading imaging results…</div>
+        <div className="ocr-loading imaging-loading">
+          <span className="imaging-loading-spinner" aria-hidden="true" />
+          Loading imaging results…
+        </div>
+        {tab === "page" ? (
+          <div className="imaging-page-details imaging-page-details-skeleton" aria-hidden="true">
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="imaging-skeleton-row">
+                <span className="imaging-skeleton-label" />
+                <span className="imaging-skeleton-value" />
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
     );
   }

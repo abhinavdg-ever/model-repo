@@ -23,8 +23,10 @@ from app.services.folder_list import FolderListParams, build_folder_list
 from app.services.imaging_csv import filter_folder, iter_csv_lines
 from app.services.chart_run_batch import database_url_usable
 from app.services.page_images import (
+    bytes_to_display_jpeg,
     is_tiff_name,
     is_tiff_path,
+    path_to_display_jpeg,
     tiff_bytes_to_jpeg_bytes,
     tiff_path_to_jpeg_bytes,
 )
@@ -186,6 +188,10 @@ def get_page_image(
     folder_id: str,
     page_number: int,
     repo: FolderRepository = Depends(get_repository),
+    thumb: bool = Query(
+        False,
+        description="Return a small JPEG (~160px) for filmstrip thumbnails",
+    ),
 ):
     """Serve a page image. TIFF is re-encoded to JPEG — browsers cannot show it raw.
 
@@ -194,6 +200,11 @@ def get_page_image(
     local workspace copy exists.
     """
     settings = get_settings()
+    cache_hdr = (
+        "private, max-age=3600"
+        if thumb
+        else "private, max-age=300"
+    )
     if settings.is_production_mode:
         from app.adapters.postgres.repository import PostgresFolderRepository
         from app.services.blob_store import download_blob_at
@@ -206,27 +217,30 @@ def get_page_image(
                     key=loc["key"],
                     filename=loc.get("filename"),
                 )
-                if is_tiff_name(loc.get("filename") or loc["key"]) or (
-                    media_type or ""
-                ).lower() in {"image/tiff", "image/tif"}:
+                name = loc.get("filename") or loc["key"]
+                is_tiff = is_tiff_name(name) or (media_type or "").lower() in {
+                    "image/tiff",
+                    "image/tif",
+                }
+                if thumb or is_tiff:
                     try:
-                        data = tiff_bytes_to_jpeg_bytes(data)
+                        data = bytes_to_display_jpeg(data, thumb=thumb)
                         media_type = "image/jpeg"
                     except Exception as exc:
                         logger.exception(
-                            "Blob TIFF→JPEG failed folder=%s page=%s key=%s",
+                            "Blob image encode failed folder=%s page=%s key=%s",
                             folder_id,
                             page_number,
                             loc["key"],
                         )
                         raise HTTPException(
                             status_code=500,
-                            detail=f"Could not convert TIFF for display: {exc}",
+                            detail=f"Could not convert image for display: {exc}",
                         ) from exc
                 return Response(
                     content=data,
                     media_type=media_type or "application/octet-stream",
-                    headers={"Cache-Control": "private, max-age=120"},
+                    headers={"Cache-Control": cache_hdr},
                 )
 
     try:
@@ -239,26 +253,30 @@ def get_page_image(
             detail=f"Page image not found: {folder_id} #{page_number}",
         ) from exc
 
-    if is_tiff_path(path):
+    if thumb or is_tiff_path(path):
         try:
-            jpeg = tiff_path_to_jpeg_bytes(path)
+            jpeg = path_to_display_jpeg(path, thumb=thumb) if thumb else tiff_path_to_jpeg_bytes(path)
         except Exception as exc:
             logger.exception(
-                "TIFF→JPEG failed folder=%s page=%s path=%s",
+                "Image encode failed folder=%s page=%s path=%s",
                 folder_id,
                 page_number,
                 path,
             )
             raise HTTPException(
                 status_code=500,
-                detail=f"Could not convert TIFF for display: {exc}",
+                detail=f"Could not convert image for display: {exc}",
             ) from exc
         return Response(
             content=jpeg,
             media_type="image/jpeg",
-            headers={"Cache-Control": "private, max-age=120"},
+            headers={"Cache-Control": cache_hdr},
         )
-    return FileResponse(path, media_type=_media_type(path.suffix))
+    return FileResponse(
+        path,
+        media_type=_media_type(path.suffix),
+        headers={"Cache-Control": cache_hdr},
+    )
 
 
 @router.get("/blob/{folder_id}/pages/{page_number}/image")

@@ -178,7 +178,7 @@ export default function FolderViewer({
   const [imagingDoc, setImagingDoc] = useState<ImagingDocumentResponse | null>(null);
   const [loadingFolder, setLoadingFolder] = useState(true);
   const [loadingOcr, setLoadingOcr] = useState(false);
-  const [loadingImaging, setLoadingImaging] = useState(false);
+  const [loadingImaging, setLoadingImaging] = useState(initialMode === "imaging");
   const [imagingError, setImagingError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -188,6 +188,7 @@ export default function FolderViewer({
   const [imageNaturalSize, setImageNaturalSize] = useState<{ w: number; h: number } | null>(
     null,
   );
+  const [pageImageLoading, setPageImageLoading] = useState(true);
   const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null);
   const pageStageRef = useRef<HTMLDivElement>(null);
   const pageImageRef = useRef<HTMLImageElement>(null);
@@ -205,12 +206,14 @@ export default function FolderViewer({
 
   useEffect(() => {
     setImageNaturalSize(null);
+    setPageImageLoading(true);
   }, [folderId, pageIndex]);
 
   // Cached images often skip onLoad — pick up natural size when the page flips.
   useEffect(() => {
     const img = pageImageRef.current;
     if (img?.complete && img.naturalWidth > 0) {
+      setPageImageLoading(false);
       setImageNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
     }
   }, [folderId, pageIndex, folder]);
@@ -318,6 +321,9 @@ export default function FolderViewer({
     setImagingError(null);
     ocrFetchedRef.current = new Set();
     imagingFetchedRef.current = false;
+    setLoadingImaging(outputMode === "imaging");
+    // Only reset on chart change — keep cached imaging when flipping OCR ↔ Imaging.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- outputMode read once per folderId
   }, [folderId]);
 
   useEffect(() => {
@@ -624,6 +630,9 @@ export default function FolderViewer({
   const suffix = KIND_FILE_SUFFIX[ocrTab];
 
   function changeMode(mode: OutputMode) {
+    if (mode === "imaging" && !imagingDoc && !imagingError) {
+      setLoadingImaging(true);
+    }
     setOutputMode(mode);
     onModeChange?.(mode);
   }
@@ -916,48 +925,57 @@ export default function FolderViewer({
               {...stageProps}
             >
               {page ? (
-                <div
-                  className="page-image-wrap"
-                  style={{
-                    ...(fittedImageSize
-                      ? { width: fittedImageSize.w, height: fittedImageSize.h }
-                      : { visibility: "hidden", width: 1, height: 1 }),
-                    ...imageStyle,
-                  }}
-                  onPointerDown={stageProps.onPointerDown}
-                >
-                  <img
-                    ref={pageImageRef}
-                    className="page-image"
-                    src={pageImageUrl(folderId, page.page_number)}
-                    alt={page.filename}
-                    draggable={false}
-                    onLoad={(e) => {
-                      const img = e.currentTarget;
-                      setImageNaturalSize({
-                        w: img.naturalWidth,
-                        h: img.naturalHeight,
-                      });
-                    }}
-                  />
-                  {overlayBoxes.length > 0 && fittedImageSize ? (
-                    <div className="page-header-overlay" aria-hidden="true">
-                      {overlayBoxes.map((box, i) => (
-                        <div
-                          key={`${box.text}-${i}`}
-                          className="page-header-box"
-                          title={box.text}
-                          style={{
-                            left: `${box.left * 100}%`,
-                            top: `${box.top * 100}%`,
-                            width: `${box.width * 100}%`,
-                            height: `${Math.max(box.height * 100, 0.35)}%`,
-                          }}
-                        />
-                      ))}
+                <>
+                  {pageImageLoading && !fittedImageSize ? (
+                    <div className="ocr-loading page-image-loading" aria-live="polite">
+                      Loading page…
                     </div>
                   ) : null}
-                </div>
+                  <div
+                    className="page-image-wrap"
+                    style={{
+                      ...(fittedImageSize
+                        ? { width: fittedImageSize.w, height: fittedImageSize.h }
+                        : { visibility: "hidden", width: 1, height: 1 }),
+                      ...imageStyle,
+                    }}
+                    onPointerDown={stageProps.onPointerDown}
+                  >
+                    <img
+                      ref={pageImageRef}
+                      className="page-image"
+                      src={pageImageUrl(folderId, page.page_number)}
+                      alt={page.filename}
+                      draggable={false}
+                      onLoad={(e) => {
+                        const img = e.currentTarget;
+                        setPageImageLoading(false);
+                        setImageNaturalSize({
+                          w: img.naturalWidth,
+                          h: img.naturalHeight,
+                        });
+                      }}
+                      onError={() => setPageImageLoading(false)}
+                    />
+                    {overlayBoxes.length > 0 && fittedImageSize ? (
+                      <div className="page-header-overlay" aria-hidden="true">
+                        {overlayBoxes.map((box, i) => (
+                          <div
+                            key={`${box.text}-${i}`}
+                            className="page-header-box"
+                            title={box.text}
+                            style={{
+                              left: `${box.left * 100}%`,
+                              top: `${box.top * 100}%`,
+                              width: `${box.width * 100}%`,
+                              height: `${Math.max(box.height * 100, 0.35)}%`,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </>
               ) : (
                 <div className="ocr-empty">
                   {loadingFolder ? "Loading pages…" : "No pages in this folder"}
@@ -983,23 +1001,33 @@ export default function FolderViewer({
             </div>
             {folder && folder.pages.length > 0 && (
               <div className="filmstrip" role="listbox" aria-label="Page thumbnails">
-                {folder.pages.map((p, idx) => (
-                  <button
-                    key={p.filename}
-                    type="button"
-                    className={`filmstrip-thumb${idx === pageIndex ? " active" : ""}`}
-                    onClick={() => goToPage(idx)}
-                    aria-label={`Go to ${p.filename}`}
-                    aria-selected={idx === pageIndex}
-                    title={p.filename}
-                  >
-                    <img
-                      src={pageImageUrl(folderId, p.page_number)}
-                      alt=""
-                      loading="lazy"
-                    />
-                  </button>
-                ))}
+                {folder.pages.map((p, idx) => {
+                  // Nearby thumbs only — full-res filmstrip starved the main
+                  // page image and imaging API on large charts.
+                  const inWindow = Math.abs(idx - pageIndex) <= 14;
+                  return (
+                    <button
+                      key={p.filename}
+                      type="button"
+                      className={`filmstrip-thumb${idx === pageIndex ? " active" : ""}`}
+                      onClick={() => goToPage(idx)}
+                      aria-label={`Go to ${p.filename}`}
+                      aria-selected={idx === pageIndex}
+                      title={p.filename}
+                    >
+                      {inWindow ? (
+                        <img
+                          src={pageImageUrl(folderId, p.page_number, { thumb: true })}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      ) : (
+                        <span className="filmstrip-thumb-placeholder" aria-hidden="true" />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </section>
@@ -1145,7 +1173,11 @@ export default function FolderViewer({
               {outputMode === "imaging" ? (
                 <ImagingPanel
                   tab={imagingTab}
-                  loading={loadingImaging}
+                  loading={
+                    loadingFolder ||
+                    loadingImaging ||
+                    (!imagingDoc && !imagingError)
+                  }
                   error={imagingError}
                   document={imagingDoc}
                   shellManifest={folder?.manifest ?? null}

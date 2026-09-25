@@ -1005,17 +1005,20 @@ class PostgresFolderRepository(FolderRepository):
         return by_page
 
     def get_imaging(self, folder_id: str) -> ImagingDocumentResponse:
-        """Build imaging panel entirely from Postgres; page skeleton from local or page_list."""
-        page_files: list[tuple[int, Path]] = []
-        local = self._optional_local()
-        if local is not None:
-            try:
-                folder_dir = local._folder_dir(folder_id)  # noqa: SLF001
-                page_files = local._page_files(folder_dir)  # noqa: SLF001
-            except Exception:
-                page_files = []
+        """Build imaging panel entirely from Postgres; page skeleton from page_list.
+
+        Prefer DB page names over a local disk walk — scanning DATA_ROOT for every
+        chart open was a major cost on large workspaces / external drives.
+        """
+        page_files = [(num, Path(name)) for num, name in self._pages_from_db(folder_id)]
         if not page_files:
-            page_files = [(num, Path(name)) for num, name in self._pages_from_db(folder_id)]
+            local = self._optional_local()
+            if local is not None:
+                try:
+                    folder_dir = local._folder_dir(folder_id)  # noqa: SLF001
+                    page_files = local._page_files(folder_dir)  # noqa: SLF001
+                except Exception:
+                    page_files = []
         pages = empty_imaging_pages(page_files)
 
         db_fields = self._page_imaging_from_db(folder_id)
@@ -1074,7 +1077,11 @@ class PostgresFolderRepository(FolderRepository):
         )
 
     def _sections_from_db(self, folder_id: str) -> dict[str, bool]:
-        """Which imaging sections have any result rows for this chart."""
+        """Which imaging sections have any result rows for this chart.
+
+        One round-trip with EXISTS (chart_id resolved once) instead of up to ten
+        sequential queries — the previous loop dominated get_imaging latency.
+        """
         flags = {
             "member": False,
             "dos": False,
@@ -1086,36 +1093,78 @@ class PostgresFolderRepository(FolderRepository):
             "encounter": False,
             "sequencing": False,
         }
-        checks = (
-            ("member", "member_extraction_results"),
-            ("member", "member_verification_summary"),
-            ("dos", "dos_extraction_results"),
-            ("hw", "ocr_quality_results"),
-            ("quality", "ocr_quality_results"),
-            ("rotation", "ocr_quality_results"),
-            ("junk", "blank_junk_classification"),
-            ("codeable", "page_classification"),
-            ("encounter", "encounter_type_results"),
-            ("sequencing", "page_sequencing_results"),
-        )
         try:
             with self._connect() as conn:
                 with conn.cursor() as cur:
-                    for key, table in checks:
-                        if flags.get(key):
-                            continue
-                        cur.execute(
-                            f"""
-                            SELECT 1
-                              FROM {table} t
-                              JOIN chart_list c ON c.id = t.chart_id
-                             WHERE c.chart_name = %s
-                             LIMIT 1
-                            """,
-                            (folder_id,),
-                        )
-                        if cur.fetchone():
-                            flags[key] = True
+                    cur.execute(
+                        "SELECT id FROM chart_list WHERE chart_name = %s LIMIT 1",
+                        (folder_id,),
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        return flags
+                    chart_id = row[0]
+                    cur.execute(
+                        """
+                        SELECT
+                          EXISTS(
+                            SELECT 1 FROM member_extraction_results
+                             WHERE chart_id = %s LIMIT 1
+                          )
+                          OR EXISTS(
+                            SELECT 1 FROM member_verification_summary
+                             WHERE chart_id = %s LIMIT 1
+                          ),
+                          EXISTS(
+                            SELECT 1 FROM dos_extraction_results
+                             WHERE chart_id = %s LIMIT 1
+                          ),
+                          EXISTS(
+                            SELECT 1 FROM ocr_quality_results
+                             WHERE chart_id = %s LIMIT 1
+                          ),
+                          EXISTS(
+                            SELECT 1 FROM blank_junk_classification
+                             WHERE chart_id = %s LIMIT 1
+                          ),
+                          EXISTS(
+                            SELECT 1 FROM page_classification
+                             WHERE chart_id = %s LIMIT 1
+                          ),
+                          EXISTS(
+                            SELECT 1 FROM encounter_type_results
+                             WHERE chart_id = %s LIMIT 1
+                          ),
+                          EXISTS(
+                            SELECT 1 FROM page_sequencing_results
+                             WHERE chart_id = %s LIMIT 1
+                          )
+                        """,
+                        (chart_id,) * 8,
+                    )
+                    hit = cur.fetchone()
+                    if not hit:
+                        return flags
+                    (
+                        member,
+                        dos,
+                        quality_hw_rot,
+                        junk,
+                        codeable,
+                        encounter,
+                        sequencing,
+                    ) = hit
+                    flags["member"] = bool(member)
+                    flags["dos"] = bool(dos)
+                    # hw / quality / rotation all come from ocr_quality_results
+                    q = bool(quality_hw_rot)
+                    flags["hw"] = q
+                    flags["quality"] = q
+                    flags["rotation"] = q
+                    flags["junk"] = bool(junk)
+                    flags["codeable"] = bool(codeable)
+                    flags["encounter"] = bool(encounter)
+                    flags["sequencing"] = bool(sequencing)
         except Exception:
             return flags
         return flags

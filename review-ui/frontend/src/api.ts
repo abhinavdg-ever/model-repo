@@ -256,8 +256,13 @@ export function imagingExportCsvUrl(opts?: {
   return qs ? `/api/imaging/export.csv?${qs}` : "/api/imaging/export.csv";
 }
 
-export function pageImageUrl(folderId: string, pageNumber: number): string {
-  return `/api/folders/${encodeURIComponent(folderId)}/pages/${pageNumber}/image`;
+export function pageImageUrl(
+  folderId: string,
+  pageNumber: number,
+  opts?: { thumb?: boolean },
+): string {
+  const base = `/api/folders/${encodeURIComponent(folderId)}/pages/${pageNumber}/image`;
+  return opts?.thumb ? `${base}?thumb=1` : base;
 }
 
 export function blobPageImageUrl(folderId: string, pageNumber: number): string {

@@ -1503,7 +1503,27 @@ class LocalFolderRepository(FolderRepository):
         return _index_hw_rows(rows, chart)
 
     def get_imaging(self, folder_id: str) -> ImagingDocumentResponse:
-        """Build imaging rows from pipeline CSVs only (no dummy fabricated values)."""
+        """Build imaging rows from Postgres when available, else pipeline CSVs.
+
+        Combined pack CSVs can be tens of MB; scanning them for every chart open
+        was the main reason Imaging Output felt stuck on Local Mode with a DB.
+        """
+        if self.database_url:
+            try:
+                from app.adapters.postgres.repository import PostgresFolderRepository
+                from app.services.chart_run_batch import database_url_usable
+
+                if database_url_usable(self.database_url):
+                    return PostgresFolderRepository(
+                        self.database_url,
+                        data_root=self.data_root,
+                        metadata_root=self.metadata_root,
+                        db_schema=self.db_schema,
+                    ).get_imaging(folder_id)
+            except Exception:
+                # Fall through to CSV overlays — DB may be down or chart absent.
+                pass
+
         from app.services.imaging_overlays import (
             collect_rows,
             empty_imaging_pages,
