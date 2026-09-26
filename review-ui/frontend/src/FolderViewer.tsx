@@ -1046,32 +1046,24 @@ export default function FolderViewer({
             </div>
             {bootDone && folder && folder.pages.length > 0 && (
               <div className="filmstrip" role="listbox" aria-label="Page thumbnails">
-                {folder.pages.map((p, idx) => {
-                  // Nearby thumbs only — keep bandwidth for the main page.
-                  const inWindow = Math.abs(idx - pageIndex) <= 6;
-                  return (
-                    <button
-                      key={p.filename}
-                      type="button"
-                      className={`filmstrip-thumb${idx === pageIndex ? " active" : ""}`}
-                      onClick={() => goToPage(idx)}
-                      aria-label={`Go to ${p.filename}`}
-                      aria-selected={idx === pageIndex}
-                      title={p.filename}
-                    >
-                      {inWindow ? (
-                        <img
-                          src={pageImageUrl(folderId, p.page_number, { thumb: true })}
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      ) : (
-                        <span className="filmstrip-thumb-placeholder" aria-hidden="true" />
-                      )}
-                    </button>
-                  );
-                })}
+                {folder.pages.map((p, idx) => (
+                  <button
+                    key={p.filename}
+                    type="button"
+                    className={`filmstrip-thumb${idx === pageIndex ? " active" : ""}`}
+                    onClick={() => goToPage(idx)}
+                    aria-label={`Go to ${p.filename}`}
+                    aria-selected={idx === pageIndex}
+                    title={p.filename}
+                  >
+                    <img
+                      src={pageImageUrl(folderId, p.page_number, { thumb: true })}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  </button>
+                ))}
               </div>
             )}
           </section>
