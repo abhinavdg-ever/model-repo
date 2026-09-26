@@ -99,7 +99,11 @@ def fetch_chart_summaries_from_db(
     *,
     db_schema: str = "public",
 ) -> list[FolderSummary]:
-    """Landing rows from ``chart_list`` only (no disk walk)."""
+    """Landing rows from ``chart_list`` only (no disk walk).
+
+    Excludes ``source='local'`` intake rows — the review UI lists blob (and
+    non-empty manifest) charts only.
+    """
     conn = _connect(database_url, db_schema)
     if conn is None:
         return []
@@ -111,7 +115,8 @@ def fetch_chart_summaries_from_db(
                     SELECT chart_name, page_count, status, updated_at,
                            current_stage, run_id, batch_id
                       FROM chart_list
-                     WHERE source <> 'manifest' OR page_count > 0
+                     WHERE source <> 'local'
+                       AND (source <> 'manifest' OR page_count > 0)
                      ORDER BY updated_at DESC NULLS LAST, id DESC
                     """
                 )

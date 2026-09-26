@@ -177,7 +177,7 @@ export default function FolderViewer({
   >({});
   const [imagingDoc, setImagingDoc] = useState<ImagingDocumentResponse | null>(null);
   const [loadingFolder, setLoadingFolder] = useState(true);
-  const [loadingOcr, setLoadingOcr] = useState(false);
+  const [loadingOcr, setLoadingOcr] = useState(initialMode === "ocr");
   const [loadingImaging, setLoadingImaging] = useState(initialMode === "imaging");
   const [imagingError, setImagingError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -466,6 +466,39 @@ export default function FolderViewer({
     [imagingDoc, page],
   );
 
+  // One full-screen gate until folder + mode payload + first page image are ready.
+  const bootComplete = useMemo(() => {
+    if (error) return true;
+    if (loadingFolder || !folder) return false;
+    if (outputMode === "imaging") {
+      if (loadingImaging || (!imagingDoc && !imagingError)) return false;
+    } else if (loadingOcr || ocrByKind[ocrTab] === undefined) {
+      return false;
+    }
+    if (folder.pages.length > 0 && pageImageLoading) return false;
+    return true;
+  }, [
+    error,
+    loadingFolder,
+    folder,
+    outputMode,
+    loadingImaging,
+    imagingDoc,
+    imagingError,
+    loadingOcr,
+    ocrByKind,
+    ocrTab,
+    pageImageLoading,
+  ]);
+  const [bootDone, setBootDone] = useState(false);
+  useEffect(() => {
+    setBootDone(false);
+  }, [folderId]);
+  useEffect(() => {
+    if (bootComplete) setBootDone(true);
+  }, [bootComplete]);
+  const showBootOverlay = !bootDone && !error;
+
   const pageOcrText = useMemo(() => {
     if (loadingOcr) return "";
     if (!page) return "";
@@ -632,6 +665,9 @@ export default function FolderViewer({
   function changeMode(mode: OutputMode) {
     if (mode === "imaging" && !imagingDoc && !imagingError) {
       setLoadingImaging(true);
+    }
+    if (mode === "ocr" && ocrByKind[ocrTab] === undefined) {
+      setLoadingOcr(true);
     }
     setOutputMode(mode);
     onModeChange?.(mode);
@@ -806,6 +842,15 @@ export default function FolderViewer({
 
   return (
     <div className="workspace">
+      {showBootOverlay ? (
+        <div className="chart-boot-overlay" role="status" aria-live="polite" aria-busy="true">
+          <div className="chart-boot-card">
+            <span className="imaging-loading-spinner chart-boot-spinner" aria-hidden="true" />
+            <p className="chart-boot-title">Loading results…</p>
+            <p className="chart-boot-sub">{folder?.name ?? folderId}</p>
+          </div>
+        </div>
+      ) : null}
       <div className="workspace-header">
         <div className="workspace-header-start">
           <button type="button" className="back-btn" onClick={onBack}>
@@ -999,12 +1044,11 @@ export default function FolderViewer({
                 />
               ) : null}
             </div>
-            {folder && folder.pages.length > 0 && (
+            {bootDone && folder && folder.pages.length > 0 && (
               <div className="filmstrip" role="listbox" aria-label="Page thumbnails">
                 {folder.pages.map((p, idx) => {
-                  // Nearby thumbs only — full-res filmstrip starved the main
-                  // page image and imaging API on large charts.
-                  const inWindow = Math.abs(idx - pageIndex) <= 14;
+                  // Nearby thumbs only — keep bandwidth for the main page.
+                  const inWindow = Math.abs(idx - pageIndex) <= 6;
                   return (
                     <button
                       key={p.filename}

@@ -1366,6 +1366,24 @@ class LocalFolderRepository(FolderRepository):
         return summaries
 
     def get_folder(self, folder_id: str) -> FolderDetail:
+        """Prefer Postgres page_list when DATABASE_URL works — disk walks are slow."""
+        if self.database_url:
+            try:
+                from app.adapters.postgres.repository import PostgresFolderRepository
+                from app.services.chart_run_batch import database_url_usable
+
+                if database_url_usable(self.database_url):
+                    db_detail = PostgresFolderRepository(
+                        self.database_url,
+                        data_root=self.data_root,
+                        metadata_root=self.metadata_root,
+                        db_schema=self.db_schema,
+                    )._folder_from_db(folder_id)
+                    if db_detail is not None and db_detail.pages:
+                        return db_detail
+            except Exception:
+                pass
+
         folder_dir = self._folder_dir(folder_id)
         pages = self._page_files(folder_dir)
         has_prelim = self._has_ocr(folder_dir, "preliminary")

@@ -213,10 +213,73 @@ class PostgresFolderRepository(FolderRepository):
         return out
 
     def _folder_from_db(self, folder_id: str) -> FolderDetail | None:
-        pages = self._pages_from_db(folder_id)
-        if not pages:
+        """Build FolderDetail in one DB connection (pages + OCR flags + chart meta)."""
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT id, status, current_stage, run_id, batch_id
+                          FROM chart_list
+                         WHERE chart_name = %s
+                         LIMIT 1
+                        """,
+                        (folder_id,),
+                    )
+                    chart = cur.fetchone()
+                    if not chart:
+                        return None
+                    chart_id, status_raw, stage_raw, run_id, batch_id = chart
+
+                    cur.execute(
+                        """
+                        SELECT page_number, page_name
+                          FROM page_list
+                         WHERE chart_id = %s
+                         ORDER BY page_number NULLS LAST, id
+                        """,
+                        (chart_id,),
+                    )
+                    page_rows = cur.fetchall()
+                    if not page_rows:
+                        return None
+
+                    cur.execute(
+                        """
+                        SELECT p.page_name, o.ocr_type
+                          FROM ocr_results o
+                          JOIN page_list p ON p.id = o.page_id
+                         WHERE o.chart_id = %s
+                           AND o.raw_text IS NOT NULL
+                           AND length(trim(o.raw_text)) > 0
+                        """,
+                        (chart_id,),
+                    )
+                    flag_rows = cur.fetchall()
+
+                    cur.execute(
+                        """
+                        SELECT member_name, member_dob, external_member_id
+                          FROM manifest_member_list
+                         WHERE record_id = %s
+                         ORDER BY id
+                         LIMIT 1
+                        """,
+                        (folder_id,),
+                    )
+                    man = cur.fetchone()
+        except Exception as exc:
+            logger.warning("folder_from_db failed for %s: %s", folder_id, exc)
             return None
-        flags = self._ocr_flags_from_db(folder_id) or {}
+
+        pages: list[tuple[int, str]] = []
+        for idx, (num, name) in enumerate(page_rows, start=1):
+            pages.append((int(num or idx), str(name)))
+
+        flags: dict[str, dict[str, bool]] = {}
+        for page_name, ocr_type in flag_rows:
+            flags.setdefault(str(page_name), {})[str(ocr_type)] = True
+
         page_summaries = [
             PageSummary(
                 page_number=num,
@@ -240,7 +303,13 @@ class PostgresFolderRepository(FolderRepository):
             for k in ("tesseract", "docling", "azuredocintel")
             if k in kinds_present
         )
-        chart_status = self._chart_status(folder_id)
+
+        status = str(status_raw or "").lower()
+        stage = str(stage_raw or "").lower()
+        if status == "processing" and stage:
+            chart_status = stage
+        else:
+            chart_status = status or None
         ocr_status = CHART_STATUS_TO_OCR.get(
             str(chart_status or "").lower(), "QUEUED"
         )
@@ -248,12 +317,16 @@ class PostgresFolderRepository(FolderRepository):
             ocr_status = "IMAGING_IN_PROGRESS"
         elif ocr_status == "QUEUED" and ocr_processed > 0:
             ocr_status = "IN_PROGRESS"
-        run_id, batch_id = self._chart_run_batch(folder_id)
+
         manifest = None
-        try:
-            manifest = self._manifest_from_db(folder_id)
-        except HTTPException:
-            manifest = None
+        if man:
+            name, dob, member_id = man
+            manifest = ImagingManifestDetails(
+                member=name,
+                dob=_fmt_date(dob),
+                memberId=member_id,
+            )
+
         return FolderDetail(
             id=folder_id,
             name=folder_id,
@@ -262,14 +335,22 @@ class PostgresFolderRepository(FolderRepository):
             imaging_processed=0,
             ocr_status=ocr_status,  # type: ignore[arg-type]
             last_updated_at=None,
-            run_id=run_id,
-            batch_id=batch_id,
+            run_id=str(run_id) if run_id else None,
+            batch_id=str(batch_id) if batch_id else None,
             manifest=manifest,
             pages=page_summaries,
         )
 
     def get_folder(self, folder_id: str) -> FolderDetail:
-        """Pages from local workspace when present; else page_list. OCR flags from DB."""
+        """Pages + OCR flags from Postgres first — avoid a local disk walk on open.
+
+        Local workspace is only a fallback when the chart is absent from page_list
+        (pure Local Mode folders with no DB row).
+        """
+        db_detail = self._folder_from_db(folder_id)
+        if db_detail is not None and db_detail.pages:
+            return db_detail
+
         local = self._optional_local()
         detail: FolderDetail | None = None
         if local is not None:
@@ -280,88 +361,11 @@ class PostgresFolderRepository(FolderRepository):
             except Exception:
                 detail = None
         if detail is None or not detail.pages:
-            db_detail = self._folder_from_db(folder_id)
-            if db_detail is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Chart not found: {folder_id}",
-                )
-            return db_detail
-
-        flags = self._ocr_flags_from_db(folder_id)
-        if flags is None:
-            if detail.manifest is None:
-                try:
-                    detail.manifest = self._manifest_from_db(folder_id)
-                except HTTPException:
-                    pass
-            return detail
-
-        pages: list[PageSummary] = []
-        for p in detail.pages:
-            page_flags = flags.get(p.filename, {})
-            pages.append(
-                PageSummary(
-                    page_number=p.page_number,
-                    filename=p.filename,
-                    image_url=p.image_url,
-                    has_preliminary_ocr=bool(page_flags.get("tesseract")),
-                    has_final1_ocr=bool(page_flags.get("docling")),
-                    has_final2_ocr=bool(page_flags.get("azuredocintel")),
-                    has_imaging=p.has_imaging,
-                )
+            raise HTTPException(
+                status_code=404,
+                detail=f"Chart not found: {folder_id}",
             )
-
-        kinds_present = {
-            k
-            for page_flags in flags.values()
-            for k, ok in page_flags.items()
-            if ok
-        }
-        ocr_processed = sum(
-            1
-            for k in ("tesseract", "docling", "azuredocintel")
-            if k in kinds_present
-        )
-        chart_status = self._chart_status(folder_id)
-        if chart_status and chart_status in CHART_STATUS_TO_OCR:
-            ocr_status = CHART_STATUS_TO_OCR[chart_status]
-            if ocr_status == "IN_PROGRESS" and ocr_processed == 3:
-                ocr_status = "IMAGING_IN_PROGRESS"
-            elif ocr_status == "QUEUED" and ocr_processed > 0:
-                ocr_status = "IN_PROGRESS"
-        elif ocr_processed == 3:
-            ocr_status = detail.ocr_status
-            if ocr_status not in (
-                "IMAGING_COMPLETED",
-                "IMAGING_IN_PROGRESS",
-                "COMPLETED",
-            ):
-                ocr_status = "COMPLETED"
-        elif ocr_processed > 0:
-            ocr_status = "IN_PROGRESS"
-        else:
-            ocr_status = "QUEUED"
-
-        run_id, batch_id = self._chart_run_batch(folder_id)
-        manifest = None
-        try:
-            manifest = self._manifest_from_db(folder_id)
-        except HTTPException:
-            manifest = detail.manifest if detail else None
-        return FolderDetail(
-            id=detail.id,
-            name=detail.name,
-            page_count=detail.page_count,
-            ocr_processed=ocr_processed,
-            imaging_processed=detail.imaging_processed,
-            ocr_status=ocr_status,  # type: ignore[arg-type]
-            last_updated_at=detail.last_updated_at,
-            run_id=run_id or detail.run_id,
-            batch_id=batch_id or detail.batch_id,
-            manifest=manifest or detail.manifest,
-            pages=pages,
-        )
+        return detail
 
     def get_page_image_path(self, folder_id: str, page_number: int) -> Path:
         """Local path when a workspace copy exists (fallback for the image route)."""
