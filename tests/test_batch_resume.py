@@ -185,3 +185,55 @@ def test_large_means_more_than_the_threshold():
 
     assert not is_large_chart(LARGE_CHART_MIN_PAGES)
     assert is_large_chart(LARGE_CHART_MIN_PAGES + 1)
+
+
+def _run_one(monkeypatch, *, force, skip_completed):
+    """Drive _run_one_chart for a chart the DB says is finished."""
+    import threading
+    from contextlib import contextmanager
+
+    import db
+    import db.chart_status as chart_status
+    from jobs import batch_intake as bi
+
+    ran: list[str] = []
+
+    @contextmanager
+    def fake_connect():
+        yield object()
+
+    monkeypatch.setattr(db, "connect", fake_connect)
+    monkeypatch.setattr(db, "get_chart_by_name", lambda conn, name: {"id": 1, "chart_name": name})
+    monkeypatch.setattr(chart_status, "chart_is_pipeline_complete", lambda conn, cid: True)
+    import orchestrator.runner as runner
+
+    monkeypatch.setattr(
+        runner, "ingest_and_run",
+        lambda **kw: ran.append(kw["blob_path"]) or {"chart_id": 1, "chart_name": "c1"},
+    )
+    monkeypatch.setattr(bi, "_note_progress", lambda *a, **k: None)
+    entry = bi._run_one_chart(
+        1, 1, "Raw/c1", "c1", "blob",
+        blob_container="cont", local_write_path=None, blob_write_path=None,
+        write_mode="skip_orig_pages", overwrite=True, force=force,
+        run_pipeline=True, only=None, through=None, skip_ocr=not force,
+        redownload_pages=False, skip_completed=skip_completed,
+        run_id=None, batch_id=None,
+        counters={"started": 0, "finished": 0}, counter_lock=threading.Lock(),
+    )
+    return entry, ran
+
+
+def test_skip_ocr_still_runs_finished_charts(monkeypatch):
+    """skip_ocr turns force off internally; that must NOT skip finished charts.
+    Regression: a 500-chart skip_ocr batch ran 0 charts ('already complete')."""
+    entry, ran = _run_one(monkeypatch, force=False, skip_completed=False)
+    assert ran == ["Raw/c1"]
+    assert entry["status"] == "completed"
+
+
+def test_skip_completed_skips_a_finished_chart(monkeypatch):
+    entry, ran = _run_one(monkeypatch, force=True, skip_completed=True)
+    assert ran == []
+    assert entry["status"] == "skipped"
+    assert entry["skip_reason"] == "already_complete"

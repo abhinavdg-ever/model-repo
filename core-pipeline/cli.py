@@ -422,6 +422,8 @@ def main() -> None:
                     skip_db_write=offline,
                     sample=args.sample,
                     chart_names=getattr(args, "chart_names", None),
+                    # --resume has always meant "skip charts that already finished".
+                    skip_completed=not args.force,
                     run_id=args.run_id,
                     batch_id=args.batch_id,
                     workers=args.workers,

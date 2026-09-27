@@ -461,6 +461,7 @@ def _run_one_chart(
     skip_ocr: Optional[bool],
     redownload_pages: bool,
     skip_db_write: bool = False,
+    skip_completed: bool = False,
     run_id: Optional[str],
     batch_id: Optional[str],
     counters: dict[str, int],
@@ -506,9 +507,11 @@ def _run_one_chart(
             "large_chart": is_large,
         }
         try:
-            # Resume: skip charts that already finished every phase-1 stage.
-            # skip_db_write has no durable Postgres status — always re-run.
-            if not force and not skip_db_write:
+            # skip_completed: a chart that finished after the batch was listed
+            # (the listing filter already dropped the rest). Deliberately NOT
+            # tied to force — skip_ocr turns force off and must still re-run
+            # finished charts. skip_db_write has no durable status: always run.
+            if skip_completed and not skip_db_write:
                 from db import connect, get_chart_by_name
                 from db.chart_status import chart_is_pipeline_complete
 
@@ -523,7 +526,7 @@ def _run_one_chart(
                             skip_reason="already_complete",
                         )
                         logger.info(
-                            "[skip %d/%d] %s already complete (resume)",
+                            "[skip %d/%d] %s already complete (skip_completed)",
                             index,
                             total,
                             name,
@@ -854,6 +857,7 @@ def _run_batch_inner(
                 skip_ocr=skip_ocr,
                 redownload_pages=redownload_pages,
                 skip_db_write=skip_db_write,
+                skip_completed=skip_completed,
                 run_id=run_id,
                 batch_id=batch_id,
                 counters=counters,
