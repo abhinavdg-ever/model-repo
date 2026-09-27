@@ -28,7 +28,7 @@ def _docling_result(content: str) -> dict:
 
 def _run(monkeypatch, tmp_path, *, convert, onnx_text="rapid text"):
     import stages.lib.ocr.docling_ocr as docling_ocr
-    import stages.ocr_final1_docling as final1
+    import stages.lib.ocr.stage_final1 as final1
 
     img = tmp_path / "1.jpg"
     img.write_bytes(b"x")

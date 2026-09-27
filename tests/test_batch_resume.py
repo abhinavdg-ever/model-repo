@@ -13,7 +13,7 @@ if str(CORE) not in sys.path:
 
 def test_blob_resume_does_not_wipe_when_force_false():
     """force=false must not clear workspace just because pages already exist."""
-    from stages import download_blob
+    from stages.utilities import download_blob
 
     src = inspect.getsource(download_blob.run_download)
     # Wipe only under force=True — not `force or had_local`.
@@ -23,12 +23,16 @@ def test_blob_resume_does_not_wipe_when_force_false():
 
 
 def test_local_resume_keeps_existing_pages():
-    from stages import download_blob
+    from stages.utilities import download_blob
 
     src = inspect.getsource(download_blob.import_local_folder)
-    assert "existing and not force" in src
-    assert "resumed" in src
-    assert "clear_chart_workspace" in src  # still used on force=True
+    # Existing workspace pages are reused, never re-copied from source.
+    assert "existing = list_local_pages(name)" in src
+    assert "register_local_pages(" in src
+    # force resets DB results only; page images go only on redownload_pages.
+    assert "reset_chart_results(" in src
+    assert "if redownload_pages:" in src
+    assert "clear_page_image_dirs(" in src
 
 
 def test_chart_is_pipeline_complete_logic():

@@ -3,7 +3,7 @@ Page orientation detection and correction.
 
 OpenCV + NumPy only. No OCR.
 
-Stage 2 (``stages/quality_rotation_hw.py``) is the only caller. The Azure blob
+Stage 2 (``stages/lib/image_preprocess/stage.py``) is the only caller. The Azure blob
 batch CLI that used to sit at the bottom of this file was removed: it crawled a
 blob prefix and wrote corrected images and a CSV report to the operator's
 Desktop, which is exactly what stage 2 now does properly, into Postgres and the

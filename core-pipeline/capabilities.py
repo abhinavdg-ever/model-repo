@@ -255,13 +255,7 @@ def dos_llm_status() -> dict[str, Any]:
 def ner_status() -> dict[str, Any]:
     """The GLiNER layer. Never raises — an optional feature's probe must not 500."""
     try:
-        import sys
-        from pathlib import Path
-
-        lib = str(Path(__file__).resolve().parent / "stages" / "lib")
-        if lib not in sys.path:
-            sys.path.insert(0, lib)
-        from member import ner_status as _ner_status
+        from stages.lib.member import ner_status as _ner_status
 
         return _ner_status()
     except Exception as exc:

@@ -1,6 +1,6 @@
 """Member extraction + verification, ported from V1 Member_Verification.
 
-Public surface used by stages/member_extract_verify.py.
+Public surface used by stages/lib/member/stage.py.
 """
 from .extractors.ner_based.config import ner_status
 from .engine import (

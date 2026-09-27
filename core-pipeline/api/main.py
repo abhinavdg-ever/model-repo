@@ -1027,7 +1027,7 @@ def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, 
 
     if has_local:
         from db import test_chart_name
-        from stages.download_blob import import_local_folder
+        from stages.utilities.download_blob import import_local_folder
 
         source = str(Path(body.local_read_path) / folder)
         workspace_name = test_chart_name(folder) if body.wants_offline() else folder

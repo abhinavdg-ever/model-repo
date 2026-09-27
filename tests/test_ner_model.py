@@ -29,16 +29,26 @@ def _reload_ner_config(monkeypatch, **env):
             monkeypatch.delenv(key, raising=False)
         else:
             monkeypatch.setenv(key, value)
-    import member.extractors.ner_based.config as cfg
+    import stages.lib.member.extractors.ner_based.config as cfg
 
     return importlib.reload(cfg)
+
+
+@pytest.fixture(autouse=True)
+def _ignore_local_dotenv(monkeypatch):
+    """ner_based.config reloads core-pipeline/.env with override=True on import,
+    which would replace the values each test sets. Tests describe behaviour for
+    a given environment, so the developer's .env must not leak in."""
+    import dotenv
+
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: False)
 
 
 class TestModelCatalog:
     """Which ids are valid, and the folder each maps to."""
 
     def test_the_three_known_ids(self):
-        from member.extractors.ner_based.catalog import MODELS
+        from stages.lib.member.extractors.ner_based.catalog import MODELS
 
         assert [m["id"] for m in MODELS] == [
             "gliner_large",
@@ -48,14 +58,14 @@ class TestModelCatalog:
 
     def test_id_and_folder_differ_where_the_name_does(self):
         """gliner_low maps to the *small* HF repo — easy to assume otherwise."""
-        from member.extractors.ner_based.catalog import by_id
+        from stages.lib.member.extractors.ner_based.catalog import by_id
 
         assert by_id("gliner_low")["repo"] == "urchade/gliner_small-v2.1"
         assert by_id("gliner_low")["folder"] == "gliner_low"
         assert by_id("gliner_medium")["folder"] == "gliner_medium-v2.1"
 
     def test_an_unknown_id_is_rejected_by_name(self):
-        from member.extractors.ner_based.catalog import by_id
+        from stages.lib.member.extractors.ner_based.catalog import by_id
 
         with pytest.raises(Exception) as exc:
             by_id("gliner_enormous")
@@ -116,25 +126,25 @@ class TestDownloaderSelection:
 
     def test_defaults_to_the_configured_model_only(self, monkeypatch):
         monkeypatch.setenv("MEMBER_NER_MODEL_ID", "gliner_large")
-        import member.extractors.ner_based.config as cfg
+        import stages.lib.member.extractors.ner_based.config as cfg
 
         importlib.reload(cfg)
-        from member.extractors.ner_based.model_downloader import __main__ as dl
+        from stages.lib.member.extractors.ner_based.model_downloader import __main__ as dl
 
         importlib.reload(dl)
         assert [m.SPEC["id"] for m in dl._selected(False)] == ["gliner_large"]
 
     def test_all_fetches_everything(self):
-        from member.extractors.ner_based.model_downloader import __main__ as dl
+        from stages.lib.member.extractors.ner_based.model_downloader import __main__ as dl
 
         assert len(dl._selected(True)) == 3
 
     def test_an_unknown_configured_model_fails_loudly(self, monkeypatch):
         monkeypatch.setenv("MEMBER_NER_MODEL_ID", "not_a_model")
-        import member.extractors.ner_based.config as cfg
+        import stages.lib.member.extractors.ner_based.config as cfg
 
         importlib.reload(cfg)
-        from member.extractors.ner_based.model_downloader import __main__ as dl
+        from stages.lib.member.extractors.ner_based.model_downloader import __main__ as dl
 
         importlib.reload(dl)
         with pytest.raises(SystemExit) as exc:
@@ -147,13 +157,13 @@ class TestDownloaderSelection:
 
 def _ner_is_installed_and_downloaded() -> tuple[bool, str]:
     try:
-        import member.extractors.ner_based.config as cfg
+        import stages.lib.member.extractors.ner_based.config as cfg
     except Exception as exc:  # pragma: no cover
         return False, f"config not importable: {exc}"
     installed, detail = cfg.deps_installed()
     if not installed:
         return False, detail
-    from member.extractors.ner_based.model import missing_weights
+    from stages.lib.member.extractors.ner_based.model import missing_weights
 
     missing = missing_weights([cfg.MEMBER_NER_MODEL_ID])
     if missing:
@@ -174,23 +184,23 @@ class TestRealModelLoads:
     """
 
     def test_the_configured_model_loads(self):
-        import member.extractors.ner_based.config as cfg
-        from member.extractors.ner_based.model import get_backend
+        import stages.lib.member.extractors.ner_based.config as cfg
+        from stages.lib.member.extractors.ner_based.model import get_backend
 
         spec, backend = get_backend(cfg.MEMBER_NER_MODEL_ID)
         assert spec["id"] == cfg.MEMBER_NER_MODEL_ID
         assert backend is not None
 
     def test_it_predicts_entities_on_a_page_of_text(self):
-        import member.extractors.ner_based.config as cfg
-        from member.extractors.ner_based.model import predict_entities
+        import stages.lib.member.extractors.ner_based.config as cfg
+        from stages.lib.member.extractors.ner_based.model import predict_entities
 
         text = "Patient Name: Justin Anderson  DOB: 08/29/1954  Member ID: A9000603900"
         found = predict_entities(text, model_id=cfg.MEMBER_NER_MODEL_ID)
         assert isinstance(found, (list, tuple))
 
     def test_loading_an_unknown_model_raises_modelloaderror(self):
-        from member.extractors.ner_based.model import ModelLoadError, get_backend
+        from stages.lib.member.extractors.ner_based.model import ModelLoadError, get_backend
 
         with pytest.raises((ModelLoadError, Exception)):
             get_backend("gliner_enormous")

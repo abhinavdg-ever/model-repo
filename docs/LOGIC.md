@@ -22,7 +22,7 @@ the V1 prototypes. Where the port differs from them, it says so and why.
 
 ## 1. Preliminary OCR
 
-**Source:** V1 `ts_ocr.py` · **Stage:** `stages/ocr_prelim_tesseract.py`
+**Source:** V1 `ts_ocr.py` · **Stage:** `stages/lib/ocr/stage_prelim.py`
 
 > Reads `corrected-pages/<n>.jpg` when stage 1 wrote one, else `pages/<n>.jpg`.
 > A 270°-rotated page OCRs at ~0.01 text similarity to the same page upright;
@@ -57,7 +57,7 @@ still produces a file covering all pages — not just the ones it touched.
 
 ## 2. Rotation and handwriting
 
-**Source:** `stages/lib/image_preprocess/rotation.py`, `hw_printed.py` · **Stage:** `stages/quality_rotation_hw.py`
+**Source:** `stages/lib/image_preprocess/rotation.py`, `hw_printed.py` · **Stage:** `stages/lib/image_preprocess/stage.py`
 
 Two independent measurements per page.
 
@@ -120,7 +120,7 @@ classifier method; that value now lives in `hw_method`.
 
 ## 3. Blank / junk / duplicate
 
-**Source:** `advantmed-imaging-ui/02-imaging-pipeline/junk-classification/` → `stages/lib/blank_junk/` · **Stage:** `stages/blank_junk_classify.py`
+**Source:** `advantmed-imaging-ui/02-imaging-pipeline/junk-classification/` → `stages/lib/blank_junk/` · **Stage:** `stages/lib/blank_junk/stage.py`
 
 ### Why two passes
 
@@ -214,7 +214,7 @@ Downstream stages read `v_page_blank_junk_final` and never re-derive precedence.
 
 ## 4. Final OCR
 
-**Stages:** `stages/ocr_final1_docling.py` (Docling layout + RapidOCR; falls back to RapidOCR-onnx only on a page timeout or a crash), `stages/ocr_final2_azure.py` (Azure Document Intelligence `prebuilt-read`)
+**Stages:** `stages/lib/ocr/stage_final1.py` (Docling layout + RapidOCR; falls back to RapidOCR-onnx only on a page timeout or a crash), `stages/lib/ocr/stage_final2.py` (Azure Document Intelligence `prebuilt-read`)
 
 Both run on pages not ruled out by pass 1, **plus every handwritten /
 low-quality page**. Azure final2 additionally **skips high-quality printed**
@@ -255,7 +255,7 @@ Member/DOS then use final1 (and prelim only for printed non-low-quality pages).
 ## 5. Member verification
 
 **Source:** V1 `Member_Verification/` (~2,800 lines) → `core-pipeline/stages/lib/member/`
-**Stage:** `stages/member_extract_verify.py`
+**Stage:** `stages/lib/member/stage.py`
 
 This stage produces the accept/reject decision. It is a faithful port — function
 names, call order and thresholds match the reference so a run is diffable
@@ -449,7 +449,7 @@ confidence — it reported detection source per field, which is what the UI show
 
 ## 6. Date of service
 
-**Source:** `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/` → `stages/lib/dos/` · **Stage:** `stages/dos_extract.py`
+**Source:** `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/` → `stages/lib/dos/` · **Stage:** `stages/lib/dos/stage.py`
 
 The stage calls the reference's own driver, `dos_logic.detect_dos_per_page()` —
 the same entry point `extract_dos.py` uses. That driver owns the page splitting,

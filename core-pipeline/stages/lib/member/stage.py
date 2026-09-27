@@ -27,7 +27,7 @@ import sys
 from datetime import date, datetime
 from typing import Any, Optional
 
-from config import CORE_ROOT, MEMBER_NER_ENABLED, MEMBER_NER_MODEL_ID
+from config import MEMBER_NER_ENABLED, MEMBER_NER_MODEL_ID
 from db import (
     connect,
     get_blank_junk_flags,
@@ -50,11 +50,9 @@ from stages._support import (
     stage_run,
 )
 
-_LIB = CORE_ROOT / "stages" / "lib"
-if str(_LIB) not in sys.path:
-    sys.path.insert(0, str(_LIB))
-
-from member import (  # noqa: E402  (resolved at runtime via _LIB above)
+# Imported by its package name only. A second name (a bare ``member`` via a
+# sys.path insert) would load the engine twice with separate module state.
+from stages.lib.member import (
     DETECTION_SOURCE_DB,
     detect_name_mode,
     expected_from_manifest,

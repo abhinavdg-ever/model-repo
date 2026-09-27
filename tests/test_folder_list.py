@@ -109,5 +109,5 @@ def test_quick_page_count(tmp_path):
     pages.mkdir(parents=True)
     (pages / "1.jpg").write_bytes(b"x")
     (pages / "2.png").write_bytes(b"x")
-    (pages / "note.txt").write_text("no")
+    (pages / "note.txt").write_text("no", encoding="utf-8")
     assert quick_page_count(chart) == 2

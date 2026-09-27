@@ -7,7 +7,7 @@ applied, and what you still need to do on each machine.
 
 Standalone package `image_preprocessing/` — page quality, printed vs
 handwritten, OSD rotation, tilt, mirror measurement. Same problem space as
-**stage 1** (`ocr_quality` → `stages/quality_rotation_hw.py` +
+**stage 1** (`ocr_quality` → `stages/lib/image_preprocess/stage.py` +
 `stages/lib/image_preprocess/`).
 
 | Zip path | Our path |

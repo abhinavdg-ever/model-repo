@@ -151,7 +151,7 @@ When OCR artifacts already exist, the orchestrator:
 2. **Force-refreshes** `ocr_quality` (rotation + HW + measured quality).
 3. Compares each page’s gate signature
    `(hw_class, quality_tag, rotation_applied, orientation_bucket)` to the
-   pre-run snapshot (`core-pipeline/stages/gate_delta.py`).
+   pre-run snapshot (`core-pipeline/stages/utilities/gate_delta.py`).
 4. Sets OCR-related `page_stage_status` rows back to pending only when
    artifacts are missing or the gate path changed (so OCR engines may re-run
    for those pages).

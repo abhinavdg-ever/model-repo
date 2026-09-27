@@ -14,7 +14,7 @@ for path in (str(CORE), str(ROOT)):
 
 def test_ocr_artifacts_present(tmp_path, monkeypatch):
     import config
-    from stages.ocr_reuse import ocr_artifacts_present
+    from stages.lib.ocr.reuse import ocr_artifacts_present
 
     monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
     chart = "chartA"
@@ -32,7 +32,7 @@ def test_ocr_artifacts_present(tmp_path, monkeypatch):
 
 def test_ocr_artifacts_final1_json(tmp_path, monkeypatch):
     import config
-    from stages.ocr_reuse import ocr_artifacts_present
+    from stages.lib.ocr.reuse import ocr_artifacts_present
 
     monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
     chart = "chartB"
@@ -51,7 +51,7 @@ def test_ocr_artifacts_final1_json(tmp_path, monkeypatch):
 
 
 def test_page_doc_from_raw_preserves_json_envelope():
-    from stages.ocr_reuse import _page_doc_from_raw
+    from stages.lib.ocr.reuse import _page_doc_from_raw
 
     raw = json.dumps(
         {
@@ -73,7 +73,7 @@ def test_page_doc_from_raw_preserves_json_envelope():
 
 def test_should_skip_prefers_disk_then_needs_db(tmp_path, monkeypatch):
     import config
-    from stages.ocr_reuse import should_skip_ocr_stages
+    from stages.lib.ocr.reuse import should_skip_ocr_stages
 
     monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
     monkeypatch.setattr(config, "SKIP_OCR", False)
@@ -97,7 +97,7 @@ def test_should_skip_prefers_disk_then_needs_db(tmp_path, monkeypatch):
 
 def test_copy_ocr_from_output_folder_into_workspace(tmp_path, monkeypatch):
     import config
-    from stages.ocr_reuse import (
+    from stages.lib.ocr.reuse import (
         _copy_ocr_dir_into_workspace,
         _local_output_ocr_candidates,
         ocr_artifacts_in_dir,

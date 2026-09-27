@@ -38,7 +38,7 @@ def candidates_from_azure_pages_meta(
     image_size: Optional[tuple[float, float]] = None,
 ) -> list[dict[str, Any]]:
     """Rebuild Final2 header candidates from stored ``pagesMeta[].lines``."""
-    from stages.ocr_final2_azure import candidates_from_lines
+    from stages.lib.ocr.stage_final2 import candidates_from_lines
 
     pages_meta = page.get("pagesMeta") or page.get("pages_meta") or []
     if not isinstance(pages_meta, list):

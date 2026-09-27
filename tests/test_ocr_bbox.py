@@ -131,7 +131,7 @@ def test_review_ui_azure_inches_not_mixed_with_image_pixels():
 
 
 def test_azure_section_headers_pixel_2x_uses_image():
-    from stages.ocr_final2_azure import _section_headers_from_lines
+    from stages.lib.ocr.stage_final2 import _section_headers_from_lines
 
     lines = [
         {
@@ -154,7 +154,7 @@ def test_azure_section_headers_pixel_2x_uses_image():
 
 
 def test_azure_line_polygon_to_section_headers():
-    from stages.ocr_final2_azure import (
+    from stages.lib.ocr.stage_final2 import (
         _flatten_polygon,
         _page_meta,
         _section_headers_from_lines,

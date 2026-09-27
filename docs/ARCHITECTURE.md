@@ -219,8 +219,8 @@ still renders.
 | File | Role |
 |---|---|
 | `capabilities.py` | What each optional feature can actually do right now — blob, Azure DI, the DOS LLM, GLiNER — and the one precondition each is missing. Read by both the startup banner and `GET /health`, so they cannot disagree. Configuration only; opens no sockets, except `probe_blob()` which startup calls once, bounded. |
-| `imaging/osd.py` | Coarse page orientation from Tesseract OSD — the clockwise rotation to apply, with a confidence floor, declining rather than guessing on a sparse page. Replaces the geometric detector's coarse step, which recovered 0 of 6 sideways pages at confidence 1.000. |
-| `quality_rotation_hw.py` | **Stage 1**, moved ahead of OCR so every pass reads an upright page. Always measures orientation/tilt/mirror; writes `corrected-pages/<n>.jpg` only when `ROTATION_CORRECTION_ENABLED` and only for pages that change. `rotation_applied` means a corrected file exists, not that the page looked crooked. |
+| `stages/lib/image_preprocess/osd.py` | Coarse page orientation from Tesseract OSD — the clockwise rotation to apply, with a confidence floor, declining rather than guessing on a sparse page. Replaces the geometric detector's coarse step, which recovered 0 of 6 sideways pages at confidence 1.000. |
+| `stages/lib/image_preprocess/stage.py` | **Stage 1**, moved ahead of OCR so every pass reads an upright page. Always measures orientation/tilt/mirror; writes `corrected-pages/<n>.jpg` only when `ROTATION_CORRECTION_ENABLED` and only for pages that change. `rotation_applied` means a corrected file exists, not that the page looked crooked. |
 | `config.py` | Every environment-driven setting in one place: database URL, data roots, Azure credentials, feature flags (`MEMBER_NER_ENABLED`, `DOS_LLM_ENABLED`), `STAGE_WORKERS`, and the `chart_dir` / `pages_dir` / `ocr_dir` / `imaging_dir` path helpers. |
 | `cli.py` | Command-line entry: `serve`, `run`, `batch`, `write`, `rerun`, `stages`, `status`, `manifest`. Mirrors the API one-for-one, without the HTTP hop. |
 | `requirements.txt` | Python dependencies for the service. |
@@ -260,21 +260,27 @@ still renders.
 | `manifest_sweeper.py` | Batch manifest loader. Parses CSV/XLSX from a file, directory or blob prefix; recognises the column aliases; splits name parts; derives `run_id`/`batch_id` from the `R#_B#` filename; upserts on `record_id`. Creates no placeholder charts. |
 | `__init__.py` | Package marker. |
 
-### `core-pipeline/stages/` — the nine stages
+### Stage runners
+
+Shared plumbing stays in `core-pipeline/stages/` (`_support.py`) and `stages/utilities/`; each stage runner lives next to its engine under `stages/lib/<module>/`.
 
 | File | Role |
 |---|---|
 | `_support.py` | Shared stage plumbing: the `stage_run()` context manager (job row, page load, resume set, job close), `mark_processing` / `mark_completed` / `mark_failed` / `mark_skipped`, and the shared eligibility rule. Keeps each stage about its actual work. |
-| `download_blob.py` | **Intake.** Upserts the chart, downloads page images (skipping bytes already on disk), records SHA-256 + size, seeds `page_stage_status`, links manifest rows swept earlier. `import_local_folder()` is the local-source equivalent; `register_local_pages()` registers a folder already under `data/folders`. |
-| `ocr_prelim_tesseract.py` | **Stage 2.** Tesseract over every page (the corrected image when one exists), threaded to `STAGE_WORKERS`. Writes `ocr_results` and rebuilds `_prelim.txt`. |
-| `quality_rotation_hw.py` | **Stage 1.** Rotation, handwriting (ConvNeXt or RF), and measured quality analyzer. Writes `ocr_quality_results` plus rotation / hw / quality CSVs. |
-| `blank_junk_classify.py` | **Stages 3 and 7.** Both passes: eligibility, ±2-neighbor similarity duplicates, the subtype mapping into the schema's constrained vocabulary, `mark_blank_junk_final`, and a full CSV rewrite from the database. |
-| `ocr_final1_docling.py` | **Stage 4.** Docling+RapidOCR when ready; else RapidOCR-onnx only. Stores as `ocr_type='docling'` — the UI's "Final (OSS)" slot. Writes `section_header_candidates`. |
-| `ocr_final2_azure.py` | **Stage 5.** Azure Document Intelligence `prebuilt-read`, one shared client. Skips high-quality printed pages. The billed stage, so the resume path matters most here. |
-| `section_headers.py` | **Stage 6.** Re-derives `section_headers` from on-disk Final1/Final2 JSON (candidates / `pagesMeta` / `document`) against the canon list — no OCR. |
-| `gate_delta.py` | Adaptive skip_ocr: compare quality/rotation gate signatures and reopen only affected `page_stage_status` rows. |
-| `member_extract_verify.py` | **Stage 8.** Plumbing around the ported engine: picks the manifest row, chooses eligible pages, assembles the best text per page, runs `verify_record`, persists page rows and the summary, writes three CSVs including the V1-shaped comparison file. |
-| `dos_extract.py` | **Stage 9.** Builds the marker-delimited text, calls the ported driver `detect_dos_per_page` (regex → LLM → carry-forward), persists the primary pair plus every date, writes the DOS CSV. |
+| `utilities/download_blob.py` | **Intake.** Upserts the chart, downloads page images (skipping bytes already on disk), records SHA-256 + size, seeds `page_stage_status`, links manifest rows swept earlier. `import_local_folder()` is the local-source equivalent; `register_local_pages()` registers a folder already under `data/folders`. |
+| `lib/ocr/stage_prelim.py` | **Stage 2.** Tesseract over every page (the corrected image when one exists), threaded to `STAGE_WORKERS`. Writes `ocr_results` and rebuilds `_prelim.txt`. |
+| `lib/image_preprocess/stage.py` | **Stage 1.** Rotation, handwriting (ConvNeXt or RF), and measured quality analyzer. Writes `ocr_quality_results` plus rotation / hw / quality CSVs. |
+| `lib/blank_junk/stage.py` | **Stages 3 and 7.** Both passes: eligibility, ±2-neighbor similarity duplicates, the subtype mapping into the schema's constrained vocabulary, `mark_blank_junk_final`, and a full CSV rewrite from the database. |
+| `lib/ocr/stage_final1.py` | **Stage 4.** Docling+RapidOCR when ready; else RapidOCR-onnx only. Stores as `ocr_type='docling'` — the UI's "Final (OSS)" slot. Writes `section_header_candidates`. |
+| `lib/ocr/stage_final2.py` | **Stage 5.** Azure Document Intelligence `prebuilt-read`, one shared client. Skips high-quality printed pages. The billed stage, so the resume path matters most here. |
+| `lib/ocr/stage_section_headers.py` | **Stage 6.** Re-derives `section_headers` from on-disk Final1/Final2 JSON (candidates / `pagesMeta` / `document`) against the canon list — no OCR. |
+| `utilities/gate_delta.py` | Adaptive skip_ocr: compare quality/rotation gate signatures and reopen only affected `page_stage_status` rows. |
+| `lib/member/stage.py` | **Stage 8.** Plumbing around the ported engine: picks the manifest row, chooses eligible pages, assembles the best text per page, runs `verify_record`, persists page rows and the summary, writes three CSVs including the V1-shaped comparison file. |
+| `lib/dos/stage.py` | **Stage 9.** Builds the marker-delimited text, calls the ported driver `detect_dos_per_page` (regex → LLM → carry-forward), persists the primary pair plus every date, writes the DOS CSV. |
+| `lib/ocr/reuse.py` | skip_ocr: reuse on-disk OCR artifacts instead of re-running OCR stages. |
+| `lib/page_classify/stage.py` | Page type / codeability (`page_subtype`). |
+| `lib/encounter/stage.py` | Encounter type (`encounter_type`). |
+| `lib/sequencing/stage.py` | Page sequencing (`page_sequencing`). |
 | `__init__.py` | Package marker. |
 
 ### `core-pipeline/stages/lib/` — layout

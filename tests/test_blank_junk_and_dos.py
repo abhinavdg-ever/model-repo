@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from stages.blank_junk_classify import SUBTYPE_DB, _classify, _to_db_flag
-from stages.dos_extract import _date_rows, _split_dates
+from stages.lib.blank_junk.stage import SUBTYPE_DB, _classify, _to_db_flag
+from stages.lib.dos.stage import _date_rows, _split_dates
 
 
 def page(page_id: int, number: int):

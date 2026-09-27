@@ -23,20 +23,19 @@ from typing import Any, Callable, Optional
 from db import connect, create_job, get_chart, set_chart_status, update_job
 from db.chart_status import refresh_chart_status
 from stages._support import stage_label
-from stages import (
-    blank_junk_classify,
-    dos_extract,
-    encounter_type,
-    member_extract_verify,
-    ocr_final1_docling,
-    ocr_final2_azure,
-    ocr_prelim_tesseract,
-    page_sequencing,
-    page_subtype,
-    quality_rotation_hw,
-    section_headers,
-)
-from stages.download_blob import run_download
+# Each stage runner lives next to its engine in stages/lib/<module>/.
+from stages.lib.blank_junk import stage as blank_junk_classify
+from stages.lib.dos import stage as dos_extract
+from stages.lib.encounter import stage as encounter_type
+from stages.lib.image_preprocess import stage as quality_rotation_hw
+from stages.lib.member import stage as member_extract_verify
+from stages.lib.ocr import stage_final1 as ocr_final1_docling
+from stages.lib.ocr import stage_final2 as ocr_final2_azure
+from stages.lib.ocr import stage_prelim as ocr_prelim_tesseract
+from stages.lib.ocr import stage_section_headers as section_headers
+from stages.lib.page_classify import stage as page_subtype
+from stages.lib.sequencing import stage as page_sequencing
+from stages.utilities.download_blob import run_download
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +153,7 @@ def run_pipeline_for_chart(
         update_job(conn, job_id, started=True)
         progress = refresh_chart_status(conn, chart_id)
 
-    from stages.download_blob import ensure_chart_images
+    from stages.utilities.download_blob import ensure_chart_images
 
     try:
         image_info = ensure_chart_images(
@@ -221,7 +220,7 @@ def run_pipeline_for_chart(
         gate_delta_applied = False
 
         from config import SKIP_OCR
-        from stages.ocr_reuse import apply_skip_ocr, should_skip_ocr_stages
+        from stages.lib.ocr.reuse import apply_skip_ocr, should_skip_ocr_stages
 
         skip_requested = (SKIP_OCR if skip_ocr is None else bool(skip_ocr)) and not force
         will_reuse_ocr = should_skip_ocr_stages(
@@ -235,7 +234,7 @@ def run_pipeline_for_chart(
         # skip_ocr always refreshes quality/rotation/corrected-pages.
         if skip_requested:
             force_quality_for_skip = True
-            from stages.gate_delta import snapshot_gates, snapshot_ocr_presence
+            from stages.utilities.gate_delta import snapshot_gates, snapshot_ocr_presence
 
             with connect() as conn:
                 old_gates = snapshot_gates(conn, chart_id)
@@ -292,7 +291,7 @@ def run_pipeline_for_chart(
                 )
                 results["stages"][key] = fn(chart_id, force=True)
                 if adaptive_gates:
-                    from stages.gate_delta import apply_adaptive_gate_delta
+                    from stages.utilities.gate_delta import apply_adaptive_gate_delta
 
                     with connect() as conn:
                         plan = apply_adaptive_gate_delta(
@@ -499,7 +498,7 @@ def ingest_and_run(
 
     try:
         if local_path:
-            from stages.download_blob import import_local_folder
+            from stages.utilities.download_blob import import_local_folder
 
             intake = import_local_folder(
                 local_path,

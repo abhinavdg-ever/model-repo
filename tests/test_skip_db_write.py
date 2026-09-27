@@ -152,7 +152,7 @@ class TestOfflineIntakeNoPostgres:
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path / "folders")
         (tmp_path / "folders").mkdir()
 
-        from stages.download_blob import import_local_folder
+        from stages.utilities.download_blob import import_local_folder
 
         result = import_local_folder(chart_dir, chart_name="offline_chart", force=True)
         assert result["chart_id"]

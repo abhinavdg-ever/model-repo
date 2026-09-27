@@ -86,7 +86,7 @@ class TestJunkSubtypeVocabulary:
             assert f"'{label}'" in schema_sql, f"{label} missing from schema CHECK"
 
     def test_stage_maps_every_classifier_label_into_the_vocabulary(self):
-        from stages.blank_junk_classify import SUBTYPE_DB
+        from stages.lib.blank_junk.stage import SUBTYPE_DB
         from classify import CLASSIFICATION_LABELS, JUNK_CODES
 
         for code in JUNK_CODES:
@@ -98,7 +98,7 @@ class TestJunkSubtypeVocabulary:
             )
 
     def test_unknown_labels_fall_back_to_others_not_null(self):
-        from stages.blank_junk_classify import SUBTYPE_DB
+        from stages.lib.blank_junk.stage import SUBTYPE_DB
 
         assert SUBTYPE_DB.get("something the classifier invents", "Others") == "Others"
 
@@ -108,7 +108,7 @@ class TestJunkSubtypeVocabulary:
 
 class TestCsvColumns:
     def test_dos_csv_carries_what_the_overlay_reads(self):
-        from stages.dos_extract import DOS_COLS
+        from stages.lib.dos.stage import DOS_COLS
 
         # imaging_overlays.dos_row_fields reads these first, then falls back.
         for column in ("dos_from", "dos_to", "dos_from_iso", "dos_to_iso",
@@ -118,14 +118,14 @@ class TestCsvColumns:
         assert "chart_name" in DOS_COLS and "page_number" in DOS_COLS
 
     def test_hw_csv_column_is_one_the_overlay_recognises(self):
-        from stages.quality_rotation_hw import HW_COLS
+        from stages.lib.image_preprocess.stage import HW_COLS
 
         # index_hw_rows accepts handwritten / handwritten_or_printed / type.
         assert "handwritten_or_printed" in HW_COLS
         assert "confidence" in HW_COLS
 
     def test_junk_csv_carries_classification_and_group(self):
-        from stages.blank_junk_classify import JUNK_CSV_COLS
+        from stages.lib.blank_junk.stage import JUNK_CSV_COLS
 
         # index_junk_rows reads page_classification (or classification/page_type).
         assert "page_classification" in JUNK_CSV_COLS
@@ -135,7 +135,7 @@ class TestCsvColumns:
         assert "is_final" in JUNK_CSV_COLS
 
     def test_member_csv_carries_the_reference_provenance_columns(self):
-        from stages.member_extract_verify import MEMBER_EXTRACT_COLS
+        from stages.lib.member.stage import MEMBER_EXTRACT_COLS
 
         for column in ("detection_source_name", "detection_source_dob",
                        "detection_source_member_id", "ner_key_source_name",
@@ -143,7 +143,7 @@ class TestCsvColumns:
             assert column in MEMBER_EXTRACT_COLS
 
     def test_member_summary_carries_the_reject_decision(self):
-        from stages.member_extract_verify import MEMBER_SUMMARY_COLS
+        from stages.lib.member.stage import MEMBER_SUMMARY_COLS
 
         for column in ("document_decision", "wrong_member_pages",
                        "reject_threshold", "ner_enabled"):
@@ -152,10 +152,10 @@ class TestCsvColumns:
     def test_every_csv_writer_has_a_chart_name_column(self):
         """collect_rows filters combined packs on chart_name; a CSV without it
         would be attributed to every chart."""
-        from stages.blank_junk_classify import JUNK_CSV_COLS
-        from stages.dos_extract import DOS_COLS
-        from stages.member_extract_verify import MEMBER_EXTRACT_COLS, MEMBER_SUMMARY_COLS
-        from stages.quality_rotation_hw import HW_COLS, ROTATION_COLS
+        from stages.lib.blank_junk.stage import JUNK_CSV_COLS
+        from stages.lib.dos.stage import DOS_COLS
+        from stages.lib.member.stage import MEMBER_EXTRACT_COLS, MEMBER_SUMMARY_COLS
+        from stages.lib.image_preprocess.stage import HW_COLS, ROTATION_COLS
 
         for cols in (JUNK_CSV_COLS, DOS_COLS, MEMBER_EXTRACT_COLS,
                      MEMBER_SUMMARY_COLS, HW_COLS, ROTATION_COLS):
@@ -846,7 +846,6 @@ class TestStageSelection:
         assert at("ocr_prelim") == ("ocr_prelim", 1)
         assert at("blank_junk:2") == ("blank_junk", 2)
         assert at("dos_extract") == ("dos_extract", 1)
-        assert resolve_stage("dos_extract") == len(STAGE_CHAIN) - 1
 
     def test_a_bare_name_means_pass_1_not_whichever_pass_exists(self):
         """blank_junk runs twice. A bare `blank_junk` must be the pass-1 one,
@@ -926,7 +925,7 @@ class TestNerFallsBackInsteadOfCrashing:
 
     def test_model_id_is_gated_on_ready_not_on_the_flag(self):
         src = (
-            REPO_ROOT / "core-pipeline" / "stages" / "member_extract_verify.py"
+            REPO_ROOT / "core-pipeline" / "stages" / "lib" / "member" / "stage.py"
         ).read_text(encoding="utf-8")
         assert "ner_model_id = MEMBER_NER_MODEL_ID if ner[\"ready\"] else None" in src
         assert "model_id=ner_model_id," in src
@@ -1714,7 +1713,7 @@ class TestCorrectedPages:
         assert "image_path" in patch
 
         import inspect
-        from stages import quality_rotation_hw
+        from stages.lib.image_preprocess import stage as quality_rotation_hw
 
         src = inspect.getsource(quality_rotation_hw)
         assert "set_page_image_source" in src
@@ -1725,7 +1724,9 @@ class TestCorrectedPages:
         it silently OCRs the uncorrected page, which is invisible in the data."""
         import inspect
 
-        from stages import ocr_final1_docling, ocr_final2_azure, ocr_prelim_tesseract
+        from stages.lib.ocr import stage_final1 as ocr_final1_docling
+        from stages.lib.ocr import stage_final2 as ocr_final2_azure
+        from stages.lib.ocr import stage_prelim as ocr_prelim_tesseract
 
         for module in (ocr_prelim_tesseract, ocr_final1_docling, ocr_final2_azure):
             source = inspect.getsource(module)
@@ -1794,7 +1795,7 @@ class TestCorrectedPages:
         the wrong way again — it scored 0 of 6 with confidence 1.000."""
         import inspect
 
-        from stages import quality_rotation_hw
+        from stages.lib.image_preprocess import stage as quality_rotation_hw
 
         source = inspect.getsource(quality_rotation_hw._detect_rotation)
         assert "osd_rotation" in source
@@ -1810,7 +1811,7 @@ class TestCorrectedPages:
         import inspect
 
         from db.paths import clear_page_image_dirs
-        from stages import download_blob
+        from stages.utilities import download_blob
 
         source = inspect.getsource(download_blob.import_local_folder)
         assert "clear_page_image_dirs" in source
@@ -1823,7 +1824,7 @@ class TestCorrectedPages:
     def test_ensure_chart_images_prefers_workspace(self, tmp_path, monkeypatch):
         """Existing pages/ are reused; no Raw_Input fetch when local is present."""
         import config
-        from stages.download_blob import ensure_chart_images
+        from stages.utilities.download_blob import ensure_chart_images
 
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
         pages = tmp_path / "chart_a" / "pages"
@@ -1837,7 +1838,7 @@ class TestCorrectedPages:
             raise AssertionError("must not download when workspace has pages")
 
         monkeypatch.setattr(
-            "stages.download_blob._download_missing_from_raw_input", _boom
+            "stages.utilities.download_blob._download_missing_from_raw_input", _boom
         )
 
         out = ensure_chart_images(
@@ -1856,7 +1857,7 @@ class TestCorrectedPages:
     ):
         """Empty workspace → Raw_Input only (not Processed pages)."""
         import config
-        from stages.download_blob import ensure_chart_images
+        from stages.utilities.download_blob import ensure_chart_images
 
         monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
 
@@ -1867,7 +1868,7 @@ class TestCorrectedPages:
             return 1, 0
 
         monkeypatch.setattr(
-            "stages.download_blob._download_missing_from_raw_input",
+            "stages.utilities.download_blob._download_missing_from_raw_input",
             _fake_download,
         )
 

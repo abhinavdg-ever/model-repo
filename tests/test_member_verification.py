@@ -10,7 +10,7 @@ import math
 
 import pytest
 
-from member import (
+from stages.lib.member import (
     classify_page,
     detect_name_mode,
     expected_from_manifest,
@@ -18,9 +18,9 @@ from member import (
     verify_page,
     verify_record,
 )
-from member.extractors.rule_based.dob import extract_dob
-from member.extractors.rule_based.member_id import extract_member_id
-from member.extractors.rule_based.name_common import (
+from stages.lib.member.extractors.rule_based.dob import extract_dob
+from stages.lib.member.extractors.rule_based.member_id import extract_member_id
+from stages.lib.member.extractors.rule_based.name_common import (
     ALL_FULL,
     BOTH_FULL,
     INITIAL,
@@ -32,8 +32,8 @@ from member.extractors.rule_based.name_common import (
     find_two_word_name,
     tokenize,
 )
-from member.rules.base_rules import combine_evidences
-from member.rules.what_if_rules import (
+from stages.lib.member.rules.base_rules import combine_evidences
+from stages.lib.member.rules.what_if_rules import (
     ACCEPT,
     PAGE_NOT_VERIFIED,
     PAGE_VERIFIED,
@@ -334,7 +334,7 @@ class TestNerPreflight:
     apart."""
 
     def test_status_reports_every_field_callers_rely_on(self):
-        from member import ner_status
+        from stages.lib.member import ner_status
 
         status = ner_status()
         for key in ("enabled", "deps_installed", "deps_detail", "weights_present",
@@ -342,7 +342,7 @@ class TestNerPreflight:
             assert key in status, f"ner_status() must report {key}"
 
     def test_ready_requires_enabled_deps_and_weights(self):
-        from member import ner_status
+        from stages.lib.member import ner_status
 
         status = ner_status()
         if status["ready"]:
@@ -353,7 +353,7 @@ class TestNerPreflight:
             assert status["reason"], "a not-ready layer must say why"
 
     def test_missing_package_is_distinguishable_from_missing_weights(self):
-        from member.extractors.ner_based.config import deps_installed
+        from stages.lib.member.extractors.ner_based.config import deps_installed
 
         installed, detail = deps_installed()
         assert isinstance(installed, bool)
@@ -367,7 +367,7 @@ class TestNerPreflight:
         import importlib
 
         mod = importlib.import_module(
-            "member.extractors.ner_based.model_downloader"
+            "stages.lib.member.extractors.ner_based.model_downloader"
         )
         ids = [d.SPEC["id"] for d in mod.DOWNLOADERS]
         assert ids == ["gliner_large", "gliner_medium", "gliner_low"]
@@ -387,10 +387,10 @@ class TestNerPreflight:
     def test_predict_entities_is_inert_while_the_layer_is_off(self):
         """With the layer off nothing may reach a model — and the absence of
         hits must not look like a model that answered 'nobody'."""
-        from member.extractors.ner_based import config
+        from stages.lib.member.extractors.ner_based import config
 
         if config.ner_enabled:
             pytest.skip("NER layer is enabled in this environment")
-        from member.extractors.ner_based.model import predict_entities
+        from stages.lib.member.extractors.ner_based.model import predict_entities
 
         assert predict_entities("Patient Name: Robert Smith", ["person"]) == []

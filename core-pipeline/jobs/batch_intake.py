@@ -74,7 +74,7 @@ def estimate_chart_pages(
     """Best-effort page count before ingest (for large-chart scheduling)."""
     try:
         if mode == "local":
-            from stages.download_blob import _collect_images
+            from stages.utilities.download_blob import _collect_images
 
             return len(_collect_images(Path(source), recursive=True))
         if mode == "blob" and blob_container:

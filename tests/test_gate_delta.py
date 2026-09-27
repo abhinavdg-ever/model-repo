@@ -9,7 +9,7 @@ CORE = ROOT / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
-from stages.gate_delta import (
+from stages.utilities.gate_delta import (
     GateSignature,
     PageOcrPresence,
     STAGE_BJ1,
