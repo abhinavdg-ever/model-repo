@@ -15,7 +15,7 @@ if str(CORE) not in sys.path:
 
 def test_convert_image_with_timeout_serializes_across_threads(tmp_path, monkeypatch):
     """Two charts must not run Docling convert overlapping (BATCH_WORKERS>1)."""
-    import stages.lib.imaging.docling_ocr as docling_ocr
+    import stages.lib.ocr.docling_ocr as docling_ocr
 
     img = tmp_path / "1.jpg"
     img.write_bytes(b"x")
@@ -60,7 +60,7 @@ def test_convert_image_with_timeout_serializes_across_threads(tmp_path, monkeypa
 
 
 def test_convert_busy_timeout_when_lock_held(tmp_path, monkeypatch):
-    import stages.lib.imaging.docling_ocr as docling_ocr
+    import stages.lib.ocr.docling_ocr as docling_ocr
 
     img = tmp_path / "2.jpg"
     img.write_bytes(b"x")
@@ -107,7 +107,7 @@ def test_section_header_model_probe_does_not_deadlock():
     """_get_model() takes the module lock and calls _ensure_catalog(), which
     takes it again. A plain Lock hung there, holding it forever — every later
     Final1 page then timed out in filter_section_headers."""
-    import stages.lib.imaging.section_header_match as shm
+    import stages.lib.ocr.section_header_match as shm
 
     done = threading.Event()
 
@@ -121,7 +121,7 @@ def test_section_header_model_probe_does_not_deadlock():
 
 def test_filter_section_headers_with_minilm_path_completes():
     """The Final1 call shape (use_minilm default) must return, model or not."""
-    import stages.lib.imaging.section_header_match as shm
+    import stages.lib.ocr.section_header_match as shm
 
     out: list = []
     done = threading.Event()

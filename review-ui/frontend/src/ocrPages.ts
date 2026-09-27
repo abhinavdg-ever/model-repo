@@ -36,8 +36,26 @@ export function splitOcrByFilename(fullText: string): Map<string, string> {
   return pages;
 }
 
+// Full-chart OCR text is split once per text, not once per lookup. The viewer
+// looks up the current page for every engine on every page flip, and each
+// split is a regex pass over the whole chart. One entry per OCR kind in play.
+const SPLIT_CACHE_MAX = 6;
+const splitCache = new Map<string, Map<string, string>>();
+
+function cachedSplit(fullText: string): Map<string, string> {
+  const hit = splitCache.get(fullText);
+  if (hit) return hit;
+  const pages = splitOcrByFilename(fullText);
+  if (splitCache.size >= SPLIT_CACHE_MAX) {
+    const oldest = splitCache.keys().next().value;
+    if (oldest !== undefined) splitCache.delete(oldest);
+  }
+  splitCache.set(fullText, pages);
+  return pages;
+}
+
 export function ocrTextForFilename(fullText: string, filename: string): string {
   if (!fullText.trim() || !filename) return "";
-  const pages = splitOcrByFilename(fullText);
+  const pages = cachedSplit(fullText);
   return pages.get(filename) ?? pages.get(filename.toLowerCase()) ?? "";
 }

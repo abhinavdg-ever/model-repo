@@ -134,14 +134,14 @@ def clear_blob_client_cache() -> None:
     _blob_service_client.cache_clear()
 
 
-def list_image_blob_keys(container: str, blob_path: str) -> list[str]:
-    """Image blob keys under a chart prefix, sorted like pipeline ingest."""
+def list_image_blobs(container: str, blob_path: str) -> list[tuple[str, str]]:
+    """``(key, etag)`` for image blobs under a chart prefix, sorted like ingest."""
     container = (container or "").strip().strip("/")
     prefix = normalize_blob_prefix(blob_path)
     if not container or not prefix:
         return []
     client = _blob_service_client()
-    names: list[str] = []
+    out: list[tuple[str, str]] = []
     for blob in client.get_container_client(container).list_blobs(
         name_starts_with=prefix
     ):
@@ -150,9 +150,14 @@ def list_image_blob_keys(container: str, blob_path: str) -> list[str]:
             continue
         if filename.startswith("._"):
             continue
-        names.append(blob.name)
-    names.sort(key=lambda n: filename_sort_key(Path(n).name))
-    return names
+        out.append((blob.name, str(blob.etag or "").strip('"')))
+    out.sort(key=lambda item: filename_sort_key(Path(item[0]).name))
+    return out
+
+
+def list_image_blob_keys(container: str, blob_path: str) -> list[str]:
+    """Image blob keys under a chart prefix, sorted like pipeline ingest."""
+    return [key for key, _ in list_image_blobs(container, blob_path)]
 
 
 def download_blob_at(

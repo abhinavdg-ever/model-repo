@@ -57,7 +57,7 @@ still produces a file covering all pages — not just the ones it touched.
 
 ## 2. Rotation and handwriting
 
-**Source:** `stages/lib/imaging/rotation.py`, `hw_printed.py` · **Stage:** `stages/quality_rotation_hw.py`
+**Source:** `stages/lib/image_preprocess/rotation.py`, `hw_printed.py` · **Stage:** `stages/quality_rotation_hw.py`
 
 Two independent measurements per page.
 
@@ -120,7 +120,7 @@ classifier method; that value now lives in `hw_method`.
 
 ## 3. Blank / junk / duplicate
 
-**Source:** `advantmed-imaging-ui/02-imaging-pipeline/junk-classification/` → `stages/lib/junk/` · **Stage:** `stages/blank_junk_classify.py`
+**Source:** `advantmed-imaging-ui/02-imaging-pipeline/junk-classification/` → `stages/lib/blank_junk/` · **Stage:** `stages/blank_junk_classify.py`
 
 ### Why two passes
 
@@ -566,7 +566,7 @@ v8 uses lifecycle `status` + `current_stage` + `current_pass`, with order in the
 | Concern | File |
 |---|---|
 | Stage order, skip rules | `core-pipeline/orchestrator/runner.py`, `stages/_support.py` |
-| Blank/junk detectors | `core-pipeline/stages/lib/junk/` |
+| Blank/junk detectors | `core-pipeline/stages/lib/blank_junk/` |
 | Member rules + NER | `core-pipeline/stages/lib/member/` |
 | Member driver (ported `run.py`) | `core-pipeline/stages/lib/member/engine.py` |
 | DOS regex + LLM + carry-forward | `core-pipeline/stages/lib/dos/dos_logic.py` |

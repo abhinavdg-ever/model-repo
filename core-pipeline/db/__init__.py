@@ -160,7 +160,7 @@ def connect() -> Iterator[Any]:
 # ---------------------------------------------------------------------------
 # There is no longer a quality placeholder. The ocr_quality stage writes a
 # measured grade from quality_analyzer (0–10 → quality_score in [0,1]) plus
-# quality_detail JSONB. See stages/lib/imaging/quality_analyzer.py.
+# quality_detail JSONB. See stages/lib/image_preprocess/quality_analyzer.py.
 
 
 def sha256_text(text: Optional[str]) -> str:

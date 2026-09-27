@@ -27,7 +27,7 @@ from stages._support import (
     mark_skipped,
     stage_run,
 )
-from stages.lib.imaging.encounter_classify import classify_pages, effective_dos_pair
+from stages.lib.encounter.encounter_classify import classify_pages, effective_dos_pair
 
 logger = logging.getLogger(__name__)
 

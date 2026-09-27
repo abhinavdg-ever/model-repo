@@ -232,7 +232,7 @@ Stage 1 also applies the preprocessing rule **Handwritten + High → Medium** on
 
 Used by the ``section_headers`` stage to filter candidates in
 ``*_final1.json`` / ``*_final2.json`` (≥90% match to
-`stages/lib/imaging/section_header_canon.json`). OCR stores raw candidates;
+`stages/lib/keyword-canon/section_header_canon.json`). OCR stores raw candidates;
 re-run only that stage after editing the list — no re-OCR:
 
 ```bash
@@ -258,15 +258,15 @@ ON CONFLICT (stage_name, pass_no) DO NOTHING;
 # macOS / Linux
 cd core-pipeline && source .venv/bin/activate
 pip install -r requirements-docling.txt          # sentence-transformers + hub
-python -m stages.lib.imaging.section_header_match --download
-python -m stages.lib.imaging.section_header_match --check
+python -m stages.lib.ocr.section_header_match --download
+python -m stages.lib.ocr.section_header_match --check
 ```
 
 ```powershell
 cd core-pipeline; .venv\Scripts\Activate.ps1
 pip install -r requirements-docling.txt
-python -m stages.lib.imaging.section_header_match --download
-python -m stages.lib.imaging.section_header_match --check
+python -m stages.lib.ocr.section_header_match --download
+python -m stages.lib.ocr.section_header_match --check
 ```
 
 Equivalent Hub CLI (same destination):
@@ -516,6 +516,7 @@ Same vocabulary as `/run` **without** a folder name (each subfolder is a chart).
 | `write_mode` | optional | `skip_orig_pages` | |
 | `overwrite` | optional | `false` | Sync by default |
 | `sample` | optional | all | At most N chart folders (sorted). When the drop is larger than N, prefer incomplete charts; completed ones fill only if needed |
+| `chart_names` | optional | all under path | Allow-list of chart folder names. Only names that exist under the read path are run; missing names are skipped (`charts_missing` in the result) |
 | `workers` | optional | `BATCH_WORKERS` (4) | Must fit DB pool. Charts with ≥`LARGE_CHART_MIN_PAGES` (default 100) pages run at most one-at-a-time while any smaller chart is still pending; when only large charts remain, workers parallelize them. |
 | `run_id` / `batch_id` | optional | inferred | |
 | `through` / `only` / `force` / `skip_ocr` | optional | — | `force: false` = **resume** (below) |
@@ -551,6 +552,16 @@ curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/j
     "blob_write_path": "Processed/Run1/Batch1",
     "sample": 5,
     "force": false,
+    "workers": 2
+  }'
+
+# Only these chart folders under the path (others ignored; missing names skipped)
+curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
+  -d '{
+    "blob_container": "imaging-pipeline",
+    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "blob_write_path": "Processed/Run1/Batch1",
+    "chart_names": ["52743839_44976074", "52754737_48221214"],
     "workers": 2
   }'
 

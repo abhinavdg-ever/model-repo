@@ -24,6 +24,7 @@ from app.services.imaging_csv import filter_folder, iter_csv_lines
 from app.services.chart_run_batch import database_url_usable
 from app.services.page_images import (
     bytes_to_display_jpeg,
+    cached_derived_jpeg,
     is_tiff_name,
     is_tiff_path,
     path_to_display_jpeg,
@@ -212,12 +213,45 @@ def get_page_image(
         if isinstance(repo, PostgresFolderRepository):
             loc = repo.resolve_page_blob(folder_id, page_number)
             if loc:
+                name = loc.get("filename") or loc["key"]
+                etag = loc.get("etag") or ""
+                # With an ETag, a derived JPEG (thumb / TIFF conversion) is
+                # served from disk without touching the blob at all.
+                if etag and (thumb or is_tiff_name(name)):
+                    stamp = f"blob|{loc['container']}|{loc['key']}|{etag}|{'thumb' if thumb else 'full'}"
+
+                    def _produce() -> bytes:
+                        raw, _ = download_blob_at(
+                            container=loc["container"], key=loc["key"], filename=name
+                        )
+                        return bytes_to_display_jpeg(raw, thumb=thumb)
+
+                    try:
+                        data = cached_derived_jpeg(stamp, _produce)
+                    except HTTPException:
+                        raise
+                    except Exception as exc:
+                        logger.exception(
+                            "Blob image encode failed folder=%s page=%s key=%s",
+                            folder_id,
+                            page_number,
+                            loc["key"],
+                        )
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Could not convert image for display: {exc}",
+                        ) from exc
+                    return Response(
+                        content=data,
+                        media_type="image/jpeg",
+                        headers={"Cache-Control": cache_hdr},
+                    )
+
                 data, media_type = download_blob_at(
                     container=loc["container"],
                     key=loc["key"],
                     filename=loc.get("filename"),
                 )
-                name = loc.get("filename") or loc["key"]
                 is_tiff = is_tiff_name(name) or (media_type or "").lower() in {
                     "image/tiff",
                     "image/tif",

@@ -11,7 +11,7 @@ CORE = REPO / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
-from stages.lib.imaging.encounter_classify import (  # noqa: E402
+from stages.lib.encounter.encounter_classify import (  # noqa: E402
     classify_pages,
     load_canon,
     pick_encounter,
@@ -146,7 +146,7 @@ def test_sequential_carry_forward_when_dos_missing(canon):
 
 
 def test_effective_dos_prefers_doclevel():
-    from stages.lib.imaging.encounter_classify import effective_dos_pair
+    from stages.lib.encounter.encounter_classify import effective_dos_pair
 
     assert effective_dos_pair(
         page_from="2024-01-01",

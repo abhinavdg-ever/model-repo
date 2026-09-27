@@ -310,6 +310,25 @@ export default function FolderViewer({
 
   const page = folder?.pages[pageIndex] ?? null;
 
+  // Page 1 is almost always page_number 1: start its download with the
+  // folder request so the first image is cached by the time <img> mounts.
+  useEffect(() => {
+    const img = new Image();
+    img.src = pageImageUrl(folderId, 1);
+  }, [folderId]);
+
+  // Once the current page has loaded, warm the neighbours so flipping is instant.
+  useEffect(() => {
+    if (!folder || pageImageLoading) return;
+    for (const idx of [pageIndex + 1, pageIndex - 1]) {
+      const neighbour = folder.pages[idx];
+      if (neighbour) {
+        const img = new Image();
+        img.src = pageImageUrl(folderId, neighbour.page_number);
+      }
+    }
+  }, [folder, folderId, pageIndex, pageImageLoading]);
+
   const ocrFetchedRef = useRef<Set<OcrKind>>(new Set());
   const imagingFetchedRef = useRef(false);
 
@@ -326,8 +345,10 @@ export default function FolderViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- outputMode read once per folderId
   }, [folderId]);
 
+  // OCR / imaging fetches need only folderId, so they start in parallel with
+  // getFolder instead of waiting for it.
   useEffect(() => {
-    if (!folder || outputMode !== "ocr") {
+    if (outputMode !== "ocr") {
       return;
     }
     if (ocrFetchedRef.current.has(ocrTab)) {
@@ -338,7 +359,7 @@ export default function FolderViewer({
     setLoadingOcr(true);
     setCopied(false);
 
-    getFolderOcr(folder.id, ocrTab)
+    getFolderOcr(folderId, ocrTab)
       .then((data) => {
         if (cancelled) return;
         setOcrByKind((prev) => ({
@@ -364,14 +385,14 @@ export default function FolderViewer({
     return () => {
       cancelled = true;
     };
-  }, [folder, outputMode, ocrTab]);
+  }, [folderId, outputMode, ocrTab]);
 
   const ocrFullText = ocrByKind[ocrTab] ?? "";
   const ocrMissingMessage = `No ${OCR_TAB_LABELS[ocrTab]} available.`;
   const sectionHeadersByFile = headersByKind[ocrTab] ?? {};
 
   useEffect(() => {
-    if (!folder || outputMode !== "imaging" || imagingTab !== "additional") {
+    if (outputMode !== "imaging" || imagingTab !== "additional") {
       return;
     }
     const needFinal1 = !ocrFetchedRef.current.has("final1");
@@ -392,7 +413,7 @@ export default function FolderViewer({
     Promise.all(
       kinds.map(async (kind) => {
         try {
-          const data = await getFolderOcr(folder.id, kind);
+          const data = await getFolderOcr(folderId, kind);
           return [kind, data] as const;
         } catch {
           return [kind, null] as const;
@@ -428,10 +449,10 @@ export default function FolderViewer({
     return () => {
       cancelled = true;
     };
-  }, [folder, outputMode, imagingTab]);
+  }, [folderId, outputMode, imagingTab]);
 
   useEffect(() => {
-    if (!folder || outputMode !== "imaging") {
+    if (outputMode !== "imaging") {
       return;
     }
     if (imagingFetchedRef.current) {
@@ -441,7 +462,7 @@ export default function FolderViewer({
     let cancelled = false;
     setLoadingImaging(true);
     setImagingError(null);
-    getFolderImaging(folder.id)
+    getFolderImaging(folderId)
       .then((data) => {
         if (!cancelled) setImagingDoc(data);
       })
@@ -459,7 +480,7 @@ export default function FolderViewer({
     return () => {
       cancelled = true;
     };
-  }, [folder, outputMode]);
+  }, [folderId, outputMode]);
 
   const imagingPage = useMemo(
     () => findImagingPage(imagingDoc, page),

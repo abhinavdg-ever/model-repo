@@ -117,7 +117,7 @@ AZURE_OPENAI_AUTH = (os.environ.get("AZURE_OPENAI_AUTH") or "auto").strip().case
 # to corrected-pages/ which every later stage reads in place of the original.
 #
 # ON by default, on measurement. Coarse rotation comes from Tesseract OSD
-# (stages/lib/imaging/osd.py), not the geometric detector, which recovered 0 of
+# (stages/lib/image_preprocess/osd.py), not the geometric detector, which recovered 0 of
 # 6 sideways pages while reporting confidence 1.000 on the wrong answers.
 #
 # Round trip — rotate a page, detect, correct, compare with the original:
@@ -259,7 +259,7 @@ RAPID_MODELS_DIR = _path_under_core(
 )
 # Local MiniLM checkout for section-header filtering. Preferred over Hub id
 # when the directory exists. Download:
-#   python -m stages.lib.imaging.section_header_match --download
+#   python -m stages.lib.ocr.section_header_match --download
 SECTION_HEADER_MINILM_PATH = _path_under_core(
     os.environ.get("SECTION_HEADER_MINILM_PATH"),
     "models/semantic-model",

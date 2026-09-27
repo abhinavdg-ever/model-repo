@@ -178,6 +178,16 @@ def main() -> None:
             ),
         )
         parser_obj.add_argument(
+            "--chart-name",
+            action="append",
+            dest="chart_names",
+            metavar="NAME",
+            help=(
+                "Only run this chart folder if it exists under the read path "
+                "(repeatable). Names not found are skipped."
+            ),
+        )
+        parser_obj.add_argument(
             "--workers", type=int, default=None,
             help="Charts to run concurrently (default BATCH_WORKERS, usually 4)",
         )
@@ -411,6 +421,7 @@ def main() -> None:
                     redownload_pages=args.redownload_pages,
                     skip_db_write=offline,
                     sample=args.sample,
+                    chart_names=getattr(args, "chart_names", None),
                     run_id=args.run_id,
                     batch_id=args.batch_id,
                     workers=args.workers,

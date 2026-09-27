@@ -273,7 +273,7 @@ def _section_headers_from_lines(
         image_size=image_size,
     )
     try:
-        from stages.lib.imaging.section_headers_io import apply_header_filter
+        from stages.lib.ocr.section_headers_io import apply_header_filter
 
         return candidates, apply_header_filter(candidates, use_minilm=False)
     except Exception:

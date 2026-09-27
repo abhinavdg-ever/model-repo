@@ -122,7 +122,7 @@ class TestClinicalNotJunk:
         import sys
         from pathlib import Path
 
-        junk = Path("core-pipeline/stages/lib/junk").resolve()
+        junk = Path("core-pipeline/stages/lib/blank_junk").resolve()
         if str(junk) not in sys.path:
             sys.path.insert(0, str(junk))
         from classify import CLASSIFICATION_LABELS, CODE_MAIN, classify_text
@@ -146,7 +146,7 @@ class TestClinicalNotJunk:
         import sys
         from pathlib import Path
 
-        junk = Path("core-pipeline/stages/lib/junk").resolve()
+        junk = Path("core-pipeline/stages/lib/blank_junk").resolve()
         if str(junk) not in sys.path:
             sys.path.insert(0, str(junk))
         from classify import CLASSIFICATION_LABELS, classify_text
@@ -161,7 +161,7 @@ class TestClinicalNotJunk:
         import sys
         from pathlib import Path
 
-        junk = Path("core-pipeline/stages/lib/junk").resolve()
+        junk = Path("core-pipeline/stages/lib/blank_junk").resolve()
         if str(junk) not in sys.path:
             sys.path.insert(0, str(junk))
         from classify import CLASSIFICATION_LABELS, classify_text
@@ -174,6 +174,94 @@ class TestClinicalNotJunk:
         code, reason = classify_text(text)
         assert CLASSIFICATION_LABELS[code] == "Letter/Fax"
         assert reason == "letter_fax"
+
+
+class TestModelBridge:
+    """TF-IDF model decides blank/junk/keep; regex names the junk subtype."""
+
+    @staticmethod
+    def _bridge():
+        import sys
+
+        from conftest import LIB
+
+        junk = str(LIB / "blank_junk")
+        if junk not in sys.path:
+            sys.path.insert(0, junk)
+        import model_bridge
+
+        return model_bridge
+
+    def test_declared_blank_stays_blank_when_model_keeps(self):
+        from classify import CODE_BLANK
+
+        code, reason, _conf = self._bridge().classify_page(
+            "This page intentionally left blank"
+        )
+        assert code == CODE_BLANK
+        assert "blank" in reason
+
+    def test_clinical_note_is_main(self):
+        from classify import CODE_MAIN
+
+        text = (
+            "Progress Note\n"
+            "History of Present Illness: Patient presents with SOB.\n"
+            "Assessment: Hypertension.\n"
+            "Current Medications: Amlodipine.\n"
+        )
+        code, reason, conf = self._bridge().classify_page(text)
+        assert code == CODE_MAIN
+        assert reason.startswith("model:")
+        assert conf is not None and conf >= 0.7
+
+    def test_model_junk_takes_its_subtype_from_the_regex_classifier(self):
+        from classify import CODE_RECORD_REQUEST
+
+        text = (
+            "MEDICAL RECORDS REQUEST\n"
+            "Request for medical records\n"
+            "Please send the following records for the patient listed.\n"
+            "Records retrieval vendor: Copy service\n"
+            "Fulfillment due within 10 business days"
+        )
+        code, reason, conf = self._bridge().classify_page(text)
+        assert code == CODE_RECORD_REQUEST
+        assert reason.startswith("model:") and "subtype:regex:record_request" in reason
+        assert conf is not None
+
+    def test_subtype_falls_back_to_audit_tag_then_others(self, monkeypatch):
+        from classify import CODE_LETTER_FAX, CODE_MAIN, CODE_OTHERS
+
+        bridge = self._bridge()
+        # Regex sees a real chart page: no junk subtype of its own.
+        monkeypatch.setattr(
+            bridge, "classify_text", lambda text: (CODE_MAIN, "clinical_content")
+        )
+        code, why = bridge._junk_subtype("…", "JUNK_FAX_TRANSMISSION")
+        assert (code, why) == (CODE_LETTER_FAX, "subtype:audit:JUNK_FAX_TRANSMISSION")
+        code, why = bridge._junk_subtype("…", "JUNK")
+        assert (code, why) == (CODE_OTHERS, "subtype:default:regex_said_clinical_content")
+
+    def test_missing_model_is_stamped_as_a_fallback(self, monkeypatch):
+        bridge = self._bridge()
+        monkeypatch.setattr(bridge, "_load_service", lambda: None)
+        _code, reason, conf = bridge.classify_page("Invoice Number 123 Amount Due")
+        assert reason.startswith("regex_fallback:model_unavailable")
+        assert conf is None
+
+    def test_vendored_src_package_does_not_stay_on_sys_path(self):
+        import sys
+
+        bridge = self._bridge()
+        assert bridge._load_service() is not None
+        assert str(bridge._VENDOR) not in sys.path
+
+    def test_health_reports_the_model_without_loading_it(self):
+        status = self._bridge().model_status()
+        assert status["ready"] is True
+        assert status["model_version"]
+        assert status["reason"] is None
 
 
 class TestSubtypeMapping:

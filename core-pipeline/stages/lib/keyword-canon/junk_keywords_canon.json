@@ -1,0 +1,90 @@
+{
+  "invoice": [
+    "invoice",
+    "bill to",
+    "ship to",
+    "unit price",
+    "amount due",
+    "payment due",
+    "remittance",
+    "statement of account",
+    "total due",
+    "billing statement",
+    "superbill",
+    "charge description",
+    "balance due",
+    "payments received",
+    "revenue reconciliation",
+    "revenue reconcilation",
+    "revenue recon"
+  ],
+  "record_request": [
+    "request letter",
+    "e-request letter",
+    "medical records attached",
+    "records attached",
+    "attached records",
+    "transmittal",
+    "transmitted",
+    "transmittal sheet",
+    "facimile transmittal sheet",
+    "medical records transmittal",
+    "urgent request for records",
+    "your records requested",
+    "records requested",
+    "request for medical records",
+    "medical records request",
+    "medical record request",
+    "risk adjustment request",
+    "send record",
+    "packet may contain",
+    "audit fulfillment"
+  ],
+  "cover_phrases": [
+    "\\bcover\\s+pages?\\b",
+    "\\bdischarge\\s+summary\\b"
+  ],
+  "cover_single_words": [
+    "accept",
+    "unaccept",
+    "summary"
+  ],
+  "instructions": [
+    "\\bwhat\\s+to\\s+send\\b",
+    "\\bprovide\\s+all\\s+documentation\\b",
+    "\\bprovide\\s+documentation\\b",
+    "\\binstructions?\\s+for\\s+(sending|submission|records)\\b",
+    "\\bplease\\s+send\\b",
+    "\\bdocuments?\\s+to\\s+(include|send|attach)\\b"
+  ],
+  "letter_fax": [
+    "\\bcover\\s+letter\\b",
+    "\\bfax\\s+transmission\\b",
+    "\\bfax\\s+cover\\b",
+    "\\bfacsimile\\b",
+    "\\bfacimile\\b",
+    "\\bfax\\s+sheet\\b",
+    "\\bthis\\s+fax\\b",
+    "\\bfax\\s+confidentiality\\s+notice\\b",
+    "\\bconfidentiality\\s+notice\\b.{0,80}\\b(fax|facsimile|intended\\s+recipient)\\b"
+  ],
+  "others_toc": [
+    "\\btable\\s+of\\s+contents?\\b",
+    "\\bcontents?\\s+page\\b"
+  ],
+  "others_emr_toc_title": "\\bpatient\\s+medical\\s+record\\b",
+  "others_emr_toc_markers": [
+    "\\btotal\\s+pages\\b",
+    "\\b\\d{1,4}\\s+to\\s+\\d{1,4}\\b"
+  ],
+  "blank_phrase": "intentionally\\s+blank|\\bblank\\b",
+  "signature": [
+    "signature",
+    "signed\\s+by",
+    "electronically\\s+signed",
+    "e[\\s-]?sign",
+    "patient\\s+signature",
+    "provider\\s+signature",
+    "sign\\s+here"
+  ]
+}

@@ -1,29 +1,50 @@
 from __future__ import annotations
 
-import json
 import re
-from pathlib import Path
+from dataclasses import dataclass
+from typing import Any
+
+from stages.lib.canon_store import CANON_DIR, CanonFile
 
 WORD = re.compile(r"[A-Za-z0-9]+")
 WINDOW = 5
 
-_MEMBER_KW = json.loads(
-    # name_common.py → rule_based → extractors → member → lib/keywords.json
-    (Path(__file__).resolve().parents[3] / "keywords.json").read_text(encoding="utf-8")
-)["member"]
+@dataclass(frozen=True)
+class MemberKeywords:
+    ignore: frozenset[str]
+    labels: frozenset[str]
+    # Words a member's name never contains: articles, pronouns, connectors,
+    # roles, relationships and chart furniture. Used to throw out an NER hit
+    # like "my medical assistant" and to stop the key-value reader taking prose
+    # after a bare "Patient:" key as a name.
+    non_name: frozenset[str]
+    key_groups: dict[str, tuple[str, ...]]
 
-IGNORE = frozenset(_MEMBER_KW["ignore"])
-LABELS = frozenset(_MEMBER_KW["labels"])
 
-# Words a member's name never contains: articles, pronouns, connectors, roles,
-# relationships and chart furniture. Used to throw out an NER hit like "my
-# medical assistant" and to stop the key-value reader taking prose after a
-# bare "Patient:" key as a name.
-NON_NAME = frozenset(_MEMBER_KW["non_name"])
+def _build_keywords(data: dict[str, Any]) -> MemberKeywords:
+    groups = data.get("key_groups") or {}
+    return MemberKeywords(
+        ignore=frozenset(data["ignore"]),
+        labels=frozenset(data["labels"]),
+        non_name=frozenset(data["non_name"]),
+        key_groups={
+            name: tuple(group.get("keys") or []) for name, group in groups.items()
+        },
+    )
+
+
+# keyword-canon/member_keywords_canon.json — reloaded when the file changes.
+_KEYWORDS: CanonFile[MemberKeywords] = CanonFile(
+    CANON_DIR / "member_keywords_canon.json", _build_keywords
+)
+
+
+def member_keywords() -> MemberKeywords:
+    return _KEYWORDS.get()
 
 
 def is_non_name(token: str) -> bool:
-    return token.casefold() in NON_NAME
+    return token.casefold() in member_keywords().non_name
 
 
 BOTH_FULL = "both_full"
@@ -44,11 +65,11 @@ def tokenize(text: str) -> list[str]:
 
 
 def is_ignore(token: str) -> bool:
-    return token.casefold() in IGNORE
+    return token.casefold() in member_keywords().ignore
 
 
 def is_label(token: str) -> bool:
-    return token.casefold() in LABELS
+    return token.casefold() in member_keywords().labels
 
 
 def is_full(token: str, name: str) -> bool:

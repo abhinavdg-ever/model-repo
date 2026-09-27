@@ -26,7 +26,7 @@ from stages._support import (
     mark_skipped,
     stage_run,
 )
-from stages.lib.imaging.section_headers_io import (
+from stages.lib.ocr.section_headers_io import (
     page_has_ocr_payload,
     refresh_ocr_json_doc,
     refresh_page_headers,

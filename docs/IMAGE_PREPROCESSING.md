@@ -8,17 +8,17 @@ applied, and what you still need to do on each machine.
 Standalone package `image_preprocessing/` — page quality, printed vs
 handwritten, OSD rotation, tilt, mirror measurement. Same problem space as
 **stage 1** (`ocr_quality` → `stages/quality_rotation_hw.py` +
-`stages/lib/imaging/`).
+`stages/lib/image_preprocess/`).
 
 | Zip path | Our path |
 |---|---|
-| `quality/quality_analyzer.py` | `stages/lib/imaging/quality_analyzer.py` (already ported; keep ours — it adds `quality_tag` / `score_01`) |
-| `quality/quality_label_postprocess.py` | **`stages/lib/imaging/quality_label_postprocess.py`** |
-| `document_type/hw_printed.py` | `stages/lib/imaging/hw_printed.py` (same ConvNeXt API) |
+| `quality/quality_analyzer.py` | `stages/lib/image_preprocess/quality_analyzer.py` (already ported; keep ours — it adds `quality_tag` / `score_01`) |
+| `quality/quality_label_postprocess.py` | **`stages/lib/image_preprocess/quality_label_postprocess.py`** |
+| `document_type/hw_printed.py` | `stages/lib/image_preprocess/hw_printed.py` (same ConvNeXt API) |
 | `document_type/models/page_printed_handwritten_convnext_tiny.pth` | **`models/hw/handwritten_printed_convnext_tiny.pth`** (preferred — we keep this canonical name) |
 | Prior weight (pre–2026-09-23) | `models/hw/handwritten_printed_convnext_tiny_backup.pth` |
 | `document_type/models/metadata.json` | `models/hw/metadata.json` |
-| `orientation/*` | `stages/lib/imaging/rotation.py` + `osd.py` (OSD-only coarse rotation, no geometric fallback, mirror measured not flipped) |
+| `orientation/*` | `stages/lib/image_preprocess/rotation.py` + `osd.py` (OSD-only coarse rotation, no geometric fallback, mirror measured not flipped) |
 | `document_type/existing_classifier_adapter.py` | **not imported** — their package loads via sibling `hw_printed_rf_test.page_classifier`; we load the same `.pth` with our `hw_printed.load_model` (compatible checkpoint: `model_state_dict` + ConvNeXt-Tiny) |
 
 ## Drops received
@@ -102,5 +102,5 @@ hw_printed_rf_test/page_classifier.py
 
 That package is **not** inside either zip. We do not need it: the `.pth` is a
 standard ConvNeXt checkpoint and loads through
-`stages/lib/imaging/hw_printed.py`. If they later ship a true fused hybrid head
+`stages/lib/image_preprocess/hw_printed.py`. If they later ship a true fused hybrid head
 or different checkpoint format, re-evaluate wiring `existing_classifier_adapter`.

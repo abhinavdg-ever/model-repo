@@ -179,6 +179,48 @@ def select_batch_sources(
     need = cap - len(incomplete)
     return incomplete + completed[:need]
 
+
+def filter_sources_by_chart_names(
+    sources: list[tuple[str, str, str]],
+    chart_names: Optional[list[str]],
+) -> tuple[list[tuple[str, str, str]], list[str]]:
+    """Keep only charts whose folder name is in ``chart_names``.
+
+    Returns ``(matched_sources, missing_names)``. Order of ``chart_names`` is
+    preserved for matches. When ``chart_names`` is empty/None, every source is
+    kept and missing is empty.
+    """
+    if not chart_names:
+        return list(sources), []
+
+    from db.paths import normalize_folder_name
+
+    wanted: list[str] = []
+    seen: set[str] = set()
+    for raw in chart_names:
+        name = normalize_folder_name(raw)
+        if not name:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        wanted.append(name)
+
+    if not wanted:
+        return list(sources), []
+
+    by_key = {name.casefold(): (src, name, mode) for src, name, mode in sources}
+    matched: list[tuple[str, str, str]] = []
+    missing: list[str] = []
+    for name in wanted:
+        hit = by_key.get(name.casefold())
+        if hit is None:
+            missing.append(name)
+        else:
+            matched.append(hit)
+    return matched, missing
+
 def resolve_batch_workers(requested: Optional[int] = None) -> int:
     """Return the worker count to use, or raise if it cannot fit the DB pool.
 
@@ -525,6 +567,7 @@ def run_batch(
     redownload_pages: bool = False,
     skip_db_write: bool = False,
     sample: Optional[int] = None,
+    chart_names: Optional[list[str]] = None,
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
     workers: Optional[int] = None,
@@ -535,6 +578,9 @@ def run_batch(
     sub-folder IS a chart, so each supplies its own. A chart read from
     `<read_path>/52754737_48221214/` is written to
     `<write_path>/52754737_48221214/`.
+
+    ``chart_names``, when set, restricts the batch to those folder names that
+    actually exist under the read path (missing names are reported, not run).
 
     Each chart goes through exactly the same call ``/api/charts/run`` makes —
     ``ingest_and_run`` — so a batch of one is indistinguishable from a single
@@ -587,6 +633,7 @@ def run_batch(
             redownload_pages=redownload_pages,
             skip_db_write=skip_db_write,
             sample=sample,
+            chart_names=chart_names,
             run_id=run_id,
             batch_id=batch_id,
             worker_count=worker_count,
@@ -614,6 +661,7 @@ def _run_batch_inner(
     redownload_pages: bool,
     skip_db_write: bool,
     sample: Optional[int],
+    chart_names: Optional[list[str]],
     run_id: Optional[str],
     batch_id: Optional[str],
     worker_count: int,
@@ -638,6 +686,18 @@ def _run_batch_inner(
         sources = [(p, chart_name_from_blob_path(p), "blob") for p in prefixes]
         where = f"{blob_container}/{blob_read_path}"
         batch_progress_dir = None
+
+    missing_names: list[str] = []
+    if chart_names:
+        before = len(sources)
+        sources, missing_names = filter_sources_by_chart_names(sources, chart_names)
+        logger.info(
+            "chart_names: kept %d of %d under %s (missing=%d)",
+            len(sources),
+            before,
+            where,
+            len(missing_names),
+        )
 
     if skip_db_write:
         from db import test_chart_name
@@ -711,6 +771,7 @@ def _run_batch_inner(
         summary = _summarise(results, started)
         summary["workers"] = worker_count
         summary["registered"] = registered
+        summary["charts_missing"] = missing_names
         return summary
 
     with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="batch") as pool:
@@ -755,6 +816,7 @@ def _run_batch_inner(
     summary = _summarise(results, started)
     summary["workers"] = worker_count
     summary["registered"] = registered
+    summary["charts_missing"] = missing_names
     logger.info(
         "Batch finished: %d/%d completed, %d failed, workers=%d, %.1fs",
         summary["completed"], summary["charts_found"],

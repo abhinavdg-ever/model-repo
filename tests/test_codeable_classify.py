@@ -11,7 +11,7 @@ CORE = REPO / "core-pipeline"
 if str(CORE) not in sys.path:
     sys.path.insert(0, str(CORE))
 
-from stages.lib.imaging.codeable_classify import (  # noqa: E402
+from stages.lib.page_classify.codeable_classify import (  # noqa: E402
     classify_pages,
     load_canon,
     score_text,

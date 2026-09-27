@@ -405,6 +405,15 @@ class BatchRequest(StageSelection):
         ),
         examples=[1, 3, 5],
     )
+    chart_names: Optional[list[str]] = Field(
+        None,
+        description=(
+            "Optional allow-list of chart folder names. Only folders that both "
+            "appear in this list AND exist under the read path are run. Names "
+            "not found under the path are skipped (returned as charts_missing)."
+        ),
+        examples=[["52743839_44976074", "52754737_48221214"]],
+    )
     run_id: Optional[str] = Field(
         None,
         description="Override run id. Default: inferred from blob_read_path / local_read_path (Run1 → R1).",
@@ -437,6 +446,29 @@ class BatchRequest(StageSelection):
     @classmethod
     def _norm_blob_paths(cls, value: Any) -> Any:
         return normalize_blob_path(value) if value is not None else value
+
+    @field_validator("chart_names", mode="before")
+    @classmethod
+    def _norm_chart_names(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            parts = [p.strip() for p in value.replace(";", ",").split(",")]
+            value = parts
+        if not isinstance(value, list):
+            return value
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            name = normalize_folder_name(item)
+            if not name:
+                continue
+            key = name.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(name)
+        return out or None
 
 
 class WriteRequest(BaseModel):
@@ -725,6 +757,7 @@ def _bg_batch(payload: "BatchRequest") -> None:
             redownload_pages=payload.redownload_pages,
             skip_db_write=bool(payload.wants_offline()),
             sample=payload.sample,
+            chart_names=payload.chart_names,
             run_id=payload.run_id,
             batch_id=payload.batch_id,
             workers=payload.workers,
@@ -1157,19 +1190,41 @@ def _batch_run_impl(
 
     found: Optional[int] = None
     queued: Optional[int] = None
+    missing: Optional[list[str]] = None
     cap = body.charts_cap()
     if has_local:
         try:
+            from jobs.batch_intake import filter_sources_by_chart_names
+
             folders = find_local_chart_folders(body.local_read_path)
-            found = len(folders)
+            sources = [(str(f), f.name, "local") for f in folders]
+            found = len(sources)
+            if body.chart_names:
+                sources, missing = filter_sources_by_chart_names(
+                    sources, body.chart_names
+                )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if body.chart_names and not sources:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "None of the requested chart_names exist under "
+                    f"{body.local_read_path}"
+                    + (
+                        f" (missing: {', '.join(missing[:20])})"
+                        if missing
+                        else ""
+                    )
+                ),
+            )
         if not found:
             raise HTTPException(
                 status_code=400,
                 detail=f"No chart folders with images under {body.local_read_path}",
             )
-        queued = min(found, cap) if cap else found
+        queued_n = len(sources) if body.chart_names else found
+        queued = min(queued_n, cap) if cap else queued_n
 
     background_tasks.add_task(_bg_batch, body)
     write_to = body.blob_write_path or body.local_write_path
@@ -1179,6 +1234,8 @@ def _batch_run_impl(
         "source": body.local_read_path or f"{body.blob_container}/{body.blob_read_path}",
         "charts_found": found,
         "charts_queued": queued,
+        "charts_missing": missing,
+        "chart_names": body.chart_names,
         "sample": body.sample,
         "workers": workers,
         "through": body.through,
@@ -1204,9 +1261,20 @@ def _batch_run_impl(
         ),
         "note": (
             (
+                f"chart_names filter: {queued} under path"
+                + (
+                    f", {len(missing)} missing"
+                    if missing
+                    else ""
+                )
+                + "; "
+                if body.chart_names and queued is not None
+                else ""
+            )
+            + (
                 f"sample={cap}: up to {queued} of {found} chart folder(s) "
                 f"(incomplete preferred when the drop is larger than N); "
-                if cap and found is not None and queued is not None
+                if cap and found is not None and queued is not None and not body.chart_names
                 else ""
             )
             + f"charts pre-registered into chart_list, then run with "

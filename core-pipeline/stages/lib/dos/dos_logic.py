@@ -13,19 +13,12 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Optional
 
 from azure_llm import azure_deployment
-
-_DOS = json.loads(
-    (Path(__file__).resolve().parents[1] / "keywords.json").read_text(encoding="utf-8")
-)["dos"]
-VISIT_KEYWORDS = list(_DOS["visit_keywords"])
-FROM_KEYWORDS = set(_DOS["from_keywords"])
-TO_KEYWORDS = set(_DOS["to_keywords"])
-EXCLUSION_PATTERNS = list(_DOS["exclusion_patterns"])
+from stages.lib.canon_store import CANON_DIR, CanonFile
 
 DATE_REGEXES = [
     r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b",
@@ -34,22 +27,45 @@ DATE_REGEXES = [
     r"\b[A-Za-z]{3,9}\s+\d{1,2},?\s*\d{2,4}\b",
 ]
 
-# LLM is allowed only when one of these clinical section cues appears on the page
-LLM_SECTION_CUES = re.compile(
-    r"(" + "|".join(_DOS["llm_section_cues"]) + r")",
-    re.IGNORECASE,
+
+@dataclass(frozen=True)
+class DosKeywords:
+    visit_keywords: tuple[str, ...]
+    from_keywords: frozenset[str]
+    to_keywords: frozenset[str]
+    exclusion_patterns: tuple[str, ...]
+    # The LLM is allowed only when one of these section cues is on the page.
+    llm_section_cues: re.Pattern[str]
+    discharge_cue: re.Pattern[str]
+    # Non-encounter pages → document-level default DOS 02-02-2022
+    non_encounter_cue: re.Pattern[str]
+
+
+def _any_of(patterns: list[str]) -> re.Pattern[str]:
+    return re.compile(r"(" + "|".join(patterns) + r")", re.IGNORECASE)
+
+
+def _build_keywords(data: dict[str, Any]) -> DosKeywords:
+    return DosKeywords(
+        visit_keywords=tuple(data["visit_keywords"]),
+        from_keywords=frozenset(data["from_keywords"]),
+        to_keywords=frozenset(data["to_keywords"]),
+        exclusion_patterns=tuple(data["exclusion_patterns"]),
+        llm_section_cues=_any_of(data["llm_section_cues"]),
+        discharge_cue=_any_of(data["discharge_cue"]),
+        non_encounter_cue=_any_of(data["non_encounter_cues"]),
+    )
+
+
+# keyword-canon/dos_keywords_canon.json — reloaded when the file changes.
+_KEYWORDS: CanonFile[DosKeywords] = CanonFile(
+    CANON_DIR / "dos_keywords_canon.json", _build_keywords
 )
 
-DISCHARGE_CUE = re.compile(
-    r"(" + "|".join(_DOS["discharge_cue"]) + r")",
-    re.IGNORECASE,
-)
 
-# Non-encounter pages → document-level default DOS 02-02-2022
-NON_ENCOUNTER_CUE = re.compile(
-    r"(" + "|".join(_DOS["non_encounter_cues"]) + r")",
-    re.IGNORECASE,
-)
+def _kw() -> DosKeywords:
+    return _KEYWORDS.get()
+
 
 # Preamble / non-encounter / before-first-DOS default
 DEFAULT_DOC_DOS = "02-02-2022"
@@ -220,9 +236,9 @@ def _merge_dos_hits(*hits: Optional[dict]) -> Optional[dict]:
         (
             h
             for h in valid
-            if (h.get("keyword") or "").upper().split("+")[0] in FROM_KEYWORDS
+            if (h.get("keyword") or "").upper().split("+")[0] in _kw().from_keywords
             or any(
-                part.strip().upper() in FROM_KEYWORDS
+                part.strip().upper() in _kw().from_keywords
                 for part in (h.get("keyword") or "").split("+")
             )
         ),
@@ -233,7 +249,7 @@ def _merge_dos_hits(*hits: Optional[dict]) -> Optional[dict]:
             h
             for h in valid
             if any(
-                part.strip().upper() in TO_KEYWORDS
+                part.strip().upper() in _kw().to_keywords
                 for part in (h.get("keyword") or "").split("+")
             )
         ),
@@ -335,7 +351,7 @@ def _collect_keyword_dates(text: str) -> list[tuple[str, str]]:
     found: list[tuple[str, str]] = []
     seen: set[str] = set()
 
-    for keyword in VISIT_KEYWORDS:
+    for keyword in _kw().visit_keywords:
         hit = _date_after_keyword(text, text_lower, keyword)
         if not hit:
             continue
@@ -452,16 +468,16 @@ def _combined_date_regex() -> re.Pattern[str]:
 
 def page_allows_llm(page_text: str) -> bool:
     """True when page looks like a clinical note section LLM may help with."""
-    return bool(LLM_SECTION_CUES.search(page_text or ""))
+    return bool(_kw().llm_section_cues.search(page_text or ""))
 
 
 def is_discharge_like(page_text: str) -> bool:
-    return bool(DISCHARGE_CUE.search(page_text or ""))
+    return bool(_kw().discharge_cue.search(page_text or ""))
 
 
 def is_non_encounter_page(page_text: str) -> bool:
     """Immunization / med list / facesheet-style pages → use default doc DOS."""
-    return bool(NON_ENCOUNTER_CUE.search(page_text or ""))
+    return bool(_kw().non_encounter_cue.search(page_text or ""))
 
 
 def _hit(
@@ -666,7 +682,7 @@ def _date_after_keyword(text: str, text_lower: str, keyword: str) -> Optional[tu
 
     date_pos = search_start + date_match.start()
     context_before_date = text_lower[max(0, date_pos - 30) : date_pos]
-    if any(re.search(p, context_before_date) for p in EXCLUSION_PATTERNS):
+    if any(re.search(p, context_before_date) for p in _kw().exclusion_patterns):
         return None
 
     raw_date = date_match.group(0)
@@ -704,7 +720,7 @@ def extract_date_with_keyword_info(text: str) -> Optional[dict]:
     to_kw: Optional[str] = None
     generic: Optional[tuple[str, str, str]] = None  # norm, raw, keyword
 
-    for keyword in VISIT_KEYWORDS:
+    for keyword in _kw().visit_keywords:
         hit = _date_after_keyword(text, text_lower, keyword)
         if not hit:
             continue
@@ -721,10 +737,10 @@ def extract_date_with_keyword_info(text: str) -> Optional[dict]:
             }
 
         key_upper = keyword.upper()
-        if key_upper in FROM_KEYWORDS or keyword.upper() in FROM_KEYWORDS:
+        if key_upper in _kw().from_keywords or keyword.upper() in _kw().from_keywords:
             if from_date is None:
                 from_date, from_kw = norm, keyword
-        elif key_upper in TO_KEYWORDS or keyword.upper() in TO_KEYWORDS:
+        elif key_upper in _kw().to_keywords or keyword.upper() in _kw().to_keywords:
             if to_date is None:
                 to_date, to_kw = norm, keyword
         elif generic is None:

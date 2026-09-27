@@ -190,6 +190,7 @@ export default function App() {
           />
         ) : (
           <FolderViewer
+            key={route.folderId}
             folderId={route.folderId}
             initialMode={route.mode}
             onBack={() => navigate({ view: "landing" })}

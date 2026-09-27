@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import os
 import re
 import sys
@@ -517,72 +518,89 @@ def _core_pipeline_dir() -> Path | None:
     here = Path(__file__).resolve()
     for parent in here.parents:
         core = parent / "core-pipeline"
-        if core.is_dir() and (core / "stages" / "lib" / "imaging").is_dir():
+        if core.is_dir() and (core / "stages" / "lib" / "ocr").is_dir():
             return core
     return None
+
+
+_HEADER_MATCH_THRESHOLD = 0.90
+# (canon mtime, header text) → canonical label, or "" when below threshold.
+# A chart's Final OCR repeats the same few hundred header strings across every
+# page; scoring each against the whole canon list on every OCR fetch was the
+# bulk of /ocr latency. The mtime in the key keeps list edits live.
+_header_match_cache: dict[tuple[float | None, str], str] = {}
+_header_match_lock = threading.Lock()
+_header_matcher: Any = None  # stages.lib.ocr.section_header_match, once imported
+
+
+def _load_header_matcher() -> Any:
+    global _header_matcher
+    if _header_matcher is not None:
+        return _header_matcher
+    core = _core_pipeline_dir()
+    if core is None:
+        return None
+    core_s = str(core)
+    if core_s not in sys.path:
+        sys.path.insert(0, core_s)
+    from stages.lib.ocr import section_header_match  # type: ignore
+
+    _header_matcher = section_header_match
+    return _header_matcher
+
+
+def _canon_label_for(matcher: Any, text: str) -> str:
+    try:
+        mtime: float | None = matcher.canon_path().stat().st_mtime
+    except OSError:
+        mtime = None
+    key = (mtime, text)
+    label = _header_match_cache.get(key)
+    if label is None:
+        score, canonical = matcher.best_header_match(text, use_minilm=False)
+        label = canonical if score >= _HEADER_MATCH_THRESHOLD else ""
+        with _header_match_lock:
+            if len(_header_match_cache) > 50_000:
+                _header_match_cache.clear()
+            _header_match_cache[key] = label
+    return label
 
 
 def _filter_headers_against_canon(
     headers: list[OcrSectionHeader],
 ) -> list[OcrSectionHeader]:
-    """Keep headers with ≥90% lexical/semantic match to ``section_header_canon.json``.
+    """Keep headers with ≥90% lexical match to ``section_header_canon.json``.
 
     Re-runs on every OCR fetch so editing the list updates overlays without
-    re-OCR. Falls back to exact normalized match if the matcher cannot import.
+    re-OCR (results are memoised per canon mtime). Falls back to exact
+    normalized match if the matcher cannot import.
     """
     if not headers:
         return headers
-    core = _core_pipeline_dir()
-    if core is not None:
-        core_s = str(core)
-        if core_s not in sys.path:
-            sys.path.insert(0, core_s)
-        try:
-            from stages.lib.imaging.section_header_match import (  # type: ignore
-                filter_section_headers,
-            )
-
-            as_dicts = [
-                {
-                    "text": h.text,
-                    "level": h.level,
-                    "left": h.left,
-                    "top": h.top,
-                    "width": h.width,
-                    "height": h.height,
-                }
-                for h in headers
-            ]
-            kept = filter_section_headers(
-                as_dicts, threshold=0.90, enabled=True, use_minilm=False
-            )
-            out: list[OcrSectionHeader] = []
-            for item in kept:
-                # Prefer the canon label so OCR noise like "4 Allergies" → "Allergies".
-                label = str(
-                    item.get("matched_canonical") or item.get("text") or ""
-                ).strip()
-                out.append(
-                    OcrSectionHeader(
-                        text=label,
-                        level=int(item.get("level") or 2),
-                        left=float(item.get("left") or 0),
-                        top=float(item.get("top") or 0),
-                        width=float(item.get("width") or 0),
-                        height=float(item.get("height") or 0),
-                    )
-                )
-            return out
-        except Exception as exc:
-            logger = __import__("logging").getLogger(__name__)
-            logger.warning("Live section-header canon filter skipped: %s", exc)
+    try:
+        matcher = _load_header_matcher()
+    except Exception as exc:
+        matcher = None
+        logging.getLogger(__name__).warning(
+            "Live section-header canon filter skipped: %s", exc
+        )
+    if matcher is not None:
+        out: list[OcrSectionHeader] = []
+        for h in headers:
+            text = (h.text or "").strip()
+            if not text:
+                continue
+            # Prefer the canon label so OCR noise like "4 Allergies" → "Allergies".
+            label = _canon_label_for(matcher, text)
+            if label:
+                out.append(h.model_copy(update={"text": label}))
+        return out
 
     # Exact-match fallback against the JSON list (no MiniLM / difflib).
+    core = _core_pipeline_dir()
     canon_path = None
     if core is not None:
-        canon_path = (
-            core / "stages" / "lib" / "imaging" / "section_header_canon.json"
-        )
+        canon_path = core / "stages" / "lib" / "keyword-canon" / "section_header_canon.json"
     if canon_path is None or not canon_path.is_file():
         return headers
     try:

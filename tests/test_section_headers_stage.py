@@ -12,8 +12,8 @@ if str(CORE) not in sys.path:
 
 
 def test_refresh_from_candidates_picks_up_canon_change(tmp_path, monkeypatch):
-    from stages.lib.imaging import section_header_match as shm
-    from stages.lib.imaging.section_headers_io import refresh_page_headers
+    from stages.lib.ocr import section_header_match as shm
+    from stages.lib.ocr.section_headers_io import refresh_page_headers
 
     canon = tmp_path / "section_header_canon.json"
     canon.write_text(json.dumps(["Chief Complaint"]), encoding="utf-8")
@@ -49,7 +49,7 @@ def test_refresh_from_candidates_picks_up_canon_change(tmp_path, monkeypatch):
 
 
 def test_final2_rebuilds_candidates_from_pages_meta():
-    from stages.lib.imaging.section_headers_io import candidates_from_page
+    from stages.lib.ocr.section_headers_io import candidates_from_page
 
     page = {
         "fileName": "2.jpg",
@@ -78,7 +78,7 @@ def test_final2_rebuilds_candidates_from_pages_meta():
 
 
 def test_refresh_ocr_json_doc_rewrites_headers():
-    from stages.lib.imaging.section_headers_io import refresh_ocr_json_doc
+    from stages.lib.ocr.section_headers_io import refresh_ocr_json_doc
 
     doc = {
         "recordId": "chart",

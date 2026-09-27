@@ -1486,6 +1486,7 @@ class TestCapabilityReporting:
             "blob",
             "HW model",
             "RapidOCR",
+            "blank/junk model",
             "final1 Docling",
             "final2 OCR",
             "DOS LLM",
@@ -1494,6 +1495,7 @@ class TestCapabilityReporting:
         ]
         assert "hw_model" in snapshot
         assert "rapidocr_models" in snapshot
+        assert "blank_junk_model" in snapshot
 
     def test_health_still_exposes_member_ner_at_the_top_level(self, monkeypatch):
         """docs and review-ui read `member_ner.ready`; moving it would be a
@@ -1915,7 +1917,7 @@ class TestOsdOrientation:
         dependency must degrade to 'leave the page alone'."""
         import builtins
 
-        from stages.lib.imaging import osd
+        from stages.lib.image_preprocess import osd
 
         real_import = builtins.__import__
 
@@ -1930,7 +1932,7 @@ class TestOsdOrientation:
     def test_a_non_quadrant_rotation_is_rejected(self, monkeypatch):
         """Only 0/90/180/270 are meaningful here; anything else is a parse
         problem, and acting on it would skew the page."""
-        from stages.lib.imaging import osd
+        from stages.lib.image_preprocess import osd
 
         monkeypatch.setattr(
             osd, "detect_rotation",
@@ -1949,7 +1951,7 @@ class TestOsdOrientation:
         """A wrongly rotated page is worse than an uncorrected one."""
         import pytesseract
 
-        from stages.lib.imaging import osd
+        from stages.lib.image_preprocess import osd
 
         monkeypatch.setattr(
             pytesseract, "image_to_osd",
@@ -1960,7 +1962,7 @@ class TestOsdOrientation:
     def test_a_confident_quadrant_answer_is_accepted(self, monkeypatch):
         import pytesseract
 
-        from stages.lib.imaging import osd
+        from stages.lib.image_preprocess import osd
 
         monkeypatch.setattr(
             pytesseract, "image_to_osd",
@@ -1977,8 +1979,8 @@ class TestOsdOrientation:
         import cv2
         import numpy as np
 
-        from stages.lib.imaging.osd import detect_rotation
-        from stages.lib.imaging.rotation import correct_image
+        from stages.lib.image_preprocess.osd import detect_rotation
+        from stages.lib.image_preprocess.rotation import correct_image
 
         page = (
             Path(__file__).resolve().parents[1]

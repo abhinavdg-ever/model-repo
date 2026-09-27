@@ -13,7 +13,7 @@ for path in (str(CORE), str(ROOT)):
 
 
 def test_docling_page_sizes_from_dict_pages():
-    from stages.lib.imaging.docling_ocr import _page_sizes_map
+    from stages.lib.ocr.docling_ocr import _page_sizes_map
 
     page = SimpleNamespace(size=SimpleNamespace(width=1000.0, height=2000.0))
     doc = SimpleNamespace(pages={1: page})
@@ -23,7 +23,7 @@ def test_docling_page_sizes_from_dict_pages():
 
 
 def test_docling_header_norm_with_dict_pages():
-    from stages.lib.imaging.docling_ocr import extract_section_headers
+    from stages.lib.ocr.docling_ocr import extract_section_headers
 
     class _BBox:
         # TOPLEFT image coords: t < b
@@ -54,7 +54,7 @@ def test_docling_header_norm_with_dict_pages():
 
 
 def test_bbox_to_css_norm_bottomleft():
-    from stages.lib.imaging.docling_ocr import _bbox_to_css_norm
+    from stages.lib.ocr.docling_ocr import _bbox_to_css_norm
 
     # BOTTOMLEFT: t > b (y up). Box near top of a 2000-tall page.
     norm = _bbox_to_css_norm(100, 1800, 400, 1700, 1000, 2000, "BOTTOMLEFT")
@@ -66,7 +66,7 @@ def test_bbox_to_css_norm_bottomleft():
 
 
 def test_resolve_norm_page_size_halves_when_page_is_2x_image():
-    from stages.lib.imaging.docling_ocr import _resolve_norm_page_size
+    from stages.lib.ocr.docling_ocr import _resolve_norm_page_size
 
     # images_scale=2: page.size doubled, bboxes still in native pixels.
     w, h = _resolve_norm_page_size(

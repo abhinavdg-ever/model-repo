@@ -11,7 +11,7 @@ if str(CORE) not in sys.path:
 
 
 def test_strips_image_placeholders_and_empty_tables():
-    from stages.lib.imaging.docling_ocr import clean_docling_markdown
+    from stages.lib.ocr.docling_ocr import clean_docling_markdown
 
     raw = (
         "<!-- image -->\n\n<!-- image -->\n\n"
@@ -33,7 +33,7 @@ def test_strips_image_placeholders_and_empty_tables():
 
 
 def test_patient_data_matches_canon():
-    from stages.lib.imaging.section_header_match import best_header_match
+    from stages.lib.ocr.section_header_match import best_header_match
 
     score, label = best_header_match("PATIENT DATA", use_minilm=False)
     assert score >= 0.90

@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import Literal, Optional, Sequence
 
 from app.core.schemas import FolderSummary, OcrRunStatus
-from app.services.chart_run_batch import _connect, database_url_usable
+from app.services.chart_run_batch import db_lookup_enabled, database_url_usable
+from app.services.db import connection
 
 
 logger = logging.getLogger("review_ui.folder_list")
@@ -104,11 +105,10 @@ def fetch_chart_summaries_from_db(
     Excludes ``source='local'`` intake rows — the review UI lists blob (and
     non-empty manifest) charts only.
     """
-    conn = _connect(database_url, db_schema)
-    if conn is None:
+    if not db_lookup_enabled(database_url, db_schema):
         return []
     try:
-        with conn:
+        with connection(database_url, db_schema) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """

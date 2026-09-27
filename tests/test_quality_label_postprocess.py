@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core-pipeline"))
 
-from stages.lib.imaging.quality_label_postprocess import (  # noqa: E402
+from stages.lib.image_preprocess.quality_label_postprocess import (  # noqa: E402
     apply_quality_label_postprocess,
     base_quality_label,
 )

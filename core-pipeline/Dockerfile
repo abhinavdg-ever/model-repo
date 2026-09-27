@@ -41,13 +41,13 @@ COPY . /app/core-pipeline
 WORKDIR /app/core-pipeline
 
 # Fail the build if junk keywords / clinical short-circuit did not land in the
-# image (same logic as local / Windows — keywords.json + text_utils).
+# image (same logic as local / Windows — stages/lib/keyword-canon/junk_keywords_canon.json + text_utils).
 RUN python -c "\
 import sys; \
-sys.path.insert(0, 'stages/lib/junk'); \
+sys.path.insert(0, 'stages/lib/blank_junk'); \
 from classify import CODE_MAIN, classify_text; \
-from kw import JUNK; \
-assert 'letter_fax' in JUNK and 'invoice' in JUNK; \
+from kw import rules; \
+assert rules().letter_fax and rules().invoice_keywords; \
 text = ( \
     'Progress Note\\n' \
     'Reason for Appointment: 6 month follow up.\\n' \
@@ -61,7 +61,7 @@ code, reason = classify_text(text); \
 assert code == CODE_MAIN and reason == 'clinical_content', (code, reason); \
 print('junk clinical short-circuit ok')"
 
-# Engines live under stages/lib/imaging/; weights are bind-mounted at runtime.
+# Engines live under stages/lib/image_preprocess/ and stages/lib/ocr/; weights are bind-mounted at runtime.
 ENV PYTHONPATH=/app/core-pipeline \
     HW_MODEL_PATH=/app/core-pipeline/models/hw/handwritten_printed_convnext_tiny.pth \
     API_HOST=0.0.0.0 \

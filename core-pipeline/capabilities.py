@@ -313,9 +313,24 @@ def hw_model_status() -> dict[str, Any]:
     }
 
 
+def blank_junk_model_status() -> dict[str, Any]:
+    """TF-IDF blank/junk model. Never raises; never loads the model."""
+    try:
+        import sys
+
+        junk = str(Path(__file__).resolve().parent / "stages" / "lib" / "blank_junk")
+        if junk not in sys.path:
+            sys.path.insert(0, junk)
+        from model_bridge import model_status
+
+        return model_status()
+    except Exception as exc:
+        return {"ready": False, "loaded": False, "reason": str(exc)}
+
+
 def rapidocr_models_status() -> dict[str, Any]:
     """Local RapidOCR .pth files used by Docling final1."""
-    from stages.lib.imaging.docling_ocr import (
+    from stages.lib.ocr.docling_ocr import (
         missing_model_files,
         model_paths,
         rapid_models_dir,
@@ -339,7 +354,7 @@ def rapidocr_models_status() -> dict[str, Any]:
 
 def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
     """Every optional feature at once. `probe=True` allows one blob round trip."""
-    from stages.lib.imaging.docling_ocr import docling_status
+    from stages.lib.ocr.docling_ocr import docling_status
 
     return {
         "blob": probe_blob() if probe else blob_status(),
@@ -348,6 +363,7 @@ def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
         "member_ner": ner_status(),
         "docling_final1": docling_status(),
         "hw_model": hw_model_status(),
+        "blank_junk_model": blank_junk_model_status(),
         "rapidocr_models": rapidocr_models_status(),
         "skip_ocr": {
             "enabled": SKIP_OCR,
@@ -385,6 +401,7 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     skip_ocr = caps.get("skip_ocr") or {}
     hw = caps.get("hw_model") or {}
     rapid = caps.get("rapidocr_models") or {}
+    bj = caps.get("blank_junk_model") or {}
 
     blob_on = f"OK — {blob.get('auth')}"
     if blob.get("account"):
@@ -402,6 +419,7 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     docling_on = "OK"
     hw_on = f"OK — {hw.get('engine') or 'ready'}"
     rapid_on = "OK"
+    bj_on = f"OK — {bj.get('model_version') or 'ready'}"
     skip_on = "ON"
 
     skip_line = (
@@ -414,6 +432,7 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
         ("blob", _one_line(blob, blob_on)),
         ("HW model", _one_line(hw, hw_on)),
         ("RapidOCR", _one_line(rapid, rapid_on)),
+        ("blank/junk model", _one_line(bj, bj_on)),
         ("final1 Docling", _one_line(docling, docling_on)),
         ("final2 OCR", _one_line(di, di_on)),
         ("DOS LLM", _one_line(llm, llm_on)),

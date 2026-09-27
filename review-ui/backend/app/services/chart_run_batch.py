@@ -12,17 +12,9 @@ import logging
 from datetime import date, datetime
 from typing import Any, Optional
 
+from app.services.db import connection, psycopg_url, valid_schema  # noqa: F401
+
 logger = logging.getLogger("review_ui.chart_run_batch")
-
-
-def psycopg_url(database_url: str) -> str:
-    """Accept sqlalchemy-style postgresql+psycopg:// and plain postgresql://."""
-    url = (database_url or "").strip()
-    if url.startswith("postgresql+psycopg://"):
-        return "postgresql://" + url[len("postgresql+psycopg://") :]
-    if url.startswith("postgres+psycopg://"):
-        return "postgresql://" + url[len("postgres+psycopg://") :]
-    return url
 
 
 def database_url_usable(database_url: str | None) -> bool:
@@ -46,27 +38,16 @@ def prefer_db_run_batch(
     return (db_run or meta_run), (db_batch or meta_batch)
 
 
-def _connect(database_url: str, db_schema: str):
-    """Open a psycopg connection with search_path set, or None on failure."""
+def db_lookup_enabled(database_url: str, db_schema: str) -> bool:
+    """True when a Postgres lookup should be attempted at all."""
     if not database_url_usable(database_url):
-        return None
-    schema = (db_schema or "public").strip() or "public"
-    if not schema.replace("_", "").isalnum():
-        logger.warning("invalid DB_SCHEMA=%r — skipping Postgres lookup", schema)
-        return None
+        return False
     try:
-        import psycopg
-    except ImportError:
-        logger.debug("psycopg not installed — skipping Postgres lookup")
-        return None
-    try:
-        conn = psycopg.connect(psycopg_url(database_url))
-        with conn.cursor() as cur:
-            cur.execute(f"SET search_path TO {schema}")
-        return conn
-    except Exception as exc:
-        logger.warning("Postgres connect failed: %s", exc)
-        return None
+        valid_schema(db_schema)
+    except ValueError:
+        logger.warning("invalid DB_SCHEMA=%r — skipping Postgres lookup", db_schema)
+        return False
+    return True
 
 
 def fetch_chart_run_batch_map(
@@ -75,11 +56,10 @@ def fetch_chart_run_batch_map(
     db_schema: str = "public",
 ) -> dict[str, tuple[Optional[str], Optional[str]]]:
     """``chart_name → (run_id, batch_id)`` from ``chart_list``, or ``{}`` on failure."""
-    conn = _connect(database_url, db_schema)
-    if conn is None:
+    if not db_lookup_enabled(database_url, db_schema):
         return {}
     try:
-        with conn:
+        with connection(database_url, db_schema) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -126,11 +106,10 @@ def fetch_manifest_for_record(
     rid = (record_id or "").strip()
     if not rid:
         return None
-    conn = _connect(database_url, db_schema)
-    if conn is None:
+    if not db_lookup_enabled(database_url, db_schema):
         return None
     try:
-        with conn:
+        with connection(database_url, db_schema) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """

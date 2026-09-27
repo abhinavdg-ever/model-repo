@@ -139,3 +139,22 @@ def test_select_batch_sources_no_sample_returns_all():
 
     sources = [("/a", "a", "local"), ("/b", "b", "local")]
     assert select_batch_sources(sources, None) == sources
+
+
+def test_filter_sources_by_chart_names():
+    from jobs.batch_intake import filter_sources_by_chart_names
+
+    sources = [
+        ("/drop/chart_a", "chart_a", "local"),
+        ("/drop/chart_b", "chart_b", "local"),
+        ("/drop/chart_c", "chart_c", "local"),
+    ]
+    matched, missing = filter_sources_by_chart_names(
+        sources, ["chart_c", "nope", "chart_a", "chart_a"]
+    )
+    assert [n for _s, n, _m in matched] == ["chart_c", "chart_a"]
+    assert missing == ["nope"]
+
+    all_kept, no_missing = filter_sources_by_chart_names(sources, None)
+    assert all_kept == sources
+    assert no_missing == []

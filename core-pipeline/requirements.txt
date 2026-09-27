@@ -9,7 +9,8 @@ Pillow>=10.0
 pytesseract>=0.3.10
 numpy>=1.24
 opencv-python-headless>=4.8
-scikit-learn>=1.3
+# models/blank-junk/tfidf_flat.joblib is pickled with 1.9.1 — other minors may not unpickle.
+scikit-learn~=1.9.1
 joblib>=1.3
 rapidocr-onnxruntime>=1.3
 openpyxl>=3.1

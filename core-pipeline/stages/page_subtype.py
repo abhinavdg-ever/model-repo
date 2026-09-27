@@ -27,7 +27,7 @@ from stages._support import (
     mark_completed,
     stage_run,
 )
-from stages.lib.imaging.codeable_classify import classify_pages
+from stages.lib.page_classify.codeable_classify import classify_pages
 
 logger = logging.getLogger(__name__)
 

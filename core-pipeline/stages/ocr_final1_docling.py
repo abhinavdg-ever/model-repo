@@ -106,7 +106,7 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool, str]) -> dict[str, Any]:
             raise FileNotFoundError(f"Missing page image: {image_path}")
 
         if prefer_docling:
-            from stages.lib.imaging.docling_ocr import (
+            from stages.lib.ocr.docling_ocr import (
                 convert_image_with_timeout,
                 get_converter,
             )
@@ -169,7 +169,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
     prefer_docling = False
     engine_label = "rapidocr-onnx"
     try:
-        from stages.lib.imaging.docling_ocr import converter_reason, get_converter
+        from stages.lib.ocr.docling_ocr import converter_reason, get_converter
 
         if get_converter() is not None:
             prefer_docling = True
@@ -208,7 +208,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         if todo:
             # Docling is heavy; still fan out, but keep the shared converter.
             if prefer_docling:
-                from stages.lib.imaging.docling_ocr import get_converter
+                from stages.lib.ocr.docling_ocr import get_converter
 
                 get_converter()
             else:

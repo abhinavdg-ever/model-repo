@@ -1,7 +1,7 @@
 """Stage: rotation + page quality + handwritten/printed → ocr_quality_results.
 
 Uses:
-  * Tesseract OSD + geometric tilt (``stages.lib.imaging.rotation`` / ``osd``)
+  * Tesseract OSD + geometric tilt (``stages.lib.image_preprocess.rotation`` / ``osd``)
   * ConvNeXt HW classifier (``hw_printed``), with RF pickle fallback
   * Engineering quality analyzer (``quality_analyzer``) — real scores, not a placeholder
   * Label post-process: Handwritten + High → Medium (score unchanged)
@@ -46,7 +46,7 @@ def _get_hw_model() -> Any:
         if _hw_model_loaded:
             return _hw_model
         try:
-            from stages.lib.imaging.hw_printed import load_model
+            from stages.lib.image_preprocess.hw_printed import load_model
 
             path = HW_MODEL_PATH if HW_MODEL_PATH.is_file() else None
             _hw_model = load_model(path)
@@ -64,7 +64,7 @@ def _get_detector() -> Any:
         return _detector
     with _model_lock:
         if _detector is None:
-            from stages.lib.imaging.rotation import PageOrientationDetector
+            from stages.lib.image_preprocess.rotation import PageOrientationDetector
 
             _detector = PageOrientationDetector()
         return _detector
@@ -73,7 +73,7 @@ def _get_detector() -> Any:
 def _classify_hw(image_path: Path) -> tuple[str, float, str]:
     """Return (printed|handwritten|mixed|uncertain, confidence, method)."""
     try:
-        from stages.lib.imaging.hw_printed import classify_image_type
+        from stages.lib.image_preprocess.hw_printed import classify_image_type
 
         model = _get_hw_model()
         label, conf, method = classify_image_type(image_path.read_bytes(), model=model)
@@ -99,7 +99,7 @@ def _measure_quality(image_path: Path) -> dict[str, Any]:
     try:
         import cv2
 
-        from stages.lib.imaging.quality_analyzer import analyze_quality, read_embedded_dpi
+        from stages.lib.image_preprocess.quality_analyzer import analyze_quality, read_embedded_dpi
 
         arr = cv2.imread(str(image_path))
         if arr is None:
@@ -127,7 +127,7 @@ def _apply_quality_postprocess(
     hw_label: str,
 ) -> dict[str, Any]:
     """Handwritten + High → Medium (teammate image_preprocessing rule)."""
-    from stages.lib.imaging.quality_label_postprocess import (
+    from stages.lib.image_preprocess.quality_label_postprocess import (
         apply_quality_label_postprocess,
     )
 
@@ -161,7 +161,7 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
         # confidence 1.000 on the wrong answers; OSD was exact on all four
         # orientations. Tilt still comes from the detector, which measures it
         # well, and OSD says nothing about it.
-        from stages.lib.imaging.osd import detect_rotation as osd_rotation
+        from stages.lib.image_preprocess.osd import detect_rotation as osd_rotation
 
         osd = osd_rotation(image)
         if osd is not None:
@@ -261,7 +261,7 @@ def _write_corrected(
     try:
         import cv2
 
-        from stages.lib.imaging.rotation import correct_image
+        from stages.lib.image_preprocess.rotation import correct_image
 
         out_img = image
         if needs_rot:

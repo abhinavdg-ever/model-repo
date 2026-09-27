@@ -6,7 +6,8 @@ local disk and Entra-proxied blob bytes.
 
 ``thumb=1`` returns a small JPEG for the filmstrip so charts with hundreds of
 pages do not pull full-resolution files for every thumbnail. Thumbs are cached
-under the system temp dir keyed by path + mtime so reopening a chart is cheap.
+under the system temp dir keyed by path + mtime (local) or key + ETag (blob)
+so reopening a chart is cheap.
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ import io
 import logging
 import tempfile
 from pathlib import Path
+from typing import Callable
 
 logger = logging.getLogger("review_ui.images")
 
@@ -89,16 +91,40 @@ def bytes_to_display_jpeg(
         )
 
 
+def _cache_file(stamp: str) -> Path:
+    digest = hashlib.sha1(stamp.encode("utf-8", errors="replace")).hexdigest()
+    root = Path(tempfile.gettempdir()) / "review-ui-page-thumbs"
+    root.mkdir(parents=True, exist_ok=True)
+    return root / f"{digest}.jpg"
+
+
 def _thumb_cache_path(path: Path, *, max_edge: int) -> Path:
     try:
         st = path.stat()
         stamp = f"{path.resolve()}|{st.st_mtime_ns}|{st.st_size}|{max_edge}"
     except OSError:
         stamp = f"{path}|{max_edge}"
-    digest = hashlib.sha1(stamp.encode("utf-8", errors="replace")).hexdigest()
-    root = Path(tempfile.gettempdir()) / "review-ui-page-thumbs"
-    root.mkdir(parents=True, exist_ok=True)
-    return root / f"{digest}.jpg"
+    return _cache_file(stamp)
+
+
+def cached_derived_jpeg(stamp: str, produce: Callable[[], bytes]) -> bytes:
+    """Disk-cache a derived JPEG (thumb / TIFF conversion) under ``stamp``.
+
+    ``stamp`` must change whenever the source changes — for blobs, include the
+    ETag. Saves re-downloading and re-encoding the source on every request.
+    """
+    cache = _cache_file(stamp)
+    try:
+        if cache.is_file() and cache.stat().st_size > 0:
+            return cache.read_bytes()
+    except OSError:
+        pass
+    data = produce()
+    try:
+        cache.write_bytes(data)
+    except OSError:
+        logger.debug("derived image cache write failed path=%s", cache, exc_info=True)
+    return data
 
 
 def _read_thumb_cache(path: Path, *, max_edge: int) -> bytes | None:

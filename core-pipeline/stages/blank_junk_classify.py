@@ -9,6 +9,10 @@ Two passes, as the pipeline spec requires:
           RapidOCR), for handwritten + low-quality pages plus any printed
           page pass 1 did not already rule out.
 
+Blank/junk uses the TF-IDF model (KEEP / BLANK / JUNK). Regex rules run
+only when the model is missing, errors, or flags the page for review.
+Duplicate detection is unchanged (neighbor similarity, not the model).
+
 Duplicate detection (after blank/junk rules):
 
 * Compare each comparable page only to neighbors **±2** in page order.
@@ -53,7 +57,7 @@ from stages._support import (
 
 logger = logging.getLogger(__name__)
 
-_JUNK_LIB = CORE_ROOT / "stages" / "lib" / "junk"
+_JUNK_LIB = CORE_ROOT / "stages" / "lib" / "blank_junk"
 if str(_JUNK_LIB) not in sys.path:
     sys.path.insert(0, str(_JUNK_LIB))
 
@@ -66,11 +70,11 @@ from classify import (  # noqa: E402
     DUPLICATE_SIMILARITY_THRESHOLD,
     JUNK_CODES,
     classification_confidence,
-    classify_text,
     duplicate_char_count,
     text_is_comparable,
     text_similarity,
 )
+from model_bridge import classify_page  # noqa: E402
 
 STAGE = "blank_junk"
 
@@ -208,15 +212,18 @@ def _classify(
     (1.0 → UI Yes; [0.95, 1.0) → May Be).
     """
     prior = set(prior_main_ids or ())
-    # Phase 1 — blank / junk / main from text rules (no duplicates yet).
+    # Phase 1 — TF-IDF model (KEEP/BLANK/JUNK). Regex only when the model
+    # is missing, errors, or asks for review.
     by_id: dict[int, dict[str, Any]] = {}
     for page in pages:
         page_id = page["id"]
         if page_id not in todo:
             continue
         text = texts.get(page_id) or ""
-        code, reason = classify_text(text)
-        by_id[page_id] = _row_for(page, code=code, reason=reason)
+        code, reason, conf = classify_page(text)
+        by_id[page_id] = _row_for(
+            page, code=code, reason=reason, confidence=conf
+        )
 
     def _comparable(page_id: int) -> bool:
         text = texts.get(page_id) or ""

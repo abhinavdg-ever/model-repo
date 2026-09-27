@@ -31,6 +31,8 @@ from app.core.schemas import (
     OcrTextResponse,
     PageSummary,
 )
+from app.services import db
+from app.services.db import psycopg_url as _psycopg_url
 from app.services.imaging_overlays import display_page_type, empty_imaging_pages
 
 logger = logging.getLogger("review_ui.postgres")
@@ -68,7 +70,7 @@ IMAGING_STAGES = frozenset(
     {"blank_junk", "member_verify", "dos_extract"}
 )
 
-# Cache Raw_Input blob listings briefly (same order as ingest → page_number).
+# How long page → blob locations are cached (Raw_Input listing order = page_number).
 _BLOB_LIST_TTL_SEC = 300.0
 
 
@@ -79,22 +81,6 @@ def _ocr_status_for(status: str | None, current_stage: str | None) -> str:
     if key == "processing" and str(current_stage or "").lower() in IMAGING_STAGES:
         return "IMAGING_IN_PROGRESS"
     return mapped
-
-
-def _psycopg_url(database_url: str) -> str:
-    """Accept sqlalchemy-style postgresql+psycopg:// and plain postgresql://."""
-    url = database_url.strip()
-    if url.startswith("postgresql+psycopg://"):
-        return "postgresql://" + url[len("postgresql+psycopg://") :]
-    if url.startswith("postgres+psycopg://"):
-        return "postgresql://" + url[len("postgres+psycopg://") :]
-    return url
-
-
-def _db_schema() -> str:
-    import os
-
-    return (os.environ.get("DB_SCHEMA") or os.environ.get("PG_SCHEMA") or "public").strip() or "public"
 
 
 def _fmt_date(value: Any) -> str | None:
@@ -138,36 +124,19 @@ class PostgresFolderRepository(FolderRepository):
             if data_root is not None
             else None
         )
-        # folder_id → (monotonic_ts, sorted blob keys under Raw_Input prefix)
-        self._raw_blob_lists: dict[str, tuple[float, list[str]]] = {}
+        # Per-chart caches for the page image route (TTL _BLOB_LIST_TTL_SEC):
+        # folder_id → sorted (key, etag) under the Raw_Input prefix
+        self._raw_blob_lists: dict[str, tuple[float, list[tuple[str, str]]]] = {}
+        # folder_id → page_number → page_list/chart_list location row
+        self._page_rows_cache: dict[str, tuple[float, dict[int, tuple]]] = {}
+        # (folder_id, page_number) → resolved blob location
+        self._resolved_blobs: dict[tuple[str, int], tuple[float, dict[str, str]]] = {}
 
     def _optional_local(self) -> LocalFolderRepository | None:
         return self._local
 
-    def _require_local(self) -> LocalFolderRepository:
-        if self._local is None:
-            raise HTTPException(
-                status_code=501,
-                detail="Production Mode needs DATA_ROOT for this local-only operation.",
-            )
-        return self._local
-
     def _connect(self):
-        try:
-            import psycopg
-        except ImportError as exc:
-            raise HTTPException(
-                status_code=501,
-                detail="Install psycopg: pip install 'psycopg[binary]'",
-            ) from exc
-        conn = psycopg.connect(self.database_url)
-        schema = self.db_schema or _db_schema()
-        if not schema.replace("_", "").isalnum():
-            conn.close()
-            raise HTTPException(status_code=500, detail=f"Invalid DB_SCHEMA: {schema!r}")
-        with conn.cursor() as cur:
-            cur.execute(f"SET search_path TO {schema}")
-        return conn
+        return db.connection(self.database_url, self.db_schema)
 
     def list_folders(self) -> list[FolderSummary]:
         """DB chart_list summaries; light disk merge for local-only folders.
@@ -377,16 +346,17 @@ class PostgresFolderRepository(FolderRepository):
             )
         return local.get_page_image_path(folder_id, page_number)
 
-    def resolve_page_blob(
-        self, folder_id: str, page_number: int
-    ) -> dict[str, str] | None:
-        """Locate the Azure blob for a page using chart_list + page_list.
+    def _page_rows(self, folder_id: str) -> dict[int, tuple] | None:
+        """page_number → (container, blob_path, output_path, page_name,
+        use_corrected, image_path, ingest_index), cached per chart.
 
-        Preference order:
-          1. Raw_Input ``blob_path`` entry at the same ingest index as ``page_number``
-          2. Processed ``output_path/corrected-pages/…`` when ``use_corrected``
-          3. Processed ``output_path/pages/{page_name}``
+        Every page image request needs this; querying the whole chart's
+        page_list per image made a filmstrip of N thumbnails cost N queries.
         """
+        now = time.monotonic()
+        cached = self._page_rows_cache.get(folder_id)
+        if cached and (now - cached[0]) < _BLOB_LIST_TTL_SEC:
+            return cached[1]
         try:
             with self._connect() as conn:
                 with conn.cursor() as cur:
@@ -406,23 +376,14 @@ class PostgresFolderRepository(FolderRepository):
             logger.warning("resolve_page_blob DB failed for %s: %s", folder_id, exc)
             return None
 
-        if not rows:
-            return None
-
-        hit = None
-        for idx, row in enumerate(rows, start=1):
-            (
-                container,
-                blob_path,
-                output_path,
-                page_name,
-                db_num,
-                use_corrected,
-                image_path,
-            ) = row
+        by_num: dict[int, tuple] = {}
+        for idx, (container, blob_path, output_path, page_name, db_num, use_corrected, image_path) in enumerate(
+            rows, start=1
+        ):
             num = int(db_num or idx)
-            if num == page_number:
-                hit = (
+            by_num.setdefault(
+                num,
+                (
                     (container or "").strip(),
                     blob_path,
                     output_path,
@@ -430,24 +391,50 @@ class PostgresFolderRepository(FolderRepository):
                     bool(use_corrected),
                     str(image_path or ""),
                     idx,
-                )
-                break
+                ),
+            )
+        self._page_rows_cache[folder_id] = (now, by_num)
+        return by_num
+
+    def resolve_page_blob(
+        self, folder_id: str, page_number: int
+    ) -> dict[str, str] | None:
+        """Locate the Azure blob for a page using chart_list + page_list.
+
+        Preference order:
+          1. Raw_Input ``blob_path`` entry at the same ingest index as ``page_number``
+          2. Processed ``output_path/corrected-pages/…`` when ``use_corrected``
+          3. Processed ``output_path/pages/{page_name}``
+
+        Returns ``container``, ``key``, ``filename`` and ``etag`` (empty when
+        unknown). Results are cached per page for ``_BLOB_LIST_TTL_SEC``.
+        """
+        now = time.monotonic()
+        cache_key = (folder_id, page_number)
+        cached = self._resolved_blobs.get(cache_key)
+        if cached and (now - cached[0]) < _BLOB_LIST_TTL_SEC:
+            return cached[1]
+
+        rows = self._page_rows(folder_id)
+        hit = rows.get(page_number) if rows else None
         if hit is None:
             return None
-
         container, blob_path, output_path, page_name, use_corrected, image_path, idx = hit
         if not container:
             return None
 
+        # Raw_Input comes from a live listing, so the key is known to exist —
+        # no existence probe needed.
+        raw = self._raw_input_blob(folder_id, container, blob_path, idx)
+        if raw:
+            key, etag = raw
+            out_loc = {"container": container, "key": key, "filename": Path(key).name or page_name, "etag": etag}
+            self._resolved_blobs[cache_key] = (now, out_loc)
+            return out_loc
+
         out = (output_path or "").strip().strip("/")
         stem = Path(page_name).stem
-
-        # Prefer chart_list.blob_path (Raw_Input) — the path the pipeline ingested.
-        # Processed output_path is a fallback when originals were written there.
         candidates: list[str] = []
-        raw_key = self._raw_input_blob_key(folder_id, container, blob_path, idx)
-        if raw_key:
-            candidates.append(raw_key)
         if use_corrected and out:
             candidates.append(f"{out}/corrected-pages/{stem}.jpg")
             candidates.append(f"{out}/corrected-pages/{page_name}")
@@ -457,25 +444,18 @@ class PostgresFolderRepository(FolderRepository):
         if out:
             candidates.append(f"{out}/pages/{page_name}")
 
-        seen: set[str] = set()
-        ordered: list[str] = []
-        for key in candidates:
-            key = key.lstrip("/")
-            if key and key not in seen:
-                seen.add(key)
-                ordered.append(key)
-
+        ordered = list(dict.fromkeys(k.lstrip("/") for k in candidates if k.lstrip("/")))
         if not ordered:
             return None
 
-        key = self._first_existing_blob(container, ordered) or ordered[0]
-        return {
-            "container": container,
-            "key": key,
-            "filename": Path(key).name or page_name,
-        }
+        found = self._first_existing_blob(container, ordered)
+        key, etag = found if found else (ordered[0], "")
+        out_loc = {"container": container, "key": key, "filename": Path(key).name or page_name, "etag": etag}
+        self._resolved_blobs[cache_key] = (now, out_loc)
+        return out_loc
 
-    def _first_existing_blob(self, container: str, keys: list[str]) -> str | None:
+    def _first_existing_blob(self, container: str, keys: list[str]) -> tuple[str, str] | None:
+        """First key that exists, with its ETag (fallback path only)."""
         try:
             from app.services.blob_store import _blob_service_client
 
@@ -483,36 +463,36 @@ class PostgresFolderRepository(FolderRepository):
             for key in keys:
                 blob = client.get_blob_client(container=container, blob=key)
                 try:
-                    blob.get_blob_properties()
-                    return key
+                    props = blob.get_blob_properties()
+                    return key, str(props.etag or "").strip('"')
                 except Exception:
                     continue
         except Exception as exc:
             logger.debug("blob existence probe skipped: %s", exc)
-            return keys[0] if keys else None
+            return (keys[0], "") if keys else None
         return None
 
-    def _raw_input_blob_key(
+    def _raw_input_blob(
         self,
         folder_id: str,
         container: str,
         blob_path: str | None,
         page_index_1based: int,
-    ) -> str | None:
-        """Map page index → Raw_Input blob key (same sort order as ingest)."""
+    ) -> tuple[str, str] | None:
+        """Map page index → (Raw_Input blob key, etag), same sort order as ingest."""
         prefix = (blob_path or "").strip()
         if not container or not prefix:
             return None
         now = time.monotonic()
         cached = self._raw_blob_lists.get(folder_id)
         if cached and (now - cached[0]) < _BLOB_LIST_TTL_SEC:
-            names = cached[1]
+            blobs = cached[1]
         else:
             try:
-                from app.services.blob_store import list_image_blob_keys
+                from app.services.blob_store import list_image_blobs
 
-                names = list_image_blob_keys(container, prefix)
-                self._raw_blob_lists[folder_id] = (now, names)
+                blobs = list_image_blobs(container, prefix)
+                self._raw_blob_lists[folder_id] = (now, blobs)
             except Exception as exc:
                 logger.warning(
                     "Raw_Input blob list failed for %s (%s/%s): %s",
@@ -522,78 +502,9 @@ class PostgresFolderRepository(FolderRepository):
                     exc,
                 )
                 return None
-        if page_index_1based < 1 or page_index_1based > len(names):
+        if page_index_1based < 1 or page_index_1based > len(blobs):
             return None
-        return names[page_index_1based - 1]
-
-    def _chart_run_batch(self, folder_id: str) -> tuple[str | None, str | None]:
-        try:
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT run_id, batch_id FROM chart_list WHERE chart_name = %s",
-                        (folder_id,),
-                    )
-                    row = cur.fetchone()
-            if not row:
-                return None, None
-            return (
-                str(row[0]) if row[0] else None,
-                str(row[1]) if row[1] else None,
-            )
-        except Exception:
-            return None, None
-
-    def _chart_status(self, folder_id: str) -> str | None:
-        """Effective status for the UI pill, folding in current_stage (v7)."""
-        try:
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        SELECT status, current_stage FROM chart_list
-                        WHERE chart_name = %s
-                        """,
-                        (folder_id,),
-                    )
-                    row = cur.fetchone()
-            if not row or not row[0]:
-                return None
-            status = str(row[0]).lower()
-            stage = str(row[1] or "").lower()
-            # Surface the stage where v6 callers expected to find it, so the
-            # existing CHART_STATUS_TO_OCR lookups below keep working.
-            if status == "processing" and stage:
-                return stage
-            return status
-        except Exception:
-            return None
-
-    def _ocr_flags_from_db(self, folder_id: str) -> dict[str, dict[str, bool]] | None:
-        """page_name → {ocr_type: True}."""
-        try:
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        SELECT p.page_name, o.ocr_type
-                        FROM ocr_results o
-                        JOIN chart_list c ON c.id = o.chart_id
-                        JOIN page_list p ON p.id = o.page_id
-                        WHERE c.chart_name = %s
-                          AND o.raw_text IS NOT NULL
-                          AND length(trim(o.raw_text)) > 0
-                        """,
-                        (folder_id,),
-                    )
-                    rows = cur.fetchall()
-        except Exception:
-            return None
-
-        out: dict[str, dict[str, bool]] = {}
-        for page_name, ocr_type in rows:
-            out.setdefault(page_name, {})[ocr_type] = True
-        return out
+        return blobs[page_index_1based - 1]
 
     def get_ocr_text(self, folder_id: str, kind: str) -> OcrTextResponse:
         """Assemble OCR from ocr_results into ===== page ===== marker text for the UI."""

@@ -16,7 +16,7 @@ if str(CORE) not in sys.path:
 @pytest.fixture(autouse=True)
 def _lexical_only(monkeypatch):
     """Unit tests never load MiniLM (slow / may hang without weights)."""
-    import stages.lib.imaging.section_header_match as m
+    import stages.lib.ocr.section_header_match as m
 
     monkeypatch.setattr(m, "_model_tried", True)
     monkeypatch.setattr(m, "_model", None)
@@ -25,7 +25,7 @@ def _lexical_only(monkeypatch):
 
 
 def test_exact_canonical_passes_threshold():
-    from stages.lib.imaging.section_header_match import filter_section_headers
+    from stages.lib.ocr.section_header_match import filter_section_headers
 
     candidates = [
         {
@@ -45,7 +45,7 @@ def test_exact_canonical_passes_threshold():
 
 
 def test_punctuation_variant_passes():
-    from stages.lib.imaging.section_header_match import best_header_match
+    from stages.lib.ocr.section_header_match import best_header_match
 
     score, label = best_header_match(
         "History of Present Illness:", use_minilm=False
@@ -55,7 +55,7 @@ def test_punctuation_variant_passes():
 
 
 def test_body_sentence_rejected():
-    from stages.lib.imaging.section_header_match import best_header_match
+    from stages.lib.ocr.section_header_match import best_header_match
 
     score, _ = best_header_match(
         "The patient reports intermittent chest pain for three days",
@@ -66,7 +66,7 @@ def test_body_sentence_rejected():
 
 def test_bold_form_labels_below_threshold():
     """Docling marks many bold lines as section_header — list match must drop them."""
-    from stages.lib.imaging.section_header_match import filter_section_headers
+    from stages.lib.ocr.section_header_match import filter_section_headers
 
     candidates = [
         {"text": "PATIENT DATA"},
@@ -87,7 +87,7 @@ def test_bold_form_labels_below_threshold():
 
 
 def test_short_token_containment_does_not_pass_plan():
-    from stages.lib.imaging.section_header_match import best_header_match
+    from stages.lib.ocr.section_header_match import best_header_match
 
     score, _ = best_header_match("Plan of day", use_minilm=False)
     assert score < 0.90
@@ -95,7 +95,7 @@ def test_short_token_containment_does_not_pass_plan():
 
 def test_short_ocr_cannot_match_longer_canon_label():
     """``Note:`` / ``Notes`` must not claim the catalog phrase ``ED Note``."""
-    from stages.lib.imaging.section_header_match import best_header_match
+    from stages.lib.ocr.section_header_match import best_header_match
 
     for text in ("Note:", "Note", "Notes", "notes"):
         score, label = best_header_match(text, use_minilm=False)
@@ -108,7 +108,7 @@ def test_short_ocr_cannot_match_longer_canon_label():
 
 def test_longer_ocr_can_match_shorter_canon_label():
     """``QB Problem List`` may match catalog ``Problem List`` (OCR longer)."""
-    from stages.lib.imaging.section_header_match import best_header_match
+    from stages.lib.ocr.section_header_match import best_header_match
 
     score, label = best_header_match("QB Problem List", use_minilm=False)
     assert score >= 0.90
@@ -116,7 +116,7 @@ def test_longer_ocr_can_match_shorter_canon_label():
 
 
 def test_filter_disabled_keeps_all():
-    from stages.lib.imaging.section_header_match import filter_section_headers
+    from stages.lib.ocr.section_header_match import filter_section_headers
 
     candidates = [
         {"text": "Chief Complaint"},
@@ -128,7 +128,7 @@ def test_filter_disabled_keeps_all():
 
 
 def test_abbreviation_hpi():
-    from stages.lib.imaging.section_header_match import best_header_match
+    from stages.lib.ocr.section_header_match import best_header_match
 
     score, label = best_header_match("HPI", use_minilm=False)
     assert score >= 0.90
@@ -139,7 +139,7 @@ def test_catalog_hot_reload(tmp_path, monkeypatch):
     """Editing section_header_canon.json is picked up on the next filter call."""
     import time
 
-    import stages.lib.imaging.section_header_match as m
+    import stages.lib.ocr.section_header_match as m
 
     canon = tmp_path / "section_header_canon.json"
     canon.write_text(json.dumps(["Chief Complaint"]), encoding="utf-8")

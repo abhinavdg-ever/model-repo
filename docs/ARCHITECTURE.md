@@ -277,7 +277,23 @@ still renders.
 | `dos_extract.py` | **Stage 9.** Builds the marker-delimited text, calls the ported driver `detect_dos_per_page` (regex → LLM → carry-forward), persists the primary pair plus every date, writes the DOS CSV. |
 | `__init__.py` | Package marker. |
 
-### `core-pipeline/stages/lib/imaging/` — rotation + handwriting + quality
+### `core-pipeline/stages/lib/` — layout
+
+One folder per pipeline concern; only `canon_store.py` sits at the top level.
+
+| Folder | Holds |
+|---|---|
+| `image_preprocess/` | Stage 1: rotation / tilt / mirror, handwriting classifier, quality score |
+| `ocr/` | Docling final1 engine + section-header matching (stage 6) |
+| `blank_junk/` | Blank / junk rules, TF-IDF model bridge, bundled model code (`model/`) |
+| `page_classify/` | Page type / codeability (term frequency) |
+| `encounter/` | Encounter type (term frequency) |
+| `dos/` | Date-of-service driver + LLM pass |
+| `member/` | Member extraction + verification engine |
+| `sequencing/` | Page sequencing |
+| `keyword-canon/` | Every editable keyword JSON, reloaded on change (see `canon_store.py`) |
+
+### `core-pipeline/stages/lib/image_preprocess/` — rotation + handwriting + quality
 
 Live code for stage 1, not reference material.
 
@@ -288,8 +304,15 @@ Live code for stage 1, not reference material.
 | `hw_printed.py` | ConvNeXt printed vs handwritten when `.pth` is present. |
 | `hw_printed_rf.py` | RandomForest fallback classifier. |
 | `quality_analyzer.py` | Measured quality score / tag / warnings. Reads embedded DPI and scores it; does **not** resample or correct DPI. |
+| `quality_label_postprocess.py` | Handwritten + High → Medium. |
+
+### `core-pipeline/stages/lib/ocr/` — final1 engine + section headers
+
+| File | Role |
+|---|---|
 | `docling_ocr.py` | Docling + RapidOCR `.pth` converter for final1. |
-| `__init__.py` | Package marker. |
+| `section_header_match.py` | Lexical (+ optional MiniLM) match against `keyword-canon/section_header_canon.json`. |
+| `section_headers_io.py` | Reads / rewrites `section_headers` in final1/final2 JSON (stage 6, no OCR). |
 
 Weight files live under **`core-pipeline/models/`** (gitignored), not under
 `stages/`:
@@ -301,13 +324,16 @@ Weight files live under **`core-pipeline/models/`** (gitignored), not under
 | `models/hw/image_type_classification.pkl` | RF HW fallback |
 | `models/rapidocr/*.pth` + `ppocrv6_dict.txt` | Docling final1 |
 
-### `core-pipeline/stages/lib/junk/` — blank/junk classifier
+### `core-pipeline/stages/lib/blank_junk/` — blank/junk classifier
 
 Ported from `advantmed-imaging-ui/02-imaging-pipeline/junk-classification/`.
 
 | File | Role |
 |---|---|
 | `classify.py` | The entry point: `classify_text()` tries each detector in priority order and returns a code; also the code constants, labels, `text_similarity()` / `fingerprint()` helpers and confidences. |
+| `model_bridge.py` | `classify_page()`: the TF-IDF model decides keep / blank / junk; `classify_text()` names the junk subtype; regex fallback stamped `regex_fallback:<why>`. |
+| `model/src/` | Bundled model code the pickled checkpoint (`models/blank-junk/tfidf_flat.joblib`) unpickles against. |
+| `kw.py` | Compiles `keyword-canon/junk_keywords_canon.json`; reloads on edit. |
 | `classify_junk.py` | The fuller CLI-era classifier retained from the V1 prototype. |
 | `blank.py` | Blank detection: empty OCR, declared-blank phrasing, near-empty image. |
 | `invoice.py`, `cover.py`, `record_request.py`, `instructions.py`, `letter_fax.py` | One junk category each. |
@@ -341,7 +367,7 @@ inserts).
 | `__init__.py` | Re-exports the four extractors. |
 | **`extractors/ner_based/`** | |
 | `keys.py` | Cuts the real sentence around a field key out of the page ("Patient Name: Robert Smith"), with the reach-across-a-gap rules. NER reads real text, not rebuilt tokens. |
-| `keywords.json` (`stages/lib/`) | Shared keyword lists — DOS visit/from/to cues, junk phrases, member key groups / ignore labels. |
+| `stages/lib/keyword-canon/*_canon.json` | Editable keyword / catalog files, reloaded on change (no restart): `junk_keywords_canon.json` (junk detector phrases), `dos_keywords_canon.json` (DOS visit/from/to cues), `member_keywords_canon.json` (member key groups / ignore labels), `section_header_canon.json`, `codeable_canon.json`, `encounter_canon.json`. Loaded via `stages/lib/canon_store.py`. |
 | `name.py` | Runs NER on each patient-name sentence, merges adjacent person spans, trims label words, and picks the best candidate. Returns *every* person found, so the caller can also spot a wrong member. |
 | `dob.py`, `member_id.py` | Second-pass DOB / MemberID from NER over their key sentences. |
 | `model.py` | Model loading and prediction: offline mode, retries, fail-loud on an unloadable model, GLiNER and HF-token backends. Short-circuits when the layer is disabled. |

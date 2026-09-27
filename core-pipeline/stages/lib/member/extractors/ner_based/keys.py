@@ -1,30 +1,17 @@
 from __future__ import annotations
 
-import json
 import re
-from pathlib import Path
 
-from ..rule_based.name_common import is_ignore, is_label, tokenize
-
-HERE = Path(__file__).resolve().parent
-# Shared keyword file: stages/lib/keywords.json
-# ner_based → extractors → member → lib
-KEYWORDS_PATH = HERE.parents[2] / "keywords.json"
-
-_GROUPS: dict[str, list[str]] | None = None
+from ..rule_based.name_common import is_ignore, is_label, member_keywords, tokenize
 
 
-def load_key_groups() -> dict[str, list[str]]:
-    global _GROUPS
-    if _GROUPS is None:
-        data = json.loads(KEYWORDS_PATH.read_text(encoding="utf-8"))
-        groups = (data.get("member") or {}).get("key_groups") or {}
-        _GROUPS = {name: list(group.get("keys") or []) for name, group in groups.items()}
-    return _GROUPS
+def load_key_groups() -> dict[str, tuple[str, ...]]:
+    """Key groups from keyword-canon/member_keywords_canon.json (live — reloads on edit)."""
+    return member_keywords().key_groups
 
 
 def keys_for(group: str) -> list[str]:
-    return load_key_groups().get(group, [])
+    return list(load_key_groups().get(group, ()))
 
 
 # Rebuilding text from tokens strips every punctuation mark and splits dates
@@ -42,7 +29,8 @@ _MAX_RIGHT_CHARS = 160
 _MIN_VALUE_WORDS = 2
 _MAX_REACHES = 2
 
-_KEY_PATTERNS: dict[str, list[tuple[str, "re.Pattern[str]"]]] = {}
+# Compiled per canon version: (the MemberKeywords they were built from, cache).
+_KEY_PATTERNS: tuple[object, dict[str, list[tuple[str, "re.Pattern[str]"]]]] = (None, {})
 
 
 def _key_pattern(key: str) -> "re.Pattern[str]":
@@ -55,9 +43,15 @@ def _key_pattern(key: str) -> "re.Pattern[str]":
 
 
 def key_patterns(group: str) -> list[tuple[str, "re.Pattern[str]"]]:
-    if group not in _KEY_PATTERNS:
-        _KEY_PATTERNS[group] = [(key, _key_pattern(key)) for key in keys_for(group)]
-    return _KEY_PATTERNS[group]
+    global _KEY_PATTERNS
+    version, cache = _KEY_PATTERNS
+    current = member_keywords()
+    if version is not current:
+        cache = {}
+        _KEY_PATTERNS = (current, cache)
+    if group not in cache:
+        cache[group] = [(key, _key_pattern(key)) for key in keys_for(group)]
+    return cache[group]
 
 
 def _line_bounds(text: str, start: int, end: int) -> tuple[int, int]:
