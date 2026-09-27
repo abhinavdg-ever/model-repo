@@ -5,23 +5,36 @@ docs with `ocr/` + `ocr_results` in the workspace) when you only want later
 stages — codeable, encounter, sequencing, DOS, member, section headers — or a
 selective re-pass.
 
-All examples below use **Azure Blob** paths. Local paths work the same way if
-you swap in `local_read_path` / `local_folder_name` / `local_write_path`
-(see [`API.md`](API.md)).
+All examples below use **Azure Blob** paths. Local paths work the same way:
+set `"input_type": "local"`, drop `container_name`, and make `input_path` /
+`output_path` directories on the server (see [`API.md`](API.md)).
 
 Full API reference: [`API.md`](API.md). Stage flow: [`FLOW.md`](FLOW.md).
 
-**Blob field cheat-sheet**
+**Request field cheat-sheet** (`POST /api/charts/run` and `/batch-run`)
 
-| Field | Meaning | Example |
-|---|---|---|
-| `blob_container` | Storage container | `"imaging-pipeline"` |
-| `blob_read_path` | Parent prefix that holds chart folders | `"Raw_Input/Run1/Batch1/DEID_Images"` or `"run1/batch1"` |
-| `blob_read_folder_name` | One chart folder (= chart name) | `"52743839_44976074"` |
-| `blob_write_path` | Destination prefix for Processed output | `"Processed/Run1/Batch1"` |
+| Field | Run | Batch | Meaning | Example |
+|---|---|---|---|---|
+| `input_type` | required | required | `"local"` or `"blob"` | `"blob"` |
+| `container_name` | blob only | blob only | Storage container, used for read **and** write. Omit for local | `"imaging-pipeline"` |
+| `input_path` | required | required | Folder / prefix that holds the chart folders | `"Raw_Input/Run1/Batch1/DEID_PNGs"` |
+| `output_path` | optional | optional | Results go to `<output_path>/<chart_name>/`, replacing existing files. Omit = no write | `"Processed/Run1"` |
+| `chart_name` | required | — | One chart folder under `input_path` (= chart name) | `"52743839_44976074"` |
+| `chart_list` | — | optional | Only these chart folders (list or comma-separated string). Not found → `charts_missing` | `["52743839_44976074"]` |
+| `sample` | — | optional | Run at most N charts, unfinished ones first | `10` |
 
-Batch-run uses the same container + read/write paths **without** a folder name
-(each subfolder under `blob_read_path` is one chart).
+Batch-run takes the same container + input/output paths **without**
+`chart_name` (each subfolder under `input_path` is one chart). Any field not
+listed here or in §2 is rejected with **422** — including the old
+`blob_container` / `blob_read_path` / `blob_read_folder_name` /
+`blob_write_path` / `local_*` names, `run_id` / `batch_id` (now always inferred
+from the path: `Run1/Batch1` → `R1`/`B1`) and `workers` (set `BATCH_WORKERS`
+in `core-pipeline/.env`; `BATCH_WORKERS × STAGE_WORKERS + 2 ≤ DB_POOL_MAX` or
+batch-run returns 400).
+
+The CLI (`python cli.py run` / `batch-run`) keeps its own flags (`--resume`,
+`--through`, `--workers`, `--test-mode`, …); the CLI examples below are
+unchanged.
 
 ---
 
@@ -73,20 +86,28 @@ curl -fsS localhost:8001/api/stages | python -m json.tool
 
 ---
 
-## 2. The three knobs
+## 2. The knobs
+
+Every API run **reprocesses** every stage it runs — there is no `force` field
+any more, and no page-level resume on the API. `skip_ocr` is the only thing
+that avoids re-running OCR (and re-billing Final2). Outputs always replace
+what is at `output_path` (no `overwrite` / `write_mode`; original pages are
+never written back).
 
 | Field | Default | Use when |
 |---|---|---|
-| `force` | **`true`** | Reprocess stages even if already `completed`. **Re-bills Final2.** Does **not** wipe `pages/`. |
-| `force: false` | — | **Resume** incomplete work. Required for `skip_ocr` to take effect. |
-| `only: ["stage", …]` | omit | Run **just** those stages (quality still runs under `skip_ocr`). |
-| `skip_ocr: true` | env `SKIP_OCR` | See § skip_ocr below. Ignored when `force: true`. |
-| `redownload_pages: true` | `false` | Wipe `pages/` + `corrected-pages/` and re-fetch pages from Raw_Input. |
-| `test_mode` / `--test-mode` | `false` | **Local only.** No Postgres. Workspace under `data/folders/<chart>-test` for review-ui. Env `TEST_MODE=true`. |
-| `skip_db_write` | `false` | Deprecated alias for `test_mode` |
-| `through: "stage"` | omit | Run from the top of the chain and **stop after** that stage. |
+| `only: ["stage", …]` | omit (whole chain) | Run **just** those stages, against what is on disk (quality still runs under `skip_ocr`). |
+| `run_through: "stage"` | omit (end of chain) | Run from the top of the chain and **stop after** that stage. (Was `through`.) |
+| `skip_ocr: true` | `false` | Reuse existing OCR instead of re-running the OCR engines — no Final2 billing. Quality/rotation and every non-OCR stage still re-run. See § skip_ocr below. |
+| `skip_completed: true` | `false` | Skip charts whose `chart_list.status` is `completed` / `needs_review` / `rejected`. Run returns **200** `{"status": "skipped"}`; batch lists them in `charts_skipped_completed`. |
+| `skip_page_download` | **`true`** | Reuse page images already in the workspace. `false` = wipe `pages/` + `corrected-pages/` and re-fetch from `input_path`. (Replaces `redownload_pages: true`.) |
+| `--test-mode` (CLI only) | off | **Local only.** No Postgres. Workspace under `data/folders/<chart>-test` for review-ui. Env `TEST_MODE=true`. Not available on the API. |
 
-### What `test_mode` does
+Re-running a chart with the same `input_path` + `chart_name` resumes it:
+workspace pages are reused and every stage reprocesses. There is no `chart_id`
+resume on the API.
+
+### What `--test-mode` does (CLI)
 
 For laptop / folder experiments when Postgres is unavailable — or when you
 want a side-by-side folder you can open in review-ui without touching the
@@ -115,23 +136,25 @@ python cli.py run \
 
 Looks under `data/folders/<chart>/` (review-ui workspace):
 
-1. **`pages/` present** → use it. **Missing** → download from **Raw_Input** (`blob_path`).
+1. **`pages/` present** → use it. **Missing** → download from **Raw_Input** (`input_path`).
 2. **`ocr/` present** → use it. **Missing** → pull from **Processed** (`output_path`). **Still missing** → materialize from Postgres `ocr_results`. **Still missing** → **re-run OCR engines**.
 3. **Quality + rotation always re-run** → rewrite `corrected-pages/`.
 4. **Every non-OCR stage force-re-runs** — blank/junk (both passes), section headers, member, DOS, codeable, encounter, sequencing. Gate-delta may still reopen OCR engines for a page whose HW/quality/rotation path flipped or whose reused OCR is missing.
-5. **Write** (if a write path is set) **overwrites** destination `ocr/`, `corrected-pages/`, `imaging/` (default write mode still omits `pages/`).
+5. **Write** (if `output_path` is set) **replaces** destination `ocr/`, `corrected-pages/`, `imaging/` (original `pages/` are never written).
 
 ```bash
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{"chart_id": 123, "skip_ocr": true, "force": false,
-       "blob_write_path": "Processed/Run1/Batch1"}'
+  -d '{"input_type": "blob", "container_name": "imaging-pipeline",
+       "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+       "chart_name": "52743839_44976074",
+       "output_path": "Processed/Run1", "skip_ocr": true}'
 ```
 
 Rule of thumb for a large blob batch that already finished OCR:
 
-- Want new classifiers only → **`only`** + `chart_id` / `chart_name` (no re-download), optional `blob_write_path` to sync CSVs out.
-- Want “reuse OCR, re-run everything else” → **`skip_ocr: true`** + `force: false` (§4 / §6B).
-- Never set `force: true` on a full chain (no `only`) unless you intend to pay for Final2 again.
+- Want new classifiers only → **`only`** (workspace pages reused by default), optional `output_path` to sync CSVs out.
+- Want “reuse OCR, re-run everything else” → **`skip_ocr: true`** (§4 / §6B).
+- Never run a full chain (no `only`, no `skip_ocr`) unless you intend to pay for Final2 again — every API run reprocesses.
 
 ---
 
@@ -140,14 +163,16 @@ Rule of thumb for a large blob batch that already finished OCR:
 ```bash
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
   -d '{
-    "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_Images",
-    "blob_read_folder_name": "52743839_44976074",
-    "blob_write_path": "Processed/Run1/Batch1",
-    "run_id": "R1",
-    "batch_id": "B1"
+    "input_type": "blob",
+    "container_name": "imaging-pipeline",
+    "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "chart_name": "52743839_44976074",
+    "output_path": "Processed/Run1"
   }'
 ```
+
+`run_id` / `batch_id` (`R1` / `B1`) come from `Run1/Batch1` in the path; they
+are not request fields.
 
 CLI:
 
@@ -166,11 +191,12 @@ Stop before Azure OCR (no Final2 bill):
 ```bash
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
   -d '{
-    "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_Images",
-    "blob_read_folder_name": "52743839_44976074",
-    "blob_write_path": "Processed/Run1/Batch1",
-    "through": "ocr_final1"
+    "input_type": "blob",
+    "container_name": "imaging-pipeline",
+    "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "chart_name": "52743839_44976074",
+    "output_path": "Processed/Run1",
+    "run_through": "ocr_final1"
   }'
 ```
 
@@ -178,21 +204,24 @@ curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
 
 ## 4. Your case: OCR already done — run new stages + refreshed quality
 
-Charts already exist in Postgres (`chart_id` / `chart_name`). No need to
-re-download pages from blob unless you also want a write sync.
+Charts already exist in Postgres and in the workspace. Send the same
+`input_path` + `chart_name` as the original run — `skip_page_download`
+defaults to `true`, so workspace pages are reused rather than re-downloaded.
 
 ### A. New stages only (codeable + encounter + sequencing) — **no OCR**
 
-Safe when HW/quality is fine and you only need the new classifiers. `only`
-means Final2 is **not** re-billed even with `force: true`:
+Safe when HW/quality is fine and you only need the new classifiers. An
+`only` list without `ocr_final2` means Final2 is **not** re-billed:
 
 ```bash
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
   -d '{
+    "input_type": "blob",
+    "container_name": "imaging-pipeline",
+    "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
     "chart_name": "52743839_44976074",
-    "force": true,
     "only": ["page_subtype", "encounter_type", "page_sequencing"],
-    "blob_write_path": "Processed/Run1/Batch1"
+    "output_path": "Processed/Run1"
   }'
 ```
 
@@ -201,15 +230,17 @@ Batch (sample of 10, or omit `sample` for the whole drop):
 ```bash
 curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
   -d '{
-    "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
-    "blob_write_path": "Processed/Run1/Batch1",
+    "input_type": "blob",
+    "container_name": "imaging-pipeline",
+    "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "output_path": "Processed/Run1",
     "sample": 10,
-    "force": true,
-    "only": ["page_subtype", "encounter_type", "page_sequencing"],
-    "workers": 2
+    "only": ["page_subtype", "encounter_type", "page_sequencing"]
   }'
 ```
+
+Concurrency comes from `BATCH_WORKERS` in `core-pipeline/.env`, not the
+request. The CLI below still takes `--workers`:
 
 ```bash
 python cli.py batch-run \
@@ -231,24 +262,23 @@ Deploy the new weights under `models/hw/`, then:
 ```bash
 curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
   -d '{
-    "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
-    "blob_write_path": "Processed/Run1/Batch1",
-    "force": false,
+    "input_type": "blob",
+    "container_name": "imaging-pipeline",
+    "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "output_path": "Processed/Run1",
     "skip_ocr": true,
     "only": [
       "ocr_quality",
       "page_subtype",
       "encounter_type",
       "page_sequencing"
-    ],
-    "workers": 2
+    ]
   }'
 ```
 
 What this does:
 
-1. **`skip_ocr: true` + `force: false`** — reuse workspace / Processed / DB OCR.
+1. **`skip_ocr: true`** — reuse workspace / Processed / DB OCR.
 2. **Quality always re-runs** (even if you omit `ocr_quality` from `only` when
    `skip_ocr` is on) → new HW/quality model writes fresh tags + `corrected-pages/`.
 3. **Gate-delta** — OCR engines re-open **only** for pages whose
@@ -264,14 +294,16 @@ Final2 unless a page is gate-reopened into `ocr_final2`).
 ```bash
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
   -d '{
+    "input_type": "blob",
+    "container_name": "imaging-pipeline",
+    "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
     "chart_name": "52743839_44976074",
-    "force": true,
     "only": ["dos_extract", "page_subtype", "encounter_type", "page_sequencing"],
-    "blob_write_path": "Processed/Run1/Batch1"
+    "output_path": "Processed/Run1"
   }'
 ```
 
-Poll: `GET /api/charts/{id}` or core-pipeline logs / `progress.txt` under the chart.
+Poll: `GET /api/charts/by-name/{chart_name}` (blob) / `GET /api/charts/{id}` (local, id in the 202 body) or core-pipeline logs / `progress.txt` under the chart.
 
 ---
 
@@ -290,10 +322,12 @@ Poll: `GET /api/charts/{id}` or core-pipeline logs / `progress.txt` under the ch
 ```bash
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
   -d '{
-    "chart_id": 123,
-    "force": true,
+    "input_type": "blob",
+    "container_name": "imaging-pipeline",
+    "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "chart_name": "52743839_44976074",
     "only": ["section_headers"],
-    "blob_write_path": "Processed/Run1/Batch1"
+    "output_path": "Processed/Run1"
   }'
 ```
 
@@ -306,8 +340,10 @@ curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
 ```bash
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
   -d '{
-    "chart_id": 123,
-    "force": true,
+    "input_type": "blob",
+    "container_name": "imaging-pipeline",
+    "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "chart_name": "52743839_44976074",
     "only": [
       "section_headers",
       "blank_junk:2",
@@ -317,7 +353,7 @@ curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
       "encounter_type",
       "page_sequencing"
     ],
-    "blob_write_path": "Processed/Run1/Batch1"
+    "output_path": "Processed/Run1"
   }'
 ```
 
@@ -326,10 +362,10 @@ Batch equivalent:
 ```bash
 curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
   -d '{
-    "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_Images",
-    "blob_write_path": "Processed/Run1/Batch1",
-    "force": true,
+    "input_type": "blob",
+    "container_name": "imaging-pipeline",
+    "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "output_path": "Processed/Run1",
     "only": [
       "section_headers",
       "blank_junk:2",
@@ -338,8 +374,7 @@ curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/j
       "page_subtype",
       "encounter_type",
       "page_sequencing"
-    ],
-    "workers": 2
+    ]
   }'
 ```
 
@@ -351,10 +386,12 @@ later stages**. OCR engines only re-run for pages gate-delta marks pending:
 ```bash
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
   -d '{
-    "chart_id": 123,
+    "input_type": "blob",
+    "container_name": "imaging-pipeline",
+    "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "chart_name": "52743839_44976074",
     "skip_ocr": true,
-    "force": false,
-    "blob_write_path": "Processed/Run1/Batch1"
+    "output_path": "Processed/Run1"
   }'
 ```
 
@@ -363,32 +400,38 @@ lack Final2 text. Prefer §6A when you want **zero** OCR billing.
 
 ---
 
-## 7. Resume a half-finished chart / batch (do not re-OCR completed pages)
+## 7. Resume a half-finished chart / batch
+
+Page-level resume ("skip completed pages") is **CLI only** now — the API has
+no `force: false`. Over the API, re-sending the same `input_path` +
+`chart_name` reuses workspace pages but **reprocesses every stage** (Final2
+bills again unless you pass `skip_ocr: true`).
+
+CLI, skipping completed pages:
 
 ```bash
-curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{
-    "chart_id": 123,
-    "force": false,
-    "blob_write_path": "Processed/Run1/Batch1"
-  }'
-
 python cli.py run --chart-id 123 --resume \
   --blob-write-path Processed/Run1/Batch1
 ```
 
-Batch after a timeout — **same blob read path**, `force: false`:
+Batch after a timeout — **same `input_path`**. Over the API, skip charts that
+already finished and reuse OCR for the rest:
 
 ```bash
 curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
   -d '{
-    "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_Images",
-    "blob_write_path": "Processed/Run1/Batch1",
-    "force": false,
-    "workers": 2
+    "input_type": "blob",
+    "container_name": "imaging-pipeline",
+    "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "output_path": "Processed/Run1",
+    "skip_completed": true,
+    "skip_ocr": true
   }'
+```
 
+CLI equivalent with page-level resume:
+
+```bash
 python cli.py batch-run \
   --blob-container imaging-pipeline \
   --blob-read-path Raw_Input/Run1/Batch1/DEID_Images \
@@ -398,21 +441,22 @@ python cli.py batch-run \
 
 ---
 
-## 8. What “force” does to your wallet
+## 8. What a re-run does to your wallet
 
 | Call | Final2 (Azure DI) |
 |---|---|
 | `only` list with **no** `ocr_final2` | Not billed |
-| `force: true` full chain / no `only` | **Re-bills every page** |
-| `force: false` resume | Bills only pages still pending Final2 |
-| `skip_ocr: true` + `force: false` | Usually none; rare pages if gate-delta reopens them |
+| Full chain / no `only`, no `skip_ocr` | **Re-bills every page** (the API always reprocesses) |
+| `skip_completed: true` | Finished charts not run, so not billed |
+| `skip_ocr: true` | Usually none; rare pages if gate-delta reopens them |
+| CLI `--resume` | Bills only pages still pending Final2 |
 
 ---
 
 ## 9. Write path / review-ui
 
-`blob_write_path` syncs results under that prefix (chart folder appended if
-missing). Workspace CSVs under each chart’s `imaging/` are what Local Mode
+`output_path` writes results to `<output_path>/<chart_name>/`, replacing
+existing files (same backend as `input_type`; omit it to run without writing). Workspace CSVs under each chart’s `imaging/` are what Local Mode
 review-ui overlays (`*_codeable.csv`, `*_encounter.csv`, `*_sequencing.csv`, …).
 Production Mode reads Postgres (`encounter_type_results`,
 `page_sequencing_results`, …).
@@ -428,12 +472,11 @@ Production Mode reads Postgres (`encounter_type_results`,
 ```bash
 curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
   -d '{
-    "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
-    "blob_write_path": "Processed/Run1/Batch1",
-    "force": true,
-    "only": ["page_subtype", "encounter_type", "page_sequencing"],
-    "workers": 2
+    "input_type": "blob",
+    "container_name": "imaging-pipeline",
+    "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "output_path": "Processed/Run1",
+    "only": ["page_subtype", "encounter_type", "page_sequencing"]
   }'
 ```
 
@@ -442,13 +485,12 @@ curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/j
 ```bash
 curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
   -d '{
-    "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
-    "blob_write_path": "Processed/Run1/Batch1",
-    "force": false,
+    "input_type": "blob",
+    "container_name": "imaging-pipeline",
+    "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "output_path": "Processed/Run1",
     "skip_ocr": true,
-    "only": ["ocr_quality", "page_subtype", "encounter_type", "page_sequencing"],
-    "workers": 2
+    "only": ["ocr_quality", "page_subtype", "encounter_type", "page_sequencing"]
   }'
 ```
 

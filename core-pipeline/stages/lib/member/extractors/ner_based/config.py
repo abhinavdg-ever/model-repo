@@ -122,11 +122,15 @@ MEMBER_NER_MODEL_ID = (
 ).strip()
 
 # ~2 GB of checkpoints. core-pipeline/models/ is gitignored; keep it that way
-# if you change this default.
-NER_MODELS_PATH = Path(
-    os.environ.get("MEMBER_NER_MODELS_PATH")
-    or (CORE_ROOT / "models" / "ner")
-)
+# if you change this default. A relative MEMBER_NER_MODELS_PATH is from
+# core-pipeline/, the same rule as the other weight paths in .env.
+_ner_raw = (os.environ.get("MEMBER_NER_MODELS_PATH") or "").strip()
+if not _ner_raw:
+    NER_MODELS_PATH = CORE_ROOT / "models" / "ner"
+else:
+    _ner_path = Path(_ner_raw).expanduser()
+    NER_MODELS_PATH = _ner_path if _ner_path.is_absolute() else (CORE_ROOT / _ner_path)
+
 
 def enabled_model_ids() -> list[str]:
     """The model ids this run needs, or [] when the NER layer is switched off.

@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, ClassVar, Literal, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -29,8 +29,8 @@ try:
 except ImportError:
     pass
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Response
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from config import (
     API_HOST,
@@ -134,339 +134,193 @@ _STAGE_HELP = (
 )
 
 
-class StageSelection(BaseModel):
-    """The two ways to run less than the whole chain.
+class ChartRunOptions(BaseModel):
+    """What run and batch-run share. Everything else is a fixed default.
 
-    They answer different questions. ``through`` is "take it this far and
-    stop" — the chain from the top, bounded. ``only`` is "just do this bit" —
-    whatever already happened before. A stage named in ``only`` runs against
-    whatever its inputs are on disk, so it is the right tool when an earlier
-    stage's output is good and the last step changed; it is the wrong tool on
-    a chart that has never run.
+    Fixed, not settable: every stage reprocesses (``force``), written outputs
+    replace what is at the destination (``overwrite``), original pages are not
+    re-sent to the source they came from (``skip_orig_pages``), run/batch ids
+    come from the path (Run1/Batch1 → R1/B1), batch concurrency is
+    ``BATCH_WORKERS``.
+
+    Unknown fields are rejected (422) so a caller still sending a removed
+    option (``force``, ``blob_read_path``, …) is told, not silently ignored.
     """
 
-    through: Optional[str] = Field(
+    model_config = ConfigDict(extra="forbid")
+
+    input_type: Literal["local", "blob"] = Field(
+        ..., description="Where the chart folders are read from."
+    )
+    container_name: Optional[str] = Field(
         None,
-        description=f"Run the chain and stop after this stage. {_STAGE_HELP}",
-        examples=["ocr_final2"],
+        description="Azure Blob container (input_type=blob only). Used for read and write.",
+        examples=["imaging-pipeline"],
+    )
+    input_path: str = Field(
+        ...,
+        description=(
+            "Folder holding the chart folder(s): a directory ON THE SERVER for "
+            "local (Windows \\ or / both fine), a prefix inside the container for blob."
+        ),
+        examples=["C:/data/inbox", "Raw_Input/Run1/Batch1/DEID_PNGs"],
+    )
+    output_path: Optional[str] = Field(
+        None,
+        description=(
+            "Where results are written, one sub-folder per chart. Same backend "
+            "as input_type. Omit to run without writing."
+        ),
+        examples=["C:/data/processed", "Processed/Run1"],
     )
     only: Optional[list[str]] = Field(
         None,
-        description=f"Run only these stages, in chain order. {_STAGE_HELP}",
+        description=f"Run only these stages, against what is already on disk. {_STAGE_HELP}",
         examples=[["dos_extract"]],
     )
-    skip_ocr: Optional[bool] = Field(
+    run_through: Optional[str] = Field(
         None,
-        description=(
-            "Reuse OCR when possible (requires force=false). Looks up "
-            "data/folders/<chart>/pages and ocr/; if pages missing, downloads "
-            "from Raw_Input; if ocr missing, pulls from Processed output_path, "
-            "else materializes from DB, else re-runs OCR. Quality/rotation "
-            "always re-runs; every non-OCR stage (blank/junk, headers, member, "
-            "DOS, …) is force-re-run. OCR engines only re-run for gate-delta "
-            "pending pages. Write after this run overwrites "
-            "ocr/corrected-pages/imaging on the destination. "
-            "omit = SKIP_OCR env. Ignored when force=true."
-        ),
+        description=f"Run the chain from the top and stop after this stage. {_STAGE_HELP}",
+        examples=["ocr_final2"],
     )
-    redownload_pages: bool = Field(
+    skip_ocr: bool = Field(
         False,
         description=(
-            "Wipe workspace pages/ + corrected-pages/ and re-fetch pages from "
-            "Raw_Input. Default false: reuse workspace pages when present."
+            "Reuse existing OCR (workspace, else Processed output, else DB) "
+            "instead of re-running the OCR engines — no Azure final2 billing. "
+            "Quality/rotation and every non-OCR stage still re-run."
         ),
     )
-    test_mode: bool = Field(
+    skip_completed: bool = Field(
         False,
         description=(
-            "Local runs only: never open Postgres; chart/page/stage state stays "
-            "in memory. Workspace writes under data/folders/<chart>-test so you "
-            "can open it in review-ui without touching the real chart folder. "
-            "Rejected with blob sources or chart_id/chart_name resume. "
-            "Env TEST_MODE=true also enables."
+            "Skip charts whose status is already finished "
+            "(completed / needs_review / rejected)."
         ),
     )
-    skip_db_write: bool = Field(
-        False,
-        description=(
-            "Deprecated alias for test_mode (same behaviour, including the "
-            "-test workspace suffix). Prefer test_mode. Env SKIP_DB_WRITE=true "
-            "still enables."
-        ),
-    )
-
-    def wants_offline(self) -> bool:
-        """True when test_mode or legacy skip_db_write is set."""
-        return bool(self.test_mode or self.skip_db_write)
-
-
-class RunRequest(StageSelection):
-    """One chart: read it (or resume), run the chain, and write results if a path is set.
-
-    A source is a **read path plus a folder name**, which resolve together:
-
-        blob_read_path  Raw_Input/Run1/Batch1/DEID_PNGs
-        blob_read_folder_name              52754737_48221214
-        -> reads  Raw_Input/Run1/Batch1/DEID_PNGs/52754737_48221214/
-
-    **The folder name is the chart name.** It is what appears in `chart_list`,
-    names every output CSV, and is the key the member manifest joins on
-    (`record_id`), so it is given rather than inferred.
-
-    The write path resolves the same way, with the same folder name:
-
-        blob_write_path Processed/Run1
-        -> writes Processed/Run1/52754737_48221214/
-
-    Write is part of this call — there is no separate write endpoint. With a
-    write path set, missing destination files are written and existing ones
-    are skipped unless ``overwrite=true``.
-
-    To **resume** an already-ingested chart (formerly ``/rerun``), pass
-    ``chart_id`` (or ``chart_name``) with no read path.
-    """
-
-    # --- resume without re-intake ---
-    chart_id: Optional[int] = Field(
-        None,
-        description="Resume pipeline for an existing chart (no read path needed)",
-    )
-    chart_name: Optional[str] = Field(
-        None,
-        description="Resume by folder name when chart_id is unknown",
-    )
-
-    # --- blob ---
-    blob_container: Optional[str] = Field(
-        None, description="Azure Blob container. Used for both read and write."
-    )
-    blob_read_path: Optional[str] = Field(
-        None,
-        description="Prefix holding the chart folder",
-        examples=["Raw_Input/Run1/Batch1/DEID_PNGs"],
-    )
-    blob_read_folder_name: Optional[str] = Field(
-        None,
-        description="The chart folder under blob_read_path. Becomes the chart name.",
-        examples=["52754737_48221214"],
-    )
-    blob_write_path: Optional[str] = Field(
-        None,
-        description="Prefix to write results to. Omit to run without writing.",
-        examples=["Processed/Run1"],
-    )
-
-    # --- local ---
-    local_read_path: Optional[str] = Field(
-        None,
-        description=(
-            "Directory ON THE SERVER holding the chart folder. Under Docker "
-            "this must be a path inside the container. Windows ``\\\\`` and "
-            "``/`` are both accepted."
-        ),
-        examples=["/data/inbox", "C:/data/inbox"],
-    )
-    local_folder_name: Optional[str] = Field(
-        None,
-        description="The chart folder under local_read_path. Becomes the chart name.",
-        examples=["52754737_48221214"],
-    )
-    local_write_path: Optional[str] = Field(
-        None, description="Directory to write results to. Omit to run without writing."
-    )
-
-    # --- write options ---
-    write_mode: str = Field(
-        SKIP_ORIG_PAGES,
-        description=(
-            "skip_orig_pages (default) omits pages/ — the originals came from "
-            "the source you are writing back to, so re-sending them doubles "
-            "storage and transfer. corrected-pages/, ocr/ and imaging/ are "
-            "still written. all_files sends everything."
-        ),
-    )
-    overwrite: bool = Field(
-        False,
-        description=(
-            "When a write path is set: false = sync (write missing, skip existing); "
-            "true = replace all at the destination"
-        ),
-    )
-
-    # Optional — when omitted, inferred from path segments like Run1/Batch1 → R1/B1
-    run_id: Optional[str] = Field(
-        None,
-        description="Override run id. Default: inferred from path (Run1/R1 → R1).",
-    )
-    batch_id: Optional[str] = Field(
-        None,
-        description="Override batch id. Default: inferred from path (Batch1/B1 → B1).",
-    )
-    force: bool = Field(
+    skip_page_download: bool = Field(
         True,
         description=(
-            "Reprocess pages already completed (default). "
-            "Set false to resume and skip completed pages (final2 is billed). "
-            "Does not wipe or re-download pages/ — use redownload_pages for that."
+            "Reuse page images already in the workspace (default). false = "
+            "wipe pages/ + corrected-pages/ and fetch them again from input_path."
         ),
     )
 
-    @field_validator(
-        "local_read_path", "local_write_path", mode="before"
-    )
-    @classmethod
-    def _norm_local_paths(cls, value: Any) -> Any:
-        return normalize_fs_path(value) if value is not None else value
+    # --- derived: what the internals were written against ---------------
+    @property
+    def force(self) -> bool:
+        # skip_ocr is implemented as a resume (force off) that re-runs the
+        # non-OCR stages itself; everything else always reprocesses.
+        return not self.skip_ocr
 
-    @field_validator("blob_read_path", "blob_write_path", mode="before")
-    @classmethod
-    def _norm_blob_paths(cls, value: Any) -> Any:
-        return normalize_blob_path(value) if value is not None else value
+    @property
+    def through(self) -> Optional[str]:
+        return self.run_through
 
-    @field_validator(
-        "local_folder_name", "blob_read_folder_name", "chart_name", mode="before"
+    @property
+    def redownload_pages(self) -> bool:
+        return not self.skip_page_download
+
+    @property
+    def is_blob(self) -> bool:
+        return self.input_type == "blob"
+
+    @property
+    def blob_container(self) -> Optional[str]:
+        return self.container_name if self.is_blob else None
+
+    @property
+    def blob_read_path(self) -> Optional[str]:
+        return self.input_path if self.is_blob else None
+
+    @property
+    def blob_write_path(self) -> Optional[str]:
+        return self.output_path if self.is_blob else None
+
+    @property
+    def local_read_path(self) -> Optional[str]:
+        return None if self.is_blob else self.input_path
+
+    @property
+    def local_write_path(self) -> Optional[str]:
+        return None if self.is_blob else self.output_path
+
+    write_mode: ClassVar[str] = SKIP_ORIG_PAGES
+    overwrite: ClassVar[bool] = True
+
+    def wants_offline(self) -> bool:
+        return False
+
+    @model_validator(mode="after")
+    def _normalise_paths(self) -> "ChartRunOptions":
+        norm = normalize_blob_path if self.is_blob else normalize_fs_path
+        self.input_path = norm(self.input_path) or ""
+        if self.output_path is not None:
+            self.output_path = norm(self.output_path)
+        if self.container_name is not None:
+            self.container_name = self.container_name.strip().strip("/") or None
+        return self
+
+
+class RunRequest(ChartRunOptions):
+    """One chart: ``<input_path>/<chart_name>`` → pipeline → ``<output_path>/<chart_name>``.
+
+    Running a chart that was run before resumes it: its workspace pages are
+    reused (``skip_page_download``) and every stage reprocesses.
+    """
+
+    chart_name: str = Field(
+        ...,
+        description="The chart folder under input_path. It is the chart's name everywhere.",
+        examples=["52754737_48221214"],
     )
+
+    @field_validator("chart_name", mode="before")
     @classmethod
-    def _norm_folder_names(cls, value: Any) -> Any:
+    def _norm_chart_name(cls, value: Any) -> Any:
         return normalize_folder_name(value) if value is not None else value
 
 
-class BatchRequest(StageSelection):
-    """Every chart under one read path: register all, then run with a worker pool.
+class BatchRequest(ChartRunOptions):
+    """Every chart folder under ``input_path`` (or just ``chart_list``)."""
 
-    The same vocabulary as RunRequest **minus the folder name**: here every
-    sub-folder holding images IS a chart, so each supplies its own. A chart read
-    from `<read_path>/52754737_48221214/` is written to
-    `<write_path>/52754737_48221214/`.
-
-    Each chart goes through the same call a single `/run` makes, so an option
-    means the same thing in both places. Charts are first upserted into
-    ``chart_list`` (status ``received``), then ingested/run with ``workers``
-    concurrent charts (default ``BATCH_WORKERS``, usually 4).
-    """
-
-    # --- blob ---
-    blob_container: Optional[str] = Field(
-        None, description="Azure Blob container. Used for both read and write."
-    )
-    blob_read_path: Optional[str] = Field(
-        None,
-        description="Prefix whose sub-folders are charts",
-        examples=["Raw_Input/Run1/Batch1/DEID_PNGs"],
-    )
-    blob_write_path: Optional[str] = Field(
-        None, description="Prefix to write each chart to. Omit to run without writing."
-    )
-
-    # --- local ---
-    local_read_path: Optional[str] = Field(
+    chart_list: Optional[list[str]] = Field(
         None,
         description=(
-            "Parent directory ON THE SERVER; each sub-folder holding images is "
-            "one chart. Under Docker this must be a path inside the container. "
-            "Windows ``\\\\`` and ``/`` are both accepted."
+            "Only these chart folders (list, or one comma-separated string). "
+            "Default: every chart folder under input_path. Names not found are "
+            "reported as charts_missing."
         ),
-    )
-    local_write_path: Optional[str] = Field(
-        None, description="Directory to write each chart to. Omit to run without writing."
-    )
-
-    # --- write options ---
-    write_mode: str = Field(
-        SKIP_ORIG_PAGES,
-        description="skip_orig_pages (default) omits pages/; all_files sends everything",
-    )
-    overwrite: bool = Field(
-        False,
-        description=(
-            "When a write path is set: false = sync (write missing, skip existing); "
-            "true = replace all at the destination"
-        ),
-    )
-
-    # --- both ---
-    force: bool = Field(
-        True,
-        description=(
-            "Reprocess pages already completed (default). "
-            "Set false to resume: keep workspace/OCR, skip charts that already "
-            "finished every phase-1 stage, and only re-run incomplete pages "
-            "(final2 is billed only for those pages)."
-        ),
+        examples=[["52743839_44976074", "52754737_48221214"]],
     )
     sample: Optional[int] = Field(
         None,
         ge=1,
         description=(
-            "Smoke test: run at most N chart folders under the read path "
-            "(sorted by name). When more than N folders exist, prefer charts "
-            "that are not yet pipeline-complete; completed ones are included "
-            "only if needed to fill N."
+            "Run at most N charts (not-yet-finished ones first). Default: all."
         ),
-        examples=[1, 3, 5],
-    )
-    chart_names: Optional[list[str]] = Field(
-        None,
-        description=(
-            "Optional allow-list of chart folder names. Only folders that both "
-            "appear in this list AND exist under the read path are run. Names "
-            "not found under the path are skipped (returned as charts_missing)."
-        ),
-        examples=[["52743839_44976074", "52754737_48221214"]],
-    )
-    run_id: Optional[str] = Field(
-        None,
-        description="Override run id. Default: inferred from blob_read_path / local_read_path (Run1 → R1).",
-    )
-    batch_id: Optional[str] = Field(
-        None,
-        description="Override batch id. Default: inferred from path (Batch1 → B1).",
-    )
-    workers: Optional[int] = Field(
-        None,
-        ge=1,
-        description=(
-            "Charts to run concurrently. Default BATCH_WORKERS (usually 4). "
-            "Must satisfy workers × STAGE_WORKERS + headroom ≤ DB_POOL_MAX."
-        ),
+        examples=[3],
     )
 
     def charts_cap(self) -> Optional[int]:
-        """Effective first-N cap from ``sample``."""
-        if self.sample is not None:
-            return int(self.sample)
-        return None
+        return int(self.sample) if self.sample is not None else None
 
-    @field_validator("local_read_path", "local_write_path", mode="before")
+    @field_validator("chart_list", mode="before")
     @classmethod
-    def _norm_local_paths(cls, value: Any) -> Any:
-        return normalize_fs_path(value) if value is not None else value
-
-    @field_validator("blob_read_path", "blob_write_path", mode="before")
-    @classmethod
-    def _norm_blob_paths(cls, value: Any) -> Any:
-        return normalize_blob_path(value) if value is not None else value
-
-    @field_validator("chart_names", mode="before")
-    @classmethod
-    def _norm_chart_names(cls, value: Any) -> Any:
+    def _norm_chart_list(cls, value: Any) -> Any:
         if value is None:
             return None
         if isinstance(value, str):
-            parts = [p.strip() for p in value.replace(";", ",").split(",")]
-            value = parts
+            value = [p.strip() for p in value.replace(";", ",").split(",")]
         if not isinstance(value, list):
             return value
         out: list[str] = []
         seen: set[str] = set()
         for item in value:
             name = normalize_folder_name(item)
-            if not name:
+            if not name or name.casefold() in seen:
                 continue
-            key = name.casefold()
-            if key in seen:
-                continue
-            seen.add(key)
+            seen.add(name.casefold())
             out.append(name)
         return out or None
 
@@ -659,7 +513,7 @@ def _bg_pipeline_then_write(
 
 
 def _bg_run(payload: "RunRequest") -> None:
-    folder = payload.blob_read_folder_name or ""
+    folder = payload.chart_name
     blob_path = _join(payload.blob_read_path, folder)
     source = f"{payload.blob_container}/{blob_path}"
     logger.info("Background run starting: %s", source)
@@ -668,8 +522,6 @@ def _bg_run(payload: "RunRequest") -> None:
             blob_container=payload.blob_container,
             blob_path=blob_path,
             chart_name=folder,
-            run_id=payload.run_id,
-            batch_id=payload.batch_id,
             force=payload.force,
             only=payload.only,
             through=payload.through,
@@ -755,12 +607,9 @@ def _bg_batch(payload: "BatchRequest") -> None:
             through=payload.through,
             skip_ocr=payload.skip_ocr,
             redownload_pages=payload.redownload_pages,
-            skip_db_write=bool(payload.wants_offline()),
             sample=payload.sample,
-            chart_names=payload.chart_names,
-            run_id=payload.run_id,
-            batch_id=payload.batch_id,
-            workers=payload.workers,
+            chart_names=payload.chart_list,
+            skip_completed=payload.skip_completed,
         )
         logger.info(
             "Background batch finished: %s -> %d/%d completed, %d failed "
@@ -877,7 +726,7 @@ def get_stages() -> dict[str, Any]:
         return {"stages": list_stages(conn, phase1_only=False)}
 
 
-def _validate_stages(body: "StageSelection") -> None:
+def _validate_stages(body: "ChartRunOptions") -> None:
     """Reject an unknown stage name with a 400 naming the known ones.
 
     Without this a typo reaches the background task, where it becomes a log
@@ -890,198 +739,106 @@ def _validate_stages(body: "StageSelection") -> None:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/charts/run", status_code=202, tags=["charts"])
-def run_chart(body: RunRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
-    """Read one chart (or resume), run the stage chain, write if a path is set.
-
-    - **New chart:** read path + folder name → intake → pipeline → write (if path).
-    - **Resume:** ``chart_id`` or ``chart_name`` with no read path → pipeline only
-      (replaces the old ``/rerun``). Write still runs when a write path is set.
-
-    Write is part of this call (no separate write endpoint). Default write is a
-    sync: missing destination files are written, existing ones skipped unless
-    ``overwrite=true``.
-
-    Returns immediately. Poll GET /api/charts/{id} or /api/charts/by-name/{name}.
-    """
-    has_blob = bool(body.blob_container or body.blob_read_path or body.blob_read_folder_name)
-    has_local = bool(body.local_read_path or body.local_folder_name)
-    has_source = has_blob or has_local
-    resume_id = body.chart_id
-    resume_name = (body.chart_name or "").strip() or None
-
-    if has_blob and has_local:
+def _check_source(body: ChartRunOptions) -> None:
+    """Shape rules shared by run and batch-run (400 with a readable detail)."""
+    if body.is_blob and not body.container_name:
         raise HTTPException(
-            status_code=400, detail="Give a blob source or a local source, not both"
+            status_code=400, detail="input_type=blob needs container_name"
         )
-    if has_source and (resume_id or resume_name):
+    if not body.is_blob and body.container_name:
         raise HTTPException(
             status_code=400,
-            detail="Pass a read source, or chart_id/chart_name to resume — not both",
+            detail="container_name is for input_type=blob only; remove it for local",
         )
-    if not has_source and not resume_id and not resume_name:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Provide a read source (blob_* or local_*), "
-                "or chart_id / chart_name to resume an existing chart"
-            ),
-        )
-    if body.write_mode not in WRITE_MODES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"write_mode must be one of {', '.join(WRITE_MODES)}",
-        )
-
+    if not body.input_path:
+        raise HTTPException(status_code=400, detail="input_path is required")
     _validate_stages(body)
-    if body.wants_offline():
-        if has_blob or body.blob_write_path:
-            raise HTTPException(
-                status_code=400,
-                detail="test_mode is local-only (no blob read/write)",
-            )
-        if resume_id or resume_name:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "test_mode cannot resume by chart_id/chart_name; "
-                    "pass local_read_path + local_folder_name"
-                ),
-            )
-        if not has_local:
-            raise HTTPException(
-                status_code=400,
-                detail="test_mode requires local_read_path + local_folder_name",
-            )
-        from db import enable_skip_db_write
 
-        enable_skip_db_write(reset=True)
-    else:
-        _require_db()
-    write_to = body.blob_write_path or body.local_write_path
 
-    # --- resume (was /rerun) ---
-    if not has_source:
-        with connect() as conn:
-            if resume_id:
-                chart = get_chart(conn, resume_id)
-            else:
-                chart = get_chart_by_name(conn, resume_name or "")
-            if not chart:
-                raise HTTPException(status_code=404, detail="chart not found")
-            chart_id = int(chart["id"])
-            folder = str(chart["chart_name"])
-        if write_to and body.blob_write_path and body.local_write_path:
-            raise HTTPException(
-                status_code=400, detail="Give one write destination, not both"
-            )
-        background_tasks.add_task(
-            _bg_pipeline_then_write, chart_id, folder, body
-        )
-        return {
-            "status": "accepted",
-            "mode": "resume",
-            "chart_id": chart_id,
-            "chart_name": folder,
-            "through": body.through,
-            "only": body.only,
-            "skip_ocr": body.skip_ocr,
-            "force": body.force,
-            "redownload_pages": body.redownload_pages,
-            "write": _write_summary(body, folder, write_to),
-            "poll": f"/api/charts/{chart_id}",
-        }
+def _chart_finished(chart_name: str) -> Optional[str]:
+    """The chart's status when it is already finished, else None."""
+    from jobs.batch_intake import FINISHED_CHART_STATUSES
 
-    if has_blob:
-        missing = [
-            name
-            for name, value in (
-                ("blob_container", body.blob_container),
-                ("blob_read_path", body.blob_read_path),
-                ("blob_read_folder_name", body.blob_read_folder_name),
-            )
-            if not value
-        ]
-        if missing:
-            raise HTTPException(
-                status_code=400, detail=f"blob mode also needs: {', '.join(missing)}"
-            )
-        if body.local_write_path:
-            raise HTTPException(
-                status_code=400,
-                detail="A blob source writes to blob_write_path, not local_write_path",
-            )
-        folder = body.blob_read_folder_name
-    else:
-        if not (body.local_read_path and body.local_folder_name):
-            raise HTTPException(
-                status_code=400,
-                detail="local mode needs both local_read_path and local_folder_name",
-            )
-        if body.blob_write_path:
-            raise HTTPException(
-                status_code=400,
-                detail="A local source writes to local_write_path, not blob_write_path",
-            )
-        folder = body.local_folder_name
+    with connect() as conn:
+        chart = get_chart_by_name(conn, chart_name)
+    status = str((chart or {}).get("status") or "")
+    return status if status in FINISHED_CHART_STATUSES else None
 
-    if has_local:
-        from db import test_chart_name
+
+def _options_echo(body: ChartRunOptions) -> dict[str, Any]:
+    return {
+        "only": body.only,
+        "run_through": body.run_through,
+        "skip_ocr": body.skip_ocr,
+        "skip_completed": body.skip_completed,
+        "skip_page_download": body.skip_page_download,
+    }
+
+
+@app.post("/api/charts/run", status_code=202, tags=["charts"])
+def run_chart(
+    body: RunRequest, background_tasks: BackgroundTasks, response: Response
+) -> dict[str, Any]:
+    """One chart: ``<input_path>/<chart_name>`` → pipeline → ``<output_path>/<chart_name>``.
+
+    Re-running a chart resumes it: workspace pages are reused and every stage
+    reprocesses. With ``skip_completed`` a finished chart is not run (200).
+
+    Returns immediately (202). Poll GET /api/charts/by-name/{chart_name}.
+    """
+    _check_source(body)
+    _require_db()
+    folder = body.chart_name
+
+    if body.skip_completed:
+        finished = _chart_finished(folder)
+        if finished:
+            response.status_code = 200
+            return {
+                "status": "skipped",
+                "reason": f"skip_completed: chart status is {finished}",
+                "chart_name": folder,
+                "poll": f"/api/charts/by-name/{folder}",
+            }
+
+    write_to = body.output_path
+    base = {
+        "status": "accepted",
+        "input_type": body.input_type,
+        "chart_name": folder,
+        **_options_echo(body),
+        "write": _write_summary(body, folder, write_to),
+    }
+
+    if not body.is_blob:
         from stages.utilities.download_blob import import_local_folder
 
-        source = str(Path(body.local_read_path) / folder)
-        workspace_name = test_chart_name(folder) if body.wants_offline() else folder
+        source = str(Path(body.input_path) / folder)
         try:
             result = import_local_folder(
                 source,
-                chart_name=workspace_name,
+                chart_name=folder,
                 force=body.force,
                 redownload_pages=body.redownload_pages,
-                run_id=body.run_id,
-                batch_id=body.batch_id,
             )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         background_tasks.add_task(
-            _bg_pipeline_then_write, result["chart_id"], workspace_name, body
+            _bg_pipeline_then_write, result["chart_id"], folder, body
         )
         return {
-            "status": "accepted",
-            "mode": "local",
+            **base,
             "chart_id": result["chart_id"],
-            "chart_name": workspace_name,
             "source": source,
             "imported": result["imported"],
-            "manifest": result["manifest"],
             "page_count": result["page_count"],
-            "through": body.through,
-            "only": body.only,
-            "skip_ocr": body.skip_ocr,
-            "redownload_pages": body.redownload_pages,
-            "test_mode": body.wants_offline(),
-            "skip_db_write": body.skip_db_write,
-            "force": body.force,
-            "write": _write_summary(body, workspace_name, write_to),
             "poll": f"/api/charts/{result['chart_id']}",
-            "note": (
-                f"test_mode: workspace at data/folders/{workspace_name}"
-                if body.wants_offline()
-                else None
-            ),
         }
 
     background_tasks.add_task(_bg_run, body)
     return {
-        "status": "accepted",
-        "mode": "blob",
-        "chart_name": folder,
-        "source": f"{body.blob_container}/{_join(body.blob_read_path, folder)}",
-        "through": body.through,
-        "only": body.only,
-        "skip_ocr": body.skip_ocr,
-        "redownload_pages": body.redownload_pages,
-        "force": body.force,
-        "write": _write_summary(body, folder, write_to),
+        **base,
+        "source": f"{body.container_name}/{_join(body.input_path, folder)}",
         "poll": f"/api/charts/by-name/{folder}",
     }
 
@@ -1135,151 +892,84 @@ def batch_run(
 def _batch_run_impl(
     body: BatchRequest, background_tasks: BackgroundTasks
 ) -> dict[str, Any]:
-    """Register every chart under a read path, then run them with a worker pool."""
-    from jobs.batch_intake import find_local_chart_folders, resolve_batch_workers
+    """Register every chart under input_path, then run them with a worker pool."""
+    from jobs.batch_intake import (
+        filter_sources_by_chart_names,
+        find_local_chart_folders,
+        finished_chart_names,
+        resolve_batch_workers,
+    )
 
-    has_blob = bool(body.blob_container or body.blob_read_path)
-    has_local = bool(body.local_read_path)
-    if has_blob == has_local:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Provide either local_read_path, or both blob_container and "
-                "blob_read_path"
-            ),
-        )
-    if has_blob and not (body.blob_container and body.blob_read_path):
-        raise HTTPException(
-            status_code=400,
-            detail="blob_container and blob_read_path must be given together",
-        )
-    if has_blob and body.local_write_path:
-        raise HTTPException(
-            status_code=400,
-            detail="A blob source writes to blob_write_path, not local_write_path",
-        )
-    if has_local and body.blob_write_path:
-        raise HTTPException(
-            status_code=400,
-            detail="A local source writes to local_write_path, not blob_write_path",
-        )
-    if body.write_mode not in WRITE_MODES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"write_mode must be one of {', '.join(WRITE_MODES)}",
-        )
+    _check_source(body)
     try:
-        workers = resolve_batch_workers(body.workers)
+        workers = resolve_batch_workers(None)  # BATCH_WORKERS, checked against DB_POOL_MAX
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    body.workers = workers
-    _validate_stages(body)
-    if body.wants_offline():
-        if has_blob or body.blob_write_path:
-            raise HTTPException(
-                status_code=400,
-                detail="test_mode is local-only (no blob read/write)",
-            )
-        if not has_local:
-            raise HTTPException(
-                status_code=400,
-                detail="test_mode requires local_read_path",
-            )
-    else:
-        _require_db()
+    _require_db()
 
     found: Optional[int] = None
     queued: Optional[int] = None
     missing: Optional[list[str]] = None
+    skipped: Optional[list[str]] = None
     cap = body.charts_cap()
-    if has_local:
+    if not body.is_blob:
+        # Local drops can be counted up front; blob is listed in the background.
         try:
-            from jobs.batch_intake import filter_sources_by_chart_names
-
-            folders = find_local_chart_folders(body.local_read_path)
-            sources = [(str(f), f.name, "local") for f in folders]
-            found = len(sources)
-            if body.chart_names:
-                sources, missing = filter_sources_by_chart_names(
-                    sources, body.chart_names
-                )
+            folders = find_local_chart_folders(body.input_path)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        if body.chart_names and not sources:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "None of the requested chart_names exist under "
-                    f"{body.local_read_path}"
-                    + (
-                        f" (missing: {', '.join(missing[:20])})"
-                        if missing
-                        else ""
-                    )
-                ),
-            )
+        sources = [(str(f), f.name, "local") for f in folders]
+        found = len(sources)
         if not found:
             raise HTTPException(
                 status_code=400,
-                detail=f"No chart folders with images under {body.local_read_path}",
+                detail=f"No chart folders with images under {body.input_path}",
             )
-        queued_n = len(sources) if body.chart_names else found
-        queued = min(queued_n, cap) if cap else queued_n
+        if body.chart_list:
+            sources, missing = filter_sources_by_chart_names(sources, body.chart_list)
+            if not sources:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"None of chart_list exists under {body.input_path}"
+                        + (f" (missing: {', '.join(missing[:20])})" if missing else "")
+                    ),
+                )
+        if body.skip_completed:
+            finished = finished_chart_names([n for _s, n, _m in sources])
+            skipped = [n for _s, n, _m in sources if n in finished]
+            sources = [x for x in sources if x[1] not in finished]
+        queued = min(len(sources), cap) if cap else len(sources)
 
     background_tasks.add_task(_bg_batch, body)
-    write_to = body.blob_write_path or body.local_write_path
+    source = (
+        f"{body.container_name}/{body.input_path}" if body.is_blob else body.input_path
+    )
     return {
         "status": "accepted",
-        "mode": "local" if has_local else "blob",
-        "source": body.local_read_path or f"{body.blob_container}/{body.blob_read_path}",
+        "input_type": body.input_type,
+        "source": source,
         "charts_found": found,
         "charts_queued": queued,
         "charts_missing": missing,
-        "chart_names": body.chart_names,
+        "charts_skipped_completed": skipped,
+        "chart_list": body.chart_list,
         "sample": body.sample,
         "workers": workers,
-        "through": body.through,
-        "only": body.only,
-        "skip_ocr": body.skip_ocr,
-        "test_mode": body.wants_offline(),
+        **_options_echo(body),
         "write": (
             {
                 "destination": (
-                    f"{body.blob_container}/{body.blob_write_path}"
-                    if body.blob_write_path
-                    else body.local_write_path
+                    f"{body.container_name}/{body.output_path}"
+                    if body.is_blob
+                    else body.output_path
                 ),
-                "write_mode": body.write_mode,
-                "overwrite": body.overwrite,
-                "note": (
-                    "each chart is written under its own folder name; "
-                    "existing files skipped, missing ones written"
-                ),
+                "note": "each chart is written under its own folder name, replacing existing files",
             }
-            if write_to
+            if body.output_path
             else None
         ),
-        "note": (
-            (
-                f"chart_names filter: {queued} under path"
-                + (
-                    f", {len(missing)} missing"
-                    if missing
-                    else ""
-                )
-                + "; "
-                if body.chart_names and queued is not None
-                else ""
-            )
-            + (
-                f"sample={cap}: up to {queued} of {found} chart folder(s) "
-                f"(incomplete preferred when the drop is larger than N); "
-                if cap and found is not None and queued is not None and not body.chart_names
-                else ""
-            )
-            + f"charts pre-registered into chart_list, then run with "
-            + f"{workers} worker(s); poll /api/charts/by-name/{{name}}"
-        ),
+        "poll": "/api/charts/by-name/{chart_name}",
     }
 
 

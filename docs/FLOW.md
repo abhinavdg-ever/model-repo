@@ -46,7 +46,7 @@ Either can be redeployed without the other.
 
 ```mermaid
 flowchart TD
-  START(["POST /api/charts/run<br/>{blob_container, blob_path}"]) --> DL
+  START(["POST /api/charts/run<br/>{input_type, container_name, input_path, chart_name}"]) --> DL
 
   subgraph INTAKE["Intake"]
     DL["Download pages<br/>→ data/folders/&lt;chart&gt;/pages/1.jpg…N"]
@@ -57,7 +57,7 @@ flowchart TD
 
   LINK --> S1
 
-  subgraph CHAIN["Stage chain — each stage resumes, skipping completed pages"]
+  subgraph CHAIN["Stage chain — API reprocesses every page; CLI --resume skips completed pages"]
     S1["1 · ocr_quality<br/>rotation + handwriting"]
     S2["2 · ocr_prelim<br/>Tesseract, every page"]
     S3["3 · blank_junk pass 1<br/>printed pages, prelim text"]
@@ -80,7 +80,7 @@ flowchart TD
 ```
 
 Stages 5 and 7 are highlighted: **stage 5 costs money per page** (which is why
-resume matters), and **stage 7 produces the accept/reject decision**.
+`skip_ocr` matters), and **stage 7 produces the accept/reject decision**.
 
 ---
 
@@ -143,7 +143,7 @@ Each skip is recorded — `page_stage_status.status='skipped'` with a
 `no_final2_text`). A skipped page counts as *done* for chart-status purposes,
 so a chart of blank pages still reaches `completed`.
 
-### Adaptive skip_ocr (`skip_ocr=true`, `force=false`)
+### Adaptive skip_ocr (`skip_ocr=true`)
 
 When OCR artifacts already exist, the orchestrator:
 
@@ -161,7 +161,9 @@ When OCR artifacts already exist, the orchestrator:
 
 ```bash
 curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{"chart_id": 123, "skip_ocr": true, "force": false}'
+  -d '{"input_type": "blob", "container_name": "imaging-pipeline",
+       "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+       "chart_name": "52754737_48221214", "skip_ocr": true}'
 ```
 
 ---
@@ -207,21 +209,27 @@ sequenceDiagram
   AZ-->>DB: 400 rows 'completed'
   O--xO: crash
 
-  Note over O,AZ: Re-run — force=true (default) reprocesses all
-  C->>O: POST /api/charts/run {"chart_id":…}
+  Note over O,AZ: API re-run — same input_path + chart_name, reprocesses all
+  C->>O: POST /api/charts/run {"input_path":…,"chart_name":…}
   O->>AZ: analyse pages 1…500 again
   Note right of AZ: billed again
 
-  Note over O,AZ: Optional resume
-  C->>O: POST /api/charts/run {"chart_id":…,"force":false}
+  Note over O,AZ: CLI resume (python cli.py run --resume)
+  C->>O: cli.py run --chart-id … --resume
   O->>DB: pages_needing_stage('ocr_final2')
   DB-->>O: pages 401…500 only
   O->>AZ: analyse 100 pages
 ```
 
-- Default / omit `force` → **reprocess** everything (`force=true`).
-- `{"force": false}` → **resume**: completed and skipped pages are left alone.
+- API re-run (same `input_path` + `chart_name`) → workspace pages are reused
+  (`skip_page_download` defaults to `true`) and every stage **reprocesses**.
+  There is no `force` field and no page-level resume on the API.
+- `{"skip_ocr": true}` → reuse existing OCR; no Final2 re-billing (see §4).
+- `{"skip_completed": true}` → do not run a chart whose status is already
+  `completed` / `needs_review` / `rejected`.
 - `{"only": ["member_verify"]}` → run just that stage.
+- CLI `--resume` → completed and skipped pages are left alone. The CLI keeps
+  its own flags; they are not the API's fields.
 
 ---
 

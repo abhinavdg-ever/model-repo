@@ -70,17 +70,18 @@ Reuse OCR; refresh quality/HW; only reopen OCR when the gate flips:
 ```bash
 curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
   -d '{
-    "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
-    "blob_write_path": "Processed/Run1/Batch1",
-    "force": false,
+    "input_type": "blob",
+    "container_name": "imaging-pipeline",
+    "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "output_path": "Processed/Run1",
     "skip_ocr": true,
-    "only": ["ocr_quality", "page_subtype", "encounter_type", "page_sequencing"],
-    "workers": 2
+    "only": ["ocr_quality", "page_subtype", "encounter_type", "page_sequencing"]
   }'
 ```
 
-Or smoke with `"sample": 5` first. Full detail: [`HOW_TO_RUN.md` §4B](HOW_TO_RUN.md).
+Concurrency is `BATCH_WORKERS` in `core-pipeline/.env` (the old `workers` and
+`force` fields are gone; `skip_ocr` is what avoids re-OCR). Or smoke with
+`"sample": 5` first. Full detail: [`HOW_TO_RUN.md` §4B](HOW_TO_RUN.md).
 
 ### 4. Optional local check without Postgres
 

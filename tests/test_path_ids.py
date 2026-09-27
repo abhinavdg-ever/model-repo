@@ -107,7 +107,7 @@ def test_normalize_fs_and_blob_paths():
 def test_run_request_force_defaults_true():
     from api.main import RunRequest
 
-    body = RunRequest(chart_id=1)
+    body = RunRequest(input_type="local", input_path="/x", chart_name="c")
     assert body.force is True
 
 

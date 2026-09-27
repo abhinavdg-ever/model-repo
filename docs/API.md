@@ -158,7 +158,8 @@ Key `.env` knobs (paths relative to `core-pipeline/`):
 | `RAPID_MODELS_DIR` | `models/rapidocr` |
 | `SECTION_HEADER_MINILM_PATH` | `models/semantic-model` — local MiniLM (preferred) |
 | `BLANK_JUNK_MODEL_DIR` | `models/blank-junk` — `tfidf_flat.joblib` + `default.json`. Missing file ⇒ regex rules only |
-| `MODELS_HOST_PATH` | Docker only. Host folder mounted at `/models` and at `/app/core-pipeline/models`. Default `./models` |
+| `MEMBER_NER_MODELS_PATH` | `models/ner` |
+| `MODELS_HOST_PATH` | Docker only. Host folder mounted at `/app/core-pipeline/models`. Default `./models` |
 | `SECTION_HEADER_SEMANTIC_ENABLED` | `true` — filter Final1 `section_headers` ≥90% |
 | `DOCLING_TABLE_CELL_MATCHING` | `true` (default) — fill dense form table cells. Slower per page; Final1 falls back to RapidOCR-onnx only on a page timeout or a crash, never on short output. Set `false` for speed. Unrelated to the section-header RLock deadlock. |
 | `DOCLING_IMAGES_SCALE` | `1.0` — keep at 1 for page images (`2` halves overlay boxes) |
@@ -184,19 +185,20 @@ to `languages,barcodes` (`AZURE_DI_FEATURES=off` to disable).
 
 ## Prerequisites (Models)
 
-Weight files are **not** on PyPI. Copy them onto each machine and set the
-paths in `core-pipeline/.env`. An absolute path is used as written. A relative
-path is from `core-pipeline/`.
+Weight files are **not** on PyPI. Copy them into `core-pipeline/models/` on
+Windows and on the Linux VM. Every model path in `.env` is **relative to
+`core-pipeline/`** — the same values on both machines:
 
-| Machine | Where you copy the files | What you set |
-|---|---|---|
-| Linux VM | `/models` | `HW_MODEL_PATH=/models/hw/handwritten_printed_convnext_tiny.pth`, and the same prefix for the other variables. `MODELS_HOST_PATH=/models` so Docker sees that folder |
-| Windows | `C:\models` (or any folder) | `HW_MODEL_PATH=C:\models\hw\handwritten_printed_convnext_tiny.pth`, and the same prefix for the other variables |
-| Checkout next to the code | `core-pipeline/models/` | leave the relative defaults (`models/hw/...`) |
+```
+HW_MODEL_PATH=models/hw/handwritten_printed_convnext_tiny.pth
+RAPID_MODELS_DIR=models/rapidocr
+SECTION_HEADER_MINILM_PATH=models/semantic-model
+BLANK_JUNK_MODEL_DIR=models/blank-junk
+MEMBER_NER_MODELS_PATH=models/ner
+```
 
 `blank-junk/` (`tfidf_flat.joblib` + `default.json`) is in git. The other
-weight folders are not — copy those yourself. `BLANK_JUNK_MODEL_DIR` still
-points at whichever copy you want to run.
+weight folders are not — copy those into `core-pipeline/models/` yourself.
 
 Teammate preprocessing drop / HW+quality refresh checklist:
 [`IMAGE_PREPROCESSING.md`](IMAGE_PREPROCESSING.md).
@@ -233,7 +235,7 @@ pip install -r requirements-docling.txt
 
 Stage 1 also applies the preprocessing rule **Handwritten + High → Medium** on
 `quality_tag` (score unchanged). After dropping new HW weights, refresh with
-`skip_ocr: true` + `force: false` (see [`HOW_TO_RUN.md` §4B](HOW_TO_RUN.md)).
+`"skip_ocr": true` (see [`HOW_TO_RUN.md` §4B](HOW_TO_RUN.md)).
 
 | Missing | Fallback |
 |---|---|
@@ -441,188 +443,89 @@ Stage names: `ocr_quality`, `ocr_prelim`, `blank_junk`, `ocr_final1`,
 `encounter_type`, `page_sequencing`. Pass 2: `blank_junk:2`.
 Unknown name → **400**.
 
-### Shared optional stage selectors
+### `POST /api/charts/run` and `POST /api/charts/batch-run`
 
-Usable on `/run` and `/batch-run`:
+Both take the same small body. `run` does one chart (`chart_name`); `batch-run`
+does every chart folder under `input_path` (or just `chart_list`). Any other
+field is rejected with **422**, so an old body is reported, not half-applied.
 
-| Field | Type | Default | Meaning |
-|---|---|---|---|
-| `through` | string | omit | Run from the top, **stop after** this stage |
-| `only` | string[] | omit | Run **just** these stages against existing outputs |
-| `force` | bool | `true` | Reprocess completed pages (**final2 is billed**). Set `false` to **resume**. Required for `skip_ocr`. Does **not** re-download `pages/` by itself. |
-| `skip_ocr` | bool | omit | With `force: false`: reuse OCR from workspace / Processed / DB. **Always** re-runs quality/rotation and **force-re-runs every non-OCR stage** (blank/junk, headers, member, DOS, codeable, …). OCR engines only re-run for gate-delta pending pages. Write **overwrites** destination outputs. Ignored when `force=true`. |
-| `redownload_pages` | bool | `false` | Wipe workspace `pages/` + `corrected-pages/` and re-fetch pages from Raw_Input. |
-| `test_mode` | bool | `false` | **Local only.** No Postgres; workspace under `data/folders/<chart>-test`. Env `TEST_MODE=true`. |
-| `skip_db_write` | bool | `false` | Deprecated alias for `test_mode` |
+| Field | run | batch-run | Default | What it does |
+|---|---|---|---|---|
+| `input_type` | required | required | — | `"local"` or `"blob"` |
+| `container_name` | blob only | blob only | — | Azure container, used for read and write. Omit for local. |
+| `input_path` | required | required | — | Folder holding the chart folder(s): a directory on the server (local — `C:/data/inbox` or `C:\\data\\inbox`) or a prefix in the container (blob) |
+| `output_path` | optional | optional | no write | Results go to `<output_path>/<chart_name>/`, **replacing** existing files. Original pages are not re-sent. |
+| `chart_name` | **required** | — | — | The chart folder under `input_path`. It is the chart's name everywhere. |
+| `chart_list` | — | optional | all folders | Only these chart folders (list, or `"a,b"`). Names not found → `charts_missing`. |
+| `sample` | — | optional | all | At most N charts, unfinished ones first |
+| `only` | optional | optional | whole chain | Run just these stages, against what is already on disk |
+| `run_through` | optional | optional | end of chain | Run from the top and stop after this stage |
+| `skip_ocr` | optional | optional | `false` | Reuse existing OCR (workspace → Processed output → DB) instead of re-running the OCR engines — **no Azure final2 bill**. Quality/rotation and every non-OCR stage still re-run. |
+| `skip_completed` | optional | optional | `false` | Skip charts whose status is `completed`, `needs_review` or `rejected`. run → **200** `{"status":"skipped"}`; batch → listed in `charts_skipped_completed`. |
+| `skip_page_download` | optional | optional | **`true`** | Reuse page images already in the workspace. `false` = wipe `pages/` + `corrected-pages/` and fetch again from `input_path`. |
 
-### `POST /api/charts/run` — one chart
+Not settable any more — fixed behaviour:
 
-**New chart (local):** `local_read_path` + `local_folder_name`  
-**New chart (blob):** `blob_container` + `blob_read_path` + `blob_read_folder_name`  
-**Resume** (replaces `/rerun`): `chart_id` or `chart_name` with no read path  
-Do not mix blob and local. Folder name **is** the chart name. Local paths accept
-Windows `\` or `/` (normalized to `/` before use). JSON still needs escaped
-backslashes: `"C:\\\\data\\\\inbox"` or prefer `"C:/data/inbox"`.
+| Was | Now |
+|---|---|
+| `force` | Always reprocess every stage. `skip_ocr` is the only way to avoid re-OCR / re-billing. |
+| `overwrite`, `write_mode` | Outputs always replace what is at the destination; original pages are never re-sent (`skip_orig_pages`). |
+| `run_id`, `batch_id` | Always inferred from the path (`Run1`→`R1`, `Batch1`→`B1`). |
+| `workers` | `BATCH_WORKERS` in `core-pipeline/.env`. Must satisfy `BATCH_WORKERS × STAGE_WORKERS + 2 ≤ DB_POOL_MAX`, else batch-run returns **400** naming the numbers. |
+| `chart_id` resume | Run the same `input_path` + `chart_name` again: workspace pages are reused and every stage reprocesses. |
+| `test_mode`, `skip_db_write` | Not on the API. |
 
-Write is part of this call — pass `local_write_path` or `blob_write_path`. Default is a **sync**: missing destination files are written, existing ones skipped. `overwrite=true` replaces all.
-
-| Field | Required? | Default | Notes |
-|---|---|---|---|
-| `local_read_path` / `local_folder_name` | local source | — | Server-side paths |
-| `local_write_path` | optional | omit | Write results; omit to keep workspace only |
-| `blob_container` / `blob_read_path` / `blob_read_folder_name` | blob source | — | |
-| `blob_write_path` | optional | omit | Write under this prefix |
-| `chart_id` / `chart_name` | resume | — | No read path; pipeline (+ write if set) |
-| `write_mode` | optional | `skip_orig_pages` | or `all_files` |
-| `overwrite` | optional | `false` | Sync by default; true = replace destination files |
-| `run_id` / `batch_id` | optional | inferred | From path (`Run1`→`R1`, `Batch1`→`B1`) |
-| `through` / `only` / `force` / `skip_ocr` | optional | — | See above |
-
-```bash
-# macOS / Linux — minimal local
-curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{"local_read_path":"/data/inbox","local_folder_name":"52743839_44976074"}'
-
-# Local + write + stop before Azure OCR
-curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{"local_read_path":"/data/inbox","local_folder_name":"52743839_44976074",
-       "local_write_path":"/data/outbox","through":"ocr_final1"}'
-
-# Resume an existing chart (and write missing files)
-curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{"chart_id":7,"local_write_path":"/data/outbox","only":["dos_extract"]}'
-
-# Blob
-curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
-  -d '{"blob_container":"imaging-pipeline",
-       "blob_read_path":"run1/batch1",
-       "blob_read_folder_name":"52743839_44976074",
-       "blob_write_path":"Processed/Run1",
-       "run_id":"R1","batch_id":"B1"}'
-```
-
-```powershell
-# Windows — minimal local (use a Windows path inside the JSON)
-curl.exe -X POST localhost:8001/api/charts/run -H "Content-Type: application/json" `
-  -d "{\"local_read_path\":\"C:/data/inbox\",\"local_folder_name\":\"52743839_44976074\"}"
-
-# Local + write + stop before Azure OCR
-curl.exe -X POST localhost:8001/api/charts/run -H "Content-Type: application/json" `
-  -d "{\"local_read_path\":\"C:/data/inbox\",\"local_folder_name\":\"52743839_44976074\",\"local_write_path\":\"C:/data/outbox\",\"through\":\"ocr_final1\"}"
-
-# Resume
-curl.exe -X POST localhost:8001/api/charts/run -H "Content-Type: application/json" `
-  -d "{\"chart_id\":7,\"local_write_path\":\"C:/data/outbox\",\"only\":[\"dos_extract\"]}"
-
-# Blob
-curl.exe -X POST localhost:8001/api/charts/run -H "Content-Type: application/json" `
-  -d "{\"blob_container\":\"imaging-pipeline\",\"blob_read_path\":\"run1/batch1\",\"blob_read_folder_name\":\"52743839_44976074\",\"blob_write_path\":\"Processed/Run1\",\"run_id\":\"R1\",\"batch_id\":\"B1\"}"
-```
-
-### `POST /api/charts/batch-run` — every chart folder under a path
-
-Canonical path: `/batch-run`. `/batch` is a deprecated alias.
-
-Same vocabulary as `/run` **without** a folder name (each subfolder is a chart). Write is part of this call when a write path is set (same sync behaviour).
-
-| Field | Required? | Default | Notes |
-|---|---|---|---|
-| `local_read_path` **or** blob pair | one source | — | |
-| `local_write_path` / `blob_write_path` | optional | omit | |
-| `write_mode` | optional | `skip_orig_pages` | |
-| `overwrite` | optional | `false` | Sync by default |
-| `sample` | optional | all | At most N chart folders (sorted). When the drop is larger than N, prefer incomplete charts; completed ones fill only if needed |
-| `chart_names` | optional | all under path | Allow-list of chart folder names. Only names that exist under the read path are run; missing names are skipped (`charts_missing` in the result) |
-| `workers` | optional | `BATCH_WORKERS` (4) | Must fit DB pool. Charts with ≥`LARGE_CHART_MIN_PAGES` (default 100) pages run at most one-at-a-time while any smaller chart is still pending; when only large charts remain, workers parallelize them. |
-| `run_id` / `batch_id` | optional | inferred | |
-| `through` / `only` / `force` / `skip_ocr` | optional | — | `force: false` = **resume** (below) |
+Charts with ≥`LARGE_CHART_MIN_PAGES` (default 100) pages run at most one at a
+time while smaller charts are pending. Progress: `progress.txt` in the batch
+parent folder and each chart's `imaging/progress.txt`.
 
 ```bash
-# macOS / Linux — smoke-test up to 3 charts (incomplete preferred on re-run)
+# One local chart, written out
+curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
+  -d '{"input_type":"local","input_path":"/data/inbox",
+       "chart_name":"52743839_44976074","output_path":"/data/processed"}'
+
+# One blob chart, stop before the billed Azure OCR
+curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
+  -d '{"input_type":"blob","container_name":"imaging-pipeline",
+       "input_path":"Raw_Input/Run1/Batch1/DEID_PNGs",
+       "chart_name":"52754737_48221214","run_through":"ocr_final1"}'
+
+# Batch: 3 charts, skip ones already finished, write results
 curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
-  -d '{"local_read_path":"/data/inbox","sample":3,"through":"ocr_prelim","workers":2}'
+  -d '{"input_type":"blob","container_name":"imaging-pipeline",
+       "input_path":"Raw_Input/Run1/Batch1/DEID_PNGs",
+       "output_path":"Processed/Run1/Batch1","sample":3,"skip_completed":true}'
+
+# Batch: re-run only the classifiers on two charts, reusing OCR (no final2 bill)
+curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
+  -d '{"input_type":"local","input_path":"/data/inbox",
+       "chart_list":["52743839_44976074","52754737_48221214"],
+       "skip_ocr":true,"only":["page_subtype","encounter_type","page_sequencing"]}'
 ```
 
 ```powershell
-# Windows
+# Windows — one local chart, written out
+curl.exe -X POST localhost:8001/api/charts/run -H "Content-Type: application/json" `
+  -d "{\"input_type\":\"local\",\"input_path\":\"C:/data/inbox\",\"chart_name\":\"52743839_44976074\",\"output_path\":\"C:/data/processed\"}"
+
+# Windows — every chart under a folder, skip finished ones
 curl.exe -X POST localhost:8001/api/charts/batch-run -H "Content-Type: application/json" `
-  -d "{\"local_read_path\":\"C:/data/inbox\",\"sample\":3,\"through\":\"ocr_prelim\",\"workers\":2}"
+  -d "{\"input_type\":\"local\",\"input_path\":\"C:/data/inbox\",\"output_path\":\"C:/data/processed\",\"skip_completed\":true}"
 ```
 
-```bash
-# Blob smoke sample of 5, full chain, write results
-curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
-  -d '{
-    "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
-    "blob_write_path": "Processed/Run1/Batch1",
-    "sample": 5,
-    "workers": 2
-  }'
+`202` responses echo the options and, for batch, `charts_found`,
+`charts_queued`, `charts_missing` and `charts_skipped_completed` (local drops
+are counted up front; blob drops are listed in the background).
 
-# Resume a partial batch (same path); sample again picks incomplete first
-curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
-  -d '{
-    "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
-    "blob_write_path": "Processed/Run1/Batch1",
-    "sample": 5,
-    "force": false,
-    "workers": 2
-  }'
-
-# Only these chart folders under the path (others ignored; missing names skipped)
-curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
-  -d '{
-    "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
-    "blob_write_path": "Processed/Run1/Batch1",
-    "chart_names": ["52743839_44976074", "52754737_48221214"],
-    "workers": 2
-  }'
-
-# New classifiers only (no OCR / Final2 bill) on a sample of 10
-curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
-  -d '{
-    "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
-    "blob_write_path": "Processed/Run1/Batch1",
-    "sample": 10,
-    "force": true,
-    "only": ["page_subtype", "encounter_type", "page_sequencing"],
-    "workers": 2
-  }'
-```
-
-Re-running with the same `sample` skips already-complete charts when enough incomplete folders remain; if fewer than N incomplete charts exist, completed ones may be included to fill N.
-**Resume after a timeout / partial batch** — same read path, `force: false`:
-
-```bash
-curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
-  -d '{"local_read_path":"/data/inbox","force":false,"workers":2}'
-
-python cli.py batch-run --local-read-path /data/inbox --resume --workers 2
-```
-
-With `force: false` the batch:
-1. **Skips charts** that already finished every phase-1 stage (`already_complete`).
-2. **Keeps** workspace + OCR/results (does not wipe on re-ingest).
-3. **Clears** stuck `processing` page rows left by a killed worker.
-4. **Re-runs only** pages that are not yet `completed`/`skipped` (Final2 billed only for those).
-
-`force: true` (default) still means full reprocess / wipe on re-ingest.
-
-`202` response includes `charts_found`, `charts_queued` (after `sample`), and echoes `sample`.
-
-Progress: `progress.txt` in the batch parent folder (`processing N/X charts…`)
-and under each chart’s `imaging/progress.txt` (`processing N/X files…`).
+`/api/charts/batch` is a deprecated alias of `/batch-run`.
 
 ### Removed endpoints
 
 | Path | Status | Use instead |
 |---|---|---|
-| `POST /api/charts/write` | **410** | Pass `local_write_path` / `blob_write_path` on `/run` or `/batch-run` |
-| `POST /api/charts/{id}/rerun` | **410** | `POST /api/charts/run` with `{"chart_id":…}` |
+| `POST /api/charts/write` | **410** | `output_path` on `/run` or `/batch-run` |
+| `POST /api/charts/{id}/rerun` | **410** | `POST /api/charts/run` with the same `input_path` + `chart_name` |
 
 ### `POST /api/manifest/sweep`
 
@@ -656,7 +559,9 @@ and under each chart’s `imaging/progress.txt` (`processing N/X files…`).
 | `/api/folders/{id}/imaging` | imaging results |
 | `/imaging/export.csv` | CSV export |
 
-### CLI (same options as the API)
+### CLI
+
+The CLI keeps its own flags (`--resume`, `--through`, `--local-read-path`, …); it was not reshaped with the API body above.
 
 ```bash
 # macOS / Linux
@@ -733,12 +638,11 @@ docker compose up -d --build
 Local paths in API bodies must be paths **inside the container** (mount the
 host folder first).
 
-**Models:** copy the weight folders to the host (`/models` on the Linux VM)
-and set the paths in `.env`. Compose mounts `MODELS_HOST_PATH` (default
-`./models`) at `/models` and at `/app/core-pipeline/models`, so
-`BLANK_JUNK_MODEL_DIR=/models/blank-junk` and a relative `models/blank-junk`
-read the same files. The image does not contain the weights. Docling packages
-are in the image already — rebuild once after pull:
+**Models:** copy the weight folders into `core-pipeline/models/` on the host.
+`.env` paths stay relative (`models/blank-junk`, `models/hw/...`). Compose
+mounts `MODELS_HOST_PATH` (default `./models`) at `/app/core-pipeline/models`.
+The image does not contain the weights. Docling packages are in the image
+already — rebuild once after pull:
 
 ```bash
 docker compose up -d --build

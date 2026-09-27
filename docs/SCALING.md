@@ -276,8 +276,9 @@ flowchart TD
 Three consequences, all recorded in
 [`ARCHITECTURE.md § Known limits`](ARCHITECTURE.md#6-known-limits):
 
-- **Restart loses the batch.** The list of charts lives in a Python local. Resume
-  makes re-running cheap, but the request must be re-issued by a human.
+- **Restart loses the batch.** The list of charts lives in a Python local.
+  `skip_completed` (skip finished charts) and `skip_ocr` (reuse OCR) make
+  re-running cheap, but the request must be re-issued by a human.
 - **No cap across requests.** Two concurrent `/batch-run` calls oversubscribe the box;
   nothing arbitrates between them.
 - **No retry.** A stage that raises is recorded against the page and the chart
@@ -344,25 +345,25 @@ One message per chart. It carries a *reference*, never page content:
 ```json
 {
   "schema": 1,
-  "chart_name": "52743839_44976074",
-  "source": {
-    "mode": "blob",
-    "blob_container": "imaging-pipeline",
-    "blob_read_path": "Raw_Input/Run1/Batch1",
-    "blob_read_folder_name": "52743839_44976074"
-  },
-  "write": { "blob_write_path": "Processed/Run1", "write_mode": "skip_orig_pages" },
-  "through": null,
+  "input_type": "blob",
+  "container_name": "imaging-pipeline",
+  "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+  "chart_name": "52754737_48221214",
+  "output_path": "Processed/Run1",
+  "run_through": null,
   "only": null,
-  "force": true,
-  "run_id": "R1",
-  "batch_id": "B1"
+  "skip_ocr": false,
+  "skip_completed": true
 }
 ```
 
 The field names are deliberately the ones `RunRequest` already uses, so the worker
 deserialises straight into the existing call rather than translating a second
-vocabulary.
+vocabulary. (`RunRequest` rejects unknown fields with 422, so the envelope's
+`schema` key is stripped before deserialising.) There is no `force`,
+`write_mode`, `run_id` or `batch_id` to carry: every run reprocesses, outputs
+always replace, original pages are never re-sent, and R#/B# come from
+`Run1/Batch1` in `input_path`.
 
 **Service Bus delivers at least once.** A worker that finishes a chart and dies
 before settling the message will see that chart delivered again. That is fine
@@ -376,12 +377,16 @@ whole design leans on:
 | `chart_list UNIQUE (chart_name)` | a second ingest cannot create a second chart row |
 | `page_stage_status UNIQUE (page_id, stage_name, pass_no)` | a re-run finds every page `completed` and skips it |
 
-The last row is the important one. **Resume already exists and is already the
-default** — that is what makes at-least-once delivery acceptable rather than
-expensive. A duplicated 400-page chart costs one pass of status lookups and zero
-Azure Document Intelligence calls, because stage 5 skips pages already marked
-complete. Without resume, an at-least-once queue in front of a per-page-billed
-stage would be a budget hazard.
+The last row is the important one — but only if the worker asks for it. The
+API no longer exposes page-level resume: every `/run` call reprocesses, and
+stage 5 re-bills unless `skip_ocr` is set. So the message carries
+**`skip_completed: true`**, which turns a duplicate of a finished chart into a
+status lookup and zero Azure Document Intelligence calls. A duplicate of a
+chart that died *mid-run* is the worker's to handle: it should call the engine
+with page-level resume (`run_pipeline_for_chart(force=False)`, what CLI
+`--resume` uses), which still exists below the API and skips pages stage 5
+already marked complete. Without one of these, an at-least-once queue in front
+of a per-page-billed stage would be a budget hazard.
 
 ---
 
@@ -467,14 +472,14 @@ UPDATE pipeline_jobs
 
 ## Where sharding fits once there is a queue
 
-Inside each worker, the `workers` knob still applies: one VM can
+Inside each worker, the `BATCH_WORKERS` setting still applies: one VM can
 hold several charts at once. The queue governs *how many charts a VM is given*;
 `STAGE_WORKERS` governs *how many pages a chart uses*. The product is what sizes
 the machine.
 
 ```mermaid
 flowchart TD
-  Q[["charts-pending"]] --> V["Worker VM<br/>prefetch = workers"]
+  Q[["charts-pending"]] --> V["Worker VM<br/>prefetch = BATCH_WORKERS"]
   V --> C1["chart A"]
   V --> C2["chart B"]
   C1 --> P1["page pool<br/>STAGE_WORKERS"]
@@ -611,7 +616,7 @@ Each step is useful alone and none forces the next.
 ```mermaid
 flowchart LR
   P0["0 · Measure<br/>20 small charts<br/>serial baseline"] --> P1
-  P1["1 · Thread pool<br/>one VM, workers knob<br/>reversible"] --> P2
+  P1["1 · Thread pool<br/>one VM, BATCH_WORKERS<br/>reversible"] --> P2
   P2["2 · Claim/lease worker<br/>multi-VM on Postgres<br/>schema already ready"] --> P3
   P3["3 · Service Bus<br/>DLQ, backoff, autoscale"] --> P4
   P4["4 · Split stage 5<br/>own queue, fixed consumers"]
@@ -623,10 +628,11 @@ flowchart LR
 **0 — Measure first.** A drop of ~20 small charts, serial. If the box is already
 CPU-saturated, none of this helps and the answer is a bigger box or fewer stages.
 
-**1 — Thread pool in one process.** The single-machine design has the full shape: `workers` on
-`BatchRequest`, `ThreadPoolExecutor` in `run_batch`, and the invariant
-`workers × STAGE_WORKERS + headroom ≤ DB_POOL_MAX` enforced at request time rather
-than discovered as a `PoolTimeout`. Small, reversible, and answers the actual
+**1 — Thread pool in one process.** The single-machine design has the full shape: `BATCH_WORKERS`
+in `core-pipeline/.env` (no longer a request field), `ThreadPoolExecutor` in
+`run_batch`, and the invariant
+`BATCH_WORKERS × STAGE_WORKERS + 2 ≤ DB_POOL_MAX` enforced at request time (batch-run
+returns 400) rather than discovered as a `PoolTimeout`. Small, reversible, and answers the actual
 complaint. Stop here if it is enough.
 
 **2 — Claim/lease worker.** A new `worker.py` that loops: claim, run, heartbeat,
@@ -685,7 +691,7 @@ already recovers the work.
   do not make one chart faster; only page-level distribution would, and that needs
   every intermediate on shared storage and a barrier per stage.
 - **Azure DI spend.** Queues change *when* pages are sent, never *how many*. Only
-  `through`, `only` and the blank/junk stages reduce the bill.
+  `run_through`, `only`, `skip_ocr` and the blank/junk stages reduce the bill.
 - **Ordering across charts.** Nothing guarantees chart A finishes before chart B.
   If a downstream consumer needs a whole batch, it must wait on all of
   `chart_list`, not on the queue being empty — an empty queue means everything has

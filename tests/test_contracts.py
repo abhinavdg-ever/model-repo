@@ -586,29 +586,63 @@ class TestBatchFolderDiscovery:
                 blob_container="c", blob_read_path="p", local_write_path="/out"
             )
 
-    def test_batch_takes_the_same_write_options_as_run(self):
+    SHARED = (
+        "input_type", "container_name", "input_path", "output_path",
+        "only", "run_through", "skip_ocr", "skip_completed", "skip_page_download",
+    )
+    REMOVED = (
+        "force", "overwrite", "write_mode", "through", "redownload_pages",
+        "blob_container", "blob_read_path", "blob_write_path",
+        "local_read_path", "local_write_path", "run_id", "batch_id",
+        "workers", "test_mode", "skip_db_write", "chart_id", "chart_names",
+    )
+
+    def test_batch_takes_the_same_options_as_run(self):
         """Batch is run-per-folder. An option that means one thing in run and
         another in batch is the bug this shape exists to prevent."""
         from api.main import BatchRequest, RunRequest
 
-        for field in ("blob_container", "blob_read_path", "blob_write_path",
-                      "local_read_path", "local_write_path",
-                      "write_mode", "overwrite", "through", "only", "force"):
+        for field in self.SHARED:
             assert field in RunRequest.model_fields, field
             assert field in BatchRequest.model_fields, field
-        assert "workers" in BatchRequest.model_fields
-        assert "sample" in BatchRequest.model_fields
-        assert "limit" not in BatchRequest.model_fields
+        assert set(RunRequest.model_fields) - set(self.SHARED) == {"chart_name"}
+        assert set(BatchRequest.model_fields) - set(self.SHARED) == {"chart_list", "sample"}
 
-    def test_batch_sample_field(self):
+    def test_removed_options_are_gone_from_both(self):
+        from api.main import BatchRequest, RunRequest
+
+        for field in self.REMOVED:
+            assert field not in RunRequest.model_fields, field
+            assert field not in BatchRequest.model_fields, field
+
+    def test_defaults_reprocess_everything_and_replace_outputs(self):
+        """No force / overwrite knobs: unspecified means reprocess and replace."""
         from api.main import BatchRequest
 
-        body = BatchRequest(local_read_path="/data/inbox", sample=2)
+        body = BatchRequest(input_type="local", input_path="/data/inbox")
+        assert body.force is True
+        assert body.overwrite is True
+        assert body.redownload_pages is False, "skip_page_download defaults true"
+        assert body.skip_completed is False
+        assert body.charts_cap() is None and body.chart_list is None
+
+    def test_skip_ocr_is_the_one_thing_that_turns_force_off(self):
+        """The runner only reuses OCR on a non-force run (it re-runs every
+        non-OCR stage itself), so skip_ocr must map to force=False."""
+        from api.main import RunRequest
+
+        body = RunRequest(input_type="local", input_path="/x", chart_name="c", skip_ocr=True)
+        assert body.force is False
+
+    def test_batch_sample_and_chart_list(self):
+        from api.main import BatchRequest
+
+        body = BatchRequest(
+            input_type="local", input_path="/data/inbox", sample=2,
+            chart_list="a, b;a",
+        )
         assert body.charts_cap() == 2
-        body2 = BatchRequest(local_read_path="/data/inbox")
-        assert body2.charts_cap() is None
-        assert "limit" not in BatchRequest.model_fields
-        assert "sample" in BatchRequest.model_fields
+        assert body.chart_list == ["a", "b"]
 
     def test_batch_workers_must_fit_the_db_pool(self, monkeypatch):
         from jobs import batch_intake as bi
@@ -679,12 +713,7 @@ class TestBatchFolderDiscovery:
 
 
 class TestRunAcceptsBothModes:
-    """POST /api/charts/run takes blob_container+blob_path OR local_path.
-
-    The mode check must run BEFORE the database probe: a malformed body is a 400
-    whatever the database is doing, and reporting "database unavailable" for a
-    request that was never valid sends the caller after the wrong problem.
-    """
+    """input_type picks the backend; the rest of the shape is identical."""
 
     @staticmethod
     def _client(monkeypatch):
@@ -694,106 +723,114 @@ class TestRunAcceptsBothModes:
 
         # Pretend the database is fine, so only the shape checks can fail.
         monkeypatch.setattr(main, "_require_db", lambda: None)
+        monkeypatch.setattr(main, "_bg_run", lambda payload: None)
         return TestClient(main.app, raise_server_exceptions=False), main
 
-    def test_both_sources_at_once_is_rejected(self, monkeypatch):
+    BLOB = {
+        "input_type": "blob",
+        "container_name": "c",
+        "input_path": "Raw_Input/Run1",
+        "chart_name": "chart_x",
+    }
+
+    def test_input_type_is_required(self, monkeypatch):
+        client, _ = self._client(monkeypatch)
+        r = client.post("/api/charts/run", json={"input_path": "/x", "chart_name": "x"})
+        assert r.status_code == 422
+
+    def test_blob_needs_a_container(self, monkeypatch):
+        client, _ = self._client(monkeypatch)
+        body = {**self.BLOB}
+        del body["container_name"]
+        r = client.post("/api/charts/run", json=body)
+        assert r.status_code == 400
+        assert "container_name" in r.json()["detail"]
+
+    def test_local_rejects_a_container(self, monkeypatch):
         client, _ = self._client(monkeypatch)
         r = client.post(
             "/api/charts/run",
-            json={
-                "blob_container": "c", "blob_read_path": "p",
-                "blob_read_folder_name": "x",
-                "local_read_path": "/x", "local_folder_name": "x",
-            },
+            json={"input_type": "local", "container_name": "c",
+                  "input_path": "/x", "chart_name": "x"},
         )
         assert r.status_code == 400
-        assert "not both" in r.json()["detail"]
+        assert "container_name" in r.json()["detail"]
 
-    def test_neither_source_is_rejected(self, monkeypatch):
+    def test_chart_name_is_required_for_run(self, monkeypatch):
         client, _ = self._client(monkeypatch)
-        r = client.post("/api/charts/run", json={})
-        assert r.status_code == 400
-        detail = r.json()["detail"]
-        assert "chart_id" in detail or "chart_name" in detail
-
-    def test_an_incomplete_blob_source_is_rejected(self, monkeypatch):
-        """A read path without a folder name is ambiguous: the folder name IS
-        the chart name, so guessing it would name the chart by accident."""
-        client, _ = self._client(monkeypatch)
-        r = client.post("/api/charts/run", json={"blob_read_path": "p"})
-        assert r.status_code == 400
-        assert "blob_read_folder_name" in r.json()["detail"]
-        assert "blob_container" in r.json()["detail"]
-
-    def test_a_local_source_without_a_folder_name_is_rejected(self, monkeypatch):
-        client, _ = self._client(monkeypatch)
-        r = client.post("/api/charts/run", json={"local_read_path": "/data/inbox"})
-        assert r.status_code == 400
-        assert "local_folder_name" in r.json()["detail"]
+        body = {**self.BLOB}
+        del body["chart_name"]
+        assert client.post("/api/charts/run", json=body).status_code == 422
 
     def test_blob_mode_is_accepted_and_the_folder_names_the_chart(self, monkeypatch):
-        client, main = self._client(monkeypatch)
-        monkeypatch.setattr(main, "_bg_run", lambda payload: None)
-        r = client.post(
-            "/api/charts/run",
-            json={
-                "blob_container": "c",
-                "blob_read_path": "Raw_Input/Run1",
-                "blob_read_folder_name": "chart_x",
-            },
-        )
+        client, _ = self._client(monkeypatch)
+        r = client.post("/api/charts/run", json=self.BLOB)
         assert r.status_code == 202, r.text
         body = r.json()
-        assert body["mode"] == "blob"
+        assert body["input_type"] == "blob"
         assert body["chart_name"] == "chart_x"
         assert body["source"] == "c/Raw_Input/Run1/chart_x"
-        assert body["write"] is None, "no write path given means no write"
-
-    def test_read_and_write_must_use_the_same_backend(self, monkeypatch):
-        """Blob in, blob out; local in, local out. Mixing them silently writes
-        somewhere the caller did not mean."""
-        client, main = self._client(monkeypatch)
-        monkeypatch.setattr(main, "_bg_run", lambda payload: None)
-        r = client.post(
-            "/api/charts/run",
-            json={
-                "blob_container": "c", "blob_read_path": "p",
-                "blob_read_folder_name": "x", "local_write_path": "/out",
-            },
-        )
-        assert r.status_code == 400
-        assert "blob_write_path" in r.json()["detail"]
+        assert body["write"] is None, "no output_path means no write"
 
     def test_the_write_destination_appends_the_folder_name(self, monkeypatch):
         """Read and write resolve the same way, so a chart keeps its identity
         on both sides and two charts cannot merge at the destination."""
-        client, main = self._client(monkeypatch)
-        monkeypatch.setattr(main, "_bg_run", lambda payload: None)
+        client, _ = self._client(monkeypatch)
         r = client.post(
-            "/api/charts/run",
-            json={
-                "blob_container": "c",
-                "blob_read_path": "Raw_Input/Run1",
-                "blob_read_folder_name": "chart_x",
-                "blob_write_path": "Processed/Run1",
-            },
+            "/api/charts/run", json={**self.BLOB, "output_path": "/Processed/Run1/"}
         )
         assert r.status_code == 202, r.text
         write = r.json()["write"]
         assert write["destination"] == "c/Processed/Run1/chart_x"
         assert write["write_mode"] == "skip_orig_pages", "default omits pages/"
+        assert write["overwrite"] is True, "reprocessed results replace old ones"
 
-    def test_an_unknown_write_mode_is_rejected(self, monkeypatch):
+    def test_a_removed_option_is_rejected_not_ignored(self, monkeypatch):
+        """Pydantic ignores unknown fields by default, so a caller still sending
+        force=false would get a 202 and a full reprocess — the opposite of what
+        they asked for."""
         client, _ = self._client(monkeypatch)
-        r = client.post(
-            "/api/charts/run",
-            json={
-                "blob_container": "c", "blob_read_path": "p",
-                "blob_read_folder_name": "x", "write_mode": "everything",
-            },
+        for old in ({"force": False}, {"blob_read_path": "p"}, {"through": "ocr_final2"}):
+            r = client.post("/api/charts/run", json={**self.BLOB, **old})
+            assert r.status_code == 422, old
+            assert next(iter(old)) in r.text
+
+    def test_skip_completed_returns_200_for_a_finished_chart(self, monkeypatch):
+        client, main = self._client(monkeypatch)
+        monkeypatch.setattr(main, "_chart_finished", lambda name: "needs_review")
+        r = client.post("/api/charts/run", json={**self.BLOB, "skip_completed": True})
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "skipped"
+        assert "needs_review" in r.json()["reason"]
+
+    def test_skip_completed_runs_an_unfinished_chart(self, monkeypatch):
+        client, main = self._client(monkeypatch)
+        monkeypatch.setattr(main, "_chart_finished", lambda name: None)
+        r = client.post("/api/charts/run", json={**self.BLOB, "skip_completed": True})
+        assert r.status_code == 202
+
+    def test_batch_skip_completed_drops_finished_charts(self, monkeypatch, tmp_path):
+        client, main = self._client(monkeypatch)
+        from jobs import batch_intake
+
+        monkeypatch.setattr(main, "_bg_batch", lambda payload: None)
+        monkeypatch.setattr(batch_intake, "assert_batch_workers_fit", lambda w: None)
+        monkeypatch.setattr(
+            batch_intake, "finished_chart_names", lambda names: {"done_chart"}
         )
-        assert r.status_code == 400
-        assert "write_mode" in r.json()["detail"]
+        for name in ("done_chart", "new_chart"):
+            (tmp_path / name).mkdir()
+            (tmp_path / name / "1.jpg").write_bytes(b"x")
+        r = client.post(
+            "/api/charts/batch-run",
+            json={"input_type": "local", "input_path": str(tmp_path),
+                  "skip_completed": True},
+        )
+        assert r.status_code == 202, r.text
+        body = r.json()
+        assert body["charts_found"] == 2
+        assert body["charts_queued"] == 1
+        assert body["charts_skipped_completed"] == ["done_chart"]
 
     @pytest.mark.parametrize(
         "path", ["/api/charts/import-local", "/api/charts/ingest", "/api/charts/register-local"]
@@ -803,21 +840,6 @@ class TestRunAcceptsBothModes:
         client, _ = self._client(monkeypatch)
         r = client.post(path, json={"chart_name": "x", "source_path": "/x"})
         assert r.status_code in (404, 405)
-
-    def test_the_removed_switches_are_not_silently_accepted(self, monkeypatch):
-        """move / recursive / load_manifest each had one correct setting.
-
-        Pydantic ignores unknown fields by default, so a caller still passing
-        move=true would get a cheerful 202 and a copy — the opposite of what
-        they asked for. Better that the field simply does not exist and the
-        request shape says so.
-        """
-        from api.main import RunRequest
-
-        assert not (
-            {"move", "recursive", "load_manifest", "run_pipeline"}
-            & set(RunRequest.model_fields)
-        )
 
 
 class TestStageSelection:
@@ -870,43 +892,38 @@ class TestStageSelection:
         with pytest.raises(ValueError):
             resolve_stage("blank_junk:two")
 
-    def test_a_bad_through_is_400_not_a_silent_no_op(self, monkeypatch):
+    BLOB = {"input_type": "blob", "container_name": "c",
+            "input_path": "p", "chart_name": "x"}
+
+    def test_a_bad_run_through_is_400_not_a_silent_no_op(self, monkeypatch):
         """Unvalidated, a typo reaches the background task and becomes a log
         line the caller never sees — the run simply does nothing."""
         client, _ = self._client(monkeypatch)
         r = client.post(
-            "/api/charts/run",
-            json={"blob_container": "c", "blob_read_path": "p",
-                  "blob_read_folder_name": "x", "through": "ocr_final3"},
+            "/api/charts/run", json={**self.BLOB, "run_through": "ocr_final3"}
         )
         assert r.status_code == 400
         assert "ocr_final3" in r.json()["detail"]
 
     def test_a_bad_only_is_400(self, monkeypatch):
         client, _ = self._client(monkeypatch)
-        r = client.post(
-            "/api/charts/run",
-            json={"blob_container": "c", "blob_read_path": "p",
-                  "blob_read_folder_name": "x", "only": ["nope"]},
-        )
+        r = client.post("/api/charts/run", json={**self.BLOB, "only": ["nope"]})
         assert r.status_code == 400
 
-    def test_a_good_through_is_accepted_and_echoed(self, monkeypatch):
+    def test_a_good_run_through_is_accepted_and_echoed(self, monkeypatch):
         client, _ = self._client(monkeypatch)
         r = client.post(
-            "/api/charts/run",
-            json={"blob_container": "c", "blob_read_path": "run1",
-                  "blob_read_folder_name": "chart_x", "through": "ocr_final2"},
+            "/api/charts/run", json={**self.BLOB, "run_through": "ocr_final2"}
         )
         assert r.status_code == 202, r.text
-        assert r.json()["through"] == "ocr_final2"
+        assert r.json()["run_through"] == "ocr_final2"
 
     def test_batch_takes_the_same_stage_options_as_run(self, monkeypatch):
         """Batch is run-per-folder; an option that means one thing in run and
         another in batch is the bug this shape exists to prevent."""
         from api.main import BatchRequest, RunRequest
 
-        for field in ("through", "only"):
+        for field in ("run_through", "only"):
             assert field in RunRequest.model_fields
             assert field in BatchRequest.model_fields
 

@@ -264,9 +264,9 @@ SECTION_HEADER_MINILM_PATH = _path_under_core(
     os.environ.get("SECTION_HEADER_MINILM_PATH"),
     "models/semantic-model",
 )
-# TF-IDF blank/junk checkpoint. The directory holds tfidf_flat.joblib and
-# default.json. Absolute paths (Linux /models/blank-junk, Windows
-# C:\models\blank-junk) are used as written. Missing file ⇒ regex only.
+# TF-IDF blank/junk checkpoint, relative to core-pipeline/ like the other
+# weight paths. The directory holds tfidf_flat.joblib and default.json.
+# Missing file ⇒ regex only.
 BLANK_JUNK_MODEL_DIR = _path_under_core(
     os.environ.get("BLANK_JUNK_MODEL_DIR"),
     "models/blank-junk",

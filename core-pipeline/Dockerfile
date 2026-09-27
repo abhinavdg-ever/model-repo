@@ -62,12 +62,13 @@ assert code == CODE_MAIN and reason == 'clinical_content', (code, reason); \
 print('junk clinical short-circuit ok')"
 
 # Engines live under stages/lib/image_preprocess/ and stages/lib/ocr/; weights are bind-mounted at runtime.
+# Weight paths match .env: relative to core-pipeline/ (this image's WORKDIR).
 ENV PYTHONPATH=/app/core-pipeline \
-    HW_MODEL_PATH=/models/hw/handwritten_printed_convnext_tiny.pth \
-    BLANK_JUNK_MODEL_DIR=/models/blank-junk \
-    RAPID_MODELS_DIR=/models/rapidocr \
-    SECTION_HEADER_MINILM_PATH=/models/semantic-model \
-    MEMBER_NER_MODELS_PATH=/models/ner \
+    HW_MODEL_PATH=models/hw/handwritten_printed_convnext_tiny.pth \
+    BLANK_JUNK_MODEL_DIR=models/blank-junk \
+    RAPID_MODELS_DIR=models/rapidocr \
+    SECTION_HEADER_MINILM_PATH=models/semantic-model \
+    MEMBER_NER_MODELS_PATH=models/ner \
     API_HOST=0.0.0.0 \
     API_PORT=8001
 

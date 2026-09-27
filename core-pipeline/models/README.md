@@ -1,7 +1,5 @@
-# Default weight location when .env paths are relative (models/...).
-# On a Linux VM or Windows, copy this layout to /models or C:\models and
-# set HW_MODEL_PATH, RAPID_MODELS_DIR, SECTION_HEADER_MINILM_PATH,
-# BLANK_JUNK_MODEL_DIR, and MEMBER_NER_MODELS_PATH in core-pipeline/.env.
+# Weight files for core-pipeline. .env paths are relative to core-pipeline/
+# (models/hw, models/rapidocr, models/semantic-model, models/blank-junk, models/ner).
 # See docs/API.md. Everything here except blank-junk/ and this file is gitignored.
 #
 #   hw/handwritten_printed_convnext_tiny.pth         # ConvNeXt (preferred)

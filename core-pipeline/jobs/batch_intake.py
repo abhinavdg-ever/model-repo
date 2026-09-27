@@ -221,6 +221,41 @@ def filter_sources_by_chart_names(
             matched.append(hit)
     return matched, missing
 
+# chart_list.status values that mean "this chart already finished the pipeline".
+# All three read as Imaging Completed in review-ui; re-running any of them
+# repeats the billed final2 stage for nothing.
+FINISHED_CHART_STATUSES = frozenset({"completed", "needs_review", "rejected"})
+
+
+def finished_chart_names(names: list[str]) -> set[str]:
+    """Names whose ``chart_list.status`` is finished (see FINISHED_CHART_STATUSES).
+
+    Best-effort like the sample check: an unreachable DB means nothing is
+    treated as finished, so the charts run rather than being silently dropped.
+    """
+    if not names:
+        return set()
+    try:
+        from db import connect, is_skip_db_write
+    except Exception:
+        return set()
+    if is_skip_db_write():
+        return set()
+    try:
+        with connect() as conn:
+            rows = conn.execute(
+                "SELECT chart_name FROM chart_list "
+                "WHERE chart_name = ANY(%s) AND status = ANY(%s)",
+                (list(names), sorted(FINISHED_CHART_STATUSES)),
+            ).fetchall()
+    except Exception:
+        logger.warning(
+            "skip_completed: status lookup failed — running every chart", exc_info=True
+        )
+        return set()
+    return {str(r["chart_name"]) for r in rows}
+
+
 def resolve_batch_workers(requested: Optional[int] = None) -> int:
     """Return the worker count to use, or raise if it cannot fit the DB pool.
 
@@ -568,6 +603,7 @@ def run_batch(
     skip_db_write: bool = False,
     sample: Optional[int] = None,
     chart_names: Optional[list[str]] = None,
+    skip_completed: bool = False,
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
     workers: Optional[int] = None,
@@ -581,6 +617,8 @@ def run_batch(
 
     ``chart_names``, when set, restricts the batch to those folder names that
     actually exist under the read path (missing names are reported, not run).
+    ``skip_completed`` drops charts whose chart_list.status is already finished
+    (reported as ``charts_skipped_completed``).
 
     Each chart goes through exactly the same call ``/api/charts/run`` makes —
     ``ingest_and_run`` — so a batch of one is indistinguishable from a single
@@ -634,6 +672,7 @@ def run_batch(
             skip_db_write=skip_db_write,
             sample=sample,
             chart_names=chart_names,
+            skip_completed=skip_completed,
             run_id=run_id,
             batch_id=batch_id,
             worker_count=worker_count,
@@ -662,6 +701,7 @@ def _run_batch_inner(
     skip_db_write: bool,
     sample: Optional[int],
     chart_names: Optional[list[str]],
+    skip_completed: bool,
     run_id: Optional[str],
     batch_id: Optional[str],
     worker_count: int,
@@ -698,6 +738,18 @@ def _run_batch_inner(
             where,
             len(missing_names),
         )
+
+    skipped_completed: list[str] = []
+    if skip_completed and sources:
+        finished = finished_chart_names([name for _src, name, _mode in sources])
+        if finished:
+            skipped_completed = [n for _s, n, _m in sources if n in finished]
+            sources = [s for s in sources if s[1] not in finished]
+            logger.info(
+                "skip_completed: skipping %d already-finished chart(s) under %s",
+                len(skipped_completed),
+                where,
+            )
 
     if skip_db_write:
         from db import test_chart_name
@@ -772,6 +824,7 @@ def _run_batch_inner(
         summary["workers"] = worker_count
         summary["registered"] = registered
         summary["charts_missing"] = missing_names
+        summary["charts_skipped_completed"] = skipped_completed
         return summary
 
     with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="batch") as pool:
@@ -817,6 +870,7 @@ def _run_batch_inner(
     summary["workers"] = worker_count
     summary["registered"] = registered
     summary["charts_missing"] = missing_names
+    summary["charts_skipped_completed"] = skipped_completed
     logger.info(
         "Batch finished: %d/%d completed, %d failed, workers=%d, %.1fs",
         summary["completed"], summary["charts_found"],
