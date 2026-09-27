@@ -162,3 +162,26 @@ def test_filter_sources_by_chart_names():
     all_kept, no_missing = filter_sources_by_chart_names(sources, None)
     assert all_kept == sources
     assert no_missing == []
+
+
+def test_batch_runs_charts_in_alphabetical_order():
+    """Order is by chart name only — size does not reorder the batch."""
+    from jobs.batch_intake import LARGE_CHART_MIN_PAGES, submission_order
+
+    big = LARGE_CHART_MIN_PAGES + 1
+    sources = [(f"src/{n}", n, "blob") for n in ("delta", "Alpha", "charlie", "bravo")]
+    pages = [10, big, 300, 5]
+
+    rows = submission_order(sources, pages)
+
+    assert [r[2] for r in rows] == ["Alpha", "bravo", "charlie", "delta"]
+    assert [r[0] for r in rows] == [1, 2, 3, 4], "N/X label follows the run order"
+    assert [r[4] for r in rows] == [True, False, False, False]
+
+
+def test_large_means_more_than_the_threshold():
+    """500 pages is not large; 501 is (default LARGE_CHART_MIN_PAGES=500)."""
+    from jobs.batch_intake import LARGE_CHART_MIN_PAGES, is_large_chart
+
+    assert not is_large_chart(LARGE_CHART_MIN_PAGES)
+    assert is_large_chart(LARGE_CHART_MIN_PAGES + 1)

@@ -35,34 +35,22 @@ logger = logging.getLogger(__name__)
 
 
 class LargeChartLimiter:
-    """At most one ≥N-page chart while any smaller chart is still pending.
+    """At most one large (> LARGE_CHART_MIN_PAGES) chart runs at any time.
 
-    When only large charts remain, the normal worker pool runs them in parallel.
+    Small charts pass straight through. A large chart that arrives while
+    another is running waits for it; its worker slot waits with it.
     """
 
-    def __init__(self, small_remaining: int) -> None:
-        self._lock = threading.Lock()
-        self._cond = threading.Condition(self._lock)
-        self._small_remaining = max(0, int(small_remaining))
-        self._large_running = 0
+    def __init__(self) -> None:
+        self._slot = threading.Semaphore(1)
 
     def enter(self, is_large: bool) -> None:
-        if not is_large:
-            return
-        with self._cond:
-            while self._small_remaining > 0 and self._large_running >= 1:
-                self._cond.wait()
-            self._large_running += 1
+        if is_large:
+            self._slot.acquire()
 
     def leave(self, is_large: bool) -> None:
-        with self._cond:
-            if is_large:
-                self._large_running = max(0, self._large_running - 1)
-                self._cond.notify_all()
-            else:
-                if self._small_remaining > 0:
-                    self._small_remaining -= 1
-                    self._cond.notify_all()
+        if is_large:
+            self._slot.release()
 
 
 def estimate_chart_pages(
@@ -84,6 +72,28 @@ def estimate_chart_pages(
     except Exception:
         logger.debug("page estimate failed for %s", source, exc_info=True)
     return 0
+
+
+def is_large_chart(pages: int) -> bool:
+    return pages > LARGE_CHART_MIN_PAGES
+
+
+def submission_order(
+    sources: list[tuple[str, str, str]],
+    page_estimates: list[int],
+) -> list[tuple[int, str, str, str, bool, int]]:
+    """Alphabetical by chart name: ``(position, source, name, mode, is_large, pages)``.
+
+    ``position`` is the 1-based alphabetical position — the chart N/X label and
+    the summary order. ``is_large`` marks charts that must run one at a time.
+    """
+    paired = sorted(
+        zip(sources, page_estimates), key=lambda sp: (sp[0][1].casefold(), sp[0][1])
+    )
+    return [
+        (position, source, name, mode, is_large_chart(pages), pages)
+        for position, ((source, name, mode), pages) in enumerate(paired, start=1)
+    ]
 
 
 def find_local_chart_folders(root: str | Path) -> list[Path]:
@@ -477,7 +487,7 @@ def _run_one_chart(
             total,
             name,
             started_n,
-            f", large≥{LARGE_CHART_MIN_PAGES}" if is_large else "",
+            f", large>{LARGE_CHART_MIN_PAGES}, one at a time" if is_large else "",
         )
         _note_progress(
             name,
@@ -769,26 +779,19 @@ def _run_batch_inner(
             )
     total = len(sources)
 
-    # Estimate pages so ≥LARGE_CHART_MIN_PAGES charts do not run together while
-    # smaller ones remain. Prefer small charts first in the submission order.
+    # Estimate pages so charts over LARGE_CHART_MIN_PAGES run one at a time.
     page_estimates: list[int] = [
         estimate_chart_pages(source, mode, blob_container=blob_container)
         for source, _name, mode in sources
     ]
-    large_flags = [n >= LARGE_CHART_MIN_PAGES for n in page_estimates]
+    large_flags = [is_large_chart(n) for n in page_estimates]
     small_count = sum(1 for large in large_flags if not large)
     large_count = total - small_count
-    # Stable partition: small first, then large (keeps relative order inside each).
-    ordered_jobs: list[tuple[int, str, str, str, bool, int]] = []
-    for index, ((source, name, mode), pages, is_large) in enumerate(
-        zip(sources, page_estimates, large_flags), start=1
-    ):
-        ordered_jobs.append((index, source, name, mode, is_large, pages))
-    ordered_jobs.sort(key=lambda row: (1 if row[4] else 0, row[0]))
+    ordered_jobs = submission_order(sources, page_estimates)
 
     logger.info(
         "Batch: %d chart folder(s) under %s (workers=%d, STAGE_WORKERS=%d, "
-        "large≥%d: %d, small: %d)",
+        "large>%d (one at a time): %d, small: %d)",
         total,
         where,
         worker_count,
@@ -817,7 +820,7 @@ def _run_batch_inner(
     counters = {"started": 0, "finished": 0}
     counter_lock = threading.Lock()
     results: list[dict[str, Any]] = []
-    large_limiter = LargeChartLimiter(small_count)
+    large_limiter = LargeChartLimiter()
 
     if total == 0:
         summary = _summarise(results, started)
@@ -831,7 +834,7 @@ def _run_batch_inner(
         futures = []
         index_by_future: dict[Any, int] = {}
         for _orig_index, source, name, mode, is_large, _pages in ordered_jobs:
-            # Summary order follows original listing (1..N), not small-first.
+            # Submitted (and started) in alphabetical order; N/X is that position.
             fut = pool.submit(
                 _run_one_chart,
                 _orig_index,

@@ -335,7 +335,12 @@ def _best_minilm(text: str) -> tuple[float, str]:
     model = _get_model()
     if model is None or vectors is None:
         return _best_lexical(_normalize(text))
-    emb = model.encode([text], normalize_embeddings=True, show_progress_bar=False)
+    # One shared model + fast tokenizer serves the Docling thread (final1) and
+    # stage 6 across every chart in flight. They are not safe to drive from two
+    # threads at once — concurrent encode crashed the process in native code
+    # ("double free or corruption"). Encoding one header is cheap; serialise it.
+    with _lock:
+        emb = model.encode([text], normalize_embeddings=True, show_progress_bar=False)
     # Cosine with L2-normalized vectors = dot product
     scores = np.asarray(vectors) @ np.asarray(emb[0])
     idx = int(np.argmax(scores))

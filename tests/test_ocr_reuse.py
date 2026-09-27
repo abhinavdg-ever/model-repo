@@ -123,13 +123,14 @@ def test_copy_ocr_from_output_folder_into_workspace(tmp_path, monkeypatch):
     assert ocr_artifacts_present(chart) is True
 
 
-def test_large_chart_limiter_serializes_large_while_smalls_remain():
+def test_large_charts_never_run_together():
+    """Even with only large charts left, a second one waits for the first."""
     import threading
     import time
 
     from jobs.batch_intake import LargeChartLimiter
 
-    limiter = LargeChartLimiter(small_remaining=1)
+    limiter = LargeChartLimiter()
     order: list[str] = []
     lock = threading.Lock()
     first_in = threading.Event()
@@ -158,29 +159,21 @@ def test_large_chart_limiter_serializes_large_while_smalls_remain():
     assert order.index("A-out") < order.index("B-in")
 
 
-def test_large_chart_limiter_allows_parallel_large_when_only_large_left():
+def test_small_charts_are_not_held_by_a_running_large_chart():
     import threading
-    import time
 
     from jobs.batch_intake import LargeChartLimiter
 
-    limiter = LargeChartLimiter(small_remaining=0)
-    both_in = threading.Event()
-    in_count = {"n": 0}
-    lock = threading.Lock()
+    limiter = LargeChartLimiter()
+    limiter.enter(True)  # a large chart is running
+    done = threading.Event()
 
-    def large() -> None:
-        limiter.enter(True)
-        with lock:
-            in_count["n"] += 1
-            if in_count["n"] >= 2:
-                both_in.set()
-        time.sleep(0.08)
-        limiter.leave(True)
+    def small() -> None:
+        limiter.enter(False)
+        limiter.leave(False)
+        done.set()
 
-    threads = [threading.Thread(target=large) for _ in range(2)]
-    for t in threads:
-        t.start()
-    assert both_in.wait(timeout=2)
-    for t in threads:
-        t.join(timeout=2)
+    threading.Thread(target=small).start()
+    assert done.wait(timeout=1)
+    limiter.leave(True)
+

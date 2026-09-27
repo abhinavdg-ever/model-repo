@@ -167,3 +167,21 @@ def test_catalog_hot_reload(tmp_path, monkeypatch):
         use_minilm=False,
     )
     assert [k["text"] for k in kept2] == ["Guarantor"]
+
+
+def test_minilm_encode_is_serialised(monkeypatch):
+    """The shared MiniLM model/tokenizer must never be driven by two threads
+    at once — concurrent encode crashed a batch in native code."""
+    import numpy as np
+
+    import stages.lib.ocr.section_header_match as m
+
+    class _Model:
+        def encode(self, texts, **kw):
+            assert m._lock._is_owned(), "encode called without the model lock"
+            return np.ones((len(texts), 3))
+
+    monkeypatch.setattr(m, "_get_model", lambda: _Model())
+    monkeypatch.setattr(m, "_get_canon_embeddings", lambda: np.ones((len(m._canon) or 1, 3)))
+    m._ensure_catalog()
+    m._best_minilm("Medications")

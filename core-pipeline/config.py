@@ -158,10 +158,10 @@ def _flag(name: str, default: bool) -> bool:
 # and every other stage is force-re-run (blank/junk, headers, member, DOS, …).
 SKIP_OCR = _flag("SKIP_OCR", False)
 
-# Batch: charts with this many pages (or more) share a single concurrency slot
-# while any smaller chart is still pending. When only large charts remain, the
-# normal worker pool applies. Override with LARGE_CHART_MIN_PAGES.
-LARGE_CHART_MIN_PAGES = int(os.environ.get("LARGE_CHART_MIN_PAGES") or "100")
+# Batch: charts with MORE than this many pages run one at a time — never two
+# together, whatever else is left. Smaller charts use the normal worker pool.
+# Override with LARGE_CHART_MIN_PAGES.
+LARGE_CHART_MIN_PAGES = int(os.environ.get("LARGE_CHART_MIN_PAGES") or "500")
 
 
 def _azure_openai_auth_usable() -> bool:

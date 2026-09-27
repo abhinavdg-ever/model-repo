@@ -475,8 +475,8 @@ Not settable any more — fixed behaviour:
 | `chart_id` resume | Run the same `input_path` + `chart_name` again: workspace pages are reused and every stage reprocesses. |
 | `test_mode`, `skip_db_write` | Not on the API. |
 
-Charts with ≥`LARGE_CHART_MIN_PAGES` (default 100) pages run at most one at a
-time while smaller charts are pending. Progress: `progress.txt` in the batch
+Charts run in alphabetical order. Charts with more than `LARGE_CHART_MIN_PAGES`
+(default 500) pages run strictly one at a time. Progress: `progress.txt` in the batch
 parent folder and each chart's `imaging/progress.txt`.
 
 ```bash
