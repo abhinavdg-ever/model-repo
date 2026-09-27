@@ -80,12 +80,11 @@ services:
       # --- Member verification NER layer ---
       # OFF unless the GLiNER checkpoints are under models/ner. While off, no
       # page can be marked wrong_member, so no document can be Rejected.
-      # NER toggles come from env_file (.env). Do NOT re-declare
-      # MEMBER_NER_MODEL_ID / MEMBER_NER_ENABLED here with ${VAR:-…} —
-      # Compose interpolates from the *host* shell first, so a leftover
-      # `export MEMBER_NER_MODEL_ID=gliner_low` (from the docs) would override
-      # gliner_medium in .env. Path is pinned to the models mount below.
-      MEMBER_NER_MODELS_PATH: /app/core-pipeline/models/ner
+      # NER toggles and every model path come from env_file (.env). Do NOT
+      # re-declare MEMBER_NER_* or BLANK_JUNK_MODEL_DIR / HW_MODEL_PATH here
+      # with ${VAR:-…} — Compose interpolates from the host shell first, so a
+      # leftover export would override the file. Absolute /models/... paths
+      # and relative models/... paths both see the mounts below.
       SKIP_OCR: ${SKIP_OCR:-false}
 
       TESSERACT_CMD: /usr/bin/tesseract
@@ -99,8 +98,11 @@ services:
       # Chart workspace — written here, read by review-ui.
       - ${DATA_HOST_PATH:-../review-ui/data/folders}:/data/folders
       - ${METADATA_HOST_PATH:-../review-ui/data/metadata}:/data/metadata
-      # Weights scp'd onto the host (hw/, rapidocr/, semantic-model/, ner/).
-      # Must be writable: GLiNER repairs encoder config.json on first load.
+      # Weight files copied onto the host (hw/, rapidocr/, semantic-model/,
+      # blank-junk/, ner/). Same folder is visible at /models (absolute paths
+      # in .env) and under the app tree (relative models/...). Writable: GLiNER
+      # repairs encoder config.json on first load.
+      - ${MODELS_HOST_PATH:-./models}:/models
       - ${MODELS_HOST_PATH:-./models}:/app/core-pipeline/models
       - ${LOGS_HOST_PATH:-./logs}:/app/core-pipeline/logs
     extra_hosts:

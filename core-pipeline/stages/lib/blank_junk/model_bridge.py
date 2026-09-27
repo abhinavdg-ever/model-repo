@@ -2,7 +2,8 @@
 
 The joblib checkpoint unpickles classes under ``src.*``. Those modules are
 vendored at ``stages/lib/blank_junk/model/`` and put on ``sys.path`` only
-while loading. Weights live in ``core-pipeline/models/blank-junk/``.
+while loading. Weights are the directory in ``BLANK_JUNK_MODEL_DIR``
+(default ``models/blank-junk/`` next to the other model paths in ``.env``).
 
 Who decides what:
 
@@ -40,9 +41,23 @@ from classify import (
 logger = logging.getLogger(__name__)
 
 _VENDOR = Path(__file__).resolve().parent / "model"
-_MODEL_DIR = Path(__file__).resolve().parents[3] / "models" / "blank-junk"
-_MODEL_FILE = _MODEL_DIR / "tfidf_flat.joblib"
-_CONFIG_FILE = _MODEL_DIR / "default.json"
+_WEIGHTS_NAME = "tfidf_flat.joblib"
+_CONFIG_NAME = "default.json"
+
+
+def _model_dir() -> Path:
+    """Directory from ``BLANK_JUNK_MODEL_DIR`` (``.env``), resolved like the other weights."""
+    from config import BLANK_JUNK_MODEL_DIR
+
+    return Path(BLANK_JUNK_MODEL_DIR)
+
+
+def _model_file() -> Path:
+    return _model_dir() / _WEIGHTS_NAME
+
+
+def _config_file() -> Path:
+    return _model_dir() / _CONFIG_NAME
 
 # Model audit tags → schema junk_subtype codes, used only when the regex
 # classifier finds no junk subtype of its own.
@@ -68,12 +83,12 @@ _load_error: str | None = None
 
 
 def model_available() -> bool:
-    return _MODEL_FILE.is_file()
+    return _model_file().is_file()
 
 
 def _model_version_from_config() -> str | None:
     try:
-        cfg = json.loads(_CONFIG_FILE.read_text(encoding="utf-8"))
+        cfg = json.loads(_config_file().read_text(encoding="utf-8"))
         return str(cfg.get("model_version") or "") or None
     except (OSError, ValueError):
         return None
@@ -81,15 +96,18 @@ def _model_version_from_config() -> str | None:
 
 def model_status() -> dict[str, Any]:
     """For ``/health``: configuration only, never loads the model (≈4 s)."""
+    model_file = _model_file()
     status: dict[str, Any] = {
         "ready": False,
         "loaded": _service is not None,
-        "path": str(_MODEL_FILE),
+        "path": str(model_file),
         "model_version": _model_version_from_config(),
         "reason": None,
     }
-    if not _MODEL_FILE.is_file():
-        status["reason"] = "model file missing — blank/junk runs on regex rules only"
+    if not model_file.is_file():
+        status["reason"] = (
+            f"model file missing at {model_file} — blank/junk runs on regex rules only"
+        )
     elif find_spec("sklearn") is None or find_spec("joblib") is None:
         status["reason"] = "scikit-learn/joblib not installed — regex rules only"
     elif _load_failed:
@@ -106,10 +124,11 @@ def _load_service() -> Any:
     with _lock:
         if _service is not None or _load_failed:
             return _service
-        if not _MODEL_FILE.is_file():
+        model_file = _model_file()
+        if not model_file.is_file():
             logger.warning(
                 "Blank/junk model missing at %s — regex fallback only",
-                _MODEL_FILE,
+                model_file,
             )
             _load_failed = True
             _load_error = "model file missing"
@@ -124,11 +143,12 @@ def _load_service() -> Any:
             from src.models.decision import DecisionConfig
 
             cfg: dict[str, Any] = {}
-            if _CONFIG_FILE.is_file():
-                cfg = json.loads(_CONFIG_FILE.read_text(encoding="utf-8"))
+            config_file = _config_file()
+            if config_file.is_file():
+                cfg = json.loads(config_file.read_text(encoding="utf-8"))
             decision = DecisionConfig(**(cfg.get("decision") or {}))
             routing = cfg.get("routing") or {}
-            model = FlatClassifier.load(str(_MODEL_FILE))
+            model = FlatClassifier.load(str(model_file))
             _service = PageClassifierService(
                 model,
                 model_version=str(cfg.get("model_version") or "bjc-ocr"),
@@ -138,7 +158,7 @@ def _load_service() -> Any:
             logger.info(
                 "Blank/junk model loaded version=%s path=%s",
                 _service.model_version,
-                _MODEL_FILE,
+                model_file,
             )
         except Exception as exc:
             logger.exception(

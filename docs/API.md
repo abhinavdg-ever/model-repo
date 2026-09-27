@@ -157,6 +157,8 @@ Key `.env` knobs (paths relative to `core-pipeline/`):
 | `HW_MODEL_PATH` | `models/hw/handwritten_printed_convnext_tiny.pth` (falls back to `…_tiny_backup.pth`) |
 | `RAPID_MODELS_DIR` | `models/rapidocr` |
 | `SECTION_HEADER_MINILM_PATH` | `models/semantic-model` — local MiniLM (preferred) |
+| `BLANK_JUNK_MODEL_DIR` | `models/blank-junk` — `tfidf_flat.joblib` + `default.json`. Missing file ⇒ regex rules only |
+| `MODELS_HOST_PATH` | Docker only. Host folder mounted at `/models` and at `/app/core-pipeline/models`. Default `./models` |
 | `SECTION_HEADER_SEMANTIC_ENABLED` | `true` — filter Final1 `section_headers` ≥90% |
 | `DOCLING_TABLE_CELL_MATCHING` | `true` (default) — fill dense form table cells. Slower per page; Final1 falls back to RapidOCR-onnx only on a page timeout or a crash, never on short output. Set `false` for speed. Unrelated to the section-header RLock deadlock. |
 | `DOCLING_IMAGES_SCALE` | `1.0` — keep at 1 for page images (`2` halves overlay boxes) |
@@ -182,8 +184,19 @@ to `languages,barcodes` (`AZURE_DI_FEATURES=off` to disable).
 
 ## Prerequisites (Models)
 
-Weight files are **not** on PyPI and **`core-pipeline/models/` is not in git**.
-Download them onto each machine under `core-pipeline/models/`.
+Weight files are **not** on PyPI. Copy them onto each machine and set the
+paths in `core-pipeline/.env`. An absolute path is used as written. A relative
+path is from `core-pipeline/`.
+
+| Machine | Where you copy the files | What you set |
+|---|---|---|
+| Linux VM | `/models` | `HW_MODEL_PATH=/models/hw/handwritten_printed_convnext_tiny.pth`, and the same prefix for the other variables. `MODELS_HOST_PATH=/models` so Docker sees that folder |
+| Windows | `C:\models` (or any folder) | `HW_MODEL_PATH=C:\models\hw\handwritten_printed_convnext_tiny.pth`, and the same prefix for the other variables |
+| Checkout next to the code | `core-pipeline/models/` | leave the relative defaults (`models/hw/...`) |
+
+`blank-junk/` (`tfidf_flat.joblib` + `default.json`) is in git. The other
+weight folders are not — copy those yourself. `BLANK_JUNK_MODEL_DIR` still
+points at whichever copy you want to run.
 
 Teammate preprocessing drop / HW+quality refresh checklist:
 [`IMAGE_PREPROCESSING.md`](IMAGE_PREPROCESSING.md).
@@ -200,6 +213,7 @@ models/rapidocr/
   ppocrv6_dict.txt
 models/ner/               # GLiNER via model_downloader
 models/semantic-model/    # MiniLM — section_header_match --download
+models/blank-junk/        # tfidf_flat.joblib + default.json (in git; path is BLANK_JUNK_MODEL_DIR)
 ```
 
 **Handwritten / printed (ConvNeXt)** — copy the preferred `.pth` (+ `metadata.json`) into
@@ -227,6 +241,7 @@ Stage 1 also applies the preprocessing rule **Handwritten + High → Medium** on
 | RapidOCR four files | **rapidocr-onnxruntime** (base `requirements.txt`) |
 | GLiNER | rules-only member verify — **no chart can be Rejected** |
 | MiniLM / sentence-transformers | lexical header match (same 0.90 threshold) |
+| `BLANK_JUNK_MODEL_DIR` / sklearn | regex blank/junk rules; reason starts with `regex_fallback:` |
 
 ### Section-header MiniLM
 
@@ -343,7 +358,8 @@ curl -s localhost:8001/health | python -m json.tool
 curl.exe -s localhost:8001/health | python -m json.tool
 ```
 
-Check `docling_final1.ready` / `member_ner.ready`.
+Check `docling_final1.ready`, `blank_junk_model.ready`, and `member_ner.ready`.
+`blank_junk_model.path` is the `tfidf_flat.joblib` under `BLANK_JUNK_MODEL_DIR`.
 
 ---
 
@@ -421,8 +437,8 @@ Mutating chart calls return **202** and run in the background. Poll
 `GET /api/charts/{id}` or `GET /api/charts/by-name/{name}`.
 
 Stage names: `ocr_quality`, `ocr_prelim`, `blank_junk`, `ocr_final1`,
-`ocr_final2`, `member_verify`, `dos_extract`, `page_subtype`, `encounter_type`,
-`page_sequencing`. Pass 2: `blank_junk:2`.
+`ocr_final2`, `section_headers`, `member_verify`, `dos_extract`, `page_subtype`,
+`encounter_type`, `page_sequencing`. Pass 2: `blank_junk:2`.
 Unknown name → **400**.
 
 ### Shared optional stage selectors
@@ -717,9 +733,12 @@ docker compose up -d --build
 Local paths in API bodies must be paths **inside the container** (mount the
 host folder first).
 
-**Models:** scp weights onto the host under `core-pipeline/models/` (or set
-`MODELS_HOST_PATH`). Compose mounts that tree at `/app/core-pipeline/models`.
-Docling packages are in the image already — rebuild once after pull:
+**Models:** copy the weight folders to the host (`/models` on the Linux VM)
+and set the paths in `.env`. Compose mounts `MODELS_HOST_PATH` (default
+`./models`) at `/models` and at `/app/core-pipeline/models`, so
+`BLANK_JUNK_MODEL_DIR=/models/blank-junk` and a relative `models/blank-junk`
+read the same files. The image does not contain the weights. Docling packages
+are in the image already — rebuild once after pull:
 
 ```bash
 docker compose up -d --build
@@ -741,6 +760,31 @@ docker compose build --build-arg WITH_NER=true
 $env:MEMBER_NER_ENABLED = "true"
 docker compose up -d
 ```
+
+---
+
+## Tests
+
+No database. Use Python 3.12 (the blank/junk tests load the joblib, which
+needs scikit-learn 1.9.x). From the repo root:
+
+```bash
+python3.12 -m venv .venv-test && source .venv-test/bin/activate
+pip install -r tests/requirements.txt
+python -m pytest tests/ -q
+```
+
+```powershell
+py -3.12 -m venv .venv-test
+.venv-test\Scripts\Activate.ps1
+pip install -r tests/requirements.txt
+python -m pytest tests/ -q
+```
+
+Run this on the Windows machine after the model folders are in place. The
+suite imports the pipeline modules; it does not call Azure or Postgres.
+`tests/test_blank_junk_and_dos.py` loads `BLANK_JUNK_MODEL_DIR` when that
+variable is set, otherwise `core-pipeline/models/blank-junk/`.
 
 ---
 

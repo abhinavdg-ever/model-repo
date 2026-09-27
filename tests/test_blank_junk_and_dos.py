@@ -192,6 +192,16 @@ class TestModelBridge:
 
         return model_bridge
 
+    def test_model_dir_comes_from_config(self, monkeypatch, tmp_path):
+        import config
+
+        bridge = self._bridge()
+        monkeypatch.setattr(config, "BLANK_JUNK_MODEL_DIR", tmp_path)
+        status = bridge.model_status()
+        assert status["path"] == str(tmp_path / "tfidf_flat.joblib")
+        assert status["ready"] is False
+        assert "model file missing" in status["reason"]
+
     def test_declared_blank_stays_blank_when_model_keeps(self):
         from classify import CODE_BLANK
 

@@ -1,5 +1,8 @@
-# Place downloaded weight files here. See docs/API.md.
-# This directory is gitignored — do not commit checkpoints.
+# Default weight location when .env paths are relative (models/...).
+# On a Linux VM or Windows, copy this layout to /models or C:\models and
+# set HW_MODEL_PATH, RAPID_MODELS_DIR, SECTION_HEADER_MINILM_PATH,
+# BLANK_JUNK_MODEL_DIR, and MEMBER_NER_MODELS_PATH in core-pipeline/.env.
+# See docs/API.md. Everything here except blank-junk/ and this file is gitignored.
 #
 #   hw/handwritten_printed_convnext_tiny.pth         # ConvNeXt (preferred)
 #   hw/handwritten_printed_convnext_tiny_backup.pth  # prior ConvNeXt fallback
