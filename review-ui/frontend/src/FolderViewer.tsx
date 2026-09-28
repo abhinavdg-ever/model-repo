@@ -1133,11 +1133,13 @@ export default function FolderViewer({
                         aria-selected={ocrTab === kind}
                         className={ocrTab === kind ? "active" : ""}
                         onClick={() => setOcrTab(kind)}
-                        disabled={loadingOcr ? false : !ocrByKind[kind]}
+                        // Tabs load on click, so an unfetched kind (undefined)
+                        // must stay clickable; grey out only a fetched-empty one.
+                        disabled={loadingOcr ? false : ocrByKind[kind] === ""}
                         title={
-                          ocrByKind[kind]
-                            ? OCR_TAB_LABELS[kind]
-                            : `${OCR_TAB_LABELS[kind]} unavailable`
+                          ocrByKind[kind] === ""
+                            ? `${OCR_TAB_LABELS[kind]} unavailable`
+                            : OCR_TAB_LABELS[kind]
                         }
                       >
                         {OCR_TAB_LABELS[kind]}
