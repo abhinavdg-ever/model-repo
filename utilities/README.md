@@ -19,6 +19,21 @@ Reads every `metadata_Rn_Bn.csv` / `.xlsx` under a folder (or one file) and
 upserts into `manifest_member_list`. Run/batch ids are parsed from the
 filename (`metadata_R1_B1.csv` → `R1` / `B1`).
 
+## Find chart folders under a blob prefix
+
+Two inputs: the blob location (`container/prefix`) and a local Excel file of
+folder names. Walks Run / Batch / DEID subfolders under that prefix and
+appends a `found_location` column. Does not list page files. Azure auth
+comes from `core-pipeline/.env`.
+
+```bash
+python ../utilities/find_blob_folders.py imaging-pipeline/Raw_Input folders.xlsx
+python ../utilities/find_blob_folders.py imaging-pipeline/Raw_Input C:/lists/folders.xlsx --column "Folder Name"
+```
+
+Writes `folders_located.xlsx` next to the input. A folder in more than one
+place is several paths separated by ` | `. A miss is `NOT FOUND`.
+
 Same job via the API / sweeper:
 
 ```bash
