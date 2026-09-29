@@ -23,8 +23,9 @@ filename (`metadata_R1_B1.csv` → `R1` / `B1`).
 
 Two inputs: the blob location (`container/prefix`) and a local Excel file of
 folder names. Walks Run / Batch / DEID subfolders under that prefix and
-appends a `found_location` column. Does not list page files. Azure auth
-comes from `core-pipeline/.env`.
+appends a `found_location` column. The sheet must have a `Folder Name`
+header. Prints `processing <folder>` and saves the same xlsx every 10 finds.
+Does not list page files. Azure auth comes from `core-pipeline/.env`.
 
 ```bash
 python ../utilities/find_blob_folders.py imaging-pipeline/Raw_Input folders.xlsx

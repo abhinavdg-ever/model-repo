@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -43,6 +44,8 @@ except ImportError:
 from db.blob_store import get_container_client, normalize_prefix  # noqa: E402
 
 logger = logging.getLogger("find_blob_folders")
+# Chart folders are the leaves (67909080_56076434). Run / Batch / DEID are not.
+_CHART_FOLDER = re.compile(r"^\d+_\d+$")
 
 DEFAULT_BLOB = "imaging-pipeline/Raw_Input"
 LOCATION_HEADER = "found_location"
@@ -89,12 +92,19 @@ def _child_prefixes(client, prefix: str) -> list[str]:
     return children
 
 
-def find_folders(container: str, prefix: str, wanted: set[str]) -> dict[str, list[str]]:
+def find_folders(
+    container: str,
+    prefix: str,
+    wanted: set[str],
+    on_found=None,
+) -> dict[str, list[str]]:
     """Map each wanted folder name (casefold) to the blob paths where it sits.
 
     Stops at a matching folder: its page files are not listed. Keeps walking
     sibling Run/Batch/DEID folders so a name stored twice is reported twice.
+    ``on_found(name, paths)`` runs each time a wanted folder is located.
     """
+    _silence_sdk()
     client = get_container_client(container)
     found: dict[str, list[str]] = {name: [] for name in wanted}
     pending = [prefix.strip("/")]
@@ -105,7 +115,6 @@ def find_folders(container: str, prefix: str, wanted: set[str]) -> dict[str, lis
         if current in seen:
             continue
         seen.add(current)
-        logger.info("listing %s/%s", container, current)
         for child in _child_prefixes(client, current):
             leaf = child.rsplit("/", 1)[-1]
             key = leaf.casefold()
@@ -113,7 +122,12 @@ def find_folders(container: str, prefix: str, wanted: set[str]) -> dict[str, lis
                 path = f"{container}/{child}"
                 if path not in found[key]:
                     found[key].append(path)
-                    logger.info("found %s at %s", leaf, path)
+                    if on_found is not None:
+                        on_found(leaf, list(found[key]))
+                continue
+            # A chart folder only holds page files. Listing inside one that is
+            # not on the Excel list is a request per chart and never a hit.
+            if _CHART_FOLDER.match(leaf):
                 continue
             pending.append(child)
     return found
@@ -144,9 +158,9 @@ def _folder_column(ws, column: str | None) -> tuple[int, int]:
             raise SystemExit(f"No column {column!r}. Headers: {known}")
         return headers[key], 2
     for name in (
-        "folder",
-        "folder_name",
         "folder name",
+        "folder_name",
+        "folder",
         "chart_name",
         "chart name",
         "chart",
@@ -170,13 +184,28 @@ def _location_column(ws) -> int:
     return col
 
 
+def _silence_sdk() -> None:
+    """Hide Azure request/response dumps. Those lines are HTTP 200 traces."""
+    for name in (
+        "azure",
+        "azure.core",
+        "azure.core.pipeline",
+        "azure.core.pipeline.policies",
+        "azure.core.pipeline.policies.http_logging_policy",
+        "azure.identity",
+        "urllib3",
+        "urllib3.connectionpool",
+    ):
+        logging.getLogger(name).setLevel(logging.ERROR)
+
+
 def locate_workbook(path: Path, blob: str, column: str | None, out: Path | None) -> Path:
     from openpyxl import load_workbook
 
     container, prefix = split_blob(blob)
     wb = load_workbook(path)
     ws = wb.active
-    col, start = _folder_column(ws, column)
+    col, start = _folder_column(ws, column or "Folder Name")
     loc_col = _location_column(ws)
 
     rows: list[tuple[int, str]] = []
@@ -186,31 +215,45 @@ def locate_workbook(path: Path, blob: str, column: str | None, out: Path | None)
             continue
         rows.append((row, str(value).strip()))
     if not rows:
-        raise SystemExit(f"No folder names in {path} column {col}")
+        raise SystemExit(f"No folder names under the Folder Name column in {path}")
 
-    wanted = {name.casefold() for _row, name in rows}
-    logger.info(
-        "looking for %d folder(s) under %s/%s", len(wanted), container, prefix
-    )
-    found = find_folders(container, prefix, wanted)
-
-    hit = 0
+    by_key: dict[str, list[int]] = {}
     for row, name in rows:
-        paths = found.get(name.casefold()) or []
-        ws.cell(row, loc_col).value = " | ".join(paths) if paths else "NOT FOUND"
-        if paths:
-            hit += 1
+        by_key.setdefault(name.casefold(), []).append(row)
 
-    dest = out or path.with_name(f"{path.stem}_located{path.suffix}")
+    dest = out or path
+    found_count = 0
+
+    def on_found(name: str, paths: list[str]) -> None:
+        nonlocal found_count
+        print(f"processing {name}", flush=True)
+        text = " | ".join(paths)
+        for row in by_key.get(name.casefold(), []):
+            ws.cell(row, loc_col).value = text
+        found_count += 1
+        if found_count % 10 == 0:
+            wb.save(dest)
+
+    print(f"processing {len(rows)} folder(s) under {container}/{prefix}", flush=True)
+    found = find_folders(container, prefix, set(by_key), on_found)
+
+    missing = 0
+    for row, name in rows:
+        if found.get(name.casefold()):
+            continue
+        ws.cell(row, loc_col).value = "NOT FOUND"
+        missing += 1
     wb.save(dest)
-    logger.info(
-        "wrote %s — %d found, %d not found", dest, hit, len(rows) - hit
+    print(
+        f"saved {dest} — {found_count} found, {missing} not found",
+        flush=True,
     )
     return dest
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.basicConfig(level=logging.WARNING, format="%(message)s")
+    _silence_sdk()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "blob",
@@ -230,7 +273,7 @@ def main() -> None:
         "--out",
         type=Path,
         default=None,
-        help="Where to write the workbook (default: <name>_located.xlsx beside the input)",
+        help="Where to write (default: the same xlsx, updated every 10 finds)",
     )
     args = parser.parse_args()
     excel = args.excel.expanduser().resolve()
