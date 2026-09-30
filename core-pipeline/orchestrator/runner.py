@@ -532,6 +532,10 @@ def ingest_and_run(
         run_id, batch_id, blob_path, local_path, blob_container
     )
 
+    # Intake resets results only for a whole-chain run; `only` / `run_through`
+    # read what earlier stages left in the DB.
+    intake_reset = force and not only and not through
+
     try:
         if local_path:
             from stages.utilities.download_blob import import_local_folder
@@ -539,7 +543,7 @@ def ingest_and_run(
             intake = import_local_folder(
                 local_path,
                 chart_name=chart_name,
-                force=force,
+                force=intake_reset,
                 redownload_pages=redownload_pages,
                 run_id=run_id,
                 batch_id=batch_id,
@@ -560,7 +564,7 @@ def ingest_and_run(
                 blob_path=blob_path,
                 run_id=run_id,
                 batch_id=batch_id,
-                force=force,
+                force=intake_reset,
                 redownload_pages=redownload_pages,
             )
             out = {
