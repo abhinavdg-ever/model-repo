@@ -1828,8 +1828,6 @@ input {
 .cmp-match { color: var(--status-success-fg); font-weight: 600; }
 .cmp-partial { color: var(--status-warning-fg); font-weight: 600; }
 .cmp-mismatch { color: #a33b32; font-weight: 600; }
-.cmp-na { color: var(--neutral-400); }
-.cmp-na-cell { background: var(--neutral-50); }
 
 .imaging-manifest {
   color: var(--muted);

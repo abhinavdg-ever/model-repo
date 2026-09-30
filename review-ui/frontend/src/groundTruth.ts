@@ -264,7 +264,7 @@ export function groundTruthBits(input: {
   return {
     memberName: nameMark(gt.memberName, input.memberName, input.memberKnown),
     memberDob: dateMark(gt.memberDob, input.memberDob, input.memberKnown),
-    quality: missing(gt.isVisible) ? [] : bit(gt.isVisible, "unknown"),
+    quality: missing(gt.isVisible) ? [] : bit(`${text(gt.isVisible)} (Is Visible)`, "unknown"),
     rotation: rotationMark(gt.rotation, input.orientationAngle, input.rotationKnown),
     dosFrom: dateMark(gt.dosFrom, input.dosFrom, input.dosKnown),
     dosTo: dateMark(gt.dosTo, input.dosTo, input.dosKnown),

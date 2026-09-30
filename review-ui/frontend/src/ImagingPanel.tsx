@@ -250,12 +250,6 @@ type CompareRow = {
   truth?: GtBit[];
 };
 
-const NOT_AVAILABLE_TEXT = new Set([NOT_FOUND, YET_TO_PROCESS, SKIPPED, "NA", "Not Available"]);
-
-function naClass(text: string): string {
-  return NOT_AVAILABLE_TEXT.has(text) ? "cmp-na" : "";
-}
-
 function CompareSection({
   title,
   rows,
@@ -281,20 +275,20 @@ function CompareSection({
           {rows.map((row) => {
             const truth = showTruth ? row.truth?.[0] : undefined;
             const scored = truth && truth.mark !== "unknown";
-            const valueClass = scored ? `cmp-${truth.mark}` : naClass(row.value);
+            const valueClass = scored ? `cmp-${truth.mark}` : undefined;
             return (
               <tr key={row.label}>
                 <th scope="row">{row.label}</th>
                 <td className={valueClass} title={scored ? markTitle(truth.mark) : undefined}>
                   {row.value}
                 </td>
-                <td className={naClass(row.confidence)}>{row.confidence}</td>
+                <td>{row.confidence}</td>
                 {!showTruth ? null : truth ? (
                   <td className={scored ? `cmp-${truth.mark}` : ""} title={markTitle(truth.mark)}>
                     {truth.label}
                   </td>
                 ) : (
-                  <td className="cmp-na cmp-na-cell">—</td>
+                  <td>Not Available</td>
                 )}
               </tr>
             );
