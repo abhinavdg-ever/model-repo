@@ -85,7 +85,7 @@ AUTOCODER_PAGE_RE = re.compile(
 RANGE_RE = re.compile(
     r"("
     + "|".join(f"(?:{p})" for p in DATE_REGEXES)
-    + r")\s*(?:-|–|—|to|through|/)\s*("
+    + r")\s*(?:-|–|—|\bto\b|\bthrough\b|/)\s*("
     + "|".join(f"(?:{p})" for p in DATE_REGEXES)
     + r")",
     re.IGNORECASE,
@@ -370,6 +370,117 @@ def _collect_keyword_dates(text: str) -> list[tuple[str, str]]:
     return found
 
 
+# A visit label wins over every other date on the page. "DOS" is last: it is
+# short and shows up inside unrelated words less often than it shows up as a
+# label, but it should not beat "Encounter Date".
+_LABELED_VISIT = (
+    "encounter date",
+    "encounterdate",
+    "date of service",
+    "dateofservice",
+    "date of visit",
+    "dateofvisit",
+    "service date",
+    "servicedate",
+    "ed visit date",
+    "presentation date",
+    "arrival date",
+    "office visit",
+    "dos",
+)
+
+# Dates that sit next to one of these are not the visit. The check is against
+# the text immediately before the date, so "Date of birth | 04/05/1993" and
+# "Document Created: April 15, 2026" drop out, while "Encounter Date | at
+# January 28, 2025" stays.
+_NOT_VISIT_DATE = re.compile(
+    r"(?:"
+    r"\bd\.?o\.?b\.?\b"
+    r"|date\s+of\s+birth"
+    r"|birth\s*date"
+    r"|\bborn\b"
+    r"|document\s+created"
+    r"|rendered\s+date"
+    r"|signed\s+at"
+    r"|printed\s+on"
+    r"|generated\s+on"
+    r")\s*[:\-|]*\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_visit_date(text: str, date_start: int) -> bool:
+    before = text[max(0, date_start - 40) : date_start]
+    return _NOT_VISIT_DATE.search(before) is None
+
+
+def _usable_date(raw: str) -> Optional[str]:
+    norm = normalize_date(raw)
+    if not norm or norm == "unknown" or to_iso_date(norm) is None:
+        return None
+    return norm
+
+
+def _labeled_visit_date(page_text: str) -> Optional[dict]:
+    """Date after Encounter Date / Date of Service / Date of Visit, filler allowed.
+
+    The filler is what the CCD header writes: "Encounter Date | at January 28,
+    2025". The 80-character window already reaches past "at"; this pass just
+    makes that label win, so a document-created or rendered date cannot outvote it.
+    """
+    text_lower = page_text.lower()
+    for keyword in _LABELED_VISIT:
+        hit = _date_after_keyword(page_text, text_lower, keyword)
+        if not hit:
+            continue
+        norm, raw = hit
+        if "|" in norm:
+            left, right = norm.split("|", 1)
+            if to_iso_date(left) and to_iso_date(right):
+                return {
+                    "dos_from": left,
+                    "dos_to": right,
+                    "raw_date": raw,
+                    "keyword": keyword,
+                    "match_type": "regex_range",
+                }
+            continue
+        if to_iso_date(norm):
+            return {
+                "dos_from": norm,
+                "dos_to": norm,
+                "raw_date": raw,
+                "keyword": keyword,
+                "match_type": "regex",
+            }
+    return None
+
+
+def _header_visit_date(page_text: str) -> Optional[str]:
+    """One date in the header of a clinical page, ignoring DOB and file dates.
+
+    The vision-center form prints "Date" as a column and the value, 12/31/2025,
+    several rows later, next to the date of birth. There is no label beside the
+    visit date, so the keyword window never sees it. A page qualifies when it
+    has a clinical section (Reason for Visit, HPI, …) and exactly one header
+    date that is not a DOB, a signature time, or a file-created date.
+    """
+    cue = _kw().llm_section_cues.search(page_text or "")
+    if not cue:
+        return None
+    header = page_text[: cue.start()]
+    found: list[str] = []
+    for match in _combined_date_regex().finditer(header):
+        if not _is_visit_date(header, match.start()):
+            continue
+        norm = _usable_date(match.group(0))
+        if norm and norm not in found:
+            found.append(norm)
+    if len(found) == 1:
+        return found[0]
+    return None
+
+
 def extract_dos_from_page_text(page_text: str) -> Optional[dict]:
     """
     Regex DOS on the **full page** (DOS can sit in the middle).
@@ -403,6 +514,17 @@ def extract_dos_from_page_text(page_text: str) -> Optional[dict]:
         out["confidence"] = CONF_EDGE if edge_same else CONF_FULL_PAGE
         return out
 
+    labeled = _labeled_visit_date(page_text)
+    if labeled and labeled.get("dos_from"):
+        in_edge = False
+        if edge_hit:
+            in_edge = edge_hit.get("dos_from") == labeled.get("dos_from")
+        out = dict(labeled)
+        out["confidence"] = CONF_EDGE if in_edge else CONF_FULL_PAGE
+        if out.get("match_type") == "regex" and not in_edge:
+            out["match_type"] = "regex_full_page"
+        return out
+
     keyword_dates = _collect_keyword_dates(page_text)
     # Also fold in single-side admit/discharge labels
     if full_labels:
@@ -417,6 +539,23 @@ def extract_dos_from_page_text(page_text: str) -> Optional[dict]:
         out["confidence"] = CONF_EDGE
         return out
     if not norms:
+        header = _header_visit_date(page_text)
+        if header:
+            edge_norms = {
+                norm
+                for window in (first_60, last_60)
+                for match in _combined_date_regex().finditer(window)
+                if (norm := _usable_date(match.group(0)))
+            }
+            in_edge = header in edge_norms
+            return {
+                "dos_from": header,
+                "dos_to": header,
+                "raw_date": header,
+                "keyword": "header date",
+                "match_type": "regex" if in_edge else "regex_full_page",
+                "confidence": CONF_EDGE if in_edge else CONF_FULL_PAGE,
+            }
         return None
 
     # Prefer dates sharing one year (most common year among hits)
@@ -676,20 +815,26 @@ def _date_after_keyword(text: str, text_lower: str, keyword: str) -> Optional[tu
             # Caller handles ranges; signal via special raw prefix
             return (f"{d_from}|{d_to}", range_after.group(0))
 
-    date_match = date_rx.search(date_search_text)
-    if not date_match:
-        return None
-
-    date_pos = search_start + date_match.start()
-    context_before_date = text_lower[max(0, date_pos - 30) : date_pos]
-    if any(re.search(p, context_before_date) for p in _kw().exclusion_patterns):
-        return None
-
-    raw_date = date_match.group(0)
-    norm = normalize_date(raw_date)
-    if norm == "unknown":
-        return None
-    return norm, raw_date
+    cursor = 0
+    while True:
+        date_match = date_rx.search(date_search_text, cursor)
+        if not date_match:
+            return None
+        date_pos = search_start + date_match.start()
+        # A date of birth, a file timestamp, or a signature time is not the visit.
+        if not _is_visit_date(text, date_pos):
+            cursor = date_match.end()
+            continue
+        context_before_date = text_lower[max(0, date_pos - 30) : date_pos]
+        if any(re.search(p, context_before_date) for p in _kw().exclusion_patterns):
+            cursor = date_match.end()
+            continue
+        raw_date = date_match.group(0)
+        norm = normalize_date(raw_date)
+        if norm == "unknown" or to_iso_date(norm) is None:
+            cursor = date_match.end()
+            continue
+        return norm, raw_date
 
 
 def extract_date_with_keyword_info(text: str) -> Optional[dict]:

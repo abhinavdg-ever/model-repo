@@ -415,6 +415,43 @@ class TestDosStageWritesEachPageOnce:
         assert ctx.done == 3
 
 
+class TestDosLayouts:
+    def test_encounter_date_with_at_before_the_month(self):
+        """CCD header: the visit date follows 'at', and file dates must not win."""
+        from dos_logic import extract_dos_from_page_text
+
+        text = (
+            "Date of birth | 04/05/1993\n"
+            "Document Created: | April 15, 2026, 16:02:25 -0400\n"
+            "Encounter Date | at January 28, 2025\n"
+            "Legal authenticator | ZIYI WANG, MD signed at January 28, 2025, 12:17:31, EST\n"
+            "CCD Rendered Date | April 18, 2026\n"
+            "Reason for Visit\n"
+        )
+        hit = extract_dos_from_page_text(text)
+        assert hit["dos_from"] == "01-28-2025"
+        assert hit["dos_to"] == "01-28-2025"
+        assert hit["keyword"] == "encounter date"
+
+    def test_header_date_on_a_visit_form_ignores_the_dob(self):
+        """The visit date is a bare cell under a Date column, rows below the DOB."""
+        from dos_logic import extract_dos_from_page_text
+
+        text = (
+            "Ph: 801.568.0200\n"
+            "Name - Sanders, Charles | DOB - 03/06/1972 | (69)\n"
+            "Date | Location | Location\n"
+            "PCP | Insurance | Insurance\n"
+            "12/31/2025 | Hoopes Vision Correction Center\n"
+            "Reason For Visit: Post-op Check - S/P Phaco PC IOL OD.\n"
+            "HPI: Post Op: vision is out of focus OD.\n"
+        )
+        hit = extract_dos_from_page_text(text)
+        assert hit["dos_from"] == "12-31-2025"
+        assert hit["dos_to"] == "12-31-2025"
+        assert "03-06-1972" not in hit["dos_from"]
+
+
 class TestDosDriverIsTheV1One:
     def test_document_level_carry_forward_happens(self):
         """A page with no DOS of its own inherits the previous encounter's —
