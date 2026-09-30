@@ -92,9 +92,10 @@ class TestDuplicateScope:
         a = ("Alpha clinical history. " * 20)
         b = ("Beta surgical findings. " * 20)
         rows = _classify(pages, {1: a, 2: b}, {1, 2})
-        flags = {r["page_id"]: r["flag"] for r in rows}
-        assert flags[1] == "not_blank_junk"
-        assert flags[2] == "not_blank_junk"
+        # Blank/junk is the model's call; this test is only about duplicates.
+        for row in rows:
+            assert row["flag"] != "duplicate"
+            assert row["duplicate_of"] is None
 
     def test_blank_and_short_pages_are_not_compared(self):
         pages = [page(1, 1), page(2, 2)]
