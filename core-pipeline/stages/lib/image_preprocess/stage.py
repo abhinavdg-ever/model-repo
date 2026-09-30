@@ -2,7 +2,9 @@
 
 Uses:
   * Tesseract OSD + geometric tilt (``stages.lib.image_preprocess.rotation`` / ``osd``)
-  * ConvNeXt HW classifier (``hw_printed``), with RF pickle fallback
+  * ConvNeXt HW classifier (``hw_printed``), with RF pickle fallback.
+    Empty sheets are uncertain (``blank_page``) and never reach the model.
+    Faint marks are uncertain. Spread ink can upgrade printed to handwritten.
   * Engineering quality analyzer (``quality_analyzer``) — real scores, not a placeholder
   * Label post-process: Handwritten + High → Medium (score unchanged)
 """
@@ -15,7 +17,6 @@ from pathlib import Path
 from typing import Any
 
 from config import (
-    HW_MODEL_PATH,
     ROTATION_CORRECTION_ENABLED,
     STAGE_WORKERS,
     corrected_page_filename,
@@ -32,29 +33,7 @@ logger = logging.getLogger(__name__)
 STAGE = "ocr_quality"
 
 _model_lock = threading.Lock()
-_hw_model: Any = None
-_hw_model_loaded = False
 _detector: Any = None
-
-
-def _get_hw_model() -> Any:
-    """Load ConvNeXt (or RF fallback) once per process."""
-    global _hw_model, _hw_model_loaded
-    if _hw_model_loaded:
-        return _hw_model
-    with _model_lock:
-        if _hw_model_loaded:
-            return _hw_model
-        try:
-            from stages.lib.image_preprocess.hw_printed import load_model
-
-            path = HW_MODEL_PATH if HW_MODEL_PATH.is_file() else None
-            _hw_model = load_model(path)
-        except Exception as exc:
-            logger.warning("Handwriting model unavailable (%s); using fallback", exc)
-            _hw_model = None
-        _hw_model_loaded = True
-        return _hw_model
 
 
 def _get_detector() -> Any:
@@ -70,25 +49,34 @@ def _get_detector() -> Any:
         return _detector
 
 
-def _classify_hw(image_path: Path) -> tuple[str, float, str]:
-    """Return (printed|handwritten|mixed|uncertain, confidence, method)."""
+def _classify_hw(image_path: Path) -> tuple[str, float | None, str]:
+    """Return (printed|handwritten|mixed|uncertain, confidence, method).
+
+    The model is loaded inside classify_image_type, after the blank check,
+    so an empty page does not load ConvNeXt.
+    """
     try:
         from stages.lib.image_preprocess.hw_printed import classify_image_type
 
-        model = _get_hw_model()
-        label, conf, method = classify_image_type(image_path.read_bytes(), model=model)
+        label, conf, method = classify_image_type(image_path.read_bytes())
         text = str(label).strip().lower()
         method_s = str(method or "model")
+        conf_out = None if conf is None else float(conf)
         if "uncertain" in text:
-            return "uncertain", float(conf or 0.0), method_s
+            return "uncertain", conf_out, method_s
         if "mix" in text:
-            return "mixed", float(conf or 0.0), method_s
+            return "mixed", conf_out, method_s
         if "hand" in text:
-            return "handwritten", float(conf or 0.0), method_s
+            return "handwritten", conf_out, method_s
         # RF historically: class 0 = Handwritten, 1 = Printed.
-        if method_s not in {"convnext_tiny"} and label in (0, "0"):
-            return "handwritten", float(conf or 0.0), method_s
-        return "printed", float(conf or 0.0), method_s
+        if method_s not in {
+            "convnext_tiny",
+            "page_convnext_plus_ink",
+            "blank_page",
+            "faint_marks_only",
+        } and label in (0, "0"):
+            return "handwritten", conf_out if conf_out is not None else 0.0, method_s
+        return "printed", conf_out, method_s
     except Exception as exc:
         logger.warning("HW classify fallback for %s: %s", image_path, exc)
         return "printed", 0.5, "fallback"
@@ -402,7 +390,6 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         measured: list[dict[str, Any]] = []
         if todo:
             workers = max(1, min(STAGE_WORKERS, len(todo)))
-            _get_hw_model()
             logger.info("Quality/rotation/HW workers=%d", workers)
             with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="page") as pool:
                 measured = list(

@@ -16,7 +16,11 @@ from pathlib import Path
 from typing import Literal, Optional, Sequence
 
 from app.core.schemas import FolderSummary, OcrRunStatus
-from app.services.chart_run_batch import db_lookup_enabled, database_url_usable
+from app.services.chart_run_batch import (
+    db_lookup_enabled,
+    database_url_usable,
+    with_run_batch_default,
+)
 from app.services.db import connection
 
 
@@ -140,6 +144,10 @@ def fetch_chart_summaries_from_db(
             in {"COMPLETED", "IMAGING_COMPLETED", "IMAGING_IN_PROGRESS", "IN_PROGRESS"}
             else 0
         )
+        stored_run, stored_batch = with_run_batch_default(
+            str(run_id) if run_id else None,
+            str(batch_id) if batch_id else None,
+        )
         out.append(
             FolderSummary(
                 id=name,
@@ -149,8 +157,8 @@ def fetch_chart_summaries_from_db(
                 imaging_processed=imaging_n,
                 ocr_status=status_ui,
                 last_updated_at=updated_at,
-                run_id=str(run_id).strip() if run_id else None,
-                batch_id=str(batch_id).strip() if batch_id else None,
+                run_id=stored_run,
+                batch_id=stored_batch,
             )
         )
     return out
@@ -173,6 +181,7 @@ def list_disk_folder_names_light(data_root: Path) -> list[FolderSummary]:
             mtime = datetime.fromtimestamp(entry.stat().st_mtime).astimezone()
         except OSError:
             pass
+        disk_run, disk_batch = with_run_batch_default(None, None)
         out.append(
             FolderSummary(
                 id=entry.name,
@@ -182,6 +191,8 @@ def list_disk_folder_names_light(data_root: Path) -> list[FolderSummary]:
                 imaging_processed=0,
                 ocr_status="QUEUED",
                 last_updated_at=mtime,
+                run_id=disk_run,
+                batch_id=disk_batch,
             )
         )
     return out

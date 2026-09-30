@@ -1233,6 +1233,7 @@ class TestManifestLookup:
         assert prefer_db_run_batch(("R2", None), ("R1", "B1")) == ("R2", "B1")
         assert prefer_db_run_batch((None, "B4"), ("R9", "B1")) == ("R9", "B4")
         assert prefer_db_run_batch(None, ("R1", "B1")) == ("R1", "B1")
+        assert prefer_db_run_batch(None, None) == ("Test", "Test")
 
     def test_prefer_db_manifest_fills_gaps(self):
         from app.services.chart_run_batch import prefer_db_manifest

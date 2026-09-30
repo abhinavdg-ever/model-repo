@@ -13,6 +13,8 @@
 #   semantic-model/   (MiniLM — section_header_match --download)
 #   blank-junk/tfidf_flat.joblib + default.json
 #       TF-IDF KEEP/BLANK/JUNK model (committed). Regex rules are the fallback.
+#   blank-junk/bert_page/   optional DistilBERT (not committed). Copy from b_jnk/models/bert_page.
+#       Used when that folder and torch+transformers are present; otherwise TF-IDF.
 #
 # Section-header MiniLM prefers models/semantic-model when present; otherwise
 # falls back to the HuggingFace Hub id (SECTION_HEADER_MINILM_MODEL).

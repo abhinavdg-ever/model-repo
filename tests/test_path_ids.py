@@ -30,6 +30,11 @@ def test_explicit_wins():
 
 def test_missing_segments():
     assert infer_run_batch_from_path("Raw_Input/DEID_PNGs") == (None, None)
+    assert resolve_run_batch(None, None, "Raw_Input/Demotest/DEID_Images") == (
+        "Test",
+        "Test",
+    )
+    assert resolve_run_batch(None, None, "Raw_Input/Run1/DEID_Images") == ("R1", "Test")
 
 
 def test_derive_output_path_raw_input_deid():

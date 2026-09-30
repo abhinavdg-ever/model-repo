@@ -29,6 +29,8 @@ from typing import Any
 
 from classify import (
     CODE_BLANK,
+    CODE_COVER_PAGE,
+    CODE_INSTRUCTIONS,
     CODE_INVOICE,
     CODE_LETTER_FAX,
     CODE_MAIN,
@@ -43,6 +45,7 @@ logger = logging.getLogger(__name__)
 _VENDOR = Path(__file__).resolve().parent / "model"
 _WEIGHTS_NAME = "tfidf_flat.joblib"
 _CONFIG_NAME = "default.json"
+_BERT_DIR_NAME = "bert_page"
 
 
 def _model_dir() -> Path:
@@ -59,6 +62,19 @@ def _model_file() -> Path:
 def _config_file() -> Path:
     return _model_dir() / _CONFIG_NAME
 
+
+def _bert_dir() -> Path:
+    return _model_dir() / _BERT_DIR_NAME
+
+
+def _bert_files_present() -> bool:
+    directory = _bert_dir()
+    return (directory / "bjnk_meta.json").is_file() and (directory / "config.json").is_file()
+
+
+def _bert_runtime_installed() -> bool:
+    return find_spec("torch") is not None and find_spec("transformers") is not None
+
 # Model audit tags → schema junk_subtype codes, used only when the regex
 # classifier finds no junk subtype of its own.
 _AUDIT_CODE = {
@@ -68,6 +84,12 @@ _AUDIT_CODE = {
     "JUNK_PRINTER_SYSTEM_TEST": CODE_OTHERS,
     "JUNK_POSTAL_MAIL": CODE_OTHERS,
     "JUNK_INSURANCE_ID": CODE_INVOICE,
+    "JUNK_INVOICE": CODE_INVOICE,
+    "JUNK_COVER_PAGE": CODE_COVER_PAGE,
+    "JUNK_RECORD_REQUEST": CODE_RECORD_REQUEST,
+    "JUNK_INSTRUCTIONS": CODE_INSTRUCTIONS,
+    "JUNK_LETTER_FAX": CODE_LETTER_FAX,
+    "JUNK_OTHERS": CODE_OTHERS,
     "JUNK_BLACK_SCAN_DEFECT": CODE_OTHERS,
     "JUNK_NON_CLINICAL_PHOTO": CODE_OTHERS,
     "BLANK_SYSTEM": CODE_BLANK,
@@ -97,13 +119,18 @@ def _model_version_from_config() -> str | None:
 def model_status() -> dict[str, Any]:
     """For ``/health``: configuration only, never loads the model (≈4 s)."""
     model_file = _model_file()
+    bert_on = _bert_files_present() and _bert_runtime_installed()
+    version = _model_version_from_config()
     status: dict[str, Any] = {
         "ready": False,
         "loaded": _service is not None,
-        "path": str(model_file),
-        "model_version": _model_version_from_config(),
+        "path": str(_bert_dir() if bert_on else model_file),
+        "model_version": f"{version}+bert" if bert_on and version else version,
         "reason": None,
     }
+    if bert_on:
+        status["ready"] = True
+        return status
     if not model_file.is_file():
         status["reason"] = (
             f"model file missing at {model_file} — blank/junk runs on regex rules only"
@@ -125,7 +152,7 @@ def _load_service() -> Any:
         if _service is not None or _load_failed:
             return _service
         model_file = _model_file()
-        if not model_file.is_file():
+        if not model_file.is_file() and not _bert_files_present():
             logger.warning(
                 "Blank/junk model missing at %s — regex fallback only",
                 model_file,
@@ -148,12 +175,41 @@ def _load_service() -> Any:
                 cfg = json.loads(config_file.read_text(encoding="utf-8"))
             decision = DecisionConfig(**(cfg.get("decision") or {}))
             routing = cfg.get("routing") or {}
-            model = FlatClassifier.load(str(model_file))
+            version = str(cfg.get("model_version") or "bjc-ocr")
+            model = None
+            route_short_pages = True
+            if _bert_files_present():
+                try:
+                    from src.models.bert_classifier import BertPageClassifier
+
+                    model = BertPageClassifier.load(_bert_dir())
+                    version = f"{version}+bert"
+                    route_short_pages = not bool(
+                        (cfg.get("bert") or {}).get("decide_short_pages", False)
+                    )
+                except ImportError as exc:
+                    logger.warning(
+                        "BERT blank/junk needs torch and transformers (%s); using TF-IDF",
+                        exc,
+                    )
+                    model = None
+            if model is None:
+                if not model_file.is_file():
+                    logger.warning(
+                        "Blank/junk model missing at %s — regex fallback only",
+                        model_file,
+                    )
+                    _load_failed = True
+                    _load_error = "model file missing"
+                    return None
+                model = FlatClassifier.load(str(model_file))
+                version = f"{version}+tfidf"
             _service = PageClassifierService(
                 model,
-                model_version=str(cfg.get("model_version") or "bjc-ocr"),
+                model_version=version,
                 decision=decision,
                 min_dictionary_words=int(routing.get("min_dictionary_words") or 2),
+                route_short_pages=route_short_pages,
             )
             logger.info(
                 "Blank/junk model loaded version=%s path=%s",
@@ -209,15 +265,16 @@ def classify_page(text: str) -> tuple[int, str, float | None]:
         return _regex(text, why="model_unavailable")
 
     try:
-        result = service.predict_one("page", text or "", with_evidence=False)
+        result = service.predict_one("page", text or "")
     except Exception:
         logger.exception("Blank/junk model predict failed — regex fallback")
         return _regex(text, why="predict_error")
 
-    if result.review_required:
+    flag = str(result.flag or "").upper()
+    # review_required on KEEP means the model abstained. BLANK / JUNK still stand.
+    if result.review_required and flag not in {"BLANK", "JUNK"}:
         return _regex(text, why=result.decision_reason or "review")
 
-    flag = str(result.flag or "").upper()
     conf = float(result.confidence) if result.confidence is not None else None
     reason = f"model:{result.model_version}:{result.decision_reason}"
     if result.audit_tag:
@@ -226,7 +283,7 @@ def classify_page(text: str) -> tuple[int, str, float | None]:
     if flag == "BLANK":
         return CODE_BLANK, reason, conf
     if flag == "JUNK":
-        code, subtype_reason = _junk_subtype(text, result.audit_tag)
+        code, subtype_reason = _junk_subtype(text, result.subclass or result.audit_tag)
         return code, f"{reason}:{subtype_reason}", conf
     if flag == "KEEP":
         # Model is conservative (KEEP on thin text). Declared/empty blanks

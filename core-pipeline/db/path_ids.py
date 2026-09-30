@@ -20,6 +20,9 @@ from typing import Optional
 
 _RUN_SEG = re.compile(r"(?i)^(?:run[_-]?|r)(\d+)$")
 _BATCH_SEG = re.compile(r"(?i)^(?:batch[_-]?|b)(\d+)$")
+# A path with no RunN / BatchN segment (for example Demotest/DEID_Images).
+DEFAULT_RUN_ID = "Test"
+DEFAULT_BATCH_ID = "Test"
 # Leaf folders under Batch that hold chart dirs (not part of the output path).
 _DEID_SEG = re.compile(r"(?i)^deid([_-].+)?$")
 
@@ -51,12 +54,19 @@ def resolve_run_batch(
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
     *path_parts: Optional[str],
-) -> tuple[Optional[str], Optional[str]]:
-    """Explicit values win; otherwise infer from path parts."""
+) -> tuple[str, str]:
+    """Explicit values win; otherwise infer from path parts.
+
+    A side the path does not name (no ``Run1`` / ``Batch1`` segment) is
+    ``Test``, so chart_list and the landing list still have a run and a batch.
+    """
     explicit_run = (run_id or "").strip() or None
     explicit_batch = (batch_id or "").strip() or None
     inferred_run, inferred_batch = infer_run_batch_from_path(*path_parts)
-    return explicit_run or inferred_run, explicit_batch or inferred_batch
+    return (
+        explicit_run or inferred_run or DEFAULT_RUN_ID,
+        explicit_batch or inferred_batch or DEFAULT_BATCH_ID,
+    )
 
 
 def derive_output_path(

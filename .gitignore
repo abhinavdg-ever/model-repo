@@ -54,6 +54,8 @@ core-pipeline/models/**
 !core-pipeline/models/README.md
 !core-pipeline/models/blank-junk/
 !core-pipeline/models/blank-junk/**
+# DistilBERT blank/junk weights (~270 MB). Copy b_jnk/models/bert_page here; do not commit.
+core-pipeline/models/blank-junk/bert_page/
 # The negation above re-includes macOS AppleDouble files; exclude them again.
 core-pipeline/models/blank-junk/._*
 *.safetensors

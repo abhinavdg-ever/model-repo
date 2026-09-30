@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from src.features.ocr_features import count_dictionary_words
+from src.preprocessing.page_subclass import is_unreadable_page
 
 Flag = Literal["KEEP", "BLANK", "JUNK"]
 
@@ -25,6 +26,7 @@ def route_empty_or_unreadable(
     *,
     min_dictionary_words: int = 2,
     content_meta: dict[str, Any] | None = None,
+    route_short_text: bool = True,
 ) -> RouteDecision:
     """Route pages that should not go through the text classifier alone.
 
@@ -33,7 +35,14 @@ def route_empty_or_unreadable(
 
     - Structurally empty → flag=BLANK (absolute blank)
     - Pictures but no texts → KEEP + review (possible clinical image)
-    - Empty text without structure → KEEP + review (unsafe to auto-blank)
+    - Empty text, no Docling metadata (RapidOCR .txt, CSV, JSONL) → BLANK + review:
+      plain text cannot show whether the page held a picture OCR could not read
+    - Empty text, Docling says non-empty (e.g. an empty table) → KEEP + review
+    - Very short text (< min_dictionary_words) → KEEP + review, unless
+      route_short_text is False (a model trained on short sheets decides them)
+    - A full page of non-words, with no picture and no readable sentence →
+      JUNK + review, subtype JUNK_OTHERS. A page that still reads in places
+      is left for the model.
     """
     meta = content_meta or {}
 
@@ -58,8 +67,16 @@ def route_empty_or_unreadable(
         )
 
     text = (ocr_text or "").strip()
+    if not text and not meta:
+        return RouteDecision(
+            routed=True,
+            reason="empty_ocr_text_only_input",
+            confidence=1.0,
+            flag="BLANK",
+            review_required=True,
+            audit_tag="BLANK_ABSOLUTE_CANDIDATE",
+        )
     if not text:
-        # No Docling structure — cannot prove absolute blank vs image OCR miss
         return RouteDecision(
             routed=True,
             reason="empty_ocr_no_structure",
@@ -69,6 +86,8 @@ def route_empty_or_unreadable(
             audit_tag="BLANK_ABSOLUTE_CANDIDATE",
         )
 
+    if not route_short_text:
+        return RouteDecision(routed=False, reason=None, confidence=0.0)
     n_dict = count_dictionary_words(text)
     if n_dict < min_dictionary_words and len(text) < 40:
         return RouteDecision(
@@ -78,5 +97,14 @@ def route_empty_or_unreadable(
             flag="KEEP",
             review_required=True,
             audit_tag="UNREADABLE_OCR",
+        )
+    if is_unreadable_page(text) and not meta.get("has_pictures"):
+        return RouteDecision(
+            routed=True,
+            reason="gibberish_ocr",
+            confidence=0.9,
+            flag="JUNK",
+            review_required=True,
+            audit_tag="JUNK_OTHERS",
         )
     return RouteDecision(routed=False, reason=None, confidence=0.0)

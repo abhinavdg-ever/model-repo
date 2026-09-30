@@ -32,6 +32,7 @@ from app.core.schemas import (
     PageSummary,
 )
 from app.services import db
+from app.services.chart_run_batch import with_run_batch_default
 from app.services.db import psycopg_url as _psycopg_url
 from app.services.imaging_overlays import display_page_type, empty_imaging_pages
 
@@ -296,6 +297,10 @@ class PostgresFolderRepository(FolderRepository):
                 memberId=member_id,
             )
 
+        shown_run, shown_batch = with_run_batch_default(
+            str(run_id) if run_id else None,
+            str(batch_id) if batch_id else None,
+        )
         return FolderDetail(
             id=folder_id,
             name=folder_id,
@@ -304,8 +309,8 @@ class PostgresFolderRepository(FolderRepository):
             imaging_processed=0,
             ocr_status=ocr_status,  # type: ignore[arg-type]
             last_updated_at=None,
-            run_id=str(run_id) if run_id else None,
-            batch_id=str(batch_id) if batch_id else None,
+            run_id=shown_run,
+            batch_id=shown_batch,
             manifest=manifest,
             pages=page_summaries,
         )

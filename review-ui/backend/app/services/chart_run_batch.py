@@ -28,14 +28,30 @@ def database_url_usable(database_url: str | None) -> bool:
     return True
 
 
+# Paths with no RunN / BatchN segment store and display these.
+DEFAULT_RUN_ID = "Test"
+DEFAULT_BATCH_ID = "Test"
+
+
+def with_run_batch_default(
+    run_id: Optional[str],
+    batch_id: Optional[str],
+) -> tuple[str, str]:
+    """Fill a missing run or batch. ``Run1`` / ``B1`` are kept; blanks become Test."""
+    return (
+        (run_id or "").strip() or DEFAULT_RUN_ID,
+        (batch_id or "").strip() or DEFAULT_BATCH_ID,
+    )
+
+
 def prefer_db_run_batch(
     db: tuple[Optional[str], Optional[str]] | None,
     meta: tuple[Optional[str], Optional[str]] | None,
-) -> tuple[Optional[str], Optional[str]]:
-    """DB wins when set; metadata fills gaps."""
+) -> tuple[str, str]:
+    """DB wins when set; metadata fills gaps. A side still empty is Test."""
     db_run, db_batch = db or (None, None)
     meta_run, meta_batch = meta or (None, None)
-    return (db_run or meta_run), (db_batch or meta_batch)
+    return with_run_batch_default(db_run or meta_run, db_batch or meta_batch)
 
 
 def db_lookup_enabled(database_url: str, db_schema: str) -> bool:

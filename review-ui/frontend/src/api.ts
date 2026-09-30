@@ -181,18 +181,18 @@ export const OCR_STATUS_LABELS: Record<OcrRunStatus, string> = {
   FAILED: "Failed",
 };
 
-/** R1 / Run1 / 1 → "Run 1". Pass-through when the shape is unknown. */
+/** R1 / Run1 / 1 → "Run 1". Blank (no RunN in the folder path) is "Test". */
 export function formatRunLabel(raw: string | null | undefined): string {
   const s = (raw || "").trim();
-  if (!s) return "—";
+  if (!s || s.toLowerCase() === "test") return "Test";
   const m = /^(?:run[_.\-\s]*)?r?(\d+)$/i.exec(s);
   return m ? `Run ${m[1]}` : s;
 }
 
-/** B1 / Batch1 / 1 → "Batch 1". Pass-through when the shape is unknown. */
+/** B1 / Batch1 / 1 → "Batch 1". Blank (no BatchN in the folder path) is "Test". */
 export function formatBatchLabel(raw: string | null | undefined): string {
   const s = (raw || "").trim();
-  if (!s) return "—";
+  if (!s || s.toLowerCase() === "test") return "Test";
   const m = /^(?:batch[_.\-\s]*)?b?(\d+)$/i.exec(s);
   return m ? `Batch ${m[1]}` : s;
 }

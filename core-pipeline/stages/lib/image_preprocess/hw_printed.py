@@ -9,6 +9,10 @@ Canonical class mapping (used everywhere — training, evaluation, inference):
 This replaces the previous Tesseract-OCR + RandomForest pipeline.
 The model is ConvNeXt-Tiny fine-tuned on page pixels.
 
+Pages with no dark ink are labeled before the model loads (blank_page or
+faint_marks_only). Spread handwriting ink can upgrade a printed model
+label to handwritten.
+
 API (compatible with the Azure CSV pipeline):
 
     model = load_model(path)
@@ -20,6 +24,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
@@ -52,6 +57,29 @@ DEFAULT_UNCERTAIN_MIN_CONFIDENCE = 0.55
 # |P(Handwritten) - threshold| below this → Uncertain.
 DEFAULT_UNCERTAIN_MARGIN = 0.08
 
+# Filled forms are printed-heavy for the page model. Ink that is tall and
+# spread down the page upgrades Printed → Handwritten. A logo in one band does not.
+INK_METHOD = "page_convnext_plus_ink"
+INK_SCORE_THRESHOLD = 0.48
+INK_TALL_COMPONENT_MIN = 8
+INK_MIN_Y_SPAN_FRAC = 0.22
+INK_MIN_Y_STD = 55.0
+
+# ConvNeXt was not trained on empty sheets and calls scanner noise handwritten.
+# Marks are measured at ~150 DPI. Anything wider than PAPER_KERNEL (~4 mm) is
+# paper, a scanner border, a punch hole, or shading — not a pen stroke.
+MARKS_LONG_SIDE = 1650
+PAPER_KERNEL = 25
+MARK_MIN_AREA = 6
+FAINT_RATIO = 0.75  # pixel at most 75% of local paper brightness: a mark
+STRONG_RATIO = 0.50  # at most 50%: dark ink (pen, print), not pencil or show-through
+BLANK_MAX_FRACTION = 1e-4  # a page number or a stray dot, not content
+BLANK_METHOD = "blank_page"
+FAINT_METHOD = "faint_marks_only"
+# The model did not score these pages. Store a fixed confidence so the
+# column is not empty.
+PREMODEL_CONFIDENCE = 0.80
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 _CORE_ROOT = SCRIPT_DIR.parents[2]  # …/core-pipeline
 # Both HW weights live under core-pipeline/models/hw/.
@@ -75,6 +103,7 @@ DEFAULT_MODEL_PATH = next(
 
 _bundle: "ClassifierBundle | None" = None
 _load_attempted = False
+_load_lock = threading.Lock()
 
 
 @dataclass
@@ -246,10 +275,17 @@ def load_model(model_path: Path | str | None = None, device=None):
     Returns a ClassifierBundle (ConvNeXt) or the RF model object. Callers pass
     the result as ``model=`` into ``classify_image_type``.
     """
-    global _bundle, _load_attempted
-
     if _bundle is not None and model_path is None:
         return _bundle
+
+    with _load_lock:
+        if _bundle is not None and model_path is None:
+            return _bundle
+        return _load_model_locked(model_path, device)
+
+
+def _load_model_locked(model_path: Path | str | None, device):
+    global _bundle, _load_attempted
 
     path = Path(model_path) if model_path is not None else DEFAULT_MODEL_PATH
     # Prefer an explicit .pth, else the first existing candidate.
@@ -302,6 +338,188 @@ def load_model(model_path: Path | str | None = None, device=None):
     return bundle
 
 
+def _image_bgr(image: Image.Image):
+    import cv2
+    import numpy as np
+
+    rgb = np.asarray(image.convert("RGB"))
+    return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+
+
+def page_marks(image_bgr) -> dict[str, float | int]:
+    """Stroke-sized marks relative to the local paper brightness.
+
+    ``mark_fraction`` is every stroke-sized mark. ``strong_fraction`` is the
+    part that is dark ink rather than pencil or show-through.
+    """
+    import cv2
+    import numpy as np
+
+    gray = image_bgr if image_bgr.ndim == 2 else cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    scale = MARKS_LONG_SIDE / float(max(gray.shape))
+    gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    kernel = np.ones((PAPER_KERNEL, PAPER_KERNEL), np.uint8)
+    paper = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel).astype(np.float32)
+    ratio = gray.astype(np.float32) / (paper + 1.0)
+    dark_area = (paper < 0.5 * float(np.median(paper))).astype(np.uint8)
+    near_dark = cv2.dilate(dark_area, kernel) > 0
+    candidate = ((ratio < FAINT_RATIO) & ~near_dark).astype(np.uint8)
+
+    _n, labels, stats, _ = cv2.connectedComponentsWithStats(candidate, 8)
+    height, width = gray.shape
+    x, y, ww, hh, area = (stats[:, i] for i in range(5))
+    good = (area >= MARK_MIN_AREA) & (x > 0) & (y > 0) & (x + ww < width) & (y + hh < height)
+    good[0] = False
+    marks = good[labels]
+    total = float(height * width)
+    return {
+        "marks": int(good.sum()),
+        "mark_fraction": float(marks.sum()) / total,
+        "strong_fraction": float((marks & (ratio < STRONG_RATIO)).sum()) / total,
+    }
+
+
+def content_before_model(image: Image.Image) -> tuple[str, float, str] | None:
+    """Skip ConvNeXt when the page has no dark ink.
+
+    No marks → ``Uncertain`` / ``blank_page``. Faint marks (pencil or
+    show-through) → ``Uncertain`` / ``faint_marks_only``. The model is not
+    asked to guess either page. Both store ``PREMODEL_CONFIDENCE``. Dark ink
+    returns None and the model runs.
+    """
+    try:
+        marks = page_marks(_image_bgr(image))
+    except Exception as exc:
+        LOGGER.warning("page mark check failed (%s); sending the page to the model", exc)
+        return None
+    if float(marks["strong_fraction"]) >= BLANK_MAX_FRACTION:
+        return None
+    if float(marks["mark_fraction"]) < BLANK_MAX_FRACTION:
+        return "Uncertain", PREMODEL_CONFIDENCE, BLANK_METHOD
+    return "Uncertain", PREMODEL_CONFIDENCE, FAINT_METHOD
+
+
+def handwriting_ink_evidence(image_bgr) -> dict[str, float | int]:
+    """Filled-form ink vs clean typed text.
+
+    Header logos look like a few tall blobs in one band. Filled-form
+    handwriting spreads down the page, so tall components must also be
+    vertically dispersed.
+    """
+    import cv2
+    import numpy as np
+
+    height0, width0 = image_bgr.shape[:2]
+    scale = 1000.0 / float(max(height0, width0))
+    image = image_bgr
+    if scale < 1.0:
+        image = cv2.resize(
+            image_bgr,
+            (max(1, int(width0 * scale)), max(1, int(height0 * scale))),
+            interpolation=cv2.INTER_AREA,
+        )
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    bw = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 31, 12
+    )
+    horiz = cv2.morphologyEx(
+        bw, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (35, 1))
+    )
+    vert = cv2.morphologyEx(
+        bw, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (1, 35))
+    )
+    ink = cv2.subtract(bw, cv2.bitwise_or(horiz, vert))
+    ink = cv2.morphologyEx(ink, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
+    _n, _labels, stats, _ = cv2.connectedComponentsWithStats(ink, 8)
+    height, width = gray.shape
+    page = float(height * width)
+    good = 0
+    tall = 0
+    wide = 0
+    area_sum = 0
+    heights: list[int] = []
+    tall_ys: list[float] = []
+    for i in range(1, stats.shape[0]):
+        _x, y, ww, hh, area = stats[i]
+        if area < 20 or area > 0.03 * page:
+            continue
+        ar = ww / float(hh + 1e-6)
+        if ar < 0.08 or ar > 10:
+            continue
+        fill = area / float(ww * hh + 1e-6)
+        if area > 0.008 * page:
+            continue
+        if ww > 0.22 * width and hh > 0.06 * height:
+            continue
+        if fill > 0.72:
+            continue
+        if y < 0.16 * height and area > 0.0035 * page and ww >= 40:
+            continue
+        good += 1
+        area_sum += int(area)
+        heights.append(int(hh))
+        if hh >= 18 and ww >= 25:
+            tall += 1
+            tall_ys.append(float(y) + 0.5 * float(hh))
+        if ar >= 1.8 and hh <= 40:
+            wide += 1
+    hstd = float(np.std(heights)) if len(heights) > 3 else 0.0
+    ink_ratio = area_sum / page
+    if len(tall_ys) >= 2:
+        y_std = float(np.std(tall_ys))
+        y_span_frac = float((max(tall_ys) - min(tall_ys)) / float(height))
+    else:
+        y_std = 0.0
+        y_span_frac = 0.0
+    dispersed = y_span_frac >= INK_MIN_Y_SPAN_FRAC and y_std >= INK_MIN_Y_STD
+    score = (
+        0.40 * min(tall / 20.0, 1.0)
+        + 0.20 * min(hstd / 8.0, 1.0)
+        + 0.15 * min(wide / 30.0, 1.0)
+        + 0.10 * min(ink_ratio / 0.05, 1.0)
+        + 0.15 * min(y_span_frac / 0.45, 1.0)
+    )
+    if not dispersed:
+        score = min(score, 0.35)
+    return {
+        "score": float(score),
+        "tall": int(tall),
+        "wide": int(wide),
+        "good": int(good),
+        "height_std": float(hstd),
+        "ink_ratio": float(ink_ratio),
+        "y_span_frac": float(y_span_frac),
+        "y_std": float(y_std),
+        "dispersed": int(1 if dispersed else 0),
+    }
+
+
+def upgrade_printed_with_ink(
+    image: Image.Image,
+    label: str,
+    confidence: float,
+    p_handwritten: float,
+) -> tuple[str, float, str]:
+    """Upgrade a non-handwritten model label when ink is spread down the page."""
+    if label == "Handwritten":
+        return label, confidence, METHOD_NAME
+    try:
+        ink = handwriting_ink_evidence(_image_bgr(image))
+    except Exception as exc:
+        LOGGER.warning("ink check failed (%s); keeping the model label", exc)
+        return label, confidence, METHOD_NAME
+    score = float(ink["score"])
+    tall = int(ink["tall"])
+    dispersed = bool(ink["dispersed"])
+    if dispersed and (score >= INK_SCORE_THRESHOLD or tall >= INK_TALL_COMPONENT_MIN):
+        return (
+            "Handwritten",
+            round(max(float(p_handwritten), score), 4),
+            INK_METHOD,
+        )
+    return label, confidence, METHOD_NAME
+
+
 def probabilities_from_logits(logits):
     import torch
 
@@ -350,11 +568,14 @@ def classify_image_type(
     model: Any | None = None,
     *,
     already_preprocessed: bool = False,
-) -> tuple[str, float, str]:
+) -> tuple[str, float | None, str]:
     """Classify one document page.
 
-    Returns (label, confidence, method) where label is
-    Printed | Handwritten | Uncertain (ConvNeXt) or the RF equivalent.
+    Returns (label, confidence, method). Label is Printed, Handwritten, or
+    Uncertain. A page with no dark ink returns before the model loads:
+    Uncertain / blank_page, or Uncertain / faint_marks_only, each with
+    confidence 0.80. Filled-form ink can upgrade the model label to
+    Handwritten (page_convnext_plus_ink).
     """
     del already_preprocessed
     # RF fallback path: model is not a ClassifierBundle.
@@ -362,6 +583,11 @@ def classify_image_type(
         from stages.lib.image_preprocess import hw_printed_rf as rf
 
         return rf.classify_image_type(image_bytes, model=model)
+
+    image = decode_image(image_bytes)
+    early = content_before_model(image)
+    if early is not None:
+        return early
 
     bundle = model if isinstance(model, ClassifierBundle) else None
     if bundle is None:
@@ -374,7 +600,6 @@ def classify_image_type(
             return rf.classify_image_type(image_bytes, model=loaded)
         bundle = loaded
 
-    image = decode_image(image_bytes)
     tensor = preprocess_for_model(
         image,
         image_size=bundle.image_size,
@@ -389,7 +614,7 @@ def classify_image_type(
         bundle.uncertain_min_confidence,
         bundle.uncertain_margin,
     )
-    return label, confidence, METHOD_NAME
+    return upgrade_printed_with_ink(image, label, confidence, p_handwritten)
 
 
 def classify_image_path(path: Path | str, model: Any | None = None) -> tuple[str, float, str]:
@@ -400,30 +625,49 @@ def classify_image_type_batch(
     image_bytes_list: Sequence[bytes],
     model: Any | None = None,
     batch_size: int = 16,
-) -> list[tuple[str, float, str]]:
-    """Batched inference for production throughput."""
+) -> list[tuple[str, float | None, str]]:
+    """Batched inference for production throughput.
+
+    Blank and faint pages are decided first and are not included in the
+    ConvNeXt batch.
+    """
     import torch
 
+    decoded = [decode_image(raw) for raw in image_bytes_list]
+    results: list[tuple[str, float | None, str] | None] = [
+        content_before_model(image) for image in decoded
+    ]
+    pending = [i for i, early in enumerate(results) if early is None]
+    if not pending:
+        return [row for row in results if row is not None]
+
     bundle = model if isinstance(model, ClassifierBundle) else load_model()
-    results: list[tuple[str, float, str]] = []
-    tensors = []
-    for image_bytes in image_bytes_list:
-        image = decode_image(image_bytes)
-        tensors.append(
-            preprocess_for_model(
-                image,
-                image_size=bundle.image_size,
-                mean=bundle.mean,
-                std=bundle.std,
-            )
+    if bundle is None or not isinstance(bundle, ClassifierBundle):
+        from stages.lib.image_preprocess import hw_printed_rf as rf
+
+        for i in pending:
+            if bundle is None:
+                results[i] = ("Printed", 0.5, "fallback")
+            else:
+                results[i] = rf.classify_image_type(image_bytes_list[i], model=bundle)
+        return [row for row in results if row is not None]
+
+    tensors = [
+        preprocess_for_model(
+            decoded[i],
+            image_size=bundle.image_size,
+            mean=bundle.mean,
+            std=bundle.std,
         )
+        for i in pending
+    ]
     stacked = torch.stack(tensors, dim=0)
     probabilities = []
     for start in range(0, len(stacked), batch_size):
         chunk = stacked[start : start + batch_size]
         probabilities.append(classify_tensor_batch(chunk, bundle))
     proba = torch.cat(probabilities, dim=0)
-    for row in proba:
+    for slot, row in zip(pending, proba):
         p_handwritten = float(row[CLASS_TO_INDEX["Handwritten"]])
         label, confidence = decide_label(
             p_handwritten,
@@ -431,8 +675,10 @@ def classify_image_type_batch(
             bundle.uncertain_min_confidence,
             bundle.uncertain_margin,
         )
-        results.append((label, confidence, METHOD_NAME))
-    return results
+        results[slot] = upgrade_printed_with_ink(
+            decoded[slot], label, confidence, p_handwritten
+        )
+    return [row for row in results if row is not None]
 
 
 def load_metadata(path: Path | str) -> dict[str, Any]:
