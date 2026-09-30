@@ -179,15 +179,19 @@ becoming an unrenderable string.
 
 ### Duplicate detection
 
-A page is a duplicate when its normalized OCR text is **> 95% similar**
-(`difflib.SequenceMatcher`) to a neighbor **within ±2 pages** in chart order.
+Duplicates are checked **after** the model's verdict, and only between pages the
+model kept as Main — a blank or junk page is never compared. A Main page is a
+duplicate when its normalized OCR text is **≥ 98% similar**
+(`difflib.SequenceMatcher`) to a Main neighbor **within ±2 pages** in chart
+order, or when its text is **wholly contained** in that neighbor's.
 
 | Rule | Behaviour |
 |---|---|
 | Window | Compare only pages 2 before / 2 after (page order) |
-| Threshold | Similarity **≥ 0.95** on whitespace-stripped lowercase text (UI: 100% → Yes, [95%, 100%) → May Be; May Be display confidence = `1 + (sim − 1) × 10`, e.g. 98%→80% / 99%→90% / 95%→50%) |
+| Threshold | Similarity **≥ 0.98** on whitespace-stripped lowercase text (UI: 100% → Yes, [98%, 100%) → May Be; May Be display confidence = `1 + (sim − 1) × 10`, e.g. 98%→80% / 99%→90%) |
+| Containment | The shorter page's normalized text appears whole inside the longer one → duplicate, confidence 1.0 |
 | Who wins | Higher normalized character count stays **main**; on a tie, the **earlier** page |
-| Excluded | Blank pages and texts shorter than 50 normalized characters |
+| Excluded | Blank / junk pages and texts shorter than 300 normalized characters (~50 words) |
 | Cross-pass | Prior-pass `main` pages are neighbors in pass 2 (so HW can match a printed original) |
 
 `duplicate_of_page_id` records the kept original. A demoted prior-main page gets

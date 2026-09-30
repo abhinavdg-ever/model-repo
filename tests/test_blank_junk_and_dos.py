@@ -1,9 +1,10 @@
 """Blank/junk duplicate scoping and DOS date handling.
 
-Duplicate detection uses ±2 neighbor similarity (≥98%), not exact hashes.
-Blank / short pages are excluded from comparison; on a match the higher
+Duplicate detection runs after the model, among Main pages only: ±2 neighbor
+similarity (≥98%) or one page's text wholly contained in the other's.
+Blank / junk / short pages are excluded from comparison; on a match the higher
 character-count page stays the original (earlier page on a tie).
-UI: similarity 100% → Yes; [95%, 100%) → May Be; else No.
+UI: similarity 100% → Yes; [98%, 100%) → May Be; else No.
 """
 from __future__ import annotations
 
@@ -64,7 +65,7 @@ class TestDuplicateScope:
     def test_longer_later_page_wins_as_original(self):
         pages = [page(1, 1), page(2, 2)]
         long = _body(8)
-        # Tiny truncation keeps SequenceMatcher ratio well above 95%.
+        # Tiny truncation keeps SequenceMatcher ratio well above 98%.
         short = long[:-3]
         rows = _classify(pages, {1: short, 2: long}, {1, 2})
         by_id = {r["page_id"]: r for r in rows}
@@ -96,6 +97,33 @@ class TestDuplicateScope:
         for row in rows:
             assert row["flag"] != "duplicate"
             assert row["duplicate_of"] is None
+
+    def test_page_contained_in_a_neighbor_is_duplicate(self):
+        pages = [page(1, 1), page(2, 2)]
+        inner = _body(6)
+        outer = inner + "Addendum with medication reconciliation and labs. " * 12
+        rows = _classify(pages, {1: inner, 2: outer}, {1, 2})
+        by_id = {r["page_id"]: r for r in rows}
+        assert by_id[2]["flag"] == "not_blank_junk"
+        assert by_id[1]["flag"] == "duplicate"
+        assert by_id[1]["duplicate_of"] == 2
+        assert by_id[1]["confidence"] == 1.0
+        assert "contained" in by_id[1]["reason"]
+
+    def test_short_identical_pages_are_not_compared(self):
+        pages = [page(1, 1), page(2, 2)]
+        short = "Office visit note. Assessment and plan follow. " * 2
+        rows = _classify(pages, {1: short, 2: short}, {1, 2})
+        for row in rows:
+            assert row["flag"] != "duplicate"
+
+    def test_page_not_main_in_an_earlier_pass_is_not_compared(self):
+        """A prior-pass blank/junk page is never a duplicate original."""
+        body = _body()
+        pages = [page(1, 1), page(2, 2)]
+        rows = _classify(pages, {1: body, 2: body}, {2}, prior_main_ids=set())
+        assert rows[0]["flag"] != "duplicate"
+        assert rows[0]["duplicate_of"] is None
 
     def test_blank_and_short_pages_are_not_compared(self):
         pages = [page(1, 1), page(2, 2)]

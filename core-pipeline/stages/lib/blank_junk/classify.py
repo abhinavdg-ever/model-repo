@@ -53,7 +53,10 @@ JUNK_CODES = frozenset(
 
 _MIN_FINGERPRINT_CHARS = 50
 # Minimum similarity to flag a neighbor as a duplicate (May Be or Yes).
-DUPLICATE_SIMILARITY_THRESHOLD = 0.95
+DUPLICATE_SIMILARITY_THRESHOLD = 0.98
+# Pages shorter than this (whitespace-stripped characters, ~50 words) are never
+# compared: a short page shares or sits inside too much unrelated text.
+DUPLICATE_MIN_CHARS = 300
 # Exact normalized match → UI "Yes"; [THRESHOLD, 1.0) → "May Be".
 DUPLICATE_YES_THRESHOLD = 1.0
 DUPLICATE_NEIGHBOR_WINDOW = 2
@@ -134,7 +137,17 @@ def duplicate_char_count(text: str) -> int:
 
 def text_is_comparable(text: str) -> bool:
     """True when text is long enough to enter duplicate comparison."""
-    return duplicate_char_count(text) >= _MIN_FINGERPRINT_CHARS
+    return duplicate_char_count(text) >= DUPLICATE_MIN_CHARS
+
+
+def text_is_contained(a: str, b: str) -> bool:
+    """True when the shorter normalized text appears whole inside the longer."""
+    na = normalize_duplicate_text(a)
+    nb = normalize_duplicate_text(b)
+    if not na or not nb:
+        return False
+    short, long = (na, nb) if len(na) <= len(nb) else (nb, na)
+    return short in long
 
 
 def text_similarity(a: str, b: str) -> float:

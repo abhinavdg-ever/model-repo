@@ -13,14 +13,17 @@ Blank/junk uses the TF-IDF model (KEEP / BLANK / JUNK). Regex rules run
 only when the model is missing, errors, or flags the page for review.
 Duplicate detection is unchanged (neighbor similarity, not the model).
 
-Duplicate detection (after blank/junk rules):
+Duplicate detection (after the model, among Main pages only):
 
 * Compare each comparable page only to neighbors **±2** in page order.
-* Match when normalized-text similarity is **≥ 98%** (SequenceMatcher).
-* Store that ratio as ``confidence`` (UI: 100% → Yes, [95%, 100%) → May Be).
+* Match when normalized-text similarity is **≥ 98%** (SequenceMatcher), or
+  when one page's text is wholly contained in the other's.
+* Store that ratio as ``confidence`` (UI: 100% → Yes, [98%, 100%) → May Be);
+  a contained page scores 1.0.
 * On a match, keep the page with the **higher character count** as the
   original; on a tie, keep the **earlier** page. The other is ``duplicate``.
-* Blank pages and texts shorter than 50 normalized chars are never compared.
+* Blank / junk pages and texts shorter than 300 normalized chars are never
+  compared.
 * Prior-pass ``main`` pages are included as neighbors so pass 2 can still
   match a handwritten page to a printed one from pass 1.
 
@@ -73,6 +76,7 @@ from classify import (  # noqa: E402
     classification_confidence,
     duplicate_char_count,
     text_is_comparable,
+    text_is_contained,
     text_similarity,
 )
 from model_bridge import classify_page  # noqa: E402
@@ -205,16 +209,21 @@ def _classify(
     todo: set[int],
     prior_main_ids: Optional[set[int]] = None,
 ) -> list[dict[str, Any]]:
-    """Classify ``todo`` pages; duplicates use ±2 neighbor similarity ≥ 98%.
+    """Classify ``todo`` pages, then look for duplicates among Main pages.
+
+    Duplicates are checked only after the model's verdict, and only between
+    Main pages within ±2 in page order that are at least
+    ``DUPLICATE_MIN_CHARS`` long. A pair matches at ≥ 98% similarity, or when
+    one page's text is wholly contained in the other's (confidence 1.0).
 
     ``prior_main_ids`` are pages already ``not_blank_junk`` from an earlier pass;
     they participate as comparison neighbors (and may be demoted to duplicate
     when a longer later page matches). Similarity is stored as ``confidence``
-    (1.0 → UI Yes; [0.95, 1.0) → May Be).
+    (1.0 → UI Yes; [0.98, 1.0) → May Be).
     """
     prior = set(prior_main_ids or ())
-    # Phase 1 — TF-IDF model (KEEP/BLANK/JUNK). Regex only when the model
-    # is missing, errors, or asks for review.
+    # Phase 1 — the model (KEEP/BLANK/JUNK). Regex only when the model is
+    # missing or errors.
     by_id: dict[int, dict[str, Any]] = {}
     for page in pages:
         page_id = page["id"]
@@ -237,6 +246,7 @@ def _classify(
     # Phase 2 — pairwise ±2 window among comparable pages.
     dup_of: dict[int, int] = {}
     dup_sim: dict[int, float] = {}
+    dup_contained: dict[int, bool] = {}
     n = len(pages)
     for i, page in enumerate(pages):
         pid = page["id"]
@@ -249,9 +259,14 @@ def _classify(
             nid = pages[j]["id"]
             if not _comparable(nid):
                 continue
-            sim = text_similarity(texts.get(pid) or "", texts.get(nid) or "")
-            if sim < DUPLICATE_SIMILARITY_THRESHOLD:
-                continue
+            a_text, b_text = texts.get(pid) or "", texts.get(nid) or ""
+            is_contained = text_is_contained(a_text, b_text)
+            if is_contained:
+                sim = 1.0
+            else:
+                sim = text_similarity(a_text, b_text)
+                if sim < DUPLICATE_SIMILARITY_THRESHOLD:
+                    continue
             orig, dup = _prefer_original(
                 i,
                 pid,
@@ -272,6 +287,7 @@ def _classify(
             if sim >= prev:
                 dup_of[dup] = orig
                 dup_sim[dup] = sim
+                dup_contained[dup] = is_contained
 
     # Apply duplicate marks (including demoting prior-main pages not in todo).
     page_by_id = {p["id"]: p for p in pages}
@@ -280,10 +296,13 @@ def _classify(
         if dup_id == orig_id:
             continue
         sim = dup_sim.get(dup_id, DUPLICATE_SIMILARITY_THRESHOLD)
+        if dup_contained.get(dup_id):
+            match = "text contained in the original"
+        else:
+            match = f"similarity={sim:.4f} ≥{DUPLICATE_SIMILARITY_THRESHOLD:.0%}"
         reason = (
             f"duplicate_of_page_id:{orig_id} "
-            f"(similarity={sim:.4f} ≥{DUPLICATE_SIMILARITY_THRESHOLD:.0%} within ±"
-            f"{DUPLICATE_NEIGHBOR_WINDOW})"
+            f"({match} within ±{DUPLICATE_NEIGHBOR_WINDOW})"
         )
         page = page_by_id[dup_id]
         by_id[dup_id] = _row_for(
