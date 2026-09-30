@@ -84,7 +84,7 @@ COMMENT ON COLUMN page_list.image_path IS
 
 INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1) VALUES
     ('section_headers',  1, 55, 'Section Header Match',          TRUE),
-    ('page_subtype',     1, 85, 'Codeable / Non-Codeable (TF)',  TRUE),
+    ('page_subtype',     1, 85, 'Codeable / Non Codeable (TF)', TRUE),
     ('encounter_type',   1, 90, 'Encounter Type (TF)',           TRUE),
     ('page_sequencing',  1, 95, 'Page Sequencing',               TRUE)
 ON CONFLICT (stage_name, pass_no) DO UPDATE SET

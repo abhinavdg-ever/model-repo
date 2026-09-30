@@ -106,9 +106,26 @@ function dateMark(
   return bit(gt, shared > 0 ? "partial" : "mismatch");
 }
 
-/** The client sheet spells it "Codable"; show "Codeable" like the pipeline. */
-function codeableSpelling(value: string | null | undefined): string {
-  return text(value).replace(/codable/gi, (m) => (m[0] === "C" ? "Codeable" : "codeable"));
+/**
+ * Camel case has no space, only a capital at each word: "ProgressNotes",
+ * "NonCodeable". Show those as "Progress Notes", "Non Codeable". "Codable"
+ * displays as "Codeable".
+ */
+export function displayWords(value: string | null | undefined): string {
+  return text(value)
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      const spelled = word.replace(/codable/gi, "codeable");
+      return spelled.charAt(0).toUpperCase() + spelled.slice(1).toLowerCase();
+    })
+    .join(" ");
+}
+
+export function displayCodeable(value: string | null | undefined): string {
+  return displayWords(value);
 }
 
 function codeableMark(
@@ -117,10 +134,10 @@ function codeableMark(
   known: boolean,
 ): GtBit[] {
   if (missing(gt)) return [];
-  const shown = codeableSpelling(gt);
+  const shown = displayCodeable(gt);
   if (!known || missing(pipeline)) return bit(shown, "unknown");
   const leftNon = fold(shown).startsWith("non");
-  const rightNon = fold(codeableSpelling(pipeline)).startsWith("non");
+  const rightNon = fold(displayCodeable(pipeline)).startsWith("non");
   return bit(shown, leftNon === rightNon ? "match" : "mismatch");
 }
 
@@ -167,24 +184,25 @@ function pageTypeMark(
   known: boolean,
 ): GtBit[] {
   if (missing(gt)) return [];
-  if (!known) return bit(gt, "unknown");
-  const actual = fold(pipeline);
+  const shown = displayWords(gt);
+  if (!known) return bit(shown, "unknown");
+  const actual = fold(displayWords(pipeline));
   if (
     !actual ||
     actual === "yet to process" ||
     actual === "skipped" ||
     actual === "not found"
   ) {
-    return bit(gt, "unknown");
+    return bit(shown, "unknown");
   }
-  const expected = fold(gt);
+  const expected = fold(shown);
   if (expected === "accept") {
     const junk = JUNK_PAGE.some((word) => actual.includes(word));
-    return bit(gt, junk ? "mismatch" : "match");
+    return bit(shown, junk ? "mismatch" : "match");
   }
   const same =
     expected === actual || actual.includes(expected) || expected.includes(actual);
-  return bit(gt, same ? "match" : "mismatch");
+  return bit(shown, same ? "match" : "mismatch");
 }
 
 function rotationMark(

@@ -161,7 +161,7 @@ STAGE_LABELS = {
     "section_headers": "Section Headers",
     "member_verify": "Member Verify",
     "dos_extract": "Date of Service",
-    "page_subtype": "Codeable / Non-Codeable",
+    "page_subtype": "Codeable / Non Codeable",
     "encounter_type": "Encounter Type",
     "page_sequencing": "Page Sequencing",
     "download_blob": "Download",

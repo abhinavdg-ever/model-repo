@@ -118,7 +118,7 @@ INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1) VALUES
     ('blank_junk',       2, 60, 'Blank/Junk/Duplicate — pass 2',  TRUE),
     ('member_verify',    1, 70, 'Member Extraction + Verify',    TRUE),
     ('dos_extract',      1, 80, 'Date-of-Service Extraction',    TRUE),
-    ('page_subtype',     1, 85, 'Codeable / Non-Codeable (TF)',  TRUE),
+    ('page_subtype',     1, 85, 'Codeable / Non Codeable (TF)', TRUE),
     ('encounter_type',   1, 90, 'Encounter Type (TF)',           TRUE),
     ('page_sequencing',  1, 95, 'Page Sequencing',               TRUE);
 -- rejection_logic (seq 120, is_phase1 = FALSE) remains in v2.sql.

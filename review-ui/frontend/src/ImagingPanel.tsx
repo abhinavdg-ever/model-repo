@@ -11,7 +11,7 @@ import {
   duplicateDisplayConfidence,
   formatDuplicateLabel,
 } from "./duplicateLabel";
-import { groundTruthBits, type GtBit } from "./groundTruth";
+import { displayCodeable, groundTruthBits, type GtBit } from "./groundTruth";
 
 const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
   member: false,
@@ -224,7 +224,7 @@ function fmtCodeable(
 ): string {
   if (!processed) return YET_TO_PROCESS;
   const label = value != null && String(value).trim() !== "" ? String(value).trim() : "";
-  if (label) return label;
+  if (label) return displayCodeable(label);
   const pt = pageType != null ? String(pageType).trim() : "";
   if (!pt || pt === "Not Available") return "Not Sure";
   return NOT_FOUND;
@@ -511,7 +511,7 @@ function PageDetails({
             truth: bits.pageType,
           },
           {
-            label: "Is Codeable or Non Codeable",
+            label: "Is Codeable Or Non Codeable",
             value: fmtCodeable(page.isCodeable, page.pageType, codeableKnown),
             confidence: fmtConfidence(null, Boolean(sections.codeable)),
             truth: bits.codeable,
@@ -656,7 +656,7 @@ function DocSummary({
               <th scope="col">Is Blank or Junk?</th>
               <th scope="col">Duplicate</th>
               <th scope="col">Page Type</th>
-              <th scope="col">Codeable</th>
+              <th scope="col">Codeable / Non Codeable</th>
               <th scope="col">Current Sequence</th>
               <th scope="col">Actual Sequence</th>
               {showConfidence ? (
