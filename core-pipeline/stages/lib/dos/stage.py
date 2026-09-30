@@ -186,13 +186,15 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
 
         by_name = {p["page_name"]: p for p in ctx.pages}
         csv_rows: list[dict[str, Any]] = []
+        written: set[int] = set()
 
         with connect() as conn:
             for hit in hits:
                 page = by_name.get(str(hit.get("page_name") or ""))
-                if page is None or page["id"] not in eligible:
+                if page is None or page["id"] not in eligible or page["id"] in written:
                     continue
                 page_id = page["id"]
+                written.add(page_id)
                 date_rows = _date_rows(hit)
                 upsert_dos(
                     conn,
@@ -235,7 +237,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             # Eligible pages with no DOS hit still finish the stage (empty DOS).
             for page in ctx.pages:
                 page_id = page["id"]
-                if page_id not in ctx.todo:
+                if page_id not in eligible or page_id in written:
                     continue
                 upsert_dos(
                     conn,

@@ -366,6 +366,55 @@ class TestDosDates:
         assert _split_dates(" 01-01-2024 ,02-02-2024 ") == ["01-01-2024", "02-02-2024"]
 
 
+class TestDosStageWritesEachPageOnce:
+    def test_found_dates_are_not_overwritten_and_pages_count_once(self, monkeypatch, tmp_path):
+        from contextlib import contextmanager, nullcontext
+        from types import SimpleNamespace
+
+        import stages.lib.dos.stage as dos_stage
+
+        pages = [page(1, 1), page(2, 2), page(3, 3)]
+        ctx = SimpleNamespace(chart_name="c", pages=pages, todo={1, 2, 3}, done=0, skipped=0)
+        written: dict[int, list] = {}
+        completed: list[int] = []
+
+        @contextmanager
+        def fake_stage_run(*_a, **_k):
+            yield ctx
+
+        def fake_upsert(_conn, *, page_id, date_of_service_from, **_k):
+            written.setdefault(page_id, []).append(date_of_service_from)
+
+        def fake_mark_completed(_conn, _ctx, page_id):
+            completed.append(page_id)
+            _ctx.done += 1
+
+        monkeypatch.setattr(dos_stage, "_llm_client", lambda: None)
+        monkeypatch.setattr(dos_stage, "stage_run", fake_stage_run)
+        monkeypatch.setattr(dos_stage, "connect", lambda: nullcontext(None))
+        monkeypatch.setattr(dos_stage, "get_blank_junk_flags", lambda *a, **k: {})
+        monkeypatch.setattr(dos_stage, "mark_skipped", lambda *a, **k: None)
+        monkeypatch.setattr(dos_stage, "_combined_text", lambda *a, **k: "")
+        monkeypatch.setattr(
+            dos_stage,
+            "detect_dos_per_page",
+            lambda *a, **k: [
+                {"page_name": "1.jpg", "dos_from_iso": "2024-03-14"},
+                {"page_name": "2.jpg", "dos_from_iso": "2024-04-01"},
+            ],
+        )
+        monkeypatch.setattr(dos_stage, "upsert_dos", fake_upsert)
+        monkeypatch.setattr(dos_stage, "mark_completed", fake_mark_completed)
+        monkeypatch.setattr(dos_stage, "imaging_csv", lambda *a: tmp_path / "dos.csv")
+        monkeypatch.setattr(dos_stage, "write_csv", lambda path, *a: path)
+
+        dos_stage.run(7)
+
+        assert written == {1: ["2024-03-14"], 2: ["2024-04-01"], 3: [None]}
+        assert sorted(completed) == [1, 2, 3]
+        assert ctx.done == 3
+
+
 class TestDosDriverIsTheV1One:
     def test_document_level_carry_forward_happens(self):
         """A page with no DOS of its own inherits the previous encounter's —
