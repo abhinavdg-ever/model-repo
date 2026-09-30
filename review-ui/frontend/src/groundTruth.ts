@@ -22,6 +22,7 @@ export type PageGroundTruth = {
   isInvoice?: string | null;
   pageSequence?: string | null;
   rotation?: string | null;
+  isVisible?: string | null;
 };
 
 export type GtBit = { label: string; mark: MatchMark };
@@ -105,18 +106,9 @@ function dateMark(
   return bit(gt, shared > 0 ? "partial" : "mismatch");
 }
 
-function textMark(
-  gt: string | null | undefined,
-  pipeline: string | null | undefined,
-  known: boolean,
-): GtBit[] {
-  if (missing(gt)) return [];
-  if (!known || missing(pipeline)) return bit(gt, "unknown");
-  const left = fold(gt);
-  const right = fold(pipeline);
-  if (left === right) return bit(gt, "match");
-  if (left.includes(right) || right.includes(left)) return bit(gt, "partial");
-  return bit(gt, "mismatch");
+/** The client sheet spells it "Codable"; show "Codeable" like the pipeline. */
+function codeableSpelling(value: string | null | undefined): string {
+  return text(value).replace(/codable/gi, (m) => (m[0] === "C" ? "Codeable" : "codeable"));
 }
 
 function codeableMark(
@@ -125,12 +117,37 @@ function codeableMark(
   known: boolean,
 ): GtBit[] {
   if (missing(gt)) return [];
-  if (!known || missing(pipeline)) return bit(gt, "unknown");
-  const left = fold(gt).replace("codable", "codeable");
-  const right = fold(pipeline).replace("codable", "codeable");
-  const leftNon = left.startsWith("non");
-  const rightNon = right.startsWith("non");
-  return bit(gt, leftNon === rightNon ? "match" : "mismatch");
+  const shown = codeableSpelling(gt);
+  if (!known || missing(pipeline)) return bit(shown, "unknown");
+  const leftNon = fold(shown).startsWith("non");
+  const rightNon = fold(codeableSpelling(pipeline)).startsWith("non");
+  return bit(shown, leftNon === rightNon ? "match" : "mismatch");
+}
+
+/** Blank Page / Junk Page / Is Invoice collapsed into the pipeline's own format. */
+function blankJunkTruth(gt: PageGroundTruth): string | null {
+  const blank = yesNo(gt.blankPage);
+  const junk = yesNo(gt.junkPage);
+  const invoice = yesNo(gt.isInvoice);
+  if (blank === "yes") return "Yes (Blank)";
+  if (junk === "yes" || invoice === "yes") return "Yes (Junk)";
+  if (blank === "no" || junk === "no" || invoice === "no") return "No";
+  return null;
+}
+
+function blankJunkMark(
+  gt: PageGroundTruth,
+  pipeline: string | null | undefined,
+  known: boolean,
+): GtBit[] {
+  const expected = blankJunkTruth(gt);
+  if (!expected) return [];
+  if (!known || missing(pipeline)) return bit(expected, "unknown");
+  const left = fold(expected);
+  const right = fold(pipeline);
+  if (left === right) return bit(expected, "match");
+  if (left.startsWith("yes") && right.startsWith("yes")) return bit(expected, "partial");
+  return bit(expected, "mismatch");
 }
 
 const JUNK_PAGE = [
@@ -170,43 +187,6 @@ function pageTypeMark(
   return bit(gt, same ? "match" : "mismatch");
 }
 
-function flagMark(
-  gt: string | null | undefined,
-  label: string,
-  pipeline: string | null | undefined,
-  known: boolean,
-): GtBit[] {
-  const side = yesNo(gt);
-  if (!side && missing(gt)) return [];
-  const shown = `${label} ${text(gt)}`;
-  if (!side || !known || missing(pipeline)) return [{ label: shown, mark: "unknown" }];
-  const hit = fold(pipeline).includes(label);
-  const agree = side === "yes" ? hit : !hit;
-  return [{ label: shown, mark: agree ? "match" : "mismatch" }];
-}
-
-function invoiceMark(
-  gt: string | null | undefined,
-  pageType: string | null | undefined,
-  known: boolean,
-): GtBit[] {
-  const side = yesNo(gt);
-  if (!side) return [];
-  if (!known) return bit(`invoice ${text(gt)}`, "unknown");
-  const actual = fold(pageType);
-  if (
-    !actual ||
-    actual === "yet to process" ||
-    actual === "skipped" ||
-    actual === "not found"
-  ) {
-    return bit(`invoice ${text(gt)}`, "unknown");
-  }
-  const invoice = actual.includes("invoice");
-  const agree = side === "yes" ? invoice : !invoice;
-  return bit(`invoice ${text(gt)}`, agree ? "match" : "mismatch");
-}
-
 function rotationMark(
   gt: string | null | undefined,
   angle: number | null | undefined,
@@ -236,11 +216,13 @@ function sequenceMark(
 export type GroundTruthBits = {
   memberName: GtBit[];
   memberDob: GtBit[];
+  /** Client "Is Visible" — shown beside Quality, never scored (quality is a placeholder). */
+  quality: GtBit[];
   rotation: GtBit[];
-  encounter: GtBit[];
   dosFrom: GtBit[];
   dosTo: GtBit[];
   blankJunk: GtBit[];
+  /** Compared with the client's Encounter Type column, which holds page types. */
   pageType: GtBit[];
   codeable: GtBit[];
   pageSequence: GtBit[];
@@ -253,8 +235,6 @@ export function groundTruthBits(input: {
   memberKnown: boolean;
   orientationAngle: number | null | undefined;
   rotationKnown: boolean;
-  encounterType: string | null | undefined;
-  encounterKnown: boolean;
   dosFrom: string | null | undefined;
   dosTo: string | null | undefined;
   dosKnown: boolean;
@@ -271,8 +251,8 @@ export function groundTruthBits(input: {
   const empty: GroundTruthBits = {
     memberName: [],
     memberDob: [],
+    quality: [],
     rotation: [],
-    encounter: [],
     dosFrom: [],
     dosTo: [],
     blankJunk: [],
@@ -284,16 +264,12 @@ export function groundTruthBits(input: {
   return {
     memberName: nameMark(gt.memberName, input.memberName, input.memberKnown),
     memberDob: dateMark(gt.memberDob, input.memberDob, input.memberKnown),
+    quality: missing(gt.isVisible) ? [] : bit(gt.isVisible, "unknown"),
     rotation: rotationMark(gt.rotation, input.orientationAngle, input.rotationKnown),
-    encounter: textMark(gt.encounterType, input.encounterType, input.encounterKnown),
     dosFrom: dateMark(gt.dosFrom, input.dosFrom, input.dosKnown),
     dosTo: dateMark(gt.dosTo, input.dosTo, input.dosKnown),
-    blankJunk: [
-      ...flagMark(gt.blankPage, "blank", input.blankOrJunk, input.junkKnown),
-      ...flagMark(gt.junkPage, "junk", input.blankOrJunk, input.junkKnown),
-      ...invoiceMark(gt.isInvoice, input.pageType, input.pageTypeKnown),
-    ],
-    pageType: pageTypeMark(gt.pageType, input.pageType, input.pageTypeKnown),
+    blankJunk: blankJunkMark(gt, input.blankOrJunk, input.junkKnown),
+    pageType: pageTypeMark(gt.encounterType, input.pageType, input.pageTypeKnown),
     codeable: codeableMark(gt.codeable, input.isCodeable, input.codeableKnown),
     pageSequence: sequenceMark(gt.pageSequence, input.actualSequence, input.sequenceKnown),
   };

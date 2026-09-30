@@ -37,6 +37,7 @@ _HEADER = {
     "junkpage": "junk_page",
     "isinvoicepage": "is_invoice",
     "rotation": "rotation",
+    "isvisible": "is_visible",
     "renderingprovider": "rendering_provider",
     "providerspecialty": "provider_specialty",
     "providersignature": "provider_signature",
@@ -56,11 +57,15 @@ _TEXT_FIELDS = (
     "is_invoice",
     "page_sequence",
     "rotation",
+    "is_visible",
     "rendering_provider",
     "provider_specialty",
     "provider_signature",
     "deleted_level",
 )
+
+# Databases created before is_visible existed gain the column on first load.
+_ADD_IS_VISIBLE = "ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS is_visible TEXT"
 
 _UPSERT = """
 INSERT INTO page_ground_truth (
@@ -68,14 +73,14 @@ INSERT INTO page_ground_truth (
     member_name, member_dob, dos_from, dos_to,
     encounter_type, page_type, codeable,
     blank_page, junk_page, is_invoice, page_sequence,
-    rotation, rendering_provider, provider_specialty,
+    rotation, is_visible, rendering_provider, provider_specialty,
     provider_signature, deleted_level, source_path
 ) VALUES (
     %(chart_name)s, %(page_number)s, %(source_page_id)s,
     %(member_name)s, %(member_dob)s, %(dos_from)s, %(dos_to)s,
     %(encounter_type)s, %(page_type)s, %(codeable)s,
     %(blank_page)s, %(junk_page)s, %(is_invoice)s, %(page_sequence)s,
-    %(rotation)s, %(rendering_provider)s, %(provider_specialty)s,
+    %(rotation)s, %(is_visible)s, %(rendering_provider)s, %(provider_specialty)s,
     %(provider_signature)s, %(deleted_level)s, %(source_path)s
 )
 ON CONFLICT (chart_name, page_number) DO UPDATE SET
@@ -92,6 +97,7 @@ ON CONFLICT (chart_name, page_number) DO UPDATE SET
     is_invoice = EXCLUDED.is_invoice,
     page_sequence = EXCLUDED.page_sequence,
     rotation = EXCLUDED.rotation,
+    is_visible = EXCLUDED.is_visible,
     rendering_provider = EXCLUDED.rendering_provider,
     provider_specialty = EXCLUDED.provider_specialty,
     provider_signature = EXCLUDED.provider_signature,
@@ -234,6 +240,7 @@ def run_load(local_path: str) -> dict[str, Any]:
     if writable:
         with connect() as conn:
             with conn.cursor() as cur:
+                cur.execute(_ADD_IS_VISIBLE)
                 cur.executemany(_UPSERT, writable)
 
     return {

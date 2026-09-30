@@ -15,8 +15,11 @@ _COLUMNS = """
     page_number, source_page_id,
     member_name, member_dob, dos_from, dos_to,
     encounter_type, page_type, codeable,
-    blank_page, junk_page, is_invoice, page_sequence, rotation
+    blank_page, junk_page, is_invoice, page_sequence, rotation,
+    to_jsonb(page_ground_truth) ->> 'is_visible'
 """
+# is_visible is read through to_jsonb so a database created before the column
+# existed returns NULL instead of failing the whole lookup.
 
 
 def charts_with_ground_truth(database_url: str | None, db_schema: str = "public") -> set[str]:
@@ -81,6 +84,7 @@ def ground_truth_by_page(
             isInvoice=row[11],
             pageSequence=row[12],
             rotation=row[13],
+            isVisible=row[14],
         )
     return out
 

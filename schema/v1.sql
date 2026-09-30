@@ -312,6 +312,7 @@ CREATE TABLE page_ground_truth (
     is_invoice          TEXT,
     page_sequence       TEXT,
     rotation            TEXT,
+    is_visible          TEXT,
     rendering_provider  TEXT,
     provider_specialty  TEXT,
     provider_signature  TEXT,

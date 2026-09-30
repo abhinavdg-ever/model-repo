@@ -127,6 +127,7 @@ export type ImagingPageResult = {
     isInvoice?: string | null;
     pageSequence?: string | null;
     rotation?: string | null;
+    isVisible?: string | null;
   } | null;
 };
 

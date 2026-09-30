@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import type {
   ImagingDocumentResponse,
   ImagingManifestDetails,
@@ -242,36 +242,63 @@ function fmtPagesMatched(
   return NOT_FOUND;
 }
 
-function DetailSection({
+type CompareRow = {
+  label: string;
+  value: string;
+  confidence: string;
+  /** Ground-truth comparison; omit for fields the client sheet has no column for. */
+  truth?: GtBit[];
+};
+
+const NOT_AVAILABLE_TEXT = new Set([NOT_FOUND, YET_TO_PROCESS, SKIPPED, "NA", "Not Available"]);
+
+function naClass(text: string): string {
+  return NOT_AVAILABLE_TEXT.has(text) ? "cmp-na" : "";
+}
+
+function CompareSection({
   title,
   rows,
-  showConfidence = false,
+  showTruth,
 }: {
   title: string;
-  rows: { label: string; value: ReactNode; confidence?: string }[];
-  showConfidence?: boolean;
+  rows: CompareRow[];
+  showTruth: boolean;
 }) {
   return (
     <section className="imaging-section">
       <h3 className="imaging-section-title">{title}</h3>
-      <table className="imaging-detail-table">
+      <table className={`imaging-detail-table${showTruth ? " imaging-compare-table" : ""}`}>
         <thead>
           <tr>
             <th scope="col">Field</th>
             <th scope="col">Value</th>
-            {showConfidence ? <th scope="col">Confidence</th> : null}
+            <th scope="col">Confidence</th>
+            {showTruth ? <th scope="col">Ground Truth</th> : null}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.label}>
-              <th scope="row">{row.label}</th>
-              <td>{row.value}</td>
-              {showConfidence ? (
-                <td>{row.confidence ?? "Not Found"}</td>
-              ) : null}
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const truth = showTruth ? row.truth?.[0] : undefined;
+            const scored = truth && truth.mark !== "unknown";
+            const valueClass = scored ? `cmp-${truth.mark}` : naClass(row.value);
+            return (
+              <tr key={row.label}>
+                <th scope="row">{row.label}</th>
+                <td className={valueClass} title={scored ? markTitle(truth.mark) : undefined}>
+                  {row.value}
+                </td>
+                <td className={naClass(row.confidence)}>{row.confidence}</td>
+                {!showTruth ? null : truth ? (
+                  <td className={scored ? `cmp-${truth.mark}` : ""} title={markTitle(truth.mark)}>
+                    {truth.label}
+                  </td>
+                ) : (
+                  <td className="cmp-na cmp-na-cell">—</td>
+                )}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </section>
@@ -347,10 +374,6 @@ function pageBits(page: ImagingPageResult, sections: ImagingSectionsProcessed) {
     memberKnown: sections.member,
     orientationAngle: page.orientationAngle,
     rotationKnown: sections.rotation,
-    encounterType: page.encounterType,
-    encounterKnown:
-      Boolean(sections.encounter) ||
-      (page.encounterType != null && String(page.encounterType).trim() !== ""),
     dosFrom: page.dosFrom,
     dosTo: page.dosTo,
     dosKnown: sections.dos,
@@ -370,89 +393,72 @@ function pageBits(page: ImagingPageResult, sections: ImagingSectionsProcessed) {
 function PageDetails({
   page,
   sections,
+  showTruth,
 }: {
   page: ImagingPageResult;
   sections: ImagingSectionsProcessed;
+  /** True when the chart has client ground truth loaded. */
+  showTruth: boolean;
 }) {
   const skipped = isBlankJunkPage(page);
   const skip = skipped ? { skipped: true } : undefined;
   // Blank/junk pages still ran junk classification — don't mark those Skipped.
   const memberConf = fmtConfidence(page.memberConfidence, sections.member, skip);
   const bits = pageBits(page, sections);
+  const encounterKnown =
+    Boolean(sections.encounter) ||
+    (page.encounterType != null && String(page.encounterType).trim() !== "");
+  const pageTypeKnown = Boolean(sections.junk || sections.codeable);
+  const codeableKnown =
+    Boolean(sections.codeable) ||
+    (page.isCodeable != null && String(page.isCodeable).trim() !== "");
+  const qualityKnown = sections.quality ?? sections.hw;
 
   return (
     <div className="imaging-page-details">
-      <section className="imaging-section">
-        <h3 className="imaging-section-title">Member Extraction</h3>
-        <table className="imaging-detail-table">
-          <thead>
-            <tr>
-              <th scope="col">Field</th>
-              <th scope="col">Value</th>
-              <th scope="col">Confidence</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <th scope="row">Extracted Name</th>
-              <td>
-                <GtCell
-                  text={fmt(page.memberName, sections.member, skip)}
-                  bits={bits.memberName}
-                />
-              </td>
-              <td>{memberConf}</td>
-            </tr>
-            <tr>
-              <th scope="row">Extracted DOB</th>
-              <td>
-                <GtCell
-                  text={fmt(page.memberDob, sections.member, skip)}
-                  bits={bits.memberDob}
-                />
-              </td>
-              <td>{memberConf}</td>
-            </tr>
-            <tr>
-              <th scope="row">Member ID</th>
-              <td>{fmt(page.memberId, sections.member, skip)}</td>
-              <td>{memberConf}</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-      <DetailSection
+      <CompareSection
+        showTruth={showTruth}
+        title="Member Extraction"
+        rows={[
+          {
+            label: "Extracted Name",
+            value: fmt(page.memberName, sections.member, skip),
+            confidence: memberConf,
+            truth: bits.memberName,
+          },
+          {
+            label: "Extracted DOB",
+            value: fmt(page.memberDob, sections.member, skip),
+            confidence: memberConf,
+            truth: bits.memberDob,
+          },
+          {
+            label: "Member ID",
+            value: fmt(page.memberId, sections.member, skip),
+            confidence: memberConf,
+          },
+        ]}
+      />
+      <CompareSection
+        showTruth={showTruth}
         title="Page Quality & Orientation"
-        showConfidence
         rows={[
           {
             label: "Printed / Handwritten",
             value: fmtHandwriting(page.handwrittenOrPrinted, sections.hw),
-            confidence: fmtConfidence(
-              page.handwrittenOrPrintedConfidence ?? null,
-              sections.hw,
-            ),
+            confidence: fmtConfidence(page.handwrittenOrPrintedConfidence ?? null, sections.hw),
           },
           {
             label: "Quality",
-            value: fmtQualityTag(
-              page.pageQualityTag,
-              sections.quality ?? sections.hw,
-            ),
-            confidence: fmtConfidence(
-              page.pageQualityConfidence,
-              sections.quality ?? sections.hw,
-            ),
+            value: fmtQualityTag(page.pageQualityTag, qualityKnown),
+            confidence: fmtConfidence(page.pageQualityConfidence, qualityKnown),
+            truth: bits.quality,
           },
           {
             label: "Orientation Angle (Page)",
-            value: (
-              <GtCell
-                text={fmtDegrees(page.orientationAngle, sections.rotation)}
-                bits={bits.rotation}
-              />
-            ),
+            value: fmtDegrees(page.orientationAngle, sections.rotation),
             confidence: fmtConfidence(null, sections.rotation),
+            truth: bits.rotation,
           },
           {
             label: "Tilt Angle (Text)",
@@ -466,102 +472,58 @@ function PageDetails({
           },
         ]}
       />
-      <DetailSection
+      <CompareSection
+        showTruth={showTruth}
         title="Encounter Details"
-        showConfidence
         rows={[
           {
             label: "Encounter Type",
-            value: (
-              <GtCell
-                text={fmt(
-                  page.encounterType,
-                  Boolean(sections.encounter) ||
-                    (page.encounterType != null &&
-                      String(page.encounterType).trim() !== ""),
-                  skip,
-                )}
-                bits={bits.encounter}
-              />
-            ),
+            value: fmt(page.encounterType, encounterKnown, skip),
             confidence: fmtConfidence(null, Boolean(sections.encounter), skip),
           },
           {
             label: "DOS From",
-            value: (
-              <GtCell text={fmt(page.dosFrom, sections.dos, skip)} bits={bits.dosFrom} />
-            ),
+            value: fmt(page.dosFrom, sections.dos, skip),
             confidence: fmtConfidence(page.dosConfidence, sections.dos, skip),
+            truth: bits.dosFrom,
           },
           {
             label: "DOS To",
-            value: (
-              <GtCell text={fmt(page.dosTo, sections.dos, skip)} bits={bits.dosTo} />
-            ),
+            value: fmt(page.dosTo, sections.dos, skip),
             confidence: fmtConfidence(page.dosConfidence, sections.dos, skip),
+            truth: bits.dosTo,
           },
         ]}
       />
-      <DetailSection
+      <CompareSection
+        showTruth={showTruth}
         title="Page Classification"
-        showConfidence
         rows={[
           {
             label: "Is Blank or Junk?",
-            value: (
-              <GtCell
-                text={fmtBlankOrJunk(page.blankOrJunk, sections.junk)}
-                bits={bits.blankJunk}
-              />
-            ),
+            value: fmtBlankOrJunk(page.blankOrJunk, sections.junk),
             confidence: fmtConfidence(page.pageTypeConfidence, sections.junk),
+            truth: bits.blankJunk,
           },
           {
             label: "Is Duplicate",
-            value: fmtDuplicate(
-              page.isDuplicate,
-              page.pageTypeConfidence,
-              sections.junk,
-            ),
+            value: fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk),
             confidence: fmtConfidence(
-              duplicateDisplayConfidence(
-                page.isDuplicate,
-                page.pageTypeConfidence,
-              ),
+              duplicateDisplayConfidence(page.isDuplicate, page.pageTypeConfidence),
               sections.junk,
             ),
           },
           {
             label: "Page Type",
-            value: (
-              <GtCell
-                text={fmtPageType(
-                  page.pageType,
-                  Boolean(sections.junk || sections.codeable),
-                )}
-                bits={bits.pageType}
-              />
-            ),
-            confidence: fmtConfidence(
-              page.pageTypeConfidence,
-              Boolean(sections.junk || sections.codeable),
-            ),
+            value: fmtPageType(page.pageType, pageTypeKnown),
+            confidence: fmtConfidence(page.pageTypeConfidence, pageTypeKnown),
+            truth: bits.pageType,
           },
           {
             label: "Is Codeable or Non Codeable",
-            value: (
-              <GtCell
-                text={fmtCodeable(
-                  page.isCodeable,
-                  page.pageType,
-                  page.isCodeable != null && String(page.isCodeable).trim() !== ""
-                    ? true
-                    : Boolean(sections.codeable),
-                )}
-                bits={bits.codeable}
-              />
-            ),
+            value: fmtCodeable(page.isCodeable, page.pageType, codeableKnown),
             confidence: fmtConfidence(null, Boolean(sections.codeable)),
+            truth: bits.codeable,
           },
         ]}
       />
@@ -934,7 +896,11 @@ export default function ImagingPanel({
   return (
     <div className="imaging-panel-stack">
       <ManifestDetails manifest={manifest} />
-      <PageDetails page={currentPage} sections={sections} />
+      <PageDetails
+        page={currentPage}
+        sections={sections}
+        showTruth={document.pages.some((p) => p.groundTruth != null)}
+      />
     </div>
   );
 }

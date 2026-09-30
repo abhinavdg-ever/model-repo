@@ -117,6 +117,7 @@ class PageGroundTruth(BaseModel):
     isInvoice: str | None = None
     pageSequence: str | None = None
     rotation: str | None = None
+    isVisible: str | None = None
 
 
 class ImagingPageResult(BaseModel):

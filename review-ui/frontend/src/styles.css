@@ -1801,6 +1801,36 @@ input {
   width: 20%;
 }
 
+.imaging-detail-table.imaging-compare-table thead th:nth-child(1),
+.imaging-detail-table.imaging-compare-table tbody th {
+  width: 30%;
+}
+
+.imaging-detail-table.imaging-compare-table thead th:nth-child(2),
+.imaging-detail-table.imaging-compare-table tbody td:nth-child(2) {
+  width: 28%;
+}
+
+.imaging-detail-table.imaging-compare-table thead th:nth-child(3),
+.imaging-detail-table.imaging-compare-table tbody td:nth-child(3) {
+  width: 16%;
+}
+
+.imaging-detail-table.imaging-compare-table thead th:nth-child(4),
+.imaging-detail-table.imaging-compare-table tbody td:nth-child(4) {
+  width: 26%;
+}
+
+.imaging-compare-table td {
+  overflow-wrap: anywhere;
+}
+
+.cmp-match { color: var(--status-success-fg); font-weight: 600; }
+.cmp-partial { color: var(--status-warning-fg); font-weight: 600; }
+.cmp-mismatch { color: #a33b32; font-weight: 600; }
+.cmp-na { color: var(--neutral-400); }
+.cmp-na-cell { background: var(--neutral-50); }
+
 .imaging-manifest {
   color: var(--muted);
 }
