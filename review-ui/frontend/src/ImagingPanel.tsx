@@ -275,13 +275,10 @@ function CompareSection({
           {rows.map((row) => {
             const truth = showTruth ? row.truth?.[0] : undefined;
             const scored = truth && truth.mark !== "unknown";
-            const valueClass = scored ? `cmp-${truth.mark}` : undefined;
             return (
               <tr key={row.label}>
                 <th scope="row">{row.label}</th>
-                <td className={valueClass} title={scored ? markTitle(truth.mark) : undefined}>
-                  {row.value}
-                </td>
+                <td>{row.value}</td>
                 <td>{row.confidence}</td>
                 {!showTruth ? null : truth ? (
                   <td className={scored ? `cmp-${truth.mark}` : ""} title={markTitle(truth.mark)}>
