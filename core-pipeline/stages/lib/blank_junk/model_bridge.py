@@ -7,15 +7,9 @@ while loading. Weights are the directory in ``BLANK_JUNK_MODEL_DIR``
 
 Who decides what:
 
-* **Blank / junk / keep** — the model. When it is missing, fails, or marks
-  the page for review, the regex rules in ``classify.classify_text`` decide,
-  and the reason is stamped ``regex_fallback:<why>`` so a degraded run is
-  visible in ``blank_junk_classification.reason``.
-* **Which junk** (Cover Page, Invoice, Instructions, …) — after the model says
-  JUNK, the regex classifier names the subtype. The model's own audit tags
-  only cover a few junk types, so without this Cover Page and Instructions
-  would never appear. If the regex finds no junk subtype, the model's audit
-  tag is mapped instead (generic → Others).
+* **Blank / junk / keep and the junk subtype** — the model. Regex runs only
+  when the model file is missing or prediction raises, and that reason is
+  stamped ``regex_fallback:<why>``.
 """
 from __future__ import annotations
 
@@ -36,7 +30,6 @@ from classify import (
     CODE_MAIN,
     CODE_OTHERS,
     CODE_RECORD_REQUEST,
-    JUNK_CODES,
     classify_text,
 )
 
@@ -75,8 +68,7 @@ def _bert_files_present() -> bool:
 def _bert_runtime_installed() -> bool:
     return find_spec("torch") is not None and find_spec("transformers") is not None
 
-# Model audit tags → schema junk_subtype codes, used only when the regex
-# classifier finds no junk subtype of its own.
+# Model fine labels → schema junk_subtype. The model's label is the subtype.
 _AUDIT_CODE = {
     "JUNK_COVER_REQUEST": CODE_RECORD_REQUEST,
     "JUNK_FAX_TRANSMISSION": CODE_LETTER_FAX,
@@ -177,16 +169,15 @@ def _load_service() -> Any:
             routing = cfg.get("routing") or {}
             version = str(cfg.get("model_version") or "bjc-ocr")
             model = None
-            route_short_pages = True
+            # Every page with text is scored by the model. Empty OCR is still
+            # routed as blank before the model, because there is nothing to score.
+            route_short_pages = False
             if _bert_files_present():
                 try:
                     from src.models.bert_classifier import BertPageClassifier
 
                     model = BertPageClassifier.load(_bert_dir())
                     version = f"{version}+bert"
-                    route_short_pages = not bool(
-                        (cfg.get("bert") or {}).get("decide_short_pages", False)
-                    )
                 except ImportError as exc:
                     logger.warning(
                         "BERT blank/junk needs torch and transformers (%s); using TF-IDF",
@@ -242,23 +233,18 @@ def _regex(text: str, *, why: str) -> tuple[int, str, float | None]:
     return code, tag, None
 
 
-def _junk_subtype(text: str, audit_tag: str | None) -> tuple[int, str]:
-    """Subtype for a page the model called JUNK: regex first, then audit tag."""
-    code, reason = classify_text(text)
-    if code in JUNK_CODES and code != CODE_BLANK:
-        return code, f"subtype:regex:{reason}"
-    if audit_tag and audit_tag in _AUDIT_CODE and _AUDIT_CODE[audit_tag] != CODE_BLANK:
-        return _AUDIT_CODE[audit_tag], f"subtype:audit:{audit_tag}"
-    # Regex found no junk type (possibly "clinical_content") — keep the
-    # model's verdict but record the disagreement for QC.
-    return CODE_OTHERS, f"subtype:default:regex_said_{reason or 'main'}"
+def _junk_subtype(model_label: str | None) -> tuple[int, str]:
+    """Subtype for a page the model called JUNK. The model's own label wins."""
+    code = _AUDIT_CODE.get(model_label or "")
+    if code is not None and code != CODE_BLANK:
+        return code, f"subtype:model:{model_label}"
+    return CODE_OTHERS, f"subtype:model:{model_label or 'JUNK'}"
 
 
 def classify_page(text: str) -> tuple[int, str, float | None]:
-    """Return ``(code, reason, confidence)``.
+    """Return ``(code, reason, confidence)`` from the model.
 
-    Confidence is the model score when the model decides, else None so the
-    caller keeps the regex default.
+    Regex runs only when the model file is missing or prediction raises.
     """
     service = _load_service()
     if service is None:
@@ -271,10 +257,6 @@ def classify_page(text: str) -> tuple[int, str, float | None]:
         return _regex(text, why="predict_error")
 
     flag = str(result.flag or "").upper()
-    # review_required on KEEP means the model abstained. BLANK / JUNK still stand.
-    if result.review_required and flag not in {"BLANK", "JUNK"}:
-        return _regex(text, why=result.decision_reason or "review")
-
     conf = float(result.confidence) if result.confidence is not None else None
     reason = f"model:{result.model_version}:{result.decision_reason}"
     if result.audit_tag:
@@ -283,18 +265,8 @@ def classify_page(text: str) -> tuple[int, str, float | None]:
     if flag == "BLANK":
         return CODE_BLANK, reason, conf
     if flag == "JUNK":
-        code, subtype_reason = _junk_subtype(text, result.subclass or result.audit_tag)
+        code, subtype_reason = _junk_subtype(result.subclass or result.audit_tag)
         return code, f"{reason}:{subtype_reason}", conf
     if flag == "KEEP":
-        # Model is conservative (KEEP on thin text). Declared/empty blanks
-        # stay with the regex rules — those are high-precision and the model
-        # often still labels them KEEP.
-        blank_code, blank_reason = classify_text(text)
-        if blank_code == CODE_BLANK:
-            return (
-                CODE_BLANK,
-                f"regex_fallback:blank_after_model_keep:{blank_reason}",
-                None,
-            )
         return CODE_MAIN, reason, conf
     return _regex(text, why=f"unknown_flag:{flag}")
