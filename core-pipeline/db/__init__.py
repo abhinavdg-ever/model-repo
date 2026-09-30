@@ -911,6 +911,31 @@ def upsert_blank_junk(
 
 
 @_dispatch
+def delete_blank_junk(
+    conn: Any,
+    chart_id: int,
+    pass_no: int,
+    page_ids: Sequence[int],
+) -> None:
+    """Drop this pass's verdicts for pages the pass is skipping.
+
+    A leftover row from an earlier run is still the highest pass, so
+    ``mark_blank_junk_final`` would keep it over the verdict that should stand.
+    """
+    if not page_ids:
+        return
+    conn.execute(
+        """
+        DELETE FROM blank_junk_classification
+         WHERE chart_id = %s
+           AND pass_no = %s
+           AND page_id IN (SELECT unnest(%s::bigint[]))
+        """,
+        (chart_id, pass_no, list(page_ids)),
+    )
+
+
+@_dispatch
 def mark_blank_junk_final(conn: Any, chart_id: int) -> None:
     """Stamp the highest pass per page as the final verdict.
 
@@ -1386,6 +1411,42 @@ def reset_chart_results(conn: Any, chart_id: int) -> dict[str, int]:
         """,
         (chart_id,),
     )
+    return deleted
+
+
+OCR_STAGE_NAMES = ("ocr_prelim", "ocr_final1", "ocr_final2")
+
+
+@_dispatch
+def clear_chart_outputs(
+    conn: Any, chart_id: int, *, keep_ocr: bool
+) -> dict[str, int]:
+    """Clear a chart's results before a full re-run.
+
+    ``keep_ocr=True`` (skip_ocr) keeps ``ocr_results`` and the OCR stages'
+    ``page_stage_status`` rows; everything else is rebuilt. ``keep_ocr=False``
+    clears OCR too. ``chart_list`` and ``page_list`` are never touched, so
+    ``page_count`` and page ids survive.
+    """
+    deleted: dict[str, int] = {}
+    for table in CHART_RESULT_TABLES:
+        if keep_ocr and table == "ocr_results":
+            continue
+        if keep_ocr and table == "page_stage_status":
+            result = conn.execute(
+                """
+                DELETE FROM page_stage_status
+                 WHERE chart_id = %s AND stage_name <> ALL(%s)
+                """,
+                (chart_id, list(OCR_STAGE_NAMES)),
+            )
+        else:
+            result = conn.execute(
+                f"DELETE FROM {table} WHERE chart_id = %s", (chart_id,)
+            )
+        count = getattr(result, "rowcount", 0) or 0
+        if count:
+            deleted[table] = count
     return deleted
 
 

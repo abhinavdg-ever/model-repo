@@ -277,6 +277,17 @@ class TestVerifyRecord:
         assert result.pages[0].db_page_status == "verified"
         assert result.db_document_decision == "accept"
 
+    def test_no_pages_checked_is_skipped_not_failed(self):
+        """All-blank/junk leaves nothing to verify. The what-if rule rejects
+        an empty list; the chart triage must not store that as failed."""
+        exp = expected_from_manifest(manifest())
+        result = verify_record("rec", [], exp, "2", total_pages=1)
+        assert result.document_decision == REJECT
+        assert result.pages_checked == 0
+        status, reason = summary_status(result)
+        assert status == "skipped"
+        assert reason == "all_blank_junk"
+
     def test_summary_status_reports_manifest_gap(self):
         exp = expected_from_manifest(manifest(first_name=None, last_name=None,
                                               member_name="Anderson"))

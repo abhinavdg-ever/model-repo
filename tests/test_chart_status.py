@@ -151,6 +151,22 @@ class TestFailures:
         out = compute_progress(data, pages_total=3)
         assert out["status"] != "failed"
 
+    def test_one_page_all_blank_junk_is_not_failed(self):
+        """A one-page chart whose only page failed an earlier stage, then was
+        skipped as blank/junk everywhere after, is finished — not failed."""
+        data = rows(1)
+        for row in data:
+            row["pending"] = 0
+            row["completed"] = 0
+            row["failed"] = 0
+            row["skipped"] = 1
+        # The single page errored in prelim OCR; blank/junk still classified it.
+        data[0]["skipped"] = 0
+        data[0]["failed"] = 1
+        out = compute_progress(data, pages_total=1)
+        assert out["status"] == "completed"
+        assert out["current_stage"] is None
+
 
 class TestSkippedCountsAsDone:
     def test_skipped_pages_advance_a_stage(self):

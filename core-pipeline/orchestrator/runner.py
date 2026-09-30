@@ -99,6 +99,29 @@ def resolve_stage(token: str) -> int:
     )
 
 
+def _clear_for_rerun(chart_id: int, chart_name: str, *, keep_ocr: bool) -> dict[str, Any]:
+    """Clear DB results and workspace outputs so a full re-run starts clean.
+
+    ``pages/`` is always kept (``skip_page_download=false`` clears it at intake).
+    ``keep_ocr`` (skip_ocr) also keeps ``ocr/`` and ``ocr_results``.
+    """
+    from db import clear_chart_outputs
+    from db.paths import clear_chart_subdirs
+
+    with connect() as conn:
+        db_rows = clear_chart_outputs(conn, chart_id, keep_ocr=keep_ocr)
+    subdirs = ("imaging", "corrected-pages") if keep_ocr else ("ocr", "imaging", "corrected-pages")
+    files = clear_chart_subdirs(chart_name, subdirs)
+    logger.info(
+        "Re-run %s: cleared DB %s and files %s (kept pages/%s)",
+        chart_name,
+        db_rows or "{}",
+        files or "{}",
+        " + ocr/" if keep_ocr else "",
+    )
+    return {"db": db_rows, "files": files, "kept_ocr": keep_ocr}
+
+
 def run_pipeline_for_chart(
     chart_id: int,
     *,
@@ -181,6 +204,9 @@ def run_pipeline_for_chart(
         raise
 
     wanted = set(only or [])
+    # Only a whole-chain run rebuilds the chart; `only` / `through` runs read
+    # what earlier stages left, so they must not clear it.
+    full_run = not wanted and stop_at is None
     chain = STAGE_CHAIN if stop_at is None else STAGE_CHAIN[: stop_at + 1]
     results: dict[str, Any] = {
         "chart_id": chart_id,
@@ -240,6 +266,12 @@ def run_pipeline_for_chart(
                 old_gates = snapshot_gates(conn, chart_id)
                 old_presence = snapshot_ocr_presence(conn, chart_id)
 
+            # After the snapshot, so gate-delta still sees the old rotation.
+            if full_run:
+                results["cleared"] = _clear_for_rerun(
+                    chart_id, chart["chart_name"], keep_ocr=True
+                )
+
             if will_reuse_ocr:
                 results["ocr_reuse"] = apply_skip_ocr(chart_id, chart["chart_name"])
                 ocr_hydrated = True
@@ -264,6 +296,10 @@ def run_pipeline_for_chart(
                     "quality then full OCR",
                     chart["chart_name"],
                 )
+        elif full_run and force:
+            results["cleared"] = _clear_for_rerun(
+                chart_id, chart["chart_name"], keep_ocr=False
+            )
 
         for index, (name, pass_no, fn) in enumerate(chain, start=1):
             key = f"{name}:{pass_no}"

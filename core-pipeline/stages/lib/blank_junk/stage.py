@@ -37,6 +37,7 @@ from typing import Any, Optional
 from config import CORE_ROOT
 from db import (
     connect,
+    delete_blank_junk,
     get_blank_junk_flags,
     get_ocr_texts,
     get_quality_map,
@@ -352,6 +353,7 @@ def _run_pass(
 ) -> dict[str, Any]:
     with stage_run(chart_id, STAGE, pass_no=pass_no, force=force) as ctx:
         with connect() as conn:
+            todo_before = set(ctx.todo)
             non_printed = non_printed_page_ids(conn, chart_id)
             low_ids = low_quality_page_ids(conn, chart_id)
             quality = get_quality_map(conn, chart_id)
@@ -408,6 +410,11 @@ def _run_pass(
                 ]
                 mark_skipped(conn, ctx, no_text, "no_final_ocr_text")
 
+            # A page this pass skips must not keep this pass's verdict from an
+            # earlier run — as the highest pass it would override the real one.
+            delete_blank_junk(
+                conn, chart_id, pass_no, sorted(todo_before - ctx.todo)
+            )
             prior_mains = _prior_main_ids(conn, chart_id)
 
         classified = _classify(

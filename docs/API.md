@@ -464,6 +464,18 @@ field is rejected with **422**, so an old body is reported, not half-applied.
 | `skip_completed` | optional | optional | `false` | Skip charts whose status is `completed`, `needs_review` or `rejected`. run → **200** `{"status":"skipped"}`; batch → listed in `charts_skipped_completed`. |
 | `skip_page_download` | optional | optional | **`true`** | Reuse page images already in the workspace. `false` = wipe `pages/` + `corrected-pages/` and fetch again from `input_path`. |
 
+**What a full re-run clears** (no `only` / `run_through`) before the chain starts:
+
+| Request | Kept | Cleared (DB rows + workspace files) |
+|---|---|---|
+| `skip_ocr: true` | `pages/`, `ocr/`, `ocr_results`, OCR stage status | every other result table, `imaging/`, `corrected-pages/` |
+| default | `pages/` | every result table incl. `ocr_results`, `ocr/`, `imaging/`, `corrected-pages/` |
+| `skip_page_download: false` | — | the above, plus `pages/` (re-fetched) |
+
+`chart_list`, `page_list`, `manifest_member_list`, `page_ground_truth` and
+`pipeline_jobs` are never cleared. `only` / `run_through` runs clear nothing —
+they read what earlier stages left.
+
 Not settable any more — fixed behaviour:
 
 | Was | Now |

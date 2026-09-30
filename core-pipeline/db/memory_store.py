@@ -780,6 +780,24 @@ class MemoryStore:
                 "updated_at": _now(),
             }
 
+    def delete_blank_junk(
+        self,
+        chart_id: int,
+        pass_no: int,
+        page_ids: Sequence[int],
+    ) -> None:
+        if not page_ids:
+            return
+        ids = {int(pid) for pid in page_ids}
+        with self._lock:
+            for key, row in list(self.blank_junk.items()):
+                if (
+                    row["chart_id"] == chart_id
+                    and int(row["pass_no"]) == int(pass_no)
+                    and int(row["page_id"]) in ids
+                ):
+                    del self.blank_junk[key]
+
     def mark_blank_junk_final(self, chart_id: int) -> None:
         with self._lock:
             best: dict[int, tuple[int, datetime, int]] = {}
@@ -1209,6 +1227,37 @@ class MemoryStore:
                 chart["current_pass"] = None
                 chart["page_count"] = None
                 chart["updated_at"] = _now()
+        return deleted
+
+    def clear_chart_outputs(self, chart_id: int, *, keep_ocr: bool) -> dict[str, int]:
+        ocr_stages = {"ocr_prelim", "ocr_final1", "ocr_final2"}
+        deleted: dict[str, int] = {}
+        with self._lock:
+            def _purge(mapping: dict[Any, dict[str, Any]], label: str, keep=None) -> None:
+                keys = [
+                    k for k, r in mapping.items()
+                    if r.get("chart_id") == chart_id and not (keep and keep(r))
+                ]
+                if keys:
+                    deleted[label] = len(keys)
+                    for k in keys:
+                        del mapping[k]
+
+            _purge(self.member_summaries, "member_verification_summary")
+            _purge(self.member_extractions, "member_extraction_results")
+            _purge(self.dos, "dos_extraction_results")
+            _purge(self.page_classifications, "page_classification")
+            _purge(self.encounters, "encounter_type_results")
+            _purge(self.sequencing, "page_sequencing_results")
+            _purge(self.blank_junk, "blank_junk_classification")
+            _purge(self.quality, "ocr_quality_results")
+            if not keep_ocr:
+                _purge(self.ocr, "ocr_results")
+            _purge(
+                self.page_stages,
+                "page_stage_status",
+                keep=(lambda r: r.get("stage_name") in ocr_stages) if keep_ocr else None,
+            )
         return deleted
 
     def prune_orphan_pages(

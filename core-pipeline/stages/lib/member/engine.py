@@ -431,12 +431,15 @@ def summary_status(result: RecordResult) -> tuple[str, str]:
     The reference produced Accept/Reject; the schema also carries a
     verified/failed/needs_review triage value for the review UI.
     """
+    # No pages were checked — every page was blank/junk/duplicate, or none
+    # reached this stage. The what-if rule rejects an empty list; that is not
+    # a member failure, and it must not mark a one-page junk chart failed.
+    if result.pages_checked == 0:
+        return "skipped", "all_blank_junk"
     if result.document_decision == REJECT:
         return "failed", "wrong_member_threshold"
     if result.pages_verified > 0:
         return "verified", "pages_verified"
-    if result.pages_checked == 0:
-        return "needs_review", "no_pages_checked"
     if not result.name_mode:
         return "needs_review", "manifest_name_incomplete"
     return "needs_review", "no_page_verified"

@@ -104,6 +104,52 @@ class TestMemoryStoreRoundTrip:
             )
 
 
+class TestClearChartOutputs:
+    def _seed(self):
+        from db import (
+            connect,
+            set_page_stage,
+            upsert_blank_junk,
+            upsert_chart,
+            upsert_ocr_result,
+            upsert_pages,
+        )
+
+        with connect() as conn:
+            cid = int(upsert_chart(conn, chart_name="rerun", source="local")["id"])
+            pid = upsert_pages(conn, cid, [{"page_name": "1.jpg", "page_number": 1}])[0]["id"]
+            upsert_ocr_result(conn, chart_id=cid, page_id=pid, ocr_type="tesseract", raw_text="x")
+            upsert_blank_junk(
+                conn, chart_id=cid, page_id=pid, blank_junk_flag="junk",
+                pass_no=1, ocr_source="tesseract",
+            )
+            for stage in ("ocr_prelim", "blank_junk"):
+                set_page_stage(
+                    conn, chart_id=cid, page_id=pid, stage_name=stage, status="completed"
+                )
+        return cid
+
+    def test_skip_ocr_keeps_ocr_only(self, memory):
+        from db import clear_chart_outputs, connect, get_blank_junk_flags, get_ocr_texts
+
+        cid = self._seed()
+        with connect() as conn:
+            clear_chart_outputs(conn, cid, keep_ocr=True)
+            assert get_ocr_texts(conn, cid, "tesseract")
+            assert not get_blank_junk_flags(conn, cid)
+            stages = {r["stage_name"] for r in conn.page_stages.values()}
+            assert stages == {"ocr_prelim"}
+
+    def test_full_rerun_clears_ocr_too(self, memory):
+        from db import clear_chart_outputs, connect, get_ocr_texts
+
+        cid = self._seed()
+        with connect() as conn:
+            clear_chart_outputs(conn, cid, keep_ocr=False)
+            assert not get_ocr_texts(conn, cid, "tesseract")
+            assert not conn.page_stages
+
+
 class TestSkipDbWriteGuards:
     def test_cli_help_lists_flag(self):
         from cli import main

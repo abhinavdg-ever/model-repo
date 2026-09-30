@@ -390,6 +390,52 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             mark_skipped(conn, ctx, excluded, "blank_junk")
 
         todo_pages = [p for p in ctx.pages if p["id"] in ctx.todo]
+        if not todo_pages:
+            # Nothing left to verify. An empty page list is Reject in the
+            # what-if rules, which stored final_status=failed for a chart
+            # whose only page was already blank/junk.
+            logger.info(
+                "chart %s: no pages left to verify — member stage skipped",
+                chart_id,
+            )
+            with connect() as conn:
+                upsert_member_summary(
+                    conn,
+                    chart_id=chart_id,
+                    final_status="skipped",
+                    document_decision=None,
+                    matched_member_list_id=None,
+                    matched_name=None,
+                    name_mode=None,
+                    confidence=None,
+                    pages_checked=0,
+                    pages_matched=0,
+                    wrong_member_pages=0,
+                    reject_threshold=None,
+                    decision_reason="all_blank_junk",
+                )
+            write_csv(
+                imaging_csv(chart_name, "member_verification"),
+                MEMBER_SUMMARY_COLS,
+                [
+                    {
+                        "chart_name": chart_name,
+                        "final_status": "skipped",
+                        "decision_reason": "all_blank_junk",
+                        "ner_enabled": MEMBER_NER_ENABLED,
+                        "pages_checked": 0,
+                        "pages_matched": 0,
+                    }
+                ],
+            )
+            return {
+                "chart_id": chart_id,
+                "status": "completed",
+                "reason": "all_blank_junk",
+                "pages_checked": 0,
+                "skipped": ctx.skipped,
+            }
+
         engine_pages = [
             {
                 "page_no": p.get("page_number") or 0,

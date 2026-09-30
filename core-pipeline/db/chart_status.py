@@ -69,7 +69,12 @@ def compute_progress(
 
     Rules, in order:
       1. No pages  → keep received/downloading, else received.
-      2. A page failed in a stage that is not otherwise complete → failed.
+      2. A page failed in a stage that still has pages pending or processing
+         → failed. ``failed`` is a terminal page state: a one-page chart whose
+         only page failed a stage, or a chart whose every page is already
+         completed / skipped / failed, is not failed — the page failure stays
+         on the page. All-blank/junk charts land here: later stages skip the
+         page, and an earlier engine error must not leave the chart failed.
       3. Otherwise the earliest incomplete stage → processing, current_stage.
       4. Every stage done → needs_review / completed, from the member
          verification outcome (never ``rejected`` on chart_list).
@@ -93,7 +98,10 @@ def compute_progress(
     for row in stage_rows:
         done = int(row["completed"] or 0) + int(row["skipped"] or 0)
         failed = int(row["failed"] or 0)
-        complete = done >= pages_total
+        # failed is terminal. Leaving it out of the total made a one-page
+        # chart (the only page failed) look unfinished and therefore failed.
+        terminal = done + failed
+        complete = terminal >= pages_total
         stages.append(
             {
                 "stage": row["stage_name"],
