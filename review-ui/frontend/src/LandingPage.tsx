@@ -746,7 +746,6 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                   </th>
                   <th>Run</th>
                   <th>Batch</th>
-                  <th title="Client page labels loaded for this chart">Ground Truth Available</th>
                   <th>
                     <button
                       type="button"
@@ -759,6 +758,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                   <th>OCR</th>
                   <th>Imaging</th>
                   <th>Status</th>
+                  <th title="Client page labels loaded for this chart">Ground Truth</th>
                   <th>
                     <button
                       type="button"
@@ -817,9 +817,6 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                       </td>
                       <td className="landing-col-num">{formatRunLabel(folder.run_id)}</td>
                       <td className="landing-col-num">{formatBatchLabel(folder.batch_id)}</td>
-                      <td className="landing-col-num">
-                        {folder.ground_truth_available ? "Yes" : "No"}
-                      </td>
                       <td className="landing-col-num">{folder.page_count}</td>
                       <td className="landing-col-num">{folder.ocr_processed}</td>
                       <td className="landing-col-num">{folder.imaging_processed}</td>
@@ -827,6 +824,9 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                         <span className={statusClass(folder.ocr_status)}>
                           {OCR_STATUS_LABELS[folder.ocr_status]}
                         </span>
+                      </td>
+                      <td className="landing-col-num">
+                        {folder.ground_truth_available ? "Yes" : "No"}
                       </td>
                       <td className="landing-col-updated">
                         {fmtUpdated(folder.last_updated_at)}
