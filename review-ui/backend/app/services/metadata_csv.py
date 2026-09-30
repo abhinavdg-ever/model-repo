@@ -10,26 +10,35 @@ from pathlib import Path
 from app.core.schemas import ImagingManifestDetails
 
 METADATA_FILE_RE = re.compile(r"^metadata_R(\d+)_B(\d+)\.csv$", re.IGNORECASE)
+METADATA_DEMOTEST_RE = re.compile(r"^metadata_demotest\.csv$", re.IGNORECASE)
 
 
 def discover_metadata_csvs(metadata_dir: Path) -> list[Path]:
     if not metadata_dir.is_dir():
         return []
     found: list[tuple[int, int, Path]] = []
+    demos: list[Path] = []
     for path in metadata_dir.iterdir():
         if not path.is_file() or path.name.startswith("._"):
+            continue
+        if METADATA_DEMOTEST_RE.match(path.name):
+            demos.append(path)
             continue
         m = METADATA_FILE_RE.match(path.name)
         if not m:
             continue
         found.append((int(m.group(1)), int(m.group(2)), path))
     found.sort(key=lambda t: (t[0], t[1], t[2].name))
-    return [p for _, _, p in found]
+    demos.sort(key=lambda p: p.name)
+    return [p for _, _, p in found] + demos
 
 
 def run_batch_from_metadata_name(name: str) -> tuple[str | None, str | None]:
-    """metadata_R1_B1.csv → ('R1', 'B1')."""
-    m = METADATA_FILE_RE.match(Path(name).name)
+    """metadata_R1_B1.csv → ('R1', 'B1'). metadata_demotest.csv → ('Test', 'Test')."""
+    filename = Path(name).name
+    if METADATA_DEMOTEST_RE.match(filename):
+        return "Test", "Test"
+    m = METADATA_FILE_RE.match(filename)
     if not m:
         return None, None
     return f"R{m.group(1)}", f"B{m.group(2)}"

@@ -40,8 +40,8 @@ except ImportError:
     pass
 
 from jobs.manifest_sweeper import (  # noqa: E402
-    FILENAME_RUN_BATCH_RE,
     MANIFEST_SUFFIXES,
+    parse_run_batch_from_name,
     run_load,
 )
 
@@ -55,7 +55,8 @@ def is_metadata_rn_bn(path: Path) -> bool:
         return False
     if path.name.startswith("._"):
         return False
-    return bool(FILENAME_RUN_BATCH_RE.search(path.name))
+    run_id, batch_id = parse_run_batch_from_name(path.name)
+    return run_id is not None and batch_id is not None
 
 
 def collect_metadata_files(path: Path) -> list[Path]:
@@ -63,8 +64,8 @@ def collect_metadata_files(path: Path) -> list[Path]:
     if path.is_file():
         if not is_metadata_rn_bn(path):
             raise SystemExit(
-                f"Not a metadata_Rn_Bn CSV/XLSX: {path.name}\n"
-                f"Expected a name like metadata_R1_B1.csv"
+                f"Not a metadata CSV/XLSX: {path.name}\n"
+                f"Expected metadata_R1_B1.csv or metadata_demotest.csv"
             )
         return [path]
     if not path.is_dir():
@@ -73,8 +74,8 @@ def collect_metadata_files(path: Path) -> list[Path]:
     files = sorted(p for p in path.iterdir() if is_metadata_rn_bn(p))
     if not files:
         raise SystemExit(
-            f"No metadata_Rn_Bn.csv/.xlsx files in {path}\n"
-            f"Looked for names matching metadata_R# _B# (e.g. metadata_R1_B1.csv)"
+            f"No metadata CSV/XLSX files in {path}\n"
+            f"Looked for metadata_R1_B1.csv or metadata_demotest.csv"
         )
     return files
 

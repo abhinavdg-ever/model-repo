@@ -1163,6 +1163,26 @@ class TestManifestLookup:
         assert rows[0]["batch_id"] == "B1"
         assert rows[0]["source_file"] == "metadata_R1_B1.csv"
 
+    def test_demotest_metadata_loads_as_run_and_batch_test(self, tmp_path):
+        from jobs.manifest_sweeper import lookup_manifest_members_on_disk
+        from app.services.metadata_csv import clear_metadata_cache, run_batch_for_record
+
+        csv_path = tmp_path / "metadata_demotest.csv"
+        csv_path.write_text(
+            "recordId,DummyFirstName,DummyLastName,DummyDOB,MemberID\n"
+            "demotest,Ada,Lovelace,1815-12-10,M1\n",
+            encoding="utf-8",
+        )
+        rows = lookup_manifest_members_on_disk("demotest", metadata_root=tmp_path)
+        assert len(rows) == 1
+        assert rows[0]["run_id"] == "Test"
+        assert rows[0]["batch_id"] == "Test"
+        assert rows[0]["source_file"] == "metadata_demotest.csv"
+
+        clear_metadata_cache()
+        run_id, batch_id = run_batch_for_record(tmp_path, "demotest")
+        assert (run_id, batch_id) == ("Test", "Test")
+
     def test_review_ui_local_mode_reads_run_batch_from_metadata_filename(self, tmp_path):
         """Landing page Run/Batch columns in DATA_MODE=local."""
         from app.services.metadata_csv import (

@@ -60,6 +60,11 @@ FILENAME_RUN_BATCH_RE = re.compile(
     r"metadata[_-]?(?P<run>R\d+)[_-]?(?P<batch>B\d+)",
     re.IGNORECASE,
 )
+# metadata_demotest.csv → run_id=Test, batch_id=Test
+FILENAME_DEMOTEST_RE = re.compile(
+    r"metadata[_-]?demotest(?:\.[^.]+)?$",
+    re.IGNORECASE,
+)
 
 
 def _parse_dob(raw: str) -> Optional[str]:
@@ -138,10 +143,13 @@ def _dob(row: dict[str, str]) -> Optional[str]:
 
 
 def parse_run_batch_from_name(name: str) -> tuple[Optional[str], Optional[str]]:
-    m = FILENAME_RUN_BATCH_RE.search(Path(name).name)
-    if not m:
-        return None, None
-    return m.group("run").upper(), m.group("batch").upper()
+    filename = Path(name).name
+    match = FILENAME_RUN_BATCH_RE.search(filename)
+    if match:
+        return match.group("run").upper(), match.group("batch").upper()
+    if FILENAME_DEMOTEST_RE.search(filename):
+        return "Test", "Test"
+    return None, None
 
 
 def _parse_csv_bytes(data: bytes) -> list[dict[str, str]]:
