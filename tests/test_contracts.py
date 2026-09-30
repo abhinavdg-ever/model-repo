@@ -995,6 +995,9 @@ class TestChartResetKeepsTheAuditTrail:
         assert "manifest_member_list" not in CHART_RESULT_TABLES, (
             "the manifest is the client's data, not our output"
         )
+        assert "page_ground_truth" not in CHART_RESULT_TABLES, (
+            "page labels are the client's data, not pipeline output"
+        )
 
     def test_clear_results_keep_manifest_preserves_roster_and_stages(self):
         """schema/clear_results_keep_manifest.sql must not wipe the roster."""

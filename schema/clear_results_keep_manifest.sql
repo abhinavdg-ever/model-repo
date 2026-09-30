@@ -3,6 +3,7 @@
 -- =====================================================================
 -- Wipes every chart / page / OCR / imaging / job row in V1, and leaves:
 --   * manifest_member_list   (client roster — needed for member_verify)
+--   * page_ground_truth      (client page labels — same idea as the roster)
 --   * pipeline_stage         (static stage registry — needed for /ready)
 --
 -- Does NOT drop the schema. Does NOT re-apply v1.sql.

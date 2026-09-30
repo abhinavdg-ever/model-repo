@@ -291,6 +291,43 @@ CREATE TRIGGER trg_manifest_member_list_updated_at
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 
+-- Client page-level labels (the imaging spreadsheet). Keyed on chart folder
+-- name + page file stem, not chart_id, so a load can precede ingest.
+-- Id 1 matches 1.jpg / 1.png / 1.tif. Values stay as the client wrote them
+-- ("Yes", "07/17/2025", "Accept") — the review UI compares them.
+CREATE TABLE page_ground_truth (
+    id                  BIGSERIAL PRIMARY KEY,
+    chart_name          VARCHAR(150) NOT NULL,
+    page_number         INT NOT NULL,
+    source_page_id      VARCHAR(50),
+    member_name         TEXT,
+    member_dob          TEXT,
+    dos_from            TEXT,
+    dos_to              TEXT,
+    encounter_type      TEXT,
+    page_type           TEXT,
+    codeable            TEXT,
+    blank_page          TEXT,
+    junk_page           TEXT,
+    is_invoice          TEXT,
+    page_sequence       TEXT,
+    rotation            TEXT,
+    rendering_provider  TEXT,
+    provider_specialty  TEXT,
+    provider_signature  TEXT,
+    deleted_level       TEXT,
+    source_path         TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_page_ground_truth_chart_page UNIQUE (chart_name, page_number)
+);
+CREATE INDEX idx_page_ground_truth_chart_name ON page_ground_truth(chart_name);
+
+CREATE TRIGGER trg_page_ground_truth_updated_at
+    BEFORE UPDATE ON page_ground_truth
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
 -- ---------------------------------------------------------------------
 -- PAGE-LEVEL RESULT TABLES
 -- ---------------------------------------------------------------------

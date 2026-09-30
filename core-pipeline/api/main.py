@@ -384,6 +384,19 @@ class ManifestSweepRequest(BaseModel):
         return normalize_blob_path(value) if value is not None else value
 
 
+class GroundTruthLoadRequest(BaseModel):
+    """Load the client page spreadsheet into page_ground_truth (upsert)."""
+
+    local_path: str = Field(
+        ..., min_length=1, description="Local CSV or XLSX file, or a directory of them"
+    )
+
+    @field_validator("local_path", mode="before")
+    @classmethod
+    def _norm_gt_path(cls, value: Any) -> Any:
+        return normalize_fs_path(value) if value is not None else value
+
+
 # --- background wrappers ----------------------------------------------------
 
 
@@ -1068,6 +1081,20 @@ def manifest_sweep(
         "run_id": body.run_id,
         "batch_id": body.batch_id,
     }
+
+
+@app.post("/api/ground-truth/load", tags=["ground-truth"])
+def ground_truth_load(body: GroundTruthLoadRequest) -> dict[str, Any]:
+    """Load client page labels. Chart_Name + Id (1.jpg / 1.png / 1.tif) are the keys."""
+    from jobs.ground_truth_load import run_load
+
+    _require_db()
+    if not body.local_path or not Path(body.local_path).exists():
+        raise HTTPException(status_code=400, detail="local_path does not exist")
+    try:
+        return run_load(body.local_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/manifest/{record_id}", tags=["manifest"])

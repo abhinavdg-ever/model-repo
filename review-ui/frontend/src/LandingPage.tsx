@@ -746,6 +746,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                   </th>
                   <th>Run</th>
                   <th>Batch</th>
+                  <th title="Client page labels loaded for this chart">Ground Truth Available</th>
                   <th>
                     <button
                       type="button"
@@ -773,7 +774,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
               <tbody>
                 {loading && folders.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="landing-history-empty">
+                    <td colSpan={10} className="landing-history-empty">
                       <div className="landing-empty-state">
                         <div className="landing-empty-icon">
                           <RefreshCw size={18} />
@@ -784,7 +785,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                   </tr>
                 ) : total === 0 ? (
                   <tr>
-                    <td colSpan={9} className="landing-history-empty">
+                    <td colSpan={10} className="landing-history-empty">
                       <div className="landing-empty-state">
                         <div className="landing-empty-icon">
                           <Inbox size={18} />
@@ -816,6 +817,9 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                       </td>
                       <td className="landing-col-num">{formatRunLabel(folder.run_id)}</td>
                       <td className="landing-col-num">{formatBatchLabel(folder.batch_id)}</td>
+                      <td className="landing-col-num">
+                        {folder.ground_truth_available ? "Yes" : "No"}
+                      </td>
                       <td className="landing-col-num">{folder.page_count}</td>
                       <td className="landing-col-num">{folder.ocr_processed}</td>
                       <td className="landing-col-num">{folder.imaging_processed}</td>

@@ -21,6 +21,7 @@ from app.services.chart_run_batch import (
     database_url_usable,
     with_run_batch_default,
 )
+from app.services.ground_truth import charts_with_ground_truth
 from app.services.db import connection
 
 
@@ -324,6 +325,12 @@ def build_folder_list(
         if data_root is not None:
             disk_rows = list_disk_folder_names_light(data_root)
         merged = merge_db_and_disk(db_rows, disk_rows)
+        have = charts_with_ground_truth(database_url, db_schema)
+        if have:
+            merged = [
+                row.model_copy(update={"ground_truth_available": row.name in have})
+                for row in merged
+            ]
         return filter_sort_page(merged, params)
 
     # No DB — use caller-provided full local scan (existing behaviour).

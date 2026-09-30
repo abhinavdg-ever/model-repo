@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type {
   ImagingDocumentResponse,
   ImagingManifestDetails,
@@ -11,6 +11,7 @@ import {
   duplicateDisplayConfidence,
   formatDuplicateLabel,
 } from "./duplicateLabel";
+import { groundTruthBits, type GtBit } from "./groundTruth";
 
 const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
   member: false,
@@ -247,7 +248,7 @@ function DetailSection({
   showConfidence = false,
 }: {
   title: string;
-  rows: { label: string; value: string; confidence?: string }[];
+  rows: { label: string; value: ReactNode; confidence?: string }[];
   showConfidence?: boolean;
 }) {
   return (
@@ -295,6 +296,77 @@ function ManifestDetails({ manifest }: { manifest: ImagingManifestDetails }) {
   );
 }
 
+function markGlyph(mark: GtBit["mark"]): string {
+  if (mark === "match") return "✓";
+  if (mark === "partial") return "!";
+  if (mark === "mismatch") return "✕";
+  return "";
+}
+
+function markTitle(mark: GtBit["mark"]): string {
+  if (mark === "match") return "Matches ground truth";
+  if (mark === "partial") return "Partial match";
+  if (mark === "mismatch") return "Does not match ground truth";
+  return "Ground truth not compared yet";
+}
+
+function GtMarks({ bits }: { bits: GtBit[] }) {
+  if (bits.length === 0) return null;
+  return (
+    <span className="gt-marks">
+      {bits.map((bit) => {
+        const glyph = markGlyph(bit.mark);
+        return (
+          <span
+            key={`${bit.label}-${bit.mark}`}
+            className={`gt-mark gt-${bit.mark}`}
+            title={markTitle(bit.mark)}
+          >
+            {glyph ? `${bit.label} ${glyph}` : bit.label}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+function GtCell({ text, bits }: { text: string; bits: GtBit[] }) {
+  return (
+    <span className="gt-cell">
+      <span>{text}</span>
+      <GtMarks bits={bits} />
+    </span>
+  );
+}
+
+function pageBits(page: ImagingPageResult, sections: ImagingSectionsProcessed) {
+  return groundTruthBits({
+    gt: page.groundTruth,
+    memberName: page.memberName,
+    memberDob: page.memberDob,
+    memberKnown: sections.member,
+    orientationAngle: page.orientationAngle,
+    rotationKnown: sections.rotation,
+    encounterType: page.encounterType,
+    encounterKnown:
+      Boolean(sections.encounter) ||
+      (page.encounterType != null && String(page.encounterType).trim() !== ""),
+    dosFrom: page.dosFrom,
+    dosTo: page.dosTo,
+    dosKnown: sections.dos,
+    blankOrJunk: page.blankOrJunk,
+    junkKnown: sections.junk,
+    pageType: page.pageType,
+    pageTypeKnown: Boolean(sections.junk || sections.codeable),
+    isCodeable: page.isCodeable,
+    codeableKnown:
+      Boolean(sections.codeable) ||
+      (page.isCodeable != null && String(page.isCodeable).trim() !== ""),
+    actualSequence: page.actualSequence,
+    sequenceKnown: Boolean(sections.sequencing),
+  });
+}
+
 function PageDetails({
   page,
   sections,
@@ -306,6 +378,7 @@ function PageDetails({
   const skip = skipped ? { skipped: true } : undefined;
   // Blank/junk pages still ran junk classification — don't mark those Skipped.
   const memberConf = fmtConfidence(page.memberConfidence, sections.member, skip);
+  const bits = pageBits(page, sections);
 
   return (
     <div className="imaging-page-details">
@@ -322,12 +395,22 @@ function PageDetails({
           <tbody>
             <tr>
               <th scope="row">Extracted Name</th>
-              <td>{fmt(page.memberName, sections.member, skip)}</td>
+              <td>
+                <GtCell
+                  text={fmt(page.memberName, sections.member, skip)}
+                  bits={bits.memberName}
+                />
+              </td>
               <td>{memberConf}</td>
             </tr>
             <tr>
               <th scope="row">Extracted DOB</th>
-              <td>{fmt(page.memberDob, sections.member, skip)}</td>
+              <td>
+                <GtCell
+                  text={fmt(page.memberDob, sections.member, skip)}
+                  bits={bits.memberDob}
+                />
+              </td>
               <td>{memberConf}</td>
             </tr>
             <tr>
@@ -363,7 +446,12 @@ function PageDetails({
           },
           {
             label: "Orientation Angle (Page)",
-            value: fmtDegrees(page.orientationAngle, sections.rotation),
+            value: (
+              <GtCell
+                text={fmtDegrees(page.orientationAngle, sections.rotation)}
+                bits={bits.rotation}
+              />
+            ),
             confidence: fmtConfidence(null, sections.rotation),
           },
           {
@@ -384,23 +472,32 @@ function PageDetails({
         rows={[
           {
             label: "Encounter Type",
-            value: fmt(
-              page.encounterType,
-              Boolean(sections.encounter) ||
-                (page.encounterType != null &&
-                  String(page.encounterType).trim() !== ""),
-              skip,
+            value: (
+              <GtCell
+                text={fmt(
+                  page.encounterType,
+                  Boolean(sections.encounter) ||
+                    (page.encounterType != null &&
+                      String(page.encounterType).trim() !== ""),
+                  skip,
+                )}
+                bits={bits.encounter}
+              />
             ),
             confidence: fmtConfidence(null, Boolean(sections.encounter), skip),
           },
           {
             label: "DOS From",
-            value: fmt(page.dosFrom, sections.dos, skip),
+            value: (
+              <GtCell text={fmt(page.dosFrom, sections.dos, skip)} bits={bits.dosFrom} />
+            ),
             confidence: fmtConfidence(page.dosConfidence, sections.dos, skip),
           },
           {
             label: "DOS To",
-            value: fmt(page.dosTo, sections.dos, skip),
+            value: (
+              <GtCell text={fmt(page.dosTo, sections.dos, skip)} bits={bits.dosTo} />
+            ),
             confidence: fmtConfidence(page.dosConfidence, sections.dos, skip),
           },
         ]}
@@ -411,7 +508,12 @@ function PageDetails({
         rows={[
           {
             label: "Is Blank or Junk?",
-            value: fmtBlankOrJunk(page.blankOrJunk, sections.junk),
+            value: (
+              <GtCell
+                text={fmtBlankOrJunk(page.blankOrJunk, sections.junk)}
+                bits={bits.blankJunk}
+              />
+            ),
             confidence: fmtConfidence(page.pageTypeConfidence, sections.junk),
           },
           {
@@ -431,9 +533,14 @@ function PageDetails({
           },
           {
             label: "Page Type",
-            value: fmtPageType(
-              page.pageType,
-              Boolean(sections.junk || sections.codeable),
+            value: (
+              <GtCell
+                text={fmtPageType(
+                  page.pageType,
+                  Boolean(sections.junk || sections.codeable),
+                )}
+                bits={bits.pageType}
+              />
             ),
             confidence: fmtConfidence(
               page.pageTypeConfidence,
@@ -442,12 +549,17 @@ function PageDetails({
           },
           {
             label: "Is Codeable or Non Codeable",
-            value: fmtCodeable(
-              page.isCodeable,
-              page.pageType,
-              page.isCodeable != null && String(page.isCodeable).trim() !== ""
-                ? true
-                : Boolean(sections.codeable),
+            value: (
+              <GtCell
+                text={fmtCodeable(
+                  page.isCodeable,
+                  page.pageType,
+                  page.isCodeable != null && String(page.isCodeable).trim() !== ""
+                    ? true
+                    : Boolean(sections.codeable),
+                )}
+                bits={bits.codeable}
+              />
             ),
             confidence: fmtConfidence(null, Boolean(sections.codeable)),
           },
@@ -607,12 +719,17 @@ function DocSummary({
           <tbody>
             {rows.map((p) => {
               const skip = isBlankJunkPage(p) ? { skipped: true } : undefined;
+              const bits = pageBits(p, sections);
               return (
               <tr key={`${p.pageNumber}-${p.fileName}`}>
                 <td>{p.pageNumber}</td>
                 <td className="imaging-mono">{p.fileName}</td>
-                <td>{fmt(p.memberName, sections.member, skip)}</td>
-                <td>{fmt(p.memberDob, sections.member, skip)}</td>
+                <td>
+                  <GtCell text={fmt(p.memberName, sections.member, skip)} bits={bits.memberName} />
+                </td>
+                <td>
+                  <GtCell text={fmt(p.memberDob, sections.member, skip)} bits={bits.memberDob} />
+                </td>
                 <td>{fmt(p.memberId, sections.member, skip)}</td>
                 <td>{fmtHandwriting(p.handwrittenOrPrinted, sections.hw)}</td>
                 <td>
@@ -621,12 +738,26 @@ function DocSummary({
                     sections.quality ?? sections.hw,
                   )}
                 </td>
-                <td>{fmtDegrees(p.orientationAngle, sections.rotation)}</td>
+                <td>
+                  <GtCell
+                    text={fmtDegrees(p.orientationAngle, sections.rotation)}
+                    bits={bits.rotation}
+                  />
+                </td>
                 <td>{fmtDegrees(p.tiltAngle, sections.rotation)}</td>
                 <td>{fmt(p.mirrored, sections.rotation)}</td>
-                <td>{fmt(p.dosFrom, sections.dos, skip)}</td>
-                <td>{fmt(p.dosTo, sections.dos, skip)}</td>
-                <td>{fmtBlankOrJunk(p.blankOrJunk, sections.junk)}</td>
+                <td>
+                  <GtCell text={fmt(p.dosFrom, sections.dos, skip)} bits={bits.dosFrom} />
+                </td>
+                <td>
+                  <GtCell text={fmt(p.dosTo, sections.dos, skip)} bits={bits.dosTo} />
+                </td>
+                <td>
+                  <GtCell
+                    text={fmtBlankOrJunk(p.blankOrJunk, sections.junk)}
+                    bits={bits.blankJunk}
+                  />
+                </td>
                 <td>
                   {fmtDuplicate(
                     p.isDuplicate,
@@ -634,17 +765,30 @@ function DocSummary({
                     sections.junk,
                   )}
                 </td>
-                <td>{fmtPageType(p.pageType, sections.junk || sections.codeable)}</td>
                 <td>
-                  {fmtCodeable(
-                    p.isCodeable,
-                    p.pageType,
-                    Boolean(sections.codeable) ||
-                      (p.isCodeable != null && String(p.isCodeable).trim() !== ""),
-                  )}
+                  <GtCell
+                    text={fmtPageType(p.pageType, sections.junk || sections.codeable)}
+                    bits={bits.pageType}
+                  />
+                </td>
+                <td>
+                  <GtCell
+                    text={fmtCodeable(
+                      p.isCodeable,
+                      p.pageType,
+                      Boolean(sections.codeable) ||
+                        (p.isCodeable != null && String(p.isCodeable).trim() !== ""),
+                    )}
+                    bits={bits.codeable}
+                  />
                 </td>
                 <td>{fmt(p.currentSequence ?? p.pageNumber, true)}</td>
-                <td>{fmt(p.actualSequence, Boolean(sections.sequencing), skip)}</td>
+                <td>
+                  <GtCell
+                    text={fmt(p.actualSequence, Boolean(sections.sequencing), skip)}
+                    bits={bits.pageSequence}
+                  />
+                </td>
                 {showConfidence ? (
                   <>
                     <td>{fmtConfidence(p.memberConfidence, sections.member, skip)}</td>

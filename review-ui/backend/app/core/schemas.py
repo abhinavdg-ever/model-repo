@@ -25,6 +25,7 @@ class FolderSummary(BaseModel):
     last_updated_at: datetime | None = None
     run_id: str | None = None
     batch_id: str | None = None
+    ground_truth_available: bool = False
 
 
 class FolderListResponse(BaseModel):
@@ -99,6 +100,25 @@ class OcrTextResponse(BaseModel):
     )
 
 
+class PageGroundTruth(BaseModel):
+    """Client labels for one page. Member name and DOB are the extracted values."""
+
+    pageNumber: int
+    sourcePageId: str | None = None
+    memberName: str | None = None
+    memberDob: str | None = None
+    dosFrom: str | None = None
+    dosTo: str | None = None
+    encounterType: str | None = None
+    pageType: str | None = None
+    codeable: str | None = None
+    blankPage: str | None = None
+    junkPage: str | None = None
+    isInvoice: str | None = None
+    pageSequence: str | None = None
+    rotation: str | None = None
+
+
 class ImagingPageResult(BaseModel):
     """Per-page imaging fields from pipeline CSVs / Postgres (no fabricated dummy values)."""
 
@@ -135,6 +155,7 @@ class ImagingPageResult(BaseModel):
     # File/page order (1-based) vs suggested sequence from page_sequencing
     currentSequence: int | None = None
     actualSequence: int | None = None
+    groundTruth: PageGroundTruth | None = None
 
     @model_validator(mode="before")
     @classmethod

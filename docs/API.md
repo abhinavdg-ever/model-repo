@@ -535,6 +535,27 @@ are counted up front; blob drops are listed in the background).
 | `run_id` / `batch_id` | optional | parsed from filename (`metadata_R1_B1.csv`) |
 | `mirror_local` | optional | — | copy blob manifests into `METADATA_ROOT` |
 
+### `POST /api/ground-truth/load`
+
+Loads the client page spreadsheet into `page_ground_truth`. Synchronous. Apply
+`schema/v1.sql` first on a database that predates the table.
+
+| Field | Required? | Default |
+|---|---|---|
+| `local_path` | yes | CSV/XLSX file, or a directory of them |
+
+`Chart_Name` is the chart folder. `Id` `1` matches `1.jpg`, `1.png`, and `1.tif`.
+Member Name is compared to the extracted name (order does not matter:
+`Smith, John` matches `John Smith`). A shared surname or given name with the
+rest different is a partial match. Member DOB is compared as a date
+(`07/17/2025` matches `2025-07-17`); a shared year, month, or day is partial.
+Re-running updates the same chart and page and leaves pages
+that are not in the file.
+
+```bash
+python cli.py ground-truth --local /path/to/ground_truth.xlsx
+```
+
 ### Read / ops
 
 | Method | Path | Notes |

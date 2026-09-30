@@ -16,6 +16,7 @@ export type FolderSummary = {
   last_updated_at: string | null;
   run_id?: string | null;
   batch_id?: string | null;
+  ground_truth_available?: boolean;
 };
 
 export type FolderListParams = {
@@ -111,6 +112,22 @@ export type ImagingPageResult = {
   currentSequence?: number | null;
   /** Reordered sequence — logic TBD. */
   actualSequence?: number | null;
+  groundTruth?: {
+    pageNumber: number;
+    sourcePageId?: string | null;
+    memberName?: string | null;
+    memberDob?: string | null;
+    dosFrom?: string | null;
+    dosTo?: string | null;
+    encounterType?: string | null;
+    pageType?: string | null;
+    codeable?: string | null;
+    blankPage?: string | null;
+    junkPage?: string | null;
+    isInvoice?: string | null;
+    pageSequence?: string | null;
+    rotation?: string | null;
+  } | null;
 };
 
 export type ImagingManifestDetails = {

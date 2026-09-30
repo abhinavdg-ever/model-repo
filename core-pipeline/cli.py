@@ -243,6 +243,17 @@ def main() -> None:
     )
     p_manifest_local.add_argument("file")
 
+    p_ground = sub.add_parser(
+        "ground-truth",
+        help="Load client page ground truth (CSV/XLSX) into page_ground_truth",
+    )
+    p_ground.add_argument(
+        "--local",
+        required=True,
+        metavar="PATH",
+        help="CSV/XLSX file or a directory of them. Chart_Name + Id match the page file.",
+    )
+
     p_api = sub.add_parser("serve", help="Start FastAPI server")
 
     args = parser.parse_args()
@@ -502,6 +513,19 @@ def main() -> None:
         print(
             json.dumps(
                 run_load(local_path=Path(args.file)),
+                default=str,
+                indent=2,
+            )
+        )
+        return
+
+    if args.cmd == "ground-truth":
+        from db.paths import normalize_fs_path
+        from jobs.ground_truth_load import run_load as load_ground_truth
+
+        print(
+            json.dumps(
+                load_ground_truth(normalize_fs_path(args.local) or args.local),
                 default=str,
                 indent=2,
             )

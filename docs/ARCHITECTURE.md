@@ -114,6 +114,7 @@ erDiagram
 | `page_list` | page | One row per image. `image_sha256` for download idempotency / image-level dedup. `use_corrected` + `image_path` record which workspace file stages should read (`pages/…` vs `corrected-pages/…`). |
 | `page_stage_status` | page × stage × pass | Progress. Replaces v6's 11 status columns. Drives resume and status derivation. |
 | `manifest_member_list` | record × member | The client roster, keyed on `record_id` — which **is** `chart_list.chart_name`. No `chart_id` column: the relationship is a join, so a sweep can precede ingest with nothing to link afterwards. |
+| `page_ground_truth` | chart × page file | Client imaging labels. `chart_name` is the folder name; `page_number` is the file stem (`1` matches `1.jpg` / `1.png` / `1.tif`). No `chart_id`, so the spreadsheet can load before the chart exists. |
 
 ### Result tables
 
