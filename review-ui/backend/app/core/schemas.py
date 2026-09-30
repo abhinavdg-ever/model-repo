@@ -101,7 +101,7 @@ class OcrTextResponse(BaseModel):
 
 
 class PageGroundTruth(BaseModel):
-    """Client labels for one page. Member name and DOB are the extracted values."""
+    """Client labels for one page. Member name is Yes/No; DOB is the date."""
 
     pageNumber: int
     sourcePageId: str | None = None

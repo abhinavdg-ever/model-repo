@@ -1,7 +1,7 @@
 /** Compare a pipeline value with the client ground-truth cell.
 
     tick = the values agree
-    !    = a partial match (shared name tokens, or some date parts)
+    !    = a partial date match (shared year, month, or day)
     X    = both sides have a value and nothing lines up
 */
 
@@ -63,16 +63,9 @@ function bit(label: string | null | undefined, mark: MatchMark): GtBit[] {
   return [{ label: shown, mark }];
 }
 
-function nameTokens(value: string | null | undefined): string[] {
-  return fold(value)
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length > 0);
-}
-
-function significantTokens(tokens: string[]): string[] {
-  const long = tokens.filter((token) => token.length > 1);
-  return (long.length > 0 ? long : tokens).slice().sort();
+function nameFound(value: string | null | undefined): boolean {
+  const raw = text(value);
+  return raw.length > 0 && !missing(raw);
 }
 
 function nameMark(
@@ -80,15 +73,12 @@ function nameMark(
   pipeline: string | null | undefined,
   known: boolean,
 ): GtBit[] {
-  if (missing(gt)) return [];
-  if (!known || missing(pipeline)) return bit(gt, "unknown");
-  const left = significantTokens(nameTokens(gt));
-  const right = significantTokens(nameTokens(pipeline));
-  if (left.length === 0 || right.length === 0) return bit(gt, "unknown");
-  if (left.join(" ") === right.join(" ")) return bit(gt, "match");
-  const rightSet = new Set(right);
-  const shared = left.filter((token) => rightSet.has(token));
-  return bit(gt, shared.length > 0 ? "partial" : "mismatch");
+  const side = yesNo(gt);
+  if (!side) return missing(gt) ? [] : bit(gt, "unknown");
+  if (!known) return bit(gt, "unknown");
+  const found = nameFound(pipeline);
+  const agree = side === "yes" ? found : !found;
+  return bit(gt, agree ? "match" : "mismatch");
 }
 
 function parseDate(value: string | null | undefined): [string, string, string] | null {
