@@ -293,8 +293,8 @@ One folder per pipeline concern; only `canon_store.py` sits at the top level.
 | `image_preprocess/` | Stage 1: rotation / tilt / mirror, handwriting classifier, quality score |
 | `ocr/` | Docling final1 engine + section-header matching (stage 6) |
 | `blank_junk/` | Blank / junk rules, TF-IDF model bridge, bundled model code (`model/`) |
-| `page_classify/` | Page type / codeability (term frequency) |
-| `encounter/` | Encounter type (term frequency) |
+| `page_classify/` | Page type / codeability (keyword families, header-weighted, family spans) |
+| `encounter/` | Encounter type per visit (tiered evidence: page type → explicit setting text → hints) |
 | `dos/` | Date-of-service driver + LLM pass |
 | `member/` | Member extraction + verification engine |
 | `sequencing/` | Page sequencing |
@@ -374,7 +374,7 @@ inserts).
 | `__init__.py` | Re-exports the four extractors. |
 | **`extractors/ner_based/`** | |
 | `keys.py` | Cuts the real sentence around a field key out of the page ("Patient Name: Robert Smith"), with the reach-across-a-gap rules. NER reads real text, not rebuilt tokens. |
-| `stages/lib/keyword-canon/*_canon.json` | Editable keyword / catalog files, reloaded on change (no restart): `junk_keywords_canon.json` (junk detector phrases), `dos_keywords_canon.json` (DOS visit/from/to cues), `member_keywords_canon.json` (member key groups / ignore labels), `section_header_canon.json`, `codeable_canon.json`, `encounter_canon.json`. Loaded via `stages/lib/canon_store.py`. |
+| `stages/lib/keyword-canon/*_canon.json` | Editable keyword / catalog files, reloaded on change (no restart): `junk_keywords_canon.json` (junk detector phrases), `dos_canon.json` (DOS scoring weights, labels, clinical / discharge cues, `DOS_MAX_AGE_YEARS`, `DOS_MIN_SCORE`, `DOS_DEFAULT_DATE`), `member_keywords_canon.json` (member key groups / ignore labels), `section_header_canon.json`, `codeable_canon.json`, `encounter_canon.json`. Loaded via `stages/lib/canon_store.py`. |
 | `name.py` | Runs NER on each patient-name sentence, merges adjacent person spans, trims label words, and picks the best candidate. Returns *every* person found, so the caller can also spot a wrong member. |
 | `dob.py`, `member_id.py` | Second-pass DOB / MemberID from NER over their key sentences. |
 | `model.py` | Model loading and prediction: offline mode, retries, fail-loud on an unloadable model, GLiNER and HF-token backends. Short-circuits when the layer is disabled. |

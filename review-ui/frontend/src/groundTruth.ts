@@ -69,7 +69,8 @@ function nameFound(value: string | null | undefined): boolean {
   return raw.length > 0 && !missing(raw);
 }
 
-function nameMark(
+/** Green only when ground truth is Yes and the page actually has the value. */
+function yesFoundMark(
   gt: string | null | undefined,
   pipeline: string | null | undefined,
   known: boolean,
@@ -78,8 +79,25 @@ function nameMark(
   if (!side) return missing(gt) ? [] : bit(gt, "unknown");
   if (!known) return bit(gt, "unknown");
   const found = nameFound(pipeline);
-  const agree = side === "yes" ? found : !found;
-  return bit(gt, agree ? "match" : "mismatch");
+  if (side === "yes" && found) return bit(gt, "match");
+  if (side === "yes" || found) return bit(gt, "mismatch");
+  return bit(gt, "unknown");
+}
+
+function dobMark(
+  gt: string | null | undefined,
+  pipeline: string | null | undefined,
+  known: boolean,
+): GtBit[] {
+  if (yesNo(gt)) return yesFoundMark(gt, pipeline, known);
+  return dateMark(gt, pipeline, known);
+}
+
+function visibilityMark(value: string | null | undefined): GtBit[] {
+  const side = yesNo(value);
+  if (side === "yes") return bit("Good Visibility", "unknown");
+  if (side === "no") return bit("Bad Visibility", "unknown");
+  return [];
 }
 
 function parseDate(value: string | null | undefined): [string, string, string] | null {
@@ -280,9 +298,9 @@ export function groundTruthBits(input: {
   };
   if (!gt) return empty;
   return {
-    memberName: nameMark(gt.memberName, input.memberName, input.memberKnown),
-    memberDob: dateMark(gt.memberDob, input.memberDob, input.memberKnown),
-    quality: missing(gt.isVisible) ? [] : bit(`${text(gt.isVisible)} (Is Visible)`, "unknown"),
+    memberName: yesFoundMark(gt.memberName, input.memberName, input.memberKnown),
+    memberDob: dobMark(gt.memberDob, input.memberDob, input.memberKnown),
+    quality: visibilityMark(gt.isVisible),
     rotation: rotationMark(gt.rotation, input.orientationAngle, input.rotationKnown),
     dosFrom: dateMark(gt.dosFrom, input.dosFrom, input.dosKnown),
     dosTo: dateMark(gt.dosTo, input.dosTo, input.dosKnown),

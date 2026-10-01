@@ -1,142 +1,223 @@
 {
-  "version": 2,
-  "types": [
-    "outpatient_f2f",
-    "outpatient_tele",
-    "inpatient",
-    "home"
-  ],
-  "display": {
-    "outpatient_f2f": "Outpatient (F2F)",
-    "outpatient_tele": "Outpatient (Tele)",
-    "inpatient": "Inpatient",
-    "home": "Home"
+  "note": "Encounter setting per visit. Evidence is ranked, not added up: the highest non-empty tier decides alone. tier1 = a matched (not span-inherited) page type that exists in one setting only, keyed on codeable_canon.json ids. tier2 = text that names the setting. tier3 = hints that also occur in other settings; they only break a tie inside the deciding tier. context phrases are logged and never score. A negative removes the tier 2/3 finding it names (cancels) or every tier 2/3 finding of a setting (cancels_setting). A phrase is recorded once per visit however often it appears. Lower priority wins a tie. Reloads on change.",
+  "settings": {
+    "home": {
+      "label": "Home",
+      "priority": 10
+    },
+    "outpatient_tele": {
+      "label": "Outpatient (Tele)",
+      "priority": 20
+    },
+    "outpatient_f2f": {
+      "label": "Outpatient (F2F)",
+      "priority": 30
+    },
+    "inpatient": {
+      "label": "Inpatient",
+      "priority": 40
+    }
   },
-  "note": "One encounter type per page-level DOS. Score keywords across all pages in the DOS, then stamp every page with the winner. Keywords with establishes=false never set the type alone (e.g. diagnostic imaging — valid only when the DOS is already Outpatient F2F). Do NOT use 'progress note(s)' — they appear in every setting.",
-  "entries": [
+  "confidence": {
+    "tier1": 0.95,
+    "tier1_conflict": 0.7,
+    "tier2": 0.8,
+    "tier2_conflict": 0.6
+  },
+  "tier1_page_types": {
+    "discharge_summary": "inpatient",
+    "discharge_note": "inpatient",
+    "discharge_report": "inpatient",
+    "depart_note": "inpatient",
+    "depart_summary": "inpatient",
+    "icu_flow_sheet": "inpatient",
+    "ventilator_management_record": "inpatient",
+    "critical_care_note": "inpatient",
+    "operative_report": "inpatient",
+    "anesthesia_record": "inpatient",
+    "anesthesia_post_op_note": "inpatient",
+    "emergency_ed_visit": "inpatient",
+    "home_health_visit_note": "home",
+    "skilled_nursing_visit_note": "home",
+    "housecalls_visit_summary": "home",
+    "telephone_encounter": "outpatient_tele",
+    "office_visits_followup_visits": "outpatient_f2f",
+    "initial_office_note": "outpatient_f2f",
+    "established_patient_note": "outpatient_f2f",
+    "urgent_care_note": "outpatient_f2f"
+  },
+  "tier2": {
+    "outpatient_tele": [
+      "telehealth",
+      "tele-health",
+      "telemedicine",
+      "tele-medicine",
+      "tele visit",
+      "televisit",
+      "virtual visit",
+      "video visit",
+      "video encounter",
+      "telephone visit",
+      "phone visit",
+      "remote visit",
+      "audio only visit",
+      "audiovisual visit"
+    ],
+    "inpatient": [
+      "hospital course",
+      "admission date",
+      "date of admission",
+      "admitted on",
+      "inpatient",
+      "in-patient",
+      "discharge summary",
+      "discharge note",
+      "discharge report",
+      "operative note",
+      "operative notes",
+      "operative report",
+      "op note",
+      "emergency department note",
+      "emergency note",
+      "ed note",
+      "er note"
+    ],
+    "home": [
+      "skilled nurse visit",
+      "skilled nursing visit",
+      "home visit",
+      "home health visit",
+      "housecalls visit",
+      "house call visit"
+    ],
+    "outpatient_f2f": [
+      "office visit",
+      "office visits",
+      "office visit note",
+      "office visit report",
+      "clinic visit",
+      "clinic note",
+      "face to face",
+      "face-to-face",
+      "f2f",
+      "place of service",
+      "appointment facility",
+      "reason for appointment"
+    ]
+  },
+  "tier3": {
+    "outpatient_f2f": [
+      "chief complaint",
+      "history of present illness",
+      "hpi:",
+      "subjective:",
+      "objective:",
+      "assessment and plan",
+      "assessment & plan",
+      "a/p:",
+      "examination:",
+      "soap note",
+      "soap notes",
+      "s.o.a.p",
+      "subjective objective assessment plan",
+      "cheddar",
+      "follow up",
+      "follow-up",
+      "return visit",
+      "reason for visit",
+      "reason for consult",
+      "outpatient",
+      "details:",
+      "drugs:",
+      "6 month follow"
+    ],
+    "inpatient": [
+      "history and physical",
+      "history & physical",
+      "h&p",
+      "h and p",
+      "admission h&p",
+      "hospitalization",
+      "consultation",
+      "consult note",
+      "consultation note"
+    ]
+  },
+  "context": [
+    "diagnostic imaging",
+    "radiology report",
+    "imaging report",
+    "x-ray report",
+    "ct scan report",
+    "mri report",
+    "ultrasound report"
+  ],
+  "negatives": [
     {
-      "encounter_type": "outpatient_f2f",
-      "label": "Office visit / SOAP / CHEDDAR / clinic appointment",
-      "establishes": true,
-      "keywords": [
-        "office visit",
-        "office visits",
-        "office visit note",
-        "office visit report",
-        "appointment facility",
-        "reason for appointment",
-        "reason for visit",
-        "reason for consult",
-        "follow up",
-        "follow-up",
-        "6 month follow",
-        "outpatient",
-        "clinic visit",
-        "clinic note",
-        "face to face",
-        "face-to-face",
-        "f2f",
-        "soap note",
-        "soap notes",
-        "s.o.a.p",
-        "subjective objective assessment plan",
-        "subjective:",
-        "objective:",
-        "assessment and plan",
-        "assessment & plan",
-        "a/p:",
-        "cheddar",
-        "chief complaint",
-        "history of present illness",
-        "hpi:",
-        "examination:",
-        "details:",
-        "drugs:",
-        "return visit"
+      "phrase": "follow up with your primary care",
+      "cancels": [
+        "follow up"
       ]
     },
     {
-      "encounter_type": "outpatient_tele",
-      "label": "Telehealth",
-      "establishes": true,
-      "keywords": [
-        "telehealth",
-        "tele-health",
-        "telemedicine",
-        "tele-medicine",
-        "tele visit",
-        "televisit",
-        "virtual visit",
-        "video visit",
-        "video encounter",
-        "telephone visit",
-        "phone visit",
-        "remote visit",
-        "audio only visit",
-        "audiovisual visit"
+      "phrase": "outpatient follow up",
+      "cancels": [
+        "follow up"
       ]
     },
     {
-      "encounter_type": "inpatient",
-      "label": "Inpatient clinical notes",
-      "establishes": true,
-      "keywords": [
-        "discharge summary",
-        "discharge note",
-        "discharge report",
-        "hospital course",
-        "hospitalization",
+      "phrase": "follow up in the office",
+      "cancels": [
+        "follow up"
+      ]
+    },
+    {
+      "phrase": "discharged home",
+      "cancels_setting": "home"
+    },
+    {
+      "phrase": "discharge to home",
+      "cancels_setting": "home"
+    },
+    {
+      "phrase": "discharged to home",
+      "cancels_setting": "home"
+    },
+    {
+      "phrase": "scheduled for admission",
+      "cancels": [
         "admission date",
         "date of admission",
-        "inpatient",
-        "in-patient",
-        "emergency note",
-        "emergency department note",
-        "ed note",
-        "er note",
-        "history and physical",
-        "history & physical",
-        "h&p",
-        "h and p",
-        "admission h&p",
-        "operative note",
-        "operative notes",
-        "operative report",
-        "op note",
-        "consultation",
-        "consult note",
-        "consultation note"
+        "admitted on"
       ]
     },
     {
-      "encounter_type": "inpatient",
-      "label": "Diagnostic imaging (invalid alone)",
-      "establishes": false,
-      "keywords": [
-        "diagnostic imaging",
-        "radiology report",
-        "imaging report",
-        "x-ray report",
-        "ct scan report",
-        "mri report",
-        "ultrasound report"
+      "phrase": "pending admission",
+      "cancels": [
+        "admission date",
+        "date of admission",
+        "admitted on"
       ]
     },
     {
-      "encounter_type": "home",
-      "label": "Home / skilled nurse visit",
-      "establishes": true,
-      "keywords": [
-        "skilled nurse visit",
-        "skilled nursing visit",
-        "skilled nursing visit note",
-        "home visit",
-        "home visit note",
-        "home health visit",
-        "home health visit note",
-        "housecalls visit",
-        "house call visit"
+      "phrase": "if admitted",
+      "cancels": [
+        "admission date",
+        "date of admission",
+        "admitted on"
       ]
+    },
+    {
+      "phrase": "telephone message",
+      "cancels_setting": "outpatient_tele"
+    },
+    {
+      "phrase": "phone message",
+      "cancels_setting": "outpatient_tele"
+    },
+    {
+      "phrase": "left a message",
+      "cancels_setting": "outpatient_tele"
     }
   ]
 }

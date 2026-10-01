@@ -68,15 +68,15 @@ Blank / junk / duplicate.
 
 Codeable / non-codeable page type.
 
-- **Model today** — `tf_keywords` (`codeable_canon.json`)  
+- **Model today** — keyword families (`codeable_canon.json`): word-boundary hits, header-weighted, margin confidence, family spans  
 - **Out** — `page_type`, tag (codeable / non-codeable / discharge)  
-- **Toggle** — canon version / project-specific types  
+- **Toggle** — project-specific canon  
 
 ### 5. `POST` / `GET` `/classification/encounter`
 
 Encounter type (IP / OP / F2F / …).
 
-- **Model** — `tf_keywords` (+ DOS-scoped carry)  
+- **Model** — tiered evidence per visit (page type → setting text → hints), no carry-forward  
 - **Toggle** — encounter canon per client  
 
 ### 6. `POST` / `GET` `/member`

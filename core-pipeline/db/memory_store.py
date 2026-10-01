@@ -1005,6 +1005,13 @@ class MemoryStore:
                 "updated_at": _now(),
             }
 
+    def delete_encounter(self, chart_id: int, page_ids: Sequence[int]) -> None:
+        ids = {int(pid) for pid in page_ids}
+        with self._lock:
+            for page_id, row in list(self.encounters.items()):
+                if row["chart_id"] == chart_id and int(page_id) in ids:
+                    del self.encounters[page_id]
+
     def upsert_sequencing(
         self,
         *,

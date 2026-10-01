@@ -16,7 +16,9 @@ the V1 prototypes. Where the port differs from them, it says so and why.
 4. [Final OCR](#4-final-ocr)
 5. [Member verification](#5-member-verification) ← the accept/reject decision
 6. [Date of service](#6-date-of-service)
-7. [Chart status](#7-chart-status)
+7. [Page type](#7-page-type)
+8. [Encounter type](#8-encounter-type)
+9. [Chart status](#9-chart-status)
 
 ---
 
@@ -453,60 +455,89 @@ confidence — it reported detection source per field, which is what the UI show
 
 ## 6. Date of service
 
-**Source:** `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/` → `stages/lib/dos/` · **Stage:** `stages/lib/dos/stage.py`
+**Engine:** `stages/lib/dos/dos_logic.py` · **Stage:** `stages/lib/dos/stage.py` ·
+**Profile:** `keyword-canon/dos_canon.json` (weights, labels, settings —
+reloads on change)
 
-The stage calls the reference's own driver, `dos_logic.detect_dos_per_page()` —
-the same entry point `extract_dos.py` uses. That driver owns the page splitting,
-the escalation, the carry-forward and the ISO conversion.
+Every date on every page becomes a candidate. Each candidate is scored. The
+chart is then resolved page by page. Nothing is vetoed: a DOB label or an old
+year is a large negative weight, so a losing date keeps a score that says why
+it lost.
 
 ```mermaid
 flowchart TD
-  TXT["Combined text, ===== page ===== markers"] --> SPLIT["split_ocr_into_pages()"]
-  SPLIT --> PAGE["per page"]
-  PAGE --> RX["extract_dos_from_page_text()<br/>regex over the whole page"]
-  RX --> HIT{"found?"}
-  HIT -- yes --> CONF["confidence by where it was found"]
-  HIT -- no --> ALLOW{"page_allows_llm()<br/>and a client exists?"}
-  ALLOW -- yes --> LLM["extract_dos_range_with_llm()<br/>top+bottom 60 words → Azure OpenAI"]
-  ALLOW -- no --> NONE["no page-level DOS"]
-  LLM --> CONF
-  CONF --> DOC
-  NONE --> DOC
-  DOC["Document level"] --> CF{"page has its own DOS?"}
-  CF -- yes --> NEW["new encounter — becomes<br/>the carry-forward value"]
-  CF -- no --> INH{"a previous encounter?"}
-  INH -- yes --> CARRY["inherit it"]
-  INH -- no --> DEF["DEFAULT_DOC_DOS"]
+  TXT["Combined text, ===== page ===== markers"] --> A["A. find_candidates()<br/>four date shapes, real days only"]
+  A --> B["B. page_features() + chart_features()<br/>label, position, time stamp, page type, age, cluster, range pair"]
+  B --> C["C. score_candidate()<br/>weighted sum, clamped 0–1"]
+  C --> BEST{"best ≥ DOS_MIN_SCORE?"}
+  BEST -- no --> LLM{"clinical cue<br/>and a client?"}
+  LLM -- yes --> AOAI["extract_dos_range_with_llm()"]
+  LLM -- no --> D
+  AOAI --> D
+  BEST -- yes --> D["D. resolve in page order<br/>spans · carry-forward · non-encounter · default"]
 ```
 
-Confidence comes from where the date was found:
+### A. Candidates
 
-| Situation | Confidence |
+`MM/DD/YYYY` or `M/D/YY` (either `/` or `-`), `YYYY-MM-DD`, `Month D, YYYY`,
+`D Month YYYY`. Two-digit years below 50 are 20xx, 50 and above 19xx. Dates
+that are not real days (02/30) are dropped; everything else is kept.
+
+### B. Features
+
+| Feature | Meaning |
 |---|---|
-| Explicit admit+discharge range | `CONF_EDGE` (0.95) |
-| Hit in the first/last 60 words | `CONF_EDGE` |
-| Hit only mid-page | `CONF_FULL_PAGE` (0.70) |
-| Several same-year dates | 0.60 |
-| Hardcoded default | `CONF_DEFAULT` (0.80) |
+| `label_text` / `label_class` | Nearest label within 80 chars to the left: `encounter`, `admit`, `discharge`, `birth`, `doc_meta`, `future`, `procedure`, or `none`. A label never reaches past an earlier date. |
+| `label_distance` | Characters between the label and the date |
+| `position`, `edge_position` | Offset ÷ page length; in the first or last 60 words |
+| `has_time` | A clock time beside the date (`03/20/2024 10:15 AM`, `…T10:00`) — the shape of a print/fax stamp |
+| `page_type`, `has_clinical_cue` | `codeable_classify.page_type_of()` (per page, no DOS carry); `clinical_cues` |
+| `year_delta` | Candidate year − chart received year (`chart_list.created_at`) |
+| `cluster_size` | Other candidates in the chart within 30 days |
+| `in_range_pair` | An admit and a discharge candidate within 200 chars |
 
-### What v6 dropped, and this restores
+### C. Score
 
-v6 called only `extract_dos_from_page_text()` per page, bypassing the driver.
-That lost three things:
+```
+score = base (0.5) + W[label_class] − 0.002 × label_distance
+      + 0.10 if edge_position (not when has_time)
+      − 0.30 if has_time
+      + 0.10 if has_clinical_cue
+      + 0.05 × min(cluster_size, 3)
+      − 0.35 if year_delta < −DOS_MAX_AGE_YEARS
+```
 
-1. **The LLM pass.** `extract_dos_range_with_llm` existed and was never called.
-2. **The document-level carry-forward.** A page with no date of its own should
-   inherit the previous encounter's.
-3. **Real ISO conversion.** v6 wrote `doc_dos_from_iso` as a *copy* of the
-   un-normalised `doc_dos_from`. Pinned by `test_iso_columns_are_actually_iso`.
+`W`: encounter +0.40, admit/discharge +0.30, none −0.10, procedure −0.30,
+future −0.40, doc_meta −0.45, birth −0.50. Clamped to [0, 1]. The best
+candidate at or above `DOS_MIN_SCORE` (0.55) is the page's date. If it is part
+of an admit/discharge pair, the page gets the range. The chosen score is the
+row's `confidence`.
 
-### Multi-date pages
+### D. Resolve
 
-The reference emits comma-separated lists when a page names several dates,
-while a single from/to column pair can hold only one. `dos_extraction_results`
-therefore keeps the page-level and document-level pairs as **single-valued
-columns** and puts every date the page carries in the **multi-valued `dates`
-JSONB array** — one row per page, no child table.
+| Page | Page level | Document level |
+|---|---|---|
+| Progress Note with a date | its date | opens a span with it (`span_start`) |
+| In a span, own date ≤ 0.75 | its date | the span's (`span`) |
+| Own date > 0.75, or no span | its date | its date — the new encounter |
+| Non-encounter page type (face sheet, demographics, problem/med/allergy list, vitals, immunization) | its date | the current encounter, never replaced (`non_encounter_page`) |
+| No date ≥ threshold | blank | the current encounter (`carry_forward` / `span`) |
+| Nothing to inherit | blank | `DOS_DEFAULT_DATE`, confidence 0, `no_date_found`, `is_default` |
+
+Page types are exact `page_type` names from `codeable_canon.json`, listed in
+the profile.
+
+### Settings (profile)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `DOS_MAX_AGE_YEARS` | 6 | Age penalty applies to dates more than this many years before the received date. Replaces the fixed 2020 cutoff. |
+| `DOS_MIN_SCORE` | 0.55 | Lowest score that counts as a page date |
+| `DOS_DEFAULT_DATE` | 2022-02-02 | Delivered when nothing is found. review-ui and `encounter_classify` also know this value. |
+
+`DOS_DEBUG=true` (env) writes every candidate, its features, its score and
+whether it was chosen to `<chart>/debug/<chart>_dos_candidates.csv`. `debug/`
+is not exported.
 
 **Writes**
 
@@ -515,7 +546,7 @@ JSONB array** — one row per page, no child table.
 | `dos_extraction_results` | `date_of_service_from/to`, `..._doclevel` (single-valued), `dates` (JSONB array of `{seq, date_of_service_from, date_of_service_to, source_keyword, confidence}`), `extraction_method` (`rules`\|`llm`\|`rules+llm`), `confidence`. `date_count` is generated from `dates`. |
 | disk | `imaging/<chart>_dos.csv` |
 
-Without Azure OpenAI the stage runs regex-only and stamps
+Without Azure OpenAI the stage runs rules-only and stamps
 `extraction_method='rules'` — visible in the data, not silent. "Without" means
 no endpoint, or no usable credential: either an API key or, on a VM with a
 managed identity, an Entra token and no key. Which one was used is in the run
@@ -524,7 +555,215 @@ log (`auth=key` / `auth=entra`); the setting is
 
 ---
 
-## 7. Chart status
+## 7. Page type
+
+**Engine:** `stages/lib/page_classify/codeable_classify.py` · **Stage:**
+`stages/lib/page_classify/stage.py` · **Catalog:**
+`keyword-canon/codeable_canon.json` (reloads on change)
+
+Every main page (not blank / junk / duplicate) is matched against 253 page
+types grouped into 29 families. **The decision is made per family**, and the
+family carries the tag: a family is all Codeable, all Non Codeable or all
+Discharge Frequency, never mixed. The output `page_type` (CSV) and
+`page_classification.page_subtype` are **`Family (Page Type)`** — e.g.
+`Progress Note (SOAP Note)`, or just `Progress Note` when the type has the
+family's name. Blank, junk and duplicate pages are always Non Codeable.
+
+| Family | Tag | Priority | Types |
+|---|---|---|---|
+| Progress Note | Codeable | 10 | 30 |
+| Discharge | Discharge Frequency | 20 | 20 |
+| Obstetric | Codeable | 30 | 5 |
+| Procedure | Codeable | 30 | 18 |
+| Assessment / Screening | Codeable | 40 | 14 |
+| Behavioral Health | Codeable | 40 | 4 |
+| Care Plan | Codeable | 40 | 6 |
+| Inpatient / Critical Care | Codeable | 40 | 12 |
+| Specialty Consult | Codeable | 40 | 11 |
+| Therapy / Rehab | Codeable | 40 | 11 |
+| Ophthalmology | Codeable | 45 | 7 |
+| Screening / Checklist | Non Codeable | 45 | 6 |
+| Cardiac Diagnostic | Codeable | 50 | 9 |
+| Neuro Diagnostic | Codeable | 50 | 6 |
+| Pulmonary Function Test | Non Codeable | 50 | 1 |
+| Pulmonary / Sleep | Codeable | 50 | 5 |
+| Vascular / Holter | Non Codeable | 50 | 5 |
+| Imaging | Non Codeable | 55 | 12 |
+| Laboratory | Non Codeable | 55 | 15 |
+| Nuclear Medicine | Codeable | 55 | 2 |
+| Pathology | Codeable | 55 | 6 |
+| Medication / Immunization | Non Codeable | 60 | 6 |
+| Therapy Administration | Codeable | 60 | 3 |
+| Consent / Authorization | Non Codeable | 70 | 7 |
+| Orders / Requests | Non Codeable | 70 | 7 |
+| Letter | Codeable | 75 | 1 |
+| Patient Communication | Non Codeable | 75 | 8 |
+| Administrative | Non Codeable | 80 | 14 |
+| Demographics | Codeable | 80 | 2 |
+
+### The catalog
+
+```json
+{
+  "id": "soap_note",
+  "display": "SOAP Note (Subjective, Objective, Assessment, Plan)",
+  "family": "progress_note",
+  "continue": true,
+  "match": {
+    "primary":    ["soap note"],
+    "supporting": ["assessment", "subjective", "objective"],
+    "variants":   []
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `id` | Stable key. `display` is what the reviewer sees (parentheticals hidden) |
+| `family` | One of the `families` block. A family has a `tag`, a `priority` (lower wins ties) and `span`; the type takes its tag from the family and may not carry its own |
+| `match.primary` | Decides the type and can open a span. Belongs to exactly one entry. Two or more words, or a word in `single_word_primary` |
+| `match.variants` | Misspellings from the client's type list (`intial`, `requisation`, `dignosis`). Count as primary |
+| `match.supporting` | Adds score, never decides the type |
+| `continue` | The type runs over several pages: it opens a span for its family |
+
+**The loader refuses a bad file** and names every offending entry: a primary
+claimed by two entries, a one-word primary not on the allowlist, an entry with
+no primary, an unknown family, a family without a valid tag, or a type that
+carries its own tag. On a live reload the last good version
+keeps serving; on first load the error is raised.
+
+### Scoring
+
+Text is lowercased with whitespace collapsed. Keywords match on word
+boundaries, so `ems` does not hit "problems" and `sex` does not hit "sexual".
+
+```
+hit_weight  = phrase_weight[words] × band
+phrase_weight: 1 word 1 · 2 words 4 · 3 words 6 · 4+ words 8
+band:          top 15% of the page 2.0 · bottom 10% 0.5 · elsewhere 1.0
+family_score = sum of the hits of every type in the family
+               (a phrase two of its types share counts once per position)
+```
+
+A type name at the top of a page is the document's title; the same phrase in
+the body is usually a cross-reference ("see discharge summary"), and a footer
+usually repeats a form name.
+
+### Picking the type
+
+1. A family is eligible when at least one of its hits is a primary or variant.
+2. **Family:** the highest family score wins; on a tie, the lower priority
+   (`progress_note` 10, `discharge` 20). The family decides the tag.
+3. **Type:** inside that family, each eligible type's share of the family's
+   type scores is its probability; the most likely type wins (ties: the longer
+   name). It is reported as `type_confidence`.
+
+**Confidence** = `(winning family − next family) / winning family`, at least
+`confidence_floor` (0.30); 1.0 when no other family matched. Two Progress Note
+types scoring the same is not uncertainty — either gives the same family and
+tag.
+
+**Demographics** is decided separately when patient-data fields cluster (two on
+pages 1–2, four anywhere), unless a span family (progress note, discharge)
+also matched.
+
+### Spans
+
+| Page | Result |
+|---|---|
+| Winner has `continue` | Opens (or replaces) a span for its family |
+| Same date as the span, matched a type in the span's family | That type, the span's tag (`continue_applied=y`) |
+| Same date, matched nothing or another family | The opener's type and tag (`continue_applied=y`) |
+| Different date, or no date | Span ends |
+
+The span date is the page-level DOS, else the document-level one. The DOS
+default (`DOS_DEFAULT_DATE`) counts as no date, so pages where date extraction
+failed share a span with nobody.
+
+### Evidence
+
+`PAGE_CLASSIFY_DEBUG=true` writes
+`<chart>/debug/<chart>_page_classify_evidence.csv`: per page, the chosen type
+and family, per-family scores, every keyword hit with its role and band, page
+position in the chart, the previous page's family and the OCR source. It is the
+reviewer's "why" and the training set for a family-level classifier.
+
+**Writes**
+
+| Target | Columns |
+|---|---|
+| `page_classification` | `page_subtype` (display name), `classification_category`, `confidence` |
+| disk | `imaging/<chart>_codeable.csv` |
+
+---
+
+## 8. Encounter type
+
+**Engine:** `stages/lib/encounter/encounter_classify.py` · **Stage:**
+`stages/lib/encounter/stage.py` · **Catalog:** `keyword-canon/encounter_canon.json`
+
+One answer per visit — Outpatient (F2F), Outpatient (Tele), Inpatient or Home —
+stamped on every page of the visit. **Evidence is ranked, not added up:** the
+most authoritative evidence a visit has decides alone, so repeated "follow up"
+can never outweigh one discharge summary.
+
+### Visits
+
+A visit is a run of **consecutive** pages sharing a date: the page's
+document-level DOS, else its page-level DOS. The DOS default
+(`DOS_DEFAULT_DATE`) is the absence of a date. A page without a usable date is
+a visit of its own and stays unresolved (`no_date` / `default_date`). The same
+date forty pages later is a second visit.
+
+### Evidence
+
+Each finding is recorded **once per visit**, however often its words appear.
+
+| Tier | What | Decides? |
+|---|---|---|
+| 1 | A page type that exists in one setting only (`tier1_page_types`, keyed on the page type id). It must be matched on the page, not inherited from a span | Yes, alone |
+| 2 | Text naming the setting: "telehealth", "hospital course", "home health visit", "place of service" | Only when tier 1 is empty |
+| 3 | Hints found in several settings: "chief complaint", "follow up", "consultation", "h&p" | Never — breaks a tie inside the deciding tier |
+| context | "radiology report", "mri report" … | Logged only |
+
+Phrases match on word boundaries; a phrase ending in punctuation (`a/p:`,
+`hpi:`) has no trailing boundary. **Negatives** ("discharged home",
+"telephone message", "follow up with your primary care") remove the tier 2/3
+finding they name, or every tier 2/3 finding of a setting. They never touch
+tier 1.
+
+### Decision
+
+| Situation | Answer | `confidence` |
+|---|---|---|
+| Tier 1, one setting | that setting | 0.95 |
+| Tier 1, two settings | more tier 3 hints, then setting priority (Home 10, Tele 20, F2F 30, Inpatient 40); `conflict=y` | 0.70 |
+| Tier 1 empty, tier 2 one setting | that setting | 0.80 |
+| Tier 2, two settings | as above; `conflict=y` | 0.60 |
+| Nothing in tiers 1–2 | empty, `reason=no_setting_evidence` | 0 |
+
+An unresolved visit never inherits from a neighbouring page. The buckets live
+in the catalog; calibrate them against a labelled sample.
+
+The **loader refuses** a catalog where a setting is unknown, a tier 1 id is not
+a page type id, a phrase sits in two tiers or under two settings, a context
+phrase also scores, or a negative cancels a phrase that does not exist.
+
+### Writes
+
+| Target | Columns |
+|---|---|
+| `encounter_type_results` | resolved pages only: `encounter_type`, `confidence`, `matched_keyword`. Rows for pages that are now unresolved are deleted |
+| disk | `imaging/<chart>_encounter.csv`, every page: `encounter_type`, `encounter_label`, `confidence`, `matched_keyword` (page type for tier 1, phrase for tier 2), `continue_applied` (the page alone would answer differently or not at all), `decided_by` (`tier1`/`tier2`/`unresolved`), `reason`, `conflict` |
+
+`ENCOUNTER_DEBUG=true` writes one evidence record per visit to
+`<chart>/debug/<chart>_encounter_evidence.csv`: every finding with its tier,
+source and page, cancelled findings, negatives that fired, context, the
+deciding tier, the winner and any contender.
+
+---
+
+## 9. Chart status
 
 **Module:** `core-pipeline/db/chart_status.py`
 

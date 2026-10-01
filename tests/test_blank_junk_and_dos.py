@@ -8,6 +8,8 @@ UI: similarity 100% → Yes; [98%, 100%) → May Be; else No.
 """
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from stages.lib.blank_junk.stage import SUBTYPE_DB, _classify, _to_db_flag
@@ -393,6 +395,7 @@ class TestDosStageWritesEachPageOnce:
         monkeypatch.setattr(dos_stage, "stage_run", fake_stage_run)
         monkeypatch.setattr(dos_stage, "connect", lambda: nullcontext(None))
         monkeypatch.setattr(dos_stage, "get_blank_junk_flags", lambda *a, **k: {})
+        monkeypatch.setattr(dos_stage, "get_chart", lambda *a, **k: None)
         monkeypatch.setattr(dos_stage, "mark_skipped", lambda *a, **k: None)
         monkeypatch.setattr(dos_stage, "_combined_text", lambda *a, **k: "")
         monkeypatch.setattr(
@@ -431,7 +434,7 @@ class TestDosLayouts:
         hit = extract_dos_from_page_text(text)
         assert hit["dos_from"] == "01-28-2025"
         assert hit["dos_to"] == "01-28-2025"
-        assert hit["keyword"] == "encounter date"
+        assert hit["keyword"].casefold() == "encounter date"
 
     def test_header_date_on_a_visit_form_ignores_the_dob(self):
         """The visit date is a bare cell under a Date column, rows below the DOB."""
@@ -452,11 +455,13 @@ class TestDosLayouts:
         assert "03-06-1972" not in hit["dos_from"]
 
 
-class TestDosDriverIsTheV1One:
-    def test_document_level_carry_forward_happens(self):
-        """A page with no DOS of its own inherits the previous encounter's —
-        behaviour that lives in the reference driver the stage now calls."""
-        from dos_logic import detect_dos_per_page
+RECEIVED = date(2026, 5, 1)
+
+
+class TestDosDriver:
+    def test_a_page_with_no_date_keeps_the_default(self):
+        """A page with no date of its own gets the default, not the previous visit."""
+        from dos_logic import detect_dos_per_page, profile
 
         text = (
             "===== 1.jpg =====\n"
@@ -466,24 +471,22 @@ class TestDosDriverIsTheV1One:
             "===== 2.jpg =====\n"
             "Continued progress note with no date on it.\n"
         )
-        hits = detect_dos_per_page(text, None, use_llm=False)
+        hits = detect_dos_per_page(text, None, use_llm=False, received_date=RECEIVED)
         assert len(hits) == 2
-        assert hits[0]["dos_from"]
-        # Page 2 has no page-level DOS but does carry a document-level one.
+        assert hits[0]["dos_from"] == "03-14-2024"
+        # No date on the page: the default prevails. The visit is not carried down.
         assert hits[1]["dos_from"] == ""
-        assert hits[1]["doc_dos_from"]
+        assert hits[1]["is_default"] is True
+        assert hits[1]["doc_dos_from_iso"] == profile().default_date
+        assert hits[1]["match_type"] == "no_date_found"
 
     def test_iso_columns_are_actually_iso(self):
-        """v6 wrote doc_dos_from_iso as a copy of the un-normalised value."""
         from dos_logic import detect_dos_per_page
 
         text = "===== 1.jpg =====\nDate of Service: 03/14/2024\nVisit note.\n"
-        hits = detect_dos_per_page(text, None, use_llm=False)
-        iso = hits[0]["doc_dos_from_iso"]
-        if iso:
-            assert iso.count("-") == 2
-            year = iso.split("-")[0]
-            assert len(year) == 4 and year.isdigit()
+        hits = detect_dos_per_page(text, None, use_llm=False, received_date=RECEIVED)
+        assert hits[0]["dos_from_iso"] == "2024-03-14"
+        assert hits[0]["doc_dos_from_iso"] == "2024-03-14"
 
     def test_llm_is_not_called_when_no_client(self):
         from dos_logic import detect_dos_per_page
@@ -492,3 +495,256 @@ class TestDosDriverIsTheV1One:
         hits = detect_dos_per_page(text, None, use_llm=False)
         assert len(hits) == 1
         assert hits[0]["match_type"] != "llm"
+
+    def test_nothing_found_is_the_flagged_default(self):
+        from dos_logic import detect_dos_per_page, profile
+
+        text = "===== 1.jpg =====\nNo dates whatsoever on this page.\n"
+        hit = detect_dos_per_page(text, None, use_llm=False)[0]
+        assert hit["dos_from"] == ""
+        assert hit["match_type"] == "no_date_found"
+        assert hit["confidence"] == 0
+        assert hit["is_default"] is True
+        assert hit["doc_dos_from_iso"] == profile().default_date
+
+    def test_llm_is_the_fallback_on_clinical_pages_only(self, monkeypatch):
+        import dos_logic
+
+        calls = []
+
+        def fake_llm(page_text, *_a, **_k):
+            calls.append(page_text)
+            return ("05-06-2024", "05-06-2024")
+
+        monkeypatch.setattr(dos_logic, "extract_dos_range_with_llm", fake_llm)
+        text = (
+            "===== 1.jpg =====\nDate of Service: 03/14/2024\nChief Complaint: cough\n"
+            "===== 2.jpg =====\nChief Complaint: knee pain, no date here.\n"
+            "===== 3.jpg =====\nPlain page without a date or cue.\n"
+        )
+        hits = dos_logic.detect_dos_per_page(
+            text, object(), use_llm=True, received_date=RECEIVED
+        )
+        assert len(calls) == 1  # page 1 scored a date; page 3 has no cue
+        assert hits[1]["dos_from_iso"] == "2024-05-06"
+        assert hits[1]["page_source"] == "llm"
+        assert hits[0]["page_source"] == "rules"
+
+
+
+def _scored(text, **kwargs):
+    """Stages A–C on one page; returns (candidates, profile)."""
+    from dos_logic import find_candidates, page_features, profile, score_candidate
+
+    prof = profile()
+    cands = find_candidates(text)
+    page_features(
+        text,
+        cands,
+        page_type=kwargs.get("page_type", ""),
+        received_year=RECEIVED.year,
+        prof=prof,
+    )
+    for cand in cands:
+        score_candidate(cand, prof)
+    return cands, prof
+
+
+class TestDosCandidates:
+    def test_four_shapes(self):
+        from dos_logic import find_candidates
+
+        text = "12/31/2025 and 1/5/24 and 2025-12-31 and January 28, 2025 and 28 January 2025"
+        assert [c.iso for c in find_candidates(text)] == [
+            "2025-12-31", "2024-01-05", "2025-12-31", "2025-01-28", "2025-01-28",
+        ]
+
+    def test_two_digit_years_pivot_at_50(self):
+        from dos_logic import find_candidates
+
+        assert [c.iso for c in find_candidates("1/5/49 1/5/50")] == ["2049-01-05", "1950-01-05"]
+
+    def test_impossible_days_are_dropped_old_years_are_kept(self):
+        from dos_logic import find_candidates
+
+        assert [c.iso for c in find_candidates("02/30/2024 DOB 04/05/1998")] == ["1998-04-05"]
+
+    def test_offsets_point_at_the_raw_text(self):
+        from dos_logic import find_candidates
+
+        text = "Seen on Jan. 3, 2024 today"
+        (cand,) = find_candidates(text)
+        assert text[cand.start : cand.end] == cand.raw == "Jan. 3, 2024"
+
+
+class TestDosFeaturesAndScore:
+    def test_label_classes(self):
+        cands, _ = _scored(
+            "Date of Service: 03/14/2024. DOB: 01/02/1960. Printed on 03/20/2024. "
+            "Return visit 06/01/2024. Colonoscopy 02/02/2024. Admit Date 03/10/2024. "
+            "Discharged 03/12/2024."
+        )
+        assert [c.label_class for c in cands] == [
+            "encounter", "birth", "doc_meta", "future", "procedure", "admit", "discharge",
+        ]
+
+    def test_a_label_does_not_reach_past_an_earlier_date(self):
+        cands, _ = _scored("DOB 03/06/1972 | 12/31/2025")
+        assert [c.label_class for c in cands] == ["birth", "none"]
+
+    def test_distance_decays_the_label(self):
+        near, _ = _scored("Date of Service: 03/14/2024")
+        far, _ = _scored("Date of Service" + " " * 60 + "03/14/2024")
+        assert far[0].label_distance > near[0].label_distance
+        assert far[0].score < near[0].score
+
+    def test_dob_is_a_weight_not_a_veto(self):
+        cands, prof = _scored("x " * 100 + "DOB: 01/02/2024" + " y" * 100)
+        (cand,) = cands
+        expected = prof.base + prof.label_weights["birth"] - prof.label_distance_decay * 1
+        assert cand.score == pytest.approx(max(0.0, expected))
+
+    def test_old_years_are_penalised_not_deleted(self):
+        from dos_logic import profile
+
+        prof = profile()
+        old_year = RECEIVED.year - prof.max_age_years - 1
+        pad = "x " * 100  # off the page edges, so neither score is clamped at 1
+        cands, _ = _scored(f"{pad}Date of Service: 03/14/{old_year}{pad}")
+        recent, _ = _scored(f"{pad}Date of Service: 03/14/{RECEIVED.year - 1}{pad}")
+        assert len(cands) == 1
+        assert cands[0].score == pytest.approx(recent[0].score - prof.age_penalty)
+
+    def test_cluster_counts_other_dates_within_30_days(self):
+        from dos_logic import chart_features, find_candidates, profile
+
+        cands = find_candidates("03/01/2024 03/20/2024 03/31/2024 06/01/2024")
+        chart_features(cands, profile())
+        assert [c.cluster_size for c in cands] == [2, 2, 2, 0]
+
+    def test_admit_discharge_pair_emits_a_range(self):
+        from dos_logic import best_page_date
+
+        cands, prof = _scored("Admit Date: 03/01/2024  Discharge Date: 03/05/2024")
+        assert all(c.in_range_pair for c in cands)
+        best = best_page_date(cands, prof)
+        assert (best.dos_from, best.dos_to) == ("2024-03-01", "2024-03-05")
+        assert all(c.chosen for c in cands)
+
+    def test_below_threshold_is_no_date(self):
+        from dos_logic import best_page_date
+
+        cands, prof = _scored("x " * 100 + "Printed on 03/20/2024" + " y" * 100)
+        assert cands and best_page_date(cands, prof) is None
+
+
+class TestDosTimestamps:
+    def test_time_beside_a_date_is_detected(self):
+        cands, _ = _scored(
+            "03/20/2024 10:15 AM | 2025-12-31T10:00:00 | 10:15 03/21/2024 | "
+            "03/22/2024, 4:05 pm | 03/23/2024 visit"
+        )
+        assert [c.has_time for c in cands] == [True, True, True, True, False]
+
+    def test_unlabelled_print_stamp_at_the_edge_does_not_win(self):
+        from dos_logic import extract_dos_from_page_text
+
+        body = "Chief Complaint: cough. " + "word " * 150
+        text = f"03/20/2025 10:15 AM\n{body}\nPage 1 of 2 03/20/2025 10:15 AM"
+        assert extract_dos_from_page_text(text, received_date=RECEIVED) is None
+
+    def test_print_stamp_loses_to_the_visit_date(self):
+        from dos_logic import extract_dos_from_page_text
+
+        text = (
+            "Printed: 04/18/2025 09:12 AM\n"
+            "Chief Complaint: cough\n"
+            "Seen 03/14/2025 in clinic.\n"
+            "04/18/2025 09:12 AM Page 1 of 1"
+        )
+        hit = extract_dos_from_page_text(text, received_date=RECEIVED)
+        assert hit["dos_from"] == "03-14-2025"
+
+    def test_a_labelled_encounter_time_still_clears_the_threshold(self):
+        from dos_logic import extract_dos_from_page_text
+
+        text = "Arrival Date: 03/14/2025 14:32\nChief Complaint: chest pain"
+        hit = extract_dos_from_page_text(text, received_date=RECEIVED)
+        assert hit["dos_from"] == "03-14-2025"
+
+
+class TestDosResolve:
+    @staticmethod
+    def _run(pages, **kwargs):
+        from dos_logic import detect_dos_per_page
+
+        text = "".join(f"===== {i}.jpg =====\n{body}\n" for i, body in enumerate(pages, 1))
+        return detect_dos_per_page(text, None, use_llm=False, received_date=RECEIVED, **kwargs)
+
+    def test_progress_note_span_beats_a_weak_date(self, monkeypatch):
+        import dos_logic
+
+        types = {"Progress Note\nDate of Service: 03/14/2024": "Progress Note"}
+        monkeypatch.setattr(dos_logic, "_page_type_name", lambda t, _n: types.get(t.strip(), ""))
+        hits = self._run([
+            "Progress Note\nDate of Service: 03/14/2024",
+            "Chief Complaint: labs 03/12/2024 reviewed.",
+            "Date of Service: 04/02/2024",
+            "Vitals stable. No date on this page.",
+        ])
+        # The weak 03/12 date is replaced by the progress note's date.
+        assert hits[1]["dos_from_iso"] == "2024-03-14"
+        assert hits[1]["doc_dos_from_iso"] == "2024-03-14"
+        assert hits[1]["match_type"] == "span"
+        assert hits[2]["dos_from_iso"] == "2024-04-02"  # above 0.75, this page keeps its own
+        assert hits[3]["dos_from_iso"] == "2024-03-14"  # the span is still open
+
+    def test_demographics_and_injection_pages_keep_the_default(self, monkeypatch):
+        import dos_logic
+
+        def page_type(text, _n):
+            if "Demographics" in text:
+                return "Demographics"
+            if "Injection" in text:
+                return "Injection Visit"
+            return ""
+
+        monkeypatch.setattr(dos_logic, "_page_type_name", page_type)
+        hits = self._run([
+            "Date of Service: 03/14/2024",
+            "Demographics  Date of Service: 05/01/2024",
+            "Injection record  Date of Service: 06/01/2024",
+        ])
+        default = dos_logic.profile().default_date
+        assert hits[1]["dos_from"] == ""
+        assert hits[1]["doc_dos_from_iso"] == default
+        assert hits[1]["is_default"] is True
+        assert hits[1]["match_type"] == "default_page"
+        assert hits[2]["doc_dos_from_iso"] == default
+        assert hits[2]["is_default"] is True
+
+    def test_non_encounter_page_never_replaces_an_encounter(self, monkeypatch):
+        import dos_logic
+
+        monkeypatch.setattr(
+            dos_logic,
+            "_page_type_name",
+            lambda t, _n: "Medication List" if "Medication" in t else "",
+        )
+        hits = self._run([
+            "Date of Service: 03/14/2024",
+            "Medication List  Date of Service: 05/01/2024",
+        ])
+        assert hits[1]["dos_from_iso"] == "2024-05-01"
+        assert hits[1]["doc_dos_from_iso"] == "2024-03-14"
+        assert hits[1]["match_type"] == "non_encounter_page"
+
+    def test_candidate_log_has_every_candidate(self):
+        log: list = []
+        self._run(["DOB 01/02/1960  Date of Service: 03/14/2024"], candidate_log=log)
+        assert [(r["iso"], r["chosen"]) for r in log] == [
+            ("1960-01-02", False), ("2024-03-14", True),
+        ]
+        assert {"label_class", "label_distance", "position", "edge_position", "page_type",
+                "has_clinical_cue", "year_delta", "cluster_size", "in_range_pair",
+                "score"} <= log[0].keys()

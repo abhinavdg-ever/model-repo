@@ -30,6 +30,7 @@ from stages.lib.member.extractors.rule_based.name_common import (
     classify_three_word_name,
     classify_two_word_name,
     find_two_word_name,
+    name_matches,
     tokenize,
 )
 from stages.lib.member.rules.base_rules import combine_evidences
@@ -107,6 +108,11 @@ class TestTwoWordName:
     def test_suffixes_and_titles_ignored(self):
         span = tokenize("Justin Anderson Jr MD")
         assert classify_two_word_name(span, "Justin", "Anderson") == BOTH_FULL
+
+    def test_reversed_name_with_a_middle_initial_matches(self):
+        span = tokenize("Lisa X Anderson")
+        assert classify_two_word_name(span, "Anderson", "Lisa") == BOTH_FULL
+        assert name_matches("Lisa X Anderson", "Anderson", "Lisa", "", "2")
 
 
 class TestThreeWordName:
@@ -405,3 +411,45 @@ class TestNerPreflight:
         from stages.lib.member.extractors.ner_based.model import predict_entities
 
         assert predict_entities("Patient Name: Robert Smith", ["person"]) == []
+
+
+class TestTrimExtractedName:
+    def test_extra_words_around_the_manifest_name_are_dropped(self):
+        from stages.lib.member.engine import trim_extracted_name
+
+        expected = {
+            "DummyFirstName": "Abhinav",
+            "DummyMiddleName": "",
+            "DummyLastName": "Dasgupta",
+        }
+        assert (
+            trim_extracted_name("Abhinav X Dasgupta alias of", expected)
+            == "Abhinav X Dasgupta"
+        )
+        assert trim_extracted_name("alias of Abhinav Dasgupta", expected) == "Abhinav Dasgupta"
+        assert trim_extracted_name("Abhinav Dasgupta", expected) == "Abhinav Dasgupta"
+        assert trim_extracted_name("Mary Smith", expected) == "Mary Smith"
+        reversed_name = {
+            "DummyFirstName": "Anderson",
+            "DummyMiddleName": "",
+            "DummyLastName": "Lisa",
+        }
+        assert trim_extracted_name("Lisa X Anderson", reversed_name) == "Lisa X Anderson"
+        assert (
+            trim_extracted_name("alias of Lisa X Anderson", reversed_name)
+            == "Lisa X Anderson"
+        )
+
+    def test_a_manifest_middle_name_is_kept_when_it_was_extracted(self):
+        from stages.lib.member.engine import trim_extracted_name
+
+        expected = {
+            "DummyFirstName": "Abhinav",
+            "DummyMiddleName": "Kumar",
+            "DummyLastName": "Dasgupta",
+        }
+        assert (
+            trim_extracted_name("Abhinav Kumar Dasgupta alias", expected)
+            == "Abhinav Kumar Dasgupta"
+        )
+        assert trim_extracted_name("Abhinav Dasgupta", expected) == "Abhinav Dasgupta"

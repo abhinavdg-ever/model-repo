@@ -1,19 +1,29 @@
 """Stage: encounter type (Outpatient F2F / Tele / Inpatient / Home).
 
-Term-frequency match against ``encounter_canon.json``. One type is chosen for
-each document-level DOS (the DOS carry-forward identity) and stamped on every
-page that shares it; untyped continuation pages inherit the previous page's
-type in page order.
+One answer per visit — a run of consecutive pages sharing a date — decided
+from the highest tier of evidence it has (see ``encounter_classify``) and
+stamped on every page of the visit. Pages without a usable date, and visits
+with no setting evidence, stay empty with a reason; they never inherit.
 
-Runs after ``page_subtype``. Writes DB + ``imaging/<chart>_encounter.csv``.
+Tier 1 evidence is the page type. It comes from the same classifier and the
+same inputs as the ``page_subtype`` stage, so this stage sees each page's type
+id and whether it was matched on the page or only inherited from a span.
+
+Runs after ``page_subtype``. Writes ``encounter_type_results`` for resolved
+pages (and removes rows for pages that are now unresolved), and
+``imaging/<chart>_encounter.csv`` for every page. With ENCOUNTER_DEBUG on, one
+evidence record per visit goes to ``<chart>/debug/<chart>_encounter_evidence.csv``.
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Optional
 
+from config import ENCOUNTER_DEBUG, chart_dir
 from db import (
     connect,
+    delete_encounter,
     get_blank_junk_flags,
     get_ocr_texts,
     get_quality_map,
@@ -27,7 +37,9 @@ from stages._support import (
     mark_skipped,
     stage_run,
 )
-from stages.lib.encounter.encounter_classify import classify_pages, effective_dos_pair
+from stages.lib.encounter.encounter_classify import classify_pages, visit_date
+from stages.lib.page_classify.codeable_classify import classify_pages as classify_page_types
+from stages.lib.page_classify.stage import _DOS_PROFILE, _page_dos
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +54,30 @@ ENCOUNTER_COLS = [
     "confidence",
     "matched_keyword",
     "continue_applied",
+    "decided_by",
+    "reason",
+    "conflict",
     "dos_from",
     "dos_to",
     "ocr_source",
+]
+
+EVIDENCE_COLS = [
+    "chart_name",
+    "first_page",
+    "pages",
+    "dos_from",
+    "dos_to",
+    "encounter_type",
+    "decided_by",
+    "confidence",
+    "conflict",
+    "contenders",
+    "reason",
+    "findings",
+    "cancelled",
+    "negatives_fired",
+    "context",
 ]
 
 
@@ -70,6 +103,7 @@ def _ocr_source_label(
 
 
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
+    default_date = str(_DOS_PROFILE.get().get("DOS_DEFAULT_DATE") or "")
     with stage_run(chart_id, STAGE, force=force) as ctx:
         with connect() as conn:
             bj = get_blank_junk_flags(conn, chart_id, final_only=True)
@@ -88,13 +122,12 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             dos_by_page = _dos_map(conn, chart_id)
 
         page_inputs: list[dict[str, Any]] = []
+        type_inputs: list[dict[str, Any]] = []
         sources: dict[int, str] = {}
-        classify_ids: set[int] = set()
         for page in ctx.pages:
             page_id = page["id"]
             if bj.get(page_id, "not_blank_junk") in BJ_EXCLUDE:
                 continue
-            classify_ids.add(page_id)
             f2 = final2.get(page_id)
             f1 = final1.get(page_id)
             pr = prelim.get(page_id)
@@ -105,15 +138,26 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 quality_row=quality.get(page_id),
             )
             dos = dos_by_page.get(page_id) or {}
-            # Group by document-level DOS (carry-forward identity) so
-            # continuation pages of the same visit share one encounter type.
-            dos_from, dos_to = effective_dos_pair(
+            sources[page_id] = _ocr_source_label(final2=f2, final1=f1, prelim=pr)
+            # The page type stage's own inputs, so tier 1 sees what it decided.
+            type_from, type_to = _page_dos(dos)
+            type_inputs.append(
+                {
+                    "page_id": page_id,
+                    "page_name": page["page_name"],
+                    "page_number": page.get("page_number"),
+                    "text": text,
+                    "dos_from": type_from,
+                    "dos_to": type_to,
+                }
+            )
+            dos_from, dos_to, reason = visit_date(
                 page_from=str(dos.get("date_of_service_from") or ""),
                 page_to=str(dos.get("date_of_service_to") or ""),
                 doc_from=str(dos.get("date_of_service_from_doclevel") or ""),
                 doc_to=str(dos.get("date_of_service_to_doclevel") or ""),
+                default_date=default_date,
             )
-            sources[page_id] = _ocr_source_label(final2=f2, final1=f1, prelim=pr)
             page_inputs.append(
                 {
                     "page_id": page_id,
@@ -122,57 +166,83 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     "text": text,
                     "dos_from": dos_from,
                     "dos_to": dos_to,
+                    "reason": reason,
                 }
             )
 
-        classified = classify_pages(page_inputs)
-        by_id = {row["page_id"]: row for row in classified}
+        types = {row["page_id"]: row for row in classify_page_types(type_inputs)}
+        for page_input in page_inputs:
+            pt = types.get(page_input["page_id"]) or {}
+            page_input["page_type_id"] = pt.get("entry_id") or ""
+            page_input["page_type_name"] = pt.get("page_type") or ""
+            page_input["page_type_inherited"] = pt.get("continue_applied") == "y"
+
+        visit_log: Optional[list[dict[str, Any]]] = [] if ENCOUNTER_DEBUG else None
+        classified = classify_pages(page_inputs, visit_log=visit_log)
 
         csv_rows: list[dict[str, Any]] = []
+        unresolved: list[int] = []
         with connect() as conn:
-            for page in ctx.pages:
-                page_id = page["id"]
-                if page_id not in classify_ids:
-                    continue
-                row = by_id.get(page_id) or {}
-                et = (row.get("encounter_type") or "").strip()
+            for row in classified:
+                page_id = row["page_id"]
+                et = row["encounter_type"]
                 if et:
-                    conf = row.get("confidence")
                     upsert_encounter(
                         conn,
                         chart_id=chart_id,
                         page_id=page_id,
                         encounter_type=et,
-                        confidence=float(conf) if conf not in ("", None) else None,
-                        matched_keyword=row.get("matched_keyword") or None,
+                        confidence=float(row["confidence"]),
+                        matched_keyword=row["matched_keyword"] or None,
                     )
+                else:
+                    unresolved.append(page_id)
                 if page_id in todo:
                     mark_completed(conn, ctx, page_id)
                 csv_rows.append(
                     {
                         "chart_name": ctx.chart_name,
-                        "page_name": page["page_name"],
-                        "page_number": page.get("page_number"),
+                        "page_name": row["page_name"],
+                        "page_number": row["page_number"],
                         "encounter_type": et,
-                        "encounter_label": row.get("encounter_label") or "",
-                        "confidence": row.get("confidence") or "",
-                        "matched_keyword": row.get("matched_keyword") or "",
-                        "continue_applied": row.get("continue_applied") or "n",
-                        "dos_from": row.get("dos_from") or "",
-                        "dos_to": row.get("dos_to") or "",
+                        "encounter_label": row["encounter_label"],
+                        "confidence": row["confidence"],
+                        "matched_keyword": row["matched_keyword"],
+                        "continue_applied": row["continue_applied"],
+                        "decided_by": row["decided_by"],
+                        "reason": row["reason"],
+                        "conflict": "y" if row["conflict"] else "n",
+                        "dos_from": row["dos_from"],
+                        "dos_to": row["dos_to"],
                         "ocr_source": sources.get(page_id, ""),
                     }
                 )
+            delete_encounter(conn, chart_id, unresolved)
 
         path = write_csv(
             imaging_csv(ctx.chart_name, "encounter"), ENCOUNTER_COLS, csv_rows
         )
-        tagged = sum(1 for r in csv_rows if r["encounter_type"])
+        if visit_log is not None:
+            write_csv(
+                chart_dir(ctx.chart_name) / "debug" / f"{ctx.chart_name}_encounter_evidence.csv",
+                EVIDENCE_COLS,
+                (
+                    {
+                        **{k: json.dumps(v) if isinstance(v, (list, dict)) else v
+                           for k, v in record.items()},
+                        "chart_name": ctx.chart_name,
+                    }
+                    for record in visit_log
+                ),
+            )
+
+        tagged = len(csv_rows) - len(unresolved)
         logger.info(
-            "encounter_type chart=%s pages=%d tagged=%d → %s",
+            "encounter_type chart=%s pages=%d tagged=%d unresolved=%d → %s",
             ctx.chart_name,
             len(csv_rows),
             tagged,
+            len(unresolved),
             path,
         )
         return {
@@ -181,4 +251,5 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             "pages_done": ctx.done,
             "skipped": ctx.skipped,
             "tagged": tagged,
+            "unresolved": len(unresolved),
         }

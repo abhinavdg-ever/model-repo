@@ -64,7 +64,7 @@ def test_every_config_lives_in_the_canon_folder():
 
     expected = {
         "junk_keywords_canon.json",
-        "dos_keywords_canon.json",
+        "dos_canon.json",
         "member_keywords_canon.json",
         "section_header_canon.json",
         "codeable_canon.json",

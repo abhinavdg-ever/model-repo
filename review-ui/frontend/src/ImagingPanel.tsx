@@ -211,6 +211,21 @@ function fmtQualityTag(value: string | null | undefined, processed = true): stri
   return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
 }
 
+/** ``Family (Page Type)`` from the classifier. No parenthesis means the two names match. */
+export function splitPageType(value: string | null | undefined): {
+  family: string | null;
+  subtype: string | null;
+} {
+  const raw = value == null ? "" : String(value).trim();
+  if (!raw) return { family: null, subtype: null };
+  const match = /^(.+?)\s+\((.+)\)\s*$/.exec(raw);
+  if (!match) return { family: raw, subtype: raw };
+  const family = match[1].trim();
+  const subtype = match[2].trim();
+  if (!family || !subtype) return { family: raw, subtype: raw };
+  return { family, subtype };
+}
+
 function fmtPageType(value: string | null | undefined, processed = true): string {
   if (!processed) return YET_TO_PROCESS;
   if (value === null || value === undefined || value === "") return NOT_FOUND;
@@ -370,7 +385,7 @@ function pageBits(page: ImagingPageResult, sections: ImagingSectionsProcessed) {
     dosKnown: sections.dos,
     blankOrJunk: page.blankOrJunk,
     junkKnown: sections.junk,
-    pageType: page.pageType,
+    pageType: splitPageType(page.pageType).family,
     pageTypeKnown: Boolean(sections.junk || sections.codeable),
     isCodeable: page.isCodeable,
     codeableKnown:
@@ -400,6 +415,7 @@ function PageDetails({
     Boolean(sections.encounter) ||
     (page.encounterType != null && String(page.encounterType).trim() !== "");
   const pageTypeKnown = Boolean(sections.junk || sections.codeable);
+  const pageParts = splitPageType(page.pageType);
   const codeableKnown =
     Boolean(sections.codeable) ||
     (page.isCodeable != null && String(page.isCodeable).trim() !== "");
@@ -506,9 +522,14 @@ function PageDetails({
           },
           {
             label: "Page Type",
-            value: fmtPageType(page.pageType, pageTypeKnown),
+            value: fmtPageType(pageParts.family, pageTypeKnown),
             confidence: fmtConfidence(page.pageTypeConfidence, pageTypeKnown),
             truth: bits.pageType,
+          },
+          {
+            label: "Page Subtype",
+            value: fmtPageType(pageParts.subtype, pageTypeKnown),
+            confidence: fmtConfidence(null, pageTypeKnown),
           },
           {
             label: "Is Codeable Or Non Codeable",
@@ -656,6 +677,7 @@ function DocSummary({
               <th scope="col">Is Blank or Junk?</th>
               <th scope="col">Duplicate</th>
               <th scope="col">Page Type</th>
+              <th scope="col">Page Subtype</th>
               <th scope="col">Codeable / Non Codeable</th>
               <th scope="col">Current Sequence</th>
               <th scope="col">Actual Sequence</th>
@@ -673,6 +695,8 @@ function DocSummary({
             {rows.map((p) => {
               const skip = isBlankJunkPage(p) ? { skipped: true } : undefined;
               const bits = pageBits(p, sections);
+              const pageParts = splitPageType(p.pageType);
+              const typeKnown = Boolean(sections.junk || sections.codeable);
               return (
               <tr key={`${p.pageNumber}-${p.fileName}`}>
                 <td>{p.pageNumber}</td>
@@ -720,10 +744,11 @@ function DocSummary({
                 </td>
                 <td>
                   <GtCell
-                    text={fmtPageType(p.pageType, sections.junk || sections.codeable)}
+                    text={fmtPageType(pageParts.family, typeKnown)}
                     bits={bits.pageType}
                   />
                 </td>
+                <td>{fmtPageType(pageParts.subtype, typeKnown)}</td>
                 <td>
                   <GtCell
                     text={fmtCodeable(

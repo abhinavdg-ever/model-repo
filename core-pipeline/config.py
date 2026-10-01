@@ -192,6 +192,10 @@ DOS_DEBUG = _flag("DOS_DEBUG", False)
 # with role and band) to <chart>/debug/<chart>_page_classify_evidence.csv.
 PAGE_CLASSIFY_DEBUG = _flag("PAGE_CLASSIFY_DEBUG", False)
 
+# Writes one evidence record per visit (findings by tier, negatives that fired,
+# contenders) to <chart>/debug/<chart>_encounter_evidence.csv.
+ENCOUNTER_DEBUG = _flag("ENCOUNTER_DEBUG", False)
+
 # Page sequencing cross-encoder (optional ONNX). Off by default — markers /
 # header groups / original order still run. Drop cross_encoder_mini_lm.onnx
 # under stages/lib/sequencing/artifacts/ and set true to enable.

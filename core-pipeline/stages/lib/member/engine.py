@@ -45,6 +45,7 @@ from .extractors.ner_based.member_id import extract_member_id_ner
 from .extractors.ner_based.name import name_candidates, pick_name
 from .extractors.rule_based.dob import extract_dob
 from .extractors.rule_based.member_id import extract_member_id
+from .extractors.rule_based.name_common import tokenize
 from .extractors.rule_based.name_2_words import extract_name_2_words
 from .extractors.rule_based.name_3_words import extract_name_3_words
 from .rules.base_rules import is_present
@@ -326,6 +327,34 @@ def document_verified(page_statuses: list[str], total: int) -> str:
 # --- chart-level driver -----------------------------------------------------
 
 
+def trim_extracted_name(extracted: str, expected: dict[str, str]) -> str:
+    """Drop words before the member's name and after it.
+
+    "Abhinav X Dasgupta alias of" against manifest "Abhinav Dasgupta" becomes
+    "Abhinav X Dasgupta". Words between the first and last name stay, and the
+    names may sit in either order. A name that is not this member is left
+    unchanged.
+    """
+    raw = (extracted or "").strip()
+    if not raw or raw.upper() == "N/A":
+        return extracted
+    first = (expected.get("DummyFirstName") or "").strip()
+    middle = (expected.get("DummyMiddleName") or "").strip()
+    last = (expected.get("DummyLastName") or "").strip()
+    if not first or not last:
+        return extracted
+    anchors = {part.casefold() for part in (first, middle, last) if part}
+    tokens = tokenize(raw)
+    hits = [index for index, token in enumerate(tokens) if token.casefold() in anchors]
+    found = {tokens[index].casefold() for index in hits}
+    if first.casefold() not in found or last.casefold() not in found:
+        return extracted
+    start, end = hits[0], hits[-1]
+    if start == 0 and end == len(tokens) - 1:
+        return extracted
+    return " ".join(tokens[start : end + 1])
+
+
 def verify_record(
     record_id: str,
     pages: list[dict[str, Any]],
@@ -354,6 +383,9 @@ def verify_record(
         page_no = int(page.get("page_no") or index)
 
         fields, people = extract_page_fields(text, expected, name_mode, model_id)
+        fields["Detected_Full_Name"] = trim_extracted_name(
+            fields["Detected_Full_Name"], expected
+        )
         page_ok = verify_page(
             expected,
             name_mode,

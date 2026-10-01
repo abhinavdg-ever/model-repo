@@ -1,40 +1,40 @@
 """Stage: date-of-service extraction.
 
-Runs the reference driver ``dos_logic.detect_dos_per_page`` over the chart's
-combined OCR text — the same entry point the V1
-``02-imaging-pipeline/dos-extraction/extract_dos.py`` uses. That driver owns:
+Runs ``dos_logic.detect_dos_per_page`` over the chart's combined OCR text. The
+driver scores every date on every page and resolves the chart (see the
+dos_logic docstring); this stage feeds it the chart's received date — the
+``chart_list`` row's ``created_at`` — and writes one DB row and one CSV row per
+page.
 
-  * the regex pass over the whole page (``extract_dos_from_page_text``),
-  * escalation to the Azure OpenAI pass (``extract_dos_range_with_llm``) for
-    pages the regex could not read and that ``page_allows_llm`` permits,
-  * the document-level carry-forward (a page with no DOS of its own inherits the
-    previous encounter's; before the first encounter it gets the reference's
-    ``DEFAULT_DOC_DOS``),
-  * ISO normalisation of both page-level and document-level dates, including
-    comma-separated multi-date lists.
+The Azure OpenAI pass is a fallback for clinical pages where no candidate
+clears DOS_MIN_SCORE. When it is not configured every row records
+``extraction_method='rules'``, so a degraded run is visible in the data.
 
-v6 called only ``extract_dos_from_page_text`` per page. That dropped the LLM
-pass, the carry-forward and the real ISO conversion — ``doc_dos_from_iso`` was
-written as a copy of the un-normalised ``doc_dos_from``. All three are restored
-here by going through the reference driver.
-
-When Azure OpenAI is not configured the stage runs regex-only and records
-``extraction_method='rules'`` on every row, so a degraded run is visible in the
-data rather than silent.
+With DOS_DEBUG on, every candidate, its features, its score and whether it was
+chosen go to ``<chart>/debug/<chart>_dos_candidates.csv``.
 """
 from __future__ import annotations
 
-import json
 import logging
 import sys
+from datetime import date, datetime
 from typing import Any, Optional
 
 from config import (
     AZURE_OPENAI_DEPLOYMENT,
     CORE_ROOT,
+    DOS_DEBUG,
     DOS_LLM_ENABLED,
+    chart_dir,
 )
-from db import connect, get_blank_junk_flags, get_ocr_texts, get_quality_map, upsert_dos
+from db import (
+    connect,
+    get_blank_junk_flags,
+    get_chart,
+    get_ocr_texts,
+    get_quality_map,
+    upsert_dos,
+)
 from db.paths import imaging_csv, write_csv
 from stages._support import (
     BJ_EXCLUDE,
@@ -52,7 +52,7 @@ _DOS_LIB = CORE_ROOT / "stages" / "lib" / "dos"
 if str(_DOS_LIB) not in sys.path:
     sys.path.insert(0, str(_DOS_LIB))
 
-from dos_logic import detect_dos_per_page, to_iso_date  # noqa: E402
+from dos_logic import Candidate, detect_dos_per_page, to_iso_date  # noqa: E402
 
 DOS_COLS = [
     "chart_name",
@@ -71,6 +71,18 @@ DOS_COLS = [
     "confidence",
     "extraction_method",
 ]
+
+
+CANDIDATE_COLS = ["chart_name", *(f for f in Candidate.__dataclass_fields__ if f != "pair")]
+
+
+def _received_date(chart: Optional[dict[str, Any]]) -> Optional[date]:
+    created = (chart or {}).get("created_at")
+    if isinstance(created, datetime):
+        return created.date()
+    if isinstance(created, date):
+        return created
+    return None
 
 
 def _llm_client() -> Optional[Any]:
@@ -181,8 +193,16 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             mark_skipped(conn, ctx, drop, "blank_junk")
             eligible = set(ctx.todo)
             text = _combined_text(conn, chart_id, ctx.pages, eligible)
+            received = _received_date(get_chart(conn, chart_id))
 
-        hits = detect_dos_per_page(text, client, use_llm=client is not None)
+        candidates: Optional[list[dict[str, Any]]] = [] if DOS_DEBUG else None
+        hits = detect_dos_per_page(
+            text,
+            client,
+            use_llm=client is not None,
+            received_date=received,
+            candidate_log=candidates,
+        )
 
         by_name = {p["page_name"]: p for p in ctx.pages}
         csv_rows: list[dict[str, Any]] = []
@@ -207,7 +227,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     confidence=hit.get("confidence"),
                     all_dates=date_rows,
                     extraction_method=(
-                        "llm" if hit.get("match_type") == "llm" else method
+                        "llm" if hit.get("page_source") == "llm" else method
                     ),
                 )
                 mark_completed(conn, ctx, page_id)
@@ -229,7 +249,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "keyword": hit.get("keyword") or "",
                         "confidence": hit.get("confidence"),
                         "extraction_method": (
-                            "llm" if hit.get("match_type") == "llm" else method
+                            "llm" if hit.get("page_source") == "llm" else method
                         ),
                     }
                 )
@@ -254,8 +274,15 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 mark_completed(conn, ctx, page_id)
 
         path = write_csv(imaging_csv(ctx.chart_name, "dos"), DOS_COLS, csv_rows)
+        if candidates is not None:
+            debug_path = chart_dir(ctx.chart_name) / "debug" / f"{ctx.chart_name}_dos_candidates.csv"
+            write_csv(
+                debug_path,
+                CANDIDATE_COLS,
+                ({"chart_name": ctx.chart_name, **row} for row in candidates),
+            )
 
-        llm_pages = sum(1 for r in csv_rows if r["match_type"] == "llm")
+        llm_pages = sum(1 for r in csv_rows if r["extraction_method"] == "llm")
         return {
             "chart_id": chart_id,
             "dos_csv": str(path),

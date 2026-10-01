@@ -1156,6 +1156,25 @@ def upsert_encounter(
 
 
 @_dispatch
+def delete_encounter(conn: Any, chart_id: int, page_ids: Sequence[int]) -> None:
+    """Drop encounter rows for pages that are now unresolved.
+
+    Only resolved pages get a row, so a page that had a type on an earlier run
+    and has none now would otherwise keep the old answer.
+    """
+    if not page_ids:
+        return
+    conn.execute(
+        """
+        DELETE FROM encounter_type_results
+         WHERE chart_id = %s
+           AND page_id IN (SELECT unnest(%s::bigint[]))
+        """,
+        (chart_id, list(page_ids)),
+    )
+
+
+@_dispatch
 def upsert_sequencing(
     conn: Any,
     *,
