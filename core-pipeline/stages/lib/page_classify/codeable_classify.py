@@ -1,6 +1,6 @@
 """Page type / codeability classification from ``codeable_canon.json``.
 
-Every family has one tag — Codeable, Non Codeable or Discharge Frequency —
+Every family has one tag — Codeable, Non Codeable or Discharge —
 and each type takes its tag from its family, so a family never mixes them.
 Each canon entry has keywords in three roles. ``primary`` and ``variants``
 decide the type; ``supporting`` only adds score. Every hit is matched on word
@@ -36,7 +36,7 @@ CANON_PATH = CANON_DIR / "codeable_canon.json"
 TAG_DISPLAY = {
     "codeable": "Codeable",
     "non_codeable": "Non Codeable",
-    "discharge_frequency": "Discharge Frequency",
+    "discharge_frequency": "Discharge",
     "not_sure": "Not Sure",
 }
 

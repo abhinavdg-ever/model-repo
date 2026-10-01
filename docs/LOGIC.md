@@ -564,7 +564,7 @@ log (`auth=key` / `auth=entra`); the setting is
 Every main page (not blank / junk / duplicate) is matched against 253 page
 types grouped into 29 families. **The decision is made per family**, and the
 family carries the tag: a family is all Codeable, all Non Codeable or all
-Discharge Frequency, never mixed. The output `page_type` (CSV) and
+Discharge, never mixed. The output `page_type` (CSV) and
 `page_classification.page_subtype` are **`Family (Page Type)`** — e.g.
 `Progress Note (SOAP Note)`, or just `Progress Note` when the type has the
 family's name. Blank, junk and duplicate pages are always Non Codeable.
@@ -572,7 +572,7 @@ family's name. Blank, junk and duplicate pages are always Non Codeable.
 | Family | Tag | Priority | Types |
 |---|---|---|---|
 | Progress Note | Codeable | 10 | 30 |
-| Discharge | Discharge Frequency | 20 | 20 |
+| Discharge | Discharge | 20 | 20 |
 | Obstetric | Codeable | 30 | 5 |
 | Procedure | Codeable | 30 | 18 |
 | Assessment / Screening | Codeable | 40 | 14 |

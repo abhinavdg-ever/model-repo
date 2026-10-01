@@ -700,8 +700,8 @@ def index_codeable_rows(
     display = {
         "codeable": "Codeable",
         "non_codeable": "Non Codeable",
-        "discharge_frequency": "Discharge Frequency",
-        "discharge_summary": "Discharge Frequency",
+        "discharge_frequency": "Discharge",
+        "discharge_summary": "Discharge",
         "not_sure": "Not Sure",
     }
     for row in rows:
@@ -720,6 +720,8 @@ def index_codeable_rows(
             or display.get(tag)
             or ""
         ).strip()
+        if label.casefold() == "discharge frequency":
+            label = "Discharge"
         # Blank/Duplicate rows always have a page_type (Blank / Duplicate / …).
         # Empty or Not Available → Not Sure for codeability.
         if not label:

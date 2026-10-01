@@ -49,7 +49,7 @@ def test_discharge_summary_scores_discharge(canon):
     hit = score_text("DISCHARGE SUMMARY\nHospital Course: ...", canon)
     assert hit is not None
     assert hit.tag == "discharge_frequency"
-    assert hit.continue_ == "y"
+    assert hit.continue_ == "n"
 
 
 def test_continue_carries_until_dos_changes(canon):
@@ -89,7 +89,7 @@ def test_continue_carries_until_dos_changes(canon):
     assert rows[2]["continue_applied"] == "n"
 
 
-def test_continue_switches_on_new_continue_type_same_dos(canon):
+def test_discharge_page_inherits_open_progress_note_span_same_dos(canon):
     pages = [
         {
             "page_id": 1,
@@ -114,10 +114,12 @@ def test_continue_switches_on_new_continue_type_same_dos(canon):
         },
     ]
     rows = classify_pages(pages, entries=canon)
+    # Discharge entries do not open a span, so the progress-note span on the
+    # same date carries through the discharge page and the page after it.
     assert rows[0]["tag"] == "codeable"
-    assert rows[1]["tag"] == "discharge_frequency"
-    assert rows[1]["continue_applied"] == "n"
-    assert rows[2]["tag"] == "discharge_frequency"
+    assert rows[1]["tag"] == "codeable"
+    assert rows[1]["continue_applied"] == "y"
+    assert rows[2]["tag"] == "codeable"
     assert rows[2]["continue_applied"] == "y"
 
 

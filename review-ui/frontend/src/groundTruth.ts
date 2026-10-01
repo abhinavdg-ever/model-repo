@@ -198,30 +198,31 @@ const JUNK_PAGE = [
   "record request",
 ];
 
+/** Ground truth agrees when it names the page type or the page subtype. */
 function pageTypeMark(
   gt: string | null | undefined,
-  pipeline: string | null | undefined,
+  pipeline: Array<string | null | undefined>,
   known: boolean,
 ): GtBit[] {
   if (missing(gt)) return [];
   const shown = displayWords(gt);
   if (!known) return bit(shown, "unknown");
-  const actual = fold(displayWords(pipeline));
-  if (
-    !actual ||
-    actual === "yet to process" ||
-    actual === "skipped" ||
-    actual === "not found"
-  ) {
-    return bit(shown, "unknown");
-  }
+  const actuals = pipeline
+    .map((value) => fold(displayWords(value)))
+    .filter(
+      (value) =>
+        value && value !== "yet to process" && value !== "skipped" && value !== "not found",
+    );
+  if (actuals.length === 0) return bit(shown, "unknown");
   const expected = fold(shown);
   if (expected === "accept") {
-    const junk = JUNK_PAGE.some((word) => actual.includes(word));
+    const junk = actuals.some((actual) => JUNK_PAGE.some((word) => actual.includes(word)));
     return bit(shown, junk ? "mismatch" : "match");
   }
-  const same =
-    expected === actual || actual.includes(expected) || expected.includes(actual);
+  const same = actuals.some(
+    (actual) =>
+      expected === actual || actual.includes(expected) || expected.includes(actual),
+  );
   return bit(shown, same ? "match" : "mismatch");
 }
 
@@ -279,6 +280,8 @@ export function groundTruthBits(input: {
   blankOrJunk: string | null | undefined;
   junkKnown: boolean;
   pageType: string | null | undefined;
+  /** The type inside the family, "Discharge Note" of "Discharge (Discharge Note)". */
+  pageSubtype?: string | null;
   pageTypeKnown: boolean;
   isCodeable: string | null | undefined;
   codeableKnown: boolean;
@@ -307,7 +310,11 @@ export function groundTruthBits(input: {
     dosFrom: dateMark(gt.dosFrom, input.dosFrom, input.dosKnown),
     dosTo: dateMark(gt.dosTo, input.dosTo, input.dosKnown),
     blankJunk: blankJunkMark(gt, input.blankOrJunk, input.junkKnown),
-    pageType: pageTypeMark(gt.encounterType, input.pageType, input.pageTypeKnown),
+    pageType: pageTypeMark(
+      gt.encounterType,
+      [input.pageType, input.pageSubtype],
+      input.pageTypeKnown,
+    ),
     codeable: codeableMark(gt.codeable, input.isCodeable, input.codeableKnown),
     pageSequence: sequenceMark(gt.pageSequence, input.actualSequence, input.sequenceKnown),
   };

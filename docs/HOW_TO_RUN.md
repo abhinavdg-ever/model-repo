@@ -80,7 +80,7 @@ curl -fsS localhost:8001/api/stages | python -m json.tool
 | `section_headers` | Canon match on OCR JSON | No |
 | `member_verify` | Member extract + verify | No |
 | `dos_extract` | Date of service | No (LLM optional) |
-| `page_subtype` | Codeable / Non Codeable / Discharge Frequency | No |
+| `page_subtype` | Codeable / Non Codeable / Discharge | No |
 | `encounter_type` | Outpatient F2F / Tele / Inpatient / Home | No |
 | `page_sequencing` | Suggested page order | No |
 

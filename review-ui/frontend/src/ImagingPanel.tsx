@@ -387,6 +387,7 @@ function pageBits(page: ImagingPageResult, sections: ImagingSectionsProcessed) {
     blankOrJunk: page.blankOrJunk,
     junkKnown: sections.junk,
     pageType: splitPageType(page.pageType).family,
+    pageSubtype: splitPageType(page.pageType).subtype,
     pageTypeKnown: Boolean(sections.junk || sections.codeable),
     isCodeable: page.isCodeable,
     codeableKnown:

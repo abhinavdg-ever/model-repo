@@ -149,7 +149,7 @@ class ImagingPageResult(BaseModel):
     # Blank / Main / Duplicate → "Not Available"; Invoice|Cover → that label
     pageType: str | None = None
     pageTypeConfidence: float | None = None
-    # Codeable | Non Codeable | Discharge Frequency (from page_subtype CSV)
+    # Codeable | Non Codeable | Discharge (from page_subtype CSV)
     isCodeable: str | None = None
     # Outpatient (F2F) | Outpatient (Tele) | Inpatient | Home
     encounterType: str | None = None

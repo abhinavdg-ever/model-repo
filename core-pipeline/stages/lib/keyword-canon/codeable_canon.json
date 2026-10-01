@@ -8,7 +8,7 @@
   "display": {
     "codeable": "Codeable",
     "non_codeable": "Non Codeable",
-    "discharge_frequency": "Discharge Frequency"
+    "discharge_frequency": "Discharge"
   },
   "matching": {
     "word_boundary": true,
@@ -396,7 +396,6 @@
       "id": "depart_note",
       "display": "Depart Note",
       "family": "discharge",
-      "continue": true,
       "match": {
         "primary": [
           "depart note"
@@ -435,7 +434,6 @@
       "id": "depart_summary",
       "display": "Depart Summary",
       "family": "discharge",
-      "continue": true,
       "match": {
         "primary": [
           "depart summary"
@@ -476,7 +474,6 @@
       "id": "discharge_instructions",
       "display": "Discharge instructions",
       "family": "discharge",
-      "continue": false,
       "match": {
         "primary": [
           "discharge instructions"
@@ -515,7 +512,6 @@
       "id": "discharge_medication",
       "display": "Discharge Medication",
       "family": "discharge",
-      "continue": false,
       "match": {
         "primary": [
           "discharge medication"
@@ -557,7 +553,6 @@
       "id": "discharge_summary",
       "display": "Discharge Summary",
       "family": "discharge",
-      "continue": true,
       "match": {
         "primary": [
           "discharge summary"
@@ -584,7 +579,6 @@
       "id": "transfer_summary",
       "display": "Transfer Summary",
       "family": "discharge",
-      "continue": false,
       "match": {
         "primary": [
           "transfer summary"
@@ -625,7 +619,6 @@
       "id": "transition_of_care_summary",
       "display": "Transition of care Summary",
       "family": "discharge",
-      "continue": false,
       "match": {
         "primary": [
           "transition of care summary"
@@ -664,7 +657,6 @@
       "id": "resumen_de_alta_resumen_de_instruccion_planifica",
       "display": "Resumen de Alta / Resumen de Instruccion / Planificacion de Alta",
       "family": "discharge",
-      "continue": false,
       "match": {
         "primary": [
           "resumen de alta",
@@ -707,7 +699,6 @@
       "id": "interim_summaries",
       "display": "Interim Summaries",
       "family": "discharge",
-      "continue": false,
       "match": {
         "primary": [
           "interim summaries"
@@ -733,7 +724,6 @@
       "id": "discharge_note",
       "display": "Discharge Note",
       "family": "discharge",
-      "continue": true,
       "match": {
         "primary": [
           "discharge note"
@@ -774,7 +764,6 @@
       "id": "transfer_of_care_note",
       "display": "Transfer of Care Note",
       "family": "discharge",
-      "continue": false,
       "match": {
         "primary": [
           "transfer of care note"
@@ -865,7 +854,6 @@
       "id": "short_stay_summary",
       "display": "Short Stay Summary",
       "family": "discharge",
-      "continue": false,
       "match": {
         "primary": [
           "short stay summary"
@@ -906,7 +894,6 @@
       "id": "occupational_therapy_discharge_note_summary",
       "display": "Occupational Therapy Discharge Note/summary",
       "family": "discharge",
-      "continue": true,
       "match": {
         "primary": [
           "occupational therapy discharge note"
@@ -948,7 +935,6 @@
       "id": "physical_therapy_discharge_note_summary",
       "display": "Physical Therapy Discharge Note/Summary",
       "family": "discharge",
-      "continue": true,
       "match": {
         "primary": [
           "physical therapy discharge note"
@@ -992,7 +978,6 @@
       "id": "interim_note",
       "display": "Interim Note",
       "family": "discharge",
-      "continue": false,
       "match": {
         "primary": [
           "interim note"
@@ -1031,7 +1016,6 @@
       "id": "bh_op_discharge",
       "display": "BH-OP Discharge",
       "family": "discharge",
-      "continue": false,
       "match": {
         "primary": [
           "bh-op discharge"
@@ -1072,7 +1056,6 @@
       "id": "principal_diagnosis",
       "display": "Principal Diagnosis",
       "family": "discharge",
-      "continue": false,
       "match": {
         "primary": [
           "principal diagnosis"
@@ -1114,7 +1097,6 @@
       "id": "anesthesia_transfer_of_care_note",
       "display": "Anesthesia Transfer of Care note",
       "family": "discharge",
-      "continue": false,
       "match": {
         "primary": [
           "anesthesia transfer of care note"
@@ -1154,7 +1136,6 @@
       "id": "final_case_summary",
       "display": "Final Case Summary",
       "family": "discharge",
-      "continue": false,
       "match": {
         "primary": [
           "final case summary"
@@ -3666,7 +3647,6 @@
       "id": "discharge_report",
       "display": "Discharge Report",
       "family": "discharge",
-      "continue": true,
       "match": {
         "primary": [
           "discharge report"

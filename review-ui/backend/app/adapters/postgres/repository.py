@@ -895,8 +895,8 @@ class PostgresFolderRepository(FolderRepository):
                     codeable_display = {
                         "codeable": "Codeable",
                         "non_codeable": "Non Codeable",
-                        "discharge_summary": "Discharge Frequency",
-                        "discharge_frequency": "Discharge Frequency",
+                        "discharge_summary": "Discharge",
+                        "discharge_frequency": "Discharge",
                         "not_sure": "Not Sure",
                     }
                     for page_name, subtype, cat, conf in cur.fetchall():
