@@ -658,6 +658,16 @@ usually repeats a form name.
    type scores is its probability; the most likely type wins (ties: the longer
    name). It is reported as `type_confidence`.
 
+**Dominance:** a family listed in `matching.dominant_families` wins outright
+once its score reaches the threshold — Progress Note at 12, e.g. three
+section headers in the body, or a header title plus one more hit — however
+much the other families score.
+
+**Fill between:** after spans, a page that matched nothing and sits between two
+pages of a family in `matching.fill_between_families` (Progress Note) takes
+that family, the previous page's type and the lower neighbour confidence
+(`continue_applied=y`; `filled_between` in the evidence log).
+
 **Confidence** = `(winning family − next family) / winning family`, at least
 `confidence_floor` (0.30); 1.0 when no other family matched. Two Progress Note
 types scoring the same is not uncertainty — either gives the same family and

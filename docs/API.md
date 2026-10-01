@@ -461,7 +461,7 @@ field is rejected with **422**, so an old body is reported, not half-applied.
 | `only` | optional | optional | whole chain | Run just these stages, against what is already on disk |
 | `run_through` | optional | optional | end of chain | Run from the top and stop after this stage |
 | `skip_ocr` | optional | optional | `false` | Reuse existing OCR (workspace → Processed output → DB) instead of re-running the OCR engines — **no Azure final2 bill**. Quality/rotation and every non-OCR stage still re-run. |
-| `skip_completed` | optional | optional | `false` | Skip charts whose status is `completed`, `needs_review` or `rejected`. run → **200** `{"status":"skipped"}`; batch → listed in `charts_skipped_completed`. |
+| `skip_completed` | optional | optional | `false` | Skip charts whose status is `completed`, `needs_review` or `rejected`. run → **200** `{"status":"skipped"}`; batch → listed in `charts_skipped_completed`. When `false`, a batch re-runs those finished charts **first**, then the rest (each group alphabetical). |
 | `skip_page_download` | optional | optional | **`true`** | Reuse page images already in the workspace. `false` = wipe `pages/` + `corrected-pages/` and fetch again from `input_path`. |
 
 **What a full re-run clears** (no `only` / `run_through`) before the chain starts:

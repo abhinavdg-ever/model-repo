@@ -72,6 +72,20 @@ DEMOGRAPHIC_KEYWORDS: tuple[str, ...] = (
     "registration",
 )
 
+# The patient banner every page carries. These never make a page Demographics:
+# only registration fields (address, phone, insurance, …) count toward it.
+BANNER_KEYWORDS: frozenset[str] = frozenset({
+    "patient name",
+    "member name",
+    "member id",
+    "date of birth",
+    "dob",
+    "mrn",
+    "medical record",
+    "sex",
+    "gender",
+})
+
 DEMOGRAPHICS_PAGE_TYPE = "Demographics"
 # Pages 1–2: this many distinct demographic hits → Demographics.
 _DEMO_EARLY_PAGE_MIN_HITS = 2
@@ -105,9 +119,11 @@ def _clean_label(text: str) -> str:
 
 
 def _phrase_re(phrase: str, word_boundary: bool) -> re.Pattern[str]:
+    # Spaces are optional: OCR often glues headings ("reasonforvisit").
+    body = r"\s*".join(re.escape(word) for word in phrase.split())
     if not word_boundary:
-        return re.compile(re.escape(phrase))
-    return re.compile(r"(?<![a-z0-9])" + re.escape(phrase) + r"(?![a-z0-9])")
+        return re.compile(body)
+    return re.compile(r"(?<![a-z0-9])" + body + r"(?![a-z0-9])")
 
 
 # --- canon -------------------------------------------------------------------
@@ -128,6 +144,7 @@ class Phrase:
     role: str  # "primary" | "variant" | "supporting"
     words: int
     pattern: re.Pattern[str]
+    compact: str = ""  # the phrase without spaces, for the cheap pre-check
 
 
 @dataclass(frozen=True)
@@ -152,7 +169,15 @@ class Matching:
     footer_fraction: float
     footer_multiplier: float
     supporting_can_decide: bool
+    # A one-word primary ("hematology", "cardiology") decides only in the
+    # header band; in the body it is usually a ROS line or history, not a title.
+    single_word_header_only: bool
+    single_word_any_band: frozenset[str]  # section headers exempt from that rule
     confidence_floor: float
+    # family → score at which it wins outright, whatever the others score.
+    dominant_families: dict[str, float]
+    # Families that fill an unmatched page sitting between two of their pages.
+    fill_between_families: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -177,8 +202,17 @@ def _validate(raw: dict[str, Any]) -> None:
     tags = set(raw.get("tags") or [])
     single = set(raw.get("single_word_primary") or [])
     errors: list[str] = []
+    for word in raw.get("single_word_any_band") or []:
+        if word not in single:
+            errors.append(f"single_word_any_band {word!r} is not in single_word_primary")
     owners: dict[str, list[str]] = {}
     ids: set[str] = set()
+    matching = raw.get("matching") or {}
+    for key in list(matching.get("dominant_families") or {}) + list(
+        matching.get("fill_between_families") or []
+    ):
+        if key not in families:
+            errors.append(f"matching: unknown family {key!r}")
     for key, fam in families.items():
         if fam.get("tag") not in tags:
             errors.append(f"family {key}: unknown tag {fam.get('tag')!r}")
@@ -223,7 +257,15 @@ def _parse_canon(raw: dict[str, Any]) -> Canon:
         footer_fraction=float(m["footer_band"]["bottom_fraction"]),
         footer_multiplier=float(m["footer_band"]["multiplier"]),
         supporting_can_decide=bool(m.get("supporting_can_decide", False)),
+        single_word_header_only=bool(m.get("single_word_primary_header_only", False)),
+        single_word_any_band=frozenset(
+            normalize_text(w) for w in raw.get("single_word_any_band") or []
+        ),
         confidence_floor=float(m.get("confidence_floor", 0.0)),
+        dominant_families={
+            str(k): float(v) for k, v in (m.get("dominant_families") or {}).items()
+        },
+        fill_between_families=frozenset(m.get("fill_between_families") or []),
     )
     families = {
         key: Family(
@@ -252,6 +294,7 @@ def _parse_canon(raw: dict[str, Any]) -> Canon:
                         role=role,
                         words=len(text.split()),
                         pattern=_phrase_re(text, word_boundary),
+                        compact=text.replace(" ", ""),
                     )
                 )
         entries.append(
@@ -328,16 +371,28 @@ def _band(position: int, length: int, m: Matching) -> tuple[str, float]:
     return "body", 1.0
 
 
-def _entry_hits(entry: CanonEntry, hay: str, m: Matching) -> list[Hit]:
+def _entry_hits(
+    entry: CanonEntry, hay: str, m: Matching, compact: Optional[str] = None
+) -> list[Hit]:
+    compact = hay.replace(" ", "") if compact is None else compact
     hits: list[Hit] = []
     for phrase in entry.phrases:
-        if phrase.text not in hay:  # cheap reject before the regex
+        if phrase.compact not in compact:  # cheap reject before the regex
             continue
         base = m.phrase_weight[min(phrase.words, 4)]
         for found in phrase.pattern.finditer(hay):
             band, multiplier = _band(found.start(), len(hay), m)
+            role = phrase.role
+            if (
+                m.single_word_header_only
+                and phrase.words == 1
+                and phrase.text not in m.single_word_any_band
+                and role != "supporting"
+                and band != "header"
+            ):
+                role = "supporting"
             hits.append(
-                Hit(entry.id, phrase.text, phrase.role, band, base * multiplier, found.start())
+                Hit(entry.id, phrase.text, role, band, base * multiplier, found.start())
             )
     return hits
 
@@ -350,9 +405,10 @@ def score_text(text: str, canon: Canon | None = None) -> Optional[MatchResult]:
     canon = canon if canon is not None else load_canon()
     m = canon.matching
 
+    compact = hay.replace(" ", "")
     scored: list[tuple[CanonEntry, float, list[Hit]]] = []
     for entry in canon.entries:
-        hits = _entry_hits(entry, hay, m)
+        hits = _entry_hits(entry, hay, m, compact)
         if hits:
             scored.append((entry, sum(h.weight for h in hits), hits))
     if not scored:
@@ -373,8 +429,14 @@ def score_text(text: str, canon: Canon | None = None) -> Optional[MatchResult]:
         return None
     family_scores = {f: sum(o.values()) for f, o in occurrences.items()}
 
+    # A family past its dominance threshold wins outright (the strongest of
+    # them if several are); otherwise the highest family score wins.
+    dominant = [
+        f for f in deciding_families
+        if f in m.dominant_families and family_scores[f] >= m.dominant_families[f]
+    ]
     family = max(
-        deciding_families,
+        dominant or deciding_families,
         key=lambda f: (family_scores[f], -canon.families[f].priority),
     )
     # The type inside the winning family: each eligible type's share of the
@@ -416,12 +478,17 @@ def score_text(text: str, canon: Canon | None = None) -> Optional[MatchResult]:
 # --- demographics ------------------------------------------------------------
 
 _DEMOGRAPHIC_RES = tuple(
-    (kw, _phrase_re(normalize_text(kw), True)) for kw in DEMOGRAPHIC_KEYWORDS
+    (kw, _phrase_re(normalize_text(kw), True))
+    for kw in DEMOGRAPHIC_KEYWORDS
+    if kw not in BANNER_KEYWORDS
 )
 
 
 def demographic_hit_count(text: str) -> tuple[int, str]:
-    """Distinct demographic keyword hits in ``text`` and the longest hit."""
+    """Distinct registration-field hits in ``text`` and the longest hit.
+
+    Banner fields (name, DOB, sex, MRN, member id) are not counted.
+    """
     hay = normalize_text(text)
     if not hay:
         return 0, ""
@@ -609,6 +676,7 @@ def classify_pages(
             "type_confidence": result.type_confidence if result else "",
             "type_scores": result.type_scores if result else {},
             "previous_family": previous_family,
+            "filled_between": False,
             "family_scores": result.family_scores if result else {},
             "hits": [
                 {"entry_id": h.entry_id, "phrase": h.phrase, "role": h.role,
@@ -618,4 +686,39 @@ def classify_pages(
         }
         out.append(row)
         previous_family = row["family"]
+    _fill_between(out, canon)
     return out
+
+
+def _fill_between(rows: list[dict[str, Any]], canon: Canon) -> None:
+    """An unmatched page between two pages of a fill family takes that family.
+
+    Runs after spans, on the final rows, so a neighbour that inherited its
+    family from a span counts. The page takes the previous page's type and the
+    lower of the two neighbours' confidences.
+    """
+    families = canon.matching.fill_between_families
+    for i in range(1, len(rows) - 1):
+        row, before, after = rows[i], rows[i - 1], rows[i + 1]
+        if row["family"] or before["family"] not in families:
+            continue
+        if after["family"] != before["family"]:
+            continue
+        confidences = [
+            c for c in (before["confidence"], after["confidence"]) if c not in ("", None)
+        ]
+        row.update(
+            {
+                "page_type": before["page_type"],
+                "tag": before["tag"],
+                "is_codeable": before["is_codeable"],
+                "confidence": min(confidences) if confidences else "",
+                "continue": "n",
+                "continue_applied": "y",
+                "family": before["family"],
+                "family_display": before["family_display"],
+                "entry_id": before["entry_id"],
+                "type_confidence": before["type_confidence"],
+                "filled_between": True,
+            }
+        )

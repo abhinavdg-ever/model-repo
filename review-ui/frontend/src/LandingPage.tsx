@@ -293,7 +293,7 @@ const RESULTS_CSV_HEADERS = [
   "member_verification_status",
 ] as const;
 
-const DEFAULT_DOC_DOS = "2/2/2022";
+const DEFAULT_DOC_DOS = "2022-02-02";
 const DEFAULT_DOC_DOS_CONFIDENCE = 0.8;
 
 function fillDocDosForDownload(pages: ImagingPageResult[]): ImagingPageResult[] {

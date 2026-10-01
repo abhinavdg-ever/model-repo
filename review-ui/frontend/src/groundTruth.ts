@@ -118,10 +118,12 @@ function dateMark(
   if (missing(gt)) return [];
   const expected = parseDate(gt);
   const actual = parseDate(pipeline);
-  if (!known || !expected || !actual) return bit(gt, "unknown");
-  if (expected.join("-") === actual.join("-")) return bit(gt, "match");
+  // Shown as YYYY-MM-DD, the same format as the Value column.
+  const shown = expected ? expected.join("-") : text(gt);
+  if (!known || !expected || !actual) return bit(shown, "unknown");
+  if (expected.join("-") === actual.join("-")) return bit(shown, "match");
   const shared = expected.filter((part, index) => part === actual[index]).length;
-  return bit(gt, shared > 0 ? "partial" : "mismatch");
+  return bit(shown, shared > 0 ? "partial" : "mismatch");
 }
 
 /**

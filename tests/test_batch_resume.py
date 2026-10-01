@@ -237,3 +237,15 @@ def test_skip_completed_skips_a_finished_chart(monkeypatch):
     assert ran == []
     assert entry["status"] == "skipped"
     assert entry["skip_reason"] == "already_complete"
+
+
+def test_refresh_runs_finished_charts_first():
+    from jobs.batch_intake import submission_order
+
+    sources = [(f"/in/{n}", n, "local") for n in ("a", "b", "c", "d")]
+    order = submission_order(sources, [1, 1, 1, 1], first={"d", "b"})
+    assert [name for _pos, _src, name, *_ in order] == ["b", "d", "a", "c"]
+    assert [pos for pos, *_ in order] == [1, 2, 3, 4]
+    # Without a refresh set the order stays alphabetical.
+    plain = submission_order(sources, [1, 1, 1, 1])
+    assert [name for _pos, _src, name, *_ in plain] == ["a", "b", "c", "d"]

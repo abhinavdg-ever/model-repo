@@ -65,17 +65,17 @@ def _page_num_from_name(name: str) -> int | None:
 
 
 def _fmt_dos_display(raw: str | date | None) -> str | None:
-    """Normalize dates to MM/DD/YYYY for the Imaging UI."""
+    """Normalize dates to YYYY-MM-DD for the Imaging UI."""
     if raw is None:
         return None
     if isinstance(raw, date):
-        return raw.strftime("%m/%d/%Y")
+        return raw.strftime("%Y-%m-%d")
     value = str(raw).strip()
     if not value or value.lower() in {"unknown", "null", "none"}:
         return None
     for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y", "%m/%d/%y", "%m-%d-%y"):
         try:
-            return datetime.strptime(value, fmt).strftime("%m/%d/%Y")
+            return datetime.strptime(value, fmt).strftime("%Y-%m-%d")
         except ValueError:
             continue
     return value
@@ -970,11 +970,15 @@ class LocalFolderRepository(FolderRepository):
                 count += 1
         return count
 
-    # Streams that mark Imaging Completed (HW optional; counts only for In Progress).
-    _IMAGING_COMPLETE_STREAMS = frozenset({"rotation", "dos", "member"})
+    # Imaging Completed needs a CSV from every stage core-pipeline writes per
+    # chart: rotation, blank/junk, member, DOS, page type, encounter and
+    # sequencing. HW only counts toward In Progress.
+    _IMAGING_COMPLETE_STREAMS = frozenset(
+        {"rotation", "junk", "member", "dos", "codeable", "encounter", "sequencing"}
+    )
 
     def _imaging_is_full(self, chart_name: str) -> bool:
-        """True when rotation + DOS + member exist (HW not required)."""
+        """True when every imaging stage has written its CSV (HW not required)."""
         return self._IMAGING_COMPLETE_STREAMS.issubset(self._pipeline_stream_set(chart_name))
 
     def _page_has_pipeline_data(
@@ -1018,7 +1022,8 @@ class LocalFolderRepository(FolderRepository):
         Streams (manifest not counted for status):
           hw | rotation | dos | member
         Any CSV row naming the chart counts that stream (extracted values optional).
-        Imaging Completed needs rotation + dos + member; hw only affects In Progress.
+        Imaging Completed needs every stream in ``_IMAGING_COMPLETE_STREAMS``;
+        hw only affects In Progress.
         """
         if self._cache_valid() and self._pipeline_pages is not None:
             return self._pipeline_streams, self._pipeline_pages  # type: ignore[return-value]
@@ -1316,7 +1321,8 @@ class LocalFolderRepository(FolderRepository):
         OCR gates imaging: if any of the 3 OCR outputs is missing, status is
         OCR in Progress (or Queued) — never Imaging *, even if pipeline CSVs exist.
 
-        - All 3 OCR + rotation + DOS + member → Imaging Completed (HW optional)
+        - All 3 OCR + every imaging stage's CSV (rotation, blank/junk, member,
+          DOS, page type, encounter, sequencing) → Imaging Completed (HW optional)
         - All 3 OCR + any of HW / rotation / DOS / member → Imaging in Progress
         - All 3 OCR, no imaging → OCR Completed
         - Partial OCR → OCR in Progress

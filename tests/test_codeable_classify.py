@@ -477,3 +477,105 @@ def test_no_family_mixes_codeable_and_non_codeable(canon):
     assert all(len(t) == 1 for t in tags.values())
     assert {e.tag for e in canon if e.family == "laboratory"} == {"non_codeable"}
     assert {e.tag for e in canon if e.family == "pathology"} == {"codeable"}
+
+
+def test_a_visit_note_without_a_title_is_a_progress_note(canon):
+    """Hoopes Vision post-op page: Reason for Visit, HPI, Hx, ROS, Imp/Plan —
+    no "Progress Note" title, and a ROS line "Hematology/Oncology" mid-page."""
+    from stages.lib.page_classify.codeable_classify import page_type_of
+    from stages.lib.page_classify.stage import _output_page_type
+
+    text = (Path(__file__).parent / "fixtures" / "visit_note_without_title.txt").read_text(encoding="utf-8")
+    hit = page_type_of(text, page_number=7, entries=canon)
+    assert hit.family == "progress_note"
+    assert hit.page_type == "Progress Note"
+    assert hit.tag == "codeable"
+    (row,) = classify_pages([_page(7, text)], entries=canon)
+    assert _output_page_type(row) == "Progress Note"
+
+
+def test_a_one_word_title_decides_only_in_the_header(canon):
+    pad = " filler" * 200
+    assert score_text(f"HEMATOLOGY\n{pad}", canon).page_type == "Hematology"
+    # The same word as a ROS line mid-page cannot decide.
+    assert score_text(f"{pad} ros: hematology/oncology: easy bruising {pad}", canon).family \
+        == "progress_note"
+
+
+def test_a_ccd_visit_page_with_a_patient_banner_is_a_progress_note(canon):
+    """Name / DOB in the header is a banner on every page, not a document title."""
+    from stages.lib.page_classify.codeable_classify import page_type_of
+
+    text = (Path(__file__).parent / "fixtures" / "ccd_visit_page.txt").read_text(encoding="utf-8")
+    hit = page_type_of(text, page_number=1, entries=canon)
+    assert hit.family == "progress_note"
+    assert hit.tag == "codeable"
+
+
+@pytest.mark.parametrize(
+    "variant",
+    ["as_read", "glued_headings", "headings_lost"],
+)
+def test_ccd_visit_page_survives_ocr_variants(canon, variant):
+    from stages.lib.page_classify.codeable_classify import page_type_of
+
+    text = (Path(__file__).parent / "fixtures" / "ccd_visit_page.txt").read_text(encoding="utf-8")
+    if variant == "glued_headings":
+        text = text.replace("Reason for Visit", "ReasonforVisit").replace(
+            "Chief Complaint", "ChiefComplaint")
+    elif variant == "headings_lost":
+        text = text.split("Reason for Visit")[0] + text.split("Assessment\n", 1)[1]
+    assert page_type_of(text, page_number=1, entries=canon).family == "progress_note"
+
+
+def test_the_patient_banner_alone_is_not_demographics(canon):
+    from stages.lib.page_classify.codeable_classify import demographics_match
+
+    banner = "Patient Name: Doe, Jane  Date of Birth: 01/01/1980  Sex: F  MRN: 123"
+    assert demographics_match(banner, page_number=1, canon=canon) is None
+    registration = banner + "\nAddress: 1 Main St\nHome Phone: 555-0100\nInsurance: Aetna"
+    assert demographics_match(registration, page_number=1, canon=canon) is not None
+
+
+def test_a_dominant_progress_note_wins_over_a_bigger_family(canon):
+    pad = " filler" * 200
+    # Progress Note: three section headers in the body (4 + 4 + 4 = 12, the threshold).
+    # Laboratory: five lab titles (4 × 5 = 20), more than Progress Note.
+    labs = " ".join(f"{pad} {t}" for t in
+                    ["lab work", "chemistry report", "laboratory data", "lab flow sheet", "glucose report"])
+    text = f"{pad} medical hx {pad} family hx {pad} social hx {labs} {pad}"
+    hit = score_text(text, canon)
+    assert hit.family_scores["laboratory"] > hit.family_scores["progress_note"] >= 12
+    assert hit.family == "progress_note"
+    # Below the threshold the bigger family still wins.
+    hit = score_text(f"{pad} medical hx {labs} {pad}", canon)
+    assert hit.family == "laboratory"
+
+
+def test_an_unmatched_page_between_progress_notes_is_filled(canon):
+    rows = classify_pages(
+        [
+            _page(1, "Progress Note", dos="2024-01-01"),
+            _page(2, "zzzz nothing here", dos="2024-02-01"),  # another date: no span
+            _page(3, "Progress Note", dos="2024-03-01"),
+            _page(4, "zzzz nothing here", dos="2024-04-01"),
+            _page(5, "Consent form authorization", dos="2024-05-01"),
+        ],
+        entries=canon,
+    )
+    assert rows[1]["family"] == "progress_note" and rows[1]["filled_between"]
+    assert rows[1]["tag"] == "codeable"
+    # Page 4 sits between a Progress Note and a Consent form: left alone.
+    assert rows[3]["family"] == "" and rows[3]["page_type"] == "Not Available"
+
+
+def test_a_page_matched_to_another_family_is_not_filled(canon):
+    rows = classify_pages(
+        [
+            _page(1, "Progress Note", dos="2024-01-01"),
+            _page(2, "Consent form authorization", dos="2024-02-01"),
+            _page(3, "Progress Note", dos="2024-03-01"),
+        ],
+        entries=canon,
+    )
+    assert rows[1]["family"] == "consent_authorization"

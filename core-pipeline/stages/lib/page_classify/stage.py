@@ -87,6 +87,7 @@ EVIDENCE_COLS = [
     "type_scores",
     "continue_applied",
     "previous_family",
+    "filled_between",
     "ocr_source",
     "family_scores",
     "hits",

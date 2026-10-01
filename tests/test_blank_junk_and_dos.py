@@ -748,3 +748,12 @@ class TestDosResolve:
         assert {"label_class", "label_distance", "position", "edge_position", "page_type",
                 "has_clinical_cue", "year_delta", "cluster_size", "in_range_pair",
                 "score"} <= log[0].keys()
+
+
+def test_ccd_visit_page_dos_is_the_encounter_date():
+    from pathlib import Path
+
+    from dos_logic import extract_dos_from_page_text
+
+    text = (Path(__file__).parent / "fixtures" / "ccd_visit_page.txt").read_text(encoding="utf-8")
+    assert extract_dos_from_page_text(text, received_date=RECEIVED)["dos_from"] == "01-28-2025"

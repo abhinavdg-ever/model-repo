@@ -154,13 +154,13 @@ def _fmt_dos_display(raw: str | date | None) -> str | None:
     if raw is None:
         return None
     if isinstance(raw, date):
-        return raw.strftime("%m/%d/%Y")
+        return raw.strftime("%Y-%m-%d")
     value = str(raw).strip()
     if not value or value.lower() in {"unknown", "null", "none"}:
         return None
     for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y", "%m/%d/%y", "%m-%d-%y"):
         try:
-            return datetime.strptime(value, fmt).strftime("%m/%d/%Y")
+            return datetime.strptime(value, fmt).strftime("%Y-%m-%d")
         except ValueError:
             continue
     return value

@@ -46,8 +46,12 @@ _CHART_STATUS_TO_OCR: dict[str, str] = {
     "blank_junk": "IMAGING_IN_PROGRESS",
     "ocr_final1": "IN_PROGRESS",
     "ocr_final2": "IN_PROGRESS",
+    "section_headers": "IMAGING_IN_PROGRESS",
     "member_verify": "IMAGING_IN_PROGRESS",
     "dos_extract": "IMAGING_IN_PROGRESS",
+    "page_subtype": "IMAGING_IN_PROGRESS",
+    "encounter_type": "IMAGING_IN_PROGRESS",
+    "page_sequencing": "IMAGING_IN_PROGRESS",
 }
 _IMAGING_STAGES = frozenset({"blank_junk", "member_verify", "dos_extract"})
 

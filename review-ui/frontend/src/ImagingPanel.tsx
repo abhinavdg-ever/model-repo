@@ -27,7 +27,7 @@ const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
 };
 
 /** Doc Summary fallback when a page has no DOS and nothing to inherit. */
-const DEFAULT_DOS = "2/2/2022";
+const DEFAULT_DOS = "2022-02-02";
 /** Hardcoded default DOS confidence */
 const DEFAULT_DOS_CONFIDENCE = 0.8;
 
@@ -37,7 +37,7 @@ function hasDos(value: string | null | undefined): value is string {
 
 /**
  * Doc Summary only: missing DOS inherits the previous page's DOS;
- * if nothing precedes, use 2/2/2022 at 80% confidence.
+ * if nothing precedes, use 2022-02-02 at 80% confidence.
  * Skipped when DOS section was never run for this folder.
  */
 function fillDosForward(
@@ -300,7 +300,8 @@ function CompareSection({
                     {truth.label}
                   </td>
                 ) : (
-                  <td>Not Available</td>
+                  // Same blank as the Value column.
+                  <td>{NOT_FOUND}</td>
                 )}
               </tr>
             );

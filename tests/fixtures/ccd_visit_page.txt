@@ -1,0 +1,59 @@
+Patient Name: Anderson, Lisa  Date of Birth: 04/05/1993  Sex: F  Encounter Id: 1050824  Encounter Date: January 28, 2025
+Patient | Anderson, Lisa
+Former/Alias name |
+Date of birth | 04/05/1993
+Sex | Female
+Patient IDs | 204568
+Document Id | 0617897c-3906-11f1-a63d-55060971d85e
+Document Created: | April 15, 2026, 16:02:25 -0400
+Encounter Id | 1050824 2.16.840.1.113883.19
+Encounter Date | at January 28, 2025
+Legal authenticator | ZIYI WANG, MD signed at January 28, 2025, 12:17:31, EST
+CCD Package Name | NCC_Athena_85eb80d0-3667-4ad3-8139-387681774026_26316463_20260416061626
+CCD File Name | ccda_7.xml
+CCD Attachments |
+CCD Rendered Date | April 18, 2026
+CCD Rendered Version | 2.2.3
+Reason for Visit
+physical
+Chief Complaint
+physical
+Assessment
+1. Adult health examination
+USPSTF guidelines reviewed with patient. Patient declined all vaccinations. Mammogram ordered. She is up to date on colon CA screening, will request records. Educated pt on healthy lifestyle changes with diet and regular exercises. Recent lab results reviewed with patient.
+Z00.00: Encounter for general adult medical examination without abnormal findings
+2. Screening for malignant neoplasm of breast
+Last mammogram was in 03/2024 per patient, will repeat in 03/2025.
+Z12.39: Encounter for other screening for malignant neoplasm of breast
+MAMMO, screening, tomosynthesis, bilateral
+3. Menopause
+Educated pt on the importance of bone density screening.
+Z78.0: Asymptomatic menopausal state
+bone density
+4. Essential hypertension
+BP improved, at goal of <130/80
+Patient has been on chlorthalidone for years which caused hypokalemia.
+Failed Olmesartan-HCTZ due to significant nausea.
+Chlorthalidone was switched to lisinopril, however no changes of BP from 10 mg to 40 mg daily.
+Continue lisinopril 20 mg daily and amlodipine 5 mg daily.
+Can increase amlodipine to 10 mg daily of BP is above 140/90.
+F/u in 3 months.
+I10: Essential (primary) hypertension
+amlodipine 5 mg tablet
+losartan 50 mg tablet
+5. Obstructive sleep apnea syndrome
+Mild per patient. Unable to tolerate CPAP. Can try mouth guard.
+G47.33: Obstructive sleep apnea (adult) (pediatric)
+6. Type 2 diabetes mellitus
+Newly diagnosed. A1c of 6.6. Discussed treatment options, patient declined medication at this time, wants to work on lifestyle changes first.
+Educated pt on lifestyle changes with diet and exercises. Advised pt to schedule diabetic eye exam. Repeat A1c in 3 months.
+E11.9: Type 2 diabetes mellitus without complications
+7. Supraventricular tachycardia
+In NSR. Continue flecainide. Request records from Cardiology.
+I47.10: Supraventricular tachycardia, unspecified
+Plan of Treatment
+Reminders
+Appointments | Follow up 30 | 06/18/2026 9:00AM | Ziyi Wang, MD
+Follow up 30 | on or around 06/23/2026 | Ziyi Wang, MD
+Medications
+Name

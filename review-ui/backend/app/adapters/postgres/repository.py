@@ -62,15 +62,31 @@ CHART_STATUS_TO_OCR: dict[str, str] = {
     "blank_junk": "IMAGING_IN_PROGRESS",
     "ocr_final1": "IN_PROGRESS",
     "ocr_final2": "IN_PROGRESS",
+    "section_headers": "IMAGING_IN_PROGRESS",
     "member_verify": "IMAGING_IN_PROGRESS",
     "dos_extract": "IMAGING_IN_PROGRESS",
+    "page_subtype": "IMAGING_IN_PROGRESS",
+    "encounter_type": "IMAGING_IN_PROGRESS",
+    "page_sequencing": "IMAGING_IN_PROGRESS",
 }
 
 # v7: once status is just "processing", which stage it is in comes from
 # current_stage. These stages mean the imaging modules are running.
 IMAGING_STAGES = frozenset(
-    {"blank_junk", "member_verify", "dos_extract"}
+    {
+        "blank_junk",
+        "section_headers",
+        "member_verify",
+        "dos_extract",
+        "page_subtype",
+        "encounter_type",
+        "page_sequencing",
+    }
 )
+
+# A chart is Imaging Completed only when every stage in pipeline_stage is done
+# for every page — chart_list.status 'completed' / 'needs_review' / 'rejected'.
+_IMAGING_DONE_STATUSES = frozenset({"completed", "needs_review", "rejected"})
 
 # How long page → blob locations are cached (Raw_Input listing order = page_number).
 _BLOB_LIST_TTL_SEC = 300.0
@@ -89,9 +105,9 @@ def _fmt_date(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value.strftime("%m/%d/%Y")
+        return value.strftime("%Y-%m-%d")
     if isinstance(value, date):
-        return value.strftime("%m/%d/%Y")
+        return value.strftime("%Y-%m-%d")
     return _fmt_dos_display(value)
 
 
@@ -228,6 +244,29 @@ class PostgresFolderRepository(FolderRepository):
                     )
                     flag_rows = cur.fetchall()
 
+                    # Pages done in every stage of the chain (completed or
+                    # skipped) — the "Imaging N" count and the page dots.
+                    cur.execute(
+                        """
+                        SELECT p.page_name
+                          FROM page_list p
+                         WHERE p.chart_id = %s
+                           AND NOT EXISTS (
+                               SELECT 1 FROM pipeline_stage s
+                                WHERE s.is_phase1
+                                  AND NOT EXISTS (
+                                      SELECT 1 FROM page_stage_status ps
+                                       WHERE ps.page_id = p.id
+                                         AND ps.stage_name = s.stage_name
+                                         AND ps.pass_no = s.pass_no
+                                         AND ps.status IN ('completed', 'skipped')
+                                  )
+                           )
+                        """,
+                        (chart_id,),
+                    )
+                    imaging_done = {str(r[0]) for r in cur.fetchall()}
+
                     cur.execute(
                         """
                         SELECT member_name, member_dob, external_member_id
@@ -259,7 +298,8 @@ class PostgresFolderRepository(FolderRepository):
                 has_preliminary_ocr=bool(flags.get(name, {}).get("tesseract")),
                 has_final1_ocr=bool(flags.get(name, {}).get("docling")),
                 has_final2_ocr=bool(flags.get(name, {}).get("azuredocintel")),
-                has_imaging=False,
+                has_imaging=name in imaging_done
+                or str(status_raw or "").lower() in _IMAGING_DONE_STATUSES,
             )
             for num, name in pages
         ]
@@ -307,7 +347,7 @@ class PostgresFolderRepository(FolderRepository):
             name=folder_id,
             page_count=len(pages),
             ocr_processed=ocr_processed,
-            imaging_processed=0,
+            imaging_processed=sum(1 for p in page_summaries if p.has_imaging),
             ocr_status=ocr_status,  # type: ignore[arg-type]
             last_updated_at=None,
             run_id=shown_run,
@@ -1058,13 +1098,22 @@ class PostgresFolderRepository(FolderRepository):
                           EXISTS(
                             SELECT 1 FROM encounter_type_results
                              WHERE chart_id = %s LIMIT 1
+                          )
+                          -- Unresolved visits write no row, so a finished
+                          -- stage counts even when every page is unresolved.
+                          OR EXISTS(
+                            SELECT 1 FROM page_stage_status
+                             WHERE chart_id = %s
+                               AND stage_name = 'encounter_type'
+                               AND status IN ('completed', 'skipped')
+                             LIMIT 1
                           ),
                           EXISTS(
                             SELECT 1 FROM page_sequencing_results
                              WHERE chart_id = %s LIMIT 1
                           )
                         """,
-                        (chart_id,) * 8,
+                        (chart_id,) * 9,
                     )
                     hit = cur.fetchone()
                     if not hit:

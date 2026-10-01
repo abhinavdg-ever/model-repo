@@ -1,5 +1,5 @@
 {
-  "note": "Page type catalog. Each family has one tag (codeable / non_codeable / discharge_frequency); a family never mixes tags. Each entry has a stable id, a display name and a family, and takes its tag from the family. match.primary decides the type and can open a span; a primary phrase belongs to one entry and is two or more words unless listed in single_word_primary. match.variants are misspellings and count as primary. match.supporting adds score but never decides the type. continue=true opens a span for the entry's family. The loader refuses a file that breaks any of these rules. Reloads on change.",
+  "note": "Page type catalog. Each family has one tag (codeable / non_codeable / discharge_frequency); a family never mixes tags. Each entry has a stable id, a display name and a family, and takes its tag from the family. match.primary decides the type and can open a span; a primary phrase belongs to one entry and is two or more words unless listed in single_word_primary. match.variants are misspellings and count as primary. match.supporting adds score but never decides the type. continue=true opens a span for the entry's family. The loader refuses a file that breaks any of these rules. Reloads on change. A one-word primary decides only in the page header (matching.single_word_primary_header_only), except the section headers in single_word_any_band. matching.dominant_families: a family whose score reaches its threshold wins outright (12 = e.g. three section headers in the body, or a header title plus one more hit). matching.fill_between_families: an unmatched page whose previous and next pages are both that family takes the family too.",
   "tags": [
     "codeable",
     "non_codeable",
@@ -27,9 +27,16 @@
       "multiplier": 0.5
     },
     "supporting_can_decide": false,
+    "single_word_primary_header_only": true,
     "span_key": "family",
     "confidence": "margin",
-    "confidence_floor": 0.3
+    "confidence_floor": 0.3,
+    "dominant_families": {
+      "progress_note": 12
+    },
+    "fill_between_families": [
+      "progress_note"
+    ]
   },
   "single_word_primary": [
     "audiology",
@@ -48,6 +55,9 @@
     "facesheet",
     "gastroenterology",
     "hematology",
+    "hpi",
+    "imp/plan",
+    "impression/plan",
     "mammograms",
     "microbiology",
     "mri",
@@ -61,12 +71,19 @@
     "questionnaire",
     "registration",
     "retinopathy",
+    "ros",
     "sigmoidoscopy",
     "spirometry",
     "tomography",
     "urinalysis",
     "urology",
     "videonystagmography"
+  ],
+  "single_word_any_band": [
+    "hpi",
+    "imp/plan",
+    "impression/plan",
+    "ros"
   ],
   "families": {
     "progress_note": {
@@ -226,7 +243,24 @@
       "match": {
         "primary": [
           "progress note",
-          "progress notes"
+          "progress notes",
+          "reason for visit",
+          "review of systems",
+          "ros",
+          "medical hx",
+          "past medical history",
+          "family hx",
+          "family history",
+          "social hx",
+          "social history",
+          "assessment and plan",
+          "assessment & plan",
+          "imp/plan",
+          "impression/plan",
+          "impression and plan",
+          "physical examination",
+          "hpi",
+          "plan of treatment"
         ],
         "supporting": [],
         "variants": []
@@ -892,9 +926,7 @@
           "chief complaint",
           "physical exam"
         ],
-        "supporting": [
-          "hpi"
-        ],
+        "supporting": [],
         "variants": []
       }
     },
@@ -2316,7 +2348,9 @@
       "match": {
         "primary": [
           "patient information",
-          "demographics",
+          "demographics"
+        ],
+        "supporting": [
           "date of birth",
           "patient name",
           "member name",
@@ -2327,9 +2361,7 @@
           "cell phone",
           "emergency contact",
           "marital status",
-          "social security"
-        ],
-        "supporting": [
+          "social security",
           "demographic",
           "dob",
           "mrn",

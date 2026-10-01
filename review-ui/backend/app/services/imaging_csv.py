@@ -34,7 +34,7 @@ CSV_HEADERS = [
     "member_verification_status",
 ]
 
-DEFAULT_DOC_DOS = "2/2/2022"
+DEFAULT_DOC_DOS = "2022-02-02"
 DEFAULT_DOC_DOS_CONFIDENCE = 0.8
 
 
@@ -47,7 +47,7 @@ def _cell(value: Any) -> str:
 
 
 def fill_doc_dos_for_download(pages: list[ImagingPageResult]) -> list[ImagingPageResult]:
-    """Prefer docDos*; else carry-forward / default 2/2/2022 @ 80%."""
+    """Prefer docDos*; else carry-forward / default 2022-02-02 @ 80%."""
     prev_from: str | None = None
     prev_to: str | None = None
     prev_conf: float | None = None

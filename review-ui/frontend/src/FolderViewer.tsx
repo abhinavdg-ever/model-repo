@@ -75,8 +75,8 @@ function downloadJsonFile(filename: string, data: unknown) {
   downloadTextFile(filename, JSON.stringify(data, null, 2), "application/json;charset=utf-8");
 }
 
-/** Document-level DOS for download: prefer docDos*, else carry-forward / 2/2/2022 @ 80%. */
-const DEFAULT_DOC_DOS = "2/2/2022";
+/** Document-level DOS for download: prefer docDos*, else carry-forward / 2022-02-02 @ 80%. */
+const DEFAULT_DOC_DOS = "2022-02-02";
 const DEFAULT_DOC_DOS_CONFIDENCE = 0.8;
 
 function fillDocDosForDownload(pages: ImagingPageResult[]): ImagingPageResult[] {

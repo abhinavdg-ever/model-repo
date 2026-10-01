@@ -81,14 +81,19 @@ def is_large_chart(pages: int) -> bool:
 def submission_order(
     sources: list[tuple[str, str, str]],
     page_estimates: list[int],
+    first: frozenset[str] | set[str] = frozenset(),
 ) -> list[tuple[int, str, str, str, bool, int]]:
-    """Alphabetical by chart name: ``(position, source, name, mode, is_large, pages)``.
+    """Run order: ``(position, source, name, mode, is_large, pages)``.
 
-    ``position`` is the 1-based alphabetical position — the chart N/X label and
-    the summary order. ``is_large`` marks charts that must run one at a time.
+    Charts named in ``first`` go ahead of the rest — a refresh run
+    (``skip_completed`` false) starts with the charts already finished. Each
+    group is alphabetical by chart name. ``position`` is the 1-based place in
+    that order — the chart N/X label and the summary order. ``is_large`` marks
+    charts that must run one at a time.
     """
     paired = sorted(
-        zip(sources, page_estimates), key=lambda sp: (sp[0][1].casefold(), sp[0][1])
+        zip(sources, page_estimates),
+        key=lambda sp: (sp[0][1] not in first, sp[0][1].casefold(), sp[0][1]),
     )
     return [
         (position, source, name, mode, is_large_chart(pages), pages)
@@ -790,7 +795,16 @@ def _run_batch_inner(
     large_flags = [is_large_chart(n) for n in page_estimates]
     small_count = sum(1 for large in large_flags if not large)
     large_count = total - small_count
-    ordered_jobs = submission_order(sources, page_estimates)
+    # Refresh run: re-run the finished charts first, then the new ones.
+    refresh_first: set[str] = set()
+    if not skip_completed and not skip_db_write and sources:
+        refresh_first = finished_chart_names([name for _src, name, _mode in sources])
+        if refresh_first:
+            logger.info(
+                "skip_completed=false: %d already-finished chart(s) run first",
+                len(refresh_first),
+            )
+    ordered_jobs = submission_order(sources, page_estimates, refresh_first)
 
     logger.info(
         "Batch: %d chart folder(s) under %s (workers=%d, STAGE_WORKERS=%d, "
@@ -837,7 +851,7 @@ def _run_batch_inner(
         futures = []
         index_by_future: dict[Any, int] = {}
         for _orig_index, source, name, mode, is_large, _pages in ordered_jobs:
-            # Submitted (and started) in alphabetical order; N/X is that position.
+            # Submitted (and started) in run order; N/X is that position.
             fut = pool.submit(
                 _run_one_chart,
                 _orig_index,

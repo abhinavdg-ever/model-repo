@@ -105,9 +105,9 @@ def _fmt_manifest_dob(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value.strftime("%m/%d/%Y")
+        return value.strftime("%Y-%m-%d")
     if isinstance(value, date):
-        return value.strftime("%m/%d/%Y")
+        return value.strftime("%Y-%m-%d")
     text = str(value).strip()
     return text or None
 
