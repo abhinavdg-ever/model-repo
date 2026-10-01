@@ -178,6 +178,10 @@ class Matching:
     dominant_families: dict[str, float]
     # Families that fill an unmatched page sitting between two of their pages.
     fill_between_families: frozenset[str]
+    # Inside a span, a page whose own family is another one, and which has no
+    # primary or variant hit of the span's family, keeps its own type and ends
+    # the span once its family scores at least this much.
+    span_break_score: float = float("inf")
 
 
 @dataclass(frozen=True)
@@ -266,6 +270,7 @@ def _parse_canon(raw: dict[str, Any]) -> Canon:
             str(k): float(v) for k, v in (m.get("dominant_families") or {}).items()
         },
         fill_between_families=frozenset(m.get("fill_between_families") or []),
+        span_break_score=float(m.get("span_break_score", float("inf"))),
     )
     families = {
         key: Family(
@@ -357,6 +362,8 @@ class MatchResult:
     # and every candidate type's share.
     type_confidence: float = 1.0
     type_scores: dict[str, float] = field(default_factory=dict, compare=False)
+    # Families with at least one primary or variant hit on the page.
+    deciding_families: frozenset[str] = field(default=frozenset(), compare=False)
 
     @property
     def display_tag(self) -> str:
@@ -472,6 +479,7 @@ def score_text(text: str, canon: Canon | None = None) -> Optional[MatchResult]:
         family_scores={f: round(v, 4) for f, v in family_scores.items()},
         type_confidence=round(entry_score / type_total, 4),
         type_scores=type_scores,
+        deciding_families=frozenset(deciding_families),
     )
 
 
@@ -598,6 +606,16 @@ class _Span:
     type_confidence: float
 
 
+def _breaks_span(match: Optional[MatchResult], span: _Span, m: Matching) -> bool:
+    """Another family wins here, the span's family is not a candidate, and it is strong."""
+    return (
+        match is not None
+        and match.family != span.family
+        and span.family not in match.deciding_families
+        and match.score >= m.span_break_score
+    )
+
+
 def classify_pages(
     pages: Iterable[dict[str, Any]],
     *,
@@ -631,6 +649,9 @@ def classify_pages(
                 key, match.family, match.page_type, match.tag, match.confidence,
                 match.type_confidence,
             )
+        elif span is not None and _breaks_span(match, span, canon.matching):
+            # A different document starts here; later pages stop inheriting.
+            span = None
         elif span is not None:
             # Inherit the family and tag; keep the page's own type when it
             # matched something in the same family.

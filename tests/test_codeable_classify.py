@@ -89,39 +89,44 @@ def test_continue_carries_until_dos_changes(canon):
     assert rows[2]["continue_applied"] == "n"
 
 
-def test_discharge_page_inherits_open_progress_note_span_same_dos(canon):
-    pages = [
+def _same_day(*texts):
+    return [
         {
-            "page_id": 1,
-            "page_name": "1.jpg",
-            "text": "Progress Note",
+            "page_id": i,
+            "page_name": f"{i}.jpg",
+            "text": text,
             "dos_from": "2024-03-01",
             "dos_to": "2024-03-01",
-        },
-        {
-            "page_id": 2,
-            "page_name": "2.jpg",
-            "text": "Discharge Report final",
-            "dos_from": "2024-03-01",
-            "dos_to": "2024-03-01",
-        },
-        {
-            "page_id": 3,
-            "page_name": "3.jpg",
-            "text": "no keywords here",
-            "dos_from": "2024-03-01",
-            "dos_to": "2024-03-01",
-        },
+        }
+        for i, text in enumerate(texts, start=1)
     ]
-    rows = classify_pages(pages, entries=canon)
-    # Discharge entries do not open a span, so the progress-note span on the
-    # same date carries through the discharge page and the page after it.
+
+
+def test_strong_other_family_breaks_progress_note_span(canon):
+    rows = classify_pages(
+        _same_day("Progress Note", "DISCHARGE SUMMARY\nHospital course", "no keywords here"),
+        entries=canon,
+    )
     assert rows[0]["tag"] == "codeable"
+    assert rows[1]["tag"] == "discharge_frequency"
+    assert rows[1]["continue_applied"] == "n"
+    # The span ended, so the next page does not fall back to Progress Note.
+    assert rows[2]["tag"] == "not_sure"
+    assert rows[2]["continue_applied"] == "n"
+
+
+def test_weak_other_family_stays_in_progress_note_span(canon):
+    body = "\n".join(["patient seen today, vitals stable"] * 20 + ["see discharge summary"])
+    rows = classify_pages(_same_day("Progress Note", body), entries=canon)
     assert rows[1]["tag"] == "codeable"
     assert rows[1]["continue_applied"] == "y"
-    assert rows[2]["tag"] == "codeable"
-    assert rows[2]["continue_applied"] == "y"
 
+
+def test_progress_note_candidate_stays_in_span(canon):
+    body = "DISCHARGE SUMMARY\n" + "\n".join(["notes"] * 20) + "\nprogress note"
+    rows = classify_pages(_same_day("Progress Note", body), entries=canon)
+    assert rows[1]["continue_applied"] == "y"
+    assert rows[1]["family"] == "progress_note"
 
 def test_unmatched_page_is_not_sure(canon):
     pages = [

@@ -683,7 +683,8 @@ also matched.
 |---|---|
 | Winner has `continue` | Opens (or replaces) a span for its family |
 | Same date as the span, matched a type in the span's family | That type, the span's tag (`continue_applied=y`) |
-| Same date, matched nothing or another family | The opener's type and tag (`continue_applied=y`) |
+| Same date, another family wins with score ≥ `span_break_score` (8) and the span's family has no primary/variant hit on the page | Its own type and tag; the span ends (`continue_applied=n`) |
+| Same date, matched nothing, a weak other family, or the span's family is still a candidate | The opener's type and tag (`continue_applied=y`) |
 | Different date, or no date | Span ends |
 
 The span date is the page-level DOS, else the document-level one. The DOS

@@ -1,5 +1,5 @@
 {
-  "note": "Page type catalog. Each family has one tag (codeable / non_codeable / discharge_frequency); a family never mixes tags. Each entry has a stable id, a display name and a family, and takes its tag from the family. match.primary decides the type and can open a span; a primary phrase belongs to one entry and is two or more words unless listed in single_word_primary. match.variants are misspellings and count as primary. match.supporting adds score but never decides the type. continue=true opens a span for the entry's family. The loader refuses a file that breaks any of these rules. Reloads on change. A one-word primary decides only in the page header (matching.single_word_primary_header_only), except the section headers in single_word_any_band. matching.dominant_families: a family whose score reaches its threshold wins outright (12 = e.g. three section headers in the body, or a header title plus one more hit). matching.fill_between_families: an unmatched page whose previous and next pages are both that family takes the family too.",
+  "note": "Page type catalog. Each family has one tag (codeable / non_codeable / discharge_frequency); a family never mixes tags. Each entry has a stable id, a display name and a family, and takes its tag from the family. match.primary decides the type and can open a span; a primary phrase belongs to one entry and is two or more words unless listed in single_word_primary. match.variants are misspellings and count as primary. match.supporting adds score but never decides the type. continue=true opens a span for the entry's family. The loader refuses a file that breaks any of these rules. Reloads on change. A one-word primary decides only in the page header (matching.single_word_primary_header_only), except the section headers in single_word_any_band. matching.dominant_families: a family whose score reaches its threshold wins outright (12 = e.g. three section headers in the body, or a header title plus one more hit). matching.fill_between_families: an unmatched page whose previous and next pages are both that family takes the family too. matching.span_break_score: inside a span, a page won by another family keeps its own type and ends the span when the span's family has no primary/variant hit on it and the winner scores at least this (8 = a two-word title in the header, or two two-word hits in the body).",
   "tags": [
     "codeable",
     "non_codeable",
@@ -34,6 +34,7 @@
     "dominant_families": {
       "progress_note": 12
     },
+    "span_break_score": 8,
     "fill_between_families": [
       "progress_note"
     ]
