@@ -1,17 +1,29 @@
 """Stage: codeable / non-codeable / discharge → ``page_classification``.
 
-* **Main pages** (not blank/junk/duplicate): term-frequency match against
-  ``codeable_canon.json``. Visit Report / Progress Note / Discharge Report
-  families (``continue=y``) keep their tag until the page DOS changes.
+* **Main pages** (not blank/junk/duplicate): keyword match against
+  ``codeable_canon.json`` (see ``codeable_classify``). An entry with
+  ``continue`` opens a span for its family that later pages on the same date
+  inherit. A page whose only date is the DOS default has no date here, so it
+  shares a span with nobody.
+* **Output page type** is ``Family (Page Type)`` — e.g. ``Progress Note (SOAP
+  Note)`` — in the CSV ``page_type`` and ``page_classification.page_subtype``.
+  ``confidence`` is the family's; ``type_confidence`` is the type's probability
+  within the family.
 * **Blank / junk / duplicate**: always ``non_codeable``. ``page_subtype``
   is the existing junk label (Invoice, Cover Page, …) or Blank / Duplicate.
 
-Also writes ``imaging/<chart>_codeable.csv`` for review-ui Local Mode.
+Also writes ``imaging/<chart>_codeable.csv`` for review-ui Local Mode. With
+PAGE_CLASSIFY_DEBUG on, the evidence behind every page — per-family scores,
+each keyword hit with its role and band, the previous page's family, the OCR
+source — goes to ``<chart>/debug/<chart>_page_classify_evidence.csv``.
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Optional
+
+from config import PAGE_CLASSIFY_DEBUG, chart_dir
 
 from db import (
     connect,
@@ -27,6 +39,7 @@ from stages._support import (
     mark_completed,
     stage_run,
 )
+from stages.lib.canon_store import CANON_DIR, CanonFile
 from stages.lib.page_classify.codeable_classify import classify_pages
 
 logger = logging.getLogger(__name__)
@@ -47,6 +60,7 @@ CODEABLE_COLS = [
     "page_name",
     "page_number",
     "page_type",
+    "type_confidence",
     "tag",
     "is_codeable",
     "confidence",
@@ -57,6 +71,56 @@ CODEABLE_COLS = [
     "dos_to",
     "ocr_source",
 ]
+
+
+EVIDENCE_COLS = [
+    "chart_name",
+    "page_name",
+    "page_number",
+    "page_position",
+    "page_type",
+    "entry_id",
+    "family",
+    "tag",
+    "confidence",
+    "type_confidence",
+    "type_scores",
+    "continue_applied",
+    "previous_family",
+    "ocr_source",
+    "family_scores",
+    "hits",
+]
+
+_DOS_PROFILE: CanonFile[dict[str, Any]] = CanonFile(CANON_DIR / "dos_canon.json")
+
+
+def _page_dos(dos: dict[str, Any]) -> tuple[str, str]:
+    """The page's date for span keys: page level, else document level.
+
+    The DOS default is not a date. Every page where extraction failed carries
+    it, so treating it as one would let a single Progress Note span the lot.
+    """
+    dos_from = dos.get("date_of_service_from") or dos.get("date_of_service_from_doclevel")
+    dos_to = dos.get("date_of_service_to") or dos.get("date_of_service_to_doclevel")
+    default = str(_DOS_PROFILE.get().get("DOS_DEFAULT_DATE") or "")
+    if not dos.get("date_of_service_from") and str(dos_from or "") == default:
+        return "", ""
+    return str(dos_from or ""), str(dos_to or "")
+
+
+def _output_page_type(row: dict[str, Any]) -> str:
+    """``Family (Page Type)``; just the name when the two are the same.
+
+    "Not Available" when nothing matched.
+    """
+    family = row.get("family_display") or ""
+    page_type = row.get("page_type") or ""
+    if not family:
+        return page_type
+    if not page_type or page_type.casefold() == family.casefold():
+        return family
+    return f"{family} ({page_type})"
 
 
 def _dos_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
@@ -122,13 +186,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 prelim=pr,
                 quality_row=quality.get(page_id),
             )
-            dos = dos_by_page.get(page_id) or {}
-            dos_from = dos.get("date_of_service_from") or dos.get(
-                "date_of_service_from_doclevel"
-            )
-            dos_to = dos.get("date_of_service_to") or dos.get(
-                "date_of_service_to_doclevel"
-            )
+            dos_from, dos_to = _page_dos(dos_by_page.get(page_id) or {})
             sources[page_id] = _ocr_source_label(final2=f2, final1=f1, prelim=pr)
             page_inputs.append(
                 {
@@ -136,8 +194,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     "page_name": page["page_name"],
                     "page_number": page.get("page_number"),
                     "text": text,
-                    "dos_from": str(dos_from or ""),
-                    "dos_to": str(dos_to or ""),
+                    "dos_from": dos_from,
+                    "dos_to": dos_to,
                 }
             )
 
@@ -188,6 +246,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                             "page_name": page["page_name"],
                             "page_number": page.get("page_number"),
                             "page_type": subtype,
+                            "type_confidence": "",
                             "tag": "non_codeable",
                             "is_codeable": "Non Codeable",
                             "confidence": conf if conf is not None else "",
@@ -202,6 +261,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     continue
 
                 row = by_id.get(page_id) or {}
+                page_type = _output_page_type(row)
                 tag = (row.get("tag") or "").strip()
                 category = _TAG_TO_CATEGORY.get(tag)
                 conf = row.get("confidence")
@@ -211,7 +271,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         conn,
                         chart_id=chart_id,
                         page_id=page_id,
-                        page_subtype=row.get("page_type") or None,
+                        page_subtype=page_type or None,
                         classification_category=category,
                         confidence=conf_f,
                         duplicate_flag=False,
@@ -226,7 +286,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "chart_name": ctx.chart_name,
                         "page_name": page["page_name"],
                         "page_number": page.get("page_number"),
-                        "page_type": row.get("page_type") or "",
+                        "page_type": page_type,
+                        "type_confidence": row.get("type_confidence", ""),
                         "tag": tag,
                         "is_codeable": row.get("is_codeable") or "",
                         "confidence": row.get("confidence") or "",
@@ -250,6 +311,26 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         path = write_csv(
             imaging_csv(ctx.chart_name, "codeable"), CODEABLE_COLS, csv_rows
         )
+        if PAGE_CLASSIFY_DEBUG:
+            total = max(1, len(ctx.pages))
+            position = {p["id"]: i for i, p in enumerate(ctx.pages, start=1)}
+            write_csv(
+                chart_dir(ctx.chart_name) / "debug"
+                / f"{ctx.chart_name}_page_classify_evidence.csv",
+                EVIDENCE_COLS,
+                (
+                    {
+                        **row,
+                        "chart_name": ctx.chart_name,
+                        "page_position": round(position[row["page_id"]] / total, 4),
+                        "ocr_source": sources.get(row["page_id"], ""),
+                        "family_scores": json.dumps(row["family_scores"]),
+                        "type_scores": json.dumps(row["type_scores"]),
+                        "hits": json.dumps(row["hits"]),
+                    }
+                    for row in classified
+                ),
+            )
         logger.info(
             "page_subtype chart=%s pages=%d main=%d blank_junk=%d continue=%d → %s",
             ctx.chart_name,

@@ -184,6 +184,14 @@ DOS_LLM_ENABLED = (
     and _azure_openai_auth_usable()
 )
 
+# Writes every DOS candidate with its features and score to
+# <chart>/debug/<chart>_dos_candidates.csv. debug/ is never exported.
+DOS_DEBUG = _flag("DOS_DEBUG", False)
+
+# Writes the evidence behind every page type (per-family scores, keyword hits
+# with role and band) to <chart>/debug/<chart>_page_classify_evidence.csv.
+PAGE_CLASSIFY_DEBUG = _flag("PAGE_CLASSIFY_DEBUG", False)
+
 # Page sequencing cross-encoder (optional ONNX). Off by default — markers /
 # header groups / original order still run. Drop cross_encoder_mini_lm.onnx
 # under stages/lib/sequencing/artifacts/ and set true to enable.

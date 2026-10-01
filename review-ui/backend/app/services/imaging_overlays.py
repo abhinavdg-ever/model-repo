@@ -17,20 +17,16 @@ from typing import Any
 
 from app.core.schemas import ImagingPageResult, ImagingVerificationDetails
 
-_PAREN_RE = re.compile(r"\([^)]*\)")
 _WS_RE = re.compile(r"\s+")
 
 
 def display_page_type(label: str) -> str:
-    """Hide parenthetical annotations from Page Type (e.g. ``SOAP Note (...)``)."""
-    text = (label or "").strip()
-    if not text:
-        return text
-    prev = None
-    while prev != text:
-        prev = text
-        text = _PAREN_RE.sub("", text)
-    return _WS_RE.sub(" ", text).strip(" /")
+    """Page Type as the pipeline wrote it: ``Family (Page Type)``.
+
+    The pipeline already drops the catalog's own parenthetical notes, so the
+    one parenthesis left is the type within the family and is kept.
+    """
+    return _WS_RE.sub(" ", (label or "").strip()).strip(" /")
 
 
 def read_csv_rows(path: Path) -> list[dict[str, str]]:
