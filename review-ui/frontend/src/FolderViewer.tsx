@@ -31,7 +31,7 @@ import {
   type OcrSectionHeader,
   type OutputMode,
 } from "./api";
-import ImagingPanel, { type ImagingTab } from "./ImagingPanel";
+import ImagingPanel, { type GroundTruthLeave, type ImagingTab } from "./ImagingPanel";
 import { formatDuplicateLabel } from "./duplicateLabel";
 import {
   formatMatchRatePercent,
@@ -53,6 +53,7 @@ type Props = {
   initialMode?: OutputMode;
   onBack: () => void;
   onModeChange?: (mode: OutputMode) => void;
+  onBindLeave?: (guard: ((run: () => void) => void) | null) => void;
 };
 
 const OCR_TABS: OcrKind[] = ["preliminary", "final1", "final2"];
@@ -219,6 +220,7 @@ export default function FolderViewer({
   initialMode = "ocr",
   onBack,
   onModeChange,
+  onBindLeave,
 }: Props) {
   const [folder, setFolder] = useState<FolderDetail | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
@@ -241,6 +243,10 @@ export default function FolderViewer({
   const [copied, setCopied] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
+  const [leaveBusy, setLeaveBusy] = useState(false);
+  const groundTruthLeave = useRef<GroundTruthLeave | null>(null);
+  const pageIndexRef = useRef(0);
   const [outputExpanded, setOutputExpanded] = useState(false);
   const [imageNaturalSize, setImageNaturalSize] = useState<{ w: number; h: number } | null>(
     null,
@@ -364,12 +370,25 @@ export default function FolderViewer({
     return () => document.removeEventListener("fullscreenchange", onFsChange);
   }, [resetPan]);
 
-  function goToPage(idx: number | ((i: number) => number)) {
-    setPageIndex(idx);
-    // Outside fullscreen, new pages open at 100%. In fullscreen, keep the zoom.
-    if (!isFullscreen) {
-      resetZoom();
+  pageIndexRef.current = pageIndex;
+
+  function guardLeave(run: () => void) {
+    if (!groundTruthLeave.current?.dirty) {
+      run();
+      return;
     }
+    setPendingLeave(() => run);
+  }
+
+  function goToPage(idx: number | ((i: number) => number)) {
+    const current = pageIndexRef.current;
+    const next = typeof idx === "function" ? idx(current) : idx;
+    if (next === current) return;
+    guardLeave(() => {
+      setPageIndex(next);
+      // Outside fullscreen, new pages open at 100%. In fullscreen, keep the zoom.
+      if (!isFullscreen) resetZoom();
+    });
   }
 
   const page = folder?.pages[pageIndex] ?? null;
@@ -804,15 +823,56 @@ export default function FolderViewer({
   const suffix = KIND_FILE_SUFFIX[ocrTab];
 
   function changeMode(mode: OutputMode) {
-    if (mode === "imaging" && !imagingDoc && !imagingError) {
-      setLoadingImaging(true);
-    }
-    if (mode === "ocr" && ocrByKind[ocrTab] === undefined) {
-      setLoadingOcr(true);
-    }
-    setOutputMode(mode);
-    onModeChange?.(mode);
+    if (mode === outputMode) return;
+    guardLeave(() => {
+      if (mode === "imaging" && !imagingDoc && !imagingError) {
+        setLoadingImaging(true);
+      }
+      if (mode === "ocr" && ocrByKind[ocrTab] === undefined) {
+        setLoadingOcr(true);
+      }
+      setOutputMode(mode);
+      onModeChange?.(mode);
+    });
   }
+
+  function openImagingTab(next: ImagingTab) {
+    if (next === imagingTab) return;
+    if (imagingTab === "page") {
+      guardLeave(() => setImagingTab(next));
+      return;
+    }
+    setImagingTab(next);
+  }
+
+  async function acceptLeave() {
+    if (!pendingLeave) return;
+    setLeaveBusy(true);
+    const ok = await (groundTruthLeave.current?.accept() ?? Promise.resolve(true));
+    setLeaveBusy(false);
+    if (!ok) return;
+    const run = pendingLeave;
+    setPendingLeave(null);
+    run();
+  }
+
+  const guardLeaveRef = useRef(guardLeave);
+  guardLeaveRef.current = guardLeave;
+  useEffect(() => {
+    onBindLeave?.((run) => guardLeaveRef.current(run));
+    return () => onBindLeave?.(null);
+  }, [onBindLeave]);
+
+  useEffect(() => {
+    if (!pendingLeave) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setPendingLeave(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pendingLeave]);
 
   function downloadFullOcr() {
     if (!canUseFull) return;
@@ -1005,7 +1065,7 @@ export default function FolderViewer({
       ) : null}
       <div className="workspace-header">
         <div className="workspace-header-start">
-          <button type="button" className="back-btn" onClick={onBack}>
+          <button type="button" className="back-btn" onClick={() => guardLeave(onBack)}>
             <ArrowLeft size={15} aria-hidden="true" />
             Back
           </button>
@@ -1382,7 +1442,7 @@ export default function FolderViewer({
                     role="tab"
                     aria-selected={imagingTab === "page"}
                     className={imagingTab === "page" ? "active" : ""}
-                    onClick={() => setImagingTab("page")}
+                    onClick={() => openImagingTab("page")}
                   >
                     Page Details
                   </button>
@@ -1391,7 +1451,7 @@ export default function FolderViewer({
                     role="tab"
                     aria-selected={imagingTab === "sequencing"}
                     className={imagingTab === "sequencing" ? "active" : ""}
-                    onClick={() => setImagingTab("sequencing")}
+                    onClick={() => openImagingTab("sequencing")}
                   >
                     Sequencing
                   </button>
@@ -1400,7 +1460,7 @@ export default function FolderViewer({
                     role="tab"
                     aria-selected={imagingTab === "doc"}
                     className={imagingTab === "doc" ? "active" : ""}
-                    onClick={() => setImagingTab("doc")}
+                    onClick={() => openImagingTab("doc")}
                   >
                     Doc Summary
                   </button>
@@ -1409,7 +1469,7 @@ export default function FolderViewer({
                     role="tab"
                     aria-selected={imagingTab === "additional"}
                     className={imagingTab === "additional" ? "active" : ""}
-                    onClick={() => setImagingTab("additional")}
+                    onClick={() => openImagingTab("additional")}
                   >
                     Additional
                   </button>
@@ -1438,6 +1498,7 @@ export default function FolderViewer({
                   extraction={extraction}
                   headerHighlight={headerHighlight}
                   onHeaderHighlight={setHeaderHighlight}
+                  groundTruthLeave={groundTruthLeave}
                   onGroundTruthSaved={(pageNumber, fileName, groundTruth: PageGroundTruth) => {
                     setImagingDoc((doc) => {
                       if (!doc) return doc;
@@ -1529,6 +1590,29 @@ export default function FolderViewer({
           </section>
         </div>
       )}
+      {pendingLeave ? (
+        <div className="modal-backdrop" role="presentation">
+          <div
+            className="modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="gt-leave-title"
+          >
+            <h2 id="gt-leave-title" className="gt-leave-title">Unsaved ground truth</h2>
+            <p className="gt-leave-copy">
+              These changes have not been saved.
+            </p>
+            <div className="gt-leave-actions">
+              <button type="button" className="gt-leave-btn primary" disabled={leaveBusy} onClick={() => void acceptLeave()}>
+                Save
+              </button>
+              <button type="button" className="gt-leave-btn" disabled={leaveBusy} onClick={() => setPendingLeave(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

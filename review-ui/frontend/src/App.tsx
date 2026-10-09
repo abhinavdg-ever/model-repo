@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import LandingPage from "./LandingPage";
 import FolderViewer from "./FolderViewer";
 import FileViewer from "./FileViewer";
@@ -81,6 +81,13 @@ export default function App() {
     parsePath(window.location.pathname, window.location.search),
   );
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
+  const leaveGuard = useRef<((run: () => void) => void) | null>(null);
+
+  function guardedNavigate(next: Route) {
+    const go = () => navigate(next);
+    if (leaveGuard.current) leaveGuard.current(go);
+    else go();
+  }
 
   useEffect(() => {
     const onPop = () => setRoute(parsePath(window.location.pathname, window.location.search));
@@ -127,7 +134,7 @@ export default function App() {
       /* ignore */
     }
     setAuthed(false);
-    navigate({ view: "landing" });
+    guardedNavigate({ view: "landing" });
   }
 
   const modeLabel =
@@ -151,7 +158,7 @@ export default function App() {
           <button
             type="button"
             className="brand-home"
-            onClick={() => navigate({ view: "landing" })}
+            onClick={() => guardedNavigate({ view: "landing" })}
             aria-label="Go to home"
           >
             <img
@@ -180,8 +187,8 @@ export default function App() {
             displayName="imaging-user"
             initials="IU"
             currentView={route.view}
-            onOpenFileViewer={() => navigate({ view: "file-viewer" })}
-            onOpenHistory={() => navigate({ view: "landing" })}
+            onOpenFileViewer={() => guardedNavigate({ view: "file-viewer" })}
+            onOpenHistory={() => guardedNavigate({ view: "landing" })}
             onLogout={handleLogout}
           />
         </div>
@@ -215,6 +222,9 @@ export default function App() {
             onBack={() =>
               navigate(route.from === "accuracy" ? { view: "accuracy" } : { view: "landing" })
             }
+            onBindLeave={(guard) => {
+              leaveGuard.current = guard;
+            }}
             onModeChange={(mode) =>
               navigate({ view: "folder", folderId: route.folderId, mode, from: route.from })
             }

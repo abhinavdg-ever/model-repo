@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import { Pencil } from "lucide-react";
+import { useEffect, useMemo, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
+import { Pencil, Save } from "lucide-react";
 import {
   savePageGroundTruth,
   type ExtractionReviewResponse,
@@ -126,6 +126,12 @@ type Props = {
     fileName: string,
     groundTruth: PageGroundTruth,
   ) => void;
+  groundTruthLeave?: MutableRefObject<GroundTruthLeave | null>;
+};
+
+export type GroundTruthLeave = {
+  dirty: boolean;
+  accept: () => Promise<boolean>;
 };
 
 const YET_TO_PROCESS = "Yet to Process";
@@ -547,21 +553,28 @@ function CompareSection({
   editingId,
   values,
   onCommit,
+  onCancel,
+  onDraft,
   onStartEdit,
   saving,
+  toolbar,
 }: {
   title: string;
   rows: CompareRow[];
   editingId: string | null;
   values: Record<string, string>;
   onCommit: (id: string, value: string) => void;
+  onCancel: () => void;
+  onDraft: (value: string) => void;
   onStartEdit: (id: string) => void;
   saving: boolean;
+  toolbar?: ReactNode;
 }) {
   return (
     <section className="imaging-section">
       <div className="imaging-section-head">
         <h3 className="imaging-section-title">{title}</h3>
+        {toolbar}
       </div>
       <table className="imaging-detail-table imaging-value-table">
         <colgroup>
@@ -599,6 +612,8 @@ function CompareSection({
                   value={values[row.id] ?? ""}
                   saving={saving}
                   onCommit={(next) => onCommit(row.id, next)}
+                  onCancel={onCancel}
+                  onDraft={onDraft}
                   onStartEdit={() => onStartEdit(row.id)}
                 />
               </td>
@@ -616,6 +631,8 @@ function GroundTruthCell({
   value,
   saving,
   onCommit,
+  onCancel,
+  onDraft,
   onStartEdit,
 }: {
   row: CompareRow;
@@ -623,6 +640,8 @@ function GroundTruthCell({
   value: string;
   saving: boolean;
   onCommit: (value: string) => void;
+  onCancel: () => void;
+  onDraft: (value: string) => void;
   onStartEdit: () => void;
 }) {
   if (row.noGroundTruth) return <span className="imaging-gt-slot" />;
@@ -676,6 +695,8 @@ function GroundTruthCell({
           value={asCodeable(stored)}
           options={known}
           onCommit={onCommit}
+          onCancel={onCancel}
+          onDraft={onDraft}
         />
       </span>
     );
@@ -687,6 +708,8 @@ function GroundTruthCell({
         label={row.label}
         value={draft}
         onCommit={onCommit}
+        onCancel={onCancel}
+        onDraft={onDraft}
       />
     </span>
   );
@@ -697,11 +720,15 @@ function ChoiceMenu({
   value,
   options,
   onCommit,
+  onCancel,
+  onDraft,
 }: {
   label: string;
   value: string;
   options: readonly string[];
   onCommit: (value: string) => void;
+  onCancel: () => void;
+  onDraft: (value: string) => void;
 }) {
   const [text, setText] = useState(value);
   const [typed, setTyped] = useState(false);
@@ -713,8 +740,8 @@ function ChoiceMenu({
   function onKeyDown(event: KeyboardEvent) {
     if (event.key === "Escape") {
       event.preventDefault();
-      setText(value);
-      setTyped(false);
+      event.stopPropagation();
+      onCancel();
       return;
     }
     if (event.key === "Enter") {
@@ -733,6 +760,7 @@ function ChoiceMenu({
         onChange={(event) => {
           setText(event.target.value);
           setTyped(true);
+          onDraft(event.target.value);
         }}
       />
       {recos.length > 0 ? (
@@ -745,6 +773,7 @@ function ChoiceMenu({
                 onClick={() => {
                   setText(option);
                   setTyped(false);
+                  onDraft(option);
                 }}
               >
                 {option}
@@ -761,10 +790,14 @@ function TextTruth({
   label,
   value,
   onCommit,
+  onCancel,
+  onDraft,
 }: {
   label: string;
   value: string;
   onCommit: (value: string) => void;
+  onCancel: () => void;
+  onDraft: (value: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
   return (
@@ -773,11 +806,15 @@ function TextTruth({
       value={draft}
       placeholder="NA"
       autoFocus
-      onChange={(event) => setDraft(event.target.value)}
+      onChange={(event) => {
+        setDraft(event.target.value);
+        onDraft(event.target.value);
+      }}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.preventDefault();
-          setDraft(value);
+          event.stopPropagation();
+          onCancel();
           return;
         }
         if (event.key === "Enter") {
@@ -938,19 +975,23 @@ function PageDetails({
   sections,
   extraction,
   onSaved,
+  groundTruthLeave,
 }: {
   folderId: string;
   page: ImagingPageResult;
   sections: ImagingSectionsProcessed;
   extraction: ExtractionReviewResponse | null;
   onSaved: (groundTruth: PageGroundTruth) => void;
+  groundTruthLeave?: MutableRefObject<GroundTruthLeave | null>;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
   useEffect(() => {
     setEditingId(null);
+    setDraft(null);
     setSaving(false);
     setSaveError(null);
     setEdits({});
@@ -973,35 +1014,91 @@ function PageDetails({
   const dob = stagedField(extraction, "dob");
   const memberId = stagedField(extraction, "member_id");
   const dos = stagedField(extraction, "dos");
-  const values = { ...storedGroundTruth(page.groundTruth), ...edits };
+  const stored = storedGroundTruth(page.groundTruth);
+  const values = { ...stored, ...edits };
+  const dirty =
+    Object.entries(edits).some(([id, value]) => value !== (stored[id] ?? "")) ||
+    (editingId != null && draft != null && draft !== (values[editingId] ?? ""));
+
+  async function acceptAll(): Promise<boolean> {
+    const merged = { ...stored, ...edits };
+    if (editingId && draft != null) merged[editingId] = draft;
+    const persistedChanged = [...PERSISTED_GT].some(
+      (id) => (merged[id] ?? "") !== (stored[id] ?? ""),
+    );
+    if (!persistedChanged) {
+      if (editingId && draft != null && !PERSISTED_GT.has(editingId)) {
+        setEdits((current) => ({ ...current, [editingId]: draft }));
+      }
+      setEditingId(null);
+      setDraft(null);
+      return true;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const saved = await savePageGroundTruth(folderId, groundTruthBody(page, merged));
+      onSaved(saved);
+      setEdits((current) => {
+        const next = { ...current };
+        if (editingId && draft != null) next[editingId] = draft;
+        for (const id of PERSISTED_GT) delete next[id];
+        return next;
+      });
+      setEditingId(null);
+      setDraft(null);
+      return true;
+    } catch (err) {
+      setSaveError(saveErrorMessage(err));
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (groundTruthLeave) {
+    groundTruthLeave.current = { dirty, accept: acceptAll };
+  }
+  useEffect(() => {
+    return () => {
+      if (groundTruthLeave) groundTruthLeave.current = null;
+    };
+  }, [groundTruthLeave]);
+
   const sectionProps = {
     values,
     editingId,
     saving,
     onCommit: (id: string, next: string) => {
       setEditingId(null);
-      if (!PERSISTED_GT.has(id)) {
-        setEdits((current) => ({ ...current, [id]: next }));
-        return;
-      }
-      void saveGroundTruth({ ...values, [id]: next });
+      setDraft(null);
+      setEdits((current) => ({ ...current, [id]: next }));
     },
-    onStartEdit: (id: string) => setEditingId(id),
-  };
-  async function saveGroundTruth(override: Record<string, string>) {
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const saved = await savePageGroundTruth(folderId, groundTruthBody(page, override));
-      onSaved(saved);
-      setEdits({});
+    onCancel: () => {
       setEditingId(null);
-    } catch (err) {
-      setSaveError(saveErrorMessage(err));
-    } finally {
-      setSaving(false);
-    }
-  }
+      setDraft(null);
+    },
+    onDraft: setDraft,
+    onStartEdit: (id: string) => {
+      setEditingId(id);
+      setDraft(values[id] ?? "");
+    },
+  };
+  const saveBar = (
+    <span className="imaging-gt-savebar">
+      <button
+        type="button"
+        className="imaging-gt-save"
+        aria-label="Save"
+        title="Save"
+        disabled={saving}
+        onClick={() => void acceptAll()}
+      >
+        <Save size={15} aria-hidden="true" />
+        Save
+      </button>
+    </span>
+  );
 
   return (
     <div className="imaging-page-details">
@@ -1009,6 +1106,7 @@ function PageDetails({
       <CompareSection
         {...sectionProps}
         title="Member Extraction"
+        toolbar={saveBar}
         rows={[
           sameValue(name?.value ?? fmt(page.memberName, sections.member, skip), name ? fmtConfidence(name.confidence, true) : memberConf, {
             id: "name",
@@ -1414,6 +1512,7 @@ export default function ImagingPanel({
   headerHighlight = null,
   onHeaderHighlight,
   onGroundTruthSaved,
+  groundTruthLeave,
 }: Props) {
   if (tab === "additional") {
     return (
@@ -1530,6 +1629,7 @@ export default function ImagingPanel({
         page={currentPage}
         sections={sections}
         extraction={extraction}
+        groundTruthLeave={groundTruthLeave}
         onSaved={(groundTruth) =>
           onGroundTruthSaved?.(currentPage.pageNumber, currentPage.fileName, groundTruth)
         }
