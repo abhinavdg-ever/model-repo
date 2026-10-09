@@ -1,6 +1,7 @@
 # Weight files for core-pipeline. .env paths are relative to core-pipeline/
 # (models/hw, models/rapidocr, models/semantic-model, models/blank-junk, models/ner).
-# See docs/API.md. Large checkpoints stay local. Committed: blank-junk/,
+# Full list of what must be here, how to get each, and what happens without it:
+# docs/HOW_TO_RUN.md § "Models". Large checkpoints stay local. Committed: blank-junk/,
 # page-family/, kv-extraction/, and hw/image_type_classification.pkl.
 #
 #   hw/handwritten_printed_convnext_tiny.pth         # ConvNeXt (preferred)

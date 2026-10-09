@@ -58,6 +58,73 @@ What changed, so the results are not a surprise:
 - **Orientation:** Tesseract OSD's turn is checked by reading the page; a wrong 180° is undone before tilt and mirror are measured. **Tilt** is measured on the turned page (the old value was measured on the detector's own guess and could tilt a level page). **Mirror** is decided by whether the flipped page reads as English (`english_words.txt.gz`), and is applied to the corrected page only when Mirrored is Yes.
 - **review-ui:** the page panel and summary table show Type (Printed/HW), Handwritten %, Visibility, Quality, Orientation Angle (Page), Tilt (Text), Mirrored (Text). The **Corrected** toggle is enabled only on pages with an orientation or tilt correction, and opens on `pages/` by default.
 
+## Models: what has to be in `core-pipeline/models/`
+
+Weights are never baked into the Docker image. Compose mounts
+`MODELS_HOST_PATH` (default `core-pipeline/models`) and every `.env` model path
+is relative to `core-pipeline/`. The Python packages that load them come from
+`requirements-models.txt`, which the image installs.
+
+**Arrive with `git pull`** (small, committed — nothing to copy):
+
+| Folder / file | Used by | If missing |
+|---|---|---|
+| `hw/image_type_classification.pkl` | Stage 1 handwriting — RandomForest backup when the ConvNeXt `.pth` or torch is absent | Heuristic only (`hw_method='fallback'`) |
+| `hw/metadata.json` | Record of how the ConvNeXt was trained. Not read at run time; the checkpoint carries its own settings | Nothing |
+| `blank-junk/tfidf_flat.joblib` + `default.json` | Blank/junk passes 1 and 2 | Regex rules only |
+| `page-family/family.joblib` + `meta.json` | Page type family (TF-IDF + XGBoost) | Keywords choose the family too |
+| `kv-extraction/` (`manifest.json`, `features.json`, `thresholds.json`, `metrics.json`, eight `ranker_*.txt`, `level_heading_heron.txt`) | Key/value extraction `kv_extract`, version `v002` | `kv_extract` pages are marked skipped (`extraction_not_ready`); member, DOS and page number use their own rules |
+| `stages/lib/image_preprocess/english_words.txt.gz` (not under `models/`) | Mirror check | Mirror is never detected |
+
+**Copy or download** (large, gitignored):
+
+| Folder | Files | Size here | Used by | How to get it | If missing |
+|---|---|---|---|---|---|
+| `hw/` | `handwritten_printed_convnext_tiny.pth` (optional `_backup.pth` beside it) | ~110 MB each | Stage 1 Type, Handwritten %, Visibility. The page-tag model goes in under the same name | Copy from the training machine | RandomForest backup above |
+| `rapidocr/` | `PP-OCRv6_det_small.pth`, `PP-OCRv6_rec_small.pth`, `ch_ptocr_mobile_v2.0_cls_mobile.pth`, `ppocrv6_dict.txt` | 34 MB | Final OCR 1 (Docling + RapidOCR) | Copy | Final1 falls back to `rapidocr-onnxruntime`'s built-in models; `/health` → `docling_final1.ready=false` |
+| `docling/` | `docling-project--docling-layout-heron/`, `…-layout-heron-onnx/`, `…-docling-models/` | 756 MB | Final1 layout + tables | Downloaded on the first Final1 page when the machine has internet; otherwise copy the folder | Docling tries the Hugging Face cache; if that is empty too, Final1 uses the ONNX fallback for that page |
+| `semantic-model/` | MiniLM (`config.json`, `modules.json`, `model.safetensors`, tokenizer files, `1_Pooling/`) | ~90 MB used (the full Hub snapshot is ~1 GB with ONNX/OpenVINO/TF copies that are not loaded) | Stage 6 section-header filtering | `python -m stages.lib.ocr.section_header_match --download` | Pulled from the Hub by id if online; else lexical match only |
+| `gliner_low/` | `gliner_config.json`, `pytorch_model.bin`, `encoder/` (`config.json`, `spm.model`, `tokenizer_config.json`) | 614 MB | Key/value extraction NER (`urchade/gliner_small-v2.1`) | `python -m stages.lib.extraction.util.model_setup` | `kv_extract` skipped, as above |
+| `layout_heron/` | `config.json`, `model.safetensors`, `preprocessor_config.json` | 183 MB | Key/value extraction headings | Same `model_setup` command | `kv_extract` skipped |
+| `ner/gliner_medium-v2.1/` | GLiNER checkpoint | ~1.5 GB | Member verification wrong-member check — **only when `MEMBER_NER_ENABLED=true`** | `python -m stages.lib.member.extractors.ner_based.model_downloader` (fetches the model named by `MEMBER_NER_MODEL_ID`, default `gliner_medium`; `--all` for every one) | Rules-only member check: no page can be `wrong_member`, so no chart is Rejected |
+
+Not models, but needed: the `tesseract` binary (stage 1 orientation and
+preliminary OCR; set `TESSERACT_CMD` if it is not on `PATH`). Optional and off
+by default: `blank-junk/bert_page/` (DistilBERT; TF-IDF is used without it) and
+`stages/lib/sequencing/artifacts/cross_encoder_mini_lm.onnx` with
+`SEQUENCING_CROSS_ENCODER=true`.
+
+Setting up a new machine (from `core-pipeline/`, venv active):
+
+```bash
+python -m stages.lib.extraction.util.model_setup             # gliner_low + layout_heron, checks kv-extraction
+python -m stages.lib.ocr.section_header_match --download      # semantic-model
+python -m stages.lib.member.extractors.ner_based.model_downloader          # only if MEMBER_NER_ENABLED=true
+python -m stages.lib.member.extractors.ner_based.model_downloader --check
+# then copy hw/*.pth, rapidocr/, and (offline machines) docling/ into models/
+```
+
+On a machine without internet, copy the whole `models/` folder instead — and
+set `HF_HUB_OFFLINE=1` so a missing file is reported rather than fetched.
+
+Check after starting the API — every entry should read `"ready": true` except
+the ones you chose to leave off:
+
+```bash
+curl -s localhost:8001/health | python -m json.tool
+```
+
+| `/health` key | Folder it checks |
+|---|---|
+| `hw_model` (`engine: convnext` / `random_forest` / `fallback`) | `hw/` |
+| `rapidocr_models`, `docling_final1` | `rapidocr/` (+ packages) |
+| `blank_junk_model` | `blank-junk/` |
+| `page_family_model` | `page-family/` |
+| `extraction` | `kv-extraction/`, `gliner_low/`, `layout_heron/` |
+| `member_ner` | `ner/` (only matters with `MEMBER_NER_ENABLED=true`) |
+
+---
+
 All examples below use **Azure Blob** paths. Local paths work the same way:
 set `"input_type": "local"`, drop `container_name`, and make `input_path` /
 `output_path` directories on the server (see [`API.md`](API.md)).
