@@ -140,6 +140,12 @@ ROTATION_CORRECTION_ENABLED = (
     os.environ.get("ROTATION_CORRECTION_ENABLED") or "true"
 ).strip().casefold() in {"1", "true", "yes", "on"}
 
+# Largest measured tilt, in degrees either way, that is applied to the saved
+# page. A larger reading is still stored in tilt_angle but not applied: real
+# scans are rarely more than a few degrees off, so a bigger number is far more
+# likely a misread (a stamp, a diagonal rule) than a crooked page.
+MAX_TILT_TO_APPLY = float(os.environ.get("MAX_TILT_TO_APPLY") or "5.0")
+
 
 def _flag(name: str, default: bool) -> bool:
     raw = (os.environ.get(name) or "").strip().casefold()

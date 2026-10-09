@@ -65,9 +65,9 @@ Two independent measurements per page.
 
 ```mermaid
 flowchart TD
-  IMG["pages/N.jpg"] --> R["PageOrientationDetector.detect()"]
+  IMG["pages/N.jpg"] --> R["OSD turn, then tilt on that page"]
   IMG --> H["classify_image_type()<br/>models/hw/*.pth or .pkl"]
-  R --> RES["orientation · tilt · mirrored"]
+  R --> RES["orientation · mirrored · tilt"]
   H --> HRES["printed | handwritten + confidence"]
   RES --> Q[("ocr_quality_results")]
   HRES --> Q
@@ -82,11 +82,37 @@ Both the classifier and the detector are built **once per process**. The v6
 implementation rebuilt them inside the per-page function, unpickling the model
 for every page in the chart.
 
+Coarse orientation starts from Tesseract OSD. Before that angle is kept, and
+before tilt and mirror, a Tesseract read of the page can change it.
+Handwritten and mixed pages keep OSD's angle. On any other page, if the
+proposed turn is gibberish and the page has at least 20 words, a non-zero
+turn is undone when the unturned page reads. When OSD applied no turn, the
+four quarter-turns are compared and the one that reads best is kept; a tie
+stays at 0°. The geometric detector's own coarse guess is not used.
+
+Mirror is decided next, on the turned page, and gets the same kind of check.
+The detector reads the page and its horizontal flip with Tesseract and votes
+Yes when the flip yields clearly more confident words. Only a Yes is checked
+further; a No stays No. Handwritten and mixed pages keep the Yes. On a printed
+page with at least 20 words, the Yes stands only when a dictionary check of
+the same two reads agrees: at least 40% of the flipped read's words are
+English and that share is at least twice the unflipped one. Otherwise it
+becomes No. (The gibberish check cannot do this —
+mirrored text such as `noitsoibem` still carries vowels.) A Yes is applied to
+the corrected page, after the turn.
+
+Tilt is measured last, on the page as it will be saved — turned and, if
+mirrored, flipped — because a flip reverses the direction of a lean.
+
+Tilt is applied only up to `MAX_TILT_TO_APPLY` degrees either way (default
+5). A larger reading is still stored in `tilt_angle` but the page is not
+straightened by it, and on its own it does not produce a corrected copy.
+
 **Writes**
 
 | Target | Columns |
 |---|---|
-| `ocr_quality_results` | `printed_or_handwritten`, `hw_method`, `hw_confidence`, `orientation_angle`, `tilt_angle`, `mirrored`, `rotation_applied`, plus the placeholder `quality_tag` / `quality_score` |
+| `ocr_quality_results` | `printed_or_handwritten`, `hw_method`, `hw_confidence`, `document_type`, `handwritten_probability`, `is_visible`, `handwritten_area_pct`, `review_required`, `orientation_angle`, `tilt_angle`, `mirrored`, `rotation_applied`, plus the placeholder `quality_tag` / `quality_score` |
 | disk | `imaging/<chart>_rotation.csv`, `imaging/<chart>_hw_printed.csv` |
 
 Both CSVs are rebuilt from the database, so a resumed run cannot leave a
@@ -118,6 +144,43 @@ Submetrics and warnings live in `quality_detail` JSONB. Handwriting is separate
 `.pth` is present, otherwise the RF pickle. In v7 `quality_tag` wrongly held the
 classifier method; that value now lives in `hw_method`.
 
+**Page-tag model.** A checkpoint saved with `task: "page_tags"` under the same
+file name is loaded instead of the two-class model (`hw_method =
+convnext_page_tags`). It gives a page type (Printed, Handwritten, Form, Visual,
+Blank, Uncertain), visibility (Visible / Not visible) and the share of the page
+that is handwriting. A type under the checkpoint's minimum confidence (0.50 if
+absent) becomes Uncertain, except Blank. The ink upgrade does not run.
+`printed_or_handwritten` keeps its four values:
+
+| Page type | `printed_or_handwritten` |
+|---|---|
+| Printed, Visual | `printed` |
+| Handwritten | `handwritten` |
+| Form | `mixed` if ≥ 5% handwriting, else `printed` |
+| Blank, Uncertain | `uncertain` |
+
+They are stored in `ocr_quality_results.document_type`,
+`handwritten_probability`, `is_visible` and `handwritten_area_pct`, and in the
+hw CSV under the same names. `review_required` (quality CSV too) is true when
+quality is `low` (not on a blank page), the type is uncertain, or the page is
+not visible. With the two-class model the type is printed / handwritten /
+uncertain / blank, and `is_visible` and `handwritten_area_pct` are NULL.
+
+**Every page decision reads `document_type`** (`db.page_type()`; a row written
+before the column existed falls back to `printed_or_handwritten`, `mixed` read
+as form). Printed and visual pages are printed text: they run blank/junk
+pass 1, and at `quality_tag=high` skip Final OCR 2. Handwritten, form, blank
+and uncertain pages skip pass 1 and are judged on final OCR. Only a
+handwritten page has High quality capped to Medium, is carried through
+downstream stages before its pass-2 verdict, and keeps OSD's orientation
+(form does too). `printed_or_handwritten` is still written but nothing decides
+on it.
+
+review-ui shows Type (Printed/HW), Handwritten % (area), Visibility, Quality,
+Orientation Angle (Page), Tilt (Text) and Mirrored (Text) on the page details
+and the summary table. P(handwritten) and `review_required` are in the
+downloads only.
+
 ---
 
 ## 3. Blank / junk / duplicate
@@ -127,14 +190,14 @@ classifier method; that value now lives in `hw_method`.
 ### Why two passes
 
 Tesseract reads handwriting badly, and low-quality scans are unreliable on
-prelim text. So handwritten / uncertain / mixed **and** `quality_tag=low`
+prelim text. So handwritten / form / blank / uncertain types **and** `quality_tag=low`
 pages skip pass 1 and are judged in pass 2 on final OCR (final2 if present,
 else final1).
 
 ```mermaid
 flowchart TD
   subgraph P1["Pass 1 — prelim (Tesseract) text"]
-    A{"HW / uncertain / mixed<br/>or quality=low?"} -- yes --> SKIP["skipped"]
+    A{"HW / form / blank / uncertain<br/>or quality=low?"} -- yes --> SKIP["skipped"]
     A -- no --> CLS1["classify_text()"]
   end
 

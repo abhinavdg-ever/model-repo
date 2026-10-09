@@ -1841,10 +1841,130 @@ class TestCorrectedPages:
 
         source = inspect.getsource(quality_rotation_hw._detect_rotation)
         assert "osd_rotation" in source
+        assert "orientation_that_reads(" in source
+        # Turn, then flip, then tilt: tilt is measured on the page as saved.
+        assert source.index("orientation_that_reads(") < source.index("mirror_that_reads(")
+        assert source.index("mirror_that_reads(") < source.index("tilt_on_upright(")
+        assert "mirrored = mirror_that_reads" in source
+        assert "mirrored=mirrored" in source
+        # Tilt from detector.detect() was measured after that detector's own
+        # coarse guess, then applied to the OSD-upright page.
+        assert "_get_detector().detect" not in source
         # The detector's own result must not drive the correction.
         correct_src = inspect.getsource(quality_rotation_hw._write_corrected)
         assert "_get_detector().correct" not in correct_src
-        assert '"mirror": False' in correct_src
+        # A Yes from the checked mirror verdict is applied to the saved page.
+        assert '"mirror": bool(rot["mirrored"])' in correct_src
+
+    def test_a_mirror_verdict_is_checked_by_reading(self):
+        """Mirrored text keeps its vowels, so only a dictionary check tells it
+        from English. Only a Yes is checked; a No is never flipped."""
+        from stages.lib.image_preprocess.rotation import choose_mirror, dictionary_share
+
+        english = (
+            "The patient was seen in the office for a follow up visit today and "
+            "the plan was discussed with the family. Blood pressure is normal, "
+            "medications reviewed, allergies noted, and she denies chest pain."
+        )
+        mirrored = " ".join(word[::-1] for word in english.split())
+        assert dictionary_share(english)[0] > 0.8
+        assert dictionary_share(mirrored)[0] < 0.2
+
+        # Detector says Yes and the flip reads: kept.
+        assert choose_mirror(True, mirrored, english, handwritten=False) is True
+        # Detector says Yes but the page already reads: undone.
+        assert choose_mirror(True, english, mirrored, handwritten=False) is False
+        # Detector said No: never re-examined, even if the flip would read.
+        assert choose_mirror(False, mirrored, english, handwritten=False) is False
+        # Handwritten keeps the detector's verdict, as it keeps OSD's angle.
+        assert choose_mirror(True, english, mirrored, handwritten=True) is True
+        # Too little text either way: the detector's verdict stands.
+        assert choose_mirror(True, "a few words", "sdrow wef a", handwritten=False) is True
+
+    def test_tilt_is_measured_after_the_flip(self):
+        """A flip reverses a lean. correct_image tilts after flipping, so the
+        tilt must be measured on the flipped page or a 3° skew becomes 6°."""
+        import cv2
+        import numpy as np
+
+        from stages.lib.image_preprocess.rotation import tilt_on_upright
+
+        page = np.full((1100, 850), 255, dtype=np.uint8)
+        for row in range(12):
+            y = 120 + row * 70
+            for col in range(18):
+                x = 80 + col * 38
+                cv2.rectangle(page, (x, y), (x + 24, y + 30), 0, -1)
+        h, w = page.shape
+        leaning = cv2.warpAffine(
+            page, cv2.getRotationMatrix2D((w / 2, h / 2), -3.0, 1.0), (w, h),
+            borderValue=255,
+        )
+        plain = tilt_on_upright(leaning, 0)
+        flipped = tilt_on_upright(leaning, 0, mirrored=True)
+        assert plain > 1.5
+        assert flipped == pytest.approx(-plain, abs=0.5)
+
+    def test_a_wrong_180_is_settled_before_tilt_and_mirror(self):
+        """A 180° that reads as gibberish is undone when the unturned page
+        reads. The quadrant search runs only when OSD applied no turn."""
+        from stages.lib.image_preprocess.rotation import choose_orientation
+
+        gibberish = " ".join(["bcdfghjklmnpq"] * 25)
+        readable = (
+            "The patient was seen in the office for a follow up visit today "
+            "and the plan was discussed with the family in detail about the care."
+        )
+        texts = {0: readable, 180: gibberish, 90: gibberish, 270: gibberish}
+
+        undone = choose_orientation(180, lambda deg: texts[deg], handwritten=False)
+        assert undone == 0
+
+        kept = choose_orientation(
+            180,
+            lambda deg: gibberish,
+            handwritten=False,
+        )
+        assert kept == 180
+
+        turned = choose_orientation(
+            0,
+            lambda deg: readable if deg == 180 else gibberish,
+            handwritten=False,
+        )
+        assert turned == 180
+
+        skipped = choose_orientation(180, lambda deg: texts[deg], handwritten=True)
+        assert skipped == 180
+
+        short = "only a few words here"
+        assert choose_orientation(180, lambda deg: short, handwritten=False) == 180
+
+    def test_a_tilt_over_the_limit_is_recorded_not_applied(self):
+        """A 12° reading is far likelier a misread than a crooked scan, so the
+        saved page must not be turned by it; within the limit it is."""
+        import inspect
+
+        import numpy as np
+
+        from stages.lib.image_preprocess import stage as quality_rotation_hw
+        from stages.lib.image_preprocess.rotation import correct_image
+
+        page = np.full((200, 300, 3), 255, dtype=np.uint8)
+        page[90:110, 40:260] = 0
+        over = correct_image(
+            page, {"rotation": 0, "tilt": 12.0, "mirror": False}, max_tilt_abs=5.0
+        )
+        assert np.array_equal(over, page)
+        within = correct_image(
+            page, {"rotation": 0, "tilt": 3.0, "mirror": False}, max_tilt_abs=5.0
+        )
+        assert within.shape != page.shape
+
+        correct_src = inspect.getsource(quality_rotation_hw._write_corrected)
+        assert "max_tilt_abs=MAX_TILT_TO_APPLY" in correct_src
+        detect_src = inspect.getsource(quality_rotation_hw._detect_rotation)
+        assert "abs(tilt) <= MAX_TILT_TO_APPLY" in detect_src
 
     def test_a_reimport_clears_stale_corrections(self):
         """A left-behind corrected-pages/1.jpg would be preferred by

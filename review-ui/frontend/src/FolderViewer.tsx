@@ -137,6 +137,16 @@ function findImagingPage(
   return doc.pages.find((p) => p.pageNumber === page.page_number) ?? null;
 }
 
+/** A corrected file exists only when orientation or tilt was actually applied. */
+function pageNeedsCorrection(page: ImagingPageResult | null | undefined): boolean {
+  if (!page) return false;
+  const orient = Number(page.orientationAngle);
+  const tilt = Number(page.tiltAngle);
+  const turned = Number.isFinite(orient) && Math.abs(orient) >= 0.5;
+  const skewed = Number.isFinite(tilt) && Math.abs(tilt) >= 0.05;
+  return turned || skewed;
+}
+
 /** Azure Final2 is skipped for high-quality printed pages (billed stage). */
 const FINAL2_QUALITY_SKIP_MESSAGE = "Skipped for High Quality Images";
 const FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE = "Skipped for Blank/Junk";
@@ -149,9 +159,9 @@ function isBlankOrJunkYes(page: ImagingPageResult | null): boolean {
 /** Infer Final2 quality-skip from imaging when JSON has no skippedReason yet. */
 function isFinal2QualitySkip(page: ImagingPageResult | null): boolean {
   if (!page || isBlankOrJunkYes(page)) return false;
-  const hw = (page.handwrittenOrPrinted || "").trim().toLowerCase();
+  const type = (page.documentType || page.handwrittenOrPrinted || "").trim().toLowerCase();
   const tag = (page.pageQualityTag || "").trim().toLowerCase();
-  return hw === "printed" && tag === "high";
+  return (type === "printed" || type === "visual") && tag === "high";
 }
 
 function isOcrSkipMessage(text: string): boolean {
@@ -195,6 +205,7 @@ export default function FolderViewer({
     null,
   );
   const [pageImageLoading, setPageImageLoading] = useState(true);
+  const [showCorrected, setShowCorrected] = useState(false);
   const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null);
   const pageStageRef = useRef<HTMLDivElement>(null);
   const pageImageRef = useRef<HTMLImageElement>(null);
@@ -203,7 +214,7 @@ export default function FolderViewer({
     imageStyle,
     stageProps,
     stageClassName,
-  } = useImagePan(zoom, `${folderId}:${pageIndex}`);
+  } = useImagePan(zoom, `${folderId}:${pageIndex}:${showCorrected ? "c" : "o"}`);
 
   function resetZoom() {
     setZoom(1);
@@ -213,7 +224,7 @@ export default function FolderViewer({
   useEffect(() => {
     setImageNaturalSize(null);
     setPageImageLoading(true);
-  }, [folderId, pageIndex]);
+  }, [folderId, pageIndex, showCorrected]);
 
   // Cached images often skip onLoad — pick up natural size when the page flips.
   useEffect(() => {
@@ -222,7 +233,7 @@ export default function FolderViewer({
       setPageImageLoading(false);
       setImageNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
     }
-  }, [folderId, pageIndex, folder]);
+  }, [folderId, pageIndex, folder, showCorrected]);
 
   // Fit the page image into the stage (document-processing pattern) so the
   // overlay container matches the displayed image — not a clipped wrap.
@@ -276,6 +287,7 @@ export default function FolderViewer({
     setOcrByKind({});
     setHeadersByKind({});
     setZoom(1);
+    setShowCorrected(false);
     getFolder(folderId)
       .then((data) => {
         if (!cancelled) setFolder(data);
@@ -316,6 +328,12 @@ export default function FolderViewer({
   }
 
   const page = folder?.pages[pageIndex] ?? null;
+  const imagingPage = useMemo(
+    () => findImagingPage(imagingDoc, page),
+    [imagingDoc, page],
+  );
+  const canShowCorrected = pageNeedsCorrection(imagingPage);
+  const useCorrected = showCorrected && canShowCorrected;
 
   useEffect(() => {
     setHeaderHighlight(null);
@@ -325,8 +343,10 @@ export default function FolderViewer({
   // folder request so the first image is cached by the time <img> mounts.
   useEffect(() => {
     const img = new Image();
-    img.src = pageImageUrl(folderId, 1);
-  }, [folderId]);
+    img.src = pageImageUrl(folderId, 1, {
+      corrected: showCorrected && pageNeedsCorrection(findImagingPage(imagingDoc, folder?.pages[0] ?? null)),
+    });
+  }, [folderId, showCorrected, imagingDoc, folder]);
 
   // Once the current page has loaded, warm the neighbours so flipping is instant.
   useEffect(() => {
@@ -334,17 +354,21 @@ export default function FolderViewer({
     for (const idx of [pageIndex + 1, pageIndex - 1]) {
       const neighbour = folder.pages[idx];
       if (neighbour) {
+        const neighbourImaging = findImagingPage(imagingDoc, neighbour);
         const img = new Image();
-        img.src = pageImageUrl(folderId, neighbour.page_number);
+        img.src = pageImageUrl(folderId, neighbour.page_number, {
+          corrected: useCorrected && pageNeedsCorrection(neighbourImaging),
+        });
       }
     }
-  }, [folder, folderId, pageIndex, pageImageLoading]);
+  }, [folder, folderId, pageIndex, pageImageLoading, useCorrected, imagingDoc]);
 
   const ocrFetchedRef = useRef<Set<OcrKind>>(new Set());
   const imagingFetchedRef = useRef(false);
 
   useEffect(() => {
-    // Reset payloads when the chart changes; OCR/imaging load only when that mode is open.
+    // Reset payloads when the chart changes. Imaging loads with the chart so the
+    // page viewer knows which pages have an orientation or tilt correction.
     setImagingDoc(null);
     setOcrByKind({});
     setHeadersByKind({});
@@ -463,9 +487,6 @@ export default function FolderViewer({
   }, [folderId, outputMode, imagingTab]);
 
   useEffect(() => {
-    if (outputMode !== "imaging") {
-      return;
-    }
     if (imagingFetchedRef.current) {
       return;
     }
@@ -491,7 +512,7 @@ export default function FolderViewer({
     return () => {
       cancelled = true;
     };
-  }, [folderId, outputMode]);
+  }, [folderId]);
 
   useEffect(() => {
     if ((outputMode !== "imaging" && outputMode !== "ocr") || !page?.filename) {
@@ -509,11 +530,6 @@ export default function FolderViewer({
       cancelled = true;
     };
   }, [folderId, outputMode, page?.filename]);
-
-  const imagingPage = useMemo(
-    () => findImagingPage(imagingDoc, page),
-    [imagingDoc, page],
-  );
 
   // One full-screen gate until folder + mode payload + first page image are ready.
   const bootComplete = useMemo(() => {
@@ -760,6 +776,9 @@ export default function FolderViewer({
       memberDob: p.memberDob,
       handwrittenOrPrinted: p.handwrittenOrPrinted,
       handwrittenOrPrintedConfidence: p.handwrittenOrPrintedConfidence ?? null,
+      documentType: p.documentType ?? null,
+      isVisible: p.isVisible ?? null,
+      handwrittenAreaPct: p.handwrittenAreaPct ?? null,
       orientationAngle: p.orientationAngle,
       tiltAngle: p.tiltAngle,
       mirrored: p.mirrored,
@@ -792,6 +811,9 @@ export default function FolderViewer({
       "memberDob",
       "handwrittenOrPrinted",
       "handwrittenOrPrintedConfidence",
+      "documentType",
+      "isVisible",
+      "handwrittenAreaPct",
       "orientationAngle",
       "tiltAngle",
       "mirrored",
@@ -829,6 +851,9 @@ export default function FolderViewer({
         p.memberDob,
         p.handwrittenOrPrinted,
         p.handwrittenOrPrintedConfidence ?? "",
+        p.documentType ?? "",
+        p.isVisible ?? "",
+        p.handwrittenAreaPct ?? "",
         p.orientationAngle,
         p.tiltAngle,
         p.mirrored,
@@ -958,6 +983,20 @@ export default function FolderViewer({
             <div className="pane-header">
               <h2>Page{page ? ` · ${page.filename}` : ""}</h2>
               <div className="page-toolbar">
+                <button
+                  type="button"
+                  className={`viewer-source-btn corrected-toggle${useCorrected ? " active" : ""}`}
+                  aria-pressed={useCorrected}
+                  disabled={!canShowCorrected}
+                  title={
+                    canShowCorrected
+                      ? undefined
+                      : "No orientation or tilt correction on this page"
+                  }
+                  onClick={() => setShowCorrected((on) => !on)}
+                >
+                  Corrected
+                </button>
                 <div className="zoom-controls" role="group" aria-label="Zoom">
                   <button
                     type="button"
@@ -1045,7 +1084,7 @@ export default function FolderViewer({
                     <img
                       ref={pageImageRef}
                       className="page-image"
-                      src={pageImageUrl(folderId, page.page_number)}
+                      src={pageImageUrl(folderId, page.page_number, { corrected: useCorrected })}
                       alt={page.filename}
                       draggable={false}
                       onLoad={(e) => {
@@ -1113,7 +1152,12 @@ export default function FolderViewer({
                     title={p.filename}
                   >
                     <img
-                      src={pageImageUrl(folderId, p.page_number, { thumb: true })}
+                      src={pageImageUrl(folderId, p.page_number, {
+                        thumb: true,
+                        corrected:
+                          useCorrected &&
+                          pageNeedsCorrection(findImagingPage(imagingDoc, p)),
+                      })}
                       alt=""
                       loading="lazy"
                       decoding="async"

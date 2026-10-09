@@ -1535,18 +1535,21 @@ class LocalFolderRepository(FolderRepository):
             status_code=404, detail=f"Page {page_number} not found in {folder_id}"
         )
 
-    def get_page_image_path(self, folder_id: str, page_number: int) -> Path:
+    def get_page_image_path(
+        self, folder_id: str, page_number: int, *, corrected: bool = False
+    ) -> Path:
+        """The original ``pages/`` file, or ``corrected-pages/`` when asked.
+
+        Results open on the scan as it arrived. Corrected is a viewer toggle.
+        """
         folder_dir = self._folder_dir(folder_id)
         for num, path in self._page_files(folder_dir):
             if num != page_number:
                 continue
-            # Prefer corrected-pages (incl. TIFF→JPG as {stem}.jpg).
-            corrected_dir = folder_dir / "corrected-pages"
-            if corrected_dir.is_dir():
-                for name in (f"{path.stem}.jpg", path.name):
-                    candidate = corrected_dir / name
-                    if candidate.is_file() and candidate.stat().st_size > 0:
-                        return candidate
+            if corrected:
+                replacement = self._corrected_page_path(folder_dir, path)
+                if replacement is not None:
+                    return replacement
             return path
         raise HTTPException(status_code=404, detail=f"Page {page_number} not found in {folder_id}")
 

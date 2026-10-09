@@ -11,12 +11,12 @@ Uses:
 from __future__ import annotations
 
 import logging
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 from config import (
+    MAX_TILT_TO_APPLY,
     ROTATION_CORRECTION_ENABLED,
     STAGE_WORKERS,
     corrected_page_filename,
@@ -32,54 +32,56 @@ logger = logging.getLogger(__name__)
 
 STAGE = "ocr_quality"
 
-_model_lock = threading.Lock()
-_detector: Any = None
 
+def _classify_hw(image_path: Path) -> tuple[str, float | None, str, dict[str, Any]]:
+    """Return (printed|handwritten|mixed|uncertain, confidence, method, page tags).
 
-def _get_detector() -> Any:
-    """Build the orientation detector once per process."""
-    global _detector
-    if _detector is not None:
-        return _detector
-    with _model_lock:
-        if _detector is None:
-            from stages.lib.image_preprocess.rotation import PageOrientationDetector
-
-            _detector = PageOrientationDetector()
-        return _detector
-
-
-def _classify_hw(image_path: Path) -> tuple[str, float | None, str]:
-    """Return (printed|handwritten|mixed|uncertain, confidence, method).
-
-    The model is loaded inside classify_image_type, after the blank check,
-    so an empty page does not load ConvNeXt.
+    The model is loaded inside classify_page, after the blank check, so an
+    empty page does not load ConvNeXt. Page tags are the ocr_quality_results
+    page-type columns; visibility and area come from the page-tag model only.
     """
     try:
-        from stages.lib.image_preprocess.hw_printed import classify_image_type
+        from stages.lib.image_preprocess.hw_printed import classify_page
 
-        label, conf, method = classify_image_type(image_path.read_bytes())
+        page = classify_page(image_path.read_bytes())
+        label, conf, method = page.as_tuple()
         text = str(label).strip().lower()
         method_s = str(method or "model")
         conf_out = None if conf is None else float(conf)
         if "uncertain" in text:
-            return "uncertain", conf_out, method_s
-        if "mix" in text:
-            return "mixed", conf_out, method_s
-        if "hand" in text:
-            return "handwritten", conf_out, method_s
+            hw_label = "uncertain"
+        elif "mix" in text:
+            hw_label = "mixed"
+        elif "hand" in text:
+            hw_label = "handwritten"
         # RF historically: class 0 = Handwritten, 1 = Printed.
-        if method_s not in {
+        elif method_s not in {
             "convnext_tiny",
+            "convnext_page_tags",
             "page_convnext_plus_ink",
             "blank_page",
             "faint_marks_only",
         } and label in (0, "0"):
-            return "handwritten", conf_out if conf_out is not None else 0.0, method_s
-        return "printed", conf_out, method_s
+            hw_label = "handwritten"
+            conf_out = conf_out if conf_out is not None else 0.0
+        else:
+            hw_label = "printed"
+        tags = page.tags()
+        tags["document_type"] = tags["document_type"] or hw_label
+        return hw_label, conf_out, method_s, tags
     except Exception as exc:
         logger.warning("HW classify fallback for %s: %s", image_path, exc)
-        return "printed", 0.5, "fallback"
+        return "printed", 0.5, "fallback", {"document_type": "printed"}
+
+
+def _review_required(quality_tag: str | None, tags: dict[str, Any]) -> bool:
+    """Low quality, uncertain page type, or not visible.
+
+    A blank sheet's sharpness and contrast say nothing, so its quality is ignored.
+    """
+    document_type = tags.get("document_type")
+    low_quality = quality_tag == "low" and document_type != "blank"
+    return low_quality or document_type == "uncertain" or tags.get("is_visible") is False
 
 
 def _measure_quality(image_path: Path) -> dict[str, Any]:
@@ -112,9 +114,9 @@ def _measure_quality(image_path: Path) -> dict[str, Any]:
 
 def _apply_quality_postprocess(
     quality: dict[str, Any],
-    hw_label: str,
+    document_type: str | None,
 ) -> dict[str, Any]:
-    """Handwritten + High → Medium (teammate image_preprocessing rule)."""
+    """Handwritten type + High → Medium (teammate image_preprocessing rule)."""
     from stages.lib.image_preprocess.quality_label_postprocess import (
         apply_quality_label_postprocess,
     )
@@ -122,7 +124,7 @@ def _apply_quality_postprocess(
     tag = apply_quality_label_postprocess(
         quality_tag=quality.get("quality_tag"),
         quality_score=quality.get("quality_score"),
-        printed_or_handwritten=hw_label,
+        document_type=document_type,
     )
     if tag and tag != quality.get("quality_tag"):
         detail = dict(quality.get("quality_detail") or {})
@@ -140,20 +142,20 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
         image = cv2.imread(str(image_path))
         if image is None:
             raise RuntimeError(f"Could not read image: {image_path}")
-        result = _get_detector().detect(image)
-        tilt = float(result.get("tilt") or result.get("tilt_angle") or 0)
-        mirrored = bool(result.get("mirror") or result.get("mirrored") or False)
-
         # Coarse rotation comes from Tesseract OSD, not from the geometric
         # detector. The detector recovered 0 of 6 sideways pages and reported
         # confidence 1.000 on the wrong answers; OSD was exact on all four
-        # orientations. Tilt still comes from the detector, which measures it
-        # well, and OSD says nothing about it.
+        # orientations.
         from stages.lib.image_preprocess.osd import detect_rotation as osd_rotation
+        from stages.lib.image_preprocess.rotation import (
+            mirror_that_reads,
+            orientation_that_reads,
+            tilt_on_upright,
+        )
 
         osd = osd_rotation(image)
         if osd is not None:
-            orientation = float(osd["rotation"])
+            proposed = int(osd["rotation"])
             method = "osd"
             osd_confidence = float(osd["confidence"])
         else:
@@ -161,25 +163,51 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
             # traineddata. Do NOT fall back to the detector's coarse rotation:
             # it is wrong more often than it is right, and a confidently wrong
             # rotation is worse than none. Leave the page unrotated.
-            orientation = 0.0
+            proposed = 0
             method = "osd_undecided"
             osd_confidence = 0.0
+
+        # Readability runs before the turn is kept, and before tilt and
+        # mirror. A 180° that leaves the page gibberish is undone when the
+        # unturned page reads. Handwriting is judged on the scan as it arrived.
+        _hw_label, _hw_conf, _hw_method, tags = _classify_hw(image_path)
+        handwritten = tags.get("document_type") in {"handwritten", "form"}
+        orientation = float(
+            orientation_that_reads(image, proposed, handwritten=handwritten)
+        )
+        if int(orientation) != proposed:
+            method = "readability"
+
+        # Letters, after the same turn. The left-margin score is not used:
+        # a centered heading looks mirrored under it. Like the turn, a Yes is
+        # checked by reading and kept only when the flipped page reads as
+        # English and the page as it is does not; a No is never re-examined.
+        # A Yes here is applied to the corrected page.
+        mirrored = mirror_that_reads(image, int(orientation), handwritten=handwritten)
+
+        # Tilt is measured on the page as it will be saved: after the turn and
+        # after the flip, which reverses the direction of any lean. The
+        # geometric detector's tilt is measured after its own coarse guess
+        # (often 270° on an upright page) and applying that number here
+        # rotates a level scan.
+        tilt = tilt_on_upright(image, int(orientation), mirrored=mirrored)
 
         return {
             "orientation_angle": orientation,
             "tilt_angle": tilt,
             "mirrored": mirrored,
-            # Mirror is measured but never applied: the detector reported
-            # mirror on 3 of 12 pages that were not mirrored, and flipping a
-            # good page is strictly worse than leaving it. OSD cannot judge it.
-            # Recorded so a real mirroring problem is still visible in the data.
-            "needs_correction": bool(orientation != 0 or tilt != 0),
+            # A tilt over the limit is recorded but not applied, so on its
+            # own it does not make the page need a corrected copy.
+            "needs_correction": bool(
+                orientation != 0
+                or mirrored
+                or 0 < abs(tilt) <= MAX_TILT_TO_APPLY
+            ),
             "rotation_applied": False,
             "method": method,
             "osd_confidence": osd_confidence,
             # Kept so the correction can be applied at full resolution without
-            # re-detecting. Not persisted.
-            "_result": result,
+            # re-reading the file. Not persisted.
             "_image": image,
         }
     except Exception as exc:
@@ -213,6 +241,10 @@ HW_COLS = [
     "handwritten_label",
     "confidence",
     "method",
+    "document_type",
+    "handwritten_probability",
+    "is_visible",
+    "handwritten_area_pct",
 ]
 
 QUALITY_COLS = [
@@ -222,6 +254,7 @@ QUALITY_COLS = [
     "quality_tag",
     "quality_score",
     "input_dpi",
+    "review_required",
 ]
 
 
@@ -258,8 +291,9 @@ def _write_corrected(
                 {
                     "rotation": int(rot["orientation_angle"]) % 360,
                     "tilt": float(rot["tilt_angle"]),
-                    "mirror": False,
+                    "mirror": bool(rot["mirrored"]),
                 },
+                max_tilt_abs=MAX_TILT_TO_APPLY,
             )
         dest_name = corrected_page_filename(page_name)
         dest = corrected_pages_dir(chart_name) / dest_name
@@ -292,8 +326,14 @@ def _measure(args: tuple[dict[str, Any], Path, str]) -> dict[str, Any]:
         rot.pop("needs_correction", None)
         scored_path = corrected or image_path
         use_corrected, image_relpath = page_image_source(chart_name, page["page_name"])
-        hw_label, hw_conf, hw_method = _classify_hw(scored_path)
-        quality = _apply_quality_postprocess(_measure_quality(scored_path), hw_label)
+        hw_label, hw_conf, hw_method, tags = _classify_hw(scored_path)
+        quality = _apply_quality_postprocess(
+            _measure_quality(scored_path), tags.get("document_type")
+        )
+        page_type = {
+            **tags,
+            "review_required": _review_required(quality.get("quality_tag"), tags),
+        }
         return {
             "page_id": page["id"],
             "page_name": page["page_name"],
@@ -303,6 +343,7 @@ def _measure(args: tuple[dict[str, Any], Path, str]) -> dict[str, Any]:
             "hw_conf": hw_conf,
             "hw_method": hw_method,
             "quality": quality,
+            "page_type": page_type,
             "use_corrected": use_corrected,
             "image_path": image_relpath,
             "error": "",
@@ -358,6 +399,10 @@ def _rewrite_csvs(conn: Any, chart_id: int, chart_name: str) -> tuple[Path, Path
                 "handwritten_label": hw_display,
                 "confidence": row["hw_confidence"],
                 "method": row["hw_method"] or "",
+                "document_type": row.get("document_type") or "",
+                "handwritten_probability": row.get("handwritten_probability"),
+                "is_visible": row.get("is_visible"),
+                "handwritten_area_pct": row.get("handwritten_area_pct"),
             }
         )
         quality_rows.append(
@@ -368,6 +413,7 @@ def _rewrite_csvs(conn: Any, chart_id: int, chart_name: str) -> tuple[Path, Path
                 "quality_tag": row["quality_tag"] or "",
                 "quality_score": row["quality_score"],
                 "input_dpi": row["input_dpi"],
+                "review_required": row.get("review_required"),
             }
         )
 
@@ -428,6 +474,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     quality_score=q.get("quality_score"),
                     quality_detail=q.get("quality_detail"),
                     input_dpi=q.get("input_dpi"),
+                    **item["page_type"],
                 )
                 set_page_image_source(
                     conn,

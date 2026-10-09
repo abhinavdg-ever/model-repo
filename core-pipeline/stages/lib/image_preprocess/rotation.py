@@ -1,7 +1,9 @@
 """
 Page orientation detection and correction.
 
-OpenCV + NumPy only. No OCR.
+OpenCV + NumPy for tilt. Coarse orientation is settled by a Tesseract
+readability check, then mirror (Tesseract read + dictionary check), then tilt
+is measured on the page as it will be saved.
 
 Stage 2 (``stages/lib/image_preprocess/stage.py``) is the only caller. The Azure blob
 batch CLI that used to sit at the bottom of this file was removed: it crawled a
@@ -27,6 +29,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -729,6 +732,301 @@ def structural_mirror_score(ink: np.ndarray) -> dict[str, float]:
         + 0.10 * feat["spacing"]
     )
     return {**feat, "total": float(total)}
+
+
+def _junk_text():
+    """Gibberish and word-count helpers. Loaded lazily so this module imports
+    without the junk package on the path."""
+    import sys
+    from pathlib import Path
+
+    junk = str(Path(__file__).resolve().parent.parent / "blank_junk")
+    if junk not in sys.path:
+        sys.path.insert(0, junk)
+    import text_utils
+
+    return text_utils
+
+
+def _coverage(text: str) -> tuple[int, int, int]:
+    """Higher is a better read. A page that is not gibberish always beats one
+    that is. Within that, more vowel-bearing words, then more words."""
+    utils = _junk_text()
+    words = utils.word_count(text)
+    alpha = re.findall(r"[A-Za-z]{3,}", text or "")
+    vowels = sum(1 for word in alpha if any(ch in "aeiouAEIOU" for ch in word))
+    readable = 0 if utils.is_gibberish_ocr(text) else 1
+    return (readable, vowels, words)
+
+
+def _whole_page_is_gibberish(text: str) -> bool:
+    """The retry applies only when the whole page is gibberish and has at
+    least 20 words. Shorter pages, and pages that read, stay as they are."""
+    utils = _junk_text()
+    return utils.word_count(text) >= 20 and utils.is_gibberish_ocr(text)
+
+
+def choose_orientation(osd_deg: int, ocr_at, *, handwritten: bool) -> int:
+    """Clockwise turn to apply, after a readability check of OSD's proposal.
+
+    ``ocr_at(degrees)`` is Tesseract on the page turned clockwise by that
+    many degrees. Handwritten pages keep OSD's angle. A printed page whose
+    proposed turn reads as gibberish is put back to 0° when the unturned page
+    reads. When OSD applied no turn and the page is gibberish, the four
+    quarter-turns are compared and the one that reads best is kept. A tie
+    stays at 0°.
+    """
+    proposed = int(osd_deg) % 360
+    if handwritten or proposed not in (0, 90, 180, 270):
+        return proposed if proposed in (0, 90, 180, 270) else 0
+
+    turned = ocr_at(proposed)
+    if not _whole_page_is_gibberish(turned):
+        return proposed
+
+    if proposed != 0:
+        raw = ocr_at(0)
+        if _junk_text().word_count(raw) >= 20 and not _junk_text().is_gibberish_ocr(raw):
+            return 0
+        return proposed
+
+    best = 0
+    best_key = _coverage(turned)
+    for deg in (90, 180, 270):
+        key = _coverage(ocr_at(deg))
+        if key > best_key:
+            best_key = key
+            best = deg
+    return best
+
+
+def orientation_that_reads(image: np.ndarray, osd_deg: int, *, handwritten: bool) -> int:
+    """OSD's angle, replaced when a Tesseract read shows that turn is wrong."""
+    return choose_orientation(
+        osd_deg,
+        lambda deg: _ocr_turned(image, deg),
+        handwritten=handwritten,
+    )
+
+
+def _ocr_turned(image: np.ndarray, rotation_deg: int) -> str:
+    """Tesseract on the page after a clockwise quarter-turn.
+
+    The long side is capped so a four-angle search does not OCR a full
+    3000px scan four times. The stored preliminary OCR is a later stage and
+    still reads the full corrected page.
+    """
+    try:
+        import pytesseract
+        from PIL import Image
+    except ImportError:
+        return ""
+    try:
+        from config import TESSERACT_CMD
+    except ImportError:
+        TESSERACT_CMD = None
+    if TESSERACT_CMD:
+        pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
+
+    turned = rotate_coarse_cw(image, int(rotation_deg) % 360)
+    height, width = turned.shape[:2]
+    scale = 1600 / max(height, width)
+    if scale < 1:
+        turned = cv2.resize(
+            turned,
+            (int(width * scale), int(height * scale)),
+            interpolation=cv2.INTER_AREA,
+        )
+    if turned.ndim == 3:
+        turned = cv2.cvtColor(turned, cv2.COLOR_BGR2RGB)
+    try:
+        return pytesseract.image_to_string(Image.fromarray(turned)) or ""
+    except Exception:
+        return ""
+
+
+def tilt_on_upright(
+    image: np.ndarray, rotation_deg: int, *, mirrored: bool = False
+) -> float:
+    """Residual skew after the coarse turn and flip that will actually be saved.
+
+    ``PageOrientationDetector.detect()`` measures tilt only after its own
+    coarse guess. That guess is often 90° or 270° on an upright page, and
+    the skew it then reports belongs to that sideways copy. Applying it to
+    the OSD-upright page rotates a level scan. Measure here, on the same
+    turn OSD (or the caller) is about to apply.
+
+    A horizontal flip reverses the direction of any lean, so a mirrored page
+    is measured after its flip. ``correct_image`` applies tilt after the
+    flip, and a tilt measured before it would double the skew.
+    """
+    bundle = preprocess(image)
+    turn = int(rotation_deg) % 360
+    ink = rotate_coarse_cw(bundle.ink_clean, turn)
+    gray = rotate_coarse_cw(bundle.clahe, turn)
+    if mirrored:
+        ink = flip_horizontal(ink)
+        gray = flip_horizontal(gray)
+    tilt, _confidence, _needs_review, _diagnostics = detect_tilt(ink, gray)
+    return float(tilt)
+
+
+def _read_words(image: np.ndarray) -> tuple[int, str]:
+    """Tesseract once: (letter-words read at confidence >= 60, all text read).
+
+    The count is the mirror detector's signal. A horizontal flip of ordinary
+    text collapses it. The left-margin score does not: a centered heading
+    looks more left-aligned after a flip even though the letters are
+    backwards. The text feeds the dictionary check in ``choose_mirror``.
+    """
+    try:
+        import pytesseract
+        from pytesseract import Output
+    except ImportError:
+        return 0, ""
+    try:
+        from config import TESSERACT_CMD
+    except ImportError:
+        TESSERACT_CMD = None
+    if TESSERACT_CMD:
+        pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
+    height, width = image.shape[:2]
+    scale = 1400 / max(height, width)
+    if scale < 1:
+        image = cv2.resize(
+            image,
+            (int(width * scale), int(height * scale)),
+            interpolation=cv2.INTER_AREA,
+        )
+    try:
+        data = pytesseract.image_to_data(image, output_type=Output.DICT)
+    except Exception:
+        return 0, ""
+    count = 0
+    words: list[str] = []
+    for text, conf in zip(data.get("text") or [], data.get("conf") or []):
+        if str(text).strip():
+            words.append(str(text))
+        try:
+            confidence = float(conf)
+        except (TypeError, ValueError):
+            continue
+        token = "".join(ch for ch in str(text) if ch.isalpha())
+        if len(token) < 3 or confidence < 60:
+            continue
+        if any(ch.lower() in "aeiou" for ch in token):
+            count += 1
+    return count, " ".join(words)
+
+
+def _mirror_vote(forward: int, backward: int) -> bool:
+    """Mirrored only when the flip yields clearly more confident words."""
+    return backward >= 8 and backward >= forward * 2 and backward > forward
+
+
+def mirror_on_upright(image: np.ndarray, rotation_deg: int) -> bool:
+    """Whether the page is mirrored once the coarse correction has been applied.
+
+    Judged on the page after the OSD turn, by reading it and reading its
+    horizontal flip. A tie, or too little text to read, stays not mirrored.
+    This is the detector alone; ``mirror_that_reads`` adds the dictionary
+    check and is what stage 1 uses.
+    """
+    upright = rotate_coarse_cw(image, int(rotation_deg) % 360)
+    forward, _ = _read_words(upright)
+    backward, _ = _read_words(flip_horizontal(upright))
+    return _mirror_vote(forward, backward)
+
+
+_WORDS_FILE = Path(__file__).resolve().parent / "english_words.txt.gz"
+_vocabulary: frozenset[str] | None = None
+
+# Share of 3+ letter tokens found in the word list for a read to count as
+# English. Clean upright text measures ~0.85; the same page mirrored ~0.04,
+# and upside down ~0.09 — mirrored and inverted reads still carry vowels,
+# which is why the gibberish check cannot tell them apart.
+MIRROR_READS_SHARE = 0.40
+# Fewer tokens than this on both reads and the detector's Yes stands.
+MIRROR_MIN_TOKENS = 20
+
+
+def _english_words() -> frozenset[str]:
+    """Lower-case English words, 3–12 letters (Webster's 2nd, public domain).
+
+    The list carries base forms only; ``_is_word`` handles plurals and
+    -ed / -ing endings.
+    """
+    global _vocabulary
+    if _vocabulary is None:
+        import gzip
+
+        with gzip.open(_WORDS_FILE, "rt", encoding="utf-8") as handle:
+            _vocabulary = frozenset(line.strip() for line in handle if line.strip())
+    return _vocabulary
+
+
+def _is_word(token: str, vocabulary: frozenset[str]) -> bool:
+    if token in vocabulary:
+        return True
+    for suffix, replacement in (
+        ("ies", "y"), ("es", ""), ("s", ""), ("ed", ""), ("ed", "e"),
+        ("ing", ""), ("ing", "e"), ("ly", ""),
+    ):
+        if token.endswith(suffix):
+            stem = token[: -len(suffix)] + replacement
+            if len(stem) >= 3 and stem in vocabulary:
+                return True
+    return False
+
+
+def dictionary_share(text: str) -> tuple[float, int]:
+    """(share of 3+ letter tokens that are English words, token count)."""
+    tokens = [t.lower() for t in re.findall(r"[A-Za-z]{3,}", text or "")]
+    if not tokens:
+        return 0.0, 0
+    vocabulary = _english_words()
+    known = sum(1 for token in tokens if _is_word(token, vocabulary))
+    return known / len(tokens), len(tokens)
+
+
+def choose_mirror(
+    detected: bool, forward_text: str, backward_text: str, *, handwritten: bool
+) -> bool:
+    """Whether to flip, after a readability check of a Yes from the detector.
+
+    ``forward_text`` is Tesseract on the upright page, ``backward_text`` on
+    its horizontal flip. The check runs only on a Yes: a No stays No, so a
+    page the detector did not flag is never flipped. Handwritten pages keep
+    the Yes, as they keep OSD's angle; so does a printed page with too little
+    text to judge. Otherwise the Yes stands only when the flip reads as
+    English and reads at least twice as well as the page as it is.
+    """
+    if not detected:
+        return False
+    if handwritten:
+        return True
+    forward, forward_tokens = dictionary_share(forward_text)
+    backward, backward_tokens = dictionary_share(backward_text)
+    if max(forward_tokens, backward_tokens) < MIRROR_MIN_TOKENS:
+        return True
+    return backward >= MIRROR_READS_SHARE and backward >= 2 * forward
+
+
+def mirror_that_reads(
+    image: np.ndarray, rotation_deg: int, *, handwritten: bool
+) -> bool:
+    """The detector's mirror verdict; a Yes is undone when a dictionary read
+    shows the flip does not read. Both reads are shared with the detector — two Tesseract passes
+    per page, as before."""
+    upright = rotate_coarse_cw(image, int(rotation_deg) % 360)
+    forward_count, forward_text = _read_words(upright)
+    backward_count, backward_text = _read_words(flip_horizontal(upright))
+    return choose_mirror(
+        _mirror_vote(forward_count, backward_count),
+        forward_text,
+        backward_text,
+        handwritten=handwritten,
+    )
 
 
 def detect_mirror(

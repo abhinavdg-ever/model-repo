@@ -106,7 +106,7 @@ Every stage also writes one `pipeline_jobs` row and updates
 `page_stage_status` per page.
 
 **"Best text"** means final2 → final1 → prelim (restricted). Prelim is never used
-for handwritten / uncertain / mixed / low-quality pages.
+for handwritten / form / blank / uncertain / low-quality pages.
 
 ---
 
@@ -114,7 +114,7 @@ for handwritten / uncertain / mixed / low-quality pages.
 
 ```mermaid
 flowchart TD
-  P["Page"] --> Q{"HW / uncertain / mixed<br/>or quality_tag=low?"}
+  P["Page"] --> Q{"HW / form / blank / uncertain<br/>or quality_tag=low?"}
   Q -- yes --> HW["Skip blank/junk pass 1"]
   Q -- no --> BJ1["Blank/junk pass 1<br/>on prelim text"]
 

@@ -262,6 +262,10 @@ def get_page_image(
         False,
         description="Return a small JPEG (~160px) for filmstrip thumbnails",
     ),
+    corrected: bool = Query(
+        False,
+        description="Serve corrected-pages when that file exists. Default is pages/.",
+    ),
 ):
     """Serve a page image. TIFF is re-encoded to JPEG — browsers cannot show it raw.
 
@@ -280,7 +284,7 @@ def get_page_image(
         from app.services.blob_store import download_blob_at
 
         if isinstance(repo, PostgresFolderRepository):
-            loc = repo.resolve_page_blob(folder_id, page_number)
+            loc = repo.resolve_page_blob(folder_id, page_number, corrected=corrected)
             if loc:
                 name = loc.get("filename") or loc["key"]
                 etag = loc.get("etag") or ""
@@ -347,7 +351,7 @@ def get_page_image(
                 )
 
     try:
-        path = repo.get_page_image_path(folder_id, page_number)
+        path = repo.get_page_image_path(folder_id, page_number, corrected=corrected)
     except HTTPException:
         raise
     except Exception as exc:

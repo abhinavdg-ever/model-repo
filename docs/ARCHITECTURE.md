@@ -121,7 +121,7 @@ erDiagram
 | Table | Key | Written by |
 |---|---|---|
 | `ocr_results` | `(page_id, ocr_type)` | stages 2, 4, 5 |
-| `ocr_quality_results` | `page_id` | stage 1. Rotation + HW + measured quality (`quality_tag` / `quality_score` / `quality_detail`). Not redundant with the CSVs — CSVs are rebuilt from this table; Production Mode reads it. |
+| `ocr_quality_results` | `page_id` | stage 1. Rotation + HW + page type (`document_type` / `handwritten_probability` / `is_visible` / `handwritten_area_pct` / `review_required`) + measured quality (`quality_tag` / `quality_score` / `quality_detail`). Not redundant with the CSVs — CSVs are rebuilt from this table; Production Mode reads it. |
 | `blank_junk_classification` | `(page_id, pass_no)` | stages 3, 6 |
 | `member_extraction_results` | `page_id` | stage 7 |
 | `member_verification_summary` | `chart_id` | stage 7 |
