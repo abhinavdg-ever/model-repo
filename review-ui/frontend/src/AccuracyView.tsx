@@ -36,9 +36,10 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
       try {
         const list = await listFolders({ sort: "filename", sort_dir: "asc" });
         if (cancelled) return;
-        setProgress({ done: 0, total: list.items.length });
+        const labelled = list.items.filter((folder) => folder.ground_truth_available);
+        setProgress({ done: 0, total: labelled.length });
         const scored: ChartAccuracy[] = [];
-        for (const folder of list.items) {
+        for (const folder of labelled) {
           if (cancelled) return;
           try {
             const doc = await getFolderImaging(folder.id);
@@ -86,7 +87,10 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
           </button>
           <div className="workspace-title">
             <h1>Accuracy</h1>
-            <p>Page-level match against ground truth, across charts.</p>
+            <p>
+              Page-level match against ground truth, across charts with ground truth. Only the
+              fields that were labelled are scored.
+            </p>
           </div>
         </div>
       </div>
