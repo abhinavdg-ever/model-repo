@@ -248,6 +248,7 @@ def run_pipeline_for_chart(
         total_stages = len(chain)
         skip_ocr_active = False
         ocr_hydrated = False
+        final1_refreshed = False
         adaptive_gates = False
         old_gates: dict[int, Any] = {}
         old_presence: dict[int, Any] = {}
@@ -384,8 +385,24 @@ def run_pipeline_for_chart(
                             if (results["ocr_reuse"] or {}).get("source") == "none":
                                 skip_ocr_active = False
                         ocr_hydrated = True
-                    if skip_ocr_active and adaptive_gates:
-                        # Per-page: only pages reset to pending by gate-delta run.
+                    if (
+                        name == "ocr_final1"
+                        and skip_ocr_active
+                        and not final1_refreshed
+                    ):
+                        from stages.lib.ocr.reuse import reopen_final1_for_hq_pages
+
+                        reopened = reopen_final1_for_hq_pages(
+                            chart_id, chart["chart_name"]
+                        )
+                        results["final1_refresh"] = reopened
+                        final1_refreshed = True
+                    refresh_final1 = name == "ocr_final1" and bool(
+                        results.get("final1_refresh")
+                    )
+                    if skip_ocr_active and (adaptive_gates or refresh_final1):
+                        # Per-page: gate-delta, plus high-quality pages whose
+                        # earlier Final2 was skipped and whose Final1 has no boxes.
                         logger.info(
                             "starting (%d of %d) — skip_ocr, pending pages only",
                             index, total_stages,

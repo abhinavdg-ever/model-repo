@@ -29,7 +29,7 @@ export const METRICS: { id: MetricId; label: string; rule: string }[] = [
   {
     id: "pageType",
     label: "Page Type",
-    rule: "Type or subtype matches",
+    rule: "A match if the family or the subtype agrees",
   },
   {
     id: "codeable",

@@ -23,8 +23,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Model packages (Docling, MiniLM, GLiNER, the key/value ranker) are in the
-# image. Weight files are NOT baked in; mount ./models (scp onto the host).
+# Model packages (Docling, MiniLM, GLiNER, XGBoost, the key/value ranker) are
+# in the image. Weight files are not baked in. Copy them onto the host under
+# ./models; compose mounts that folder.
 COPY requirements-basic.txt requirements-models.txt ./
 RUN pip install --no-cache-dir -r requirements-basic.txt \
  && pip install --no-cache-dir -r requirements-models.txt
@@ -61,6 +62,8 @@ ENV PYTHONPATH=/app/core-pipeline \
     RAPID_MODELS_DIR=models/rapidocr \
     SECTION_HEADER_MINILM_PATH=models/semantic-model \
     MEMBER_NER_MODELS_PATH=models/ner \
+    PAGE_FAMILY_MODEL_DIR=models/page-family \
+    EXTRACTION_MODELS_ROOT=models \
     API_HOST=0.0.0.0 \
     API_PORT=8001
 
