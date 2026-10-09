@@ -8,6 +8,8 @@ from ..rule_based.name_common import is_ignore, is_non_name, name_matches, token
 
 PERSON_LABELS = ["person"]
 _CLEAN = re.compile(r"\s+")
+# "64 year old", "64-year-old", "12 years old" — an age, not a person.
+_AGE = re.compile(r"\b\d+\s*-?\s*years?\s*-?\s*old\b", re.IGNORECASE)
 _GENERIC = frozenset(
     {
         "patient",
@@ -30,6 +32,9 @@ _GENERIC = frozenset(
         "caregiver",
         "patient caregiver",
         "old female",
+        "old",
+        "year old",
+        "years old",
         "dob",
         "mrn",
     }
@@ -73,10 +78,27 @@ def _is_full_name(name: str) -> bool:
     return 2 <= _name_token_count(name) <= 3
 
 
+def is_age_name(name: str) -> bool:
+    """True for an age phrase ('64 year old') or the bare word 'old'."""
+    folded = _CLEAN.sub(" ", name or "").strip().casefold()
+    if not folded:
+        return False
+    if folded in {"old", "year", "years", "year old", "years old", "old female", "old male"}:
+        return True
+    if _AGE.search(folded):
+        return True
+    tokens = folded.replace("-", " ").split()
+    return bool(tokens) and all(
+        token.isdigit() or token in {"old", "year", "years", "yo"} for token in tokens
+    )
+
+
 def _keep_hit(name: str) -> bool:
     if len(name) < 2 or not any(char.isalpha() for char in name):
         return False
-    return name.casefold() not in _GENERIC
+    if name.casefold() in _GENERIC or is_age_name(name):
+        return False
+    return True
 
 
 def _merge_person_hits(sentence: str, hits: list[dict]) -> list[tuple[float, str]]:

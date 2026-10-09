@@ -1,5 +1,5 @@
 {
-  "note": "Page type catalog. Each family has one tag (codeable / non_codeable / discharge_frequency); a family never mixes tags. Each entry has a stable id, a display name and a family, and takes its tag from the family. match.primary decides the type and can open a span; a primary phrase belongs to one entry and is two or more words unless listed in single_word_primary. match.variants are misspellings and count as primary. match.supporting adds score but never decides the type. continue=true opens a span for the entry's family. The loader refuses a file that breaks any of these rules. Reloads on change. A one-word primary decides only in the page header (matching.single_word_primary_header_only), except the section headers in single_word_any_band. matching.dominant_families: a family whose score reaches its threshold wins outright (12 = e.g. three section headers in the body, or a header title plus one more hit). matching.fill_between_families: an unmatched page whose previous and next pages are both that family takes the family too. matching.span_break_score: inside a span, a page won by another family keeps its own type and ends the span when the span's family has no primary/variant hit on it and the winner scores at least this (8 = a two-word title in the header, or two two-word hits in the body).",
+  "note": "Page type catalog. The page-family model (models/page-family) chooses the family; these keywords choose the subtype inside that family. When no subtype matches, the subtype is the family name. Each family has one tag (codeable / non_codeable / discharge_frequency). Family display names are the model's labels. Each entry has a stable id, a display name and a family, and takes its tag from the family. match.primary decides the subtype and can open a span; a primary phrase belongs to one entry and is two or more words unless listed in single_word_primary. match.variants are misspellings and count as primary. match.supporting adds score but never decides the subtype. continue=true opens a span for the entry's family. The loader refuses a file that breaks any of these rules. Reloads on change. A one-word primary decides only in the page header (matching.single_word_primary_header_only), except the section headers in single_word_any_band. matching.dominant_families applies when the model abstains and keywords choose the family. matching.fill_between_families and matching.span_break_score do the same.",
   "tags": [
     "codeable",
     "non_codeable",
@@ -93,146 +93,236 @@
       "priority": 10,
       "span": true
     },
-    "discharge": {
-      "display": "Discharge",
+    "discharge_summary": {
+      "display": "Discharge Summary",
       "tag": "discharge_frequency",
-      "priority": 20,
+      "priority": 15,
       "span": true
     },
-    "obstetric": {
-      "display": "Obstetric",
+    "discharge_instructions": {
+      "display": "Discharge Instructions",
+      "tag": "discharge_frequency",
+      "priority": 16
+    },
+    "discharge_medication": {
+      "display": "Discharge Medication",
+      "tag": "discharge_frequency",
+      "priority": 16
+    },
+    "therapy_discharge_summary": {
+      "display": "Therapy Discharge Summary",
+      "tag": "discharge_frequency",
+      "priority": 16
+    },
+    "transfer_of_care_summary": {
+      "display": "Transfer of Care Summary",
+      "tag": "discharge_frequency",
+      "priority": 17
+    },
+    "interim_summary": {
+      "display": "Interim Summary",
+      "tag": "discharge_frequency",
+      "priority": 18
+    },
+    "operative_report": {
+      "display": "Operative Report",
+      "tag": "codeable",
+      "priority": 20
+    },
+    "endoscopy_report": {
+      "display": "Endoscopy Report",
+      "tag": "codeable",
+      "priority": 21
+    },
+    "procedure_note": {
+      "display": "Procedure Note",
+      "tag": "codeable",
+      "priority": 21
+    },
+    "anesthesia_record": {
+      "display": "Anesthesia Record",
+      "tag": "codeable",
+      "priority": 22
+    },
+    "implant_record": {
+      "display": "Implant Record",
+      "tag": "codeable",
+      "priority": 23
+    },
+    "perioperative_evaluation": {
+      "display": "Perioperative Evaluation",
+      "tag": "codeable",
+      "priority": 23
+    },
+    "emergency_department_note": {
+      "display": "Emergency Department Note",
+      "tag": "codeable",
+      "priority": 25
+    },
+    "home_visit_note": {
+      "display": "Home Visit Note",
+      "tag": "codeable",
+      "priority": 26
+    },
+    "telephone_encounter": {
+      "display": "Telephone Encounter",
+      "tag": "codeable",
+      "priority": 26
+    },
+    "behavioral_health_note": {
+      "display": "Behavioral Health Note",
       "tag": "codeable",
       "priority": 30
     },
-    "procedure": {
-      "display": "Procedure",
+    "specialty_note": {
+      "display": "Specialty Note",
       "tag": "codeable",
       "priority": 30
     },
-    "assessment_screening": {
-      "display": "Assessment / Screening",
+    "critical_care_record": {
+      "display": "Critical Care Record",
+      "tag": "codeable",
+      "priority": 31
+    },
+    "dialysis_record": {
+      "display": "Dialysis Record",
+      "tag": "codeable",
+      "priority": 31
+    },
+    "palliative_care_note": {
+      "display": "Palliative Care Note",
+      "tag": "codeable",
+      "priority": 31
+    },
+    "wound_care_note": {
+      "display": "Wound Care Note",
+      "tag": "codeable",
+      "priority": 31
+    },
+    "infusion_therapy_record": {
+      "display": "Infusion Therapy Record",
+      "tag": "codeable",
+      "priority": 32
+    },
+    "therapy_note": {
+      "display": "Therapy Note",
+      "tag": "codeable",
+      "priority": 32
+    },
+    "cardiac_diagnostic_test": {
+      "display": "Cardiac Diagnostic Test",
+      "tag": "codeable",
+      "priority": 35
+    },
+    "eye_examination": {
+      "display": "Eye Examination",
+      "tag": "codeable",
+      "priority": 35
+    },
+    "neurodiagnostic_test": {
+      "display": "Neurodiagnostic Test",
+      "tag": "codeable",
+      "priority": 35
+    },
+    "nuclear_medicine_report": {
+      "display": "Nuclear Medicine Report",
+      "tag": "codeable",
+      "priority": 35
+    },
+    "pathology_report": {
+      "display": "Pathology Report",
+      "tag": "codeable",
+      "priority": 35
+    },
+    "sleep_study": {
+      "display": "Sleep Study",
+      "tag": "codeable",
+      "priority": 35
+    },
+    "obstetric_and_gynecologic_record": {
+      "display": "Obstetric and Gynecologic Record",
+      "tag": "codeable",
+      "priority": 36
+    },
+    "plan_of_care": {
+      "display": "Plan of Care",
       "tag": "codeable",
       "priority": 40
     },
-    "behavioral_health": {
-      "display": "Behavioral Health",
+    "assessment_and_evaluation": {
+      "display": "Assessment and Evaluation",
       "tag": "codeable",
-      "priority": 40
+      "priority": 41
     },
-    "care_plan": {
-      "display": "Care Plan",
-      "tag": "codeable",
-      "priority": 40
-    },
-    "inpatient_critical": {
-      "display": "Inpatient / Critical Care",
-      "tag": "codeable",
-      "priority": 40
-    },
-    "specialty_consult": {
-      "display": "Specialty Consult",
-      "tag": "codeable",
-      "priority": 40
-    },
-    "therapy_rehab": {
-      "display": "Therapy / Rehab",
-      "tag": "codeable",
-      "priority": 40
-    },
-    "ophthalmology": {
-      "display": "Ophthalmology",
-      "tag": "codeable",
+    "laboratory_report": {
+      "display": "Laboratory Report",
+      "tag": "non_codeable",
       "priority": 45
     },
-    "screening_checklist": {
-      "display": "Screening / Checklist",
+    "radiology_report": {
+      "display": "Radiology Report",
       "tag": "non_codeable",
       "priority": 45
     },
-    "cardiac_diagnostic": {
-      "display": "Cardiac Diagnostic",
-      "tag": "codeable",
-      "priority": 50
+    "diagnostic_study": {
+      "display": "Diagnostic Study",
+      "tag": "non_codeable",
+      "priority": 46
     },
-    "neuro_diagnostic": {
-      "display": "Neuro Diagnostic",
-      "tag": "codeable",
-      "priority": 50
-    },
-    "pulmonary_function": {
-      "display": "Pulmonary Function Test",
+    "medication_record": {
+      "display": "Medication Record",
       "tag": "non_codeable",
       "priority": 50
     },
-    "pulmonary_sleep": {
-      "display": "Pulmonary / Sleep",
-      "tag": "codeable",
-      "priority": 50
-    },
-    "vascular_holter": {
-      "display": "Vascular / Holter",
+    "consent_form": {
+      "display": "Consent Form",
       "tag": "non_codeable",
-      "priority": 50
+      "priority": 51
     },
-    "imaging": {
-      "display": "Imaging",
+    "order_and_requisition": {
+      "display": "Order and Requisition",
+      "tag": "non_codeable",
+      "priority": 51
+    },
+    "problem_list": {
+      "display": "Problem List",
       "tag": "non_codeable",
       "priority": 55
     },
-    "laboratory": {
-      "display": "Laboratory",
+    "screening_and_checklist": {
+      "display": "Screening and Checklist",
       "tag": "non_codeable",
       "priority": 55
     },
-    "nuclear_medicine": {
-      "display": "Nuclear Medicine",
-      "tag": "codeable",
-      "priority": 55
-    },
-    "pathology": {
-      "display": "Pathology",
-      "tag": "codeable",
-      "priority": 55
-    },
-    "medication_immunization": {
-      "display": "Medication / Immunization",
+    "appointment_record": {
+      "display": "Appointment Record",
       "tag": "non_codeable",
-      "priority": 60
-    },
-    "therapy_administration": {
-      "display": "Therapy Administration",
-      "tag": "codeable",
-      "priority": 60
-    },
-    "consent_authorization": {
-      "display": "Consent / Authorization",
-      "tag": "non_codeable",
-      "priority": 70
-    },
-    "orders_requests": {
-      "display": "Orders / Requests",
-      "tag": "non_codeable",
-      "priority": 70
-    },
-    "letter": {
-      "display": "Letter",
-      "tag": "codeable",
-      "priority": 75
+      "priority": 56
     },
     "patient_communication": {
       "display": "Patient Communication",
       "tag": "non_codeable",
-      "priority": 75
+      "priority": 56
     },
-    "administrative": {
-      "display": "Administrative",
-      "tag": "non_codeable",
-      "priority": 80
-    },
-    "demographics": {
-      "display": "Demographics",
+    "patient_demographics": {
+      "display": "Patient Demographics",
       "tag": "codeable",
-      "priority": 80
+      "priority": 60
+    },
+    "provider_letter": {
+      "display": "Provider Letter",
+      "tag": "codeable",
+      "priority": 61
+    },
+    "billing_statement": {
+      "display": "Billing Statement",
+      "tag": "non_codeable",
+      "priority": 62
+    },
+    "administrative_record": {
+      "display": "Administrative Record",
+      "tag": "non_codeable",
+      "priority": 63
     }
   },
   "entries": [
@@ -270,7 +360,7 @@
     {
       "id": "initial_psychiatric_evaluation",
       "display": "Initial Psychiatric Evaluation",
-      "family": "behavioral_health",
+      "family": "behavioral_health_note",
       "continue": false,
       "match": {
         "primary": [
@@ -314,7 +404,7 @@
     {
       "id": "pap_hpv_report",
       "display": "PAP / HPV Report",
-      "family": "obstetric",
+      "family": "obstetric_and_gynecologic_record",
       "continue": false,
       "match": {
         "primary": [
@@ -331,7 +421,7 @@
     {
       "id": "annual_wellness_visit",
       "display": "Annual Wellness Visit",
-      "family": "assessment_screening",
+      "family": "assessment_and_evaluation",
       "continue": false,
       "match": {
         "primary": [
@@ -347,7 +437,7 @@
     {
       "id": "emergency_ed_visit",
       "display": "Emergency / ED Visit",
-      "family": "progress_note",
+      "family": "emergency_department_note",
       "continue": false,
       "match": {
         "primary": [
@@ -366,7 +456,7 @@
     {
       "id": "prenatal_records",
       "display": "Prenatal Records(ACOG Form/Prenatal Visit Flow chart/ Prenatal Flow/ Prenatal Form )",
-      "family": "obstetric",
+      "family": "obstetric_and_gynecologic_record",
       "continue": false,
       "match": {
         "primary": [
@@ -396,7 +486,7 @@
     {
       "id": "depart_note",
       "display": "Depart Note",
-      "family": "discharge",
+      "family": "discharge_summary",
       "match": {
         "primary": [
           "depart note"
@@ -408,7 +498,7 @@
     {
       "id": "antepartum_record",
       "display": "Antepartum Record",
-      "family": "obstetric",
+      "family": "obstetric_and_gynecologic_record",
       "continue": false,
       "match": {
         "primary": [
@@ -421,7 +511,7 @@
     {
       "id": "application_form",
       "display": "Application Form",
-      "family": "administrative",
+      "family": "administrative_record",
       "continue": false,
       "match": {
         "primary": [
@@ -434,7 +524,7 @@
     {
       "id": "depart_summary",
       "display": "Depart Summary",
-      "family": "discharge",
+      "family": "discharge_summary",
       "match": {
         "primary": [
           "depart summary"
@@ -446,7 +536,7 @@
     {
       "id": "postpartum_pp_exam_pp_visit",
       "display": "Postpartum/PP Exam/PP Visit",
-      "family": "obstetric",
+      "family": "obstetric_and_gynecologic_record",
       "continue": false,
       "match": {
         "primary": [
@@ -461,7 +551,7 @@
     {
       "id": "billing_page_from_the_doctor",
       "display": "Billing Page from the Doctor",
-      "family": "administrative",
+      "family": "billing_statement",
       "continue": false,
       "match": {
         "primary": [
@@ -474,7 +564,7 @@
     {
       "id": "discharge_instructions",
       "display": "Discharge instructions",
-      "family": "discharge",
+      "family": "discharge_instructions",
       "match": {
         "primary": [
           "discharge instructions"
@@ -486,7 +576,7 @@
     {
       "id": "activity_evaluation",
       "display": "Activity Evaluation",
-      "family": "assessment_screening",
+      "family": "assessment_and_evaluation",
       "continue": false,
       "match": {
         "primary": [
@@ -499,7 +589,7 @@
     {
       "id": "blood_glucose",
       "display": "Blood Glucose",
-      "family": "laboratory",
+      "family": "laboratory_report",
       "continue": false,
       "match": {
         "primary": [
@@ -512,7 +602,7 @@
     {
       "id": "discharge_medication",
       "display": "Discharge Medication",
-      "family": "discharge",
+      "family": "discharge_medication",
       "match": {
         "primary": [
           "discharge medication"
@@ -524,7 +614,7 @@
     {
       "id": "all_eye_exam_report_records",
       "display": "All EYE exam report/records (OD or OS evidance)",
-      "family": "ophthalmology",
+      "family": "eye_examination",
       "continue": false,
       "match": {
         "primary": [
@@ -539,7 +629,7 @@
     {
       "id": "bone_mineral_density_report",
       "display": "Bone Mineral Density (DEXA) Report",
-      "family": "imaging",
+      "family": "radiology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -553,7 +643,7 @@
     {
       "id": "discharge_summary",
       "display": "Discharge Summary",
-      "family": "discharge",
+      "family": "discharge_summary",
       "match": {
         "primary": [
           "discharge summary"
@@ -565,7 +655,7 @@
     {
       "id": "ophthalmology_report_or_records_ocular_note",
       "display": "Ophthalmology Report or Records / Ocular Note",
-      "family": "ophthalmology",
+      "family": "eye_examination",
       "continue": false,
       "match": {
         "primary": [
@@ -579,7 +669,7 @@
     {
       "id": "transfer_summary",
       "display": "Transfer Summary",
-      "family": "discharge",
+      "family": "transfer_of_care_summary",
       "match": {
         "primary": [
           "transfer summary"
@@ -591,7 +681,7 @@
     {
       "id": "optometry_note_visual_field_activity_retinopathy",
       "display": "Optometry note/Visual field activity/retinopathy",
-      "family": "ophthalmology",
+      "family": "eye_examination",
       "continue": false,
       "match": {
         "primary": [
@@ -606,7 +696,7 @@
     {
       "id": "chemistry_report",
       "display": "Chemistry Report",
-      "family": "laboratory",
+      "family": "laboratory_report",
       "continue": false,
       "match": {
         "primary": [
@@ -619,7 +709,7 @@
     {
       "id": "transition_of_care_summary",
       "display": "Transition of care Summary",
-      "family": "discharge",
+      "family": "transfer_of_care_summary",
       "match": {
         "primary": [
           "transition of care summary"
@@ -631,7 +721,7 @@
     {
       "id": "anesthesia_record",
       "display": "Anesthesia Record",
-      "family": "procedure",
+      "family": "anesthesia_record",
       "continue": false,
       "match": {
         "primary": [
@@ -644,7 +734,7 @@
     {
       "id": "chest_view",
       "display": "Chest View",
-      "family": "imaging",
+      "family": "radiology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -657,7 +747,7 @@
     {
       "id": "resumen_de_alta_resumen_de_instruccion_planifica",
       "display": "Resumen de Alta / Resumen de Instruccion / Planificacion de Alta",
-      "family": "discharge",
+      "family": "discharge_summary",
       "match": {
         "primary": [
           "resumen de alta",
@@ -673,7 +763,7 @@
     {
       "id": "annual_health_assessment",
       "display": "Annual Health Assessment",
-      "family": "assessment_screening",
+      "family": "assessment_and_evaluation",
       "continue": false,
       "match": {
         "primary": [
@@ -686,7 +776,7 @@
     {
       "id": "consent_form",
       "display": "Consent form",
-      "family": "consent_authorization",
+      "family": "consent_form",
       "continue": false,
       "match": {
         "primary": [
@@ -699,7 +789,7 @@
     {
       "id": "interim_summaries",
       "display": "Interim Summaries",
-      "family": "discharge",
+      "family": "interim_summary",
       "match": {
         "primary": [
           "interim summaries"
@@ -711,7 +801,7 @@
     {
       "id": "consent_authorization_pages_all",
       "display": "Consent/Authorization pages -all",
-      "family": "consent_authorization",
+      "family": "consent_form",
       "continue": false,
       "match": {
         "primary": [
@@ -724,7 +814,7 @@
     {
       "id": "discharge_note",
       "display": "Discharge Note",
-      "family": "discharge",
+      "family": "discharge_summary",
       "match": {
         "primary": [
           "discharge note"
@@ -736,7 +826,7 @@
     {
       "id": "any_type_of_letter",
       "display": "Any type of Letter",
-      "family": "letter",
+      "family": "provider_letter",
       "continue": false,
       "match": {
         "primary": [
@@ -749,7 +839,7 @@
     {
       "id": "fluorescence_in_situ_hybridization",
       "display": "Fluorescence in situ Hybridization (FISH)",
-      "family": "laboratory",
+      "family": "laboratory_report",
       "continue": false,
       "match": {
         "primary": [
@@ -764,7 +854,7 @@
     {
       "id": "transfer_of_care_note",
       "display": "Transfer of Care Note",
-      "family": "discharge",
+      "family": "transfer_of_care_summary",
       "match": {
         "primary": [
           "transfer of care note"
@@ -776,7 +866,7 @@
     {
       "id": "assessment_notes_forms_report",
       "display": "Assessment notes/Forms/Report",
-      "family": "assessment_screening",
+      "family": "assessment_and_evaluation",
       "continue": false,
       "match": {
         "primary": [
@@ -789,7 +879,7 @@
     {
       "id": "lab_flow_sheet",
       "display": "Lab Flow Sheet",
-      "family": "laboratory",
+      "family": "laboratory_report",
       "continue": false,
       "match": {
         "primary": [
@@ -802,7 +892,7 @@
     {
       "id": "cardiac_catheterization",
       "display": "Cardiac Catheterization",
-      "family": "procedure",
+      "family": "procedure_note",
       "continue": false,
       "match": {
         "primary": [
@@ -815,7 +905,7 @@
     {
       "id": "lab_form",
       "display": "Lab Form",
-      "family": "orders_requests",
+      "family": "order_and_requisition",
       "continue": false,
       "match": {
         "primary": [
@@ -828,7 +918,7 @@
     {
       "id": "cardiology",
       "display": "Cardiology",
-      "family": "specialty_consult",
+      "family": "specialty_note",
       "continue": false,
       "match": {
         "primary": [
@@ -841,7 +931,7 @@
     {
       "id": "laboratory_data",
       "display": "Laboratory Data",
-      "family": "laboratory",
+      "family": "laboratory_report",
       "continue": false,
       "match": {
         "primary": [
@@ -854,7 +944,7 @@
     {
       "id": "short_stay_summary",
       "display": "Short Stay Summary",
-      "family": "discharge",
+      "family": "discharge_summary",
       "match": {
         "primary": [
           "short stay summary"
@@ -866,7 +956,7 @@
     {
       "id": "cardiovascular_report",
       "display": "Cardiovascular report",
-      "family": "cardiac_diagnostic",
+      "family": "cardiac_diagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -879,7 +969,7 @@
     {
       "id": "lab_requisition",
       "display": "Lab Requisition",
-      "family": "orders_requests",
+      "family": "order_and_requisition",
       "continue": false,
       "match": {
         "primary": [
@@ -894,7 +984,7 @@
     {
       "id": "occupational_therapy_discharge_note_summary",
       "display": "Occupational Therapy Discharge Note/summary",
-      "family": "discharge",
+      "family": "therapy_discharge_summary",
       "match": {
         "primary": [
           "occupational therapy discharge note"
@@ -921,7 +1011,7 @@
     {
       "id": "lab_work",
       "display": "Lab work (Blood, Cholesterol, etc.)",
-      "family": "laboratory",
+      "family": "laboratory_report",
       "continue": false,
       "match": {
         "primary": [
@@ -935,7 +1025,7 @@
     {
       "id": "physical_therapy_discharge_note_summary",
       "display": "Physical Therapy Discharge Note/Summary",
-      "family": "discharge",
+      "family": "therapy_discharge_summary",
       "match": {
         "primary": [
           "physical therapy discharge note"
@@ -947,7 +1037,7 @@
     {
       "id": "colonoscopy_sigmoidoscopy",
       "display": "Colonoscopy/Sigmoidoscopy",
-      "family": "procedure",
+      "family": "endoscopy_report",
       "continue": false,
       "match": {
         "primary": [
@@ -963,7 +1053,7 @@
     {
       "id": "mammograms_mg_mammo",
       "display": "Mammograms / MG/ Mammo",
-      "family": "imaging",
+      "family": "radiology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -978,7 +1068,7 @@
     {
       "id": "interim_note",
       "display": "Interim Note",
-      "family": "discharge",
+      "family": "interim_summary",
       "match": {
         "primary": [
           "interim note"
@@ -990,7 +1080,7 @@
     {
       "id": "colposcopic_examination",
       "display": "Colposcopic Examination",
-      "family": "obstetric",
+      "family": "obstetric_and_gynecologic_record",
       "continue": false,
       "match": {
         "primary": [
@@ -1003,7 +1093,7 @@
     {
       "id": "medication_list",
       "display": "Medication List",
-      "family": "medication_immunization",
+      "family": "medication_record",
       "continue": false,
       "match": {
         "primary": [
@@ -1016,7 +1106,7 @@
     {
       "id": "bh_op_discharge",
       "display": "BH-OP Discharge",
-      "family": "discharge",
+      "family": "discharge_summary",
       "match": {
         "primary": [
           "bh-op discharge"
@@ -1028,7 +1118,7 @@
     {
       "id": "consultations_consulta",
       "display": "Consultations / Consulta",
-      "family": "specialty_consult",
+      "family": "specialty_note",
       "continue": false,
       "match": {
         "primary": [
@@ -1043,7 +1133,7 @@
     {
       "id": "microbiology",
       "display": "Microbiology",
-      "family": "laboratory",
+      "family": "laboratory_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1056,7 +1146,7 @@
     {
       "id": "principal_diagnosis",
       "display": "Principal Diagnosis",
-      "family": "discharge",
+      "family": "discharge_summary",
       "match": {
         "primary": [
           "principal diagnosis"
@@ -1070,7 +1160,7 @@
     {
       "id": "cytology_report_molecular_report",
       "display": "Cytology Report/Molecular Report",
-      "family": "pathology",
+      "family": "pathology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1084,7 +1174,7 @@
     {
       "id": "mini_mental_examination",
       "display": "Mini Mental examination",
-      "family": "screening_checklist",
+      "family": "screening_and_checklist",
       "continue": false,
       "match": {
         "primary": [
@@ -1097,7 +1187,7 @@
     {
       "id": "anesthesia_transfer_of_care_note",
       "display": "Anesthesia Transfer of Care note",
-      "family": "discharge",
+      "family": "transfer_of_care_summary",
       "match": {
         "primary": [
           "anesthesia transfer of care note"
@@ -1109,7 +1199,7 @@
     {
       "id": "dermatology_skin_test",
       "display": "Dermatology / Skin Test",
-      "family": "specialty_consult",
+      "family": "specialty_note",
       "continue": false,
       "match": {
         "primary": [
@@ -1136,7 +1226,7 @@
     {
       "id": "final_case_summary",
       "display": "Final Case Summary",
-      "family": "discharge",
+      "family": "discharge_summary",
       "match": {
         "primary": [
           "final case summary"
@@ -1148,7 +1238,7 @@
     {
       "id": "echocardiogram_transthoracic_echocardiography",
       "display": "Echocardiogram / Transthoracic Echocardiography",
-      "family": "cardiac_diagnostic",
+      "family": "cardiac_diagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -1165,7 +1255,7 @@
     {
       "id": "plethysmography_report",
       "display": "Plethysmography Report",
-      "family": "vascular_holter",
+      "family": "diagnostic_study",
       "continue": false,
       "match": {
         "primary": [
@@ -1178,7 +1268,7 @@
     {
       "id": "eeg_report_neurophysiology_report",
       "display": "EEG Report/Neurophysiology Report",
-      "family": "neuro_diagnostic",
+      "family": "neurodiagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -1192,7 +1282,7 @@
     {
       "id": "prothrombin_time",
       "display": "Prothrombin time",
-      "family": "laboratory",
+      "family": "laboratory_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1205,7 +1295,7 @@
     {
       "id": "ekg_ecg_graph",
       "display": "EKG /ECG graph",
-      "family": "cardiac_diagnostic",
+      "family": "cardiac_diagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -1219,7 +1309,7 @@
     {
       "id": "pulmonary_function_test_spirometry",
       "display": "Pulmonary function Test/ Spirometry",
-      "family": "pulmonary_function",
+      "family": "diagnostic_study",
       "continue": false,
       "match": {
         "primary": [
@@ -1233,7 +1323,7 @@
     {
       "id": "referral_authorization_form",
       "display": "Referral Authorization Form",
-      "family": "orders_requests",
+      "family": "order_and_requisition",
       "continue": false,
       "match": {
         "primary": [
@@ -1246,7 +1336,7 @@
     {
       "id": "emg_report",
       "display": "EMG Report",
-      "family": "neuro_diagnostic",
+      "family": "neurodiagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -1259,7 +1349,7 @@
     {
       "id": "refill_record",
       "display": "Refill Record",
-      "family": "medication_immunization",
+      "family": "medication_record",
       "continue": false,
       "match": {
         "primary": [
@@ -1285,7 +1375,7 @@
     {
       "id": "social_report",
       "display": "social report",
-      "family": "administrative",
+      "family": "administrative_record",
       "continue": false,
       "match": {
         "primary": [
@@ -1298,7 +1388,7 @@
     {
       "id": "endoscopy",
       "display": "Endoscopy",
-      "family": "procedure",
+      "family": "endoscopy_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1311,7 +1401,7 @@
     {
       "id": "sonograms_report",
       "display": "Sonograms Report",
-      "family": "imaging",
+      "family": "radiology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1337,7 +1427,7 @@
     {
       "id": "tomography",
       "display": "Tomography",
-      "family": "imaging",
+      "family": "radiology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1350,7 +1440,7 @@
     {
       "id": "evaluation_form",
       "display": "Evaluation form",
-      "family": "assessment_screening",
+      "family": "assessment_and_evaluation",
       "continue": false,
       "match": {
         "primary": [
@@ -1376,7 +1466,7 @@
     {
       "id": "functional_assessment",
       "display": "Functional assessment",
-      "family": "assessment_screening",
+      "family": "assessment_and_evaluation",
       "continue": false,
       "match": {
         "primary": [
@@ -1389,7 +1479,7 @@
     {
       "id": "ultrasounds_report",
       "display": "Ultrasounds Report",
-      "family": "imaging",
+      "family": "radiology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1402,7 +1492,7 @@
     {
       "id": "gastroenterology",
       "display": "Gastroenterology (GI Procedure Note)(EGD Report)",
-      "family": "procedure",
+      "family": "endoscopy_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1417,7 +1507,7 @@
     {
       "id": "urinalysis",
       "display": "Urinalysis",
-      "family": "laboratory",
+      "family": "laboratory_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1443,7 +1533,7 @@
     {
       "id": "all_types_of_order",
       "display": "All types of order",
-      "family": "orders_requests",
+      "family": "order_and_requisition",
       "continue": false,
       "match": {
         "primary": [
@@ -1456,7 +1546,7 @@
     {
       "id": "lower_extremity_upper_extremity",
       "display": "Lower Extremity (Lower Extremity Doppler\\Duplex report) / Upper Extremity",
-      "family": "cardiac_diagnostic",
+      "family": "cardiac_diagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -1470,7 +1560,7 @@
     {
       "id": "order_note",
       "display": "Order note",
-      "family": "orders_requests",
+      "family": "order_and_requisition",
       "continue": false,
       "match": {
         "primary": [
@@ -1496,7 +1586,7 @@
     {
       "id": "physician_order",
       "display": "Physician Order",
-      "family": "orders_requests",
+      "family": "order_and_requisition",
       "continue": false,
       "match": {
         "primary": [
@@ -1509,7 +1599,7 @@
     {
       "id": "myocardial_perfusion",
       "display": "Myocardial perfusion",
-      "family": "cardiac_diagnostic",
+      "family": "cardiac_diagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -1535,7 +1625,7 @@
     {
       "id": "nephrology",
       "display": "Nephrology",
-      "family": "specialty_consult",
+      "family": "specialty_note",
       "continue": false,
       "match": {
         "primary": [
@@ -1548,7 +1638,7 @@
     {
       "id": "any_type_of_request",
       "display": "Any Type of Request",
-      "family": "orders_requests",
+      "family": "order_and_requisition",
       "continue": false,
       "match": {
         "primary": [
@@ -1561,7 +1651,7 @@
     {
       "id": "neurology_emg_note",
       "display": "Neurology / EMG Note",
-      "family": "specialty_consult",
+      "family": "specialty_note",
       "continue": false,
       "match": {
         "primary": [
@@ -1575,7 +1665,7 @@
     {
       "id": "inr_result_inr_value",
       "display": "INR result/ INR (International Normalized Ratio) Value",
-      "family": "laboratory",
+      "family": "laboratory_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1603,7 +1693,7 @@
     {
       "id": "mr_brain_report",
       "display": "MR Brain Report",
-      "family": "imaging",
+      "family": "radiology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1616,7 +1706,7 @@
     {
       "id": "nutrition_assessment",
       "display": "Nutrition Assessment",
-      "family": "assessment_screening",
+      "family": "assessment_and_evaluation",
       "continue": false,
       "match": {
         "primary": [
@@ -1629,7 +1719,7 @@
     {
       "id": "mri",
       "display": "MRI",
-      "family": "imaging",
+      "family": "radiology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1642,7 +1732,7 @@
     {
       "id": "occupational_therapy",
       "display": "Occupational Therapy",
-      "family": "therapy_rehab",
+      "family": "therapy_note",
       "continue": false,
       "match": {
         "primary": [
@@ -1655,7 +1745,7 @@
     {
       "id": "ct_scans_report",
       "display": "CT Scans Report",
-      "family": "imaging",
+      "family": "radiology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1683,7 +1773,7 @@
     {
       "id": "prescriptions_rx_page",
       "display": "Prescriptions/RX Page",
-      "family": "medication_immunization",
+      "family": "medication_record",
       "continue": false,
       "match": {
         "primary": [
@@ -1697,7 +1787,7 @@
     {
       "id": "oncology",
       "display": "Oncology",
-      "family": "specialty_consult",
+      "family": "specialty_note",
       "continue": false,
       "match": {
         "primary": [
@@ -1710,7 +1800,7 @@
     {
       "id": "radiology_report",
       "display": "Radiology Report",
-      "family": "imaging",
+      "family": "radiology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1723,7 +1813,7 @@
     {
       "id": "operative_report",
       "display": "Operative Report",
-      "family": "procedure",
+      "family": "operative_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1736,7 +1826,7 @@
     {
       "id": "x_ray_report",
       "display": "X-Ray Report (Foot Exam)",
-      "family": "imaging",
+      "family": "radiology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1750,7 +1840,7 @@
     {
       "id": "oximetry_report_note",
       "display": "Oximetry report/note",
-      "family": "pulmonary_sleep",
+      "family": "sleep_study",
       "continue": false,
       "match": {
         "primary": [
@@ -1763,7 +1853,7 @@
     {
       "id": "allergies_report",
       "display": "Allergies report",
-      "family": "laboratory",
+      "family": "laboratory_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1776,7 +1866,7 @@
     {
       "id": "pacemaker_device_monitor_report",
       "display": "Pacemaker / Device monitor report",
-      "family": "cardiac_diagnostic",
+      "family": "cardiac_diagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -1790,7 +1880,7 @@
     {
       "id": "carotid_duplex_report",
       "display": "Carotid Duplex Report",
-      "family": "vascular_holter",
+      "family": "diagnostic_study",
       "continue": false,
       "match": {
         "primary": [
@@ -1803,7 +1893,7 @@
     {
       "id": "all_doppler_duplex_report",
       "display": "All Doppler/Duplex Report(Example echo doppler report)",
-      "family": "vascular_holter",
+      "family": "diagnostic_study",
       "continue": false,
       "match": {
         "primary": [
@@ -1818,7 +1908,7 @@
     {
       "id": "pathology_report_tissue_report",
       "display": "Pathology Report/Tissue Report",
-      "family": "pathology",
+      "family": "pathology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -1832,7 +1922,7 @@
     {
       "id": "esophageal_manometry",
       "display": "Esophageal Manometry",
-      "family": "imaging",
+      "family": "diagnostic_study",
       "continue": false,
       "match": {
         "primary": [
@@ -1845,7 +1935,7 @@
     {
       "id": "physical_therapy_assessment_note",
       "display": "Physical Therapy Assessment/Note",
-      "family": "therapy_rehab",
+      "family": "therapy_note",
       "continue": false,
       "match": {
         "primary": [
@@ -1861,7 +1951,7 @@
     {
       "id": "health_review_sheet_health_maintenance_report",
       "display": "Health Review sheet\\Health Maintenance Report",
-      "family": "screening_checklist",
+      "family": "screening_and_checklist",
       "continue": false,
       "match": {
         "primary": [
@@ -1888,7 +1978,7 @@
     {
       "id": "holter_report",
       "display": "Holter report",
-      "family": "vascular_holter",
+      "family": "diagnostic_study",
       "continue": false,
       "match": {
         "primary": [
@@ -1901,7 +1991,7 @@
     {
       "id": "plan_of_care",
       "display": "Plan of Care",
-      "family": "care_plan",
+      "family": "plan_of_care",
       "continue": false,
       "match": {
         "primary": [
@@ -1914,7 +2004,7 @@
     {
       "id": "adl_iadl_flow_sheet",
       "display": "ADL/IADL flow sheet (Activity of daily living)",
-      "family": "screening_checklist",
+      "family": "screening_and_checklist",
       "continue": false,
       "match": {
         "primary": [
@@ -1930,7 +2020,7 @@
     {
       "id": "procedure_note",
       "display": "Procedure Note",
-      "family": "procedure",
+      "family": "procedure_note",
       "continue": false,
       "match": {
         "primary": [
@@ -1943,7 +2033,7 @@
     {
       "id": "ankle_brachial_index",
       "display": "Ankle-Brachial Index (ABI)",
-      "family": "vascular_holter",
+      "family": "diagnostic_study",
       "continue": false,
       "match": {
         "primary": [
@@ -1958,7 +2048,7 @@
     {
       "id": "check_list",
       "display": "Check List",
-      "family": "administrative",
+      "family": "screening_and_checklist",
       "continue": false,
       "match": {
         "primary": [
@@ -1971,7 +2061,7 @@
     {
       "id": "rehabilitation_daily_treatment_note",
       "display": "Rehabilitation Daily Treatment Note",
-      "family": "therapy_rehab",
+      "family": "therapy_note",
       "continue": false,
       "match": {
         "primary": [
@@ -1986,7 +2076,7 @@
     {
       "id": "immunization_list_vaccine_flu_shot",
       "display": "Immunization List/ Vaccine / flu Shot",
-      "family": "medication_immunization",
+      "family": "medication_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2002,7 +2092,7 @@
     {
       "id": "sleep_study_polysomnography_report",
       "display": "Sleep Study /Polysomnography Report(PSG Report)",
-      "family": "pulmonary_sleep",
+      "family": "sleep_study",
       "continue": false,
       "match": {
         "primary": [
@@ -2017,7 +2107,7 @@
     {
       "id": "questionnaire",
       "display": "Questionnaire(Stand Alone)",
-      "family": "screening_checklist",
+      "family": "screening_and_checklist",
       "continue": false,
       "match": {
         "primary": [
@@ -2047,7 +2137,7 @@
     {
       "id": "after_visit_summary",
       "display": "After Visit Summary",
-      "family": "administrative",
+      "family": "problem_list",
       "continue": false,
       "match": {
         "primary": [
@@ -2060,7 +2150,7 @@
     {
       "id": "staying_healthy_assessment",
       "display": "Staying Healthy Assessment",
-      "family": "assessment_screening",
+      "family": "assessment_and_evaluation",
       "continue": false,
       "match": {
         "primary": [
@@ -2073,7 +2163,7 @@
     {
       "id": "stress_test_exercise_report_treadmill_exercise_r",
       "display": "Stress Test / Exercise report / treadmill exercise report",
-      "family": "cardiac_diagnostic",
+      "family": "cardiac_diagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -2087,7 +2177,7 @@
     {
       "id": "surgery_report",
       "display": "surgery report",
-      "family": "procedure",
+      "family": "operative_report",
       "continue": false,
       "match": {
         "primary": [
@@ -2100,7 +2190,7 @@
     {
       "id": "problem_list",
       "display": "Problem List",
-      "family": "administrative",
+      "family": "problem_list",
       "continue": false,
       "match": {
         "primary": [
@@ -2113,7 +2203,7 @@
     {
       "id": "treatment_plan_record",
       "display": "Treatment Plan Record",
-      "family": "care_plan",
+      "family": "plan_of_care",
       "continue": false,
       "match": {
         "primary": [
@@ -2126,7 +2216,7 @@
     {
       "id": "out_of_time_frame_records",
       "display": "Out Of Time Frame Records",
-      "family": "administrative",
+      "family": "administrative_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2139,7 +2229,7 @@
     {
       "id": "triage_note_report",
       "display": "Triage Note/Report",
-      "family": "progress_note",
+      "family": "emergency_department_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2152,7 +2242,7 @@
     {
       "id": "invoice_page_when_soruce_is_imaging_client_uploa",
       "display": "Invoice Page when Soruce is: Imaging Client Upload, Client Retrieval,Client FTP, RF Support, Remote Download/EMR",
-      "family": "administrative",
+      "family": "billing_statement",
       "continue": false,
       "match": {
         "primary": [
@@ -2167,7 +2257,7 @@
     {
       "id": "triage_surgery_report",
       "display": "Triage surgery report",
-      "family": "procedure",
+      "family": "operative_report",
       "continue": false,
       "match": {
         "primary": [
@@ -2180,7 +2270,7 @@
     {
       "id": "patient_summary_if_stand_alone",
       "display": "Patient summary-If Stand Alone",
-      "family": "administrative",
+      "family": "problem_list",
       "continue": false,
       "match": {
         "primary": [
@@ -2193,7 +2283,7 @@
     {
       "id": "urgent_care_note",
       "display": "Urgent Care Note",
-      "family": "progress_note",
+      "family": "emergency_department_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2206,7 +2296,7 @@
     {
       "id": "appointment_note",
       "display": "Appointment Note",
-      "family": "administrative",
+      "family": "appointment_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2219,7 +2309,7 @@
     {
       "id": "urology",
       "display": "Urology",
-      "family": "specialty_consult",
+      "family": "specialty_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2232,7 +2322,7 @@
     {
       "id": "appointment_summary",
       "display": "Appointment Summary",
-      "family": "administrative",
+      "family": "appointment_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2245,7 +2335,7 @@
     {
       "id": "nuclear_medicine_report",
       "display": "Nuclear Medicine Report",
-      "family": "nuclear_medicine",
+      "family": "nuclear_medicine_report",
       "continue": false,
       "match": {
         "primary": [
@@ -2271,7 +2361,7 @@
     {
       "id": "cytometry_report",
       "display": "Cytometry Report",
-      "family": "pathology",
+      "family": "pathology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -2284,7 +2374,7 @@
     {
       "id": "clinical_diagnoses",
       "display": "Clinical Diagnoses",
-      "family": "administrative",
+      "family": "problem_list",
       "continue": false,
       "match": {
         "primary": [
@@ -2297,7 +2387,7 @@
     {
       "id": "telephone_encounter",
       "display": "Telephone Encounter\\Visit\\Note\\Phone note",
-      "family": "progress_note",
+      "family": "telephone_encounter",
       "continue": false,
       "match": {
         "primary": [
@@ -2312,7 +2402,7 @@
     {
       "id": "protocols",
       "display": "Protocols",
-      "family": "administrative",
+      "family": "administrative_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2325,7 +2415,7 @@
     {
       "id": "demographics",
       "display": "Demographics",
-      "family": "demographics",
+      "family": "patient_demographics",
       "continue": false,
       "match": {
         "primary": [
@@ -2361,7 +2451,7 @@
     {
       "id": "vaccination_administration_record",
       "display": "Vaccination Administration Record",
-      "family": "medication_immunization",
+      "family": "medication_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2374,7 +2464,7 @@
     {
       "id": "face_sheet_registration",
       "display": "Face sheet / Registration",
-      "family": "demographics",
+      "family": "patient_demographics",
       "continue": false,
       "match": {
         "primary": [
@@ -2389,7 +2479,7 @@
     {
       "id": "immunization_consent",
       "display": "Immunization Consent",
-      "family": "consent_authorization",
+      "family": "consent_form",
       "continue": false,
       "match": {
         "primary": [
@@ -2402,7 +2492,7 @@
     {
       "id": "audiology_hearing_report_audiology_notes",
       "display": "Audiology / Hearing Report/Audiology Notes",
-      "family": "specialty_consult",
+      "family": "specialty_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2416,7 +2506,7 @@
     {
       "id": "allergy_testing_report",
       "display": "Allergy Testing Report",
-      "family": "laboratory",
+      "family": "laboratory_report",
       "continue": false,
       "match": {
         "primary": [
@@ -2442,7 +2532,7 @@
     {
       "id": "genetic_test_report",
       "display": "Genetic Test Report",
-      "family": "laboratory",
+      "family": "laboratory_report",
       "continue": false,
       "match": {
         "primary": [
@@ -2468,7 +2558,7 @@
     {
       "id": "insurance_authorization_note",
       "display": "Insurance Authorization Note",
-      "family": "consent_authorization",
+      "family": "order_and_requisition",
       "continue": false,
       "match": {
         "primary": [
@@ -2494,7 +2584,7 @@
     {
       "id": "surgical_consent_form",
       "display": "Surgical Consent Form",
-      "family": "consent_authorization",
+      "family": "consent_form",
       "continue": false,
       "match": {
         "primary": [
@@ -2507,7 +2597,7 @@
     {
       "id": "occupational_therapy_daily_note",
       "display": "Occupational Therapy Daily Note",
-      "family": "therapy_rehab",
+      "family": "therapy_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2520,7 +2610,7 @@
     {
       "id": "blood_transfusion_record",
       "display": "Blood Transfusion Record",
-      "family": "medication_immunization",
+      "family": "medication_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2533,7 +2623,7 @@
     {
       "id": "retinal_office_procedure_note",
       "display": "Retinal Office Procedure Note",
-      "family": "procedure",
+      "family": "procedure_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2546,7 +2636,7 @@
     {
       "id": "transfusion_consent",
       "display": "Transfusion Consent",
-      "family": "consent_authorization",
+      "family": "consent_form",
       "continue": false,
       "match": {
         "primary": [
@@ -2559,7 +2649,7 @@
     {
       "id": "screening_test_record",
       "display": "Screening Test Record",
-      "family": "screening_checklist",
+      "family": "screening_and_checklist",
       "continue": false,
       "match": {
         "primary": [
@@ -2572,7 +2662,7 @@
     {
       "id": "inform_evaluation_visual",
       "display": "Inform Evaluation Visual",
-      "family": "ophthalmology",
+      "family": "eye_examination",
       "continue": false,
       "match": {
         "primary": [
@@ -2586,7 +2676,7 @@
     {
       "id": "preventive_health_checklist",
       "display": "Preventive Health Checklist",
-      "family": "screening_checklist",
+      "family": "screening_and_checklist",
       "continue": false,
       "match": {
         "primary": [
@@ -2599,7 +2689,7 @@
     {
       "id": "fundas_photography",
       "display": "Fundas Photography(EYE REPORT)",
-      "family": "ophthalmology",
+      "family": "eye_examination",
       "continue": false,
       "match": {
         "primary": [
@@ -2613,7 +2703,7 @@
     {
       "id": "glucose_report",
       "display": "Glucose Report",
-      "family": "laboratory",
+      "family": "laboratory_report",
       "continue": false,
       "match": {
         "primary": [
@@ -2639,7 +2729,7 @@
     {
       "id": "hipaa_form",
       "display": "HIPAA Form",
-      "family": "consent_authorization",
+      "family": "consent_form",
       "continue": false,
       "match": {
         "primary": [
@@ -2652,7 +2742,7 @@
     {
       "id": "biopsy_report_pathology_report",
       "display": "Biopsy report/Pathology report",
-      "family": "pathology",
+      "family": "pathology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -2693,7 +2783,7 @@
     {
       "id": "discharge_notice",
       "display": "Discharge Notice",
-      "family": "administrative",
+      "family": "patient_communication",
       "continue": false,
       "match": {
         "primary": [
@@ -2706,7 +2796,7 @@
     {
       "id": "laryngoscopy_procedure_report",
       "display": "Laryngoscopy Procedure Report",
-      "family": "procedure",
+      "family": "procedure_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2719,7 +2809,7 @@
     {
       "id": "hematology",
       "display": "Hematology",
-      "family": "laboratory",
+      "family": "laboratory_report",
       "continue": false,
       "match": {
         "primary": [
@@ -2732,7 +2822,7 @@
     {
       "id": "tissue_examination_report",
       "display": "Tissue Examination Report",
-      "family": "pathology",
+      "family": "pathology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -2745,7 +2835,7 @@
     {
       "id": "molecular_diagnostics_test",
       "display": "Molecular Diagnostics Test",
-      "family": "pathology",
+      "family": "pathology_report",
       "continue": false,
       "match": {
         "primary": [
@@ -2758,7 +2848,7 @@
     {
       "id": "therapy_report",
       "display": "Therapy report",
-      "family": "therapy_rehab",
+      "family": "therapy_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2771,7 +2861,7 @@
     {
       "id": "radiation_therapy_record",
       "display": "Radiation Therapy Record",
-      "family": "therapy_administration",
+      "family": "infusion_therapy_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2784,7 +2874,7 @@
     {
       "id": "chemotherapy_administration_record",
       "display": "Chemotherapy Administration Record",
-      "family": "therapy_administration",
+      "family": "infusion_therapy_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2797,7 +2887,7 @@
     {
       "id": "infusion_therapy_note",
       "display": "Infusion Therapy Note",
-      "family": "therapy_administration",
+      "family": "infusion_therapy_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2810,7 +2900,7 @@
     {
       "id": "pain_management_note",
       "display": "Pain Management Note",
-      "family": "care_plan",
+      "family": "palliative_care_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2823,7 +2913,7 @@
     {
       "id": "palliative_care_note",
       "display": "Palliative Care Note",
-      "family": "inpatient_critical",
+      "family": "palliative_care_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2836,7 +2926,7 @@
     {
       "id": "hospice_care_record",
       "display": "Hospice Care Record",
-      "family": "inpatient_critical",
+      "family": "palliative_care_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2849,7 +2939,7 @@
     {
       "id": "critical_care_note",
       "display": "Critical Care Note",
-      "family": "inpatient_critical",
+      "family": "critical_care_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2862,7 +2952,7 @@
     {
       "id": "icu_flow_sheet",
       "display": "ICU Flow Sheet",
-      "family": "inpatient_critical",
+      "family": "critical_care_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2875,7 +2965,7 @@
     {
       "id": "ventilator_management_record",
       "display": "Ventilator Management Record",
-      "family": "inpatient_critical",
+      "family": "critical_care_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2888,7 +2978,7 @@
     {
       "id": "respiratory_therapy_note",
       "display": "Respiratory Therapy Note",
-      "family": "therapy_rehab",
+      "family": "therapy_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2901,7 +2991,7 @@
     {
       "id": "dialysis_treatment_record",
       "display": "Dialysis Treatment Record",
-      "family": "inpatient_critical",
+      "family": "dialysis_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2914,7 +3004,7 @@
     {
       "id": "hemodialysis_flow_sheet",
       "display": "Hemodialysis Flow Sheet",
-      "family": "inpatient_critical",
+      "family": "dialysis_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2927,7 +3017,7 @@
     {
       "id": "peritoneal_dialysis_record",
       "display": "Peritoneal Dialysis Record",
-      "family": "inpatient_critical",
+      "family": "dialysis_record",
       "continue": false,
       "match": {
         "primary": [
@@ -2940,7 +3030,7 @@
     {
       "id": "wound_care_note",
       "display": "Wound Care Note",
-      "family": "inpatient_critical",
+      "family": "wound_care_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2953,7 +3043,7 @@
     {
       "id": "burn_treatment_record",
       "display": "Burn Treatment Record",
-      "family": "inpatient_critical",
+      "family": "wound_care_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2966,7 +3056,7 @@
     {
       "id": "infection_control_note",
       "display": "Infection Control Note",
-      "family": "inpatient_critical",
+      "family": "wound_care_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2979,7 +3069,7 @@
     {
       "id": "genetic_counseling_note",
       "display": "Genetic Counseling Note",
-      "family": "specialty_consult",
+      "family": "specialty_note",
       "continue": false,
       "match": {
         "primary": [
@@ -2992,7 +3082,7 @@
     {
       "id": "sleep_clinic_note",
       "display": "Sleep Clinic Note",
-      "family": "pulmonary_sleep",
+      "family": "sleep_study",
       "continue": false,
       "match": {
         "primary": [
@@ -3005,7 +3095,7 @@
     {
       "id": "behavioral_health_note",
       "display": "Behavioral Health Note",
-      "family": "behavioral_health",
+      "family": "behavioral_health_note",
       "continue": false,
       "match": {
         "primary": [
@@ -3018,7 +3108,7 @@
     {
       "id": "psychotherapy_session_note",
       "display": "Psychotherapy Session Note",
-      "family": "behavioral_health",
+      "family": "behavioral_health_note",
       "continue": false,
       "match": {
         "primary": [
@@ -3031,7 +3121,7 @@
     {
       "id": "substance_abuse_treatment_record",
       "display": "Substance Abuse Treatment Record",
-      "family": "behavioral_health",
+      "family": "behavioral_health_note",
       "continue": false,
       "match": {
         "primary": [
@@ -3044,7 +3134,7 @@
     {
       "id": "rehabilitation_plan",
       "display": "Rehabilitation Plan",
-      "family": "therapy_rehab",
+      "family": "therapy_note",
       "continue": false,
       "match": {
         "primary": [
@@ -3057,7 +3147,7 @@
     {
       "id": "speech_therapy_note",
       "display": "Speech Therapy Note",
-      "family": "therapy_rehab",
+      "family": "therapy_note",
       "continue": false,
       "match": {
         "primary": [
@@ -3070,7 +3160,7 @@
     {
       "id": "chiropractic_treatment_note",
       "display": "Chiropractic Treatment Note",
-      "family": "therapy_rehab",
+      "family": "therapy_note",
       "continue": false,
       "match": {
         "primary": [
@@ -3083,7 +3173,7 @@
     {
       "id": "acupuncture_treatment_record",
       "display": "Acupuncture Treatment Record",
-      "family": "therapy_rehab",
+      "family": "therapy_note",
       "continue": false,
       "match": {
         "primary": [
@@ -3096,7 +3186,7 @@
     {
       "id": "home_health_visit_note",
       "display": "Home Health Visit Note",
-      "family": "progress_note",
+      "family": "home_visit_note",
       "continue": false,
       "match": {
         "primary": [
@@ -3109,7 +3199,7 @@
     {
       "id": "skilled_nursing_visit_note",
       "display": "Skilled Nursing Visit Note",
-      "family": "progress_note",
+      "family": "home_visit_note",
       "continue": false,
       "match": {
         "primary": [
@@ -3122,7 +3212,7 @@
     {
       "id": "case_management_note",
       "display": "Case Management Note",
-      "family": "care_plan",
+      "family": "plan_of_care",
       "continue": false,
       "match": {
         "primary": [
@@ -3135,7 +3225,7 @@
     {
       "id": "care_coordination_note",
       "display": "Care Coordination Note",
-      "family": "care_plan",
+      "family": "plan_of_care",
       "continue": false,
       "match": {
         "primary": [
@@ -3148,7 +3238,7 @@
     {
       "id": "utilization_review_note",
       "display": "Utilization Review Note",
-      "family": "care_plan",
+      "family": "plan_of_care",
       "continue": false,
       "match": {
         "primary": [
@@ -3161,7 +3251,7 @@
     {
       "id": "preoperative_evaluation",
       "display": "Preoperative Evaluation",
-      "family": "procedure",
+      "family": "perioperative_evaluation",
       "continue": false,
       "match": {
         "primary": [
@@ -3174,7 +3264,7 @@
     {
       "id": "postoperative_follow_up_note",
       "display": "Postoperative Follow-up Note",
-      "family": "procedure",
+      "family": "perioperative_evaluation",
       "continue": false,
       "match": {
         "primary": [
@@ -3187,7 +3277,7 @@
     {
       "id": "anesthesia_pre_op_assessment",
       "display": "Anesthesia Pre-op Assessment",
-      "family": "procedure",
+      "family": "anesthesia_record",
       "continue": false,
       "match": {
         "primary": [
@@ -3200,7 +3290,7 @@
     {
       "id": "anesthesia_post_op_note",
       "display": "Anesthesia Post-op Note",
-      "family": "procedure",
+      "family": "anesthesia_record",
       "continue": false,
       "match": {
         "primary": [
@@ -3213,7 +3303,7 @@
     {
       "id": "implant_record",
       "display": "Implant Record",
-      "family": "procedure",
+      "family": "implant_record",
       "continue": false,
       "match": {
         "primary": [
@@ -3226,7 +3316,7 @@
     {
       "id": "device_implant_log",
       "display": "Device Implant Log",
-      "family": "procedure",
+      "family": "implant_record",
       "continue": false,
       "match": {
         "primary": [
@@ -3239,7 +3329,7 @@
     {
       "id": "emergency_medical_services_report",
       "display": "Emergency Medical Services (EMS) Report",
-      "family": "inpatient_critical",
+      "family": "emergency_department_note",
       "continue": false,
       "match": {
         "primary": [
@@ -3254,7 +3344,7 @@
     {
       "id": "occupational_health_record",
       "display": "Occupational Health Record",
-      "family": "assessment_screening",
+      "family": "assessment_and_evaluation",
       "continue": false,
       "match": {
         "primary": [
@@ -3267,7 +3357,7 @@
     {
       "id": "work_injury_evaluation",
       "display": "Work Injury Evaluation",
-      "family": "assessment_screening",
+      "family": "assessment_and_evaluation",
       "continue": false,
       "match": {
         "primary": [
@@ -3280,7 +3370,7 @@
     {
       "id": "fitness_for_duty_evaluation",
       "display": "Fitness for Duty Evaluation",
-      "family": "assessment_screening",
+      "family": "assessment_and_evaluation",
       "continue": false,
       "match": {
         "primary": [
@@ -3293,7 +3383,7 @@
     {
       "id": "school_physical_form",
       "display": "School Physical Form",
-      "family": "assessment_screening",
+      "family": "assessment_and_evaluation",
       "continue": false,
       "match": {
         "primary": [
@@ -3306,7 +3396,7 @@
     {
       "id": "sports_physical_examination",
       "display": "Sports Physical Examination",
-      "family": "assessment_screening",
+      "family": "assessment_and_evaluation",
       "continue": false,
       "match": {
         "primary": [
@@ -3319,7 +3409,7 @@
     {
       "id": "travel_medicine_consultation",
       "display": "Travel Medicine Consultation",
-      "family": "specialty_consult",
+      "family": "specialty_note",
       "continue": false,
       "match": {
         "primary": [
@@ -3358,7 +3448,7 @@
     {
       "id": "cardiac_rehabilitation_note",
       "display": "Cardiac Rehabilitation Note",
-      "family": "therapy_rehab",
+      "family": "therapy_note",
       "continue": false,
       "match": {
         "primary": [
@@ -3397,7 +3487,7 @@
     {
       "id": "treadmill_report",
       "display": "Treadmill Report",
-      "family": "cardiac_diagnostic",
+      "family": "cardiac_diagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -3423,7 +3513,7 @@
     {
       "id": "lens_parameters",
       "display": "Lens Parameters",
-      "family": "ophthalmology",
+      "family": "eye_examination",
       "continue": false,
       "match": {
         "primary": [
@@ -3436,7 +3526,7 @@
     {
       "id": "neurocognitive_screening_examination",
       "display": "Neurocognitive Screening Examination",
-      "family": "assessment_screening",
+      "family": "neurodiagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -3449,7 +3539,7 @@
     {
       "id": "split_night_report",
       "display": "Split Night Report",
-      "family": "pulmonary_sleep",
+      "family": "sleep_study",
       "continue": false,
       "match": {
         "primary": [
@@ -3475,7 +3565,7 @@
     {
       "id": "spect_report",
       "display": "SPECT Report",
-      "family": "nuclear_medicine",
+      "family": "nuclear_medicine_report",
       "continue": false,
       "match": {
         "primary": [
@@ -3488,7 +3578,7 @@
     {
       "id": "event_report",
       "display": "Event Report",
-      "family": "cardiac_diagnostic",
+      "family": "cardiac_diagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -3514,7 +3604,7 @@
     {
       "id": "videonystagmography",
       "display": "Videonystagmography",
-      "family": "neuro_diagnostic",
+      "family": "neurodiagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -3527,7 +3617,7 @@
     {
       "id": "device_specialist_notes",
       "display": "Device Specialist notes",
-      "family": "specialty_consult",
+      "family": "specialty_note",
       "continue": false,
       "match": {
         "primary": [
@@ -3540,7 +3630,7 @@
     {
       "id": "titration_report",
       "display": "Titration Report",
-      "family": "pulmonary_sleep",
+      "family": "sleep_study",
       "continue": false,
       "match": {
         "primary": [
@@ -3553,7 +3643,7 @@
     {
       "id": "sural_nerve_conduction_study",
       "display": "Sural Nerve Conduction Study",
-      "family": "neuro_diagnostic",
+      "family": "neurodiagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -3566,7 +3656,7 @@
     {
       "id": "visual_field_interpretation",
       "display": "Visual Field interpretation",
-      "family": "ophthalmology",
+      "family": "eye_examination",
       "continue": false,
       "match": {
         "primary": [
@@ -3579,7 +3669,7 @@
     {
       "id": "mohs_report",
       "display": "MOHS Report",
-      "family": "procedure",
+      "family": "procedure_note",
       "continue": false,
       "match": {
         "primary": [
@@ -3605,7 +3695,7 @@
     {
       "id": "sudoscan_report",
       "display": "Sudoscan Report",
-      "family": "neuro_diagnostic",
+      "family": "neurodiagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -3618,7 +3708,7 @@
     {
       "id": "dpn_results",
       "display": "DPN Results",
-      "family": "neuro_diagnostic",
+      "family": "neurodiagnostic_test",
       "continue": false,
       "match": {
         "primary": [
@@ -3647,7 +3737,7 @@
     {
       "id": "discharge_report",
       "display": "Discharge Report",
-      "family": "discharge",
+      "family": "discharge_summary",
       "match": {
         "primary": [
           "discharge report"

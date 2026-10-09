@@ -53,6 +53,8 @@ DEFAULT_PIPELINE_STAGES: list[dict[str, Any]] = [
      "label": "Final OCR 2 (Azure DocIntel)", "is_phase1": True},
     {"stage_name": "section_headers", "pass_no": 1, "seq": 55,
      "label": "Section Header Match", "is_phase1": True},
+    {"stage_name": "kv_extract", "pass_no": 1, "seq": 56,
+     "label": "Key/Value Extraction", "is_phase1": True},
     {"stage_name": "blank_junk", "pass_no": 2, "seq": 60,
      "label": "Blank/Junk/Duplicate — pass 2", "is_phase1": True},
     {"stage_name": "member_verify", "pass_no": 1, "seq": 70,

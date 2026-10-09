@@ -1,7 +1,7 @@
 """Logging configuration, in one place.
 
 Exists because of one specific problem. The pipeline's own logs are per-page
-progress lines — `[Final OCR 2] Page 37 of 400 completed` — and they are how a
+progress lines — `[53688890][37] [Final OCR 2] completed (37 of 400)` — and they are how a
 long run is watched. The Azure SDKs log **every request and every response
 header** through `azure.core.pipeline.policies.http_logging_policy`, at INFO.
 Setting the root logger to INFO to see our lines therefore also turns those on,
@@ -22,9 +22,8 @@ File logs (optional, on by default): daily rotation under ``LOG_DIR``
 (default ``core-pipeline/logs/``) as ``core-pipeline.log`` + dated backups.
 Stdout still works for ``docker compose logs``.
 
-Console lines tag every message as ``[batch-N] [chart_name]`` (worker +
-document) so parallel charts are easy to tell apart. Colour, when enabled,
-applies to the worker tag only. File logs stay plain (no ANSI).
+Console lines read ``[chart][page] [stage] status``. Page and stage are
+``-`` until a stage binds them. File logs use the same shape, without colour.
 """
 from __future__ import annotations
 
@@ -39,7 +38,7 @@ from typing import Optional
 
 # Parent loggers: one setLevel covers every child. Azure HTTP dumps, Docling
 # convert chatter, RapidOCR model-path INFO, and Hugging Face httpx GETs
-# otherwise bury [batch#] [chart#] progress.
+# otherwise bury [chart][page] [stage] progress.
 NOISY_LOGGERS = (
     "azure",
     "urllib3",
@@ -62,11 +61,9 @@ ALWAYS_QUIET = ("azure.identity._credentials.chained",)
 
 DEFAULT_AZURE_LOG_LEVEL = "WARNING"
 LOG_FORMAT = (
-    "%(asctime)s %(levelname)s [%(threadName)s] [%(chart)s] %(name)s: %(message)s"
+    "%(asctime)s %(levelname)s [%(chart)s][%(page)s] [%(stage)s] %(message)s"
 )
-LOG_FORMAT_COLOR = (
-    "%(asctime)s %(levelname)s [%(worker_colored)s] [%(chart)s] %(name)s: %(message)s"
-)
+LOG_FORMAT_COLOR = LOG_FORMAT
 # Keep a month of daily files; older ones are removed on rotate.
 LOG_BACKUP_COUNT = int(os.environ.get("LOG_BACKUP_DAYS") or "30")
 
@@ -92,10 +89,16 @@ _DIM = "\033[2m"
 _current_chart: contextvars.ContextVar[str] = contextvars.ContextVar(
     "pipeline_chart", default=""
 )
+_current_page: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "pipeline_page", default=""
+)
+_current_stage: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "pipeline_stage_label", default=""
+)
 
 
 def set_current_chart(chart_name: Optional[str]) -> contextvars.Token:
-    """Bind the chart name into ``[batch#] [chart#]`` log tags for this context."""
+    """Bind the chart name into ``[chart][page]`` for this context."""
     return _current_chart.set((chart_name or "").strip())
 
 
@@ -107,15 +110,53 @@ def get_current_chart() -> str:
     return _current_chart.get() or ""
 
 
+def set_current_page(page_no: Optional[object]) -> contextvars.Token:
+    """Bind the page number into ``[chart][page]`` for this context."""
+    text = "" if page_no is None else str(page_no).strip()
+    return _current_page.set(text)
+
+
+def reset_current_page(token: contextvars.Token) -> None:
+    _current_page.reset(token)
+
+
+def set_current_stage(label: Optional[str]) -> contextvars.Token:
+    """Bind the stage name into ``[stage]`` for this context."""
+    return _current_stage.set((label or "").strip())
+
+
+def reset_current_stage(token: contextvars.Token) -> None:
+    _current_stage.reset(token)
+
+
 def _chart_tag() -> str:
     return _current_chart.get() or "-"
 
 
+def _page_tag() -> str:
+    return _current_page.get() or "-"
+
+
+def _stage_tag() -> str:
+    return _current_stage.get() or "-"
+
+
+def _bind_record(record: logging.LogRecord) -> None:
+    if not hasattr(record, "chart"):
+        record.chart = _chart_tag()
+    if not hasattr(record, "page"):
+        record.page = _page_tag()
+    if not hasattr(record, "stage"):
+        record.stage = _stage_tag()
+
+
 class _ChartContextFilter(logging.Filter):
-    """Inject ``record.chart`` so the format string always has a value."""
+    """Inject chart, page, and stage so the format string always has them."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         record.chart = _chart_tag()
+        record.page = _page_tag()
+        record.stage = _stage_tag()
         return True
 
 
@@ -189,8 +230,7 @@ class _WorkerColorFormatter(logging.Formatter):
     """Colour only the worker/thread tag; rest of the line stays normal."""
 
     def format(self, record: logging.LogRecord) -> str:
-        if not hasattr(record, "chart"):
-            record.chart = _chart_tag()
+        _bind_record(record)
         record.worker_colored = _worker_color(getattr(record, "threadName", "") or "-")
         return super().format(record)
 
@@ -199,8 +239,7 @@ class _ChartAwareFormatter(logging.Formatter):
     """Plain formatter that never KeyErrors on missing ``chart``."""
 
     def format(self, record: logging.LogRecord) -> str:
-        if not hasattr(record, "chart"):
-            record.chart = _chart_tag()
+        _bind_record(record)
         return super().format(record)
 
 

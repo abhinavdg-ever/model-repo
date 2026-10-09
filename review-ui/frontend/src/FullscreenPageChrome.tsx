@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import {
   ChevronLeft,
   ChevronRight,
+  Download,
   GripHorizontal,
   Minimize2,
   ZoomIn,
@@ -23,6 +24,9 @@ type Props = {
   onJump: (pageIndex: number) => void;
   onExitFullscreen: () => void;
   label?: string;
+  onDownload?: () => void;
+  downloadLabel?: string;
+  downloading?: boolean;
 };
 
 type Pos = { x: number; y: number };
@@ -42,6 +46,9 @@ export default function FullscreenPageChrome({
   onJump,
   onExitFullscreen,
   label,
+  onDownload,
+  downloadLabel,
+  downloading = false,
 }: Props) {
   const barRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
@@ -167,6 +174,18 @@ export default function FullscreenPageChrome({
           <ChevronRight size={16} />
         </button>
       </div>
+
+      {onDownload ? (
+        <button
+          type="button"
+          onClick={onDownload}
+          disabled={downloading}
+          aria-label={downloadLabel ? `Download ${downloadLabel}` : "Download page"}
+          title={downloadLabel || "Download page"}
+        >
+          <Download size={16} />
+        </button>
+      ) : null}
 
       <button
         type="button"

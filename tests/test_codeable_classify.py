@@ -418,7 +418,7 @@ def test_the_dos_default_is_not_a_span_date():
 
 def test_rows_carry_the_evidence(canon):
     (row,) = classify_pages([_page(1, "Discharge Summary consent form")], entries=canon)
-    assert row["family_scores"]["discharge"] > row["family_scores"]["consent_authorization"]
+    assert row["family_scores"]["discharge_summary"] > row["family_scores"]["consent_form"]
     assert {h["role"] for h in row["hits"]} == {"primary"}
     assert row["previous_family"] == ""
 
@@ -455,7 +455,7 @@ def test_the_family_total_decides_not_the_single_best_type(canon):
     text = f"{pad} discharge summary {pad} physician notes {pad} nurses notes {pad}"
     hit = score_text(text, canon)
     # One discharge type (4) against two progress-note types (4 + 4).
-    assert hit.family_scores["discharge"] == 4
+    assert hit.family_scores["discharge_summary"] == 4
     assert hit.family_scores["progress_note"] == 8
     assert hit.family == "progress_note"
     assert hit.confidence == pytest.approx((8 - 4) / 8)
@@ -482,8 +482,8 @@ def test_no_family_mixes_codeable_and_non_codeable(canon):
     for e in canon:
         tags.setdefault(e.family, set()).add(e.tag)
     assert all(len(t) == 1 for t in tags.values())
-    assert {e.tag for e in canon if e.family == "laboratory"} == {"non_codeable"}
-    assert {e.tag for e in canon if e.family == "pathology"} == {"codeable"}
+    assert {e.tag for e in canon if e.family == "laboratory_report"} == {"non_codeable"}
+    assert {e.tag for e in canon if e.family == "pathology_report"} == {"codeable"}
 
 
 def test_a_visit_note_without_a_title_is_a_progress_note(canon):
@@ -552,11 +552,102 @@ def test_a_dominant_progress_note_wins_over_a_bigger_family(canon):
                     ["lab work", "chemistry report", "laboratory data", "lab flow sheet", "glucose report"])
     text = f"{pad} medical hx {pad} family hx {pad} social hx {labs} {pad}"
     hit = score_text(text, canon)
-    assert hit.family_scores["laboratory"] > hit.family_scores["progress_note"] >= 12
+    assert hit.family_scores["laboratory_report"] > hit.family_scores["progress_note"] >= 12
     assert hit.family == "progress_note"
     # Below the threshold the bigger family still wins.
     hit = score_text(f"{pad} medical hx {labs} {pad}", canon)
-    assert hit.family == "laboratory"
+    assert hit.family == "laboratory_report"
+
+
+def test_model_family_keeps_a_keyword_subtype_or_the_family_name(canon):
+    typed, bare, titled = classify_pages(
+        [
+            {
+                **_page(1, "SOAP Note\nSubjective: cough. Objective: clear."),
+                "model_family": "Progress Note",
+                "model_confidence": 0.82,
+            },
+            {
+                **_page(2, "zzzz nothing clinical is written here"),
+                "model_family": "Laboratory Report",
+                "model_confidence": 0.80,
+            },
+            {
+                **_page(3, "Consent form — patient authorization signature"),
+                "model_family": "Progress Note",
+                "model_confidence": 0.60,
+            },
+        ],
+        entries=canon,
+    )
+    assert typed["family"] == "progress_note"
+    assert typed["family_source"] == "model"
+    assert typed["confidence"] == pytest.approx(0.82)
+    assert typed["page_type"] != "Progress Note"
+    assert bare["family"] == "laboratory_report"
+    assert bare["page_type"] == "Laboratory Report"
+    assert bare["family_source"] == "model"
+    assert bare["confidence"] == pytest.approx(0.80)
+    assert titled["family"] == "progress_note"
+    assert titled["family_source"] == "model"
+    assert titled["confidence"] == pytest.approx(0.60)
+    assert titled["page_type"] == "Progress Note"
+
+
+def test_an_abstaining_model_uses_a_clear_keyword_then_a_top_three_overlap(canon):
+    clear, keyword, overlap = classify_pages(
+        [
+            {
+                **_page(1, "SOAP Note\nSubjective: cough. Objective: clear."),
+                "model_top": ["Laboratory Report", "Radiology Report", "Eye Examination"],
+            },
+            {
+                **_page(2, "Discharge Summary consent form"),
+                "model_top": [
+                    {"page_family": "Laboratory Report", "score": 0.18},
+                    {"page_family": "Discharge Summary", "score": 0.16},
+                    {"page_family": "Consent Form", "score": 0.12},
+                ],
+            },
+            {
+                **_page(3, "zzzz nothing clinical is written here"),
+                "model_top": [
+                    {"page_family": "Laboratory Report", "score": 0.18},
+                    {"page_family": "Radiology Report", "score": 0.10},
+                    {"page_family": "Eye Examination", "score": 0.05},
+                ],
+            },
+        ],
+        entries=canon,
+    )
+    assert clear["family"] == "progress_note"
+    assert clear["family_source"] == "keywords"
+    assert clear["confidence"] == pytest.approx(1.0)
+    assert keyword["family"] == "discharge_summary"
+    assert keyword["family_source"] == "keywords"
+    assert keyword["confidence"] == pytest.approx((8 - 4) / 8)
+    assert overlap["page_type"] == "Others"
+    assert overlap["family_source"] == "others"
+    assert overlap["confidence"] == pytest.approx(0.0)
+
+
+def test_a_top_three_overlap_does_not_need_a_model_probability_floor(canon):
+    from stages.lib.page_classify.codeable_classify import _match_from_agreement
+
+    match, source = _match_from_agreement(
+        "Discharge Summary consent form",
+        {
+            "model_top": [
+                {"page_family": "Laboratory Report", "score": 0.10},
+                {"page_family": "Discharge Summary", "score": 0.08},
+                {"page_family": "Eye Examination", "score": 0.04},
+            ]
+        },
+        canon,
+    )
+    assert source == "agree"
+    assert match.family == "discharge_summary"
+    assert match.confidence == pytest.approx(0.08)
 
 
 def test_an_unmatched_page_between_progress_notes_is_filled(canon):
@@ -585,4 +676,4 @@ def test_a_page_matched_to_another_family_is_not_filled(canon):
         ],
         entries=canon,
     )
-    assert rows[1]["family"] == "consent_authorization"
+    assert rows[1]["family"] == "consent_form"

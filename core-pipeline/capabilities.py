@@ -307,6 +307,16 @@ def hw_model_status() -> dict[str, Any]:
     }
 
 
+def page_family_model_status() -> dict[str, Any]:
+    """Page-family TF-IDF model. Never raises; never loads the weights."""
+    try:
+        from stages.lib.page_classify.family_model import model_status
+
+        return model_status()
+    except Exception as exc:
+        return {"ready": False, "loaded": False, "reason": str(exc)}
+
+
 def blank_junk_model_status() -> dict[str, Any]:
     """TF-IDF blank/junk model. Never raises; never loads the model."""
     try:
@@ -346,6 +356,16 @@ def rapidocr_models_status() -> dict[str, Any]:
     }
 
 
+def extraction_status() -> dict[str, Any]:
+    """Key/value ranker, GLiNER and Heron. Never raises and never loads them."""
+    try:
+        from stages.lib.extraction.engine import readiness
+
+        return readiness()
+    except Exception as exc:
+        return {"ready": False, "reason": str(exc)}
+
+
 def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
     """Every optional feature at once. `probe=True` allows one blob round trip."""
     from stages.lib.ocr.docling_ocr import docling_status
@@ -358,7 +378,9 @@ def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
         "docling_final1": docling_status(),
         "hw_model": hw_model_status(),
         "blank_junk_model": blank_junk_model_status(),
+        "page_family_model": page_family_model_status(),
         "rapidocr_models": rapidocr_models_status(),
+        "extraction": extraction_status(),
         "skip_ocr": {
             "enabled": SKIP_OCR,
             "ready": True,
@@ -396,6 +418,7 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     hw = caps.get("hw_model") or {}
     rapid = caps.get("rapidocr_models") or {}
     bj = caps.get("blank_junk_model") or {}
+    family = caps.get("page_family_model") or {}
 
     blob_on = f"OK — {blob.get('auth')}"
     if blob.get("account"):
@@ -414,6 +437,7 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     hw_on = f"OK — {hw.get('engine') or 'ready'}"
     rapid_on = "OK"
     bj_on = f"OK — {bj.get('model_version') or 'ready'}"
+    family_on = "OK"
     skip_on = "ON"
 
     skip_line = (
@@ -427,6 +451,7 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
         ("HW model", _one_line(hw, hw_on)),
         ("RapidOCR", _one_line(rapid, rapid_on)),
         ("blank/junk model", _one_line(bj, bj_on)),
+        ("page-family model", _one_line(family, family_on)),
         ("final1 Docling", _one_line(docling, docling_on)),
         ("final2 OCR", _one_line(di, di_on)),
         ("DOS LLM", _one_line(llm, llm_on)),

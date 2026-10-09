@@ -16,10 +16,39 @@ _COLUMNS = """
     member_name, member_dob, dos_from, dos_to,
     encounter_type, page_type, codeable,
     blank_page, junk_page, is_invoice, page_sequence, rotation,
-    to_jsonb(page_ground_truth) ->> 'is_visible'
+    to_jsonb(page_ground_truth) ->> 'is_visible',
+    to_jsonb(page_ground_truth) ->> 'rendering_provider',
+    to_jsonb(page_ground_truth) ->> 'provider_signature',
+    to_jsonb(page_ground_truth) ->> 'member_id'
 """
-# is_visible is read through to_jsonb so a database created before the column
-# existed returns NULL instead of failing the whole lookup.
+
+_EMPTY = {"", "na", "n/a", "not found", "not available"}
+
+
+def clean_label(value: str | None) -> str | None:
+    """Blank and NA are an empty ground-truth cell."""
+    text = (value or "").strip()
+    if text.casefold() in _EMPTY:
+        return None
+    return text
+
+
+def yes_no_label(value: str | None) -> str | None:
+    """Member name, DOB, member id, and provider signature are only Yes or No."""
+    text = clean_label(value)
+    if text is None:
+        return None
+    folded = text.casefold()
+    if folded in {"yes", "y", "true"}:
+        return "Yes"
+    if folded in {"no", "n", "false"}:
+        return "No"
+    return None
+
+
+# is_visible, rendering_provider, provider_signature, and member_id are read
+# through to_jsonb so a database created before the column existed returns
+# NULL instead of failing the whole lookup.
 
 
 def charts_with_ground_truth(database_url: str | None, db_schema: str = "public") -> set[str]:
@@ -68,25 +97,127 @@ def ground_truth_by_page(
 
     out: dict[int, PageGroundTruth] = {}
     for row in rows:
-        number = int(row[0])
-        out[number] = PageGroundTruth(
-            pageNumber=number,
-            sourcePageId=row[1],
-            memberName=row[2],
-            memberDob=row[3],
-            dosFrom=row[4],
-            dosTo=row[5],
-            encounterType=row[6],
-            pageType=row[7],
-            codeable=row[8],
-            blankPage=row[9],
-            junkPage=row[10],
-            isInvoice=row[11],
-            pageSequence=row[12],
-            rotation=row[13],
-            isVisible=row[14],
-        )
+        parsed = _ground_truth_from_row(row)
+        out[parsed.pageNumber] = parsed
     return out
+
+
+def _ground_truth_from_row(row: tuple) -> PageGroundTruth:
+    return PageGroundTruth(
+        pageNumber=int(row[0]),
+        sourcePageId=row[1],
+        memberName=row[2],
+        memberDob=row[3],
+        dosFrom=row[4],
+        dosTo=row[5],
+        encounterType=row[6],
+        pageType=row[7],
+        codeable=row[8],
+        blankPage=row[9],
+        junkPage=row[10],
+        isInvoice=row[11],
+        pageSequence=row[12],
+        rotation=row[13],
+        isVisible=row[14],
+        renderingProvider=row[15] if len(row) > 15 else None,
+        providerSignature=row[16] if len(row) > 16 else None,
+        memberId=row[17] if len(row) > 17 else None,
+    )
+
+
+def _chart_name(folder_id: str) -> str:
+    name = (folder_id or "").strip()
+    if not name or "/" in name or "\\" in name or name in {".", ".."}:
+        raise ValueError("invalid chart name")
+    return name
+
+
+_UPSERT = """
+INSERT INTO page_ground_truth (
+    chart_name, page_number, source_page_id,
+    member_name, member_dob, member_id, dos_from, dos_to,
+    encounter_type, page_type, codeable,
+    blank_page, junk_page, is_invoice,
+    rotation, is_visible,
+    rendering_provider, provider_signature
+) VALUES (
+    %s, %s, %s,
+    %s, %s, %s, %s, %s,
+    %s, %s, %s,
+    %s, %s, %s,
+    %s, %s,
+    %s, %s
+)
+ON CONFLICT (chart_name, page_number) DO UPDATE SET
+    source_page_id = COALESCE(EXCLUDED.source_page_id, page_ground_truth.source_page_id),
+    member_name = EXCLUDED.member_name,
+    member_dob = EXCLUDED.member_dob,
+    member_id = EXCLUDED.member_id,
+    dos_from = EXCLUDED.dos_from,
+    dos_to = EXCLUDED.dos_to,
+    encounter_type = EXCLUDED.encounter_type,
+    page_type = EXCLUDED.page_type,
+    codeable = EXCLUDED.codeable,
+    blank_page = EXCLUDED.blank_page,
+    junk_page = EXCLUDED.junk_page,
+    is_invoice = EXCLUDED.is_invoice,
+    rotation = EXCLUDED.rotation,
+    is_visible = EXCLUDED.is_visible,
+    rendering_provider = EXCLUDED.rendering_provider,
+    provider_signature = EXCLUDED.provider_signature,
+    updated_at = now()
+RETURNING
+    page_number, source_page_id,
+    member_name, member_dob, dos_from, dos_to,
+    encounter_type, page_type, codeable,
+    blank_page, junk_page, is_invoice, page_sequence, rotation,
+    is_visible, rendering_provider, provider_signature,
+    member_id
+"""
+
+
+def upsert_page_ground_truth(
+    database_url: str,
+    folder_id: str,
+    body: PageGroundTruth,
+    db_schema: str = "public",
+) -> PageGroundTruth:
+    """Insert or update the ground-truth row for one chart page.
+
+    A later manual save of the same page hits the same
+    ``(chart_name, page_number)`` key. Columns this screen does not edit
+    (page sequence, specialty, deleted level, source path) are left as they are.
+    """
+    chart = _chart_name(folder_id)
+    if body.pageNumber < 1:
+        raise ValueError("invalid page number")
+    params = (
+        chart,
+        body.pageNumber,
+        clean_label(body.sourcePageId),
+        yes_no_label(body.memberName),
+        yes_no_label(body.memberDob),
+        yes_no_label(body.memberId),
+        clean_label(body.dosFrom),
+        clean_label(body.dosTo),
+        clean_label(body.encounterType),
+        clean_label(body.pageType),
+        clean_label(body.codeable),
+        clean_label(body.blankPage),
+        clean_label(body.junkPage),
+        clean_label(body.isInvoice),
+        clean_label(body.rotation),
+        clean_label(body.isVisible),
+        clean_label(body.renderingProvider),
+        yes_no_label(body.providerSignature),
+    )
+    with connection(database_url, db_schema) as conn:
+        with conn.cursor() as cur:
+            cur.execute(_UPSERT, params)
+            row = cur.fetchone()
+    if row is None:
+        raise RuntimeError("ground truth upsert returned no row")
+    return _ground_truth_from_row(row)
 
 
 def attach_ground_truth(

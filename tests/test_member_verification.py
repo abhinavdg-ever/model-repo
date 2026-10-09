@@ -129,6 +129,30 @@ class TestThreeWordName:
         assert classify_three_word_name(span, "Justin", "Robert", "Anderson") == MISMATCH
 
 
+class TestAgeIsNotAName:
+    def test_year_old_and_old_are_dropped(self):
+        from stages.lib.member.extractors.ner_based.name import _merge_person_hits
+
+        sentence = "The patient is a 64 year old female who presents"
+        start = sentence.index("64 year old")
+        age = {
+            "text": "64 year old",
+            "start": start,
+            "end": start + len("64 year old"),
+            "score": 0.91,
+        }
+        bare = {"text": "old", "start": 0, "end": 3, "score": 0.8}
+        person = {
+            "text": "Priya Nandakumar",
+            "start": 0,
+            "end": len("Priya Nandakumar"),
+            "score": 0.95,
+        }
+        assert _merge_person_hits(sentence, [age]) == []
+        assert _merge_person_hits("old", [bare]) == []
+        assert _merge_person_hits("Priya Nandakumar", [person]) == [(0.95, "Priya Nandakumar")]
+
+
 class TestFindNameOnPage:
     def test_finds_name_after_a_label(self):
         text = "Patient Name: Justin Anderson    DOB: 08/29/1954"
@@ -376,7 +400,7 @@ class TestNerPreflight:
         assert isinstance(installed, bool)
         if not installed:
             # Must name the fix, not just the symptom.
-            assert "requirements-ner.txt" in detail
+            assert "requirements-models.txt" in detail
 
     def test_downloader_is_present_and_declares_all_three_models(self):
         """The checkpoints are not vendored; the downloader is how they arrive,
@@ -395,11 +419,11 @@ class TestNerPreflight:
     def test_optional_requirements_file_exists_and_pins_the_runtime(self):
         from pathlib import Path
 
-        req = Path(__file__).resolve().parents[1] / "core-pipeline" / "requirements-ner.txt"
-        assert req.is_file(), "requirements-ner.txt must ship with the NER port"
+        req = Path(__file__).resolve().parents[1] / "core-pipeline" / "requirements-models.txt"
+        assert req.is_file(), "requirements-models.txt must ship with the NER port"
         text = req.read_text(encoding="utf-8")
         for package in ("gliner", "torch", "transformers", "huggingface_hub"):
-            assert package in text, f"{package} missing from requirements-ner.txt"
+            assert package in text, f"{package} missing from requirements-models.txt"
 
     def test_predict_entities_is_inert_while_the_layer_is_off(self):
         """With the layer off nothing may reach a model — and the absence of

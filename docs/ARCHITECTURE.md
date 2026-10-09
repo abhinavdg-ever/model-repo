@@ -114,7 +114,7 @@ erDiagram
 | `page_list` | page | One row per image. `image_sha256` for download idempotency / image-level dedup. `use_corrected` + `image_path` record which workspace file stages should read (`pages/…` vs `corrected-pages/…`). |
 | `page_stage_status` | page × stage × pass | Progress. Replaces v6's 11 status columns. Drives resume and status derivation. |
 | `manifest_member_list` | record × member | The client roster, keyed on `record_id` — which **is** `chart_list.chart_name`. No `chart_id` column: the relationship is a join, so a sweep can precede ingest with nothing to link afterwards. |
-| `page_ground_truth` | chart × page file | Client imaging labels. `chart_name` is the folder name; `page_number` is the file stem (`1` matches `1.jpg` / `1.png` / `1.tif`). No `chart_id`, so the spreadsheet can load before the chart exists. |
+| `page_ground_truth` | chart × page file | Client imaging labels. `chart_name` is the folder name; `page_number` is the file stem (`1` matches `1.jpg` / `1.png` / `1.tif`). Member name, date of birth, and member id are Yes or No. No `chart_id`, so the spreadsheet can load before the chart exists. |
 
 ### Result tables
 
@@ -211,9 +211,8 @@ still renders.
 
 | File | Role |
 |---|---|
-| `v1.sql` | **What is implemented.** Required. Includes `page_classification`, `encounter_type_results`, `page_sequencing_results`, and 12 phase-1 stages. |
+| `v1.sql` | **What is implemented.** Required. Includes `page_classification`, `encounter_type_results`, `page_sequencing_results`, and the phase-1 stages. |
 | `v2.sql` | **Next phase. Nothing implemented.** Optional; apply after v1.sql. Proposals only (chunking, rejection, models, …) + `rejection_logic` stage. |
-| `patch_output_path.sql` | **Existing DBs only.** Idempotent upgrade: `output_path`, classification/encounter/sequencing tables, stage registry, page_stage_status seeds. |
 
 ### `core-pipeline/` — top level
 
@@ -224,8 +223,8 @@ still renders.
 | `stages/lib/image_preprocess/stage.py` | **Stage 1**, moved ahead of OCR so every pass reads an upright page. Always measures orientation/tilt/mirror; writes `corrected-pages/<n>.jpg` only when `ROTATION_CORRECTION_ENABLED` and only for pages that change. `rotation_applied` means a corrected file exists, not that the page looked crooked. |
 | `config.py` | Every environment-driven setting in one place: database URL, data roots, Azure credentials, feature flags (`MEMBER_NER_ENABLED`, `DOS_LLM_ENABLED`), `STAGE_WORKERS`, and the `chart_dir` / `pages_dir` / `ocr_dir` / `imaging_dir` path helpers. |
 | `cli.py` | Command-line entry: `serve`, `run`, `batch`, `write`, `rerun`, `stages`, `status`, `manifest`. Mirrors the API one-for-one, without the HTTP hop. |
-| `requirements.txt` | Python dependencies for the service. |
-| `requirements-ner.txt` | **Optional** GLiNER runtime (`gliner`, `torch`, `transformers`, ~2.5 GB). Separate so the base image stays small; `docker build --build-arg WITH_NER=true` includes it. |
+| `requirements-basic.txt` | API, database, and OCR fallback. |
+| `requirements-models.txt` | Docling, MiniLM, GLiNER, and the key/value ranker. Weights stay under `models/`. |
 | `Dockerfile` | Runtime image. Installs Tesseract and the OpenCV/ONNX system libraries the reference modules need. |
 | `docker-compose.yml` | Standalone deployment: ports, env, and the four volume mounts. |
 | `.env.example` | Documented template for `.env`, with the consequence of leaving each optional service unset. |
@@ -275,11 +274,12 @@ Shared plumbing stays in `core-pipeline/stages/` (`_support.py`) and `stages/uti
 | `lib/ocr/stage_final1.py` | **Stage 4.** Docling+RapidOCR when ready; else RapidOCR-onnx only. Stores as `ocr_type='docling'` — the UI's "Final (OSS)" slot. Writes `section_header_candidates`. |
 | `lib/ocr/stage_final2.py` | **Stage 5.** Azure Document Intelligence `prebuilt-read`, one shared client. Skips high-quality printed pages. The billed stage, so the resume path matters most here. |
 | `lib/ocr/stage_section_headers.py` | **Stage 6.** Re-derives `section_headers` from on-disk Final1/Final2 JSON (candidates / `pagesMeta` / `document`) against the canon list — no OCR. |
+| `lib/extraction/stage.py` | **After stage 6.** Key/value extraction from Final2 word boxes (member, DOB, ID, DOS, provider, e-signature, printed page number, headings). Stages `staging/extraction.json` and writes `imaging/<chart>_provider_signature.csv` and `imaging/<chart>_additional_page_details.csv`. The matching tables are in `schema/v2.sql`. Later stages add member, DOS and page number to their own rules. |
 | `utilities/gate_delta.py` | Adaptive skip_ocr: compare quality/rotation gate signatures and reopen only affected `page_stage_status` rows. |
 | `lib/member/stage.py` | **Stage 8.** Plumbing around the ported engine: picks the manifest row, chooses eligible pages, assembles the best text per page, runs `verify_record`, persists page rows and the summary, writes three CSVs including the V1-shaped comparison file. |
 | `lib/dos/stage.py` | **Stage 9.** Builds the marker-delimited text, calls the ported driver `detect_dos_per_page` (regex → LLM → carry-forward), persists the primary pair plus every date, writes the DOS CSV. |
 | `lib/ocr/reuse.py` | skip_ocr: reuse on-disk OCR artifacts instead of re-running OCR stages. |
-| `lib/page_classify/stage.py` | Page type / codeability (`page_subtype`). |
+| `lib/page_classify/stage.py` | Page family (model) and subtype (keywords). |
 | `lib/encounter/stage.py` | Encounter type (`encounter_type`). |
 | `lib/sequencing/stage.py` | Page sequencing (`page_sequencing`). |
 | `__init__.py` | Package marker. |
@@ -293,7 +293,7 @@ One folder per pipeline concern; only `canon_store.py` sits at the top level.
 | `image_preprocess/` | Stage 1: rotation / tilt / mirror, handwriting classifier, quality score |
 | `ocr/` | Docling final1 engine + section-header matching (stage 6) |
 | `blank_junk/` | Blank / junk rules, TF-IDF model bridge, bundled model code (`model/`) |
-| `page_classify/` | Page type / codeability (keyword families, header-weighted, family spans) |
+| `page_classify/` | Page family from the model; subtype from keyword rules |
 | `encounter/` | Encounter type per visit (tiered evidence: page type → explicit setting text → hints) |
 | `dos/` | Date-of-service driver + LLM pass |
 | `member/` | Member extraction + verification engine |

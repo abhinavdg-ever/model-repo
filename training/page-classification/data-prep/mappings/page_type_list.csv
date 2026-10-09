@@ -1,0 +1,254 @@
+page_type,page_family,codeability,family_priority,entry_id
+Activities of Daily Living Flow Sheet,Screening and Checklist,non_codeable,55,adl_iadl_flow_sheet
+Activity Evaluation,Assessment and Evaluation,codeable,41,activity_evaluation
+Acupuncture Treatment Record,Therapy Note,codeable,32,acupuncture_treatment_record
+After Visit Summary,Problem List,non_codeable,55,after_visit_summary
+Allergy List,Laboratory Report,non_codeable,45,allergies_report
+Allergy Testing Report,Laboratory Report,non_codeable,45,allergy_testing_report
+Ambulatory Correspondence,Patient Communication,non_codeable,56,amb_correspondence
+Anesthesia Post-operative Note,Anesthesia Record,codeable,22,anesthesia_post_op_note
+Anesthesia Pre-operative Assessment,Anesthesia Record,codeable,22,anesthesia_pre_op_assessment
+Anesthesia Record,Anesthesia Record,codeable,22,anesthesia_record
+Anesthesia Transfer of Care Note,Transfer of Care Summary,discharge,17,anesthesia_transfer_of_care_note
+Ankle-Brachial Index Report,Diagnostic Study,non_codeable,46,ankle_brachial_index
+Annual Health Assessment,Assessment and Evaluation,codeable,41,annual_health_assessment
+Annual Wellness Visit,Assessment and Evaluation,codeable,41,annual_wellness_visit
+Antepartum Record,Obstetric and Gynecologic Record,codeable,36,antepartum_record
+Application Form,Administrative Record,non_codeable,63,application_form
+Appointment Note,Appointment Record,non_codeable,56,appointment_note
+Appointment Summary,Appointment Record,non_codeable,56,appointment_summary
+Assessment Note,Assessment and Evaluation,codeable,41,assessment_notes_forms_report
+Audiology Report,Specialty Note,codeable,30,audiology_hearing_report_audiology_notes
+Behavioral Health Discharge Summary,Discharge Summary,discharge,15,bh_op_discharge
+Behavioral Health Note,Behavioral Health Note,codeable,30,behavioral_health_note
+Billing Page,Billing Statement,non_codeable,62,billing_page_from_the_doctor
+Biopsy Report,Pathology Report,codeable,35,biopsy_report_pathology_report
+Blood Glucose Result,Laboratory Report,non_codeable,45,blood_glucose
+Blood Transfusion Record,Medication Record,non_codeable,50,blood_transfusion_record
+Bone Mineral Density Report,Radiology Report,non_codeable,45,bone_mineral_density_report
+Brain MRI Report,Radiology Report,non_codeable,45,mr_brain_report
+Burn Treatment Record,Wound Care Note,codeable,31,burn_treatment_record
+Cardiac Catheterization Report,Procedure Note,codeable,21,cardiac_catheterization
+Cardiac Event Report,Cardiac Diagnostic Test,codeable,35,event_report
+Cardiac Rehabilitation Note,Therapy Note,codeable,32,cardiac_rehabilitation_note
+Cardiology Note,Specialty Note,codeable,30,cardiology
+Cardiovascular Report,Cardiac Diagnostic Test,codeable,35,cardiovascular_report
+Care Coordination Note,Plan of Care,codeable,40,care_coordination_note
+Carotid Duplex Report,Diagnostic Study,non_codeable,46,carotid_duplex_report
+Case History Update,Progress Note,codeable,10,case_history_update
+Case Management Note,Plan of Care,codeable,40,case_management_note
+Checklist,Screening and Checklist,non_codeable,55,check_list
+Chemistry Report,Laboratory Report,non_codeable,45,chemistry_report
+Chemotherapy Administration Record,Infusion Therapy Record,codeable,32,chemotherapy_administration_record
+Chest View,Radiology Report,non_codeable,45,chest_view
+Chief Complaint and History of Present Illness,Progress Note,codeable,10,chief_complaint_history_of_present_illness_physi
+Chiropractic Treatment Note,Therapy Note,codeable,32,chiropractic_treatment_note
+Chronic Disease Management Note,Progress Note,codeable,10,chronic_disease_management_note
+Client Note,Progress Note,codeable,10,client_note
+Clinical Diagnosis List,Problem List,non_codeable,55,clinical_diagnoses
+Clinical Summary,Progress Note,codeable,10,clinical_summary
+Colonoscopy Report,Endoscopy Report,codeable,21,colonoscopy_sigmoidoscopy
+Colposcopy Examination,Obstetric and Gynecologic Record,codeable,36,colposcopic_examination
+Consent Form,Consent Form,non_codeable,51,consent_form
+Consent Form,Consent Form,non_codeable,51,consent_authorization_pages_all
+Consultation Note,Specialty Note,codeable,30,consultations_consulta
+Critical Care Note,Critical Care Record,codeable,31,critical_care_note
+CT Scan Report,Radiology Report,non_codeable,45,ct_scans_report
+Cytology Report,Pathology Report,codeable,35,cytology_report_molecular_report
+Cytometry Report,Pathology Report,codeable,35,cytometry_report
+Depart Note,Discharge Summary,discharge,15,depart_note
+Depart Summary,Discharge Summary,discharge,15,depart_summary
+Dermatology Note,Specialty Note,codeable,30,dermatology_skin_test
+Device Implant Log,Implant Record,codeable,23,device_implant_log
+Device Specialist Note,Specialty Note,codeable,30,device_specialist_notes
+Dialysis Treatment Record,Dialysis Record,codeable,31,dialysis_treatment_record
+Discharge Instructions,Discharge Instructions,discharge,16,discharge_instructions
+Discharge Medication List,Discharge Medication,discharge,16,discharge_medication
+Discharge Note,Discharge Summary,discharge,15,discharge_note
+Discharge Notice,Patient Communication,non_codeable,56,discharge_notice
+Discharge Report,Discharge Summary,discharge,15,discharge_report
+Discharge Summary,Discharge Summary,discharge,15,discharge_summary
+Doppler Duplex Report,Diagnostic Study,non_codeable,46,all_doppler_duplex_report
+Echocardiogram Report,Cardiac Diagnostic Test,codeable,35,echocardiogram_transthoracic_echocardiography
+Electrocardiogram,Cardiac Diagnostic Test,codeable,35,ekg_ecg_graph
+Electroencephalogram Report,Neurodiagnostic Test,codeable,35,eeg_report_neurophysiology_report
+Electromyography Report,Neurodiagnostic Test,codeable,35,emg_report
+Emergency Department Note,Emergency Department Note,codeable,25,emergency_ed_visit
+Emergency Medical Services Report,Emergency Department Note,codeable,25,emergency_medical_services_report
+Encounter Form,Progress Note,codeable,10,encounter_form_visit
+Endoscopy Report,Endoscopy Report,codeable,21,endoscopy
+Esophageal Manometry Report,Diagnostic Study,non_codeable,46,esophageal_manometry
+Established Patient Note,Progress Note,codeable,10,established_patient_note
+Evaluation Form,Assessment and Evaluation,codeable,41,evaluation_form
+Extremity Doppler Report,Cardiac Diagnostic Test,codeable,35,lower_extremity_upper_extremity
+Eye Examination Report,Eye Examination,codeable,35,all_eye_exam_report_records
+Face Sheet,Patient Demographics,codeable,60,face_sheet_registration
+Face to Face Evaluation Note,Progress Note,codeable,10,face_to_face_evaluation_note
+Final Case Summary,Discharge Summary,discharge,15,final_case_summary
+FISH Report,Laboratory Report,non_codeable,45,fluorescence_in_situ_hybridization
+Fitness for Duty Evaluation,Assessment and Evaluation,codeable,41,fitness_for_duty_evaluation
+Functional Assessment,Assessment and Evaluation,codeable,41,functional_assessment
+Fundus Photography Report,Eye Examination,codeable,35,fundas_photography
+Gastroenterology Procedure Note,Endoscopy Report,codeable,21,gastroenterology
+General Message,Patient Communication,non_codeable,56,any_messages
+General Notice,Patient Communication,non_codeable,56,any_type_of_notice
+Genetic Counseling Note,Specialty Note,codeable,30,genetic_counseling_note
+Genetic Test Report,Laboratory Report,non_codeable,45,genetic_test_report
+Glucose Report,Laboratory Report,non_codeable,45,glucose_report
+Group Note,Progress Note,codeable,10,group_note
+Health Maintenance Report,Screening and Checklist,non_codeable,55,health_review_sheet_health_maintenance_report
+Hematology Report,Laboratory Report,non_codeable,45,hematology
+Hemodialysis Flow Sheet,Dialysis Record,codeable,31,hemodialysis_flow_sheet
+HIPAA Form,Consent Form,non_codeable,51,hipaa_form
+History and Physical,Progress Note,codeable,10,history_physical
+Holter Monitor Report,Diagnostic Study,non_codeable,46,holter_report
+Home Health Visit Note,Home Visit Note,codeable,26,home_health_visit_note
+Hospice Care Record,Palliative Care Note,codeable,31,hospice_care_record
+Housecall Visit Summary,Progress Note,codeable,10,housecalls_visit_summary
+Hypertension Follow-up Note,Progress Note,codeable,10,hypertension_follow_up_note
+Immunization Consent Form,Consent Form,non_codeable,51,immunization_consent
+Immunization List,Medication Record,non_codeable,50,immunization_list_vaccine_flu_shot
+Implant Record,Implant Record,codeable,23,implant_record
+Infection Control Note,Wound Care Note,codeable,31,infection_control_note
+Infusion Therapy Note,Infusion Therapy Record,codeable,32,infusion_therapy_note
+Initial Office Note,Progress Note,codeable,10,initial_office_note
+Initial Psychiatric Evaluation,Behavioral Health Note,codeable,30,initial_psychiatric_evaluation
+INR Result,Laboratory Report,non_codeable,45,inr_result_inr_value
+Insurance Authorization Note,Order and Requisition,non_codeable,51,insurance_authorization_note
+Intensive Care Flow Sheet,Critical Care Record,codeable,31,icu_flow_sheet
+Interim Note,Interim Summary,discharge,18,interim_note
+Interim Summary,Interim Summary,discharge,18,interim_summaries
+Invoice Page,Billing Statement,non_codeable,62,invoice_page_when_soruce_is_imaging_client_uploa
+Laboratory Flow Sheet,Laboratory Report,non_codeable,45,lab_flow_sheet
+Laboratory Form,Order and Requisition,non_codeable,51,lab_form
+Laboratory Requisition,Order and Requisition,non_codeable,51,lab_requisition
+Laboratory Result,Laboratory Report,non_codeable,45,laboratory_data
+Laboratory Result,Laboratory Report,non_codeable,45,lab_work
+Laryngoscopy Procedure Report,Procedure Note,codeable,21,laryngoscopy_procedure_report
+Lens Parameters,Eye Examination,codeable,35,lens_parameters
+Mammogram Report,Radiology Report,non_codeable,45,mammograms_mg_mammo
+Medical Status Visit Form,Progress Note,codeable,10,medical_status_visit_form_status_visit
+Medication List,Medication Record,non_codeable,50,medication_list
+Microbiology Report,Laboratory Report,non_codeable,45,microbiology
+Mini Mental Status Examination,Screening and Checklist,non_codeable,55,mini_mental_examination
+Mohs Surgery Report,Procedure Note,codeable,21,mohs_report
+Molecular Diagnostics Report,Pathology Report,codeable,35,molecular_diagnostics_test
+MRI Report,Radiology Report,non_codeable,45,mri
+Myocardial Perfusion Study,Cardiac Diagnostic Test,codeable,35,myocardial_perfusion
+Nephrology Note,Specialty Note,codeable,30,nephrology
+Nerve Conduction Study,Neurodiagnostic Test,codeable,35,sural_nerve_conduction_study
+Neurocognitive Screening Examination,Neurodiagnostic Test,codeable,35,neurocognitive_screening_examination
+Neurology Note,Specialty Note,codeable,30,neurology_emg_note
+Nuclear Medicine Report,Nuclear Medicine Report,codeable,35,nuclear_medicine_report
+Nursing Note,Progress Note,codeable,10,nurses_notes
+Nutrition Assessment,Assessment and Evaluation,codeable,41,nutrition_assessment
+Occupational Health Record,Assessment and Evaluation,codeable,41,occupational_health_record
+Occupational Therapy Daily Note,Therapy Note,codeable,32,occupational_therapy_daily_note
+Occupational Therapy Discharge Summary,Therapy Discharge Summary,discharge,16,occupational_therapy_discharge_note_summary
+Occupational Therapy Note,Therapy Note,codeable,32,occupational_therapy
+Office Visit Note,Progress Note,codeable,10,office_visits_followup_visits
+Oncology Note,Specialty Note,codeable,30,oncology
+Operative Report,Operative Report,codeable,20,operative_report
+Ophthalmology Report,Eye Examination,codeable,35,ophthalmology_report_or_records_ocular_note
+Optometry Note,Eye Examination,codeable,35,optometry_note_visual_field_activity_retinopathy
+Order Note,Order and Requisition,non_codeable,51,order_note
+Out of Time Frame Record,Administrative Record,non_codeable,63,out_of_time_frame_records
+Oximetry Report,Sleep Study,codeable,35,oximetry_report_note
+Pacemaker Device Report,Cardiac Diagnostic Test,codeable,35,pacemaker_device_monitor_report
+Pain Management Note,Palliative Care Note,codeable,31,pain_management_note
+Palliative Care Note,Palliative Care Note,codeable,31,palliative_care_note
+Pap and HPV Report,Obstetric and Gynecologic Record,codeable,36,pap_hpv_report
+Pathology Report,Pathology Report,codeable,35,pathology_report_tissue_report
+Patient Care Report,Progress Note,codeable,10,patient_care_report
+Patient Demographics,Patient Demographics,codeable,60,demographics
+Patient Education Material,Patient Communication,non_codeable,56,patient_education
+Patient Encounter,Progress Note,codeable,10,patient_encounter
+Patient Instruction,Patient Communication,non_codeable,56,patient_instruction
+Patient Portal Communication,Patient Communication,non_codeable,56,patient_portal_communication_summary
+Patient Summary with Progress Note,Progress Note,codeable,10,patient_summary_if_received_along_with_the_progr
+Peripheral Neuropathy Result,Neurodiagnostic Test,codeable,35,dpn_results
+Peritoneal Dialysis Record,Dialysis Record,codeable,31,peritoneal_dialysis_record
+Physical Therapy Discharge Summary,Therapy Discharge Summary,discharge,16,physical_therapy_discharge_note_summary
+Physical Therapy Note,Therapy Note,codeable,32,physical_therapy_assessment_note
+Physician Note,Progress Note,codeable,10,physician_notes
+Physician Order,Order and Requisition,non_codeable,51,all_types_of_order
+Physician Order,Order and Requisition,non_codeable,51,physician_order
+Plan of Care,Plan of Care,codeable,40,plan_of_care
+Plethysmography Report,Diagnostic Study,non_codeable,46,plethysmography_report
+Post-operative Follow-up Note,Perioperative Evaluation,codeable,23,postoperative_follow_up_note
+Postpartum Visit,Obstetric and Gynecologic Record,codeable,36,postpartum_pp_exam_pp_visit
+Pre-operative Evaluation,Perioperative Evaluation,codeable,23,preoperative_evaluation
+Prenatal Record,Obstetric and Gynecologic Record,codeable,36,prenatal_records
+Prescription Page,Medication Record,non_codeable,50,prescriptions_rx_page
+Preventive Health Checklist,Screening and Checklist,non_codeable,55,preventive_health_checklist
+Principal Diagnosis,Discharge Summary,discharge,15,principal_diagnosis
+Problem List,Problem List,non_codeable,55,problem_list
+Procedure Note,Procedure Note,codeable,21,procedure_note
+Progress Note,Progress Note,codeable,10,progress_note
+Prothrombin Time Result,Laboratory Report,non_codeable,45,prothrombin_time
+Protocol,Administrative Record,non_codeable,63,protocols
+Provider Letter,Provider Letter,codeable,61,any_type_of_letter
+Psychotherapy Session Note,Behavioral Health Note,codeable,30,psychotherapy_session_note
+Pulmonary Function Test,Diagnostic Study,non_codeable,46,pulmonary_function_test_spirometry
+Questionnaire,Screening and Checklist,non_codeable,55,questionnaire
+Radiation Therapy Record,Infusion Therapy Record,codeable,32,radiation_therapy_record
+Radiology Report,Radiology Report,non_codeable,45,radiology_report
+Referral Authorization Form,Order and Requisition,non_codeable,51,referral_authorization_form
+Refill Record,Medication Record,non_codeable,50,refill_record
+Rehabilitation Plan,Therapy Note,codeable,32,rehabilitation_plan
+Rehabilitation Treatment Note,Therapy Note,codeable,32,rehabilitation_daily_treatment_note
+Respiratory Therapy Note,Therapy Note,codeable,32,respiratory_therapy_note
+Retinal Office Procedure Note,Procedure Note,codeable,21,retinal_office_procedure_note
+School Physical Form,Assessment and Evaluation,codeable,41,school_physical_form
+Screening Test Record,Screening and Checklist,non_codeable,55,screening_test_record
+Service Request,Order and Requisition,non_codeable,51,any_type_of_request
+Short Stay Summary,Discharge Summary,discharge,15,short_stay_summary
+Skilled Nursing Visit Note,Home Visit Note,codeable,26,skilled_nursing_visit_note
+Sleep Clinic Note,Sleep Study,codeable,35,sleep_clinic_note
+Sleep Study Report,Sleep Study,codeable,35,sleep_study_polysomnography_report
+SOAP Note,Progress Note,codeable,10,soap_note
+Social Report,Administrative Record,non_codeable,63,social_report
+Sonogram Report,Radiology Report,non_codeable,45,sonograms_report
+Spanish Discharge Summary,Discharge Summary,discharge,15,resumen_de_alta_resumen_de_instruccion_planifica
+SPECT Report,Nuclear Medicine Report,codeable,35,spect_report
+Speech Therapy Note,Therapy Note,codeable,32,speech_therapy_note
+Split Night Study Report,Sleep Study,codeable,35,split_night_report
+Sports Physical Examination,Assessment and Evaluation,codeable,41,sports_physical_examination
+Standalone Patient Summary,Problem List,non_codeable,55,patient_summary_if_stand_alone
+Staying Healthy Assessment,Assessment and Evaluation,codeable,41,staying_healthy_assessment
+Stress Test Report,Cardiac Diagnostic Test,codeable,35,stress_test_exercise_report_treadmill_exercise_r
+Substance Abuse Treatment Record,Behavioral Health Note,codeable,30,substance_abuse_treatment_record
+Sudoscan Report,Neurodiagnostic Test,codeable,35,sudoscan_report
+Surgery Report,Operative Report,codeable,20,surgery_report
+Surgical Consent Form,Consent Form,non_codeable,51,surgical_consent_form
+Telephone Encounter,Telephone Encounter,codeable,26,telephone_encounter
+Telephone Message,Patient Communication,non_codeable,56,telephone_messages
+Therapy Report,Therapy Note,codeable,32,therapy_report
+Tissue Examination Report,Pathology Report,codeable,35,tissue_examination_report
+Titration Report,Sleep Study,codeable,35,titration_report
+Tomography Report,Radiology Report,non_codeable,45,tomography
+Transfer of Care Note,Transfer of Care Summary,discharge,17,transfer_of_care_note
+Transfer Summary,Transfer of Care Summary,discharge,17,transfer_summary
+Transfusion Consent Form,Consent Form,non_codeable,51,transfusion_consent
+Transition of Care Summary,Transfer of Care Summary,discharge,17,transition_of_care_summary
+Travel Medicine Consultation,Specialty Note,codeable,30,travel_medicine_consultation
+Treadmill Report,Cardiac Diagnostic Test,codeable,35,treadmill_report
+Treatment Plan Record,Plan of Care,codeable,40,treatment_plan_record
+Triage Call Note,Patient Communication,non_codeable,56,triage_call
+Triage Note,Emergency Department Note,codeable,25,triage_note_report
+Triage Surgery Report,Operative Report,codeable,20,triage_surgery_report
+Ultrasound Report,Radiology Report,non_codeable,45,ultrasounds_report
+Urgent Care Note,Emergency Department Note,codeable,25,urgent_care_note
+Urinalysis Report,Laboratory Report,non_codeable,45,urinalysis
+Urology Note,Specialty Note,codeable,30,urology
+Utilization Review Note,Plan of Care,codeable,40,utilization_review_note
+Vaccination Administration Record,Medication Record,non_codeable,50,vaccination_administration_record
+Ventilator Management Record,Critical Care Record,codeable,31,ventilator_management_record
+Videonystagmography Report,Neurodiagnostic Test,codeable,35,videonystagmography
+Visit Report,Progress Note,codeable,10,visit_report
+Visit Summary,Progress Note,codeable,10,visit_summary
+Visual Evaluation,Eye Examination,codeable,35,inform_evaluation_visual
+Visual Field Interpretation,Eye Examination,codeable,35,visual_field_interpretation
+Work Injury Evaluation,Assessment and Evaluation,codeable,41,work_injury_evaluation
+Wound Care Note,Wound Care Note,codeable,31,wound_care_note
+X-Ray Report,Radiology Report,non_codeable,45,x_ray_report

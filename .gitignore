@@ -41,6 +41,8 @@ review-ui/data/metadata/*
 !review-ui/data/metadata/.gitkeep
 review-ui/data/pipeline/*
 !review-ui/data/pipeline/README.md
+review-ui/data/annotation/*
+!review-ui/data/annotation/.gitkeep
 
 # Editor / agent local config (skills live in ~/.cursor and ~/.claude)
 .claude/
@@ -54,15 +56,37 @@ core-pipeline/models/**
 !core-pipeline/models/README.md
 !core-pipeline/models/blank-junk/
 !core-pipeline/models/blank-junk/**
+!core-pipeline/models/page-family/
+!core-pipeline/models/page-family/**
+!core-pipeline/models/kv-extraction/
+!core-pipeline/models/kv-extraction/**
+!core-pipeline/models/hw/
+!core-pipeline/models/hw/image_type_classification.pkl
+!core-pipeline/models/hw/metadata.json
 # DistilBERT blank/junk weights (~270 MB). Copy b_jnk/models/bert_page here; do not commit.
 core-pipeline/models/blank-junk/bert_page/
 # The negation above re-includes macOS AppleDouble files; exclude them again.
 core-pipeline/models/blank-junk/._*
+core-pipeline/models/page-family/._*
+core-pipeline/models/kv-extraction/._*
+core-pipeline/models/hw/._*
 *.safetensors
 *.onnx
 *.bin
 *.pth
 *.pkl
+*.joblib
+!core-pipeline/models/blank-junk/*.joblib
+!core-pipeline/models/page-family/*.joblib
+!core-pipeline/models/hw/image_type_classification.pkl
+!core-pipeline/models/hw/metadata.json
+
+# Page-family training artifacts. OCR text is chart content; do not commit it.
+training/page-classification/data-prep/ocr/
+training/page-classification/data-prep/training_text.jsonl
+training/page-classification/data-prep/training_text.csv
+training/page-classification/training-script/output/
+training/page-classification/.venv/
 
 # Daily pipeline logs (core-pipeline/logs/)
 core-pipeline/logs/**

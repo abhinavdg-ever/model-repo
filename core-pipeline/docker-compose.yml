@@ -16,10 +16,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        # true installs the GLiNER runtime (~2.5 GB). Needed for wrong-member
-        # detection; checkpoints live under MODELS_HOST_PATH/.../ner/.
-        WITH_NER: ${WITH_NER:-false}
     image: advantmed/core-pipeline:latest
     ports:
       - "${API_PORT:-8001}:8001"

@@ -1,6 +1,7 @@
 # Weight files for core-pipeline. .env paths are relative to core-pipeline/
 # (models/hw, models/rapidocr, models/semantic-model, models/blank-junk, models/ner).
-# See docs/API.md. Everything here except blank-junk/ and this file is gitignored.
+# See docs/API.md. Large checkpoints stay local. Committed: blank-junk/,
+# page-family/, kv-extraction/, and hw/image_type_classification.pkl.
 #
 #   hw/handwritten_printed_convnext_tiny.pth         # ConvNeXt (preferred)
 #   hw/handwritten_printed_convnext_tiny_backup.pth  # prior ConvNeXt fallback
@@ -15,6 +16,10 @@
 #       TF-IDF KEEP/BLANK/JUNK model (committed). Regex rules are the fallback.
 #   blank-junk/bert_page/   optional DistilBERT (not committed). Copy from b_jnk/models/bert_page.
 #       Used when that folder and torch+transformers are present; otherwise TF-IDF.
+#   page-family/family.joblib
+#       TF-IDF + XGBoost page family. Keywords choose the subtype; no hit
+#       leaves the subtype equal to the family. Missing file ⇒ keywords choose
+#       the family too. Needs xgboost (requirements-models.txt).
 #
 # Section-header MiniLM prefers models/semantic-model when present; otherwise
 # falls back to the HuggingFace Hub id (SECTION_HEADER_MINILM_MODEL).

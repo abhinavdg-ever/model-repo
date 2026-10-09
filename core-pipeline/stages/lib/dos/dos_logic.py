@@ -7,7 +7,8 @@
      its age against the chart's received date, and how many other dates in
      the chart agree with it.
   C. Score      — a weighted sum from ``dos_canon.json``, clamped to
-     [0, 1]. The best candidate at or above DOS_MIN_SCORE is the page's date.
+     [0, 1]. A key/value date is the page's date. Otherwise the best
+     candidate must reach 0.80.
   D. Resolve    — a Progress Note opens a span. A later page at or below
      span_override_score takes that earlier date. Demographics, injection
      pages, and pages with no date keep DOS_DEFAULT_DATE.
@@ -272,6 +273,8 @@ class Candidate:
     context: str = ""
     score: float = 0.0
     chosen: bool = False
+    # "text" from the page sweep, "kv" when the key/value extractor supplied it.
+    origin: str = "text"
     pair: Optional["Candidate"] = field(default=None, repr=False, compare=False)
 
     def log_row(self) -> dict[str, Any]:
@@ -357,7 +360,7 @@ def page_features(
         # an earlier date: "DOB 03/06/1972 ... 12/31/2025" leaves the second
         # date unlabelled.
         lo = max(previous_end, cand.start - prof.window_left_chars)
-        label = _nearest_label(page_text, lo, cand.start, prof)
+        label = None if cand.origin == "kv" else _nearest_label(page_text, lo, cand.start, prof)
         if label is not None:
             cand.label_text = re.sub(r"\s+", " ", label.group(0)).strip()
             cand.label_class = prof.label_class.get(_letters(label.group(0)), "none")
@@ -438,13 +441,27 @@ class PageDate:
     dos_to: str
     confidence: float
     keyword: str
-    source: str  # "rules" | "llm"
+    source: str  # "rules" | "llm" | "kv"
     is_pair: bool = False
 
 
+def _date_source(cand: Candidate) -> str:
+    if cand.origin == "kv" or (cand.pair is not None and cand.pair.origin == "kv"):
+        return "kv"
+    return "rules"
+
+
+# Text dates are used only when the key/value extractor did not choose one.
+RULES_MIN_SCORE = 0.75
+
+
 def best_page_date(candidates: list[Candidate], prof: DosProfile) -> Optional[PageDate]:
-    """Highest scorer at or above DOS_MIN_SCORE; a range pair emits both ends."""
-    passing = [c for c in candidates if c.score >= prof.min_score]
+    """Key/value date first. Otherwise the highest scorer at or above 0.75.
+
+    A range pair emits both ends.
+    """
+    kv = [c for c in candidates if c.origin == "kv"]
+    passing = kv or [c for c in candidates if c.score >= RULES_MIN_SCORE]
     if not passing:
         return None
     best = max(passing, key=lambda c: c.score)  # ties: first on the page
@@ -459,7 +476,7 @@ def best_page_date(candidates: list[Candidate], prof: DosProfile) -> Optional[Pa
             dos_to=discharge.iso,
             confidence=best.score,
             keyword=f"{admit.label_text}+{discharge.label_text}",
-            source="rules",
+            source=_date_source(best),
             is_pair=True,
         )
     return PageDate(
@@ -467,7 +484,7 @@ def best_page_date(candidates: list[Candidate], prof: DosProfile) -> Optional[Pa
         dos_to=best.iso,
         confidence=best.score,
         keyword=best.label_text,
-        source="rules",
+        source=_date_source(best),
     )
 
 
@@ -573,6 +590,8 @@ def _row(
     doc_to = doc.dos_to if doc else prof.default_date
     if page_date is not None:
         confidence = page_date.confidence
+    elif match_type == "span":
+        confidence = 0.0
     elif doc is not None:
         confidence = doc.confidence
     else:
@@ -589,11 +608,82 @@ def _row(
         "doc_dos_from_iso": doc_from,
         "doc_dos_to_iso": doc_to,
         "match_type": match_type,
+        "final_dos": _final_date(page_date, doc, match_type),
         "keyword": page_date.keyword if page_date else None,
         "confidence": round(confidence, 4),
         "page_source": page_date.source if page_date else "",
         "is_default": is_default,
     }
+
+
+def _final_date(
+    page_date: Optional[PageDate],
+    doc: Optional[PageDate],
+    match_type: str,
+) -> str:
+    """Reviewer-facing date, applied after the page's own date is chosen.
+
+    A page inside an open span keeps whatever date it actually has. The final
+    date is the one from the progress note that opened the span.
+    """
+    if match_type == "span" and doc is not None:
+        return doc.dos_from
+    return page_date.dos_from if page_date else ""
+
+
+_KV_LABEL = {"admit": "admit", "discharge": "discharge"}
+
+
+def add_kv_dates(
+    page_text: str,
+    candidates: list[Candidate],
+    dates: list[dict[str, Any]],
+    *,
+    page_index: int,
+    page_number: Any,
+    page_name: str,
+) -> None:
+    """Mark a key/value date as the page's date, or add it when the text missed it.
+
+    The same day already found in the text keeps its span and takes the
+    key/value label. A new one is inserted with the extractor's label
+    (admit, discharge, or encounter) so it is scored by the same weights.
+    """
+    seen = {cand.iso: cand for cand in candidates}
+    for item in dates:
+        iso = str(item.get("iso") or "")
+        if len(iso) != 10:
+            continue
+        existing = seen.get(iso)
+        if existing is not None:
+            # The same day already came from the text. Keep that span, but the
+            # key/value hit is the one the page uses.
+            existing.origin = "kv"
+            existing.label_text = str(item.get("keyword") or existing.label_text)
+            existing.label_class = _KV_LABEL.get(str(item.get("tier") or ""), "encounter")
+            continue
+        raw = str(item.get("raw") or "")
+        start = page_text.find(raw) if raw else -1
+        if start < 0:
+            start, end = 0, 0
+        else:
+            end = start + len(raw)
+        tier = str(item.get("tier") or "")
+        candidates.append(
+            Candidate(
+                page_index=page_index,
+                page_number=page_number,
+                page_name=page_name,
+                raw=raw or iso,
+                iso=iso,
+                start=start,
+                end=end,
+                label_text=str(item.get("keyword") or ""),
+                label_class=_KV_LABEL.get(tier, "encounter"),
+                origin="kv",
+            )
+        )
+        seen[iso] = candidates[-1]
 
 
 def detect_dos_per_page(
@@ -603,15 +693,23 @@ def detect_dos_per_page(
     use_llm: bool = True,
     received_date: Optional[date] = None,
     candidate_log: Optional[list[dict]] = None,
+    kv_dates: Optional[dict[str, list[dict[str, Any]]]] = None,
 ) -> list[dict]:
     """One row per page.
 
     Page level (``dos_from`` / ``dos_to``): the date found on that page, or
     blank. Document level (``doc_dos_*``): the encounter the page belongs to.
+    ``final_dos`` is the reviewer-facing value. On a span page it is the date
+    from the progress note that opened the span. Otherwise it is the page's
+    own date.
 
     ``received_date`` is the chart's received date; DOS_MAX_AGE_YEARS counts
     back from it (today when not given). ``candidate_log``, when passed, gets
     every candidate with its features, score and whether it was chosen.
+
+    ``kv_dates`` maps a page name to dates the key/value extractor chose
+    (``iso``, ``raw``, ``tier``, ``keyword``). They join the text sweep and
+    are scored with the same weights.
     """
     prof = profile()
     received = received_date or date.today()
@@ -626,11 +724,20 @@ def detect_dos_per_page(
         if re.sub(r"\s+", " ", cleaned).strip().upper() == "UNACCEPT":
             break
         page_type = _page_type_name(page_text, page.get("page")) if page_text.strip() else ""
+        page_name = page.get("page_name") or ""
         candidates = find_candidates(
             page_text,
             page_index=page["index"],
             page_number=page.get("page"),
-            page_name=page.get("page_name") or "",
+            page_name=page_name,
+        )
+        add_kv_dates(
+            page_text,
+            candidates,
+            (kv_dates or {}).get(page_name) or [],
+            page_index=page["index"],
+            page_number=page.get("page"),
+            page_name=page_name,
         )
         page_features(
             page_text,
@@ -696,8 +803,9 @@ def detect_dos_per_page(
         elif span_open and current is not None and (
             found is None or found.confidence <= prof.span_override_score
         ):
-            # A weak date, or none, is replaced by the progress note's date.
-            assigned, doc, match_type = current, current, "span"
+            # The page keeps the date it has. Post-processing marks the final
+            # value as a continuation of the open span.
+            assigned, doc, match_type = found, current, "span"
         elif found is None:
             assigned, doc, match_type = None, None, "no_date_found"
         elif page_type in prof.non_encounter_page_types:

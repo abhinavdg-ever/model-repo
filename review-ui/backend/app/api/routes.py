@@ -7,21 +7,31 @@ from fastapi.responses import FileResponse, RedirectResponse, Response, Streamin
 
 from app.adapters.base import FolderRepository
 from app.adapters.factory import get_repository
-from app.core.config import Settings, get_settings
+from app.core.config import ROOT_DIR, Settings, get_settings
 from app.core.schemas import (
+    AnnotationListResponse,
+    AnnotationRow,
+    AnnotationSaveRequest,
     AppConfigResponse,
+    FileViewerFolderDetail,
+    FileViewerListResponse,
     FolderDetail,
     FolderListResponse,
     FolderSummary,
     HealthResponse,
+    ExtractionReviewResponse,
     ImagingDocumentResponse,
     ImagingManifestDetails,
     OcrTextResponse,
+    PageGroundTruth,
 )
 from app.services.blob_store import download_blob_bytes
 from app.services.folder_list import FolderListParams, build_folder_list
+from app.services.annotations import annotation_file, load_annotations, save_annotation
+from app.services.extraction_review import load_extraction_review
 from app.services.imaging_csv import filter_folder, iter_csv_lines
 from app.services.chart_run_batch import database_url_usable
+from app.services.ground_truth import upsert_page_ground_truth
 from app.services.page_images import (
     bytes_to_display_jpeg,
     cached_derived_jpeg,
@@ -161,6 +171,65 @@ def list_folders(
         limit=result.limit,
         offset=result.offset,
     )
+
+
+def _file_viewer_repo(settings: Settings):
+    """Disk reader for File Viewer. Never opens Postgres."""
+    from app.adapters.local.repository import LocalFolderRepository
+
+    return LocalFolderRepository(settings.resolved_data_root, database_url="")
+
+
+def _serve_disk_image(path: Path) -> Response:
+    cache_hdr = "private, max-age=300"
+    if is_tiff_path(path):
+        try:
+            jpeg = tiff_path_to_jpeg_bytes(path)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not convert image for display: {exc}",
+            ) from exc
+        return Response(
+            content=jpeg,
+            media_type="image/jpeg",
+            headers={"Cache-Control": cache_hdr},
+        )
+    return FileResponse(
+        path,
+        media_type=_media_type(path.suffix),
+        headers={"Cache-Control": cache_hdr},
+    )
+
+
+@router.get("/file-viewer/folders", response_model=FileViewerListResponse)
+def list_file_viewer_folders(
+    settings: Settings = Depends(get_settings),
+) -> FileViewerListResponse:
+    """Folders under data/folders that contain pages/. No database."""
+    items = _file_viewer_repo(settings).list_file_viewer_folders()
+    return FileViewerListResponse(items=items, total=len(items))
+
+
+@router.get("/file-viewer/folders/{folder_id}", response_model=FileViewerFolderDetail)
+def get_file_viewer_folder(
+    folder_id: str,
+    settings: Settings = Depends(get_settings),
+) -> FileViewerFolderDetail:
+    return _file_viewer_repo(settings).get_file_viewer_folder(folder_id)
+
+
+@router.get("/file-viewer/folders/{folder_id}/pages/{page_number}/image")
+def get_file_viewer_page_image(
+    folder_id: str,
+    page_number: int,
+    corrected: bool = Query(False, description="Serve corrected-pages when that file exists"),
+    settings: Settings = Depends(get_settings),
+):
+    path = _file_viewer_repo(settings).get_file_viewer_image_path(
+        folder_id, page_number, corrected=corrected
+    )
+    return _serve_disk_image(path)
 
 
 @router.get("/folders/{folder_id}", response_model=FolderDetail)
@@ -421,6 +490,87 @@ def get_folder_ocr(
     repo: FolderRepository = Depends(get_repository),
 ) -> OcrTextResponse:
     return repo.get_ocr_text(folder_id, kind)
+
+
+@router.get("/annotations", response_model=AnnotationListResponse)
+def list_annotations(
+    folder_id: str = "",
+    page_file: str = "",
+) -> AnnotationListResponse:
+    rows = load_annotations(annotation_file(ROOT_DIR))
+    if folder_id:
+        rows = [row for row in rows if row["folder_id"] == folder_id]
+    if page_file:
+        rows = [row for row in rows if row["page_file"] == page_file]
+    return AnnotationListResponse(
+        rows=[
+            AnnotationRow(
+                folder_id=row["folder_id"],
+                page_number=int(row["page_number"] or 0),
+                page_file=row["page_file"],
+                field_id=row["field_id"],
+                verdict=row["verdict"],
+                value=row["value"],
+                saved_at=row["saved_at"],
+            )
+            for row in rows
+        ]
+    )
+
+
+@router.post("/annotations", response_model=AnnotationRow)
+def post_annotation(body: AnnotationSaveRequest) -> AnnotationRow:
+    saved = save_annotation(
+        annotation_file(ROOT_DIR),
+        folder_id=body.folder_id,
+        page_number=body.page_number,
+        page_file=body.page_file,
+        field_id=body.field_id,
+        verdict=body.verdict,
+        value=body.value,
+    )
+    return AnnotationRow(
+        folder_id=saved["folder_id"],
+        page_number=int(saved["page_number"]),
+        page_file=saved["page_file"],
+        field_id=saved["field_id"],
+        verdict=saved["verdict"],
+        value=saved["value"],
+        saved_at=saved["saved_at"],
+    )
+
+
+@router.get("/folders/{folder_id}/extraction", response_model=ExtractionReviewResponse)
+def get_folder_extraction(
+    folder_id: str,
+    page: str = Query(..., description="Image file name of the page being reviewed."),
+    settings: Settings = Depends(get_settings),
+) -> ExtractionReviewResponse:
+    """Selected key/value extraction for one page. Processed equals extracted."""
+    return load_extraction_review(settings.resolved_data_root, folder_id, page)
+
+
+@router.post("/folders/{folder_id}/ground-truth", response_model=PageGroundTruth)
+def save_folder_ground_truth(
+    folder_id: str,
+    body: PageGroundTruth,
+    settings: Settings = Depends(get_settings),
+) -> PageGroundTruth:
+    """Upsert one page of ground truth. A later save of the same page updates that row."""
+    if not database_url_usable(settings.database_url):
+        raise HTTPException(status_code=503, detail="Database is not configured")
+    try:
+        return upsert_page_ground_truth(
+            settings.database_url,
+            folder_id,
+            body,
+            settings.db_schema,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("ground truth upsert failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not save ground truth") from exc
 
 
 @router.get("/folders/{folder_id}/imaging", response_model=ImagingDocumentResponse)

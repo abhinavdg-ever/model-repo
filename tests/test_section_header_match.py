@@ -169,6 +169,34 @@ def test_catalog_hot_reload(tmp_path, monkeypatch):
     assert [k["text"] for k in kept2] == ["Guarantor"]
 
 
+def test_outpatient_inpatient_and_discharge_are_headers():
+    from stages.lib.extraction.heading.extract import common_heading
+    from stages.lib.ocr.section_header_match import filter_section_headers, reload_catalog
+
+    reload_catalog()
+    kept = filter_section_headers(
+        [
+            {"text": "Outpatient"},
+            {"text": "Inpatient"},
+            {"text": "Discharge"},
+            {"text": "Discharge Summary"},
+        ],
+        threshold=0.90,
+        enabled=True,
+        use_minilm=False,
+    )
+    assert [(row["text"], row["matched_canonical"]) for row in kept] == [
+        ("Outpatient", "Outpatient"),
+        ("Inpatient", "Inpatient"),
+        ("Discharge", "Discharge"),
+        ("Discharge Summary", "Discharge Summary"),
+    ]
+    common_heading.cache_clear()
+    assert common_heading("Outpatient") == 1.0
+    assert common_heading("Inpatient") == 1.0
+    assert common_heading("Discharge") == 1.0
+
+
 def test_minilm_encode_is_serialised(monkeypatch):
     """The shared MiniLM model/tokenizer must never be driven by two threads
     at once — concurrent encode crashed a batch in native code."""

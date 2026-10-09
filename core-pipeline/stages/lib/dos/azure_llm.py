@@ -12,7 +12,7 @@ credentials available:
 "key if there is one, otherwise Entra". Nothing needs to change on a machine
 that was already using a key.
 
-Entra needs `azure-identity` installed (`pip install -r requirements.txt`
+Entra needs `azure-identity` installed (`pip install -r requirements-basic.txt`
 brings it) and an identity the resource has granted **Cognitive Services
 OpenAI User** — membership in the subscription is not enough, and a missing
 role assignment is a 401 that reads exactly like a bad key.

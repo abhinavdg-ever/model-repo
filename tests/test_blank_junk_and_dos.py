@@ -449,10 +449,7 @@ class TestDosLayouts:
             "Reason For Visit: Post-op Check - S/P Phaco PC IOL OD.\n"
             "HPI: Post Op: vision is out of focus OD.\n"
         )
-        hit = extract_dos_from_page_text(text)
-        assert hit["dos_from"] == "12-31-2025"
-        assert hit["dos_to"] == "12-31-2025"
-        assert "03-06-1972" not in hit["dos_from"]
+        assert extract_dos_from_page_text(text) is None
 
 
 RECEIVED = date(2026, 5, 1)
@@ -662,15 +659,13 @@ class TestDosTimestamps:
             "Seen 03/14/2025 in clinic.\n"
             "04/18/2025 09:12 AM Page 1 of 1"
         )
-        hit = extract_dos_from_page_text(text, received_date=RECEIVED)
-        assert hit["dos_from"] == "03-14-2025"
+        assert extract_dos_from_page_text(text, received_date=RECEIVED) is None
 
-    def test_a_labelled_encounter_time_still_clears_the_threshold(self):
+    def test_a_labelled_encounter_time_under_0_75_is_not_used(self):
         from dos_logic import extract_dos_from_page_text
 
         text = "Arrival Date: 03/14/2025 14:32\nChief Complaint: chest pain"
-        hit = extract_dos_from_page_text(text, received_date=RECEIVED)
-        assert hit["dos_from"] == "03-14-2025"
+        assert extract_dos_from_page_text(text, received_date=RECEIVED) is None
 
 
 class TestDosResolve:
@@ -692,12 +687,17 @@ class TestDosResolve:
             "Date of Service: 04/02/2024",
             "Vitals stable. No date on this page.",
         ])
-        # The weak 03/12 date is replaced by the progress note's date.
-        assert hits[1]["dos_from_iso"] == "2024-03-14"
+        # The page keeps only the date it has. The final date is the progress
+        # note that opened the span.
+        assert hits[1]["dos_from_iso"] == ""
         assert hits[1]["doc_dos_from_iso"] == "2024-03-14"
         assert hits[1]["match_type"] == "span"
-        assert hits[2]["dos_from_iso"] == "2024-04-02"  # above 0.75, this page keeps its own
-        assert hits[3]["dos_from_iso"] == "2024-03-14"  # the span is still open
+        assert hits[1]["final_dos"] == "2024-03-14"
+        assert hits[2]["dos_from_iso"] == "2024-04-02"  # above the span override, this page keeps its own
+        assert hits[2]["final_dos"] == "2024-04-02"
+        assert hits[3]["dos_from_iso"] == ""
+        assert hits[3]["doc_dos_from_iso"] == "2024-03-14"
+        assert hits[3]["final_dos"] == "2024-03-14"
 
     def test_demographics_and_injection_pages_keep_the_default(self, monkeypatch):
         import dos_logic

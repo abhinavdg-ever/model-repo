@@ -12,6 +12,7 @@ export type PageGroundTruth = {
   sourcePageId?: string | null;
   memberName?: string | null;
   memberDob?: string | null;
+  memberId?: string | null;
   dosFrom?: string | null;
   dosTo?: string | null;
   encounterType?: string | null;
@@ -23,6 +24,8 @@ export type PageGroundTruth = {
   pageSequence?: string | null;
   rotation?: string | null;
   isVisible?: string | null;
+  renderingProvider?: string | null;
+  providerSignature?: string | null;
 };
 
 export type GtBit = { label: string; mark: MatchMark };
@@ -69,7 +72,7 @@ function nameFound(value: string | null | undefined): boolean {
   return raw.length > 0 && !missing(raw);
 }
 
-/** Green only when ground truth is Yes and the page actually has the value. */
+/** Yes matches a value on the page. No matches an empty page. */
 function yesFoundMark(
   gt: string | null | undefined,
   pipeline: string | null | undefined,
@@ -80,8 +83,8 @@ function yesFoundMark(
   if (!known) return bit(gt, "unknown");
   const found = nameFound(pipeline);
   if (side === "yes" && found) return bit(gt, "match");
-  if (side === "yes" || found) return bit(gt, "mismatch");
-  return bit(gt, "unknown");
+  if (side === "no" && !found) return bit(gt, "match");
+  return bit(gt, "mismatch");
 }
 
 function dobMark(
@@ -89,8 +92,8 @@ function dobMark(
   pipeline: string | null | undefined,
   known: boolean,
 ): GtBit[] {
-  if (yesNo(gt)) return yesFoundMark(gt, pipeline, known);
-  return dateMark(gt, pipeline, known);
+  if (!yesNo(gt)) return [];
+  return yesFoundMark(gt, pipeline, known);
 }
 
 function visibilityMark(value: string | null | undefined): GtBit[] {
@@ -100,14 +103,47 @@ function visibilityMark(value: string | null | undefined): GtBit[] {
   return [];
 }
 
+const MONTHS: Record<string, string> = {
+  jan: "01", january: "01", feb: "02", february: "02", mar: "03", march: "03",
+  apr: "04", april: "04", may: "05", jun: "06", june: "06", jul: "07", july: "07",
+  aug: "08", august: "08", sep: "09", sept: "09", september: "09", oct: "10", october: "10",
+  nov: "11", november: "11", dec: "12", december: "12",
+};
+
+function yearOf(raw: string): string {
+  const year = Number(raw);
+  if (raw.length === 4) return raw;
+  const pivot = (new Date().getFullYear() % 100) + 1;
+  return String(year <= pivot ? 2000 + year : 1900 + year);
+}
+
 function parseDate(value: string | null | undefined): [string, string, string] | null {
-  const raw = text(value);
+  const raw = text(value).replace(/(\d)(?:st|nd|rd|th)\b/gi, "$1").replace(/\bsept\b/gi, "Sep");
   if (!raw || missing(raw)) return null;
   const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
   if (iso) return [iso[1], iso[2], iso[3]];
-  const us = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(raw);
-  if (us) return [us[3], us[1].padStart(2, "0"), us[2].padStart(2, "0")];
+  const us = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/.exec(raw);
+  if (us) return [yearOf(us[3]), us[1].padStart(2, "0"), us[2].padStart(2, "0")];
+  const monthFirst = /^([A-Za-z]+)\.?\s+(\d{1,2}),?\s+(\d{2,4})/.exec(raw);
+  if (monthFirst && MONTHS[monthFirst[1].toLowerCase()]) {
+    return [yearOf(monthFirst[3]), MONTHS[monthFirst[1].toLowerCase()], monthFirst[2].padStart(2, "0")];
+  }
+  const dayFirst = /^(\d{1,2})(?:[./\s-]+)([A-Za-z]+)\.?,?\s+(\d{2,4})/.exec(raw);
+  if (dayFirst && MONTHS[dayFirst[2].toLowerCase()]) {
+    return [yearOf(dayFirst[3]), MONTHS[dayFirst[2].toLowerCase()], dayFirst[1].padStart(2, "0")];
+  }
   return null;
+}
+
+const DATE_IN_TEXT =
+  /\b(\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}[./-][A-Za-z]+[./-]?\d{2,4}|[A-Za-z]+\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{2,4}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+\.?,?\s+\d{2,4})\b/gi;
+
+/** Every date in the text, shown as YYYY-MM-DD. Other words stay. */
+export function displayIsoDates(value: string | null | undefined): string {
+  return text(value).replace(DATE_IN_TEXT, (raw) => {
+    const parts = parseDate(raw);
+    return parts ? parts.join("-") : raw;
+  });
 }
 
 function dateMark(
@@ -311,7 +347,7 @@ export function groundTruthBits(input: {
     dosTo: dateMark(gt.dosTo, input.dosTo, input.dosKnown),
     blankJunk: blankJunkMark(gt, input.blankOrJunk, input.junkKnown),
     pageType: pageTypeMark(
-      gt.encounterType,
+      gt.pageType || gt.encounterType,
       [input.pageType, input.pageSubtype],
       input.pageTypeKnown,
     ),

@@ -10,6 +10,7 @@ page processed — no pipeline restart, no re-OCR:
     section_header_canon.json    section-header catalog (stage 6)
     codeable_canon.json          page type / codeability keywords
     encounter_canon.json         encounter-type keywords
+    provider_credentials_canon.json  provider credential tokens (MD, DO, PA-C, …)
 
 A ``CanonFile`` pairs a path with a ``build`` function that turns the parsed
 JSON into whatever the caller needs (compiled regexes, frozensets, …). The

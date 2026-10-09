@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import logging
 import re
-import shutil
 from pathlib import Path
 from typing import Any, Optional
 
@@ -47,7 +46,7 @@ from db.blob_store import (
     list_image_blobs,
 )
 from db.chart_status import refresh_chart_status
-from db.paths import clear_page_image_dirs, list_local_pages
+from db.paths import clear_page_image_dirs, copy_file, list_local_pages
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +152,7 @@ def _copy_images_into(
         if src_file.resolve() == target.resolve():
             copied += 1
             continue
-        shutil.copy2(src_file, target)
+        copy_file(src_file, target)
         copied += 1
     return copied
 
@@ -717,8 +716,18 @@ def import_local_folder(
                 ", ".join(f"{v} {k}" for k, v in cleared.items()),
             )
         existing = []
+    elif existing and len(existing) != len(images):
+        # A short workspace (one leftover page) must not hide the rest of the source.
+        logger.warning(
+            "Import %s: workspace has %d page(s) but source has %d — replacing pages/",
+            name,
+            len(existing),
+            len(images),
+        )
+        cleared = clear_page_image_dirs(name)
+        existing = []
 
-    # Prefer existing workspace pages — do not re-copy from source.
+    # Same page count as the source: keep the workspace, do not re-copy.
     if existing:
         logger.info(
             "Import %s: keeping %d existing page file(s) under %s",
@@ -749,7 +758,7 @@ def import_local_folder(
         write_folder_progress(
             name, index, total_files, detail=f"import {target.name}"
         )
-        shutil.copy2(path, target)
+        copy_file(path, target)
         copied.append(target.name)
 
     logger.info("Copied %d image(s) from %s -> %s", len(copied), src, dest_dir)
@@ -766,7 +775,7 @@ def import_local_folder(
         METADATA_ROOT.mkdir(parents=True, exist_ok=True)
         for man in manifests:
             target = METADATA_ROOT / man.name
-            shutil.copy2(man, target)
+            copy_file(man, target)
             loaded = run_load(local_path=target, run_id=run_id, batch_id=batch_id)
             # run_load flattens its counters at the top level, not under
             # a "totals" key.

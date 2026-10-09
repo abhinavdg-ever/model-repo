@@ -17,11 +17,11 @@ so.
 from __future__ import annotations
 
 import logging
-import shutil
 from pathlib import Path
 from typing import Any, Optional
 
 from config import chart_dir
+from db.paths import copy_file
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +156,7 @@ def _write_local(
     def _one(path: Path) -> int:
         target = dest / path.relative_to(root)
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, target)
+        copy_file(path, target)
         return path.stat().st_size
 
     # Parallel copies help when the destination is a network share / slow disk.

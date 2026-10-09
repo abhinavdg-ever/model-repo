@@ -22,6 +22,9 @@ def _docling_result(content: str) -> dict:
         "markdown": content,
         "section_headers": [{"text": "Patient Data"}],
         "document": None,
+        "words": [{"content": "PATIENT", "polygon": [0, 0, 10, 0, 10, 10, 0, 10]}],
+        "width": 100,
+        "height": 200,
         "elapsed_seconds": 2.0,
     }
 
@@ -34,7 +37,16 @@ def _run(monkeypatch, tmp_path, *, convert, onnx_text="rapid text"):
     img.write_bytes(b"x")
     monkeypatch.setattr(docling_ocr, "get_converter", lambda: object())
     monkeypatch.setattr(docling_ocr, "convert_image_with_timeout", convert)
-    monkeypatch.setattr(final1, "_ocr_onnx", lambda p: onnx_text)
+    monkeypatch.setattr(
+        final1,
+        "_ocr_onnx",
+        lambda p: {
+            "content": onnx_text,
+            "words": [{"content": "rapid", "polygon": [0, 0, 4, 0, 4, 4, 0, 4]}],
+            "width": 10,
+            "height": 10,
+        },
+    )
     return final1._ocr_one((PAGE, img, True, "chart-1"))
 
 
@@ -49,6 +61,8 @@ def test_thin_docling_output_is_kept(monkeypatch, tmp_path):
     assert out["engine"] == "docling+rapidocr"
     assert out["content"] == thin
     assert out["section_headers"]
+    assert out["words"][0]["content"] == "PATIENT"
+    assert out["width"] == 100 and out["height"] == 200
 
 
 def test_empty_docling_output_is_kept(monkeypatch, tmp_path):
@@ -68,6 +82,8 @@ def test_timeout_falls_back_to_rapidocr(monkeypatch, tmp_path):
     out = _run(monkeypatch, tmp_path, convert=boom)
     assert out["engine"] == "rapidocr-onnx"
     assert out["content"] == "rapid text"
+    assert out["words"][0]["content"] == "rapid"
+    assert out["width"] == 10 and out["height"] == 10
 
 
 def test_crash_falls_back_to_rapidocr(monkeypatch, tmp_path):

@@ -277,15 +277,19 @@ class TestStageRegistry:
         execution. If they disagree, a chart can never reach 'completed'."""
         from orchestrator.runner import STAGE_CHAIN
 
-        # v1.sql seeds the implemented stages; v2.sql registers the four
-        # not-yet-orchestrated ones. The chain must match V1 exactly.
-        schema_sql = (REPO_ROOT / "schema" / "v1.sql").read_text(encoding="utf-8")
-        seed_start = schema_sql.index("INSERT INTO pipeline_stage")
-        seed = schema_sql[seed_start : schema_sql.index(";", seed_start)]
+        # v1.sql seeds the implemented stages. v2.sql may register a stage the
+        # chain already runs (kv_extract) without editing v1.sql.
+        def _seed(name: str) -> str:
+            schema_sql = (REPO_ROOT / "schema" / name).read_text(encoding="utf-8")
+            seed_start = schema_sql.index("INSERT INTO pipeline_stage")
+            return schema_sql[seed_start : schema_sql.index(";", seed_start)]
+
+        seed = _seed("v1.sql")
+        registered = seed + "\n" + _seed("v2.sql")
 
         for name, pass_no, _fn in STAGE_CHAIN:
-            assert f"('{name}',{' ' * (max(1, 16 - len(name)))}{pass_no}," in seed or \
-                   f"'{name}'" in seed, f"{name} not seeded in pipeline_stage"
+            assert f"('{name}',{' ' * (max(1, 16 - len(name)))}{pass_no}," in registered or \
+                   f"'{name}'" in registered, f"{name} not seeded in pipeline_stage"
 
         # Every phase-1 seeded stage must have a callable in the chain.
         chain_keys = {(n, p) for n, p, _ in STAGE_CHAIN}
@@ -1661,11 +1665,10 @@ class TestAzureSdkLogging:
         finally:
             root.setLevel(previous)
 
-    def test_log_lines_include_current_chart_name(self):
-        """Every terminal line should tag ``[batch#] [chart#]``."""
+    def test_log_lines_include_chart_page_and_stage(self):
+        """Every terminal line reads ``[chart][page] [stage] status``."""
         import io
         import logging
-        import threading
 
         from logging_setup import (
             LOG_FORMAT,
@@ -1673,8 +1676,11 @@ class TestAzureSdkLogging:
             _ChartContextFilter,
             configure_logging,
             reset_current_chart,
+            reset_current_page,
+            reset_current_stage,
             set_current_chart,
-            set_worker_name,
+            set_current_page,
+            set_current_stage,
         )
 
         configure_logging(logging.INFO)
@@ -1686,19 +1692,20 @@ class TestAzureSdkLogging:
         log.addHandler(handler)
         log.setLevel(logging.INFO)
         log.propagate = False
-        prev_name = threading.current_thread().name
-        set_worker_name("batch-3")
-        token = set_current_chart("52743839_44976074")
+        chart = set_current_chart("52743839_44976074")
+        page = set_current_page(12)
+        stage = set_current_stage("Prelim OCR")
         try:
-            log.info("hello")
+            log.info("completed")
         finally:
-            reset_current_chart(token)
-            threading.current_thread().name = prev_name
+            reset_current_stage(stage)
+            reset_current_page(page)
+            reset_current_chart(chart)
             log.removeHandler(handler)
         line = stream.getvalue()
-        assert "[batch-3]" in line
-        assert "[52743839_44976074]" in line
-        assert "hello" in line
+        assert "[52743839_44976074][12]" in line
+        assert "[Prelim OCR]" in line
+        assert "completed" in line
 
 
 class TestCorrectedPages:
@@ -1746,12 +1753,6 @@ class TestCorrectedPages:
         body = m.group(1)
         assert "use_corrected" in body
         assert "image_path" in body
-
-        patch = (
-            Path(__file__).resolve().parents[1] / "schema" / "patch_output_path.sql"
-        ).read_text(encoding="utf-8")
-        assert "use_corrected" in patch
-        assert "image_path" in patch
 
         import inspect
         from stages.lib.image_preprocess import stage as quality_rotation_hw

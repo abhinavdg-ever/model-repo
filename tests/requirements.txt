@@ -8,7 +8,7 @@
 # torch): those are imported lazily inside functions and no test reaches them.
 #
 # Because rapidocr-onnxruntime is absent here, this file also installs cleanly
-# on Python 3.13+, unlike core-pipeline/requirements.txt which caps at <3.13.
+# on Python 3.13+, unlike core-pipeline/requirements-basic.txt which caps at <3.13.
 # Use 3.12 anyway if you intend to run the pipeline itself.
 #
 # No database is required.

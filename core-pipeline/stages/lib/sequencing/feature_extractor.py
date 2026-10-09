@@ -5,7 +5,7 @@ import re
 import string
 from typing import Any
 
-from .engine.types import PageFeatures
+from .engine.types import ExplicitMarker, PageFeatures
 from .page_heuristics import is_near_blank
 
 EDGE_LINES = 15
@@ -19,6 +19,7 @@ def features_from_text(
     text: str,
     is_classified: bool = False,
     text_fingerprint: str | None = None,
+    extracted_marker: ExplicitMarker | None = None,
 ) -> PageFeatures:
     full_text = text or ""
     lines = [ln.strip() for ln in full_text.splitlines() if ln.strip()]
@@ -49,11 +50,15 @@ def features_from_text(
         has_structured=False,
         identity_text="",
         text_fingerprint=text_fingerprint,
+        extracted_marker=extracted_marker,
     )
 
 
 def features_from_pages(pages: list[dict[str, Any]]) -> list[PageFeatures]:
-    """Each dict: page_id, page_number, text, is_classified (optional)."""
+    """Each dict: page_id, page_number, text, is_classified (optional).
+
+    Optional ``page_marker`` is the printed page number the extraction chose.
+    """
     out: list[PageFeatures] = []
     for page in pages:
         out.append(
@@ -63,6 +68,7 @@ def features_from_pages(pages: list[dict[str, Any]]) -> list[PageFeatures]:
                 text=str(page.get("text") or ""),
                 is_classified=bool(page.get("is_classified")),
                 text_fingerprint=page.get("text_fingerprint"),
+                extracted_marker=page.get("page_marker"),
             )
         )
     return out

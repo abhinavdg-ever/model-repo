@@ -74,7 +74,7 @@ def docling_status() -> dict[str, Any]:
     if not docling_importable():
         status["reason"] = (
             "docling/rapidocr not installed — "
-            "pip install -r requirements-docling.txt"
+            "pip install -r requirements-models.txt"
         )
         return status
     missing = missing_model_files()
@@ -89,7 +89,12 @@ def docling_status() -> dict[str, Any]:
 
 
 def _build_rapidocr_options(models: dict[str, Path]) -> Any:
-    """Match RapidOcrOptions to whatever fields this Docling version exposes."""
+    """Point Docling at the local Torch RapidOCR weights.
+
+    ``artifacts_path`` is the layout folder. If the four model paths are left
+    empty, Docling treats that folder as offline RapidOCR storage and looks
+    for ``.onnx`` files that we do not ship.
+    """
     from docling.datamodel.pipeline_options import RapidOcrOptions
     from rapidocr.utils.typings import EngineType
 
@@ -103,6 +108,15 @@ def _build_rapidocr_options(models: dict[str, Path]) -> Any:
         "Rec.rec_keys_path": str(models["keys"]),
     }
     fields = set(RapidOcrOptions.model_fields.keys())
+    kwargs: dict[str, Any] = {"force_full_page_ocr": True}
+    pinned = {
+        "backend": "torch",
+        "det_model_path": str(models["det"]),
+        "cls_model_path": str(models["cls"]),
+        "rec_model_path": str(models["rec"]),
+        "rec_keys_path": str(models["keys"]),
+    }
+    kwargs.update({name: value for name, value in pinned.items() if name in fields})
 
     passthrough = [
         name
@@ -112,9 +126,8 @@ def _build_rapidocr_options(models: dict[str, Path]) -> Any:
     if passthrough:
         field_name = passthrough[0]
         logger.info("RapidOcrOptions: passthrough field %s", field_name)
-        return RapidOcrOptions(
-            force_full_page_ocr=True, **{field_name: dict(params)}
-        )
+        kwargs[field_name] = dict(params)
+        return RapidOcrOptions(**kwargs)
 
     legacy = {"det_model_path", "cls_model_path", "rec_model_path", "rec_keys_path"}
     if legacy <= fields:
@@ -135,6 +148,28 @@ def _build_rapidocr_options(models: dict[str, Path]) -> Any:
         "Could not match RapidOcrOptions to a known Docling shape. "
         f"Fields: {sorted(fields)}"
     )
+
+
+def _docling_device() -> str:
+    """Where the layout model runs.
+
+    Auto prefers the Mac GPU, and Heron's layout model then builds a float64
+    position embedding. Metal rejects that dtype, so every page fails and
+    falls back to RapidOCR. On a Mac with no CUDA, use the CPU unless
+    DOCLING_DEVICE says otherwise.
+    """
+    chosen = (os.environ.get("DOCLING_DEVICE") or "").strip().casefold()
+    if chosen:
+        return chosen
+    try:
+        import torch
+    except Exception:
+        return "auto"
+    mps = torch.backends.mps.is_built() and torch.backends.mps.is_available()
+    cuda = torch.backends.cuda.is_built() and torch.cuda.is_available()
+    if mps and not cuda:
+        return "cpu"
+    return "auto"
 
 
 def build_converter(models_dir: Path | None = None) -> Any:
@@ -174,6 +209,13 @@ def build_converter(models_dir: Path | None = None) -> Any:
 
     models = model_paths(models_dir)
     pipeline_options = PdfPipelineOptions()
+    device = _docling_device()
+    from docling.datamodel.accelerator_options import AcceleratorOptions
+
+    pipeline_options.accelerator_options = AcceleratorOptions(device=device)
+    artifacts = _ensure_docling_artifacts()
+    if artifacts is not None:
+        pipeline_options.artifacts_path = artifacts
     pipeline_options.do_ocr = True
     pipeline_options.do_table_structure = do_tables
     # Image inputs must stay at scale 1.0. Docling's PDF default (2.0) doubles
@@ -194,8 +236,12 @@ def build_converter(models_dir: Path | None = None) -> Any:
             os.environ.get("DOCLING_TABLE_CELL_MATCHING") or "true"
         ).strip().casefold() in {"1", "true", "yes", "on"}
     pipeline_options.ocr_options = _build_rapidocr_options(models)
+    # Keep the OCR line cells until convert() returns, so a page Azure skips
+    # can still hand word boxes to key/value extraction.
+    pipeline_options.generate_parsed_pages = True
     logger.info(
-        "Docling pipeline: tables=%s mode=%s cell_matching=%s images_scale=%s",
+        "Docling pipeline: device=%s tables=%s mode=%s cell_matching=%s images_scale=%s",
+        device,
         do_tables,
         getattr(table_mode, "value", table_mode) if do_tables else "n/a",
         getattr(
@@ -207,11 +253,46 @@ def build_converter(models_dir: Path | None = None) -> Any:
         else False,
         getattr(pipeline_options, "images_scale", None),
     )
-    return DocumentConverter(
+    converter = DocumentConverter(
         format_options={
             InputFormat.IMAGE: ImageFormatOption(pipeline_options=pipeline_options),
         }
     )
+    # Layout weights load here, before any page's 90s timer. The first convert
+    # used to spend that budget downloading them and then fall back to RapidOCR.
+    logger.info("Docling: loading layout weights")
+    converter.initialize_pipeline(InputFormat.IMAGE)
+    logger.info("Docling: layout weights ready")
+    return converter
+
+
+def _ensure_docling_artifacts() -> Optional[Path]:
+    """Layout and table models on disk. RapidOCR weights stay in RAPID_MODELS_DIR."""
+    try:
+        from config import DOCLING_ARTIFACTS_DIR
+    except Exception:
+        return None
+    dest = Path(DOCLING_ARTIFACTS_DIR)
+    try:
+        from docling.utils.model_downloader import download_models
+
+        logger.info("Docling: ensuring layout and table models in %s", dest)
+        download_models(
+            output_dir=dest,
+            with_layout=True,
+            with_tableformer=True,
+            with_code_formula=False,
+            with_picture_classifier=False,
+            with_rapidocr=False,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Docling model download failed (%s); first convert may use the Hub cache",
+            exc,
+        )
+        if not dest.is_dir() or not any(dest.iterdir()):
+            return None
+    return dest if dest.is_dir() else None
 
 
 def get_converter() -> Any | None:
@@ -713,6 +794,7 @@ def convert_image(image_path: Path, converter: Any | None = None) -> dict[str, A
     started = time.perf_counter()
     result = engine.convert(str(image_path))
     doc = result.document
+    words, page_width, page_height = _words_from_docling_result(result)
     markdown = clean_docling_markdown(doc.export_to_markdown() or "")
     candidates = _renorm_headers_for_image(extract_section_headers(doc), image_path)
     section_headers = list(candidates)
@@ -742,14 +824,54 @@ def convert_image(image_path: Path, converter: Any | None = None) -> dict[str, A
         len(section_headers),
         "yes" if document is not None else "skipped",
     )
+    if words:
+        logger.info("Docling word boxes: %d on %s", len(words), image_path.name)
     return {
         "markdown": markdown,
         "content": markdown,
         "document": document,
+        "words": words,
+        "width": page_width,
+        "height": page_height,
         "section_header_candidates": candidates,
         "section_headers": section_headers,
         "elapsed_seconds": elapsed,
     }
+
+
+def _words_from_docling_result(result: Any) -> tuple[list[dict[str, Any]], Optional[float], Optional[float]]:
+    """Word boxes from the OCR lines Docling kept on each page.
+
+    RapidOCR boxes a whole line. ``words_from_line`` cuts that line into words
+    so extraction can place a key beside its value. Coordinates are top-left,
+    in the page's pixel size.
+    """
+    from stages.lib.extraction.ocr_input import words_from_line
+
+    words: list[dict[str, Any]] = []
+    width: Optional[float] = None
+    height: Optional[float] = None
+    for page in getattr(result, "pages", None) or []:
+        size = getattr(page, "size", None)
+        page_w = float(getattr(size, "width", 0) or 0)
+        page_h = float(getattr(size, "height", 0) or 0)
+        if page_w > 0:
+            width = page_w
+        if page_h > 0:
+            height = page_h
+        parsed = getattr(page, "parsed_page", None)
+        cells = getattr(parsed, "textline_cells", None) or []
+        for cell in cells:
+            text = str(getattr(cell, "text", "") or getattr(cell, "orig", "") or "")
+            try:
+                box = cell.to_bounding_box()
+                if page_h > 0 and hasattr(box, "to_top_left_origin"):
+                    box = box.to_top_left_origin(page_h)
+                top, bottom = min(float(box.t), float(box.b)), max(float(box.t), float(box.b))
+                words.extend(words_from_line(text, float(box.l), top, float(box.r), bottom))
+            except (AttributeError, TypeError, ValueError):
+                continue
+    return words, width, height
 
 
 def convert_image_with_timeout(

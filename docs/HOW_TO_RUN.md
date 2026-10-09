@@ -38,25 +38,15 @@ unchanged.
 
 ---
 
-## 0. One-time: bring the DB up to date
-
-If these charts ran on an **older** schema (before codeable / encounter /
-sequencing), apply the additive patch first — do **not** re-run `v1.sql` on a
-live DB:
-
-```bash
-psql "$DATABASE_URL" -f schema/patch_output_path.sql
-```
-
-That creates `encounter_type_results` + `page_sequencing_results`, registers
-the three new stages, and seeds `page_stage_status` pending rows.
-
-First-time empty database instead:
+## 0. One-time: apply the schema
 
 ```bash
 psql "$DATABASE_URL" -f schema/v1.sql
 # optional: psql "$DATABASE_URL" -f schema/v2.sql
 ```
+
+An existing database is recreated from those files. Dump it first if the data
+matters, then `schema/clear_schema.sql` and `schema/v1.sql`.
 
 Confirm stages (and that blob credentials are live):
 

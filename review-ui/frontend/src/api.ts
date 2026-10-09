@@ -30,6 +30,22 @@ export type FolderListParams = {
   sort_dir?: "asc" | "desc";
 };
 
+export type FileViewerFolder = {
+  id: string;
+  name: string;
+  page_count: number;
+  has_corrected: boolean;
+};
+
+export type FileViewerListResponse = {
+  items: FileViewerFolder[];
+  total: number;
+};
+
+export type FileViewerFolderDetail = FileViewerFolder & {
+  pages: PageSummary[];
+};
+
 export type FolderListResponse = {
   items: FolderSummary[];
   total: number;
@@ -61,6 +77,24 @@ export type FolderDetail = FolderSummary & {
 export type OcrKind = "preliminary" | "final1" | "final2";
 
 export type OutputMode = "ocr" | "imaging";
+
+export type ExtractionFieldRow = {
+  id: string;
+  label: string;
+  extracted: string;
+  processed: string;
+  confidence: number | null;
+  ground_truth: string;
+};
+
+export type ExtractionReviewResponse = {
+  folder_id: string;
+  available: boolean;
+  model_version: string;
+  page_file: string;
+  fields: ExtractionFieldRow[];
+  section_headers: OcrSectionHeader[];
+};
 
 export type OcrSectionHeader = {
   text: string;
@@ -99,6 +133,10 @@ export type ImagingPageResult = {
   dosConfidence: number | null;
   docDosFrom?: string | null;
   docDosTo?: string | null;
+  /** DOS resolver label. `span` means the page continues an open encounter. */
+  dosMatch?: string | null;
+  /** Reviewer-facing date. `continuation` when the page is inside a span. */
+  finalDos?: string | null;
   /** null = not classified yet → UI shows NA; else "Yes (Blank)" | "Yes (Junk)" | "No" */
   blankOrJunk?: string | null;
   /** null = not classified → NA */
@@ -112,23 +150,33 @@ export type ImagingPageResult = {
   currentSequence?: number | null;
   /** Reordered sequence — logic TBD. */
   actualSequence?: number | null;
-  groundTruth?: {
-    pageNumber: number;
-    sourcePageId?: string | null;
-    memberName?: string | null;
-    memberDob?: string | null;
-    dosFrom?: string | null;
-    dosTo?: string | null;
-    encounterType?: string | null;
-    pageType?: string | null;
-    codeable?: string | null;
-    blankPage?: string | null;
-    junkPage?: string | null;
-    isInvoice?: string | null;
-    pageSequence?: string | null;
-    rotation?: string | null;
-    isVisible?: string | null;
-  } | null;
+  /** Name, credentials, and signature from the provider-signature CSV. */
+  providerName?: string | null;
+  providerCredentials?: string | null;
+  providerSignature?: string | null;
+  providerSignatureConfidence?: number | null;
+  groundTruth?: PageGroundTruth | null;
+};
+
+export type PageGroundTruth = {
+  pageNumber: number;
+  sourcePageId?: string | null;
+  memberName?: string | null;
+  memberDob?: string | null;
+  memberId?: string | null;
+  dosFrom?: string | null;
+  dosTo?: string | null;
+  encounterType?: string | null;
+  pageType?: string | null;
+  codeable?: string | null;
+  blankPage?: string | null;
+  junkPage?: string | null;
+  isInvoice?: string | null;
+  pageSequence?: string | null;
+  rotation?: string | null;
+  isVisible?: string | null;
+  renderingProvider?: string | null;
+  providerSignature?: string | null;
 };
 
 export type ImagingManifestDetails = {
@@ -215,8 +263,14 @@ export function formatBatchLabel(raw: string | null | undefined): string {
   return m ? `Batch ${m[1]}` : s;
 }
 
-async function api<T>(path: string): Promise<T> {
-  const res = await fetch(path);
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    ...init,
+    headers: {
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...init?.headers,
+    },
+  });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new Error(detail || `${res.status} ${res.statusText}`);
@@ -246,6 +300,23 @@ export function listFolders(params?: FolderListParams): Promise<FolderListRespon
   return api(`/api/folders${qs ? `?${qs}` : ""}`);
 }
 
+export function listFileViewerFolders(): Promise<FileViewerListResponse> {
+  return api("/api/file-viewer/folders");
+}
+
+export function getFileViewerFolder(folderId: string): Promise<FileViewerFolderDetail> {
+  return api(`/api/file-viewer/folders/${encodeURIComponent(folderId)}`);
+}
+
+export function fileViewerPageImageUrl(
+  folderId: string,
+  pageNumber: number,
+  corrected = false,
+): string {
+  const base = `/api/file-viewer/folders/${encodeURIComponent(folderId)}/pages/${pageNumber}/image`;
+  return corrected ? `${base}?corrected=1` : base;
+}
+
 export function getFolder(folderId: string): Promise<FolderDetail> {
   return api(`/api/folders/${encodeURIComponent(folderId)}`);
 }
@@ -257,6 +328,24 @@ export function getFolderOcr(folderId: string, kind: OcrKind): Promise<OcrTextRe
 
 export function getFolderImaging(folderId: string): Promise<ImagingDocumentResponse> {
   return api(`/api/folders/${encodeURIComponent(folderId)}/imaging`);
+}
+
+export function savePageGroundTruth(
+  folderId: string,
+  body: PageGroundTruth,
+): Promise<PageGroundTruth> {
+  return api(`/api/folders/${encodeURIComponent(folderId)}/ground-truth`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function getFolderExtraction(
+  folderId: string,
+  pageFile: string,
+): Promise<ExtractionReviewResponse> {
+  const params = new URLSearchParams({ page: pageFile });
+  return api(`/api/folders/${encodeURIComponent(folderId)}/extraction?${params}`);
 }
 
 /** URL for History bulk imaging export (server-side stream; Landing uses client progress). */

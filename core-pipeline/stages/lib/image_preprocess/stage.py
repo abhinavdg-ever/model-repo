@@ -386,6 +386,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         with connect() as conn:
             for page in todo:
                 mark_processing(conn, ctx, page["id"])
+        # mark_processing leaves the last page in the log context. The pool
+        # below is the whole chart, not page 29.
+        from logging_setup import set_current_page
+
+        set_current_page("")
 
         measured: list[dict[str, Any]] = []
         if todo:

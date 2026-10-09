@@ -26,7 +26,8 @@ def test_local_resume_keeps_existing_pages():
     from stages.utilities import download_blob
 
     src = inspect.getsource(download_blob.import_local_folder)
-    # Existing workspace pages are reused, never re-copied from source.
+    # A workspace with the same page count as the source is reused.
+    # A different count replaces pages/ from the source.
     assert "existing = list_local_pages(name)" in src
     assert "register_local_pages(" in src
     # force resets DB results only; page images go only on redownload_pages.

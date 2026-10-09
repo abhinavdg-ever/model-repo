@@ -6,24 +6,21 @@
 -- any of it (except the consolidated_chart_results view, which joins V1
 -- tables that already exist after v1.sql).
 --
--- FIRST-TIME SETUP
+-- SETUP
 -- ---------------------------------------------------------------------
 --     psql "$DATABASE_URL" -f schema/v1.sql        # FIRST — required
 --     psql "$DATABASE_URL" -f schema/v2.sql        # optional
 --
--- EXISTING DATABASE
--- ---------------------------------------------------------------------
---     psql "$DATABASE_URL" -f schema/patch_output_path.sql   # V1 upgrades
---     psql "$DATABASE_URL" -f schema/v2.sql                  # still optional
---
 -- Do not apply v2.sql before v1.sql: every table here FKs into V1.
+-- An existing database is recreated from v1.sql, then this file.
 --
 -- WHAT IS IN HERE (proposals only)
 -- ---------------------------------------------------------------------
 --   users                        reviewer identity (V2 tables FK to it)
 --   chunk_results                OCR text chunking
 --   rejection_results            reviewer accept/reject/flag
---   provider_signature_results   signature detection
+--   provider_signature_results   selected electronic signature
+--   additional_page_details      printed page number + section headers JSON
 --   invoice_matching_results     invoice reconciliation
 --   ground_truth_csv             labelled data import
 --   model_registry               model versions + storage
@@ -35,7 +32,7 @@
 --   pipeline_stage_performance   stage timings and success rates
 --   model_accuracy_latest        newest metric per model
 --
--- Registers only rejection_logic in pipeline_stage (is_phase1 = FALSE).
+-- Registers rejection_logic (is_phase1 = FALSE) and kv_extract (seq 56).
 -- page_classification / encounter_type_results / page_sequencing_results
 -- live in v1.sql now.
 --
@@ -72,12 +69,19 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * dos_extraction_results.extraction_method also allows 'kv' (a date the
+--    key/value ranker supplied). The CHECK is widened below; v1.sql is unchanged.
+--  * pipeline_stage gains kv_extract (seq 56), after section_headers.
+--  * provider_signature_results follows the electronic-signature extractor
+--    (key, region, scale, sentence, ner text, provider name, signature date
+--    converted from the printed form to a DATE, confidence, source).
+--  * additional_page_details stores the printed page number and the
+--    section_headers JSON for the page.
 --  * page_list.use_corrected + image_path (workspace image source).
---  * page_classification moved to v1.sql (page_subtype writes it).
---  * encounter_type_results + page_sequencing_results moved to v1.sql.
---    Existing DBs: schema/patch_output_path.sql.
+--  * page_classification lives in v1.sql (page_subtype writes it).
+--  * encounter_type_results + page_sequencing_results live in v1.sql.
 --  * member_verification_summary.final_status also allows 'skipped'
---    (all-blank/junk charts; Existing DBs: same patch file).
+--    (all-blank/junk charts). Defined in v1.sql.
 --
 -- WHAT CHANGED IN v8 (applies to both files)
 -- ---------------------------------------------------------------------
@@ -119,12 +123,22 @@ SET search_path TO public;
 -- ---------------------------------------------------------------------
 -- STAGE REGISTRY — unorchestrated stages only
 -- ---------------------------------------------------------------------
--- v1.sql seeds the twelve phase-1 stages. rejection_logic stays here with
+-- v1.sql seeds the phase-1 stages. rejection_logic stays here with
 -- is_phase1 = FALSE so registering it cannot stall a chart.
 
 INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1) VALUES
+    ('kv_extract',       1, 56,  'Key/Value Extraction',         TRUE),
     ('rejection_logic',  1, 120, 'Rejection Logic',              FALSE)
 ON CONFLICT (stage_name, pass_no) DO NOTHING;
+
+-- v1.sql allows rules / llm / rules+llm. A date the key/value ranker supplied
+-- is 'kv'. Widen the check without editing v1.sql.
+ALTER TABLE dos_extraction_results
+    DROP CONSTRAINT IF EXISTS dos_extraction_results_extraction_method_check;
+ALTER TABLE dos_extraction_results
+    ADD CONSTRAINT dos_extraction_results_extraction_method_check
+    CHECK (extraction_method IS NULL OR extraction_method IN
+           ('rules','llm','rules+llm','kv'));
 
 CREATE TABLE users (
     id          BIGSERIAL PRIMARY KEY,
@@ -192,22 +206,60 @@ CREATE TRIGGER trg_rejection_results_updated_at
 CREATE INDEX idx_rejection_results_chart_id ON rejection_results(chart_id);
 
 
+-- Selected electronic signature. Columns follow the extractor row
+-- (Key, Region, Scale, Sentence, Ner_Text, ProviderName, SignatureDate,
+-- Score, Source). The printed date (03/15/2024) is stored converted.
 CREATE TABLE provider_signature_results (
     id                  BIGSERIAL PRIMARY KEY,
     chart_id            BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
-    page_id             BIGINT REFERENCES page_list(id) ON DELETE CASCADE,
+    page_id             BIGINT NOT NULL REFERENCES page_list(id) ON DELETE CASCADE,
     signature_present   BOOLEAN NOT NULL DEFAULT FALSE,
-    bounding_box        JSONB,
+    signature_key       VARCHAR(200),
+    region              VARCHAR(50),
+    scale               VARCHAR(50),
+    sentence            TEXT,
+    ner_text            TEXT,
+    provider_name       TEXT,
     signature_date      DATE,
     confidence          NUMERIC(5,4),
+    source              VARCHAR(20),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (page_id)
 );
+CREATE INDEX idx_provider_signature_results_chart_id ON provider_signature_results(chart_id);
+CREATE INDEX idx_provider_signature_results_page_id ON provider_signature_results(page_id);
 
 CREATE TRIGGER trg_provider_signature_results_updated_at
     BEFORE UPDATE ON provider_signature_results
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE INDEX idx_provider_signature_results_chart_id ON provider_signature_results(chart_id);
+
+
+-- Printed page number plus the page's section headers. The headers are the
+-- same JSON array stored on the OCR page (text, level, bbox, norm).
+CREATE TABLE additional_page_details (
+    id                      BIGSERIAL PRIMARY KEY,
+    chart_id                BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
+    page_id                 BIGINT NOT NULL REFERENCES page_list(id) ON DELETE CASCADE,
+    page_number_key         VARCHAR(200),
+    page_number_region      VARCHAR(50),
+    page_number_sentence    TEXT,
+    page_number_value       TEXT,
+    printed_page_no         VARCHAR(20),
+    printed_page_total      VARCHAR(20),
+    confidence              NUMERIC(5,4),
+    source                  VARCHAR(20),
+    section_headers         JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (page_id)
+);
+CREATE INDEX idx_additional_page_details_chart_id ON additional_page_details(chart_id);
+CREATE INDEX idx_additional_page_details_page_id ON additional_page_details(page_id);
+
+CREATE TRIGGER trg_additional_page_details_updated_at
+    BEFORE UPDATE ON additional_page_details
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 
 CREATE TABLE invoice_matching_results (

@@ -1,0 +1,39 @@
+# Model runtimes. Install on top of requirements-basic.txt:
+#
+#     pip install -r requirements-basic.txt -r requirements-models.txt
+#
+# One pin set for Docling final1, MiniLM section headers, member-verification
+# GLiNER, and the key/value ranker. Where those used to disagree, the pins are
+# the ones the ranker (models/kv-extraction) was trained and scored on.
+# Weights are not installed here; copy or download them under models/.
+
+# Docling final1 + ConvNeXt handwriting. RapidOCR weight files stay under
+# models/rapidocr/; the ConvNeXt checkpoint stays under models/hw/.
+docling>=2.0.0
+rapidocr>=2.0.0
+
+# MiniLM semantic filter for section headers. Falls back to lexical matching
+# if this package is absent.
+sentence-transformers>=5.0.0
+
+# GLiNER (member NER and key/value sentences) and the Heron heading detector.
+# 5.13 has the RT-DETRv2 (Heron) heading detector.
+gliner==0.2.29
+sentencepiece==0.2.2
+protobuf==7.36.1
+transformers==5.13.1
+tokenizers==0.22.2
+safetensors==0.8.0
+huggingface_hub==1.31.0
+torch==2.14.0
+torchvision==0.29.0
+numpy==2.5.3
+
+# Trained key/value ranker, and training/ (train.py, crossval.py).
+pandas==3.0.5
+lightgbm==4.7.0
+scikit-learn~=1.9.1
+
+# Page-family classifier (models/page-family/family.joblib). Absent ⇒ the
+# keyword catalog names the family as well as the subtype.
+xgboost~=3.4
