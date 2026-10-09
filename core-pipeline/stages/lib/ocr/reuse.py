@@ -11,6 +11,11 @@ Priority when skipping OCR engines:
   4. Else run OCR normally.
 
 ``force=True`` always runs OCR.
+
+A page whose earlier Final2 was skipped as high-quality printed has no word
+boxes. ``skip_ocr`` re-runs Final1 for that page until the file carries
+``words``. Pages that already have Final2, and Final1 files already in that
+shape, stay reused.
 """
 from __future__ import annotations
 
@@ -509,6 +514,79 @@ def hydrate_ocr_from_disk(
         summary["loaded"],
     )
     return summary
+
+
+def _pages_of(doc: Any) -> list[dict[str, Any]]:
+    pages = doc.get("pages") if isinstance(doc, dict) else None
+    if not isinstance(pages, list):
+        return []
+    return [page for page in pages if isinstance(page, dict)]
+
+
+def _page_filename(page: dict[str, Any]) -> str:
+    return str(page.get("fileName") or page.get("filename") or "")
+
+
+def final1_names_to_refresh(
+    final2_doc: Any, final1_doc: Any
+) -> list[str]:
+    """Page names whose earlier run skipped Final2 as high quality.
+
+    Final1 is re-read only while that page has no ``words`` key. A file written
+    by the current Final1 stage always has one, including an empty list.
+    """
+    final1_by_name = {
+        _page_filename(page): page
+        for page in _pages_of(final1_doc)
+        if _page_filename(page)
+    }
+    names: list[str] = []
+    for page in _pages_of(final2_doc):
+        if str(page.get("skippedReason") or "") != "high_quality_printed":
+            continue
+        name = _page_filename(page)
+        if not name:
+            continue
+        stored = final1_by_name.get(name)
+        if stored is None or "words" not in stored:
+            names.append(name)
+    return names
+
+
+def _load_ocr_doc(chart_name: str, suffix: str) -> Any:
+    path = ocr_dir(chart_name) / f"{chart_name}{suffix}"
+    if not path.is_file() or path.stat().st_size == 0:
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        logger.warning("SKIP_OCR: could not read %s", path.name)
+        return None
+
+
+def reopen_final1_for_hq_pages(chart_id: int, chart_name: str) -> list[int]:
+    """Mark Final1 pending for high-quality pages the earlier run left without Final2."""
+    from db import reset_pages_stage
+
+    names = set(
+        final1_names_to_refresh(
+            _load_ocr_doc(chart_name, "_final2.json"),
+            _load_ocr_doc(chart_name, "_final1.json"),
+        )
+    )
+    if not names:
+        return []
+    with connect() as conn:
+        pages = list_pages(conn, chart_id)
+        page_ids = [p["id"] for p in pages if p["page_name"] in names]
+        if page_ids:
+            reset_pages_stage(conn, chart_id, page_ids, "ocr_final1", pass_no=1)
+    if page_ids:
+        logger.info(
+            "SKIP_OCR: re-run Final1 for %d high-quality page(s) with no Final2",
+            len(page_ids),
+        )
+    return page_ids
 
 
 def apply_skip_ocr(chart_id: int, chart_name: str) -> dict[str, Any]:

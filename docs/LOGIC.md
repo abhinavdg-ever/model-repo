@@ -578,6 +578,11 @@ XGBoost are missing, the keywords choose the family.
 4. **Others.** When none of the above hit. Confidence is 0.
 5. **Subtype.** Inside the chosen family, the keyword type with the largest share of that family's scores. No subtype hit leaves the subtype equal to the family name. Others has no subtype.
 
+After that, `postprocess.py` rewrites pages. Two rules so far, in order:
+
+1. **Signature.** A page whose provider-signature row says a signature is present becomes Progress Note.
+2. **Between.** A run of Patient Demographics with a Progress Note on both sides becomes Progress Note. The confidence is the lower of those two neighbours.
+
 The 47 families, their tags and priorities, live in the canon's `families`
 block. Display names are the model's labels (`Progress Note`, `Laboratory
 Report`, `Discharge Summary`).

@@ -234,30 +234,45 @@ const JUNK_PAGE = [
   "record request",
 ];
 
-/** Ground truth agrees when it names the page type or the page subtype. */
+/** One ground-truth cell can name several page types, separated by `;` or `|`. */
+function pageTypeNames(value: string | null | undefined): string[] {
+  if (missing(value)) return [];
+  return displayWords(value)
+    .split(/\s*[;|]\s*/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0 && !missing(part));
+}
+
+/**
+ * A match when any ground-truth name agrees with the family or the subtype.
+ * Both sides are checked; one agreement is enough.
+ */
 function pageTypeMark(
   gt: string | null | undefined,
   pipeline: Array<string | null | undefined>,
   known: boolean,
 ): GtBit[] {
-  if (missing(gt)) return [];
-  const shown = displayWords(gt);
+  const names = pageTypeNames(gt);
+  if (names.length === 0) return [];
+  const shown = names.join(" | ");
   if (!known) return bit(shown, "unknown");
   const actuals = pipeline
-    .map((value) => fold(displayWords(value)))
+    .flatMap((value) => pageTypeNames(value))
+    .map((value) => fold(value))
     .filter(
       (value) =>
         value && value !== "yet to process" && value !== "skipped" && value !== "not found",
     );
   if (actuals.length === 0) return bit(shown, "unknown");
-  const expected = fold(shown);
-  if (expected === "accept") {
+  const expected = names.map((name) => fold(name));
+  if (expected.some((name) => name === "accept")) {
     const junk = actuals.some((actual) => JUNK_PAGE.some((word) => actual.includes(word)));
     return bit(shown, junk ? "mismatch" : "match");
   }
-  const same = actuals.some(
-    (actual) =>
-      expected === actual || actual.includes(expected) || expected.includes(actual),
+  const same = expected.some((name) =>
+    actuals.some(
+      (actual) => name === actual || actual.includes(name) || name.includes(actual),
+    ),
   );
   return bit(shown, same ? "match" : "mismatch");
 }

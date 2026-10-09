@@ -177,3 +177,29 @@ def test_small_charts_are_not_held_by_a_running_large_chart():
     assert done.wait(timeout=1)
     limiter.leave(True)
 
+
+def test_skip_ocr_refreshes_only_old_final1_on_high_quality_pages():
+    from stages.lib.ocr.reuse import final1_names_to_refresh
+
+    final2 = {
+        "pages": [
+            {"fileName": "hq.jpg", "content": "", "skippedReason": "high_quality_printed"},
+            {"fileName": "azure.jpg", "content": "read", "pagesMeta": [{"words": []}]},
+            {"fileName": "blank.jpg", "content": "", "skippedReason": "blank_junk_pass1"},
+        ]
+    }
+    old_final1 = {
+        "pages": [
+            {"fileName": "hq.jpg", "content": "printed text"},
+            {"fileName": "azure.jpg", "content": "read"},
+        ]
+    }
+    assert final1_names_to_refresh(final2, old_final1) == ["hq.jpg"]
+
+    new_final1 = {
+        "pages": [
+            {"fileName": "hq.jpg", "content": "printed text", "words": [], "width": 10},
+        ]
+    }
+    assert final1_names_to_refresh(final2, new_final1) == []
+

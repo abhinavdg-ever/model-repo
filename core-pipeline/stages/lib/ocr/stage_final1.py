@@ -284,13 +284,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     or [],
                     "section_headers": item.get("section_headers") or [],
                 }
-                words = item.get("words") or []
-                if words:
-                    page_doc["words"] = words
-                    if item.get("width"):
-                        page_doc["width"] = item["width"]
-                    if item.get("height"):
-                        page_doc["height"] = item["height"]
+                page_doc["words"] = list(item.get("words") or [])
+                if item.get("width"):
+                    page_doc["width"] = item["width"]
+                if item.get("height"):
+                    page_doc["height"] = item["height"]
                 if item.get("document") is not None:
                     page_doc["document"] = item["document"]
                 upsert_ocr_result(

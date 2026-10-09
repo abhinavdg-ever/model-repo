@@ -94,8 +94,9 @@ services:
       # Chart workspace — written here, read by review-ui.
       - ${DATA_HOST_PATH:-../review-ui/data/folders}:/data/folders
       - ${METADATA_HOST_PATH:-../review-ui/data/metadata}:/data/metadata
-      # core-pipeline/models/ (hw/, rapidocr/, semantic-model/, blank-junk/, ner/).
-      # .env paths such as models/blank-junk resolve here. Writable: GLiNER
+      # core-pipeline/models/ on the host: large checkpoints plus the small
+      # models copied by hand (blank-junk/, page-family/, kv-extraction/, hw/).
+      # .env paths such as models/page-family resolve here. Writable: GLiNER
       # repairs encoder config.json on first load.
       - ${MODELS_HOST_PATH:-./models}:/app/core-pipeline/models
       - ${LOGS_HOST_PATH:-./logs}:/app/core-pipeline/logs

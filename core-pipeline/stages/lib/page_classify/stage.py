@@ -46,6 +46,8 @@ from stages._support import (
 from stages.lib.canon_store import CANON_DIR, CanonFile
 from stages.lib.page_classify.codeable_classify import classify_pages
 from stages.lib.page_classify.family_model import annotate as annotate_families
+from stages.lib.page_classify.postprocess import apply as apply_postprocess
+from stages.lib.page_classify.postprocess import signed_page_names
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +215,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
 
         family_source = annotate_families(page_inputs)
         classified = classify_pages(page_inputs)
+        apply_postprocess(
+            classified, signed_names=signed_page_names(ctx.chart_name)
+        )
         by_id = {row["page_id"]: row for row in classified}
         from stages.lib.continuation import tag_pages
 

@@ -5,6 +5,30 @@ docs with `ocr/` + `ocr_results` in the workspace) when you only want later
 stages — codeable, encounter, sequencing, DOS, member, section headers — or a
 selective re-pass.
 
+## After the 9 Oct 2026 pull
+
+The commits are `914cc49` and `4ccf508`. On a machine that already runs charts:
+
+1. Pull, then rebuild the core-pipeline image. `requirements.txt` is gone. The image installs `requirements-basic.txt` and `requirements-models.txt`, including XGBoost. The `WITH_NER` build argument is gone.
+2. Rebuild with `docker compose up -d --build` from `core-pipeline/` and from `review-ui/`. Weights are not in the image. Copy `page-family/`, `kv-extraction/`, `blank-junk/`, and `hw/image_type_classification.pkl` plus `hw/metadata.json` into `MODELS_HOST_PATH` (default `core-pipeline/models`). Leave the large weights already there (RapidOCR, ConvNeXt, GLiNER, Docling, layout, MiniLM).
+3. `PAGE_FAMILY_MODEL_DIR` defaults to `models/page-family`. Add that line only if `.env` was copied from an older example that sets every model path by hand. Restart the API. `/health` should list the page-family model as ready. If XGBoost or the file is missing, page type falls back to keywords.
+4. Do not re-apply `schema/v1.sql`, and do not look for `schema/patch_output_path.sql` — that file was removed. On the existing database:
+
+```sql
+ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS member_id TEXT;
+INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1)
+VALUES ('kv_extract', 1, 56, 'Key/Value Extraction', TRUE)
+ON CONFLICT (stage_name, pass_no) DO NOTHING;
+ALTER TABLE dos_extraction_results
+    DROP CONSTRAINT IF EXISTS dos_extraction_results_extraction_method_check;
+ALTER TABLE dos_extraction_results
+    ADD CONSTRAINT dos_extraction_results_extraction_method_check
+    CHECK (extraction_method IS NULL OR extraction_method IN
+           ('rules','llm','rules+llm','kv'));
+```
+
+5. Charts that already finished OCR do not need Docling again for page type, member, or date of service. Run them with `skip_ocr: true` so Final2 is not billed again. Final1 text is reused. A high-quality page that skipped Azure has no word boxes in that old Final1 file. Re-run Final1 for those pages before key/value extraction. Pages that already have Final2 can keep the old Final1.
+
 All examples below use **Azure Blob** paths. Local paths work the same way:
 set `"input_type": "local"`, drop `container_name`, and make `input_path` /
 `output_path` directories on the server (see [`API.md`](API.md)).
@@ -129,7 +153,7 @@ Looks under `data/folders/<chart>/` (review-ui workspace):
 1. **`pages/` present** → use it. **Missing** → download from **Raw_Input** (`input_path`).
 2. **`ocr/` present** → use it. **Missing** → pull from **Processed** (`output_path`). **Still missing** → materialize from Postgres `ocr_results`. **Still missing** → **re-run OCR engines**.
 3. **Quality + rotation always re-run** → rewrite `corrected-pages/`.
-4. **Every non-OCR stage force-re-runs** — blank/junk (both passes), section headers, member, DOS, codeable, encounter, sequencing. Gate-delta may still reopen OCR engines for a page whose HW/quality/rotation path flipped or whose reused OCR is missing.
+4. **Every non-OCR stage force-re-runs** — blank/junk (both passes), section headers, member, DOS, codeable, encounter, sequencing. Gate-delta may still reopen OCR engines for a page whose HW/quality/rotation path flipped or whose reused OCR is missing. A page whose earlier Final2 says `high_quality_printed`, and whose Final1 has no `words`, is read again by Final1 in the current format. Final2 is not called for that page.
 5. **Write** (if `output_path` is set) **replaces** destination `ocr/`, `corrected-pages/`, `imaging/` (original `pages/` are never written).
 
 ```bash
