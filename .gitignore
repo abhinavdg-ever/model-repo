@@ -80,6 +80,11 @@ core-pipeline/models/hw/._*
 !core-pipeline/models/page-family/*.joblib
 !core-pipeline/models/hw/image_type_classification.pkl
 !core-pipeline/models/hw/metadata.json
+# The joblib exception also matches AppleDouble names such as ._family.joblib.
+core-pipeline/models/blank-junk/._*
+core-pipeline/models/page-family/._*
+core-pipeline/models/kv-extraction/._*
+core-pipeline/models/hw/._*
 
 # Page-family training artifacts. OCR text is chart content; do not commit it.
 training/page-classification/data-prep/ocr/
