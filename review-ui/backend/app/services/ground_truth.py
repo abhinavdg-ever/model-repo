@@ -51,14 +51,35 @@ def yes_no_label(value: str | None) -> str | None:
 # NULL instead of failing the whole lookup.
 
 
+LABEL_COLUMNS = (
+    "member_name", "member_dob", "member_id", "dos_from", "dos_to",
+    "encounter_type", "page_type", "codeable",
+    "blank_page", "junk_page", "is_invoice", "page_sequence", "rotation",
+    "is_visible", "rendering_provider", "provider_signature",
+)
+
+
+def _labelled_row_sql() -> str:
+    """True when at least one label cell holds a value, so an all-empty save does not count."""
+    empty = ", ".join(f"'{value}'" for value in sorted(_EMPTY))
+    cells = " OR ".join(
+        f"lower(btrim(COALESCE(to_jsonb(g) ->> '{column}', ''))) NOT IN ({empty})"
+        for column in LABEL_COLUMNS
+    )
+    return f"({cells})"
+
+
 def charts_with_ground_truth(database_url: str | None, db_schema: str = "public") -> set[str]:
-    """Chart folder names that have at least one ground-truth row."""
+    """Chart folder names with at least one page that has a ground-truth value."""
     if not database_url or not database_url_usable(database_url):
         return set()
     try:
         with connection(database_url, db_schema) as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT DISTINCT chart_name FROM page_ground_truth")
+                cur.execute(
+                    "SELECT DISTINCT chart_name FROM page_ground_truth g "
+                    f"WHERE {_labelled_row_sql()}"
+                )
                 return {str(row[0]) for row in cur.fetchall() if row[0]}
     except Exception as exc:
         logger.warning("page_ground_truth chart lookup failed: %s", exc)

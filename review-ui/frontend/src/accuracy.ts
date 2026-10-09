@@ -3,7 +3,7 @@ import type {
   ImagingPageResult,
   ImagingSectionsProcessed,
 } from "./api";
-import { groundTruthBits, type GtBit } from "./groundTruth";
+import { groundTruthBits, hasGroundTruth, type GtBit } from "./groundTruth";
 import { splitPageType } from "./ImagingPanel";
 
 export type Verdict = "correct" | "wrong";
@@ -14,12 +14,12 @@ export const METRICS: { id: MetricId; label: string; rule: string }[] = [
   {
     id: "member",
     label: "Member Verification",
-    rule: "Two or more of Name, DOB, and ID match",
+    rule: "Two or more of the labelled Name, DOB, and ID match (the only one, when one is labelled)",
   },
   {
     id: "dos",
     label: "DOS",
-    rule: "From and To both match",
+    rule: "Each labelled date (From, To) matches",
   },
   {
     id: "blankJunk",
@@ -101,6 +101,7 @@ function pageScores(
     gt: page.groundTruth,
     memberName: page.memberName,
     memberDob: page.memberDob,
+    memberId: page.memberId,
     memberKnown: sections.member,
     orientationAngle: page.orientationAngle,
     rotationKnown: sections.rotation,
@@ -120,27 +121,25 @@ function pageScores(
     sequenceKnown: Boolean(sections.sequencing),
   });
 
-  const nameLabeled = labeled(bits.memberName);
-  const dobLabeled = labeled(bits.memberDob);
+  // A labelled Member ID is checked against the page; otherwise the extracted
+  // id is compared with the manifest, but only alongside a labelled name or DOB.
   const extractedId = idKey(page.memberId);
   const expectedId = idKey(manifestMemberId);
-  const idComparable = extractedId.length > 0 && expectedId.length > 0;
-  const memberChecks = Number(nameLabeled) + Number(dobLabeled) + Number(idComparable);
-  let member: Verdict | null = null;
-  if (memberChecks >= 2) {
-    let hits = 0;
-    if (matched(bits.memberName)) hits += 1;
-    if (matched(bits.memberDob)) hits += 1;
-    if (idComparable && extractedId === expectedId) hits += 1;
-    member = hits >= 2 ? "correct" : "wrong";
+  const checks: boolean[] = [];
+  if (labeled(bits.memberName)) checks.push(matched(bits.memberName));
+  if (labeled(bits.memberDob)) checks.push(matched(bits.memberDob));
+  if (labeled(bits.memberId)) {
+    checks.push(matched(bits.memberId));
+  } else if (checks.length > 0 && extractedId && expectedId) {
+    checks.push(extractedId === expectedId);
   }
+  const hits = checks.filter(Boolean).length;
+  const member: Verdict | null =
+    checks.length === 0 ? null : hits >= Math.min(2, checks.length) ? "correct" : "wrong";
 
-  const dos =
-    labeled(bits.dosFrom) && labeled(bits.dosTo)
-      ? matched(bits.dosFrom) && matched(bits.dosTo)
-        ? "correct"
-        : "wrong"
-      : null;
+  const dosDates = [bits.dosFrom, bits.dosTo].filter(labeled);
+  const dos: Verdict | null =
+    dosDates.length === 0 ? null : dosDates.every(matched) ? "correct" : "wrong";
 
   const single = (field: GtBit[]): Verdict | null =>
     labeled(field) ? (matched(field) ? "correct" : "wrong") : null;
@@ -165,6 +164,7 @@ export function scoreChart(
     Tally
   >;
   for (const page of doc.pages) {
+    if (!hasGroundTruth(page.groundTruth)) continue;
     const scores = pageScores(page, sections, doc.manifest?.memberId);
     for (const metric of METRICS) add(metrics[metric.id], scores[metric.id]);
   }

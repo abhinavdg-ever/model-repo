@@ -1,6 +1,19 @@
 """Ground-truth labels the imaging screen sends are stored as empty or text."""
 
-from app.services.ground_truth import clean_label, yes_no_label
+from app.services.ground_truth import (
+    LABEL_COLUMNS,
+    _labelled_row_sql,
+    clean_label,
+    yes_no_label,
+)
+
+
+def test_a_chart_counts_once_any_one_label_cell_is_filled():
+    sql = _labelled_row_sql()
+    for column in LABEL_COLUMNS:
+        assert f"->> '{column}'" in sql
+    assert sql.count(" OR ") == len(LABEL_COLUMNS) - 1
+    assert "'na'" in sql and "''" in sql
 
 
 def test_blank_and_na_are_empty():

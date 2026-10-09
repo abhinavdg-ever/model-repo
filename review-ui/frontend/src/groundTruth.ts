@@ -303,9 +303,35 @@ function sequenceMark(
   return bit(gt, expected === actual ? "match" : "mismatch");
 }
 
+const LABEL_FIELDS: Array<keyof PageGroundTruth> = [
+  "memberName",
+  "memberDob",
+  "memberId",
+  "dosFrom",
+  "dosTo",
+  "encounterType",
+  "pageType",
+  "codeable",
+  "blankPage",
+  "junkPage",
+  "isInvoice",
+  "pageSequence",
+  "rotation",
+  "isVisible",
+  "renderingProvider",
+  "providerSignature",
+];
+
+/** True when at least one ground-truth cell on the page holds a value. */
+export function hasGroundTruth(gt: PageGroundTruth | null | undefined): boolean {
+  if (!gt) return false;
+  return LABEL_FIELDS.some((field) => !missing(gt[field] as string | null | undefined));
+}
+
 export type GroundTruthBits = {
   memberName: GtBit[];
   memberDob: GtBit[];
+  memberId: GtBit[];
   /** Client "Is Visible" — shown beside Quality, never scored (quality is a placeholder). */
   quality: GtBit[];
   rotation: GtBit[];
@@ -322,6 +348,7 @@ export function groundTruthBits(input: {
   gt: PageGroundTruth | null | undefined;
   memberName: string | null | undefined;
   memberDob: string | null | undefined;
+  memberId?: string | null;
   memberKnown: boolean;
   orientationAngle: number | null | undefined;
   rotationKnown: boolean;
@@ -343,6 +370,7 @@ export function groundTruthBits(input: {
   const empty: GroundTruthBits = {
     memberName: [],
     memberDob: [],
+    memberId: [],
     quality: [],
     rotation: [],
     dosFrom: [],
@@ -356,6 +384,7 @@ export function groundTruthBits(input: {
   return {
     memberName: yesFoundMark(gt.memberName, input.memberName, input.memberKnown),
     memberDob: dobMark(gt.memberDob, input.memberDob, input.memberKnown),
+    memberId: dobMark(gt.memberId, input.memberId, input.memberKnown),
     quality: visibilityMark(gt.isVisible),
     rotation: rotationMark(gt.rotation, input.orientationAngle, input.rotationKnown),
     dosFrom: dateMark(gt.dosFrom, input.dosFrom, input.dosKnown),

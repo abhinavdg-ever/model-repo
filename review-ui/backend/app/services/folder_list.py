@@ -329,11 +329,10 @@ def build_folder_list(
             disk_rows = list_disk_folder_names_light(data_root)
         merged = merge_db_and_disk(db_rows, disk_rows)
         have = charts_with_ground_truth(database_url, db_schema)
-        if have:
-            merged = [
-                row.model_copy(update={"ground_truth_available": row.name in have})
-                for row in merged
-            ]
+        merged = [
+            row.model_copy(update={"ground_truth_available": row.name in have})
+            for row in merged
+        ]
         return filter_sort_page(merged, params)
 
     # No DB — use caller-provided full local scan (existing behaviour).
