@@ -120,3 +120,18 @@ END $$;
 
 -- Accuracy is a view, not a stored score table.
 DROP TABLE IF EXISTS accuracy_snapshot;
+
+-- 2026-10-09 21:11 IST: one ground-truth column for each field the review
+-- screen shows that did not already have one. Existing rows stay NULL.
+-- Member name, DOB, member id, dates of service, encounter type, page type,
+-- codeable, blank/junk, rotation, visibility, provider name, and
+-- provider_signature are already on the table and are not changed here.
+ALTER TABLE page_ground_truth
+    ADD COLUMN IF NOT EXISTS printed_or_handwritten TEXT,
+    ADD COLUMN IF NOT EXISTS handwritten_pct TEXT,
+    ADD COLUMN IF NOT EXISTS quality TEXT,
+    ADD COLUMN IF NOT EXISTS tilt TEXT,
+    ADD COLUMN IF NOT EXISTS mirrored TEXT,
+    ADD COLUMN IF NOT EXISTS is_duplicate TEXT,
+    ADD COLUMN IF NOT EXISTS page_subtype TEXT,
+    ADD COLUMN IF NOT EXISTS provider_credentials TEXT;
