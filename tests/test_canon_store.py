@@ -69,6 +69,7 @@ def test_every_config_lives_in_the_canon_folder():
         "section_header_canon.json",
         "codeable_canon.json",
         "encounter_canon.json",
+        "provider_credentials_canon.json",
     }
     assert expected <= {p.name for p in CANON_DIR.glob("*_canon.json")}
 

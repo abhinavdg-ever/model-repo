@@ -46,6 +46,7 @@ BEGIN
             page_sequencing_results,
             rejection_results,
             provider_signature_results,
+            additional_page_details,
             invoice_matching_results,
             ground_truth_csv,
             field_accuracy_log,

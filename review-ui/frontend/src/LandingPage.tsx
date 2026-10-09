@@ -6,6 +6,7 @@ import {
   Download,
   FileText,
   FolderOpen,
+  Gauge,
   Inbox,
   RefreshCw,
   ScanSearch,
@@ -24,6 +25,7 @@ import {
   type OcrRunStatus,
 } from "./api";
 import { formatDuplicateLabel } from "./duplicateLabel";
+import { displayIsoDates } from "./groundTruth";
 
 const PAGE_SIZE = 15;
 const LANDING_FILTERS_KEY = "advantmed_imaging_landing_filters";
@@ -236,6 +238,7 @@ function MultiCheckFilter({
 type Props = {
   onView: (folderId: string, mode?: "ocr" | "imaging") => void;
   onOpenFileViewer?: () => void;
+  onOpenAccuracy?: () => void;
 };
 
 function fmtUpdated(iso: string | null): string {
@@ -303,8 +306,8 @@ function fillDocDosForDownload(pages: ImagingPageResult[]): ImagingPageResult[] 
   return [...pages]
     .sort((a, b) => a.pageNumber - b.pageNumber)
     .map((page) => {
-      let dosFrom = (page.docDosFrom || page.dosFrom || "").trim() || null;
-      let dosTo = (page.docDosTo || page.dosTo || "").trim() || null;
+      let dosFrom = displayIsoDates((page.docDosFrom || page.dosFrom || "").trim()) || null;
+      let dosTo = displayIsoDates((page.docDosTo || page.dosTo || "").trim()) || null;
       let dosConfidence = page.dosConfidence ?? null;
       if (!dosFrom && !dosTo) {
         if (prevFrom) {
@@ -398,7 +401,7 @@ function downloadTextFile(filename: string, text: string, mime: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function LandingPage({ onView, onOpenFileViewer }: Props) {
+export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy }: Props) {
   const saved = useMemo(() => readLandingFilters(), []);
   const [folders, setFolders] = useState<FolderSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -452,7 +455,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
       setBatchOptions(data.batch_options);
       // Drop batch picks that are no longer valid for the selected run(s).
       setBatchFilter((prev) => {
-        if (runFilter.length === 0) return [];
+        if (runFilter.length === 0) return prev.length === 0 ? prev : [];
         const allowed = new Set(data.batch_options);
         const next = prev.filter((b) => allowed.has(b));
         return next.length === prev.length ? prev : next;
@@ -610,7 +613,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
         <div className="landing-intro">
           <div>
             <h1>History</h1>
-            <p>Browse processed folders, and view OCR and Imaging Pipeline Results.</p>
+            <p>Browse processed charts, and view OCR and Imaging Pipeline Results.</p>
           </div>
           <div className="landing-intro-actions">
             <button
@@ -623,7 +626,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                 query.trim() ||
                 runFilter.length > 0 ||
                 batchFilter.length > 0
-                  ? "Download results for folders matching current filters"
+                  ? "Download results for charts matching current filters"
                   : "Download all imaging pipeline outputs as CSV"
               }
             >
@@ -640,6 +643,16 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                 File Viewer
               </button>
             ) : null}
+            {onOpenAccuracy ? (
+              <button
+                type="button"
+                className="landing-file-viewer-btn"
+                onClick={onOpenAccuracy}
+              >
+                <Gauge size={15} aria-hidden="true" />
+                Accuracy View
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -647,7 +660,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
           <div className="landing-stats" aria-label="Summary">
             <div className="landing-stat">
               <span className="landing-stat-value">{totals.folders}</span>
-              <span className="landing-stat-label">folders</span>
+              <span className="landing-stat-label">charts</span>
             </div>
             <div className="landing-stat-divider" />
             <div className="landing-stat">
@@ -678,8 +691,8 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                   type="search"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search file / folder…"
-                  aria-label="Search folders"
+                  placeholder="Search file / chart…"
+                  aria-label="Search charts"
                 />
               </label>
 
@@ -741,7 +754,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                       className={`th-sort${sortKey === "filename" ? " active" : ""}`}
                       onClick={() => toggleSort("filename")}
                     >
-                      Folder{sortIndicator("filename")}
+                      Chart{sortIndicator("filename")}
                     </button>
                   </th>
                   <th>Run</th>
@@ -796,14 +809,14 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
                           runFilter.length === 0 &&
                           batchFilter.length === 0
                             ? "No history found"
-                            : "No matching folders"}
+                            : "No matching charts"}
                         </h3>
                         <p>
                           {!query.trim() &&
                           statusFilter.length === 0 &&
                           runFilter.length === 0 &&
                           batchFilter.length === 0
-                            ? "Add folders under DATA_ROOT with pages/ and ocr/ outputs."
+                            ? "Add charts under DATA_ROOT with pages/ and ocr/ outputs."
                             : "Try a different search, status, run, or batch filter."}
                         </p>
                       </div>
@@ -941,7 +954,7 @@ export default function LandingPage({ onView, onOpenFileViewer }: Props) {
             </div>
             <p className="blob-auth-copy">
               This will take a few minutes. Results are built chart by chart for
-              the {total} folder{total === 1 ? "" : "s"} in
+              the {total} chart{total === 1 ? "" : "s"} in
               the current filter.
             </p>
             {downloadBusy || downloadDone > 0 ? (

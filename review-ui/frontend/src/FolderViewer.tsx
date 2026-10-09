@@ -16,13 +16,16 @@ import {
 } from "lucide-react";
 import {
   getFolder,
+  getFolderExtraction,
   getFolderImaging,
   getFolderOcr,
   OCR_TAB_LABELS,
   pageImageUrl,
+  type ExtractionReviewResponse,
   type FolderDetail,
   type ImagingDocumentResponse,
   type ImagingPageResult,
+  type PageGroundTruth,
   type OcrKind,
   type OcrSectionHeader,
   type OutputMode,
@@ -36,6 +39,7 @@ import {
   matchRateToneClass,
   pageMatchRate,
 } from "./ocrMatchRate";
+import { displayIsoDates } from "./groundTruth";
 import { ocrTextForFilename } from "./ocrPages";
 import { prepareOcrLines } from "./ocrFormat";
 import FullscreenPageChrome from "./FullscreenPageChrome";
@@ -86,8 +90,8 @@ function fillDocDosForDownload(pages: ImagingPageResult[]): ImagingPageResult[] 
   return [...pages]
     .sort((a, b) => a.pageNumber - b.pageNumber)
     .map((page) => {
-      let dosFrom = (page.docDosFrom || page.dosFrom || "").trim() || null;
-      let dosTo = (page.docDosTo || page.dosTo || "").trim() || null;
+      let dosFrom = displayIsoDates((page.docDosFrom || page.dosFrom || "").trim()) || null;
+      let dosTo = displayIsoDates((page.docDosTo || page.dosTo || "").trim()) || null;
       let dosConfidence = page.dosConfidence ?? null;
       if (!dosFrom && !dosTo) {
         if (prevFrom) {
@@ -171,6 +175,7 @@ export default function FolderViewer({
   const [ocrTab, setOcrTab] = useState<OcrKind>("preliminary");
   const [showSectionHeaders, setShowSectionHeaders] = useState(false);
   const [imagingTab, setImagingTab] = useState<ImagingTab>("page");
+  const [headerHighlight, setHeaderHighlight] = useState<"all" | number | null>(null);
   const [ocrByKind, setOcrByKind] = useState<Partial<Record<OcrKind, string>>>({});
   const [headersByKind, setHeadersByKind] = useState<
     Partial<Record<OcrKind, Record<string, OcrSectionHeader[]>>>
@@ -180,6 +185,7 @@ export default function FolderViewer({
   const [loadingOcr, setLoadingOcr] = useState(initialMode === "ocr");
   const [loadingImaging, setLoadingImaging] = useState(initialMode === "imaging");
   const [imagingError, setImagingError] = useState<string | null>(null);
+  const [extraction, setExtraction] = useState<ExtractionReviewResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -265,6 +271,7 @@ export default function FolderViewer({
     setPageIndex(0);
     setOcrTab("preliminary");
     setImagingTab("page");
+    setHeaderHighlight(null);
     setImagingDoc(null);
     setOcrByKind({});
     setHeadersByKind({});
@@ -275,7 +282,7 @@ export default function FolderViewer({
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load folder");
+          setError(err instanceof Error ? err.message : "Failed to load chart");
         }
       })
       .finally(() => {
@@ -310,6 +317,10 @@ export default function FolderViewer({
 
   const page = folder?.pages[pageIndex] ?? null;
 
+  useEffect(() => {
+    setHeaderHighlight(null);
+  }, [folderId, page?.filename]);
+
   // Page 1 is almost always page_number 1: start its download with the
   // folder request so the first image is cached by the time <img> mounts.
   useEffect(() => {
@@ -338,6 +349,7 @@ export default function FolderViewer({
     setOcrByKind({});
     setHeadersByKind({});
     setImagingError(null);
+    setExtraction(null);
     ocrFetchedRef.current = new Set();
     imagingFetchedRef.current = false;
     setLoadingImaging(outputMode === "imaging");
@@ -389,7 +401,6 @@ export default function FolderViewer({
 
   const ocrFullText = ocrByKind[ocrTab] ?? "";
   const ocrMissingMessage = `No ${OCR_TAB_LABELS[ocrTab]} available.`;
-  const sectionHeadersByFile = headersByKind[ocrTab] ?? {};
 
   useEffect(() => {
     if (outputMode !== "imaging" || imagingTab !== "additional") {
@@ -481,6 +492,23 @@ export default function FolderViewer({
       cancelled = true;
     };
   }, [folderId, outputMode]);
+
+  useEffect(() => {
+    if ((outputMode !== "imaging" && outputMode !== "ocr") || !page?.filename) {
+      return;
+    }
+    let cancelled = false;
+    getFolderExtraction(folderId, page.filename)
+      .then((data) => {
+        if (!cancelled) setExtraction(data);
+      })
+      .catch(() => {
+        if (!cancelled) setExtraction(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [folderId, outputMode, page?.filename]);
 
   const imagingPage = useMemo(
     () => findImagingPage(imagingDoc, page),
@@ -582,12 +610,10 @@ export default function FolderViewer({
     ) {
       return [];
     }
-    return (
-      sectionHeadersByFile[page.filename] ??
-      sectionHeadersByFile[page.filename.toLowerCase()] ??
-      []
+    return (extraction?.section_headers ?? []).filter(
+      (box) => box.width > 0 && box.height > 0,
     );
-  }, [showSectionHeaders, page, sectionHeadersByFile, ocrTab, imagingPage]);
+  }, [showSectionHeaders, page, extraction, ocrTab, imagingPage]);
 
   /** Imaging → Section coordinates: Final2 first, else Final1; skip blank/junk. */
   const imagingSectionInfo = useMemo(() => {
@@ -624,12 +650,19 @@ export default function FolderViewer({
     return { headers: [] as OcrSectionHeader[], source: null, skipped: false };
   }, [page, imagingPage, headersByKind]);
 
+  const heronBoxes = useMemo(
+    () =>
+      (extraction?.section_headers ?? []).filter(
+        (box) => box.text.trim() && box.width > 0 && box.height > 0,
+      ),
+    [extraction],
+  );
+
   const overlayBoxes = useMemo(() => {
     if (outputMode === "imaging" && imagingTab === "additional") {
-      if (imagingSectionInfo.skipped) return [];
-      return imagingSectionInfo.headers.filter(
-        (b) => b.width > 0 && b.height > 0,
-      );
+      if (imagingSectionInfo.skipped || headerHighlight == null) return [];
+      if (headerHighlight === "all") return heronBoxes;
+      return heronBoxes[headerHighlight] ? [heronBoxes[headerHighlight]] : [];
     }
     if (outputMode === "ocr") {
       return pageHeaderBoxes.filter((b) => b.width > 0 && b.height > 0);
@@ -639,6 +672,8 @@ export default function FolderViewer({
     outputMode,
     imagingTab,
     imagingSectionInfo,
+    headerHighlight,
+    heronBoxes,
     pageHeaderBoxes,
   ]);
 
@@ -1044,7 +1079,7 @@ export default function FolderViewer({
                 </>
               ) : (
                 <div className="ocr-empty">
-                  {loadingFolder ? "Loading pages…" : "No pages in this folder"}
+                  {loadingFolder ? "Loading pages…" : "No pages in this chart"}
                 </div>
               )}
               {isFullscreen ? (
@@ -1210,6 +1245,15 @@ export default function FolderViewer({
                   <button
                     type="button"
                     role="tab"
+                    aria-selected={imagingTab === "sequencing"}
+                    className={imagingTab === "sequencing" ? "active" : ""}
+                    onClick={() => setImagingTab("sequencing")}
+                  >
+                    Sequencing
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
                     aria-selected={imagingTab === "doc"}
                     className={imagingTab === "doc" ? "active" : ""}
                     onClick={() => setImagingTab("doc")}
@@ -1247,6 +1291,22 @@ export default function FolderViewer({
                   sectionHeadersSkipped={imagingSectionInfo.skipped}
                   sectionHeadersLoading={loadingOcr}
                   imageNaturalSize={imageNaturalSize}
+                  extraction={extraction}
+                  headerHighlight={headerHighlight}
+                  onHeaderHighlight={setHeaderHighlight}
+                  onGroundTruthSaved={(pageNumber, fileName, groundTruth: PageGroundTruth) => {
+                    setImagingDoc((doc) => {
+                      if (!doc) return doc;
+                      return {
+                        ...doc,
+                        pages: doc.pages.map((row) =>
+                          row.pageNumber === pageNumber && row.fileName === fileName
+                            ? { ...row, groundTruth }
+                            : row,
+                        ),
+                      };
+                    });
+                  }}
                 />
               ) : loadingOcr ? (
                 <div className="ocr-loading">Loading OCR output…</div>

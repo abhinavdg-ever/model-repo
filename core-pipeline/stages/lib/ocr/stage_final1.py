@@ -69,7 +69,8 @@ def _get_onnx_engine() -> Any:
         return _onnx_engine
 
 
-def _ocr_onnx(image_path: Path) -> str:
+def _ocr_onnx(image_path: Path) -> dict[str, Any]:
+    """RapidOCR-onnx text plus word boxes cut from each detected line."""
     engine = _get_onnx_engine()
     if engine is None:
         raise RuntimeError(
@@ -78,9 +79,27 @@ def _ocr_onnx(image_path: Path) -> str:
             "Install rapidocr-onnxruntime or enable Docling + .pth models."
         )
     result, _ = engine(str(image_path))
-    if not result:
-        return ""
-    return "\n".join(line[1] for line in result if len(line) > 1)
+    from PIL import Image
+
+    from stages.lib.extraction.ocr_input import words_from_line
+
+    with Image.open(image_path) as image:
+        width, height = image.size
+    lines: list[str] = []
+    words: list[dict[str, Any]] = []
+    for item in result or []:
+        if not isinstance(item, (list, tuple)) or len(item) < 2:
+            continue
+        box, text = item[0], str(item[1] or "")
+        if not text.strip():
+            continue
+        lines.append(text)
+        points = list(box or [])
+        xs = [float(point[0]) for point in points if len(point) >= 2]
+        ys = [float(point[1]) for point in points if len(point) >= 2]
+        if xs and ys:
+            words.extend(words_from_line(text, min(xs), min(ys), max(xs), max(ys)))
+    return {"content": "\n".join(lines), "words": words, "width": width, "height": height}
 
 
 def _ocr_one(args: tuple[dict[str, Any], Path, bool, str]) -> dict[str, Any]:
@@ -133,6 +152,11 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool, str]) -> dict[str, Any]:
                         extracted.get("section_header_candidates") or []
                     )
                     out["section_headers"] = extracted.get("section_headers") or []
+                    # High-quality printed pages skip Final2. Extraction then
+                    # reads these boxes, so they have to land on the stored page.
+                    out["words"] = extracted.get("words") or []
+                    out["width"] = extracted.get("width")
+                    out["height"] = extracted.get("height")
                     out["engine"] = "docling+rapidocr"
                     logger.info(
                         "Final1 Docling ok %s in %.1fs (chars=%d)",
@@ -150,9 +174,12 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool, str]) -> dict[str, Any]:
                         exc,
                     )
 
-        text = _ocr_onnx(image_path)
-        out["content"] = text
-        out["markdown"] = text
+        read = _ocr_onnx(image_path)
+        out["content"] = read.get("content") or ""
+        out["markdown"] = out["content"]
+        out["words"] = read.get("words") or []
+        out["width"] = read.get("width")
+        out["height"] = read.get("height")
         out["engine"] = "rapidocr-onnx"
         return out
     except Exception as exc:
@@ -257,6 +284,13 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     or [],
                     "section_headers": item.get("section_headers") or [],
                 }
+                words = item.get("words") or []
+                if words:
+                    page_doc["words"] = words
+                    if item.get("width"):
+                        page_doc["width"] = item["width"]
+                    if item.get("height"):
+                        page_doc["height"] = item["height"]
                 if item.get("document") is not None:
                     page_doc["document"] = item["document"]
                 upsert_ocr_result(

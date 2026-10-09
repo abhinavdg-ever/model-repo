@@ -16,12 +16,12 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
 from pathlib import Path
 from typing import Any, Optional
 
 from db import connect, get_ocr_texts, list_pages, set_pages_stage, upsert_ocr_result
 from db.paths import (
+    copy_file,
     ocr_dir,
     parse_combined_ocr_txt,
     parse_ocr_json,
@@ -125,7 +125,7 @@ def _copy_ocr_dir_into_workspace(src: Path, chart_name: str) -> int:
         if src_file.resolve() == target.resolve():
             copied += 1
             continue
-        shutil.copy2(src_file, target)
+        copy_file(src_file, target)
         copied += 1
     return copied
 

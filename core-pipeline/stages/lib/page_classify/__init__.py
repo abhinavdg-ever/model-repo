@@ -1,1 +1,1 @@
-"""Page type / codeability classification (keyword families over keyword-canon/codeable_canon.json)."""
+"""Page family from the model; subtype from keyword-canon/codeable_canon.json."""

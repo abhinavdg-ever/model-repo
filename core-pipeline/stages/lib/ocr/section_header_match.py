@@ -190,7 +190,7 @@ def download_minilm(
     except ImportError as exc:
         raise RuntimeError(
             "huggingface_hub is required to download MiniLM. "
-            "Install: pip install -r requirements-docling.txt"
+            "Install: pip install -r requirements-models.txt"
         ) from exc
 
     target.mkdir(parents=True, exist_ok=True)

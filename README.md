@@ -100,7 +100,7 @@ everything else is identical.
 
 To run the services directly instead of in Docker — with reload, on any of the
 three platforms — see
-[Mode A — Local](docs/API.md#mode-a--local-macos--windows--linux).
+[How to run](docs/API.md#3-starting-uvicorn).
 
 ---
 
@@ -141,7 +141,7 @@ Add `"through": "ocr_final2"` to stop after a stage, or `"only": ["dos_extract"]
 to run one stage on its own against results already on disk.
 
 Full reference — every field, every status code, batches, partial runs and the CLI:
-[`docs/API.md`](docs/API.md#how-to-run-a-chart).
+[`docs/API.md`](docs/API.md#3-starting-uvicorn).
 
 ---
 
@@ -173,10 +173,10 @@ Both are deliberate, current limitations rather than oversights:
   together) and are not shipped with the code. While it is off, member verification
   still runs and still flags charts for review — but no chart can be *rejected*
   outright, so every chart returns accepted or needs-review.
-  [`GET /health`](docs/API.md#get-health) reports whether it is active.
+  [`GET /health`](docs/API.md#3-starting-uvicorn) reports whether it is active.
 
 Enabling the NER layer:
-[`docs/API.md § The NER layer`](docs/API.md#3-the-ner-layer-gliner--optional-and-it-gates-rejection).
+[`docs/API.md` § Downloading models](docs/API.md#2-downloading-models).
 
 ---
 
@@ -196,7 +196,7 @@ Azure OpenAI and NER paths and skip themselves when those are not configured.
 | Document | Covers |
 |---|---|
 | [`docs/HOW_TO_RUN.md`](docs/HOW_TO_RUN.md) | **Re-run recipes** — skip OCR, `only` / `force` / batch on charts that already finished OCR |
-| [`docs/API.md`](docs/API.md) | Running both services, full API and CLI reference, troubleshooting |
+| [`docs/API.md`](docs/API.md) | Environment, model downloads, and starting uvicorn |
 | [`docs/FLOW.md`](docs/FLOW.md) | What runs when — end-to-end diagrams, skip rules, resume behaviour |
 | [`docs/LOGIC.md`](docs/LOGIC.md) | How each decision is made, and exactly what it writes |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System shape, data model, the role of every file |

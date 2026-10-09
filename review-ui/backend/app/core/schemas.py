@@ -28,6 +28,20 @@ class FolderSummary(BaseModel):
     ground_truth_available: bool = False
 
 
+class FileViewerFolder(BaseModel):
+    """A chart directory under data/folders that has a pages/ folder."""
+
+    id: str
+    name: str
+    page_count: int = 0
+    has_corrected: bool = False
+
+
+class FileViewerListResponse(BaseModel):
+    items: list[FileViewerFolder]
+    total: int = 0
+
+
 class FolderListResponse(BaseModel):
     """Paginated landing list. ``limit`` null/omitted on the request → all matches."""
 
@@ -49,6 +63,10 @@ class PageSummary(BaseModel):
     has_final1_ocr: bool = False
     has_final2_ocr: bool = False
     has_imaging: bool = False
+
+
+class FileViewerFolderDetail(FileViewerFolder):
+    pages: list[PageSummary] = Field(default_factory=list)
 
 
 class ImagingManifestDetails(BaseModel):
@@ -101,12 +119,13 @@ class OcrTextResponse(BaseModel):
 
 
 class PageGroundTruth(BaseModel):
-    """Client labels for one page. Member name is Yes/No; DOB is the date."""
+    """Client labels for one page. Member name, DOB, member id, and provider signature are Yes or No."""
 
     pageNumber: int
     sourcePageId: str | None = None
     memberName: str | None = None
     memberDob: str | None = None
+    memberId: str | None = None
     dosFrom: str | None = None
     dosTo: str | None = None
     encounterType: str | None = None
@@ -118,6 +137,8 @@ class PageGroundTruth(BaseModel):
     pageSequence: str | None = None
     rotation: str | None = None
     isVisible: str | None = None
+    renderingProvider: str | None = None
+    providerSignature: str | None = None
 
 
 class ImagingPageResult(BaseModel):
@@ -141,6 +162,9 @@ class ImagingPageResult(BaseModel):
     dosConfidence: float | None = None
     docDosFrom: str | None = None
     docDosTo: str | None = None
+    # span → the page continues an open encounter; finalDos is "continuation"
+    dosMatch: str | None = None
+    finalDos: str | None = None
     # None = classification not run → UI shows NA
     # Values: "Yes (Blank)" | "Yes (Junk)" | "No"
     blankOrJunk: str | None = None
@@ -156,6 +180,13 @@ class ImagingPageResult(BaseModel):
     # File/page order (1-based) vs suggested sequence from page_sequencing
     currentSequence: int | None = None
     actualSequence: int | None = None
+    # From imaging/<chart>_provider_signature.csv.
+    # providerName drops the suffix; providerCredentials is that suffix.
+    # providerSignature is signature_present: Yes or No.
+    providerName: str | None = None
+    providerCredentials: str | None = None
+    providerSignature: str | None = None
+    providerSignatureConfidence: float | None = None
     groundTruth: PageGroundTruth | None = None
 
     @model_validator(mode="before")
@@ -208,6 +239,49 @@ class ImagingDocumentResponse(BaseModel):
     sectionsProcessed: ImagingSectionsProcessed = Field(
         default_factory=ImagingSectionsProcessed
     )
+
+
+class ExtractionFieldRow(BaseModel):
+    """One staged extraction field. Processed is the extracted value until post-processing exists."""
+
+    id: str
+    label: str
+    extracted: str = ""
+    processed: str = ""
+    confidence: float | None = None
+    ground_truth: str = ""
+
+
+class AnnotationRow(BaseModel):
+    folder_id: str
+    page_number: int
+    page_file: str
+    field_id: str
+    verdict: str
+    value: str = ""
+    saved_at: str = ""
+
+
+class AnnotationSaveRequest(BaseModel):
+    folder_id: str
+    page_number: int
+    page_file: str
+    field_id: str
+    verdict: str
+    value: str = ""
+
+
+class AnnotationListResponse(BaseModel):
+    rows: list[AnnotationRow] = Field(default_factory=list)
+
+
+class ExtractionReviewResponse(BaseModel):
+    folder_id: str
+    available: bool
+    model_version: str = ""
+    page_file: str = ""
+    fields: list[ExtractionFieldRow] = Field(default_factory=list)
+    section_headers: list[OcrSectionHeader] = Field(default_factory=list)
 
 
 class HealthResponse(BaseModel):

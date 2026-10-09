@@ -1,0 +1,7 @@
+# Page-classification training. Tesseract is a system package, not a pip package:
+#   brew install tesseract
+#   apt install tesseract-ocr
+transformers>=4.40,<5
+torch>=2.2
+numpy
+scikit-learn

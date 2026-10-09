@@ -20,6 +20,9 @@ class PageFeatures:
     has_structured: bool = False
     identity_text: str = ""
     text_fingerprint: str | None = None
+    # Printed page number from key/value extraction. When set, it is the page's
+    # marker. When unset, the text patterns still run.
+    extracted_marker: "ExplicitMarker | None" = None
 
 
 @dataclass

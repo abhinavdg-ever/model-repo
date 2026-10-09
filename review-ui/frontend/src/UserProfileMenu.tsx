@@ -5,7 +5,7 @@ type Props = {
   displayName?: string;
   initials?: string;
   /** "file-viewer" shows History link; otherwise shows File Browser link */
-  currentView?: "landing" | "folder" | "file-viewer";
+  currentView?: "landing" | "folder" | "file-viewer" | "accuracy";
   onOpenFileViewer?: () => void;
   onOpenHistory?: () => void;
   onLogout: () => void;

@@ -436,11 +436,15 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "skipped": ctx.skipped,
             }
 
+        from stages.lib.extraction.stage import ensure_staging
+
+        staged = ensure_staging(chart_id, chart_name)
         engine_pages = [
             {
                 "page_no": p.get("page_number") or 0,
                 "page_name": p["page_name"],
                 "text": texts.get(p["id"], ""),
+                "staged": staged.page(p["page_name"]),
                 "_page_id": p["id"],
             }
             for p in todo_pages

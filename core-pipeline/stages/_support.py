@@ -93,12 +93,17 @@ def stage_run(
         todo=todo,
         force=force,
     )
-    from logging_setup import reset_current_chart, set_current_chart
+    from logging_setup import (
+        reset_current_chart,
+        reset_current_stage,
+        set_current_chart,
+        set_current_stage,
+    )
 
     chart_token = set_current_chart(ctx.chart_name)
+    stage_token = set_current_stage(stage_label(stage_name, pass_no))
     logger.info(
-        "[%s] chart %s — starting, %s of %s page(s) to do%s",
-        stage_label(stage_name, pass_no), ctx.chart_name,
+        "starting — %s of %s page(s)%s",
         len(todo), len(pages), " (forced)" if force else "",
     )
 
@@ -123,6 +128,7 @@ def stage_run(
                 pages_skipped=ctx.skipped,
             )
     finally:
+        reset_current_stage(stage_token)
         reset_current_chart(chart_token)
 
 
@@ -147,6 +153,8 @@ def mark_skipped(
     )
     ctx.skipped += len(ids)
     ctx.todo.difference_update(ids)
+    for page_id in ids:
+        _page_status(ctx, page_id, f"skipped — {reason}")
 
 
 # Short display names for log lines. pipeline_stage.label is the long form for
@@ -159,6 +167,7 @@ STAGE_LABELS = {
     "ocr_final1": "Final OCR 1",
     "ocr_final2": "Final OCR 2",
     "section_headers": "Section Headers",
+    "kv_extract": "Key/Value Extraction",
     "member_verify": "Member Verify",
     "dos_extract": "Date of Service",
     "page_subtype": "Codeable / Non Codeable",
@@ -174,24 +183,36 @@ def stage_label(stage_name: str, pass_no: int = 1) -> str:
     return f"{label} pass {pass_no}" if pass_no and pass_no > 1 else label
 
 
-def _progress(ctx: StageContext, outcome: str, page_name: str = "") -> None:
-    """Log + imaging/progress.txt so a long stage is not silent for minutes."""
-    from db.paths import write_folder_progress
+def _page_no(ctx: StageContext, page_id: int) -> str:
+    for page in ctx.pages:
+        if page.get("id") == page_id:
+            number = page.get("page_number")
+            if number not in (None, ""):
+                return str(number)
+            name = page.get("page_name")
+            return str(name or page_id)
+    return str(page_id)
 
-    total = len(ctx.todo) or len(ctx.pages)
+
+def _page_status(ctx: StageContext, page_id: int, status: str) -> None:
+    """One line: ``[chart][page] [stage] status``."""
+    from logging_setup import reset_current_page, set_current_page
+
+    total = len(ctx.pages) or len(ctx.todo) or 1
     seen = ctx.done + len(ctx.errors)
-    label = stage_label(ctx.stage_name, ctx.pass_no)
-    suffix = f" ({page_name})" if page_name else ""
-    logger.info(
-        "[%s] Page %d of %d %s%s",
-        label, seen, total, outcome, suffix,
-    )
+    token = set_current_page(_page_no(ctx, page_id))
     try:
+        logger.info("%s", status)
+    finally:
+        reset_current_page(token)
+    try:
+        from db.paths import write_folder_progress
+
         write_folder_progress(
             ctx.chart_name,
             seen,
             total,
-            detail=f"{label}: {outcome}{suffix}",
+            detail=f"{stage_label(ctx.stage_name, ctx.pass_no)}: {status}",
         )
     except OSError:
         logger.debug("progress.txt write failed for %s", ctx.chart_name, exc_info=True)
@@ -206,6 +227,9 @@ def mark_processing(conn: Any, ctx: StageContext, page_id: int) -> None:
         pass_no=ctx.pass_no,
         status="processing",
     )
+    from logging_setup import set_current_page
+
+    set_current_page(_page_no(ctx, page_id))
 
 
 def mark_completed(conn: Any, ctx: StageContext, page_id: int) -> None:
@@ -218,7 +242,11 @@ def mark_completed(conn: Any, ctx: StageContext, page_id: int) -> None:
         status="completed",
     )
     ctx.done += 1
-    _progress(ctx, "completed")
+    total = len(ctx.pages) or ctx.done
+    _page_status(ctx, page_id, f"completed ({ctx.done} of {total})")
+    from logging_setup import set_current_page
+
+    set_current_page("")
 
 
 def mark_failed(
@@ -234,7 +262,10 @@ def mark_failed(
         error_message=error[:2000],
     )
     ctx.errors.append(f"{page_name or page_id}: {error}")
-    _progress(ctx, "FAILED", page_name)
+    _page_status(ctx, page_id, f"failed — {error[:160]}")
+    from logging_setup import set_current_page
+
+    set_current_page("")
 
 
 def eligible_for_downstream(

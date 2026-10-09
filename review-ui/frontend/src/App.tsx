@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import LandingPage from "./LandingPage";
 import FolderViewer from "./FolderViewer";
 import FileViewer from "./FileViewer";
+import AccuracyView from "./AccuracyView";
 import LoginPage from "./LoginPage";
 import UserProfileMenu from "./UserProfileMenu";
 import { getAppConfig, type AppConfig, type OutputMode } from "./api";
@@ -11,7 +12,8 @@ const AUTH_KEY = "advantmed_imaging_auth";
 type Route =
   | { view: "landing" }
   | { view: "folder"; folderId: string; mode: OutputMode }
-  | { view: "file-viewer"; folderId?: string };
+  | { view: "file-viewer"; folderId?: string }
+  | { view: "accuracy" };
 
 function parseMode(raw: string | null): OutputMode {
   return raw === "imaging" ? "imaging" : "ocr";
@@ -19,6 +21,9 @@ function parseMode(raw: string | null): OutputMode {
 
 function parsePath(pathname: string, search: string): Route {
   const params = new URLSearchParams(search);
+  if (pathname === "/accuracy" || pathname === "/accuracy/") {
+    return { view: "accuracy" };
+  }
   const fileMatch = pathname.match(/^\/file-viewer(?:\/([^/]+))?\/?$/);
   if (fileMatch) {
     return {
@@ -42,6 +47,7 @@ function pathFor(route: Route): string {
     const base = `/folders/${encodeURIComponent(route.folderId)}`;
     return route.mode === "imaging" ? `${base}?mode=imaging` : base;
   }
+  if (route.view === "accuracy") return "/accuracy";
   if (route.view === "file-viewer") {
     return route.folderId
       ? `/file-viewer/${encodeURIComponent(route.folderId)}`
@@ -182,6 +188,12 @@ export default function App() {
               navigate({ view: "folder", folderId, mode })
             }
             onOpenFileViewer={() => navigate({ view: "file-viewer" })}
+            onOpenAccuracy={() => navigate({ view: "accuracy" })}
+          />
+        ) : route.view === "accuracy" ? (
+          <AccuracyView
+            onBack={() => navigate({ view: "landing" })}
+            onOpenChart={(folderId) => navigate({ view: "folder", folderId, mode: "imaging" })}
           />
         ) : route.view === "file-viewer" ? (
           <FileViewer

@@ -1,5 +1,10 @@
 """Page type / codeability classification from ``codeable_canon.json``.
 
+The page-family model names a family when its top probability is at least
+0.50. Otherwise a keyword family is used when its raw score is above 0.70.
+Otherwise a family that sits in both top-3 lists is used. Otherwise the page
+type is Others.
+
 Every family has one tag — Codeable, Non Codeable or Discharge —
 and each type takes its tag from its family, so a family never mixes them.
 Each canon entry has keywords in three roles. ``primary`` and ``variants``
@@ -13,9 +18,10 @@ every type in it; the highest-scoring family wins (ties go to the lower
 priority number), as long as at least one of its hits is a primary or variant.
 Inside that family each eligible type's share of the family's type scores is
 its probability, and the most likely type wins. The output is
-``Family (Page Type)``. ``confidence`` is the margin between the winning
-family's score and the next family's; ``type_confidence`` is the chosen type's
-probability within its family.
+``Family (Page Type)``. ``confidence`` is assigned by the step that named the
+family: the model's probability, the keyword family's lead over the next
+family, the shared family's model probability, or 0 for Others.
+``type_confidence`` is the chosen type's probability within its family.
 
 An entry with ``continue`` opens a span for its family. Later pages on the same
 date inherit the family and tag; a page that ends the date, or carries no
@@ -25,11 +31,12 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from stages.lib.canon_store import CANON_DIR, CanonFile
+from stages.lib.page_classify.family_model import KEYWORD_WIN
 
 CANON_PATH = CANON_DIR / "codeable_canon.json"
 
@@ -404,8 +411,38 @@ def _entry_hits(
     return hits
 
 
-def score_text(text: str, canon: Canon | None = None) -> Optional[MatchResult]:
-    """The winning family and its best type, or None when no family is eligible."""
+def _family_by_label(canon: Canon, label: str) -> Optional[Family]:
+    folded = label.casefold()
+    for family in canon.families.values():
+        if family.key.casefold() == folded or family.display.casefold() == folded:
+            return family
+    return None
+
+
+def _family_only_match(family: Family, confidence: float, canon: Canon) -> MatchResult:
+    """No subtype keyword hit: the subtype is the family name."""
+    return MatchResult(
+        page_type=family.display,
+        tag=family.tag,
+        confidence=round(confidence, 4),
+        score=canon.matching.span_break_score,
+        continue_="y" if family.span else "n",
+        continue_applied=False,
+        family=family.key,
+        type_confidence=1.0,
+    )
+
+
+def score_text(
+    text: str,
+    canon: Canon | None = None,
+    *,
+    only_family: str | None = None,
+) -> Optional[MatchResult]:
+    """The winning family and its best type, or None when no family is eligible.
+
+    ``only_family`` scores subtypes inside that family and ignores the rest.
+    """
     hay = normalize_text(text)
     if not hay:
         return None
@@ -415,6 +452,8 @@ def score_text(text: str, canon: Canon | None = None) -> Optional[MatchResult]:
     compact = hay.replace(" ", "")
     scored: list[tuple[CanonEntry, float, list[Hit]]] = []
     for entry in canon.entries:
+        if only_family is not None and entry.family != only_family:
+            continue
         hits = _entry_hits(entry, hay, m, compact)
         if hits:
             scored.append((entry, sum(h.weight for h in hits), hits))
@@ -616,6 +655,135 @@ def _breaks_span(match: Optional[MatchResult], span: _Span, m: Matching) -> bool
     )
 
 
+OTHERS_TYPE = "Others"
+
+
+def keyword_family_ranking(text: str, canon: Canon, limit: int = 3) -> list[str]:
+    """Family keys with a primary or variant hit, highest keyword score first."""
+    hay = normalize_text(text)
+    if not hay:
+        return []
+    compact = hay.replace(" ", "")
+    occurrences: dict[str, dict[tuple[str, int], float]] = {}
+    deciding: set[str] = set()
+    for entry in canon.entries:
+        hits = _entry_hits(entry, hay, canon.matching, compact)
+        if not hits:
+            continue
+        seen = occurrences.setdefault(entry.family, {})
+        for hit in hits:
+            key = (hit.phrase, hit.start)
+            seen[key] = max(seen.get(key, 0.0), hit.weight)
+            if canon.matching.supporting_can_decide or hit.role != "supporting":
+                deciding.add(entry.family)
+    scores = {family: sum(seen.values()) for family, seen in occurrences.items()}
+    ranked = sorted(
+        deciding,
+        key=lambda family: (scores[family], -canon.families[family].priority),
+        reverse=True,
+    )
+    return ranked[:limit]
+
+
+def _others_match() -> MatchResult:
+    return MatchResult(
+        page_type=OTHERS_TYPE,
+        tag="not_sure",
+        confidence=0.0,
+        score=0.0,
+        continue_="n",
+        continue_applied=False,
+        family="others",
+    )
+
+
+def _model_top_entries(page: dict[str, Any]) -> list[tuple[str, float]]:
+    """Up to three ``(family label, probability)`` pairs from the model."""
+    entries: list[tuple[str, float]] = []
+    for item in (page.get("model_top") or [])[:3]:
+        if isinstance(item, dict):
+            label = str(item.get("page_family") or "").strip()
+            score = float(item.get("score") or 0.0)
+        else:
+            label, score = str(item).strip(), 0.0
+        if label:
+            entries.append((label, score))
+    return entries
+
+
+def _match_from_agreement(
+    text: str, page: dict[str, Any], canon: Canon
+) -> tuple[MatchResult, str]:
+    """Keep a family that sits in both top-3 lists."""
+    model_keys: list[tuple[str, float]] = []
+    for label, score in _model_top_entries(page):
+        family = _family_by_label(canon, label)
+        if family is None or any(key == family.key for key, _ in model_keys):
+            continue
+        model_keys.append((family.key, score))
+    keyword_keys = set(keyword_family_ranking(text, canon, 3))
+    shared = next(
+        ((key, score) for key, score in model_keys if key in keyword_keys),
+        None,
+    )
+    if shared is None:
+        return _others_match(), "others"
+    key, confidence = shared
+    family = canon.families[key]
+    typed = score_text(text, canon, only_family=family.key)
+    if typed is None:
+        return _family_only_match(family, confidence, canon), "agree"
+    return (
+        replace(
+            typed,
+            confidence=round(confidence, 4),
+            score=max(typed.score, canon.matching.span_break_score),
+        ),
+        "agree",
+    )
+
+
+def _match_from_model(
+    text: str, page: dict[str, Any], canon: Canon
+) -> tuple[Optional[MatchResult], str]:
+    """A committed model family. Keywords then name the subtype, or the family name."""
+    label = str(page.get("model_family") or "").strip()
+    if not label:
+        return None, ""
+    family = _family_by_label(canon, label)
+    if family is None:
+        return None, ""
+    confidence = float(page.get("model_confidence") or 0.0)
+    typed = score_text(text, canon, only_family=family.key)
+    if typed is None:
+        return _family_only_match(family, confidence, canon), "model"
+    return (
+        replace(
+            typed,
+            confidence=round(confidence, 4),
+            score=max(typed.score, canon.matching.span_break_score),
+        ),
+        "model",
+    )
+
+
+def _family_confidence(
+    source: str, page: dict[str, Any], match: MatchResult
+) -> float:
+    """Family confidence stored for the step that named the family.
+
+    model: that family's probability.
+    keywords: its lead over the next keyword family, already on the match.
+    agree: the shared family's model probability, already on the match.
+    others: 0.
+    """
+    if source == "model":
+        return round(float(page.get("model_confidence") or 0.0), 4)
+    if source == "others":
+        return 0.0
+    return round(float(match.confidence), 4)
+
+
 def classify_pages(
     pages: Iterable[dict[str, Any]],
     *,
@@ -625,6 +793,9 @@ def classify_pages(
 
     Each input dict needs:
       page_id, page_name, page_number (optional), text, dos_from, dos_to
+
+    ``model_family`` (display name) and ``model_confidence``, when set by the
+    page-family model, fix the family. Keywords then choose the subtype.
 
     A span runs only while consecutive pages share its date, so a page on
     another date — or with no date — ends it.
@@ -640,11 +811,24 @@ def classify_pages(
         if span is not None and span.key != key:
             span = None
 
-        match = page_type_of(text, page_number=page.get("page_number"), entries=canon)
+        match, source = _match_from_model(text, page, canon)
+        if match is None and page.get("model_top"):
+            keyword = page_type_of(text, page_number=page.get("page_number"), entries=canon)
+            if keyword is not None and keyword.score > KEYWORD_WIN:
+                match, source = keyword, "keywords"
+            else:
+                match, source = _match_from_agreement(text, page, canon)
+        elif match is None:
+            match = page_type_of(text, page_number=page.get("page_number"), entries=canon)
+            source = "keywords" if match is not None else ""
+        if match is not None:
+            match = replace(match, confidence=_family_confidence(source, page, match))
         result = match
         continue_applied = False
 
-        if match is not None and match.continue_ == "y":
+        if source == "others":
+            span = None
+        elif match is not None and match.continue_ == "y":
             span = _Span(
                 key, match.family, match.page_type, match.tag, match.confidence,
                 match.type_confidence,
@@ -672,6 +856,8 @@ def classify_pages(
                 type_scores=match.type_scores if own else {},
             )
             continue_applied = True
+        if continue_applied and source != "model":
+            source = "span"
 
         row = {
             "page_id": page.get("page_id"),
@@ -688,8 +874,11 @@ def classify_pages(
             "matched_keyword": result.matched_keyword if result else "",
             "score": result.score if result else 0.0,
             "family": result.family if result else "",
+            "family_source": source,
             "family_display": (
-                canon.families[result.family].display
+                "Others"
+                if result and result.family == "others"
+                else canon.families[result.family].display
                 if result and result.family in canon.families
                 else ""
             ),
@@ -721,7 +910,7 @@ def _fill_between(rows: list[dict[str, Any]], canon: Canon) -> None:
     families = canon.matching.fill_between_families
     for i in range(1, len(rows) - 1):
         row, before, after = rows[i], rows[i - 1], rows[i + 1]
-        if row["family"] or before["family"] not in families:
+        if row["family"] or row.get("family_source") == "others" or before["family"] not in families:
             continue
         if after["family"] != before["family"]:
             continue
@@ -738,6 +927,7 @@ def _fill_between(rows: list[dict[str, Any]], canon: Canon) -> None:
                 "continue_applied": "y",
                 "family": before["family"],
                 "family_display": before["family_display"],
+                "family_source": "span",
                 "entry_id": before["entry_id"],
                 "type_confidence": before["type_confidence"],
                 "filled_between": True,

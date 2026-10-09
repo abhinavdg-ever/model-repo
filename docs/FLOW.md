@@ -67,7 +67,7 @@ flowchart TD
     S6["7 · blank_junk pass 2<br/>handwritten + survivors"]
     S7["8 · member_verify<br/>rules → NER → what-if"]
     S8["9 · dos_extract<br/>regex → LLM → carry-forward"]
-    S9["10 · page_subtype<br/>TF codeable / continue-until-DOS"]
+    S9["10 · page_subtype<br/>family model + keyword subtype"]
     S10["11 · encounter_type<br/>F2F / Tele / IP / Home per DOS"]
     S11["12 · page_sequencing<br/>markers → streams → suggested order"]
     S1 --> S2 --> S3 --> S4 --> S5 --> S5b --> S6 --> S7 --> S8 --> S9 --> S10 --> S11
@@ -94,10 +94,11 @@ Stages 5 and 7 are highlighted: **stage 5 costs money per page** (which is why
 | 4 | `ocr_final1` | not blank/junk, + HW / low-quality | corrected page if one exists, else page image | `ocr_results` (`docling`) | `ocr/<chart>_final1.json` (incl. `section_header_candidates`) |
 | 5 | `ocr_final2` | not blank/junk, + HW / low-quality; **skips high-quality printed** | corrected page if one exists, else page image | `ocr_results` (`azuredocintel`) | `ocr/<chart>_final2.json` (incl. candidates / `pagesMeta`) |
 | 6 | `section_headers` | pages with Final1 or Final2 JSON | those JSON files | updates `ocr_results` JSON blobs | rewrites `section_headers` in `*_final1.json` / `*_final2.json` |
+| 6b | `kv_extract` | pages with Final2 word boxes, else Final1 | Final2 JSON, else Final1 JSON, plus the page image | `section_headers` inside `ocr_results`. `provider_signature_results` and `additional_page_details` are defined in v2.sql | `staging/extraction.json`, `imaging/<chart>_provider_signature.csv`, `imaging/<chart>_additional_page_details.csv`. `KV_DEBUG=true` also writes `debug/<chart>_kv.json` |
 | 7 | `blank_junk` pass 2 | HW + low-quality + surviving printed | final2 text, else final1 | `blank_junk_classification` (pass 2), then `is_final` stamped | rewrites `_junk.csv` |
 | 8 | `member_verify` | not blank/junk/duplicate | best text + `manifest_member_list` | `member_extraction_results`, `member_verification_summary` | `_member_extraction.csv`, `_member_verification.csv`, `_member_v1_compare.csv` |
 | 9 | `dos_extract` | not blank/junk/duplicate | best text | `dos_extraction_results` | `imaging/<chart>_dos.csv` |
-| 10 | `page_subtype` | every page | best text + DOS + blank/junk | `page_classification` (main = TF; blank/junk/dup = `non_codeable` + junk subtype) | `imaging/<chart>_codeable.csv` |
+| 10 | `page_subtype` | every page | best text + DOS + blank/junk | `page_classification` (main = family model, else keywords; blank/junk/dup = `non_codeable` + junk subtype) | `imaging/<chart>_codeable.csv` |
 | 11 | `encounter_type` | not blank/junk/duplicate | best text + DOS | `encounter_type_results` | `imaging/<chart>_encounter.csv` |
 | 12 | `page_sequencing` | all pages (junk flagged) | best text | `page_sequencing_results` | `imaging/<chart>_sequencing.csv` |
 

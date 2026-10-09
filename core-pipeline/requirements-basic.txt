@@ -1,0 +1,25 @@
+# Pipeline runtime without the model stacks.
+# Docling, MiniLM, GLiNER, and the key/value ranker: requirements-models.txt
+#
+#   pip install -r requirements-basic.txt
+#   pip install -r requirements-models.txt
+
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.0
+psycopg[binary]>=3.2
+psycopg_pool>=3.2
+azure-storage-blob>=12.20
+azure-identity>=1.17
+azure-ai-documentintelligence>=1.0.0
+openai>=1.40.0
+Pillow>=10.0
+pytesseract>=0.3.10
+numpy>=1.24
+opencv-python-headless>=4.8
+# models/blank-junk/tfidf_flat.joblib is pickled with 1.9.1 — other minors may not unpickle.
+scikit-learn~=1.9.1
+joblib>=1.3
+rapidocr-onnxruntime>=1.3
+openpyxl>=3.1
+python-dotenv>=1.0

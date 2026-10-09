@@ -67,6 +67,7 @@ DOS_COLS = [
     "doc_dos_from_iso",
     "doc_dos_to_iso",
     "match_type",
+    "final_dos",
     "keyword",
     "confidence",
     "extraction_method",
@@ -74,6 +75,15 @@ DOS_COLS = [
 
 
 CANDIDATE_COLS = ["chart_name", *(f for f in Candidate.__dataclass_fields__ if f != "pair")]
+
+
+def _page_method(hit: dict[str, Any], method: str) -> str:
+    source = hit.get("page_source")
+    if source == "llm":
+        return "llm"
+    if source == "kv":
+        return "kv"
+    return method
 
 
 def _received_date(chart: Optional[dict[str, Any]]) -> Optional[date]:
@@ -196,12 +206,38 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             received = _received_date(get_chart(conn, chart_id))
 
         candidates: Optional[list[dict[str, Any]]] = [] if DOS_DEBUG else None
+        from stages.lib.extraction.stage import ensure_staging
+        from stages.lib.extraction.util.dates import canonical_date
+
+        staged = ensure_staging(chart_id, ctx.chart_name)
+        kv_dates: dict[str, list[dict[str, Any]]] = {}
+        for page in ctx.pages:
+            staged_page = staged.page(page["page_name"])
+            if staged_page is None:
+                continue
+            found: list[dict[str, Any]] = []
+            for row in staged_page.selected("dos"):
+                raw = str(row.get("dos_from") or row.get("value") or "")
+                iso = canonical_date(raw)
+                if len(iso) != 10:
+                    continue
+                found.append(
+                    {
+                        "iso": iso,
+                        "raw": raw,
+                        "tier": row.get("tier") or "",
+                        "keyword": row.get("key") or "",
+                    }
+                )
+            if found:
+                kv_dates[page["page_name"]] = found
         hits = detect_dos_per_page(
             text,
             client,
             use_llm=client is not None,
             received_date=received,
             candidate_log=candidates,
+            kv_dates=kv_dates,
         )
 
         by_name = {p["page_name"]: p for p in ctx.pages}
@@ -226,9 +262,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     date_of_service_to_doclevel=hit.get("doc_dos_to_iso") or None,
                     confidence=hit.get("confidence"),
                     all_dates=date_rows,
-                    extraction_method=(
-                        "llm" if hit.get("page_source") == "llm" else method
-                    ),
+                    extraction_method=_page_method(hit, method),
                 )
                 mark_completed(conn, ctx, page_id)
 
@@ -246,11 +280,10 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "doc_dos_from_iso": hit.get("doc_dos_from_iso") or "",
                         "doc_dos_to_iso": hit.get("doc_dos_to_iso") or "",
                         "match_type": hit.get("match_type") or "",
+                        "final_dos": hit.get("final_dos") or "",
                         "keyword": hit.get("keyword") or "",
                         "confidence": hit.get("confidence"),
-                        "extraction_method": (
-                            "llm" if hit.get("page_source") == "llm" else method
-                        ),
+                        "extraction_method": _page_method(hit, method),
                     }
                 )
 

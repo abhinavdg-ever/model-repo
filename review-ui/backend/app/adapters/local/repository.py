@@ -15,6 +15,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from app.adapters.base import FolderRepository
+from app.services.dates import show_date
 from app.core.schemas import (
     FolderDetail,
     FolderSummary,
@@ -66,19 +67,7 @@ def _page_num_from_name(name: str) -> int | None:
 
 def _fmt_dos_display(raw: str | date | None) -> str | None:
     """Normalize dates to YYYY-MM-DD for the Imaging UI."""
-    if raw is None:
-        return None
-    if isinstance(raw, date):
-        return raw.strftime("%Y-%m-%d")
-    value = str(raw).strip()
-    if not value or value.lower() in {"unknown", "null", "none"}:
-        return None
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y", "%m/%d/%y", "%m-%d-%y"):
-        try:
-            return datetime.strptime(value, fmt).strftime("%Y-%m-%d")
-        except ValueError:
-            continue
-    return value
+    return show_date(raw)
 
 
 def _dos_row_fields(row: dict[str, str]) -> dict[str, str | None]:
@@ -442,6 +431,7 @@ def _section_headers_from_page(
                 height=height,
             )
         )
+    out.sort(key=lambda header: (header.width <= 0 or header.height <= 0, header.top, header.left))
     return out
 
 
@@ -1452,6 +1442,99 @@ class LocalFolderRepository(FolderRepository):
             pages=page_summaries,
         )
 
+    def _pages_dir_has_images(self, folder_dir: Path) -> bool:
+        pages_dir = folder_dir / "pages"
+        if not pages_dir.is_dir():
+            return False
+        return any(
+            path.is_file()
+            and not path.name.startswith("._")
+            and IMAGE_RE.search(path.name)
+            for path in pages_dir.iterdir()
+        )
+
+    def _corrected_page_path(self, folder_dir: Path, page_path: Path) -> Path | None:
+        corrected_dir = folder_dir / "corrected-pages"
+        if not corrected_dir.is_dir():
+            return None
+        for name in (f"{page_path.stem}.jpg", page_path.name):
+            candidate = corrected_dir / name
+            if (
+                candidate.is_file()
+                and not candidate.name.startswith("._")
+                and candidate.stat().st_size > 0
+            ):
+                return candidate
+        return None
+
+    def list_file_viewer_folders(self) -> list:
+        """Chart dirs that contain pages/. No database."""
+        from app.core.schemas import FileViewerFolder
+
+        if not self.data_root.is_dir():
+            return []
+        items: list[FileViewerFolder] = []
+        for entry in sorted(self.data_root.iterdir(), key=lambda path: path.name.lower()):
+            if not entry.is_dir() or entry.name.startswith("."):
+                continue
+            if not self._pages_dir_has_images(entry):
+                continue
+            pages = self._page_files(entry)
+            items.append(
+                FileViewerFolder(
+                    id=entry.name,
+                    name=entry.name,
+                    page_count=len(pages),
+                    has_corrected=any(
+                        self._corrected_page_path(entry, path) is not None for _, path in pages
+                    ),
+                )
+            )
+        return items
+
+    def get_file_viewer_folder(self, folder_id: str):
+        """Page list from pages/ only. No chart_list, manifest, or ground truth."""
+        from app.core.schemas import FileViewerFolderDetail, PageSummary
+
+        folder_dir = self._folder_dir(folder_id)
+        if not self._pages_dir_has_images(folder_dir):
+            raise HTTPException(status_code=404, detail=f"Folder not found: {folder_id}")
+        pages = self._page_files(folder_dir)
+        return FileViewerFolderDetail(
+            id=folder_id,
+            name=folder_dir.name,
+            page_count=len(pages),
+            has_corrected=any(
+                self._corrected_page_path(folder_dir, path) is not None for _, path in pages
+            ),
+            pages=[
+                PageSummary(
+                    page_number=num,
+                    filename=path.name,
+                    image_url=(
+                        f"/api/file-viewer/folders/{folder_id}/pages/{num}/image"
+                    ),
+                )
+                for num, path in pages
+            ],
+        )
+
+    def get_file_viewer_image_path(
+        self, folder_id: str, page_number: int, *, corrected: bool
+    ) -> Path:
+        folder_dir = self._folder_dir(folder_id)
+        for num, path in self._page_files(folder_dir):
+            if num != page_number:
+                continue
+            if corrected:
+                replacement = self._corrected_page_path(folder_dir, path)
+                if replacement is not None:
+                    return replacement
+            return path
+        raise HTTPException(
+            status_code=404, detail=f"Page {page_number} not found in {folder_id}"
+        )
+
     def get_page_image_path(self, folder_id: str, page_number: int) -> Path:
         folder_dir = self._folder_dir(folder_id)
         for num, path in self._page_files(folder_dir):
@@ -1544,6 +1627,43 @@ class LocalFolderRepository(FolderRepository):
             ]
         return _index_hw_rows(rows, chart)
 
+    def _with_dos_decision(
+        self, document: ImagingDocumentResponse, folder_id: str
+    ) -> ImagingDocumentResponse:
+        """Database dates stay as stored. The continuation mark comes from the CSV."""
+        from app.services.imaging_overlays import (
+            collect_rows,
+            index_dos_rows,
+            index_signature_rows,
+            overlay_dos_decision,
+            overlay_fields,
+        )
+
+        folder_dir = self._folder_dir(folder_id)
+        chart = folder_dir.name
+        dos_rows = collect_rows(
+            folder_dir=folder_dir,
+            data_root=self.data_root,
+            per_chart_name=f"{chart}_dos.csv",
+            combined_rel=(
+                "02-imaging-pipeline",
+                "dos-extraction",
+                "output",
+                "dos_extraction.csv",
+            ),
+            chart_name=chart,
+        )
+        pages = overlay_dos_decision(document.pages, index_dos_rows(dos_rows, chart))
+        signature_rows = collect_rows(
+            folder_dir=folder_dir,
+            data_root=self.data_root,
+            per_chart_name=f"{chart}_provider_signature.csv",
+            combined_rel=None,
+            chart_name=chart,
+        )
+        pages = overlay_fields(pages, index_signature_rows(signature_rows, chart))
+        return document.model_copy(update={"pages": pages})
+
     def get_imaging(self, folder_id: str) -> ImagingDocumentResponse:
         """Build imaging rows from Postgres when available, else pipeline CSVs.
 
@@ -1556,12 +1676,13 @@ class LocalFolderRepository(FolderRepository):
                 from app.services.chart_run_batch import database_url_usable
 
                 if database_url_usable(self.database_url):
-                    return PostgresFolderRepository(
+                    document = PostgresFolderRepository(
                         self.database_url,
                         data_root=self.data_root,
                         metadata_root=self.metadata_root,
                         db_schema=self.db_schema,
                     ).get_imaging(folder_id)
+                    return self._with_dos_decision(document, folder_id)
             except Exception:
                 # Fall through to CSV overlays — DB may be down or chart absent.
                 pass
@@ -1575,6 +1696,7 @@ class LocalFolderRepository(FolderRepository):
             index_codeable_rows,
             index_encounter_rows,
             index_sequencing_rows,
+            index_signature_rows,
             index_member_extraction_rows,
             index_quality_rows,
             index_rotation_rows,
@@ -1708,6 +1830,16 @@ class LocalFolderRepository(FolderRepository):
         )
         imaging_pages = overlay_fields(
             imaging_pages, index_sequencing_rows(sequencing_rows, chart)
+        )
+        signature_rows = collect_rows(
+            folder_dir=folder_dir,
+            data_root=self.data_root,
+            per_chart_name=f"{chart}_provider_signature.csv",
+            combined_rel=None,
+            chart_name=chart,
+        )
+        imaging_pages = overlay_fields(
+            imaging_pages, index_signature_rows(signature_rows, chart)
         )
 
         ver_rows = collect_rows(

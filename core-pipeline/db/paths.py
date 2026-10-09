@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import json
 import re
+import shutil
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
@@ -11,6 +12,16 @@ from config import IMAGE_SUFFIXES, chart_dir, imaging_dir, ocr_dir, pages_dir
 
 PAGE_MARKER_RE = re.compile(r"^=====\s*(.+?)\s*=====\s*$", re.MULTILINE)
 PAGE_NUM_RE = re.compile(r"^(\d+)\.(jpe?g|png|webp|tif{1,2})$", re.IGNORECASE)
+
+
+def copy_file(src: Path, dst: Path) -> None:
+    """Copy file bytes, not macOS flags.
+
+    ``shutil.copy2`` also calls ``chflags`` with the source flags. On exFAT
+    that returns ``[Errno 22] Invalid argument`` and the import stops on the
+    first page. Later stages only need the bytes.
+    """
+    shutil.copyfile(src, dst)
 
 
 def normalize_fs_path(value: Optional[str]) -> Optional[str]:

@@ -47,6 +47,7 @@ _CHART_STATUS_TO_OCR: dict[str, str] = {
     "ocr_final1": "IN_PROGRESS",
     "ocr_final2": "IN_PROGRESS",
     "section_headers": "IMAGING_IN_PROGRESS",
+    "kv_extract": "IMAGING_IN_PROGRESS",
     "member_verify": "IMAGING_IN_PROGRESS",
     "dos_extract": "IMAGING_IN_PROGRESS",
     "page_subtype": "IMAGING_IN_PROGRESS",
@@ -111,8 +112,7 @@ def fetch_chart_summaries_from_db(
 ) -> list[FolderSummary]:
     """Landing rows from ``chart_list`` only (no disk walk).
 
-    Excludes ``source='local'`` intake rows — the review UI lists blob (and
-    non-empty manifest) charts only.
+    Includes ``source='local'`` charts. Empty manifest rows stay out.
     """
     if not db_lookup_enabled(database_url, db_schema):
         return []
@@ -124,8 +124,7 @@ def fetch_chart_summaries_from_db(
                     SELECT chart_name, page_count, status, updated_at,
                            current_stage, run_id, batch_id
                       FROM chart_list
-                     WHERE source <> 'local'
-                       AND (source <> 'manifest' OR page_count > 0)
+                     WHERE source <> 'manifest' OR page_count > 0
                      ORDER BY updated_at DESC NULLS LAST, id DESC
                     """
                 )

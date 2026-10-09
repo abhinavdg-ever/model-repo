@@ -148,17 +148,17 @@ def deps_installed() -> tuple[bool, str]:
 
     Separated from the weights check because the two failures need different
     fixes and the reference's ModelLoadError could not tell them apart:
-    a missing package needs `pip install -r requirements-ner.txt`, missing
+    a missing package needs `pip install -r requirements-models.txt`, missing
     weights need the downloader.
     """
     try:
         import gliner  # noqa: F401
     except ImportError as exc:
-        return False, f"gliner not installed ({exc}); pip install -r requirements-ner.txt"
+        return False, f"gliner not installed ({exc}); pip install -r requirements-models.txt"
     try:
         import torch  # noqa: F401
     except ImportError as exc:
-        return False, f"torch not installed ({exc}); pip install -r requirements-ner.txt"
+        return False, f"torch not installed ({exc}); pip install -r requirements-models.txt"
     return True, "ok"
 
 

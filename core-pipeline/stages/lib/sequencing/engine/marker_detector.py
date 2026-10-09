@@ -100,7 +100,19 @@ def _explicitness(m: ExplicitMarker) -> tuple:
     return (1 if m.pattern in _EXPLICIT_PATTERNS else 0, m.confidence)
 
 
+def _extracted(feature: PageFeatures) -> list[ExplicitMarker] | None:
+    """The extraction's page number, when it found one. None leaves text patterns in charge."""
+    marker = feature.extracted_marker
+    if marker is None:
+        return None
+    marker.source = "extracted"
+    return [marker]
+
+
 def _all_candidates(feature: PageFeatures) -> list[ExplicitMarker]:
+    extracted = _extracted(feature)
+    if extracted is not None:
+        return extracted
     candidates: list[ExplicitMarker] = []
     footer_marker = detect_footer_marker(feature.footer_raw)
     if footer_marker:
@@ -118,6 +130,9 @@ def _all_candidates(feature: PageFeatures) -> list[ExplicitMarker]:
 
 
 def _best_marker(feature: PageFeatures, *, doc_page_count: int | None = None) -> ExplicitMarker | None:
+    extracted = _extracted(feature)
+    if extracted is not None:
+        return extracted[0]
     candidates: list[ExplicitMarker] = []
 
     footer_marker = detect_footer_marker(feature.footer_raw)

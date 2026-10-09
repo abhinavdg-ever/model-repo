@@ -295,6 +295,9 @@ CREATE TRIGGER trg_manifest_member_list_updated_at
 -- name + page file stem, not chart_id, so a load can precede ingest.
 -- Id 1 matches 1.jpg / 1.png / 1.tif. Values stay as the client wrote them
 -- ("Yes", "07/17/2025", "Accept") — the review UI compares them.
+-- member_name, member_dob, member_id, and provider_signature are only Yes or
+-- No: whether that value is on the page. The extracted string stays on the
+-- pipeline result.
 CREATE TABLE page_ground_truth (
     id                  BIGSERIAL PRIMARY KEY,
     chart_name          VARCHAR(150) NOT NULL,
@@ -302,6 +305,7 @@ CREATE TABLE page_ground_truth (
     source_page_id      VARCHAR(50),
     member_name         TEXT,
     member_dob          TEXT,
+    member_id           TEXT,
     dos_from            TEXT,
     dos_to              TEXT,
     encounter_type      TEXT,

@@ -205,6 +205,31 @@ class TestOfflineIntakeNoPostgres:
         assert result["page_count"] == 1
         assert (tmp_path / "folders" / "offline_chart" / "pages" / "1.jpg").is_file()
 
+    def test_a_short_workspace_is_replaced_from_the_source(self, memory, tmp_path, monkeypatch):
+        from PIL import Image
+
+        import config
+        from stages.utilities.download_blob import import_local_folder
+
+        monkeypatch.setattr(config, "DATA_ROOT", tmp_path / "folders")
+        (tmp_path / "folders").mkdir()
+
+        one = tmp_path / "one"
+        one.mkdir()
+        Image.new("RGB", (8, 8), color=(255, 255, 255)).save(one / "only.jpg", format="JPEG")
+        first = import_local_folder(one, chart_name="chart29", force=True)
+        assert first["page_count"] == 1
+
+        many = tmp_path / "many"
+        (many / "pages").mkdir(parents=True)
+        for name in ("1.jpg", "2.jpg", "10.jpg"):
+            Image.new("RGB", (8, 8), color=(0, 0, 0)).save(many / "pages" / name, format="JPEG")
+        second = import_local_folder(many, chart_name="chart29", force=True)
+        assert second["page_count"] == 3
+        assert second.get("resumed") is not True
+        saved = sorted(p.name for p in (tmp_path / "folders" / "chart29" / "pages").glob("*.jpg"))
+        assert saved == ["1.jpg", "2.jpg", "3.jpg"]
+
 
 def test_test_chart_name_suffix():
     from db.memory_store import test_chart_name

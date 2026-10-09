@@ -1,14 +1,18 @@
 """Stage: codeable / non-codeable / discharge → ``page_classification``.
 
-* **Main pages** (not blank/junk/duplicate): keyword match against
-  ``codeable_canon.json`` (see ``codeable_classify``). An entry with
+* **Main pages** (not blank/junk/duplicate): the page-family model names the
+  family when its top probability is at least 0.50. Otherwise a keyword
+  family whose raw score is above 0.70 is used. Otherwise a family in both
+  top-3 lists is used. Otherwise the page type is Others. Keyword rules name the subtype inside the chosen
+  family. No subtype hit leaves the subtype equal to the family. An entry with
   ``continue`` opens a span for its family that later pages on the same date
   inherit. A page whose only date is the DOS default has no date here, so it
   shares a span with nobody.
 * **Output page type** is ``Family (Page Type)`` — e.g. ``Progress Note (SOAP
   Note)`` — in the CSV ``page_type`` and ``page_classification.page_subtype``.
-  ``confidence`` is the family's; ``type_confidence`` is the type's probability
-  within the family.
+  ``confidence`` is assigned by the step that named the family: the model's
+  probability, the keyword lead, the shared family's model probability, or 0
+  for Others. ``type_confidence`` is the type's probability within the family.
 * **Blank / junk / duplicate**: always ``non_codeable``. ``page_subtype``
   is the existing junk label (Invoice, Cover Page, …) or Blank / Duplicate.
 
@@ -41,6 +45,7 @@ from stages._support import (
 )
 from stages.lib.canon_store import CANON_DIR, CanonFile
 from stages.lib.page_classify.codeable_classify import classify_pages
+from stages.lib.page_classify.family_model import annotate as annotate_families
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +71,10 @@ CODEABLE_COLS = [
     "confidence",
     "continue",
     "continue_applied",
+    "continues_previous",
+    "continue_reason",
     "matched_keyword",
+    "family_source",
     "dos_from",
     "dos_to",
     "ocr_source",
@@ -81,6 +89,7 @@ EVIDENCE_COLS = [
     "page_type",
     "entry_id",
     "family",
+    "family_source",
     "tag",
     "confidence",
     "type_confidence",
@@ -171,13 +180,12 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         # TF-classify main pages only; blank/junk/duplicate → non_codeable below.
         page_inputs: list[dict[str, Any]] = []
         sources: dict[int, str] = {}
+        texts: dict[int, str] = {}
         for page in ctx.pages:
             page_id = page["id"]
             flag = (bj_rows.get(page_id) or {}).get(
                 "blank_junk_flag", "not_blank_junk"
             )
-            if flag in BJ_EXCLUDE:
-                continue
             f2 = final2.get(page_id)
             f1 = final1.get(page_id)
             pr = prelim.get(page_id)
@@ -187,6 +195,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 prelim=pr,
                 quality_row=quality.get(page_id),
             )
+            texts[page_id] = text
+            if flag in BJ_EXCLUDE:
+                continue
             dos_from, dos_to = _page_dos(dos_by_page.get(page_id) or {})
             sources[page_id] = _ocr_source_label(final2=f2, final1=f1, prelim=pr)
             page_inputs.append(
@@ -200,8 +211,24 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 }
             )
 
+        family_source = annotate_families(page_inputs)
         classified = classify_pages(page_inputs)
         by_id = {row["page_id"]: row for row in classified}
+        from stages.lib.continuation import tag_pages
+
+        continuation = tag_pages(
+            [
+                {
+                    "page_id": page["id"],
+                    "text": texts.get(page["id"], ""),
+                    "family": (by_id.get(page["id"]) or {}).get("family") or "",
+                }
+                for page in ctx.pages
+            ]
+        )
+        continuation_by_id = {
+            page["id"]: tag for page, tag in zip(ctx.pages, continuation)
+        }
 
         csv_rows: list[dict[str, Any]] = []
         main_tagged = 0
@@ -253,7 +280,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                             "confidence": conf if conf is not None else "",
                             "continue": "n",
                             "continue_applied": "n",
+                            "continues_previous": (continuation_by_id.get(page_id) or {}).get(
+                                "continues_previous", "n"
+                            ),
+                            "continue_reason": (continuation_by_id.get(page_id) or {}).get(
+                                "continue_reason", ""
+                            ),
                             "matched_keyword": "",
+                            "family_source": "",
                             "dos_from": dos_from,
                             "dos_to": dos_to,
                             "ocr_source": "",
@@ -265,6 +299,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 page_type = _output_page_type(row)
                 tag = (row.get("tag") or "").strip()
                 category = _TAG_TO_CATEGORY.get(tag)
+                if page_type == "Others":
+                    category = "non_codeable"
                 conf = row.get("confidence")
                 conf_f = float(conf) if conf not in ("", None) else None
                 if category:
@@ -294,7 +330,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "confidence": row.get("confidence") or "",
                         "continue": row.get("continue") or "n",
                         "continue_applied": row.get("continue_applied") or "n",
+                        "continues_previous": (continuation_by_id.get(page_id) or {}).get(
+                            "continues_previous", "n"
+                        ),
+                        "continue_reason": (continuation_by_id.get(page_id) or {}).get(
+                            "continue_reason", ""
+                        ),
                         "matched_keyword": row.get("matched_keyword") or "",
+                        "family_source": row.get("family_source") or "",
                         "dos_from": row.get("dos_from") or dos_from,
                         "dos_to": row.get("dos_to") or dos_to,
                         "ocr_source": sources.get(page_id, ""),
@@ -333,12 +376,13 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 ),
             )
         logger.info(
-            "page_subtype chart=%s pages=%d main=%d blank_junk=%d continue=%d → %s",
+            "page_subtype chart=%s pages=%d main=%d blank_junk=%d continue=%d family=%s → %s",
             ctx.chart_name,
             len(csv_rows),
             main_tagged,
             bj_tagged,
             carried,
+            family_source,
             path,
         )
         return {

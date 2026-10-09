@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import csv
 import re
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from app.core.schemas import ImagingPageResult, ImagingVerificationDetails
+from app.services.dates import show_date
 
 _WS_RE = re.compile(r"\s+")
 
@@ -151,19 +152,7 @@ def chart_id_key(chart_name: str) -> str:
 
 
 def _fmt_dos_display(raw: str | date | None) -> str | None:
-    if raw is None:
-        return None
-    if isinstance(raw, date):
-        return raw.strftime("%Y-%m-%d")
-    value = str(raw).strip()
-    if not value or value.lower() in {"unknown", "null", "none"}:
-        return None
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y", "%m/%d/%y", "%m-%d-%y"):
-        try:
-            return datetime.strptime(value, fmt).strftime("%Y-%m-%d")
-        except ValueError:
-            continue
-    return value
+    return show_date(raw)
 
 
 def dos_row_fields(row: dict[str, str]) -> dict[str, str | None]:
@@ -192,12 +181,16 @@ def dos_row_fields(row: dict[str, str]) -> dict[str, str | None]:
         parts = [_fmt_dos_display(p.strip()) for p in doc_to_raw.split(",")]
         doc_to = ", ".join(p for p in parts if p)
 
+    final = (row.get("final_dos") or "").strip() or None
+    match = (row.get("match_type") or "").strip() or None
     return {
         "dosFrom": dos_from,
         "dosTo": dos_to,
         "docDosFrom": doc_from,
         "docDosTo": doc_to,
         "dosConfidence": _parse_confidence(row.get("confidence")),
+        "dosMatch": match,
+        "finalDos": final,
     }
 
 
@@ -289,6 +282,33 @@ def overlay_fields(
     return out
 
 
+def overlay_dos_decision(
+    pages: list[ImagingPageResult],
+    by_key: dict[str, dict[str, Any]],
+) -> list[ImagingPageResult]:
+    """Copy the span decision onto pages whose dates came from the database.
+
+    ``match_type`` and ``final_dos`` live on the DOS CSV. The database row
+    keeps the page date and the document date, and has no column for the
+    continuation mark.
+    """
+    if not by_key:
+        return pages
+    out: list[ImagingPageResult] = []
+    for page in pages:
+        hit = _hit_for_page(by_key, page)
+        if not hit:
+            out.append(page)
+            continue
+        update: dict[str, Any] = {}
+        if hit.get("dosMatch"):
+            update["dosMatch"] = hit["dosMatch"]
+        if hit.get("finalDos"):
+            update["finalDos"] = hit["finalDos"]
+        out.append(page.model_copy(update=update) if update else page)
+    return out
+
+
 def index_dos_rows(rows: list[dict[str, str]], chart_name: str) -> dict[str, dict[str, Any]]:
     by_key: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -296,6 +316,70 @@ def index_dos_rows(rows: list[dict[str, str]], chart_name: str) -> dict[str, dic
         if cname and not _chart_row_matches(cname, chart_name):
             continue
         fields = dos_row_fields(row)
+        _put_page_keys(by_key, row, fields)
+    return by_key
+
+
+def signature_people(text: str) -> tuple[str, str]:
+    """Names and credentials from one ``provider_name`` cell.
+
+    People are already separated by `` | ``. A credential is a suffix on that
+    person (``PA``, ``MD``, ``DO``). The pipe is not split again.
+    """
+    from app.services.extraction_review import _is_credential
+
+    names: list[str] = []
+    credentials: list[str] = []
+    for person in (text or "").split("|"):
+        person = person.strip()
+        if not person:
+            continue
+        name, creds = _split_person(person, _is_credential)
+        if name:
+            names.append(name)
+        credentials.extend(creds)
+    return " | ".join(names), " | ".join(credentials)
+
+
+def _split_person(person: str, is_credential) -> tuple[str, list[str]]:
+    pieces = [part.strip() for part in person.split(",") if part.strip()]
+    creds: list[str] = []
+    name_bits: list[str] = []
+    for piece in pieces:
+        tokens = piece.split()
+        if tokens and all(is_credential(token) for token in tokens):
+            creds.extend(tokens)
+            continue
+        trail: list[str] = []
+        while tokens and is_credential(tokens[-1]):
+            trail.append(tokens.pop())
+        trail.reverse()
+        if tokens:
+            name_bits.append(" ".join(tokens))
+        creds.extend(trail)
+    return " ".join(name_bits), creds
+
+
+def index_signature_rows(
+    rows: list[dict[str, str]], chart_name: str
+) -> dict[str, dict[str, Any]]:
+    """provider_signature.csv → name, credentials, and Yes/No signature."""
+    by_key: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        cname = (row.get("chart_name") or row.get("chart_id") or row.get("folder") or "").strip()
+        if cname and not _chart_row_matches(cname, chart_name):
+            continue
+        present = (row.get("signature_present") or "").strip().lower() in {"y", "yes", "true", "1"}
+        name = (row.get("provider_name") or "").strip()
+        provider_name, provider_credentials = signature_people(name)
+        fields: dict[str, Any] = {"providerSignature": "Yes" if present else "No"}
+        if provider_name:
+            fields["providerName"] = provider_name
+        if provider_credentials:
+            fields["providerCredentials"] = provider_credentials
+        confidence = _parse_confidence(row.get("confidence"))
+        if confidence is not None:
+            fields["providerSignatureConfidence"] = confidence
         _put_page_keys(by_key, row, fields)
     return by_key
 
@@ -479,7 +563,7 @@ def index_member_extraction_rows(
             continue
 
         name = (row.get("extracted_name") or "").strip()
-        dob = (row.get("extracted_dob") or "").strip()
+        dob = show_date(row.get("extracted_dob")) or ""
         member_id = (
             (row.get("matched_id") or "").strip()
             or (row.get("provided_member_id") or "").strip()

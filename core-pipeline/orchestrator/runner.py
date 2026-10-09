@@ -32,6 +32,7 @@ from stages.lib.member import stage as member_extract_verify
 from stages.lib.ocr import stage_final1 as ocr_final1_docling
 from stages.lib.ocr import stage_final2 as ocr_final2_azure
 from stages.lib.ocr import stage_prelim as ocr_prelim_tesseract
+from stages.lib.extraction import stage as kv_extract
 from stages.lib.ocr import stage_section_headers as section_headers
 from stages.lib.page_classify import stage as page_subtype
 from stages.lib.sequencing import stage as page_sequencing
@@ -54,6 +55,7 @@ STAGE_CHAIN: list[tuple[str, int, StageFn]] = [
     ("ocr_final1", 1, ocr_final1_docling.run),
     ("ocr_final2", 1, ocr_final2_azure.run),
     ("section_headers", 1, section_headers.run),
+    ("kv_extract", 1, kv_extract.run),
     ("blank_junk", 2, blank_junk_classify.run_pass2),
     ("member_verify", 1, member_extract_verify.run),
     ("dos_extract", 1, dos_extract.run),
@@ -176,8 +178,15 @@ def run_pipeline_for_chart(
         update_job(conn, job_id, started=True)
         progress = refresh_chart_status(conn, chart_id)
 
+    from logging_setup import (
+        reset_current_chart,
+        reset_current_stage,
+        set_current_chart,
+        set_current_stage,
+    )
     from stages.utilities.download_blob import ensure_chart_images
 
+    chart_token = set_current_chart(chart["chart_name"])
     try:
         image_info = ensure_chart_images(
             chart["chart_name"],
@@ -201,42 +210,41 @@ def run_pipeline_for_chart(
                 error_message=str(exc),
                 completed=True,
             )
+        reset_current_chart(chart_token)
         raise
 
-    wanted = set(only or [])
-    # Only a whole-chain run rebuilds the chart; `only` / `through` runs read
-    # what earlier stages left, so they must not clear it.
-    full_run = not wanted and stop_at is None
-    chain = STAGE_CHAIN if stop_at is None else STAGE_CHAIN[: stop_at + 1]
-    results: dict[str, Any] = {
-        "chart_id": chart_id,
-        "chart_name": chart["chart_name"],
-        "stages": {},
-        "skipped_stages": [],
-        "progress": progress,
-        "images": {
-            "source": image_info.get("image_source"),
-            "page_count": image_info.get("page_count"),
-            "pages_reused": image_info.get("pages_reused"),
-            "pages_downloaded": image_info.get("pages_downloaded"),
-        },
-    }
-    if stop_at is not None:
-        results["through"] = STAGE_NAMES[stop_at]
-        # The stages past the stop are not failures and not "skipped by filter"
-        # either — they were never in scope. Naming them keeps a partial run
-        # distinguishable from a chain that died early.
-        results["not_run"] = STAGE_NAMES[stop_at + 1 :]
-        logger.info(
-            "Chart %s: running through [%s] — %d of %d stage(s)",
-            chart["chart_name"], stage_label(*STAGE_CHAIN[stop_at][:2]), len(chain),
-            len(STAGE_CHAIN),
-        )
-
-    from logging_setup import reset_current_chart, set_current_chart
-
-    chart_token = set_current_chart(chart["chart_name"])
     try:
+        wanted = set(only or [])
+        # Only a whole-chain run rebuilds the chart; `only` / `through` runs read
+        # what earlier stages left, so they must not clear it.
+        full_run = not wanted and stop_at is None
+        chain = STAGE_CHAIN if stop_at is None else STAGE_CHAIN[: stop_at + 1]
+        results: dict[str, Any] = {
+            "chart_id": chart_id,
+            "chart_name": chart["chart_name"],
+            "stages": {},
+            "skipped_stages": [],
+            "progress": progress,
+            "images": {
+                "source": image_info.get("image_source"),
+                "page_count": image_info.get("page_count"),
+                "pages_reused": image_info.get("pages_reused"),
+                "pages_downloaded": image_info.get("pages_downloaded"),
+            },
+        }
+        if stop_at is not None:
+            results["through"] = STAGE_NAMES[stop_at]
+            # The stages past the stop are not failures and not "skipped by filter"
+            # either — they were never in scope. Naming them keeps a partial run
+            # distinguishable from a chain that died early.
+            results["not_run"] = STAGE_NAMES[stop_at + 1 :]
+            through_stage = set_current_stage(stage_label(*STAGE_CHAIN[stop_at][:2]))
+            logger.info(
+                "running through — %d of %d stage(s)",
+                len(chain), len(STAGE_CHAIN),
+            )
+            reset_current_stage(through_stage)
+
         total_stages = len(chain)
         skip_ocr_active = False
         ocr_hydrated = False
@@ -313,120 +321,117 @@ def run_pipeline_for_chart(
                 results["skipped_stages"].append(key)
                 continue
 
-            # Always re-measure quality under skip_ocr; with reuse, gate-delta
-            # reopens only pages whose path changed.
-            if (
-                (adaptive_gates or force_quality_for_skip)
-                and name == "ocr_quality"
-                and not gate_delta_applied
-            ):
-                label = stage_label(name, pass_no)
-                logger.info(
-                    "=== [%s]  stage %d of %d  —  chart %s (force quality) ===",
-                    label, index, total_stages, chart["chart_name"],
-                )
-                results["stages"][key] = fn(chart_id, force=True)
-                if adaptive_gates:
-                    from stages.utilities.gate_delta import apply_adaptive_gate_delta
-
-                    with connect() as conn:
-                        plan = apply_adaptive_gate_delta(
-                            conn,
-                            chart_id,
-                            old_gates=old_gates,
-                            old_presence=old_presence,
-                        )
-                    results["gate_delta"] = {
-                        "pages_reopened": len(plan.reasons),
-                        "reasons": {str(k): v for k, v in plan.reasons.items()},
-                        "force_prelim": sorted(plan.force_prelim),
-                        "force_final1": sorted(plan.force_final1),
-                        "force_final2": sorted(plan.force_final2),
-                        "invalidate": {
-                            f"{s}:{p}": sorted(pids)
-                            for (s, p), pids in plan.invalidate.items()
-                        },
-                    }
+            label = stage_label(name, pass_no)
+            stage_token = set_current_stage(label)
+            try:
+                # Always re-measure quality under skip_ocr; with reuse, gate-delta
+                # reopens only pages whose path changed.
+                if (
+                    (adaptive_gates or force_quality_for_skip)
+                    and name == "ocr_quality"
+                    and not gate_delta_applied
+                ):
                     logger.info(
-                        "[%s] done — gate-delta reopened %d page(s)",
-                        label,
-                        len(plan.reasons),
+                        "starting (%d of %d) — force quality",
+                        index, total_stages,
                     )
-                else:
-                    logger.info("[%s] done — quality refreshed (OCR will re-run)", label)
-                gate_delta_applied = True
-                with connect() as conn:
-                    progress = refresh_chart_status(conn, chart_id)
-                results["progress"] = progress
-                continue
+                    results["stages"][key] = fn(chart_id, force=True)
+                    if adaptive_gates:
+                        from stages.utilities.gate_delta import apply_adaptive_gate_delta
 
-            if name in {"ocr_prelim", "ocr_final1", "ocr_final2"}:
-                if not ocr_hydrated:
-                    skip_ocr_active = should_skip_ocr_stages(
-                        chart_name=chart["chart_name"],
-                        chart_id=chart_id,
-                        force=force,
-                        skip_ocr=skip_ocr,
-                    )
-                    if skip_ocr_active:
-                        results["ocr_reuse"] = apply_skip_ocr(
-                            chart_id, chart["chart_name"]
+                        with connect() as conn:
+                            plan = apply_adaptive_gate_delta(
+                                conn,
+                                chart_id,
+                                old_gates=old_gates,
+                                old_presence=old_presence,
+                            )
+                        results["gate_delta"] = {
+                            "pages_reopened": len(plan.reasons),
+                            "reasons": {str(k): v for k, v in plan.reasons.items()},
+                            "force_prelim": sorted(plan.force_prelim),
+                            "force_final1": sorted(plan.force_final1),
+                            "force_final2": sorted(plan.force_final2),
+                            "invalidate": {
+                                f"{s}:{p}": sorted(pids)
+                                for (s, p), pids in plan.invalidate.items()
+                            },
+                        }
+                        logger.info(
+                            "done — gate-delta reopened %d page(s)",
+                            len(plan.reasons),
                         )
-                        if (results["ocr_reuse"] or {}).get("source") == "none":
-                            skip_ocr_active = False
-                    ocr_hydrated = True
-                if skip_ocr_active and adaptive_gates:
-                    # Per-page: only pages reset to pending by gate-delta run.
-                    label = stage_label(name, pass_no)
-                    logger.info(
-                        "=== [%s]  stage %d of %d  —  chart %s "
-                        "(skip_ocr + gate-delta pending only) ===",
-                        label, index, total_stages, chart["chart_name"],
-                    )
-                    results["stages"][key] = fn(chart_id, force=False)
+                    else:
+                        logger.info("done — quality refreshed (OCR will re-run)")
+                    gate_delta_applied = True
                     with connect() as conn:
                         progress = refresh_chart_status(conn, chart_id)
                     results["progress"] = progress
-                    logger.info(
-                        "[%s] done — chart status=%s, next=%s",
-                        label, progress.get("status"),
-                        progress.get("current_stage") or "finished",
-                    )
-                    continue
-                if skip_ocr_active:
-                    reason = (results.get("ocr_reuse") or {}).get("source") or "reuse"
-                    results["skipped_stages"].append(key)
-                    results["stages"][key] = {
-                        "skipped": True,
-                        "reason": f"skip_ocr_{reason}",
-                    }
-                    logger.info(
-                        "=== [%s]  skipped (skip_ocr, %s)  —  chart %s ===",
-                        stage_label(name, pass_no), reason, chart["chart_name"],
-                    )
                     continue
 
-            label = stage_label(name, pass_no)
-            # skip_ocr skips OCR engines only — blank/junk and every later
-            # stage re-run (force=True). Plain resume keeps force as passed.
-            stage_force = True if skip_requested else force
-            force_note = ""
-            if skip_requested and stage_force:
-                force_note = " (skip_ocr: force non-OCR)"
-            logger.info(
-                "=== [%s]  stage %d of %d  —  chart %s%s ===",
-                label, index, total_stages, chart["chart_name"], force_note,
-            )
-            results["stages"][key] = fn(chart_id, force=stage_force)
+                if name in {"ocr_prelim", "ocr_final1", "ocr_final2"}:
+                    if not ocr_hydrated:
+                        skip_ocr_active = should_skip_ocr_stages(
+                            chart_name=chart["chart_name"],
+                            chart_id=chart_id,
+                            force=force,
+                            skip_ocr=skip_ocr,
+                        )
+                        if skip_ocr_active:
+                            results["ocr_reuse"] = apply_skip_ocr(
+                                chart_id, chart["chart_name"]
+                            )
+                            if (results["ocr_reuse"] or {}).get("source") == "none":
+                                skip_ocr_active = False
+                        ocr_hydrated = True
+                    if skip_ocr_active and adaptive_gates:
+                        # Per-page: only pages reset to pending by gate-delta run.
+                        logger.info(
+                            "starting (%d of %d) — skip_ocr, pending pages only",
+                            index, total_stages,
+                        )
+                        results["stages"][key] = fn(chart_id, force=False)
+                        with connect() as conn:
+                            progress = refresh_chart_status(conn, chart_id)
+                        results["progress"] = progress
+                        logger.info(
+                            "done — status=%s, next=%s",
+                            progress.get("status"),
+                            progress.get("current_stage") or "finished",
+                        )
+                        continue
+                    if skip_ocr_active:
+                        reason = (results.get("ocr_reuse") or {}).get("source") or "reuse"
+                        results["skipped_stages"].append(key)
+                        results["stages"][key] = {
+                            "skipped": True,
+                            "reason": f"skip_ocr_{reason}",
+                        }
+                        logger.info("skipped — skip_ocr (%s)", reason)
+                        continue
 
-            with connect() as conn:
-                progress = refresh_chart_status(conn, chart_id)
-            results["progress"] = progress
-            logger.info(
-                "[%s] done — chart status=%s, next=%s",
-                label, progress.get("status"),
-                progress.get("current_stage") or "finished",
-            )
+                # skip_ocr skips OCR engines only — blank/junk and every later
+                # stage re-run (force=True). Plain resume keeps force as passed.
+                stage_force = True if skip_requested else force
+                force_note = ""
+                if skip_requested and stage_force:
+                    force_note = " — skip_ocr: force non-OCR"
+                logger.info(
+                    "starting (%d of %d)%s",
+                    index, total_stages, force_note,
+                )
+                results["stages"][key] = fn(chart_id, force=stage_force)
+
+                with connect() as conn:
+                    progress = refresh_chart_status(conn, chart_id)
+                results["progress"] = progress
+                logger.info(
+                    "done — status=%s, next=%s",
+                    progress.get("status"),
+                    progress.get("current_stage") or "finished",
+                )
+            finally:
+                reset_current_stage(stage_token)
 
         with connect() as conn:
             progress = refresh_chart_status(conn, chart_id)

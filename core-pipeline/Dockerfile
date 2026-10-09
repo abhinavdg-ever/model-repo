@@ -23,19 +23,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Docling + MiniLM packages are required for Final1 in-container — always
-# install. Weight files are NOT baked in; mount ./models (scp onto the host).
-#
-# The NER layer (GLiNER) is still opt-in — another ~2.5 GB of runtime:
-#   docker compose build --build-arg WITH_NER=true
-ARG WITH_NER=false
-
-COPY requirements.txt requirements-docling.txt requirements-ner.txt ./
-RUN pip install --no-cache-dir -r requirements.txt \
- && pip install --no-cache-dir -r requirements-docling.txt \
- && if [ "$WITH_NER" = "true" ]; then \
-        pip install --no-cache-dir -r requirements-ner.txt; \
-    fi
+# Model packages (Docling, MiniLM, GLiNER, the key/value ranker) are in the
+# image. Weight files are NOT baked in; mount ./models (scp onto the host).
+COPY requirements-basic.txt requirements-models.txt ./
+RUN pip install --no-cache-dir -r requirements-basic.txt \
+ && pip install --no-cache-dir -r requirements-models.txt
 
 COPY . /app/core-pipeline
 WORKDIR /app/core-pipeline

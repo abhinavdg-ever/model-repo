@@ -68,7 +68,7 @@ Blank / junk / duplicate.
 
 Codeable / non-codeable page type.
 
-- **Model today** — keyword families (`codeable_canon.json`): word-boundary hits, header-weighted, margin confidence, family spans  
+- **Model today** — page family from `models/page-family` (TF-IDF + XGBoost); subtype from keyword rules in `codeable_canon.json`. No subtype hit leaves the subtype equal to the family. Missing weights ⇒ keywords name the family too.  
 - **Out** — `page_type`, tag (codeable / non-codeable / discharge)  
 - **Toggle** — project-specific canon  
 

@@ -104,6 +104,8 @@ DEFAULT_MODEL_PATH = next(
 _bundle: "ClassifierBundle | None" = None
 _load_attempted = False
 _load_lock = threading.Lock()
+# MPS (Apple GPU) segfaults if several threads run the same model at once.
+_infer_lock = threading.Lock()
 
 
 @dataclass
@@ -552,15 +554,22 @@ def decide_label(
 
 
 def classify_tensor_batch(batch, bundle: ClassifierBundle):
-    """Run a preprocessed NCHW tensor batch. Returns P(Handwritten) per row."""
+    """Run a preprocessed NCHW tensor batch. Returns P(Handwritten) per row.
+
+    One forward at a time. Concurrent calls on MPS abort the process.
+    """
     import torch
 
     bundle.torch_model.eval()
-    with torch.inference_mode():
-        batch = batch.to(bundle.device, non_blocking=False)
-        logits = bundle.torch_model(batch)
-        proba = probabilities_from_logits(logits)
-    return proba.detach().cpu()
+    with _infer_lock:
+        with torch.inference_mode():
+            batch = batch.to(bundle.device, non_blocking=False)
+            logits = bundle.torch_model(batch)
+            proba = probabilities_from_logits(logits)
+            out = proba.detach().cpu()
+        if getattr(bundle.device, "type", None) == "mps" and hasattr(torch, "mps"):
+            torch.mps.synchronize()
+    return out
 
 
 def classify_image_type(

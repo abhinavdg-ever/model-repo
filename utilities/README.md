@@ -35,6 +35,27 @@ python ../utilities/find_blob_folders.py imaging-pipeline/Raw_Input C:/lists/fol
 Writes `folders_located.xlsx` next to the input. A folder in more than one
 place is several paths separated by ` | `. A miss is `NOT FOUND`.
 
+## Local PDFs → page folders
+
+One chart folder per PDF on disk, with a JPEG for each page:
+
+```
+review-ui/data/folders/<pdf name>/pages/1.jpg
+review-ui/data/folders/<pdf name>/pages/2.jpg
+```
+
+Needs PyMuPDF in the core-pipeline venv: `pip install pymupdf`.
+
+```bash
+python ../utilities/pdfs_to_folders.py /path/to/chart-a.pdf /path/to/chart-b.pdf
+python ../utilities/pdfs_to_folders.py /path/to/pdfs/
+python ../utilities/pdfs_to_folders.py --list paths.txt
+python ../utilities/pdfs_to_folders.py --out /path/to/folders chart.pdf
+```
+
+`paths.txt` is one local PDF path per line. A directory argument is every
+PDF in that folder. `--out` defaults to `review-ui/data/folders`.
+
 Same job via the API / sweeper:
 
 ```bash

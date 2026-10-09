@@ -196,6 +196,10 @@ PAGE_CLASSIFY_DEBUG = _flag("PAGE_CLASSIFY_DEBUG", False)
 # contenders) to <chart>/debug/<chart>_encounter_evidence.csv.
 ENCOUNTER_DEBUG = _flag("ENCOUNTER_DEBUG", False)
 
+# Writes every key/value hit, accepted or not, to <chart>/debug/<chart>_kv.json.
+# debug/ is never exported.
+KV_DEBUG = _flag("KV_DEBUG", False)
+
 # Page sequencing cross-encoder (optional ONNX). Off by default — markers /
 # header groups / original order still run. Drop cross_encoder_mini_lm.onnx
 # under stages/lib/sequencing/artifacts/ and set true to enable.
@@ -269,6 +273,11 @@ RAPID_MODELS_DIR = _path_under_core(
     os.environ.get("RAPID_MODELS_DIR"),
     "models/rapidocr",
 )
+# Docling layout + table models. Fetched once, before the per-page timer.
+DOCLING_ARTIFACTS_DIR = _path_under_core(
+    os.environ.get("DOCLING_ARTIFACTS_DIR"),
+    "models/docling",
+)
 # Local MiniLM checkout for section-header filtering. Preferred over Hub id
 # when the directory exists. Download:
 #   python -m stages.lib.ocr.section_header_match --download
@@ -282,6 +291,24 @@ SECTION_HEADER_MINILM_PATH = _path_under_core(
 BLANK_JUNK_MODEL_DIR = _path_under_core(
     os.environ.get("BLANK_JUNK_MODEL_DIR"),
     "models/blank-junk",
+)
+# TF-IDF + XGBoost page-family model. Missing file, or no xgboost, means the
+# keyword catalog chooses the family too.
+PAGE_FAMILY_MODEL_DIR = _path_under_core(
+    os.environ.get("PAGE_FAMILY_MODEL_DIR"),
+    "models/page-family",
+)
+# Key/value extraction weights (stages/lib/extraction). The ranker version is
+# pinned: a different version changes the member, DOS and page-number values
+# the later stages read. GLiNER and Heron are downloaded beside it.
+EXTRACTION_MODEL_VERSION = "v002"
+EXTRACTION_MODELS_ROOT = _path_under_core(
+    os.environ.get("EXTRACTION_MODELS_ROOT"),
+    "models",
+)
+EXTRACTION_DATA_ROOT = _path_under_core(
+    os.environ.get("EXTRACTION_DATA_ROOT"),
+    "data/extraction",
 )
 
 IMAGE_SUFFIXES = {
@@ -310,6 +337,16 @@ def ocr_dir(chart_name: str) -> Path:
 
 def imaging_dir(chart_name: str) -> Path:
     return chart_dir(chart_name) / "imaging"
+
+
+def staging_dir(chart_name: str) -> Path:
+    """Key/value extraction for one chart: ``staging/extraction.json``.
+
+    Member verification, date of service and page sequencing read it. It stays
+    on disk after the chart finishes so provider name and e-signature, which
+    have no result table, can still be inspected.
+    """
+    return chart_dir(chart_name) / "staging"
 
 
 def corrected_pages_dir(chart_name: str) -> Path:

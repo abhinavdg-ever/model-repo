@@ -242,7 +242,7 @@ and the RapidOCR `.pth` models under `RAPID_MODELS_DIR` are ready, final1 uses
 Docling's layout / TableFormer / reading-order pipeline (V1 `os_ocr.py`).
 Otherwise it falls back to **RapidOCR-onnx only** (no Tesseract — prelim already
 did that). Either way the on-disk artifact is `ocr/<chart>_final1.json`. See
-[`docs/API.md` § Optional model weights](API.md#optional-model-weights-not-pip).
+[`docs/API.md` § Downloading models](API.md#2-downloading-models).
 
 **final1 and final2 store JSON**, not bare text: `{pageNumber, fileName, content, …}`.
 final1 also carries `markdown` and (when Docling ran) the full `document`
@@ -388,14 +388,13 @@ The NER **code** is fully ported — `model.py`, `catalog.py`, `keys.py`,
 `name.py`, `dob.py`, `member_id.py` and the model downloader. Two things are not
 vendored, because neither belongs in a git repository:
 
-1. **The runtime** — `gliner`, `torch`, `transformers` (~2.5 GB installed).
-   Kept out of `requirements.txt` so the base image stays small.
+1. **The runtime** — `gliner`, `torch`, `transformers` (~2.5 GB installed), in
+   `requirements-models.txt`.
 2. **The checkpoints** — ~2 GB of weights.
 
 ```bash
 # 1. Runtime
-pip install -r requirements-ner.txt
-#    Docker:  docker build --build-arg WITH_NER=true .
+pip install -r requirements-models.txt
 
 # 2. Checkpoints (into MEMBER_NER_MODELS_PATH)
 python -m stages.lib.member.extractors.ner_based.model_downloader
@@ -416,7 +415,7 @@ preconditions is unmet, because they need different fixes:
 
 | `reason` | Fix |
 |---|---|
-| `gliner not installed (…)` | `pip install -r requirements-ner.txt` |
+| `gliner not installed (…)` | `pip install -r requirements-models.txt` |
 | `checkpoints missing: …` | run the downloader |
 | `MEMBER_NER_ENABLED=false` | set the flag |
 
@@ -515,14 +514,19 @@ row's `confidence`.
 
 ### D. Resolve
 
-| Page | Page level | Document level |
-|---|---|---|
-| Progress Note with a date | its date | opens a span with it (`span_start`) |
-| In a span, own date ≤ 0.75 | its date | the span's (`span`) |
-| Own date > 0.75, or no span | its date | its date — the new encounter |
-| Non-encounter page type (face sheet, demographics, problem/med/allergy list, vitals, immunization) | its date | the current encounter, never replaced (`non_encounter_page`) |
-| No date ≥ threshold | blank | the current encounter (`carry_forward` / `span`) |
-| Nothing to inherit | blank | `DOS_DEFAULT_DATE`, confidence 0, `no_date_found`, `is_default` |
+| Page | Page level (extracted) | Document level | Final |
+|---|---|---|---|
+| Progress Note with a date | its date | opens a span with it (`span_start`) | its date |
+| In a span, own date ≤ span override (0.75) | its date | the span's (`span`) | the progress note's date |
+| In a span, no date of its own | blank | the span's (`span`) | the progress note's date |
+| Own date above the span override, or no span | its date | its date — the new encounter | its date |
+| Non-encounter page type (face sheet, demographics, problem/med/allergy list, vitals, immunization) | its date | the current encounter, never replaced (`non_encounter_page`) | its date |
+| Nothing to inherit | blank | `DOS_DEFAULT_DATE`, confidence 0, `no_date_found`, `is_default` | blank |
+
+The page-level columns stay the date found on that page. On a span page the
+final date (`final_dos`) is the date from the progress note that opened the
+span. Document level still carries that same encounter date, which later
+stages read when the page itself has none.
 
 Page types are exact `page_type` names from `codeable_canon.json`, listed in
 the profile.
@@ -543,7 +547,7 @@ is not exported.
 
 | Target | Columns |
 |---|---|
-| `dos_extraction_results` | `date_of_service_from/to`, `..._doclevel` (single-valued), `dates` (JSONB array of `{seq, date_of_service_from, date_of_service_to, source_keyword, confidence}`), `extraction_method` (`rules`\|`llm`\|`rules+llm`), `confidence`. `date_count` is generated from `dates`. |
+| `dos_extraction_results` | `date_of_service_from/to`, `..._doclevel` (single-valued), `dates` (JSONB array of `{seq, date_of_service_from, date_of_service_to, source_keyword, confidence}`), `extraction_method` (`rules`\|`llm`\|`rules+llm`\|`kv`), `confidence`. `date_count` is generated from `dates`. |
 | disk | `imaging/<chart>_dos.csv` |
 
 Without Azure OpenAI the stage runs rules-only and stamps
@@ -559,47 +563,24 @@ log (`auth=key` / `auth=entra`); the setting is
 
 **Engine:** `stages/lib/page_classify/codeable_classify.py` · **Stage:**
 `stages/lib/page_classify/stage.py` · **Catalog:**
-`keyword-canon/codeable_canon.json` (reloads on change)
+`keyword-canon/codeable_canon.json` (reloads on change) · **Family model:**
+`models/page-family/family.joblib` (`PAGE_FAMILY_MODEL_DIR`)
 
-Every main page (not blank / junk / duplicate) is matched against 253 page
-types grouped into 29 families. **The decision is made per family**, and the
-family carries the tag: a family is all Codeable, all Non Codeable or all
-Discharge, never mixed. The output `page_type` (CSV) and
-`page_classification.page_subtype` are **`Family (Page Type)`** — e.g.
-`Progress Note (SOAP Note)`, or just `Progress Note` when the type has the
-family's name. Blank, junk and duplicate pages are always Non Codeable.
+Every main page (not blank / junk / duplicate) gets a family, then a subtype.
+Blank, junk and duplicate pages are always Non Codeable. When the weights or
+XGBoost are missing, the keywords choose the family.
 
-| Family | Tag | Priority | Types |
-|---|---|---|---|
-| Progress Note | Codeable | 10 | 30 |
-| Discharge | Discharge | 20 | 20 |
-| Obstetric | Codeable | 30 | 5 |
-| Procedure | Codeable | 30 | 18 |
-| Assessment / Screening | Codeable | 40 | 14 |
-| Behavioral Health | Codeable | 40 | 4 |
-| Care Plan | Codeable | 40 | 6 |
-| Inpatient / Critical Care | Codeable | 40 | 12 |
-| Specialty Consult | Codeable | 40 | 11 |
-| Therapy / Rehab | Codeable | 40 | 11 |
-| Ophthalmology | Codeable | 45 | 7 |
-| Screening / Checklist | Non Codeable | 45 | 6 |
-| Cardiac Diagnostic | Codeable | 50 | 9 |
-| Neuro Diagnostic | Codeable | 50 | 6 |
-| Pulmonary Function Test | Non Codeable | 50 | 1 |
-| Pulmonary / Sleep | Codeable | 50 | 5 |
-| Vascular / Holter | Non Codeable | 50 | 5 |
-| Imaging | Non Codeable | 55 | 12 |
-| Laboratory | Non Codeable | 55 | 15 |
-| Nuclear Medicine | Codeable | 55 | 2 |
-| Pathology | Codeable | 55 | 6 |
-| Medication / Immunization | Non Codeable | 60 | 6 |
-| Therapy Administration | Codeable | 60 | 3 |
-| Consent / Authorization | Non Codeable | 70 | 7 |
-| Orders / Requests | Non Codeable | 70 | 7 |
-| Letter | Codeable | 75 | 1 |
-| Patient Communication | Non Codeable | 75 | 8 |
-| Administrative | Non Codeable | 80 | 14 |
-| Demographics | Codeable | 80 | 2 |
+### Picking the family and the subtype
+
+1. **Model.** Top probability at least 0.50. Confidence is that probability.
+2. **Keyword winner.** Used when the model did not commit and the winning family's raw keyword score is above 0.70. Confidence is that family's lead over the next keyword family, from 0 to 1. The raw score is only the gate; it is not the confidence.
+3. **Top 3 overlap.** The model's top 3 and the keyword top 3. A family in both is tagged. The model's highest such family is kept. Confidence is that family's model probability.
+4. **Others.** When none of the above hit. Confidence is 0.
+5. **Subtype.** Inside the chosen family, the keyword type with the largest share of that family's scores. No subtype hit leaves the subtype equal to the family name. Others has no subtype.
+
+The 47 families, their tags and priorities, live in the canon's `families`
+block. Display names are the model's labels (`Progress Note`, `Laboratory
+Report`, `Discharge Summary`).
 
 ### The catalog
 
@@ -649,14 +630,17 @@ A type name at the top of a page is the document's title; the same phrase in
 the body is usually a cross-reference ("see discharge summary"), and a footer
 usually repeats a form name.
 
-### Picking the type
+### Picking the family from keywords
+
+Used when the model abstains or its weights are missing.
 
 1. A family is eligible when at least one of its hits is a primary or variant.
 2. **Family:** the highest family score wins; on a tie, the lower priority
-   (`progress_note` 10, `discharge` 20). The family decides the tag.
-3. **Type:** inside that family, each eligible type's share of the family's
+   (`progress_note` 10, `discharge_summary` 15). The family decides the tag.
+3. **Subtype:** inside that family, each eligible type's share of the family's
    type scores is its probability; the most likely type wins (ties: the longer
-   name). It is reported as `type_confidence`.
+   name). It is reported as `type_confidence`. No eligible type leaves the
+   subtype equal to the family name.
 
 **Dominance:** a family listed in `matching.dominant_families` wins outright
 once its score reaches the threshold — Progress Note at 12, e.g. three
@@ -792,7 +776,7 @@ current_stage = earliest stage, in pipeline_stage.seq order,
 | All done (including member `document_decision='reject'`) | `completed` |
 
 Accept/reject is recorded on `member_verification_summary` only — `chart_list.status`
-is never set to `rejected` (legacy value remapped by `schema/patch_output_path.sql`).
+is never set to `rejected`.
 
 A page that `failed` in an otherwise-finished stage does **not** fail the chart —
 every page reached a terminal state, so the stage is done and the failure stays

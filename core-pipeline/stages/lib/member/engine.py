@@ -355,6 +355,86 @@ def trim_extracted_name(extracted: str, expected: dict[str, str]) -> str:
     return " ".join(tokens[start : end + 1])
 
 
+def overlay_staged_fields(
+    fields: dict[str, str],
+    people: Optional[list[tuple[float, str, str]]],
+    staged: Any,
+    expected: dict[str, str],
+    name_mode: str,
+) -> tuple[dict[str, str], Optional[list[tuple[float, str, str]]], list[str]]:
+    """Fill name, DOB and member ID from the key/value extraction when it found them.
+
+    A page the extraction did not read (``staged`` is None, or the field is
+    empty) keeps the rule or NER value. Returns the extra member names so a
+    page that names someone else can still be ``wrong_member``.
+    """
+    if staged is None:
+        return fields, people, []
+    from datetime import datetime
+
+    from .extractors.rule_based.name_common import name_matches
+    from .rules.field_match import dob_matches, member_id_matches
+    from stages.lib.extraction.util.dates import canonical_date
+
+    def source(row: dict[str, Any]) -> str:
+        return "ner" if row.get("ner_text") else "rule based"
+
+    def dob_text(value: str) -> str:
+        iso = canonical_date(value)
+        try:
+            return datetime.strptime(iso, "%Y-%m-%d").strftime("%m/%d/%Y")
+        except ValueError:
+            return value
+
+    def chosen(field_id: str) -> list[dict[str, Any]]:
+        rows = [
+            row for row in staged.accepted(field_id)
+            if str(row.get("value") or "").strip()
+        ]
+        return sorted(rows, key=lambda row: not row.get("selected"))
+
+    from stages.lib.member.extractors.ner_based.name import is_age_name
+
+    names = [row for row in chosen("name") if not is_age_name(str(row.get("value") or ""))]
+    first = expected.get("DummyFirstName", "")
+    middle = expected.get("DummyMiddleName", "")
+    last = expected.get("DummyLastName", "")
+    ours = next(
+        (
+            row for row in names
+            if name_mode and name_matches(row["value"], first, last, middle, name_mode)
+        ),
+        None,
+    )
+    pick = ours or (names[0] if names else None)
+    if pick is not None:
+        fields["Detected_Full_Name"] = pick["value"].strip()
+        fields["Detection_Source_Name"] = source(pick)
+        fields["ner_key_source_Name"] = pick.get("key") or ""
+
+    dobs = chosen("dob")
+    dob_hit = next((row for row in dobs if dob_matches(row["value"], expected.get("DummyDOB", ""))), None)
+    dob_pick = dob_hit or (dobs[0] if dobs else None)
+    if dob_pick is not None:
+        fields["Detected_DOB"] = dob_text(dob_pick["value"])
+        fields["Detection_Source_DOB"] = source(dob_pick)
+        fields["ner_key_source_DOB"] = dob_pick.get("key") or ""
+
+    ids = chosen("member_id")
+    id_hit = next(
+        (row for row in ids if member_id_matches(row["value"], expected.get("MemberID", ""))),
+        None,
+    )
+    id_pick = id_hit or (ids[0] if ids else None)
+    if id_pick is not None:
+        fields["Detected_MemberID"] = id_pick["value"].strip()
+        fields["Detection_Source_MemberID"] = source(id_pick)
+        fields["ner_key_source_MemberID"] = id_pick.get("key") or ""
+
+    found = [row["value"].strip() for row in names if not is_age_name(row["value"])]
+    return fields, people, found
+
+
 def verify_record(
     record_id: str,
     pages: list[dict[str, Any]],
@@ -383,9 +463,19 @@ def verify_record(
         page_no = int(page.get("page_no") or index)
 
         fields, people = extract_page_fields(text, expected, name_mode, model_id)
+        fields, people, kv_names = overlay_staged_fields(
+            fields, people, page.get("staged"), expected, name_mode
+        )
         fields["Detected_Full_Name"] = trim_extracted_name(
             fields["Detected_Full_Name"], expected
         )
+        from stages.lib.member.extractors.ner_based.name import is_age_name
+
+        if is_age_name(fields["Detected_Full_Name"]):
+            fields["Detected_Full_Name"] = "N/A"
+            fields["Detection_Source_Name"] = ""
+            fields["ner_key_source_Name"] = ""
+        kv_names = [name for name in kv_names if not is_age_name(name)]
         page_ok = verify_page(
             expected,
             name_mode,
@@ -399,6 +489,9 @@ def verify_record(
             people = name_candidates(text, model_id)
 
         ner_names = [name for _score, name, _key in people or []]
+        for name in kv_names:
+            if name not in ner_names:
+                ner_names.append(name)
         status = classify_page(text, ner_names, expected, name_mode, page_ok)
 
         results.append(

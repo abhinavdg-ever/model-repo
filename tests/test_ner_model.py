@@ -107,7 +107,7 @@ class TestReadinessDrivesTheStage:
         # Either the runtime or the weights are missing here; both reasons must
         # name the command that fixes them.
         assert (
-            "requirements-ner.txt" in status["reason"]
+            "requirements-models.txt" in status["reason"]
             or "model_downloader" in status["reason"]
         )
 
