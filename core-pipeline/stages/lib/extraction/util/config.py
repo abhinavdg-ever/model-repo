@@ -37,8 +37,32 @@ Models_Root = EXTRACTION_MODELS_ROOT
 # Trained locally from reviews, so they are copied with the models folder, never downloaded.
 Model_Registry = Models_Root / "kv-extraction"
 
-# GLiNER model used by every field extractor (gliner_low = urchade/gliner_small-v2.1)
-Ner_Model_Path = Models_Root / "gliner_low"
+def ner_model_path() -> Path:
+    """The GLiNER checkpoint member verification already uses.
+
+    ``MEMBER_NER_MODELS_PATH`` / the folder for ``MEMBER_NER_MODEL_ID``
+    (``models/ner/gliner_medium-v2.1`` when the id is ``gliner_medium``).
+    """
+    from stages.lib.member.extractors.ner_based.catalog import model_dir
+    from stages.lib.member.extractors.ner_based.config import MEMBER_NER_MODEL_ID
+
+    try:
+        return model_dir(MEMBER_NER_MODEL_ID)
+    except KeyError:
+        from stages.lib.member.extractors.ner_based.config import NER_MODELS_PATH
+
+        return NER_MODELS_PATH / MEMBER_NER_MODEL_ID
+
+
+def ner_weights_present(folder: Path) -> bool:
+    """A GLiNER folder the extractor can load offline."""
+    config_ok = (folder / "gliner_config.json").is_file()
+    weights_ok = (folder / "pytorch_model.bin").is_file() or (folder / "model.safetensors").is_file()
+    return config_ok and weights_ok
+
+
+# Resolved once at import, after core config.py has applied .env.
+Ner_Model_Path = ner_model_path()
 
 # Layout detector for headings (CPU), reviewed as its own field. Empty dict = no headings.
 #   layout_heron = docling-project/docling-layout-heron (Apache-2.0)
@@ -87,22 +111,10 @@ class ModelSource:
     subfolder: str = ""
 
 
-# Pinned revisions: the exact weights the rules and trained versions were built against.
+# Pinned revisions: the exact weights the heading detector was built against.
+# GLiNER is not downloaded here. Key/value extraction loads the member NER
+# checkpoint (Ner_Model_Path); the member downloader fetches that folder.
 Model_Sources: dict = {
-    Ner_Model_Path: [
-        ModelSource(
-            "urchade/gliner_small-v2.1",
-            "4e091416cf7c3481db542c2a3d26156916f3a47f",
-            ("gliner_config.json", "pytorch_model.bin"),
-        ),
-        ModelSource(
-            "microsoft/deberta-v3-small",
-            "a36c739020e01763fe789b4b85e2df55d6180012",
-            ("config.json", "spm.model", "tokenizer_config.json"),
-            allow=("config.json", "spm.model", "tokenizer_config.json", "special_tokens_map.json"),
-            subfolder="encoder",
-        ),
-    ],
     Heading_Models["heading_heron"]: [
         ModelSource(
             "docling-project/docling-layout-heron",

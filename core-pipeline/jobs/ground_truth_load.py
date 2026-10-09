@@ -138,6 +138,13 @@ def _cell(value: Any) -> Optional[str]:
     return text or None
 
 
+def spell_codeable(value: Optional[str]) -> Optional[str]:
+    """Spreadsheets say Codable. The pipeline and the review screen say Codeable."""
+    if not value:
+        return value
+    return re.sub(r"codable", "Codeable", value, flags=re.IGNORECASE)
+
+
 def parse_rows(headers: list[Any], data_rows: list[list[Any]]) -> list[dict[str, Any]]:
     """Map a header row and data rows onto page_ground_truth columns."""
     columns = [norm_header(h) for h in headers]
@@ -162,7 +169,8 @@ def parse_rows(headers: list[Any], data_rows: list[list[Any]]) -> list[dict[str,
             "source_page_id": _cell(mapped.get("source_page_id")),
         }
         for field in _TEXT_FIELDS:
-            row[field] = _cell(mapped.get(field))
+            cell = _cell(mapped.get(field))
+            row[field] = spell_codeable(cell) if field == "codeable" else cell
         out.append(row)
     return out
 

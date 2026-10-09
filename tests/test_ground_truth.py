@@ -61,7 +61,8 @@ def test_parse_keeps_client_yes_no_and_dates():
     assert kept[0]["member_name"] == "Yes"
     assert kept[0]["dos_from"] == "07/17/2025"
     assert kept[0]["page_type"] == "Accept"
-    assert kept[0]["codeable"] == "Codable"
+    assert kept[0]["codeable"] == "Codeable"
+    assert kept[1]["codeable"] == "Non Codeable"
     assert kept[0]["is_invoice"] is None
     assert kept[1]["page_number"] == 2
     assert kept[1]["blank_page"] == "Yes"

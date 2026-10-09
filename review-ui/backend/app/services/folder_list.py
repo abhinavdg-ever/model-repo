@@ -197,6 +197,7 @@ def list_disk_folder_names_light(data_root: Path) -> list[FolderSummary]:
                 last_updated_at=mtime,
                 run_id=disk_run,
                 batch_id=disk_batch,
+                on_disk=True,
             )
         )
     return out
@@ -329,8 +330,12 @@ def build_folder_list(
             disk_rows = list_disk_folder_names_light(data_root)
         merged = merge_db_and_disk(db_rows, disk_rows)
         have = charts_with_ground_truth(database_url, db_schema)
+        on_disk = {row.id for row in disk_rows}
         merged = [
-            row.model_copy(update={"ground_truth_available": row.name in have})
+            row.model_copy(update={
+                "ground_truth_available": row.name in have,
+                "on_disk": row.id in on_disk,
+            })
             for row in merged
         ]
         return filter_sort_page(merged, params)

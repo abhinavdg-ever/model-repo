@@ -8,7 +8,7 @@ import { splitPageType } from "./ImagingPanel";
 
 export type Verdict = "correct" | "wrong";
 
-export type MetricId = "member" | "dos" | "blankJunk" | "pageType" | "codeable";
+export type MetricId = "member" | "dos" | "blankJunk" | "pageType" | "codeable" | "signature";
 
 export const METRICS: { id: MetricId; label: string; rule: string }[] = [
   {
@@ -29,12 +29,17 @@ export const METRICS: { id: MetricId; label: string; rule: string }[] = [
   {
     id: "pageType",
     label: "Page Type",
-    rule: "A match if the family or the subtype agrees",
+    rule: "Encounter type matches the page type or the page subtype",
   },
   {
     id: "codeable",
     label: "Codeable / Non Codeable",
     rule: "Codeable label matches",
+  },
+  {
+    id: "signature",
+    label: "Provider Signature",
+    rule: "Yes or No signature label matches",
   },
 ];
 
@@ -43,6 +48,8 @@ export type Tally = { correct: number; wrong: number; scored: number };
 export type ChartAccuracy = {
   chartId: string;
   chartName: string;
+  lastUpdatedAt?: string | null;
+  lastVerifiedAt?: string | null;
   metrics: Record<MetricId, Tally>;
   overall: Tally;
 };
@@ -144,13 +151,30 @@ function pageScores(
   const single = (field: GtBit[]): Verdict | null =>
     labeled(field) ? (matched(field) ? "correct" : "wrong") : null;
 
+  const expectedSignature = yesNo(page.groundTruth?.providerSignature);
+  const actualSignature = yesNo(page.providerSignature);
+  const signature: Verdict | null =
+    expectedSignature == null || actualSignature == null
+      ? null
+      : expectedSignature === actualSignature
+        ? "correct"
+        : "wrong";
+
   return {
     member,
     dos,
     blankJunk: single(bits.blankJunk),
     pageType: single(bits.pageType),
     codeable: single(bits.codeable),
+    signature,
   };
+}
+
+function yesNo(value: string | null | undefined): "yes" | "no" | null {
+  const folded = (value ?? "").trim().toLowerCase();
+  if (folded === "yes" || folded === "y" || folded === "true") return "yes";
+  if (folded === "no" || folded === "n" || folded === "false") return "no";
+  return null;
 }
 
 export function scoreChart(

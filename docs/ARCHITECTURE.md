@@ -115,6 +115,7 @@ erDiagram
 | `page_stage_status` | page × stage × pass | Progress. Replaces v6's 11 status columns. Drives resume and status derivation. |
 | `manifest_member_list` | record × member | The client roster, keyed on `record_id` — which **is** `chart_list.chart_name`. No `chart_id` column: the relationship is a join, so a sweep can precede ingest with nothing to link afterwards. |
 | `page_ground_truth` | chart × page file | Client imaging labels. `chart_name` is the folder name; `page_number` is the file stem (`1` matches `1.jpg` / `1.png` / `1.tif`). Member name, date of birth, and member id are Yes or No. No `chart_id`, so the spreadsheet can load before the chart exists. |
+| `v_accuracy_page` | ground-truth page | Join of `page_ground_truth` to `chart_list`, `page_list`, and the member, DOS, blank/junk, and page-classification rows. The accuracy screen reads this view. No extra columns on those tables. |
 
 ### Result tables
 

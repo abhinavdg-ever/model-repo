@@ -35,6 +35,7 @@
 --   encounter_type_results       encounter_type  (was a V2 proposal)
 --   page_sequencing_results      page_sequencing (was a V2 proposal)
 --   pipeline_jobs                run log
+--   v_accuracy_page              ground truth joined to the pipeline page
 --   v_chart_stage_progress       chart status rollup
 --
 -- Stage page_subtype (codeable TF) writes page_classification + CSV.
@@ -740,3 +741,72 @@ LEFT JOIN page_stage_status pss
       AND pss.stage_name = s.stage_name
       AND pss.pass_no = s.pass_no
 GROUP BY c.id, s.stage_name, s.pass_no, s.seq, s.label, s.is_phase1;
+
+
+-- One row per ground-truth page. The page file is the stem (1 = 1.jpg / 1.png).
+-- Result tables hang off page_list.id. No new columns on the source tables.
+CREATE OR REPLACE VIEW v_accuracy_page AS
+SELECT
+    g.chart_name,
+    g.page_number,
+    g.source_page_id,
+    c.updated_at                                              AS chart_updated_at,
+    g.member_name,
+    g.member_dob,
+    g.member_id,
+    g.dos_from                                                AS gt_dos_from,
+    g.dos_to                                                  AS gt_dos_to,
+    g.encounter_type,
+    g.page_type                                               AS gt_page_type,
+    g.codeable                                                AS gt_codeable,
+    g.blank_page,
+    g.junk_page,
+    g.is_invoice,
+    g.page_sequence,
+    g.rotation,
+    g.is_visible,
+    g.rendering_provider,
+    g.provider_signature,
+    pl.page_name,
+    m.extracted_name,
+    m.extracted_dob,
+    m.extracted_member_id,
+    d.date_of_service_from,
+    d.date_of_service_to,
+    b.blank_junk_flag,
+    b.junk_subtype,
+    pc.page_subtype,
+    pc.classification_category,
+    (
+        SELECT mm.external_member_id
+          FROM manifest_member_list mm
+         WHERE mm.record_id = g.chart_name
+         ORDER BY mm.id
+         LIMIT 1
+    )                                                         AS external_member_id,
+    (
+        EXISTS (SELECT 1 FROM member_extraction_results mx WHERE mx.chart_id = c.id)
+        OR EXISTS (SELECT 1 FROM member_verification_summary vx WHERE vx.chart_id = c.id)
+    )                                                         AS member_known,
+    EXISTS (SELECT 1 FROM dos_extraction_results dx WHERE dx.chart_id = c.id) AS dos_known,
+    EXISTS (SELECT 1 FROM blank_junk_classification bx WHERE bx.chart_id = c.id) AS junk_known,
+    EXISTS (SELECT 1 FROM page_classification px WHERE px.chart_id = c.id) AS codeable_known,
+    g.updated_at                                              AS ground_truth_updated_at
+FROM page_ground_truth g
+LEFT JOIN chart_list c
+       ON c.chart_name = g.chart_name
+LEFT JOIN LATERAL (
+    SELECT p.id, p.page_name
+      FROM page_list p
+     WHERE p.chart_id = c.id
+       AND (
+            p.page_name = g.source_page_id
+         OR split_part(p.page_name, '.', 1) = g.page_number::text
+       )
+     ORDER BY (p.page_name IS NOT DISTINCT FROM g.source_page_id) DESC, p.id
+     LIMIT 1
+) pl ON TRUE
+LEFT JOIN member_extraction_results m ON m.page_id = pl.id
+LEFT JOIN dos_extraction_results d ON d.page_id = pl.id
+LEFT JOIN v_page_blank_junk_final b ON b.page_id = pl.id
+LEFT JOIN page_classification pc ON pc.page_id = pl.id;

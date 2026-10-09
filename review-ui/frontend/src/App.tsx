@@ -11,7 +11,7 @@ const AUTH_KEY = "advantmed_imaging_auth";
 
 type Route =
   | { view: "landing" }
-  | { view: "folder"; folderId: string; mode: OutputMode }
+  | { view: "folder"; folderId: string; mode: OutputMode; from?: "accuracy" }
   | { view: "file-viewer"; folderId?: string }
   | { view: "accuracy" };
 
@@ -37,6 +37,7 @@ function parsePath(pathname: string, search: string): Route {
       view: "folder",
       folderId: decodeURIComponent(match[1]),
       mode: parseMode(params.get("mode")),
+      from: params.get("from") === "accuracy" ? "accuracy" : undefined,
     };
   }
   return { view: "landing" };
@@ -45,7 +46,11 @@ function parsePath(pathname: string, search: string): Route {
 function pathFor(route: Route): string {
   if (route.view === "folder") {
     const base = `/folders/${encodeURIComponent(route.folderId)}`;
-    return route.mode === "imaging" ? `${base}?mode=imaging` : base;
+    const params = new URLSearchParams();
+    if (route.mode === "imaging") params.set("mode", "imaging");
+    if (route.from === "accuracy") params.set("from", "accuracy");
+    const qs = params.toString();
+    return qs ? `${base}?${qs}` : base;
   }
   if (route.view === "accuracy") return "/accuracy";
   if (route.view === "file-viewer") {
@@ -193,7 +198,9 @@ export default function App() {
         ) : route.view === "accuracy" ? (
           <AccuracyView
             onBack={() => navigate({ view: "landing" })}
-            onOpenChart={(folderId) => navigate({ view: "folder", folderId, mode: "imaging" })}
+            onOpenChart={(folderId) =>
+              navigate({ view: "folder", folderId, mode: "imaging", from: "accuracy" })
+            }
           />
         ) : route.view === "file-viewer" ? (
           <FileViewer
@@ -205,9 +212,11 @@ export default function App() {
             key={route.folderId}
             folderId={route.folderId}
             initialMode={route.mode}
-            onBack={() => navigate({ view: "landing" })}
+            onBack={() =>
+              navigate(route.from === "accuracy" ? { view: "accuracy" } : { view: "landing" })
+            }
             onModeChange={(mode) =>
-              navigate({ view: "folder", folderId: route.folderId, mode })
+              navigate({ view: "folder", folderId: route.folderId, mode, from: route.from })
             }
           />
         )}

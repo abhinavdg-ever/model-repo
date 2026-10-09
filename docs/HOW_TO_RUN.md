@@ -84,7 +84,7 @@ is relative to `core-pipeline/`. The Python packages that load them come from
 | `rapidocr/` | `PP-OCRv6_det_small.pth`, `PP-OCRv6_rec_small.pth`, `ch_ptocr_mobile_v2.0_cls_mobile.pth`, `ppocrv6_dict.txt` | 34 MB | Final OCR 1 (Docling + RapidOCR) | Copy | Final1 falls back to `rapidocr-onnxruntime`'s built-in models; `/health` → `docling_final1.ready=false` |
 | `docling/` | `docling-project--docling-layout-heron/`, `…-layout-heron-onnx/`, `…-docling-models/` | 756 MB | Final1 layout + tables | Downloaded on the first Final1 page when the machine has internet; otherwise copy the folder | Docling tries the Hugging Face cache; if that is empty too, Final1 uses the ONNX fallback for that page |
 | `semantic-model/` | MiniLM (`config.json`, `modules.json`, `model.safetensors`, tokenizer files, `1_Pooling/`) | ~90 MB used (the full Hub snapshot is ~1 GB with ONNX/OpenVINO/TF copies that are not loaded) | Stage 6 section-header filtering | `python -m stages.lib.ocr.section_header_match --download` | Pulled from the Hub by id if online; else lexical match only |
-| `gliner_low/` | `gliner_config.json`, `pytorch_model.bin`, `encoder/` (`config.json`, `spm.model`, `tokenizer_config.json`) | 614 MB | Key/value extraction NER (`urchade/gliner_small-v2.1`) | `python -m stages.lib.extraction.util.model_setup` | `kv_extract` skipped, as above |
+| `ner/<folder for MEMBER_NER_MODEL_ID>/` | `gliner_config.json` and `pytorch_model.bin` or `model.safetensors` | ~1.5 GB for `gliner_medium` | Member verification and key/value extraction (same checkpoint) | `python -m stages.lib.member.extractors.ner_based.model_downloader` | `kv_extract` skipped; member check is rules-only |
 | `layout_heron/` | `config.json`, `model.safetensors`, `preprocessor_config.json` | 183 MB | Key/value extraction headings | Same `model_setup` command | `kv_extract` skipped |
 | `ner/gliner_medium-v2.1/` | GLiNER checkpoint | ~1.5 GB | Member verification wrong-member check — **only when `MEMBER_NER_ENABLED=true`** | `python -m stages.lib.member.extractors.ner_based.model_downloader` (fetches the model named by `MEMBER_NER_MODEL_ID`, default `gliner_medium`; `--all` for every one) | Rules-only member check: no page can be `wrong_member`, so no chart is Rejected |
 
@@ -97,7 +97,7 @@ by default: `blank-junk/bert_page/` (DistilBERT; TF-IDF is used without it) and
 Setting up a new machine (from `core-pipeline/`, venv active):
 
 ```bash
-python -m stages.lib.extraction.util.model_setup             # gliner_low + layout_heron, checks kv-extraction
+python -m stages.lib.extraction.util.model_setup             # layout_heron, checks the member NER checkpoint and kv-extraction
 python -m stages.lib.ocr.section_header_match --download      # semantic-model
 python -m stages.lib.member.extractors.ner_based.model_downloader          # only if MEMBER_NER_ENABLED=true
 python -m stages.lib.member.extractors.ner_based.model_downloader --check
@@ -120,7 +120,7 @@ curl -s localhost:8001/health | python -m json.tool
 | `rapidocr_models`, `docling_final1` | `rapidocr/` (+ packages) |
 | `blank_junk_model` | `blank-junk/` |
 | `page_family_model` | `page-family/` |
-| `extraction` | `kv-extraction/`, `gliner_low/`, `layout_heron/` |
+| `extraction` | `kv-extraction/`, `ner/<MEMBER_NER_MODEL_ID>/`, `layout_heron/` |
 | `member_ner` | `ner/` (only matters with `MEMBER_NER_ENABLED=true`) |
 
 ---

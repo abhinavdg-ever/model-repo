@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Ban, Save } from "lucide-react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { Pencil } from "lucide-react";
 import {
   savePageGroundTruth,
   type ExtractionReviewResponse,
@@ -239,10 +239,12 @@ function fmtDuplicate(
   isDuplicate: boolean | null | undefined,
   confidence: number | null | undefined,
   processed = true,
+  duplicateOf?: string | null,
 ): string {
   return formatDuplicateLabel(isDuplicate, confidence, processed, {
     yetToProcess: YET_TO_PROCESS,
     notFound: NOT_FOUND,
+    duplicateOf,
   });
 }
 
@@ -277,6 +279,8 @@ function fmtVisibility(value: boolean | null | undefined, processed = true): str
 function fmtPercent(value: number | null | undefined, processed = true): string {
   if (!processed) return YET_TO_PROCESS;
   if (value === null || value === undefined) return NOT_MEASURED;
+  // A dusting of ink is not handwriting. Under 5% is shown as none.
+  if (value < 5) return "0%";
   return `${value.toFixed(1)}%`;
 }
 
@@ -302,10 +306,14 @@ export function splitPageType(value: string | null | undefined): {
   return { family, subtype };
 }
 
+function asCodeable(value: string): string {
+  return value.replace(/\bcodable\b/gi, "Codeable");
+}
+
 function fmtPageType(value: string | null | undefined, processed = true): string {
   if (!processed) return YET_TO_PROCESS;
   if (value === null || value === undefined || value === "") return NOT_FOUND;
-  return String(value);
+  return asCodeable(String(value));
 }
 
 function fmtCodeable(
@@ -345,9 +353,16 @@ type CompareRow = {
   choices?: readonly string[];
   /** Ground truth is only Yes or No: whether Final has a value. */
   presence?: boolean;
+  /** Shown as NA. The stored value is kept and used elsewhere. */
+  fixedNa?: boolean;
+  /** This row has no ground-truth cell. */
+  noGroundTruth?: boolean;
+  /** Show the value, but not a tick or cross. */
+  noMark?: boolean;
+  /** A required label. Shown solid. Other empty labels stay faint. */
+  key?: boolean;
 };
 
-const ENCOUNTER_CHOICES = ["Outpatient (F2F)", "Outpatient (Tele)", "Inpatient", "Home"] as const;
 const BLANK_JUNK_CHOICES = ["Yes (Blank)", "Yes (Junk)", "No"] as const;
 const DUPLICATE_CHOICES = ["Yes", "May Be", "No"] as const;
 const CODEABLE_CHOICES = ["Codeable", "Non Codeable", "Discharge"] as const;
@@ -357,7 +372,6 @@ const TYPE_CHOICES = ["Printed", "Handwritten", "Form", "Visual", "Blank"] as co
 function pageTypeOf(page: ImagingPageResult): string | null {
   return page.documentType || page.handwrittenOrPrinted || null;
 }
-const QUALITY_CHOICES = ["High", "Medium", "Low"] as const;
 const YES_NO_CHOICES = ["Yes", "No"] as const;
 
 function saveErrorMessage(err: unknown): string {
@@ -385,10 +399,8 @@ function yesNo(value: string | null | undefined): "yes" | "no" | null {
 }
 
 function visibilityLabel(value: string | null | undefined): string {
-  const side = yesNo(value);
-  if (side === "yes") return "Good Visibility";
-  if (side === "no") return "Bad Visibility";
-  return (value ?? "").trim();
+  if (yesNo(value) === "yes") return "Good Visibility";
+  return "";
 }
 
 function visibilityStored(shown: string): string | null {
@@ -428,21 +440,22 @@ function blankJunkStored(shown: string): Pick<PageGroundTruth, "blankPage" | "ju
 /** Values already stored for this page. Empty string displays as NA. */
 function storedGroundTruth(gt: PageGroundTruth | null | undefined): Record<string, string> {
   const pageType = (gt?.pageType ?? "").trim();
-  const encounter = (gt?.encounterType ?? "").trim();
   return {
     name: presenceStored(gt?.memberName),
     dob: presenceStored(gt?.memberDob),
     member_id: presenceStored(gt?.memberId),
     provider_name: (gt?.renderingProvider ?? "").trim(),
-    electronic_signature: presenceStored(gt?.providerSignature),
+    provider_credentials: (gt?.providerSignature ?? "").trim(),
+    electronic_signature: "",
     quality: visibilityLabel(gt?.isVisible),
     orientation: rotationLabel(gt?.rotation),
-    encounter: pageType ? encounter : "",
+    encounter: "",
     dos_from: (gt?.dosFrom ?? "").trim(),
     dos_to: (gt?.dosTo ?? "").trim(),
     blank_junk: blankJunkLabel(gt),
-    page_type: pageType || encounter,
-    codeable: (gt?.codeable ?? "").trim(),
+    page_type: asCodeable(pageType),
+    page_subtype: asCodeable(pageType),
+    codeable: asCodeable((gt?.codeable ?? "").trim()),
   };
 }
 
@@ -451,7 +464,6 @@ function groundTruthBody(
   values: Record<string, string>,
 ): PageGroundTruth {
   const pageType = cleanGt(values.page_type);
-  const encounter = cleanGt(values.encounter);
   return {
     pageNumber: page.pageNumber,
     sourcePageId: page.fileName,
@@ -459,10 +471,10 @@ function groundTruthBody(
     memberDob: presenceStored(values.dob) || null,
     memberId: presenceStored(values.member_id) || null,
     renderingProvider: cleanGt(values.provider_name),
-    providerSignature: presenceStored(values.electronic_signature) || null,
+    providerSignature: cleanGt(values.provider_credentials),
     isVisible: visibilityStored(values.quality ?? ""),
     rotation: cleanGt((values.orientation ?? "").replace(/°$/, "")),
-    encounterType: encounter,
+    encounterType: page.groundTruth?.encounterType ?? null,
     dosFrom: cleanGt(values.dos_from),
     dosTo: cleanGt(values.dos_to),
     ...blankJunkStored(values.blank_junk ?? ""),
@@ -471,6 +483,21 @@ function groundTruthBody(
     pageSequence: page.groundTruth?.pageSequence ?? null,
   };
 }
+
+/** Fields the save request actually writes. */
+const PERSISTED_GT = new Set([
+  "name",
+  "dob",
+  "member_id",
+  "orientation",
+  "dos_from",
+  "dos_to",
+  "blank_junk",
+  "page_type",
+  "codeable",
+  "provider_name",
+  "provider_credentials",
+]);
 
 function confirmedValue(processed: string): string {
   const text = processed.trim();
@@ -514,64 +541,27 @@ function groundTruthMark(
   return entered === final ? "match" : "mismatch";
 }
 
-function MatchMark({
-  processed,
-  value,
-  presence = false,
-}: {
-  processed: string;
-  value: string;
-  presence?: boolean;
-}) {
-  const mark = groundTruthMark(processed, value, presence);
-  if (!mark) return null;
-  const tick = mark === "match";
-  return (
-    <span className={`imaging-gt-mark gt-${mark}`} aria-label={tick ? "Matches" : "Does not match"}>
-      {tick ? "✓" : "✕"}
-    </span>
-  );
-}
-
 function CompareSection({
   title,
   rows,
-  editing,
-  editingSection,
+  editingId,
   values,
-  gtChoice,
-  onEdit,
-  onChoose,
   onCommit,
   onStartEdit,
-  onSave,
-  onCancel,
   saving,
-  headerAction,
 }: {
   title: string;
   rows: CompareRow[];
-  /** True when this section's ground truth cells are open. */
-  editing: boolean;
-  /** "all" opens every section. A title opens only that section. */
-  editingSection: string | null;
+  editingId: string | null;
   values: Record<string, string>;
-  gtChoice: Record<string, "correct" | "enter">;
-  onEdit: (id: string, value: string) => void;
-  onChoose: (id: string, choice: "correct" | "enter", value: string) => void;
-  onCommit: (id: string) => void;
-  onStartEdit: () => void;
-  onSave: () => void;
-  onCancel: (fieldIds: string[]) => void;
+  onCommit: (id: string, value: string) => void;
+  onStartEdit: (id: string) => void;
   saving: boolean;
-  headerAction?: ReactNode;
 }) {
-  const sectionEdit = editing && editingSection === title;
   return (
     <section className="imaging-section">
       <div className="imaging-section-head">
         <h3 className="imaging-section-title">{title}</h3>
-        {headerAction}
       </div>
       <table className="imaging-detail-table imaging-value-table">
         <colgroup>
@@ -590,40 +580,7 @@ function CompareSection({
             <th scope="col">Confidence</th>
             <th className="gt-gap" aria-hidden="true" />
             <th scope="col" className="gt-shade">
-              <span className="imaging-gt-head">
-                <span>Ground Truth</span>
-                {sectionEdit ? (
-                  <span className="imaging-gt-actions">
-                    <button
-                      type="button"
-                      className="imaging-gt-icon"
-                      aria-label="Save ground truth"
-                      onClick={onSave}
-                      disabled={saving}
-                    >
-                      <Save size={13} strokeWidth={2.25} aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="imaging-gt-icon imaging-gt-cancel"
-                      aria-label="Cancel ground truth"
-                      onClick={() => onCancel(rows.map((row) => row.id))}
-                      disabled={saving}
-                    >
-                      <Ban size={13} strokeWidth={2} aria-hidden="true" />
-                    </button>
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    className="imaging-gt-edit"
-                    onClick={onStartEdit}
-                    disabled={Boolean(editingSection) && editingSection !== "all"}
-                  >
-                    Edit
-                  </button>
-                )}
-              </span>
+              Ground Truth
             </th>
           </tr>
         </thead>
@@ -638,18 +595,11 @@ function CompareSection({
               <td className="gt-shade">
                 <GroundTruthCell
                   row={row}
-                  editing={editing}
-                  choice={gtChoice[row.id]}
+                  editing={editingId === row.id}
                   value={values[row.id] ?? ""}
-                  onEdit={(value) => onEdit(row.id, value)}
-                  onCommit={() => onCommit(row.id)}
-                  onChoose={(choice) =>
-                    onChoose(
-                      row.id,
-                      choice,
-                      choice === "correct" ? confirmedValue(row.processed) : values[row.id] ?? "",
-                    )
-                  }
+                  saving={saving}
+                  onCommit={(next) => onCommit(row.id, next)}
+                  onStartEdit={() => onStartEdit(row.id)}
                 />
               </td>
             </tr>
@@ -663,183 +613,179 @@ function CompareSection({
 function GroundTruthCell({
   row,
   editing,
-  choice,
   value,
-  onEdit,
+  saving,
   onCommit,
-  onChoose,
+  onStartEdit,
 }: {
   row: CompareRow;
   editing: boolean;
-  choice?: "correct" | "enter";
   value: string;
-  onEdit: (value: string) => void;
-  onCommit: () => void;
-  onChoose: (choice: "correct" | "enter") => void;
+  saving: boolean;
+  onCommit: (value: string) => void;
+  onStartEdit: () => void;
 }) {
-  const commitOnEnter = (event: { key: string; preventDefault: () => void }) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      onCommit();
-    }
-  };
-  if (row.presence) {
-    const shown = presenceStored(value);
-    if (!editing) {
-      return (
-        <span className="imaging-gt-slot">
-          {shown || "NA"}
-          <MatchMark processed={row.processed} value={shown} presence />
-        </span>
-      );
-    }
+  if (row.noGroundTruth) return <span className="imaging-gt-slot" />;
+  if (row.fixedNa) {
     return (
       <span className="imaging-gt-slot">
-        <select
-          aria-label={`${row.label} ground truth`}
-          value={shown}
-          autoFocus={row.id === "name"}
-          onChange={(event) => onEdit(event.target.value)}
-          onKeyDown={commitOnEnter}
-        >
-          <option value="">NA</option>
-          <option value="Yes">Yes</option>
-          <option value="No">No</option>
-        </select>
-        <MatchMark processed={row.processed} value={shown} presence />
+        <span className="imaging-gt-copied">NA</span>
+        <span className="imaging-gt-mark" aria-label="Not entered">✓</span>
       </span>
     );
   }
-  const saved = (
-    <span className="imaging-gt-slot">
-      {value.trim() ? value : "NA"}
-      <MatchMark processed={row.processed} value={value} />
-    </span>
+
+  const stored = row.presence ? presenceStored(value) : value.trim();
+  const copied = row.presence
+    ? (valueFound(row.processed) ? "Yes" : "No")
+    : confirmedValue(row.processed);
+  const pen = (
+    <button
+      type="button"
+      className="imaging-gt-pen"
+      aria-label={`Edit ${row.label} ground truth`}
+      onClick={onStartEdit}
+      disabled={saving}
+    >
+      <Pencil size={11} strokeWidth={2.4} aria-hidden="true" />
+    </button>
   );
-  if (!editing) return saved;
-  const opened = Boolean(value.trim()) || choice === "enter" || choice === "correct";
-  if (!opened) {
-    return (
-      <span className="imaging-gt-choice">
-        <button type="button" aria-label={`${row.label} correct`} onClick={() => onChoose("correct")}>
-          ✓ Correct
-        </button>
-        <button type="button" aria-label={`${row.label} enter value`} onClick={() => onChoose("enter")}>
-          ✕ Enter Value
-        </button>
-      </span>
-    );
-  }
-  const mark = <MatchMark processed={row.processed} value={value} />;
-  if (row.choices && row.choices.length > 5) {
-    return (
-      <LongChoiceField row={row} value={value} onEdit={onEdit} onCommit={onCommit} mark={mark} />
-    );
-  }
-  if (row.choices) {
-    const options = value && !row.choices.includes(value) ? [value, ...row.choices] : row.choices;
+  if (!editing) {
+    const shown = stored || copied || "NA";
+    const dim = !stored && !row.key;
     return (
       <span className="imaging-gt-slot">
-        <select
-          aria-label={`${row.label} ground truth`}
-          value={value}
-          autoFocus={choice === "enter" || choice === "correct"}
-          onChange={(event) => onEdit(event.target.value)}
-          onKeyDown={commitOnEnter}
-        >
-          <option value="">NA</option>
-          {options.map((choice) => (
-            <option key={choice} value={choice}>
-              {choice}
-            </option>
-          ))}
-        </select>
-        {mark}
+        <span className={dim ? "imaging-gt-copied" : "imaging-gt-text"}>{shown}</span>
+        {row.noMark ? null : stored && groundTruthMark(row.processed, stored, row.presence) === "mismatch" ? (
+          <span className="imaging-gt-mark gt-mismatch" aria-label="Does not match">✕</span>
+        ) : (
+          <span className="imaging-gt-mark" aria-label={stored ? "Matches" : "Not entered"}>✓</span>
+        )}
+        {pen}
       </span>
     );
   }
+
+  if (row.presence || row.choices) {
+    const options = row.presence ? ["Yes", "No"] : row.choices ?? [];
+    const known = stored && !options.includes(stored) ? [stored, ...options] : options;
+    return (
+      <span className="imaging-gt-slot is-editing">
+        <ChoiceMenu
+          label={row.label}
+          value={asCodeable(stored)}
+          options={known}
+          onCommit={onCommit}
+        />
+      </span>
+    );
+  }
+  const draft = stored || copied;
   return (
-    <span className="imaging-gt-slot">
-      <input
-        aria-label={`${row.label} ground truth`}
-        value={value}
-        placeholder="NA"
-        autoFocus={choice === "enter" || choice === "correct"}
-        onChange={(event) => onEdit(event.target.value)}
-        onKeyDown={commitOnEnter}
+    <span className="imaging-gt-slot is-editing">
+      <TextTruth
+        label={row.label}
+        value={draft}
+        onCommit={onCommit}
       />
-      {mark}
     </span>
   );
 }
 
-function LongChoiceField({
-  row,
+function ChoiceMenu({
+  label,
   value,
-  onEdit,
+  options,
   onCommit,
-  mark,
 }: {
-  row: CompareRow;
+  label: string;
   value: string;
-  onEdit: (value: string) => void;
-  onCommit: () => void;
-  mark: ReactNode;
+  options: readonly string[];
+  onCommit: (value: string) => void;
 }) {
-  const choices = row.choices ?? [];
-  const known = choices.includes(value);
-  const [other, setOther] = useState(Boolean(value) && !known);
-  const listId = `gt-choices-${row.id}`;
-  if (other) {
-    return (
-      <span className="imaging-gt-slot">
-        <input
-          aria-label={`${row.label} ground truth`}
-          value={value}
-          placeholder="Other"
-          autoFocus
-          onChange={(event) => onEdit(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              onCommit();
-            }
-          }}
-        />
-        {mark}
-      </span>
-    );
+  const [text, setText] = useState(value);
+  const [typed, setTyped] = useState(false);
+  const folded = text.trim().toLowerCase();
+  const recos =
+    typed && folded.length >= 3
+      ? options.filter((option) => option.toLowerCase().includes(folded))
+      : [];
+  function onKeyDown(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setText(value);
+      setTyped(false);
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const typedMatch = options.find((option) => option.toLowerCase() === folded);
+      onCommit(typedMatch || recos[0] || text);
+    }
   }
   return (
-    <span className="imaging-gt-slot">
+    <div className="imaging-gt-picker" onKeyDown={onKeyDown}>
       <input
-        aria-label={`${row.label} ground truth`}
-        list={listId}
-        value={value}
-        placeholder="Type to find"
+        aria-label={`${label} ground truth`}
+        value={text}
+        placeholder="NA"
+        autoFocus
         onChange={(event) => {
-          if (event.target.value === "Others") {
-            setOther(true);
-            onEdit("");
-            return;
-          }
-          onEdit(event.target.value);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            onCommit();
-          }
+          setText(event.target.value);
+          setTyped(true);
         }}
       />
-      {mark}
-      <datalist id={listId}>
-        {choices.map((choice) => (
-          <option key={choice} value={choice} />
-        ))}
-        <option value="Others" />
-      </datalist>
-    </span>
+      {recos.length > 0 ? (
+        <ul className="imaging-gt-menu" role="listbox" aria-label={label}>
+          {recos.map((option) => (
+            <li key={option}>
+              <button
+                type="button"
+                role="option"
+                onClick={() => {
+                  setText(option);
+                  setTyped(false);
+                }}
+              >
+                {option}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function TextTruth({
+  label,
+  value,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  onCommit: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  return (
+    <input
+      aria-label={`${label} ground truth`}
+      value={draft}
+      placeholder="NA"
+      autoFocus
+      onChange={(event) => setDraft(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setDraft(value);
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          onCommit(draft);
+        }
+      }}
+    />
   );
 }
 
@@ -938,6 +884,10 @@ function sameValue(
     truth: extra.truth,
     choices: extra.choices,
     presence: extra.presence,
+    fixedNa: extra.fixedNa,
+    noGroundTruth: extra.noGroundTruth,
+    noMark: extra.noMark,
+    key: extra.key,
     id: extra.id,
     label: extra.label,
     extracted: value,
@@ -968,6 +918,7 @@ function dosCompareRow(
       : finalDosValue(page, extracted, side, processed, skipped),
     confidence,
     truth,
+    key: true,
   };
 }
 
@@ -994,17 +945,15 @@ function PageDetails({
   extraction: ExtractionReviewResponse | null;
   onSaved: (groundTruth: PageGroundTruth) => void;
 }) {
-  const [editingSection, setEditingSection] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
-  const [gtChoice, setGtChoice] = useState<Record<string, "correct" | "enter">>({});
   useEffect(() => {
-    setEditingSection(null);
+    setEditingId(null);
     setSaving(false);
     setSaveError(null);
     setEdits({});
-    setGtChoice({});
   }, [page.pageNumber, page.fileName]);
 
   const skipped = isBlankJunkPage(page);
@@ -1027,94 +976,32 @@ function PageDetails({
   const values = { ...storedGroundTruth(page.groundTruth), ...edits };
   const sectionProps = {
     values,
-    editingSection,
-    gtChoice,
-    onEdit: (id: string, value: string) => {
-      setEdits((current) => ({ ...current, [id]: value }));
-    },
-    onChoose: (id: string, choice: "correct" | "enter", value: string) => {
-      setGtChoice((current) => ({ ...current, [id]: choice }));
-      if (choice === "correct") setEdits((current) => ({ ...current, [id]: value }));
-    },
-    onCommit: (id: string) => {
-      void saveGroundTruth(id);
-    },
+    editingId,
     saving,
-    onSave: () => {
-      void saveGroundTruth();
+    onCommit: (id: string, next: string) => {
+      setEditingId(null);
+      if (!PERSISTED_GT.has(id)) {
+        setEdits((current) => ({ ...current, [id]: next }));
+        return;
+      }
+      void saveGroundTruth({ ...values, [id]: next });
     },
-    onCancel: (fieldIds: string[]) => {
-      setEdits((current) => {
-        const next = { ...current };
-        for (const id of fieldIds) delete next[id];
-        return next;
-      });
-      setGtChoice((current) => {
-        const next = { ...current };
-        for (const id of fieldIds) delete next[id];
-        return next;
-      });
-      setEditingSection(null);
-      setSaveError(null);
-    },
+    onStartEdit: (id: string) => setEditingId(id),
   };
-  async function saveGroundTruth(fieldId?: string) {
+  async function saveGroundTruth(override: Record<string, string>) {
     setSaving(true);
     setSaveError(null);
     try {
-      const saved = await savePageGroundTruth(folderId, groundTruthBody(page, values));
+      const saved = await savePageGroundTruth(folderId, groundTruthBody(page, override));
       onSaved(saved);
       setEdits({});
-      if (!fieldId) {
-        setEditingSection(null);
-        setGtChoice({});
-      }
+      setEditingId(null);
     } catch (err) {
       setSaveError(saveErrorMessage(err));
     } finally {
       setSaving(false);
     }
   }
-  const reviewButton =
-    editingSection === "all" ? (
-      <span className="imaging-review-actions">
-        <button
-          type="button"
-          className="imaging-review-btn"
-          aria-label="Save ground truth"
-          disabled={saving}
-          onClick={() => {
-            void saveGroundTruth();
-          }}
-        >
-          <Save size={16} strokeWidth={2.25} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className="imaging-review-btn"
-          aria-label="Cancel ground truth"
-          disabled={saving}
-          onClick={() => {
-            setEdits({});
-            setGtChoice({});
-            setEditingSection(null);
-            setSaveError(null);
-          }}
-        >
-          <Ban size={16} strokeWidth={2} aria-hidden="true" />
-        </button>
-      </span>
-    ) : (
-      <button
-        type="button"
-        className="imaging-review-btn"
-        aria-label="Review"
-        disabled={saving || editingSection != null}
-        onClick={() => setEditingSection("all")}
-      >
-        Review
-      </button>
-    );
 
   return (
     <div className="imaging-page-details">
@@ -1122,21 +1009,20 @@ function PageDetails({
       <CompareSection
         {...sectionProps}
         title="Member Extraction"
-        editing={editingSection === "all" || editingSection === "Member Extraction"}
-        onStartEdit={() => setEditingSection("Member Extraction")}
-        headerAction={reviewButton}
         rows={[
           sameValue(name?.value ?? fmt(page.memberName, sections.member, skip), name ? fmtConfidence(name.confidence, true) : memberConf, {
             id: "name",
             label: "Member Name",
             truth: bits.memberName,
             presence: true,
+            key: true,
           }),
           sameValue(displayIsoDates(dob?.value ?? fmt(page.memberDob, sections.member, skip)), dob ? fmtConfidence(dob.confidence, true) : memberConf, {
             id: "dob",
             label: "Member DOB",
             truth: bits.memberDob,
             presence: true,
+            key: true,
           }),
           sameValue(memberId?.value ?? fmt(page.memberId, sections.member, skip), memberId ? fmtConfidence(memberId.confidence, true) : memberConf, {
             id: "member_id",
@@ -1148,8 +1034,6 @@ function PageDetails({
       <CompareSection
         {...sectionProps}
         title="Page Quality & Orientation"
-        editing={editingSection === "all" || editingSection === "Page Quality & Orientation"}
-        onStartEdit={() => setEditingSection("Page Quality & Orientation")}
         rows={[
           sameValue(fmtHandwriting(pageTypeOf(page), sections.hw), fmtConfidence(page.handwrittenOrPrintedConfidence ?? null, sections.hw), {
             id: "handwriting",
@@ -1167,8 +1051,7 @@ function PageDetails({
           sameValue(fmtQualityTag(page.pageQualityTag, qualityKnown), fmtConfidence(page.pageQualityConfidence, qualityKnown), {
             id: "quality",
             label: "Quality",
-            truth: bits.quality,
-            choices: QUALITY_CHOICES,
+            noGroundTruth: true,
           }),
           sameValue(fmtDegrees(page.orientationAngle, sections.rotation), fmtConfidence(null, sections.rotation), {
             id: "orientation",
@@ -1189,13 +1072,11 @@ function PageDetails({
       <CompareSection
         {...sectionProps}
         title="Encounter Info"
-        editing={editingSection === "all" || editingSection === "Encounter Info"}
-        onStartEdit={() => setEditingSection("Encounter Info")}
         rows={[
           sameValue(fmt(page.encounterType, encounterKnown, skip), fmtConfidence(null, Boolean(sections.encounter), skip), {
             id: "encounter",
             label: "Encounter Type",
-            choices: ENCOUNTER_CHOICES,
+            fixedNa: true,
           }),
           dosCompareRow(page, dos, "from", sections.dos, skip, bits.dosFrom),
           dosCompareRow(page, dos, "to", sections.dos, skip, bits.dosTo),
@@ -1204,16 +1085,15 @@ function PageDetails({
       <CompareSection
         {...sectionProps}
         title="Page Classification"
-        editing={editingSection === "all" || editingSection === "Page Classification"}
-        onStartEdit={() => setEditingSection("Page Classification")}
         rows={[
           sameValue(fmtBlankOrJunk(page.blankOrJunk, sections.junk), fmtConfidence(page.pageTypeConfidence, sections.junk), {
             id: "blank_junk",
             label: "Is Blank or Junk?",
             truth: bits.blankJunk,
             choices: BLANK_JUNK_CHOICES,
+            key: true,
           }),
-          sameValue(fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk), fmtConfidence(duplicateDisplayConfidence(page.isDuplicate, page.pageTypeConfidence), sections.junk), {
+          sameValue(fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk, page.duplicateOf), fmtConfidence(duplicateDisplayConfidence(page.isDuplicate, page.pageTypeConfidence), sections.junk), {
             id: "duplicate",
             label: "Is Duplicate",
             choices: DUPLICATE_CHOICES,
@@ -1223,11 +1103,14 @@ function PageDetails({
             label: "Page Type",
             truth: bits.pageType,
             choices: PAGE_TYPE_CHOICES,
+            key: true,
           }),
           sameValue(fmtPageType(pageParts.subtype, pageTypeKnown), fmtConfidence(null, pageTypeKnown), {
             id: "page_subtype",
             label: "Page Subtype",
+            truth: bits.pageType,
             choices: PAGE_SUBTYPE_CHOICES,
+            key: true,
           }),
           sameValue(fmtCodeable(page.isCodeable, page.pageType, codeableKnown), fmtConfidence(null, Boolean(sections.codeable)), {
             id: "codeable",
@@ -1240,8 +1123,6 @@ function PageDetails({
       <CompareSection
         {...sectionProps}
         title="Provider Extraction"
-        editing={editingSection === "all" || editingSection === "Provider Extraction"}
-        onStartEdit={() => setEditingSection("Provider Extraction")}
         rows={[
           sameValue(page.providerName || NOT_FOUND, fmtConfidence(page.providerSignatureConfidence, Boolean(page.providerName)), {
             id: "provider_name",
@@ -1250,6 +1131,7 @@ function PageDetails({
           sameValue(page.providerCredentials || NOT_FOUND, fmtConfidence(page.providerSignatureConfidence, Boolean(page.providerCredentials)), {
             id: "provider_credentials",
             label: "Provider Credentials",
+            key: true,
           }),
           sameValue(
             yesNo(page.providerSignature) === "yes" ? "Yes" : yesNo(page.providerSignature) === "no" ? "No" : NOT_FOUND,
@@ -1452,6 +1334,7 @@ function DocSummary({
                     p.isDuplicate,
                     p.pageTypeConfidence,
                     sections.junk,
+                    p.duplicateOf,
                   )}
                 </td>
                 <td>
@@ -1460,7 +1343,12 @@ function DocSummary({
                     bits={bits.pageType}
                   />
                 </td>
-                <td>{fmtPageType(pageParts.subtype, typeKnown)}</td>
+                <td>
+                  <GtCell
+                    text={fmtPageType(pageParts.subtype, typeKnown)}
+                    bits={bits.pageType}
+                  />
+                </td>
                 <td>
                   <GtCell
                     text={fmtCodeable(
