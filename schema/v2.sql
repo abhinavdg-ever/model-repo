@@ -82,6 +82,9 @@
 --  * encounter_type_results + page_sequencing_results live in v1.sql.
 --  * member_verification_summary.final_status also allows 'skipped'
 --    (all-blank/junk charts). Defined in v1.sql.
+--  * ocr_quality_results gains document_type, handwritten_probability,
+--    is_visible, handwritten_area_pct and review_required (page-tag
+--    model). Defined in v1.sql, with the ALTER for an existing database.
 --
 -- WHAT CHANGED IN v8 (applies to both files)
 -- ---------------------------------------------------------------------

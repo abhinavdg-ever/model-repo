@@ -750,8 +750,13 @@ def upsert_quality(
     quality_score: Optional[float] = None,
     quality_detail: Optional[dict[str, Any]] = None,
     input_dpi: Optional[float] = None,
+    document_type: Optional[str] = None,
+    handwritten_probability: Optional[float] = None,
+    is_visible: Optional[bool] = None,
+    handwritten_area_pct: Optional[float] = None,
+    review_required: Optional[bool] = None,
 ) -> None:
-    """Upsert one page's quality / HW / rotation row."""
+    """Upsert one page's quality / HW / page-type / rotation row."""
     import json
 
     detail = quality_detail if quality_detail is not None else {}
@@ -760,29 +765,40 @@ def upsert_quality(
         INSERT INTO ocr_quality_results (
             chart_id, page_id, quality_tag, quality_score, quality_detail,
             input_dpi, printed_or_handwritten, hw_method, hw_confidence,
+            document_type, handwritten_probability, is_visible,
+            handwritten_area_pct, review_required,
             orientation_angle, tilt_angle, mirrored, rotation_applied
         ) VALUES (
-            %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s,
+            %s, %s, %s, %s
         )
         ON CONFLICT (page_id) DO UPDATE SET
-            quality_tag            = EXCLUDED.quality_tag,
-            quality_score          = EXCLUDED.quality_score,
-            quality_detail         = EXCLUDED.quality_detail,
-            input_dpi              = EXCLUDED.input_dpi,
-            printed_or_handwritten = EXCLUDED.printed_or_handwritten,
-            hw_method              = EXCLUDED.hw_method,
-            hw_confidence          = EXCLUDED.hw_confidence,
-            orientation_angle      = EXCLUDED.orientation_angle,
-            tilt_angle             = EXCLUDED.tilt_angle,
-            mirrored               = EXCLUDED.mirrored,
-            rotation_applied       = EXCLUDED.rotation_applied,
-            updated_at             = now()
+            quality_tag             = EXCLUDED.quality_tag,
+            quality_score           = EXCLUDED.quality_score,
+            quality_detail          = EXCLUDED.quality_detail,
+            input_dpi               = EXCLUDED.input_dpi,
+            printed_or_handwritten  = EXCLUDED.printed_or_handwritten,
+            hw_method               = EXCLUDED.hw_method,
+            hw_confidence           = EXCLUDED.hw_confidence,
+            document_type           = EXCLUDED.document_type,
+            handwritten_probability = EXCLUDED.handwritten_probability,
+            is_visible              = EXCLUDED.is_visible,
+            handwritten_area_pct    = EXCLUDED.handwritten_area_pct,
+            review_required         = EXCLUDED.review_required,
+            orientation_angle       = EXCLUDED.orientation_angle,
+            tilt_angle              = EXCLUDED.tilt_angle,
+            mirrored                = EXCLUDED.mirrored,
+            rotation_applied        = EXCLUDED.rotation_applied,
+            updated_at              = now()
         """,
         (
             chart_id, page_id, quality_tag, quality_score,
             json.dumps(detail, default=str),
             input_dpi,
             printed_or_handwritten, hw_method, hw_confidence,
+            document_type, handwritten_probability, is_visible,
+            handwritten_area_pct, review_required,
             orientation_angle, tilt_angle, mirrored, rotation_applied,
         ),
     )
@@ -796,12 +812,39 @@ def get_quality_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
     return {r["page_id"]: r for r in rows}
 
 
+# Page decisions read document_type. Printed and visual pages are read as
+# printed text; every other type (handwritten, form, blank, uncertain) skips
+# the Tesseract blank/junk pass and is judged on final OCR.
+PRINTED_TYPES = frozenset({"printed", "visual"})
+# A row written before document_type existed falls back to the old label.
+_PAGE_TYPE_SQL = """lower(coalesce(
+    document_type,
+    CASE lower(printed_or_handwritten) WHEN 'mixed' THEN 'form'
+         ELSE printed_or_handwritten END,
+    ''))"""
+
+
+def page_type(quality_row: Optional[dict[str, Any]]) -> str:
+    """The page's document_type, lowercase; '' when it was never classified."""
+    if not quality_row:
+        return ""
+    doc = str(quality_row.get("document_type") or "").strip().lower()
+    if doc:
+        return doc
+    legacy = str(quality_row.get("printed_or_handwritten") or "").strip().lower()
+    return "form" if legacy == "mixed" else legacy
+
+
+def is_printed_type(document_type: str) -> bool:
+    return document_type in PRINTED_TYPES
+
+
 @_dispatch
 def handwritten_page_ids(conn: Any, chart_id: int) -> set[int]:
     rows = conn.execute(
-        """
+        f"""
         SELECT page_id FROM ocr_quality_results
-         WHERE chart_id = %s AND lower(printed_or_handwritten) = 'handwritten'
+         WHERE chart_id = %s AND {_PAGE_TYPE_SQL} = 'handwritten'
         """,
         (chart_id,),
     ).fetchall()
@@ -810,13 +853,12 @@ def handwritten_page_ids(conn: Any, chart_id: int) -> set[int]:
 
 @_dispatch
 def non_printed_page_ids(conn: Any, chart_id: int) -> set[int]:
-    """Handwritten / uncertain / mixed — prelim blank/junk pass 1 is skipped."""
+    """Handwritten / form / blank / uncertain — prelim blank/junk pass 1 is skipped."""
     rows = conn.execute(
-        """
+        f"""
         SELECT page_id FROM ocr_quality_results
          WHERE chart_id = %s
-           AND lower(coalesce(printed_or_handwritten, ''))
-               IN ('handwritten', 'uncertain', 'mixed')
+           AND {_PAGE_TYPE_SQL} NOT IN ('', 'printed', 'visual')
         """,
         (chart_id,),
     ).fetchall()
@@ -838,13 +880,13 @@ def low_quality_page_ids(conn: Any, chart_id: int) -> set[int]:
 
 @_dispatch
 def high_quality_printed_page_ids(conn: Any, chart_id: int) -> set[int]:
-    """High-quality printed pages — Azure final2 is skipped (final1 is enough)."""
+    """High-quality printed / visual pages — Azure final2 is skipped (final1 is enough)."""
     rows = conn.execute(
-        """
+        f"""
         SELECT page_id FROM ocr_quality_results
          WHERE chart_id = %s
            AND lower(coalesce(quality_tag, '')) = 'high'
-           AND lower(coalesce(printed_or_handwritten, '')) = 'printed'
+           AND {_PAGE_TYPE_SQL} IN ('printed', 'visual')
         """,
         (chart_id,),
     ).fetchall()
@@ -854,12 +896,12 @@ def high_quality_printed_page_ids(conn: Any, chart_id: int) -> set[int]:
 def page_blocks_prelim(
     quality_row: Optional[dict[str, Any]],
 ) -> bool:
-    """True when prelim text must not be used (HW / uncertain / mixed / low)."""
+    """True when prelim text must not be used (any non-printed type, or low quality)."""
     if not quality_row:
         return False
-    hw = str(quality_row.get("printed_or_handwritten") or "").strip().lower()
+    kind = page_type(quality_row)
     tag = str(quality_row.get("quality_tag") or "").strip().lower()
-    if hw in {"handwritten", "uncertain", "mixed"}:
+    if kind and not is_printed_type(kind):
         return True
     if tag == "low":
         return True
@@ -1702,7 +1744,9 @@ def list_quality_for_csv(conn: Any, chart_id: int) -> list[dict[str, Any]]:
             SELECT p.page_name, p.page_number, q.printed_or_handwritten,
                    q.orientation_angle, q.tilt_angle, q.mirrored,
                    q.rotation_applied, q.hw_confidence, q.hw_method,
-                   q.quality_tag, q.quality_score, q.input_dpi
+                   q.quality_tag, q.quality_score, q.input_dpi,
+                   q.document_type, q.handwritten_probability, q.is_visible,
+                   q.handwritten_area_pct, q.review_required
               FROM ocr_quality_results q
               JOIN page_list p ON p.id = q.page_id
              WHERE q.chart_id = %s

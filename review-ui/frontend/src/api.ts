@@ -121,6 +121,12 @@ export type ImagingPageResult = {
   memberConfidence: number | null;
   handwrittenOrPrinted: string | null;
   handwrittenOrPrintedConfidence?: number | null;
+  /** Printed | Handwritten | Form | Visual | Blank | Uncertain */
+  documentType?: string | null;
+  /** Page-tag model only. */
+  isVisible?: boolean | null;
+  /** Page-tag model only, 0–100. */
+  handwrittenAreaPct?: number | null;
   orientationAngle: number | null;
   tiltAngle: number | null;
   mirrored: boolean | null;
@@ -366,10 +372,14 @@ export function imagingExportCsvUrl(opts?: {
 export function pageImageUrl(
   folderId: string,
   pageNumber: number,
-  opts?: { thumb?: boolean },
+  opts?: { thumb?: boolean; corrected?: boolean },
 ): string {
   const base = `/api/folders/${encodeURIComponent(folderId)}/pages/${pageNumber}/image`;
-  return opts?.thumb ? `${base}?thumb=1` : base;
+  const params = new URLSearchParams();
+  if (opts?.thumb) params.set("thumb", "1");
+  if (opts?.corrected) params.set("corrected", "1");
+  const qs = params.toString();
+  return qs ? `${base}?${qs}` : base;
 }
 
 export function blobPageImageUrl(folderId: string, pageNumber: number): string {

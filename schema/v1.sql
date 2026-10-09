@@ -378,6 +378,18 @@ CREATE TABLE ocr_quality_results (
     hw_method               VARCHAR(30),
     hw_confidence           NUMERIC(5,4),
 
+    -- Page type. The page-tag checkpoint gives all six; the two-class model
+    -- gives printed / handwritten / uncertain, and the ink check gives blank.
+    -- is_visible and handwritten_area_pct come from the page-tag model only.
+    document_type           VARCHAR(20) CHECK (document_type IS NULL OR document_type IN
+                            ('printed','handwritten','form','visual','blank','uncertain')),
+    handwritten_probability NUMERIC(5,4),
+    is_visible              BOOLEAN,
+    handwritten_area_pct    NUMERIC(5,2) CHECK (handwritten_area_pct IS NULL OR
+                            handwritten_area_pct BETWEEN 0 AND 100),
+    -- Low quality (not on a blank page), uncertain type, or not visible.
+    review_required         BOOLEAN,
+
     orientation_angle       NUMERIC(6,2),
     tilt_angle              NUMERIC(6,2),
     mirrored                BOOLEAN,
@@ -392,6 +404,18 @@ CREATE INDEX idx_ocr_quality_results_page_id ON ocr_quality_results(page_id);
 CREATE TRIGGER trg_ocr_quality_results_updated_at
     BEFORE UPDATE ON ocr_quality_results
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- A database created before the page-type columns gets them in place
+-- (stage 1 writes them, so run this before deploying that code):
+--
+--   ALTER TABLE ocr_quality_results
+--     ADD COLUMN IF NOT EXISTS document_type VARCHAR(20) CHECK (document_type IS NULL OR
+--         document_type IN ('printed','handwritten','form','visual','blank','uncertain')),
+--     ADD COLUMN IF NOT EXISTS handwritten_probability NUMERIC(5,4),
+--     ADD COLUMN IF NOT EXISTS is_visible BOOLEAN,
+--     ADD COLUMN IF NOT EXISTS handwritten_area_pct NUMERIC(5,2) CHECK (handwritten_area_pct IS NULL
+--         OR handwritten_area_pct BETWEEN 0 AND 100),
+--     ADD COLUMN IF NOT EXISTS review_required BOOLEAN;
 
 -- One row per page per pass. Exactly one row per page carries is_final, so
 -- downstream stages never have to guess which pass won.

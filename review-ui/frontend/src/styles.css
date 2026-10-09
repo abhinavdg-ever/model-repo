@@ -1844,7 +1844,6 @@ input {
 .imaging-detail-table {
   table-layout: fixed;
 }
-
 .imaging-detail-table th,
 .imaging-detail-table td,
 .imaging-summary-table th,
@@ -2954,6 +2953,14 @@ input {
 .viewer-source-btn:hover:not(:disabled) {
   background: var(--brand-50);
   border-color: var(--brand-300);
+}
+
+.viewer-source-btn.corrected-toggle:hover:not(:disabled),
+.viewer-source-btn.corrected-toggle.active,
+.viewer-source-btn.corrected-toggle.active:hover:not(:disabled) {
+  background: var(--brand-700);
+  border-color: var(--brand-700);
+  color: #fff;
 }
 
 .viewer-source-btn.active {

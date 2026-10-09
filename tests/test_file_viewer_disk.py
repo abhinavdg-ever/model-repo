@@ -28,3 +28,16 @@ def test_file_viewer_lists_pages_folders_and_corrected_flag(tmp_path):
     assert repo.get_file_viewer_image_path("chart_a", 1, corrected=False).read_bytes() == b"orig"
     assert repo.get_file_viewer_image_path("chart_a", 1, corrected=True).read_bytes() == b"fixed"
     assert repo.get_file_viewer_image_path("chart_a", 2, corrected=True).read_bytes() == b"orig2"
+
+
+def test_results_open_on_pages_and_can_switch_to_corrected(tmp_path):
+    root = tmp_path / "folders"
+    chart = root / "chart_a"
+    (chart / "pages").mkdir(parents=True)
+    (chart / "pages" / "1.jpg").write_bytes(b"orig")
+    (chart / "corrected-pages").mkdir()
+    (chart / "corrected-pages" / "1.jpg").write_bytes(b"fixed")
+
+    repo = LocalFolderRepository(root, database_url="postgresql://user:pw@127.0.0.1:5432/db")
+    assert repo.get_page_image_path("chart_a", 1).read_bytes() == b"orig"
+    assert repo.get_page_image_path("chart_a", 1, corrected=True).read_bytes() == b"fixed"

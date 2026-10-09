@@ -25,7 +25,7 @@ def test_handwritten_high_becomes_medium():
         apply_quality_label_postprocess(
             quality_tag="high",
             quality_score=0.85,
-            printed_or_handwritten="handwritten",
+            document_type="handwritten",
         )
         == "medium"
     )
@@ -36,7 +36,7 @@ def test_printed_high_stays_high():
         apply_quality_label_postprocess(
             quality_tag="high",
             quality_score=0.85,
-            printed_or_handwritten="printed",
+            document_type="printed",
         )
         == "high"
     )
@@ -47,7 +47,7 @@ def test_handwritten_low_unchanged():
         apply_quality_label_postprocess(
             quality_tag="low",
             quality_score=0.2,
-            printed_or_handwritten="handwritten",
+            document_type="handwritten",
         )
         == "low"
     )

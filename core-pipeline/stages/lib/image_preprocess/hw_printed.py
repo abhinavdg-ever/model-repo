@@ -13,10 +13,17 @@ Pages with no dark ink are labeled before the model loads (blank_page or
 faint_marks_only). Spread handwriting ink can upgrade a printed model
 label to handwritten.
 
+A checkpoint saved with ``task == "page_tags"`` is the page-tag model: the
+same backbone with three heads — page type (Printed, Handwritten, Form,
+Visual, Blank, Uncertain), visibility, and the fraction of the page that is
+handwriting. It is picked up from the same file name; nothing else changes.
+The ink upgrade does not run on it.
+
 API (compatible with the Azure CSV pipeline):
 
     model = load_model(path)
     label, confidence, method = classify_image_type(image_bytes, model=model)
+    page = classify_page(image_bytes, model=model)   # + document type, tags
 """
 
 from __future__ import annotations
@@ -80,6 +87,15 @@ FAINT_METHOD = "faint_marks_only"
 # column is not empty.
 PREMODEL_CONFIDENCE = 0.80
 
+TAG_TASK = "page_tags"
+TAG_METHOD = "convnext_page_tags"
+PAGE_TAGS = ("Printed", "Handwritten", "Form", "Visual", "Blank", "Uncertain")
+VISIBILITY_TAGS = ("Visible", "Not visible")
+# Used when a tag checkpoint does not carry its own cutoff.
+TAG_UNCERTAIN_MIN_CONFIDENCE = 0.50
+# printed_or_handwritten has no "form": a form this much handwritten is mixed.
+FILLED_FORM_AREA_PCT = 5.0
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 _CORE_ROOT = SCRIPT_DIR.parents[2]  # …/core-pipeline
 # Both HW weights live under core-pipeline/models/hw/.
@@ -123,10 +139,52 @@ class ClassifierBundle:
     classes: dict[int, str] = field(default_factory=lambda: dict(INDEX_TO_CLASS))
     architecture: str = ARCHITECTURE
     metadata: dict[str, Any] = field(default_factory=dict)
+    task: str = ""
 
     def eval(self) -> "ClassifierBundle":
         self.torch_model.eval()
         return self
+
+
+@dataclass
+class PageType:
+    """One page's classification.
+
+    ``label`` is what ``printed_or_handwritten`` stores. ``document_type`` is
+    the finer page type; visibility and handwritten area come only from the
+    page-tag model and are None otherwise.
+    """
+
+    label: Any
+    confidence: float | None
+    method: str
+    document_type: str = ""
+    p_handwritten: float | None = None
+    visibility: str | None = None
+    handwritten_area_pct: float | None = None
+
+    def as_tuple(self) -> tuple[Any, float | None, str]:
+        return self.label, self.confidence, self.method
+
+    def tags(self) -> dict[str, Any]:
+        """The ocr_quality_results page-type columns."""
+        return {
+            "document_type": self.document_type.lower() or None,
+            "handwritten_probability": self.p_handwritten,
+            "is_visible": None if self.visibility is None else self.visibility == "Visible",
+            "handwritten_area_pct": self.handwritten_area_pct,
+        }
+
+
+def label_for_document_type(document_type: str, handwritten_area_pct: float | None) -> str:
+    if document_type == "HANDWRITTEN":
+        return "Handwritten"
+    if document_type == "FORM":
+        filled = (handwritten_area_pct or 0.0) >= FILLED_FORM_AREA_PCT
+        return "Mixed" if filled else "Printed"
+    if document_type in {"PRINTED", "VISUAL"}:
+        return "Printed"
+    return "Uncertain"
 
 
 def detect_device(prefer: str | None = None):
@@ -152,6 +210,35 @@ def build_model(num_classes: int = 2, pretrained: bool = False):
     in_features = model.classifier[2].in_features
     model.classifier[2] = nn.Linear(in_features, num_classes)
     return model
+
+
+def build_page_tag_model():
+    """ConvNeXt-Tiny backbone with type, visibility and handwritten-area heads.
+
+    Parameter names (``backbone.*``, ``type_head``, ``visible_head``,
+    ``area_head``) must match the checkpoint's state dict.
+    """
+    import torch
+    import torch.nn as nn
+    from torchvision.models import convnext_tiny
+
+    class PageTagModel(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            net = convnext_tiny(weights=None)
+            in_features = net.classifier[2].in_features
+            net.classifier[2] = nn.Identity()
+            self.backbone = net
+            self.type_head = nn.Linear(in_features, len(PAGE_TAGS))
+            self.visible_head = nn.Linear(in_features, len(VISIBILITY_TAGS))
+            self.area_head = nn.Linear(in_features, 1)
+
+        def forward(self, x):
+            feat = self.backbone(x)
+            area = torch.sigmoid(self.area_head(feat).squeeze(-1))
+            return self.type_head(feat), self.visible_head(feat), area
+
+    return PageTagModel()
 
 
 def freeze_backbone(model) -> None:
@@ -224,6 +311,8 @@ def _bundle_from_checkpoint(checkpoint: dict[str, Any], device) -> ClassifierBun
     import torch
 
     metadata = checkpoint.get("metadata") or {}
+    task = str(checkpoint.get("task") or metadata.get("task") or "")
+    tagged = task == TAG_TASK
     image_size = int(checkpoint.get("image_size") or metadata.get("image_size") or DEFAULT_IMAGE_SIZE)
     mean = tuple(checkpoint.get("normalize_mean") or metadata.get("normalize_mean") or IMAGENET_MEAN)
     std = tuple(checkpoint.get("normalize_std") or metadata.get("normalize_std") or IMAGENET_STD)
@@ -235,21 +324,29 @@ def _bundle_from_checkpoint(checkpoint: dict[str, Any], device) -> ClassifierBun
     uncertain = float(
         checkpoint.get("uncertain_min_confidence")
         if checkpoint.get("uncertain_min_confidence") is not None
-        else metadata.get("uncertain_min_confidence", DEFAULT_UNCERTAIN_MIN_CONFIDENCE)
+        else metadata.get(
+            "uncertain_min_confidence",
+            TAG_UNCERTAIN_MIN_CONFIDENCE if tagged else DEFAULT_UNCERTAIN_MIN_CONFIDENCE,
+        )
     )
     margin = float(
         checkpoint.get("uncertain_margin")
         if checkpoint.get("uncertain_margin") is not None
         else metadata.get("uncertain_margin", DEFAULT_UNCERTAIN_MARGIN)
     )
-    raw_classes = checkpoint.get("classes") or metadata.get("classes") or INDEX_TO_CLASS
+    default_classes = dict(enumerate(PAGE_TAGS)) if tagged else INDEX_TO_CLASS
+    raw_classes = checkpoint.get("classes") or metadata.get("classes") or default_classes
     classes = {int(k): str(v) for k, v in dict(raw_classes).items()}
-    if classes.get(0) != "Printed" or classes.get(1) != "Handwritten":
+    if tagged:
+        if sorted(classes) != list(range(len(PAGE_TAGS))) or "Handwritten" not in classes.values():
+            raise ValueError(f"Page-tag checkpoint classes do not match {PAGE_TAGS}: {classes}")
+        torch_model = build_page_tag_model()
+    elif classes.get(0) != "Printed" or classes.get(1) != "Handwritten":
         raise ValueError(
             f"Checkpoint class mapping is not canonical 0=Printed, 1=Handwritten: {classes}"
         )
-
-    torch_model = build_model(num_classes=2, pretrained=False)
+    else:
+        torch_model = build_model(num_classes=2, pretrained=False)
     state = checkpoint.get("model_state_dict") or checkpoint.get("state_dict")
     if state is None:
         raise ValueError("Checkpoint is missing model_state_dict")
@@ -268,6 +365,7 @@ def _bundle_from_checkpoint(checkpoint: dict[str, Any], device) -> ClassifierBun
         classes=classes,
         architecture=str(checkpoint.get("architecture") or metadata.get("architecture") or ARCHITECTURE),
         metadata=metadata,
+        task=task,
     )
 
 
@@ -331,8 +429,9 @@ def _load_model_locked(model_path: Path | str | None, device):
     bundle = _bundle_from_checkpoint(checkpoint, resolved_device)
     _bundle = bundle
     LOGGER.info(
-        "Loaded %s (threshold=%.3f, uncertain_margin=%.3f, min_conf=%.3f)",
+        "Loaded %s%s (threshold=%.3f, uncertain_margin=%.3f, min_conf=%.3f)",
         bundle.architecture,
+        " page tags" if bundle.task == TAG_TASK else "",
         bundle.decision_threshold,
         bundle.uncertain_margin,
         bundle.uncertain_min_confidence,
@@ -572,29 +671,94 @@ def classify_tensor_batch(batch, bundle: ClassifierBundle):
     return out
 
 
-def classify_image_type(
-    image_bytes: bytes,
-    model: Any | None = None,
-    *,
-    already_preprocessed: bool = False,
-) -> tuple[str, float | None, str]:
+def classify_tag_batch(batch, bundle: ClassifierBundle):
+    """Page-tag forward. Returns (type probabilities, visibility probabilities, area 0-1)."""
+    import torch
+
+    bundle.torch_model.eval()
+    with _infer_lock:
+        with torch.inference_mode():
+            batch = batch.to(bundle.device, non_blocking=False)
+            type_logits, vis_logits, area = bundle.torch_model(batch)
+            out = (
+                torch.softmax(type_logits, dim=-1).detach().cpu(),
+                torch.softmax(vis_logits, dim=-1).detach().cpu(),
+                area.detach().cpu(),
+            )
+        if getattr(bundle.device, "type", None) == "mps" and hasattr(torch, "mps"):
+            torch.mps.synchronize()
+    return out
+
+
+def decide_tags(type_proba, vis_proba, area, bundle: ClassifierBundle) -> PageType:
+    """One page's page-tag outputs → PageType.
+
+    The top type wins. A weak call (under the checkpoint's minimum confidence)
+    becomes Uncertain, except Blank: blank is rare and often under 55%.
+    """
+    top = int(type_proba.argmax())
+    name = bundle.classes.get(top, PAGE_TAGS[top])
+    confidence = float(type_proba[top])
+    hw_index = next(i for i, label in bundle.classes.items() if label == "Handwritten")
+    document_type = name.upper()
+    if confidence < bundle.uncertain_min_confidence and document_type not in {"UNCERTAIN", "BLANK"}:
+        document_type = "UNCERTAIN"
+    area_pct = round(float(area) * 100.0, 1)
+    return PageType(
+        label=label_for_document_type(document_type, area_pct),
+        confidence=round(confidence, 4),
+        method=TAG_METHOD,
+        document_type=document_type,
+        p_handwritten=round(float(type_proba[hw_index]), 4),
+        visibility=VISIBILITY_TAGS[int(vis_proba.argmax())],
+        handwritten_area_pct=area_pct,
+    )
+
+
+def _before_model(image: Image.Image) -> PageType | None:
+    early = content_before_model(image)
+    if early is None:
+        return None
+    label, confidence, method = early
+    return PageType(
+        label, confidence, method,
+        document_type="BLANK" if method == BLANK_METHOD else "UNCERTAIN",
+    )
+
+
+def _two_class_page(image: Image.Image, p_handwritten: float, bundle: ClassifierBundle) -> PageType:
+    label, confidence = decide_label(
+        p_handwritten,
+        bundle.decision_threshold,
+        bundle.uncertain_min_confidence,
+        bundle.uncertain_margin,
+    )
+    label, confidence, method = upgrade_printed_with_ink(image, label, confidence, p_handwritten)
+    return PageType(
+        label, confidence, method,
+        document_type=str(label).upper(),
+        p_handwritten=round(p_handwritten, 4),
+    )
+
+
+def classify_page(image_bytes: bytes, model: Any | None = None) -> PageType:
     """Classify one document page.
 
-    Returns (label, confidence, method). Label is Printed, Handwritten, or
-    Uncertain. A page with no dark ink returns before the model loads:
-    Uncertain / blank_page, or Uncertain / faint_marks_only, each with
-    confidence 0.80. Filled-form ink can upgrade the model label to
-    Handwritten (page_convnext_plus_ink).
+    A page with no dark ink returns before the model loads: Uncertain /
+    blank_page (document type BLANK) or Uncertain / faint_marks_only, each
+    with confidence 0.80. The two-class model gives Printed, Handwritten or
+    Uncertain, and filled-form ink can upgrade it to Handwritten
+    (page_convnext_plus_ink). The page-tag model also gives Form, Visual and
+    Blank, visibility, and the handwritten share of the page.
     """
-    del already_preprocessed
     # RF fallback path: model is not a ClassifierBundle.
     if model is not None and not isinstance(model, ClassifierBundle):
         from stages.lib.image_preprocess import hw_printed_rf as rf
 
-        return rf.classify_image_type(image_bytes, model=model)
+        return PageType(*rf.classify_image_type(image_bytes, model=model))
 
     image = decode_image(image_bytes)
-    early = content_before_model(image)
+    early = _before_model(image)
     if early is not None:
         return early
 
@@ -602,11 +766,11 @@ def classify_image_type(
     if bundle is None:
         loaded = load_model()
         if loaded is None:
-            return "Printed", 0.5, "fallback"
+            return PageType("Printed", 0.5, "fallback")
         if not isinstance(loaded, ClassifierBundle):
             from stages.lib.image_preprocess import hw_printed_rf as rf
 
-            return rf.classify_image_type(image_bytes, model=loaded)
+            return PageType(*rf.classify_image_type(image_bytes, model=loaded))
         bundle = loaded
 
     tensor = preprocess_for_model(
@@ -615,15 +779,22 @@ def classify_image_type(
         mean=bundle.mean,
         std=bundle.std,
     ).unsqueeze(0)
+    if bundle.task == TAG_TASK:
+        type_proba, vis_proba, area = classify_tag_batch(tensor, bundle)
+        return decide_tags(type_proba[0], vis_proba[0], area[0], bundle)
     proba = classify_tensor_batch(tensor, bundle)[0]
-    p_handwritten = float(proba[CLASS_TO_INDEX["Handwritten"]])
-    label, confidence = decide_label(
-        p_handwritten,
-        bundle.decision_threshold,
-        bundle.uncertain_min_confidence,
-        bundle.uncertain_margin,
-    )
-    return upgrade_printed_with_ink(image, label, confidence, p_handwritten)
+    return _two_class_page(image, float(proba[CLASS_TO_INDEX["Handwritten"]]), bundle)
+
+
+def classify_image_type(
+    image_bytes: bytes,
+    model: Any | None = None,
+    *,
+    already_preprocessed: bool = False,
+) -> tuple[str, float | None, str]:
+    """(label, confidence, method) for one page. See ``classify_page``."""
+    del already_preprocessed
+    return classify_page(image_bytes, model=model).as_tuple()
 
 
 def classify_image_path(path: Path | str, model: Any | None = None) -> tuple[str, float, str]:
@@ -671,22 +842,20 @@ def classify_image_type_batch(
         for i in pending
     ]
     stacked = torch.stack(tensors, dim=0)
-    probabilities = []
-    for start in range(0, len(stacked), batch_size):
-        chunk = stacked[start : start + batch_size]
-        probabilities.append(classify_tensor_batch(chunk, bundle))
-    proba = torch.cat(probabilities, dim=0)
+    chunks = [stacked[start : start + batch_size] for start in range(0, len(stacked), batch_size)]
+    if bundle.task == TAG_TASK:
+        outputs = [classify_tag_batch(chunk, bundle) for chunk in chunks]
+        type_proba = torch.cat([o[0] for o in outputs], dim=0)
+        vis_proba = torch.cat([o[1] for o in outputs], dim=0)
+        area = torch.cat([o[2] for o in outputs], dim=0)
+        for row, slot in enumerate(pending):
+            results[slot] = decide_tags(type_proba[row], vis_proba[row], area[row], bundle).as_tuple()
+        return [row for row in results if row is not None]
+
+    proba = torch.cat([classify_tensor_batch(chunk, bundle) for chunk in chunks], dim=0)
     for slot, row in zip(pending, proba):
         p_handwritten = float(row[CLASS_TO_INDEX["Handwritten"]])
-        label, confidence = decide_label(
-            p_handwritten,
-            bundle.decision_threshold,
-            bundle.uncertain_min_confidence,
-            bundle.uncertain_margin,
-        )
-        results[slot] = upgrade_printed_with_ink(
-            decoded[slot], label, confidence, p_handwritten
-        )
+        results[slot] = _two_class_page(decoded[slot], p_handwritten, bundle).as_tuple()
     return [row for row in results if row is not None]
 
 

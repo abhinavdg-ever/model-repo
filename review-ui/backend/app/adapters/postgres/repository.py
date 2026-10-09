@@ -35,7 +35,11 @@ from app.services import db
 from app.services.chart_run_batch import with_run_batch_default
 from app.services.db import psycopg_url as _psycopg_url
 from app.services.ground_truth import attach_ground_truth
-from app.services.imaging_overlays import display_page_type, empty_imaging_pages
+from app.services.imaging_overlays import (
+    display_page_type,
+    empty_imaging_pages,
+    page_type_fields,
+)
 
 logger = logging.getLogger("review_ui.postgres")
 
@@ -150,7 +154,7 @@ class PostgresFolderRepository(FolderRepository):
         # folder_id → page_number → page_list/chart_list location row
         self._page_rows_cache: dict[str, tuple[float, dict[int, tuple]]] = {}
         # (folder_id, page_number) → resolved blob location
-        self._resolved_blobs: dict[tuple[str, int], tuple[float, dict[str, str]]] = {}
+        self._resolved_blobs: dict[tuple[str, int, bool], tuple[float, dict[str, str]]] = {}
 
     def _optional_local(self) -> LocalFolderRepository | None:
         return self._local
@@ -384,7 +388,9 @@ class PostgresFolderRepository(FolderRepository):
             )
         return detail
 
-    def get_page_image_path(self, folder_id: str, page_number: int) -> Path:
+    def get_page_image_path(
+        self, folder_id: str, page_number: int, *, corrected: bool = False
+    ) -> Path:
         """Local path when a workspace copy exists (fallback for the image route)."""
         local = self._optional_local()
         if local is None:
@@ -392,7 +398,7 @@ class PostgresFolderRepository(FolderRepository):
                 status_code=404,
                 detail="No local page image; Production Mode serves images from blob",
             )
-        return local.get_page_image_path(folder_id, page_number)
+        return local.get_page_image_path(folder_id, page_number, corrected=corrected)
 
     def _page_rows(self, folder_id: str) -> dict[int, tuple] | None:
         """page_number → (container, blob_path, output_path, page_name,
@@ -445,20 +451,18 @@ class PostgresFolderRepository(FolderRepository):
         return by_num
 
     def resolve_page_blob(
-        self, folder_id: str, page_number: int
+        self, folder_id: str, page_number: int, *, corrected: bool = False
     ) -> dict[str, str] | None:
         """Locate the Azure blob for a page using chart_list + page_list.
 
-        Preference order:
-          1. Raw_Input ``blob_path`` entry at the same ingest index as ``page_number``
-          2. Processed ``output_path/corrected-pages/…`` when ``use_corrected``
-          3. Processed ``output_path/pages/{page_name}``
+        Default is the scan as it arrived: Raw_Input, then Processed ``pages/``.
+        ``corrected=True`` prefers Processed ``corrected-pages/``.
 
         Returns ``container``, ``key``, ``filename`` and ``etag`` (empty when
         unknown). Results are cached per page for ``_BLOB_LIST_TTL_SEC``.
         """
         now = time.monotonic()
-        cache_key = (folder_id, page_number)
+        cache_key = (folder_id, page_number, corrected)
         cached = self._resolved_blobs.get(cache_key)
         if cached and (now - cached[0]) < _BLOB_LIST_TTL_SEC:
             return cached[1]
@@ -467,37 +471,43 @@ class PostgresFolderRepository(FolderRepository):
         hit = rows.get(page_number) if rows else None
         if hit is None:
             return None
-        container, blob_path, output_path, page_name, use_corrected, image_path, idx = hit
+        container, blob_path, output_path, page_name, _use_corrected, image_path, idx = hit
         if not container:
             return None
-
-        # Raw_Input comes from a live listing, so the key is known to exist —
-        # no existence probe needed.
-        raw = self._raw_input_blob(folder_id, container, blob_path, idx)
-        if raw:
-            key, etag = raw
-            out_loc = {"container": container, "key": key, "filename": Path(key).name or page_name, "etag": etag}
-            self._resolved_blobs[cache_key] = (now, out_loc)
-            return out_loc
 
         out = (output_path or "").strip().strip("/")
         stem = Path(page_name).stem
         candidates: list[str] = []
-        if use_corrected and out:
+        if corrected and out:
             candidates.append(f"{out}/corrected-pages/{stem}.jpg")
             candidates.append(f"{out}/corrected-pages/{page_name}")
             rel = image_path.replace("\\", "/").lstrip("/")
             if rel.startswith("corrected-pages/"):
                 candidates.append(f"{out}/{rel}")
+
+        # Raw_Input comes from a live listing, so the key is known to exist —
+        # no existence probe needed. The corrected view falls back to it when
+        # that chart has no corrected file.
+        raw = self._raw_input_blob(folder_id, container, blob_path, idx)
+        if not corrected and raw:
+            key, etag = raw
+            out_loc = {"container": container, "key": key, "filename": Path(key).name or page_name, "etag": etag}
+            self._resolved_blobs[cache_key] = (now, out_loc)
+            return out_loc
+
         if out:
             candidates.append(f"{out}/pages/{page_name}")
 
         ordered = list(dict.fromkeys(k.lstrip("/") for k in candidates if k.lstrip("/")))
-        if not ordered:
+        found = self._first_existing_blob(container, ordered) if ordered else None
+        if found is None and raw:
+            key, etag = raw
+            out_loc = {"container": container, "key": key, "filename": Path(key).name or page_name, "etag": etag}
+            self._resolved_blobs[cache_key] = (now, out_loc)
+            return out_loc
+        if found is None:
             return None
-
-        found = self._first_existing_blob(container, ordered)
-        key, etag = found if found else (ordered[0], "")
+        key, etag = found
         out_loc = {"container": container, "key": key, "filename": Path(key).name or page_name, "etag": etag}
         self._resolved_blobs[cache_key] = (now, out_loc)
         return out_loc
@@ -778,7 +788,9 @@ class PostgresFolderRepository(FolderRepository):
                         """
                         SELECT p.page_name, q.printed_or_handwritten, q.hw_confidence,
                                q.quality_score, q.quality_tag,
-                               q.orientation_angle, q.tilt_angle, q.mirrored
+                               q.orientation_angle, q.tilt_angle, q.mirrored,
+                               q.document_type, q.is_visible,
+                               q.handwritten_area_pct
                         FROM ocr_quality_results q
                         JOIN page_list p ON p.id = q.page_id
                         JOIN chart_list c ON c.id = q.chart_id
@@ -787,7 +799,8 @@ class PostgresFolderRepository(FolderRepository):
                         (folder_id,),
                     )
                     for (
-                        page_name, hw, conf, qscore, qtag, orient, tilt, mirrored
+                        page_name, hw, conf, qscore, qtag, orient, tilt, mirrored,
+                        doc_type, visible, hw_area,
                     ) in cur.fetchall():
                         fields = _ensure(str(page_name))
                         if hw:
@@ -812,6 +825,9 @@ class PostgresFolderRepository(FolderRepository):
                             fields["tiltAngle"] = float(tilt)
                         if mirrored is not None:
                             fields["mirrored"] = bool(mirrored)
+                        fields.update(
+                            page_type_fields(doc_type, visible, hw_area)
+                        )
 
                     # Blank/junk — v7 stamps exactly one final row per page,
                     # so precedence is not re-derived here any more.

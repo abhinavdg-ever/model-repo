@@ -29,6 +29,35 @@ ALTER TABLE dos_extraction_results
 
 5. Charts that already finished OCR do not need Docling again for page type, member, or date of service. Run them with `skip_ocr: true` so Final2 is not billed again. Final1 text is reused. A high-quality page that skipped Azure has no word boxes in that old Final1 file. Re-run Final1 for those pages before key/value extraction. Pages that already have Final2 can keep the old Final1.
 
+### Afternoon pull (9 Oct 2026, after `016c6c3`)
+
+Stage 1 (rotation, mirror, handwriting, page type) and review-ui changed.
+
+1. **Database, before the API restarts.** Stage 1 writes five new columns, so a chart fails without them. Do not re-apply `schema/v1.sql`:
+
+```sql
+ALTER TABLE ocr_quality_results
+  ADD COLUMN IF NOT EXISTS document_type VARCHAR(20) CHECK (document_type IS NULL OR
+      document_type IN ('printed','handwritten','form','visual','blank','uncertain')),
+  ADD COLUMN IF NOT EXISTS handwritten_probability NUMERIC(5,4),
+  ADD COLUMN IF NOT EXISTS is_visible BOOLEAN,
+  ADD COLUMN IF NOT EXISTS handwritten_area_pct NUMERIC(5,2) CHECK (handwritten_area_pct IS NULL
+      OR handwritten_area_pct BETWEEN 0 AND 100),
+  ADD COLUMN IF NOT EXISTS review_required BOOLEAN;
+```
+
+   Check: the `information_schema.columns` query for those five names on `ocr_quality_results` returns 5 rows.
+2. **Rebuild and restart both services** (`docker compose up -d --build` in `core-pipeline/` and `review-ui/`). The core-pipeline API has no reload; a stopped (`Ctrl+Z`) uvicorn still holds port 8001, so `fg` then `Ctrl+C` before starting it again.
+3. **New page-tag model (optional, whenever it arrives).** Copy it over `models/hw/handwritten_printed_convnext_tiny.pth` — same name. It is recognised by `task: "page_tags"` in the checkpoint. Until then the current model runs: Type is printed / handwritten / uncertain / blank, and Visibility and Handwritten % stay empty ("Not Available" in review-ui). No error either way.
+4. **`.env` (optional).** `MAX_TILT_TO_APPLY=5` — a measured tilt above this many degrees is stored but not applied. The default is 5 without the line.
+5. **Re-run stage 1** on charts you want the new values for: `"only": ["ocr_quality"]`, or the full chain with `skip_ocr: true`. Until a chart is re-run its new columns are NULL and decisions fall back to the old printed/handwritten label.
+
+What changed, so the results are not a surprise:
+
+- **Decisions read Type (`document_type`), not `printed_or_handwritten`.** Printed and visual pages run blank/junk pass 1 and, at high quality, skip Final2. Handwritten, form, blank and uncertain pages skip pass 1 and go to final OCR — so **every form now goes to Azure Final2**, including lightly filled ones. Only handwritten pages get the High → Medium quality cap.
+- **Orientation:** Tesseract OSD's turn is checked by reading the page; a wrong 180° is undone before tilt and mirror are measured. **Tilt** is measured on the turned page (the old value was measured on the detector's own guess and could tilt a level page). **Mirror** is decided by whether the flipped page reads as English (`english_words.txt.gz`), and is applied to the corrected page only when Mirrored is Yes.
+- **review-ui:** the page panel and summary table show Type (Printed/HW), Handwritten %, Visibility, Quality, Orientation Angle (Page), Tilt (Text), Mirrored (Text). The **Corrected** toggle is enabled only on pages with an orientation or tilt correction, and opens on `pages/` by default.
+
 All examples below use **Azure Blob** paths. Local paths work the same way:
 set `"input_type": "local"`, drop `container_name`, and make `input_path` /
 `output_path` directories on the server (see [`API.md`](API.md)).

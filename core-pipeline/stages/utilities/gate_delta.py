@@ -15,7 +15,7 @@ from typing import Any, Iterable, Optional, Sequence
 
 logger = logging.getLogger(__name__)
 
-NON_PRINTED = frozenset({"handwritten", "uncertain", "mixed"})
+NON_PRINTED = frozenset({"handwritten", "form", "blank", "uncertain"})
 
 # (stage_name, pass_no)
 STAGE_PRELIM = ("ocr_prelim", 1)
@@ -97,12 +97,14 @@ def orientation_bucket(angle: Any) -> int:
 def hw_class_from_row(row: Optional[dict[str, Any]]) -> str:
     if not row:
         return ""
-    hw = str(row.get("printed_or_handwritten") or "").strip().lower()
-    if not hw:
+    from db import is_printed_type, page_type
+
+    kind = page_type(row)
+    if not kind:
         return ""
-    if hw in NON_PRINTED:
+    if kind in NON_PRINTED:
         return "non_printed"
-    if hw == "printed":
+    if is_printed_type(kind):
         return "printed"
     return "unknown"
 

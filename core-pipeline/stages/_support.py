@@ -282,8 +282,9 @@ def eligible_for_downstream(
     them — their blank/junk verdict only exists after final OCR.
     """
     if handwritten_always:
-        hw = (quality.get(page_id) or {}).get("printed_or_handwritten") or ""
-        if hw.lower() == "handwritten":
+        from db import page_type
+
+        if page_type(quality.get(page_id)) == "handwritten":
             return True
     return bj_flags.get(page_id, "not_blank_junk") not in BJ_EXCLUDE
 

@@ -656,9 +656,19 @@ class MemoryStore:
         quality_score: Optional[float] = None,
         quality_detail: Optional[dict[str, Any]] = None,
         input_dpi: Optional[float] = None,
+        document_type: Optional[str] = None,
+        handwritten_probability: Optional[float] = None,
+        is_visible: Optional[bool] = None,
+        handwritten_area_pct: Optional[float] = None,
+        review_required: Optional[bool] = None,
     ) -> None:
         with self._lock:
             self.quality[page_id] = {
+                "document_type": document_type,
+                "handwritten_probability": handwritten_probability,
+                "is_visible": is_visible,
+                "handwritten_area_pct": handwritten_area_pct,
+                "review_required": review_required,
                 "chart_id": chart_id,
                 "page_id": page_id,
                 "quality_tag": quality_tag,
@@ -684,18 +694,21 @@ class MemoryStore:
             }
 
     def handwritten_page_ids(self, chart_id: int) -> set[int]:
+        from db import page_type
+
         return {
             pid
             for pid, row in self.get_quality_map(chart_id).items()
-            if str(row.get("printed_or_handwritten") or "").lower() == "handwritten"
+            if page_type(row) == "handwritten"
         }
 
     def non_printed_page_ids(self, chart_id: int) -> set[int]:
+        from db import is_printed_type, page_type
+
         return {
             pid
             for pid, row in self.get_quality_map(chart_id).items()
-            if str(row.get("printed_or_handwritten") or "").lower()
-            in {"handwritten", "uncertain", "mixed"}
+            if page_type(row) and not is_printed_type(page_type(row))
         }
 
     def low_quality_page_ids(self, chart_id: int) -> set[int]:
@@ -706,11 +719,13 @@ class MemoryStore:
         }
 
     def high_quality_printed_page_ids(self, chart_id: int) -> set[int]:
+        from db import is_printed_type, page_type
+
         return {
             pid
             for pid, row in self.get_quality_map(chart_id).items()
             if str(row.get("quality_tag") or "").lower() == "high"
-            and str(row.get("printed_or_handwritten") or "").lower() == "printed"
+            and is_printed_type(page_type(row))
         }
 
     def list_quality_for_csv(self, chart_id: int) -> list[dict[str, Any]]:
@@ -737,6 +752,11 @@ class MemoryStore:
                         "quality_tag": q.get("quality_tag"),
                         "quality_score": q.get("quality_score"),
                         "input_dpi": q.get("input_dpi"),
+                        "document_type": q.get("document_type"),
+                        "handwritten_probability": q.get("handwritten_probability"),
+                        "is_visible": q.get("is_visible"),
+                        "handwritten_area_pct": q.get("handwritten_area_pct"),
+                        "review_required": q.get("review_required"),
                     }
                 )
 

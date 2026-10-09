@@ -21,9 +21,9 @@ def apply_quality_label_postprocess(
     *,
     quality_tag: str | None,
     quality_score: float | None,
-    printed_or_handwritten: str | None,
+    document_type: str | None,
 ) -> str | None:
-    """Assign quality_tag; Handwritten + High is downgraded to Medium.
+    """Assign quality_tag; a handwritten page type + High is downgraded to Medium.
 
     Matches the teammate ``image_preprocessing`` rule: a high engineering
     score on a handwritten page is reported as medium so reviewers do not
@@ -32,7 +32,6 @@ def apply_quality_label_postprocess(
     tag = (quality_tag or "").strip().lower() or base_quality_label(quality_score)
     if not tag:
         return None
-    hw = (printed_or_handwritten or "").strip().lower()
-    if hw in {"handwritten", "hand"} and tag == "high":
+    if (document_type or "").strip().lower() == "handwritten" and tag == "high":
         return "medium"
     return tag

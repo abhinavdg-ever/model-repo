@@ -264,6 +264,22 @@ function fmtHandwriting(
   return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
 }
 
+// Visibility and handwritten area come only from the page-tag model. With the
+// two-class model the page was classified but these were never measured.
+const NOT_MEASURED = "Not Available";
+
+function fmtVisibility(value: boolean | null | undefined, processed = true): string {
+  if (!processed) return YET_TO_PROCESS;
+  if (value === null || value === undefined) return NOT_MEASURED;
+  return value ? "Visible" : "Not visible";
+}
+
+function fmtPercent(value: number | null | undefined, processed = true): string {
+  if (!processed) return YET_TO_PROCESS;
+  if (value === null || value === undefined) return NOT_MEASURED;
+  return `${value.toFixed(1)}%`;
+}
+
 function fmtQualityTag(value: string | null | undefined, processed = true): string {
   if (!processed) return YET_TO_PROCESS;
   if (value === null || value === undefined || value === "") return NOT_FOUND;
@@ -335,7 +351,12 @@ const ENCOUNTER_CHOICES = ["Outpatient (F2F)", "Outpatient (Tele)", "Inpatient",
 const BLANK_JUNK_CHOICES = ["Yes (Blank)", "Yes (Junk)", "No"] as const;
 const DUPLICATE_CHOICES = ["Yes", "May Be", "No"] as const;
 const CODEABLE_CHOICES = ["Codeable", "Non Codeable", "Discharge"] as const;
-const HANDWRITING_CHOICES = ["Printed", "Handwritten", "Mixed"] as const;
+const TYPE_CHOICES = ["Printed", "Handwritten", "Form", "Visual", "Blank"] as const;
+
+/** Page type; a page classified before document type existed shows its old label. */
+function pageTypeOf(page: ImagingPageResult): string | null {
+  return page.documentType || page.handwrittenOrPrinted || null;
+}
 const QUALITY_CHOICES = ["High", "Medium", "Low"] as const;
 const YES_NO_CHOICES = ["Yes", "No"] as const;
 
@@ -1130,10 +1151,18 @@ function PageDetails({
         editing={editingSection === "all" || editingSection === "Page Quality & Orientation"}
         onStartEdit={() => setEditingSection("Page Quality & Orientation")}
         rows={[
-          sameValue(fmtHandwriting(page.handwrittenOrPrinted, sections.hw), fmtConfidence(page.handwrittenOrPrintedConfidence ?? null, sections.hw), {
+          sameValue(fmtHandwriting(pageTypeOf(page), sections.hw), fmtConfidence(page.handwrittenOrPrintedConfidence ?? null, sections.hw), {
             id: "handwriting",
-            label: "Printed / Handwritten",
-            choices: HANDWRITING_CHOICES,
+            label: "Type (Printed/HW)",
+            choices: TYPE_CHOICES,
+          }),
+          sameValue(fmtPercent(page.handwrittenAreaPct, sections.hw), fmtConfidence(null, sections.hw), {
+            id: "handwritten_area",
+            label: "Handwritten %",
+          }),
+          sameValue(fmtVisibility(page.isVisible, sections.hw), fmtConfidence(null, sections.hw), {
+            id: "visibility",
+            label: "Visibility",
           }),
           sameValue(fmtQualityTag(page.pageQualityTag, qualityKnown), fmtConfidence(page.pageQualityConfidence, qualityKnown), {
             id: "quality",
@@ -1148,7 +1177,7 @@ function PageDetails({
           }),
           sameValue(fmtDegrees(page.tiltAngle, sections.rotation), fmtConfidence(null, sections.rotation), {
             id: "tilt",
-            label: "Tilt Angle (Text)",
+            label: "Tilt (Text)",
           }),
           sameValue(fmt(page.mirrored, sections.rotation), fmtConfidence(null, sections.rotation), {
             id: "mirrored",
@@ -1346,7 +1375,9 @@ function DocSummary({
               <th scope="col">Extracted Name</th>
               <th scope="col">Extracted DOB</th>
               <th scope="col">Member ID</th>
-              <th scope="col">HW/Printed</th>
+              <th scope="col">Type (Printed/HW)</th>
+              <th scope="col">Handwritten %</th>
+              <th scope="col">Visibility</th>
               <th scope="col">Quality</th>
               <th scope="col">Orient.</th>
               <th scope="col">Tilt</th>
@@ -1387,7 +1418,9 @@ function DocSummary({
                   <GtCell text={displayIsoDates(fmt(p.memberDob, sections.member, skip))} bits={bits.memberDob} />
                 </td>
                 <td>{fmt(p.memberId, sections.member, skip)}</td>
-                <td>{fmtHandwriting(p.handwrittenOrPrinted, sections.hw)}</td>
+                <td>{fmtHandwriting(pageTypeOf(p), sections.hw)}</td>
+                <td>{fmtPercent(p.handwrittenAreaPct, sections.hw)}</td>
+                <td>{fmtVisibility(p.isVisible, sections.hw)}</td>
                 <td>
                   {fmtQualityTag(
                     p.pageQualityTag,

@@ -152,6 +152,11 @@ class ImagingPageResult(BaseModel):
     memberConfidence: float | None = None
     handwrittenOrPrinted: str | None = None
     handwrittenOrPrintedConfidence: float | None = None
+    # Printed | Handwritten | Form | Visual | Blank | Uncertain
+    documentType: str | None = None
+    # isVisible and handwrittenAreaPct (0–100) come from the page-tag model only.
+    isVisible: bool | None = None
+    handwrittenAreaPct: float | None = None
     orientationAngle: float | None = None
     tiltAngle: float | None = None
     mirrored: bool | None = None

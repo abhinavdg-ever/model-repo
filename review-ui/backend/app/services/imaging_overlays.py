@@ -226,6 +226,28 @@ def _parse_bool(raw: str | None) -> bool | None:
     return None
 
 
+def page_type_fields(
+    document_type: Any,
+    is_visible: Any,
+    handwritten_area_pct: Any,
+) -> dict[str, Any]:
+    """ocr_quality_results page-type columns (or their CSV cells) → API fields.
+
+    Empty values are left out so they do not overwrite another source.
+    """
+    doc = _text(document_type).strip()
+    fields: dict[str, Any] = {
+        "documentType": doc.capitalize() if doc else None,
+        "isVisible": _parse_bool(_text(is_visible)),
+        "handwrittenAreaPct": _parse_float(_text(handwritten_area_pct)),
+    }
+    return {k: v for k, v in fields.items() if v is not None}
+
+
+def _text(value: Any) -> str:
+    return "" if value is None else str(value)
+
+
 def empty_imaging_pages(pages: list[tuple[int, Path]]) -> list[ImagingPageResult]:
     """Skeleton rows only — all extraction fields stay null until CSV overlay."""
     return [
@@ -402,6 +424,11 @@ def index_hw_rows(rows: list[dict[str, str]], chart_name: str) -> dict[str, dict
         fields: dict[str, Any] = {
             "handwrittenOrPrinted": label,
             "handwrittenOrPrintedConfidence": _parse_confidence(row.get("confidence")),
+            **page_type_fields(
+                row.get("document_type"),
+                row.get("is_visible"),
+                row.get("handwritten_area_pct"),
+            ),
         }
         fields = {k: v for k, v in fields.items() if v is not None and v != ""}
         if not fields:

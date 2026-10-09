@@ -14,7 +14,9 @@ class FolderRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_page_image_path(self, folder_id: str, page_number: int) -> Path:
+    def get_page_image_path(
+        self, folder_id: str, page_number: int, *, corrected: bool = False
+    ) -> Path:
         raise NotImplementedError
 
     @abstractmethod
