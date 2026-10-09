@@ -17,6 +17,7 @@ export type FolderSummary = {
   run_id?: string | null;
   batch_id?: string | null;
   ground_truth_available?: boolean;
+  on_disk?: boolean;
 };
 
 export type FolderListParams = {
@@ -147,6 +148,8 @@ export type ImagingPageResult = {
   blankOrJunk?: string | null;
   /** null = not classified → NA */
   isDuplicate?: boolean | null;
+  /** Page file this page was marked a duplicate of, e.g. "4.png". */
+  duplicateOf?: string | null;
   /** Blank/Main/Duplicate → Not Available; Invoice|Cover → type */
   pageType: string | null;
   pageTypeConfidence: number | null;
@@ -335,6 +338,21 @@ export function getFolderOcr(folderId: string, kind: OcrKind): Promise<OcrTextRe
 export function getFolderImaging(folderId: string): Promise<ImagingDocumentResponse> {
   return api(`/api/folders/${encodeURIComponent(folderId)}/imaging`);
 }
+
+export type AccuracyChartPayload = {
+  chartId: string;
+  chartName: string;
+  lastUpdatedAt?: string | null;
+  lastVerifiedAt?: string | null;
+  metrics?: Record<string, { correct: number; wrong: number; scored: number }> | null;
+  overall?: { correct: number; wrong: number; scored: number } | null;
+  document?: ImagingDocumentResponse | null;
+};
+
+export function getAccuracyReport(): Promise<{ charts: AccuracyChartPayload[] }> {
+  return api("/api/accuracy");
+}
+
 
 export function savePageGroundTruth(
   folderId: string,

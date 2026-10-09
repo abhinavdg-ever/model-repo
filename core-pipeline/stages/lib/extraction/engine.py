@@ -60,7 +60,15 @@ def readiness() -> dict[str, Any]:
     if absent:
         status["reason"] = f"packages not installed: {', '.join(absent)} (requirements-models.txt)"
         return status
-    folders = [Path(config.Ner_Model_Path), *(Path(path) for path in config.Heading_Models.values())]
+    ner = Path(config.Ner_Model_Path)
+    if not config.ner_weights_present(ner):
+        status["reason"] = (
+            f"GLiNER weights missing at {ner}. "
+            "Key/value extraction uses MEMBER_NER_MODELS_PATH and MEMBER_NER_MODEL_ID. "
+            "python -m stages.lib.member.extractors.ner_based.model_downloader"
+        )
+        return status
+    folders = [*(Path(path) for path in config.Heading_Models.values())]
     gaps = missing_models(folders)
     if gaps:
         status["reason"] = "model files missing under " + ", ".join(sorted(str(folder) for folder in gaps))

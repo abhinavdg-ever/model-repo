@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import { getFolderImaging, listFolders } from "./api";
+import { getAccuracyReport } from "./api";
 import {
   METRICS,
   accuracyPercent,
@@ -22,10 +22,53 @@ function percentLabel(tally: Tally): string {
   return pct == null ? "—" : `${pct}%`;
 }
 
+function fmtUpdated(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
+}
+
+function Donut({ label, detail, tally }: { label: string; detail: string; tally: Tally }) {
+  const pct = accuracyPercent(tally);
+  const shown = pct ?? 0;
+  const radius = 36;
+  const circumference = 2 * Math.PI * radius;
+  const filled = tally.scored === 0 ? 0 : (shown / 100) * circumference;
+  return (
+    <figure className="accuracy-donut-card" title={detail}>
+      <svg className="accuracy-donut" viewBox="0 0 100 100" role="img" aria-label={`${label} ${percentLabel(tally)}`}>
+        <circle className="accuracy-donut-track" cx="50" cy="50" r={radius} />
+        {filled > 0 ? (
+          <circle
+            className="accuracy-donut-value"
+            cx="50"
+            cy="50"
+            r={radius}
+            strokeDasharray={`${filled} ${circumference - filled}`}
+          />
+        ) : null}
+        <text className="accuracy-donut-pct" x="50" y="54">
+          {percentLabel(tally)}
+        </text>
+      </svg>
+      <figcaption>{label}</figcaption>
+      <p>{formatRatio(tally)}</p>
+    </figure>
+  );
+}
+
 export default function AccuracyView({ onBack, onOpenChart }: Props) {
   const [rows, setRows] = useState<ChartAccuracy[]>([]);
   const [loading, setLoading] = useState(true);
-  const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,24 +77,17 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const list = await listFolders({ sort: "filename", sort_dir: "asc" });
+        const report = await getAccuracyReport();
         if (cancelled) return;
-        const labelled = list.items.filter((folder) => folder.ground_truth_available);
-        setProgress({ done: 0, total: labelled.length });
         const scored: ChartAccuracy[] = [];
-        for (const folder of labelled) {
-          if (cancelled) return;
-          try {
-            const doc = await getFolderImaging(folder.id);
-            const chart = scoreChart(folder.id, folder.name, doc);
-            if (chart.overall.scored > 0) scored.push(chart);
-          } catch {
-            /* a chart that fails to load is left out of the totals */
-          }
-          if (!cancelled) {
-            setProgress((current) => ({ ...current, done: current.done + 1 }));
-          }
+        for (const chart of report.charts) {
+          if (!chart.document) continue;
+          const row = scoreChart(chart.chartId, chart.chartName, chart.document);
+          row.lastUpdatedAt = chart.lastUpdatedAt ?? null;
+          row.lastVerifiedAt = chart.lastVerifiedAt ?? null;
+          if (row.overall.scored > 0) scored.push(row);
         }
+        scored.sort((a, b) => a.chartName.localeCompare(b.chartName));
         if (!cancelled) setRows(scored);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Could not load accuracy");
@@ -86,11 +122,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
             Back
           </button>
           <div className="workspace-title">
-            <h1>Accuracy</h1>
-            <p>
-              Page-level match against ground truth, across charts with ground truth. Only the
-              fields that were labelled are scored.
-            </p>
+            <h1>Accuracy View</h1>
           </div>
         </div>
       </div>
@@ -98,58 +130,35 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
       {error ? <div className="error-banner">{error}</div> : null}
 
       {loading ? (
-        <p className="accuracy-status">
-          Scoring charts{progress.total > 0 ? ` ${progress.done}/${progress.total}` : "…"}
-        </p>
+        <p className="accuracy-status">Loading accuracy…</p>
       ) : rows.length === 0 ? (
         <p className="accuracy-status">No pages with ground truth to score yet.</p>
       ) : (
         <>
-          <div className="accuracy-overall" aria-label="Overall accuracy">
-            <span className="accuracy-overall-value">{percentLabel(overall)}</span>
-            <span className="accuracy-overall-detail">
-              {formatRatio(overall)} page checks correct
-              <span> · {overall.correct} correct · {overall.wrong} wrong</span>
-            </span>
-          </div>
-
           <section className="accuracy-section" aria-label="Accuracy by metric">
             <h2>By metric</h2>
-            <table className="imaging-summary-table accuracy-table">
-              <thead>
-                <tr>
-                  <th scope="col">Metric</th>
-                  <th scope="col">Rule</th>
-                  <th scope="col">Correct</th>
-                  <th scope="col">Wrong</th>
-                  <th scope="col">Pages</th>
-                  <th scope="col">Accuracy</th>
-                </tr>
-              </thead>
-              <tbody>
-                {METRICS.map((metric) => {
-                  const tally = overallByMetric[metric.id];
-                  return (
-                    <tr key={metric.id}>
-                      <th scope="row">{metric.label}</th>
-                      <td>{metric.rule}</td>
-                      <td>{tally.scored === 0 ? "—" : tally.correct}</td>
-                      <td>{tally.scored === 0 ? "—" : tally.wrong}</td>
-                      <td>{formatRatio(tally)}</td>
-                      <td>{percentLabel(tally)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="accuracy-donuts">
+              <Donut label="Overall" detail="Every labelled check" tally={overall} />
+              {METRICS.map((metric) => (
+                <Donut
+                  key={metric.id}
+                  label={metric.label}
+                  detail={metric.rule}
+                  tally={overallByMetric[metric.id]}
+                />
+              ))}
+            </div>
           </section>
 
           <section className="accuracy-section" aria-label="Accuracy by chart">
             <h2>By chart</h2>
-            <table className="imaging-summary-table accuracy-table">
+            <div className="accuracy-table-scroll">
+            <table className="landing-history-table accuracy-table">
               <thead>
                 <tr>
                   <th scope="col">Chart</th>
+                  <th scope="col">Last Run At</th>
+                  <th scope="col">Last Verified At</th>
                   {METRICS.map((metric) => (
                     <th key={metric.id} scope="col">
                       {metric.label}
@@ -170,6 +179,8 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                         {row.chartName}
                       </button>
                     </th>
+                    <td className="landing-col-updated">{fmtUpdated(row.lastUpdatedAt)}</td>
+                    <td className="landing-col-updated">{fmtUpdated(row.lastVerifiedAt)}</td>
                     {METRICS.map((metric) => (
                       <td key={metric.id}>{formatRatio(row.metrics[metric.id])}</td>
                     ))}
@@ -181,6 +192,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                 ))}
               </tbody>
             </table>
+            </div>
           </section>
         </>
       )}

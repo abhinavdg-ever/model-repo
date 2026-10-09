@@ -7,6 +7,7 @@ import {
   Download,
   FileText,
   Maximize2,
+  Menu,
   Minimize2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -156,6 +157,46 @@ function isBlankOrJunkYes(page: ImagingPageResult | null): boolean {
   return v.startsWith("yes");
 }
 
+function isBlankPage(page: ImagingPageResult): boolean {
+  return (page.blankOrJunk || "").trim().toLowerCase() === "yes (blank)";
+}
+
+/** File names that have at least one canon-matched section header. */
+function clinicalHeaderNames(
+  headersByKind: Partial<Record<string, Record<string, OcrSectionHeader[]>>>,
+): Set<string> {
+  const names = new Set<string>();
+  for (const byFile of Object.values(headersByKind)) {
+    if (!byFile) continue;
+    for (const [name, headers] of Object.entries(byFile)) {
+      if (!headers.some((header) => header.text.trim())) continue;
+      names.add(name);
+      names.add(name.toLowerCase());
+    }
+  }
+  return names;
+}
+
+/**
+ * A page marked Blank that still carries a recognized clinical header is not
+ * blank. Show it as Junk and force the page type to Others.
+ */
+function forcefitBlankClinical(
+  doc: ImagingDocumentResponse,
+  headerNames: Set<string>,
+): ImagingDocumentResponse {
+  if (headerNames.size === 0) return doc;
+  let changed = false;
+  const pages = doc.pages.map((page) => {
+    if (!isBlankPage(page)) return page;
+    const name = page.fileName || "";
+    if (!headerNames.has(name) && !headerNames.has(name.toLowerCase())) return page;
+    changed = true;
+    return { ...page, blankOrJunk: "Yes (Junk)", pageType: "Others" };
+  });
+  return changed ? { ...doc, pages } : doc;
+}
+
 /** Infer Final2 quality-skip from imaging when JSON has no skippedReason yet. */
 function isFinal2QualitySkip(page: ImagingPageResult | null): boolean {
   if (!page || isBlankOrJunkYes(page)) return false;
@@ -206,6 +247,10 @@ export default function FolderViewer({
   );
   const [pageImageLoading, setPageImageLoading] = useState(true);
   const [showCorrected, setShowCorrected] = useState(false);
+  const [highlightBlankJunk, setHighlightBlankJunk] = useState(false);
+  const [highlightDuplicate, setHighlightDuplicate] = useState(false);
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const viewMenuRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null);
   const pageStageRef = useRef<HTMLDivElement>(null);
   const pageImageRef = useRef<HTMLImageElement>(null);
@@ -328,12 +373,36 @@ export default function FolderViewer({
   }
 
   const page = folder?.pages[pageIndex] ?? null;
+  const displayImagingDoc = useMemo(
+    () =>
+      imagingDoc
+        ? forcefitBlankClinical(imagingDoc, clinicalHeaderNames(headersByKind))
+        : null,
+    [imagingDoc, headersByKind],
+  );
   const imagingPage = useMemo(
-    () => findImagingPage(imagingDoc, page),
-    [imagingDoc, page],
+    () => findImagingPage(displayImagingDoc, page),
+    [displayImagingDoc, page],
   );
   const canShowCorrected = pageNeedsCorrection(imagingPage);
   const useCorrected = showCorrected && canShowCorrected;
+  const stageMarks = pageMarkClass(imagingPage);
+
+  useEffect(() => {
+    if (!viewMenuOpen) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!viewMenuRef.current?.contains(event.target as Node)) setViewMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [viewMenuOpen]);
+
+  function pageMarkClass(imaging: ImagingPageResult | null): string {
+    const marks: string[] = [];
+    if (highlightBlankJunk && isBlankOrJunkYes(imaging)) marks.push("mark-blank-junk");
+    if (highlightDuplicate && imaging?.isDuplicate === true) marks.push("mark-duplicate");
+    return marks.join(" ");
+  }
 
   useEffect(() => {
     setHeaderHighlight(null);
@@ -427,7 +496,7 @@ export default function FolderViewer({
   const ocrMissingMessage = `No ${OCR_TAB_LABELS[ocrTab]} available.`;
 
   useEffect(() => {
-    if (outputMode !== "imaging" || imagingTab !== "additional") {
+    if (outputMode !== "imaging") {
       return;
     }
     const needFinal1 = !ocrFetchedRef.current.has("final1");
@@ -484,7 +553,7 @@ export default function FolderViewer({
     return () => {
       cancelled = true;
     };
-  }, [folderId, outputMode, imagingTab]);
+  }, [folderId, outputMode]);
 
   useEffect(() => {
     if (imagingFetchedRef.current) {
@@ -762,12 +831,12 @@ export default function FolderViewer({
   }
 
   function downloadImagingDocJson() {
-    if (!imagingDoc) return;
+    if (!displayImagingDoc) return;
     const status =
-      imagingDoc.verifications?.[0]?.finalStatus ??
-      imagingDoc.verification?.finalStatus ??
+      displayImagingDoc.verifications?.[0]?.finalStatus ??
+      displayImagingDoc.verification?.finalStatus ??
       "";
-    const pages = fillDocDosForDownload(imagingDoc.pages).map((p) => ({
+    const pages = fillDocDosForDownload(displayImagingDoc.pages).map((p) => ({
       chartName: folderName,
       pageName: p.fileName,
       memberName: p.memberName,
@@ -801,7 +870,7 @@ export default function FolderViewer({
   }
 
   function downloadImagingDocCsv() {
-    if (!imagingDoc) return;
+    if (!displayImagingDoc) return;
     const headers = [
       "chartName",
       "pageName",
@@ -838,10 +907,10 @@ export default function FolderViewer({
       return s;
     };
     const status =
-      imagingDoc.verifications?.[0]?.finalStatus ??
-      imagingDoc.verification?.finalStatus ??
+      displayImagingDoc.verifications?.[0]?.finalStatus ??
+      displayImagingDoc.verification?.finalStatus ??
       "";
-    const rows = fillDocDosForDownload(imagingDoc.pages).map((p) =>
+    const rows = fillDocDosForDownload(displayImagingDoc.pages).map((p) =>
       [
         folderName,
         p.fileName,
@@ -862,7 +931,9 @@ export default function FolderViewer({
         p.blankOrJunk ?? "NA",
         p.isDuplicate == null
           ? "NA"
-          : formatDuplicateLabel(p.isDuplicate, p.pageTypeConfidence),
+          : formatDuplicateLabel(p.isDuplicate, p.pageTypeConfidence, true, {
+              duplicateOf: p.duplicateOf,
+            }),
         p.pageType ?? "Not Available",
         p.pageTypeConfidence,
         p.isCodeable ?? "",
@@ -983,20 +1054,6 @@ export default function FolderViewer({
             <div className="pane-header">
               <h2>Page{page ? ` · ${page.filename}` : ""}</h2>
               <div className="page-toolbar">
-                <button
-                  type="button"
-                  className={`viewer-source-btn corrected-toggle${useCorrected ? " active" : ""}`}
-                  aria-pressed={useCorrected}
-                  disabled={!canShowCorrected}
-                  title={
-                    canShowCorrected
-                      ? undefined
-                      : "No orientation or tilt correction on this page"
-                  }
-                  onClick={() => setShowCorrected((on) => !on)}
-                >
-                  Corrected
-                </button>
                 <div className="zoom-controls" role="group" aria-label="Zoom">
                   <button
                     type="button"
@@ -1057,10 +1114,50 @@ export default function FolderViewer({
                     <ChevronRight size={16} />
                   </button>
                 </div>
+                <div className="viewer-menu" ref={viewMenuRef}>
+                  <button
+                    type="button"
+                    className={`fullscreen-btn${viewMenuOpen ? " active" : ""}`}
+                    aria-label="Page view options"
+                    aria-expanded={viewMenuOpen}
+                    aria-haspopup="menu"
+                    onClick={() => setViewMenuOpen((open) => !open)}
+                  >
+                    <Menu size={15} />
+                  </button>
+                  {viewMenuOpen ? (
+                    <div className="viewer-menu-panel" role="menu">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={showCorrected}
+                          onChange={() => setShowCorrected((on) => !on)}
+                        />
+                        Show Corrected Images
+                      </label>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={highlightBlankJunk}
+                          onChange={() => setHighlightBlankJunk((on) => !on)}
+                        />
+                        Highlight Blank/Junk
+                      </label>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={highlightDuplicate}
+                          onChange={() => setHighlightDuplicate((on) => !on)}
+                        />
+                        Highlight Duplicate
+                      </label>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
             <div
-              className={`page-stage${isFullscreen ? " is-fullscreen" : ""}${stageClassName ? ` ${stageClassName}` : ""}`}
+              className={`page-stage${isFullscreen ? " is-fullscreen" : ""}${stageClassName ? ` ${stageClassName}` : ""}${stageMarks ? ` ${stageMarks}` : ""}`}
               ref={pageStageRef}
               {...stageProps}
             >
@@ -1141,11 +1238,13 @@ export default function FolderViewer({
             </div>
             {bootDone && folder && folder.pages.length > 0 && (
               <div className="filmstrip" role="listbox" aria-label="Page thumbnails">
-                {folder.pages.map((p, idx) => (
+                {folder.pages.map((p, idx) => {
+                  const marks = pageMarkClass(findImagingPage(displayImagingDoc, p));
+                  return (
                   <button
                     key={p.filename}
                     type="button"
-                    className={`filmstrip-thumb${idx === pageIndex ? " active" : ""}`}
+                    className={`filmstrip-thumb${idx === pageIndex ? " active" : ""}${marks ? ` ${marks}` : ""}`}
                     onClick={() => goToPage(idx)}
                     aria-label={`Go to ${p.filename}`}
                     aria-selected={idx === pageIndex}
@@ -1163,7 +1262,8 @@ export default function FolderViewer({
                       decoding="async"
                     />
                   </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>
@@ -1326,7 +1426,7 @@ export default function FolderViewer({
                     (!imagingDoc && !imagingError)
                   }
                   error={imagingError}
-                  document={imagingDoc}
+                  document={displayImagingDoc}
                   shellManifest={folder?.manifest ?? null}
                   currentPage={imagingPage}
                   currentFileName={page?.filename ?? null}

@@ -20,6 +20,7 @@ from app.core.schemas import (
     FolderSummary,
     HealthResponse,
     ExtractionReviewResponse,
+    AccuracyReportResponse,
     ImagingDocumentResponse,
     ImagingManifestDetails,
     OcrTextResponse,
@@ -31,6 +32,7 @@ from app.services.annotations import annotation_file, load_annotations, save_ann
 from app.services.extraction_review import load_extraction_review
 from app.services.imaging_csv import filter_folder, iter_csv_lines
 from app.services.chart_run_batch import database_url_usable
+from app.services.accuracy_cache import load_report
 from app.services.ground_truth import upsert_page_ground_truth
 from app.services.page_images import (
     bytes_to_display_jpeg,
@@ -575,6 +577,18 @@ def save_folder_ground_truth(
     except Exception as exc:
         logger.warning("ground truth upsert failed: %s", exc)
         raise HTTPException(status_code=502, detail="Could not save ground truth") from exc
+
+
+@router.get("/accuracy", response_model=AccuracyReportResponse)
+def get_accuracy(settings: Settings = Depends(get_settings)) -> AccuracyReportResponse:
+    """Saved scores. A chart whose results changed comes back unscored, with a slim document."""
+    if not database_url_usable(settings.database_url):
+        raise HTTPException(status_code=503, detail="Database is not configured")
+    try:
+        return load_report(settings)
+    except Exception as exc:
+        logger.warning("accuracy report failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not load accuracy") from exc
 
 
 @router.get("/folders/{folder_id}/imaging", response_model=ImagingDocumentResponse)

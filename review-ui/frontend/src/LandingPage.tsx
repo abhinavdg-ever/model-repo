@@ -381,7 +381,9 @@ function imagingDocToCsvRows(chartName: string, doc: ImagingDocumentResponse): s
       p.blankOrJunk ?? "NA",
       p.isDuplicate == null
         ? "NA"
-        : formatDuplicateLabel(p.isDuplicate, p.pageTypeConfidence),
+        : formatDuplicateLabel(p.isDuplicate, p.pageTypeConfidence, true, {
+            duplicateOf: p.duplicateOf,
+          }),
       p.pageType ?? "Not Available",
       p.pageTypeConfidence,
       p.docDosFrom ?? p.dosFrom,
@@ -784,7 +786,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy }
                       className={`th-sort${sortKey === "updated" ? " active" : ""}`}
                       onClick={() => toggleSort("updated")}
                     >
-                      Last Updated{sortIndicator("updated")}
+                      Last Run At{sortIndicator("updated")}
                     </button>
                   </th>
                   <th>Actions</th>

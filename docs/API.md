@@ -62,11 +62,11 @@ cd core-pipeline && source .venv/bin/activate
 # Section headers — sentence-transformers/all-MiniLM-L6-v2 → models/semantic-model
 python -m stages.lib.ocr.section_header_match --download
 
-# Key/value NER + heading detector → models/gliner_low and models/layout_heron
+# Heading detector → models/layout_heron. GLiNER is the member NER checkpoint.
 python -m stages.lib.extraction.util.model_setup
 
-# Member NER. Which checkpoint depends on MEMBER_NER_MODEL_ID in .env.
-# gliner_low lands in models/ner/gliner_low.
+# Member NER, also used by key/value extraction. Folder is
+# models/ner/<catalog folder for MEMBER_NER_MODEL_ID>.
 python -m stages.lib.member.extractors.ner_based.model_downloader
 
 # Final OCR 1 — four RapidOCR files → models/rapidocr

@@ -26,6 +26,8 @@ class FolderSummary(BaseModel):
     run_id: str | None = None
     batch_id: str | None = None
     ground_truth_available: bool = False
+    # True when the chart folder exists under the review-ui data root.
+    on_disk: bool = False
 
 
 class FileViewerFolder(BaseModel):
@@ -175,6 +177,8 @@ class ImagingPageResult(BaseModel):
     blankOrJunk: str | None = None
     # None = not run → NA; True/False when classified
     isDuplicate: bool | None = None
+    # Page file the duplicate was matched to, e.g. "4.png".
+    duplicateOf: str | None = None
     # Blank / Main / Duplicate → "Not Available"; Invoice|Cover → that label
     pageType: str | None = None
     pageTypeConfidence: float | None = None
@@ -287,6 +291,28 @@ class ExtractionReviewResponse(BaseModel):
     page_file: str = ""
     fields: list[ExtractionFieldRow] = Field(default_factory=list)
     section_headers: list[OcrSectionHeader] = Field(default_factory=list)
+
+
+class AccuracyTally(BaseModel):
+    correct: int = 0
+    wrong: int = 0
+    scored: int = 0
+
+
+class AccuracyChartPayload(BaseModel):
+    """One chart. A cached row has metrics; a stale row has the slim document to score."""
+
+    chartId: str
+    chartName: str
+    lastUpdatedAt: datetime | None = None
+    lastVerifiedAt: datetime | None = None
+    metrics: dict[str, AccuracyTally] | None = None
+    overall: AccuracyTally | None = None
+    document: ImagingDocumentResponse | None = None
+
+
+class AccuracyReportResponse(BaseModel):
+    charts: list[AccuracyChartPayload] = Field(default_factory=list)
 
 
 class HealthResponse(BaseModel):

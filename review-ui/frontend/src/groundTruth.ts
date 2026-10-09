@@ -97,9 +97,7 @@ function dobMark(
 }
 
 function visibilityMark(value: string | null | undefined): GtBit[] {
-  const side = yesNo(value);
-  if (side === "yes") return bit("Good Visibility", "unknown");
-  if (side === "no") return bit("Bad Visibility", "unknown");
+  if (yesNo(value) === "yes") return bit("Good Visibility", "unknown");
   return [];
 }
 
@@ -391,7 +389,7 @@ export function groundTruthBits(input: {
     dosTo: dateMark(gt.dosTo, input.dosTo, input.dosKnown),
     blankJunk: blankJunkMark(gt, input.blankOrJunk, input.junkKnown),
     pageType: pageTypeMark(
-      gt.pageType || gt.encounterType,
+      gt.encounterType,
       [input.pageType, input.pageSubtype],
       input.pageTypeKnown,
     ),

@@ -834,20 +834,23 @@ class PostgresFolderRepository(FolderRepository):
                     cur.execute(
                         """
                         SELECT p.page_name, b.blank_junk_flag, b.junk_subtype,
-                               b.confidence
+                               b.confidence, orig.page_name
                         FROM v_page_blank_junk_final b
                         JOIN page_list p ON p.id = b.page_id
                         JOIN chart_list c ON c.id = b.chart_id
+                        LEFT JOIN page_list orig ON orig.id = b.duplicate_of_page_id
                         WHERE c.chart_name = %s
                         """,
                         (folder_id,),
                     )
-                    for page_name, flag, subtype, conf in cur.fetchall():
+                    for page_name, flag, subtype, conf, duplicate_of in cur.fetchall():
                         fields = _ensure(str(page_name))
                         blank, dup, page_type = _blank_junk_ui(flag, subtype)
                         fields["blankOrJunk"] = blank
                         fields["isDuplicate"] = dup
                         fields["pageType"] = page_type
+                        if duplicate_of:
+                            fields["duplicateOf"] = str(duplicate_of)
                         if conf is not None:
                             fields["pageTypeConfidence"] = float(conf)
 

@@ -60,7 +60,14 @@ def missing_models(folders: list[Path]) -> dict[Path, list[config.ModelSource]]:
 def ensure_models(model_version: str, rules_version: str = "v0") -> None:
     """Download any missing public model, then check the trained version is present.
     Raises SystemExit with what is missing when a model cannot be had."""
-    folders = [Path(config.Ner_Model_Path), *(Path(path) for path in config.Heading_Models.values())]
+    ner = Path(config.Ner_Model_Path)
+    if not config.ner_weights_present(ner):
+        raise SystemExit(
+            f"GLiNER weights missing at {ner}. Key/value extraction uses the member NER "
+            "checkpoint (MEMBER_NER_MODELS_PATH / MEMBER_NER_MODEL_ID).\n"
+            "python -m stages.lib.member.extractors.ner_based.model_downloader"
+        )
+    folders = [*(Path(path) for path in config.Heading_Models.values())]
     missing = missing_models(folders)
     if missing:
         if os.environ.get("HF_HUB_OFFLINE") == "1":

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from app.core.schemas import ImagingPageResult, PageGroundTruth
@@ -23,6 +24,14 @@ _COLUMNS = """
 """
 
 _EMPTY = {"", "na", "n/a", "not found", "not available"}
+
+
+def spell_codeable(value: str | None) -> str | None:
+    """Ground-truth sheets say Codable. Store and show Codeable."""
+    text = clean_label(value)
+    if text is None:
+        return None
+    return re.sub(r"codable", "Codeable", text, flags=re.IGNORECASE)
 
 
 def clean_label(value: str | None) -> str | None:
@@ -133,7 +142,7 @@ def _ground_truth_from_row(row: tuple) -> PageGroundTruth:
         dosTo=row[5],
         encounterType=row[6],
         pageType=row[7],
-        codeable=row[8],
+        codeable=spell_codeable(row[8]),
         blankPage=row[9],
         junkPage=row[10],
         isInvoice=row[11],
@@ -223,14 +232,14 @@ def upsert_page_ground_truth(
         clean_label(body.dosTo),
         clean_label(body.encounterType),
         clean_label(body.pageType),
-        clean_label(body.codeable),
+        spell_codeable(body.codeable),
         clean_label(body.blankPage),
         clean_label(body.junkPage),
         clean_label(body.isInvoice),
         clean_label(body.rotation),
         clean_label(body.isVisible),
         clean_label(body.renderingProvider),
-        yes_no_label(body.providerSignature),
+        clean_label(body.providerSignature),
     )
     with connection(database_url, db_schema) as conn:
         with conn.cursor() as cur:

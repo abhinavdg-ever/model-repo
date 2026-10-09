@@ -83,7 +83,7 @@ is skipped as `no_word_boxes`.
 Side by side under `core-pipeline/models/` (`EXTRACTION_MODELS_ROOT`):
 
 ```
-gliner_low/        GLiNER small-v2.1 + encoder/        (not committed)
+ner/<MEMBER_NER_MODEL_ID>/   GLiNER checkpoint shared with member NER (not models/gliner_low)
 layout_heron/      docling-layout-heron                (not committed)
 kv-extraction/     trained ranker, thresholds, vocab   (v002, files sit in this folder)
 ```

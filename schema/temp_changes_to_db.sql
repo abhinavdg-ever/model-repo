@@ -117,3 +117,6 @@ BEGIN
             FOR EACH ROW EXECUTE FUNCTION set_updated_at();
     END IF;
 END $$;
+
+-- Accuracy is a view, not a stored score table.
+DROP TABLE IF EXISTS accuracy_snapshot;
