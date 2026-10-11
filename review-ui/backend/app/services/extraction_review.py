@@ -153,6 +153,12 @@ def _common_key(text: str) -> str:
     return " ".join(word for word in words if word not in _FILLER)
 
 
+# The pipeline's credential list (MD, DO, NP, PA-C, ...). In the repo it is read
+# from core-pipeline; the review-ui container has no core-pipeline, so a copy
+# ships in app/data (kept identical by tests/test_contracts.py).
+_BUNDLED_SUFFIXES = Path(__file__).resolve().parents[1] / "data" / "credential_suffixes.txt"
+
+
 def _suffixes_file() -> Path | None:
     for parent in Path(__file__).resolve().parents:
         candidate = (
@@ -166,7 +172,7 @@ def _suffixes_file() -> Path | None:
         )
         if candidate.is_file():
             return candidate
-    return None
+    return _BUNDLED_SUFFIXES if _BUNDLED_SUFFIXES.is_file() else None
 
 
 @lru_cache(maxsize=1)
