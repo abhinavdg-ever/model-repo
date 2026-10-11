@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
 import { getAccuracyReport } from "./api";
 import {
   METRICS,
@@ -127,10 +127,14 @@ function CalculatingPanel() {
   );
 }
 
+const CHARTS_PER_PAGE = 10;
+
 export default function AccuracyView({ onBack, onOpenChart }: Props) {
   const [rows, setRows] = useState<ChartAccuracy[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,6 +175,30 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
 
   const overall = useMemo(() => sumTallies(rows.map((row) => row.overall)), [rows]);
 
+  // "By chart": search by file / chart name, 10 per page. The donuts stay on all files.
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return needle ? rows.filter((row) => row.chartName.toLowerCase().includes(needle)) : rows;
+  }, [rows, query]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / CHARTS_PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const pageRows = filtered.slice(
+    (currentPage - 1) * CHARTS_PER_PAGE,
+    currentPage * CHARTS_PER_PAGE,
+  );
+  const rangeStart = filtered.length === 0 ? 0 : (currentPage - 1) * CHARTS_PER_PAGE + 1;
+  const rangeEnd = Math.min(currentPage * CHARTS_PER_PAGE, filtered.length);
+  const pageNumbers = useMemo(() => {
+    const maxButtons = 7;
+    if (totalPages <= maxButtons) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    const pages = new Set<number>([1, totalPages, currentPage]);
+    for (let d = 1; pages.size < maxButtons - 1; d++) {
+      if (currentPage - d >= 1) pages.add(currentPage - d);
+      if (currentPage + d <= totalPages) pages.add(currentPage + d);
+    }
+    return [...pages].sort((a, b) => a - b);
+  }, [currentPage, totalPages]);
+
   const blankJunkRates = useMemo(
     () => sumRates(rows.map((row) => row.blankJunkRates)),
     [rows],
@@ -208,6 +236,10 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
         <>
           <section className="accuracy-section" aria-label="Accuracy by metric">
             <h2>By metric</h2>
+            <p className="accuracy-compared">
+              <strong>{rows.length}</strong> {rows.length === 1 ? "file" : "files"} compared ·{" "}
+              <strong>{overall.scored}</strong> {overall.scored === 1 ? "page" : "pages"} compared
+            </p>
             <p className="accuracy-note">Yes counts as a match, May be as half, and No as a miss.</p>
             <div className="accuracy-donuts">
               <Donut
@@ -229,7 +261,22 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
           </section>
 
           <section className="accuracy-section" aria-label="Accuracy by chart">
-            <h2>By chart</h2>
+            <div className="accuracy-chart-head">
+              <h2>By chart</h2>
+              <label className="landing-search accuracy-search">
+                <Search size={14} aria-hidden="true" />
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Search file / chart…"
+                  aria-label="Search files"
+                />
+              </label>
+            </div>
             <div className="accuracy-table-scroll">
             <table className="landing-history-table accuracy-table">
               <thead>
@@ -237,6 +284,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                   <th scope="col">Chart</th>
                   <th scope="col">Last Run At</th>
                   <th scope="col">Last Verified At</th>
+                  <th scope="col">Pages</th>
                   {METRICS.map((metric) => (
                     <th key={metric.id} scope="col">
                       {metric.label}
@@ -246,7 +294,14 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {pageRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={METRICS.length + 5} className="accuracy-empty">
+                      No file matches “{query.trim()}”.
+                    </td>
+                  </tr>
+                ) : null}
+                {pageRows.map((row) => (
                   <tr key={row.chartId}>
                     <th scope="row">
                       <button
@@ -259,6 +314,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                     </th>
                     <td className="landing-col-updated">{fmtUpdated(row.lastUpdatedAt)}</td>
                     <td className="landing-col-updated">{fmtUpdated(row.lastVerifiedAt)}</td>
+                    <td>{row.overall.scored}</td>
                     {METRICS.map((metric) => {
                       const rates = ratesFor(metric.id, row);
                       return (
@@ -281,6 +337,53 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
               </tbody>
             </table>
             </div>
+            {filtered.length > 0 ? (
+              <div className="landing-pagination" aria-label="Files pagination">
+                <span className="landing-pagination-meta">
+                  {rangeStart}–{rangeEnd} of {filtered.length}
+                  {query.trim() ? ` (of ${rows.length})` : ""}
+                </span>
+                <div className="landing-pagination-controls">
+                  <button
+                    type="button"
+                    className="landing-page-btn"
+                    disabled={currentPage <= 1}
+                    onClick={() => setPage(Math.max(1, currentPage - 1))}
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                  {pageNumbers.map((n, idx) => {
+                    const prev = pageNumbers[idx - 1];
+                    return (
+                      <span key={n} className="landing-page-num-wrap">
+                        {prev != null && n - prev > 1 ? (
+                          <span className="landing-page-ellipsis">…</span>
+                        ) : null}
+                        <button
+                          type="button"
+                          className={`landing-page-num${n === currentPage ? " active" : ""}`}
+                          onClick={() => setPage(n)}
+                          aria-label={`Page ${n}`}
+                          aria-current={n === currentPage ? "page" : undefined}
+                        >
+                          {n}
+                        </button>
+                      </span>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    className="landing-page-btn"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+                    aria-label="Next page"
+                  >
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </section>
         </>
       )}
