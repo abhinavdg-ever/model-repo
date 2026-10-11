@@ -784,6 +784,30 @@ def test_ccd_visit_page_dos_is_the_encounter_date():
 
 
 
+class TestBlankWithTextIsJunk:
+    """A page the model calls Blank that still has text is Junk / Others,
+    unless the text says blank. An empty page stays Blank."""
+
+    @staticmethod
+    def _run(text, monkeypatch):
+        from stages.lib.blank_junk import stage as bj_stage
+
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t: (bj_stage.CODE_BLANK, "model:blank", 0.97))
+        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
+        return _classify(pages, {1: text}, {1})[0]
+
+    def test_a_header_on_a_blank_page_makes_it_junk_others(self, monkeypatch):
+        row = self._run("Made Up Medical Group  Patient Encounter Record", monkeypatch)
+        assert (row["flag"], row["subtype"]) == ("junk", "Others")
+        assert "no word 'blank'" in row["reason"]
+
+    def test_intentionally_left_blank_stays_blank(self, monkeypatch):
+        assert self._run("This page intentionally left blank", monkeypatch)["flag"] == "blank"
+
+    def test_an_empty_page_stays_blank(self, monkeypatch):
+        assert self._run("   ", monkeypatch)["flag"] == "blank"
+
+
 class TestShortPagesAreJunk:
     """Pass 2: under 20 words and not a signature page -> Junk / Others."""
 

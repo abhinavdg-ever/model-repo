@@ -46,7 +46,11 @@ export const METRICS: { id: MetricId; label: string; rule: string }[] = [
 export type Tally = { yes: number; no: number; maybe: number; scored: number };
 
 /** Blank or junk is the positive class. A subtype disagreement still counts as found. */
-export type ClassRates = { tp: number; fp: number; fn: number };
+/** Counts for one "Yes" class: true / false positives and negatives. */
+export type ClassRates = { tp: number; fp: number; fn: number; tn: number };
+
+/** Charts whose last run is before this date are left out of the report. */
+export const MIN_LAST_RUN = "2026-10-11";
 
 export type ChartAccuracy = {
   chartId: string;
@@ -78,7 +82,7 @@ function emptyTally(): Tally {
 }
 
 function emptyRates(): ClassRates {
-  return { tp: 0, fp: 0, fn: 0 };
+  return { tp: 0, fp: 0, fn: 0, tn: 0 };
 }
 
 function blankOrJunkPositive(label: string): boolean {
@@ -91,6 +95,7 @@ function addBlankJunk(rates: ClassRates, bits: GtBit[]): void {
   const expected = blankOrJunkPositive(bit.label);
   if (bit.mark === "match" || bit.mark === "partial") {
     if (expected) rates.tp += 1;
+    else rates.tn += 1;
     return;
   }
   if (expected) rates.fn += 1;
@@ -113,6 +118,7 @@ function addMember(rates: ClassRates, fields: Array<[string | null | undefined, 
   if (expected && predicted) rates.tp += 1;
   else if (expected) rates.fn += 1;
   else if (predicted) rates.fp += 1;
+  else rates.tn += 1;
 }
 
 function add(tally: Tally, verdict: Verdict | null) {
@@ -121,7 +127,7 @@ function add(tally: Tally, verdict: Verdict | null) {
   tally.scored += 1;
 }
 
-/** Yes is a full match, May be is half, No is none. */
+/** Accuracy score = (Match + 0.5 × Partial) / (Match + Partial + No Match). */
 export function accuracyPercent(tally: Tally): number | null {
   if (tally.scored === 0) return null;
   return Math.round((100 * (tally.yes + 0.5 * tally.maybe)) / tally.scored);
@@ -316,6 +322,7 @@ export function sumRates(rows: ClassRates[]): ClassRates {
     total.tp += row.tp;
     total.fp += row.fp;
     total.fn += row.fn;
+    total.tn += row.tn;
   }
   return total;
 }
@@ -333,6 +340,11 @@ export function formatRecall(rates: ClassRates): string {
   return ratePercent(rates.tp, rates.tp + rates.fn);
 }
 
+/** Share of pages where the Yes / No call was right: (TP + TN) / all. */
+export function formatClassAccuracy(rates: ClassRates): string {
+  return ratePercent(rates.tp + rates.tn, rates.tp + rates.tn + rates.fp + rates.fn);
+}
+
 export function sumTallies(rows: Tally[]): Tally {
   const total = emptyTally();
   for (const row of rows) {
@@ -346,5 +358,5 @@ export function sumTallies(rows: Tally[]): Tally {
 
 export function formatDistribution(tally: Tally): string {
   if (tally.scored === 0) return "—";
-  return `Yes ${tally.yes} · No ${tally.no} · May be ${tally.maybe}`;
+  return `Match ${tally.yes} · Partial ${tally.maybe} · No Match ${tally.no}`;
 }

@@ -97,6 +97,16 @@ def short_page_is_junk(text: str, signed: bool) -> bool:
     """Too little text to be a page of a document, and not a signature page."""
     return word_count(text) < SHORT_PAGE_WORDS and not signed and not _SIGNATURE_WORD.search(text or "")
 
+
+# A page called Blank that still carries text (a letterhead or a medical
+# header) is Junk / Others unless the text itself says blank ("This page
+# intentionally left blank"). A page with no text stays Blank.
+_BLANK_WORD = re.compile(r"\bblank\b", re.IGNORECASE)
+
+
+def blank_with_text_is_junk(text: str) -> bool:
+    return bool((text or "").strip()) and not _BLANK_WORD.search(text or "")
+
 JUNK_CSV_COLS = [
     "chart_name",
     "page_name",
@@ -249,6 +259,9 @@ def _classify(
             continue
         text = texts.get(page_id) or ""
         code, reason, conf = classify_page(text)
+        if code == CODE_BLANK and blank_with_text_is_junk(text):
+            code = CODE_OTHERS
+            reason = f"{reason}; blank page with text and no word 'blank' -> Junk / Others"
         if short_pages and code == CODE_MAIN and short_page_is_junk(text, page_id in (signed_ids or ())):
             code, conf = CODE_OTHERS, 0.9
             reason = f"short page: {word_count(text)} words (< {SHORT_PAGE_WORDS}), not a signature page"

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Info, Loader2, Search } from "lucide-react";
 import { getAccuracyReport } from "./api";
 import {
   METRICS,
+  MIN_LAST_RUN,
   accuracyPercent,
+  formatClassAccuracy,
   formatDistribution,
   formatPrecision,
   formatRecall,
@@ -40,6 +42,38 @@ function fmtUpdated(iso: string | null | undefined): string {
     hour12: true,
   }).format(d);
 }
+
+/** An ⓘ that shows what a number means: on hover, and on click / tap. */
+function InfoTip({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="accuracy-info">
+      <button
+        type="button"
+        className="accuracy-info-btn"
+        aria-label={text}
+        aria-expanded={open}
+        title={text}
+        onClick={() => setOpen((v) => !v)}
+        onBlur={() => setOpen(false)}
+      >
+        <Info size={13} aria-hidden="true" />
+      </button>
+      {open ? (
+        <span className="accuracy-info-pop" role="tooltip">
+          {text}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+const SCORE_INFO =
+  "Accuracy score = (Match + 0.5 × Partial) / Total, where Total = Match + Partial + No Match.";
+const RATES_INFO =
+  "For the Yes class. Recall = TP / (TP + FN): share of the real Yes pages the pipeline caught. " +
+  "Precision = TP / (TP + FP): share of the pipeline's Yes calls that were right. " +
+  "Accuracy = (TP + TN) / all pages: share of Yes / No calls that were right.";
 
 function Donut({
   label,
@@ -81,7 +115,7 @@ function Donut({
     return [arc];
   });
   return (
-    <figure className="accuracy-donut-card" title={detail}>
+    <figure className="accuracy-donut-card">
       <svg className="accuracy-donut" viewBox="0 0 100 100" role="img" aria-label={rates ? `${label} ${percentLabel(tally)}. ${formatDistribution(tally)}. Precision ${formatPrecision(rates)}. Recall ${formatRecall(rates)}` : `${label} ${percentLabel(tally)}. ${formatDistribution(tally)}`}>
         <circle className="accuracy-donut-track" cx="50" cy="50" r={radius} />
         {arcs}
@@ -89,19 +123,25 @@ function Donut({
           {percentLabel(tally)}
         </text>
       </svg>
-      <figcaption>{label}</figcaption>
+      <figcaption>
+        {label} <InfoTip text={`${detail} ${SCORE_INFO}`} />
+      </figcaption>
       <p>{formatDistribution(tally)}</p>
       {rates ? (
-        <p className="accuracy-rates" title={ratesLabel ? `Positive class: ${ratesLabel}` : undefined}>
+        <p className="accuracy-rates">
           {ratesLabel ? (
             <>
-              <span className="accuracy-rates-class">{ratesLabel}</span>
+              <span className="accuracy-rates-class">
+                {ratesLabel} <InfoTip text={RATES_INFO} />
+              </span>
               <br />
             </>
           ) : null}
+          Recall {formatRecall(rates)}
+          <br />
           Precision {formatPrecision(rates)}
           <br />
-          Recall {formatRecall(rates)}
+          Accuracy {formatClassAccuracy(rates)}
         </p>
       ) : null}
     </figure>
@@ -150,7 +190,10 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
           const row = scoreChart(chart.chartId, chart.chartName, chart.document);
           row.lastUpdatedAt = chart.lastUpdatedAt ?? null;
           row.lastVerifiedAt = chart.lastVerifiedAt ?? null;
-          if (row.overall.scored > 0) scored.push(row);
+          // Runs before MIN_LAST_RUN used older rules; leave them out.
+          const ranAt = row.lastUpdatedAt ? new Date(row.lastUpdatedAt) : null;
+          const recent = ranAt != null && !Number.isNaN(ranAt.getTime()) && ranAt >= new Date(`${MIN_LAST_RUN}T00:00:00+05:30`);
+          if (row.overall.scored > 0 && recent) scored.push(row);
         }
         scored.sort((a, b) => a.chartName.localeCompare(b.chartName));
         if (!cancelled) setRows(scored);
@@ -204,13 +247,9 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
     [rows],
   );
   const memberRates = useMemo(() => sumRates(rows.map((row) => row.memberRates)), [rows]);
-  /** Precision / recall of the "Yes" class, for the metrics that have one. */
-  const ratesFor = (id: MetricId, row?: ChartAccuracy) =>
-    id === "blankJunk"
-      ? row ? row.blankJunkRates : blankJunkRates
-      : id === "member"
-        ? row ? row.memberRates : memberRates
-        : undefined;
+  /** Recall / precision / accuracy of the "Yes" class, across all files. */
+  const ratesFor = (id: MetricId) =>
+    id === "blankJunk" ? blankJunkRates : id === "member" ? memberRates : undefined;
 
   return (
     <div className="workspace accuracy-view">
@@ -231,16 +270,21 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
       {loading ? (
         <CalculatingPanel />
       ) : rows.length === 0 ? (
-        <p className="accuracy-status">No pages with ground truth to score yet.</p>
+        <p className="accuracy-status">
+          No pages with ground truth to score from runs on or after 11 Oct 2026.
+        </p>
       ) : (
         <>
           <section className="accuracy-section" aria-label="Accuracy by metric">
             <h2>By metric</h2>
             <p className="accuracy-compared">
               <strong>{rows.length}</strong> {rows.length === 1 ? "file" : "files"} compared ·{" "}
-              <strong>{overall.scored}</strong> {overall.scored === 1 ? "page" : "pages"} compared
+              <strong>{overall.scored}</strong> {overall.scored === 1 ? "page" : "pages"} compared{" "}
+              <InfoTip text="Files last run on or after 11 Oct 2026 with at least one page that has ground truth. A page is compared when it has any ground-truth label." />
             </p>
-            <p className="accuracy-note">Yes counts as a match, May be as half, and No as a miss.</p>
+            <p className="accuracy-note">
+              Match counts as 1, Partial as 0.5, and No Match as 0. <InfoTip text={SCORE_INFO} />
+            </p>
             <div className="accuracy-donuts">
               <Donut
                 label="Overall"
@@ -281,16 +325,26 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
             <table className="landing-history-table accuracy-table">
               <thead>
                 <tr>
-                  <th scope="col">Chart</th>
-                  <th scope="col">Last Run At</th>
-                  <th scope="col">Last Verified At</th>
-                  <th scope="col">Pages</th>
+                  <th scope="col">
+                    Chart <InfoTip text="The file (chart). Click it to open the file in the viewer." />
+                  </th>
+                  <th scope="col">
+                    Last Run At <InfoTip text="When the pipeline last ran this file. Only runs on or after 11 Oct 2026 are shown." />
+                  </th>
+                  <th scope="col">
+                    Last Verified At <InfoTip text="When ground truth was last saved for this file." />
+                  </th>
+                  <th scope="col">
+                    Pages <InfoTip text="Pages of this file compared (pages that have ground truth)." />
+                  </th>
                   {METRICS.map((metric) => (
                     <th key={metric.id} scope="col">
-                      {metric.label}
+                      {metric.label} <InfoTip text={metric.rule} />
                     </th>
                   ))}
-                  <th scope="col">Accuracy</th>
+                  <th scope="col">
+                    Accuracy <InfoTip text={`Overall page score for this file. ${SCORE_INFO}`} />
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -315,19 +369,9 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                     <td className="landing-col-updated">{fmtUpdated(row.lastUpdatedAt)}</td>
                     <td className="landing-col-updated">{fmtUpdated(row.lastVerifiedAt)}</td>
                     <td>{row.overall.scored}</td>
-                    {METRICS.map((metric) => {
-                      const rates = ratesFor(metric.id, row);
-                      return (
-                        <td key={metric.id}>
-                          {formatDistribution(row.metrics[metric.id])}
-                          {rates ? (
-                            <span className="accuracy-chart-rates">
-                              P {formatPrecision(rates)} · R {formatRecall(rates)}
-                            </span>
-                          ) : null}
-                        </td>
-                      );
-                    })}
+                    {METRICS.map((metric) => (
+                      <td key={metric.id}>{formatDistribution(row.metrics[metric.id])}</td>
+                    ))}
                     <td>
                       {percentLabel(row.overall)}
                       <span className="accuracy-chart-ratio"> {formatDistribution(row.overall)}</span>
