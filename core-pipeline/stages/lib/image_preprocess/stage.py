@@ -11,6 +11,7 @@ Uses:
 from __future__ import annotations
 
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,35 @@ from db.paths import imaging_csv, write_csv
 from stages._support import mark_completed, mark_failed, mark_processing, stage_run
 
 logger = logging.getLogger(__name__)
+
+# Charts of a batch run stage 1 at the same time. The first use of torch, the
+# ConvNeXt checkpoint, OpenCV and pytesseract from several threads at once can
+# deadlock on Linux (imports of C extensions are not reliably thread-safe), so
+# each is loaded here once, by one thread, before any page thread starts.
+_warm_lock = threading.Lock()
+_warmed = False
+
+
+def _warm_up() -> None:
+    """Import the libraries and load the ConvNeXt model once per process."""
+    global _warmed
+    if _warmed:
+        return
+    with _warm_lock:
+        if _warmed:
+            return
+        try:
+            import cv2  # noqa: F401
+            import numpy  # noqa: F401
+            import pytesseract  # noqa: F401
+            from PIL import Image  # noqa: F401
+
+            from stages.lib.image_preprocess import hw_printed, osd, quality_analyzer, rotation  # noqa: F401
+
+            hw_printed.load_model()
+        except Exception as exc:  # the stage still runs; each page loads lazily
+            logger.warning("Stage 1 warm-up incomplete: %s", exc)
+        _warmed = True
 
 STAGE = "ocr_quality"
 
@@ -450,6 +480,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         measured: list[dict[str, Any]] = []
         if todo:
             workers = max(1, min(STAGE_WORKERS, len(todo)))
+            _warm_up()
             logger.info("Quality/rotation/HW workers=%d", workers)
             # Progress about every 10% of the chart, so a long run shows it is alive.
             step = max(1, len(todo) // 10)
