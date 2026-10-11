@@ -66,7 +66,7 @@ export const PAGE_SUBTYPE_CHOICES = [
   "Signature page",
   "Office Visit",
   "F2F Evaluation Note",
-  "Social History",
+  "History", // Social History in the taxonomy; shown as History
   "Laboratory Data",
   "Chemistry",
   "Hematology",

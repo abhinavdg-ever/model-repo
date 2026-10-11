@@ -22,13 +22,19 @@ from app.services.ground_truth import spell_codeable
 _WS_RE = re.compile(r"\s+")
 
 
+# Display-only names: the pipeline and taxonomy keep the canonical name.
+_DISPLAY_NAMES = {"social history": "History"}
+
+
 def display_page_type(label: str) -> str:
     """Page Type as the pipeline wrote it: ``Family (Page Type)``.
 
     The pipeline already drops the catalog's own parenthetical notes, so the
-    one parenthesis left is the type within the family and is kept.
+    one parenthesis left is the type within the family and is kept. A few
+    names are shown shorter (``_DISPLAY_NAMES``: Social History -> History).
     """
-    return _WS_RE.sub(" ", (label or "").strip()).strip(" /")
+    text = _WS_RE.sub(" ", (label or "").strip()).strip(" /")
+    return _DISPLAY_NAMES.get(text.casefold(), text)
 
 
 def compose_page_type(page_type: str | None, page_subtype: str | None) -> str:
