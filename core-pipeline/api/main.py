@@ -85,6 +85,13 @@ def _startup() -> None:
     from config import DATA_ROOT, DATABASE_URL, METADATA_ROOT, STAGE_WORKERS
 
     logger.info("core-pipeline starting")
+    # `kill -USR1 <pid>` prints every thread's stack to stderr (docker logs):
+    # the way to see where a run that looks stuck is waiting.
+    import faulthandler
+    import signal
+
+    if hasattr(signal, "SIGUSR1"):
+        faulthandler.register(signal.SIGUSR1, all_threads=True)
     logger.info("  database    : %s", _safe_db_url(DATABASE_URL))
     logger.info("  data root   : %s", DATA_ROOT)
     logger.info("  metadata    : %s", METADATA_ROOT)
