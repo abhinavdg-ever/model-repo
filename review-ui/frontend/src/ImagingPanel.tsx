@@ -791,17 +791,22 @@ function GroundTruthCell({
     ? (valueFound(row.processed) ? "Yes" : "No")
     : confirmedValue(row.processed);
   const accepted = stored || copied;
+  // Ground truth already stored (imported or saved earlier) is scored straight
+  // away, as if just entered: ✓ / ! / ✕ and the pencil, no Accept / Change.
+  const fromStore = !verdict && Boolean(stored);
+  const effective = verdict ?? (fromStore ? "enter" : undefined);
   const compared =
-    verdict === "enter" ? enteredMark(row.extracted, row.processed, stored, Boolean(row.presence)) : null;
+    effective === "enter" ? enteredMark(row.extracted, row.processed, stored, Boolean(row.presence)) : null;
   const mark =
-    verdict === "accept" || (verdict === "enter" && (compared === "match" || compared == null)) ? (
+    effective === "accept" ||
+    (effective === "enter" && (compared === "match" || (compared == null && !fromStore))) ? (
       <span className="imaging-gt-mark" aria-label="Yes">✓</span>
     ) : compared === "partial" ? (
       <span className="imaging-gt-mark gt-partial" aria-label="May be">!</span>
-    ) : verdict === "enter" ? (
+    ) : compared === "mismatch" ? (
       <span className="imaging-gt-mark gt-mismatch" aria-label="No">✕</span>
     ) : null;
-  const actions = verdict ? (
+  const actions = effective ? (
     <button
       type="button"
       className="imaging-gt-pen"
