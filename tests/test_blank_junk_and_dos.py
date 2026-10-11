@@ -784,6 +784,44 @@ def test_ccd_visit_page_dos_is_the_encounter_date():
 
 
 
+class TestFaxCoverSheetRule:
+    """Model keeps a fax routing sheet as Main -> Junk / Letter-Fax by rule."""
+
+    COVER = (
+        "Patient: Made Up DOB: 01/01/1970\n"
+        "Jan 14 2026 08:48 555-000-0000 -> 5550000000 Made Up Clinic Page 001\n"
+        "To: (555) 000-0001\nFax Number: Example, Provider P.A.-C.\n"
+        "From: Example Radiology\nBusiness Phone: (555) 000-0002\n"
+        "Date/Time: 1/14/2026 08:46 AM\nSubject: 12345678\n"
+        "Document: Example Radiology Report Page 1 of 2"
+    )
+
+    @staticmethod
+    def _run(text, monkeypatch):
+        from stages.lib.blank_junk import stage as bj_stage
+
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t: (bj_stage.CODE_MAIN, "model:keep", 0.99))
+        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
+        return _classify(pages, {1: text}, {1})[0]
+
+    def test_a_fax_cover_sheet_becomes_letter_fax(self, monkeypatch):
+        row = self._run(self.COVER, monkeypatch)
+        assert (row["flag"], row["subtype"]) == ("junk", "Letter/Fax")
+        assert "fax cover sheet" in row["reason"]
+
+    def test_a_clinical_page_mentioning_a_fax_number_stays_main(self, monkeypatch):
+        text = "Progress Note\nFax: 555-000-0000\nAssessment: stable. Plan: follow up in 3 months."
+        assert self._run(text, monkeypatch)["flag"] == "not_blank_junk"
+
+    def test_a_long_faxed_report_stays_main(self, monkeypatch):
+        text = self.COVER + "\n" + " ".join(["findings"] * 80)
+        assert self._run(text, monkeypatch)["flag"] == "not_blank_junk"
+
+    def test_no_word_fax_stays_main(self, monkeypatch):
+        text = "To: A\nFrom: B\nPhone: 1\nDate: 2\nSubject: 3"
+        assert self._run(text, monkeypatch)["flag"] == "not_blank_junk"
+
+
 class TestBlankWithTextIsJunk:
     """A page the model calls Blank that still has text is Junk / Others,
     unless the text says blank. An empty page stays Blank."""

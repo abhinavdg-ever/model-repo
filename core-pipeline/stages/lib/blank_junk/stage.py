@@ -70,6 +70,7 @@ from classify import (  # noqa: E402
     CLASSIFICATION_LABELS,
     CODE_BLANK,
     CODE_DUPLICATE,
+    CODE_LETTER_FAX,
     CODE_MAIN,
     CODE_OTHERS,
     DUPLICATE_NEIGHBOR_WINDOW,
@@ -106,6 +107,37 @@ _BLANK_WORD = re.compile(r"\bblank\b", re.IGNORECASE)
 
 def blank_with_text_is_junk(text: str) -> bool:
     return bool((text or "").strip()) and not _BLANK_WORD.search(text or "")
+
+
+# A fax routing / cover sheet the model keeps as Main (it has not learned the
+# layout yet): the word "fax", at least FAX_COVER_MIN_FIELDS cover-sheet
+# fields ("To:", "From:", "Fax Number:", "Phone:", "Date/Time:", "Subject:",
+# ...), and under FAX_COVER_MAX_WORDS words -> Junk / Letter-Fax. Temporary
+# until the retrained blank/junk model covers these pages.
+FAX_COVER_MIN_FIELDS = 4
+FAX_COVER_MAX_WORDS = 80
+_FAX_WORD = re.compile(r"\bfax", re.IGNORECASE)
+_FAX_FIELDS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\bto\s*:",
+        r"\bfrom\s*:",
+        r"\bfax(?:\s*(?:number|no\.?|#))?\s*:",
+        r"\b(?:business\s+)?phone(?:\s*(?:number|no\.?|#))?\s*:",
+        r"\bdate(?:\s*/\s*time)?\s*:",
+        r"\b(?:subject|re)\s*:",
+        r"\bpages?\s*:",
+        r"\bcc\s*:",
+        r"\battn\.?\s*:",
+    )
+)
+
+
+def fax_cover_sheet(text: str) -> bool:
+    text = text or ""
+    if not _FAX_WORD.search(text) or word_count(text) >= FAX_COVER_MAX_WORDS:
+        return False
+    return sum(1 for field in _FAX_FIELDS if field.search(text)) >= FAX_COVER_MIN_FIELDS
 
 JUNK_CSV_COLS = [
     "chart_name",
@@ -259,6 +291,9 @@ def _classify(
             continue
         text = texts.get(page_id) or ""
         code, reason, conf = classify_page(text)
+        if code == CODE_MAIN and fax_cover_sheet(text):
+            code, conf = CODE_LETTER_FAX, 0.85
+            reason = f"{reason}; rule: fax cover sheet (fax fields, < {FAX_COVER_MAX_WORDS} words) -> Letter/Fax"
         if code == CODE_BLANK and blank_with_text_is_junk(text):
             code = CODE_OTHERS
             reason = f"{reason}; blank page with text and no word 'blank' -> Junk / Others"
