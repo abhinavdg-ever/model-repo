@@ -63,8 +63,8 @@ core-pipeline/models/**
 !core-pipeline/models/hw/
 !core-pipeline/models/hw/image_type_classification.pkl
 !core-pipeline/models/hw/metadata.json
-# DistilBERT blank/junk weights (~270 MB). Copy b_jnk/models/bert_page here; do not commit.
-core-pipeline/models/blank-junk/bert_page/
+# DistilBERT blank/junk weights (~270 MB). Copy b_jnk/models/bert_page here as bert/; do not commit.
+core-pipeline/models/blank-junk/bert/
 # The negation above re-includes macOS AppleDouble files; exclude them again.
 core-pipeline/models/blank-junk/._*
 core-pipeline/models/page-family/._*

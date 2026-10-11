@@ -1,7 +1,7 @@
 """BERT page classifier: predicts ``model_type`` with a confidence.
 
 The model is a Hugging Face sequence classifier in ``PAGE_FAMILY_MODEL_DIR``
-(default ``models/page-family/``), written by ``training/bert-training``. Its
+(default ``models/page-family/bert/``), written by ``training/bert-training``. Its
 ``id2label`` names must all be model types from ``page_taxonomy.json``;
 ``skipped_classes.csv`` (when present) lists the model types it was not
 trained on, which the decision ladder needs to know.

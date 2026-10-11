@@ -76,7 +76,7 @@ planned post-processing.
 | | BERT (`bert.py`) | Keyword model (`keywords.py`) |
 |---|---|---|
 | Predicts | `model_type` + confidence (softmax) | `page_subtype` + score, margin, title hit |
-| From | `core-pipeline/models/page-family/` | `keyword-canon/page_keyword_canon.json` |
+| From | `core-pipeline/models/page-family/bert/` | `keyword-canon/page_keyword_canon.json` |
 | Reaches | only the model types it was trained on (21 today) | every one of the 190 sub-types |
 | Good at | pages without a clear title | page kinds with few training images |
 
@@ -244,7 +244,7 @@ DOS = the document's.
 | Keyword terms and weights | `keyword-canon/page_keyword_canon.json` |
 | Ladder thresholds, level 3 rules | `keyword-canon/page_arbitration.json` |
 | Continuity signals, page-counter limit | `keyword-canon/continuity_canon.json` |
-| The model | `core-pipeline/models/page-family/` (`PAGE_FAMILY_MODEL_DIR`) |
+| The model | `core-pipeline/models/page-family/bert/` (`PAGE_FAMILY_MODEL_DIR`) |
 
 The three `page_*.json` files came from the spec package (now retired; its
 naming rules are kept in [PAGE_TAXONOMY.md](PAGE_TAXONOMY.md)). If a JSON file
@@ -273,7 +273,7 @@ reason, and every page has `bert_model_type = NULL`.
 
 ## 10. Open items
 
-1. **Train BERT** and copy it into `models/page-family/` — then re-measure the
+1. **Train BERT** and copy it into `models/page-family/bert/` — then re-measure the
    ladder: how often each step decides, and how accurate each is.
 2. **Tune the thresholds** on the validation split. Now: 0.50, or 0.25 with a 0.10
    lead; Unknown below 0.10 (set 2026-10-11 after retraining).

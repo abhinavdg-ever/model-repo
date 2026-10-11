@@ -11,7 +11,7 @@ The commits are `914cc49` and `4ccf508`. On a machine that already runs charts:
 
 1. Pull, then rebuild the core-pipeline image. `requirements.txt` is gone. The image installs `requirements-basic.txt` and `requirements-models.txt`, including XGBoost. The `WITH_NER` build argument is gone.
 2. Rebuild with `docker compose up -d --build` from `core-pipeline/` and from `review-ui/`. Weights are not in the image. Copy `page-family/`, `kv-extraction/`, `blank-junk/`, and `hw/image_type_classification.pkl` plus `hw/metadata.json` into `MODELS_HOST_PATH` (default `core-pipeline/models`). Leave the large weights already there (RapidOCR, ConvNeXt, GLiNER, Docling, layout, MiniLM).
-3. `PAGE_FAMILY_MODEL_DIR` defaults to `models/page-family`. Add that line only if `.env` was copied from an older example that sets every model path by hand. Restart the API. `/health` should list the page-family model as ready. If XGBoost or the file is missing, page type falls back to keywords.
+3. `PAGE_FAMILY_MODEL_DIR` defaults to `models/page-family/bert`. Add that line only if `.env` was copied from an older example that sets every model path by hand. Restart the API. `/health` should list the page-family model as ready. If XGBoost or the file is missing, page type falls back to keywords.
 4. Do not re-apply `schema/v1.sql`, and do not look for `schema/patch_output_path.sql` — that file was removed. On the existing database:
 
 ```sql
@@ -72,7 +72,7 @@ is relative to `core-pipeline/`. The Python packages that load them come from
 | `hw/image_type_classification.pkl` | Stage 1 handwriting — RandomForest backup when the ConvNeXt `.pth` or torch is absent | Heuristic only (`hw_method='fallback'`) |
 | `hw/metadata.json` | Record of how the ConvNeXt was trained. Not read at run time; the checkpoint carries its own settings | Nothing |
 | `blank-junk/tfidf_flat.joblib` + `default.json` | Blank/junk passes 1 and 2 | Regex rules only |
-| `page-family/` (Hugging Face BERT, from `training/bert-training`) | Page classifier: model type | Keywords alone classify (visible in `/health`) |
+| `page-family/bert/` (Hugging Face BERT, from `training/bert-training`) | Page classifier: model type | Keywords alone classify (visible in `/health`) |
 | `kv-extraction/` (`manifest.json`, `features.json`, `thresholds.json`, `metrics.json`, eight `ranker_*.txt`, `level_heading_heron.txt`) | Key/value extraction `kv_extract`, version `v002` | `kv_extract` pages are marked skipped (`extraction_not_ready`); member, DOS and page number use their own rules |
 | `stages/lib/image_preprocess/english_words.txt.gz` (not under `models/`) | Mirror check | Mirror is never detected |
 
@@ -90,7 +90,7 @@ is relative to `core-pipeline/`. The Python packages that load them come from
 
 Not models, but needed: the `tesseract` binary (stage 1 orientation and
 preliminary OCR; set `TESSERACT_CMD` if it is not on `PATH`). Optional and off
-by default: `blank-junk/bert_page/` (DistilBERT; TF-IDF is used without it) and
+by default: `blank-junk/bert/` (DistilBERT, the primary blank/junk model; TF-IDF is used without it) and
 `stages/lib/sequencing/artifacts/cross_encoder_mini_lm.onnx` with
 `SEQUENCING_CROSS_ENCODER=true`.
 

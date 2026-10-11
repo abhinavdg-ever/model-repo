@@ -31,7 +31,7 @@ bert-training/data/training_data.jsonl
         │  3. train, one epoch at a time
         ▼
 bert-training/output/page-family/
-        │  4. copy into core-pipeline/models/page-family/
+        │  4. copy into core-pipeline/models/page-family/bert/
         ▼
 core-pipeline loads it (page_subtype stage)
 ```
@@ -145,8 +145,11 @@ the pipeline's keyword model covers them until more images arrive.
 ## 4. Put the model into the pipeline
 
 ```bash
-rm -rf core-pipeline/models/page-family
-cp -r training/bert-training/output/page-family core-pipeline/models/page-family
+rm -rf core-pipeline/models/page-family/bert
+mkdir -p core-pipeline/models/page-family/bert
+cd training/bert-training/output/page-family
+cp config.json model.safetensors tokenizer.json tokenizer_config.json skipped_classes.csv \
+   ../../../../core-pipeline/models/page-family/bert/   # inference files only
 curl -s localhost:8001/health | python -m json.tool    # page_family_model.ready: true
 ```
 

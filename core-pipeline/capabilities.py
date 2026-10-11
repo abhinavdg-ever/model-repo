@@ -308,7 +308,7 @@ def hw_model_status() -> dict[str, Any]:
 
 
 def page_family_model_status() -> dict[str, Any]:
-    """BERT page classifier in models/page-family. Never raises; never loads the weights."""
+    """BERT page classifier in models/page-family/bert. Never raises; never loads the weights."""
     try:
         from stages.lib.page_classify.bert import describe
 

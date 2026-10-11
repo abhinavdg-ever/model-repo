@@ -31,7 +31,7 @@ from typing import Any
 
 HERE = Path(__file__).resolve().parent
 # Inputs and outputs live in this folder; copy the finished model into
-# core-pipeline/models/page-family (see README).
+# core-pipeline/models/page-family/bert (see README).
 DEFAULT_DATA = HERE / "data" / "training_data.jsonl"
 DEFAULT_OUTPUT = HERE / "output" / "page-family"
 TAXONOMY = HERE / "taxonomy.json"

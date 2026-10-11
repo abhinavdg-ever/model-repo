@@ -68,7 +68,7 @@ Blank / junk / duplicate.
 
 Codeable / Non-Codeable page type.
 
-- **Model today** — BERT from `models/page-family` (model type) plus the keyword model (`page_keyword_canon.json`), arbitrated by `page_arbitration.json`; names from `page_taxonomy.json`. Missing model ⇒ keywords only. See [PAGE_CLASSIFICATION.md](PAGE_CLASSIFICATION.md).
+- **Model today** — BERT from `models/page-family/bert` (model type) plus the keyword model (`page_keyword_canon.json`), arbitrated by `page_arbitration.json`; names from `page_taxonomy.json`. Missing model ⇒ keywords only. See [PAGE_CLASSIFICATION.md](PAGE_CLASSIFICATION.md).
 - **Out** — `page_type`, tag (codeable / non-codeable / discharge)  
 - **Toggle** — project-specific canon  
 

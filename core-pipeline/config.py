@@ -302,7 +302,7 @@ BLANK_JUNK_MODEL_DIR = _path_under_core(
 # Missing folder, or no transformers / torch, means keywords alone classify.
 PAGE_FAMILY_MODEL_DIR = _path_under_core(
     os.environ.get("PAGE_FAMILY_MODEL_DIR"),
-    "models/page-family",
+    "models/page-family/bert",
 )
 # Key/value extraction weights (stages/lib/extraction). The ranker version is
 # pinned: a different version changes the member, DOS and page-number values

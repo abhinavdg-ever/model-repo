@@ -14,8 +14,10 @@ Everything stays in this folder:
 | Resume state | `output/page-family-resume/` | weights, optimiser, scheduler, random state, the split |
 
 `data/` and `output/` are git-ignored: the text is patient content and the
-weights are large. When a run is good, copy `output/page-family/` to
-`core-pipeline/models/page-family/` — the pipeline loads it from there.
+weights are large. When a run is good, copy the inference files of `output/page-family/`
+(`config.json`, `model.safetensors`, `tokenizer.json`, `tokenizer_config.json`,
+`skipped_classes.csv`) to `core-pipeline/models/page-family/bert/` — the
+pipeline loads it from there.
 
 Page text is never printed: only counts, class names, shapes and metrics.
 

@@ -1,15 +1,20 @@
-"""TF-IDF blank/junk model (KEEP / BLANK / JUNK), regex as fallback.
+"""Blank/junk model: BERT first (KEEP / BLANK / six JUNK sub-types), then
+TF-IDF, then regex.
 
-The joblib checkpoint unpickles classes under ``src.*``. Those modules are
-vendored at ``stages/lib/blank_junk/model/`` and put on ``sys.path`` only
-while loading. Weights are the directory in ``BLANK_JUNK_MODEL_DIR``
-(default ``models/blank-junk/`` next to the other model paths in ``.env``).
+The primary model is the b_jnk DistilBERT page classifier
+(``BLANK_JUNK_MODEL_DIR/bert``, 8 labels: KEEP, BLANK, JUNK_INVOICE,
+JUNK_COVER_PAGE, JUNK_RECORD_REQUEST, JUNK_INSTRUCTIONS, JUNK_LETTER_FAX,
+JUNK_OTHERS). Its decision rules come with it (vendored ``src/models/decision.py``
+and ``src/inference/predict.py``, settings in ``default.json`` → ``decision``):
+BLANK / JUNK only at ≥ 0.85 for one label and KEEP probability ≤ 0.10,
+clinical-image / demographic retention safeguards, the invoice rule, and the
+junk sub-type named by trigger phrases (the model decides mixed or untriggered
+pages). A page the model is unsure about stays KEEP with review.
 
-Who decides what:
-
-* **Blank / junk / keep and the junk subtype** — the model. Regex runs only
-  when the model file is missing or prediction raises, and that reason is
-  stamped ``regex_fallback:<why>``.
+Fallbacks, each stamped in the reason so a degraded run is visible:
+TF-IDF (``tfidf_flat.joblib``) when the BERT folder or torch / transformers is
+missing; regex (``regex_fallback:<why>``) when no model loads or prediction
+raises. The vendored ``src.*`` modules go on ``sys.path`` only while loading.
 """
 from __future__ import annotations
 
@@ -38,7 +43,7 @@ logger = logging.getLogger(__name__)
 _VENDOR = Path(__file__).resolve().parent / "model"
 _WEIGHTS_NAME = "tfidf_flat.joblib"
 _CONFIG_NAME = "default.json"
-_BERT_DIR_NAME = "bert_page"
+_BERT_DIR_NAME = "bert"
 
 
 def _model_dir() -> Path:
@@ -120,9 +125,14 @@ def model_status() -> dict[str, Any]:
         "model_version": f"{version}+bert" if bert_on and version else version,
         "reason": None,
     }
+    status["engine"] = "bert" if bert_on else None
     if bert_on:
         status["ready"] = True
         return status
+    why_not_bert = (
+        f"BERT folder missing at {_bert_dir()}" if not _bert_files_present()
+        else "torch/transformers not installed"
+    )
     if not model_file.is_file():
         status["reason"] = (
             f"model file missing at {model_file} — blank/junk runs on regex rules only"
@@ -133,6 +143,8 @@ def model_status() -> dict[str, Any]:
         status["reason"] = f"model failed to load — regex rules only: {_load_error}"
     else:
         status["ready"] = True
+        status["engine"] = "tfidf"
+        status["reason"] = f"{why_not_bert} — TF-IDF fallback"
     return status
 
 
@@ -169,15 +181,19 @@ def _load_service() -> Any:
             routing = cfg.get("routing") or {}
             version = str(cfg.get("model_version") or "bjc-ocr")
             model = None
-            # Every page with text is scored by the model. Empty OCR is still
-            # routed as blank before the model, because there is nothing to score.
-            route_short_pages = False
+            # BERT was trained on short sheets and decides them; TF-IDF routes
+            # short / unreadable pages first (bert.decide_short_pages). Empty OCR
+            # is routed before either model, because there is nothing to score.
+            route_short_pages = True
             if _bert_files_present():
                 try:
                     from src.models.bert_classifier import BertPageClassifier
 
                     model = BertPageClassifier.load(_bert_dir())
                     version = f"{version}+bert"
+                    route_short_pages = not bool(
+                        (cfg.get("bert") or {}).get("decide_short_pages", True)
+                    )
                 except ImportError as exc:
                     logger.warning(
                         "BERT blank/junk needs torch and transformers (%s); using TF-IDF",
@@ -205,7 +221,7 @@ def _load_service() -> Any:
             logger.info(
                 "Blank/junk model loaded version=%s path=%s",
                 _service.model_version,
-                model_file,
+                _bert_dir() if version.endswith("+bert") else model_file,
             )
         except Exception as exc:
             logger.exception(

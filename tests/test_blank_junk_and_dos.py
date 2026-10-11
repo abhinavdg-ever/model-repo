@@ -303,7 +303,13 @@ class TestModelBridge:
         status = self._bridge().model_status()
         assert status["ready"] is True
         assert status["model_version"]
-        assert status["reason"] is None
+        # BERT is primary; without its folder or torch/transformers the TF-IDF
+        # fallback is reported, never silent.
+        if status["engine"] == "bert":
+            assert status["reason"] is None
+        else:
+            assert status["engine"] == "tfidf"
+            assert "TF-IDF fallback" in status["reason"]
 
 
 class TestSubtypeMapping:

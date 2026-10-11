@@ -23,8 +23,14 @@
     "retain_delete_cost_ratio": 50.0
   },
   "tfidf": {
-    "word_ngram_range": [1, 2],
-    "char_ngram_range": [3, 5],
+    "word_ngram_range": [
+      1,
+      2
+    ],
+    "char_ngram_range": [
+      3,
+      5
+    ],
     "word_max_features": 40000,
     "char_max_features": 40000,
     "min_df": 1,
@@ -35,19 +41,36 @@
     "classifier": "logistic_regression"
   },
   "decision": {
-    "min_flag_confidence": 0.70,
+    "min_flag_confidence": 0.7,
     "junk_blank_min_confidence": 0.85,
+    "keep_veto_prob": 0.1,
+    "enforce_retention_safeguards": true,
+    "demographic_override_labels": [
+      "JUNK_RECORD_REQUEST",
+      "JUNK_INSTRUCTIONS",
+      "JUNK_LETTER_FAX",
+      "JUNK_INVOICE"
+    ],
+    "demographic_override_min_prob": 0.95,
+    "demographic_override_needs_trigger": true,
+    "demographic_override_no_trigger_labels": [
+      "JUNK_INVOICE"
+    ],
     "require_confident_subtype": true
   },
   "bert": {
     "base_model": "distilbert-base-uncased",
-    "model_dir": "bert_page",
+    "model_dir": "bert",
     "max_length": 512,
     "head_share": 0.75,
     "decide_short_pages": true
   },
   "taxonomy": {
-    "flags": ["KEEP", "BLANK", "JUNK"],
+    "flags": [
+      "KEEP",
+      "BLANK",
+      "JUNK"
+    ],
     "protocol": "blank_junk_elimination_v1"
   }
 }
