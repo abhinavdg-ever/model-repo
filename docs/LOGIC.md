@@ -734,7 +734,7 @@ fill-between (`continue`, `fill_between_families`).
 | Target | Columns |
 |---|---|
 | `page_continuity_results` | `document_seq`, `seq` (page within the document), `position`, `relation`, `decided_by`, `confidence_level`, `score`, `review_required`, `evidence` |
-| `imaging_final` (the `imaging_final` stage) | one row per page: the Final value of every reviewer field; page type, classification and DOS carried from the document, with `page_type_source` / `dos_source` = `document` or `page`. See [CONTINUITY.md](CONTINUITY.md) |
+| `imaging_final` (the `imaging_final` stage) | one row per page: the Final value of every reviewer field; page type, classification and DOS carried from the document, with `page_type_source` / `dos_source` = `document` or `page`; a duplicate page copies the page it duplicates (`duplicate`, `duplicate_of_page_id`). See [CONTINUITY.md](CONTINUITY.md) |
 | `additional_page_details` (written by the key/value stage) | the printed page number and the page's `section_headers` JSON that continuity reads |
 | disk | `imaging/<chart>_continuity.csv`: the same per page, plus the printed `page_no` / `page_total` used, the `section_headers`, the page's own `page_type`, `dos_from`, `dos_to`, and `layout_source` (final2 / final1 / text) |
 

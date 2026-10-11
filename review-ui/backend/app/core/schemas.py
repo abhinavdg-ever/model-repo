@@ -176,6 +176,7 @@ class ImagingPageResult(BaseModel):
     # Document continuity (page_continuity_results / <chart>_continuity.csv).
     documentSeq: int | None = None
     documentPosition: str | None = None  # single | first | continue | last
+    documentLabel: str | None = None  # "First (Doc 3)", "Continue (Doc 3)", "Last (Doc 3)"
     continuityRelation: str | None = None  # new_document | continue | unknown
     continuityDecidedBy: str | None = None
     continuityEvidence: str | None = None

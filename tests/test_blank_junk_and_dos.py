@@ -775,3 +775,40 @@ def test_ccd_visit_page_dos_is_the_encounter_date():
 
     text = (Path(__file__).parent / "fixtures" / "ccd_visit_page.txt").read_text(encoding="utf-8")
     assert extract_dos_from_page_text(text, received_date=RECEIVED)["dos_from"] == "01-28-2025"
+
+
+
+class TestShortPagesAreJunk:
+    """Pass 2: under 20 words and not a signature page -> Junk / Others."""
+
+    @staticmethod
+    def _run(text, *, signed=False, monkeypatch):
+        from stages.lib.blank_junk import stage as bj_stage
+
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t: (bj_stage.CODE_MAIN, "model:keep", 0.9))
+        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
+        return _classify(pages, {1: text}, {1}, short_pages=True, signed_ids={1} if signed else set())[0]
+
+    def test_a_short_page_becomes_junk_others(self, monkeypatch):
+        row = self._run("made up short page text", monkeypatch=monkeypatch)
+        assert (row["flag"], row["subtype"]) == ("junk", "Others")
+        assert row["reason"].startswith("short page")
+
+    def test_the_word_signature_keeps_it(self, monkeypatch):
+        row = self._run("Provider Signature: made up", monkeypatch=monkeypatch)
+        assert row["flag"] == "not_blank_junk"
+
+    def test_a_signature_page_from_the_extraction_keeps_it(self, monkeypatch):
+        row = self._run("made up short page", signed=True, monkeypatch=monkeypatch)
+        assert row["flag"] == "not_blank_junk"
+
+    def test_twenty_words_or_more_stays_main(self, monkeypatch):
+        row = self._run(" ".join(["word"] * 20), monkeypatch=monkeypatch)
+        assert row["flag"] == "not_blank_junk"
+
+    def test_pass_1_does_not_apply_it(self, monkeypatch):
+        from stages.lib.blank_junk import stage as bj_stage
+
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t: (bj_stage.CODE_MAIN, "model:keep", 0.9))
+        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
+        assert _classify(pages, {1: "made up short"}, {1})[0]["flag"] == "not_blank_junk"

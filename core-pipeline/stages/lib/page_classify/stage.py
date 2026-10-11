@@ -81,6 +81,27 @@ def _ocr_source_label(*, final2: Optional[str], final1: Optional[str], prelim: O
     return ""
 
 
+def _headings(*raws: Optional[str]) -> list[str]:
+    """Heading lines the OCR layout detected on the page (section-header
+    candidates and matched headers), from the stored Final2 / Final1 JSON."""
+    import json
+
+    out: list[str] = []
+    for raw in raws:
+        try:
+            page = json.loads(raw) if raw and str(raw).lstrip().startswith("{") else None
+        except ValueError:
+            page = None
+        if not isinstance(page, dict):
+            continue
+        for header in (page.get("section_header_candidates") or []) + (page.get("section_headers") or []):
+            if isinstance(header, dict) and header.get("text"):
+                out.append(str(header["text"]))
+        if out:
+            break
+    return out
+
+
 def _bj_label(flag: str, junk_subtype: Optional[str]) -> str:
     if flag == "blank":
         return "Blank"
@@ -152,7 +173,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 else:
                     text = best_page_text(final2=f2, final1=f1, prelim=pr, quality_row=quality.get(page_id))
                     prediction = bert.predict(text)
-                    result = classify_page(prediction, keywords.classify(text), trained)
+                    keyword = keywords.classify(text, headings=_headings(f2, f1))
+                    result = classify_page(prediction, keyword, trained)
                     row = _page_row(result)
                     counts["main"] += 1
                     counts["review"] += int(result.needs_review)

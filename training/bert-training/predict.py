@@ -84,13 +84,15 @@ class Classifier:
             top = rows[0]["probability"]
             lead = top - (rows[1]["probability"] if len(rows) > 1 else 0.0)
             # The pipeline's ladder (page_arbitration.json): BERT wins outright at
-            # 50%, or at 25% with a 5-point lead over its second choice.
-            if top >= 0.50 or (top >= 0.25 and lead >= 0.05):
+            # 50%, or at 25% with a 10-point lead over its second choice.
+            if top >= 0.50 or (top >= 0.25 and lead >= 0.10):
                 verdict = "BERT would win in the pipeline"
             elif top >= 0.25:
-                verdict = "BERT would win only if the keyword model has no title — flagged for review"
+                verdict = "BERT would win unless the keyword model has a clear title — flagged for review"
+            elif top >= 0.10:
+                verdict = "keyword model if clear, else the two models' top 3 are compared — flagged for review"
             else:
-                verdict = "too low: the pipeline would use the keyword model, flagged for review"
+                verdict = "Unknown in the pipeline, unless the keyword model has a clear title"
             print(f"  lead over second: {lead:.1%} — {verdict}")
         return rows
 

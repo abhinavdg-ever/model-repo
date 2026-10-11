@@ -4,16 +4,20 @@ Per page (``classify_page``) — the **Extracted** answer:
 
   Level 1, page type: the first ladder step that applies wins.
     1 agreement          both give the same page type
-    2 bert_high          they differ, BERT ≥ bert_high — or BERT ≥ bert_low with a
-                         lead ≥ bert_lead over its second choice
-    3 keyword_only_class they differ, the keyword page type is one BERT was not
-                         trained on, keyword score ≥ keyword_min_score with a title hit
-    4 keyword_title      they differ, BERT not high, keyword title hit and
-                         margin ≥ keyword_min_margin
-    5 bert_medium        they differ, BERT ≥ bert_low              (review)
-    6 keyword_body       BERT < bert_low, keyword score ≥ keyword_min_score (review)
-    7 bert_low           nothing above                             (review)
-  With neither model answering, the page has no type (``no_prediction``, review).
+    2 bert_high          BERT ≥ bert_high (0.50) — or ≥ bert_low (0.25) with a
+                         lead ≥ bert_lead (0.10) over its second choice
+    3 keyword_only_class the keyword page type is one BERT was not trained on,
+                         keyword score ≥ keyword_min_score with a title hit
+    4 keyword_title      keyword title hit and margin ≥ keyword_min_margin
+    5 bert_medium        BERT ≥ bert_low                           (review)
+    6 unknown            BERT < bert_unknown (0.10)                (review)
+    7 top3_agreement     a page type in both models' top 3: the best
+                         combined rank (ties: BERT's order)        (review)
+    8 keyword_body       keyword score ≥ keyword_min_score          (review)
+    9 bert_low           nothing above                             (review)
+  Steps 3–4 are "the keyword model, when it is clear". Step 6 applies only with
+  a BERT model loaded; without one the keyword model goes on to steps 8–9.
+  With neither model answering, the page is Unknown (``no_prediction``).
 
   Level 2, sub-type inside the winning page type.
   Level 4, codability from the page type (``taxonomy``).
@@ -45,6 +49,9 @@ from stages.lib.page_classify.bert import BertResult
 from stages.lib.page_classify.keywords import KeywordResult
 
 _ARBITRATION: CanonFile[dict[str, Any]] = CanonFile(CANON_DIR / "page_arbitration.json")
+
+
+UNKNOWN = "Unknown"
 
 
 def thresholds() -> dict[str, float]:
@@ -87,6 +94,11 @@ def _level_1(
             return keyword.page_type, "keyword_title", False
     if bert and conf >= t["bert_low"]:
         return bert.page_type, "bert_medium", True
+    if bert and conf < t.get("bert_unknown", 0.0):
+        return UNKNOWN, "unknown", True
+    shared = _top_n_agreement(bert, keyword)
+    if shared:
+        return shared, "top3_agreement", True
     if keyword and keyword.score >= t["keyword_min_score"]:
         return keyword.page_type, "keyword_body", True
     if bert:
@@ -94,7 +106,19 @@ def _level_1(
     if keyword:
         # No model at all and a weak keyword hit: the best there is, for review.
         return keyword.page_type, "keyword_body", True
-    return None, "no_prediction", True
+    return UNKNOWN, "no_prediction", True
+
+
+def _top_n_agreement(bert: Optional[BertResult], keyword: Optional[KeywordResult]) -> Optional[str]:
+    """A page type in both models' top lists: the best combined rank, ties to BERT's order."""
+    if not bert or not keyword:
+        return None
+    b = list(bert.top_page_types or (bert.page_type,))
+    k = list(keyword.top_page_types or (keyword.page_type,))
+    shared = [p for p in b if p in k]
+    if not shared:
+        return None
+    return min(shared, key=lambda p: (b.index(p) + k.index(p), b.index(p)))
 
 
 def _level_2(
@@ -126,8 +150,8 @@ def classify_page(
         keyword_margin=keyword.margin if keyword else None,
         keyword_title_hit=bool(keyword and keyword.title_hit),
     )
-    if page_type is None:
-        return PageResult(None, None, None, None, step, True, **raw)
+    if page_type == UNKNOWN:
+        return PageResult(UNKNOWN, UNKNOWN, None, None, step, True, **raw)
     subtype = _level_2(page_type, bert, keyword)
     taxonomy = tax.load()
     return PageResult(
@@ -191,7 +215,7 @@ def _keep(page: FinalPage, rule: str, review: bool) -> FinalResult:
         page_subtype=page.page_subtype,
         model_type=(
             taxonomy.model_type(page.page_type, page.page_subtype)
-            if page.page_type and page.page_subtype else None
+            if page.page_type and page.page_subtype and taxonomy.codability(page.page_type) else None
         ),
         codability=taxonomy.codability(page.page_type),
         source="page",

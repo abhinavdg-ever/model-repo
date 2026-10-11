@@ -95,16 +95,23 @@ planned post-processing.
 | # | Step | When | Winner | Review |
 |---|---|---|---|---|
 | 1 | `agreement` | both give the same page type | both | no |
-| 2 | `bert_high` | they differ, BERT ≥ **0.50** — or BERT ≥ **0.25** with a lead ≥ **0.05** over its second choice | BERT | no |
-| 3 | `keyword_only_class` | they differ, the keyword page type is one BERT was not trained on, keyword score ≥ **3** with a title hit | keywords | no |
-| 4 | `keyword_title` | they differ, BERT not high, keyword title hit and margin ≥ **2** | keywords | no |
-| 5 | `bert_medium` | they differ, BERT ≥ **0.25** | BERT | yes |
-| 6 | `keyword_body` | BERT < 0.25, keyword score ≥ 3 | keywords | yes |
-| 7 | `bert_low` | nothing above | BERT | yes |
-| — | `no_prediction` | neither model answered | none | yes |
+| 2 | `bert_high` | BERT ≥ **0.50** — or BERT ≥ **0.25** with a lead ≥ **0.10** over its second choice | BERT | no |
+| 3 | `keyword_only_class` | the keyword page type is one BERT was not trained on, keyword score ≥ **3** with a title hit | keywords | no |
+| 4 | `keyword_title` | keyword title hit and margin ≥ **2** | keywords | no |
+| 5 | `bert_medium` | BERT ≥ **0.25** | BERT | yes |
+| 6 | `unknown` | a BERT model is loaded and BERT < **0.10** | page type **Unknown** | yes |
+| 7 | `top3_agreement` | a page type in both models' top 3 — the best combined rank, ties to BERT's order | both | yes |
+| 8 | `keyword_body` | keyword score ≥ 3 | keywords | yes |
+| 9 | `bert_low` | nothing above | BERT | yes |
+| — | `no_prediction` | neither model answered | **Unknown** | yes |
 
-With no BERT model installed, steps 3, 4 and 6 do the work (every class counts
-as untrained), and a weak keyword hit falls to `keyword_body` for review.
+Steps 3–4 are "the keyword model, when it is clear": below 25% it wins when it
+has a title. Below 10% with no clear keyword the page is Unknown; between 10%
+and 25% the two models' top 3 page types are compared.
+
+With no BERT model installed, steps 3, 4 and 8 do the work (every class counts
+as untrained; the Unknown step needs a model), and a weak keyword hit falls to
+`keyword_body` for review.
 
 ### 4.3 Level 2 — sub-type inside the winning page type
 
@@ -237,9 +244,8 @@ reason, and every page has `bert_model_type = NULL`.
 
 1. **Train BERT** and copy it into `models/page-family/` — then re-measure the
    ladder: how often each step decides, and how accurate each is.
-2. **Tune the thresholds** on the validation split. Now 0.50, or 0.25 with a 0.05
-   lead; review below 0.25 (set after retraining — the first model peaked at
-   15–25% and briefly ran on 0.20 / 0.10).
+2. **Tune the thresholds** on the validation split. Now: 0.50, or 0.25 with a 0.10
+   lead; Unknown below 0.10 (set 2026-10-11 after retraining).
 3. **Prune the keyword canon** — written from general knowledge, untuned; run a
    term report on the labelled text.
 4. **Text normalisation** between Azure and Tesseract text.

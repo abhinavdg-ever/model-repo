@@ -717,6 +717,18 @@ def _put_page_keys(
         by_key[f"#{raw_num}"] = fields
 
 
+_DUP_PAGE_RE = re.compile(r"duplicate_of_page:(\S+)")
+
+
+def _duplicate_of_name(row: dict[str, str]) -> str:
+    """Original page file a duplicate was matched to, when the junk CSV recorded it."""
+    named = (row.get("duplicate_of_page") or row.get("duplicate_of") or "").strip()
+    if named:
+        return named
+    match = _DUP_PAGE_RE.search(row.get("reason") or "")
+    return match.group(1) if match else ""
+
+
 def index_junk_rows(
     rows: list[dict[str, str]], chart_name: str
 ) -> dict[str, dict[str, Any]]:
@@ -784,6 +796,7 @@ def index_junk_rows(
         else:
             page_type = page_type_labels.get(label_l, label if is_typed_junk else "Not Available")
 
+        duplicate_of = _duplicate_of_name(row) if is_duplicate else ""
         fields: dict[str, Any] = {
             "blankOrJunk": blank_or_junk,
             "isDuplicate": bool(is_duplicate),
@@ -800,6 +813,8 @@ def index_junk_rows(
             if v is not None or k in {"blankOrJunk", "isDuplicate"}
         }
         fields["isDuplicate"] = bool(is_duplicate)
+        if duplicate_of:
+            fields["duplicateOf"] = duplicate_of
 
         _put_page_keys(by_key, row, fields)
         raw_num = (row.get("page_num") or row.get("page_number") or "").strip()
@@ -938,6 +953,8 @@ def index_continuity_rows(
             {
                 "documentSeq": document,
                 "documentPosition": (row.get("position") or "").strip() or None,
+                "documentLabel": (row.get("continuation") or "").strip()
+                or document_label(row.get("position"), document),
                 "continuityRelation": (row.get("relation") or "").strip() or None,
                 "continuityDecidedBy": (row.get("decided_by") or "").strip() or None,
                 "continuityEvidence": (row.get("evidence") or "").strip() or None,
@@ -945,6 +962,14 @@ def index_continuity_rows(
             },
         )
     return by_key
+
+
+def document_label(position: str | None, document: int | None) -> str | None:
+    """'First (Doc 3)' — the continuity stage's own label, rebuilt for rows without it."""
+    position = (position or "").strip()
+    if not position or document is None:
+        return None
+    return f"{position.capitalize()} (Doc {document})"
 
 
 _CATEGORY_DISPLAY = {

@@ -7,9 +7,14 @@ rules, in order:
 * Longest match wins: a term inside a longer term that matched at the same
   place counts only as the longer one.
 * Title terms weigh ``title_term_in_title_zone`` in the first
-  ``title_zone_lines`` lines, ``title_term_elsewhere`` below them. A one-word
-  title term is a title only as a heading on its own line; inside a sentence it
-  counts as a body term.
+  ``title_zone_lines`` lines, ``title_term_elsewhere`` below them — but only
+  when used as a heading. Inside a sentence ("informed consent was obtained")
+  a title term counts as a body term. A heading is a line the OCR's layout
+  detected as one (``headings``: the section-header candidates in the Final2 /
+  Final1 JSON), a line that is just the term, or a short line that starts with
+  it ("OFFICE VISIT REPORT 10/03/2024"). The canon applies this to one-word
+  terms; it applies here to every title term: on 53688890 it removed 4 of 8
+  title hits that disagreed with a confident BERT and kept all 6 that agreed.
 * Body terms weigh ``body_term``. Ambiguous terms weigh ``ambiguous_term`` and
   only once another term of the same sub-type has matched.
 * Each sub-type scores the sum over its distinct matched terms. A page type's
@@ -21,7 +26,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 from stages.lib.canon_store import CANON_DIR, CanonFile
 
@@ -34,6 +39,8 @@ class KeywordResult:
     score: float
     margin: float
     title_hit: bool
+    # The best-scoring page types, best first (for the ladder's top-3 comparison).
+    top_page_types: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -84,6 +91,9 @@ def _build(data: dict[str, Any]) -> _Canon:
 _CANON: CanonFile[_Canon] = CanonFile(CANON_DIR / "page_keyword_canon.json", _build)
 
 
+TOP_N = 3
+
+
 def _lines(text: str) -> list[tuple[int, int, str]]:
     """(start offset, end offset, line) for every non-empty line."""
     out, offset = [], 0
@@ -96,12 +106,42 @@ def _lines(text: str) -> list[tuple[int, int, str]]:
     return out
 
 
-def classify(text: str) -> Optional[KeywordResult]:
-    """The page's best sub-type by keywords, or None when nothing matched."""
+# A line counts as a heading that starts with the title term when it is at
+# most this many characters longer than the term.
+HEADING_EXTRA_CHARS = 25
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"[^a-z0-9 ]", "", re.sub(r"\s+", " ", (text or "").lower())).strip()
+
+
+def is_heading(line: str, term: str, headings: frozenset[str], *, one_word: bool = False) -> bool:
+    """Whether ``term`` on ``line`` is used as a heading, not inside a sentence.
+
+    A one-word term must be the whole line or a detected heading (the canon's
+    rule); a longer term may also start a short line.
+    """
+    line_n, term_n = _norm(line), _norm(term)
+    if line_n == term_n or line_n in headings:
+        return True
+    return (
+        not one_word
+        and line_n.startswith(term_n)
+        and len(line_n) <= len(term_n) + HEADING_EXTRA_CHARS
+    )
+
+
+def classify(text: str, headings: Iterable[str] = ()) -> Optional[KeywordResult]:
+    """The page's best sub-type by keywords, or None when nothing matched.
+
+    ``headings`` are the page's heading lines as the OCR layout detected them
+    (section-header candidates); without them only the line's own shape decides.
+    """
     canon = _CANON.get()
     lines = _lines(text)
     if not lines:
         return None
+    heading_lines = frozenset(_norm(h) for h in headings if h)
     title_zone_end = lines[min(canon.title_zone_lines, len(lines)) - 1][1]
 
     # Every match, then longest-match-wins across all terms.
@@ -125,8 +165,7 @@ def classify(text: str) -> Optional[KeywordResult]:
     for start, end, term in kept:
         if term.kind == "title":
             line = next((l for l in lines if l[0] <= start < l[1]), None)
-            on_own_line = line is not None and line[2].rstrip(":").strip().lower() == term.text.lower()
-            if term.one_word and not on_own_line:
+            if line is None or not is_heading(line[2], term.text, heading_lines, one_word=term.one_word):
                 weight = w["body_term"]
             elif start < title_zone_end:
                 weight = w["title_term_in_title_zone"]
@@ -165,4 +204,5 @@ def classify(text: str) -> Optional[KeywordResult]:
         score=round(score, 2),
         margin=round(score - runner_up, 2),
         title_hit=title_hit,
+        top_page_types=tuple(name for name, _ in ranked[:TOP_N]),
     )

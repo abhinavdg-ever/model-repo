@@ -17,6 +17,10 @@ starts a new document, and anything between is unknown. An unknown page starts
 its own document and is flagged for review, so no value is copied onto it on
 no evidence.
 
+Two breakers come first: a blank or junk page between two pages ends the
+document before it, and a page with a signature is always its document's last
+page (whatever its printed page numbers say).
+
 A document whose first page is a progress note stays open through pages the
 signals cannot decide. It closes after the page with the signature, before a
 page the signals or the pagination call a new document, and before the next
@@ -68,6 +72,9 @@ class PageInput:
     printed: Optional[tuple[int, int]] = None
     # Blank, junk or duplicate: passed over, belongs to no document.
     skipped: bool = False
+    # A skipped page that also ends the document before it (blank or junk; a
+    # duplicate is a copy of a real page and does not).
+    breaks: bool = False
 
     @property
     def located(self) -> bool:
@@ -77,7 +84,7 @@ class PageInput:
 @dataclass(frozen=True)
 class Verdict:
     relation: str  # new_document | continue | unknown
-    decided_by: str  # first_page | pagination | signals | progress_note
+    decided_by: str  # first_page | blank_junk | signature | pagination | signals | progress_note
     confidence_level: str  # high | medium | low
     score: Optional[float]
     evidence: str
@@ -221,7 +228,7 @@ def judge(previous: PageInput, current: PageInput, rules: Rules) -> Verdict:
         return Verdict("new_document", "pagination", "high", None, f"page 1 of {now[1]}")
     if before and now and before[1] == now[1] and now[0] == before[0] + 1:
         return Verdict(
-            "continue", "pagination", "high", None, f"page {before[0]}->{now[0]} of {now[1]}"
+            "continue", "pagination", "high", None, f"page {before[0]}->{now[0]}"
         )
     if before and now:
         return Verdict(
@@ -308,13 +315,22 @@ def assign(pages: Sequence[PageInput], rules: Optional[Rules] = None) -> list[di
     note_open = False
     note_dos: tuple[str, str] = ("", "")
 
+    broken = False  # a blank or junk page since the previous page
     for page in pages:
         if page.skipped:
             rows.append(_row(page, None, None))
+            broken = broken or page.breaks
             continue
 
+        # Two breakers decide before anything else: a blank / junk page in
+        # between, and a signature on the previous page — the signed page is
+        # always its document's last, whatever the page numbers say.
         if previous is None:
             verdict = Verdict("new_document", "first_page", "high", None, "first page of chart")
+        elif broken:
+            verdict = Verdict("new_document", "blank_junk", "high", None, "after a blank or junk page")
+        elif previous.signed:
+            verdict = Verdict("new_document", "signature", "high", None, "the previous page was signed")
         else:
             verdict = judge(previous, page, rules)
             if note_document and verdict.relation != "new_document":
@@ -345,6 +361,7 @@ def assign(pages: Sequence[PageInput], rules: Optional[Rules] = None) -> list[di
         if note_open and page.signed:
             note_open = False
         previous = page
+        broken = False
 
     _finish(rows, pages, rules)
     return rows
@@ -383,6 +400,7 @@ def _finish(rows: list[dict[str, Any]], pages: Sequence[PageInput], rules: Rules
         printed = None if page.skipped else pagination(page, rules)
         row["page_no"], row["page_total"] = printed if printed else (None, None)
         row["seq"] = row["position"] = row["link_strength"] = None
+        row["label"] = ""
         row["start_confirmed"] = False
         row["final_page_type"] = row["final_dos_from"] = row["final_dos_to"] = None
         if row["document_seq"] is not None:
@@ -416,6 +434,7 @@ def _finish(rows: list[dict[str, Any]], pages: Sequence[PageInput], rules: Rules
                 else "last" if index == count - 1
                 else "continue"
             )
+            row["label"] = position_label(row["position"], row["document_seq"])
             row["final_page_type"] = carried["page_type"]
             row["final_dos_from"] = carried["dos_from"]
             row["final_dos_to"] = carried["dos_to"]
@@ -424,6 +443,13 @@ def _finish(rows: list[dict[str, Any]], pages: Sequence[PageInput], rules: Rules
                     "; first page has no date of service, Final DOS from page "
                     f"{carried['dos_page_number']}"
                 )
+
+
+def position_label(position: Optional[str], document: Optional[int]) -> str:
+    """'First (Doc 3)', 'Continue (Doc 3)', 'Last (Doc 3)', 'Single (Doc 3)'; '' outside a document."""
+    if not position or document is None:
+        return ""
+    return f"{position.capitalize()} (Doc {document})"
 
 
 def document_finals(members: Sequence[dict[str, Any]]) -> dict[str, Any]:

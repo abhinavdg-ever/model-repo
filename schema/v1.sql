@@ -654,7 +654,7 @@ CREATE TABLE page_continuity_results (
     position             VARCHAR(10) NOT NULL CHECK (position IN ('single','first','continue','last')),
     relation             VARCHAR(20) NOT NULL CHECK (relation IN ('new_document','continue','unknown')),
     decided_by           VARCHAR(20) NOT NULL CHECK (decided_by IN (
-                             'first_page','pagination','signals','progress_note'
+                             'first_page','blank_junk','signature','pagination','signals','progress_note'
                          )),
     confidence_level     VARCHAR(10) CHECK (confidence_level IS NULL OR confidence_level IN (
                              'high','medium','low'
@@ -681,7 +681,10 @@ CREATE TRIGGER trg_page_continuity_results_updated_at
 -- Finals are the page's own value. Page type follows the continuation rules
 -- (page_arbitration.json level 3, on page_continuity_results' documents):
 -- page_type_source = page | continuation | embedded. DOS is the document's
--- first dated page's (dos_source = document) or the page's own.
+-- first dated page's (dos_source = document) or the page's own. A duplicate
+-- page (skipped after blank/junk) copies its content fields from the page it
+-- duplicates: page_type_source = dos_source = 'duplicate', and
+-- duplicate_of_page_id names that page.
 CREATE TABLE imaging_final (
     id                       BIGSERIAL PRIMARY KEY,
     chart_id                 BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
@@ -705,17 +708,18 @@ CREATE TABLE imaging_final (
     codability               VARCHAR(20),
     classification_category  VARCHAR(20),
     page_type_source         VARCHAR(20) CHECK (page_type_source IS NULL OR
-                                                page_type_source IN ('page','continuation','embedded')),
+                                                page_type_source IN ('page','continuation','embedded','duplicate')),
     continuation_rule        VARCHAR(30),
     needs_review             BOOLEAN NOT NULL DEFAULT FALSE,
     dos_from                 DATE,
     dos_to                   DATE,
     dos_source               VARCHAR(10) CHECK (dos_source IS NULL OR
-                                                dos_source IN ('page','document')),
+                                                dos_source IN ('page','document','duplicate')),
     encounter_type           VARCHAR(30),
     provider_name            TEXT,
     signature_present        BOOLEAN,
     seq                      INT,
+    duplicate_of_page_id     BIGINT REFERENCES page_list(id) ON DELETE SET NULL,
     created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (page_id)

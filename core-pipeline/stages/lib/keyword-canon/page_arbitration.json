@@ -1,6 +1,6 @@
 {
   "version": "1.1",
-  "status": "Default ladder. Thresholds, settings and patterns are starting values to be tuned on a validation split. 2026-10-11: BERT wins at >= bert_high, or at >= bert_low with a lead of >= bert_lead over its second choice. Set to 0.50 / 0.25 after retraining (the first model's top probabilities were only 15-25%, when 0.20 / 0.10 was used).",
+  "status": "Default ladder. Thresholds, settings and patterns are starting values to be tuned on a validation split. 2026-10-11: BERT wins at >= bert_high (0.50), or at >= bert_low (0.25) with a lead >= bert_lead (0.10) over its second choice. Below bert_low the keyword model wins when clear (title hit); otherwise the two models' top 3 page types are compared. Below bert_unknown (0.10) the page is Unknown.",
   "inputs": {
     "bert": "model_type with a confidence (softmax probability). Implies page_type; implies page_subtype only when page_type is Progress Note.",
     "keyword": "page_subtype with a score, a margin and a title_hit flag (from keyword_canon.json). Implies page_type and model_type.",
@@ -9,7 +9,8 @@
   "thresholds": {
     "bert_high": 0.50,
     "bert_low": 0.25,
-    "bert_lead": 0.05,
+    "bert_lead": 0.10,
+    "bert_unknown": 0.10,
     "keyword_min_score": 3,
     "keyword_min_margin": 2
   },
@@ -47,6 +48,20 @@
       "name": "bert_medium",
       "when": "they differ and BERT confidence >= bert_low",
       "winner": "bert",
+      "needs_review": true
+    },
+    {
+      "step": "5b",
+      "name": "unknown",
+      "when": "a BERT model is loaded and its confidence < bert_unknown",
+      "winner": "none (page type Unknown)",
+      "needs_review": true
+    },
+    {
+      "step": "5c",
+      "name": "top3_agreement",
+      "when": "a page type appears in both BERT's and the keyword model's top 3: the one with the best combined rank (ties: BERT's order)",
+      "winner": "both",
       "needs_review": true
     },
     {
@@ -210,6 +225,9 @@
     "bert_medium",
     "keyword_body",
     "bert_low",
+    "unknown",
+    "top3_agreement",
+    "no_prediction",
     "continuation",
     "embedded"
   ],
