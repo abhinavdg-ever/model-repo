@@ -81,6 +81,7 @@
     body { grid-template-columns: 1fr; grid-template-rows: auto 220px 60vh auto; height: auto; }
     aside, section { border: 0; }
   }
+  .name .status { margin-left: 0.4rem; font-size: 0.72rem; color: #6f6c63; }
 </style>
 </head>
 <body>
@@ -309,8 +310,15 @@ function renderList() {
     const dot = document.createElement("span"); dot.className = "dot" + (it.in_training ? " yes" : "");
     name.append(dot, document.createTextNode(it.image + (it.missing ? " (missing)" : "")));
     if (it.completed) {
-      const done = document.createElement("span"); done.className = "done"; done.textContent = "✓"; done.title = "Completed";
+      const done = document.createElement("span"); done.className = "done"; done.textContent = "✓";
+      done.title = it.saved_at ? `Saved ${it.saved_at}` : "Completed";
       name.appendChild(done);
+    }
+    if (it.status) {
+      // What was last done here in the tool (image_labels.csv "status").
+      const st = document.createElement("span"); st.className = "status";
+      st.textContent = it.status === "Saved" && it.saved_at ? `Saved ${it.saved_at.slice(5, 16)}` : it.status;
+      name.appendChild(st);
     }
     const tag = document.createElement("div"); tag.className = "tag" + (it.tagged ? "" : " none");
     tag.textContent = it.tagged ? describe(it) : "untagged";

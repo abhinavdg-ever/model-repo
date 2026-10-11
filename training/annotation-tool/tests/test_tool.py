@@ -370,3 +370,17 @@ def test_rows_without_a_file_are_not_listed_or_counted_as_images(folder, store_c
     missing = [i["index"] for i in client.get("/api/items?view=missing").get_json()["items"]]
     assert gone in missing
     assert "gone.jpg" in read_labels(folder)[0] or any(r["image"] == "gone.jpg" for r in store.rows)
+
+
+def test_save_and_untag_write_a_status_to_the_labels_csv(folder, store_cls):
+    store = store_cls(folder)
+    store.set_labels(0, "Forms")
+    row = next(r for r in read_labels(folder) if r["image"] == store.rows[0]["image"])
+    assert row["status"] == "Saved" and row["saved_at"] and row["is_completed"] == "Yes"
+    store.clear(0)
+    row = next(r for r in read_labels(folder) if r["image"] == store.rows[0]["image"])
+    assert row["status"] == "Untagged" and row["saved_at"] == "" and row["is_completed"] == "No"
+    store.undo()
+    assert store.item(0)["status"] == "Saved"
+    untouched = next(r for r in read_labels(folder) if r["image"].endswith("Pg2.jpg"))
+    assert untouched["status"] == ""  # never saved in the tool

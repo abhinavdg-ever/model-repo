@@ -20,6 +20,7 @@ import shutil
 import tempfile
 import threading
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
@@ -34,6 +35,11 @@ FLAG = "is_training_added"
 # Yes once the page was saved in the tool (reviewed), whether or not its labels
 # changed. Only the tool reads it; training reads training_data.jsonl.
 DONE = "is_completed"
+# What was last done to the page in the tool: "Saved" (Save button) or
+# "Untagged" (Untag button); empty = never touched in the tool. saved_at is the
+# local date and time of the last Save.
+STATUS = "status"
+SAVED_AT = "saved_at"
 LABEL_FIELDS = ("model_type", "page_type", "page_subtype")
 # Fewer characters than this counts as "almost no text" in the summary.
 LOW_TEXT_CHARS = 30
@@ -137,7 +143,7 @@ class Store:
             self.rows = [dict(row) for row in reader]
         else:
             self.columns, self.rows = list(BASE_COLUMNS), []
-        for column in [*BASE_COLUMNS, FLAG, DONE]:
+        for column in [*BASE_COLUMNS, FLAG, DONE, STATUS, SAVED_AT]:
             if column not in self.columns:
                 self.columns.append(column)
         for row in self.rows:
@@ -192,6 +198,8 @@ class Store:
             "completed": row.get(DONE) == "Yes",
             "tagged": self.tagged(row),
             "missing": self.files.get(index) is None,
+            "status": row.get(STATUS) or "",
+            "saved_at": row.get(SAVED_AT) or "",
         }
 
     def counts(self) -> dict[str, int]:
@@ -294,11 +302,16 @@ class Store:
                 "page_type": labels.page_type,
                 "page_subtype": labels.page_subtype,
                 DONE: "Yes",  # saved = reviewed, even with the same labels
+                STATUS: "Saved",
+                SAVED_AT: datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             })
 
     def clear(self, index: int) -> dict[str, Any]:
         with self.lock:
-            return self._apply(index, {"model_type": "", "page_type": "", "page_subtype": "", DONE: "No"})
+            return self._apply(index, {
+                "model_type": "", "page_type": "", "page_subtype": "", DONE: "No",
+                STATUS: "Untagged", SAVED_AT: "",
+            })
 
     def _apply(self, index: int, values: dict[str, str]) -> dict[str, Any]:
         row = self.rows[index]
