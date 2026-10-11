@@ -238,10 +238,11 @@ def test_page_file_joins_the_staged_page_by_name(tmp_path):
     assert dob.processed == "1950-01-02"
 
 
-def test_signature_csv_splits_each_person():
+def test_signature_csv_shows_only_the_first_person():
+    # The pipeline now writes one provider; an older CSV's list shows its first.
     assert signature_people("Liane Kirchberger, PA | Daniel J Hamilton, MD") == (
-        "Liane Kirchberger | Daniel J Hamilton",
-        "PA | MD",
+        "Liane Kirchberger",
+        "PA",
     )
     assert signature_people("Dr Hamilton") == ("Dr Hamilton", "")
     assert signature_people("Michael J Battaglia, DO") == ("Michael J Battaglia", "DO")
@@ -266,8 +267,8 @@ def test_signature_csv_splits_each_person():
         ],
         "60140965.tif",
     )
-    assert rows["6.jpg"]["providerName"] == "Liane Kirchberger | Daniel J Hamilton"
-    assert rows["6.jpg"]["providerCredentials"] == "PA | MD"
+    assert rows["6.jpg"]["providerName"] == "Liane Kirchberger"
+    assert rows["6.jpg"]["providerCredentials"] == "PA"
     assert rows["6.jpg"]["providerSignature"] == "No"
     assert rows["4.jpg"]["providerSignature"] == "No"
     assert "providerName" not in rows["4.jpg"]

@@ -49,7 +49,7 @@ def test_a_written_month_converts_and_an_unreadable_date_is_empty():
     assert junk["signature_present"] is True
 
 
-def test_several_providers_stay_in_page_order():
+def test_only_the_highest_scoring_provider_is_named():
     fields = signature_fields(
         [
             {
@@ -68,7 +68,8 @@ def test_several_providers_stay_in_page_order():
         ],
     )
     assert fields["signature_present"] is True
-    assert fields["provider_name"] == "Daniel J Hamilton, MD | Liane Kirchberger, PA"
+    # The signature's name (0.9) beats unscored provider-name hits.
+    assert fields["provider_name"] == "Daniel J Hamilton, MD"
     assert fields["signature_date"] == "2025-08-27"
 
 
@@ -78,7 +79,16 @@ def test_a_provider_without_a_signature_is_named_and_not_present():
         [{"value": "Liane Kirchberger, PA"}, {"value": "Robert Erickson"}],
     )
     assert fields["signature_present"] is False
-    assert fields["provider_name"] == "Liane Kirchberger, PA | Robert Erickson"
+    # No scores: the first one read.
+    assert fields["provider_name"] == "Liane Kirchberger, PA"
+
+
+def test_a_higher_scoring_provider_hit_beats_the_signature_name():
+    fields = signature_fields(
+        [{"provider_name": "Daniel J Hamilton, MD", "signature_date": "08/27/2025", "score": 0.6}],
+        [{"value": "Liane Kirchberger, PA", "score": 0.95}, {"value": "Robert Erickson", "score": 0.4}],
+    )
+    assert fields["provider_name"] == "Liane Kirchberger, PA"
 
 
 def test_empty_signature_is_not_present():

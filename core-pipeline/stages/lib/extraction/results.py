@@ -49,33 +49,33 @@ def _as_hits(hit: Any) -> list[dict[str, Any]]:
     return []
 
 
-def _unique(values: list[Optional[str]]) -> list[str]:
-    """Page order, first occurrence kept. Several names become one `` | `` cell."""
-    seen: list[str] = []
-    for value in values:
-        text = (value or "").strip()
-        if text and text not in seen:
-            seen.append(text)
-    return seen
-
-
 def signature_fields(
     hit: Any = None,
     provider_hits: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
-    """The page's signature, plus every provider name in the order they were read.
+    """The page's signature and its one provider name: the highest-scoring.
 
-    ``hit`` is one signature or the page's selected signatures. Provider names
-    from those signatures come first; selected provider-name hits follow.
-    ``signature_present`` stays false when the only names are provider hits
-    and no signature was accepted.
+    ``hit`` is one signature or the page's selected signatures. Candidates are
+    the provider names from those signatures, then the selected provider-name
+    hits; the one with the highest ``score`` wins, ties (and unscored
+    candidates) going to the earliest, so a signature's name beats a
+    provider-name hit of equal score. ``signature_present`` stays false when
+    the only names are provider hits and no signature was accepted.
     """
     hits = _as_hits(hit)
     primary = hits[0] if hits else None
-    names = _unique(
-        [_text(item, "provider_name") for item in hits]
-        + [_text(item, "value") for item in _as_hits(provider_hits)]
-    )
+    candidates = [
+        (name, _score(item))
+        for item, name in (
+            [(item, _text(item, "provider_name")) for item in hits]
+            + [(item, _text(item, "value")) for item in _as_hits(provider_hits)]
+        )
+        if name
+    ]
+    best = None
+    for name, score in candidates:
+        if best is None or (score if score is not None else -1.0) > best[1]:
+            best = (name, score if score is not None else -1.0)
     printed_date = _text(primary, "signature_date")
     ner_text = _text(primary, "ner_text")
     present = any(
@@ -89,7 +89,7 @@ def signature_fields(
         "scale": _text(primary, "scale"),
         "sentence": _text(primary, "sentence"),
         "ner_text": ner_text,
-        "provider_name": " | ".join(names) if names else None,
+        "provider_name": best[0] if best else None,
         "signature_date": _iso_date(printed_date),
         "confidence": _score(primary),
         "source": _text(primary, "source"),

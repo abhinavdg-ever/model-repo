@@ -355,16 +355,17 @@ def index_dos_rows(rows: list[dict[str, str]], chart_name: str) -> dict[str, dic
 
 
 def signature_people(text: str) -> tuple[str, str]:
-    """Names and credentials from one ``provider_name`` cell.
+    """Name and credentials of the one provider in a ``provider_name`` cell.
 
-    People are already separated by `` | ``. A credential is a suffix on that
-    person (``PA``, ``MD``, ``DO``). The pipe is not split again.
+    The pipeline writes only the highest-scoring provider. A CSV from an
+    earlier run lists several, separated by `` | ``; only the first is shown.
+    A credential is a suffix on that person (``PA``, ``MD``, ``DO``).
     """
     from app.services.extraction_review import _is_credential
 
     names: list[str] = []
     credentials: list[str] = []
-    for person in (text or "").split("|"):
+    for person in (text or "").split("|")[:1]:
         person = person.strip()
         if not person:
             continue
