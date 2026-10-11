@@ -46,11 +46,14 @@ function Donut({
   detail,
   tally,
   rates,
+  ratesLabel,
 }: {
   label: string;
   detail: string;
   tally: Tally;
   rates?: ClassRates;
+  /** The positive ("Yes") class the precision / recall are for. */
+  ratesLabel?: string;
 }) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
@@ -89,7 +92,13 @@ function Donut({
       <figcaption>{label}</figcaption>
       <p>{formatDistribution(tally)}</p>
       {rates ? (
-        <p className="accuracy-rates">
+        <p className="accuracy-rates" title={ratesLabel ? `Positive class: ${ratesLabel}` : undefined}>
+          {ratesLabel ? (
+            <>
+              <span className="accuracy-rates-class">{ratesLabel}</span>
+              <br />
+            </>
+          ) : null}
           Precision {formatPrecision(rates)}
           <br />
           Recall {formatRecall(rates)}
@@ -166,6 +175,14 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
     () => sumRates(rows.map((row) => row.blankJunkRates)),
     [rows],
   );
+  const memberRates = useMemo(() => sumRates(rows.map((row) => row.memberRates)), [rows]);
+  /** Precision / recall of the "Yes" class, for the metrics that have one. */
+  const ratesFor = (id: MetricId, row?: ChartAccuracy) =>
+    id === "blankJunk"
+      ? row ? row.blankJunkRates : blankJunkRates
+      : id === "member"
+        ? row ? row.memberRates : memberRates
+        : undefined;
 
   return (
     <div className="workspace accuracy-view">
@@ -204,7 +221,8 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                   label={metric.label}
                   detail={metric.rule}
                   tally={overallByMetric[metric.id]}
-                  rates={metric.id === "blankJunk" ? blankJunkRates : undefined}
+                  rates={ratesFor(metric.id)}
+                  ratesLabel={metric.id === "member" ? "Member on page = Yes" : "Blank / Junk = Yes"}
                 />
               ))}
             </div>
@@ -241,9 +259,19 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                     </th>
                     <td className="landing-col-updated">{fmtUpdated(row.lastUpdatedAt)}</td>
                     <td className="landing-col-updated">{fmtUpdated(row.lastVerifiedAt)}</td>
-                    {METRICS.map((metric) => (
-                      <td key={metric.id}>{formatDistribution(row.metrics[metric.id])}</td>
-                    ))}
+                    {METRICS.map((metric) => {
+                      const rates = ratesFor(metric.id, row);
+                      return (
+                        <td key={metric.id}>
+                          {formatDistribution(row.metrics[metric.id])}
+                          {rates ? (
+                            <span className="accuracy-chart-rates">
+                              P {formatPrecision(rates)} · R {formatRecall(rates)}
+                            </span>
+                          ) : null}
+                        </td>
+                      );
+                    })}
                     <td>
                       {percentLabel(row.overall)}
                       <span className="accuracy-chart-ratio"> {formatDistribution(row.overall)}</span>

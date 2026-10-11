@@ -2992,6 +2992,18 @@ input {
   gap: 1.1rem;
 }
 
+.accuracy-rates-class {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.accuracy-chart-rates {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .accuracy-status {
   margin: 0.5rem 0 0;
   color: var(--muted);

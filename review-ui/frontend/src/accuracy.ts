@@ -56,6 +56,8 @@ export type ChartAccuracy = {
   metrics: Record<MetricId, Tally>;
   overall: Tally;
   blankJunkRates: ClassRates;
+  /** "Yes" class = the member's name / DOB / ID is on the page. */
+  memberRates: ClassRates;
 };
 
 const EMPTY_SECTIONS: ImagingSectionsProcessed = {
@@ -93,6 +95,24 @@ function addBlankJunk(rates: ClassRates, bits: GtBit[]): void {
   }
   if (expected) rates.fn += 1;
   else if (bit.mark === "mismatch") rates.fp += 1;
+}
+
+/** Member presence as a Yes / No class. A page is positive in the ground truth
+ * when any labelled member field (name, DOB, ID) is Yes, and predicted positive
+ * when the pipeline found any of those labelled fields. Unknown fields (the
+ * member stage did not run) are left out. */
+function addMember(rates: ClassRates, fields: Array<[string | null | undefined, GtBit[]]>): void {
+  const scored = fields.filter(
+    ([label, bits]) => yesNo(label) != null && bits.length > 0 && bits[0].mark !== "unknown",
+  );
+  if (scored.length === 0) return;
+  const expected = scored.some(([label]) => yesNo(label) === "yes");
+  const predicted = scored.some(
+    ([label, bits]) => (yesNo(label) === "yes") === (bits[0].mark === "match"),
+  );
+  if (expected && predicted) rates.tp += 1;
+  else if (expected) rates.fn += 1;
+  else if (predicted) rates.fp += 1;
 }
 
 function add(tally: Tally, verdict: Verdict | null) {
@@ -133,7 +153,11 @@ function pageScores(
   page: ImagingPageResult,
   sections: ImagingSectionsProcessed,
   manifestMemberId: string | null | undefined,
-): { scores: Record<MetricId, Verdict | null>; blankJunk: GtBit[] } {
+): {
+  scores: Record<MetricId, Verdict | null>;
+  blankJunk: GtBit[];
+  member: Array<[string | null | undefined, GtBit[]]>;
+} {
   const parts = splitPageType(page.pageType);
   const bits = groundTruthBits({
     gt: page.groundTruth,
@@ -208,6 +232,11 @@ function pageScores(
       credentials,
     },
     blankJunk: bits.blankJunk,
+    member: [
+      [page.groundTruth?.memberName, bits.memberName],
+      [page.groundTruth?.memberDob, bits.memberDob],
+      [page.groundTruth?.memberId, bits.memberId],
+    ] as Array<[string | null | undefined, GtBit[]]>,
   };
 }
 
@@ -268,6 +297,7 @@ export function scoreChart(
     Tally
   >;
   const blankJunkRates = emptyRates();
+  const memberRates = emptyRates();
   const overall = emptyTally();
   for (const page of doc.pages) {
     if (!hasGroundTruth(page.groundTruth)) continue;
@@ -275,8 +305,9 @@ export function scoreChart(
     for (const metric of METRICS) add(metrics[metric.id], scored.scores[metric.id]);
     add(overall, overallVerdict(scored.scores));
     addBlankJunk(blankJunkRates, scored.blankJunk);
+    addMember(memberRates, scored.member);
   }
-  return { chartId, chartName, metrics, overall, blankJunkRates };
+  return { chartId, chartName, metrics, overall, blankJunkRates, memberRates };
 }
 
 export function sumRates(rows: ClassRates[]): ClassRates {
