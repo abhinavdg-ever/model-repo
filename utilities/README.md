@@ -35,6 +35,33 @@ python ../utilities/find_blob_folders.py imaging-pipeline/Raw_Input C:/lists/fol
 Writes `folders_located.xlsx` next to the input. A folder in more than one
 place is several paths separated by ` | `. A miss is `NOT FOUND`.
 
+## Merge training files
+
+Combines several `training_data.jsonl` files from the annotation tool into one.
+Standard library only — runs with any Python 3.9+, no venv needed. Prints
+counts and file names only, never page text.
+
+```bash
+python utilities/merge_training_json.py \
+    old/training_data.jsonl ~/Desktop/Training/processed/training_data.jsonl \
+    --out training/bert-training/data/training_data.jsonl
+
+python utilities/merge_training_json.py ~/Desktop/Training/ --out merged.jsonl   # every *.jsonl under a folder
+python utilities/merge_training_json.py --list files.txt --out merged.jsonl
+python utilities/merge_training_json.py a.jsonl b.jsonl --out merged.jsonl --dry-run   # report only
+```
+
+* **List the newest file last.** The same page (same image name and file size)
+  in more than one file is kept once, with the **later** file's labels.
+* Same image name but a different file (e.g. `IMG_1234.HEIC` in two folders):
+  both kept, listed in the report.
+* Identical text under different names (likely the same page twice, which
+  would leak across the train / validation split): reported;
+  `--drop-duplicate-text` keeps only the first.
+* Records without `image`, `text` or `model_type` are dropped; model types not
+  in `page_taxonomy.json` are counted.
+* `--out` may be one of the inputs; it is written only after every input is read.
+
 ## Local PDFs → page folders
 
 One chart folder per PDF on disk, with a JPEG for each page:

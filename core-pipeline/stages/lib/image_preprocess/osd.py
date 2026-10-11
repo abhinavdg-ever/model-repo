@@ -21,9 +21,10 @@ by ``OrientationResult.rotation``. Verified rather than assumed:
     input 90 CW  -> rotate 270      input 180 -> rotate 180
     input 270 CW -> rotate 90       upright   -> rotate 0
 
-**What this does not do.** OSD says nothing about mirroring or fine tilt. Tilt
-still comes from the geometric detector, which measures it well. Mirror is left
-alone deliberately — see `quality_rotation_hw`.
+**What this does not do.** OSD says nothing about mirroring or fine tilt, and
+its answer is only a proposal: ``rotation.choose_orientation`` keeps it only
+when Tesseract reads the page at that turn, and decides the mirror there too.
+Tilt comes from the geometric detector, checked by the same read.
 
 Requires the `osd` traineddata, which ships with a standard Tesseract install.
 Every failure path returns None so the caller falls back rather than failing a

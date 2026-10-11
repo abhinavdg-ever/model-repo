@@ -10,7 +10,9 @@
 # Docling final1 + ConvNeXt handwriting. RapidOCR weight files stay under
 # models/rapidocr/; the ConvNeXt checkpoint stays under models/hw/.
 docling>=2.0.0
-rapidocr>=2.0.0
+# 3.10.0 dropped rapidocr.utils.model_resolver.PP_OCRV6_LANGS. Docling still
+# imports that name, so Final OCR 1 never starts and falls back to onnx.
+rapidocr>=3.9.1,<3.10.0
 
 # MiniLM semantic filter for section headers. Falls back to lexical matching
 # if this package is absent.
@@ -34,6 +36,5 @@ pandas==3.0.5
 lightgbm==4.7.0
 scikit-learn~=1.9.1
 
-# Page-family classifier (models/page-family/family.joblib). Absent ⇒ the
-# keyword catalog names the family as well as the subtype.
-xgboost~=3.4
+# The page classifier (models/page-family/) is a BERT folder: it runs on the
+# torch + transformers above; nothing extra.

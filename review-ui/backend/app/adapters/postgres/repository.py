@@ -36,7 +36,7 @@ from app.services.chart_run_batch import with_run_batch_default
 from app.services.db import psycopg_url as _psycopg_url
 from app.services.ground_truth import attach_ground_truth
 from app.services.imaging_overlays import (
-    display_page_type,
+    compose_page_type,
     empty_imaging_pages,
     page_type_fields,
 )
@@ -905,7 +905,8 @@ class PostgresFolderRepository(FolderRepository):
                     cur.execute(
                         """
                         SELECT p.page_name, pc.page_subtype,
-                               pc.classification_category, pc.confidence
+                               pc.classification_category, pc.confidence,
+                               to_jsonb(pc) ->> 'page_type'
                         FROM page_classification pc
                         JOIN page_list p ON p.id = pc.page_id
                         JOIN chart_list c ON c.id = pc.chart_id
@@ -915,17 +916,17 @@ class PostgresFolderRepository(FolderRepository):
                     )
                     codeable_display = {
                         "codeable": "Codeable",
-                        "non_codeable": "Non Codeable",
+                        "non_codeable": "Non-Codeable",
                         "discharge_summary": "Discharge",
                         "discharge_frequency": "Discharge",
                         "not_sure": "Not Sure",
                     }
-                    for page_name, subtype, cat, conf in cur.fetchall():
+                    for page_name, subtype, cat, conf, page_type in cur.fetchall():
                         fields = _ensure(str(page_name))
                         key = str(cat or "").strip()
-                        subtype_s = str(subtype or "").strip()
-                        if subtype_s:
-                            fields["pageType"] = display_page_type(subtype_s)
+                        shown = compose_page_type(page_type, subtype)
+                        if shown:
+                            fields["pageType"] = shown
                         fields["isCodeable"] = codeable_display.get(key, key or "Not Sure")
                         if conf is not None:
                             fields["pageTypeConfidence"] = float(conf)
@@ -981,6 +982,51 @@ class PostgresFolderRepository(FolderRepository):
                             fields["currentSequence"] = int(current)
                         if seq is not None:
                             fields["actualSequence"] = int(seq)
+
+                    # Document continuity, then Final values. A database without
+                    # these tables yet skips them, not the page.
+                    cur.execute("SELECT to_regclass('page_continuity_results')")
+                    if (cur.fetchone() or [None])[0]:
+                        cur.execute(
+                            """
+                            SELECT p.page_name, k.document_seq, k.position, k.relation,
+                                   k.decided_by, k.evidence, k.review_required
+                            FROM page_continuity_results k
+                            JOIN page_list p ON p.id = k.page_id
+                            JOIN chart_list c ON c.id = k.chart_id
+                            WHERE c.chart_name = %s
+                            """,
+                            (folder_id,),
+                        )
+                        for (page_name, document, position, relation, decided_by,
+                             evidence, review) in cur.fetchall():
+                            fields = _ensure(str(page_name))
+                            fields["documentSeq"] = int(document)
+                            fields["documentPosition"] = position
+                            fields["continuityRelation"] = relation
+                            fields["continuityDecidedBy"] = decided_by
+                            fields["continuityEvidence"] = evidence
+                            fields["continuityReview"] = bool(review)
+
+                    cur.execute("SELECT to_regclass('imaging_final')")
+                    if (cur.fetchone() or [None])[0]:
+                        cur.execute(
+                            """
+                            SELECT p.page_name, f.page_type, f.classification_category,
+                                   f.dos_from, f.dos_to, to_jsonb(f) ->> 'page_subtype'
+                            FROM imaging_final f
+                            JOIN page_list p ON p.id = f.page_id
+                            JOIN chart_list c ON c.id = f.chart_id
+                            WHERE c.chart_name = %s
+                            """,
+                            (folder_id,),
+                        )
+                        for page_name, final_type, category, final_from, final_to, final_sub in cur.fetchall():
+                            fields = _ensure(str(page_name))
+                            fields["finalPageType"] = compose_page_type(final_type, final_sub) or None
+                            fields["finalCodeable"] = codeable_display.get(category or "")
+                            fields["finalDosFrom"] = _fmt_date(final_from)
+                            fields["finalDosTo"] = _fmt_date(final_to)
         except Exception:
             return by_page
 

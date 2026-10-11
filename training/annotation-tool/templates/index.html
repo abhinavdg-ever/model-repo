@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page Labels</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66;
+    --line: #e2e1dc; --accent: #2f5d8a; --accent-ink: #ffffff; --warn: #a3471f;
+    --ok: #2e6b3f; --sel: #e8eef5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #a09f98;
+      --line: #33332f; --accent: #6f9fd0; --accent-ink: #10161d; --warn: #e08a63;
+      --ok: #7fbf8e; --sel: #26303b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+         background: var(--bg); color: var(--ink); height: 100vh; display: grid;
+         grid-template-columns: 280px 1fr 340px; grid-template-rows: auto 1fr; }
+  header { grid-column: 1 / -1; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+           padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header .counts { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
+  header .spacer { flex: 1; }
+  header .pending { font-size: 13px; color: var(--muted); }
+  header label.toggle { display: flex; gap: 6px; align-items: center; font-size: 13px; cursor: pointer; }
+  #list .done { color: var(--ok); margin-left: 4px; }
+  #empty { padding: 16px 12px; color: var(--muted); }
+  #empty b { color: var(--ok); }
+  header .pending b { color: var(--warn); font-variant-numeric: tabular-nums; }
+  header .counts b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  #status { font-size: 12px; color: var(--muted); white-space: pre-wrap; flex-basis: 100%; }
+  #status:empty { display: none; }
+  aside, main, section { min-height: 0; }
+  aside { border-right: 1px solid var(--line); display: flex; flex-direction: column; background: var(--panel); }
+  section { border-left: 1px solid var(--line); background: var(--panel); padding: 14px; overflow: auto; }
+  .filters { padding: 10px; display: grid; gap: 6px; border-bottom: 1px solid var(--line); }
+  input, select, button { font: inherit; color: inherit; }
+  input[type=text], input[type=search], select { width: 100%; padding: 6px 8px; border: 1px solid var(--line);
+         border-radius: 6px; background: var(--bg); }
+  input:disabled { opacity: .55; }
+  button { padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  #list { overflow: auto; flex: 1; margin: 0; padding: 0; list-style: none; }
+  #list li { padding: 6px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  #list li.sel { background: var(--sel); }
+  #list .name { font-size: 12px; word-break: break-all; }
+  #list .tag { font-size: 12px; color: var(--muted); }
+  #list .tag.none { color: var(--warn); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; background: var(--line); }
+  .dot.yes { background: var(--ok); }
+  main { display: flex; flex-direction: column; }
+  .toolbar { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; align-items: center; }
+  .toolbar .spacer { flex: 1; }
+  #viewer { flex: 1; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 12px; }
+  #page { transform-origin: center center; box-shadow: 0 1px 6px rgba(0,0,0,.2); background: #fff; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 6px; }
+  h2:first-child { margin-top: 0; }
+  .kv { display: grid; grid-template-columns: 96px 1fr; gap: 4px 8px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font-weight: 600; word-break: break-word; }
+  .combo { position: relative; }
+  .combo .menu { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; margin-top: 2px;
+                 max-height: 280px; overflow: auto; background: var(--panel); border: 1px solid var(--line);
+                 border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+  .combo .menu[hidden] { display: none; }
+  .combo .menu div { padding: 5px 8px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+  .combo .menu div.hi { background: var(--sel); }
+  .combo .menu small { color: var(--muted); white-space: nowrap; }
+  .combo .menu .empty { color: var(--muted); cursor: default; }
+  label.field { display: block; margin: 10px 0 4px; color: var(--muted); font-size: 13px; }
+  .actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 14px; }
+  #dirty { font-size: 12px; color: var(--warn); margin-top: 6px; min-height: 1em; }
+  #error { font-size: 12px; color: var(--warn); margin-top: 8px; white-space: pre-wrap; }
+  .muted { color: var(--muted); }
+  @media (max-width: 900px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto 220px 60vh auto; height: auto; }
+    aside, section { border: 0; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <label class="toggle"><input type="checkbox" id="showCompleted"> <span id="showCompletedLabel">Show completed</span></label>
+  <div class="counts" id="counts"></div>
+  <span class="spacer"></span>
+  <span class="pending" id="pending"></span>
+  <button id="add" class="primary" title="OCR new pages, refresh labels of pages already in the file">Add to Training JSON</button>
+  <div id="status"></div>
+</header>
+
+<aside>
+  <div class="filters">
+    <select id="view">
+      <option value="all">All images</option>
+      <option value="untagged">Untagged</option>
+      <option value="not_in_training">Not in training yet</option>
+      <option value="in_training">In training</option>
+    </select>
+    <select id="filterType"><option value="">Any model type</option></select>
+    <input id="search" type="search" placeholder="Search file name">
+  </div>
+  <ul id="list"></ul>
+  <div id="empty" hidden></div>
+</aside>
+
+<main>
+  <div class="toolbar">
+    <button id="prev" title="Previous (←)">◀ Prev</button>
+    <button id="next" title="Next (→)">Next ▶</button>
+    <span id="position" class="muted"></span>
+    <span class="spacer"></span>
+    <button id="zoomOut" title="Zoom out (-)">−</button>
+    <button id="zoomIn" title="Zoom in (+)">+</button>
+    <button id="fit" title="Fit to width (0)">Fit width</button>
+    <button id="rotate" title="Turn 90° (r)">Turn ↻</button>
+  </div>
+  <div id="viewer"><img id="page" alt=""></div>
+</main>
+
+<section>
+  <h2>This page</h2>
+  <dl class="kv">
+    <dt>File</dt><dd id="file">—</dd>
+    <dt>Saved as</dt><dd id="saved">—</dd>
+    <dt>Training</dt><dd id="tr">—</dd>
+    <dt>Status</dt><dd id="doneState">—</dd>
+  </dl>
+
+  <h2>Label</h2>
+  <label class="field" for="ptInput">Page type</label>
+  <div class="combo">
+    <input id="ptInput" type="text" placeholder="Type any word… (t)" autocomplete="off">
+    <div class="menu" id="ptMenu" hidden></div>
+  </div>
+
+  <label class="field" for="stInput">Sub-type</label>
+  <div class="combo">
+    <input id="stInput" type="text" placeholder="Pick a page type first" autocomplete="off" disabled>
+    <div class="menu" id="stMenu" hidden></div>
+  </div>
+
+
+  <dl class="kv" style="margin-top:12px">
+    <dt>Model type</dt><dd id="mt">—</dd>
+    <dt>Codability</dt><dd id="cod">—</dd>
+  </dl>
+
+  <div class="actions">
+    <button id="undo" title="Undo the last save (u)">Undo</button>
+    <button id="clear" title="Remove this page's labels">Untag</button>
+    <button id="save" class="primary" title="Save and go to the next image (Enter)">Save</button>
+    <button id="skip" title="Next image without saving (s)">Skip</button>
+  </div>
+  <div id="dirty"></div>
+  <div id="error"></div>
+</section>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let tax = null, items = [], cur = -1, zoom = 1, turn = 0, fitWidth = true;
+// The two boxes, before Save.
+let draft = {page_type: "", page_subtype: ""};
+
+async function api(path, body) {
+  const res = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"},
+                                         body: JSON.stringify(body)} : {});
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+const showError = (msg) => { $("error").textContent = msg || ""; };
+const pageTypeInfo = (name) => tax.page_types.find((p) => p.page_type === name);
+
+// Search: every typed word must match the start of some word in the option,
+// in any order — "visit" finds "Office Visit", "op rep" finds "Operative Report".
+function matches(option, query) {
+  const words = option.toLowerCase().split(/[^a-z0-9&]+/).filter(Boolean);
+  return query.toLowerCase().split(/\s+/).filter(Boolean)
+    .every((q) => words.some((w) => w.startsWith(q)));
+}
+function rank(option, query) {
+  const o = option.toLowerCase(), q = query.toLowerCase().trim();
+  return o === q ? 0 : o.startsWith(q) ? 1 : 2;
+}
+
+function makeCombo(input, menu, options, onPick) {
+  let hi = 0, shown = [];
+  const render = () => {
+    const q = input.value.trim();
+    shown = options().filter((o) => !q || matches(o.value, q))
+                     .sort((a, b) => q ? rank(a.value, q) - rank(b.value, q) : 0);
+    hi = Math.min(hi, Math.max(0, shown.length - 1));
+    menu.innerHTML = "";
+    if (!shown.length) {
+      const d = document.createElement("div"); d.className = "empty"; d.textContent = "No match";
+      menu.appendChild(d);
+    }
+    shown.forEach((o, i) => {
+      const d = document.createElement("div"); if (i === hi) d.className = "hi";
+      const a = document.createElement("span"); a.textContent = o.value;
+      const b = document.createElement("small"); b.textContent = o.note || "";
+      d.append(a, b);
+      d.onmousedown = (e) => { e.preventDefault(); pick(o.value); };
+      menu.appendChild(d);
+    });
+    const el = menu.children[hi]; if (el) el.scrollIntoView({block: "nearest"});
+  };
+  const open = () => { menu.hidden = false; render(); };
+  const close = () => { menu.hidden = true; };
+  const pick = (value) => { input.value = value; close(); onPick(value, true); };
+  input.addEventListener("focus", () => { input.select(); open(); });
+  input.addEventListener("input", () => { hi = 0; open(); });
+  input.addEventListener("blur", () => {
+    close();
+    // A typed name that is exactly an option counts as picked.
+    const exact = options().find((o) => o.value.toLowerCase() === input.value.trim().toLowerCase());
+    if (exact) { input.value = exact.value; onPick(exact.value, false); }
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { if (menu.hidden) open(); hi = Math.min(hi + 1, shown.length - 1); render(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { hi = Math.max(hi - 1, 0); render(); e.preventDefault(); }
+    else if (e.key === "Enter") {
+      if (!menu.hidden && shown[hi]) { pick(shown[hi].value); e.preventDefault(); e.stopPropagation(); }
+    } else if (e.key === "Escape") { close(); input.blur(); }
+  });
+}
+
+makeCombo($("ptInput"), $("ptMenu"),
+  () => tax.page_types.map((p) => ({value: p.page_type, note: p.codability})),
+  (value, fromList) => {
+    if (value !== draft.page_type) {
+      // A new page type clears the sub-type.
+      draft = {page_type: value, page_subtype: ""};
+    }
+    renderDraft();
+    if (fromList && !$("stInput").disabled) $("stInput").focus();
+  });
+
+makeCombo($("stInput"), $("stMenu"),
+  () => {
+    const info = pageTypeInfo(draft.page_type);
+    return info ? info.sub_types.map((s) => ({value: s, note: s === info.page_type ? "generic" : ""})) : [];
+  },
+  (value) => { draft.page_subtype = value; renderDraft(); });
+
+async function loadTaxonomy() {
+  tax = await api("/api/taxonomy");
+  for (const m of tax.model_types) {
+    const o = document.createElement("option"); o.value = m; o.textContent = m;
+    $("filterType").appendChild(o);
+  }
+}
+
+async function loadItems(keepImage) {
+  const q = new URLSearchParams({view: $("view").value, model_type: $("filterType").value, search: $("search").value,
+                                 completed: $("showCompleted").checked ? "1" : "0"});
+  const data = await api("/api/items?" + q);
+  items = data.items;
+  renderCounts(data.counts);
+  renderList();
+  const pos = keepImage != null ? items.findIndex((it) => it.index === keepImage) : -1;
+  select(pos >= 0 ? pos : (items.length ? 0 : -1));
+}
+
+function renderCounts(c) {
+  // Saved since the last Add: these rows are what the button will add or update.
+  const waiting = c.not_in_training || 0;
+  $("pending").innerHTML = "";
+  if (waiting) {
+    const b = document.createElement("b"); b.textContent = waiting;
+    $("pending").append(b, document.createTextNode(waiting === 1 ? " page to add / update" : " pages to add / update"));
+  } else {
+    $("pending").textContent = "Training JSON up to date";
+  }
+  $("showCompletedLabel").textContent = `Show completed (${c.completed || 0})`;
+  $("counts").innerHTML = "";
+  for (const [k, label] of [["to_do","to do"],["completed","completed"],["images","images"],["untagged","untagged"],
+                            ["in_training","in training"],["missing_files","rows without a file"]]) {
+    const s = document.createElement("span");
+    const b = document.createElement("b"); b.textContent = c[k];
+    s.append(b, document.createTextNode(" " + label));
+    $("counts").appendChild(s);
+  }
+}
+
+function renderList() {
+  const ul = $("list"); ul.innerHTML = "";
+  const empty = $("empty");
+  empty.hidden = items.length > 0;
+  if (!items.length) {
+    empty.innerHTML = "";
+    if (!$("showCompleted").checked && !$("search").value && !$("filterType").value && $("view").value === "all") {
+      const b = document.createElement("b"); b.textContent = "All pages completed.";
+      empty.append(b, document.createTextNode(" Tick Show completed at the top to see them again."));
+    } else {
+      empty.textContent = "No pages match. Clear the filters or tick Show completed.";
+    }
+  }
+  items.forEach((it, i) => {
+    const li = document.createElement("li");
+    li.dataset.pos = i;
+    const name = document.createElement("div"); name.className = "name";
+    const dot = document.createElement("span"); dot.className = "dot" + (it.in_training ? " yes" : "");
+    name.append(dot, document.createTextNode(it.image + (it.missing ? " (missing)" : "")));
+    if (it.completed) {
+      const done = document.createElement("span"); done.className = "done"; done.textContent = "✓"; done.title = "Completed";
+      name.appendChild(done);
+    }
+    const tag = document.createElement("div"); tag.className = "tag" + (it.tagged ? "" : " none");
+    tag.textContent = it.tagged ? describe(it) : "untagged";
+    li.append(name, tag);
+    li.onclick = () => select(i);
+    ul.appendChild(li);
+  });
+}
+
+function describe(it) {
+  if (!it.page_type) return "untagged";
+  return it.page_subtype && it.page_subtype !== it.page_type ? `${it.page_type} / ${it.page_subtype}` : it.page_type;
+}
+
+function select(pos) {
+  cur = pos;
+  document.querySelectorAll("#list li").forEach((li) => li.classList.toggle("sel", Number(li.dataset.pos) === pos));
+  const it = items[pos];
+  $("position").textContent = it ? `${pos + 1} / ${items.length}` : "0 / 0";
+  showError("");
+  if (!it) { $("page").removeAttribute("src"); loadDraft(null); return; }
+  const li = document.querySelector(`#list li[data-pos="${pos}"]`); if (li) li.scrollIntoView({block: "nearest"});
+  turn = 0; applyView();
+  $("page").src = it.missing ? "" : `/api/image/${it.index}`;
+  loadDraft(it);
+}
+
+// The boxes start from what is saved.
+function loadDraft(it) {
+  $("file").textContent = it ? it.image : "—";
+  $("saved").textContent = it ? describe(it) : "—";
+  $("tr").textContent = it ? (it.in_training ? "Yes" : "No — waiting for Add to Training JSON") : "—";
+  $("doneState").textContent = it ? (it.completed ? "Completed" : "To do") : "—";
+  draft = {page_type: it && it.page_type || "", page_subtype: it && it.page_subtype || ""};
+  renderDraft();
+}
+
+function labelsOf(d) {
+  if (!d.page_type) return null;
+  const sub = d.page_subtype || d.page_type;
+  return {page_type: d.page_type, page_subtype: sub,
+          model_type: d.page_type === tax.progress_note ? sub : d.page_type};
+}
+
+function isDirty() {
+  const it = items[cur]; if (!it) return false;
+  const l = labelsOf(draft);
+  if (!l) return Boolean(it.page_type);
+  return l.page_type !== it.page_type || l.page_subtype !== it.page_subtype;
+}
+
+function renderDraft() {
+  $("ptInput").value = draft.page_type;
+  const info = pageTypeInfo(draft.page_type);
+  const st = $("stInput");
+  st.disabled = !info;
+  st.placeholder = !info ? "Pick a page type first" : "Type any word… (empty = generic)";
+  st.value = draft.page_subtype;
+  const l = labelsOf(draft);
+  $("mt").textContent = l ? l.model_type : "—";
+  $("cod").textContent = l ? (pageTypeInfo(l.page_type) || {}).codability || "—" : "—";
+  $("dirty").textContent = isDirty() ? "Not saved — Save keeps it, Skip discards it." : "";
+}
+
+async function save() {
+  const it = items[cur]; if (!it) return;
+  if (!draft.page_type) { showError("Pick a page type, or Skip."); return; }
+  if (draft.page_subtype) {
+    const info = pageTypeInfo(draft.page_type);
+    const savedPair = draft.page_type === it.page_type && draft.page_subtype === it.page_subtype;
+    if (!info.sub_types.includes(draft.page_subtype) && !savedPair) {
+      showError(`"${draft.page_subtype}" is not a sub-type of ${draft.page_type}.`); return;
+    }
+  }
+  try {
+    const data = await api("/api/label", {index: it.index, page_type: draft.page_type,
+                                          page_subtype: draft.page_subtype});
+    renderCounts(data.counts);
+    if ($("showCompleted").checked) {
+      items[cur] = data.item; renderList(); select(Math.min(cur + 1, items.length - 1));
+    } else {
+      // Completed pages leave the list; the next page moves into this place.
+      items.splice(cur, 1); renderList(); select(Math.min(cur, items.length - 1));
+    }
+  } catch (e) { showError(e.message); }
+}
+
+function skip() { if (cur < items.length - 1) select(cur + 1); }
+
+function applyView() {
+  const img = $("page");
+  img.style.transform = `rotate(${turn}deg)`;
+  if (fitWidth) { img.style.width = "100%"; img.style.maxWidth = "100%"; }
+  else { img.style.maxWidth = "none"; img.style.width = (img.naturalWidth * zoom) + "px"; }
+}
+
+$("page").onload = applyView;
+$("prev").onclick = () => cur > 0 && select(cur - 1);
+$("next").onclick = skip;
+$("zoomIn").onclick = () => { fitWidth = false; zoom = Math.min(zoom * 1.25, 6); applyView(); };
+$("zoomOut").onclick = () => { fitWidth = false; zoom = Math.max(zoom / 1.25, 0.1); applyView(); };
+$("fit").onclick = () => { fitWidth = true; zoom = 1; applyView(); };
+$("rotate").onclick = () => { turn = (turn + 90) % 360; applyView(); };
+$("view").onchange = () => loadItems();
+$("showCompleted").onchange = () => loadItems((items[cur] || {}).index);
+$("filterType").onchange = () => loadItems();
+$("search").oninput = () => loadItems();
+$("stInput").addEventListener("input", () => { draft.page_subtype = $("stInput").value.trim(); $("dirty").textContent = isDirty() ? "Not saved — Save keeps it, Skip discards it." : ""; });
+$("save").onclick = save;
+$("skip").onclick = skip;
+$("undo").onclick = async () => {
+  try {
+    const data = await api("/api/undo", {});
+    renderCounts(data.counts);
+    await loadItems(data.item ? data.item.index : (items[cur] || {}).index);
+  } catch (e) { showError(e.message); }
+};
+$("clear").onclick = async () => {
+  const it = items[cur]; if (!it) return;
+  try {
+    const data = await api("/api/label", {index: it.index, clear: true});
+    items[cur] = data.item; renderCounts(data.counts); renderList(); select(cur);
+  } catch (e) { showError(e.message); }
+};
+
+let polling = null;
+$("add").onclick = async () => {
+  showError("");
+  try { await api("/api/generate", {}); } catch (e) { showError(e.message); return; }
+  $("add").disabled = true;
+  polling = setInterval(async () => {
+    const s = await api("/api/generate");
+    const lines = [`${s.done} / ${s.candidates} pages · read (OCR): ${s.pages_read} · labels refreshed: ${s.label_changes}`
+                   + ` · almost no text: ${s.low_text.length} · could not be read: ${s.unreadable.length}`];
+    if (!s.running) {
+      lines.push(`Done — ${s.records} records in training_data.jsonl.`);
+      if (s.low_text.length) lines.push("Almost no text: " + s.low_text.join(", "));
+      if (s.unreadable.length) lines.push("Could not be read: " + s.unreadable.join(", "));
+      clearInterval(polling); $("add").disabled = false; renderCounts(s.counts);
+      if (s.error) showError(s.error);
+      loadItems((items[cur] || {}).index);
+    }
+    $("status").textContent = lines.join("\n");
+  }, 1000);
+};
+
+document.addEventListener("keydown", (e) => {
+  const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName);
+  if (e.key === "Enter" && (!typing || ["ptInput", "stInput"].includes(document.activeElement.id))) {
+    // Enter in a box with its list closed, or anywhere else: Save.
+    if (!$("ptMenu").hidden || !$("stMenu").hidden) return;
+    e.preventDefault(); save(); return;
+  }
+  if (typing) return;
+  if (e.key === "ArrowRight" || e.key === "j" || e.key === "s") skip();
+  else if (e.key === "ArrowLeft" || e.key === "k") $("prev").click();
+  else if (e.key === "+" || e.key === "=") $("zoomIn").click();
+  else if (e.key === "-") $("zoomOut").click();
+  else if (e.key === "0") $("fit").click();
+  else if (e.key === "r") $("rotate").click();
+  else if (e.key === "u") $("undo").click();
+  else if (e.key === "t") { $("ptInput").focus(); e.preventDefault(); }
+});
+
+loadTaxonomy().then(() => loadItems()).catch((e) => showError(e.message));
+</script>
+</body>
+</html>

@@ -82,9 +82,11 @@ class CanonError(ValueError):
 
 
 def _page_type_ids() -> set[str]:
-    from stages.lib.page_classify.codeable_classify import load_canon as load_page_types
+    """Every page type and sub-type name in page_taxonomy.json."""
+    from stages.lib.page_classify import taxonomy
 
-    return {e.id for e in load_page_types()}
+    names = taxonomy.load()
+    return set(names.page_types) | set(names.subtype_page_type)
 
 
 def _validate(raw: dict[str, Any], page_type_ids: Optional[set[str]]) -> None:
@@ -95,7 +97,7 @@ def _validate(raw: dict[str, Any], page_type_ids: Optional[set[str]]) -> None:
         if setting not in settings:
             errors.append(f"tier1_page_types.{pt_id}: unknown setting {setting!r}")
         if page_type_ids is not None and pt_id not in page_type_ids:
-            errors.append(f"tier1_page_types.{pt_id}: not a page type id in codeable_canon.json")
+            errors.append(f"tier1_page_types.{pt_id}: not a page type or sub-type in page_taxonomy.json")
 
     owner: dict[str, str] = {}
     for tier in ("tier2", "tier3"):
@@ -249,7 +251,7 @@ def gather(pages: list[dict[str, Any]], canon: Canon) -> Evidence:
 
     for page in pages:
         pt_id = page.get("page_type_id") or ""
-        if pt_id and not page.get("page_type_inherited") and pt_id in canon.tier1:
+        if pt_id and pt_id in canon.tier1:
             source = page.get("page_type_name") or pt_id
             seen.setdefault(
                 (canon.tier1[pt_id], 1, source),
@@ -340,8 +342,7 @@ def classify_pages(
 
     Each input dict needs page_id, page_name, page_number, text, dos_from,
     dos_to, and may carry reason (``no_date`` / ``default_date``),
-    page_type_id, page_type_name and page_type_inherited from the page type
-    stage. Pages must be in chart order. ``visit_log``, when passed, receives
+    page_type_id and page_type_name from the page type stage. Pages must be in chart order. ``visit_log``, when passed, receives
     one evidence record per visit.
     """
     canon = entries if entries is not None else load_canon()

@@ -169,9 +169,24 @@ class ImagingPageResult(BaseModel):
     dosConfidence: float | None = None
     docDosFrom: str | None = None
     docDosTo: str | None = None
-    # span → the page continues an open encounter; finalDos is "continuation"
+    # Runs before continuity stopped writing spans: dosMatch "span" and
+    # finalDos "continuation". New runs carry the page's own date in finalDos.
     dosMatch: str | None = None
     finalDos: str | None = None
+    # Document continuity (page_continuity_results / <chart>_continuity.csv).
+    documentSeq: int | None = None
+    documentPosition: str | None = None  # single | first | continue | last
+    continuityRelation: str | None = None  # new_document | continue | unknown
+    continuityDecidedBy: str | None = None
+    continuityEvidence: str | None = None
+    continuityReview: bool | None = None
+    # Final values (imaging_final / <chart>_final.csv). On a page inside a
+    # document these are its first page's; pageType / isCodeable / dosFrom-To
+    # stay the page's own (Extracted).
+    finalPageType: str | None = None
+    finalCodeable: str | None = None
+    finalDosFrom: str | None = None
+    finalDosTo: str | None = None
     # None = classification not run → UI shows NA
     # Values: "Yes (Blank)" | "Yes (Junk)" | "No"
     blankOrJunk: str | None = None
@@ -182,7 +197,7 @@ class ImagingPageResult(BaseModel):
     # Blank / Main / Duplicate → "Not Available"; Invoice|Cover → that label
     pageType: str | None = None
     pageTypeConfidence: float | None = None
-    # Codeable | Non Codeable | Discharge (from page_subtype CSV)
+    # Codeable | Non-Codeable | Discharge (from page_subtype CSV)
     isCodeable: str | None = None
     # Outpatient (F2F) | Outpatient (Tele) | Inpatient | Home
     encounterType: str | None = None

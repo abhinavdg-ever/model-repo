@@ -1128,6 +1128,14 @@ def _confidence_level(confidence: Optional[float]) -> Optional[str]:
     return "low"
 
 
+PAGE_CLASSIFICATION_FIELDS = (
+    "page_type", "page_subtype", "model_type", "classification_category",
+    "duplicate_flag", "confidence", "confidence_level", "decided_by", "needs_review",
+    "bert_model_type", "bert_confidence", "keyword_page_subtype", "keyword_score",
+    "keyword_margin", "keyword_title_hit",
+)
+
+
 @_dispatch
 def upsert_page_classification(
     conn: Any,
@@ -1138,31 +1146,30 @@ def upsert_page_classification(
     classification_category: str,
     confidence: Optional[float] = None,
     duplicate_flag: bool = False,
+    **fields: Any,
 ) -> None:
-    """Write codeable / non_codeable / discharge_summary for one page."""
+    """One page's classification: taxonomy names, ladder step, raw model outputs."""
+    row = {
+        "page_type": None, "model_type": None, "decided_by": None, "needs_review": False,
+        "bert_model_type": None, "bert_confidence": None, "keyword_page_subtype": None,
+        "keyword_score": None, "keyword_margin": None, "keyword_title_hit": None,
+        **fields,
+        "page_subtype": (page_subtype or "")[:200] or None,
+        "classification_category": classification_category,
+        "duplicate_flag": bool(duplicate_flag),
+        "confidence": confidence,
+        "confidence_level": _confidence_level(confidence),
+    }
+    values = [row[name] for name in PAGE_CLASSIFICATION_FIELDS]
     conn.execute(
-        """
-        INSERT INTO page_classification (
-            chart_id, page_id, page_subtype, classification_category,
-            duplicate_flag, confidence, confidence_level
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        f"""
+        INSERT INTO page_classification (chart_id, page_id, {", ".join(PAGE_CLASSIFICATION_FIELDS)})
+        VALUES (%s, %s, {", ".join(["%s"] * len(PAGE_CLASSIFICATION_FIELDS))})
         ON CONFLICT (page_id) DO UPDATE SET
-            page_subtype            = EXCLUDED.page_subtype,
-            classification_category = EXCLUDED.classification_category,
-            duplicate_flag          = EXCLUDED.duplicate_flag,
-            confidence              = EXCLUDED.confidence,
-            confidence_level        = EXCLUDED.confidence_level,
-            updated_at              = now()
+            {", ".join(f"{c} = EXCLUDED.{c}" for c in PAGE_CLASSIFICATION_FIELDS)},
+            updated_at = now()
         """,
-        (
-            chart_id,
-            page_id,
-            (page_subtype or "")[:200] or None,
-            classification_category,
-            bool(duplicate_flag),
-            confidence,
-            _confidence_level(confidence),
-        ),
+        (chart_id, page_id, *values),
     )
 
 
@@ -1250,6 +1257,181 @@ def upsert_sequencing(
             confidence,
             (sequence_method or "")[:64] or None,
             bool(review_flag),
+        ),
+    )
+
+
+@_dispatch
+def get_page_types(conn: Any, chart_id: int) -> dict[int, str]:
+    """``page_classification.page_subtype`` keyed by page_id."""
+    rows = conn.execute(
+        "SELECT page_id, page_subtype FROM page_classification WHERE chart_id = %s",
+        (chart_id,),
+    ).fetchall()
+    return {int(row["page_id"]): row["page_subtype"] or "" for row in rows}
+
+
+@_dispatch
+def upsert_additional_page_details(
+    conn: Any, *, chart_id: int, page_id: int, fields: dict[str, Any]
+) -> None:
+    """Printed page number and section headers for one page (key/value stage)."""
+    conn.execute(
+        """
+        INSERT INTO additional_page_details (
+            chart_id, page_id, page_number_key, page_number_region,
+            page_number_sentence, page_number_value, printed_page_no,
+            printed_page_total, confidence, source, section_headers
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+        ON CONFLICT (page_id) DO UPDATE SET
+            page_number_key      = EXCLUDED.page_number_key,
+            page_number_region   = EXCLUDED.page_number_region,
+            page_number_sentence = EXCLUDED.page_number_sentence,
+            page_number_value    = EXCLUDED.page_number_value,
+            printed_page_no      = EXCLUDED.printed_page_no,
+            printed_page_total   = EXCLUDED.printed_page_total,
+            confidence           = EXCLUDED.confidence,
+            source               = EXCLUDED.source,
+            section_headers      = EXCLUDED.section_headers,
+            updated_at           = now()
+        """,
+        (
+            chart_id,
+            page_id,
+            (fields.get("page_number_key") or "")[:200] or None,
+            (fields.get("page_number_region") or "")[:50] or None,
+            fields.get("page_number_sentence") or None,
+            fields.get("page_number_value") or None,
+            (str(fields.get("printed_page_no") or ""))[:20] or None,
+            (str(fields.get("printed_page_total") or ""))[:20] or None,
+            fields.get("confidence"),
+            (fields.get("source") or "")[:20] or None,
+            json.dumps(fields.get("section_headers") or [], default=str),
+        ),
+    )
+
+
+IMAGING_FINAL_COLUMNS = (
+    "member_name",
+    "member_dob",
+    "member_id",
+    "printed_or_handwritten",
+    "handwritten_area_pct",
+    "is_visible",
+    "quality_tag",
+    "orientation_angle",
+    "tilt_angle",
+    "mirrored",
+    "blank_junk_flag",
+    "is_duplicate",
+    "document_seq",
+    "page_type",
+    "page_subtype",
+    "model_type",
+    "codability",
+    "classification_category",
+    "page_type_source",
+    "continuation_rule",
+    "needs_review",
+    "dos_from",
+    "dos_to",
+    "dos_source",
+    "encounter_type",
+    "provider_name",
+    "signature_present",
+    "seq",
+)
+
+
+@_dispatch
+def upsert_imaging_final(conn: Any, *, chart_id: int, page_id: int, row: dict[str, Any]) -> None:
+    """One page's Final values (``stages.lib.imaging_final``)."""
+    values = [row.get(column) for column in IMAGING_FINAL_COLUMNS]
+    conn.execute(
+        f"""
+        INSERT INTO imaging_final (
+            chart_id, page_id, {", ".join(IMAGING_FINAL_COLUMNS)}
+        ) VALUES (%s, %s, {", ".join(["%s"] * len(IMAGING_FINAL_COLUMNS))})
+        ON CONFLICT (page_id) DO UPDATE SET
+            {", ".join(f"{c} = EXCLUDED.{c}" for c in IMAGING_FINAL_COLUMNS)},
+            updated_at = now()
+        """,
+        (chart_id, page_id, *values),
+    )
+
+
+def _by_page(conn: Any, sql: str, chart_id: int) -> dict[int, dict[str, Any]]:
+    rows = conn.execute(sql, (chart_id,)).fetchall()
+    return {int(row["page_id"]): dict(row) for row in rows}
+
+
+@_dispatch
+def get_page_classification_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
+    return _by_page(conn, "SELECT * FROM page_classification WHERE chart_id = %s", chart_id)
+
+
+@_dispatch
+def get_member_extraction_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
+    return _by_page(
+        conn,
+        "SELECT * FROM member_extraction_results WHERE chart_id = %s AND page_id IS NOT NULL",
+        chart_id,
+    )
+
+
+@_dispatch
+def get_encounter_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
+    return _by_page(conn, "SELECT * FROM encounter_type_results WHERE chart_id = %s", chart_id)
+
+
+@_dispatch
+def get_sequencing_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
+    return _by_page(conn, "SELECT * FROM page_sequencing_results WHERE chart_id = %s", chart_id)
+
+
+@_dispatch
+def get_continuity_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
+    return _by_page(conn, "SELECT * FROM page_continuity_results WHERE chart_id = %s", chart_id)
+
+
+@_dispatch
+def upsert_continuity(conn: Any, *, chart_id: int, page_id: int, row: dict[str, Any]) -> None:
+    """One page's document grouping (``continuity.engine.assign``)."""
+    conn.execute(
+        """
+        INSERT INTO page_continuity_results (
+            chart_id, page_id, document_seq, seq, position, relation, decided_by,
+            confidence_level, score, review_required, link_strength,
+            start_confirmed, evidence
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (page_id) DO UPDATE SET
+            document_seq       = EXCLUDED.document_seq,
+            seq                = EXCLUDED.seq,
+            position           = EXCLUDED.position,
+            relation           = EXCLUDED.relation,
+            decided_by         = EXCLUDED.decided_by,
+            confidence_level   = EXCLUDED.confidence_level,
+            score              = EXCLUDED.score,
+            review_required    = EXCLUDED.review_required,
+            link_strength      = EXCLUDED.link_strength,
+            start_confirmed    = EXCLUDED.start_confirmed,
+            evidence           = EXCLUDED.evidence,
+            updated_at         = now()
+        """,
+        (
+            chart_id,
+            page_id,
+            row.get("document_seq"),
+            row.get("seq"),
+            row.get("position"),
+            row.get("relation") or None,
+            row.get("decided_by"),
+            row.get("confidence_level") or None,
+            row.get("score"),
+            bool(row.get("review_required")),
+            row.get("link_strength"),
+            bool(row.get("start_confirmed")),
+            row.get("evidence") or None,
         ),
     )
 
@@ -1434,6 +1616,9 @@ CHART_RESULT_TABLES = (
     "page_classification",
     "encounter_type_results",
     "page_sequencing_results",
+    "imaging_final",
+    "page_continuity_results",
+    "additional_page_details",
     "blank_junk_classification",
     "ocr_quality_results",
     "ocr_results",

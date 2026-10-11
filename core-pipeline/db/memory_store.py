@@ -59,14 +59,18 @@ DEFAULT_PIPELINE_STAGES: list[dict[str, Any]] = [
      "label": "Blank/Junk/Duplicate — pass 2", "is_phase1": True},
     {"stage_name": "member_verify", "pass_no": 1, "seq": 70,
      "label": "Member Extraction + Verify", "is_phase1": True},
+    {"stage_name": "page_subtype", "pass_no": 1, "seq": 75,
+     "label": "Codeable / Non Codeable (TF)", "is_phase1": True},
     {"stage_name": "dos_extract", "pass_no": 1, "seq": 80,
      "label": "Date-of-Service Extraction", "is_phase1": True},
-    {"stage_name": "page_subtype", "pass_no": 1, "seq": 85,
-     "label": "Codeable / Non Codeable (TF)", "is_phase1": True},
+    {"stage_name": "continuity", "pass_no": 1, "seq": 87,
+     "label": "Document Continuity", "is_phase1": True},
     {"stage_name": "encounter_type", "pass_no": 1, "seq": 90,
      "label": "Encounter Type (TF)", "is_phase1": True},
     {"stage_name": "page_sequencing", "pass_no": 1, "seq": 95,
      "label": "Page Sequencing", "is_phase1": True},
+    {"stage_name": "imaging_final", "pass_no": 1, "seq": 100,
+     "label": "Final Values", "is_phase1": True},
 ]
 
 DONE_STATUSES = frozenset({"completed", "skipped"})
@@ -79,6 +83,9 @@ CHART_RESULT_KEYS = (
     "page_classifications",
     "encounters",
     "sequencing",
+    "continuity",
+    "additional_details",
+    "imaging_final",
     "blank_junk",
     "quality",
     "ocr",
@@ -161,6 +168,9 @@ class MemoryStore:
         self.page_classifications: dict[int, dict[str, Any]] = {}
         self.encounters: dict[int, dict[str, Any]] = {}
         self.sequencing: dict[int, dict[str, Any]] = {}
+        self.continuity: dict[int, dict[str, Any]] = {}
+        self.additional_details: dict[int, dict[str, Any]] = {}
+        self.imaging_final: dict[int, dict[str, Any]] = {}
         self.member_extractions: dict[int, dict[str, Any]] = {}
         self.member_summaries: dict[int, dict[str, Any]] = {}
         self.manifest_members: dict[int, dict[str, Any]] = {}
@@ -995,9 +1005,11 @@ class MemoryStore:
         classification_category: str,
         confidence: Optional[float] = None,
         duplicate_flag: bool = False,
+        **fields: Any,
     ) -> None:
         with self._lock:
             self.page_classifications[page_id] = {
+                **fields,
                 "chart_id": chart_id,
                 "page_id": page_id,
                 "page_subtype": (page_subtype or "")[:200] or None,
@@ -1054,6 +1066,62 @@ class MemoryStore:
                 "confidence": confidence,
                 "sequence_method": (sequence_method or "")[:64] or None,
                 "review_flag": bool(review_flag),
+                "updated_at": _now(),
+            }
+
+    def get_page_types(self, chart_id: int) -> dict[int, str]:
+        with self._lock:
+            return {
+                pid: row.get("page_subtype") or ""
+                for pid, row in self.page_classifications.items()
+                if row["chart_id"] == chart_id
+            }
+
+    def upsert_additional_page_details(
+        self, *, chart_id: int, page_id: int, fields: dict[str, Any]
+    ) -> None:
+        with self._lock:
+            self.additional_details[page_id] = {
+                **fields,
+                "chart_id": chart_id,
+                "page_id": page_id,
+                "updated_at": _now(),
+            }
+
+    def _chart_rows(self, table: dict[int, dict[str, Any]], chart_id: int) -> dict[int, dict[str, Any]]:
+        with self._lock:
+            return {pid: dict(row) for pid, row in table.items() if row["chart_id"] == chart_id}
+
+    def get_page_classification_map(self, chart_id: int) -> dict[int, dict[str, Any]]:
+        return self._chart_rows(self.page_classifications, chart_id)
+
+    def get_member_extraction_map(self, chart_id: int) -> dict[int, dict[str, Any]]:
+        return self._chart_rows(self.member_extractions, chart_id)
+
+    def get_encounter_map(self, chart_id: int) -> dict[int, dict[str, Any]]:
+        return self._chart_rows(self.encounters, chart_id)
+
+    def get_sequencing_map(self, chart_id: int) -> dict[int, dict[str, Any]]:
+        return self._chart_rows(self.sequencing, chart_id)
+
+    def get_continuity_map(self, chart_id: int) -> dict[int, dict[str, Any]]:
+        return self._chart_rows(self.continuity, chart_id)
+
+    def upsert_imaging_final(self, *, chart_id: int, page_id: int, row: dict[str, Any]) -> None:
+        with self._lock:
+            self.imaging_final[page_id] = {
+                **row,
+                "chart_id": chart_id,
+                "page_id": page_id,
+                "updated_at": _now(),
+            }
+
+    def upsert_continuity(self, *, chart_id: int, page_id: int, row: dict[str, Any]) -> None:
+        with self._lock:
+            self.continuity[page_id] = {
+                **row,
+                "chart_id": chart_id,
+                "page_id": page_id,
                 "updated_at": _now(),
             }
 
@@ -1227,6 +1295,9 @@ class MemoryStore:
             _purge(self.page_classifications, "page_classification")
             _purge(self.encounters, "encounter_type_results")
             _purge(self.sequencing, "page_sequencing_results")
+            _purge(self.continuity, "page_continuity_results")
+            _purge(self.additional_details, "additional_page_details")
+            _purge(self.imaging_final, "imaging_final")
             bj_keys = [k for k, r in self.blank_junk.items() if r["chart_id"] == chart_id]
             if bj_keys:
                 deleted["blank_junk_classification"] = len(bj_keys)
@@ -1278,6 +1349,9 @@ class MemoryStore:
             _purge(self.page_classifications, "page_classification")
             _purge(self.encounters, "encounter_type_results")
             _purge(self.sequencing, "page_sequencing_results")
+            _purge(self.continuity, "page_continuity_results")
+            _purge(self.additional_details, "additional_page_details")
+            _purge(self.imaging_final, "imaging_final")
             _purge(self.blank_junk, "blank_junk_classification")
             _purge(self.quality, "ocr_quality_results")
             if not keep_ocr:

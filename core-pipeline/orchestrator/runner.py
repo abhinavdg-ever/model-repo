@@ -35,6 +35,8 @@ from stages.lib.ocr import stage_prelim as ocr_prelim_tesseract
 from stages.lib.extraction import stage as kv_extract
 from stages.lib.ocr import stage_section_headers as section_headers
 from stages.lib.page_classify import stage as page_subtype
+from stages.lib.continuity import stage as continuity
+from stages.lib.imaging_final import stage as imaging_final
 from stages.lib.sequencing import stage as page_sequencing
 from stages.utilities.download_blob import run_download
 
@@ -58,10 +60,16 @@ STAGE_CHAIN: list[tuple[str, int, StageFn]] = [
     ("kv_extract", 1, kv_extract.run),
     ("blank_junk", 2, blank_junk_classify.run_pass2),
     ("member_verify", 1, member_extract_verify.run),
-    ("dos_extract", 1, dos_extract.run),
+    # Page type before DOS: DOS reads the Extracted sub-type for default-date
+    # and non-encounter pages. Neither reads the other's output otherwise.
     ("page_subtype", 1, page_subtype.run),
+    ("dos_extract", 1, dos_extract.run),
+    # After page type and DOS: it reads both and carries them across a document.
+    ("continuity", 1, continuity.run),
     ("encounter_type", 1, encounter_type.run),
     ("page_sequencing", 1, page_sequencing.run),
+    # Last: reads every stage above and writes each field's Final value.
+    ("imaging_final", 1, imaging_final.run),
 ]
 
 STAGE_NAMES = [f"{name}:{pass_no}" for name, pass_no, _ in STAGE_CHAIN]

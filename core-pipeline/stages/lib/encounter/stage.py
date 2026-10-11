@@ -5,9 +5,9 @@ from the highest tier of evidence it has (see ``encounter_classify``) and
 stamped on every page of the visit. Pages without a usable date, and visits
 with no setting evidence, stay empty with a reason; they never inherit.
 
-Tier 1 evidence is the page type. It comes from the same classifier and the
-same inputs as the ``page_subtype`` stage, so this stage sees each page's type
-id and whether it was matched on the page or only inherited from a span.
+Tier 1 evidence is the page type: the page's own (Extracted) classification
+from ``page_classification``, its sub-type when the encounter canon names it,
+else its page type.
 
 Runs after ``page_subtype``. Writes ``encounter_type_results`` for resolved
 pages (and removes rows for pages that are now unresolved), and
@@ -25,6 +25,7 @@ from db import (
     connect,
     delete_encounter,
     get_blank_junk_flags,
+    get_page_classification_map,
     get_ocr_texts,
     get_quality_map,
     upsert_encounter,
@@ -38,8 +39,8 @@ from stages._support import (
     stage_run,
 )
 from stages.lib.encounter.encounter_classify import classify_pages, visit_date
-from stages.lib.page_classify.codeable_classify import classify_pages as classify_page_types
-from stages.lib.page_classify.stage import _DOS_PROFILE, _page_dos
+from stages.lib.encounter.encounter_classify import load_canon as load_encounter_canon
+from stages.lib.page_classify.stage import _DOS_PROFILE
 
 logger = logging.getLogger(__name__)
 
@@ -120,9 +121,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             final2 = get_ocr_texts(conn, chart_id, "azuredocintel")
             quality = get_quality_map(conn, chart_id)
             dos_by_page = _dos_map(conn, chart_id)
+            classification = get_page_classification_map(conn, chart_id)
 
         page_inputs: list[dict[str, Any]] = []
-        type_inputs: list[dict[str, Any]] = []
         sources: dict[int, str] = {}
         for page in ctx.pages:
             page_id = page["id"]
@@ -139,18 +140,6 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             )
             dos = dos_by_page.get(page_id) or {}
             sources[page_id] = _ocr_source_label(final2=f2, final1=f1, prelim=pr)
-            # The page type stage's own inputs, so tier 1 sees what it decided.
-            type_from, type_to = _page_dos(dos)
-            type_inputs.append(
-                {
-                    "page_id": page_id,
-                    "page_name": page["page_name"],
-                    "page_number": page.get("page_number"),
-                    "text": text,
-                    "dos_from": type_from,
-                    "dos_to": type_to,
-                }
-            )
             dos_from, dos_to, reason = visit_date(
                 page_from=str(dos.get("date_of_service_from") or ""),
                 page_to=str(dos.get("date_of_service_to") or ""),
@@ -170,12 +159,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 }
             )
 
-        types = {row["page_id"]: row for row in classify_page_types(type_inputs)}
+        # Tier 1 reads the page's own (Extracted) classification: its sub-type
+        # when the canon names it, else its page type.
+        tier1 = load_encounter_canon().tier1
         for page_input in page_inputs:
-            pt = types.get(page_input["page_id"]) or {}
-            page_input["page_type_id"] = pt.get("entry_id") or ""
-            page_input["page_type_name"] = pt.get("page_type") or ""
-            page_input["page_type_inherited"] = pt.get("continue_applied") == "y"
+            kind = classification.get(page_input["page_id"]) or {}
+            subtype, page_type = kind.get("page_subtype") or "", kind.get("page_type") or ""
+            page_input["page_type_id"] = subtype if subtype in tier1 else page_type
+            page_input["page_type_name"] = page_input["page_type_id"]
 
         visit_log: Optional[list[dict[str, Any]]] = [] if ENCOUNTER_DEBUG else None
         classified = classify_pages(page_inputs, visit_log=visit_log)

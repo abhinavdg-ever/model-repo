@@ -1,0 +1,236 @@
+{
+  "version": "1.1",
+  "status": "Default ladder. Thresholds, settings and patterns are starting values to be tuned on a validation split. 2026-10-11: BERT wins at >= bert_high, or at >= bert_low with a lead of >= bert_lead over its second choice. Set to 0.50 / 0.25 after retraining (the first model's top probabilities were only 15-25%, when 0.20 / 0.10 was used).",
+  "inputs": {
+    "bert": "model_type with a confidence (softmax probability). Implies page_type; implies page_subtype only when page_type is Progress Note.",
+    "keyword": "page_subtype with a score, a margin and a title_hit flag (from keyword_canon.json). Implies page_type and model_type.",
+    "page_order": "chart_id and page_index for every page. Needed only by level 3."
+  },
+  "thresholds": {
+    "bert_high": 0.50,
+    "bert_low": 0.25,
+    "bert_lead": 0.05,
+    "keyword_min_score": 3,
+    "keyword_min_margin": 2
+  },
+  "level_1_page_type": [
+    {
+      "step": 1,
+      "name": "agreement",
+      "when": "BERT and keyword give the same page_type",
+      "winner": "both",
+      "needs_review": false
+    },
+    {
+      "step": 2,
+      "name": "bert_high",
+      "when": "they differ and BERT confidence >= bert_high, or BERT confidence >= bert_low with a lead >= bert_lead over BERT's second choice",
+      "winner": "bert",
+      "needs_review": false
+    },
+    {
+      "step": 3,
+      "name": "keyword_only_class",
+      "when": "they differ, the keyword page_type is a class BERT was not trained on (too few images), and keyword score >= keyword_min_score with title_hit",
+      "winner": "keyword",
+      "needs_review": false
+    },
+    {
+      "step": 4,
+      "name": "keyword_title",
+      "when": "they differ, BERT not high (step 2 did not apply), keyword has title_hit and margin >= keyword_min_margin",
+      "winner": "keyword",
+      "needs_review": false
+    },
+    {
+      "step": 5,
+      "name": "bert_medium",
+      "when": "they differ and BERT confidence >= bert_low",
+      "winner": "bert",
+      "needs_review": true
+    },
+    {
+      "step": 6,
+      "name": "keyword_body",
+      "when": "BERT confidence < bert_low and keyword score >= keyword_min_score",
+      "winner": "keyword",
+      "needs_review": true
+    },
+    {
+      "step": 7,
+      "name": "bert_low",
+      "when": "nothing above applied",
+      "winner": "bert",
+      "needs_review": true
+    }
+  ],
+  "level_2_page_subtype": [
+    "If the winning page_type is Progress Note: use BERT's model_type when BERT's page_type is Progress Note; otherwise use the keyword sub-type when it belongs to Progress Note; otherwise the generic sub-type.",
+    "For any other winning page_type: use the keyword sub-type when it belongs to that page_type and its score >= keyword_min_score; otherwise the generic sub-type (same name as the page type)."
+  ],
+  "level_3_continuation": {
+    "what": "A pass over the pages of one chart, in page order, after levels 1 and 2 have given every page a per-page result. It works out which pages continue a document that started on an earlier page, then makes two decisions about Progress Note. It changes nothing else.",
+    "decisions": [
+      "Progress Note or not: an untitled page that reads like a Progress Note may be a later page of another document. If so it takes that document's page type.",
+      "Embedded lab or radiology: a Laboratory Data or Radiology Report page that is part of a Progress Note becomes page_type Progress Note with that name as its page_subtype."
+    ],
+    "needs": "chart_id and page_index for every page. Pages with no known order (for example single phone photos) skip steps A and B: continuation_link = 'not_checked', and only decision rule 3 (same page) can apply to them.",
+    "embedded_page_types": [
+      "Laboratory Data",
+      "Radiology Report"
+    ],
+    "settings": {
+      "max_document_pages": 20,
+      "title_zone_lines": 12,
+      "last_lines": 8,
+      "edge_lines": 3,
+      "weak_signals_needed": 2,
+      "header_similarity": 0.9
+    },
+    "patterns_case_insensitive": {
+      "page_counter": "\\bpage\\s*:?\\s*(\\d{1,3})\\s*(?:of|/)\\s*(\\d{1,3})\\b",
+      "fax_or_time_line": "\\bfax\\b|\\b\\d{1,2}:\\d{2}\\b",
+      "continued_heading": "\\(?\\b(continued|cont'd|contd)\\)?\\s*:?\\s*$|\\bcontinued from\\b",
+      "continued_on_next": "\\bcontinued on (the )?next page\\b",
+      "closing": "\\b(electronically|digitally) signed\\b|\\bsigned by\\b|\\bend of (note|report|document)\\b",
+      "late_section_heading": "^(assessment|assessment and plan|assessment\\s*/\\s*plan|plan|impression|review of systems|physical exam(ination)?|medications|orders|follow[- ]?up)\\s*:?\\s*$"
+    },
+    "page_counter_rules": [
+      "Read a 'Page k of N' counter from the page text with the page_counter pattern.",
+      "Ignore a counter on a line that matches fax_or_time_line: that is a fax banner counting the whole transmission.",
+      "Ignore a counter whose N is above max_document_pages: that counts a whole chart or export, not one document.",
+      "If several usable counters remain, use the one with the smallest N."
+    ],
+    "step_a_link_to_previous_page": {
+      "how": "P is the page being checked, Q is the page just before it in the same chart (page_index - 1). The first rule that applies decides. With no Q, P starts a document.",
+      "rules": [
+        {
+          "order": 1,
+          "name": "first_page",
+          "when": "P's counter says page 1",
+          "result": "start"
+        },
+        {
+          "order": 2,
+          "name": "numbering_continues",
+          "when": "Q's counter is page k of N and P's counter is page k+1 of the same N",
+          "result": "strong link"
+        },
+        {
+          "order": 3,
+          "name": "continued_heading",
+          "when": "a line of at most 8 words in P's title zone matches continued_heading, or one of Q's last lines matches continued_on_next",
+          "result": "strong link"
+        },
+        {
+          "order": 4,
+          "name": "own_title",
+          "when": "P has a title term in its title zone (keyword_title_hit is true)",
+          "result": "start"
+        },
+        {
+          "order": 5,
+          "name": "previous_ended",
+          "when": "Q's counter says page N of N",
+          "result": "start"
+        },
+        {
+          "order": 6,
+          "name": "weak_signals",
+          "when": "at least weak_signals_needed of: (a) P's first body line starts with a lower-case letter, or Q's last body line does not end with sentence punctuation; (b) P's first heading matches late_section_heading and Q has no closing match in its last lines; (c) one of the first or last edge_lines lines of P matches one of Q's, after removing digits, with similarity >= header_similarity",
+          "result": "weak link"
+        },
+        {
+          "order": 7,
+          "name": "no_link",
+          "when": "nothing above applied",
+          "result": "start"
+        }
+      ]
+    },
+    "step_b_build_documents": [
+      "A document is a start page plus every page linked after it, one after another. A document stops growing at max_document_pages; the next page starts a new one.",
+      "A page's link strength is strong only if every link between the start page and that page is strong; otherwise weak.",
+      "The start is confirmed when the start page has a title term in its title zone or its counter says page 1. If it is not confirmed, the document's page type is unknown: the real first page is probably missing.",
+      "The document's page type is the start page's per-page page_type from level 1."
+    ],
+    "step_c_decide": {
+      "how": "Check the rules in order for every page; the first that applies decides. 'Per-page' means the result of levels 1 and 2.",
+      "rules": [
+        {
+          "order": 1,
+          "name": "continuation",
+          "decided_by": "continuation",
+          "when": "the page is not the start of its document, its link strength is strong, the start is confirmed, the page's per-page page_type is Progress Note, it has no title term in its own title zone, and the document's page type is not Progress Note",
+          "result": "The page is not a Progress Note. page_type = the document's page type. page_subtype = the keyword sub-type if it belongs to that page type with score >= keyword_min_score, otherwise the start page's page_subtype.",
+          "needs_review": false
+        },
+        {
+          "order": 2,
+          "name": "embedded_in_document",
+          "decided_by": "embedded",
+          "when": "the page is not the start of its document, its link strength is strong, the start is confirmed, the page's per-page page_type is in embedded_page_types, and the document's page type is Progress Note",
+          "result": "page_type = Progress Note. page_subtype = the page's per-page page_type (Laboratory Data or Radiology Report). model_type = the same name.",
+          "needs_review": false
+        },
+        {
+          "order": 3,
+          "name": "embedded_same_page",
+          "decided_by": "embedded",
+          "when": "the page's per-page page_type is in embedded_page_types, and on that same page the keyword model's page_type is Progress Note with title_hit (a note title at the top, lab or radiology content below). Needs no page order.",
+          "result": "Same as rule 2.",
+          "needs_review": false
+        },
+        {
+          "order": 4,
+          "name": "possible",
+          "decided_by": "keeps the level 1 step name",
+          "when": "rule 1 or rule 2 would have applied but the link strength is weak or the start is not confirmed",
+          "result": "Keep the per-page result.",
+          "needs_review": true
+        },
+        {
+          "order": 5,
+          "name": "no_change",
+          "decided_by": "keeps the level 1 step name",
+          "when": "everything else, including an untitled Progress Note page that continues a Progress Note or continues nothing",
+          "result": "Keep the per-page result. is_continuation and document_start are still recorded.",
+          "needs_review": "unchanged"
+        }
+      ]
+    }
+  },
+  "level_4_codability": "Read codability from the final page_type, after level 3. No model predicts it. An embedded lab or radiology page is therefore codable as Progress Note.",
+  "model_type_of_final_answer": "page_subtype when page_type is Progress Note, otherwise page_type. For an embedded page this gives Laboratory Data or Radiology Report, the same class BERT predicts for a stand-alone one.",
+  "decided_by_values": [
+    "agreement",
+    "bert_high",
+    "keyword_only_class",
+    "keyword_title",
+    "bert_medium",
+    "keyword_body",
+    "bert_low",
+    "continuation",
+    "embedded"
+  ],
+  "outputs": [
+    "page_type",
+    "page_subtype",
+    "model_type",
+    "codability",
+    "decided_by",
+    "needs_review",
+    "bert_model_type",
+    "bert_confidence",
+    "keyword_page_subtype",
+    "keyword_score",
+    "keyword_margin",
+    "keyword_title_hit",
+    "page_type_per_page",
+    "page_subtype_per_page",
+    "is_continuation",
+    "document_start",
+    "continuation_link",
+    "continuation_rule"
+  ]
+}

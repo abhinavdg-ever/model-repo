@@ -9,9 +9,10 @@
   C. Score      — a weighted sum from ``dos_canon.json``, clamped to
      [0, 1]. A key/value date is the page's date. Otherwise the best
      candidate must reach 0.80.
-  D. Resolve    — a Progress Note opens a span. A later page at or below
-     span_override_score takes that earlier date. Demographics, injection
-     pages, and pages with no date keep DOS_DEFAULT_DATE.
+  D. Resolve    — each page keeps its own date. Demographics, injection
+     pages, and pages with no date keep DOS_DEFAULT_DATE at document level.
+     Carrying a note's date across its pages is the continuity stage's job
+     (Final DOS), not this one's.
 
 Nothing is vetoed. A DOB label or an old year is a large negative weight, so
 a losing date keeps a score that says why it lost. Azure OpenAI is a fallback
@@ -28,7 +29,7 @@ from typing import Any, Optional
 
 from azure_llm import azure_deployment
 from stages.lib.canon_store import CANON_DIR, CanonFile
-from stages.lib.page_classify.codeable_classify import page_type_of
+from stages.lib.page_classify import keywords as page_keywords
 
 
 # --- editable config ---------------------------------------------------------
@@ -57,7 +58,6 @@ class DosProfile:
     cluster_cap: int
     age_penalty: float
     timestamp_penalty: float
-    span_override_score: float
     llm_confidence: float
     window_left_chars: int
     window_right_chars: int
@@ -67,7 +67,6 @@ class DosProfile:
     label_re: re.Pattern[str]
     label_class: dict[str, str]  # letters-only phrase → class
     non_encounter_page_types: frozenset[str]
-    span_page_types: frozenset[str]
     default_page_types: frozenset[str]
     default_page_type_contains: tuple[str, ...]
     # has_clinical_cue, and the gate for the Azure OpenAI fallback.
@@ -115,7 +114,6 @@ def _build_profile(data: dict[str, Any]) -> DosProfile:
         cluster_cap=int(data["cluster_cap"]),
         age_penalty=float(data["age_penalty"]),
         timestamp_penalty=float(data["timestamp_penalty"]),
-        span_override_score=float(data["span_override_score"]),
         llm_confidence=float(data["llm_confidence"]),
         window_left_chars=int(data["window_left_chars"]),
         window_right_chars=int(data["window_right_chars"]),
@@ -127,7 +125,6 @@ def _build_profile(data: dict[str, Any]) -> DosProfile:
         non_encounter_page_types=frozenset(
             t.casefold() for t in data["non_encounter_page_types"]
         ),
-        span_page_types=frozenset(t.casefold() for t in data["span_page_types"]),
         default_page_types=frozenset(
             t.casefold() for t in data.get("default_page_types") or []
         ),
@@ -451,17 +448,14 @@ def _date_source(cand: Candidate) -> str:
     return "rules"
 
 
-# Text dates are used only when the key/value extractor did not choose one.
-RULES_MIN_SCORE = 0.75
-
-
 def best_page_date(candidates: list[Candidate], prof: DosProfile) -> Optional[PageDate]:
-    """Key/value date first. Otherwise the highest scorer at or above 0.75.
+    """Key/value date first. Otherwise, as the backup, the highest text
+    candidate at or above ``DOS_MIN_SCORE`` (dos_canon.json, 0.75).
 
     A range pair emits both ends.
     """
     kv = [c for c in candidates if c.origin == "kv"]
-    passing = kv or [c for c in candidates if c.score >= RULES_MIN_SCORE]
+    passing = kv or [c for c in candidates if c.score >= prof.min_score]
     if not passing:
         return None
     best = max(passing, key=lambda c: c.score)  # ties: first on the page
@@ -523,12 +517,13 @@ def to_iso_date(mm_dd_yyyy: str) -> Optional[str]:
 
 
 def _page_type_name(page_text: str, page_number: Any) -> str:
-    try:
-        number = int(page_number) if page_number is not None else None
-    except (TypeError, ValueError):
-        number = None
-    match = page_type_of(page_text, page_number=number)
-    return match.page_type if match is not None else ""
+    """The page's sub-type by the keyword model (page_keyword_canon.json).
+
+    The fallback for a page the page-type stage has not classified (it runs
+    first in the chain). A generic sub-type carries its page type's name, so
+    the profile's lists can name either."""
+    match = page_keywords.classify(page_text)
+    return match.page_subtype if match is not None else ""
 
 
 def extract_dos_from_page_text(
@@ -590,8 +585,6 @@ def _row(
     doc_to = doc.dos_to if doc else prof.default_date
     if page_date is not None:
         confidence = page_date.confidence
-    elif match_type == "span":
-        confidence = 0.0
     elif doc is not None:
         confidence = doc.confidence
     else:
@@ -621,13 +614,8 @@ def _final_date(
     doc: Optional[PageDate],
     match_type: str,
 ) -> str:
-    """Reviewer-facing date, applied after the page's own date is chosen.
-
-    A page inside an open span keeps whatever date it actually has. The final
-    date is the one from the progress note that opened the span.
-    """
-    if match_type == "span" and doc is not None:
-        return doc.dos_from
+    """The page's own date. The document's date, carried across its pages, is
+    the continuity stage's Final DOS."""
     return page_date.dos_from if page_date else ""
 
 
@@ -694,18 +682,22 @@ def detect_dos_per_page(
     received_date: Optional[date] = None,
     candidate_log: Optional[list[dict]] = None,
     kv_dates: Optional[dict[str, list[dict[str, Any]]]] = None,
+    page_types: Optional[dict[str, str]] = None,
 ) -> list[dict]:
     """One row per page.
 
     Page level (``dos_from`` / ``dos_to``): the date found on that page, or
     blank. Document level (``doc_dos_*``): the encounter the page belongs to.
-    ``final_dos`` is the reviewer-facing value. On a span page it is the date
-    from the progress note that opened the span. Otherwise it is the page's
-    own date.
+    ``final_dos`` is the page's own date; the continuity stage carries a
+    document's date across its pages.
 
     ``received_date`` is the chart's received date; DOS_MAX_AGE_YEARS counts
     back from it (today when not given). ``candidate_log``, when passed, gets
     every candidate with its features, score and whether it was chosen.
+
+    ``page_types`` maps a page name to its sub-type from the page-type stage
+    (the Extracted answer), which runs first. A page missing from it — or every
+    page, when the stage has not run — falls back to the keyword model.
 
     ``kv_dates`` maps a page name to dates the key/value extractor chose
     (``iso``, ``raw``, ``tier``, ``keyword``). They join the text sweep and
@@ -723,8 +715,10 @@ def detect_dos_per_page(
         cleaned = re.sub(r"[#\-*_=]", "", cleaned)
         if re.sub(r"\s+", " ", cleaned).strip().upper() == "UNACCEPT":
             break
-        page_type = _page_type_name(page_text, page.get("page")) if page_text.strip() else ""
         page_name = page.get("page_name") or ""
+        page_type = (page_types or {}).get(page_name) or (
+            _page_type_name(page_text, page.get("page")) if page_text.strip() else ""
+        )
         candidates = find_candidates(
             page_text,
             page_index=page["index"],
@@ -757,7 +751,6 @@ def detect_dos_per_page(
 
     rows: list[dict] = []
     current: Optional[PageDate] = None
-    span_open = False
 
     for page in pages:
         page_text = page["text"]
@@ -793,19 +786,6 @@ def detect_dos_per_page(
         if _uses_default_date(page_type, prof):
             # Demographics and injection pages do not take a carried date.
             assigned, doc, match_type = None, None, "default_page"
-        elif page_type in prof.span_page_types and found is not None:
-            current, span_open = found, True
-            assigned, doc, match_type = found, found, "span_start"
-        elif page_type in prof.span_page_types:
-            # A new progress note with no date of its own ends the previous span.
-            current, span_open = None, False
-            assigned, doc, match_type = None, None, "no_date_found"
-        elif span_open and current is not None and (
-            found is None or found.confidence <= prof.span_override_score
-        ):
-            # The page keeps the date it has. Post-processing marks the final
-            # value as a continuation of the open span.
-            assigned, doc, match_type = found, current, "span"
         elif found is None:
             assigned, doc, match_type = None, None, "no_date_found"
         elif page_type in prof.non_encounter_page_types:
@@ -813,11 +793,8 @@ def detect_dos_per_page(
             assigned = found
             doc = current or found
             match_type = "non_encounter_page"
-        elif span_open and found.confidence > prof.span_override_score:
-            assigned, doc = found, found
-            match_type = "admit_discharge_pair" if found.is_pair else "page_date"
         else:
-            current, span_open = found, False
+            current = found
             assigned, doc = found, found
             match_type = "admit_discharge_pair" if found.is_pair else "page_date"
 

@@ -1137,6 +1137,33 @@ class TestWriteChartOut:
         assert third["files_written"] == 3
         assert third["files_skipped"] == 0
 
+    def test_corrected_pages_are_mirrored_not_synced(self, tmp_path, monkeypatch):
+        """A correction undone by a later run must not survive at the
+        destination, where it would be read in place of the original."""
+        import config
+        from jobs.export_chart import write_chart
+
+        root = tmp_path / "folders"
+        corrected = root / "chart_e" / "corrected-pages"
+        corrected.mkdir(parents=True)
+        (corrected / "1.jpg").write_bytes(b"x")
+        (root / "chart_e" / "ocr").mkdir()
+        (root / "chart_e" / "ocr" / "a.txt").write_text("a", encoding="utf-8")
+        monkeypatch.setattr(config, "DATA_ROOT", root)
+
+        dest = tmp_path / "out"
+        write_chart("chart_e", local_path=str(dest))
+        (dest / "chart_e" / "ocr" / "old.txt").write_text("o", encoding="utf-8")
+
+        (corrected / "1.jpg").unlink()
+        (corrected / "2.jpg").write_bytes(b"y")
+        out = write_chart("chart_e", local_path=str(dest))
+
+        assert out["files_removed"] == 1
+        assert sorted(p.name for p in (dest / "chart_e" / "corrected-pages").iterdir()) == ["2.jpg"]
+        # Only corrected-pages/ is mirrored; other folders still just sync.
+        assert (dest / "chart_e" / "ocr" / "old.txt").is_file()
+
     def test_a_chart_with_no_workspace_raises(self, tmp_path, monkeypatch):
         import config
         from jobs.export_chart import write_chart
@@ -1842,10 +1869,10 @@ class TestCorrectedPages:
         source = inspect.getsource(quality_rotation_hw._detect_rotation)
         assert "osd_rotation" in source
         assert "orientation_that_reads(" in source
-        # Turn, then flip, then tilt: tilt is measured on the page as saved.
-        assert source.index("orientation_that_reads(") < source.index("mirror_that_reads(")
-        assert source.index("mirror_that_reads(") < source.index("tilt_on_upright(")
-        assert "mirrored = mirror_that_reads" in source
+        # Turn and flip, then tilt: tilt is measured on the page as saved and
+        # then checked by reading it.
+        assert source.index("orientation_that_reads(") < source.index("tilt_on_upright(")
+        assert source.index("tilt_on_upright(") < source.index("tilt_that_reads(")
         assert "mirrored=mirrored" in source
         # Tilt from detector.detect() was measured after that detector's own
         # coarse guess, then applied to the OSD-upright page.
@@ -1856,10 +1883,10 @@ class TestCorrectedPages:
         # A Yes from the checked mirror verdict is applied to the saved page.
         assert '"mirror": bool(rot["mirrored"])' in correct_src
 
-    def test_a_mirror_verdict_is_checked_by_reading(self):
+    def test_a_flip_is_kept_only_when_the_flipped_page_reads(self):
         """Mirrored text keeps its vowels, so only a dictionary check tells it
-        from English. Only a Yes is checked; a No is never flipped."""
-        from stages.lib.image_preprocess.rotation import choose_mirror, dictionary_share
+        from English. A flip is tried only when no unflipped turn reads."""
+        from stages.lib.image_preprocess.rotation import PageRead, choose_orientation, dictionary_share
 
         english = (
             "The patient was seen in the office for a follow up visit today and "
@@ -1870,16 +1897,19 @@ class TestCorrectedPages:
         assert dictionary_share(english)[0] > 0.8
         assert dictionary_share(mirrored)[0] < 0.2
 
-        # Detector says Yes and the flip reads: kept.
-        assert choose_mirror(True, mirrored, english, handwritten=False) is True
-        # Detector says Yes but the page already reads: undone.
-        assert choose_mirror(True, english, mirrored, handwritten=False) is False
-        # Detector said No: never re-examined, even if the flip would read.
-        assert choose_mirror(False, mirrored, english, handwritten=False) is False
-        # Handwritten keeps the detector's verdict, as it keeps OSD's angle.
-        assert choose_mirror(True, english, mirrored, handwritten=True) is True
-        # Too little text either way: the detector's verdict stands.
-        assert choose_mirror(True, "a few words", "sdrow wef a", handwritten=False) is True
+        good, bad = PageRead(*dictionary_share(english)), PageRead(*dictionary_share(mirrored))
+
+        # Mirrored as scanned: the flip at 0° reads.
+        assert choose_orientation(0, lambda deg, flip: good if (deg, flip) == (0, True) else bad) == (0, True)
+        # Vertically flipped: only turn 180° and flip reads.
+        assert choose_orientation(0, lambda deg, flip: good if (deg, flip) == (180, True) else bad) == (180, True)
+        # The page already reads: never flipped, even if the flip also reads.
+        assert choose_orientation(0, lambda deg, flip: good) == (0, False)
+        # A sideways read that scrapes past the threshold on a few words does
+        # not stop the flips being tried (seen on 12 of 106 mirrored pages).
+        scrape = PageRead(0.5, 14)
+        mirrored_page = lambda deg, flip: good if (deg, flip) == (0, True) else (scrape if deg == 270 else bad)
+        assert choose_orientation(0, mirrored_page) == (0, True)
 
     def test_tilt_is_measured_after_the_flip(self):
         """A flip reverses a lean. correct_image tilts after flipping, so the
@@ -1905,40 +1935,86 @@ class TestCorrectedPages:
         assert plain > 1.5
         assert flipped == pytest.approx(-plain, abs=0.5)
 
-    def test_a_wrong_180_is_settled_before_tilt_and_mirror(self):
-        """A 180° that reads as gibberish is undone when the unturned page
-        reads. The quadrant search runs only when OSD applied no turn."""
-        from stages.lib.image_preprocess.rotation import choose_orientation
+    def test_a_turn_is_kept_only_when_the_page_reads_at_it(self):
+        """OSD's turn stands when the page reads at it. A turn that reads as
+        gibberish goes back to 0° when the page as it arrived reads better; a
+        page that is gibberish at 0° is turned to the quarter-turn that reads."""
+        from stages.lib.image_preprocess.rotation import PageRead, choose_orientation
 
-        gibberish = " ".join(["bcdfghjklmnpq"] * 25)
-        readable = (
-            "The patient was seen in the office for a follow up visit today "
-            "and the plan was discussed with the family in detail about the care."
-        )
-        texts = {0: readable, 180: gibberish, 90: gibberish, 270: gibberish}
+        reads, gibberish = PageRead(0.85, 200), PageRead(0.10, 180)
+        sideways = PageRead(0.20, 20)
 
-        undone = choose_orientation(180, lambda deg: texts[deg], handwritten=False)
-        assert undone == 0
+        def page(upright):
+            return lambda deg, flip: reads if (deg, flip) == (upright, False) else gibberish
 
-        kept = choose_orientation(
-            180,
-            lambda deg: gibberish,
-            handwritten=False,
-        )
-        assert kept == 180
+        # OSD right: one read, no search.
+        seen = []
+        assert choose_orientation(90, lambda d, f: seen.append((d, f)) or page(90)(d, f)) == (90, False)
+        assert seen == [(90, False)]
+        # OSD's 180° is gibberish and the unturned page reads: back to 0°.
+        assert choose_orientation(180, page(0)) == (0, False)
+        # OSD said 0° (or nothing) and 0° is gibberish: the turn that reads.
+        assert choose_orientation(0, page(270)) == (270, False)
+        # OSD wrong both ways: the quarter-turn that reads wins.
+        assert choose_orientation(90, page(180)) == (180, False)
+        # OSD's turn reads, but only weakly: the turn with more English wins.
+        best = lambda d, f: {(0, False): PageRead(0.5, 30), (90, False): reads}.get((d, f), sideways)
+        assert choose_orientation(0, best) == (90, False)
+        # A short page that reads weakly keeps OSD's turn when nothing beats it.
+        assert choose_orientation(0, lambda d, f: PageRead(0.9, 18) if (d, f) == (0, False) else sideways) == (0, False)
+        # Nothing reads anywhere (handwriting, a poor scan): OSD's turn stands.
+        assert choose_orientation(180, lambda d, f: gibberish) == (180, False)
+        # Too few words to judge is not a read.
+        assert choose_orientation(90, lambda d, f: PageRead(1.0, 3)) == (90, False)
+        # A non-quadrant proposal is treated as 0°.
+        assert choose_orientation(45, page(0)) == (0, False)
 
-        turned = choose_orientation(
-            0,
-            lambda deg: readable if deg == 180 else gibberish,
-            handwritten=False,
-        )
-        assert turned == 180
+    def test_a_tilt_is_kept_only_when_the_straightened_page_reads_as_well(self):
+        from stages.lib.image_preprocess.rotation import PageRead, choose_tilt
 
-        skipped = choose_orientation(180, lambda deg: texts[deg], handwritten=True)
-        assert skipped == 180
+        assert choose_tilt(2.5, PageRead(0.8, 100), PageRead(0.85, 100)) == 2.5
+        assert choose_tilt(2.5, PageRead(0.8, 100), PageRead(0.8, 100)) == 2.5
+        # A word or two fewer is Tesseract noise, not a worse page.
+        assert choose_tilt(2.5, PageRead(0.68, 100), PageRead(0.67, 100)) == 2.5
+        assert choose_tilt(2.5, PageRead(0.8, 100), PageRead(0.4, 100)) == 0.0
 
-        short = "only a few words here"
-        assert choose_orientation(180, lambda deg: short, handwritten=False) == 180
+    def test_reads_are_layout_analysed_as_one_column(self):
+        """Tesseract's default layout turns top-to-bottom text back, so a page
+        turned 90° read as well as the upright page. PSM 4 does not."""
+        from stages.lib.image_preprocess import rotation
+
+        assert "--psm 4" in rotation._READ_CONFIG
+
+    def test_corrected_pages_hold_only_corrections_that_survived(self, tmp_path, monkeypatch):
+        """A page is written only when a turn, flip or applied tilt survived
+        the checks. Anything else leaves corrected-pages/ empty for it —
+        including a file from an earlier run, and a TIFF that needed nothing."""
+        import numpy as np
+
+        import config
+        from stages.lib.image_preprocess import stage as quality_rotation_hw
+
+        monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
+        monkeypatch.setattr(quality_rotation_hw, "ROTATION_CORRECTION_ENABLED", True)
+        cdir = config.corrected_pages_dir("chart")
+        cdir.mkdir(parents=True)
+        image = np.full((40, 60, 3), 255, dtype=np.uint8)
+        upright = {"orientation_angle": 0.0, "tilt_angle": 0.0, "mirrored": False,
+                   "needs_correction": False, "_image": image}
+        turned = {**upright, "orientation_angle": 90.0, "needs_correction": True}
+
+        (cdir / "1.jpg").write_bytes(b"stale")
+        assert quality_rotation_hw._write_corrected("chart", "1.jpg", upright) is None
+        assert not (cdir / "1.jpg").exists()
+
+        assert quality_rotation_hw._write_corrected("chart", "2.tif", upright) is None
+        written = quality_rotation_hw._write_corrected("chart", "3.tif", turned)
+        assert written == cdir / "3.jpg"
+        assert sorted(p.name for p in cdir.iterdir()) == ["3.jpg"]
+
+        monkeypatch.setattr(quality_rotation_hw, "ROTATION_CORRECTION_ENABLED", False)
+        assert quality_rotation_hw._write_corrected("chart", "3.tif", turned) is None
+        assert list(cdir.iterdir()) == []
 
     def test_a_tilt_over_the_limit_is_recorded_not_applied(self):
         """A 12° reading is far likelier a misread than a crooked scan, so the

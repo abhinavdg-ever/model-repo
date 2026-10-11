@@ -1,0 +1,33 @@
+model_type,precision,recall,f1,val_pages,train_pages
+Progress Note,0.4,0.6,0.48,20,81
+Summary,1.0,0.5,0.6667,2,8
+Visit Diagnosis,0.6667,0.8,0.7273,5,9
+Problem List,0.0,0.0,0.0,5,18
+Signature page,1.0,0.5,0.6667,2,10
+Office Visit,0.3,0.2727,0.2857,11,21
+Laboratory Data,0.7222,1.0,0.8387,13,34
+Radiology Report,0.7368,0.9333,0.8235,15,49
+Patient Demographics,1.0,0.6,0.75,5,22
+Discharge Summary,0.8,1.0,0.8889,8,34
+Forms,0.8889,0.8,0.8421,10,38
+Clinical Summary,0.6,0.6,0.6,5,11
+Orders,0.5,0.4,0.4444,5,18
+Cardiac Report,1.0,0.5,0.6667,4,14
+Operative Report,0.5,0.5,0.5,2,9
+Discharge Instructions,0.0,0.0,0.0,1,5
+Telephone Encounter,0.5,1.0,0.6667,1,5
+Messages,0.0,0.0,0.0,3,14
+Triage Note,0.0,0.0,0.0,1,4
+Medication List,0.7143,1.0,0.8333,5,20
+Nursing Note,0.0,0.0,0.0,1,5
+Echocardiogram Report,0.8333,1.0,0.9091,5,14
+Pathology Report,0.3333,0.3333,0.3333,3,10
+Gastroenterology / GI,0.0,0.0,0.0,3,4
+Patient Education,0.8571,0.8571,0.8571,7,9
+Ophthalmology Note,0.0,0.0,0.0,1,6
+Referral & Authorization,0.6667,0.6667,0.6667,3,10
+Emergency Note,1.0,0.5,0.6667,2,7
+Vascular Studies,0.0,0.0,0.0,1,5
+Annual Assessments,0.0,0.0,0.0,1,4
+Obstetrics & Women's Health,1.0,0.5,0.6667,2,8
+Oncology,0.0,0.0,0.0,1,5

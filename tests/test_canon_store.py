@@ -67,7 +67,8 @@ def test_every_config_lives_in_the_canon_folder():
         "dos_canon.json",
         "member_keywords_canon.json",
         "section_header_canon.json",
-        "codeable_canon.json",
+        "page_keyword_canon.json",
+        "continuity_canon.json",
         "encounter_canon.json",
         "provider_credentials_canon.json",
     }

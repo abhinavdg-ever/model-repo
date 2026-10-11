@@ -1,0 +1,33 @@
+id,model_type,page_type,codability,train_pages,val_pages
+0,Progress Note,Progress Note,Codable,81,20
+1,Summary,Progress Note,Codable,8,2
+2,Visit Diagnosis,Progress Note,Codable,9,5
+3,Problem List,Progress Note,Codable,18,5
+4,Signature page,Progress Note,Codable,10,2
+5,Office Visit,Progress Note,Codable,21,11
+6,Laboratory Data,Laboratory Data,Non-Codable,34,13
+7,Radiology Report,Radiology Report,Non-Codable,49,15
+8,Patient Demographics,Patient Demographics,Codable,22,5
+9,Discharge Summary,Discharge Summary,Discharge,34,8
+10,Forms,Forms,Non-Codable,38,10
+11,Clinical Summary,Clinical Summary,Non-Codable,11,5
+12,Orders,Orders,Non-Codable,18,5
+13,Cardiac Report,Cardiac Report,Codable,14,4
+14,Operative Report,Operative Report,Codable,9,2
+15,Discharge Instructions,Discharge Instructions,Discharge,5,1
+16,Telephone Encounter,Telephone Encounter,Non-Codable,5,1
+17,Messages,Messages,Non-Codable,14,3
+18,Triage Note,Triage Note,Non-Codable,4,1
+19,Medication List,Medication List,Non-Codable,20,5
+20,Nursing Note,Nursing Note,Non-Codable,5,1
+21,Echocardiogram Report,Echocardiogram Report,Codable,14,5
+22,Pathology Report,Pathology Report,Codable,10,3
+23,Gastroenterology / GI,Gastroenterology / GI,Codable,4,3
+24,Patient Education,Patient Education,Non-Codable,9,7
+25,Ophthalmology Note,Ophthalmology Note,Codable,6,1
+26,Referral & Authorization,Referral & Authorization,Non-Codable,10,3
+27,Emergency Note,Emergency Note,Codable,7,2
+28,Vascular Studies,Vascular Studies,Non-Codable,5,1
+29,Annual Assessments,Annual Assessments,Codable,4,1
+30,Obstetrics & Women's Health,Obstetrics & Women's Health,Codable,8,2
+31,Oncology,Oncology,Codable,5,1

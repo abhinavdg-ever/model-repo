@@ -1,0 +1,6 @@
+flask>=3.0
+pillow>=10.0
+pillow-heif>=0.16
+pytesseract>=0.3.10
+# tests only
+pytest>=8.0

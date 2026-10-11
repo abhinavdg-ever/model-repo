@@ -1,0 +1,27 @@
+model_type,pages,reason
+Physician Note,2,fewer than 5 pages
+Plan of Care,2,fewer than 5 pages
+F2F Evaluation Note,2,fewer than 5 pages
+Social History,3,fewer than 5 pages
+Functional Assessment,1,fewer than 5 pages
+Administration,1,fewer than 5 pages
+Billing / Invoice,4,fewer than 5 pages
+EKG / ECG Tracing,3,fewer than 5 pages
+Procedure Note,3,fewer than 5 pages
+Psychiatric Evaluation,3,fewer than 5 pages
+Other Evaluation,1,fewer than 5 pages
+Allergies Report,2,fewer than 5 pages
+Therapy,1,fewer than 5 pages
+Immunizations,4,fewer than 5 pages
+ENT Note,2,fewer than 5 pages
+Wound & Infection Care,1,fewer than 5 pages
+Interim Summary,1,fewer than 5 pages
+ICU Note,0,no pages
+Nuclear Medicine Report,2,fewer than 5 pages
+Occupational & Physical Exams,0,no pages
+Neurology,1,fewer than 5 pages
+Nephrology,0,no pages
+Respiratory,2,fewer than 5 pages
+Sleep Study,4,fewer than 5 pages
+Pain & Palliative Note,0,no pages
+Implants,2,fewer than 5 pages

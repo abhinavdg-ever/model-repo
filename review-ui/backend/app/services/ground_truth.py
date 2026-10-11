@@ -26,12 +26,17 @@ _COLUMNS = """
 _EMPTY = {"", "na", "n/a", "not found", "not available"}
 
 
+# Codeable, Non Codeable, Non-Codeable, NonCodeable, non_codeable, Codable …
+_CODEABLE = re.compile(r"\b(?:(non)[\s_-]*)?code?able\b", re.IGNORECASE)
+
+
 def spell_codeable(value: str | None) -> str | None:
-    """Ground-truth sheets say Codable. Store and show Codeable."""
+    """Codeable / Non-Codeable, however a sheet, an older run, or an older
+    ground-truth row spelled it. Blank and NA stay empty."""
     text = clean_label(value)
     if text is None:
         return None
-    return re.sub(r"codable", "Codeable", text, flags=re.IGNORECASE)
+    return _CODEABLE.sub(lambda m: "Non-Codeable" if m.group(1) else "Codeable", text)
 
 
 def clean_label(value: str | None) -> str | None:

@@ -1,1 +1,1 @@
-"""Page family from the model; subtype from keyword-canon/codeable_canon.json."""
+"""Page classification: BERT + keyword canon + arbitration ladder (page_taxonomy.json names)."""

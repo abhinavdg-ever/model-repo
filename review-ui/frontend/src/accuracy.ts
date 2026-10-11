@@ -6,7 +6,7 @@ import type {
 import { groundTruthBits, hasGroundTruth, type GtBit } from "./groundTruth";
 import { splitPageType } from "./ImagingPanel";
 
-export type Verdict = "correct" | "wrong";
+export type Verdict = "yes" | "maybe" | "no";
 
 export type MetricId = "member" | "dos" | "blankJunk" | "pageType" | "codeable" | "signature";
 
@@ -33,7 +33,7 @@ export const METRICS: { id: MetricId; label: string; rule: string }[] = [
   },
   {
     id: "codeable",
-    label: "Codeable / Non Codeable",
+    label: "Codeable / Non-Codeable",
     rule: "Codeable label matches",
   },
   {
@@ -43,7 +43,10 @@ export const METRICS: { id: MetricId; label: string; rule: string }[] = [
   },
 ];
 
-export type Tally = { correct: number; wrong: number; scored: number };
+export type Tally = { yes: number; no: number; maybe: number; scored: number };
+
+/** Blank or junk is the positive class. A subtype disagreement still counts as found. */
+export type ClassRates = { tp: number; fp: number; fn: number };
 
 export type ChartAccuracy = {
   chartId: string;
@@ -52,6 +55,7 @@ export type ChartAccuracy = {
   lastVerifiedAt?: string | null;
   metrics: Record<MetricId, Tally>;
   overall: Tally;
+  blankJunkRates: ClassRates;
 };
 
 const EMPTY_SECTIONS: ImagingSectionsProcessed = {
@@ -68,30 +72,57 @@ const EMPTY_SECTIONS: ImagingSectionsProcessed = {
 };
 
 function emptyTally(): Tally {
-  return { correct: 0, wrong: 0, scored: 0 };
+  return { yes: 0, no: 0, maybe: 0, scored: 0 };
+}
+
+function emptyRates(): ClassRates {
+  return { tp: 0, fp: 0, fn: 0 };
+}
+
+function blankOrJunkPositive(label: string): boolean {
+  return label.trim().toLowerCase().startsWith("yes");
+}
+
+function addBlankJunk(rates: ClassRates, bits: GtBit[]): void {
+  if (!labeled(bits)) return;
+  const bit = bits[0];
+  const expected = blankOrJunkPositive(bit.label);
+  if (bit.mark === "match" || bit.mark === "partial") {
+    if (expected) rates.tp += 1;
+    return;
+  }
+  if (expected) rates.fn += 1;
+  else if (bit.mark === "mismatch") rates.fp += 1;
 }
 
 function add(tally: Tally, verdict: Verdict | null) {
-  if (verdict === "correct") {
-    tally.correct += 1;
-    tally.scored += 1;
-  } else if (verdict === "wrong") {
-    tally.wrong += 1;
-    tally.scored += 1;
-  }
+  if (!verdict) return;
+  tally[verdict] += 1;
+  tally.scored += 1;
 }
 
+/** Yes is a full match, May be is half, No is none. */
 export function accuracyPercent(tally: Tally): number | null {
   if (tally.scored === 0) return null;
-  return Math.round((100 * tally.correct) / tally.scored);
+  return Math.round((100 * (tally.yes + 0.5 * tally.maybe)) / tally.scored);
 }
 
 function matched(bits: GtBit[]): boolean {
   return bits.some((bit) => bit.mark === "match");
 }
 
+function partial(bits: GtBit[]): boolean {
+  return bits.some((bit) => bit.mark === "partial");
+}
+
 function labeled(bits: GtBit[]): boolean {
   return bits.length > 0;
+}
+
+function grade(bits: GtBit[]): Verdict {
+  if (matched(bits)) return "yes";
+  if (partial(bits)) return "maybe";
+  return "no";
 }
 
 function idKey(value: string | null | undefined): string {
@@ -102,7 +133,7 @@ function pageScores(
   page: ImagingPageResult,
   sections: ImagingSectionsProcessed,
   manifestMemberId: string | null | undefined,
-): Record<MetricId, Verdict | null> {
+): { scores: Record<MetricId, Verdict | null>; blankJunk: GtBit[] } {
   const parts = splitPageType(page.pageType);
   const bits = groundTruthBits({
     gt: page.groundTruth,
@@ -132,24 +163,36 @@ function pageScores(
   // id is compared with the manifest, but only alongside a labelled name or DOB.
   const extractedId = idKey(page.memberId);
   const expectedId = idKey(manifestMemberId);
-  const checks: boolean[] = [];
-  if (labeled(bits.memberName)) checks.push(matched(bits.memberName));
-  if (labeled(bits.memberDob)) checks.push(matched(bits.memberDob));
+  const checks: Verdict[] = [];
+  if (labeled(bits.memberName)) checks.push(grade(bits.memberName));
+  if (labeled(bits.memberDob)) checks.push(grade(bits.memberDob));
   if (labeled(bits.memberId)) {
-    checks.push(matched(bits.memberId));
+    checks.push(grade(bits.memberId));
   } else if (checks.length > 0 && extractedId && expectedId) {
-    checks.push(extractedId === expectedId);
+    checks.push(extractedId === expectedId ? "yes" : "no");
   }
-  const hits = checks.filter(Boolean).length;
+  const hits = checks.filter((item) => item === "yes").length;
   const member: Verdict | null =
-    checks.length === 0 ? null : hits >= Math.min(2, checks.length) ? "correct" : "wrong";
+    checks.length === 0
+      ? null
+      : hits >= Math.min(2, checks.length)
+        ? "yes"
+        : checks.some((item) => item === "maybe") && checks.every((item) => item !== "no")
+          ? "maybe"
+          : "no";
 
   const dosDates = [bits.dosFrom, bits.dosTo].filter(labeled);
+  const dosGrades = dosDates.map(grade);
   const dos: Verdict | null =
-    dosDates.length === 0 ? null : dosDates.every(matched) ? "correct" : "wrong";
+    dosGrades.length === 0
+      ? null
+      : dosGrades.every((item) => item === "yes")
+        ? "yes"
+        : dosGrades.some((item) => item === "no")
+          ? "no"
+          : "maybe";
 
-  const single = (field: GtBit[]): Verdict | null =>
-    labeled(field) ? (matched(field) ? "correct" : "wrong") : null;
+  const single = (field: GtBit[]): Verdict | null => (labeled(field) ? grade(field) : null);
 
   const expectedSignature = yesNo(page.groundTruth?.providerSignature);
   const actualSignature = yesNo(page.providerSignature);
@@ -157,17 +200,29 @@ function pageScores(
     expectedSignature == null || actualSignature == null
       ? null
       : expectedSignature === actualSignature
-        ? "correct"
-        : "wrong";
+        ? "yes"
+        : "no";
 
   return {
-    member,
-    dos,
-    blankJunk: single(bits.blankJunk),
-    pageType: single(bits.pageType),
-    codeable: single(bits.codeable),
-    signature,
+    scores: {
+      member,
+      dos,
+      blankJunk: single(bits.blankJunk),
+      pageType: single(bits.pageType),
+      codeable: single(bits.codeable),
+      signature,
+    },
+    blankJunk: bits.blankJunk,
   };
+}
+
+/** Six full matches are a page match. Three to five are partial. Two or fewer miss. */
+function overallVerdict(scores: Record<MetricId, Verdict | null>): Verdict | null {
+  if (METRICS.every((metric) => scores[metric.id] == null)) return null;
+  const matches = METRICS.filter((metric) => scores[metric.id] === "yes").length;
+  if (matches === METRICS.length) return "yes";
+  if (matches >= 3) return "maybe";
+  return "no";
 }
 
 function yesNo(value: string | null | undefined): "yes" | "no" | null {
@@ -187,31 +242,53 @@ export function scoreChart(
     MetricId,
     Tally
   >;
+  const blankJunkRates = emptyRates();
+  const overall = emptyTally();
   for (const page of doc.pages) {
     if (!hasGroundTruth(page.groundTruth)) continue;
-    const scores = pageScores(page, sections, doc.manifest?.memberId);
-    for (const metric of METRICS) add(metrics[metric.id], scores[metric.id]);
+    const scored = pageScores(page, sections, doc.manifest?.memberId);
+    for (const metric of METRICS) add(metrics[metric.id], scored.scores[metric.id]);
+    add(overall, overallVerdict(scored.scores));
+    addBlankJunk(blankJunkRates, scored.blankJunk);
   }
-  const overall = emptyTally();
-  for (const metric of METRICS) {
-    overall.correct += metrics[metric.id].correct;
-    overall.wrong += metrics[metric.id].wrong;
-    overall.scored += metrics[metric.id].scored;
+  return { chartId, chartName, metrics, overall, blankJunkRates };
+}
+
+export function sumRates(rows: ClassRates[]): ClassRates {
+  const total = emptyRates();
+  for (const row of rows) {
+    total.tp += row.tp;
+    total.fp += row.fp;
+    total.fn += row.fn;
   }
-  return { chartId, chartName, metrics, overall };
+  return total;
+}
+
+function ratePercent(hits: number, total: number): string {
+  if (total === 0) return "—";
+  return `${Math.round((100 * hits) / total)}%`;
+}
+
+export function formatPrecision(rates: ClassRates): string {
+  return ratePercent(rates.tp, rates.tp + rates.fp);
+}
+
+export function formatRecall(rates: ClassRates): string {
+  return ratePercent(rates.tp, rates.tp + rates.fn);
 }
 
 export function sumTallies(rows: Tally[]): Tally {
   const total = emptyTally();
   for (const row of rows) {
-    total.correct += row.correct;
-    total.wrong += row.wrong;
+    total.yes += row.yes;
+    total.no += row.no;
+    total.maybe += row.maybe;
     total.scored += row.scored;
   }
   return total;
 }
 
-export function formatRatio(tally: Tally): string {
+export function formatDistribution(tally: Tally): string {
   if (tally.scored === 0) return "—";
-  return `${tally.correct}/${tally.scored}`;
+  return `Yes ${tally.yes} · No ${tally.no} · May be ${tally.maybe}`;
 }

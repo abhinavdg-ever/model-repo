@@ -33,12 +33,11 @@ def canon():
     return load_canon()
 
 
-def page(pid, text="", dos="2025-03-14", type_id="", inherited=False, name=""):
+def page(pid, text="", dos="2025-03-14", type_id="", name=""):
     return {
         "page_id": pid, "page_name": f"{pid}.jpg", "page_number": pid, "text": text,
         "dos_from": dos, "dos_to": dos, "reason": "" if dos else "no_date",
         "page_type_id": type_id, "page_type_name": name or type_id,
-        "page_type_inherited": inherited,
     }
 
 
@@ -64,8 +63,8 @@ def _raw():
     [
         (lambda r: r["tier2"]["home"].append("hospital course"), "is in both"),
         (lambda r: r["tier3"]["inpatient"].append("chief complaint"), "is in both"),
-        (lambda r: r["tier1_page_types"].update({"no_such_type": "home"}), "not a page type id"),
-        (lambda r: r["tier1_page_types"].update({"discharge_summary": "space"}), "unknown setting"),
+        (lambda r: r["tier1_page_types"].update({"no_such_type": "home"}), "not a page type or sub-type"),
+        (lambda r: r["tier1_page_types"].update({"Discharge Summary": "space"}), "unknown setting"),
         (lambda r: r["negatives"].append({"phrase": "x y", "cancels": ["not a phrase"]}),
          "not a tier 2 or tier 3 phrase"),
         (lambda r: r["context"].append("telehealth"), "also scores"),
@@ -121,11 +120,6 @@ def test_repetition_does_not_add_weight(canon):
     assert [f.source for f in evidence.findings].count("follow up") == 1
 
 
-def test_inherited_page_type_is_not_tier1(canon):
-    assert one(canon, page(1, type_id="discharge_summary", inherited=True)).setting == ""
-    assert one(canon, page(1, type_id="discharge_summary")).setting == "inpatient"
-
-
 def test_trailing_punctuation_phrases_match(canon):
     evidence = gather([page(1, "HPI:cough A/P:rest")], canon)
     assert {"hpi:", "a/p:"} <= {f.source for f in evidence.findings}
@@ -148,7 +142,7 @@ def test_negative_cancels_the_finding_it_names(canon):
 
 
 def test_negatives_do_not_touch_page_type_evidence(canon):
-    d = one(canon, page(1, "discharged home last week", type_id="home_health_visit_note"))
+    d = one(canon, page(1, "discharged home last week", type_id="HouseCalls visit summary"))
     assert d.setting == "home"
 
 
@@ -161,7 +155,7 @@ def test_tier3_alone_never_decides(canon):
 
 
 def test_tier1_beats_any_amount_of_tier2_and_tier3(canon):
-    d = one(canon, page(1, "office visit clinic visit follow up " * 10, type_id="discharge_summary",
+    d = one(canon, page(1, "office visit clinic visit follow up " * 10, type_id="Discharge Summary",
                         name="Discharge Summary"))
     assert (d.setting, d.decided_by, d.confidence) == ("inpatient", "tier1", 0.95)
     assert d.matched_keyword == "Discharge Summary"
@@ -176,8 +170,8 @@ def test_tier2_single_setting(canon):
 def test_conflict_goes_to_more_tier3_hints_and_is_flagged(canon):
     d = one(
         canon,
-        page(1, type_id="discharge_summary"),
-        page(2, "chief complaint, follow up, subjective: ...", type_id="office_visits_followup_visits"),
+        page(1, type_id="Discharge Summary"),
+        page(2, "chief complaint, follow up, subjective: ...", type_id="Office Visit"),
     )
     assert (d.setting, d.confidence, d.conflict) == ("outpatient_f2f", 0.70, True)
     assert set(d.contenders) == {"inpatient", "outpatient_f2f"}
@@ -199,10 +193,10 @@ def test_worked_example(canon):
     )
     pages = (
         [page(1, hospital, dos="2025-03-14")]
-        + [page(3, "", dos="2025-03-14", type_id="discharge_summary", name="Discharge Summary")]
-        + [page(7, "", dos="2025-03-14", type_id="history_physical")]
+        + [page(3, "", dos="2025-03-14", type_id="Discharge Summary", name="Discharge Summary")]
+        + [page(7, "", dos="2025-03-14", type_id="Progress Note")]
         + [page(25, "telehealth follow up telehealth", dos="2025-04-02")]
-        + [page(26, "", dos="2025-04-02", type_id="progress_note")]
+        + [page(26, "", dos="2025-04-02", type_id="Progress Note")]
         + [page(32, "whatever", dos="")]
     )
     log: list = []
@@ -226,7 +220,7 @@ def test_worked_example(canon):
 # --- label-free regression checks ---------------------------------------
 
 
-@pytest.mark.parametrize("type_id", ["discharge_summary", "operative_report", "icu_flow_sheet"])
+@pytest.mark.parametrize("type_id", ["Discharge Summary", "Operative Report", "ICU Note"])
 def test_a_hospital_document_is_never_f2f(canon, type_id):
     d = one(canon, page(1, "office visit follow up chief complaint " * 5, type_id=type_id))
     assert d.setting != "outpatient_f2f"

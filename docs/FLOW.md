@@ -66,14 +66,16 @@ flowchart TD
     S5b["6 · section_headers<br/>canon match from JSON"]
     S6["7 · blank_junk pass 2<br/>handwritten + survivors"]
     S7["8 · member_verify<br/>rules → NER → what-if"]
-    S8["9 · dos_extract<br/>regex → LLM → carry-forward"]
-    S9["10 · page_subtype<br/>family model + keyword subtype"]
-    S10["11 · encounter_type<br/>F2F / Tele / IP / Home per DOS"]
-    S11["12 · page_sequencing<br/>markers → streams → suggested order"]
-    S1 --> S2 --> S3 --> S4 --> S5 --> S5b --> S6 --> S7 --> S8 --> S9 --> S10 --> S11
+    S8["9 · page_subtype<br/>BERT + keywords + ladder (Extracted)"]
+    S9["10 · dos_extract<br/>key/value date → regex ≥ 0.75 → LLM"]
+    S9b["11 · continuity<br/>documents · Final page type + DOS"]
+    S10["12 · encounter_type<br/>F2F / Tele / IP / Home per DOS"]
+    S11["13 · page_sequencing<br/>markers → streams → suggested order"]
+    S12["14 · imaging_final<br/>every field's Final value"]
+    S1 --> S2 --> S3 --> S4 --> S5 --> S5b --> S6 --> S7 --> S8 --> S9 --> S9b --> S10 --> S11 --> S12
   end
 
-  S11 --> DONE["refresh_chart_status<br/>→ completed / needs_review / failed"]
+  S12 --> DONE["refresh_chart_status<br/>→ completed / needs_review / failed"]
 
   style S5 fill:#fde8e8,stroke:#c74a4a
   style S7 fill:#fff4e0,stroke:#c78a4a

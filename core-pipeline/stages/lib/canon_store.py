@@ -8,7 +8,10 @@ page processed — no pipeline restart, no re-OCR:
     dos_canon.json               date-of-service scoring weights, labels, cues + settings
     member_keywords_canon.json   member key groups / ignore / label words
     section_header_canon.json    section-header catalog (stage 6)
-    codeable_canon.json          page type / codeability keywords
+    page_taxonomy.json           page types, sub-types, model types, codability
+    page_keyword_canon.json      page classifier keyword model
+    page_arbitration.json        BERT vs keyword ladder + continuation rules
+    continuity_canon.json        document continuity signals
     encounter_canon.json         encounter-type keywords
     provider_credentials_canon.json  provider credential tokens (MD, DO, PA-C, …)
 
