@@ -304,10 +304,35 @@ class BatchRequest(ChartRunOptions):
         None,
         ge=1,
         description=(
-            "Run at most N charts (not-yet-finished ones first). Default: all."
+            "Run at most N charts (not-yet-finished ones first). Default: all. "
+            '"completed" is shorthand for only_completed=true.'
         ),
         examples=[3],
     )
+    only_completed: bool = Field(
+        False,
+        description=(
+            "Re-run only the charts under input_path whose status is already "
+            "finished (completed / needs_review / rejected) — e.g. with "
+            "skip_ocr=true to apply new rules without new OCR. The opposite of "
+            "skip_completed."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sample_completed(cls, data: Any) -> Any:
+        # "sample": "completed" -> only_completed=true (no cap).
+        if isinstance(data, dict) and isinstance(data.get("sample"), str):
+            if data["sample"].strip().casefold() == "completed":
+                data = {**data, "sample": None, "only_completed": True}
+        return data
+
+    @model_validator(mode="after")
+    def _completed_flags(self) -> "BatchRequest":
+        if self.only_completed and self.skip_completed:
+            raise ValueError("only_completed and skip_completed cannot both be true")
+        return self
 
     def charts_cap(self) -> Optional[int]:
         return int(self.sample) if self.sample is not None else None
@@ -630,6 +655,7 @@ def _bg_batch(payload: "BatchRequest") -> None:
             sample=payload.sample,
             chart_names=payload.chart_list,
             skip_completed=payload.skip_completed,
+            only_completed=payload.only_completed,
         )
         logger.info(
             "Background batch finished: %s -> %d/%d completed, %d failed "
@@ -959,6 +985,9 @@ def _batch_run_impl(
             finished = finished_chart_names([n for _s, n, _m in sources])
             skipped = [n for _s, n, _m in sources if n in finished]
             sources = [x for x in sources if x[1] not in finished]
+        elif body.only_completed:
+            finished = finished_chart_names([n for _s, n, _m in sources])
+            sources = [x for x in sources if x[1] in finished]
         queued = min(len(sources), cap) if cap else len(sources)
 
     background_tasks.add_task(_bg_batch, body)
@@ -975,6 +1004,7 @@ def _batch_run_impl(
         "charts_skipped_completed": skipped,
         "chart_list": body.chart_list,
         "sample": body.sample,
+        "only_completed": body.only_completed,
         "workers": workers,
         **_options_echo(body),
         "write": (

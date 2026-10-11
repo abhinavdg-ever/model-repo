@@ -611,7 +611,10 @@ class TestBatchFolderDiscovery:
             assert field in RunRequest.model_fields, field
             assert field in BatchRequest.model_fields, field
         assert set(RunRequest.model_fields) - set(self.SHARED) == {"chart_name"}
-        assert set(BatchRequest.model_fields) - set(self.SHARED) == {"chart_list", "sample"}
+        # Batch-only: which folders to run.
+        assert set(BatchRequest.model_fields) - set(self.SHARED) == {
+            "chart_list", "sample", "only_completed",
+        }
 
     def test_removed_options_are_gone_from_both(self):
         from api.main import BatchRequest, RunRequest
@@ -2676,3 +2679,15 @@ class TestWriteModes:
 
         with pytest.raises(RuntimeError, match="all_files"):
             write_chart("c2", local_path=str(tmp_path / "out"))
+
+
+class TestCredentialListCopy:
+    def test_review_ui_ships_the_same_credential_list_as_the_pipeline(self):
+        """review-ui's container has no core-pipeline; its copy must match."""
+        repo = Path(__file__).resolve().parents[1]
+        pipeline = repo / "core-pipeline/stages/lib/extraction/provider_name/suffixes.txt"
+        bundled = repo / "review-ui/backend/app/data/credential_suffixes.txt"
+        assert bundled.read_text(encoding="utf-8") == pipeline.read_text(encoding="utf-8"), (
+            "copy core-pipeline/.../provider_name/suffixes.txt to "
+            "review-ui/backend/app/data/credential_suffixes.txt"
+        )

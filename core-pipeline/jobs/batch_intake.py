@@ -622,6 +622,7 @@ def run_batch(
     sample: Optional[int] = None,
     chart_names: Optional[list[str]] = None,
     skip_completed: bool = False,
+    only_completed: bool = False,
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
     workers: Optional[int] = None,
@@ -636,7 +637,8 @@ def run_batch(
     ``chart_names``, when set, restricts the batch to those folder names that
     actually exist under the read path (missing names are reported, not run).
     ``skip_completed`` drops charts whose chart_list.status is already finished
-    (reported as ``charts_skipped_completed``).
+    (reported as ``charts_skipped_completed``). ``only_completed`` keeps only
+    those finished charts (a refresh of completed work).
 
     Each chart goes through exactly the same call ``/api/charts/run`` makes —
     ``ingest_and_run`` — so a batch of one is indistinguishable from a single
@@ -691,6 +693,7 @@ def run_batch(
             sample=sample,
             chart_names=chart_names,
             skip_completed=skip_completed,
+            only_completed=only_completed,
             run_id=run_id,
             batch_id=batch_id,
             worker_count=worker_count,
@@ -720,6 +723,7 @@ def _run_batch_inner(
     sample: Optional[int],
     chart_names: Optional[list[str]],
     skip_completed: bool,
+    only_completed: bool,
     run_id: Optional[str],
     batch_id: Optional[str],
     worker_count: int,
@@ -768,6 +772,17 @@ def _run_batch_inner(
                 len(skipped_completed),
                 where,
             )
+
+    if only_completed and sources:
+        finished = finished_chart_names([name for _src, name, _mode in sources])
+        before = len(sources)
+        sources = [src for src in sources if src[1] in finished]
+        logger.info(
+            "only_completed: re-running %d finished chart(s) of %d under %s",
+            len(sources),
+            before,
+            where,
+        )
 
     if skip_db_write:
         from db import test_chart_name
