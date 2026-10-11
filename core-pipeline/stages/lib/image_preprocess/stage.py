@@ -11,7 +11,7 @@ Uses:
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -451,13 +451,19 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         if todo:
             workers = max(1, min(STAGE_WORKERS, len(todo)))
             logger.info("Quality/rotation/HW workers=%d", workers)
+            # Progress about every 10% of the chart, so a long run shows it is alive.
+            step = max(1, len(todo) // 10)
+            results: dict[int, dict[str, Any]] = {}
             with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="page") as pool:
-                measured = list(
-                    pool.map(
-                        _measure,
-                        [(p, root / p["page_name"], ctx.chart_name) for p in todo],
-                    )
-                )
+                futures = {
+                    pool.submit(_measure, (p, root / p["page_name"], ctx.chart_name)): i
+                    for i, p in enumerate(todo)
+                }
+                for done, future in enumerate(as_completed(futures), start=1):
+                    results[futures[future]] = future.result()
+                    if done % step == 0 or done == len(todo):
+                        logger.info("Quality/rotation/HW %d/%d pages done", done, len(todo))
+            measured = [results[i] for i in range(len(todo))]
 
         with connect() as conn:
             for item in measured:

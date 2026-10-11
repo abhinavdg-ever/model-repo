@@ -63,8 +63,15 @@ def detect_rotation(image: Any) -> Optional[dict[str, Any]]:
         return None
 
     try:
-        osd = pytesseract.image_to_osd(image, output_type=Output.DICT)
+        try:
+            from config import ROTATION_TESSERACT_TIMEOUT
+        except ImportError:
+            ROTATION_TESSERACT_TIMEOUT = 30.0
+        osd = pytesseract.image_to_osd(
+            image, output_type=Output.DICT, timeout=ROTATION_TESSERACT_TIMEOUT
+        )
     except Exception as exc:
+        # A timeout (RuntimeError) is "no answer" too.
         # Tesseract raises "Too few characters" on sparse pages, and a
         # TesseractError when the osd traineddata is absent. Both mean "no
         # answer", not "this page is broken".

@@ -804,15 +804,18 @@ def _tesseract_text(image: np.ndarray) -> str:
     except ImportError:
         return ""
     try:
-        from config import TESSERACT_CMD
+        from config import ROTATION_TESSERACT_TIMEOUT, TESSERACT_CMD
     except ImportError:
-        TESSERACT_CMD = None
+        TESSERACT_CMD, ROTATION_TESSERACT_TIMEOUT = None, 30.0
     if TESSERACT_CMD:
         pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
     if image.ndim == 3:
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     try:
-        return pytesseract.image_to_string(Image.fromarray(image), config=_READ_CONFIG) or ""
+        # A timeout raises RuntimeError: read as no text, like any other failure.
+        return pytesseract.image_to_string(
+            Image.fromarray(image), config=_READ_CONFIG, timeout=ROTATION_TESSERACT_TIMEOUT
+        ) or ""
     except Exception:
         return ""
 

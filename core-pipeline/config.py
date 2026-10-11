@@ -251,6 +251,9 @@ BATCH_WORKERS = int(os.environ.get("BATCH_WORKERS") or "4")
 BATCH_POOL_HEADROOM = int(os.environ.get("BATCH_POOL_HEADROOM") or "2")
 
 TESSERACT_CMD = (os.environ.get("TESSERACT_CMD") or "").strip() or None
+# Stage 1 (orientation OSD + readability reads): seconds before one Tesseract
+# call is abandoned as "no answer", so one bad image cannot hang a chart.
+ROTATION_TESSERACT_TIMEOUT = float(os.environ.get("ROTATION_TESSERACT_TIMEOUT") or "30")
 
 
 def _path_under_core(raw: str | None, default_rel: str) -> Path:
