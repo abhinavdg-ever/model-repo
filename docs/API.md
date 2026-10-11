@@ -42,7 +42,7 @@ psql "$DATABASE_URL" -f schema/v1.sql
 psql "$DATABASE_URL" -c "SELECT stage_name, pass_no, seq FROM pipeline_stage ORDER BY seq;"
 ```
 
-Expect 13 phase-1 rows. An empty `pipeline_stage` makes `/ready` return 503.
+Expect 15 phase-1 rows (ocr_quality … imaging_final). An empty `pipeline_stage` makes `/ready` return 503.
 
 ### Azure OpenAI: key or no key
 

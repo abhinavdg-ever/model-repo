@@ -116,6 +116,7 @@ INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1) VALUES
     ('ocr_final1',       1, 40, 'Final OCR 1 (RapidOCR)',        TRUE),
     ('ocr_final2',       1, 50, 'Final OCR 2 (Azure DocIntel)',  TRUE),
     ('section_headers',  1, 55, 'Section Header Match',          TRUE),
+    ('kv_extract',       1, 56, 'Key/Value Extraction',          TRUE),
     ('blank_junk',       2, 60, 'Blank/Junk/Duplicate — pass 2',  TRUE),
     ('member_verify',    1, 70, 'Member Extraction + Verify',    TRUE),
     -- Page type before DOS: DOS reads the Extracted sub-type.
