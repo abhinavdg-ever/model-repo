@@ -71,8 +71,7 @@ core-pipeline/models/page-family/._*
 core-pipeline/models/kv-extraction/._*
 core-pipeline/models/hw/._*
 *.safetensors
-# Page-classification BERT weights only. One Git LFS file; every other checkpoint stays local.
-!core-pipeline/models/page-family/model.safetensors
+# Model weights stay local (page-family and blank-junk BERT included); copy them onto each host.
 *.onnx
 *.bin
 *.pth
