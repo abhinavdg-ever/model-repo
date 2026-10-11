@@ -550,7 +550,8 @@ function blankJunkStored(shown: string): Pick<PageGroundTruth, "blankPage" | "ju
 
 /** Values already stored for this page. Empty string displays as NA. */
 function storedGroundTruth(gt: PageGroundTruth | null | undefined): Record<string, string> {
-  const pageType = (gt?.pageType ?? "").trim();
+  // The ground-truth page type lives in the Encounter Type column (Page Type: fallback).
+  const pageType = ((gt?.encounterType ?? "").trim() || (gt?.pageType ?? "").trim());
   return {
     name: presenceStored(gt?.memberName),
     dob: presenceStored(gt?.memberDob),
@@ -585,7 +586,8 @@ function groundTruthBody(
     providerSignature: cleanGt(values.provider_credentials),
     isVisible: visibilityStored(values.quality ?? ""),
     rotation: cleanGt((values.orientation ?? "").replace(/°$/, "")),
-    encounterType: page.groundTruth?.encounterType ?? null,
+    // Page type ground truth is stored in Encounter Type (what accuracy reads).
+    encounterType: pageType,
     dosFrom: cleanGt(values.dos_from),
     dosTo: cleanGt(values.dos_to),
     ...blankJunkStored(values.blank_junk ?? ""),

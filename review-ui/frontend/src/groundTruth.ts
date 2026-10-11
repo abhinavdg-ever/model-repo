@@ -439,9 +439,10 @@ export function groundTruthBits(input: {
     dosFrom: dateMark(gt.dosFrom, input.dosFrom, input.dosKnown),
     dosTo: dateMark(gt.dosTo, input.dosTo, input.dosKnown),
     blankJunk: blankJunkMark(gt, input.blankOrJunk, input.junkKnown),
-    // Page Type is the reviewer-edited cell; older imports put it in Encounter Type.
+    // The ground-truth page type lives in the Encounter Type column; the Page
+    // Type cell is the fallback when Encounter Type is empty.
     pageType: pageTypeMark(
-      missing(gt.pageType) ? gt.encounterType : gt.pageType,
+      missing(gt.encounterType) ? gt.pageType : gt.encounterType,
       [input.pageType, input.pageSubtype],
       input.pageTypeKnown,
       input.pageTypeSemantic,

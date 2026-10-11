@@ -182,9 +182,9 @@ def _predicted(composed: str | None) -> list[str]:
 
 def _page_type_semantic(gt_page_type: str | None, encounter_type: str | None,
                         composed: str | None) -> float | None:
-    """Best semantic similarity between the ground-truth page type (Page Type,
-    else the older Encounter Type cell) and the predicted type / sub-type."""
-    expected = _labels(_text(gt_page_type) or _text(encounter_type))
+    """Best semantic similarity between the ground-truth page type (the
+    Encounter Type column, else Page Type) and the predicted type / sub-type."""
+    expected = _labels(_text(encounter_type) or _text(gt_page_type))
     actual = _predicted(_text(composed))
     if not expected or not actual:
         return None
