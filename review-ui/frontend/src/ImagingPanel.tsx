@@ -318,20 +318,11 @@ export function splitPageType(value: string | null | undefined): {
   return { family, subtype };
 }
 
-/** Drop the printed total: "page 4->5 of 17" is shown as "page 4->5". */
-function printedStep(evidence: string): string {
-  return evidence.replace(/(page \d+->\d+) of \d+/g, "$1");
-}
-
-/** "Continue (Doc 3) — page 4->5", or Not Found before continuity ran. */
+/** "First (Doc 3)" — the label only, no reason; Not Found outside a document. */
 function fmtDocument(page: ImagingPageResult): string {
   if (page.documentSeq == null) return NOT_FOUND;
   const position = page.documentPosition ? page.documentPosition[0].toUpperCase() + page.documentPosition.slice(1) : "";
-  const label = page.documentLabel || `${position} (Doc ${page.documentSeq})`;
-  const review = page.continuityReview ? " · review" : "";
-  const evidence = printedStep(page.continuityEvidence ?? "");
-  const why = evidence ? ` — ${evidence}` : "";
-  return `${label}${review}${why}`;
+  return page.documentLabel || `${position} (Doc ${page.documentSeq})`;
 }
 
 function fmtPageType(value: string | null | undefined, processed = true): string {
