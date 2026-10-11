@@ -133,6 +133,7 @@ class TestCsvColumns:
         # v7 additions that make the two passes legible in the file itself.
         assert "pass_no" in JUNK_CSV_COLS
         assert "is_final" in JUNK_CSV_COLS
+        assert "duplicate_of_page" in JUNK_CSV_COLS
 
     def test_member_csv_carries_the_reference_provenance_columns(self):
         from stages.lib.member.stage import MEMBER_EXTRACT_COLS

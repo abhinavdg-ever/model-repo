@@ -199,7 +199,7 @@ values.
 | `confidence_level` | high (pagination, first page) / medium (signals, progress note) / low (unknown) |
 | `score` | tier 2+3 score when signals decided |
 | `review_required` | true for unknown |
-| `evidence` | e.g. `page 7->8 of 17`, `next encounter: Office Visit on 2024-10-03 (page 7->8 of 17)`, `repeated header line; same mrn` |
+| `evidence` | e.g. `page 7->8`, `next encounter: Office Visit on 2024-10-03 (page 7->8)`, `repeated header line; same mrn` |
 
 The printed page number and section headers are stored per page in
 `additional_page_details` (written by the key/value stage; moved from v2.sql to
@@ -227,6 +227,14 @@ every stage's stored output. The Final value of every reviewer field:
 | Encounter | `encounter_type` | the page's own (already one per visit) |
 | Provider | `provider_name`, `signature_present` | the page's own (key/value staging) |
 | Sequence | `seq` | suggested sequence |
+| Duplicate | `duplicate_of_page_id` | the page this one duplicates (duplicates only) |
+
+**Duplicates.** Every stage after blank/junk skips a duplicate page, so it has
+no values of its own. It takes the member, document, page type (all columns),
+DOS, encounter type and provider of the page it duplicates, with
+`page_type_source` / `dos_source` = `duplicate`. It keeps its own quality,
+orientation, blank/junk flag and `seq` (`COPIED_FROM_REFERENCE` in
+`imaging_final/stage.py`).
 
 The carry rule lives in one function, `continuity.engine.document_finals`, used
 by both stages.

@@ -1041,7 +1041,7 @@ def get_blank_junk_final(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
     """Final blank/junk verdict per page: flag, junk_subtype, confidence."""
     rows = conn.execute(
         """
-        SELECT page_id, blank_junk_flag, junk_subtype, confidence
+        SELECT page_id, blank_junk_flag, junk_subtype, confidence, duplicate_of_page_id
           FROM v_page_blank_junk_final
          WHERE chart_id = %s
         """,
@@ -1340,6 +1340,7 @@ IMAGING_FINAL_COLUMNS = (
     "provider_name",
     "signature_present",
     "seq",
+    "duplicate_of_page_id",
 )
 
 
@@ -1907,10 +1908,12 @@ def list_blank_junk_for_csv(conn: Any, chart_id: int) -> list[dict[str, Any]]:
             """
             SELECT c.chart_name, p.page_name, p.page_number,
                    b.blank_junk_flag, b.junk_subtype, b.confidence, b.reason,
-                   b.ocr_source, b.pass_no, b.is_final
+                   b.ocr_source, b.pass_no, b.is_final,
+                   orig.page_name AS duplicate_of_page
               FROM blank_junk_classification b
               JOIN page_list p  ON p.id = b.page_id
               JOIN chart_list c ON c.id = b.chart_id
+              LEFT JOIN page_list orig ON orig.id = b.duplicate_of_page_id
              WHERE b.chart_id = %s
              ORDER BY p.page_number NULLS LAST, p.page_name, b.pass_no
             """,

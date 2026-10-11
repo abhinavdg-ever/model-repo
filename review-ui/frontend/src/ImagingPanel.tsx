@@ -318,13 +318,20 @@ export function splitPageType(value: string | null | undefined): {
   return { family, subtype };
 }
 
-/** "Document 3 · page 2 of 4 — page 1->2 of 17", or NA before continuity ran. */
+/** Drop the printed total: "page 4->5 of 17" is shown as "page 4->5". */
+function printedStep(evidence: string): string {
+  return evidence.replace(/(page \d+->\d+) of \d+/g, "$1");
+}
+
+/** "Continue (Doc 3) — page 4->5", or Not Found before continuity ran. */
 function fmtDocument(page: ImagingPageResult): string {
   if (page.documentSeq == null) return NOT_FOUND;
-  const where = page.documentPosition === "single" ? "single page" : page.documentPosition ?? "";
+  const position = page.documentPosition ? page.documentPosition[0].toUpperCase() + page.documentPosition.slice(1) : "";
+  const label = page.documentLabel || `${position} (Doc ${page.documentSeq})`;
   const review = page.continuityReview ? " · review" : "";
-  const why = page.continuityEvidence ? ` — ${page.continuityEvidence}` : "";
-  return `Document ${page.documentSeq} · ${where}${review}${why}`;
+  const evidence = printedStep(page.continuityEvidence ?? "");
+  const why = evidence ? ` — ${evidence}` : "";
+  return `${label}${review}${why}`;
 }
 
 function fmtPageType(value: string | null | undefined, processed = true): string {
@@ -378,10 +385,12 @@ type CompareRow = {
   noMark?: boolean;
   /** A required label. Shown solid. Other empty labels stay faint. */
   key?: boolean;
+  /** Shown on the right of Extracted and Final. Not part of the compared value. */
+  note?: string;
 };
 
 const BLANK_JUNK_CHOICES = ["Yes (Blank)", "Yes (Junk)", "No"] as const;
-const DUPLICATE_CHOICES = ["Yes", "May Be", "No"] as const;
+const DUPLICATE_CHOICES = ["Yes", "Partial", "No"] as const;
 const CODEABLE_CHOICES = ["Codeable", "Non-Codeable", "Discharge"] as const;
 const TYPE_CHOICES = ["Printed", "Handwritten", "Form", "Visual", "Blank"] as const;
 
@@ -722,8 +731,12 @@ function CompareSection({
           {rows.map((row) => (
             <tr key={row.id}>
               <th scope="row">{row.label}</th>
-              <td>{row.extracted}</td>
-              <td>{row.processed}</td>
+              <td>
+                <ValueWithNote value={row.extracted} note={row.note} />
+              </td>
+              <td>
+                <ValueWithNote value={row.processed} note={row.note} />
+              </td>
               <td>{row.confidence}</td>
               <td className="gt-gap" aria-hidden="true" />
               <td className="gt-shade">
@@ -1095,6 +1108,16 @@ function pageBits(page: ImagingPageResult, sections: ImagingSectionsProcessed) {
   });
 }
 
+function ValueWithNote({ value, note }: { value: string; note?: string }) {
+  if (!note) return value;
+  return (
+    <span className="value-with-note">
+      <span>{value}</span>
+      <span className="value-note">{note}</span>
+    </span>
+  );
+}
+
 function sameValue(
   value: string,
   confidence: string,
@@ -1108,6 +1131,7 @@ function sameValue(
     noGroundTruth: extra.noGroundTruth,
     noMark: extra.noMark,
     key: extra.key,
+    note: extra.note,
     id: extra.id,
     label: extra.label,
     extracted: value,
@@ -1450,12 +1474,6 @@ function PageDetails({
             }),
             processed: fmtPageType(finalParts.subtype, pageTypeKnown),
           },
-          sameValue(fmtDocument(page), "", {
-            id: "document",
-            label: "Document",
-            noGroundTruth: true,
-            noMark: true,
-          }),
           {
             ...sameValue(fmtCodeable(page.isCodeable, page.pageType, codeableKnown), fmtConfidence(null, Boolean(sections.codeable)), {
               id: "codeable",
@@ -1677,12 +1695,9 @@ function DocSummary({
                   />
                 </td>
                 <td>
-                  {fmtDuplicate(
-                    p.isDuplicate,
-                    p.pageTypeConfidence,
-                    sections.junk,
-                    p.duplicateOf,
-                  )}
+                  <ValueWithNote
+                    value={fmtDuplicate(p.isDuplicate, p.pageTypeConfidence, sections.junk, p.duplicateOf)}
+                  />
                 </td>
                 <td>
                   <GtCell
@@ -1768,6 +1783,7 @@ export default function ImagingPanel({
       <div className="imaging-panel-stack">
         <ExtractedList
           extraction={extraction}
+          page={currentPage}
           skipped={sectionHeadersSkipped}
           loading={sectionHeadersLoading}
           headerHighlight={headerHighlight}
@@ -1932,34 +1948,40 @@ function SequencingTable({
   );
 }
 
-function boxedHeaders(
+/** Section headers shown under Additional. OCR "Show Headers" uses this list only. */
+export function additionalSectionHeaders(
   extraction: ExtractionReviewResponse | null | undefined,
-): OcrSectionHeader[] {
-  return (extraction?.section_headers ?? []).filter(
+): { names: string[]; boxes: OcrSectionHeader[] } {
+  const boxes = (extraction?.section_headers ?? []).filter(
     (header) => header.text.trim() && header.width > 0 && header.height > 0,
   );
+  if (boxes.length > 0) {
+    return { names: boxes.map((header) => header.text.trim()), boxes };
+  }
+  const names = (stagedField(extraction, "heading_heron")?.value ?? "")
+    .split("|")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return { names, boxes: [] };
 }
 
 function ExtractedList({
   extraction,
+  page,
   skipped,
   loading,
   headerHighlight,
   onHeaderHighlight,
 }: {
   extraction: ExtractionReviewResponse | null | undefined;
+  page: ImagingPageResult | null;
   skipped: boolean;
   loading: boolean;
   headerHighlight: "all" | number | null;
   onHeaderHighlight?: (next: "all" | number | null) => void;
 }) {
   const pageNo = stagedField(extraction, "page_no");
-  const boxes = boxedHeaders(extraction);
-  const fromText = (stagedField(extraction, "heading_heron")?.value ?? "")
-    .split("|")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const names = boxes.length > 0 ? boxes.map((header) => header.text.trim()) : fromText;
+  const { names, boxes } = additionalSectionHeaders(extraction);
   const canDraw = boxes.length > 0 && Boolean(onHeaderHighlight);
 
   return (
@@ -1975,7 +1997,7 @@ function ExtractedList({
           </div>
           <div className="section-coords-row">
             <span className="section-coords-text">Continuation</span>
-            <span>—</span>
+            <span>{page ? fmtDocument(page) : "—"}</span>
           </div>
           <div className="section-coords-row section-headers-row">
             <div className="section-headers-label">

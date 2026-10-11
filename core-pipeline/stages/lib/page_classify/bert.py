@@ -27,6 +27,7 @@ from stages.lib.page_classify import taxonomy
 logger = logging.getLogger(__name__)
 
 MAX_LENGTH = 512
+TOP_N = 3
 
 _lock = threading.Lock()
 _loaded: Optional[dict[str, Any]] = None
@@ -44,6 +45,8 @@ class BertResult:
     confidence: float
     # Top probability minus the second: how clearly BERT prefers its answer.
     lead: float = 0.0
+    # Page types of its top 3 model types, best first, without repeats.
+    top_page_types: tuple[str, ...] = ()
 
 
 def model_dir() -> Path:
@@ -135,15 +138,21 @@ def predict(text: str) -> Optional[BertResult]:
     with _lock, torch.no_grad():
         logits = loaded["model"](**tokens).logits[0]
     probabilities = torch.softmax(logits, dim=-1)
-    best = torch.topk(probabilities, k=min(2, probabilities.shape[-1]))
-    index = int(best.indices[0])
+    best = torch.topk(probabilities, k=min(TOP_N, probabilities.shape[-1]))
+    names = taxonomy.load()
+    model_types = [loaded["labels"][int(i)] for i in best.indices]
+    page_types: list[str] = []
+    for name in model_types:
+        page_type = names.page_type_of_model(name) or name
+        if page_type not in page_types:
+            page_types.append(page_type)
     second = float(best.values[1]) if best.values.shape[-1] > 1 else 0.0
-    model_type = loaded["labels"][index]
     return BertResult(
-        model_type=model_type,
-        page_type=taxonomy.load().page_type_of_model(model_type) or model_type,
+        model_type=model_types[0],
+        page_type=page_types[0],
         confidence=round(float(best.values[0]), 4),
         lead=round(float(best.values[0]) - second, 4),
+        top_page_types=tuple(page_types),
     )
 
 

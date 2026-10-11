@@ -37,6 +37,7 @@ from app.services.db import psycopg_url as _psycopg_url
 from app.services.ground_truth import attach_ground_truth
 from app.services.imaging_overlays import (
     compose_page_type,
+    document_label,
     empty_imaging_pages,
     page_type_fields,
 )
@@ -1003,6 +1004,7 @@ class PostgresFolderRepository(FolderRepository):
                             fields = _ensure(str(page_name))
                             fields["documentSeq"] = int(document)
                             fields["documentPosition"] = position
+                            fields["documentLabel"] = document_label(position, int(document))
                             fields["continuityRelation"] = relation
                             fields["continuityDecidedBy"] = decided_by
                             fields["continuityEvidence"] = evidence

@@ -31,8 +31,12 @@ import {
   type OcrSectionHeader,
   type OutputMode,
 } from "./api";
-import ImagingPanel, { type GroundTruthLeave, type ImagingTab } from "./ImagingPanel";
-import { formatDuplicateLabel } from "./duplicateLabel";
+import ImagingPanel, {
+  additionalSectionHeaders,
+  type GroundTruthLeave,
+  type ImagingTab,
+} from "./ImagingPanel";
+import { formatDuplicateDownload } from "./duplicateLabel";
 import {
   formatMatchRatePercent,
   isUsableOcrPayload,
@@ -405,7 +409,6 @@ export default function FolderViewer({
   );
   const canShowCorrected = pageNeedsCorrection(imagingPage);
   const useCorrected = showCorrected && canShowCorrected;
-  const stageMarks = pageMarkClass(imagingPage);
 
   useEffect(() => {
     if (!viewMenuOpen) return;
@@ -714,9 +717,7 @@ export default function FolderViewer({
     ) {
       return [];
     }
-    return (extraction?.section_headers ?? []).filter(
-      (box) => box.width > 0 && box.height > 0,
-    );
+    return additionalSectionHeaders(extraction).boxes;
   }, [showSectionHeaders, page, extraction, ocrTab, imagingPage]);
 
   /** Imaging → Section coordinates: Final2 first, else Final1; skip blank/junk. */
@@ -755,10 +756,7 @@ export default function FolderViewer({
   }, [page, imagingPage, headersByKind]);
 
   const heronBoxes = useMemo(
-    () =>
-      (extraction?.section_headers ?? []).filter(
-        (box) => box.text.trim() && box.width > 0 && box.height > 0,
-      ),
+    () => additionalSectionHeaders(extraction).boxes,
     [extraction],
   );
 
@@ -787,10 +785,9 @@ export default function FolderViewer({
     }
     if (pageOcrText.startsWith("No OCR text found")) return null;
     if (isOcrSkipMessage(pageOcrText)) return null;
-    const known = pageHeaderBoxes.map((h) => h.text);
+    const known = additionalSectionHeaders(extraction).names;
     return prepareOcrLines(pageOcrText, {
       showSectionHeaders,
-      // Only lines that survived the ≥90% canon match (from the API).
       detectPlainHeaders: false,
       knownHeaders: known,
     });
@@ -799,7 +796,7 @@ export default function FolderViewer({
     pageOcrText,
     ocrMissingMessage,
     showSectionHeaders,
-    pageHeaderBoxes,
+    extraction,
   ]);
 
   const ocrMatch = useMemo(() => {
@@ -998,9 +995,7 @@ export default function FolderViewer({
         p.blankOrJunk ?? "NA",
         p.isDuplicate == null
           ? "NA"
-          : formatDuplicateLabel(p.isDuplicate, p.pageTypeConfidence, true, {
-              duplicateOf: p.duplicateOf,
-            }),
+          : formatDuplicateDownload(p.isDuplicate, p.pageTypeConfidence, p.duplicateOf),
         p.pageType ?? "Not Available",
         p.pageTypeConfidence,
         p.isCodeable ?? "",
@@ -1224,7 +1219,7 @@ export default function FolderViewer({
               </div>
             </div>
             <div
-              className={`page-stage${isFullscreen ? " is-fullscreen" : ""}${stageClassName ? ` ${stageClassName}` : ""}${stageMarks ? ` ${stageMarks}` : ""}`}
+              className={`page-stage${isFullscreen ? " is-fullscreen" : ""}${stageClassName ? ` ${stageClassName}` : ""}`}
               ref={pageStageRef}
               {...stageProps}
             >

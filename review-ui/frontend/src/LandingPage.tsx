@@ -24,7 +24,7 @@ import {
   type ImagingPageResult,
   type OcrRunStatus,
 } from "./api";
-import { formatDuplicateLabel } from "./duplicateLabel";
+import { formatDuplicateDownload } from "./duplicateLabel";
 import { displayIsoDates } from "./groundTruth";
 
 const PAGE_SIZE = 15;
@@ -381,9 +381,7 @@ function imagingDocToCsvRows(chartName: string, doc: ImagingDocumentResponse): s
       p.blankOrJunk ?? "NA",
       p.isDuplicate == null
         ? "NA"
-        : formatDuplicateLabel(p.isDuplicate, p.pageTypeConfidence, true, {
-            duplicateOf: p.duplicateOf,
-          }),
+        : formatDuplicateDownload(p.isDuplicate, p.pageTypeConfidence, p.duplicateOf),
       p.pageType ?? "Not Available",
       p.pageTypeConfidence,
       p.docDosFrom ?? p.dosFrom,

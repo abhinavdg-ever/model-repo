@@ -148,6 +148,8 @@ export type ImagingPageResult = {
   documentSeq?: number | null;
   /** single | first | continue | last */
   documentPosition?: string | null;
+  /** "First (Doc 3)", "Continue (Doc 3)", "Last (Doc 3)", "Single (Doc 3)" */
+  documentLabel?: string | null;
   /** new_document | continue | unknown */
   continuityRelation?: string | null;
   continuityDecidedBy?: string | null;

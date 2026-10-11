@@ -228,3 +228,32 @@ def test_a_hospital_document_is_never_f2f(canon, type_id):
 
 def test_discharged_home_text_is_not_home(canon):
     assert one(canon, page(1, "home visit; patient discharged home")).setting != "home"
+
+
+# --- visits follow continuity documents ----------------------------------
+
+
+def test_a_continuity_document_is_one_visit_even_across_dates(canon):
+    pages = [
+        {**page(1, "telehealth visit by video", dos="2025-03-14"), "document": 1},
+        {**page(2, "review of systems", dos="2025-03-20"), "document": 1},
+        {**page(3, "", dos=""), "document": 1},
+        {**page(4, "inpatient hospital course", dos="2025-03-14"), "document": 2},
+    ]
+    rows = classify_pages(pages, entries=canon)
+    assert rows[0]["encounter_type"] == rows[1]["encounter_type"] == rows[2]["encounter_type"]
+    assert rows[0]["encounter_type"] == "outpatient_tele"
+    assert rows[3]["encounter_type"] != "outpatient_tele"
+
+
+def test_a_document_with_no_date_on_any_page_is_unresolved(canon):
+    pages = [{**page(1, "telehealth visit", dos=""), "document": 1},
+             {**page(2, "", dos=""), "document": 1}]
+    rows = classify_pages(pages, entries=canon)
+    assert rows[0]["encounter_type"] == "" and rows[1]["encounter_type"] == ""
+
+
+def test_without_documents_visits_are_date_runs(canon):
+    rows = classify_pages([page(1, "telehealth visit", dos="2025-03-14"),
+                           page(2, "", dos="2025-04-01")], entries=canon)
+    assert rows[0]["encounter_type"] == "outpatient_tele" and rows[1]["encounter_type"] == ""

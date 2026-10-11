@@ -28,15 +28,15 @@ from stages.lib.page_classify.keywords import KeywordResult  # noqa: E402
 PN = "Progress Note"
 
 
-def bert(model_type, confidence, lead=0.0):
-    return BertResult(model_type, taxonomy.load().page_type_of_model(model_type), confidence, lead)
+def bert(model_type, confidence, lead=0.0, top=()):
+    return BertResult(model_type, taxonomy.load().page_type_of_model(model_type), confidence, lead, tuple(top))
 
 
-def kw(page_subtype, score=5.0, margin=4.0, title_hit=True):
+def kw(page_subtype, score=5.0, margin=4.0, title_hit=True, top=()):
     names = taxonomy.load()
     page_type = names.page_type_of_subtype(page_subtype)
     return KeywordResult(page_subtype, page_type, names.model_type(page_type, page_subtype),
-                         score, margin, title_hit)
+                         score, margin, title_hit, tuple(top))
 
 
 ALL = frozenset(taxonomy.load().model_types)
@@ -99,6 +99,20 @@ class TestKeywords:
         hit = keywords.classify(ambiguous)
         assert hit is None or hit.score > canon["weights"]["ambiguous_term"]
 
+    def test_a_title_inside_a_sentence_is_not_a_title(self):
+        """"informed consent was obtained" is a sentence, not a Consent Form title."""
+        hit = keywords.classify("OFFICE NOTE\nThe risks were explained and informed consent was obtained.")
+        assert not (hit and hit.page_subtype == "Consent Form" and hit.title_hit)
+
+    def test_a_title_used_as_a_heading_counts(self):
+        assert keywords.classify("INFORMED CONSENT\nI agree to the procedure.").title_hit is True
+        assert keywords.classify("OFFICE VISIT REPORT 10/03/2024\nmade up body").title_hit is True
+
+    def test_a_layout_detected_heading_counts(self):
+        text = "Patient Information Sheet Updated For The Year\nmade up body text"
+        assert keywords.classify(text).title_hit is False
+        assert keywords.classify(text, headings=["Patient Information Sheet Updated For The Year"]).title_hit is True
+
     def test_nothing_matched_is_none(self):
         assert keywords.classify("zzz qqq") is None
         assert keywords.classify("") is None
@@ -137,9 +151,35 @@ class TestLadder:
         r = classify_page(bert(PN, 0.15), kw("Chemistry", score=1, margin=0.5, title_hit=False), ALL)
         assert (r.page_type, r.decided_by, r.needs_review) == (PN, "bert_low", True)
 
-    def test_no_model_and_no_keyword_is_no_prediction(self):
+    def test_no_model_and_no_keyword_is_unknown(self):
         r = classify_page(None, None, frozenset())
-        assert (r.page_type, r.decided_by, r.needs_review) == (None, "no_prediction", True)
+        assert (r.page_type, r.decided_by, r.needs_review) == ("Unknown", "no_prediction", True)
+
+    def test_bert_below_10_percent_is_unknown(self):
+        r = classify_page(bert(PN, 0.08), kw("Chemistry", score=4, margin=0.5, title_hit=False), ALL)
+        assert (r.page_type, r.page_subtype, r.decided_by, r.needs_review) == ("Unknown", "Unknown", "unknown", True)
+        assert r.codability is None and r.model_type is None
+
+    def test_a_clear_keyword_still_wins_below_10_percent(self):
+        r = classify_page(bert(PN, 0.08), kw("Chemistry", margin=3.0), ALL)
+        assert (r.page_type, r.decided_by) == ("Laboratory Data", "keyword_title")
+
+    def test_without_a_bert_model_unknown_does_not_apply(self):
+        r = classify_page(None, kw("Chemistry", score=4, margin=0.5, title_hit=False), frozenset())
+        assert r.page_type == "Laboratory Data"
+
+    def test_between_10_and_25_percent_the_top_3_are_compared(self):
+        b = bert(PN, 0.18, top=[PN, "Radiology Report", "Laboratory Data"])
+        k = kw("Chemistry", score=2, margin=0.5, title_hit=False,
+               top=["Laboratory Data", "Radiology Report", "Forms"])
+        r = classify_page(b, k, ALL)
+        # Radiology: ranks 1 + 1 = 2; Laboratory: 2 + 0 = 2 -> tie, BERT's order wins.
+        assert (r.page_type, r.decided_by, r.needs_review) == ("Radiology Report", "top3_agreement", True)
+
+    def test_no_shared_page_type_in_the_top_3_falls_through(self):
+        b = bert(PN, 0.18, top=[PN, "Forms", "Orders"])
+        k = kw("Chemistry", score=4, margin=0.5, title_hit=False, top=["Laboratory Data", "Radiology Report"])
+        assert classify_page(b, k, ALL).decided_by == "keyword_body"
 
     def test_without_bert_the_keyword_model_still_decides(self):
         r = classify_page(None, kw("Discharge Summary"), frozenset())
@@ -160,19 +200,20 @@ class TestLadder:
         assert classify_page(bert("Discharge Summary", 0.95), None, ALL).codability == "Discharge"
 
     def test_thresholds_come_from_the_file(self):
-        assert thresholds() == {"bert_high": 0.50, "bert_low": 0.25, "bert_lead": 0.05,
-                                "keyword_min_score": 3.0, "keyword_min_margin": 2.0}
+        assert thresholds() == {"bert_high": 0.50, "bert_low": 0.25, "bert_lead": 0.10,
+                                "bert_unknown": 0.10, "keyword_min_score": 3.0,
+                                "keyword_min_margin": 2.0}
 
     def test_2_bert_wins_at_50_percent(self):
         r = classify_page(bert("Discharge Summary", 0.55), kw("Chemistry"), ALL)
         assert (r.page_type, r.decided_by, r.needs_review) == ("Discharge Summary", "bert_high", False)
 
     def test_2_bert_wins_above_25_percent_with_a_clear_lead(self):
-        r = classify_page(bert("Discharge Summary", 0.30, lead=0.06), kw("Chemistry"), ALL)
+        r = classify_page(bert("Discharge Summary", 0.30, lead=0.12), kw("Chemistry"), ALL)
         assert (r.page_type, r.decided_by) == ("Discharge Summary", "bert_high")
 
     def test_without_a_clear_lead_25_percent_is_not_enough_against_a_keyword_title(self):
-        r = classify_page(bert("Discharge Summary", 0.30, lead=0.02), kw("Chemistry", margin=3.0), ALL)
+        r = classify_page(bert("Discharge Summary", 0.30, lead=0.06), kw("Chemistry", margin=3.0), ALL)
         assert (r.page_type, r.decided_by) == ("Laboratory Data", "keyword_title")
 
 

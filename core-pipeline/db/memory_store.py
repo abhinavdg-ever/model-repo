@@ -889,6 +889,7 @@ class MemoryStore:
                         "blank_junk_flag": row["blank_junk_flag"],
                         "junk_subtype": row.get("junk_subtype"),
                         "confidence": row.get("confidence"),
+                        "duplicate_of_page_id": row.get("duplicate_of_page_id"),
                     }
             if out:
                 return out
@@ -907,6 +908,7 @@ class MemoryStore:
                     "blank_junk_flag": r["blank_junk_flag"],
                     "junk_subtype": r.get("junk_subtype"),
                     "confidence": r.get("confidence"),
+                    "duplicate_of_page_id": r.get("duplicate_of_page_id"),
                 }
                 for pid, r in best.items()
             }
@@ -922,6 +924,7 @@ class MemoryStore:
                 p = pages.get(row["page_id"])
                 if not p:
                     continue
+                orig = pages.get(row.get("duplicate_of_page_id"))
                 rows.append(
                     {
                         "chart_name": chart.get("chart_name"),
@@ -930,10 +933,12 @@ class MemoryStore:
                         "blank_junk_flag": row["blank_junk_flag"],
                         "junk_subtype": row.get("junk_subtype"),
                         "confidence": row.get("confidence"),
+                        "duplicate_of_page_id": row.get("duplicate_of_page_id"),
                         "reason": row.get("reason"),
                         "ocr_source": row.get("ocr_source"),
                         "pass_no": row["pass_no"],
                         "is_final": row.get("is_final"),
+                        "duplicate_of_page": (orig or {}).get("page_name") or "",
                     }
                 )
 

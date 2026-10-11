@@ -81,7 +81,8 @@
 --    document's first page. Replaces the DOS progress-note span and the
 --    page-type span; nothing existing changes shape.
 --  * imaging_final (v1.sql) and the imaging_final stage (seq 100): the Final
---    value of every reviewer field, one row per page.
+--    value of every reviewer field, one row per page. A duplicate page copies
+--    the page it duplicates: source 'duplicate' + duplicate_of_page_id.
 --  * page_list.use_corrected + image_path (workspace image source).
 --  * page_classification lives in v1.sql (page_subtype writes it).
 --  * encounter_type_results + page_sequencing_results live in v1.sql.

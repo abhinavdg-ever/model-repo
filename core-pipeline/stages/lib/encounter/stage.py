@@ -1,6 +1,7 @@
 """Stage: encounter type (Outpatient F2F / Tele / Inpatient / Home).
 
-One answer per visit — a run of consecutive pages sharing a date — decided
+One answer per visit — a continuity document (consecutive pages sharing a date
+when continuity has not run) — decided
 from the highest tier of evidence it has (see ``encounter_classify``) and
 stamped on every page of the visit. Pages without a usable date, and visits
 with no setting evidence, stay empty with a reason; they never inherit.
@@ -9,7 +10,7 @@ Tier 1 evidence is the page type: the page's own (Extracted) classification
 from ``page_classification``, its sub-type when the encounter canon names it,
 else its page type.
 
-Runs after ``page_subtype``. Writes ``encounter_type_results`` for resolved
+Runs after ``continuity``. Writes ``encounter_type_results`` for resolved
 pages (and removes rows for pages that are now unresolved), and
 ``imaging/<chart>_encounter.csv`` for every page. With ENCOUNTER_DEBUG on, one
 evidence record per visit goes to ``<chart>/debug/<chart>_encounter_evidence.csv``.
@@ -25,6 +26,7 @@ from db import (
     connect,
     delete_encounter,
     get_blank_junk_flags,
+    get_continuity_map,
     get_page_classification_map,
     get_ocr_texts,
     get_quality_map,
@@ -122,6 +124,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             quality = get_quality_map(conn, chart_id)
             dos_by_page = _dos_map(conn, chart_id)
             classification = get_page_classification_map(conn, chart_id)
+            continuity = get_continuity_map(conn, chart_id)
 
         page_inputs: list[dict[str, Any]] = []
         sources: dict[int, str] = {}
@@ -167,6 +170,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             subtype, page_type = kind.get("page_subtype") or "", kind.get("page_type") or ""
             page_input["page_type_id"] = subtype if subtype in tier1 else page_type
             page_input["page_type_name"] = page_input["page_type_id"]
+            # The continuity stage's document: one visit, one encounter type.
+            page_input["document"] = (continuity.get(page_input["page_id"]) or {}).get("document_seq")
 
         visit_log: Optional[list[dict[str, Any]]] = [] if ENCOUNTER_DEBUG else None
         classified = classify_pages(page_inputs, visit_log=visit_log)

@@ -41,6 +41,7 @@ CONTINUITY_COLS = [
     "page_name",
     "page_number",
     "document",
+    "continuation",
     "position",
     "page_in_document",
     "relation",
@@ -107,7 +108,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         for page in ctx.pages:
             page_id = page["id"]
             name = page["page_name"]
-            skipped = bj.get(page_id, "not_blank_junk") in BJ_EXCLUDE
+            flag = bj.get(page_id, "not_blank_junk")
+            skipped = flag in BJ_EXCLUDE
             text = "" if skipped else best_page_text(
                 final2=final2.get(page_id),
                 final1=final1.get(page_id),
@@ -133,6 +135,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     signed=name in signed_names or has_signature_section(text),
                     printed=_printed(staged.page(name)),
                     skipped=skipped,
+                    breaks=flag in ("blank", "junk"),
                 )
             )
 
@@ -155,6 +158,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "page_name": page["page_name"],
                         "page_number": page.get("page_number"),
                         "document": row["document_seq"] or "",
+                        "continuation": row["label"],
                         "position": row["position"] or "",
                         "page_in_document": row["seq"] or "",
                         "relation": row["relation"],

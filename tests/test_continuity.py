@@ -25,7 +25,7 @@ FOOTER = "community clinic 100 main street springfield"
 
 
 def page(n, body="", *, head=BANNER, foot=FOOTER, page_type="", dos="",
-         signed=False, headers=(), skipped=False, printed=None, title_hit=False):
+         signed=False, headers=(), skipped=False, printed=None, title_hit=False, breaks=False):
     """A located page: head line at the top, body in the middle, foot line at the bottom."""
     lines = []
     if head:
@@ -39,7 +39,7 @@ def page(n, body="", *, head=BANNER, foot=FOOTER, page_type="", dos="",
         text="\n".join(l.text for l in lines), lines=lines,
         section_headers=[{"text": h, "matched_canonical": h, "top": top} for h, top in headers],
         page_type=page_type, title_hit=title_hit, dos_from=dos, dos_to=dos,
-        signed=signed, skipped=skipped, printed=printed,
+        signed=signed, skipped=skipped, printed=printed, breaks=breaks,
     )
 
 
@@ -80,12 +80,12 @@ class TestSignals:
         current = bare(2, "x", headers=[("Office Visit", 0.08)])
         assert judge(previous, current, RULES).relation == "new_document"
 
-    def test_a_shared_emr_banner_outweighs_them_and_is_left_for_review(self):
-        """Separate documents from one EMR reprint the same banner (28% of new
-        documents in the tuning set), so the banner and a title cancel out."""
-        previous = page(1, "plan", signed=True)
+    def test_a_shared_emr_banner_outweighs_a_title(self):
+        """Banner + footer (+11) against a title (-6): the pair continues. With
+        a signature on the previous page the signature breaker splits it."""
+        previous = page(1, "plan")
         current = page(2, "x", headers=[("Office Visit", 0.08)])
-        assert judge(previous, current, RULES).relation == "unknown"
+        assert judge(previous, current, RULES).relation == "continue"
 
     def test_an_unmatched_header_candidate_is_not_a_title(self):
         current = page(2, "x")
@@ -296,5 +296,50 @@ class TestStage:
                 final_rows = list(csv.DictReader(handle))
             assert final_rows[1]["dos_from"] == "2024-03-14"
             assert final_rows[1]["classification_category"] == "discharge_summary"
+
+            # A duplicate of page 2 (skipped after blank/junk) takes page 2's
+            # Finals and keeps its own blank/junk flag.
+            from db import upsert_blank_junk
+
+            with connect() as conn:
+                upsert_pages(conn, cid, [{"page_name": "3.jpg", "page_number": 3}])
+                third = next(p["id"] for p in list_pages(conn, cid) if p["page_number"] == 3)
+                init_page_stages(conn, cid)
+                upsert_blank_junk(conn, chart_id=cid, page_id=third, blank_junk_flag="duplicate",
+                                  pass_no=2, ocr_source="final2", duplicate_of_page_id=second,
+                                  confidence=1.0, is_final=True)
+            final_stage.run(cid, force=True)
+            rows = {r["page_id"]: r for r in store.imaging_final.values()}
+            assert rows[third]["blank_junk_flag"] == "duplicate"
+            assert rows[third]["duplicate_of_page_id"] == second
+            assert rows[third]["page_type"] == "Discharge Summary"
+            assert rows[third]["page_type_source"] == "duplicate"
+            assert rows[third]["dos_from"] == "2024-03-14"
+            assert rows[third]["dos_source"] == "duplicate"
+            assert rows[third]["document_seq"] == 1
+            assert rows[second]["duplicate_of_page_id"] is None
         finally:
             disable_skip_db_write()
+
+
+
+class TestBreakers:
+    def test_a_signed_page_always_ends_its_document_even_inside_pagination(self):
+        rows = assign([page(1, printed=(1, 3), signed=True), page(2, printed=(2, 3)), page(3, printed=(3, 3))])
+        assert [r["document_seq"] for r in rows] == [1, 2, 2]
+        assert (rows[1]["relation"], rows[1]["decided_by"]) == ("new_document", "signature")
+
+    def test_a_blank_or_junk_page_in_between_breaks_the_document(self):
+        rows = assign([page(1, printed=(1, 2)), bare(2, skipped=True, breaks=True), page(3, printed=(2, 2))])
+        assert rows[1]["document_seq"] is None
+        assert (rows[2]["document_seq"], rows[2]["decided_by"]) == (2, "blank_junk")
+
+    def test_a_duplicate_in_between_does_not_break(self):
+        rows = assign([page(1, printed=(1, 2)), bare(2, skipped=True), page(3, printed=(2, 2))])
+        assert rows[2]["relation"] == "continue"
+
+    def test_labels_name_the_position_and_the_document(self):
+        rows = assign([page(1, printed=(1, 3)), page(2, printed=(2, 3)), page(3, printed=(3, 3)),
+                       bare(4, skipped=True, breaks=True), page(5)])
+        assert [r["label"] for r in rows] == [
+            "First (Doc 1)", "Continue (Doc 1)", "Last (Doc 1)", "", "Single (Doc 2)"]

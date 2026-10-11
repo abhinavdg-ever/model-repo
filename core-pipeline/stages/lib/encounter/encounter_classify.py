@@ -4,9 +4,11 @@ Evidence is ranked, not added up. The stage finds the most authoritative
 evidence a visit has and decides from that alone, so twenty passing mentions of
 "follow up" never outweigh one discharge summary.
 
-  1. Group pages into visits: runs of consecutive pages sharing a usable date.
-     The DOS default is not a date; a page without one is a visit of its own,
-     left unresolved.
+  1. Group pages into visits. When the continuity stage has run, a visit is
+     one of its documents (``document`` on each page): the pages a document
+     spans share one answer. Otherwise a visit is a run of consecutive pages
+     sharing a usable date. A visit with no usable date on any page is left
+     unresolved; the DOS default is not a date.
   2. Gather findings, each recorded once however often its words appear:
        tier 1  a matched page type that exists in one setting only
        tier 2  text that names the setting ("telehealth", "hospital course")
@@ -209,7 +211,10 @@ def visit_date(
 
 
 def group_visits(pages: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
-    """Runs of consecutive pages sharing a date. A dateless page is alone."""
+    """Continuity documents when the pages carry one; else runs of
+    consecutive pages sharing a date (a dateless page alone)."""
+    if any(page.get("document") is not None for page in pages):
+        return _document_visits(pages)
     visits: list[list[dict[str, Any]]] = []
     previous: Optional[str] = None
     for page in pages:
@@ -220,6 +225,20 @@ def group_visits(pages: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
         else:
             visits.append([page])
         previous = key
+    return visits
+
+
+def _document_visits(pages: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    """Consecutive pages of one continuity document; a page in none is alone."""
+    visits: list[list[dict[str, Any]]] = []
+    previous: Any = None
+    for page in pages:
+        document = page.get("document")
+        if document is not None and document == previous and visits:
+            visits[-1].append(page)
+        else:
+            visits.append([page])
+        previous = document
     return visits
 
 
@@ -350,7 +369,7 @@ def classify_pages(
 
     for visit in group_visits(list(pages)):
         first = visit[0]
-        if not (first.get("dos_from") or "").strip():
+        if not any((page.get("dos_from") or "").strip() for page in visit):
             decision = Decision(
                 "", "unresolved", 0.0, False, "", reason=first.get("reason") or "no_date"
             )

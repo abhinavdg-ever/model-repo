@@ -1658,15 +1658,33 @@ input {
   border-color: var(--brand-600);
 }
 
+/* Hamburger-menu highlights: the thumbnails only (the page pane stays plain).
+   A border plus a light wash over the thumbnail, in the Advantmed greens —
+   solid for blank/junk, dashed and deeper for a duplicate. */
 .filmstrip-thumb.mark-blank-junk,
-.page-stage.mark-blank-junk {
-  outline: 3px solid #d97706;
-  outline-offset: -3px;
+.filmstrip-thumb.mark-duplicate {
+  position: relative;
+  --mark-border: var(--brand-500);
+  --mark-style: solid;
+  --mark-wash: rgba(126, 170, 92, 0.28); /* brand-400 */
 }
 
-.filmstrip-thumb.mark-duplicate,
-.page-stage.mark-duplicate {
-  box-shadow: inset 0 0 0 3px #6d28d9;
+.filmstrip-thumb.mark-duplicate {
+  --mark-border: var(--brand-800);
+  --mark-style: dashed;
+  --mark-wash: rgba(44, 70, 32, 0.22); /* brand-800 */
+}
+
+.filmstrip-thumb.mark-blank-junk::after,
+.filmstrip-thumb.mark-duplicate::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  border: 2px var(--mark-style) var(--mark-border);
+  border-radius: 4px;
+  background: var(--mark-wash);
 }
 
 .filmstrip-thumb:hover:not(.active) {
@@ -2026,7 +2044,21 @@ input {
 .imaging-detail-table.imaging-value-table tbody td:nth-child(2),
 .imaging-detail-table.imaging-value-table thead th:nth-child(3),
 .imaging-detail-table.imaging-value-table tbody td:nth-child(3) {
-  width: calc(11.88rem * 0.9);
+  width: 18rem;
+}
+
+.value-with-note {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.value-note {
+  margin-left: auto;
+  color: var(--neutral-600);
+  font-size: 0.78rem;
+  white-space: nowrap;
 }
 
 .imaging-detail-table.imaging-value-table .col-confidence,

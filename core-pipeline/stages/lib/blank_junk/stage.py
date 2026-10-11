@@ -33,6 +33,7 @@ is fully rewritten from the database after each pass.
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -70,6 +71,7 @@ from classify import (  # noqa: E402
     CODE_BLANK,
     CODE_DUPLICATE,
     CODE_MAIN,
+    CODE_OTHERS,
     DUPLICATE_NEIGHBOR_WINDOW,
     DUPLICATE_SIMILARITY_THRESHOLD,
     JUNK_CODES,
@@ -80,8 +82,20 @@ from classify import (  # noqa: E402
     text_similarity,
 )
 from model_bridge import classify_page  # noqa: E402
+from text_utils import word_count  # noqa: E402
 
 STAGE = "blank_junk"
+
+# Pass 2: a page the model kept as Main with fewer words than this is Junk /
+# Others — unless it is a signature page (the key/value extraction found a
+# signature) or carries the word "signature".
+SHORT_PAGE_WORDS = 20
+_SIGNATURE_WORD = re.compile(r"\bsignature", re.IGNORECASE)
+
+
+def short_page_is_junk(text: str, signed: bool) -> bool:
+    """Too little text to be a page of a document, and not a signature page."""
+    return word_count(text) < SHORT_PAGE_WORDS and not signed and not _SIGNATURE_WORD.search(text or "")
 
 JUNK_CSV_COLS = [
     "chart_name",
@@ -94,6 +108,7 @@ JUNK_CSV_COLS = [
     "ocr_source",
     "pass_no",
     "is_final",
+    "duplicate_of_page",
 ]
 
 # classify.py's label -> the constrained junk_subtype values in schema v7.
@@ -208,6 +223,9 @@ def _classify(
     texts: dict[int, str],
     todo: set[int],
     prior_main_ids: Optional[set[int]] = None,
+    *,
+    short_pages: bool = False,
+    signed_ids: Optional[set[int]] = None,
 ) -> list[dict[str, Any]]:
     """Classify ``todo`` pages, then look for duplicates among Main pages.
 
@@ -231,6 +249,9 @@ def _classify(
             continue
         text = texts.get(page_id) or ""
         code, reason, conf = classify_page(text)
+        if short_pages and code == CODE_MAIN and short_page_is_junk(text, page_id in (signed_ids or ())):
+            code, conf = CODE_OTHERS, 0.9
+            reason = f"short page: {word_count(text)} words (< {SHORT_PAGE_WORDS}), not a signature page"
         by_id[page_id] = _row_for(
             page, code=code, reason=reason, confidence=conf
         )
@@ -359,6 +380,7 @@ def _rewrite_csv(conn: Any, chart_id: int, chart_name: str) -> Path:
                 "ocr_source": row["ocr_source"],
                 "pass_no": row["pass_no"],
                 "is_final": row["is_final"],
+                "duplicate_of_page": row.get("duplicate_of_page") or "",
             }
         )
     return write_csv(imaging_csv(chart_name, "junk"), JUNK_CSV_COLS, out)
@@ -436,8 +458,15 @@ def _run_pass(
             )
             prior_mains = _prior_main_ids(conn, chart_id)
 
+        signed_ids: set[int] = set()
+        if pass_no == 2:
+            from stages.lib.continuity.signature import signed_page_names
+
+            signed = signed_page_names(ctx.chart_name)
+            signed_ids = {p["id"] for p in ctx.pages if p["page_name"] in signed}
         classified = _classify(
-            ctx.pages, texts, ctx.todo, prior_main_ids=prior_mains
+            ctx.pages, texts, ctx.todo, prior_main_ids=prior_mains,
+            short_pages=pass_no == 2, signed_ids=signed_ids,
         )
 
         with connect() as conn:

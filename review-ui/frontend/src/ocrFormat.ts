@@ -108,10 +108,10 @@ export function prepareOcrLines(
     }
     const md = HEADING_RE.exec(trimmed);
     if (md) {
-      const level = md[1].length;
       const headingText = md[2].trim();
-      if (opts.showSectionHeaders) {
-        out.push({ kind: "heading", level, text: headingText });
+      // A markdown heading is highlighted only when Additional lists it.
+      if (opts.showSectionHeaders && known.has(normKey(headingText))) {
+        out.push({ kind: "heading", level: md[1].length, text: headingText });
       } else {
         out.push({ kind: "text", text: headingText });
       }
