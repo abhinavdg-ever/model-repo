@@ -1173,7 +1173,11 @@ function dosCompareRow(
   const staged = dos ? (side === "from" ? parts[0] : (parts[1] ?? parts[0])) : null;
   const stored = side === "from" ? page.dosFrom : page.dosTo;
   const extracted = extractedDos(page, staged, stored, processed, skipped);
-  const confidence = fmtConfidence(dos?.confidence ?? page.dosConfidence, processed, skipped);
+  const confidence = fmtConfidence(
+    dos?.confidence ?? page.dosConfidence,
+    processed,
+    skipped ? { skipped: true } : undefined,
+  );
   return {
     id: side === "from" ? "dos_from" : "dos_to",
     label: side === "from" ? "DOS From" : "DOS To",
@@ -1455,8 +1459,8 @@ function PageDetails({
             label: "Encounter Type",
             fixedNa: true,
           }),
-          dosCompareRow(page, dos, "from", sections.dos, skip, bits.dosFrom),
-          dosCompareRow(page, dos, "to", sections.dos, skip, bits.dosTo),
+          dosCompareRow(page, dos, "from", sections.dos, skipped, bits.dosFrom),
+          dosCompareRow(page, dos, "to", sections.dos, skipped, bits.dosTo),
         ]}
       />
       <CompareSection
