@@ -29,7 +29,7 @@ export const METRICS: { id: MetricId; label: string; rule: string }[] = [
   {
     id: "pageType",
     label: "Page Type",
-    rule: "Encounter type matches the page type or the page subtype",
+    rule: "Ground-truth page type matches the page type or subtype, or is an accepted label for the model type; a broader label is May be; else semantic similarity > 0.8",
   },
   {
     id: "codeable",
@@ -151,6 +151,7 @@ function pageScores(
     pageType: parts.family,
     pageSubtype: parts.subtype,
     pageTypeKnown: Boolean(sections.junk || sections.codeable),
+    pageTypeSemantic: page.pageTypeSemantic,
     isCodeable: page.isCodeable,
     codeableKnown:
       Boolean(sections.codeable) ||

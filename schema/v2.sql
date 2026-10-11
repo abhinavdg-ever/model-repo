@@ -83,6 +83,9 @@
 --  * imaging_final (v1.sql) and the imaging_final stage (seq 100): the Final
 --    value of every reviewer field, one row per page. A duplicate page copies
 --    the page it duplicates: source 'duplicate' + duplicate_of_page_id.
+--  * page_continuity_results.in_progress_note: the document opens like a
+--    progress note and ends signed; imaging_final makes each page Progress
+--    Note with its own type as the sub-type (source 'progress_note').
 --  * page_list.use_corrected + image_path (workspace image source).
 --  * page_classification lives in v1.sql (page_subtype writes it).
 --  * encounter_type_results + page_sequencing_results live in v1.sql.

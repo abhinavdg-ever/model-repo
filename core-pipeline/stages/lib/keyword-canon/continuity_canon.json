@@ -74,5 +74,14 @@
       "Status visit", "Telephone Encounter", "Telephone Visit", "Visit summary",
       "Chief Complaint", "CC"
     ]
+  },
+  "progress_note_envelope": {
+    "comment": "A document of min_pages or more that opens like a progress note and closes with a signature is one progress note: imaging_final sets every page's Final page type to Progress Note and moves the page's own page type into the sub-type (Laboratory Data -> Progress Note / Laboratory Data). It opens like a progress note when its first page's Extracted page type is in opening_page_types, or the first page carries a section header (a section_header_canon.json name) from opening_headers or open_until_signature.encounter_headers. It closes with a signature when its last page is signed (a signed page always ends its document).",
+    "min_pages": 2,
+    "opening_page_types": ["Progress Note"],
+    "opening_headers": [
+      "Chief Complaint", "CC", "History of Present Illness", "HPI",
+      "Reason for Visit", "Subjective", "Subjective Objective Assessment Plan"
+    ]
   }
 }

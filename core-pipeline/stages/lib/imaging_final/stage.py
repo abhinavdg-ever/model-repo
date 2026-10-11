@@ -6,10 +6,12 @@ from one place instead of re-deriving them.
 
 Most Finals are the page's own value. Two are decided across a document:
 
-* **Page type** (with sub-type, model type, codability): the page's own
-  (Extracted) result unless a continuation rule changes it —
-  ``page_classify.arbitration.decide_final`` on the continuity stage's
-  documents. ``page_type_source`` is page / continuation / embedded, and
+* **Page type** (with sub-type, model type, codability): agreed across the
+  pages of each continuity document — ``page_classify.arbitration.decide_final``
+  (Progress Note for a signed progress note, else a confirmed first page's
+  type, else a confidence-weighted vote). The sub-type stays the page's own. ``page_type_source`` is page / continuation / embedded /
+  progress_note (a signed document that opens like a progress note: every
+  page becomes Progress Note, its own type the sub-type), and
   ``continuation_rule`` names the rule.
 * **Date of service**: the document's first page's, else its first dated
   page's (``continuity.engine.document_finals``); ``dos_source`` = document.
@@ -116,6 +118,8 @@ def _final_page(page_id: int, kind: dict[str, Any], link: dict[str, Any]) -> Fin
         seq=link.get("seq"),
         link_strength=link.get("link_strength"),
         start_confirmed=bool(link.get("start_confirmed")),
+        in_progress_note=bool(link.get("in_progress_note")),
+        confidence=_number(kind.get("confidence")),
     )
 
 
@@ -150,12 +154,12 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             }
         documents = _documents(ctx.pages, continuity)
         carried_dos: dict[int, dict[str, Any]] = {}
-        start_of: dict[int, int] = {}
+        document_of: dict[int, list[int]] = {}
         for document_pages in documents.values():
             finals = document_finals([own_dos[pid] for pid in document_pages])
             for pid in document_pages:
                 carried_dos[pid] = finals
-                start_of[pid] = document_pages[0]
+                document_of[pid] = document_pages
         final_pages = {
             page["id"]: _final_page(
                 page["id"], classification.get(page["id"]) or {}, continuity.get(page["id"]) or {}
@@ -173,10 +177,10 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             kind = classification.get(page_id) or {}
             member = members.get(page_id) or {}
             signature = signatures.get(page["page_name"]) or {}
-            start = start_of.get(page_id)
+            # The page type is agreed across the document; the sub-type stays the page's.
             verdict = decide_final(
                 final_pages[page_id],
-                final_pages[start] if start is not None and start != page_id else None,
+                [final_pages[pid] for pid in document_of.get(page_id, [])] or None,
             )
             # DOS: the document's when the page belongs to one, else its own.
             document = carried_dos.get(page_id)
@@ -249,7 +253,10 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 )
 
         path = write_csv(imaging_csv(ctx.chart_name, "final"), FINAL_COLS, csv_rows)
-        changed = sum(1 for r in csv_rows if r["page_type_source"] in ("continuation", "embedded"))
+        changed = sum(
+            1 for r in csv_rows
+            if r["page_type_source"] in ("continuation", "embedded", "progress_note")
+        )
         logger.info(
             "imaging_final chart=%s pages=%d page_type_changed_by_continuation=%d → %s",
             ctx.chart_name, len(csv_rows), changed, path,

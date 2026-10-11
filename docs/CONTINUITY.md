@@ -168,6 +168,17 @@ Skilled Nursing visit notes, Chief Complaint, CC, and a few more.
 After a signature closes a note, the document still remembers it began as a
 progress note, so the next-encounter check keeps working inside a long printout.
 
+**Signed progress notes (`in_progress_note`).** A document of two or more
+pages whose first page opens like a progress note — its Extracted type is
+Progress Note, or it carries a header from `progress_note_envelope.opening_headers`
+(Chief Complaint, CC, HPI, History of Present Illness, Reason for Visit,
+Subjective, SOAP) or `encounter_headers` — and whose last page is signed is
+marked `in_progress_note` on every page. `imaging_final` then makes each page
+Progress Note with its own page type as the sub-type, and Progress Note's
+codability — except Laboratory Data and Medication List, which stay
+Non-Codable (PAGE_CLASSIFICATION.md §6.1 rule 0). The first page's evidence says
+"progress note from Chief Complaint to the signature on page 12".
+
 ---
 
 ## 6. Final values
@@ -222,7 +233,7 @@ every stage's stored output. The Final value of every reviewer field:
 | Quality & orientation | `printed_or_handwritten`, `handwritten_area_pct`, `is_visible`, `quality_tag`, `orientation_angle`, `tilt_angle`, `mirrored` | the page's own (stage 1) |
 | Classification | `blank_junk_flag`, `is_duplicate` | the page's own |
 | Document | `document_seq` | from continuity |
-| Page type | `page_type`, `page_subtype`, `model_type`, `codability`, `classification_category`, `page_type_source`, `continuation_rule` | the page's own, unless a continuation rule changes it (`source = continuation` / `embedded`) — see PAGE_CLASSIFICATION.md §6 |
+| Page type | `page_type`, `page_subtype`, `model_type`, `codability`, `classification_category`, `page_type_source`, `continuation_rule` | **agreed across the document** (signed progress note → Progress Note; else a confirmed first page's type; else a ≥60% confidence-weighted vote; else each page's own, flagged); the sub-type stays the page's own — see PAGE_CLASSIFICATION.md §6.1 |
 | Date of service | `dos_from`, `dos_to`, `dos_source` | **the document's first dated page's** (`source = document`), else the page's own |
 | Encounter | `encounter_type` | the page's own (already one per visit) |
 | Provider | `provider_name`, `signature_present` | the page's own (key/value staging) |

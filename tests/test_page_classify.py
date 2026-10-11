@@ -221,76 +221,140 @@ class TestLadder:
 
 
 def fp(pid, page_type, page_subtype=None, *, seq=None, link=None, confirmed=False,
-       title=False, kw_sub=None, kw_score=None):
+       title=False, kw_sub=None, kw_score=None, conf=None, note=False):
     return FinalPage(pid, page_type, page_subtype or page_type, kw_sub, kw_score, title,
-                     1 if seq else None, seq, link, confirmed)
+                     1 if seq else None, seq, link, confirmed, note, conf)
 
 
-class TestContinuationRules:
-    def test_acceptance_discharge_summary_chart(self):
-        """Discharge Summary title page, untitled page 2 of 3, lab page →
-        Discharge Summary, Discharge Summary, Laboratory Data."""
-        start = fp(1, "Discharge Summary", seq=1, confirmed=True, title=True)
-        page2 = fp(2, PN, seq=2, link="strong", confirmed=True)
-        lab = fp(3, "Laboratory Data", seq=3, link="strong", confirmed=True, title=True)
-        finals = [decide_final(start, None), decide_final(page2, start), decide_final(lab, start)]
-        assert [f.page_type for f in finals] == ["Discharge Summary", "Discharge Summary", "Laboratory Data"]
-        assert finals[1].continuation_rule == "continuation"
-        assert finals[1].page_subtype == "Discharge Summary"
+class TestAgreedPageType:
+    """The page type is agreed across a document; the sub-type stays the page's."""
 
-    def test_acceptance_lab_page_inside_a_progress_note(self):
-        start = fp(1, PN, "Office Visit", seq=1, confirmed=True, title=True)
-        lab = fp(2, "Laboratory Data", "Chemistry", seq=2, link="strong", confirmed=True)
-        final = decide_final(lab, start)
-        assert (final.page_type, final.page_subtype, final.model_type) == (PN, "Laboratory Data", "Laboratory Data")
-        assert final.codability == "Codable"
-        assert final.continuation_rule == "embedded_in_document"
+    def test_confirmed_first_page_sets_the_type_and_pages_keep_their_own_as_sub_type(self):
+        doc = [fp(1, "Discharge Summary", seq=1, confirmed=True, title=True),
+               fp(2, PN, "Office Visit", seq=2, link="strong", confirmed=True),
+               fp(3, "Laboratory Data", "Chemistry", seq=3, link="strong", confirmed=True)]
+        finals = [decide_final(p, doc) for p in doc]
+        assert [f.page_type for f in finals] == ["Discharge Summary"] * 3
+        assert [f.page_subtype for f in finals] == ["Discharge Summary", PN, "Laboratory Data"]
+        assert [f.continuation_rule for f in finals] == ["agreed", "agreed_first_page", "agreed_first_page"]
+        assert {f.codability for f in finals} == {taxonomy.load().codability("Discharge Summary")}
+        assert not any(f.needs_review for f in finals)
 
-    def test_embedded_same_page_needs_no_order(self):
+    def test_lab_inside_a_progress_note_stays_non_codable(self):
+        doc = [fp(1, PN, "Office Visit", seq=1, confirmed=True, title=True),
+               fp(2, "Laboratory Data", "Chemistry", seq=2, link="strong", confirmed=True),
+               fp(3, "Radiology Report", seq=3, link="strong", confirmed=True)]
+        lab, rad = decide_final(doc[1], doc), decide_final(doc[2], doc)
+        assert (lab.page_type, lab.page_subtype, lab.codability) == (PN, "Laboratory Data", "Non-Codable")
+        assert (rad.page_type, rad.page_subtype, rad.codability) == (PN, "Radiology Report", "Codable")
+
+    def test_without_a_confirmed_start_the_weighted_vote_decides_and_flags(self):
+        doc = [fp(1, "Clinical Summary", seq=1, conf=0.40),
+               fp(2, "Laboratory Data", seq=2, link="strong", conf=0.90),
+               fp(3, "Laboratory Data", seq=3, link="strong", conf=0.80)]
+        first = decide_final(doc[0], doc)
+        assert (first.page_type, first.page_subtype) == ("Laboratory Data", "Clinical Summary")
+        assert (first.continuation_rule, first.needs_review) == ("agreed_vote", True)
+        assert decide_final(doc[1], doc).continuation_rule == "agreed"
+
+    def test_no_clear_majority_keeps_each_page_and_flags_it(self):
+        doc = [fp(1, "Clinical Summary", seq=1, conf=0.6), fp(2, PN, seq=2, link="strong", conf=0.7),
+               fp(3, "Orders", seq=3, link="strong", conf=0.8)]
+        finals = [decide_final(p, doc) for p in doc]
+        assert [f.page_type for f in finals] == ["Clinical Summary", PN, "Orders"]
+        assert all(f.continuation_rule == "no_agreement" and f.needs_review for f in finals)
+
+    def test_the_keyword_sub_type_is_used_when_it_fits_the_agreed_type(self):
+        doc = [fp(1, "Discharge Summary", seq=1, confirmed=True, title=True),
+               fp(2, PN, seq=2, link="strong", confirmed=True, kw_sub="Depart Note", kw_score=3)]
+        assert decide_final(doc[1], doc).page_subtype == "Depart Note"
+
+    def test_an_unknown_page_takes_the_agreed_generic_sub_type(self):
+        doc = [fp(1, "Discharge Summary", seq=1, confirmed=True, title=True), fp(2, "Unknown", seq=2, link="strong")]
+        final = decide_final(doc[1], doc)
+        assert (final.page_type, final.page_subtype) == ("Discharge Summary", "Discharge Summary")
+
+    def test_a_weak_link_still_agrees_but_flags(self):
+        doc = [fp(1, "Discharge Summary", seq=1, confirmed=True, title=True), fp(2, PN, seq=2, link="weak", confirmed=True)]
+        final = decide_final(doc[1], doc)
+        assert (final.page_type, final.needs_review) == ("Discharge Summary", True)
+
+    def test_a_signed_progress_note_document_is_progress_note(self):
+        doc = [fp(1, "Clinical Summary", seq=1, note=True, confirmed=True, title=True),
+               fp(2, "Medication List", seq=2, link="strong", note=True)]
+        finals = [decide_final(p, doc) for p in doc]
+        assert [(f.page_type, f.page_subtype, f.codability) for f in finals] == [
+            (PN, "Clinical Summary", "Codable"), (PN, "Medication List", "Non-Codable")]
+
+    def test_a_page_alone_keeps_its_type(self):
+        assert decide_final(fp(1, "Laboratory Data", "Chemistry"), None).page_type == "Laboratory Data"
+        single = [fp(1, "Laboratory Data", seq=1)]
+        assert decide_final(single[0], single).continuation_rule == "no_change"
+
+    def test_embedded_same_page_needs_no_document(self):
         lab = fp(5, "Laboratory Data", kw_sub="Progress Note", kw_score=4, title=True)
         final = decide_final(lab, None)
-        assert (final.page_type, final.continuation_rule) == (PN, "embedded_same_page")
+        assert (final.page_type, final.continuation_rule, final.codability) == (PN, "embedded_same_page", "Non-Codable")
 
-    def test_weak_link_keeps_the_page_and_flags_it(self):
-        start = fp(1, "Discharge Summary", seq=1, confirmed=True, title=True)
-        page2 = fp(2, PN, seq=2, link="weak", confirmed=True)
-        final = decide_final(page2, start)
-        assert (final.page_type, final.continuation_rule, final.needs_review) == (PN, "possible", True)
 
-    def test_unconfirmed_start_keeps_the_page_and_flags_it(self):
-        start = fp(1, "Discharge Summary", seq=1, confirmed=False)
-        page2 = fp(2, PN, seq=2, link="strong", confirmed=False)
-        assert decide_final(page2, start).continuation_rule == "possible"
+class TestPageTypeConfidence:
+    def test_agreement_combines_both_models(self):
+        r = classify_page(bert("Discharge Summary", 0.80), kw("Discharge Summary", margin=4.0), frozenset())
+        assert r.decided_by == "agreement"
+        # k = 0.60 + 0.05*4 = 0.80 -> 1 - 0.2*0.2
+        assert r.confidence == pytest.approx(0.96)
 
-    def test_a_titled_page_is_never_moved(self):
-        start = fp(1, "Discharge Summary", seq=1, confirmed=True, title=True)
-        page2 = fp(2, PN, "Office Visit", seq=2, link="strong", confirmed=True, title=True)
-        assert decide_final(page2, start).page_type == PN
+    def test_bert_alone_is_bert_probability(self):
+        r = classify_page(bert("Discharge Summary", 0.70), kw("Operative Report", title_hit=False, margin=1.0), frozenset())
+        assert (r.decided_by, r.confidence) == ("bert_high", 0.70)
 
-    def test_a_progress_note_continuing_a_progress_note_stays(self):
-        start = fp(1, PN, seq=1, confirmed=True, title=True)
-        page2 = fp(2, PN, seq=2, link="strong", confirmed=True)
-        assert decide_final(page2, start).continuation_rule == "no_change"
+    def test_keyword_title_uses_the_keyword_confidence(self):
+        r = classify_page(bert("Discharge Summary", 0.15), kw("Operative Report", margin=10.0), frozenset({"Discharge Summary"}))
+        assert r.decided_by in ("keyword_title", "keyword_only_class")
+        assert r.confidence == 0.90  # capped at keyword_title_cap
 
-    def test_a_stand_alone_lab_page_keeps_its_type(self):
-        assert decide_final(fp(1, "Laboratory Data", "Chemistry"), None).page_type == "Laboratory Data"
+    def test_review_steps_are_capped_below_half(self):
+        r = classify_page(bert("Discharge Summary", 0.45), kw("Operative Report", title_hit=False, margin=0.0), frozenset())
+        assert r.decided_by == "bert_medium" and r.needs_review
+        assert r.confidence == pytest.approx(0.45)
+        unknown = classify_page(bert("Discharge Summary", 0.05), None, frozenset({"Discharge Summary"}))
+        assert unknown.page_type == "Unknown" and unknown.confidence == pytest.approx(0.05)
 
-    def test_continuation_takes_the_keyword_sub_type_when_it_fits(self):
-        start = fp(1, "Discharge Summary", seq=1, confirmed=True, title=True)
-        page2 = fp(2, PN, seq=2, link="strong", confirmed=True, kw_sub="Depart Note", kw_score=3)
-        assert decide_final(page2, start).page_subtype == "Depart Note"
+    def test_no_prediction_has_no_confidence(self):
+        assert classify_page(None, None, frozenset()).confidence is None
 
-    def test_every_returned_pair_is_a_taxonomy_or_embedded_pair(self):
-        names = taxonomy.load()
-        start_ds = fp(1, "Discharge Summary", seq=1, confirmed=True, title=True)
-        start_pn = fp(1, PN, seq=1, confirmed=True, title=True)
-        cases = [
-            decide_final(fp(2, PN, seq=2, link="strong", confirmed=True), start_ds),
-            decide_final(fp(2, "Radiology Report", seq=2, link="strong", confirmed=True), start_pn),
-            decide_final(fp(2, "Laboratory Data", kw_sub="Progress Note", title=True), None),
-        ]
-        for final in cases:
-            assert names.is_valid_pair(final.page_type, final.page_subtype), final
+
+class TestProgressNoteRule:
+    def test_each_page_becomes_progress_note_with_its_own_type_as_sub_type(self):
+        lab = decide_final(FinalPage(2, "Laboratory Data", "Chemistry", in_progress_note=True), None)
+        assert (lab.page_type, lab.page_subtype, lab.model_type) == (PN, "Laboratory Data", "Laboratory Data")
+        assert (lab.source, lab.continuation_rule, lab.needs_review) == ("progress_note", "progress_note", False)
+        # Inside a Progress Note a lab page stays Non-Codable.
+        assert lab.codability == "Non-Codable"
+
+    def test_codability_is_progress_notes_except_lab_and_medication_list(self):
+        def final(page_type):
+            return decide_final(FinalPage(2, page_type, page_type, in_progress_note=True), None).codability
+        assert final("Clinical Summary") == taxonomy.load().codability(PN) == "Codable"
+        assert final("Medication List") == "Non-Codable"
+        assert final("Laboratory Data") == "Non-Codable"
+        assert final("Radiology Report") == "Codable"
+
+    def test_a_progress_note_page_keeps_its_sub_type(self):
+        note = decide_final(FinalPage(1, PN, "Office Visit", in_progress_note=True), None)
+        assert (note.page_type, note.page_subtype, note.source) == (PN, "Office Visit", "page")
+
+    def test_an_unknown_page_is_progress_note_for_review(self):
+        unknown = decide_final(FinalPage(3, "Unknown", "Unknown", in_progress_note=True), None)
+        assert (unknown.page_type, unknown.page_subtype, unknown.needs_review) == (PN, PN, True)
+
+    def test_it_wins_over_the_continuation_rules(self):
+        start = FinalPage(1, "Discharge Summary", "Discharge Summary", keyword_title_hit=True, seq=1,
+                          in_progress_note=True)
+        page2 = FinalPage(2, PN, PN, seq=2, link_strength="strong", start_confirmed=True,
+                          in_progress_note=True)
+        assert decide_final(page2, [start, page2]).page_type == PN
+        assert decide_final(start, [start, page2]).page_subtype == "Discharge Summary"
 
 
 class TestModelFolder:

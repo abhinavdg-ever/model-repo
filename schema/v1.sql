@@ -663,6 +663,7 @@ CREATE TABLE page_continuity_results (
     review_required      BOOLEAN NOT NULL DEFAULT FALSE,
     link_strength        VARCHAR(10) CHECK (link_strength IS NULL OR link_strength IN ('strong','weak')),
     start_confirmed      BOOLEAN NOT NULL DEFAULT FALSE,
+    in_progress_note     BOOLEAN NOT NULL DEFAULT FALSE,
     evidence             TEXT,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -680,7 +681,8 @@ CREATE TRIGGER trg_page_continuity_results_updated_at
 -- by the last stage (imaging_final) from every stage's stored output. Most
 -- Finals are the page's own value. Page type follows the continuation rules
 -- (page_arbitration.json level 3, on page_continuity_results' documents):
--- page_type_source = page | continuation | embedded. DOS is the document's
+-- page_type_source = page | continuation | embedded | progress_note (a
+-- signed document that opens like a progress note). DOS is the document's
 -- first dated page's (dos_source = document) or the page's own. A duplicate
 -- page (skipped after blank/junk) copies its content fields from the page it
 -- duplicates: page_type_source = dos_source = 'duplicate', and
@@ -708,7 +710,7 @@ CREATE TABLE imaging_final (
     codability               VARCHAR(20),
     classification_category  VARCHAR(20),
     page_type_source         VARCHAR(20) CHECK (page_type_source IS NULL OR
-                                                page_type_source IN ('page','continuation','embedded','duplicate')),
+                                                page_type_source IN ('page','continuation','embedded','duplicate','progress_note')),
     continuation_rule        VARCHAR(30),
     needs_review             BOOLEAN NOT NULL DEFAULT FALSE,
     dos_from                 DATE,

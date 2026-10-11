@@ -54,6 +54,7 @@ CODEABLE_COLS = [
     "page_type",
     "page_subtype",
     "model_type",
+    "confidence",
     "codability",
     "tag",
     "is_codeable",
@@ -135,7 +136,7 @@ def _page_row(result: Any) -> dict[str, Any]:
         # No page type means no prediction: not_sure has no CHECK value, so
         # the row is written as non_codeable and needs_review says why.
         "classification_category": names.category(result.page_type) or "non_codeable",
-        "confidence": result.bert_confidence,
+        "confidence": result.confidence,
         "duplicate_flag": False,
         "decided_by": result.decided_by,
         "needs_review": result.needs_review,

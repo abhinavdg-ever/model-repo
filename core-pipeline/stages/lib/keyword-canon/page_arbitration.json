@@ -14,6 +14,24 @@
     "keyword_min_score": 3,
     "keyword_min_margin": 2
   },
+  "confidence": {
+    "comment": "The page type's confidence (page_classification.confidence, review-ui 'Page Type' confidence) follows the ladder step that decided it. b = BERT's probability. k = the keyword model's confidence: keyword_title_base (title hit) or keyword_body_base, plus keyword_per_margin per point of margin over the next page type, capped at keyword_title_cap / keyword_body_cap. agreement: 1 - (1-b)(1-k), capped at agreement_cap. bert_high / bert_medium / bert_low / unknown: b. keyword_only_class / keyword_title / keyword_body: k. top3_agreement: the lower of b and k. A step that flags the page for review is capped at review_cap. no_prediction: none. Blank/junk pages keep the blank/junk confidence.",
+    "keyword_title_base": 0.60,
+    "keyword_body_base": 0.30,
+    "keyword_per_margin": 0.05,
+    "keyword_title_cap": 0.90,
+    "keyword_body_cap": 0.60,
+    "agreement_cap": 0.99,
+    "review_cap": 0.49
+  },
+  "inside_progress_note": {
+    "comment": "A page whose Final page type becomes Progress Note (signed progress-note document, or Laboratory Data / Radiology Report embedded in a Progress Note) takes Progress Note's codability (Codable), except these sub-types, which stay Non-Codable inside a Progress Note.",
+    "non_codeable_sub_types": ["Laboratory Data", "Medication List"]
+  },
+  "document_agreement": {
+    "comment": "Across a continuity document the page type is agreed (sub-types stay per page): Progress Note for a signed progress note, else a confirmed first page's type, else a vote of the pages' types weighted by page-type confidence. The vote counts only when one type holds at least vote_min_share of the weight; below that the pages keep their own types and are flagged for review (no_agreement).",
+    "vote_min_share": 0.60
+  },
   "level_1_page_type": [
     {
       "step": 1,

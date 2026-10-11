@@ -19,29 +19,44 @@ Per page (``classify_page``) — the **Extracted** answer:
   a BERT model loaded; without one the keyword model goes on to steps 8–9.
   With neither model answering, the page is Unknown (``no_prediction``).
 
+  Confidence of the page type: from the step that decided it
+  (``page_arbitration.json`` → ``confidence``; ``page_type_confidence``).
+
   Level 2, sub-type inside the winning page type.
   Level 4, codability from the page type (``taxonomy``).
 
-Per document (``decide_final``) — the **Final** answer, level 3 step C, on the
-continuity stage's documents:
+Per document (``decide_final``) — the **Final** answer, on the continuity
+stage's documents. The page **type** is agreed across a document's pages; the
+**sub-type** stays each page's own.
 
-  1 continuation          not the start, strong link, start confirmed, per-page
-                          Progress Note with no title of its own, document not a
-                          Progress Note → the document's page type
-  2 embedded_in_document  not the start, strong link, start confirmed, per-page
-                          Laboratory Data / Radiology Report, document a Progress
-                          Note → Progress Note / that name
-  3 embedded_same_page    per-page Laboratory Data / Radiology Report and the
-                          keyword model saw a Progress Note title on the page →
-                          Progress Note / that name (needs no page order)
-  4 possible              1 or 2 would apply but the link is weak or the start
-                          unconfirmed → keep, flag for review
-  5 no_change             keep
+  The agreed page type (``agree_document_type``), first that applies:
+    progress_note  the document opens like a progress note and ends signed
+                   (continuity ``in_progress_note``) → Progress Note
+    first_page     the first page is confirmed (keyword title, or printed
+                   page 1) → the first page's type
+    vote           else the page types of the document's pages, weighted by
+                   page-type confidence, when one type holds at least
+                   ``document_agreement.vote_min_share`` (0.60) of the weight;
+                   a tie goes to the first page's type (flagged for review
+                   when it changes a page)
+    (none)         no clear majority: pages keep their own types, flagged
+                   for review (``no_agreement``)
+
+  A page whose own type differs takes the agreed type; its own type becomes
+  the sub-type (Laboratory Data → Clinical Summary / Laboratory Data), unless
+  the keyword model found a sub-type of the agreed type (score ≥
+  keyword_min_score). An Unknown page takes the agreed type's generic
+  sub-type. Codability is the agreed type's; inside a Progress Note,
+  Laboratory Data / Medication List stay Non-Codable (``inside_progress_note``).
+
+  A page in no document (or a one-page document) keeps its own answer, except
+  embedded_same_page: per-page Laboratory Data / Radiology Report with a
+  Progress Note title on the same page → Progress Note / that name.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from stages.lib.canon_store import CANON_DIR, CanonFile
 from stages.lib.page_classify import taxonomy as tax
@@ -72,6 +87,8 @@ class PageResult:
     keyword_score: Optional[float] = None
     keyword_margin: Optional[float] = None
     keyword_title_hit: bool = False
+    # How sure the decision is (0-1), from the ladder step; None = no prediction.
+    confidence: Optional[float] = None
     extra: dict[str, Any] = field(default_factory=dict, compare=False)
 
 
@@ -121,6 +138,43 @@ def _top_n_agreement(bert: Optional[BertResult], keyword: Optional[KeywordResult
     return min(shared, key=lambda p: (b.index(p) + k.index(p), b.index(p)))
 
 
+def keyword_confidence(keyword: Optional[KeywordResult]) -> Optional[float]:
+    """The keyword model's own confidence: a base for a title hit or body terms,
+    plus a step per point of margin over the next page type, capped."""
+    if keyword is None:
+        return None
+    c = _ARBITRATION.get()["confidence"]
+    if keyword.title_hit:
+        base, cap = float(c["keyword_title_base"]), float(c["keyword_title_cap"])
+    else:
+        base, cap = float(c["keyword_body_base"]), float(c["keyword_body_cap"])
+    return round(min(cap, base + float(c["keyword_per_margin"]) * max(0.0, keyword.margin)), 4)
+
+
+def page_type_confidence(
+    step: str, review: bool, bert: Optional[BertResult], keyword: Optional[KeywordResult]
+) -> Optional[float]:
+    """The page type's confidence, from the ladder step that decided it."""
+    c = _ARBITRATION.get()["confidence"]
+    b = bert.confidence if bert else None
+    k = keyword_confidence(keyword)
+    if step == "agreement" and b is not None and k is not None:
+        value = min(float(c["agreement_cap"]), 1 - (1 - b) * (1 - k))
+    elif step.startswith("keyword"):
+        value = k
+    elif step == "top3_agreement" and b is not None and k is not None:
+        value = min(b, k)
+    elif step in ("bert_high", "bert_medium", "bert_low", "unknown"):
+        value = b
+    else:
+        value = b if b is not None else k
+    if value is None:
+        return None
+    if review:
+        value = min(value, float(c["review_cap"]))
+    return round(float(value), 4)
+
+
 def _level_2(
     page_type: str, bert: Optional[BertResult], keyword: Optional[KeywordResult]
 ) -> str:
@@ -143,6 +197,7 @@ def classify_page(
     """Levels 1, 2 and 4 for one page: the Extracted answer."""
     page_type, step, review = _level_1(bert, keyword, trained)
     raw = dict(
+        confidence=page_type_confidence(step, review, bert, keyword),
         bert_model_type=bert.model_type if bert else None,
         bert_confidence=bert.confidence if bert else None,
         keyword_page_subtype=keyword.page_subtype if keyword else None,
@@ -182,6 +237,10 @@ class FinalPage:
     seq: Optional[int] = None  # position within the document; 1 = start
     link_strength: Optional[str] = None  # strong | weak (chain from the start)
     start_confirmed: bool = False
+    # Continuity: the document opens like a progress note and ends signed.
+    in_progress_note: bool = False
+    # The page type's confidence (page_classification.confidence): its vote weight.
+    confidence: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -190,18 +249,28 @@ class FinalResult:
     page_subtype: Optional[str]
     model_type: Optional[str]
     codability: Optional[str]
-    source: str  # page | continuation | embedded
+    source: str  # page | continuation | embedded | progress_note
     continuation_rule: str
     needs_review: bool
 
 
-def _embedded(page: FinalPage, rule: str) -> FinalResult:
+def codability_inside_note(page_subtype: Optional[str]) -> Optional[str]:
+    """Codability of a page whose Final type is Progress Note with this
+    sub-type: Progress Note's, except the ``inside_progress_note`` sub-types
+    (Laboratory Data, Medication List), which stay Non-Codable."""
     taxonomy = tax.load()
+    exceptions = (_ARBITRATION.get().get("inside_progress_note") or {}).get("non_codeable_sub_types") or ()
+    if page_subtype in exceptions:
+        return "Non-Codable"
+    return taxonomy.codability(tax.PROGRESS_NOTE)
+
+
+def _embedded(page: FinalPage, rule: str) -> FinalResult:
     return FinalResult(
         page_type=tax.PROGRESS_NOTE,
         page_subtype=page.page_type,
         model_type=page.page_type,
-        codability=taxonomy.codability(tax.PROGRESS_NOTE),
+        codability=codability_inside_note(page.page_type),
         source="embedded",
         continuation_rule=rule,
         needs_review=False,
@@ -224,48 +293,100 @@ def _keep(page: FinalPage, rule: str, review: bool) -> FinalResult:
     )
 
 
-def decide_final(page: FinalPage, start: Optional[FinalPage]) -> FinalResult:
-    """Level 3 step C for one page. ``start`` is its document's first page
-    (None for a page in no document, or the start itself)."""
-    taxonomy = tax.load()
-    embedded = taxonomy.embedded_page_types
-    in_document = start is not None and page.seq is not None and page.seq > 1
-    strong = page.link_strength == "strong" and page.start_confirmed
-    document_type = start.page_type if start else None
+def _progress_note(page: FinalPage) -> FinalResult:
+    """Rule 0: the page is part of a signed progress note. Codability is
+    Progress Note's, except Laboratory Data / Medication List."""
+    if page.page_type == tax.PROGRESS_NOTE:
+        return _keep(page, "progress_note", False)
+    unknown = page.page_type in (None, "", UNKNOWN)
+    subtype = tax.PROGRESS_NOTE if unknown else page.page_type
+    return FinalResult(
+        page_type=tax.PROGRESS_NOTE,
+        page_subtype=subtype,
+        model_type=subtype,
+        codability=codability_inside_note(subtype),
+        source="progress_note",
+        continuation_rule="progress_note",
+        needs_review=unknown,
+    )
 
-    continuation = (
-        in_document
-        and page.page_type == tax.PROGRESS_NOTE
-        and not page.keyword_title_hit
-        and document_type not in (None, tax.PROGRESS_NOTE)
-    )
-    embedded_in_document = (
-        in_document and page.page_type in embedded and document_type == tax.PROGRESS_NOTE
-    )
-    if continuation and strong:
+
+def agree_document_type(document: Sequence[FinalPage]) -> tuple[Optional[str], str]:
+    """The page type a document's pages agree on, and why:
+    progress_note / first_page / vote (``(None, "")`` for no document)."""
+    if not document:
+        return None, ""
+    if any(p.in_progress_note for p in document):
+        return tax.PROGRESS_NOTE, "progress_note"
+    first = document[0]
+    known = lambda t: t not in (None, "", UNKNOWN)  # noqa: E731
+    if known(first.page_type) and (first.start_confirmed or first.keyword_title_hit):
+        return first.page_type, "first_page"
+    weights: dict[str, float] = {}
+    for p in document:
+        if known(p.page_type):
+            weights[p.page_type] = weights.get(p.page_type, 0.0) + (
+                p.confidence if p.confidence is not None else 0.5
+            )
+    if not weights:
+        return None, ""
+    best = max(weights.values())
+    share = float((_ARBITRATION.get().get("document_agreement") or {}).get("vote_min_share", 0.0))
+    if best < share * sum(weights.values()):
+        return None, "no_agreement"
+    tied = [t for t, w in weights.items() if abs(w - best) < 1e-9]
+    if first.page_type in tied:
+        return first.page_type, "vote"
+    order = [p.page_type for p in document]
+    return min(tied, key=order.index), "vote"
+
+
+def decide_final(
+    page: FinalPage, document: Optional[Sequence[FinalPage]] = None
+) -> FinalResult:
+    """The Final page type of one page. ``document`` is every page of its
+    continuity document in order (None / one page: the page stands alone)."""
+    if page.in_progress_note:
+        return _progress_note(page)
+    taxonomy = tax.load()
+    if document and len(document) > 1:
+        agreed, basis = agree_document_type(document)
+        if basis == "progress_note":
+            return _progress_note(page)
+        if basis == "no_agreement":
+            return _keep(page, "no_agreement", True)
+        if agreed is None or page.page_type == agreed:
+            return _keep(page, "agreed", False)
         min_score = thresholds()["keyword_min_score"]
-        keyword_fits = (
+        if (
             page.keyword_page_subtype
-            and taxonomy.page_type_of_subtype(page.keyword_page_subtype) == document_type
+            and taxonomy.page_type_of_subtype(page.keyword_page_subtype) == agreed
             and (page.keyword_score or 0) >= min_score
-        )
-        subtype = page.keyword_page_subtype if keyword_fits else start.page_subtype
+        ):
+            subtype = page.keyword_page_subtype
+        elif page.page_type in (None, "", UNKNOWN):
+            subtype = agreed
+        else:
+            subtype = page.page_type
         return FinalResult(
-            page_type=document_type,
+            page_type=agreed,
             page_subtype=subtype,
-            model_type=taxonomy.model_type(document_type, subtype),
-            codability=taxonomy.codability(document_type),
+            model_type=taxonomy.model_type(agreed, subtype),
+            codability=(
+                codability_inside_note(subtype) if agreed == tax.PROGRESS_NOTE
+                else taxonomy.codability(agreed)
+            ),
             source="continuation",
-            continuation_rule="continuation",
-            needs_review=False,
+            continuation_rule=f"agreed_{basis}",
+            needs_review=basis == "vote" or page.link_strength == "weak",
         )
-    if embedded_in_document and strong:
-        return _embedded(page, "embedded_in_document")
     keyword_type = (
         taxonomy.page_type_of_subtype(page.keyword_page_subtype) if page.keyword_page_subtype else None
     )
-    if page.page_type in embedded and keyword_type == tax.PROGRESS_NOTE and page.keyword_title_hit:
+    if (
+        page.page_type in taxonomy.embedded_page_types
+        and keyword_type == tax.PROGRESS_NOTE
+        and page.keyword_title_hit
+    ):
         return _embedded(page, "embedded_same_page")
-    if continuation or embedded_in_document:
-        return _keep(page, "possible", True)
     return _keep(page, "no_change", False)

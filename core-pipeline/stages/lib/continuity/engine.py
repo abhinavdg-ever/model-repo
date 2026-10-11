@@ -29,6 +29,12 @@ visit-opening section header. The next encounter closes the note even while
 printed pagination continues, because one EMR printout paginates several
 visits as a single job.
 
+A document of two or more pages that opens like a progress note (first page
+a Progress Note, or carrying a visit-opening header such as Chief Complaint /
+HPI) and closes with a signature is marked ``in_progress_note``; the Final
+step makes each of its pages Progress Note, with the page's own type as the
+sub-type.
+
 Each document's first page sets the Final page type and the Final date of
 service of every page in it. When the first page has no date, the first page
 in the document that has one does, and the evidence says so.
@@ -111,6 +117,9 @@ class Rules:
     new_document_at: float
     open_page_types: frozenset[str]
     encounter_headers: frozenset[str]
+    envelope_min_pages: int = 2
+    envelope_page_types: frozenset[str] = frozenset()
+    envelope_headers: frozenset[str] = frozenset()
 
 
 def _build(data: dict[str, Any]) -> Rules:
@@ -120,6 +129,7 @@ def _build(data: dict[str, Any]) -> Rules:
     ident = data["identity"]
     struct = data["structure"]
     decision = data["decision"]
+    envelope = data.get("progress_note_envelope") or {}
     return Rules(
         pagination=tuple(
             re.compile(p, re.IGNORECASE) for p in [*pag["patterns"], pag["bare_pattern"]]
@@ -143,6 +153,11 @@ def _build(data: dict[str, Any]) -> Rules:
         open_page_types=frozenset(data["open_until_signature"]["page_types"]),
         encounter_headers=frozenset(
             h.casefold() for h in data["open_until_signature"]["encounter_headers"]
+        ),
+        envelope_min_pages=int(envelope.get("min_pages", 2)),
+        envelope_page_types=frozenset(envelope.get("opening_page_types") or ()),
+        envelope_headers=frozenset(
+            h.casefold() for h in envelope.get("opening_headers") or ()
         ),
     )
 
@@ -302,6 +317,19 @@ def encounter_header(page: PageInput, rules: Rules) -> str:
     return ""
 
 
+def progress_note_opening(page: PageInput, rules: Rules) -> str:
+    """Why ``page`` opens like a progress note ('' when it does not): its own
+    page type, or the first visit-opening section header on it."""
+    if page.page_type and page.page_type in rules.envelope_page_types:
+        return page.page_type
+    opening = rules.envelope_headers | rules.encounter_headers
+    for header in page.section_headers:
+        name = str(header.get("matched_canonical") or "")
+        if name.casefold() in opening:
+            return name
+    return ""
+
+
 def assign(pages: Sequence[PageInput], rules: Optional[Rules] = None) -> list[dict[str, Any]]:
     """One row per page, in the order given (which must be page order)."""
     rules = rules or load_rules()
@@ -390,6 +418,7 @@ def _row(page: PageInput, verdict: Optional[Verdict], document: Optional[int]) -
         "dos_from": page.dos_from,
         "dos_to": page.dos_to,
         "section_headers": page.section_headers,
+        "in_progress_note": False,
     }
 
 
@@ -420,7 +449,16 @@ def _finish(rows: list[dict[str, Any]], pages: Sequence[PageInput], rules: Rules
                 for _, p in members
             ]
         )
+        # Opens like a progress note and closes with a signature: one note.
+        closer = members[-1][1]
+        opening = progress_note_opening(opener, rules)
+        envelope = bool(opening) and closer.signed and count >= rules.envelope_min_pages
+        if envelope:
+            members[0][0]["evidence"] += (
+                f"; progress note from {opening} to the signature on page {closer.page_number}"
+            )
         for index, (row, page) in enumerate(members):
+            row["in_progress_note"] = envelope
             row["seq"] = index + 1
             row["start_confirmed"] = confirmed
             if index == 0:

@@ -49,6 +49,8 @@ services:
       - ${DATA_HOST_PATH:-./data/folders}:/data/folders:ro
       - ${PIPELINE_HOST_PATH:-./data/pipeline}:/data/pipeline:ro
       - ${METADATA_HOST_PATH:-./data/metadata}:/data/metadata:ro
+      # Optional: MiniLM for the accuracy report's semantic page-type match
+      - ${SEMANTIC_MODEL_HOST_PATH:-../core-pipeline/models/semantic-model}:/models/semantic-model:ro
     restart: unless-stopped
 
   frontend:

@@ -1403,8 +1403,8 @@ def upsert_continuity(conn: Any, *, chart_id: int, page_id: int, row: dict[str, 
         INSERT INTO page_continuity_results (
             chart_id, page_id, document_seq, seq, position, relation, decided_by,
             confidence_level, score, review_required, link_strength,
-            start_confirmed, evidence
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            start_confirmed, in_progress_note, evidence
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (page_id) DO UPDATE SET
             document_seq       = EXCLUDED.document_seq,
             seq                = EXCLUDED.seq,
@@ -1416,6 +1416,7 @@ def upsert_continuity(conn: Any, *, chart_id: int, page_id: int, row: dict[str, 
             review_required    = EXCLUDED.review_required,
             link_strength      = EXCLUDED.link_strength,
             start_confirmed    = EXCLUDED.start_confirmed,
+            in_progress_note   = EXCLUDED.in_progress_note,
             evidence           = EXCLUDED.evidence,
             updated_at         = now()
         """,
@@ -1432,6 +1433,7 @@ def upsert_continuity(conn: Any, *, chart_id: int, page_id: int, row: dict[str, 
             bool(row.get("review_required")),
             row.get("link_strength"),
             bool(row.get("start_confirmed")),
+            bool(row.get("in_progress_note")),
             row.get("evidence") or None,
         ),
     )

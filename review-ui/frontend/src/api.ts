@@ -170,6 +170,8 @@ export type ImagingPageResult = {
   /** Blank/Main/Duplicate → Not Available; Invoice|Cover → type */
   pageType: string | null;
   pageTypeConfidence: number | null;
+  /** Accuracy report: semantic similarity of the ground-truth page type (0–1). */
+  pageTypeSemantic?: number | null;
   /** Codeable | Non-Codeable | Discharge (older runs: Codeable / Non Codeable). */
   isCodeable?: string | null;
   /** Pipeline / file order (1-based). */

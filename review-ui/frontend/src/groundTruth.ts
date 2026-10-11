@@ -5,7 +5,13 @@
     X    = both sides have a value and nothing lines up
 */
 
+import pageTypeAccept from "./pageTypeAccept.json";
+
 export type MatchMark = "match" | "partial" | "mismatch" | "unknown";
+
+/** A semantic similarity above this between the ground-truth page type and the
+ * predicted page type / sub-type counts as a match (accuracy report). */
+export const PAGE_TYPE_SEMANTIC_MIN = 0.8;
 
 export type PageGroundTruth = {
   pageNumber: number;
@@ -245,14 +251,48 @@ function pageTypeNames(value: string | null | undefined): string[] {
     .filter((part) => part.length > 0 && !missing(part));
 }
 
+function acceptKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+type AcceptCanon = { accept: Record<string, string[]>; broader: Record<string, string[]> };
+
+function labelMap(table: Record<string, string[]>): Map<string, Set<string>> {
+  return new Map(
+    Object.entries(table).map(([modelType, labels]) => [
+      acceptKey(modelType),
+      new Set(labels.map(acceptKey)),
+    ]),
+  );
+}
+
+/** model type -> accepted / broader ground-truth labels (``pageTypeAccept.json``), folded. */
+const ACCEPTED = labelMap((pageTypeAccept as AcceptCanon).accept);
+const BROADER = labelMap((pageTypeAccept as AcceptCanon).broader);
+
+/** The model type of a prediction: the sub-type inside Progress Note, else the page type. */
+function modelTypeOf(pageType: string | null | undefined, pageSubtype: string | null | undefined): string {
+  const family = text(pageType);
+  const sub = text(pageSubtype);
+  return family.toLowerCase() === "progress note" && sub ? sub : family;
+}
+
 /**
- * A match when any ground-truth name agrees with the family or the subtype.
- * Both sides are checked; one agreement is enough.
+ * Checked against the predicted model type (the sub-type inside Progress Note,
+ * else the page type), in order, the first that applies:
+ *   match    a ground-truth name agrees with the model type (same name, or one
+ *            contains the other) or is in its ``accept`` list (pageTypeAccept.json)
+ *   partial  it is in the model type's ``broader`` list, or agrees only with the
+ *            page type (a generic "Progress Note" for Progress Note / Summary):
+ *            yellow, "May be" in the accuracy report
+ *   match    semantic similarity > PAGE_TYPE_SEMANTIC_MIN (backend score; fallback)
+ *   mismatch otherwise
  */
 function pageTypeMark(
   gt: string | null | undefined,
   pipeline: Array<string | null | undefined>,
   known: boolean,
+  semantic?: number | null,
 ): GtBit[] {
   const names = pageTypeNames(gt);
   if (names.length === 0) return [];
@@ -271,12 +311,17 @@ function pageTypeMark(
     const junk = actuals.some((actual) => JUNK_PAGE.some((word) => actual.includes(word)));
     return bit(shown, junk ? "mismatch" : "match");
   }
-  const same = expected.some((name) =>
-    actuals.some(
-      (actual) => name === actual || actual.includes(name) || name.includes(actual),
-    ),
-  );
-  return bit(shown, same ? "match" : "mismatch");
+  const agrees = (actual: string) =>
+    expected.some((name) => name === actual || actual.includes(name) || name.includes(actual));
+  const modelType = fold(modelTypeOf(pipeline[0], pipeline[1]));
+  const listed = (table: Map<string, Set<string>>) => {
+    const labels = table.get(acceptKey(modelType)) ?? new Set<string>();
+    return names.some((name) => labels.has(acceptKey(name)));
+  };
+  if ((modelType && agrees(modelType)) || listed(ACCEPTED)) return bit(shown, "match");
+  if (listed(BROADER) || actuals.some(agrees)) return bit(shown, "partial");
+  if (semantic != null && semantic > PAGE_TYPE_SEMANTIC_MIN) return bit(shown, "match");
+  return bit(shown, "mismatch");
 }
 
 function rotationMark(
@@ -363,6 +408,8 @@ export function groundTruthBits(input: {
   /** The type inside the family, "Discharge Note" of "Discharge (Discharge Note)". */
   pageSubtype?: string | null;
   pageTypeKnown: boolean;
+  /** Backend semantic similarity of the ground-truth page type (accuracy report). */
+  pageTypeSemantic?: number | null;
   isCodeable: string | null | undefined;
   codeableKnown: boolean;
   actualSequence: number | null | undefined;
@@ -392,10 +439,12 @@ export function groundTruthBits(input: {
     dosFrom: dateMark(gt.dosFrom, input.dosFrom, input.dosKnown),
     dosTo: dateMark(gt.dosTo, input.dosTo, input.dosKnown),
     blankJunk: blankJunkMark(gt, input.blankOrJunk, input.junkKnown),
+    // Page Type is the reviewer-edited cell; older imports put it in Encounter Type.
     pageType: pageTypeMark(
-      gt.encounterType,
+      missing(gt.pageType) ? gt.encounterType : gt.pageType,
       [input.pageType, input.pageSubtype],
       input.pageTypeKnown,
+      input.pageTypeSemantic,
     ),
     codeable: codeableMark(gt.codeable, input.isCodeable, input.codeableKnown),
     pageSequence: sequenceMark(gt.pageSequence, input.actualSequence, input.sequenceKnown),

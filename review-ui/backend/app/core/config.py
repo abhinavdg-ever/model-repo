@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     pipeline_root: str = "./data/pipeline"
     # Optional override for full monorepo root (01-ocr-extraction / 02-imaging-pipeline).
     monorepo_root: str = ""
+    # MiniLM sentence model (ONNX) for the accuracy report's semantic page-type
+    # match. Empty = core-pipeline/models/semantic-model next to review-ui, or
+    # /models/semantic-model in Docker. Absent = no semantic match.
+    semantic_model_path: str = ""
     # PLACEHOLDER — substitute your own values via DATABASE_URL in
     # review-ui/.env. Never commit a real credential here.
     # Local Mode: optional — Run/Batch (chart_list) and Manifest
@@ -95,6 +99,22 @@ class Settings(BaseSettings):
         if not path.is_dir() and Path("/data/pipeline").is_dir():
             return Path("/data/pipeline").resolve()
         return path
+
+    @property
+    def resolved_semantic_model_path(self) -> Path | None:
+        raw = (self.semantic_model_path or "").strip()
+        candidates = (
+            [Path(raw) if Path(raw).is_absolute() else (ROOT_DIR / raw)]
+            if raw
+            else [
+                ROOT_DIR.parent / "core-pipeline" / "models" / "semantic-model",
+                Path("/models/semantic-model"),
+            ]
+        )
+        for path in candidates:
+            if (path / "tokenizer.json").is_file() and (path / "onnx" / "model.onnx").is_file():
+                return path.resolve()
+        return None
 
     @property
     def resolved_monorepo_root(self) -> Path:

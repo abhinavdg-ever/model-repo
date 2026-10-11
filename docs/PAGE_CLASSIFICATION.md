@@ -120,6 +120,26 @@ as untrained; the Unknown step needs a model), and a weak keyword hit falls to
 * **Anything else:** the keyword sub-type if it belongs to that page type and
   scored ≥ 3; else the generic sub-type (the page type's own name).
 
+### 4.3a Page type confidence
+
+`page_classification.confidence` (the codeable CSV's `confidence`, review-ui's
+Page Type confidence) follows the ladder step that decided the page type —
+`page_arbitration.json` → `confidence`. `b` is BERT's probability; `k` is the
+keyword model's confidence: 0.60 with a title hit (0.30 without), plus 0.05
+per point of margin over the next page type, capped at 0.90 (0.60).
+
+| Step | Confidence |
+|---|---|
+| `agreement` | 1 − (1−b)(1−k), capped at 0.99 |
+| `bert_high`, `bert_medium`, `bert_low`, `unknown` | b |
+| `keyword_only_class`, `keyword_title`, `keyword_body` | k |
+| `top3_agreement` | the lower of b and k |
+| `no_prediction` | none |
+
+A step that flags the page for review is capped at 0.49. Blank / junk pages
+keep the blank/junk confidence. `bert_confidence` still holds BERT's raw
+probability.
+
 ### 4.4 Level 4 — codability
 
 From the page type, in the taxonomy. Never predicted.
@@ -158,24 +178,35 @@ or export, not one document.
 
 ## 6. The Final answer (`imaging_final` stage)
 
-### 6.1 Page type — level 3 rules, first that applies
+### 6.1 Page type — agreed across the document
 
-"Per-page" is the Extracted answer. The document's type is its first page's
-Extracted type.
+"Per-page" is the Extracted answer. Across the pages of one continuity
+document the **page type is agreed**; the **sub-type stays each page's own**.
 
-| # | Rule | When | Final |
-|---|---|---|---|
-| 1 | `continuation` | not the first page, **strong** link, start confirmed, per-page Progress Note with **no title of its own**, document is **not** a Progress Note | the document's page type; sub-type = the keyword sub-type if it fits that type with score ≥ 3, else the first page's sub-type |
-| 2 | `embedded_in_document` | not the first page, strong link, start confirmed, per-page Laboratory Data / Radiology Report, document **is** a Progress Note | Progress Note / Laboratory Data (or Radiology Report) |
-| 3 | `embedded_same_page` | per-page Laboratory Data / Radiology Report and the keyword model saw a Progress Note title on the same page | the same, without needing page order |
-| 4 | `possible` | rule 1 or 2 would apply but the link is weak or the start unconfirmed | keep the Extracted answer, **flag for review** |
-| 5 | `no_change` | everything else — including an untitled Progress Note that continues a Progress Note, or continues nothing | keep the Extracted answer |
+**The agreed type** (`agree_document_type`), first that applies:
 
-A type changes only on printed evidence and only when the document's real
-first page was seen. Weaker evidence flags the page; it never changes it.
+| Basis | When | Agreed page type |
+|---|---|---|
+| `progress_note` | the document (2+ pages) opens like a progress note — first page's Extracted type is Progress Note, or it carries Chief Complaint / CC / HPI / History of Present Illness / Reason for Visit / Subjective or any visit-opening header — and ends with a signature (continuity `in_progress_note`) | Progress Note |
+| `first_page` | the first page is confirmed: a keyword title on it, or a printed "page 1" | the first page's type |
+| `vote` | otherwise, when one type holds ≥ 60% of the confidence weight (`document_agreement.vote_min_share`) | the page types of the document's pages, weighted by page-type confidence (§4.3a); a tie goes to the first page's type |
+| — | no clear majority | none: every page keeps its own type, flagged for review (`no_agreement`) |
 
-Codability is read again from the Final page type, so a lab page inside a
-Progress Note is Codable, and a stand-alone lab page is not.
+**Each page** (`decide_final`):
+
+| `continuation_rule` | When | Final |
+|---|---|---|
+| `agreed` | the page's own type is the agreed type | kept as is |
+| `agreed_first_page` / `agreed_vote` | its own type differs | agreed type; sub-type = the keyword sub-type if it belongs to the agreed type (score ≥ 3), else the page's own type (an Unknown page: the agreed type's generic sub-type). `agreed_vote`, or a weak link, flags the page for review. `page_type_source = continuation` |
+| `no_agreement` | the vote has no clear majority | kept as is, **flagged for review** |
+| `progress_note` | the document is a signed progress note | Progress Note; sub-type = the page's own type (a Progress Note page keeps its sub-type; Unknown → Progress Note / Progress Note, flagged). `page_type_source = progress_note` |
+| `embedded_same_page` | page in no multi-page document, per-page Laboratory Data / Radiology Report, keyword Progress Note title on the same page | Progress Note / that name |
+| `no_change` | page in no multi-page document | kept as is |
+
+**Codability** is the agreed type's. Inside a Progress Note it is Codable,
+**except Laboratory Data and Medication List, which stay Non-Codable**
+(`page_arbitration.json` → `inside_progress_note`). Settings for the signed
+progress note: `continuity_canon.json` → `progress_note_envelope`.
 
 ### 6.2 Date of service
 
@@ -195,13 +226,13 @@ DOS = the document's.
 
 | Chart | Page | Extracted | Link | Final |
 |---|---|---|---|---|
-| A | 1 "DISCHARGE SUMMARY", Page 1 of 3 | Discharge Summary | start, confirmed | Discharge Summary |
-| A | 2 untitled, reads like a note, Page 2 of 3 | Progress Note | strong | **Discharge Summary** (`continuation`) |
-| A | 3 lab table, Page 3 of 3 | Laboratory Data | strong | Laboratory Data (document is not a Progress Note) |
+| A | 1 "DISCHARGE SUMMARY", Page 1 of 3 | Discharge Summary | start, confirmed | Discharge Summary (`agreed`) |
+| A | 2 untitled, reads like a note, Page 2 of 3 | Progress Note | strong | **Discharge Summary / Progress Note** (`agreed_first_page`) |
+| A | 3 lab table, Page 3 of 3 | Laboratory Data | strong | **Discharge Summary / Laboratory Data** (`agreed_first_page`) |
 | B | 1 "OFFICE VISIT", Page 1 of 2 | Progress Note / Office Visit | start, confirmed | Progress Note / Office Visit |
-| B | 2 lab results, Page 2 of 2 | Laboratory Data / Chemistry | strong | **Progress Note / Laboratory Data** (`embedded_in_document`) |
-| C | 1 "DISCHARGE SUMMARY" | Discharge Summary | start, confirmed | Discharge Summary |
-| C | 2 untitled, same banner, no page numbers | Progress Note | weak | Progress Note, **review** (`possible`) |
+| B | 2 lab results, Page 2 of 2 | Laboratory Data / Chemistry | strong | **Progress Note / Laboratory Data**, Non-Codable (`agreed_first_page`) |
+| C | 1 Chief Complaint, 2 lab, 3 med list, signed | Clinical Summary, Laboratory Data, Medication List | strong | **Progress Note** / Clinical Summary (Codable), / Laboratory Data and / Medication List (Non-Codable) (`progress_note`) |
+| D | 1 untitled 0.40, 2–3 lab 0.90 / 0.80 | Clinical Summary, Laboratory Data ×2 | strong, start unconfirmed | **Laboratory Data** / Clinical Summary on page 1, **review** (`agreed_vote`) |
 
 ---
 

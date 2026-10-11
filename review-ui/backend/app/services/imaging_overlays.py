@@ -872,6 +872,11 @@ def index_codeable_rows(
         elif page_type.casefold() == "not available" and tag in {"", "not_sure"}:
             label = "Not Sure"
         fields: dict[str, Any] = {"isCodeable": label}
+        # The page type's confidence from the ladder step (page_arbitration.json),
+        # as the Postgres path reads page_classification.confidence.
+        confidence = _parse_confidence(row.get("confidence"))
+        if confidence is not None:
+            fields["pageTypeConfidence"] = confidence
         if page_type:
             fields["pageType"] = display_page_type(page_type)
         elif label == "Not Sure":

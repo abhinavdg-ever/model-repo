@@ -12,3 +12,8 @@ azure-storage-blob>=12.24.0
 # sqlalchemy>=2.0.36
 psycopg[binary]>=3.2.3
 psycopg-pool>=3.2
+# Optional — accuracy report semantic page-type match (MiniLM via ONNX;
+# model folder core-pipeline/models/semantic-model or SEMANTIC_MODEL_PATH)
+onnxruntime>=1.17
+tokenizers>=0.15
+numpy>=1.26

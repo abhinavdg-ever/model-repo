@@ -7,6 +7,7 @@ documents the screen scores. Nothing is written back.
 
 from __future__ import annotations
 
+import re
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +26,7 @@ from app.core.schemas import (
 from app.services.chart_run_batch import database_url_usable
 from app.services.db import connection
 from app.services.folder_list import FolderListParams, build_folder_list
+from app.services import semantic
 from app.services.ground_truth import spell_codeable
 from app.services.imaging_overlays import display_page_type
 
@@ -166,6 +168,29 @@ def _text(value: object) -> str | None:
     return text or None
 
 
+def _labels(value: str | None) -> list[str]:
+    """A ground-truth cell can name several page types, split by ``;`` or ``|``."""
+    return [part.strip() for part in re.split(r"[;|]", value or "") if part.strip()]
+
+
+def _predicted(composed: str | None) -> list[str]:
+    """``"Progress Note (Office Visit)"`` -> ``["Progress Note", "Office Visit"]``."""
+    text = (composed or "").strip()
+    match = re.fullmatch(r"(.+?)\s*\((.+)\)", text)
+    return [match.group(1).strip(), match.group(2).strip()] if match else ([text] if text else [])
+
+
+def _page_type_semantic(gt_page_type: str | None, encounter_type: str | None,
+                        composed: str | None) -> float | None:
+    """Best semantic similarity between the ground-truth page type (Page Type,
+    else the older Encounter Type cell) and the predicted type / sub-type."""
+    expected = _labels(_text(gt_page_type) or _text(encounter_type))
+    actual = _predicted(_text(composed))
+    if not expected or not actual:
+        return None
+    return semantic.best_similarity(expected, actual)
+
+
 def _page(row: tuple) -> ImagingPageResult:
     (
         _chart, page_number, source_page_id,
@@ -197,6 +222,7 @@ def _page(row: tuple) -> ImagingPageResult:
         blankOrJunk=blank,
         pageType=page_type,
         isCodeable=is_codeable,
+        pageTypeSemantic=_page_type_semantic(gt_page_type, encounter_type, page_subtype),
         groundTruth=PageGroundTruth(
             pageNumber=int(page_number),
             sourcePageId=_text(source_page_id),

@@ -286,7 +286,7 @@ class TestStage:
             # Continue decided -> page type replicated -> DOS carried.
             assert rows[second]["page_type"] == "Discharge Summary"
             assert rows[second]["page_type_source"] == "continuation"
-            assert rows[second]["continuation_rule"] == "continuation"
+            assert rows[second]["continuation_rule"] == "agreed_first_page"
             assert rows[second]["codability"] == "Discharge"
             assert rows[second]["dos_from"] == "2024-03-14"
             assert rows[second]["dos_source"] == "document"
@@ -343,3 +343,35 @@ class TestBreakers:
                        bare(4, skipped=True, breaks=True), page(5)])
         assert [r["label"] for r in rows] == [
             "First (Doc 1)", "Continue (Doc 1)", "Last (Doc 1)", "", "Single (Doc 2)"]
+
+
+class TestProgressNoteEnvelope:
+    """Opens like a progress note, ends signed -> every page in_progress_note."""
+
+    def test_chief_complaint_to_signature_marks_the_whole_document(self):
+        rows = assign([
+            page(1, printed=(1, 3), page_type="Clinical Summary", headers=[("Chief Complaint", 0.2)]),
+            page(2, printed=(2, 3), page_type="Laboratory Data"),
+            page(3, printed=(3, 3), page_type="Medication List", signed=True),
+        ])
+        assert [r["in_progress_note"] for r in rows] == [True, True, True]
+        assert "progress note from Chief Complaint to the signature on page 3" in rows[0]["evidence"]
+
+    def test_a_progress_note_first_page_opens_it(self):
+        rows = assign([page(1, printed=(1, 2), page_type="Progress Note"),
+                       page(2, printed=(2, 2), page_type="Laboratory Data", signed=True)])
+        assert all(r["in_progress_note"] for r in rows)
+
+    def test_no_signature_at_the_end_is_not_a_note(self):
+        rows = assign([page(1, printed=(1, 2), headers=[("HPI", 0.2)]),
+                       page(2, printed=(2, 2), page_type="Laboratory Data")])
+        assert not any(r["in_progress_note"] for r in rows)
+
+    def test_no_opening_is_not_a_note(self):
+        rows = assign([page(1, printed=(1, 2), page_type="Laboratory Data"),
+                       page(2, printed=(2, 2), page_type="Laboratory Data", signed=True)])
+        assert not any(r["in_progress_note"] for r in rows)
+
+    def test_a_single_signed_page_is_left_alone(self):
+        rows = assign([page(1, page_type="Clinical Summary", headers=[("Chief Complaint", 0.2)], signed=True)])
+        assert rows[0]["in_progress_note"] is False

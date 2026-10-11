@@ -2044,7 +2044,7 @@ input {
 .imaging-detail-table.imaging-value-table tbody td:nth-child(2),
 .imaging-detail-table.imaging-value-table thead th:nth-child(3),
 .imaging-detail-table.imaging-value-table tbody td:nth-child(3) {
-  width: 18rem;
+  width: calc(11.88rem * 0.9);
 }
 
 .value-with-note {
