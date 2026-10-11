@@ -195,16 +195,19 @@ class Store:
         }
 
     def counts(self) -> dict[str, int]:
+        """Counts over the images on disk. Rows of image_labels.csv whose file
+        is gone (moved, renamed, deleted) are only counted as missing_files."""
         rows = self.rows
+        present = [r for i, r in enumerate(rows) if self.files.get(i)]
         return {
-            "images": sum(1 for i in range(len(rows)) if self.files.get(i)),
+            "images": len(present),
             "rows": len(rows),
-            "untagged": sum(1 for r in rows if not self.tagged(r)),
-            "in_training": sum(1 for r in rows if r.get(FLAG) == "Yes"),
-            "not_in_training": sum(1 for r in rows if self.tagged(r) and r.get(FLAG) != "Yes"),
-            "completed": sum(1 for r in rows if r.get(DONE) == "Yes"),
-            "to_do": sum(1 for i, r in enumerate(rows) if r.get(DONE) != "Yes" and self.files.get(i)),
-            "missing_files": sum(1 for i in range(len(rows)) if not self.files.get(i)),
+            "untagged": sum(1 for r in present if not self.tagged(r)),
+            "in_training": sum(1 for r in present if r.get(FLAG) == "Yes"),
+            "not_in_training": sum(1 for r in present if self.tagged(r) and r.get(FLAG) != "Yes"),
+            "completed": sum(1 for r in present if r.get(DONE) == "Yes"),
+            "to_do": sum(1 for r in present if r.get(DONE) != "Yes"),
+            "missing_files": len(rows) - len(present),
         }
 
     def image_path(self, index: int) -> Optional[Path]:
@@ -455,7 +458,11 @@ def filter_items(
 ) -> Iterable[int]:
     needle = search.strip().lower()
     for index, row in enumerate(store.rows):
-        if not show_completed and row.get(DONE) == "Yes":
+        # Rows whose image is not in the folder show only in the "missing" view;
+        # they stay in image_labels.csv, so no label is lost.
+        if (view == "missing") != (store.files.get(index) is None):
+            continue
+        if not show_completed and row.get(DONE) == "Yes" and view != "missing":
             continue
         if view == "untagged" and store.tagged(row):
             continue

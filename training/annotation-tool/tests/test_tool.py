@@ -352,3 +352,21 @@ def test_untag_and_undo_take_the_page_back_to_to_do(folder, store_cls):
     assert store.clear(0)["completed"] is False
     store.set_labels(1, "Forms")
     assert store.undo()["completed"] is False
+
+
+def test_rows_without_a_file_are_not_listed_or_counted_as_images(folder, store_cls):
+    """A label row whose image left the folder stays in the CSV but is not one
+    of the images to annotate; the Missing files view shows it."""
+    from app import create_app
+
+    store = store_cls(folder)
+    gone = next(i for i, r in enumerate(store.rows) if r["image"] == "gone.jpg")
+    client = create_app(store).test_client()
+    payload = client.get("/api/items?completed=1").get_json()
+    listed = [i["index"] for i in payload["items"]]
+    assert gone not in listed
+    assert len(listed) == payload["counts"]["images"]
+    assert payload["counts"]["missing_files"] >= 1
+    missing = [i["index"] for i in client.get("/api/items?view=missing").get_json()["items"]]
+    assert gone in missing
+    assert "gone.jpg" in read_labels(folder)[0] or any(r["image"] == "gone.jpg" for r in store.rows)
