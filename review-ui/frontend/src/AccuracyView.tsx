@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { getAccuracyReport } from "./api";
 import {
   METRICS,
@@ -99,6 +99,25 @@ function Donut({
   );
 }
 
+/** Shown while the report loads: the scoring reads every chart with ground truth. */
+function CalculatingPanel() {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return (
+    <div className="accuracy-calculating" role="status" aria-live="polite">
+      <Loader2 className="accuracy-calculating-spin" size={28} aria-hidden="true" />
+      <p className="accuracy-calculating-title">Please wait while we calculate accuracy…</p>
+      <p className="accuracy-calculating-detail">
+        Comparing every page that has ground truth with the pipeline&apos;s results.
+        {seconds >= 3 ? ` ${seconds}s` : ""}
+      </p>
+    </div>
+  );
+}
+
 export default function AccuracyView({ onBack, onOpenChart }: Props) {
   const [rows, setRows] = useState<ChartAccuracy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,7 +184,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
       {error ? <div className="error-banner">{error}</div> : null}
 
       {loading ? (
-        <p className="accuracy-status">Loading accuracy…</p>
+        <CalculatingPanel />
       ) : rows.length === 0 ? (
         <p className="accuracy-status">No pages with ground truth to score yet.</p>
       ) : (
