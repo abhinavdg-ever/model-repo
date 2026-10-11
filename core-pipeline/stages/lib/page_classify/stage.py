@@ -1,33 +1,32 @@
-"""Stage: codeable / non-codeable / discharge → ``page_classification``.
+"""Stage: page classification → ``page_classification`` (the Extracted answer).
 
-* **Main pages** (not blank/junk/duplicate): the page-family model names the
-  family when its top probability is at least 0.50. Otherwise a keyword
-  family whose raw score is above 0.70 is used. Otherwise a family in both
-  top-3 lists is used. Otherwise the page type is Others. Keyword rules name the subtype inside the chosen
-  family. No subtype hit leaves the subtype equal to the family. An entry with
-  ``continue`` opens a span for its family that later pages on the same date
-  inherit. A page whose only date is the DOS default has no date here, so it
-  shares a span with nobody.
-* **Output page type** is ``Family (Page Type)`` — e.g. ``Progress Note (SOAP
-  Note)`` — in the CSV ``page_type`` and ``page_classification.page_subtype``.
-  ``confidence`` is assigned by the step that named the family: the model's
-  probability, the keyword lead, the shared family's model probability, or 0
-  for Others. ``type_confidence`` is the type's probability within the family.
-* **Blank / junk / duplicate**: always ``non_codeable``. ``page_subtype``
-  is the existing junk label (Invoice, Cover Page, …) or Blank / Duplicate.
+Two predictors run on every page that is not blank, junk or duplicate, on its
+own, from the page's text (Final2 → Final1 → Tesseract, plain text):
 
-Also writes ``imaging/<chart>_codeable.csv`` for review-ui Local Mode. With
-PAGE_CLASSIFY_DEBUG on, the evidence behind every page — per-family scores,
-each keyword hit with its role and band, the previous page's family, the OCR
-source — goes to ``<chart>/debug/<chart>_page_classify_evidence.csv``.
+* BERT (``bert.py``) predicts a ``model_type`` with a confidence.
+* The keyword canon (``keywords.py``) predicts a ``page_subtype`` with a score,
+  a margin and whether a title term hit.
+
+``arbitration.classify_page`` decides the page type (the ladder), the sub-type
+and the codability. That per-page result is the **Extracted** answer and is
+what this stage writes. The continuation rules that can change it (an untitled
+page continuing another document; lab or radiology inside a Progress Note)
+need the continuity stage's documents and are applied by ``imaging_final`` as
+the **Final** answer.
+
+Blank / junk / duplicate pages are ``non_codeable`` and keep their junk label
+as the sub-type; a label that is a taxonomy sub-type (Invoice) also gives its
+page type.
+
+Runs before ``dos_extract``, which reads its sub-type to decide default-date
+and non-encounter pages; it reads no DOS itself.
+
+Also writes ``imaging/<chart>_codeable.csv`` for review-ui Local Mode.
 """
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, Optional
-
-from config import PAGE_CLASSIFY_DEBUG, chart_dir
 
 from db import (
     connect,
@@ -37,116 +36,42 @@ from db import (
     upsert_page_classification,
 )
 from db.paths import imaging_csv, write_csv
-from stages._support import (
-    BJ_EXCLUDE,
-    best_page_text,
-    mark_completed,
-    stage_run,
-)
+from stages._support import BJ_EXCLUDE, best_page_text, mark_completed, stage_run
 from stages.lib.canon_store import CANON_DIR, CanonFile
-from stages.lib.page_classify.codeable_classify import classify_pages
-from stages.lib.page_classify.family_model import annotate as annotate_families
-from stages.lib.page_classify.postprocess import apply as apply_postprocess
-from stages.lib.page_classify.postprocess import signed_page_names
+from stages.lib.page_classify import bert, keywords, taxonomy
+from stages.lib.page_classify.arbitration import classify_page
 
 logger = logging.getLogger(__name__)
 
 STAGE = "page_subtype"
 
-# Canon tags → page_classification.classification_category CHECK values.
-# ``not_sure`` is CSV/UI only (no DB row) until a schema value exists.
-_TAG_TO_CATEGORY = {
-    "codeable": "codeable",
-    "non_codeable": "non_codeable",
-    "discharge_frequency": "discharge_summary",
-    "discharge_summary": "discharge_summary",
-}
+_DISPLAY = {"codeable": "Codeable", "non_codeable": "Non-Codeable", "discharge_summary": "Discharge"}
 
 CODEABLE_COLS = [
     "chart_name",
     "page_name",
     "page_number",
     "page_type",
-    "type_confidence",
+    "page_subtype",
+    "model_type",
+    "codability",
     "tag",
     "is_codeable",
-    "confidence",
-    "continue",
-    "continue_applied",
-    "continues_previous",
-    "continue_reason",
-    "matched_keyword",
-    "family_source",
-    "dos_from",
-    "dos_to",
+    "decided_by",
+    "needs_review",
+    "bert_model_type",
+    "bert_confidence",
+    "keyword_page_subtype",
+    "keyword_score",
+    "keyword_margin",
+    "keyword_title_hit",
     "ocr_source",
-]
-
-
-EVIDENCE_COLS = [
-    "chart_name",
-    "page_name",
-    "page_number",
-    "page_position",
-    "page_type",
-    "entry_id",
-    "family",
-    "family_source",
-    "tag",
-    "confidence",
-    "type_confidence",
-    "type_scores",
-    "continue_applied",
-    "previous_family",
-    "filled_between",
-    "ocr_source",
-    "family_scores",
-    "hits",
 ]
 
 _DOS_PROFILE: CanonFile[dict[str, Any]] = CanonFile(CANON_DIR / "dos_canon.json")
 
 
-def _page_dos(dos: dict[str, Any]) -> tuple[str, str]:
-    """The page's date for span keys: page level, else document level.
-
-    The DOS default is not a date. Every page where extraction failed carries
-    it, so treating it as one would let a single Progress Note span the lot.
-    """
-    dos_from = dos.get("date_of_service_from") or dos.get("date_of_service_from_doclevel")
-    dos_to = dos.get("date_of_service_to") or dos.get("date_of_service_to_doclevel")
-    default = str(_DOS_PROFILE.get().get("DOS_DEFAULT_DATE") or "")
-    if not dos.get("date_of_service_from") and str(dos_from or "") == default:
-        return "", ""
-    return str(dos_from or ""), str(dos_to or "")
-
-
-def _output_page_type(row: dict[str, Any]) -> str:
-    """``Family (Page Type)``; just the name when the two are the same.
-
-    "Not Available" when nothing matched.
-    """
-    family = row.get("family_display") or ""
-    page_type = row.get("page_type") or ""
-    if not family:
-        return page_type
-    if not page_type or page_type.casefold() == family.casefold():
-        return family
-    return f"{family} ({page_type})"
-
-
-def _dos_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
-    from db import get_dos_map
-
-    return get_dos_map(conn, chart_id)
-
-
-def _ocr_source_label(
-    *,
-    final2: Optional[str],
-    final1: Optional[str],
-    prelim: Optional[str],
-) -> str:
+def _ocr_source_label(*, final2: Optional[str], final1: Optional[str], prelim: Optional[str]) -> str:
     if final2 and str(final2).strip():
         return "final2"
     if final1 and str(final1).strip():
@@ -156,247 +81,116 @@ def _ocr_source_label(
     return ""
 
 
-def _bj_page_subtype(flag: str, junk_subtype: Optional[str]) -> str:
-    """Reuse blank_junk labels as page_classification.page_subtype."""
+def _bj_label(flag: str, junk_subtype: Optional[str]) -> str:
     if flag == "blank":
         return "Blank"
     if flag == "duplicate":
         return "Duplicate"
-    if flag == "junk":
-        return (junk_subtype or "Others").strip() or "Others"
-    return "Main"
+    return (junk_subtype or "Others").strip() or "Others"
+
+
+def _blank_junk_row(flag: str, junk_subtype: Optional[str], confidence: Any) -> dict[str, Any]:
+    label = _bj_label(flag, junk_subtype)
+    names = taxonomy.load()
+    page_type = names.page_type_of_subtype(label)
+    return {
+        "page_type": page_type,
+        "page_subtype": label,
+        "model_type": names.model_type(page_type, label) if page_type else None,
+        "classification_category": "non_codeable",
+        "confidence": float(confidence) if confidence is not None else None,
+        "duplicate_flag": flag == "duplicate",
+        "decided_by": "blank_junk",
+        "needs_review": False,
+    }
+
+
+def _page_row(result: Any) -> dict[str, Any]:
+    names = taxonomy.load()
+    return {
+        "page_type": result.page_type,
+        "page_subtype": result.page_subtype,
+        "model_type": result.model_type,
+        # No page type means no prediction: not_sure has no CHECK value, so
+        # the row is written as non_codeable and needs_review says why.
+        "classification_category": names.category(result.page_type) or "non_codeable",
+        "confidence": result.bert_confidence,
+        "duplicate_flag": False,
+        "decided_by": result.decided_by,
+        "needs_review": result.needs_review,
+        "bert_model_type": result.bert_model_type,
+        "bert_confidence": result.bert_confidence,
+        "keyword_page_subtype": result.keyword_page_subtype,
+        "keyword_score": result.keyword_score,
+        "keyword_margin": result.keyword_margin,
+        "keyword_title_hit": result.keyword_title_hit,
+    }
 
 
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
     with stage_run(chart_id, STAGE, force=force) as ctx:
         with connect() as conn:
             bj_rows = get_blank_junk_final(conn, chart_id)
-            todo = set(ctx.todo)
-
             prelim = get_ocr_texts(conn, chart_id, "tesseract")
             final1 = get_ocr_texts(conn, chart_id, "docling")
             final2 = get_ocr_texts(conn, chart_id, "azuredocintel")
             quality = get_quality_map(conn, chart_id)
-            dos_by_page = _dos_map(conn, chart_id)
 
-        # TF-classify main pages only; blank/junk/duplicate → non_codeable below.
-        page_inputs: list[dict[str, Any]] = []
-        sources: dict[int, str] = {}
-        texts: dict[int, str] = {}
-        for page in ctx.pages:
-            page_id = page["id"]
-            flag = (bj_rows.get(page_id) or {}).get(
-                "blank_junk_flag", "not_blank_junk"
-            )
-            f2 = final2.get(page_id)
-            f1 = final1.get(page_id)
-            pr = prelim.get(page_id)
-            text = best_page_text(
-                final2=f2,
-                final1=f1,
-                prelim=pr,
-                quality_row=quality.get(page_id),
-            )
-            texts[page_id] = text
-            if flag in BJ_EXCLUDE:
-                continue
-            dos_from, dos_to = _page_dos(dos_by_page.get(page_id) or {})
-            sources[page_id] = _ocr_source_label(final2=f2, final1=f1, prelim=pr)
-            page_inputs.append(
-                {
-                    "page_id": page_id,
-                    "page_name": page["page_name"],
-                    "page_number": page.get("page_number"),
-                    "text": text,
-                    "dos_from": dos_from,
-                    "dos_to": dos_to,
-                }
-            )
-
-        family_source = annotate_families(page_inputs)
-        classified = classify_pages(page_inputs)
-        apply_postprocess(
-            classified, signed_names=signed_page_names(ctx.chart_name)
-        )
-        by_id = {row["page_id"]: row for row in classified}
-        from stages.lib.continuation import tag_pages
-
-        continuation = tag_pages(
-            [
-                {
-                    "page_id": page["id"],
-                    "text": texts.get(page["id"], ""),
-                    "family": (by_id.get(page["id"]) or {}).get("family") or "",
-                }
-                for page in ctx.pages
-            ]
-        )
-        continuation_by_id = {
-            page["id"]: tag for page, tag in zip(ctx.pages, continuation)
-        }
-
+        trained = bert.trained_classes()
+        counts = {"main": 0, "blank_junk": 0, "review": 0, "no_bert": 0}
         csv_rows: list[dict[str, Any]] = []
-        main_tagged = 0
-        bj_tagged = 0
-        carried = 0
-
         with connect() as conn:
             for page in ctx.pages:
                 page_id = page["id"]
                 bj = bj_rows.get(page_id) or {}
                 flag = bj.get("blank_junk_flag") or "not_blank_junk"
-                dos = dos_by_page.get(page_id) or {}
-                dos_from = str(
-                    dos.get("date_of_service_from")
-                    or dos.get("date_of_service_from_doclevel")
-                    or ""
-                )
-                dos_to = str(
-                    dos.get("date_of_service_to")
-                    or dos.get("date_of_service_to_doclevel")
-                    or ""
-                )
-
+                f2, f1, pr = final2.get(page_id), final1.get(page_id), prelim.get(page_id)
                 if flag in BJ_EXCLUDE:
-                    subtype = _bj_page_subtype(flag, bj.get("junk_subtype"))
-                    conf = bj.get("confidence")
-                    conf_f = float(conf) if conf is not None else None
-                    upsert_page_classification(
-                        conn,
-                        chart_id=chart_id,
-                        page_id=page_id,
-                        page_subtype=subtype,
-                        classification_category="non_codeable",
-                        confidence=conf_f,
-                        duplicate_flag=(flag == "duplicate"),
-                    )
-                    bj_tagged += 1
-                    if page_id in todo:
-                        mark_completed(conn, ctx, page_id)
-                    csv_rows.append(
-                        {
-                            "chart_name": ctx.chart_name,
-                            "page_name": page["page_name"],
-                            "page_number": page.get("page_number"),
-                            "page_type": subtype,
-                            "type_confidence": "",
-                            "tag": "non_codeable",
-                            "is_codeable": "Non Codeable",
-                            "confidence": conf if conf is not None else "",
-                            "continue": "n",
-                            "continue_applied": "n",
-                            "continues_previous": (continuation_by_id.get(page_id) or {}).get(
-                                "continues_previous", "n"
-                            ),
-                            "continue_reason": (continuation_by_id.get(page_id) or {}).get(
-                                "continue_reason", ""
-                            ),
-                            "matched_keyword": "",
-                            "family_source": "",
-                            "dos_from": dos_from,
-                            "dos_to": dos_to,
-                            "ocr_source": "",
-                        }
-                    )
-                    continue
+                    row = _blank_junk_row(flag, bj.get("junk_subtype"), bj.get("confidence"))
+                    counts["blank_junk"] += 1
+                    source = ""
+                else:
+                    text = best_page_text(final2=f2, final1=f1, prelim=pr, quality_row=quality.get(page_id))
+                    prediction = bert.predict(text)
+                    result = classify_page(prediction, keywords.classify(text), trained)
+                    row = _page_row(result)
+                    counts["main"] += 1
+                    counts["review"] += int(result.needs_review)
+                    counts["no_bert"] += int(prediction is None)
+                    source = _ocr_source_label(final2=f2, final1=f1, prelim=pr)
 
-                row = by_id.get(page_id) or {}
-                page_type = _output_page_type(row)
-                tag = (row.get("tag") or "").strip()
-                category = _TAG_TO_CATEGORY.get(tag)
-                if page_type == "Others":
-                    category = "non_codeable"
-                conf = row.get("confidence")
-                conf_f = float(conf) if conf not in ("", None) else None
-                if category:
-                    upsert_page_classification(
-                        conn,
-                        chart_id=chart_id,
-                        page_id=page_id,
-                        page_subtype=page_type or None,
-                        classification_category=category,
-                        confidence=conf_f,
-                        duplicate_flag=False,
-                    )
-                    main_tagged += 1
-                if page_id in todo:
+                upsert_page_classification(conn, chart_id=chart_id, page_id=page_id, **row)
+                if page_id in ctx.todo:
                     mark_completed(conn, ctx, page_id)
-                if row.get("continue_applied") == "y":
-                    carried += 1
+
+                category = row["classification_category"]
                 csv_rows.append(
                     {
                         "chart_name": ctx.chart_name,
                         "page_name": page["page_name"],
                         "page_number": page.get("page_number"),
-                        "page_type": page_type,
-                        "type_confidence": row.get("type_confidence", ""),
-                        "tag": tag,
-                        "is_codeable": row.get("is_codeable") or "",
-                        "confidence": row.get("confidence") or "",
-                        "continue": row.get("continue") or "n",
-                        "continue_applied": row.get("continue_applied") or "n",
-                        "continues_previous": (continuation_by_id.get(page_id) or {}).get(
-                            "continues_previous", "n"
-                        ),
-                        "continue_reason": (continuation_by_id.get(page_id) or {}).get(
-                            "continue_reason", ""
-                        ),
-                        "matched_keyword": row.get("matched_keyword") or "",
-                        "family_source": row.get("family_source") or "",
-                        "dos_from": row.get("dos_from") or dos_from,
-                        "dos_to": row.get("dos_to") or dos_to,
-                        "ocr_source": sources.get(page_id, ""),
+                        **{k: ("" if v is None else v) for k, v in row.items()
+                           if k in CODEABLE_COLS},
+                        "codability": taxonomy.load().codability(row["page_type"]) or "",
+                        "tag": category,
+                        "is_codeable": _DISPLAY.get(category, ""),
+                        "needs_review": "y" if row["needs_review"] else "n",
+                        "keyword_title_hit": "y" if row.get("keyword_title_hit") else "n",
+                        "ocr_source": source,
                     }
                 )
 
-        # Stable CSV order by page number / name.
-        csv_rows.sort(
-            key=lambda r: (
-                r["page_number"] is None,
-                r["page_number"] or 0,
-                str(r["page_name"]),
-            )
-        )
-        path = write_csv(
-            imaging_csv(ctx.chart_name, "codeable"), CODEABLE_COLS, csv_rows
-        )
-        if PAGE_CLASSIFY_DEBUG:
-            total = max(1, len(ctx.pages))
-            position = {p["id"]: i for i, p in enumerate(ctx.pages, start=1)}
-            write_csv(
-                chart_dir(ctx.chart_name) / "debug"
-                / f"{ctx.chart_name}_page_classify_evidence.csv",
-                EVIDENCE_COLS,
-                (
-                    {
-                        **row,
-                        "chart_name": ctx.chart_name,
-                        "page_position": round(position[row["page_id"]] / total, 4),
-                        "ocr_source": sources.get(row["page_id"], ""),
-                        "family_scores": json.dumps(row["family_scores"]),
-                        "type_scores": json.dumps(row["type_scores"]),
-                        "hits": json.dumps(row["hits"]),
-                    }
-                    for row in classified
-                ),
-            )
+        path = write_csv(imaging_csv(ctx.chart_name, "codeable"), CODEABLE_COLS, csv_rows)
         logger.info(
-            "page_subtype chart=%s pages=%d main=%d blank_junk=%d continue=%d family=%s → %s",
-            ctx.chart_name,
-            len(csv_rows),
-            main_tagged,
-            bj_tagged,
-            carried,
-            family_source,
-            path,
+            "page_subtype chart=%s main=%d blank_junk=%d review=%d keywords_only=%d → %s",
+            ctx.chart_name, counts["main"], counts["blank_junk"], counts["review"],
+            counts["no_bert"], path,
         )
         return {
             "chart_id": chart_id,
             "codeable_csv": str(path),
             "pages_done": ctx.done,
             "skipped": ctx.skipped,
-            "tagged": main_tagged + bj_tagged,
-            "main_tagged": main_tagged,
-            "blank_junk_tagged": bj_tagged,
-            "continue_applied": carried,
+            **counts,
+            "bert": bert.status().get("ready", False),
         }

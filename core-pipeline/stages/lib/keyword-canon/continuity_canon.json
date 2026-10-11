@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "note": "Decides, page by page, whether a page continues the previous page's document. Tiered, not a flat vote: tier 1 is printed pagination and decides on its own; tier 2 is repeated page furniture (patient banner, footer template) and document identity tokens; tier 3 is structure (a title opens a document, a signature closes one). Sentence-level continuity is deliberately absent: on the labelled corpus 'previous page ends without punctuation' scored 28% on continuations vs 29% on new documents. Header and footer bands come from line positions in the Final2 (then Final1) OCR JSON; a page without them falls back to its first and last lines of text. Weights were re-tuned on 80 pagination-labelled page pairs from four charts (55 continuations, 25 new documents), counting a wrong merge three times worse than a wrong split, because a merged page takes the first page's page type and DOS. Reloads on change.",
+
+  "pagination": {
+    "comment": "Tier 1. Requires the word 'page' (or 'pg') so a date like 26/24 is not page 26 of 24. Searched only in the header and footer bands. max_total is page_arbitration.json's max_document_pages: a counter whose total is above it numbers a whole export or fax (60306165: 'of 40' across several documents), not one document, and is ignored.",
+    "patterns": [
+      "page\\s*[:#]?\\s*(\\d{1,3})\\s*(?:of|/)\\s*(\\d{1,3})",
+      "\\bpg\\s*[:#]?\\s*(\\d{1,3})\\s*(?:of|/)\\s*(\\d{1,3})"
+    ],
+    "bare_pattern": "(?<![\\w/.])(\\d{1,3})\\s+of\\s+(\\d{1,3})(?![\\w/.])",
+    "max_total": 20
+  },
+
+  "bands": {
+    "comment": "Where the header and footer are. With line positions: a line whose top is above head_top is header, one whose bottom is below foot_bottom is footer (fractions of page height). Without: the first head_lines and last foot_lines lines of text, and a quarter of the lines each way for pagination.",
+    "head_top": 0.10,
+    "foot_bottom": 0.92,
+    "head_lines": 4,
+    "foot_lines": 3,
+    "text_band_fraction": 0.25
+  },
+
+  "fingerprint": {
+    "comment": "Tier 2. A line repeating verbatim in the header of consecutive pages fired on 75% of continuations but also on 28% of new documents (separate documents from one EMR share the patient banner), so on its own it does not reach continue_at.",
+    "min_line_chars": 12,
+    "similarity_threshold": 0.5,
+    "weights": {
+      "repeated_head_line": 5.0,
+      "repeated_foot_line": 2.0,
+      "head_looks_the_same": 2.0,
+      "foot_looks_the_same": 2.0
+    }
+  },
+
+  "identity": {
+    "comment": "Tier 2. A shared accession or order number is near-proof. A shared MRN only says same patient, which inside one chart is almost always true. None fired on the four tuning charts, so these are the original weights.",
+    "patterns": {
+      "accession": "accession\\s*#?\\s*[:\\s]\\s*([a-z0-9][a-z0-9\\-]{5,})",
+      "order_number": "order\\s*(?:#|no\\.?|number)\\s*[:\\s]\\s*([a-z0-9][a-z0-9\\-]{4,})",
+      "visit_number": "(?:visit|encounter|account)\\s*(?:#|no\\.?|number|id)\\s*[:\\s]\\s*([a-z0-9][a-z0-9\\-]{4,})",
+      "mrn": "\\bmrn\\s*[:#]?\\s*([a-z0-9]{4,})"
+    },
+    "weights": { "accession": 6.0, "order_number": 5.0, "visit_number": 5.0, "mrn": 1.0 }
+  },
+
+  "structure": {
+    "comment": "Tier 3. A matched section header near the top of the page is a title. A signature on the previous page closes it. These vote rather than decide: a page can carry a title mid-document, or a signature that is not the document's own.",
+    "title_top": 0.15,
+    "continued_pattern": "\\b(continued|cont['’]?d)\\b",
+    "weights": {
+      "current_has_title": -6.0,
+      "previous_had_signature": -3.0,
+      "current_has_continued_marker": 6.0
+    }
+  },
+
+  "decision": {
+    "comment": "Applied when pagination is silent. At or above continue_at the page continues; at or below new_document_at it starts a new document. In between is unknown: the page starts its own document and is flagged for review, so nothing is copied onto it on no evidence.",
+    "continue_at": 5.0,
+    "new_document_at": -2.0
+  },
+
+  "open_until_signature": {
+    "comment": "A document whose first page is one of these page types stays open through pages the signals cannot decide. It closes after the page carrying a signature, before a page the signals or pagination call a new document, and before the next encounter: a page whose own date of service differs from the note's AND that carries one of encounter_headers (a section header from section_header_canon.json). The next encounter closes the note even when printed pagination continues, because an EMR printout paginates several visits as one job (53688890: 'page 1 of 17' across five office visits). A differing date alone does not close it: continuation pages carry stray old dates (a 2017 problem-list date inside a 2025 note) whose only label is 'Date'. Page type names from page_taxonomy.json.",
+    "page_types": ["Progress Note"],
+    "encounter_headers": [
+      "Office Visit", "Office visits", "Initial office note", "Progress Note", "Progress notes",
+      "History and Physical", "Admission Note", "Consultation", "Consultation Note", "Consult Note",
+      "Travel Medicine Consultation", "Reason for Visit", "Annual Wellness Visit", "Encounter visit",
+      "Patient Encounter", "Encounter Form", "Emergency visit records", "Follow-up Visits",
+      "followup Visits", "Hypertension Follow-up Note", "Postoperative Follow-up Note",
+      "Home Health Visit Note", "Housecalls Visit Summary", "Skilled Nursing Visit Note",
+      "Status visit", "Telephone Encounter", "Telephone Visit", "Visit summary",
+      "Chief Complaint", "CC"
+    ]
+  }
+}

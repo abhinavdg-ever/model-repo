@@ -396,6 +396,7 @@ class TestDosStageWritesEachPageOnce:
         monkeypatch.setattr(dos_stage, "connect", lambda: nullcontext(None))
         monkeypatch.setattr(dos_stage, "get_blank_junk_flags", lambda *a, **k: {})
         monkeypatch.setattr(dos_stage, "get_chart", lambda *a, **k: None)
+        monkeypatch.setattr(dos_stage, "get_page_classification_map", lambda *a, **k: {})
         monkeypatch.setattr(dos_stage, "mark_skipped", lambda *a, **k: None)
         monkeypatch.setattr(dos_stage, "_combined_text", lambda *a, **k: "")
         monkeypatch.setattr(
@@ -676,35 +677,32 @@ class TestDosResolve:
         text = "".join(f"===== {i}.jpg =====\n{body}\n" for i, body in enumerate(pages, 1))
         return detect_dos_per_page(text, None, use_llm=False, received_date=RECEIVED, **kwargs)
 
-    def test_progress_note_span_beats_a_weak_date(self, monkeypatch):
+    def test_every_page_keeps_its_own_date(self, monkeypatch):
+        """No progress-note span: an undated page after a note stays undated,
+        and final_dos is the page's own date. The continuity stage carries the
+        note's date across its pages as the Final DOS."""
         import dos_logic
 
         types = {"Progress Note\nDate of Service: 03/14/2024": "Progress Note"}
         monkeypatch.setattr(dos_logic, "_page_type_name", lambda t, _n: types.get(t.strip(), ""))
         hits = self._run([
             "Progress Note\nDate of Service: 03/14/2024",
-            "Chief Complaint: labs 03/12/2024 reviewed.",
-            "Date of Service: 04/02/2024",
             "Vitals stable. No date on this page.",
+            "Date of Service: 04/02/2024",
         ])
-        # The page keeps only the date it has. The final date is the progress
-        # note that opened the span.
+        assert hits[0]["final_dos"] == "2024-03-14"
         assert hits[1]["dos_from_iso"] == ""
-        assert hits[1]["doc_dos_from_iso"] == "2024-03-14"
-        assert hits[1]["match_type"] == "span"
-        assert hits[1]["final_dos"] == "2024-03-14"
-        assert hits[2]["dos_from_iso"] == "2024-04-02"  # above the span override, this page keeps its own
+        assert hits[1]["final_dos"] == ""
+        assert hits[1]["match_type"] == "no_date_found"
         assert hits[2]["final_dos"] == "2024-04-02"
-        assert hits[3]["dos_from_iso"] == ""
-        assert hits[3]["doc_dos_from_iso"] == "2024-03-14"
-        assert hits[3]["final_dos"] == "2024-03-14"
+        assert all(h["match_type"] not in ("span", "span_start") for h in hits)
 
     def test_demographics_and_injection_pages_keep_the_default(self, monkeypatch):
         import dos_logic
 
         def page_type(text, _n):
             if "Demographics" in text:
-                return "Demographics"
+                return "Patient Demographics"
             if "Injection" in text:
                 return "Injection Visit"
             return ""
@@ -722,6 +720,26 @@ class TestDosResolve:
         assert hits[1]["match_type"] == "default_page"
         assert hits[2]["doc_dos_from_iso"] == default
         assert hits[2]["is_default"] is True
+
+    def test_the_page_type_stage_sub_type_beats_the_keyword_guess(self, monkeypatch):
+        """Page type runs before DOS; its Extracted sub-type decides a
+        default-date page even when the keyword model would not."""
+        import dos_logic
+
+        monkeypatch.setattr(dos_logic, "_page_type_name", lambda t, _n: "")
+        hits = self._run(
+            ["Date of Service: 03/14/2024", "Date of Service: 05/01/2024"],
+            page_types={"2.jpg": "Patient Demographics"},
+        )
+        assert hits[0]["dos_from_iso"] == "2024-03-14"
+        assert hits[1]["match_type"] == "default_page"
+        assert hits[1]["dos_from"] == ""
+
+    def test_a_text_date_below_dos_min_score_is_not_used(self):
+        """The regex sweep is the backup to the key/value date, at 0.75."""
+        import dos_logic
+
+        assert dos_logic.profile().min_score == 0.75
 
     def test_non_encounter_page_never_replaces_an_encounter(self, monkeypatch):
         import dos_logic

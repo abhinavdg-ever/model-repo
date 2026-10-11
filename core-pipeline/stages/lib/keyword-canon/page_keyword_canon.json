@@ -1,0 +1,4048 @@
+{
+  "version": "1.0",
+  "status": "Starting list written from general knowledge of clinical documents. Not yet tuned on real pages - run the term report and prune.",
+  "how_to_match": [
+    "Match case-insensitively on whole words or whole phrases, never on substrings of a longer word.",
+    "Longest match wins: when one term is contained in a longer term that also matched at the same place, count only the longer one.",
+    "title_terms are names a document prints as its title or main heading. They count more when found in the title zone (the first lines of the page).",
+    "A single-word title term counts as a title hit only when it is a heading on its own line, not when it appears inside a sentence.",
+    "body_terms are supporting words found in the body of that kind of page.",
+    "ambiguous_terms are short abbreviations, generic words, or terms shared by more than one page type. They add to a score only when another term of the same sub-type has already matched; they never decide a page alone.",
+    "Score each sub-type, take the best sub-type per page type as that page type's score, and report the top page type, its best sub-type, the score, the margin over the second page type, and whether a title term hit in the title zone."
+  ],
+  "weights": {
+    "title_term_in_title_zone": 3,
+    "title_term_elsewhere": 2,
+    "body_term": 1,
+    "ambiguous_term": 0.5
+  },
+  "title_zone_lines": 12,
+  "sub_types": [
+    {
+      "page_type": "Progress Note",
+      "page_subtype": "Progress Note",
+      "model_type": "Progress Note",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Progress Note",
+        "History & Physical"
+      ],
+      "body_terms": [
+        "Subjective",
+        "Objective",
+        "Consultation",
+        "reason for consult",
+        "established patient"
+      ],
+      "ambiguous_terms": [
+        "SOAP",
+        "Assessment",
+        "Plan",
+        "Chief Complaint",
+        "HPI",
+        "H&P",
+        "encounter",
+        "follow-up",
+        "interval history"
+      ]
+    },
+    {
+      "page_type": "Progress Note",
+      "page_subtype": "Summary",
+      "model_type": "Summary",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Summary",
+        "encounter summary",
+        "summary of visit"
+      ],
+      "body_terms": [],
+      "ambiguous_terms": [
+        "summary of care"
+      ]
+    },
+    {
+      "page_type": "Progress Note",
+      "page_subtype": "Visit Diagnosis",
+      "model_type": "Visit Diagnosis",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Visit Diagnosis",
+        "Visit Diagnoses",
+        "encounter diagnoses",
+        "diagnoses this visit",
+        "diagnosis associated with visit"
+      ],
+      "body_terms": [
+        "ICD-10"
+      ],
+      "ambiguous_terms": [
+        "primary diagnosis"
+      ]
+    },
+    {
+      "page_type": "Progress Note",
+      "page_subtype": "Physician Note",
+      "model_type": "Physician Note",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Physician Note"
+      ],
+      "body_terms": [
+        "electronically signed by"
+      ],
+      "ambiguous_terms": [
+        "MD",
+        "DO",
+        "attending",
+        "assessment",
+        "plan"
+      ]
+    },
+    {
+      "page_type": "Progress Note",
+      "page_subtype": "Problem List",
+      "model_type": "Problem List",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Problem List"
+      ],
+      "body_terms": [
+        "active problems",
+        "resolved problems",
+        "onset date",
+        "noted date",
+        "ICD-10"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Progress Note",
+      "page_subtype": "Plan of Care",
+      "model_type": "Plan of Care",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Plan of Care"
+      ],
+      "body_terms": [
+        "CMS-485",
+        "frequency/duration",
+        "certification period"
+      ],
+      "ambiguous_terms": [
+        "POC",
+        "goals",
+        "interventions"
+      ]
+    },
+    {
+      "page_type": "Progress Note",
+      "page_subtype": "Signature page",
+      "model_type": "Signature page",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Signature page"
+      ],
+      "body_terms": [
+        "signed by",
+        "electronically signed",
+        "date/time signed"
+      ],
+      "ambiguous_terms": [
+        "Signature",
+        "witness"
+      ]
+    },
+    {
+      "page_type": "Progress Note",
+      "page_subtype": "Office Visit",
+      "model_type": "Office Visit",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Office Visit",
+        "return visit",
+        "initial visit"
+      ],
+      "body_terms": [
+        "f/u"
+      ],
+      "ambiguous_terms": [
+        "OV",
+        "follow-up",
+        "RTC",
+        "new patient"
+      ]
+    },
+    {
+      "page_type": "Progress Note",
+      "page_subtype": "F2F Evaluation Note",
+      "model_type": "F2F Evaluation Note",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "F2F Evaluation Note",
+        "F2F encounter"
+      ],
+      "body_terms": [
+        "Face-to-face",
+        "home health certification",
+        "clinical findings support"
+      ],
+      "ambiguous_terms": [
+        "DME"
+      ]
+    },
+    {
+      "page_type": "Progress Note",
+      "page_subtype": "Social History",
+      "model_type": "Social History",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Social History"
+      ],
+      "body_terms": [
+        "social work",
+        "psychosocial",
+        "living situation",
+        "tobacco",
+        "alcohol",
+        "caregiver",
+        "support system"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Laboratory Data",
+      "page_subtype": "Laboratory Data",
+      "model_type": "Laboratory Data",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Laboratory Data",
+        "lab results",
+        "lab flow sheet",
+        "lab requisition"
+      ],
+      "body_terms": [
+        "reference range",
+        "abnormal flag",
+        "collected",
+        "resulted",
+        "prothrombin time"
+      ],
+      "ambiguous_terms": [
+        "result",
+        "units",
+        "INR"
+      ]
+    },
+    {
+      "page_type": "Laboratory Data",
+      "page_subtype": "Chemistry",
+      "model_type": "Laboratory Data",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Chemistry"
+      ],
+      "body_terms": [
+        "sodium",
+        "potassium",
+        "AST/ALT",
+        "reference range",
+        "H/L flags",
+        "collected",
+        "resulted"
+      ],
+      "ambiguous_terms": [
+        "BMP",
+        "CMP",
+        "creatinine",
+        "BUN"
+      ]
+    },
+    {
+      "page_type": "Laboratory Data",
+      "page_subtype": "Hematology",
+      "model_type": "Laboratory Data",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Hematology"
+      ],
+      "body_terms": [
+        "hemoglobin",
+        "hematocrit",
+        "platelets",
+        "differential",
+        "reference range"
+      ],
+      "ambiguous_terms": [
+        "CBC",
+        "WBC",
+        "MCV"
+      ]
+    },
+    {
+      "page_type": "Laboratory Data",
+      "page_subtype": "Microbiology",
+      "model_type": "Laboratory Data",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Microbiology"
+      ],
+      "body_terms": [
+        "culture",
+        "sensitivity",
+        "susceptibility",
+        "organism",
+        "gram stain",
+        "colony count",
+        "urine/blood/wound culture"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Laboratory Data",
+      "page_subtype": "Urinalysis",
+      "model_type": "Laboratory Data",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Urinalysis"
+      ],
+      "body_terms": [
+        "urine dipstick",
+        "specific gravity",
+        "leukocyte esterase",
+        "nitrite",
+        "protein"
+      ],
+      "ambiguous_terms": [
+        "UA",
+        "microscopic"
+      ]
+    },
+    {
+      "page_type": "Laboratory Data",
+      "page_subtype": "Glucose report",
+      "model_type": "Laboratory Data",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Glucose report",
+        "glucose log"
+      ],
+      "body_terms": [
+        "Blood glucose",
+        "fingerstick",
+        "glucometer",
+        "Dexcom",
+        "Libre",
+        "time in range"
+      ],
+      "ambiguous_terms": [
+        "FSBS",
+        "CGM"
+      ]
+    },
+    {
+      "page_type": "Laboratory Data",
+      "page_subtype": "Allergy testing report",
+      "model_type": "Laboratory Data",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Allergy testing report"
+      ],
+      "body_terms": [
+        "Allergy testing",
+        "skin prick",
+        "intradermal",
+        "wheal/flare",
+        "allergen panel",
+        "histamine control"
+      ],
+      "ambiguous_terms": [
+        "IgE",
+        "RAST"
+      ]
+    },
+    {
+      "page_type": "Laboratory Data",
+      "page_subtype": "Genetic Test Report",
+      "model_type": "Laboratory Data",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Genetic Test Report",
+        "Genetic test"
+      ],
+      "body_terms": [
+        "variant",
+        "pathogenic",
+        "heterozygous",
+        "pharmacogenomic",
+        "Myriad",
+        "Invitae"
+      ],
+      "ambiguous_terms": [
+        "mutation",
+        "BRCA"
+      ]
+    },
+    {
+      "page_type": "Laboratory Data",
+      "page_subtype": "FISH Report",
+      "model_type": "Laboratory Data",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "FISH Report"
+      ],
+      "body_terms": [
+        "fluorescence in situ hybridization",
+        "probe",
+        "HER2",
+        "BCR-ABL",
+        "translocation",
+        "amplification",
+        "nuclei scored"
+      ],
+      "ambiguous_terms": [
+        "FISH"
+      ]
+    },
+    {
+      "page_type": "Radiology Report",
+      "page_subtype": "Radiology Report",
+      "model_type": "Radiology Report",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Radiology Report",
+        "imaging report"
+      ],
+      "body_terms": [
+        "Radiology",
+        "exam",
+        "comparison",
+        "radiologist",
+        "mammogram",
+        "BI-RADS"
+      ],
+      "ambiguous_terms": [
+        "technique",
+        "findings",
+        "impression"
+      ]
+    },
+    {
+      "page_type": "Radiology Report",
+      "page_subtype": "Bone Density (DEXA) Report",
+      "model_type": "Radiology Report",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Bone Density  Report"
+      ],
+      "body_terms": [
+        "bone mineral density",
+        "T-score",
+        "Z-score",
+        "osteopenia",
+        "osteoporosis",
+        "femoral neck",
+        "lumbar spine"
+      ],
+      "ambiguous_terms": [
+        "DEXA",
+        "DXA",
+        "BMD",
+        "FRAX"
+      ]
+    },
+    {
+      "page_type": "Radiology Report",
+      "page_subtype": "X Ray Report",
+      "model_type": "Radiology Report",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "X Ray Report"
+      ],
+      "body_terms": [
+        "X-ray",
+        "radiograph",
+        "chest X-ray",
+        "views",
+        "AP / lateral",
+        "PA and lateral",
+        "fracture",
+        "infiltrate"
+      ],
+      "ambiguous_terms": [
+        "CXR"
+      ]
+    },
+    {
+      "page_type": "Radiology Report",
+      "page_subtype": "CT Scan Report",
+      "model_type": "Radiology Report",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "CT Scan Report"
+      ],
+      "body_terms": [
+        "CAT scan",
+        "computed tomography",
+        "axial images",
+        "Hounsfield"
+      ],
+      "ambiguous_terms": [
+        "CT",
+        "contrast",
+        "impression"
+      ]
+    },
+    {
+      "page_type": "Radiology Report",
+      "page_subtype": "Ultrasound Report",
+      "model_type": "Radiology Report",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Ultrasound Report"
+      ],
+      "body_terms": [
+        "Ultrasound",
+        "sonographic",
+        "echogenicity",
+        "abdomen/pelvis/thyroid/renal"
+      ],
+      "ambiguous_terms": [
+        "US",
+        "Doppler",
+        "impression"
+      ]
+    },
+    {
+      "page_type": "Radiology Report",
+      "page_subtype": "Tomography",
+      "model_type": "Radiology Report",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Tomography"
+      ],
+      "body_terms": [
+        "computed tomography",
+        "slices",
+        "axial"
+      ],
+      "ambiguous_terms": [
+        "CT",
+        "contrast",
+        "impression"
+      ]
+    },
+    {
+      "page_type": "Radiology Report",
+      "page_subtype": "MRI Report",
+      "model_type": "Radiology Report",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "MRI Report"
+      ],
+      "body_terms": [
+        "magnetic resonance",
+        "T1/T2",
+        "gadolinium",
+        "radiologist"
+      ],
+      "ambiguous_terms": [
+        "MRI",
+        "impression"
+      ]
+    },
+    {
+      "page_type": "Radiology Report",
+      "page_subtype": "MR brain report",
+      "model_type": "Radiology Report",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "MR brain report"
+      ],
+      "body_terms": [
+        "MRI brain",
+        "MR head",
+        "with/without contrast",
+        "white matter",
+        "FLAIR"
+      ],
+      "ambiguous_terms": [
+        "infarct",
+        "impression"
+      ]
+    },
+    {
+      "page_type": "Radiology Report",
+      "page_subtype": "Sonogram report",
+      "model_type": "Radiology Report",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Sonogram report"
+      ],
+      "body_terms": [
+        "Sonogram",
+        "sonography",
+        "ultrasound",
+        "echogenic",
+        "transducer",
+        "sonographer"
+      ],
+      "ambiguous_terms": [
+        "impression"
+      ]
+    },
+    {
+      "page_type": "Patient Demographics",
+      "page_subtype": "Patient Demographics",
+      "model_type": "Patient Demographics",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Patient Demographics",
+        "admission record"
+      ],
+      "body_terms": [
+        "Demographics",
+        "insurance",
+        "guarantor",
+        "emergency contact",
+        "address",
+        "application"
+      ],
+      "ambiguous_terms": [
+        "DOB",
+        "MRN"
+      ]
+    },
+    {
+      "page_type": "Patient Demographics",
+      "page_subtype": "Face Sheet",
+      "model_type": "Patient Demographics",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Face Sheet"
+      ],
+      "body_terms": [
+        "facesheet",
+        "admit date",
+        "admitting diagnosis",
+        "room / bed"
+      ],
+      "ambiguous_terms": [
+        "attending"
+      ]
+    },
+    {
+      "page_type": "Patient Demographics",
+      "page_subtype": "Patient Information",
+      "model_type": "Patient Demographics",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Patient Information"
+      ],
+      "body_terms": [
+        "patient details",
+        "contact information",
+        "preferred language",
+        "marital status"
+      ],
+      "ambiguous_terms": [
+        "employer"
+      ]
+    },
+    {
+      "page_type": "Patient Demographics",
+      "page_subtype": "Patient Registration",
+      "model_type": "Patient Demographics",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Patient Registration",
+        "registration form",
+        "new patient registration"
+      ],
+      "body_terms": [
+        "Registration",
+        "registered on",
+        "responsible party",
+        "insurance card"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Discharge Summary",
+      "page_subtype": "Discharge Summary",
+      "model_type": "Discharge Summary",
+      "is_generic": true,
+      "codability": "Discharge",
+      "title_terms": [
+        "Discharge Summary",
+        "Discharge Note"
+      ],
+      "body_terms": [
+        "admission date",
+        "discharge date",
+        "hospital course",
+        "discharge diagnosis",
+        "condition at discharge",
+        "Transition of Care",
+        "Transfer of Care",
+        "Resumen de alta"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Discharge Summary",
+      "page_subtype": "Depart Note",
+      "model_type": "Discharge Summary",
+      "is_generic": false,
+      "codability": "Discharge",
+      "title_terms": [
+        "Depart Note",
+        "Depart Summary"
+      ],
+      "body_terms": [
+        "Depart",
+        "departure",
+        "condition at departure"
+      ],
+      "ambiguous_terms": [
+        "disposition"
+      ]
+    },
+    {
+      "page_type": "Discharge Summary",
+      "page_subtype": "Transfer Summary",
+      "model_type": "Discharge Summary",
+      "is_generic": false,
+      "codability": "Discharge",
+      "title_terms": [
+        "Transfer Summary"
+      ],
+      "body_terms": [
+        "transferred to",
+        "reason for transfer",
+        "accepting physician",
+        "hospital course",
+        "condition at transfer"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Discharge Summary",
+      "page_subtype": "Short Stay Summary",
+      "model_type": "Discharge Summary",
+      "is_generic": false,
+      "codability": "Discharge",
+      "title_terms": [
+        "Short Stay Summary",
+        "short stay record"
+      ],
+      "body_terms": [
+        "Short stay",
+        "observation",
+        "admit/discharge same day",
+        "brief hospital course"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Discharge Summary",
+      "page_subtype": "Final Case Summary",
+      "model_type": "Discharge Summary",
+      "is_generic": false,
+      "codability": "Discharge",
+      "title_terms": [
+        "Final Case Summary"
+      ],
+      "body_terms": [
+        "case closed",
+        "outcome"
+      ],
+      "ambiguous_terms": [
+        "summary of care",
+        "final diagnosis"
+      ]
+    },
+    {
+      "page_type": "Discharge Summary",
+      "page_subtype": "Principal Diagnosis",
+      "model_type": "Discharge Summary",
+      "is_generic": false,
+      "codability": "Discharge",
+      "title_terms": [
+        "Principal Diagnosis"
+      ],
+      "body_terms": [
+        "secondary diagnoses"
+      ],
+      "ambiguous_terms": [
+        "primary diagnosis",
+        "final diagnosis"
+      ]
+    },
+    {
+      "page_type": "Forms",
+      "page_subtype": "Forms",
+      "model_type": "Forms",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Forms",
+        "intake form",
+        "patient history form",
+        "pre-op checklist"
+      ],
+      "body_terms": [
+        "agreement",
+        "acknowledgment",
+        "policy",
+        "pre-admission testing",
+        "health maintenance"
+      ],
+      "ambiguous_terms": [
+        "Form",
+        "screening",
+        "signature"
+      ]
+    },
+    {
+      "page_type": "Forms",
+      "page_subtype": "Consent Form",
+      "model_type": "Forms",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Consent Form",
+        "informed consent"
+      ],
+      "body_terms": [
+        "Consent",
+        "I hereby authorize",
+        "risks and benefits",
+        "release of information",
+        "patient signature"
+      ],
+      "ambiguous_terms": [
+        "authorization",
+        "witness"
+      ]
+    },
+    {
+      "page_type": "Forms",
+      "page_subtype": "Questionnaire",
+      "model_type": "Forms",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Questionnaire",
+        "intake form",
+        "health history form"
+      ],
+      "body_terms": [
+        "patient-completed",
+        "please circle",
+        "yes/no"
+      ],
+      "ambiguous_terms": [
+        "PHQ-9"
+      ]
+    },
+    {
+      "page_type": "Forms",
+      "page_subtype": "Checklist",
+      "model_type": "Forms",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Checklist",
+        "check list",
+        "preventive health checklist"
+      ],
+      "body_terms": [
+        "yes / no",
+        "initials"
+      ],
+      "ambiguous_terms": [
+        "completed"
+      ]
+    },
+    {
+      "page_type": "Forms",
+      "page_subtype": "Mini-Mental State Exam",
+      "model_type": "Forms",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Mini-Mental State Exam"
+      ],
+      "body_terms": [
+        "Mini-Mental",
+        "Folstein",
+        "orientation",
+        "recall",
+        "clock drawing",
+        "3-word recall"
+      ],
+      "ambiguous_terms": [
+        "MMSE",
+        "score /30",
+        "Mini-Cog"
+      ]
+    },
+    {
+      "page_type": "Forms",
+      "page_subtype": "HIPAA Form",
+      "model_type": "Forms",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "HIPAA Form",
+        "authorization to release PHI"
+      ],
+      "body_terms": [
+        "HIPAA",
+        "acknowledgment of receipt"
+      ],
+      "ambiguous_terms": [
+        "notice of privacy practices",
+        "signature"
+      ]
+    },
+    {
+      "page_type": "Clinical Summary",
+      "page_subtype": "Clinical Summary",
+      "model_type": "Clinical Summary",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Clinical Summary",
+        "Visit Summary",
+        "After Visit Summary",
+        "Patient Summary",
+        "chart summary",
+        "diagnosis list"
+      ],
+      "body_terms": [
+        "Clinical Diagnoses"
+      ],
+      "ambiguous_terms": [
+        "AVS",
+        "summary of care"
+      ]
+    },
+    {
+      "page_type": "Orders",
+      "page_subtype": "Orders",
+      "model_type": "Orders",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Orders",
+        "order date",
+        "order status",
+        "standing order",
+        "physician order",
+        "verbal order",
+        "order note"
+      ],
+      "body_terms": [
+        "ordered by"
+      ],
+      "ambiguous_terms": [
+        "Order"
+      ]
+    },
+    {
+      "page_type": "Orders",
+      "page_subtype": "Medication Orders",
+      "model_type": "Orders",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Medication Orders",
+        "Medication Order",
+        "med order"
+      ],
+      "body_terms": [
+        "start / stop date",
+        "pharmacy verify"
+      ],
+      "ambiguous_terms": [
+        "dose",
+        "route",
+        "frequency"
+      ]
+    },
+    {
+      "page_type": "Orders",
+      "page_subtype": "Post Operative Orders",
+      "model_type": "Orders",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Post Operative Orders",
+        "Post-operative orders",
+        "post-op orders",
+        "PACU orders"
+      ],
+      "body_terms": [
+        "advance diet",
+        "activity",
+        "DVT prophylaxis"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Orders",
+      "page_subtype": "Pre Operative Orders",
+      "model_type": "Orders",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Pre Operative Orders",
+        "Pre-operative orders",
+        "pre-op orders"
+      ],
+      "body_terms": [
+        "NPO after midnight",
+        "pre-op antibiotics",
+        "type and screen"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Orders",
+      "page_subtype": "Protocols",
+      "model_type": "Orders",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Protocols",
+        "per protocol",
+        "standing protocol"
+      ],
+      "body_terms": [
+        "Protocol",
+        "algorithm",
+        "sliding scale",
+        "guideline",
+        "pathway"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Cardiac Report",
+      "page_subtype": "Cardiac Report",
+      "model_type": "Cardiac Report",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Cardiac Report",
+        "heart report",
+        "diagnostic report"
+      ],
+      "body_terms": [
+        "Cardiovascular",
+        "cardiology",
+        "cardiology consultation",
+        "event monitor"
+      ],
+      "ambiguous_terms": [
+        "CAD",
+        "CHF",
+        "ejection fraction"
+      ]
+    },
+    {
+      "page_type": "Cardiac Report",
+      "page_subtype": "EKG Report (12-lead / routine)",
+      "model_type": "Cardiac Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "EKG Report",
+        "Electrocardiogram Report"
+      ],
+      "body_terms": [
+        "ECG 12 lead",
+        "EKG 12 lead",
+        "ECG routine",
+        "confirmed by",
+        "reviewed by"
+      ],
+      "ambiguous_terms": [
+        "interpretation",
+        "impression"
+      ]
+    },
+    {
+      "page_type": "Cardiac Report",
+      "page_subtype": "CT Angiography",
+      "model_type": "Cardiac Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "CT Angiography"
+      ],
+      "body_terms": [
+        "CT angiogram",
+        "coronary CTA",
+        "calcium score"
+      ],
+      "ambiguous_terms": [
+        "CTA",
+        "stenosis",
+        "plaque",
+        "contrast",
+        "impression"
+      ]
+    },
+    {
+      "page_type": "Cardiac Report",
+      "page_subtype": "Stress Test",
+      "model_type": "Cardiac Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Stress Test",
+        "exercise tolerance test (ETT)",
+        "Bruce protocol"
+      ],
+      "body_terms": [
+        "treadmill",
+        "METs",
+        "target heart rate",
+        "ST depression"
+      ],
+      "ambiguous_terms": [
+        "ischemia"
+      ]
+    },
+    {
+      "page_type": "Cardiac Report",
+      "page_subtype": "Cardiac catheterization report",
+      "model_type": "Cardiac Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Cardiac catheterization report"
+      ],
+      "body_terms": [
+        "Cardiac cath",
+        "left heart catheterization (LHC)",
+        "coronary angiography",
+        "stent",
+        "LAD/RCA/LCx",
+        "stenosis %",
+        "LVEDP",
+        "cath lab"
+      ],
+      "ambiguous_terms": [
+        "PCI",
+        "ejection fraction"
+      ]
+    },
+    {
+      "page_type": "Cardiac Report",
+      "page_subtype": "Treadmill report",
+      "model_type": "Cardiac Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Treadmill report"
+      ],
+      "body_terms": [
+        "Treadmill",
+        "Bruce",
+        "exercise time",
+        "METs",
+        "peak HR",
+        "ST changes"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Operative Report",
+      "page_subtype": "Operative Report",
+      "model_type": "Operative Report",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Operative Report",
+        "intraoperative record"
+      ],
+      "body_terms": [
+        "preoperative diagnosis",
+        "postoperative diagnosis",
+        "procedure performed",
+        "surgeon",
+        "specimens"
+      ],
+      "ambiguous_terms": [
+        "EBL",
+        "findings"
+      ]
+    },
+    {
+      "page_type": "Operative Report",
+      "page_subtype": "Pre Operative Evaluation",
+      "model_type": "Operative Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Pre Operative Evaluation",
+        "Preoperative evaluation"
+      ],
+      "body_terms": [
+        "pre-op clearance",
+        "surgical risk",
+        "cleared for surgery",
+        "planned procedure"
+      ],
+      "ambiguous_terms": [
+        "RCRI"
+      ]
+    },
+    {
+      "page_type": "Operative Report",
+      "page_subtype": "Anaesthesia Report",
+      "model_type": "Operative Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Anaesthesia Report",
+        "Anesthesia Record",
+        "pre-anesthesia evaluation"
+      ],
+      "body_terms": [
+        "post-anesthesia",
+        "ASA class",
+        "Mallampati",
+        "airway",
+        "induction",
+        "intubation",
+        "anesthesiologist",
+        "Aldrete"
+      ],
+      "ambiguous_terms": [
+        "CRNA",
+        "PACU"
+      ]
+    },
+    {
+      "page_type": "Operative Report",
+      "page_subtype": "Operation Summary",
+      "model_type": "Operative Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Operation Summary",
+        "OR summary",
+        "case summary"
+      ],
+      "body_terms": [
+        "in / out times",
+        "surgeon",
+        "wound class"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Operative Report",
+      "page_subtype": "Phase Record",
+      "model_type": "Operative Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Phase Record",
+        "recovery record"
+      ],
+      "body_terms": [
+        "Phase I",
+        "Phase II",
+        "Aldrete score",
+        "discharge criteria met"
+      ],
+      "ambiguous_terms": [
+        "PACU"
+      ]
+    },
+    {
+      "page_type": "Operative Report",
+      "page_subtype": "Operation Note",
+      "model_type": "Operative Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Operation Note",
+        "Operative Note",
+        "Op Note",
+        "brief op note"
+      ],
+      "body_terms": [
+        "complications"
+      ],
+      "ambiguous_terms": [
+        "procedure",
+        "findings",
+        "disposition"
+      ]
+    },
+    {
+      "page_type": "Operative Report",
+      "page_subtype": "Post Operative Followup Note",
+      "model_type": "Operative Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Post Operative Followup Note",
+        "postoperative visit"
+      ],
+      "body_terms": [
+        "Post-op",
+        "s/p",
+        "incision healing",
+        "sutures removed",
+        "global period"
+      ],
+      "ambiguous_terms": [
+        "POD"
+      ]
+    },
+    {
+      "page_type": "Discharge Instructions",
+      "page_subtype": "Discharge Instructions",
+      "model_type": "Discharge Instructions",
+      "is_generic": true,
+      "codability": "Discharge",
+      "title_terms": [
+        "Discharge Instructions"
+      ],
+      "body_terms": [
+        "home care",
+        "follow-up appointment",
+        "return to ED if",
+        "discharge medications",
+        "medication reconciliation"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Telephone Encounter",
+      "page_subtype": "Telephone Encounter",
+      "model_type": "Telephone Encounter",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Telephone Encounter",
+        "phone visit",
+        "telephone message",
+        "message taken by"
+      ],
+      "body_terms": [
+        "call back number",
+        "triage call",
+        "nurse triage"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Telephone Encounter",
+      "page_subtype": "Phone Note",
+      "model_type": "Telephone Encounter",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Phone Note",
+        "telephone note"
+      ],
+      "body_terms": [
+        "spoke with patient",
+        "pt called",
+        "advised",
+        "call documented"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Functional Assessment",
+      "page_subtype": "Functional Assessment",
+      "model_type": "Functional Assessment",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Functional Assessment",
+        "activity evaluation",
+        "assessment form"
+      ],
+      "body_terms": [
+        "functional status",
+        "ADLs",
+        "mobility",
+        "ambulation",
+        "fall risk",
+        "Barthel",
+        "Katz"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Functional Assessment",
+      "page_subtype": "ADL/IADL flow sheet",
+      "model_type": "Functional Assessment",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "ADL/IADL flow sheet",
+        "flow sheet"
+      ],
+      "body_terms": [
+        "bathing",
+        "toileting",
+        "feeding",
+        "transfers",
+        "independent/assist/dependent"
+      ],
+      "ambiguous_terms": [
+        "ADL",
+        "IADL",
+        "dressing"
+      ]
+    },
+    {
+      "page_type": "Messages",
+      "page_subtype": "Messages",
+      "model_type": "Messages",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Messages",
+        "note to provider",
+        "staff message",
+        "web encounter"
+      ],
+      "body_terms": [
+        "routed to",
+        "patient communication",
+        "memo",
+        "patient portal"
+      ],
+      "ambiguous_terms": [
+        "Message"
+      ]
+    },
+    {
+      "page_type": "Messages",
+      "page_subtype": "Notice",
+      "model_type": "Messages",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Notice",
+        "advance beneficiary notice",
+        "notice of non-coverage",
+        "discharge notice",
+        "notification of discharge"
+      ],
+      "body_terms": [],
+      "ambiguous_terms": [
+        "notice of privacy practices",
+        "ABN"
+      ]
+    },
+    {
+      "page_type": "Messages",
+      "page_subtype": "Letter",
+      "model_type": "Messages",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Letter"
+      ],
+      "body_terms": [
+        "Dear Dr.",
+        "Thank you for referring",
+        "I had the pleasure of seeing",
+        "Re:",
+        "Sincerely",
+        "cc:",
+        "letterhead"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Messages",
+      "page_subtype": "Notification",
+      "model_type": "Messages",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Notification",
+        "result notification"
+      ],
+      "body_terms": [
+        "alert",
+        "reminder",
+        "notified",
+        "auto-generated"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Messages",
+      "page_subtype": "Ambulatory Correspondence",
+      "model_type": "Messages",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Ambulatory Correspondence",
+        "AMB Correspondence",
+        "outside correspondence"
+      ],
+      "body_terms": [
+        "correspondence",
+        "fax cover",
+        "received from",
+        "scanned document"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Administration",
+      "page_subtype": "Administration",
+      "model_type": "Administration",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Administration",
+        "fax cover sheet"
+      ],
+      "body_terms": [
+        "cover page",
+        "blank",
+        "office use only",
+        "scanned by",
+        "page count"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Administration",
+      "page_subtype": "Index Page",
+      "model_type": "Administration",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Index Page",
+        "encounter index",
+        "encounter list",
+        "document list"
+      ],
+      "body_terms": [
+        "Index",
+        "procedure index",
+        "table of contents",
+        "page range"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Administration",
+      "page_subtype": "Appointments",
+      "model_type": "Administration",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Appointments",
+        "appointment summary"
+      ],
+      "body_terms": [
+        "Appointment",
+        "appt",
+        "scheduled",
+        "rescheduled",
+        "cancelled",
+        "no show",
+        "check-in"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Triage Note",
+      "page_subtype": "Triage Note",
+      "model_type": "Triage Note",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Triage Note"
+      ],
+      "body_terms": [
+        "Triage",
+        "ESI level",
+        "arrival mode"
+      ],
+      "ambiguous_terms": [
+        "acuity",
+        "chief complaint",
+        "vitals",
+        "pain scale"
+      ]
+    },
+    {
+      "page_type": "Triage Note",
+      "page_subtype": "ED Triage",
+      "model_type": "Triage Note",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "ED Triage"
+      ],
+      "body_terms": [
+        "emergency triage",
+        "ESI level",
+        "arrival mode",
+        "triage time",
+        "triage nurse"
+      ],
+      "ambiguous_terms": [
+        "acuity"
+      ]
+    },
+    {
+      "page_type": "Medication List",
+      "page_subtype": "Medication List",
+      "model_type": "Medication List",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Medication List"
+      ],
+      "body_terms": [
+        "current medications",
+        "active meds",
+        "sig",
+        "start date",
+        "prescriber"
+      ],
+      "ambiguous_terms": [
+        "dose",
+        "frequency"
+      ]
+    },
+    {
+      "page_type": "Medication List",
+      "page_subtype": "Prescription / Rx page",
+      "model_type": "Medication List",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Prescription / Rx page",
+        "Prescription",
+        "Rx page"
+      ],
+      "body_terms": [
+        "sig",
+        "dispense",
+        "refills",
+        "DEA number",
+        "e-prescribed",
+        "pharmacy"
+      ],
+      "ambiguous_terms": [
+        "Rx",
+        "DAW"
+      ]
+    },
+    {
+      "page_type": "Medication List",
+      "page_subtype": "Refill record",
+      "model_type": "Medication List",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Refill record"
+      ],
+      "body_terms": [
+        "Refill",
+        "refill request",
+        "pharmacy",
+        "last filled",
+        "quantity",
+        "refills remaining",
+        "e-prescribe"
+      ],
+      "ambiguous_terms": [
+        "approved/denied"
+      ]
+    },
+    {
+      "page_type": "Nursing Note",
+      "page_subtype": "Nursing Note",
+      "model_type": "Nursing Note",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Nursing Note",
+        "Nurse's note",
+        "nursing chart",
+        "home health visit",
+        "skilled nursing visit"
+      ],
+      "body_terms": [
+        "vital signs",
+        "flowsheet"
+      ],
+      "ambiguous_terms": [
+        "RN",
+        "LPN"
+      ]
+    },
+    {
+      "page_type": "Nursing Note",
+      "page_subtype": "Growth chart",
+      "model_type": "Nursing Note",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Growth chart"
+      ],
+      "body_terms": [
+        "percentile",
+        "stature-for-age",
+        "weight-for-age",
+        "BMI-for-age"
+      ],
+      "ambiguous_terms": [
+        "CDC",
+        "WHO"
+      ]
+    },
+    {
+      "page_type": "Billing / Invoice",
+      "page_subtype": "Billing / Invoice",
+      "model_type": "Billing / Invoice",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Billing / Invoice",
+        "Billing",
+        "Invoice",
+        "coding summary"
+      ],
+      "body_terms": [
+        "Superbill",
+        "charge ticket",
+        "charges",
+        "balance due",
+        "claim",
+        "statement",
+        "estimate"
+      ],
+      "ambiguous_terms": [
+        "CPT",
+        "DRG"
+      ]
+    },
+    {
+      "page_type": "Billing / Invoice",
+      "page_subtype": "Invoice",
+      "model_type": "Billing / Invoice",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Invoice",
+        "invoice number",
+        "records fee"
+      ],
+      "body_terms": [
+        "amount due",
+        "copy fee",
+        "per page",
+        "remit to",
+        "tax ID"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Echocardiogram Report",
+      "page_subtype": "Echocardiogram Report",
+      "model_type": "Echocardiogram Report",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Echocardiogram Report"
+      ],
+      "body_terms": [
+        "Echocardiogram",
+        "transthoracic",
+        "LV hypertrophy",
+        "valve regurgitation/stenosis",
+        "diastolic dysfunction",
+        "wall motion"
+      ],
+      "ambiguous_terms": [
+        "TTE",
+        "LVEF",
+        "ejection fraction"
+      ]
+    },
+    {
+      "page_type": "Pathology Report",
+      "page_subtype": "Pathology Report",
+      "model_type": "Pathology Report",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Pathology Report"
+      ],
+      "body_terms": [
+        "Pathology",
+        "surgical pathology",
+        "gross description",
+        "margins",
+        "pathologist",
+        "flow cytometry"
+      ],
+      "ambiguous_terms": [
+        "specimen",
+        "microscopic",
+        "final diagnosis"
+      ]
+    },
+    {
+      "page_type": "Pathology Report",
+      "page_subtype": "Biopsy Report",
+      "model_type": "Pathology Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Biopsy Report"
+      ],
+      "body_terms": [
+        "histology",
+        "benign/malignant",
+        "margins"
+      ],
+      "ambiguous_terms": [
+        "Biopsy",
+        "specimen",
+        "carcinoma",
+        "final diagnosis"
+      ]
+    },
+    {
+      "page_type": "Pathology Report",
+      "page_subtype": "Tissue Report",
+      "model_type": "Pathology Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Tissue Report",
+        "Tissue examination"
+      ],
+      "body_terms": [
+        "gross",
+        "pathologist"
+      ],
+      "ambiguous_terms": [
+        "microscopic",
+        "specimen",
+        "diagnosis"
+      ]
+    },
+    {
+      "page_type": "Pathology Report",
+      "page_subtype": "Cytology / molecular report",
+      "model_type": "Pathology Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Cytology / molecular report",
+        "Cytology",
+        "molecular report"
+      ],
+      "body_terms": [
+        "cytopathology",
+        "adequacy",
+        "Bethesda",
+        "molecular diagnostics"
+      ],
+      "ambiguous_terms": [
+        "FNA",
+        "PCR",
+        "mutation",
+        "NGS",
+        "EGFR",
+        "KRAS"
+      ]
+    },
+    {
+      "page_type": "Pathology Report",
+      "page_subtype": "Mohs surgery report",
+      "model_type": "Pathology Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Mohs surgery report"
+      ],
+      "body_terms": [
+        "Mohs",
+        "stages",
+        "margins clear",
+        "basal cell",
+        "squamous cell",
+        "defect size",
+        "repair"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "EKG / ECG Tracing",
+      "page_subtype": "EKG / ECG Tracing",
+      "model_type": "EKG / ECG Tracing",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "EKG / ECG Tracing",
+        "ECG Tracing"
+      ],
+      "body_terms": [
+        "tracing",
+        "rhythm strip",
+        "telemetry",
+        "rate"
+      ],
+      "ambiguous_terms": [
+        "EKG",
+        "ECG",
+        "QRS",
+        "QTc"
+      ]
+    },
+    {
+      "page_type": "EKG / ECG Tracing",
+      "page_subtype": "ECG Graph",
+      "model_type": "EKG / ECG Tracing",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "ECG Graph",
+        "EKG graph"
+      ],
+      "body_terms": [
+        "tracing",
+        "rhythm strip",
+        "25 mm/s",
+        "10 mm/mV",
+        "unconfirmed",
+        "machine read"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "EKG / ECG Tracing",
+      "page_subtype": "Holter monitor report",
+      "model_type": "EKG / ECG Tracing",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Holter monitor report"
+      ],
+      "body_terms": [
+        "Holter",
+        "24-hour monitor",
+        "ambulatory ECG",
+        "PVCs",
+        "PACs",
+        "pauses",
+        "min/max heart rate",
+        "total beats"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Gastroenterology / GI",
+      "page_subtype": "Gastroenterology / GI",
+      "model_type": "Gastroenterology / GI",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Gastroenterology / GI",
+        "Gastroenterology",
+        "GI report"
+      ],
+      "body_terms": [
+        "cirrhosis",
+        "H. pylori",
+        "hepatology"
+      ],
+      "ambiguous_terms": [
+        "GI",
+        "GERD"
+      ]
+    },
+    {
+      "page_type": "Gastroenterology / GI",
+      "page_subtype": "Endoscopy report",
+      "model_type": "Gastroenterology / GI",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Endoscopy report"
+      ],
+      "body_terms": [
+        "Endoscopy",
+        "esophagogastroduodenoscopy",
+        "upper GI endoscopy",
+        "scope",
+        "biopsy taken",
+        "sedation",
+        "endoscopist"
+      ],
+      "ambiguous_terms": [
+        "EGD",
+        "findings"
+      ]
+    },
+    {
+      "page_type": "Gastroenterology / GI",
+      "page_subtype": "Colonoscopy / sigmoidoscopy report",
+      "model_type": "Gastroenterology / GI",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Colonoscopy / sigmoidoscopy report",
+        "Colonoscopy",
+        "sigmoidoscopy report"
+      ],
+      "body_terms": [
+        "flexible sigmoidoscopy",
+        "cecum reached",
+        "polyp",
+        "polypectomy",
+        "diverticulosis",
+        "bowel prep",
+        "withdrawal time"
+      ],
+      "ambiguous_terms": [
+        "biopsy"
+      ]
+    },
+    {
+      "page_type": "Gastroenterology / GI",
+      "page_subtype": "Esophageal manometry",
+      "model_type": "Gastroenterology / GI",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Esophageal manometry"
+      ],
+      "body_terms": [
+        "high-resolution manometry",
+        "LES pressure",
+        "peristalsis",
+        "achalasia",
+        "motility"
+      ],
+      "ambiguous_terms": [
+        "IRP"
+      ]
+    },
+    {
+      "page_type": "Patient Education",
+      "page_subtype": "Patient Education",
+      "model_type": "Patient Education",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Patient Education",
+        "patient instructions"
+      ],
+      "body_terms": [
+        "what is",
+        "when to call your doctor",
+        "follow up with",
+        "take as directed"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Procedure Note",
+      "page_subtype": "Procedure Note",
+      "model_type": "Procedure Note",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Procedure Note"
+      ],
+      "body_terms": [
+        "indication",
+        "time-out",
+        "local anesthesia",
+        "complications: none"
+      ],
+      "ambiguous_terms": [
+        "technique",
+        "tolerated well"
+      ]
+    },
+    {
+      "page_type": "Ophthalmology Note",
+      "page_subtype": "Ophthalmology Note",
+      "model_type": "Ophthalmology Note",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Ophthalmology Note",
+        "ocular history"
+      ],
+      "body_terms": [
+        "Ophthalmology",
+        "anterior segment",
+        "posterior segment",
+        "macula",
+        "glaucoma",
+        "cataract",
+        "visual field"
+      ],
+      "ambiguous_terms": [
+        "IOP",
+        "OCT"
+      ]
+    },
+    {
+      "page_type": "Ophthalmology Note",
+      "page_subtype": "Retinal / Eye Report",
+      "model_type": "Ophthalmology Note",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Retinal / Eye Report",
+        "Retinal",
+        "Eye Report",
+        "dilated fundus exam"
+      ],
+      "body_terms": [
+        "visual acuity",
+        "retina",
+        "intravitreal injection",
+        "Eylea",
+        "Avastin",
+        "laser photocoagulation"
+      ],
+      "ambiguous_terms": [
+        "OD",
+        "OS",
+        "OU",
+        "IOP"
+      ]
+    },
+    {
+      "page_type": "Ophthalmology Note",
+      "page_subtype": "Laser procedure report",
+      "model_type": "Ophthalmology Note",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Laser procedure report"
+      ],
+      "body_terms": [
+        "Laser",
+        "YAG capsulotomy",
+        "photocoagulation",
+        "laser settings",
+        "spots",
+        "power"
+      ],
+      "ambiguous_terms": [
+        "SLT"
+      ]
+    },
+    {
+      "page_type": "Ophthalmology Note",
+      "page_subtype": "Fundus photography",
+      "model_type": "Ophthalmology Note",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Fundus photography"
+      ],
+      "body_terms": [
+        "Fundus photo",
+        "retinal imaging",
+        "optic disc",
+        "macula",
+        "retinopathy",
+        "drusen"
+      ],
+      "ambiguous_terms": [
+        "interpretation"
+      ]
+    },
+    {
+      "page_type": "Ophthalmology Note",
+      "page_subtype": "Optometry note",
+      "model_type": "Ophthalmology Note",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Optometry note",
+        "dilated exam"
+      ],
+      "body_terms": [
+        "Optometry",
+        "O.D. (Doctor of Optometry)",
+        "visual field",
+        "Humphrey",
+        "retinopathy",
+        "background/proliferative",
+        "refraction",
+        "spectacle Rx"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Ophthalmology Note",
+      "page_subtype": "Lens Parameters",
+      "model_type": "Ophthalmology Note",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Lens Parameters"
+      ],
+      "body_terms": [
+        "Lens",
+        "sphere",
+        "cylinder",
+        "axis",
+        "add",
+        "base curve",
+        "diameter",
+        "IOL power"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Ophthalmology Note",
+      "page_subtype": "Visual Evaluation",
+      "model_type": "Ophthalmology Note",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Visual Evaluation"
+      ],
+      "body_terms": [
+        "vision",
+        "visual function"
+      ],
+      "ambiguous_terms": [
+        "acuity"
+      ]
+    },
+    {
+      "page_type": "Referral & Authorization",
+      "page_subtype": "Referral & Authorization",
+      "model_type": "Referral & Authorization",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Referral & Authorization",
+        "request for records"
+      ],
+      "body_terms": [
+        "auth number",
+        "approved",
+        "valid from / to"
+      ],
+      "ambiguous_terms": [
+        "referral",
+        "authorization",
+        "request"
+      ]
+    },
+    {
+      "page_type": "Referral & Authorization",
+      "page_subtype": "Referral Request",
+      "model_type": "Referral & Authorization",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Referral Request",
+        "referral order",
+        "reason for referral"
+      ],
+      "body_terms": [
+        "refer to",
+        "referred to",
+        "priority",
+        "referring provider"
+      ],
+      "ambiguous_terms": [
+        "Referral"
+      ]
+    },
+    {
+      "page_type": "Referral & Authorization",
+      "page_subtype": "Referral authorization form",
+      "model_type": "Referral & Authorization",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Referral authorization form",
+        "authorization number",
+        "diagnosis for referral"
+      ],
+      "body_terms": [
+        "referred to",
+        "referring provider",
+        "number of visits approved",
+        "valid from/to"
+      ],
+      "ambiguous_terms": [
+        "Referral"
+      ]
+    },
+    {
+      "page_type": "Referral & Authorization",
+      "page_subtype": "Insurance Authorization Form",
+      "model_type": "Referral & Authorization",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Insurance Authorization Form",
+        "Prior authorization"
+      ],
+      "body_terms": [
+        "auth number",
+        "payer",
+        "insurance verification",
+        "units approved",
+        "effective dates"
+      ],
+      "ambiguous_terms": [
+        "approved/denied"
+      ]
+    },
+    {
+      "page_type": "Psychiatric Evaluation",
+      "page_subtype": "Psychiatric Evaluation",
+      "model_type": "Psychiatric Evaluation",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Psychiatric Evaluation",
+        "mental status exam"
+      ],
+      "body_terms": [
+        "psychiatric",
+        "DSM-5",
+        "mood",
+        "affect",
+        "suicidal ideation",
+        "psychotherapy session"
+      ],
+      "ambiguous_terms": [
+        "MSE"
+      ]
+    },
+    {
+      "page_type": "Psychiatric Evaluation",
+      "page_subtype": "Initial psychiatric evaluation",
+      "model_type": "Psychiatric Evaluation",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Initial psychiatric evaluation",
+        "psychiatric history"
+      ],
+      "body_terms": [
+        "psychiatric intake",
+        "diagnostic impression",
+        "DSM-5"
+      ],
+      "ambiguous_terms": [
+        "new patient"
+      ]
+    },
+    {
+      "page_type": "Psychiatric Evaluation",
+      "page_subtype": "Psychiatric Note",
+      "model_type": "Psychiatric Evaluation",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Psychiatric Note",
+        "Psychiatric progress note"
+      ],
+      "body_terms": [
+        "psychiatry follow-up",
+        "medication management",
+        "mental status"
+      ],
+      "ambiguous_terms": [
+        "interval history"
+      ]
+    },
+    {
+      "page_type": "Psychiatric Evaluation",
+      "page_subtype": "Behavioral health note",
+      "model_type": "Psychiatric Evaluation",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Behavioral health note",
+        "client note"
+      ],
+      "body_terms": [
+        "Behavioral health",
+        "counselor",
+        "presenting problem",
+        "GAD-7",
+        "mood"
+      ],
+      "ambiguous_terms": [
+        "PHQ-9"
+      ]
+    },
+    {
+      "page_type": "Psychiatric Evaluation",
+      "page_subtype": "Group Therapy Note",
+      "model_type": "Psychiatric Evaluation",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Group Therapy Note"
+      ],
+      "body_terms": [
+        "Group therapy",
+        "group session",
+        "90853",
+        "participation",
+        "topic",
+        "facilitator"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Psychiatric Evaluation",
+      "page_subtype": "Substance use treatment record",
+      "model_type": "Psychiatric Evaluation",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Substance use treatment record"
+      ],
+      "body_terms": [
+        "Substance use disorder",
+        "alcohol dependence",
+        "opioid use disorder",
+        "Suboxone",
+        "methadone",
+        "detox",
+        "relapse"
+      ],
+      "ambiguous_terms": [
+        "SUD",
+        "MAT"
+      ]
+    },
+    {
+      "page_type": "Psychiatric Evaluation",
+      "page_subtype": "Neurocognitive screening exam",
+      "model_type": "Psychiatric Evaluation",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Neurocognitive screening exam"
+      ],
+      "body_terms": [
+        "Neurocognitive",
+        "cognitive screening",
+        "MoCA",
+        "SLUMS",
+        "memory"
+      ],
+      "ambiguous_terms": [
+        "Mini-Cog",
+        "dementia",
+        "score /30"
+      ]
+    },
+    {
+      "page_type": "Other Evaluation",
+      "page_subtype": "Other Evaluation",
+      "model_type": "Other Evaluation",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Other Evaluation",
+        "initial evaluation",
+        "inpatient evaluation"
+      ],
+      "body_terms": [
+        "re-evaluation",
+        "evaluated by"
+      ],
+      "ambiguous_terms": [
+        "Evaluation",
+        "findings",
+        "goals"
+      ]
+    },
+    {
+      "page_type": "Other Evaluation",
+      "page_subtype": "Nutrition assessment",
+      "model_type": "Other Evaluation",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Nutrition assessment",
+        "diet order"
+      ],
+      "body_terms": [
+        "dietitian",
+        "weight loss",
+        "malnutrition",
+        "albumin",
+        "tube feeding",
+        "caloric needs"
+      ],
+      "ambiguous_terms": [
+        "RD",
+        "BMI"
+      ]
+    },
+    {
+      "page_type": "Emergency Note",
+      "page_subtype": "Emergency Note",
+      "model_type": "Emergency Note",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Emergency Note",
+        "ED Note",
+        "ER visit",
+        "ED provider note"
+      ],
+      "body_terms": [
+        "Emergency Department",
+        "ED course",
+        "arrival time"
+      ],
+      "ambiguous_terms": [
+        "MDM",
+        "disposition"
+      ]
+    },
+    {
+      "page_type": "Emergency Note",
+      "page_subtype": "Urgent care note",
+      "model_type": "Emergency Note",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Urgent care note",
+        "acute visit"
+      ],
+      "body_terms": [
+        "Urgent Care",
+        "walk-in",
+        "rapid strep/flu",
+        "discharged home"
+      ],
+      "ambiguous_terms": [
+        "chief complaint"
+      ]
+    },
+    {
+      "page_type": "Emergency Note",
+      "page_subtype": "EMS / ambulance report",
+      "model_type": "Emergency Note",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "EMS / ambulance report",
+        "ambulance report",
+        "run report",
+        "Patient Care Report"
+      ],
+      "body_terms": [
+        "ambulance",
+        "paramedic",
+        "dispatch",
+        "scene",
+        "transport"
+      ],
+      "ambiguous_terms": [
+        "EMS",
+        "PCR",
+        "EMT"
+      ]
+    },
+    {
+      "page_type": "Allergies Report",
+      "page_subtype": "Allergies Report",
+      "model_type": "Allergies Report",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Allergies Report",
+        "allergy list"
+      ],
+      "body_terms": [
+        "allergen",
+        "reaction",
+        "intolerance"
+      ],
+      "ambiguous_terms": [
+        "Allergies",
+        "NKDA",
+        "severity"
+      ]
+    },
+    {
+      "page_type": "Therapy",
+      "page_subtype": "Therapy",
+      "model_type": "Therapy",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Therapy",
+        "daily treatment note"
+      ],
+      "body_terms": [
+        "therapist",
+        "treatment rendered",
+        "minutes",
+        "progress toward goals",
+        "cardiac rehab"
+      ],
+      "ambiguous_terms": [
+        "units"
+      ]
+    },
+    {
+      "page_type": "Therapy",
+      "page_subtype": "Physical Therapy",
+      "model_type": "Therapy",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Physical Therapy"
+      ],
+      "body_terms": [
+        "strength 4/5",
+        "gait training",
+        "therapeutic exercise"
+      ],
+      "ambiguous_terms": [
+        "PT",
+        "DPT",
+        "ROM",
+        "plan of care",
+        "goals"
+      ]
+    },
+    {
+      "page_type": "Therapy",
+      "page_subtype": "Occupational Therapy",
+      "model_type": "Therapy",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Occupational Therapy",
+        "OT daily note"
+      ],
+      "body_terms": [
+        "OTR/L",
+        "ADL training",
+        "fine motor",
+        "splint"
+      ],
+      "ambiguous_terms": [
+        "OT",
+        "upper extremity"
+      ]
+    },
+    {
+      "page_type": "Therapy",
+      "page_subtype": "Rehabilitation Plan",
+      "model_type": "Therapy",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Rehabilitation Plan"
+      ],
+      "body_terms": [
+        "short-term/long-term",
+        "duration"
+      ],
+      "ambiguous_terms": [
+        "goals",
+        "frequency",
+        "interventions"
+      ]
+    },
+    {
+      "page_type": "Therapy",
+      "page_subtype": "Speech therapy note",
+      "model_type": "Therapy",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Speech therapy note",
+        "swallow evaluation"
+      ],
+      "body_terms": [
+        "Speech therapy",
+        "aphasia",
+        "cognitive-linguistic",
+        "dysarthria"
+      ],
+      "ambiguous_terms": [
+        "SLP",
+        "dysphagia"
+      ]
+    },
+    {
+      "page_type": "Therapy",
+      "page_subtype": "Chiropractic treatment note",
+      "model_type": "Therapy",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Chiropractic treatment note"
+      ],
+      "body_terms": [
+        "Chiropractic",
+        "D.C.",
+        "subluxation",
+        "spinal manipulation",
+        "adjustment",
+        "cervical/lumbar"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Therapy",
+      "page_subtype": "Acupuncture treatment record",
+      "model_type": "Therapy",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Acupuncture treatment record"
+      ],
+      "body_terms": [
+        "Acupuncture",
+        "L.Ac",
+        "needles",
+        "points",
+        "meridian"
+      ],
+      "ambiguous_terms": [
+        "session"
+      ]
+    },
+    {
+      "page_type": "Immunizations",
+      "page_subtype": "Immunizations",
+      "model_type": "Immunizations",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Immunizations"
+      ],
+      "body_terms": [
+        "vaccine",
+        "immunization",
+        "lot number",
+        "date given"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Immunizations",
+      "page_subtype": "Immunization list",
+      "model_type": "Immunizations",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Immunization list"
+      ],
+      "body_terms": [
+        "Immunization",
+        "vaccine",
+        "flu shot",
+        "influenza",
+        "Prevnar",
+        "Tdap",
+        "lot number",
+        "date given",
+        "site"
+      ],
+      "ambiguous_terms": [
+        "VIS"
+      ]
+    },
+    {
+      "page_type": "Immunizations",
+      "page_subtype": "Vaccine Record",
+      "model_type": "Immunizations",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Vaccine Record",
+        "Vaccine administration record"
+      ],
+      "body_terms": [
+        "lot number",
+        "expiration",
+        "site",
+        "administered by",
+        "VIS date"
+      ],
+      "ambiguous_terms": [
+        "VAR",
+        "manufacturer",
+        "route"
+      ]
+    },
+    {
+      "page_type": "ENT Note",
+      "page_subtype": "ENT Note",
+      "model_type": "ENT Note",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "ENT Note"
+      ],
+      "body_terms": [
+        "otolaryngology",
+        "ear",
+        "nose",
+        "throat",
+        "sinus",
+        "hearing"
+      ],
+      "ambiguous_terms": [
+        "ENT"
+      ]
+    },
+    {
+      "page_type": "ENT Note",
+      "page_subtype": "Audiology / hearing report",
+      "model_type": "ENT Note",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Audiology / hearing report",
+        "Audiology",
+        "hearing report"
+      ],
+      "body_terms": [
+        "audiogram",
+        "hearing loss",
+        "sensorineural",
+        "dB HL",
+        "tympanometry",
+        "speech discrimination",
+        "hearing aid"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "ENT Note",
+      "page_subtype": "Laryngoscopy report",
+      "model_type": "ENT Note",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Laryngoscopy report"
+      ],
+      "body_terms": [
+        "Laryngoscopy",
+        "flexible fiberoptic",
+        "vocal cords",
+        "larynx",
+        "hoarseness"
+      ],
+      "ambiguous_terms": [
+        "ENT",
+        "dysphagia"
+      ]
+    },
+    {
+      "page_type": "ENT Note",
+      "page_subtype": "Videonystagmography (VNG)",
+      "model_type": "ENT Note",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Videonystagmography"
+      ],
+      "body_terms": [
+        "nystagmus",
+        "caloric",
+        "vestibular",
+        "vertigo",
+        "Dix-Hallpike"
+      ],
+      "ambiguous_terms": [
+        "VNG",
+        "BPPV"
+      ]
+    },
+    {
+      "page_type": "Wound & Infection Care",
+      "page_subtype": "Wound & Infection Care",
+      "model_type": "Wound & Infection Care",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Wound & Infection Care"
+      ],
+      "body_terms": [
+        "wound",
+        "ulcer",
+        "infection",
+        "isolation"
+      ],
+      "ambiguous_terms": [
+        "dressing"
+      ]
+    },
+    {
+      "page_type": "Wound & Infection Care",
+      "page_subtype": "Wound care note",
+      "model_type": "Wound & Infection Care",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Wound care note"
+      ],
+      "body_terms": [
+        "Wound care",
+        "pressure ulcer stage",
+        "diabetic foot ulcer",
+        "measurements (L x W x D)",
+        "debridement",
+        "drainage",
+        "granulation"
+      ],
+      "ambiguous_terms": [
+        "dressing"
+      ]
+    },
+    {
+      "page_type": "Wound & Infection Care",
+      "page_subtype": "Burn treatment record",
+      "model_type": "Wound & Infection Care",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Burn treatment record"
+      ],
+      "body_terms": [
+        "Burn",
+        "% TBSA",
+        "degree/thickness",
+        "Silvadene",
+        "grafting",
+        "debridement",
+        "dressing change"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Wound & Infection Care",
+      "page_subtype": "Infection control note",
+      "model_type": "Wound & Infection Care",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Infection control note"
+      ],
+      "body_terms": [
+        "Infection control",
+        "isolation",
+        "C. diff",
+        "contact precautions",
+        "culture positive",
+        "antibiotic"
+      ],
+      "ambiguous_terms": [
+        "MRSA"
+      ]
+    },
+    {
+      "page_type": "Interim Summary",
+      "page_subtype": "Interim Summary",
+      "model_type": "Interim Summary",
+      "is_generic": true,
+      "codability": "Discharge",
+      "title_terms": [
+        "Interim Summary",
+        "Interim Note",
+        "interval summary"
+      ],
+      "body_terms": [
+        "hospital course to date"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "ICU Note",
+      "page_subtype": "ICU Note",
+      "model_type": "ICU Note",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "ICU Note",
+        "ICU flow sheet"
+      ],
+      "body_terms": [
+        "Critical care",
+        "critical care time",
+        "intubated",
+        "vasopressors",
+        "hourly vitals"
+      ],
+      "ambiguous_terms": [
+        "ICU",
+        "I&O"
+      ]
+    },
+    {
+      "page_type": "Nuclear Medicine Report",
+      "page_subtype": "Nuclear Medicine Report",
+      "model_type": "Nuclear Medicine Report",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Nuclear Medicine Report"
+      ],
+      "body_terms": [
+        "Nuclear medicine",
+        "radiotracer",
+        "Tc-99m",
+        "uptake",
+        "bone scan",
+        "thyroid scan"
+      ],
+      "ambiguous_terms": [
+        "HIDA",
+        "PET"
+      ]
+    },
+    {
+      "page_type": "Nuclear Medicine Report",
+      "page_subtype": "SPECT report",
+      "model_type": "Nuclear Medicine Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "SPECT report"
+      ],
+      "body_terms": [
+        "SPECT",
+        "perfusion",
+        "gated",
+        "tracer",
+        "defect"
+      ],
+      "ambiguous_terms": [
+        "ischemia",
+        "infarct"
+      ]
+    },
+    {
+      "page_type": "Nuclear Medicine Report",
+      "page_subtype": "Myocardial perfusion imaging",
+      "model_type": "Nuclear Medicine Report",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Myocardial perfusion imaging"
+      ],
+      "body_terms": [
+        "Myocardial perfusion",
+        "nuclear stress",
+        "Lexiscan",
+        "sestamibi",
+        "Cardiolite",
+        "reversible defect",
+        "SPECT",
+        "gated EF"
+      ],
+      "ambiguous_terms": [
+        "MPI",
+        "ischemia"
+      ]
+    },
+    {
+      "page_type": "Vascular Studies",
+      "page_subtype": "Vascular Studies",
+      "model_type": "Vascular Studies",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Vascular Studies"
+      ],
+      "body_terms": [
+        "vascular lab",
+        "arterial",
+        "venous",
+        "waveform",
+        "velocity",
+        "ankle-brachial index"
+      ],
+      "ambiguous_terms": [
+        "stenosis",
+        "ABI"
+      ]
+    },
+    {
+      "page_type": "Vascular Studies",
+      "page_subtype": "Doppler-duplex",
+      "model_type": "Vascular Studies",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Doppler-duplex"
+      ],
+      "body_terms": [
+        "duplex",
+        "velocity",
+        "waveform",
+        "flow",
+        "color Doppler",
+        "spectral",
+        "vascular ultrasound"
+      ],
+      "ambiguous_terms": [
+        "Doppler"
+      ]
+    },
+    {
+      "page_type": "Vascular Studies",
+      "page_subtype": "Carotid duplex",
+      "model_type": "Vascular Studies",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Carotid duplex"
+      ],
+      "body_terms": [
+        "carotid Doppler",
+        "% stenosis",
+        "peak systolic velocity"
+      ],
+      "ambiguous_terms": [
+        "ICA",
+        "CCA",
+        "plaque"
+      ]
+    },
+    {
+      "page_type": "Vascular Studies",
+      "page_subtype": "Lower / upper extremity Doppler-duplex",
+      "model_type": "Vascular Studies",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Lower / upper extremity Doppler-duplex",
+        "upper extremity Doppler-duplex"
+      ],
+      "body_terms": [
+        "Lower extremity",
+        "venous duplex",
+        "arterial Doppler",
+        "waveform",
+        "reflux",
+        "vascular lab"
+      ],
+      "ambiguous_terms": [
+        "upper extremity",
+        "DVT",
+        "PAD",
+        "stenosis"
+      ]
+    },
+    {
+      "page_type": "Vascular Studies",
+      "page_subtype": "Plethysmography report",
+      "model_type": "Vascular Studies",
+      "is_generic": false,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Plethysmography report"
+      ],
+      "body_terms": [
+        "Plethysmography",
+        "pulse volume recording",
+        "segmental pressures",
+        "waveforms",
+        "body box",
+        "lung volumes"
+      ],
+      "ambiguous_terms": [
+        "PVR"
+      ]
+    },
+    {
+      "page_type": "Occupational & Physical Exams",
+      "page_subtype": "Occupational & Physical Exams",
+      "model_type": "Occupational & Physical Exams",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Occupational & Physical Exams",
+        "physical examination form"
+      ],
+      "body_terms": [
+        "cleared",
+        "restrictions",
+        "work status",
+        "fitness for duty",
+        "school physical",
+        "travel clinic"
+      ],
+      "ambiguous_terms": [
+        "employer"
+      ]
+    },
+    {
+      "page_type": "Occupational & Physical Exams",
+      "page_subtype": "Occupational health record",
+      "model_type": "Occupational & Physical Exams",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Occupational health record"
+      ],
+      "body_terms": [
+        "Occupational health",
+        "employee health",
+        "work status",
+        "restrictions",
+        "DOT physical"
+      ],
+      "ambiguous_terms": [
+        "employer"
+      ]
+    },
+    {
+      "page_type": "Occupational & Physical Exams",
+      "page_subtype": "Work injury evaluation",
+      "model_type": "Occupational & Physical Exams",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Work injury evaluation"
+      ],
+      "body_terms": [
+        "Work injury",
+        "workers' comp",
+        "date of injury (DOI)",
+        "mechanism",
+        "work restrictions"
+      ],
+      "ambiguous_terms": [
+        "MMI"
+      ]
+    },
+    {
+      "page_type": "Occupational & Physical Exams",
+      "page_subtype": "Sports physical exam",
+      "model_type": "Occupational & Physical Exams",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Sports physical exam",
+        "musculoskeletal exam"
+      ],
+      "body_terms": [
+        "Sports physical",
+        "pre-participation",
+        "cleared for sports"
+      ],
+      "ambiguous_terms": [
+        "PPE"
+      ]
+    },
+    {
+      "page_type": "Annual Assessments",
+      "page_subtype": "Annual Assessments",
+      "model_type": "Annual Assessments",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Annual Assessments",
+        "Annual Health Assessment",
+        "comprehensive assessment",
+        "health risk assessment (HRA)",
+        "in-home assessment"
+      ],
+      "body_terms": [
+        "review of systems",
+        "chronic conditions reviewed"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Annual Assessments",
+      "page_subtype": "Medicare annual wellness visit",
+      "model_type": "Annual Assessments",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Medicare annual wellness visit",
+        "Annual Wellness Visit",
+        "personalized prevention plan"
+      ],
+      "body_terms": [
+        "Medicare Annual Wellness",
+        "G0438",
+        "G0439",
+        "Welcome to Medicare"
+      ],
+      "ambiguous_terms": [
+        "AWV",
+        "IPPE"
+      ]
+    },
+    {
+      "page_type": "Annual Assessments",
+      "page_subtype": "Staying Healthy Assessment",
+      "model_type": "Annual Assessments",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Staying Healthy Assessment",
+        "health education behavior"
+      ],
+      "body_terms": [
+        "IHEBA",
+        "Medi-Cal",
+        "PCP signature"
+      ],
+      "ambiguous_terms": [
+        "SHA"
+      ]
+    },
+    {
+      "page_type": "Annual Assessments",
+      "page_subtype": "HouseCalls visit summary",
+      "model_type": "Annual Assessments",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "HouseCalls visit summary",
+        "in-home assessment",
+        "health plan"
+      ],
+      "body_terms": [
+        "HouseCalls",
+        "nurse practitioner",
+        "diagnoses confirmed"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Obstetrics & Women's Health",
+      "page_subtype": "Obstetrics & Women's Health",
+      "model_type": "Obstetrics & Women's Health",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Obstetrics & Women's Health"
+      ],
+      "body_terms": [
+        "pregnancy",
+        "gravida / para",
+        "cervix"
+      ],
+      "ambiguous_terms": [
+        "OB",
+        "GYN",
+        "EDD",
+        "LMP"
+      ]
+    },
+    {
+      "page_type": "Obstetrics & Women's Health",
+      "page_subtype": "Prenatal record / ACOG form",
+      "model_type": "Obstetrics & Women's Health",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Prenatal record / ACOG form",
+        "Prenatal record",
+        "ACOG form",
+        "ACOG Antepartum Record",
+        "Prenatal Flow Sheet",
+        "OB history"
+      ],
+      "body_terms": [
+        "EDD/EDC",
+        "gravida/para (G_P_)",
+        "gestational age",
+        "weeks gestation",
+        "fundal height",
+        "FHR/FHT",
+        "fetal movement"
+      ],
+      "ambiguous_terms": [
+        "LMP"
+      ]
+    },
+    {
+      "page_type": "Obstetrics & Women's Health",
+      "page_subtype": "Antepartum record",
+      "model_type": "Obstetrics & Women's Health",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Antepartum record",
+        "antepartum visit",
+        "NST (non-stress test)"
+      ],
+      "body_terms": [
+        "gestational age",
+        "fetal heart tones",
+        "prenatal labs reviewed",
+        "high-risk pregnancy"
+      ],
+      "ambiguous_terms": [
+        "EDD"
+      ]
+    },
+    {
+      "page_type": "Obstetrics & Women's Health",
+      "page_subtype": "Postpartum visit / exam",
+      "model_type": "Obstetrics & Women's Health",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Postpartum visit / exam",
+        "Postpartum visit",
+        "PP exam"
+      ],
+      "body_terms": [
+        "6-week check",
+        "delivery date",
+        "lochia",
+        "breastfeeding/lactation",
+        "incision/perineum",
+        "contraception counseling",
+        "s/p NSVD or C-section"
+      ],
+      "ambiguous_terms": [
+        "EPDS"
+      ]
+    },
+    {
+      "page_type": "Obstetrics & Women's Health",
+      "page_subtype": "Pap smear report",
+      "model_type": "Obstetrics & Women's Health",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Pap smear report"
+      ],
+      "body_terms": [
+        "Pap smear",
+        "cervical cytology",
+        "ThinPrep",
+        "ASC-US",
+        "high-risk HPV",
+        "co-testing"
+      ],
+      "ambiguous_terms": [
+        "NILM",
+        "LSIL",
+        "HSIL",
+        "HPV"
+      ]
+    },
+    {
+      "page_type": "Obstetrics & Women's Health",
+      "page_subtype": "Colposcopy exam",
+      "model_type": "Obstetrics & Women's Health",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Colposcopy exam"
+      ],
+      "body_terms": [
+        "Colposcopy",
+        "cervix",
+        "acetowhite",
+        "transformation zone",
+        "cervical biopsy",
+        "abnormal Pap"
+      ],
+      "ambiguous_terms": [
+        "ECC",
+        "CIN"
+      ]
+    },
+    {
+      "page_type": "Neurology",
+      "page_subtype": "Neurology",
+      "model_type": "Neurology",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Neurology",
+        "neurological exam"
+      ],
+      "body_terms": [
+        "cranial nerves",
+        "reflexes",
+        "seizure",
+        "stroke/CVA",
+        "neuropathy",
+        "Parkinson's"
+      ],
+      "ambiguous_terms": [
+        "dementia",
+        "EMG"
+      ]
+    },
+    {
+      "page_type": "Neurology",
+      "page_subtype": "EEG / neurophysiology report",
+      "model_type": "Neurology",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "EEG / neurophysiology report",
+        "neurophysiology report"
+      ],
+      "body_terms": [
+        "electroencephalogram",
+        "neurophysiology",
+        "epileptiform",
+        "spike and wave",
+        "background rhythm",
+        "seizure",
+        "photic stimulation"
+      ],
+      "ambiguous_terms": [
+        "EEG"
+      ]
+    },
+    {
+      "page_type": "Neurology",
+      "page_subtype": "EMG report",
+      "model_type": "Neurology",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "EMG report"
+      ],
+      "body_terms": [
+        "electromyography",
+        "NCV / NCS",
+        "nerve conduction",
+        "sural nerve",
+        "amplitude",
+        "latency",
+        "radiculopathy",
+        "carpal tunnel"
+      ],
+      "ambiguous_terms": [
+        "EMG"
+      ]
+    },
+    {
+      "page_type": "Neurology",
+      "page_subtype": "Sudoscan",
+      "model_type": "Neurology",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Sudoscan"
+      ],
+      "body_terms": [
+        "electrochemical skin conductance",
+        "sudomotor",
+        "hands/feet",
+        "neuropathy risk"
+      ],
+      "ambiguous_terms": [
+        "ESC"
+      ]
+    },
+    {
+      "page_type": "Neurology",
+      "page_subtype": "DPN results",
+      "model_type": "Neurology",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "DPN results"
+      ],
+      "body_terms": [
+        "diabetic peripheral neuropathy",
+        "DPNCheck",
+        "sural",
+        "monofilament"
+      ],
+      "ambiguous_terms": [
+        "DPN",
+        "severity"
+      ]
+    },
+    {
+      "page_type": "Nephrology",
+      "page_subtype": "Nephrology",
+      "model_type": "Nephrology",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Nephrology"
+      ],
+      "body_terms": [
+        "CKD stage",
+        "proteinuria",
+        "dialysis access",
+        "fistula",
+        "renal"
+      ],
+      "ambiguous_terms": [
+        "eGFR",
+        "creatinine",
+        "ESRD"
+      ]
+    },
+    {
+      "page_type": "Nephrology",
+      "page_subtype": "Dialysis Note",
+      "model_type": "Nephrology",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Dialysis Note",
+        "HD flow sheet"
+      ],
+      "body_terms": [
+        "Dialysis",
+        "hemodialysis",
+        "peritoneal dialysis",
+        "dry weight",
+        "UF goal",
+        "Kt/V",
+        "AV fistula",
+        "dialysate"
+      ],
+      "ambiguous_terms": [
+        "CAPD"
+      ]
+    },
+    {
+      "page_type": "Oncology",
+      "page_subtype": "Oncology",
+      "model_type": "Oncology",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Oncology"
+      ],
+      "body_terms": [
+        "hematology/oncology",
+        "malignant neoplasm",
+        "staging/TNM",
+        "metastatic",
+        "chemotherapy cycle",
+        "tumor markers"
+      ],
+      "ambiguous_terms": [
+        "carcinoma",
+        "ECOG"
+      ]
+    },
+    {
+      "page_type": "Oncology",
+      "page_subtype": "Radiation therapy record",
+      "model_type": "Oncology",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Radiation therapy record"
+      ],
+      "body_terms": [
+        "Radiation therapy",
+        "fractions",
+        "Gy/cGy",
+        "treatment site",
+        "radiation oncologist",
+        "simulation"
+      ],
+      "ambiguous_terms": [
+        "XRT"
+      ]
+    },
+    {
+      "page_type": "Oncology",
+      "page_subtype": "Chemotherapy administration record",
+      "model_type": "Oncology",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Chemotherapy administration record"
+      ],
+      "body_terms": [
+        "Chemotherapy",
+        "cycle/day (C1D1)",
+        "regimen",
+        "infusion start/stop",
+        "premedication",
+        "port accessed"
+      ],
+      "ambiguous_terms": [
+        "dose"
+      ]
+    },
+    {
+      "page_type": "Oncology",
+      "page_subtype": "Infusion therapy note",
+      "model_type": "Oncology",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Infusion therapy note"
+      ],
+      "body_terms": [
+        "Infusion",
+        "Remicade",
+        "iron infusion",
+        "start/stop time",
+        "PICC/port"
+      ],
+      "ambiguous_terms": [
+        "IV",
+        "IVIG",
+        "tolerated well"
+      ]
+    },
+    {
+      "page_type": "Oncology",
+      "page_subtype": "Blood transfusion record",
+      "model_type": "Oncology",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Blood transfusion record"
+      ],
+      "body_terms": [
+        "Transfusion",
+        "unit number",
+        "blood type",
+        "crossmatch",
+        "start/stop time",
+        "transfusion reaction",
+        "two-nurse check"
+      ],
+      "ambiguous_terms": [
+        "PRBC"
+      ]
+    },
+    {
+      "page_type": "Respiratory",
+      "page_subtype": "Respiratory",
+      "model_type": "Respiratory",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Respiratory"
+      ],
+      "body_terms": [
+        "Respiratory therapy",
+        "nebulizer",
+        "albuterol",
+        "oxygen L/min",
+        "BiPAP/CPAP",
+        "breath sounds"
+      ],
+      "ambiguous_terms": [
+        "RT",
+        "COPD"
+      ]
+    },
+    {
+      "page_type": "Respiratory",
+      "page_subtype": "Oximetry report",
+      "model_type": "Respiratory",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Oximetry report"
+      ],
+      "body_terms": [
+        "Oximetry",
+        "pulse ox",
+        "SpO2",
+        "overnight oximetry",
+        "desaturation",
+        "room air",
+        "O2 saturation",
+        "88%"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Respiratory",
+      "page_subtype": "Pulmonary function test / spirometry",
+      "model_type": "Respiratory",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Pulmonary function test / spirometry",
+        "Pulmonary function test",
+        "spirometry"
+      ],
+      "body_terms": [
+        "FEV1",
+        "FEV1/FVC",
+        "% predicted",
+        "bronchodilator response",
+        "obstructive/restrictive"
+      ],
+      "ambiguous_terms": [
+        "PFT",
+        "FVC",
+        "DLCO"
+      ]
+    },
+    {
+      "page_type": "Respiratory",
+      "page_subtype": "Ventilator management record",
+      "model_type": "Respiratory",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Ventilator management record"
+      ],
+      "body_terms": [
+        "Ventilator",
+        "vent settings",
+        "FiO2",
+        "tidal volume",
+        "AC/SIMV",
+        "weaning",
+        "extubation",
+        "tracheostomy"
+      ],
+      "ambiguous_terms": [
+        "PEEP"
+      ]
+    },
+    {
+      "page_type": "Sleep Study",
+      "page_subtype": "Sleep Study",
+      "model_type": "Sleep Study",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Sleep Study"
+      ],
+      "body_terms": [
+        "sleep clinic",
+        "sleep medicine",
+        "apnea",
+        "CPAP compliance",
+        "Epworth",
+        "sleep efficiency"
+      ],
+      "ambiguous_terms": [
+        "AHI"
+      ]
+    },
+    {
+      "page_type": "Sleep Study",
+      "page_subtype": "Polysomnography",
+      "model_type": "Sleep Study",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Polysomnography",
+        "sleep study"
+      ],
+      "body_terms": [
+        "obstructive sleep apnea",
+        "sleep efficiency",
+        "desaturation nadir"
+      ],
+      "ambiguous_terms": [
+        "PSG",
+        "AHI",
+        "RDI",
+        "REM"
+      ]
+    },
+    {
+      "page_type": "Sleep Study",
+      "page_subtype": "Split-night sleep study",
+      "model_type": "Sleep Study",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Split-night sleep study"
+      ],
+      "body_terms": [
+        "Split night",
+        "diagnostic portion",
+        "titration portion",
+        "CPAP pressure"
+      ],
+      "ambiguous_terms": [
+        "AHI"
+      ]
+    },
+    {
+      "page_type": "Sleep Study",
+      "page_subtype": "CPAP / BiPAP titration report",
+      "model_type": "Sleep Study",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "CPAP / BiPAP titration report",
+        "BiPAP titration report"
+      ],
+      "body_terms": [
+        "Titration",
+        "BiPAP",
+        "optimal pressure",
+        "cm H2O",
+        "residual AHI",
+        "mask"
+      ],
+      "ambiguous_terms": [
+        "CPAP"
+      ]
+    },
+    {
+      "page_type": "Pain & Palliative Note",
+      "page_subtype": "Pain & Palliative Note",
+      "model_type": "Pain & Palliative Note",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Pain & Palliative Note"
+      ],
+      "body_terms": [
+        "pain management",
+        "chronic pain",
+        "epidural steroid injection",
+        "nerve block",
+        "palliative care",
+        "goals of care",
+        "code status",
+        "hospice",
+        "comfort care"
+      ],
+      "ambiguous_terms": [
+        "pain scale"
+      ]
+    },
+    {
+      "page_type": "Implants",
+      "page_subtype": "Implants",
+      "model_type": "Implants",
+      "is_generic": true,
+      "codability": "Codable",
+      "title_terms": [
+        "Implants"
+      ],
+      "body_terms": [
+        "Implant",
+        "lot/serial number",
+        "model",
+        "prosthesis",
+        "pacemaker",
+        "joint"
+      ],
+      "ambiguous_terms": [
+        "manufacturer",
+        "IOL"
+      ]
+    },
+    {
+      "page_type": "Implants",
+      "page_subtype": "Pacemaker Report",
+      "model_type": "Implants",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Pacemaker Report"
+      ],
+      "body_terms": [
+        "Pacemaker",
+        "device interrogation",
+        "device clinic",
+        "battery",
+        "lead impedance",
+        "% paced",
+        "remote monitoring",
+        "programmer"
+      ],
+      "ambiguous_terms": [
+        "ICD"
+      ]
+    },
+    {
+      "page_type": "Implants",
+      "page_subtype": "Device implant log",
+      "model_type": "Implants",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Device implant log",
+        "Implant log"
+      ],
+      "body_terms": [
+        "device",
+        "serial",
+        "lot",
+        "expiry",
+        "implanted by"
+      ],
+      "ambiguous_terms": [
+        "UDI"
+      ]
+    }
+  ]
+}

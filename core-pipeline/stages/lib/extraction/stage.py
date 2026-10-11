@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from config import KV_DEBUG, chart_dir, page_image_path
-from db import connect, get_ocr_texts, upsert_ocr_result
+from db import connect, get_ocr_texts, upsert_additional_page_details, upsert_ocr_result
 from db.paths import imaging_csv, ocr_dir, write_csv, write_final1_json, write_final2_json
 from stages._support import (
     mark_completed,
@@ -281,6 +281,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 headers = headers_by_page.get(page["page_name"]) or []
                 sig = signature_fields(signature, providers)
                 extra = additional_fields(page_no, headers)
+                upsert_additional_page_details(
+                    conn, chart_id=chart_id, page_id=page["id"], fields=extra
+                )
                 signature_rows.append(
                     signature_csv_row(
                         ctx.chart_name, page["page_name"], page.get("page_number"), sig

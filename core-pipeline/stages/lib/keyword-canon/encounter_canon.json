@@ -1,5 +1,5 @@
 {
-  "note": "Encounter setting per visit. Evidence is ranked, not added up: the highest non-empty tier decides alone. tier1 = a matched (not span-inherited) page type that exists in one setting only, keyed on codeable_canon.json ids. tier2 = text that names the setting. tier3 = hints that also occur in other settings; they only break a tie inside the deciding tier. context phrases are logged and never score. A negative removes the tier 2/3 finding it names (cancels) or every tier 2/3 finding of a setting (cancels_setting). A phrase is recorded once per visit however often it appears. Lower priority wins a tie. Reloads on change.",
+  "note": "Encounter setting per visit. Evidence is ranked, not added up: the highest non-empty tier decides alone. tier1 = the page's own matched page type that exists in one setting only, keyed on page_taxonomy.json sub-type names, else page type names. tier2 = text that names the setting. tier3 = hints that also occur in other settings; they only break a tie inside the deciding tier. context phrases are logged and never score. A negative removes the tier 2/3 finding it names (cancels) or every tier 2/3 finding of a setting (cancels_setting). A phrase is recorded once per visit however often it appears. Lower priority wins a tie. Reloads on change.",
   "settings": {
     "home": {
       "label": "Home",
@@ -25,26 +25,15 @@
     "tier2_conflict": 0.6
   },
   "tier1_page_types": {
-    "discharge_summary": "inpatient",
-    "discharge_note": "inpatient",
-    "discharge_report": "inpatient",
-    "depart_note": "inpatient",
-    "depart_summary": "inpatient",
-    "icu_flow_sheet": "inpatient",
-    "ventilator_management_record": "inpatient",
-    "critical_care_note": "inpatient",
-    "operative_report": "inpatient",
-    "anesthesia_record": "inpatient",
-    "anesthesia_post_op_note": "inpatient",
-    "emergency_ed_visit": "inpatient",
-    "home_health_visit_note": "home",
-    "skilled_nursing_visit_note": "home",
-    "housecalls_visit_summary": "home",
-    "telephone_encounter": "outpatient_tele",
-    "office_visits_followup_visits": "outpatient_f2f",
-    "initial_office_note": "outpatient_f2f",
-    "established_patient_note": "outpatient_f2f",
-    "urgent_care_note": "outpatient_f2f"
+      "Discharge Summary": "inpatient",
+      "ICU Note": "inpatient",
+      "Ventilator management record": "inpatient",
+      "Operative Report": "inpatient",
+      "Emergency Note": "inpatient",
+      "Urgent care note": "outpatient_f2f",
+      "HouseCalls visit summary": "home",
+      "Telephone Encounter": "outpatient_tele",
+      "Office Visit": "outpatient_f2f"
   },
   "tier2": {
     "outpatient_tele": [

@@ -1,7 +1,7 @@
 {
-  "note": "Date-of-service scorer. Every date on a page is a candidate; each gets score = base + label weight - distance decay + edge/cue/cluster bonuses - age penalty, clamped to [0,1]. The best candidate at or above DOS_MIN_SCORE is the page's date. Edit weights and label phrases here, not in dos_logic.py. Reloads on change.",
+  "note": "Date-of-service scorer. Every date on a page is a candidate; each gets score = base + label weight - distance decay + edge/cue/cluster bonuses - age penalty, clamped to [0,1]. A key/value date is the page's date; otherwise, as the backup, the best text candidate at or above DOS_MIN_SCORE. Edit weights and label phrases here, not in dos_logic.py. Reloads on change.",
   "DOS_MAX_AGE_YEARS": 6,
-  "DOS_MIN_SCORE": 0.55,
+  "DOS_MIN_SCORE": 0.75,
   "DOS_DEFAULT_DATE": "2022-02-02",
   "base": 0.5,
   "label_weights": {
@@ -22,7 +22,6 @@
   "age_penalty": 0.35,
   "timestamp_penalty": 0.3,
   "note_timestamp": "A date with a clock time beside it (03/20/2024 10:15 AM, 2025-12-31T10:00) is usually a print, fax or signature stamp in the header or footer: it loses timestamp_penalty and gets no edge_bonus. A labelled encounter time (Arrival Date: 03/14/2024 14:32) still clears DOS_MIN_SCORE.",
-  "span_override_score": 0.75,
   "llm_confidence": 0.7,
   "window_left_chars": 80,
   "window_right_chars": 40,
@@ -95,27 +94,12 @@
       "colonoscopy"
     ]
   },
-  "non_encounter_page_types": [
-    "Face sheet / Registration",
-    "Demographics",
-    "Problem List",
-    "Medication List",
-    "Allergies report",
-    "Vital Signs",
-    "Immunization List/ Vaccine / flu Shot",
-    "Vaccination Administration Record",
-    "Immunization Consent"
-  ],
-  "default_page_types": [
-    "Demographics"
-  ],
+  "non_encounter_page_types": ["Patient Demographics", "Face Sheet", "Patient Information", "Patient Registration", "Problem List", "Medication List", "Prescription / Rx page", "Refill record", "Allergies Report", "Immunizations", "Immunization list", "Vaccine Record"],
+  "default_page_types": ["Patient Demographics", "Patient Information"],
   "default_page_type_contains": [
     "injection",
     "immunization",
     "vaccin"
-  ],
-  "span_page_types": [
-    "Progress Note"
   ],
   "clinical_cues": [
     "chief\\s+complaint",
@@ -139,5 +123,5 @@
     "date\\s+of\\s+discharge"
   ],
   "note_cues": "Regex patterns. clinical_cues gives the has_clinical_cue bonus and gates the Azure OpenAI fallback; discharge_cues makes the fallback ask for admission and discharge dates.",
-  "note_page_types": "non_encounter_page_types and span_page_types are page_type names from codeable_canon.json, matched exactly (case-insensitive)."
+  "note_page_types": "non_encounter_page_types and default_page_types are page_subtype names from page_taxonomy.json (a generic sub-type has its page type's name), matched exactly (case-insensitive)."
 }

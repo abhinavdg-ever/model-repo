@@ -1,0 +1,9 @@
+# On a Windows laptop with an NVIDIA GPU, install the CUDA build of PyTorch
+# FIRST (see README), then: pip install -r requirements.txt
+torch>=2.1
+transformers>=4.40  # 4.x and 5.x both work; Colab keeps its own
+scikit-learn>=1.3
+pandas>=2.0
+numpy>=1.24
+safetensors>=0.4
+pytest>=7  # tests only

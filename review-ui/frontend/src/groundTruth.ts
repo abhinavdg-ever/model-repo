@@ -161,9 +161,8 @@ function dateMark(
 }
 
 /**
- * Camel case has no space, only a capital at each word: "ProgressNotes",
- * "NonCodeable". Show those as "Progress Notes", "Non Codeable". "Codable"
- * displays as "Codeable".
+ * Camel case has no space, only a capital at each word: "ProgressNotes"
+ * shows as "Progress Notes".
  */
 export function displayWords(value: string | null | undefined): string {
   return text(value)
@@ -171,15 +170,20 @@ export function displayWords(value: string | null | undefined): string {
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .split(/\s+/)
     .filter(Boolean)
-    .map((word) => {
-      const spelled = word.replace(/codable/gi, "codeable");
-      return spelled.charAt(0).toUpperCase() + spelled.slice(1).toLowerCase();
-    })
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(" ");
 }
 
+// Codeable, Non Codeable, Non-Codeable, NonCodeable, non_codeable, Codable …
+const CODEABLE = /\b(?:(non)[\s_-]*)?code?able\b/gi;
+
+/** Codeable / Non-Codeable, however a sheet or an older run spelled it. */
+export function spellCodeable(value: string): string {
+  return value.replace(CODEABLE, (_match, non) => (non ? "Non-Codeable" : "Codeable"));
+}
+
 export function displayCodeable(value: string | null | undefined): string {
-  return displayWords(value);
+  return spellCodeable(displayWords(value));
 }
 
 function codeableMark(

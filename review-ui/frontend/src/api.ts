@@ -140,10 +140,25 @@ export type ImagingPageResult = {
   dosConfidence: number | null;
   docDosFrom?: string | null;
   docDosTo?: string | null;
-  /** DOS resolver label. `span` means the page continues an open encounter. */
+  /** DOS resolver label. `span` only on runs from before the continuity stage. */
   dosMatch?: string | null;
-  /** Reviewer-facing date. `continuation` when the page is inside a span. */
+  /** The page's own date; `continuation` on runs from before the continuity stage. */
   finalDos?: string | null;
+  /** Document continuity: which document the page belongs to. */
+  documentSeq?: number | null;
+  /** single | first | continue | last */
+  documentPosition?: string | null;
+  /** new_document | continue | unknown */
+  continuityRelation?: string | null;
+  continuityDecidedBy?: string | null;
+  continuityEvidence?: string | null;
+  continuityReview?: boolean | null;
+  /** Final values (imaging_final). Inside a document, its first page's. */
+  finalPageType?: string | null;
+  /** Codeable | Non-Codeable | Discharge — follows finalPageType. */
+  finalCodeable?: string | null;
+  finalDosFrom?: string | null;
+  finalDosTo?: string | null;
   /** null = not classified yet → UI shows NA; else "Yes (Blank)" | "Yes (Junk)" | "No" */
   blankOrJunk?: string | null;
   /** null = not classified → NA */
@@ -153,7 +168,7 @@ export type ImagingPageResult = {
   /** Blank/Main/Duplicate → Not Available; Invoice|Cover → type */
   pageType: string | null;
   pageTypeConfidence: number | null;
-  /** Codeable | Non Codeable — logic TBD. */
+  /** Codeable | Non-Codeable | Discharge (older runs: Codeable / Non Codeable). */
   isCodeable?: string | null;
   /** Pipeline / file order (1-based). */
   currentSequence?: number | null;

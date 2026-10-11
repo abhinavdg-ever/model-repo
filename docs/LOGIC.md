@@ -17,6 +17,7 @@ the V1 prototypes. Where the port differs from them, it says so and why.
 5. [Member verification](#5-member-verification) ← the accept/reject decision
 6. [Date of service](#6-date-of-service)
 7. [Page type](#7-page-type)
+   - [Document continuity](#7b-document-continuity) ← Final page type and Final DOS
 8. [Encounter type](#8-encounter-type)
 9. [Chart status](#9-chart-status)
 
@@ -82,27 +83,42 @@ Both the classifier and the detector are built **once per process**. The v6
 implementation rebuilt them inside the per-page function, unpickling the model
 for every page in the chart.
 
-Coarse orientation starts from Tesseract OSD. Before that angle is kept, and
-before tilt and mirror, a Tesseract read of the page can change it.
-Handwritten and mixed pages keep OSD's angle. On any other page, if the
-proposed turn is gibberish and the page has at least 20 words, a non-zero
-turn is undone when the unturned page reads. When OSD applied no turn, the
-four quarter-turns are compared and the one that reads best is kept; a tie
-stays at 0°. The geometric detector's own coarse guess is not used.
+Coarse orientation starts from Tesseract OSD. No correction — turn, mirror
+or tilt — is kept unless Tesseract reads the page at least as well with it as
+without it. A read is scored in English dictionary words, and it *reads* when
+it has at least 8 tokens of three or more letters and 40% of them are English.
+(The junk module's gibberish check is not used: upside-down and mirrored reads
+keep their vowels, and on four real charts it passed every one of them.)
 
-Mirror is decided next, on the turned page, and gets the same kind of check.
-The detector reads the page and its horizontal flip with Tesseract and votes
-Yes when the flip yields clearly more confident words. Only a Yes is checked
-further; a No stays No. Handwritten and mixed pages keep the Yes. On a printed
-page with at least 20 words, the Yes stands only when a dictionary check of
-the same two reads agrees: at least 40% of the flipped read's words are
-English and that share is at least twice the unflipped one. Otherwise it
-becomes No. (The gibberish check cannot do this —
-mirrored text such as `noitsoibem` still carries vowels.) A Yes is applied to
-the corrected page, after the turn.
+Reads use Tesseract `--psm 4` on a copy of the page shrunk to 1600 px. The
+default layout analysis turns top-to-bottom text back on its own, so a page
+turned 90° read as well as the upright page and the two could not be told
+apart. Under PSM 4 only the upright page reads.
 
-Tilt is measured last, on the page as it will be saved — turned and, if
-mirrored, flipped — because a flip reverses the direction of a lean.
+1. **Turn.** OSD's turn stands when the page reads well at it (20+ English
+   words) — one read, the common case. Otherwise all four quarter-turns are
+   read and the one with the most English words is kept, if it reads. So a
+   turn that comes out gibberish goes back to 0° when the page as it arrived
+   reads better, and a page that is gibberish at 0° is turned when a
+   quarter-turn reads. Ties keep OSD's turn, then 0°.
+2. **Mirror**, decided with the turn. Only when no unflipped turn reads well
+   are the four flipped pages read too; a flip is kept only when it reads more
+   English than every unflipped turn. This also catches a page that is upside
+   down *and* mirrored (turn 180° + flip).
+3. Nothing reads at all — handwriting, a poor scan: OSD's turn stands,
+   unmirrored. A page tagged `blank` is not read.
+4. **Tilt** is measured last, on the page as it will be saved — turned and,
+   if mirrored, flipped — because a flip reverses the direction of a lean.
+   A tilt that would be applied is undone (`tilt_angle` 0) when the
+   straightened page reads more than 10% fewer English words than the
+   unstraightened one; a word or two either way is Tesseract noise.
+
+`method` is `readability` when reading changed OSD's turn or added a flip.
+The geometric detector's own coarse guess is not used.
+
+Measured on 106 text pages from four charts, each turned 90/180/270,
+mirrored, and flipped vertically: every case recovered, and no upright page
+was moved.
 
 Tilt is applied only up to `MAX_TILT_TO_APPLY` degrees either way (default
 5). A larger reading is still stored in `tilt_angle` but the page is not
@@ -536,7 +552,7 @@ flowchart TD
   LLM -- yes --> AOAI["extract_dos_range_with_llm()"]
   LLM -- no --> D
   AOAI --> D
-  BEST -- yes --> D["D. resolve in page order<br/>spans · carry-forward · non-encounter · default"]
+  BEST -- yes --> D["D. resolve in page order<br/>own date · non-encounter · default"]
 ```
 
 ### A. Candidates
@@ -553,7 +569,7 @@ that are not real days (02/30) are dropped; everything else is kept.
 | `label_distance` | Characters between the label and the date |
 | `position`, `edge_position` | Offset ÷ page length; in the first or last 60 words |
 | `has_time` | A clock time beside the date (`03/20/2024 10:15 AM`, `…T10:00`) — the shape of a print/fax stamp |
-| `page_type`, `has_clinical_cue` | `codeable_classify.page_type_of()` (per page, no DOS carry); `clinical_cues` |
+| `page_type`, `has_clinical_cue` | `page_classify.keywords.classify()` sub-type (per page); `clinical_cues` |
 | `year_delta` | Candidate year − chart received year (`chart_list.created_at`) |
 | `cluster_size` | Other candidates in the chart within 30 days |
 | `in_range_pair` | An admit and a discharge candidate within 200 chars |
@@ -571,35 +587,32 @@ score = base (0.5) + W[label_class] − 0.002 × label_distance
 
 `W`: encounter +0.40, admit/discharge +0.30, none −0.10, procedure −0.30,
 future −0.40, doc_meta −0.45, birth −0.50. Clamped to [0, 1]. The best
-candidate at or above `DOS_MIN_SCORE` (0.55) is the page's date. If it is part
+candidate at or above `DOS_MIN_SCORE` (0.75) is the page's date — the backup when the key/value extraction chose no date (a key/value date always wins). If it is part
 of an admit/discharge pair, the page gets the range. The chosen score is the
 row's `confidence`.
 
 ### D. Resolve
 
-| Page | Page level (extracted) | Document level | Final |
+| Page | Page level (extracted) | Document level | `final_dos` |
 |---|---|---|---|
-| Progress Note with a date | its date | opens a span with it (`span_start`) | its date |
-| In a span, own date ≤ span override (0.75) | its date | the span's (`span`) | the progress note's date |
-| In a span, no date of its own | blank | the span's (`span`) | the progress note's date |
-| Own date above the span override, or no span | its date | its date — the new encounter | its date |
+| A date of its own | its date | its date — the current encounter | its date |
 | Non-encounter page type (face sheet, demographics, problem/med/allergy list, vitals, immunization) | its date | the current encounter, never replaced (`non_encounter_page`) | its date |
-| Nothing to inherit | blank | `DOS_DEFAULT_DATE`, confidence 0, `no_date_found`, `is_default` | blank |
+| No date of its own | blank | `DOS_DEFAULT_DATE`, confidence 0, `no_date_found`, `is_default` | blank |
 
-The page-level columns stay the date found on that page. On a span page the
-final date (`final_dos`) is the date from the progress note that opened the
-span. Document level still carries that same encounter date, which later
-stages read when the page itself has none.
+Every page keeps the date found on it. There are no progress-note spans here:
+carrying a document's date to its other pages is the continuity stage's Final
+DOS (see **Document continuity**).
 
-Page types are exact `page_type` names from `codeable_canon.json`, listed in
-the profile.
+The profile's page types are sub-type names from `page_taxonomy.json` (a
+generic sub-type has its page type's name), read with the keyword model
+(`page_classify/keywords.py`) because DOS runs before the page-type stage.
 
 ### Settings (profile)
 
 | Key | Default | Meaning |
 |---|---|---|
 | `DOS_MAX_AGE_YEARS` | 6 | Age penalty applies to dates more than this many years before the received date. Replaces the fixed 2020 cutoff. |
-| `DOS_MIN_SCORE` | 0.55 | Lowest score that counts as a page date |
+| `DOS_MIN_SCORE` | 0.75 | Lowest score for a text date, used only when no key/value date exists |
 | `DOS_DEFAULT_DATE` | 2022-02-02 | Delivered when nothing is found. review-ui and `encounter_classify` also know this value. |
 
 `DOS_DEBUG=true` (env) writes every candidate, its features, its score and
@@ -624,139 +637,106 @@ log (`auth=key` / `auth=entra`); the setting is
 
 ## 7. Page type
 
-**Engine:** `stages/lib/page_classify/codeable_classify.py` · **Stage:**
-`stages/lib/page_classify/stage.py` · **Catalog:**
-`keyword-canon/codeable_canon.json` (reloads on change) · **Family model:**
-`models/page-family/family.joblib` (`PAGE_FAMILY_MODEL_DIR`)
+**Full design:** [PAGE_CLASSIFICATION.md](PAGE_CLASSIFICATION.md).
 
-Every main page (not blank / junk / duplicate) gets a family, then a subtype.
-Blank, junk and duplicate pages are always Non Codeable. When the weights or
-XGBoost are missing, the keywords choose the family.
+Per page (`page_subtype` stage, the **Extracted** answer): BERT
+(`models/page-family/`) predicts a model type with a confidence; the keyword
+model (`keyword-canon/page_keyword_canon.json`) predicts a sub-type with a
+score, margin and title hit; the ladder in `page_arbitration.json` decides
+the page type (agreement → bert_high → keyword_only_class → keyword_title →
+bert_medium → keyword_body → bert_low), then the sub-type, then codability
+from `page_taxonomy.json`. No model installed → keywords only, visible in
+`/health`. Text: Final2 → Final1 → Tesseract.
 
-### Picking the family and the subtype
-
-1. **Model.** Top probability at least 0.50. Confidence is that probability.
-2. **Keyword winner.** Used when the model did not commit and the winning family's raw keyword score is above 0.70. Confidence is that family's lead over the next keyword family, from 0 to 1. The raw score is only the gate; it is not the confidence.
-3. **Top 3 overlap.** The model's top 3 and the keyword top 3. A family in both is tagged. The model's highest such family is kept. Confidence is that family's model probability.
-4. **Others.** When none of the above hit. Confidence is 0.
-5. **Subtype.** Inside the chosen family, the keyword type with the largest share of that family's scores. No subtype hit leaves the subtype equal to the family name. Others has no subtype.
-
-After that, `postprocess.py` rewrites pages. Two rules so far, in order:
-
-1. **Signature.** A page whose provider-signature row says a signature is present becomes Progress Note.
-2. **Between.** A run of Patient Demographics with a Progress Note on both sides becomes Progress Note. The confidence is the lower of those two neighbours.
-
-The 47 families, their tags and priorities, live in the canon's `families`
-block. Display names are the model's labels (`Progress Note`, `Laboratory
-Report`, `Discharge Summary`).
-
-### The catalog
-
-```json
-{
-  "id": "soap_note",
-  "display": "SOAP Note (Subjective, Objective, Assessment, Plan)",
-  "family": "progress_note",
-  "continue": true,
-  "match": {
-    "primary":    ["soap note"],
-    "supporting": ["assessment", "subjective", "objective"],
-    "variants":   []
-  }
-}
-```
-
-| Field | Meaning |
-|---|---|
-| `id` | Stable key. `display` is what the reviewer sees (parentheticals hidden) |
-| `family` | One of the `families` block. A family has a `tag`, a `priority` (lower wins ties) and `span`; the type takes its tag from the family and may not carry its own |
-| `match.primary` | Decides the type and can open a span. Belongs to exactly one entry. Two or more words, or a word in `single_word_primary` |
-| `match.variants` | Misspellings from the client's type list (`intial`, `requisation`, `dignosis`). Count as primary |
-| `match.supporting` | Adds score, never decides the type |
-| `continue` | The type runs over several pages: it opens a span for its family |
-
-**The loader refuses a bad file** and names every offending entry: a primary
-claimed by two entries, a one-word primary not on the allowlist, an entry with
-no primary, an unknown family, a family without a valid tag, or a type that
-carries its own tag. On a live reload the last good version
-keeps serving; on first load the error is raised.
-
-### Scoring
-
-Text is lowercased with whitespace collapsed. Keywords match on word
-boundaries, so `ems` does not hit "problems" and `sex` does not hit "sexual".
-
-```
-hit_weight  = phrase_weight[words] × band
-phrase_weight: 1 word 1 · 2 words 4 · 3 words 6 · 4+ words 8
-band:          top 15% of the page 2.0 · bottom 10% 0.5 · elsewhere 1.0
-family_score = sum of the hits of every type in the family
-               (a phrase two of its types share counts once per position)
-```
-
-A type name at the top of a page is the document's title; the same phrase in
-the body is usually a cross-reference ("see discharge summary"), and a footer
-usually repeats a form name.
-
-### Picking the family from keywords
-
-Used when the model abstains or its weights are missing.
-
-1. A family is eligible when at least one of its hits is a primary or variant.
-2. **Family:** the highest family score wins; on a tie, the lower priority
-   (`progress_note` 10, `discharge_summary` 15). The family decides the tag.
-3. **Subtype:** inside that family, each eligible type's share of the family's
-   type scores is its probability; the most likely type wins (ties: the longer
-   name). It is reported as `type_confidence`. No eligible type leaves the
-   subtype equal to the family name.
-
-**Dominance:** a family listed in `matching.dominant_families` wins outright
-once its score reaches the threshold — Progress Note at 12, e.g. three
-section headers in the body, or a header title plus one more hit — however
-much the other families score.
-
-**Fill between:** after spans, a page that matched nothing and sits between two
-pages of a family in `matching.fill_between_families` (Progress Note) takes
-that family, the previous page's type and the lower neighbour confidence
-(`continue_applied=y`; `filled_between` in the evidence log).
-
-**Confidence** = `(winning family − next family) / winning family`, at least
-`confidence_floor` (0.30); 1.0 when no other family matched. Two Progress Note
-types scoring the same is not uncertainty — either gives the same family and
-tag.
-
-**Demographics** is decided separately when patient-data fields cluster (two on
-pages 1–2, four anywhere), unless a span family (progress note, discharge)
-also matched.
-
-### Spans
-
-| Page | Result |
-|---|---|
-| Winner has `continue` | Opens (or replaces) a span for its family |
-| Same date as the span, matched a type in the span's family | That type, the span's tag (`continue_applied=y`) |
-| Same date, another family wins with score ≥ `span_break_score` (8) and the span's family has no primary/variant hit on the page | Its own type and tag; the span ends (`continue_applied=n`) |
-| Same date, matched nothing, a weak other family, or the span's family is still a candidate | The opener's type and tag (`continue_applied=y`) |
-| Different date, or no date | Span ends |
-
-The span date is the page-level DOS, else the document-level one. The DOS
-default (`DOS_DEFAULT_DATE`) counts as no date, so pages where date extraction
-failed share a span with nobody.
-
-### Evidence
-
-`PAGE_CLASSIFY_DEBUG=true` writes
-`<chart>/debug/<chart>_page_classify_evidence.csv`: per page, the chosen type
-and family, per-family scores, every keyword hit with its role and band, page
-position in the chart, the previous page's family and the OCR source. It is the
-reviewer's "why" and the training set for a family-level classifier.
+Across pages (`imaging_final`, the **Final** answer): on the continuity
+stage's documents, an untitled Progress-Note-looking page that continues
+another document on a strong link takes that document's type, and a lab or
+radiology page inside a Progress Note becomes Progress Note / Laboratory Data
+(or Radiology Report). Weak evidence flags the page; it never changes it.
 
 **Writes**
 
 | Target | Columns |
 |---|---|
-| `page_classification` | `page_subtype` (display name), `classification_category`, `confidence` |
+| `page_classification` | `page_type`, `page_subtype`, `model_type`, `classification_category`, `decided_by`, `needs_review`, `bert_model_type`, `bert_confidence`, `keyword_page_subtype`, `keyword_score`, `keyword_margin`, `keyword_title_hit` |
 | disk | `imaging/<chart>_codeable.csv` |
+
+---
+
+## 7b. Document continuity
+
+**Runs:** after page type and DOS (`continuity`, seq 87), on every page that
+is not blank, junk or duplicate. **Decides:** which document each page belongs
+to. **Carries:** the document's first-page page type and DOS to every page in
+it, as the Final value. The page's own page type and DOS stay as their stages
+wrote them; review-ui shows them as Extracted beside Final.
+
+Each page is judged against the previous one (blank/junk/duplicate pages are
+passed over). Settings live in `keyword-canon/continuity_canon.json` and
+reload on change.
+
+| Tier | Signal | Effect |
+|---|---|---|
+| 1 | Printed `Page N of M` (or `pg`) in the header or footer band; the key/value extraction's page number when it chose one | Decides alone: `N+1 of M` continues; page 1, another total, or no step forward starts a new document |
+| 2 | A line repeated in the header band (+5) or footer band (+2); headers / footers that look alike (+2 each); a shared accession (+6), order or visit number (+5), MRN (+1) | Adds to the score |
+| 3 | A matched section header in the top 15% of this page (−6); a signature on the previous page (−3); "continued" (+6) | Adds to the score |
+
+Score ≥ 5 continues, ≤ −2 starts a new document. In between is **unknown**:
+the page starts its own document and is flagged for review, so nothing is
+copied onto it on no evidence.
+
+**Bands come from positions.** The header band is lines whose top is above 10%
+of the page height, the footer band lines whose bottom is below 92%, read from
+the Final2 JSON's line polygons (Final1 words grouped into lines when Final2 is
+absent; first 4 / last 3 text lines when neither exists). Docling's markdown is
+not in top-to-bottom order, so its first lines are not the page header.
+
+**Progress notes.** A document whose first page is a Progress Note stays open
+through pages the signals cannot decide (`decided_by = progress_note`). It
+closes:
+
+* after the page with a signature (a signature block in the text, or
+  `signature_present` from the extraction) — that page is the note's last;
+* before a page the signals or pagination call a new document;
+* before the **next encounter**: a page whose own DOS differs from the note's
+  *and* that carries a visit-opening section header (`encounter_headers`:
+  Office Visit, Progress Note, History and Physical, Chief Complaint, …). This
+  overrides printed pagination, because one EMR printout paginates several
+  visits as one job (53688890: "page 1 of 17" across five office visits). A
+  differing date alone does not close the note: continuation pages carry stray
+  old dates (a 2017 problem-list date inside a 2025 note).
+
+**Final values** (written by the `imaging_final` stage, last in the chain, into
+`imaging_final` with every other field's Final value). Final page type follows
+the continuation rules in [PAGE_CLASSIFICATION.md](PAGE_CLASSIFICATION.md) §6
+(it is not copied from the first page).
+Final DOS = its first page's DOS; when that page has none, the first page in
+the document that has one, and the evidence says so. A continuation page with
+no date of its own shows Extracted DOS NA and the Final DOS of the first page.
+
+**Tuning.** Weights were set on 80 pagination-labelled page pairs from four
+charts (55 continuations, 25 new documents), counting a wrong merge three
+times worse than a wrong split — a merged page takes another document's page
+type and DOS. Without pagination they merge 6 of 25 new documents (the
+original weights merged 11) and split 1 of 55 continuations; 25 pairs are
+left unknown for review. A repeated header line fires on 28% of new documents
+(separate documents from one EMR share the patient banner), so it cannot
+decide alone. Sentence-level signals are not used: "previous page ends without
+punctuation" scored 28% on continuations against 29% on new documents.
+
+**Replaces** three earlier mechanisms that could disagree: the MiniLM /
+mid-sentence tagger (`stages/lib/continuation`), the DOS progress-note span
+(`span_page_types`, `span_override_score`), and the page-type span and
+fill-between (`continue`, `fill_between_families`).
+
+**Writes**
+
+| Target | Columns |
+|---|---|
+| `page_continuity_results` | `document_seq`, `seq` (page within the document), `position`, `relation`, `decided_by`, `confidence_level`, `score`, `review_required`, `evidence` |
+| `imaging_final` (the `imaging_final` stage) | one row per page: the Final value of every reviewer field; page type, classification and DOS carried from the document, with `page_type_source` / `dos_source` = `document` or `page`. See [CONTINUITY.md](CONTINUITY.md) |
+| `additional_page_details` (written by the key/value stage) | the printed page number and the page's `section_headers` JSON that continuity reads |
+| disk | `imaging/<chart>_continuity.csv`: the same per page, plus the printed `page_no` / `page_total` used, the `section_headers`, the page's own `page_type`, `dos_from`, `dos_to`, and `layout_source` (final2 / final1 / text) |
 
 ---
 
@@ -784,7 +764,7 @@ Each finding is recorded **once per visit**, however often its words appear.
 
 | Tier | What | Decides? |
 |---|---|---|
-| 1 | A page type that exists in one setting only (`tier1_page_types`, keyed on the page type id). It must be matched on the page, not inherited from a span | Yes, alone |
+| 1 | A page type that exists in one setting only (`tier1_page_types`, keyed on the page type id). The page's own page type | Yes, alone |
 | 2 | Text naming the setting: "telehealth", "hospital course", "home health visit", "place of service" | Only when tier 1 is empty |
 | 3 | Hints found in several settings: "chief complaint", "follow up", "consultation", "h&p" | Never — breaks a tie inside the deciding tier |
 | context | "radiology report", "mri report" … | Logged only |
@@ -875,7 +855,8 @@ v8 uses lifecycle `status` + `current_stage` + `current_pass`, with order in the
 | Blank/junk detectors | `core-pipeline/stages/lib/blank_junk/` |
 | Member rules + NER | `core-pipeline/stages/lib/member/` |
 | Member driver (ported `run.py`) | `core-pipeline/stages/lib/member/engine.py` |
-| DOS regex + LLM + carry-forward | `core-pipeline/stages/lib/dos/dos_logic.py` |
+| DOS regex + LLM | `core-pipeline/stages/lib/dos/dos_logic.py` |
+| Document continuity, Final page type + DOS | `core-pipeline/stages/lib/continuity/`, `keyword-canon/continuity_canon.json` |
 | Status derivation | `core-pipeline/db/chart_status.py` |
 | Persistence | `core-pipeline/db/__init__.py` |
 

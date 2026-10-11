@@ -18,7 +18,7 @@ handwritten, OSD rotation, tilt, mirror measurement. Same problem space as
 | `document_type/models/page_printed_handwritten_convnext_tiny.pth` | **`models/hw/handwritten_printed_convnext_tiny.pth`** (preferred — we keep this canonical name) |
 | Prior weight (pre–2026-09-23) | `models/hw/handwritten_printed_convnext_tiny_backup.pth` |
 | `document_type/models/metadata.json` | `models/hw/metadata.json` |
-| `orientation/*` | `stages/lib/image_preprocess/rotation.py` + `osd.py` (OSD-only coarse rotation, no geometric fallback, mirror applied when the flipped page reads as English) |
+| `orientation/*` | `stages/lib/image_preprocess/rotation.py` + `osd.py` (OSD proposes the turn; turn, mirror and tilt are each kept only when Tesseract reads the page better with them) |
 | `document_type/existing_classifier_adapter.py` | **not imported** — their package loads via sibling `hw_printed_rf_test.page_classifier`; we load the same `.pth` with our `hw_printed.load_model` (compatible checkpoint: `model_state_dict` + ConvNeXt-Tiny) |
 
 ## Drops received

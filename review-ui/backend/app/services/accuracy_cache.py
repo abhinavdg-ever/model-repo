@@ -33,7 +33,7 @@ _ready_lock = threading.Lock()
 
 _CODEABLE = {
     "codeable": "Codeable",
-    "non_codeable": "Non Codeable",
+    "non_codeable": "Non-Codeable",
     "discharge_summary": "Discharge",
     "discharge_frequency": "Discharge",
     "not_sure": "Not Sure",
@@ -71,7 +71,11 @@ SELECT
     d.date_of_service_to,
     b.blank_junk_flag,
     b.junk_subtype,
-    pc.page_subtype,
+    -- "Page Type (Sub-type)", the shape review-ui shows; a pre-taxonomy row
+    -- already holds that string in page_subtype.
+    (CASE WHEN pc.page_type IS NOT NULL AND pc.page_type <> pc.page_subtype
+          THEN pc.page_type || ' (' || pc.page_subtype || ')'
+          ELSE COALESCE(pc.page_subtype, pc.page_type) END)::VARCHAR(200) AS page_subtype,
     pc.classification_category,
     (
         SELECT mm.external_member_id

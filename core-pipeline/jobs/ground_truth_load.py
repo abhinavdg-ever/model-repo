@@ -32,6 +32,7 @@ _HEADER = {
     "encountertype": "encounter_type",
     "pagetype": "page_type",
     "codableornoncodable": "codeable",
+    "codeableornoncodeable": "codeable",
     "blankpage": "blank_page",
     "pagesequence": "page_sequence",
     "junkpage": "junk_page",
@@ -138,11 +139,15 @@ def _cell(value: Any) -> Optional[str]:
     return text or None
 
 
+# Codeable, Non Codeable, Non-Codeable, NonCodeable, non_codeable, Codable …
+_CODEABLE = re.compile(r"\b(?:(non)[\s_-]*)?code?able\b", re.IGNORECASE)
+
+
 def spell_codeable(value: Optional[str]) -> Optional[str]:
-    """Spreadsheets say Codable. The pipeline and the review screen say Codeable."""
+    """Codeable / Non-Codeable, however a sheet or an older run spelled it."""
     if not value:
         return value
-    return re.sub(r"codable", "Codeable", value, flags=re.IGNORECASE)
+    return _CODEABLE.sub(lambda m: "Non-Codeable" if m.group(1) else "Codeable", value)
 
 
 def parse_rows(headers: list[Any], data_rows: list[list[Any]]) -> list[dict[str, Any]]:

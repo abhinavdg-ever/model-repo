@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
-import { Pencil, Save } from "lucide-react";
+import { Check, CircleMinus, Pencil, Save, X } from "lucide-react";
 import {
   savePageGroundTruth,
   type ExtractionReviewResponse,
@@ -15,7 +15,7 @@ import {
   duplicateDisplayConfidence,
   formatDuplicateLabel,
 } from "./duplicateLabel";
-import { displayCodeable, displayIsoDates, groundTruthBits, type GtBit } from "./groundTruth";
+import { displayCodeable, displayIsoDates, groundTruthBits, spellCodeable, type GtBit } from "./groundTruth";
 import { PAGE_SUBTYPE_CHOICES, PAGE_TYPE_CHOICES } from "./reviewChoices";
 
 const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
@@ -130,8 +130,10 @@ type Props = {
 };
 
 export type GroundTruthLeave = {
+  /** This page has ground truth that has not been saved. */
   dirty: boolean;
   accept: () => Promise<boolean>;
+  discard: () => void;
 };
 
 const YET_TO_PROCESS = "Yet to Process";
@@ -179,6 +181,10 @@ function finalDosValue(
   processed: boolean,
   skipped: boolean,
 ): string {
+  // The continuity stage's document date, carried from the first page.
+  const carried = side === "from" ? page.finalDosFrom : page.finalDosTo ?? page.finalDosFrom;
+  if (carried) return displayIsoDates(carried);
+  if (page.documentSeq != null) return extracted;
   if (!isContinuation(page)) return extracted;
   const date = spanDate(page, side, processed, skipped);
   if (date === NOT_FOUND || date === SKIPPED || date === YET_TO_PROCESS) return extracted;
@@ -312,14 +318,19 @@ export function splitPageType(value: string | null | undefined): {
   return { family, subtype };
 }
 
-function asCodeable(value: string): string {
-  return value.replace(/\bcodable\b/gi, "Codeable");
+/** "Document 3 · page 2 of 4 — page 1->2 of 17", or NA before continuity ran. */
+function fmtDocument(page: ImagingPageResult): string {
+  if (page.documentSeq == null) return NOT_FOUND;
+  const where = page.documentPosition === "single" ? "single page" : page.documentPosition ?? "";
+  const review = page.continuityReview ? " · review" : "";
+  const why = page.continuityEvidence ? ` — ${page.continuityEvidence}` : "";
+  return `Document ${page.documentSeq} · ${where}${review}${why}`;
 }
 
 function fmtPageType(value: string | null | undefined, processed = true): string {
   if (!processed) return YET_TO_PROCESS;
   if (value === null || value === undefined || value === "") return NOT_FOUND;
-  return asCodeable(String(value));
+  return spellCodeable(String(value));
 }
 
 function fmtCodeable(
@@ -371,7 +382,7 @@ type CompareRow = {
 
 const BLANK_JUNK_CHOICES = ["Yes (Blank)", "Yes (Junk)", "No"] as const;
 const DUPLICATE_CHOICES = ["Yes", "May Be", "No"] as const;
-const CODEABLE_CHOICES = ["Codeable", "Non Codeable", "Discharge"] as const;
+const CODEABLE_CHOICES = ["Codeable", "Non-Codeable", "Discharge"] as const;
 const TYPE_CHOICES = ["Printed", "Handwritten", "Form", "Visual", "Blank"] as const;
 
 /** Page type; a page classified before document type existed shows its old label. */
@@ -379,6 +390,100 @@ function pageTypeOf(page: ImagingPageResult): string | null {
   return page.documentType || page.handwrittenOrPrinted || null;
 }
 const YES_NO_CHOICES = ["Yes", "No"] as const;
+const VISIBILITY_CHOICES = ["Visible", "Not visible"] as const;
+const CLEARED_ENTRY = new Set(["", "na", "n/a"]);
+const PLACEHOLDER_ENTRY = new Set(["not found", "yet to process", "skipped", "not available"]);
+
+function exactOption(value: string, options: readonly string[]): string | null {
+  const folded = value.trim().toLowerCase();
+  return options.find((option) => option.toLowerCase() === folded) ?? null;
+}
+
+function canonicalDate(value: string): string | null {
+  const shown = displayIsoDates(value.trim());
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(shown);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return null;
+  }
+  return shown;
+}
+
+function canonicalDegrees(value: string): string | null {
+  const text = value.trim().replace(/°$/, "").trim();
+  if (!/^-?\d+(\.\d+)?$/.test(text)) return null;
+  const angle = Number(text);
+  if (!Number.isFinite(angle) || angle < -360 || angle > 360) return null;
+  return `${text}°`;
+}
+
+function canonicalPercent(value: string): string | null {
+  const text = value.trim().replace(/%$/, "").trim();
+  if (!/^\d+(\.\d+)?$/.test(text)) return null;
+  const amount = Number(text);
+  if (!Number.isFinite(amount) || amount < 0 || amount > 100) return null;
+  return `${text}%`;
+}
+
+function canonicalLabel(value: string): string | null {
+  const text = value.trim();
+  if (PLACEHOLDER_ENTRY.has(text.toLowerCase())) return null;
+  return text;
+}
+
+type EntryRule = {
+  presence?: boolean;
+  choices?: readonly string[];
+  kind?: "date" | "degrees" | "percent" | "text";
+};
+
+const ENTRY_RULES: Record<string, EntryRule> = {
+  name: { presence: true },
+  dob: { presence: true },
+  member_id: { presence: true },
+  electronic_signature: { presence: true },
+  handwriting: { choices: TYPE_CHOICES },
+  mirrored: { choices: YES_NO_CHOICES },
+  blank_junk: { choices: BLANK_JUNK_CHOICES },
+  duplicate: { choices: DUPLICATE_CHOICES },
+  page_type: { choices: PAGE_TYPE_CHOICES },
+  page_subtype: { choices: PAGE_SUBTYPE_CHOICES },
+  codeable: { choices: CODEABLE_CHOICES },
+  visibility: { choices: VISIBILITY_CHOICES },
+  dos_from: { kind: "date" },
+  dos_to: { kind: "date" },
+  orientation: { kind: "degrees" },
+  tilt: { kind: "degrees" },
+  handwritten_area: { kind: "percent" },
+  provider_name: { kind: "text" },
+  provider_credentials: { kind: "text" },
+};
+
+/** A listed choice, a real date, angle, or percent. Blank clears the cell. */
+function normalizeEntry(id: string, value: string): string | null {
+  if (CLEARED_ENTRY.has(value.trim().toLowerCase())) return "";
+  const rule = ENTRY_RULES[id];
+  if (!rule) return value.trim();
+  if (rule.presence) return exactOption(value, YES_NO_CHOICES);
+  if (rule.choices) return exactOption(value, rule.choices);
+  if (rule.kind === "date") return canonicalDate(value);
+  if (rule.kind === "degrees") return canonicalDegrees(value);
+  if (rule.kind === "percent") return canonicalPercent(value);
+  return canonicalLabel(value);
+}
+
+function entryHint(id: string): string {
+  const rule = ENTRY_RULES[id];
+  if (!rule || rule.presence || rule.choices) return "Invalid Value";
+  if (rule.kind === "date") return "Enter a date";
+  if (rule.kind === "degrees") return "Enter an angle";
+  if (rule.kind === "percent") return "Enter a percent from 0 to 100";
+  return "That value can't be saved";
+}
 
 function saveErrorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message : "";
@@ -459,9 +564,9 @@ function storedGroundTruth(gt: PageGroundTruth | null | undefined): Record<strin
     dos_from: (gt?.dosFrom ?? "").trim(),
     dos_to: (gt?.dosTo ?? "").trim(),
     blank_junk: blankJunkLabel(gt),
-    page_type: asCodeable(pageType),
-    page_subtype: asCodeable(pageType),
-    codeable: asCodeable((gt?.codeable ?? "").trim()),
+    page_type: spellCodeable(pageType),
+    page_subtype: spellCodeable(pageType),
+    codeable: spellCodeable((gt?.codeable ?? "").trim()),
   };
 }
 
@@ -525,7 +630,8 @@ function valueFound(processed: string): boolean {
   return !UNCOMPARED.has(fold(processed));
 }
 
-/** Tick when the entered ground truth matches Final; X when both sides differ.
+/** Tick when the entered ground truth matches Final.
+    ! when Final misses and Extracted matches. X when neither matches.
     Yes/No fields tick when Yes agrees with a found value, or No agrees with none. */
 function groundTruthMark(
   processed: string,
@@ -547,16 +653,29 @@ function groundTruthMark(
   return entered === final ? "match" : "mismatch";
 }
 
+function enteredMark(
+  extracted: string,
+  final: string,
+  truth: string,
+  presence: boolean,
+): "match" | "partial" | "mismatch" | null {
+  const againstFinal = groundTruthMark(final, truth, presence);
+  if (againstFinal !== "mismatch") return againstFinal;
+  return groundTruthMark(extracted, truth, presence) === "match" ? "partial" : "mismatch";
+}
+
 function CompareSection({
   title,
   rows,
   editingId,
   values,
   onCommit,
+  onAccept,
   onCancel,
   onDraft,
   onStartEdit,
   saving,
+  verdicts,
   toolbar,
 }: {
   title: string;
@@ -564,10 +683,12 @@ function CompareSection({
   editingId: string | null;
   values: Record<string, string>;
   onCommit: (id: string, value: string) => void;
+  onAccept: (id: string, value: string) => void;
   onCancel: () => void;
   onDraft: (value: string) => void;
   onStartEdit: (id: string) => void;
   saving: boolean;
+  verdicts: Record<string, "accept" | "enter">;
   toolbar?: ReactNode;
 }) {
   return (
@@ -611,7 +732,9 @@ function CompareSection({
                   editing={editingId === row.id}
                   value={values[row.id] ?? ""}
                   saving={saving}
+                  verdict={verdicts[row.id]}
                   onCommit={(next) => onCommit(row.id, next)}
+                  onAccept={(next) => onAccept(row.id, next)}
                   onCancel={onCancel}
                   onDraft={onDraft}
                   onStartEdit={() => onStartEdit(row.id)}
@@ -630,7 +753,9 @@ function GroundTruthCell({
   editing,
   value,
   saving,
+  verdict,
   onCommit,
+  onAccept,
   onCancel,
   onDraft,
   onStartEdit,
@@ -639,7 +764,9 @@ function GroundTruthCell({
   editing: boolean;
   value: string;
   saving: boolean;
+  verdict?: "accept" | "enter";
   onCommit: (value: string) => void;
+  onAccept: (value: string) => void;
   onCancel: () => void;
   onDraft: (value: string) => void;
   onStartEdit: () => void;
@@ -649,7 +776,6 @@ function GroundTruthCell({
     return (
       <span className="imaging-gt-slot">
         <span className="imaging-gt-copied">NA</span>
-        <span className="imaging-gt-mark" aria-label="Not entered">✓</span>
       </span>
     );
   }
@@ -658,16 +784,51 @@ function GroundTruthCell({
   const copied = row.presence
     ? (valueFound(row.processed) ? "Yes" : "No")
     : confirmedValue(row.processed);
-  const pen = (
+  const accepted = stored || copied;
+  const compared =
+    verdict === "enter" ? enteredMark(row.extracted, row.processed, stored, Boolean(row.presence)) : null;
+  const mark =
+    verdict === "accept" || (verdict === "enter" && (compared === "match" || compared == null)) ? (
+      <span className="imaging-gt-mark" aria-label="Yes">✓</span>
+    ) : compared === "partial" ? (
+      <span className="imaging-gt-mark gt-partial" aria-label="May be">!</span>
+    ) : verdict === "enter" ? (
+      <span className="imaging-gt-mark gt-mismatch" aria-label="No">✕</span>
+    ) : null;
+  const actions = verdict ? (
     <button
       type="button"
       className="imaging-gt-pen"
       aria-label={`Edit ${row.label} ground truth`}
-      onClick={onStartEdit}
+      title="Edit"
       disabled={saving}
+      onClick={onStartEdit}
     >
       <Pencil size={11} strokeWidth={2.4} aria-hidden="true" />
     </button>
+  ) : (
+    <span className="imaging-gt-actions">
+      <button
+        type="button"
+        className="imaging-gt-icon"
+        aria-label={`Accept ${row.label} ground truth`}
+        title="Accept"
+        disabled={saving || !accepted}
+        onClick={() => onAccept(accepted)}
+      >
+        <Check size={12} strokeWidth={2.6} aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        className="imaging-gt-icon imaging-gt-cancel"
+        aria-label={`Change ${row.label} ground truth`}
+        title="Change"
+        disabled={saving}
+        onClick={onStartEdit}
+      >
+        <X size={12} strokeWidth={2.6} aria-hidden="true" />
+      </button>
+    </span>
   );
   if (!editing) {
     const shown = stored || copied || "NA";
@@ -675,12 +836,8 @@ function GroundTruthCell({
     return (
       <span className="imaging-gt-slot">
         <span className={dim ? "imaging-gt-copied" : "imaging-gt-text"}>{shown}</span>
-        {row.noMark ? null : stored && groundTruthMark(row.processed, stored, row.presence) === "mismatch" ? (
-          <span className="imaging-gt-mark gt-mismatch" aria-label="Does not match">✕</span>
-        ) : (
-          <span className="imaging-gt-mark" aria-label={stored ? "Matches" : "Not entered"}>✓</span>
-        )}
-        {pen}
+        {row.noMark ? null : mark}
+        {actions}
       </span>
     );
   }
@@ -691,8 +848,9 @@ function GroundTruthCell({
     return (
       <span className="imaging-gt-slot is-editing">
         <ChoiceMenu
+          fieldId={row.id}
           label={row.label}
-          value={asCodeable(stored)}
+          value={spellCodeable(stored)}
           options={known}
           onCommit={onCommit}
           onCancel={onCancel}
@@ -705,6 +863,7 @@ function GroundTruthCell({
   return (
     <span className="imaging-gt-slot is-editing">
       <TextTruth
+        fieldId={row.id}
         label={row.label}
         value={draft}
         onCommit={onCommit}
@@ -716,6 +875,7 @@ function GroundTruthCell({
 }
 
 function ChoiceMenu({
+  fieldId,
   label,
   value,
   options,
@@ -723,6 +883,7 @@ function ChoiceMenu({
   onCancel,
   onDraft,
 }: {
+  fieldId: string;
   label: string;
   value: string;
   options: readonly string[];
@@ -732,9 +893,10 @@ function ChoiceMenu({
 }) {
   const [text, setText] = useState(value);
   const [typed, setTyped] = useState(false);
+  const [invalid, setInvalid] = useState<string | null>(null);
   const folded = text.trim().toLowerCase();
   const recos =
-    typed && folded.length >= 3
+    typed && folded.length >= 2
       ? options.filter((option) => option.toLowerCase().includes(folded))
       : [];
   function onKeyDown(event: KeyboardEvent) {
@@ -746,20 +908,26 @@ function ChoiceMenu({
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      const typedMatch = options.find((option) => option.toLowerCase() === folded);
-      onCommit(typedMatch || recos[0] || text);
+      const next = normalizeEntry(fieldId, text);
+      if (next == null) {
+        setInvalid(entryHint(fieldId));
+        return;
+      }
+      onCommit(next);
     }
   }
   return (
     <div className="imaging-gt-picker" onKeyDown={onKeyDown}>
       <input
         aria-label={`${label} ground truth`}
+        aria-invalid={invalid ? true : undefined}
         value={text}
         placeholder="NA"
         autoFocus
         onChange={(event) => {
           setText(event.target.value);
           setTyped(true);
+          setInvalid(null);
           onDraft(event.target.value);
         }}
       />
@@ -773,6 +941,7 @@ function ChoiceMenu({
                 onClick={() => {
                   setText(option);
                   setTyped(false);
+                  setInvalid(null);
                   onDraft(option);
                 }}
               >
@@ -782,17 +951,20 @@ function ChoiceMenu({
           ))}
         </ul>
       ) : null}
+      {invalid ? <span className="imaging-gt-hint">{invalid}</span> : null}
     </div>
   );
 }
 
 function TextTruth({
+  fieldId,
   label,
   value,
   onCommit,
   onCancel,
   onDraft,
 }: {
+  fieldId: string;
   label: string;
   value: string;
   onCommit: (value: string) => void;
@@ -800,29 +972,40 @@ function TextTruth({
   onDraft: (value: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
+  const [invalid, setInvalid] = useState<string | null>(null);
   return (
-    <input
-      aria-label={`${label} ground truth`}
-      value={draft}
-      placeholder="NA"
-      autoFocus
-      onChange={(event) => {
-        setDraft(event.target.value);
-        onDraft(event.target.value);
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          event.stopPropagation();
-          onCancel();
-          return;
-        }
-        if (event.key === "Enter") {
-          event.preventDefault();
-          onCommit(draft);
-        }
-      }}
-    />
+    <span className="imaging-gt-picker">
+      <input
+        aria-label={`${label} ground truth`}
+        aria-invalid={invalid ? true : undefined}
+        value={draft}
+        placeholder="NA"
+        autoFocus
+        onChange={(event) => {
+          setDraft(event.target.value);
+          setInvalid(null);
+          onDraft(event.target.value);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            onCancel();
+            return;
+          }
+          if (event.key === "Enter") {
+            event.preventDefault();
+            const next = normalizeEntry(fieldId, draft);
+            if (next == null) {
+              setInvalid(entryHint(fieldId));
+              return;
+            }
+            onCommit(next);
+          }
+        }}
+      />
+      {invalid ? <span className="imaging-gt-hint">{invalid}</span> : null}
+    </span>
   );
 }
 
@@ -989,12 +1172,14 @@ function PageDetails({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [verdicts, setVerdicts] = useState<Record<string, "accept" | "enter">>({});
   useEffect(() => {
     setEditingId(null);
     setDraft(null);
     setSaving(false);
     setSaveError(null);
     setEdits({});
+    setVerdicts({});
   }, [page.pageNumber, page.fileName]);
 
   const skipped = isBlankJunkPage(page);
@@ -1006,6 +1191,8 @@ function PageDetails({
     (page.encounterType != null && String(page.encounterType).trim() !== "");
   const pageTypeKnown = Boolean(sections.junk || sections.codeable);
   const pageParts = splitPageType(page.pageType);
+  // Final: the document's first-page type; a page outside any document keeps its own.
+  const finalParts = splitPageType(page.finalPageType || page.pageType);
   const codeableKnown =
     Boolean(sections.codeable) ||
     (page.isCodeable != null && String(page.isCodeable).trim() !== "");
@@ -1020,9 +1207,28 @@ function PageDetails({
     Object.entries(edits).some(([id, value]) => value !== (stored[id] ?? "")) ||
     (editingId != null && draft != null && draft !== (values[editingId] ?? ""));
 
+  function finishReview() {
+    setEditingId(null);
+    setDraft(null);
+  }
+
+  function discardReview() {
+    setEdits({});
+    setVerdicts({});
+    setSaveError(null);
+    finishReview();
+  }
+
   async function acceptAll(): Promise<boolean> {
     const merged = { ...stored, ...edits };
-    if (editingId && draft != null) merged[editingId] = draft;
+    if (editingId && draft != null) {
+      const next = normalizeEntry(editingId, draft);
+      if (next == null) {
+        setSaveError(entryHint(editingId));
+        return false;
+      }
+      merged[editingId] = next;
+    }
     const persistedChanged = [...PERSISTED_GT].some(
       (id) => (merged[id] ?? "") !== (stored[id] ?? ""),
     );
@@ -1030,8 +1236,7 @@ function PageDetails({
       if (editingId && draft != null && !PERSISTED_GT.has(editingId)) {
         setEdits((current) => ({ ...current, [editingId]: draft }));
       }
-      setEditingId(null);
-      setDraft(null);
+      finishReview();
       return true;
     }
     setSaving(true);
@@ -1045,8 +1250,7 @@ function PageDetails({
         for (const id of PERSISTED_GT) delete next[id];
         return next;
       });
-      setEditingId(null);
-      setDraft(null);
+      finishReview();
       return true;
     } catch (err) {
       setSaveError(saveErrorMessage(err));
@@ -1057,7 +1261,11 @@ function PageDetails({
   }
 
   if (groundTruthLeave) {
-    groundTruthLeave.current = { dirty, accept: acceptAll };
+    groundTruthLeave.current = {
+      dirty,
+      accept: acceptAll,
+      discard: discardReview,
+    };
   }
   useEffect(() => {
     return () => {
@@ -1069,22 +1277,36 @@ function PageDetails({
     values,
     editingId,
     saving,
+    verdicts,
+    onAccept: (id: string, next: string) => {
+      setEditingId(null);
+      setDraft(null);
+      setSaveError(null);
+      setVerdicts((current) => ({ ...current, [id]: "accept" }));
+      setEdits((current) => ({ ...current, [id]: next }));
+    },
     onCommit: (id: string, next: string) => {
       setEditingId(null);
       setDraft(null);
+      setSaveError(null);
+      setVerdicts((current) => ({ ...current, [id]: "enter" }));
       setEdits((current) => ({ ...current, [id]: next }));
     },
     onCancel: () => {
       setEditingId(null);
       setDraft(null);
+      setSaveError(null);
     },
-    onDraft: setDraft,
+    onDraft: (value: string) => {
+      setDraft(value);
+      setSaveError(null);
+    },
     onStartEdit: (id: string) => {
       setEditingId(id);
       setDraft(values[id] ?? "");
     },
   };
-  const saveBar = (
+  const saveBar = dirty ? (
     <span className="imaging-gt-savebar">
       <button
         type="button"
@@ -1097,8 +1319,19 @@ function PageDetails({
         <Save size={15} aria-hidden="true" />
         Save
       </button>
+      <button
+        type="button"
+        className="imaging-gt-discard"
+        aria-label="Discard"
+        title="Discard"
+        disabled={saving}
+        onClick={discardReview}
+      >
+        <CircleMinus size={15} aria-hidden="true" />
+        Discard
+      </button>
     </span>
-  );
+  ) : null;
 
   return (
     <div className="imaging-page-details">
@@ -1145,6 +1378,7 @@ function PageDetails({
           sameValue(fmtVisibility(page.isVisible, sections.hw), fmtConfidence(null, sections.hw), {
             id: "visibility",
             label: "Visibility",
+            choices: VISIBILITY_CHOICES,
           }),
           sameValue(fmtQualityTag(page.pageQualityTag, qualityKnown), fmtConfidence(page.pageQualityConfidence, qualityKnown), {
             id: "quality",
@@ -1196,26 +1430,41 @@ function PageDetails({
             label: "Is Duplicate",
             choices: DUPLICATE_CHOICES,
           }),
-          sameValue(fmtPageType(pageParts.family, pageTypeKnown), fmtConfidence(page.pageTypeConfidence, pageTypeKnown), {
-            id: "page_type",
-            label: "Page Type",
-            truth: bits.pageType,
-            choices: PAGE_TYPE_CHOICES,
-            key: true,
+          {
+            ...sameValue(fmtPageType(pageParts.family, pageTypeKnown), fmtConfidence(page.pageTypeConfidence, pageTypeKnown), {
+              id: "page_type",
+              label: "Page Type",
+              truth: bits.pageType,
+              choices: PAGE_TYPE_CHOICES,
+              key: true,
+            }),
+            processed: fmtPageType(finalParts.family, pageTypeKnown),
+          },
+          {
+            ...sameValue(fmtPageType(pageParts.subtype, pageTypeKnown), fmtConfidence(null, pageTypeKnown), {
+              id: "page_subtype",
+              label: "Page Subtype",
+              truth: bits.pageType,
+              choices: PAGE_SUBTYPE_CHOICES,
+              key: true,
+            }),
+            processed: fmtPageType(finalParts.subtype, pageTypeKnown),
+          },
+          sameValue(fmtDocument(page), "", {
+            id: "document",
+            label: "Document",
+            noGroundTruth: true,
+            noMark: true,
           }),
-          sameValue(fmtPageType(pageParts.subtype, pageTypeKnown), fmtConfidence(null, pageTypeKnown), {
-            id: "page_subtype",
-            label: "Page Subtype",
-            truth: bits.pageType,
-            choices: PAGE_SUBTYPE_CHOICES,
-            key: true,
-          }),
-          sameValue(fmtCodeable(page.isCodeable, page.pageType, codeableKnown), fmtConfidence(null, Boolean(sections.codeable)), {
-            id: "codeable",
-            label: "Is Codeable Or Non Codeable",
-            truth: bits.codeable,
-            choices: CODEABLE_CHOICES,
-          }),
+          {
+            ...sameValue(fmtCodeable(page.isCodeable, page.pageType, codeableKnown), fmtConfidence(null, Boolean(sections.codeable)), {
+              id: "codeable",
+              label: "Is Codeable Or Non-Codeable",
+              truth: bits.codeable,
+              choices: CODEABLE_CHOICES,
+            }),
+            ...(page.finalCodeable ? { processed: displayCodeable(page.finalCodeable) } : {}),
+          },
         ]}
       />
       <CompareSection
@@ -1368,7 +1617,7 @@ function DocSummary({
               <th scope="col">Duplicate</th>
               <th scope="col">Page Type</th>
               <th scope="col">Page Subtype</th>
-              <th scope="col">Codeable / Non Codeable</th>
+              <th scope="col">Codeable / Non-Codeable</th>
               <th scope="col">Current Sequence</th>
               <th scope="col">Actual Sequence</th>
               {showConfidence ? (
@@ -1723,6 +1972,10 @@ function ExtractedList({
           <div className="section-coords-row">
             <span className="section-coords-text">Page Numbers</span>
             <span>{pageNo?.value || "Not Found"}</span>
+          </div>
+          <div className="section-coords-row">
+            <span className="section-coords-text">Continuation</span>
+            <span>—</span>
           </div>
           <div className="section-coords-row section-headers-row">
             <div className="section-headers-label">

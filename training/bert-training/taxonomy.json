@@ -1,0 +1,3738 @@
+{
+  "version": "1.1",
+  "rules": {
+    "model_type": "If page_type == 'Progress Note' the model_type is the page_subtype; otherwise the model_type is the page_type.",
+    "codability": "Decided per page_type (Codable / Non-Codable / Discharge). Every page_subtype inherits it.",
+    "generic_subtype": "Every page_type has one generic page_subtype with the same name. It is the fallback when no specific sub-type keyword matches.",
+    "unique_subtypes": "No page_subtype name in the sub_types lists appears under two page types, so page_subtype -> page_type is a function for them. The only other valid pairs are the embedded pairs (see embedded_in_progress_note).",
+    "labelling": "Labels are content based: a page is labelled by what dominates that page. Two exceptions depend on the document the page sits in: continuation and embedded_in_progress_note.",
+    "continuation": "An untitled page that reads like a Progress Note is checked against the pages before it. If it is a later page of a document that started as another page type, it takes that page type; otherwise it stays Progress Note. See arbitration.json level_3_continuation.",
+    "embedded_in_progress_note": "A Laboratory Data or Radiology Report page that is part of a Progress Note has page_type 'Progress Note' and page_subtype equal to that name ('Laboratory Data' or 'Radiology Report'). Its model_type is the same name, so the model's classes do not change. A lab or radiology page that stands alone keeps its own page type.",
+    "untitled_notes": "A visit note with no printed title is Progress Note / Progress Note whatever the specialty.",
+    "no_catch_all": "There is no Other / Unclassified class."
+  },
+  "embedded_in_progress_note": {
+    "page_types": [
+      "Laboratory Data",
+      "Radiology Report"
+    ],
+    "valid_pairs": [
+      {
+        "page_type": "Progress Note",
+        "page_subtype": "Laboratory Data",
+        "model_type": "Laboratory Data"
+      },
+      {
+        "page_type": "Progress Note",
+        "page_subtype": "Radiology Report",
+        "model_type": "Radiology Report"
+      }
+    ],
+    "note": "These pairs are not in the sub_types lists and are never predicted by BERT or the keyword model. Only level 3 of arbitration.json assigns them."
+  },
+  "model_types": [
+    {
+      "model_type": "Progress Note",
+      "page_type": "Progress Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Summary",
+      "page_type": "Progress Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Visit Diagnosis",
+      "page_type": "Progress Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Physician Note",
+      "page_type": "Progress Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Problem List",
+      "page_type": "Progress Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Plan of Care",
+      "page_type": "Progress Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Signature page",
+      "page_type": "Progress Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Office Visit",
+      "page_type": "Progress Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "F2F Evaluation Note",
+      "page_type": "Progress Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Social History",
+      "page_type": "Progress Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Laboratory Data",
+      "page_type": "Laboratory Data",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Radiology Report",
+      "page_type": "Radiology Report",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Patient Demographics",
+      "page_type": "Patient Demographics",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Discharge Summary",
+      "page_type": "Discharge Summary",
+      "codability": "Discharge"
+    },
+    {
+      "model_type": "Forms",
+      "page_type": "Forms",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Clinical Summary",
+      "page_type": "Clinical Summary",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Orders",
+      "page_type": "Orders",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Cardiac Report",
+      "page_type": "Cardiac Report",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Operative Report",
+      "page_type": "Operative Report",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Discharge Instructions",
+      "page_type": "Discharge Instructions",
+      "codability": "Discharge"
+    },
+    {
+      "model_type": "Telephone Encounter",
+      "page_type": "Telephone Encounter",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Functional Assessment",
+      "page_type": "Functional Assessment",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Messages",
+      "page_type": "Messages",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Administration",
+      "page_type": "Administration",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Triage Note",
+      "page_type": "Triage Note",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Medication List",
+      "page_type": "Medication List",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Nursing Note",
+      "page_type": "Nursing Note",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Billing / Invoice",
+      "page_type": "Billing / Invoice",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Echocardiogram Report",
+      "page_type": "Echocardiogram Report",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Pathology Report",
+      "page_type": "Pathology Report",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "EKG / ECG Tracing",
+      "page_type": "EKG / ECG Tracing",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Gastroenterology / GI",
+      "page_type": "Gastroenterology / GI",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Patient Education",
+      "page_type": "Patient Education",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Procedure Note",
+      "page_type": "Procedure Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Ophthalmology Note",
+      "page_type": "Ophthalmology Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Referral & Authorization",
+      "page_type": "Referral & Authorization",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Psychiatric Evaluation",
+      "page_type": "Psychiatric Evaluation",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Other Evaluation",
+      "page_type": "Other Evaluation",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Emergency Note",
+      "page_type": "Emergency Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Allergies Report",
+      "page_type": "Allergies Report",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Therapy",
+      "page_type": "Therapy",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Immunizations",
+      "page_type": "Immunizations",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "ENT Note",
+      "page_type": "ENT Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Wound & Infection Care",
+      "page_type": "Wound & Infection Care",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Interim Summary",
+      "page_type": "Interim Summary",
+      "codability": "Discharge"
+    },
+    {
+      "model_type": "ICU Note",
+      "page_type": "ICU Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Nuclear Medicine Report",
+      "page_type": "Nuclear Medicine Report",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Vascular Studies",
+      "page_type": "Vascular Studies",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Occupational & Physical Exams",
+      "page_type": "Occupational & Physical Exams",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Annual Assessments",
+      "page_type": "Annual Assessments",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Obstetrics & Women's Health",
+      "page_type": "Obstetrics & Women's Health",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Neurology",
+      "page_type": "Neurology",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Nephrology",
+      "page_type": "Nephrology",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Oncology",
+      "page_type": "Oncology",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Respiratory",
+      "page_type": "Respiratory",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Sleep Study",
+      "page_type": "Sleep Study",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Pain & Palliative Note",
+      "page_type": "Pain & Palliative Note",
+      "codability": "Codable"
+    },
+    {
+      "model_type": "Implants",
+      "page_type": "Implants",
+      "codability": "Codable"
+    }
+  ],
+  "page_types": [
+    {
+      "page_type": "Progress Note",
+      "codability": "Codable",
+      "codability_basis": "data",
+      "description": "Provider visit notes of any kind, with the summary, problem list and other sections that travel with them.",
+      "model_input": "page_subtype",
+      "sub_types": [
+        {
+          "page_subtype": "Progress Note",
+          "is_generic": true,
+          "model_type": "Progress Note",
+          "description": "Provider visit note of any kind. Catches every visit-note title that has no sub-type of its own: SOAP, H&P, consultation, established patient, encounter form, chronic disease follow-up, specialty visit notes, treatment plans and case management notes.",
+          "keywords": [
+            "Progress Note",
+            "SOAP",
+            "Subjective",
+            "Objective",
+            "Assessment",
+            "Plan",
+            "Chief Complaint",
+            "HPI",
+            "History & Physical",
+            "H&P",
+            "Consultation",
+            "reason for consult",
+            "established patient",
+            "encounter",
+            "follow-up",
+            "interval history"
+          ]
+        },
+        {
+          "page_subtype": "Summary",
+          "is_generic": false,
+          "model_type": "Summary",
+          "description": "Summary page or summary section of a note where the title says only \"Summary\".",
+          "keywords": [
+            "Summary",
+            "summary of care",
+            "encounter summary",
+            "summary of visit"
+          ]
+        },
+        {
+          "page_subtype": "Visit Diagnosis",
+          "is_generic": false,
+          "model_type": "Visit Diagnosis",
+          "description": "Section or page listing the diagnoses addressed at a specific visit (encounter diagnoses).",
+          "keywords": [
+            "Visit Diagnoses",
+            "encounter diagnoses",
+            "diagnoses this visit",
+            "diagnosis associated with visit",
+            "ICD-10",
+            "primary diagnosis"
+          ]
+        },
+        {
+          "page_subtype": "Physician Note",
+          "is_generic": false,
+          "model_type": "Physician Note",
+          "description": "Any narrative note written by a physician about the patient.",
+          "keywords": [
+            "Physician note",
+            "MD",
+            "DO",
+            "attending",
+            "electronically signed by",
+            "assessment",
+            "plan"
+          ]
+        },
+        {
+          "page_subtype": "Problem List",
+          "is_generic": false,
+          "model_type": "Problem List",
+          "description": "Running list of the patient's diagnoses with no assessment attached.",
+          "keywords": [
+            "Problem list",
+            "active problems",
+            "resolved problems",
+            "onset date",
+            "noted date",
+            "ICD-10"
+          ]
+        },
+        {
+          "page_subtype": "Plan of Care",
+          "is_generic": false,
+          "model_type": "Plan of Care",
+          "description": "Document setting out problems, goals and planned interventions (common in home health and therapy).",
+          "keywords": [
+            "Plan of Care",
+            "POC",
+            "CMS-485",
+            "goals",
+            "interventions",
+            "frequency/duration",
+            "certification period"
+          ]
+        },
+        {
+          "page_subtype": "Signature page",
+          "is_generic": false,
+          "model_type": "Signature page",
+          "description": "Page holding only signatures or an electronic signature block.",
+          "keywords": [
+            "Signature",
+            "signed by",
+            "electronically signed",
+            "date/time signed",
+            "witness"
+          ]
+        },
+        {
+          "page_subtype": "Office Visit",
+          "is_generic": false,
+          "model_type": "Office Visit",
+          "description": "Standard outpatient visit note with a provider.",
+          "keywords": [
+            "Office Visit",
+            "OV",
+            "follow-up",
+            "f/u",
+            "return visit",
+            "RTC",
+            "initial visit",
+            "new patient"
+          ]
+        },
+        {
+          "page_subtype": "F2F Evaluation Note",
+          "is_generic": false,
+          "model_type": "F2F Evaluation Note",
+          "description": "Note documenting an in-person provider evaluation, often for home health or equipment (DME) certification.",
+          "keywords": [
+            "Face-to-face",
+            "F2F encounter",
+            "home health certification",
+            "DME",
+            "clinical findings support"
+          ]
+        },
+        {
+          "page_subtype": "Social History",
+          "is_generic": false,
+          "model_type": "Social History",
+          "description": "Social history section or social work report: living situation, support, tobacco and alcohol use.",
+          "keywords": [
+            "Social History",
+            "social work",
+            "psychosocial",
+            "living situation",
+            "tobacco",
+            "alcohol",
+            "caregiver",
+            "support system"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Laboratory Data",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Lab results of any kind and lab paperwork.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Laboratory Data",
+          "is_generic": true,
+          "model_type": "Laboratory Data",
+          "description": "Lab results in any layout. Also catches lab flow sheets, lab requisitions and forms, and INR / prothrombin time results.",
+          "keywords": [
+            "Laboratory data",
+            "lab results",
+            "result",
+            "reference range",
+            "units",
+            "abnormal flag",
+            "collected",
+            "resulted",
+            "lab flow sheet",
+            "lab requisition",
+            "INR",
+            "prothrombin time"
+          ]
+        },
+        {
+          "page_subtype": "Chemistry",
+          "is_generic": false,
+          "model_type": "Laboratory Data",
+          "description": "Blood chemistry lab results (metabolic panel, kidney, liver, lipids).",
+          "keywords": [
+            "Chemistry",
+            "BMP",
+            "CMP",
+            "sodium",
+            "potassium",
+            "creatinine",
+            "BUN",
+            "AST/ALT",
+            "reference range",
+            "H/L flags",
+            "collected",
+            "resulted"
+          ]
+        },
+        {
+          "page_subtype": "Hematology",
+          "is_generic": false,
+          "model_type": "Laboratory Data",
+          "description": "Blood count lab results. Read as the lab report because it sits among lab items.",
+          "keywords": [
+            "Hematology",
+            "CBC",
+            "WBC",
+            "hemoglobin",
+            "hematocrit",
+            "platelets",
+            "MCV",
+            "differential",
+            "reference range"
+          ]
+        },
+        {
+          "page_subtype": "Microbiology",
+          "is_generic": false,
+          "model_type": "Laboratory Data",
+          "description": "Culture and sensitivity lab results.",
+          "keywords": [
+            "Microbiology",
+            "culture",
+            "sensitivity",
+            "susceptibility",
+            "organism",
+            "gram stain",
+            "colony count",
+            "urine/blood/wound culture"
+          ]
+        },
+        {
+          "page_subtype": "Urinalysis",
+          "is_generic": false,
+          "model_type": "Laboratory Data",
+          "description": "Urine test results.",
+          "keywords": [
+            "Urinalysis",
+            "UA",
+            "urine dipstick",
+            "specific gravity",
+            "leukocyte esterase",
+            "nitrite",
+            "protein",
+            "microscopic"
+          ]
+        },
+        {
+          "page_subtype": "Glucose report",
+          "is_generic": false,
+          "model_type": "Laboratory Data",
+          "description": "Blood sugar reading or log (finger-stick or lab).",
+          "keywords": [
+            "Blood glucose",
+            "glucose report",
+            "fingerstick",
+            "FSBS",
+            "glucometer",
+            "glucose log",
+            "CGM",
+            "Dexcom",
+            "Libre",
+            "time in range"
+          ]
+        },
+        {
+          "page_subtype": "Allergy testing report",
+          "is_generic": false,
+          "model_type": "Laboratory Data",
+          "description": "Results of allergy skin-prick or blood (IgE) tests.",
+          "keywords": [
+            "Allergy testing",
+            "skin prick",
+            "intradermal",
+            "wheal/flare",
+            "IgE",
+            "RAST",
+            "allergen panel",
+            "histamine control"
+          ]
+        },
+        {
+          "page_subtype": "Genetic Test Report",
+          "is_generic": false,
+          "model_type": "Laboratory Data",
+          "description": "Lab result of DNA testing for inherited conditions or drug response.",
+          "keywords": [
+            "Genetic test",
+            "variant",
+            "mutation",
+            "pathogenic",
+            "heterozygous",
+            "BRCA",
+            "pharmacogenomic",
+            "Myriad",
+            "Invitae"
+          ]
+        },
+        {
+          "page_subtype": "FISH Report",
+          "is_generic": false,
+          "model_type": "Laboratory Data",
+          "description": "Lab genetic test using fluorescent probes to find gene or chromosome changes, mostly in cancers.",
+          "keywords": [
+            "FISH",
+            "fluorescence in situ hybridization",
+            "probe",
+            "HER2",
+            "BCR-ABL",
+            "translocation",
+            "amplification",
+            "nuclei scored"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Radiology Report",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Imaging reports read by a radiologist.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Radiology Report",
+          "is_generic": true,
+          "model_type": "Radiology Report",
+          "description": "Any imaging report read by a radiologist.",
+          "keywords": [
+            "Radiology",
+            "imaging report",
+            "exam",
+            "technique",
+            "comparison",
+            "findings",
+            "impression",
+            "radiologist",
+            "mammogram",
+            "BI-RADS"
+          ]
+        },
+        {
+          "page_subtype": "Bone Density (DEXA) Report",
+          "is_generic": false,
+          "model_type": "Radiology Report",
+          "description": "Scan measuring bone density to detect osteoporosis.",
+          "keywords": [
+            "DEXA",
+            "DXA",
+            "bone mineral density",
+            "BMD",
+            "T-score",
+            "Z-score",
+            "osteopenia",
+            "osteoporosis",
+            "femoral neck",
+            "lumbar spine",
+            "FRAX"
+          ]
+        },
+        {
+          "page_subtype": "X Ray Report",
+          "is_generic": false,
+          "model_type": "Radiology Report",
+          "description": "Plain X-ray report; the foot is given as the example.",
+          "keywords": [
+            "X-ray",
+            "radiograph",
+            "chest X-ray",
+            "CXR",
+            "views",
+            "AP / lateral",
+            "PA and lateral",
+            "fracture",
+            "infiltrate"
+          ]
+        },
+        {
+          "page_subtype": "CT Scan Report",
+          "is_generic": false,
+          "model_type": "Radiology Report",
+          "description": "Computed tomography imaging report.",
+          "keywords": [
+            "CT",
+            "CAT scan",
+            "computed tomography",
+            "contrast",
+            "axial images",
+            "Hounsfield",
+            "impression"
+          ]
+        },
+        {
+          "page_subtype": "Ultrasound Report",
+          "is_generic": false,
+          "model_type": "Radiology Report",
+          "description": "Imaging with sound waves (abdomen, pelvis, thyroid, etc.).",
+          "keywords": [
+            "Ultrasound",
+            "US",
+            "sonographic",
+            "echogenicity",
+            "Doppler",
+            "abdomen/pelvis/thyroid/renal",
+            "impression"
+          ]
+        },
+        {
+          "page_subtype": "Tomography",
+          "is_generic": false,
+          "model_type": "Radiology Report",
+          "description": "Cross-sectional imaging (CT and similar).",
+          "keywords": [
+            "Tomography",
+            "CT",
+            "computed tomography",
+            "slices",
+            "contrast",
+            "axial",
+            "impression"
+          ]
+        },
+        {
+          "page_subtype": "MRI Report",
+          "is_generic": false,
+          "model_type": "Radiology Report",
+          "description": "Magnetic resonance imaging report.",
+          "keywords": [
+            "MRI",
+            "magnetic resonance",
+            "T1/T2",
+            "gadolinium",
+            "impression",
+            "radiologist"
+          ]
+        },
+        {
+          "page_subtype": "MR brain report",
+          "is_generic": false,
+          "model_type": "Radiology Report",
+          "description": "MRI of the brain.",
+          "keywords": [
+            "MRI brain",
+            "MR head",
+            "with/without contrast",
+            "white matter",
+            "infarct",
+            "FLAIR",
+            "impression"
+          ]
+        },
+        {
+          "page_subtype": "Sonogram report",
+          "is_generic": false,
+          "model_type": "Radiology Report",
+          "description": "Ultrasound imaging report (same as ultrasound).",
+          "keywords": [
+            "Sonogram",
+            "sonography",
+            "ultrasound",
+            "echogenic",
+            "transducer",
+            "impression",
+            "sonographer"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Patient Demographics",
+      "codability": "Codable",
+      "codability_basis": "data",
+      "description": "Front-sheet pages with identity, insurance and registration details.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Patient Demographics",
+          "is_generic": true,
+          "model_type": "Patient Demographics",
+          "description": "Front page with patient identity, insurance and contacts. Also catches admission records and application forms.",
+          "keywords": [
+            "Demographics",
+            "DOB",
+            "MRN",
+            "insurance",
+            "guarantor",
+            "emergency contact",
+            "address",
+            "admission record",
+            "application"
+          ]
+        },
+        {
+          "page_subtype": "Face Sheet",
+          "is_generic": false,
+          "model_type": "Patient Demographics",
+          "description": "Hospital or practice front page: patient identity, insurance, admit date and sometimes the admitting diagnosis.",
+          "keywords": [
+            "Face Sheet",
+            "facesheet",
+            "admit date",
+            "attending",
+            "admitting diagnosis",
+            "room / bed"
+          ]
+        },
+        {
+          "page_subtype": "Patient Information",
+          "is_generic": false,
+          "model_type": "Patient Demographics",
+          "description": "Patient details page from the practice system.",
+          "keywords": [
+            "Patient Information",
+            "patient details",
+            "contact information",
+            "preferred language",
+            "marital status",
+            "employer"
+          ]
+        },
+        {
+          "page_subtype": "Patient Registration",
+          "is_generic": false,
+          "model_type": "Patient Demographics",
+          "description": "Registration form or print-out created at check-in.",
+          "keywords": [
+            "Registration",
+            "registration form",
+            "registered on",
+            "new patient registration",
+            "responsible party",
+            "insurance card"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Discharge Summary",
+      "codability": "Discharge",
+      "codability_basis": "list",
+      "description": "Documents written when a hospital stay or episode ends, including transfer and transition-of-care summaries.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Discharge Summary",
+          "is_generic": true,
+          "model_type": "Discharge Summary",
+          "description": "Physician's summary of a hospital stay. Also catches discharge notes and forms, transition / transfer of care documents, therapy and behavioral health discharge summaries, and Spanish discharge documents.",
+          "keywords": [
+            "Discharge Summary",
+            "admission date",
+            "discharge date",
+            "hospital course",
+            "discharge diagnosis",
+            "condition at discharge",
+            "Discharge Note",
+            "Transition of Care",
+            "Transfer of Care",
+            "Resumen de alta"
+          ]
+        },
+        {
+          "page_subtype": "Depart Note",
+          "is_generic": false,
+          "model_type": "Discharge Summary",
+          "description": "Note written when the patient leaves the ED or hospital (some EHRs say \"Depart\" for discharge).",
+          "keywords": [
+            "Depart",
+            "Depart Note",
+            "Depart Summary",
+            "departure",
+            "disposition",
+            "condition at departure"
+          ]
+        },
+        {
+          "page_subtype": "Transfer Summary",
+          "is_generic": false,
+          "model_type": "Discharge Summary",
+          "description": "Summary written when the patient moves to another unit or facility.",
+          "keywords": [
+            "Transfer Summary",
+            "transferred to",
+            "reason for transfer",
+            "accepting physician",
+            "hospital course",
+            "condition at transfer"
+          ]
+        },
+        {
+          "page_subtype": "Short Stay Summary",
+          "is_generic": false,
+          "model_type": "Discharge Summary",
+          "description": "Brief combined admission and discharge record for short stays / observation.",
+          "keywords": [
+            "Short stay",
+            "observation",
+            "short stay record",
+            "admit/discharge same day",
+            "brief hospital course"
+          ]
+        },
+        {
+          "page_subtype": "Final Case Summary",
+          "is_generic": false,
+          "model_type": "Discharge Summary",
+          "description": "Closing summary of a case or episode of care.",
+          "keywords": [
+            "Final case summary",
+            "case closed",
+            "summary of care",
+            "final diagnosis",
+            "outcome"
+          ]
+        },
+        {
+          "page_subtype": "Principal Diagnosis",
+          "is_generic": false,
+          "model_type": "Discharge Summary",
+          "description": "The main condition responsible for the admission. A section heading rather than a whole document.",
+          "keywords": [
+            "Principal diagnosis",
+            "primary diagnosis",
+            "final diagnosis",
+            "secondary diagnoses"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Forms",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Forms, consents, questionnaires, checklists and score sheets.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Forms",
+          "is_generic": true,
+          "model_type": "Forms",
+          "description": "Form where the title does not say which kind. Also catches intake and history forms, agreements, policies, pre-op checklists, pre-admission testing records and screening / health maintenance records.",
+          "keywords": [
+            "Form",
+            "intake form",
+            "patient history form",
+            "agreement",
+            "acknowledgment",
+            "policy",
+            "pre-op checklist",
+            "pre-admission testing",
+            "screening",
+            "health maintenance",
+            "signature"
+          ]
+        },
+        {
+          "page_subtype": "Consent Form",
+          "is_generic": false,
+          "model_type": "Forms",
+          "description": "Signed permission or authorization: consent to treat, surgical, transfusion or vaccine consent, release of information.",
+          "keywords": [
+            "Consent",
+            "informed consent",
+            "authorization",
+            "I hereby authorize",
+            "risks and benefits",
+            "release of information",
+            "patient signature",
+            "witness"
+          ]
+        },
+        {
+          "page_subtype": "Questionnaire",
+          "is_generic": false,
+          "model_type": "Forms",
+          "description": "Patient-completed form with no provider note attached.",
+          "keywords": [
+            "Questionnaire",
+            "patient-completed",
+            "please circle",
+            "PHQ-9",
+            "intake form",
+            "health history form",
+            "yes/no"
+          ]
+        },
+        {
+          "page_subtype": "Checklist",
+          "is_generic": false,
+          "model_type": "Forms",
+          "description": "Any tick-box checklist page.",
+          "keywords": [
+            "Checklist",
+            "check list",
+            "preventive health checklist",
+            "yes / no",
+            "completed",
+            "initials"
+          ]
+        },
+        {
+          "page_subtype": "Mini-Mental State Exam",
+          "is_generic": false,
+          "model_type": "Forms",
+          "description": "Cognitive score sheet: the 30-point Mini-Mental exam, or the shorter Mini-Cog with clock drawing.",
+          "keywords": [
+            "Mini-Mental",
+            "MMSE",
+            "Folstein",
+            "score /30",
+            "orientation",
+            "recall",
+            "Mini-Cog",
+            "clock drawing",
+            "3-word recall"
+          ]
+        },
+        {
+          "page_subtype": "HIPAA Form",
+          "is_generic": false,
+          "model_type": "Forms",
+          "description": "Privacy acknowledgment or authorization form.",
+          "keywords": [
+            "HIPAA",
+            "notice of privacy practices",
+            "acknowledgment of receipt",
+            "authorization to release PHI",
+            "signature"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Clinical Summary",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Named summary documents: clinical, visit, after-visit and patient / chart summaries, and stand-alone diagnosis lists.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Clinical Summary",
+          "is_generic": true,
+          "model_type": "Clinical Summary",
+          "description": "Named summary document: clinical summary, visit summary, after-visit summary, patient / chart summary, or a stand-alone list of diagnoses.",
+          "keywords": [
+            "Clinical Summary",
+            "Visit Summary",
+            "After Visit Summary",
+            "AVS",
+            "Patient Summary",
+            "chart summary",
+            "summary of care",
+            "Clinical Diagnoses",
+            "diagnosis list"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Orders",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Orders for tests, medicines, treatment or equipment, and standing protocols.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Orders",
+          "is_generic": true,
+          "model_type": "Orders",
+          "description": "Any order for tests, treatment, equipment or referral.",
+          "keywords": [
+            "Order",
+            "ordered by",
+            "order date",
+            "order status",
+            "standing order",
+            "physician order",
+            "verbal order",
+            "order note"
+          ]
+        },
+        {
+          "page_subtype": "Medication Orders",
+          "is_generic": false,
+          "model_type": "Orders",
+          "description": "Order for a medicine (inpatient or outpatient).",
+          "keywords": [
+            "Medication Order",
+            "med order",
+            "dose",
+            "route",
+            "frequency",
+            "start / stop date",
+            "pharmacy verify"
+          ]
+        },
+        {
+          "page_subtype": "Post Operative Orders",
+          "is_generic": false,
+          "model_type": "Orders",
+          "description": "Orders written after surgery.",
+          "keywords": [
+            "Post-operative orders",
+            "post-op orders",
+            "PACU orders",
+            "advance diet",
+            "activity",
+            "DVT prophylaxis"
+          ]
+        },
+        {
+          "page_subtype": "Pre Operative Orders",
+          "is_generic": false,
+          "model_type": "Orders",
+          "description": "Orders written before surgery.",
+          "keywords": [
+            "Pre-operative orders",
+            "pre-op orders",
+            "NPO after midnight",
+            "pre-op antibiotics",
+            "type and screen"
+          ]
+        },
+        {
+          "page_subtype": "Protocols",
+          "is_generic": false,
+          "model_type": "Orders",
+          "description": "Standard care protocols or standing instructions - not specific to the patient's assessment.",
+          "keywords": [
+            "Protocol",
+            "per protocol",
+            "standing protocol",
+            "algorithm",
+            "sliding scale",
+            "guideline",
+            "pathway"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Cardiac Report",
+      "codability": "Codable",
+      "codability_basis": "data",
+      "description": "Cardiology notes and heart tests, including interpreted EKG reports. Echo has its own page type.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Cardiac Report",
+          "is_generic": true,
+          "model_type": "Cardiac Report",
+          "description": "Heart test or cardiology report where no specific sub-type matches. Also catches cardiology notes and event monitor reports.",
+          "keywords": [
+            "Cardiovascular",
+            "cardiology",
+            "heart report",
+            "cardiology consultation",
+            "CAD",
+            "CHF",
+            "ejection fraction",
+            "event monitor",
+            "diagnostic report"
+          ]
+        },
+        {
+          "page_subtype": "EKG Report (12-lead / routine)",
+          "is_generic": false,
+          "model_type": "Cardiac Report",
+          "description": "EKG with a physician's interpretation.",
+          "keywords": [
+            "ECG 12 lead",
+            "EKG 12 lead",
+            "ECG routine",
+            "Electrocardiogram Report",
+            "interpretation",
+            "confirmed by",
+            "reviewed by",
+            "impression"
+          ]
+        },
+        {
+          "page_subtype": "CT Angiography",
+          "is_generic": false,
+          "model_type": "Cardiac Report",
+          "description": "CT scan with contrast that images blood vessels, often the coronary arteries.",
+          "keywords": [
+            "CTA",
+            "CT angiography",
+            "CT angiogram",
+            "coronary CTA",
+            "calcium score",
+            "stenosis",
+            "plaque",
+            "contrast",
+            "impression"
+          ]
+        },
+        {
+          "page_subtype": "Stress Test",
+          "is_generic": false,
+          "model_type": "Cardiac Report",
+          "description": "Heart test under exercise or drug stress, with ECG response and interpretation.",
+          "keywords": [
+            "Stress test",
+            "exercise tolerance test (ETT)",
+            "treadmill",
+            "Bruce protocol",
+            "METs",
+            "target heart rate",
+            "ST depression",
+            "ischemia"
+          ]
+        },
+        {
+          "page_subtype": "Cardiac catheterization report",
+          "is_generic": false,
+          "model_type": "Cardiac Report",
+          "description": "Procedure report for invasive heart catheterization: coronary angiography, pressures, stents.",
+          "keywords": [
+            "Cardiac cath",
+            "left heart catheterization (LHC)",
+            "coronary angiography",
+            "PCI",
+            "stent",
+            "LAD/RCA/LCx",
+            "stenosis %",
+            "LVEDP",
+            "ejection fraction",
+            "cath lab"
+          ]
+        },
+        {
+          "page_subtype": "Treadmill report",
+          "is_generic": false,
+          "model_type": "Cardiac Report",
+          "description": "Exercise stress test on a treadmill.",
+          "keywords": [
+            "Treadmill",
+            "Bruce",
+            "exercise time",
+            "METs",
+            "peak HR",
+            "ST changes"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Operative Report",
+      "codability": "Codable",
+      "codability_basis": "data",
+      "description": "Surgery documentation: operative report plus pre-op evaluation, anesthesia and post-op records.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Operative Report",
+          "is_generic": true,
+          "model_type": "Operative Report",
+          "description": "Surgeon's report of an operation: pre/post-op diagnosis, procedure performed, findings.",
+          "keywords": [
+            "Operative Report",
+            "preoperative diagnosis",
+            "postoperative diagnosis",
+            "procedure performed",
+            "surgeon",
+            "EBL",
+            "specimens",
+            "findings",
+            "intraoperative record"
+          ]
+        },
+        {
+          "page_subtype": "Pre Operative Evaluation",
+          "is_generic": false,
+          "model_type": "Operative Report",
+          "description": "Assessment before surgery to confirm fitness and risk.",
+          "keywords": [
+            "Preoperative evaluation",
+            "pre-op clearance",
+            "surgical risk",
+            "cleared for surgery",
+            "RCRI",
+            "planned procedure"
+          ]
+        },
+        {
+          "page_subtype": "Anaesthesia Report",
+          "is_generic": false,
+          "model_type": "Operative Report",
+          "description": "Anesthesia documentation around surgery: pre-anesthesia evaluation, the intra-operative anesthesia record and the post-anesthesia note.",
+          "keywords": [
+            "Anesthesia Record",
+            "pre-anesthesia evaluation",
+            "post-anesthesia",
+            "ASA class",
+            "Mallampati",
+            "airway",
+            "induction",
+            "intubation",
+            "CRNA",
+            "anesthesiologist",
+            "PACU",
+            "Aldrete"
+          ]
+        },
+        {
+          "page_subtype": "Operation Summary",
+          "is_generic": false,
+          "model_type": "Operative Report",
+          "description": "Short operating-room summary of the case (procedure, times, staff).",
+          "keywords": [
+            "OR summary",
+            "operation summary",
+            "case summary",
+            "in / out times",
+            "surgeon",
+            "wound class"
+          ]
+        },
+        {
+          "page_subtype": "Phase Record",
+          "is_generic": false,
+          "model_type": "Operative Report",
+          "description": "Most likely the post-anesthesia recovery record (Phase I / Phase II). The label is short, so this is inferred.",
+          "keywords": [
+            "Phase I",
+            "Phase II",
+            "PACU",
+            "recovery record",
+            "Aldrete score",
+            "discharge criteria met"
+          ]
+        },
+        {
+          "page_subtype": "Operation Note",
+          "is_generic": false,
+          "model_type": "Operative Report",
+          "description": "Brief operative note written right after surgery, before the full report is dictated.",
+          "keywords": [
+            "Operative Note",
+            "Op Note",
+            "brief op note",
+            "procedure",
+            "findings",
+            "complications",
+            "disposition"
+          ]
+        },
+        {
+          "page_subtype": "Post Operative Followup Note",
+          "is_generic": false,
+          "model_type": "Operative Report",
+          "description": "Visit after surgery checking healing and complications.",
+          "keywords": [
+            "Post-op",
+            "postoperative visit",
+            "s/p",
+            "POD",
+            "incision healing",
+            "sutures removed",
+            "global period"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Discharge Instructions",
+      "codability": "Discharge",
+      "codability_basis": "list",
+      "description": "Patient-facing discharge paperwork, including discharge medication lists.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Discharge Instructions",
+          "is_generic": true,
+          "model_type": "Discharge Instructions",
+          "description": "Instructions given to the patient at discharge: care at home, medicines, follow-up.",
+          "keywords": [
+            "Discharge Instructions",
+            "home care",
+            "follow-up appointment",
+            "return to ED if",
+            "discharge medications",
+            "medication reconciliation"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Telephone Encounter",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Phone contacts: phone encounters, phone notes, messages and triage calls.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Telephone Encounter",
+          "is_generic": true,
+          "model_type": "Telephone Encounter",
+          "description": "Phone contact with the patient. Also catches phone messages, call notes and triage calls.",
+          "keywords": [
+            "Telephone Encounter",
+            "phone visit",
+            "telephone message",
+            "call back number",
+            "message taken by",
+            "triage call",
+            "nurse triage"
+          ]
+        },
+        {
+          "page_subtype": "Phone Note",
+          "is_generic": false,
+          "model_type": "Telephone Encounter",
+          "description": "Short note of a phone conversation with the patient.",
+          "keywords": [
+            "Phone Note",
+            "telephone note",
+            "spoke with patient",
+            "pt called",
+            "advised",
+            "call documented"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Functional Assessment",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Functional status, activity and daily-living assessments and generic assessment forms.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Functional Assessment",
+          "is_generic": true,
+          "model_type": "Functional Assessment",
+          "description": "Assessment of the patient's ability to manage daily tasks, mobility and self-care. Also catches activity evaluations and generic assessment forms.",
+          "keywords": [
+            "Functional assessment",
+            "functional status",
+            "activity evaluation",
+            "assessment form",
+            "ADLs",
+            "mobility",
+            "ambulation",
+            "fall risk",
+            "Barthel",
+            "Katz"
+          ]
+        },
+        {
+          "page_subtype": "ADL/IADL flow sheet",
+          "is_generic": false,
+          "model_type": "Functional Assessment",
+          "description": "Tick-box grid recording how much help the patient needs with daily activities.",
+          "keywords": [
+            "ADL",
+            "IADL",
+            "bathing",
+            "dressing",
+            "toileting",
+            "feeding",
+            "transfers",
+            "independent/assist/dependent",
+            "flow sheet"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Messages",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Letters, correspondence, notices and messages.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Messages",
+          "is_generic": true,
+          "model_type": "Messages",
+          "description": "Any message passed between staff, patient or providers - no visit took place.",
+          "keywords": [
+            "Message",
+            "note to provider",
+            "staff message",
+            "routed to",
+            "patient communication",
+            "memo",
+            "patient portal",
+            "web encounter"
+          ]
+        },
+        {
+          "page_subtype": "Notice",
+          "is_generic": false,
+          "model_type": "Messages",
+          "description": "Administrative notice such as a privacy notice, appointment notice or coverage notice.",
+          "keywords": [
+            "Notice",
+            "notice of privacy practices",
+            "ABN",
+            "advance beneficiary notice",
+            "notice of non-coverage",
+            "discharge notice",
+            "notification of discharge"
+          ]
+        },
+        {
+          "page_subtype": "Letter",
+          "is_generic": false,
+          "model_type": "Messages",
+          "description": "Provider-authored letter, e.g. a consult reply to the referring doctor or a letter summarizing a visit and its diagnoses.",
+          "keywords": [
+            "Dear Dr.",
+            "Thank you for referring",
+            "I had the pleasure of seeing",
+            "Re:",
+            "Sincerely",
+            "cc:",
+            "letterhead"
+          ]
+        },
+        {
+          "page_subtype": "Notification",
+          "is_generic": false,
+          "model_type": "Messages",
+          "description": "Automated or administrative alert (result available, reminder, status).",
+          "keywords": [
+            "Notification",
+            "alert",
+            "reminder",
+            "notified",
+            "result notification",
+            "auto-generated"
+          ]
+        },
+        {
+          "page_subtype": "Ambulatory Correspondence",
+          "is_generic": false,
+          "model_type": "Messages",
+          "description": "Outpatient (AMB = ambulatory) correspondence filed in the chart, often an EHR document category.",
+          "keywords": [
+            "AMB Correspondence",
+            "correspondence",
+            "outside correspondence",
+            "fax cover",
+            "received from",
+            "scanned document"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Administration",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Administrative pages with no clinical content: appointments, index, fax, cover and blank pages.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Administration",
+          "is_generic": true,
+          "model_type": "Administration",
+          "description": "Administrative page with no clinical content where no specific sub-type matches: fax and cover pages, blank pages, miscellaneous document pages.",
+          "keywords": [
+            "fax cover sheet",
+            "cover page",
+            "blank",
+            "office use only",
+            "scanned by",
+            "page count"
+          ]
+        },
+        {
+          "page_subtype": "Index Page",
+          "is_generic": false,
+          "model_type": "Administration",
+          "description": "Table of contents or index of encounters, procedures or documents in the chart.",
+          "keywords": [
+            "Index",
+            "encounter index",
+            "procedure index",
+            "encounter list",
+            "table of contents",
+            "document list",
+            "page range"
+          ]
+        },
+        {
+          "page_subtype": "Appointments",
+          "is_generic": false,
+          "model_type": "Administration",
+          "description": "Appointment note or list of appointments.",
+          "keywords": [
+            "Appointment",
+            "appt",
+            "scheduled",
+            "rescheduled",
+            "cancelled",
+            "no show",
+            "appointment summary",
+            "check-in"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Triage Note",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Nurse triage on arrival.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Triage Note",
+          "is_generic": true,
+          "model_type": "Triage Note",
+          "description": "Nurse's first assessment of urgency on arrival: complaint, vitals, acuity.",
+          "keywords": [
+            "Triage",
+            "acuity",
+            "ESI level",
+            "chief complaint",
+            "vitals",
+            "arrival mode",
+            "pain scale"
+          ]
+        },
+        {
+          "page_subtype": "ED Triage",
+          "is_generic": false,
+          "model_type": "Triage Note",
+          "description": "Emergency department triage record made on arrival.",
+          "keywords": [
+            "ED Triage",
+            "emergency triage",
+            "ESI level",
+            "acuity",
+            "arrival mode",
+            "triage time",
+            "triage nurse"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Medication List",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Medication lists, prescriptions and refill logs.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Medication List",
+          "is_generic": true,
+          "model_type": "Medication List",
+          "description": "List of the patient's medicines with no assessment attached.",
+          "keywords": [
+            "Medication list",
+            "current medications",
+            "active meds",
+            "dose",
+            "sig",
+            "frequency",
+            "start date",
+            "prescriber"
+          ]
+        },
+        {
+          "page_subtype": "Prescription / Rx page",
+          "is_generic": false,
+          "model_type": "Medication List",
+          "description": "Prescription page for medicines or supplies.",
+          "keywords": [
+            "Prescription",
+            "Rx",
+            "sig",
+            "dispense",
+            "refills",
+            "DAW",
+            "DEA number",
+            "e-prescribed",
+            "pharmacy"
+          ]
+        },
+        {
+          "page_subtype": "Refill record",
+          "is_generic": false,
+          "model_type": "Medication List",
+          "description": "Log of prescription refill requests and approvals.",
+          "keywords": [
+            "Refill",
+            "refill request",
+            "pharmacy",
+            "last filled",
+            "quantity",
+            "refills remaining",
+            "approved/denied",
+            "e-prescribe"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Nursing Note",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Nursing documentation, home health and skilled nursing visits, vitals print-outs.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Nursing Note",
+          "is_generic": true,
+          "model_type": "Nursing Note",
+          "description": "Nursing documentation of patient status and care given. Also catches home health and skilled nursing visit notes and vitals print-outs.",
+          "keywords": [
+            "Nurse's note",
+            "nursing note",
+            "nursing chart",
+            "RN",
+            "LPN",
+            "home health visit",
+            "skilled nursing visit",
+            "vital signs",
+            "flowsheet"
+          ]
+        },
+        {
+          "page_subtype": "Growth chart",
+          "is_generic": false,
+          "model_type": "Nursing Note",
+          "description": "Paediatric height / weight / head-circumference percentile chart.",
+          "keywords": [
+            "Growth chart",
+            "percentile",
+            "stature-for-age",
+            "weight-for-age",
+            "CDC",
+            "WHO",
+            "BMI-for-age"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Billing / Invoice",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Billing, charge, coding and invoice pages.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Billing / Invoice",
+          "is_generic": true,
+          "model_type": "Billing / Invoice",
+          "description": "Charge sheet, superbill or claim page listing codes and fees. Diagnoses on it are billing data, not clinical documentation.",
+          "keywords": [
+            "Superbill",
+            "charge ticket",
+            "charges",
+            "CPT",
+            "balance due",
+            "claim",
+            "statement",
+            "estimate",
+            "coding summary",
+            "DRG"
+          ]
+        },
+        {
+          "page_subtype": "Invoice",
+          "is_generic": false,
+          "model_type": "Billing / Invoice",
+          "description": "Invoice or fee page that travels with the chart when the records came through the listed retrieval channels. The source names look like internal intake channels, so this reading is inferred.",
+          "keywords": [
+            "Invoice",
+            "invoice number",
+            "amount due",
+            "copy fee",
+            "per page",
+            "remit to",
+            "records fee",
+            "tax ID"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Echocardiogram Report",
+      "codability": "Codable",
+      "codability_basis": "data",
+      "description": "Heart ultrasound report.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Echocardiogram Report",
+          "is_generic": true,
+          "model_type": "Echocardiogram Report",
+          "description": "Ultrasound of the heart with physician interpretation of chambers, valves and pumping function.",
+          "keywords": [
+            "Echocardiogram",
+            "TTE",
+            "transthoracic",
+            "LVEF",
+            "ejection fraction",
+            "LV hypertrophy",
+            "valve regurgitation/stenosis",
+            "diastolic dysfunction",
+            "wall motion"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Pathology Report",
+      "codability": "Codable",
+      "codability_basis": "data",
+      "description": "Pathologist-read tissue, cell and molecular reports.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Pathology Report",
+          "is_generic": true,
+          "model_type": "Pathology Report",
+          "description": "Pathologist's diagnosis on tissue removed by biopsy or surgery.",
+          "keywords": [
+            "Pathology",
+            "surgical pathology",
+            "specimen",
+            "gross description",
+            "microscopic",
+            "final diagnosis",
+            "margins",
+            "pathologist",
+            "flow cytometry"
+          ]
+        },
+        {
+          "page_subtype": "Biopsy Report",
+          "is_generic": false,
+          "model_type": "Pathology Report",
+          "description": "Pathology result for a biopsy sample.",
+          "keywords": [
+            "Biopsy",
+            "specimen",
+            "histology",
+            "benign/malignant",
+            "carcinoma",
+            "margins",
+            "final diagnosis"
+          ]
+        },
+        {
+          "page_subtype": "Tissue Report",
+          "is_generic": false,
+          "model_type": "Pathology Report",
+          "description": "Another name for a surgical pathology report.",
+          "keywords": [
+            "Tissue examination",
+            "gross",
+            "microscopic",
+            "specimen",
+            "diagnosis",
+            "pathologist"
+          ]
+        },
+        {
+          "page_subtype": "Cytology / molecular report",
+          "is_generic": false,
+          "model_type": "Pathology Report",
+          "description": "Report on cells (cytology) or molecular markers, signed by a pathologist.",
+          "keywords": [
+            "Cytology",
+            "cytopathology",
+            "FNA",
+            "adequacy",
+            "Bethesda",
+            "molecular diagnostics",
+            "PCR",
+            "mutation",
+            "NGS",
+            "EGFR",
+            "KRAS"
+          ]
+        },
+        {
+          "page_subtype": "Mohs surgery report",
+          "is_generic": false,
+          "model_type": "Pathology Report",
+          "description": "Layer-by-layer skin cancer removal with a microscope check of each stage.",
+          "keywords": [
+            "Mohs",
+            "stages",
+            "margins clear",
+            "basal cell",
+            "squamous cell",
+            "defect size",
+            "repair"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "EKG / ECG Tracing",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Heart rhythm tracings without a physician's interpretation: EKG graphs, telemetry strips, Holter recordings.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "EKG / ECG Tracing",
+          "is_generic": true,
+          "model_type": "EKG / ECG Tracing",
+          "description": "Heart tracing without a physician's interpretation. Also catches telemetry strips.",
+          "keywords": [
+            "EKG",
+            "ECG",
+            "tracing",
+            "rhythm strip",
+            "telemetry",
+            "rate",
+            "QRS",
+            "QTc"
+          ]
+        },
+        {
+          "page_subtype": "ECG Graph",
+          "is_generic": false,
+          "model_type": "EKG / ECG Tracing",
+          "description": "The tracing itself with machine measurements and no physician interpretation.",
+          "keywords": [
+            "EKG graph",
+            "ECG graph",
+            "tracing",
+            "rhythm strip",
+            "25 mm/s",
+            "10 mm/mV",
+            "unconfirmed",
+            "machine read"
+          ]
+        },
+        {
+          "page_subtype": "Holter monitor report",
+          "is_generic": false,
+          "model_type": "EKG / ECG Tracing",
+          "description": "24-48 hour wearable heart rhythm recording.",
+          "keywords": [
+            "Holter",
+            "24-hour monitor",
+            "ambulatory ECG",
+            "PVCs",
+            "PACs",
+            "pauses",
+            "min/max heart rate",
+            "total beats"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Gastroenterology / GI",
+      "codability": "Codable",
+      "codability_basis": "data",
+      "description": "GI specialist notes and scope procedures.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Gastroenterology / GI",
+          "is_generic": true,
+          "model_type": "Gastroenterology / GI",
+          "description": "GI specialist note or procedure report; EGD is the upper-GI scope of esophagus, stomach and duodenum.",
+          "keywords": [
+            "Gastroenterology",
+            "GI",
+            "GI report",
+            "GERD",
+            "cirrhosis",
+            "H. pylori",
+            "hepatology"
+          ]
+        },
+        {
+          "page_subtype": "Endoscopy report",
+          "is_generic": false,
+          "model_type": "Gastroenterology / GI",
+          "description": "Scope examination of an internal organ (most often the upper GI tract) with findings.",
+          "keywords": [
+            "Endoscopy",
+            "EGD",
+            "esophagogastroduodenoscopy",
+            "upper GI endoscopy",
+            "scope",
+            "findings",
+            "biopsy taken",
+            "sedation",
+            "endoscopist"
+          ]
+        },
+        {
+          "page_subtype": "Colonoscopy / sigmoidoscopy report",
+          "is_generic": false,
+          "model_type": "Gastroenterology / GI",
+          "description": "Scope exam of the colon (full, or lower part only) with findings such as polyps and biopsies.",
+          "keywords": [
+            "Colonoscopy",
+            "flexible sigmoidoscopy",
+            "cecum reached",
+            "polyp",
+            "polypectomy",
+            "diverticulosis",
+            "bowel prep",
+            "withdrawal time",
+            "biopsy"
+          ]
+        },
+        {
+          "page_subtype": "Esophageal manometry",
+          "is_generic": false,
+          "model_type": "Gastroenterology / GI",
+          "description": "Test measuring pressure and muscle movement in the esophagus.",
+          "keywords": [
+            "Esophageal manometry",
+            "high-resolution manometry",
+            "LES pressure",
+            "peristalsis",
+            "IRP",
+            "achalasia",
+            "motility"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Patient Education",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Hand-outs and instructions given to the patient.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Patient Education",
+          "is_generic": true,
+          "model_type": "Patient Education",
+          "description": "Printed teaching material about a condition, medicine or procedure.",
+          "keywords": [
+            "Patient education",
+            "patient instructions",
+            "what is",
+            "when to call your doctor",
+            "follow up with",
+            "take as directed"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Procedure Note",
+      "codability": "Codable",
+      "codability_basis": "data",
+      "description": "Office and bedside procedure notes.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Procedure Note",
+          "is_generic": true,
+          "model_type": "Procedure Note",
+          "description": "Short report of a bedside or office procedure.",
+          "keywords": [
+            "Procedure Note",
+            "indication",
+            "technique",
+            "time-out",
+            "local anesthesia",
+            "complications: none",
+            "tolerated well"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Ophthalmology Note",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Eye care notes, tests and procedures.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Ophthalmology Note",
+          "is_generic": true,
+          "model_type": "Ophthalmology Note",
+          "description": "Visit note or report from an eye physician (MD/DO) covering eye disease assessment and plan.",
+          "keywords": [
+            "Ophthalmology",
+            "ocular history",
+            "anterior segment",
+            "posterior segment",
+            "macula",
+            "glaucoma",
+            "cataract",
+            "IOP",
+            "OCT",
+            "visual field"
+          ]
+        },
+        {
+          "page_subtype": "Retinal / Eye Report",
+          "is_generic": false,
+          "model_type": "Ophthalmology Note",
+          "description": "Eye exam record with right-eye / left-eye (OD / OS) findings, or a retina procedure note.",
+          "keywords": [
+            "OD",
+            "OS",
+            "OU",
+            "visual acuity",
+            "IOP",
+            "dilated fundus exam",
+            "retina",
+            "intravitreal injection",
+            "Eylea",
+            "Avastin",
+            "laser photocoagulation"
+          ]
+        },
+        {
+          "page_subtype": "Laser procedure report",
+          "is_generic": false,
+          "model_type": "Ophthalmology Note",
+          "description": "Report of a laser treatment. The label does not say which; most likely an eye laser (YAG, SLT, retinal).",
+          "keywords": [
+            "Laser",
+            "YAG capsulotomy",
+            "SLT",
+            "photocoagulation",
+            "laser settings",
+            "spots",
+            "power"
+          ]
+        },
+        {
+          "page_subtype": "Fundus photography",
+          "is_generic": false,
+          "model_type": "Ophthalmology Note",
+          "description": "Photograph of the retina with interpretation; used for diabetic retinopathy and macular disease.",
+          "keywords": [
+            "Fundus photo",
+            "retinal imaging",
+            "optic disc",
+            "macula",
+            "retinopathy",
+            "drusen",
+            "interpretation"
+          ]
+        },
+        {
+          "page_subtype": "Optometry note",
+          "is_generic": false,
+          "model_type": "Ophthalmology Note",
+          "description": "Optometrist exam note, including visual field testing and diabetic retinopathy screening findings.",
+          "keywords": [
+            "Optometry",
+            "O.D. (Doctor of Optometry)",
+            "visual field",
+            "Humphrey",
+            "retinopathy",
+            "background/proliferative",
+            "refraction",
+            "spectacle Rx",
+            "dilated exam"
+          ]
+        },
+        {
+          "page_subtype": "Lens Parameters",
+          "is_generic": false,
+          "model_type": "Ophthalmology Note",
+          "description": "Spectacle, contact lens or intraocular lens measurements.",
+          "keywords": [
+            "Lens",
+            "sphere",
+            "cylinder",
+            "axis",
+            "add",
+            "base curve",
+            "diameter",
+            "IOL power"
+          ]
+        },
+        {
+          "page_subtype": "Visual Evaluation",
+          "is_generic": false,
+          "model_type": "Ophthalmology Note",
+          "description": "Appears to be a visual / vision evaluation form; the source wording is garbled.",
+          "keywords": [
+            "Visual evaluation",
+            "vision",
+            "acuity",
+            "visual function"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Referral & Authorization",
+      "codability": "Non-Codable",
+      "codability_basis": "list",
+      "description": "Referral, payer authorization and request paperwork.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Referral & Authorization",
+          "is_generic": true,
+          "model_type": "Referral & Authorization",
+          "description": "Referral, authorization or request paperwork where no specific sub-type matches, including record requests.",
+          "keywords": [
+            "referral",
+            "authorization",
+            "auth number",
+            "request",
+            "request for records",
+            "approved",
+            "valid from / to"
+          ]
+        },
+        {
+          "page_subtype": "Referral Request",
+          "is_generic": false,
+          "model_type": "Referral & Authorization",
+          "description": "Order or note sending the patient to another provider or service.",
+          "keywords": [
+            "Referral",
+            "referral order",
+            "refer to",
+            "referred to",
+            "reason for referral",
+            "priority",
+            "referring provider"
+          ]
+        },
+        {
+          "page_subtype": "Referral authorization form",
+          "is_generic": false,
+          "model_type": "Referral & Authorization",
+          "description": "Form approving a referral to another provider or service.",
+          "keywords": [
+            "Referral",
+            "authorization number",
+            "referred to",
+            "referring provider",
+            "number of visits approved",
+            "valid from/to",
+            "diagnosis for referral"
+          ]
+        },
+        {
+          "page_subtype": "Insurance Authorization Form",
+          "is_generic": false,
+          "model_type": "Referral & Authorization",
+          "description": "Note on insurer approval / prior authorization for a service.",
+          "keywords": [
+            "Prior authorization",
+            "auth number",
+            "approved/denied",
+            "payer",
+            "insurance verification",
+            "units approved",
+            "effective dates"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Psychiatric Evaluation",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Psychiatric and behavioral health notes.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Psychiatric Evaluation",
+          "is_generic": true,
+          "model_type": "Psychiatric Evaluation",
+          "description": "Psychiatric or behavioral health document where no specific sub-type matches. Also catches psychotherapy session notes.",
+          "keywords": [
+            "psychiatric",
+            "mental status exam",
+            "MSE",
+            "DSM-5",
+            "mood",
+            "affect",
+            "suicidal ideation",
+            "psychotherapy session"
+          ]
+        },
+        {
+          "page_subtype": "Initial psychiatric evaluation",
+          "is_generic": false,
+          "model_type": "Psychiatric Evaluation",
+          "description": "First full assessment by a psychiatric provider, ending in a diagnosis.",
+          "keywords": [
+            "Initial psychiatric evaluation",
+            "psychiatric intake",
+            "new patient",
+            "psychiatric history",
+            "diagnostic impression",
+            "DSM-5"
+          ]
+        },
+        {
+          "page_subtype": "Psychiatric Note",
+          "is_generic": false,
+          "model_type": "Psychiatric Evaluation",
+          "description": "Follow-up visit note by a psychiatric provider, usually medication management.",
+          "keywords": [
+            "Psychiatric progress note",
+            "psychiatry follow-up",
+            "medication management",
+            "interval history",
+            "mental status"
+          ]
+        },
+        {
+          "page_subtype": "Behavioral health note",
+          "is_generic": false,
+          "model_type": "Psychiatric Evaluation",
+          "description": "Mental health provider visit note.",
+          "keywords": [
+            "Behavioral health",
+            "client note",
+            "counselor",
+            "presenting problem",
+            "PHQ-9",
+            "GAD-7",
+            "mood"
+          ]
+        },
+        {
+          "page_subtype": "Group Therapy Note",
+          "is_generic": false,
+          "model_type": "Psychiatric Evaluation",
+          "description": "Note for a group therapy session.",
+          "keywords": [
+            "Group therapy",
+            "group session",
+            "90853",
+            "participation",
+            "topic",
+            "facilitator"
+          ]
+        },
+        {
+          "page_subtype": "Substance use treatment record",
+          "is_generic": false,
+          "model_type": "Psychiatric Evaluation",
+          "description": "Record of treatment for alcohol or drug use disorder.",
+          "keywords": [
+            "Substance use disorder",
+            "SUD",
+            "alcohol dependence",
+            "opioid use disorder",
+            "MAT",
+            "Suboxone",
+            "methadone",
+            "detox",
+            "relapse"
+          ]
+        },
+        {
+          "page_subtype": "Neurocognitive screening exam",
+          "is_generic": false,
+          "model_type": "Psychiatric Evaluation",
+          "description": "Test of memory and thinking to screen for dementia.",
+          "keywords": [
+            "Neurocognitive",
+            "cognitive screening",
+            "MoCA",
+            "SLUMS",
+            "Mini-Cog",
+            "memory",
+            "dementia",
+            "score /30"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Other Evaluation",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Evaluation forms and notes that fit no other page type.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Other Evaluation",
+          "is_generic": true,
+          "model_type": "Other Evaluation",
+          "description": "Evaluation form or note that fits no other page type.",
+          "keywords": [
+            "Evaluation",
+            "initial evaluation",
+            "inpatient evaluation",
+            "re-evaluation",
+            "evaluated by",
+            "findings",
+            "goals"
+          ]
+        },
+        {
+          "page_subtype": "Nutrition assessment",
+          "is_generic": false,
+          "model_type": "Other Evaluation",
+          "description": "Dietitian evaluation of nutritional status, weight and diet plan.",
+          "keywords": [
+            "Nutrition assessment",
+            "dietitian",
+            "RD",
+            "BMI",
+            "weight loss",
+            "malnutrition",
+            "albumin",
+            "diet order",
+            "tube feeding",
+            "caloric needs"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Emergency Note",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Emergency department, urgent care and ambulance notes.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Emergency Note",
+          "is_generic": true,
+          "model_type": "Emergency Note",
+          "description": "Emergency department provider note with history, exam, medical decision-making and disposition.",
+          "keywords": [
+            "ED Note",
+            "Emergency Department",
+            "ER visit",
+            "ED provider note",
+            "MDM",
+            "ED course",
+            "arrival time",
+            "disposition"
+          ]
+        },
+        {
+          "page_subtype": "Urgent care note",
+          "is_generic": false,
+          "model_type": "Emergency Note",
+          "description": "Walk-in clinic visit note for acute, non-emergency problems.",
+          "keywords": [
+            "Urgent Care",
+            "walk-in",
+            "acute visit",
+            "chief complaint",
+            "rapid strep/flu",
+            "discharged home"
+          ]
+        },
+        {
+          "page_subtype": "EMS / ambulance report",
+          "is_generic": false,
+          "model_type": "Emergency Note",
+          "description": "Paramedic report from the scene and during transport.",
+          "keywords": [
+            "EMS",
+            "ambulance",
+            "run report",
+            "Patient Care Report",
+            "PCR",
+            "paramedic",
+            "EMT",
+            "dispatch",
+            "scene",
+            "transport"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Allergies Report",
+      "codability": "Non-Codable",
+      "codability_basis": "list",
+      "description": "List of allergies and reactions.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Allergies Report",
+          "is_generic": true,
+          "model_type": "Allergies Report",
+          "description": "List of the patient's allergies and reactions.",
+          "keywords": [
+            "Allergies",
+            "allergy list",
+            "NKDA",
+            "allergen",
+            "reaction",
+            "severity",
+            "intolerance"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Therapy",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Therapy and rehabilitation notes of every discipline.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Therapy",
+          "is_generic": true,
+          "model_type": "Therapy",
+          "description": "Generic report from any therapy discipline.",
+          "keywords": [
+            "Therapy",
+            "therapist",
+            "daily treatment note",
+            "treatment rendered",
+            "minutes",
+            "units",
+            "progress toward goals",
+            "cardiac rehab"
+          ]
+        },
+        {
+          "page_subtype": "Physical Therapy",
+          "is_generic": false,
+          "model_type": "Therapy",
+          "description": "PT evaluation or treatment note on strength, gait and range of motion.",
+          "keywords": [
+            "Physical Therapy",
+            "PT",
+            "DPT",
+            "ROM",
+            "strength 4/5",
+            "gait training",
+            "therapeutic exercise",
+            "plan of care",
+            "goals"
+          ]
+        },
+        {
+          "page_subtype": "Occupational Therapy",
+          "is_generic": false,
+          "model_type": "Therapy",
+          "description": "OT documentation on daily-living skills, upper-limb function and adaptive needs.",
+          "keywords": [
+            "Occupational Therapy",
+            "OT",
+            "OTR/L",
+            "OT daily note",
+            "ADL training",
+            "fine motor",
+            "upper extremity",
+            "splint"
+          ]
+        },
+        {
+          "page_subtype": "Rehabilitation Plan",
+          "is_generic": false,
+          "model_type": "Therapy",
+          "description": "Plan of therapy goals and interventions.",
+          "keywords": [
+            "Rehabilitation plan",
+            "goals",
+            "short-term/long-term",
+            "frequency",
+            "duration",
+            "interventions"
+          ]
+        },
+        {
+          "page_subtype": "Speech therapy note",
+          "is_generic": false,
+          "model_type": "Therapy",
+          "description": "Speech-language pathologist note on speech, cognition or swallowing.",
+          "keywords": [
+            "Speech therapy",
+            "SLP",
+            "dysphagia",
+            "aphasia",
+            "swallow evaluation",
+            "cognitive-linguistic",
+            "dysarthria"
+          ]
+        },
+        {
+          "page_subtype": "Chiropractic treatment note",
+          "is_generic": false,
+          "model_type": "Therapy",
+          "description": "Chiropractor visit note.",
+          "keywords": [
+            "Chiropractic",
+            "D.C.",
+            "subluxation",
+            "spinal manipulation",
+            "adjustment",
+            "cervical/lumbar"
+          ]
+        },
+        {
+          "page_subtype": "Acupuncture treatment record",
+          "is_generic": false,
+          "model_type": "Therapy",
+          "description": "Acupuncturist treatment record.",
+          "keywords": [
+            "Acupuncture",
+            "L.Ac",
+            "needles",
+            "points",
+            "meridian",
+            "session"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Immunizations",
+      "codability": "Non-Codable",
+      "codability_basis": "list",
+      "description": "Vaccine lists and vaccine administration records.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Immunizations",
+          "is_generic": true,
+          "model_type": "Immunizations",
+          "description": "Vaccine document where no specific sub-type matches.",
+          "keywords": [
+            "vaccine",
+            "immunization",
+            "lot number",
+            "date given"
+          ]
+        },
+        {
+          "page_subtype": "Immunization list",
+          "is_generic": false,
+          "model_type": "Immunizations",
+          "description": "Record of vaccines the patient has received.",
+          "keywords": [
+            "Immunization",
+            "vaccine",
+            "flu shot",
+            "influenza",
+            "Prevnar",
+            "Tdap",
+            "lot number",
+            "date given",
+            "site",
+            "VIS"
+          ]
+        },
+        {
+          "page_subtype": "Vaccine Record",
+          "is_generic": false,
+          "model_type": "Immunizations",
+          "description": "Record of a vaccine being given: product, lot, site, who gave it.",
+          "keywords": [
+            "Vaccine administration record",
+            "VAR",
+            "lot number",
+            "manufacturer",
+            "expiration",
+            "site",
+            "route",
+            "administered by",
+            "VIS date"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "ENT Note",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Ear, nose and throat notes and hearing / balance tests.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "ENT Note",
+          "is_generic": true,
+          "model_type": "ENT Note",
+          "description": "Ear, nose and throat specialist note or test where no specific sub-type matches.",
+          "keywords": [
+            "ENT",
+            "otolaryngology",
+            "ear",
+            "nose",
+            "throat",
+            "sinus",
+            "hearing"
+          ]
+        },
+        {
+          "page_subtype": "Audiology / hearing report",
+          "is_generic": false,
+          "model_type": "ENT Note",
+          "description": "Hearing test and audiologist's note.",
+          "keywords": [
+            "Audiology",
+            "audiogram",
+            "hearing loss",
+            "sensorineural",
+            "dB HL",
+            "tympanometry",
+            "speech discrimination",
+            "hearing aid"
+          ]
+        },
+        {
+          "page_subtype": "Laryngoscopy report",
+          "is_generic": false,
+          "model_type": "ENT Note",
+          "description": "ENT scope of the throat and vocal cords.",
+          "keywords": [
+            "Laryngoscopy",
+            "flexible fiberoptic",
+            "vocal cords",
+            "larynx",
+            "ENT",
+            "hoarseness",
+            "dysphagia"
+          ]
+        },
+        {
+          "page_subtype": "Videonystagmography (VNG)",
+          "is_generic": false,
+          "model_type": "ENT Note",
+          "description": "Eye-movement test for dizziness and balance disorders.",
+          "keywords": [
+            "VNG",
+            "nystagmus",
+            "caloric",
+            "vestibular",
+            "vertigo",
+            "BPPV",
+            "Dix-Hallpike"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Wound & Infection Care",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Wound, burn and infection control notes.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Wound & Infection Care",
+          "is_generic": true,
+          "model_type": "Wound & Infection Care",
+          "description": "Wound, burn or infection document where no specific sub-type matches.",
+          "keywords": [
+            "wound",
+            "ulcer",
+            "dressing",
+            "infection",
+            "isolation"
+          ]
+        },
+        {
+          "page_subtype": "Wound care note",
+          "is_generic": false,
+          "model_type": "Wound & Infection Care",
+          "description": "Assessment and treatment of a wound or ulcer.",
+          "keywords": [
+            "Wound care",
+            "pressure ulcer stage",
+            "diabetic foot ulcer",
+            "measurements (L x W x D)",
+            "debridement",
+            "drainage",
+            "dressing",
+            "granulation"
+          ]
+        },
+        {
+          "page_subtype": "Burn treatment record",
+          "is_generic": false,
+          "model_type": "Wound & Infection Care",
+          "description": "Record of burn assessment and treatment.",
+          "keywords": [
+            "Burn",
+            "% TBSA",
+            "degree/thickness",
+            "Silvadene",
+            "grafting",
+            "debridement",
+            "dressing change"
+          ]
+        },
+        {
+          "page_subtype": "Infection control note",
+          "is_generic": false,
+          "model_type": "Wound & Infection Care",
+          "description": "Note on infection status, isolation and organisms.",
+          "keywords": [
+            "Infection control",
+            "isolation",
+            "MRSA",
+            "C. diff",
+            "contact precautions",
+            "culture positive",
+            "antibiotic"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Interim Summary",
+      "codability": "Discharge",
+      "codability_basis": "list",
+      "description": "Mid-stay summaries and interim notes.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Interim Summary",
+          "is_generic": true,
+          "model_type": "Interim Summary",
+          "description": "Summary written part-way through a long stay.",
+          "keywords": [
+            "Interim Summary",
+            "Interim Note",
+            "interval summary",
+            "hospital course to date"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "ICU Note",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Critical care physician notes and ICU flow sheets.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "ICU Note",
+          "is_generic": true,
+          "model_type": "ICU Note",
+          "description": "Physician note for a critically ill patient, usually in the ICU.",
+          "keywords": [
+            "Critical care",
+            "critical care time",
+            "ICU",
+            "intubated",
+            "vasopressors",
+            "ICU flow sheet",
+            "hourly vitals",
+            "I&O"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Nuclear Medicine Report",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Imaging that uses a radioactive tracer.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Nuclear Medicine Report",
+          "is_generic": true,
+          "model_type": "Nuclear Medicine Report",
+          "description": "Imaging that uses a radioactive tracer (bone scan, thyroid scan, PET, cardiac).",
+          "keywords": [
+            "Nuclear medicine",
+            "radiotracer",
+            "Tc-99m",
+            "uptake",
+            "bone scan",
+            "HIDA",
+            "thyroid scan",
+            "PET"
+          ]
+        },
+        {
+          "page_subtype": "SPECT report",
+          "is_generic": false,
+          "model_type": "Nuclear Medicine Report",
+          "description": "3-D nuclear scan, most often of the heart.",
+          "keywords": [
+            "SPECT",
+            "perfusion",
+            "gated",
+            "tracer",
+            "defect",
+            "ischemia",
+            "infarct"
+          ]
+        },
+        {
+          "page_subtype": "Myocardial perfusion imaging",
+          "is_generic": false,
+          "model_type": "Nuclear Medicine Report",
+          "description": "Nuclear stress scan showing blood flow to the heart muscle.",
+          "keywords": [
+            "Myocardial perfusion",
+            "MPI",
+            "nuclear stress",
+            "Lexiscan",
+            "sestamibi",
+            "Cardiolite",
+            "reversible defect",
+            "ischemia",
+            "SPECT",
+            "gated EF"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Vascular Studies",
+      "codability": "Non-Codable",
+      "codability_basis": "list",
+      "description": "Doppler / duplex and other blood-flow studies.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Vascular Studies",
+          "is_generic": true,
+          "model_type": "Vascular Studies",
+          "description": "Blood-flow study of arteries or veins where no specific sub-type matches, including the ankle-brachial index.",
+          "keywords": [
+            "vascular lab",
+            "arterial",
+            "venous",
+            "waveform",
+            "velocity",
+            "stenosis",
+            "ABI",
+            "ankle-brachial index"
+          ]
+        },
+        {
+          "page_subtype": "Doppler-duplex",
+          "is_generic": false,
+          "model_type": "Vascular Studies",
+          "description": "Any Doppler or duplex ultrasound blood-flow study; the echo Doppler is given as the example.",
+          "keywords": [
+            "Doppler",
+            "duplex",
+            "velocity",
+            "waveform",
+            "flow",
+            "color Doppler",
+            "spectral",
+            "vascular ultrasound"
+          ]
+        },
+        {
+          "page_subtype": "Carotid duplex",
+          "is_generic": false,
+          "model_type": "Vascular Studies",
+          "description": "Ultrasound of the neck arteries checking for narrowing.",
+          "keywords": [
+            "Carotid duplex",
+            "carotid Doppler",
+            "ICA",
+            "CCA",
+            "% stenosis",
+            "peak systolic velocity",
+            "plaque"
+          ]
+        },
+        {
+          "page_subtype": "Lower / upper extremity Doppler-duplex",
+          "is_generic": false,
+          "model_type": "Vascular Studies",
+          "description": "Vascular ultrasound of leg or arm arteries/veins, e.g. for DVT or peripheral artery disease.",
+          "keywords": [
+            "Lower extremity",
+            "upper extremity",
+            "venous duplex",
+            "arterial Doppler",
+            "DVT",
+            "PAD",
+            "waveform",
+            "stenosis",
+            "reflux",
+            "vascular lab"
+          ]
+        },
+        {
+          "page_subtype": "Plethysmography report",
+          "is_generic": false,
+          "model_type": "Vascular Studies",
+          "description": "Test measuring volume changes - limb blood flow (vascular) or lung volumes (body plethysmography).",
+          "keywords": [
+            "Plethysmography",
+            "PVR",
+            "pulse volume recording",
+            "segmental pressures",
+            "waveforms",
+            "body box",
+            "lung volumes"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Occupational & Physical Exams",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Work-related records and purpose-specific physicals.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Occupational & Physical Exams",
+          "is_generic": true,
+          "model_type": "Occupational & Physical Exams",
+          "description": "Work-related or purpose-specific physical exam where no specific sub-type matches. Also catches fitness-for-duty, school physical and travel medicine forms.",
+          "keywords": [
+            "physical examination form",
+            "cleared",
+            "restrictions",
+            "employer",
+            "work status",
+            "fitness for duty",
+            "school physical",
+            "travel clinic"
+          ]
+        },
+        {
+          "page_subtype": "Occupational health record",
+          "is_generic": false,
+          "model_type": "Occupational & Physical Exams",
+          "description": "Employer or work-related health record.",
+          "keywords": [
+            "Occupational health",
+            "employee health",
+            "work status",
+            "restrictions",
+            "employer",
+            "DOT physical"
+          ]
+        },
+        {
+          "page_subtype": "Work injury evaluation",
+          "is_generic": false,
+          "model_type": "Occupational & Physical Exams",
+          "description": "Evaluation of a job-related injury (workers' compensation).",
+          "keywords": [
+            "Work injury",
+            "workers' comp",
+            "date of injury (DOI)",
+            "mechanism",
+            "work restrictions",
+            "MMI"
+          ]
+        },
+        {
+          "page_subtype": "Sports physical exam",
+          "is_generic": false,
+          "model_type": "Occupational & Physical Exams",
+          "description": "Pre-participation exam for athletes.",
+          "keywords": [
+            "Sports physical",
+            "pre-participation",
+            "PPE",
+            "cleared for sports",
+            "musculoskeletal exam"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Annual Assessments",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Yearly wellness and health-plan assessment visits.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Annual Assessments",
+          "is_generic": true,
+          "model_type": "Annual Assessments",
+          "description": "Yearly comprehensive review of the member's health, conditions and risks; often a health-plan sponsored visit.",
+          "keywords": [
+            "Annual Health Assessment",
+            "comprehensive assessment",
+            "review of systems",
+            "chronic conditions reviewed",
+            "health risk assessment (HRA)",
+            "in-home assessment"
+          ]
+        },
+        {
+          "page_subtype": "Medicare annual wellness visit",
+          "is_generic": false,
+          "model_type": "Annual Assessments",
+          "description": "Yearly preventive visit that updates the health risk assessment and personalized prevention plan.",
+          "keywords": [
+            "Annual Wellness Visit",
+            "AWV",
+            "Medicare Annual Wellness",
+            "G0438",
+            "G0439",
+            "IPPE",
+            "Welcome to Medicare",
+            "personalized prevention plan"
+          ]
+        },
+        {
+          "page_subtype": "Staying Healthy Assessment",
+          "is_generic": false,
+          "model_type": "Annual Assessments",
+          "description": "Medi-Cal health behavior questionnaire reviewed and signed by the PCP.",
+          "keywords": [
+            "Staying Healthy Assessment",
+            "SHA",
+            "IHEBA",
+            "Medi-Cal",
+            "health education behavior",
+            "PCP signature"
+          ]
+        },
+        {
+          "page_subtype": "HouseCalls visit summary",
+          "is_generic": false,
+          "model_type": "Annual Assessments",
+          "description": "Summary of a health-plan in-home assessment visit (e.g. the Optum HouseCalls program).",
+          "keywords": [
+            "HouseCalls",
+            "in-home assessment",
+            "nurse practitioner",
+            "health plan",
+            "diagnoses confirmed"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Obstetrics & Women's Health",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Pregnancy records and cervical screening.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Obstetrics & Women's Health",
+          "is_generic": true,
+          "model_type": "Obstetrics & Women's Health",
+          "description": "Pregnancy or women's health document where no specific sub-type matches.",
+          "keywords": [
+            "OB",
+            "GYN",
+            "pregnancy",
+            "gravida / para",
+            "EDD",
+            "LMP",
+            "cervix"
+          ]
+        },
+        {
+          "page_subtype": "Prenatal record / ACOG form",
+          "is_generic": false,
+          "model_type": "Obstetrics & Women's Health",
+          "description": "Pregnancy care record kept across visits: obstetric history, due date, and a flow sheet of each prenatal visit (weight, BP, fundal height, fetal heart rate).",
+          "keywords": [
+            "ACOG Antepartum Record",
+            "Prenatal Flow Sheet",
+            "EDD/EDC",
+            "LMP",
+            "gravida/para (G_P_)",
+            "gestational age",
+            "weeks gestation",
+            "fundal height",
+            "FHR/FHT",
+            "fetal movement",
+            "OB history"
+          ]
+        },
+        {
+          "page_subtype": "Antepartum record",
+          "is_generic": false,
+          "model_type": "Obstetrics & Women's Health",
+          "description": "Same idea as the prenatal record: documentation of mother and fetus before delivery, outpatient or during an antepartum admission.",
+          "keywords": [
+            "Antepartum Record",
+            "antepartum visit",
+            "EDD",
+            "gestational age",
+            "NST (non-stress test)",
+            "fetal heart tones",
+            "prenatal labs reviewed",
+            "high-risk pregnancy"
+          ]
+        },
+        {
+          "page_subtype": "Postpartum visit / exam",
+          "is_generic": false,
+          "model_type": "Obstetrics & Women's Health",
+          "description": "Follow-up visit after delivery (usually within 1-12 weeks) checking recovery, bleeding, breastfeeding, mood and contraception.",
+          "keywords": [
+            "Postpartum visit",
+            "PP exam",
+            "6-week check",
+            "delivery date",
+            "lochia",
+            "breastfeeding/lactation",
+            "incision/perineum",
+            "EPDS",
+            "contraception counseling",
+            "s/p NSVD or C-section"
+          ]
+        },
+        {
+          "page_subtype": "Pap smear report",
+          "is_generic": false,
+          "model_type": "Obstetrics & Women's Health",
+          "description": "Cervical cytology screening result.",
+          "keywords": [
+            "Pap smear",
+            "cervical cytology",
+            "ThinPrep",
+            "NILM",
+            "ASC-US",
+            "LSIL",
+            "HSIL",
+            "HPV",
+            "high-risk HPV",
+            "co-testing"
+          ]
+        },
+        {
+          "page_subtype": "Colposcopy exam",
+          "is_generic": false,
+          "model_type": "Obstetrics & Women's Health",
+          "description": "Magnified exam of the cervix after an abnormal Pap, usually with biopsy.",
+          "keywords": [
+            "Colposcopy",
+            "cervix",
+            "acetowhite",
+            "transformation zone",
+            "ECC",
+            "cervical biopsy",
+            "CIN",
+            "abnormal Pap"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Neurology",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Neurology notes and nerve tests.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Neurology",
+          "is_generic": true,
+          "model_type": "Neurology",
+          "description": "Neurologist visit note, or the note accompanying an EMG study.",
+          "keywords": [
+            "Neurology",
+            "neurological exam",
+            "cranial nerves",
+            "reflexes",
+            "seizure",
+            "stroke/CVA",
+            "neuropathy",
+            "Parkinson's",
+            "dementia",
+            "EMG"
+          ]
+        },
+        {
+          "page_subtype": "EEG / neurophysiology report",
+          "is_generic": false,
+          "model_type": "Neurology",
+          "description": "Brain-wave recording interpreted by a neurologist; used for seizures and encephalopathy.",
+          "keywords": [
+            "EEG",
+            "electroencephalogram",
+            "neurophysiology",
+            "epileptiform",
+            "spike and wave",
+            "background rhythm",
+            "seizure",
+            "photic stimulation"
+          ]
+        },
+        {
+          "page_subtype": "EMG report",
+          "is_generic": false,
+          "model_type": "Neurology",
+          "description": "Electromyography / nerve conduction test of muscles and nerves, with physician interpretation.",
+          "keywords": [
+            "EMG",
+            "electromyography",
+            "NCV / NCS",
+            "nerve conduction",
+            "sural nerve",
+            "amplitude",
+            "latency",
+            "radiculopathy",
+            "carpal tunnel"
+          ]
+        },
+        {
+          "page_subtype": "Sudoscan",
+          "is_generic": false,
+          "model_type": "Neurology",
+          "description": "Sweat-gland nerve function test for small-fiber / diabetic neuropathy.",
+          "keywords": [
+            "Sudoscan",
+            "ESC",
+            "electrochemical skin conductance",
+            "sudomotor",
+            "hands/feet",
+            "neuropathy risk"
+          ]
+        },
+        {
+          "page_subtype": "DPN results",
+          "is_generic": false,
+          "model_type": "Neurology",
+          "description": "Diabetic peripheral neuropathy test result (often DPNCheck).",
+          "keywords": [
+            "DPN",
+            "diabetic peripheral neuropathy",
+            "DPNCheck",
+            "sural",
+            "monofilament",
+            "severity"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Nephrology",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Kidney specialist notes and dialysis records.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Nephrology",
+          "is_generic": true,
+          "model_type": "Nephrology",
+          "description": "Kidney specialist visit note.",
+          "keywords": [
+            "Nephrology",
+            "CKD stage",
+            "eGFR",
+            "creatinine",
+            "proteinuria",
+            "ESRD",
+            "dialysis access",
+            "fistula",
+            "renal"
+          ]
+        },
+        {
+          "page_subtype": "Dialysis Note",
+          "is_generic": false,
+          "model_type": "Nephrology",
+          "description": "Dialysis treatment record: hemodialysis run sheet or peritoneal dialysis record.",
+          "keywords": [
+            "Dialysis",
+            "hemodialysis",
+            "HD flow sheet",
+            "peritoneal dialysis",
+            "CAPD",
+            "dry weight",
+            "UF goal",
+            "Kt/V",
+            "AV fistula",
+            "dialysate"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Oncology",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Cancer care notes and treatment administration records.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Oncology",
+          "is_generic": true,
+          "model_type": "Oncology",
+          "description": "Cancer specialist visit note: diagnosis, staging, treatment plan.",
+          "keywords": [
+            "Oncology",
+            "hematology/oncology",
+            "malignant neoplasm",
+            "carcinoma",
+            "staging/TNM",
+            "metastatic",
+            "chemotherapy cycle",
+            "ECOG",
+            "tumor markers"
+          ]
+        },
+        {
+          "page_subtype": "Radiation therapy record",
+          "is_generic": false,
+          "model_type": "Oncology",
+          "description": "Record of radiation treatment for cancer: site, dose, fractions.",
+          "keywords": [
+            "Radiation therapy",
+            "XRT",
+            "fractions",
+            "Gy/cGy",
+            "treatment site",
+            "radiation oncologist",
+            "simulation"
+          ]
+        },
+        {
+          "page_subtype": "Chemotherapy administration record",
+          "is_generic": false,
+          "model_type": "Oncology",
+          "description": "Record of chemo drugs given, dose, cycle and tolerance.",
+          "keywords": [
+            "Chemotherapy",
+            "cycle/day (C1D1)",
+            "regimen",
+            "dose",
+            "infusion start/stop",
+            "premedication",
+            "port accessed"
+          ]
+        },
+        {
+          "page_subtype": "Infusion therapy note",
+          "is_generic": false,
+          "model_type": "Oncology",
+          "description": "Note for IV drug administration (biologics, iron, antibiotics, chemo).",
+          "keywords": [
+            "Infusion",
+            "IV",
+            "Remicade",
+            "iron infusion",
+            "IVIG",
+            "start/stop time",
+            "PICC/port",
+            "tolerated well"
+          ]
+        },
+        {
+          "page_subtype": "Blood transfusion record",
+          "is_generic": false,
+          "model_type": "Oncology",
+          "description": "Record of blood products given: unit numbers, times, vitals checks.",
+          "keywords": [
+            "Transfusion",
+            "PRBC",
+            "unit number",
+            "blood type",
+            "crossmatch",
+            "start/stop time",
+            "transfusion reaction",
+            "two-nurse check"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Respiratory",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Respiratory therapy notes and breathing tests.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Respiratory",
+          "is_generic": true,
+          "model_type": "Respiratory",
+          "description": "Respiratory therapist note on breathing treatments and oxygen.",
+          "keywords": [
+            "Respiratory therapy",
+            "RT",
+            "nebulizer",
+            "albuterol",
+            "oxygen L/min",
+            "BiPAP/CPAP",
+            "breath sounds",
+            "COPD"
+          ]
+        },
+        {
+          "page_subtype": "Oximetry report",
+          "is_generic": false,
+          "model_type": "Respiratory",
+          "description": "Oxygen saturation recording (spot check or overnight), often used to qualify for home oxygen.",
+          "keywords": [
+            "Oximetry",
+            "pulse ox",
+            "SpO2",
+            "overnight oximetry",
+            "desaturation",
+            "room air",
+            "O2 saturation",
+            "88%"
+          ]
+        },
+        {
+          "page_subtype": "Pulmonary function test / spirometry",
+          "is_generic": false,
+          "model_type": "Respiratory",
+          "description": "Breathing test measuring lung volumes and airflow.",
+          "keywords": [
+            "PFT",
+            "spirometry",
+            "FEV1",
+            "FVC",
+            "FEV1/FVC",
+            "DLCO",
+            "% predicted",
+            "bronchodilator response",
+            "obstructive/restrictive"
+          ]
+        },
+        {
+          "page_subtype": "Ventilator management record",
+          "is_generic": false,
+          "model_type": "Respiratory",
+          "description": "Record of mechanical ventilation settings and changes.",
+          "keywords": [
+            "Ventilator",
+            "vent settings",
+            "FiO2",
+            "PEEP",
+            "tidal volume",
+            "AC/SIMV",
+            "weaning",
+            "extubation",
+            "tracheostomy"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Sleep Study",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Sleep studies and sleep clinic notes.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Sleep Study",
+          "is_generic": true,
+          "model_type": "Sleep Study",
+          "description": "Sleep test or sleep clinic document where no specific sub-type matches.",
+          "keywords": [
+            "sleep study",
+            "sleep clinic",
+            "sleep medicine",
+            "AHI",
+            "apnea",
+            "CPAP compliance",
+            "Epworth",
+            "sleep efficiency"
+          ]
+        },
+        {
+          "page_subtype": "Polysomnography",
+          "is_generic": false,
+          "model_type": "Sleep Study",
+          "description": "Overnight sleep test with interpretation; diagnoses sleep apnea and other sleep disorders.",
+          "keywords": [
+            "Polysomnography",
+            "PSG",
+            "sleep study",
+            "AHI",
+            "RDI",
+            "obstructive sleep apnea",
+            "sleep efficiency",
+            "desaturation nadir",
+            "REM"
+          ]
+        },
+        {
+          "page_subtype": "Split-night sleep study",
+          "is_generic": false,
+          "model_type": "Sleep Study",
+          "description": "Sleep study with diagnosis in the first half of the night and CPAP titration in the second.",
+          "keywords": [
+            "Split night",
+            "diagnostic portion",
+            "titration portion",
+            "AHI",
+            "CPAP pressure"
+          ]
+        },
+        {
+          "page_subtype": "CPAP / BiPAP titration report",
+          "is_generic": false,
+          "model_type": "Sleep Study",
+          "description": "Sleep study to find the right airway pressure setting.",
+          "keywords": [
+            "Titration",
+            "CPAP",
+            "BiPAP",
+            "optimal pressure",
+            "cm H2O",
+            "residual AHI",
+            "mask"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Pain & Palliative Note",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Pain management, palliative and hospice notes.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Pain & Palliative Note",
+          "is_generic": true,
+          "model_type": "Pain & Palliative Note",
+          "description": "Pain management visit or injection note, palliative care note on symptom control and goals of care, or hospice care record.",
+          "keywords": [
+            "pain management",
+            "chronic pain",
+            "pain scale",
+            "epidural steroid injection",
+            "nerve block",
+            "palliative care",
+            "goals of care",
+            "code status",
+            "hospice",
+            "comfort care"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Implants",
+      "codability": "Codable",
+      "codability_basis": "list",
+      "description": "Implant records and device checks.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Implants",
+          "is_generic": true,
+          "model_type": "Implants",
+          "description": "Record of an implanted device or prosthesis.",
+          "keywords": [
+            "Implant",
+            "manufacturer",
+            "lot/serial number",
+            "model",
+            "prosthesis",
+            "IOL",
+            "pacemaker",
+            "joint"
+          ]
+        },
+        {
+          "page_subtype": "Pacemaker Report",
+          "is_generic": false,
+          "model_type": "Implants",
+          "description": "Interrogation report of a pacemaker, ICD or loop recorder.",
+          "keywords": [
+            "Pacemaker",
+            "ICD",
+            "device interrogation",
+            "device clinic",
+            "battery",
+            "lead impedance",
+            "% paced",
+            "remote monitoring",
+            "programmer"
+          ]
+        },
+        {
+          "page_subtype": "Device implant log",
+          "is_generic": false,
+          "model_type": "Implants",
+          "description": "Operating-room log of implanted devices.",
+          "keywords": [
+            "Implant log",
+            "device",
+            "serial",
+            "lot",
+            "UDI",
+            "expiry",
+            "implanted by"
+          ]
+        }
+      ]
+    }
+  ]
+}

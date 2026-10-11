@@ -66,9 +66,9 @@ Blank / junk / duplicate.
 
 ### 4. `POST` / `GET` `/classification/page-type`
 
-Codeable / non-codeable page type.
+Codeable / Non-Codeable page type.
 
-- **Model today** — page family from `models/page-family` (TF-IDF + XGBoost); subtype from keyword rules in `codeable_canon.json`. No subtype hit leaves the subtype equal to the family. Missing weights ⇒ keywords name the family too.  
+- **Model today** — BERT from `models/page-family` (model type) plus the keyword model (`page_keyword_canon.json`), arbitrated by `page_arbitration.json`; names from `page_taxonomy.json`. Missing model ⇒ keywords only. See [PAGE_CLASSIFICATION.md](PAGE_CLASSIFICATION.md).
 - **Out** — `page_type`, tag (codeable / non-codeable / discharge)  
 - **Toggle** — project-specific canon  
 

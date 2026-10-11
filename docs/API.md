@@ -91,7 +91,7 @@ These are not fetched by the commands above, and they are not baked into the Doc
 | `models/hw/` | `handwritten_printed_convnext_tiny.pth`, `metadata.json`. Optional: `handwritten_printed_convnext_tiny_backup.pth`, `image_type_classification.pkl` | Handwriting and rotation. Missing `.pth` falls back to the `.pkl`. |
 | `models/kv-extraction/` | `manifest.json`, `thresholds.json`, `features.json`, and the `ranker_*.txt` files sitting in this folder (version v002) | Key/value ranker. Member, DOS, and page number read its picks. |
 | `models/blank-junk/` | `tfidf_flat.joblib`, `default.json` | Blank and junk. Missing file means regex rules only. |
-| `models/page-family/` | `family.joblib`, `meta.json` | Page family. Missing file, or no XGBoost, means keywords name the family. |
+| `models/page-family/` | Hugging Face BERT folder (`config.json`, weights, tokenizer) from `training/bert-training` | Page classifier (model type). Labels must be `page_taxonomy.json` model types. Missing folder, or no transformers / torch, means keywords only (`/health` says so). |
 
 ---
 

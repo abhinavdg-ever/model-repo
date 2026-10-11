@@ -1699,6 +1699,8 @@ class LocalFolderRepository(FolderRepository):
             index_codeable_rows,
             index_encounter_rows,
             index_sequencing_rows,
+            index_continuity_rows,
+            index_final_rows,
             index_signature_rows,
             index_member_extraction_rows,
             index_quality_rows,
@@ -1834,6 +1836,24 @@ class LocalFolderRepository(FolderRepository):
         imaging_pages = overlay_fields(
             imaging_pages, index_sequencing_rows(sequencing_rows, chart)
         )
+        continuity_rows = collect_rows(
+            folder_dir=folder_dir,
+            data_root=self.data_root,
+            per_chart_name=f"{chart}_continuity.csv",
+            combined_rel=None,
+            chart_name=chart,
+        )
+        imaging_pages = overlay_fields(
+            imaging_pages, index_continuity_rows(continuity_rows, chart)
+        )
+        final_rows = collect_rows(
+            folder_dir=folder_dir,
+            data_root=self.data_root,
+            per_chart_name=f"{chart}_final.csv",
+            combined_rel=None,
+            chart_name=chart,
+        )
+        imaging_pages = overlay_fields(imaging_pages, index_final_rows(final_rows, chart))
         signature_rows = collect_rows(
             folder_dir=folder_dir,
             data_root=self.data_root,

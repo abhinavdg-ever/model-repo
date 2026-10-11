@@ -148,9 +148,10 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
         # orientations.
         from stages.lib.image_preprocess.osd import detect_rotation as osd_rotation
         from stages.lib.image_preprocess.rotation import (
-            mirror_that_reads,
+            page_for_reading,
             orientation_that_reads,
             tilt_on_upright,
+            tilt_that_reads,
         )
 
         osd = osd_rotation(image)
@@ -162,35 +163,42 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
             # No OSD answer — a sparse page, or Tesseract without the osd
             # traineddata. Do NOT fall back to the detector's coarse rotation:
             # it is wrong more often than it is right, and a confidently wrong
-            # rotation is worse than none. Leave the page unrotated.
+            # rotation is worse than none. Start from the page as it arrived.
             proposed = 0
             method = "osd_undecided"
             osd_confidence = 0.0
 
-        # Readability runs before the turn is kept, and before tilt and
-        # mirror. A 180° that leaves the page gibberish is undone when the
-        # unturned page reads. Handwriting is judged on the scan as it arrived.
+        # Every correction is kept only if Tesseract reads the page better
+        # with it. Turn and mirror first: OSD's turn stands when the page
+        # reads at it; otherwise the turn (and, failing that, the flip) that
+        # reads best is kept, and a page nothing reads keeps OSD's turn. An
+        # empty sheet has nothing to read and keeps OSD's answer.
+        orientation, mirrored = float(proposed), False
         _hw_label, _hw_conf, _hw_method, tags = _classify_hw(image_path)
-        handwritten = tags.get("document_type") in {"handwritten", "form"}
-        orientation = float(
-            orientation_that_reads(image, proposed, handwritten=handwritten)
-        )
-        if int(orientation) != proposed:
-            method = "readability"
-
-        # Letters, after the same turn. The left-margin score is not used:
-        # a centered heading looks mirrored under it. Like the turn, a Yes is
-        # checked by reading and kept only when the flipped page reads as
-        # English and the page as it is does not; a No is never re-examined.
-        # A Yes here is applied to the corrected page.
-        mirrored = mirror_that_reads(image, int(orientation), handwritten=handwritten)
+        small = None
+        if tags.get("document_type") != "blank":
+            small = page_for_reading(image)
+            turn, mirrored, chosen_read = orientation_that_reads(small, proposed)
+            orientation = float(turn)
+            if turn != proposed or mirrored:
+                method = "readability"
 
         # Tilt is measured on the page as it will be saved: after the turn and
         # after the flip, which reverses the direction of any lean. The
         # geometric detector's tilt is measured after its own coarse guess
         # (often 270° on an upright page) and applying that number here
-        # rotates a level scan.
+        # rotates a level scan. Like the turn, it is kept only when the
+        # straightened page reads at least as well as the unstraightened one.
         tilt = tilt_on_upright(image, int(orientation), mirrored=mirrored)
+        if small is not None:
+            tilt = tilt_that_reads(
+                small,
+                int(orientation),
+                mirrored,
+                tilt,
+                chosen_read,
+                max_tilt=MAX_TILT_TO_APPLY,
+            )
 
         return {
             "orientation_angle": orientation,
@@ -258,22 +266,31 @@ QUALITY_COLS = [
 ]
 
 
+def _clear_corrected(chart_name: str, page_name: str) -> None:
+    """Remove this page's corrected image from an earlier run.
+
+    Every later stage reads a corrected image whenever one exists
+    (``config.page_image_path``), so a file left over from a run whose turn,
+    flip or tilt has since been undone would keep being OCR'd.
+    """
+    cdir = corrected_pages_dir(chart_name)
+    for name in {corrected_page_filename(page_name), page_name}:
+        (cdir / name).unlink(missing_ok=True)
+
+
 def _write_corrected(
     chart_name: str, page_name: str, rot: dict[str, Any]
 ) -> Path | None:
-    """Write a working image under corrected-pages/, or None when untouched.
+    """Write the corrected page under corrected-pages/, or None when untouched.
 
-    Written when:
-      * rotation correction is enabled and the page needs it, or
-      * the source is TIFF/TIF (always re-encoded as ``{stem}.jpg`` so later
-        stages never open multi-page TIFF).
+    Called only after the readability checks, so ``rot`` holds the turn, flip
+    and tilt that survived them. A page is written only when correction is
+    enabled and one of those changes it; otherwise corrected-pages/ holds
+    nothing for it and later stages read pages/. A TIFF source that needs
+    correcting is saved as ``{stem}.jpg``.
     """
-    suffix = Path(page_name).suffix.lower()
-    is_tiff = suffix in {".tif", ".tiff"}
-    needs_rot = bool(
-        ROTATION_CORRECTION_ENABLED and rot.get("needs_correction")
-    )
-    if not needs_rot and not is_tiff:
+    _clear_corrected(chart_name, page_name)
+    if not (ROTATION_CORRECTION_ENABLED and rot.get("needs_correction")):
         return None
 
     image = rot.get("_image")
@@ -284,21 +301,17 @@ def _write_corrected(
 
         from stages.lib.image_preprocess.rotation import correct_image
 
-        out_img = image
-        if needs_rot:
-            out_img = correct_image(
-                image,
-                {
-                    "rotation": int(rot["orientation_angle"]) % 360,
-                    "tilt": float(rot["tilt_angle"]),
-                    "mirror": bool(rot["mirrored"]),
-                },
-                max_tilt_abs=MAX_TILT_TO_APPLY,
-            )
-        dest_name = corrected_page_filename(page_name)
-        dest = corrected_pages_dir(chart_name) / dest_name
+        out_img = correct_image(
+            image,
+            {
+                "rotation": int(rot["orientation_angle"]) % 360,
+                "tilt": float(rot["tilt_angle"]),
+                "mirror": bool(rot["mirrored"]),
+            },
+            max_tilt_abs=MAX_TILT_TO_APPLY,
+        )
+        dest = corrected_pages_dir(chart_name) / corrected_page_filename(page_name)
         dest.parent.mkdir(parents=True, exist_ok=True)
-        # Force JPEG for TIFF sources (and keep jpeg quality sane).
         if dest.suffix.lower() in {".jpg", ".jpeg"}:
             ok = cv2.imwrite(str(dest), out_img, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
         else:
@@ -307,7 +320,7 @@ def _write_corrected(
             raise RuntimeError(f"cv2.imwrite returned False for {dest}")
         return dest
     except Exception as exc:
-        logger.warning("Rotation/TIFF correction failed for %s: %s", page_name, exc)
+        logger.warning("Rotation correction failed for %s: %s", page_name, exc)
         return None
 
 
@@ -315,14 +328,10 @@ def _measure(args: tuple[dict[str, Any], Path, str]) -> dict[str, Any]:
     page, image_path, chart_name = args
     try:
         rot = _detect_rotation(image_path)
-        # Correct FIRST (and convert TIFF→JPG), then classify + score on the
-        # image later stages will OCR.
+        # Correct FIRST, then classify + score on the image later stages
+        # will OCR.
         corrected = _write_corrected(chart_name, page["page_name"], rot)
-        rot["rotation_applied"] = bool(
-            corrected is not None
-            and ROTATION_CORRECTION_ENABLED
-            and rot.get("needs_correction")
-        )
+        rot["rotation_applied"] = corrected is not None
         rot.pop("needs_correction", None)
         scored_path = corrected or image_path
         use_corrected, image_relpath = page_image_source(chart_name, page["page_name"])

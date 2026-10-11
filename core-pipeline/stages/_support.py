@@ -170,9 +170,11 @@ STAGE_LABELS = {
     "kv_extract": "Key/Value Extraction",
     "member_verify": "Member Verify",
     "dos_extract": "Date of Service",
-    "page_subtype": "Codeable / Non Codeable",
+    "page_subtype": "Codeable / Non-Codeable",
+    "continuity": "Document Continuity",
     "encounter_type": "Encounter Type",
     "page_sequencing": "Page Sequencing",
+    "imaging_final": "Final Values",
     "download_blob": "Download",
 }
 

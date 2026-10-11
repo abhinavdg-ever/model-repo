@@ -212,7 +212,7 @@ still renders.
 
 | File | Role |
 |---|---|
-| `v1.sql` | **What is implemented.** Required. Includes `page_classification`, `encounter_type_results`, `page_sequencing_results`, and the phase-1 stages. |
+| `v1.sql` | **What is implemented.** Required. Includes `page_classification`, `encounter_type_results`, `page_sequencing_results`, `page_continuity_results`, `imaging_final`, `additional_page_details`, and the phase-1 stages. |
 | `v2.sql` | **Next phase. Nothing implemented.** Optional; apply after v1.sql. Proposals only (chunking, rejection, models, …) + `rejection_logic` stage. |
 
 ### `core-pipeline/` — top level
@@ -375,7 +375,7 @@ inserts).
 | `__init__.py` | Re-exports the four extractors. |
 | **`extractors/ner_based/`** | |
 | `keys.py` | Cuts the real sentence around a field key out of the page ("Patient Name: Robert Smith"), with the reach-across-a-gap rules. NER reads real text, not rebuilt tokens. |
-| `stages/lib/keyword-canon/*_canon.json` | Editable keyword / catalog files, reloaded on change (no restart): `junk_keywords_canon.json` (junk detector phrases), `dos_canon.json` (DOS scoring weights, labels, clinical / discharge cues, `DOS_MAX_AGE_YEARS`, `DOS_MIN_SCORE`, `DOS_DEFAULT_DATE`), `member_keywords_canon.json` (member key groups / ignore labels), `section_header_canon.json`, `codeable_canon.json`, `encounter_canon.json`. Loaded via `stages/lib/canon_store.py`. |
+| `stages/lib/keyword-canon/*_canon.json` | Editable keyword / catalog files, reloaded on change (no restart): `junk_keywords_canon.json` (junk detector phrases), `dos_canon.json` (DOS scoring weights, labels, clinical / discharge cues, `DOS_MAX_AGE_YEARS`, `DOS_MIN_SCORE`, `DOS_DEFAULT_DATE`), `member_keywords_canon.json` (member key groups / ignore labels), `section_header_canon.json`, `page_taxonomy.json` / `page_keyword_canon.json` / `page_arbitration.json` (page classification), `continuity_canon.json`, `encounter_canon.json`. Loaded via `stages/lib/canon_store.py`. |
 | `name.py` | Runs NER on each patient-name sentence, merges adjacent person spans, trims label words, and picks the best candidate. Returns *every* person found, so the caller can also spot a wrong member. |
 | `dob.py`, `member_id.py` | Second-pass DOB / MemberID from NER over their key sentences. |
 | `model.py` | Model loading and prediction: offline mode, retries, fail-loud on an unloadable model, GLiNER and HF-token backends. Short-circuits when the layer is disabled. |

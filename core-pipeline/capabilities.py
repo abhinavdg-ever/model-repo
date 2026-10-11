@@ -308,11 +308,11 @@ def hw_model_status() -> dict[str, Any]:
 
 
 def page_family_model_status() -> dict[str, Any]:
-    """Page-family TF-IDF model. Never raises; never loads the weights."""
+    """BERT page classifier in models/page-family. Never raises; never loads the weights."""
     try:
-        from stages.lib.page_classify.family_model import model_status
+        from stages.lib.page_classify.bert import describe
 
-        return model_status()
+        return describe()
     except Exception as exc:
         return {"ready": False, "loaded": False, "reason": str(exc)}
 
@@ -437,7 +437,10 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     hw_on = f"OK — {hw.get('engine') or 'ready'}"
     rapid_on = "OK"
     bj_on = f"OK — {bj.get('model_version') or 'ready'}"
-    family_on = "OK"
+    family_on = (
+        f"OK — BERT, {family.get('classes')} classes; "
+        f"{len(family.get('untrained_model_types') or [])} model types by keywords only"
+    )
     skip_on = "ON"
 
     skip_line = (

@@ -31,6 +31,7 @@ from db import (
     connect,
     get_blank_junk_flags,
     get_chart,
+    get_page_classification_map,
     get_ocr_texts,
     get_quality_map,
     upsert_dos,
@@ -204,6 +205,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             eligible = set(ctx.todo)
             text = _combined_text(conn, chart_id, ctx.pages, eligible)
             received = _received_date(get_chart(conn, chart_id))
+            # The page-type stage runs first: its Extracted sub-type decides
+            # default-date and non-encounter pages.
+            classified = get_page_classification_map(conn, chart_id)
+        page_types = {
+            p["page_name"]: (classified.get(p["id"]) or {}).get("page_subtype") or ""
+            for p in ctx.pages
+            if (classified.get(p["id"]) or {}).get("page_type")
+        }
 
         candidates: Optional[list[dict[str, Any]]] = [] if DOS_DEBUG else None
         from stages.lib.extraction.stage import ensure_staging
@@ -238,6 +247,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             received_date=received,
             candidate_log=candidates,
             kv_dates=kv_dates,
+            page_types=page_types,
         )
 
         by_name = {p["page_name"]: p for p in ctx.pages}

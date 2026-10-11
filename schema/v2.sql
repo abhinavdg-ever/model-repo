@@ -20,7 +20,6 @@
 --   chunk_results                OCR text chunking
 --   rejection_results            reviewer accept/reject/flag
 --   provider_signature_results   selected electronic signature
---   additional_page_details      printed page number + section headers JSON
 --   invoice_matching_results     invoice reconciliation
 --   ground_truth_csv             labelled data import
 --   model_registry               model versions + storage
@@ -75,8 +74,14 @@
 --  * provider_signature_results follows the electronic-signature extractor
 --    (key, region, scale, sentence, ner text, provider name, signature date
 --    converted from the printed form to a DATE, confidence, source).
---  * additional_page_details stores the printed page number and the
---    section_headers JSON for the page.
+--  * additional_page_details (printed page number + section_headers JSON)
+--    moved to v1.sql: the key/value stage writes it.
+--  * page_continuity_results (v1.sql) and the continuity stage (seq 87): each
+--    page's document, and the Final page type / DOS carried from the
+--    document's first page. Replaces the DOS progress-note span and the
+--    page-type span; nothing existing changes shape.
+--  * imaging_final (v1.sql) and the imaging_final stage (seq 100): the Final
+--    value of every reviewer field, one row per page.
 --  * page_list.use_corrected + image_path (workspace image source).
 --  * page_classification lives in v1.sql (page_subtype writes it).
 --  * encounter_type_results + page_sequencing_results live in v1.sql.
@@ -235,33 +240,6 @@ CREATE INDEX idx_provider_signature_results_page_id ON provider_signature_result
 
 CREATE TRIGGER trg_provider_signature_results_updated_at
     BEFORE UPDATE ON provider_signature_results
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-
--- Printed page number plus the page's section headers. The headers are the
--- same JSON array stored on the OCR page (text, level, bbox, norm).
-CREATE TABLE additional_page_details (
-    id                      BIGSERIAL PRIMARY KEY,
-    chart_id                BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
-    page_id                 BIGINT NOT NULL REFERENCES page_list(id) ON DELETE CASCADE,
-    page_number_key         VARCHAR(200),
-    page_number_region      VARCHAR(50),
-    page_number_sentence    TEXT,
-    page_number_value       TEXT,
-    printed_page_no         VARCHAR(20),
-    printed_page_total      VARCHAR(20),
-    confidence              NUMERIC(5,4),
-    source                  VARCHAR(20),
-    section_headers         JSONB NOT NULL DEFAULT '[]'::jsonb,
-    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (page_id)
-);
-CREATE INDEX idx_additional_page_details_chart_id ON additional_page_details(chart_id);
-CREATE INDEX idx_additional_page_details_page_id ON additional_page_details(page_id);
-
-CREATE TRIGGER trg_additional_page_details_updated_at
-    BEFORE UPDATE ON additional_page_details
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 

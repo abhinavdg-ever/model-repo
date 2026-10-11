@@ -1,0 +1,35 @@
+{
+  "data": "/content/drive/MyDrive/bert-training/data/training_data.jsonl",
+  "output": "/content/drive/MyDrive/bert-training/page-family",
+  "resume_dir": "/content/drive/MyDrive/bert-training/page-family-resume",
+  "settings": {
+    "model_name": "bert-base-uncased",
+    "max_length": 512,
+    "batch_size": 8,
+    "lr": 2e-05,
+    "seed": 42,
+    "min_pages": 5,
+    "val_fraction": 0.2,
+    "min_chars": 30
+  },
+  "environment": {
+    "python": "3.13.15",
+    "torch": "2.11.0+cu130",
+    "transformers": "5.18.0",
+    "device": "cuda",
+    "gpu": "Tesla T4",
+    "gpu_memory_gb": 14.6
+  },
+  "pages": {
+    "usable": 711,
+    "left_out_short": 1,
+    "trained": 664,
+    "train": 511,
+    "val": 153
+  },
+  "classes": 32,
+  "skipped_classes": 26,
+  "epochs_run": 20,
+  "best_epoch": 20,
+  "best_val_macro_f1": 0.4618822436946688
+}

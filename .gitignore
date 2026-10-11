@@ -86,12 +86,13 @@ core-pipeline/models/page-family/._*
 core-pipeline/models/kv-extraction/._*
 core-pipeline/models/hw/._*
 
-# Page-family training artifacts. OCR text is chart content; do not commit it.
-training/page-classification/data-prep/ocr/
-training/page-classification/data-prep/training_text.jsonl
-training/page-classification/data-prep/training_text.csv
-training/page-classification/training-script/output/
-training/page-classification/.venv/
+# Training data is chart content (OCR text and labels of patient pages), and
+# trained weights are large: neither is committed.
+training/bert-training/data/
+training/bert-training/output/
+training/annotation-tool/data/
+training/*/.venv/
+training/**/*.jsonl
 
 # Daily pipeline logs (core-pipeline/logs/)
 core-pipeline/logs/**

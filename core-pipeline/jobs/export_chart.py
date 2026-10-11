@@ -28,6 +28,13 @@ logger = logging.getLogger(__name__)
 # The chart workspace layout, in the order a reader would want them.
 CHART_SUBDIRS = ("pages", "corrected-pages", "ocr", "imaging")
 
+# Mirrored, not synced: a file at the destination that the workspace no longer
+# has is removed. Stage 1 writes a page here only when a correction survived
+# its readability checks, and every reader prefers a corrected copy when one
+# exists, so an earlier run's correction left at the destination would be
+# read in place of the original after it was undone.
+MIRRORED_SUBDIR = "corrected-pages"
+
 # What a write sends. The default omits `pages/` — the originals came FROM the
 # source you are usually writing back to, so re-sending them doubles the
 # storage and the transfer for bytes already there. `corrected-pages/` is still
@@ -84,6 +91,7 @@ def write_chart(
 
     By default this **syncs**: files already at the destination are left alone,
     missing ones are written. Pass ``overwrite=true`` to replace everything.
+    ``corrected-pages/`` is mirrored instead: see ``MIRRORED_SUBDIR``.
     """
     if bool(local_path) == bool(blob_path):
         raise ValueError(
@@ -111,6 +119,12 @@ def write_chart(
     if local_path:
         return _write_local(chart_name, root, files, Path(local_path), overwrite, write_mode)
     return _write_blob(chart_name, root, files, blob_container, blob_path, overwrite, write_mode)
+
+
+def _mirrored_names(root: Path, files: list[Path]) -> set[str]:
+    """Chart-relative paths of the corrected pages being written."""
+    names = {path.relative_to(root).as_posix() for path in files}
+    return {name for name in names if name.startswith(f"{MIRRORED_SUBDIR}/")}
 
 
 def _same_file(src: Path, dest: Path) -> bool:
@@ -172,10 +186,19 @@ def _write_local(
                 total_bytes += fut.result()
                 written += 1
 
+    keep = _mirrored_names(root, files)
+    removed = 0
+    mirrored = dest / MIRRORED_SUBDIR
+    if mirrored.is_dir():
+        for path in mirrored.rglob("*"):
+            if path.is_file() and path.relative_to(dest).as_posix() not in keep:
+                path.unlink()
+                removed += 1
+
     logger.info(
         "Wrote chart %s: %d file(s) written, %d skipped (already present), "
-        "%.1f MB -> %s",
-        chart_name, written, skipped, total_bytes / 1_048_576, dest,
+        "%d stale corrected page(s) removed, %.1f MB -> %s",
+        chart_name, written, skipped, removed, total_bytes / 1_048_576, dest,
     )
     return {
         "chart_name": chart_name,
@@ -184,6 +207,7 @@ def _write_local(
         "write_mode": write_mode,
         "files_written": written,
         "files_skipped": skipped,
+        "files_removed": removed,
         "bytes_written": total_bytes,
         "overwrite": overwrite,
     }
@@ -270,11 +294,37 @@ def _write_blob(
                 total_bytes += fut.result()
                 written += 1
 
+    keep = {f"{prefix}{name}" for name in _mirrored_names(root, files)}
+    mirrored_prefix = f"{prefix}{MIRRORED_SUBDIR}/"
+
+    def _stale() -> list[str]:
+        return [
+            blob.name
+            for blob in client.list_blobs(name_starts_with=mirrored_prefix)
+            if blob.name not in keep
+        ]
+
+    stale = call_with_retry(
+        _stale,
+        attempts=AZURE_RETRY_ATTEMPTS,
+        base_delay=AZURE_RETRY_BASE_DELAY,
+        max_delay=AZURE_RETRY_MAX_DELAY,
+        label=f"blob.list:{container}/{mirrored_prefix}",
+    )
+    for name in stale:
+        call_with_retry(
+            lambda name=name: client.delete_blob(name),
+            attempts=AZURE_RETRY_ATTEMPTS,
+            base_delay=AZURE_RETRY_BASE_DELAY,
+            max_delay=AZURE_RETRY_MAX_DELAY,
+            label=f"blob.delete:{container}/{name}",
+        )
+
     logger.info(
         "Wrote chart %s: %d file(s) written, %d skipped (already present), "
-        "%.1f MB -> %s/%s (workers=%d)",
-        chart_name, written, skipped, total_bytes / 1_048_576, container, prefix,
-        workers,
+        "%d stale corrected page(s) removed, %.1f MB -> %s/%s (workers=%d)",
+        chart_name, written, skipped, len(stale), total_bytes / 1_048_576,
+        container, prefix, workers,
     )
     return {
         "chart_name": chart_name,
@@ -283,6 +333,7 @@ def _write_blob(
         "write_mode": write_mode,
         "files_written": written,
         "files_skipped": skipped,
+        "files_removed": len(stale),
         "bytes_written": total_bytes,
         "overwrite": overwrite,
     }

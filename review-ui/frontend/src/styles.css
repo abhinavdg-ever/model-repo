@@ -1821,7 +1821,9 @@ input {
   margin-left: auto;
 }
 
-.imaging-gt-save {
+.imaging-gt-review,
+.imaging-gt-save,
+.imaging-gt-discard {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
@@ -1832,6 +1834,18 @@ input {
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
+}
+
+.imaging-gt-review,
+.imaging-gt-discard {
+  border: 1px solid #b7c0c8;
+  background: #fff;
+  color: #3d4752;
+}
+
+.imaging-gt-review:hover:not(:disabled),
+.imaging-gt-discard:hover:not(:disabled) {
+  background: var(--neutral-100);
 }
 
 .imaging-gt-save {
@@ -1845,7 +1859,9 @@ input {
   border-color: var(--brand-900);
 }
 
-.imaging-gt-save:disabled {
+.imaging-gt-review:disabled,
+.imaging-gt-save:disabled,
+.imaging-gt-discard:disabled {
   opacity: 0.45;
   cursor: default;
 }
@@ -2070,6 +2086,7 @@ input {
   display: flex;
   flex: none;
   gap: 0.2rem;
+  margin-left: auto;
 }
 
 .imaging-gt-icon {
@@ -2117,6 +2134,10 @@ input {
   flex: none;
   color: var(--status-success-fg);
   font-weight: 700;
+}
+
+.imaging-gt-mark.gt-partial {
+  color: var(--status-warning-fg);
 }
 
 .imaging-gt-mark.gt-mismatch {
@@ -2269,6 +2290,19 @@ input {
   font-size: 0.78rem;
   line-height: 1.25rem;
   box-sizing: border-box;
+}
+
+.imaging-gt-hint {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--status-error-fg);
+  font-size: 0.68rem;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.imaging-gt-slot input[aria-invalid="true"] {
+  border-color: var(--status-error-fg);
 }
 
 .imaging-gt-error {
@@ -2949,6 +2983,11 @@ input {
   font-size: 0.74rem;
 }
 
+.accuracy-rates {
+  font-size: 0.66rem;
+  line-height: 1.35;
+}
+
 .accuracy-donut {
   width: 6.4rem;
   height: 6.4rem;
@@ -2956,7 +2995,8 @@ input {
 }
 
 .accuracy-donut-track,
-.accuracy-donut-value {
+.accuracy-donut-value,
+.accuracy-donut-seg {
   fill: none;
   stroke-width: 10;
 }
@@ -2965,11 +3005,33 @@ input {
   stroke: #e6eeea;
 }
 
-.accuracy-donut-value {
+.accuracy-donut-value,
+.accuracy-donut-seg {
   stroke: currentColor;
-  stroke-linecap: round;
   transform: rotate(-90deg);
   transform-origin: 50px 50px;
+}
+
+.accuracy-donut-seg {
+  stroke-linecap: butt;
+}
+
+.accuracy-donut-yes {
+  stroke: var(--status-success-fg);
+}
+
+.accuracy-donut-maybe {
+  stroke: var(--status-warning-fg);
+}
+
+.accuracy-donut-no {
+  stroke: #a33b32;
+}
+
+.accuracy-note {
+  margin: -0.15rem 0 0.7rem;
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .accuracy-donut-pct {

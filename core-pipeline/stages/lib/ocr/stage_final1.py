@@ -204,7 +204,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         else:
             logger.info(
                 "Docling final1 not ready (%s); using RapidOCR-onnx. "
-                "Output is still %%s_final1.json.",
+                "Output is still {chart}_final1.json.",
                 converter_reason() or "unavailable",
             )
     except Exception as exc:

@@ -4,10 +4,14 @@ import { getAccuracyReport } from "./api";
 import {
   METRICS,
   accuracyPercent,
-  formatRatio,
+  formatDistribution,
+  formatPrecision,
+  formatRecall,
   scoreChart,
+  sumRates,
   sumTallies,
   type ChartAccuracy,
+  type ClassRates,
   type MetricId,
   type Tally,
 } from "./accuracy";
@@ -37,31 +41,60 @@ function fmtUpdated(iso: string | null | undefined): string {
   }).format(d);
 }
 
-function Donut({ label, detail, tally }: { label: string; detail: string; tally: Tally }) {
-  const pct = accuracyPercent(tally);
-  const shown = pct ?? 0;
+function Donut({
+  label,
+  detail,
+  tally,
+  rates,
+}: {
+  label: string;
+  detail: string;
+  tally: Tally;
+  rates?: ClassRates;
+}) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
-  const filled = tally.scored === 0 ? 0 : (shown / 100) * circumference;
+  const segments = [
+    { key: "yes", count: tally.yes, tone: "accuracy-donut-yes" },
+    { key: "maybe", count: tally.maybe, tone: "accuracy-donut-maybe" },
+    { key: "no", count: tally.no, tone: "accuracy-donut-no" },
+  ];
+  let offset = 0;
+  const arcs = segments.flatMap((segment) => {
+    if (tally.scored === 0 || segment.count === 0) return [];
+    const length = (segment.count / tally.scored) * circumference;
+    const arc = (
+      <circle
+        key={segment.key}
+        className={`accuracy-donut-seg ${segment.tone}`}
+        cx="50"
+        cy="50"
+        r={radius}
+        strokeDasharray={length >= circumference - 0.01 ? undefined : `${length} ${circumference - length}`}
+        strokeDashoffset={-offset}
+      />
+    );
+    offset += length;
+    return [arc];
+  });
   return (
     <figure className="accuracy-donut-card" title={detail}>
-      <svg className="accuracy-donut" viewBox="0 0 100 100" role="img" aria-label={`${label} ${percentLabel(tally)}`}>
+      <svg className="accuracy-donut" viewBox="0 0 100 100" role="img" aria-label={rates ? `${label} ${percentLabel(tally)}. ${formatDistribution(tally)}. Precision ${formatPrecision(rates)}. Recall ${formatRecall(rates)}` : `${label} ${percentLabel(tally)}. ${formatDistribution(tally)}`}>
         <circle className="accuracy-donut-track" cx="50" cy="50" r={radius} />
-        {filled > 0 ? (
-          <circle
-            className="accuracy-donut-value"
-            cx="50"
-            cy="50"
-            r={radius}
-            strokeDasharray={`${filled} ${circumference - filled}`}
-          />
-        ) : null}
+        {arcs}
         <text className="accuracy-donut-pct" x="50" y="54">
           {percentLabel(tally)}
         </text>
       </svg>
       <figcaption>{label}</figcaption>
-      <p>{formatRatio(tally)}</p>
+      <p>{formatDistribution(tally)}</p>
+      {rates ? (
+        <p className="accuracy-rates">
+          Precision {formatPrecision(rates)}
+          <br />
+          Recall {formatRecall(rates)}
+        </p>
+      ) : null}
     </figure>
   );
 }
@@ -108,9 +141,11 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
     return out;
   }, [rows]);
 
-  const overall = useMemo(
-    () => sumTallies(METRICS.map((metric) => overallByMetric[metric.id])),
-    [overallByMetric],
+  const overall = useMemo(() => sumTallies(rows.map((row) => row.overall)), [rows]);
+
+  const blankJunkRates = useMemo(
+    () => sumRates(rows.map((row) => row.blankJunkRates)),
+    [rows],
   );
 
   return (
@@ -137,14 +172,20 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
         <>
           <section className="accuracy-section" aria-label="Accuracy by metric">
             <h2>By metric</h2>
+            <p className="accuracy-note">Yes counts as a match, May be as half, and No as a miss.</p>
             <div className="accuracy-donuts">
-              <Donut label="Overall" detail="Every labelled check" tally={overall} />
+              <Donut
+                label="Overall"
+                detail="A page matches when all 6 metrics match, is partial at 3 to 5, and misses at 0 to 2"
+                tally={overall}
+              />
               {METRICS.map((metric) => (
                 <Donut
                   key={metric.id}
                   label={metric.label}
                   detail={metric.rule}
                   tally={overallByMetric[metric.id]}
+                  rates={metric.id === "blankJunk" ? blankJunkRates : undefined}
                 />
               ))}
             </div>
@@ -182,11 +223,11 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                     <td className="landing-col-updated">{fmtUpdated(row.lastUpdatedAt)}</td>
                     <td className="landing-col-updated">{fmtUpdated(row.lastVerifiedAt)}</td>
                     {METRICS.map((metric) => (
-                      <td key={metric.id}>{formatRatio(row.metrics[metric.id])}</td>
+                      <td key={metric.id}>{formatDistribution(row.metrics[metric.id])}</td>
                     ))}
                     <td>
                       {percentLabel(row.overall)}
-                      <span className="accuracy-chart-ratio"> {formatRatio(row.overall)}</span>
+                      <span className="accuracy-chart-ratio"> {formatDistribution(row.overall)}</span>
                     </td>
                   </tr>
                 ))}

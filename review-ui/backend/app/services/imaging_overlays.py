@@ -17,6 +17,7 @@ from typing import Any
 
 from app.core.schemas import ImagingPageResult, ImagingVerificationDetails
 from app.services.dates import show_date
+from app.services.ground_truth import spell_codeable
 
 _WS_RE = re.compile(r"\s+")
 
@@ -28,6 +29,17 @@ def display_page_type(label: str) -> str:
     one parenthesis left is the type within the family and is kept.
     """
     return _WS_RE.sub(" ", (label or "").strip()).strip(" /")
+
+
+def compose_page_type(page_type: str | None, page_subtype: str | None) -> str:
+    """``Page Type (Sub-type)`` from the taxonomy columns; just the name when
+    the sub-type is the generic one. A row from before the taxonomy holds the
+    whole ``Family (Type)`` string in one of them and is returned as is."""
+    page_type = display_page_type(page_type or "")
+    page_subtype = display_page_type(page_subtype or "")
+    if page_type and page_subtype and page_type != page_subtype:
+        return f"{page_type} ({page_subtype})"
+    return page_type or page_subtype
 
 
 def read_csv_rows(path: Path) -> list[dict[str, str]]:
@@ -810,7 +822,7 @@ def index_codeable_rows(
     by_key: dict[str, dict[str, Any]] = {}
     display = {
         "codeable": "Codeable",
-        "non_codeable": "Non Codeable",
+        "non_codeable": "Non-Codeable",
         "discharge_frequency": "Discharge",
         "discharge_summary": "Discharge",
         "not_sure": "Not Sure",
@@ -821,9 +833,9 @@ def index_codeable_rows(
         ).strip()
         if cname and not _chart_row_matches(cname, chart_name):
             continue
-        page_type = (
-            row.get("page_type") or row.get("pageType") or row.get("page_subtype") or ""
-        ).strip()
+        page_type = compose_page_type(
+            row.get("page_type") or row.get("pageType"), row.get("page_subtype")
+        )
         tag = (row.get("tag") or "").strip().casefold()
         label = (
             row.get("is_codeable")
@@ -833,6 +845,8 @@ def index_codeable_rows(
         ).strip()
         if label.casefold() == "discharge frequency":
             label = "Discharge"
+        # A CSV from an earlier run says Codeable / Non Codeable.
+        label = spell_codeable(label) or ""
         # Blank/Duplicate rows always have a page_type (Blank / Duplicate / …).
         # Empty or Not Available → Not Sure for codeability.
         if not label:
@@ -900,6 +914,66 @@ def index_sequencing_rows(
         if actual is not None:
             fields["actualSequence"] = actual
         _put_page_keys(by_key, row, fields)
+    return by_key
+
+
+def index_continuity_rows(
+    rows: list[dict[str, str]], chart_name: str
+) -> dict[str, dict[str, Any]]:
+    """``*_continuity.csv`` → the page's document: number, position, evidence.
+
+    Blank, junk and duplicate pages have no document and get no fields.
+    """
+    by_key: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        cname = (row.get("chart_name") or "").strip()
+        if cname and not _chart_row_matches(cname, chart_name):
+            continue
+        document = _parse_int(row.get("document"))
+        if document is None:
+            continue
+        _put_page_keys(
+            by_key,
+            row,
+            {
+                "documentSeq": document,
+                "documentPosition": (row.get("position") or "").strip() or None,
+                "continuityRelation": (row.get("relation") or "").strip() or None,
+                "continuityDecidedBy": (row.get("decided_by") or "").strip() or None,
+                "continuityEvidence": (row.get("evidence") or "").strip() or None,
+                "continuityReview": (row.get("review_required") or "").strip().lower() == "y",
+            },
+        )
+    return by_key
+
+
+_CATEGORY_DISPLAY = {
+    "codeable": "Codeable",
+    "non_codeable": "Non-Codeable",
+    "discharge_summary": "Discharge",
+}
+
+
+def index_final_rows(
+    rows: list[dict[str, str]], chart_name: str
+) -> dict[str, dict[str, Any]]:
+    """``*_final.csv`` → the Final page type, codeable and DOS of each page."""
+    by_key: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        cname = (row.get("chart_name") or "").strip()
+        if cname and not _chart_row_matches(cname, chart_name):
+            continue
+        category = (row.get("classification_category") or "").strip()
+        _put_page_keys(
+            by_key,
+            row,
+            {
+                "finalPageType": compose_page_type(row.get("page_type"), row.get("page_subtype")) or None,
+                "finalCodeable": _CATEGORY_DISPLAY.get(category),
+                "finalDosFrom": show_date(row.get("dos_from")),
+                "finalDosTo": show_date(row.get("dos_to")),
+            },
+        )
     return by_key
 
 

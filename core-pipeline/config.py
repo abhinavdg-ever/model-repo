@@ -298,8 +298,8 @@ BLANK_JUNK_MODEL_DIR = _path_under_core(
     os.environ.get("BLANK_JUNK_MODEL_DIR"),
     "models/blank-junk",
 )
-# TF-IDF + XGBoost page-family model. Missing file, or no xgboost, means the
-# keyword catalog chooses the family too.
+# BERT page classifier (Hugging Face folder from training/bert-training).
+# Missing folder, or no transformers / torch, means keywords alone classify.
 PAGE_FAMILY_MODEL_DIR = _path_under_core(
     os.environ.get("PAGE_FAMILY_MODEL_DIR"),
     "models/page-family",
@@ -358,12 +358,10 @@ def staging_dir(chart_name: str) -> Path:
 def corrected_pages_dir(chart_name: str) -> Path:
     """Rotation/mirror/tilt-corrected page images, written by stage 1.
 
-    Sparse on purpose: a page that needed no correction is NOT copied here, so
-    the folder's contents are exactly the pages that were changed, and the
-    workspace does not carry a second copy of every scan.
-
-    Exception: TIFF/TIF sources are always written here as ``{stem}.jpg`` so
-    later OCR stages (and the review-ui) never have to open a multi-page TIFF.
+    Sparse on purpose: only a page whose turn, flip or tilt survived stage 1's
+    readability checks is written here, so the folder's contents are exactly
+    the pages that were changed. Stage 1 removes a page's earlier file before
+    deciding, so a correction that has since been undone does not linger.
     """
     return chart_dir(chart_name) / "corrected-pages"
 
@@ -372,7 +370,7 @@ _TIFF_SUFFIXES = {".tif", ".tiff"}
 
 
 def corrected_page_filename(page_name: str) -> str:
-    """Filename under corrected-pages/ — TIFF sources become ``.jpg``."""
+    """Filename under corrected-pages/ — a corrected TIFF becomes ``.jpg``."""
     path = Path(page_name)
     if path.suffix.lower() in _TIFF_SUFFIXES:
         return f"{path.stem}.jpg"
@@ -387,7 +385,7 @@ def page_image_path(chart_name: str, page_name: str) -> Path:
     of the same `if`. Pages needing no correction fall through to pages/, which
     is also what happens for a chart processed before corrections existed.
 
-    For TIFF originals, ``corrected-pages/{stem}.jpg`` is preferred when present.
+    A corrected TIFF original is ``corrected-pages/{stem}.jpg``.
     """
     cdir = corrected_pages_dir(chart_name)
     preferred = cdir / corrected_page_filename(page_name)

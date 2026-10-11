@@ -856,6 +856,13 @@ export default function FolderViewer({
     run();
   }
 
+  function discardLeave() {
+    groundTruthLeave.current?.discard();
+    const run = pendingLeave;
+    setPendingLeave(null);
+    run?.();
+  }
+
   const guardLeaveRef = useRef(guardLeave);
   guardLeaveRef.current = guardLeave;
   useEffect(() => {
@@ -1605,6 +1612,9 @@ export default function FolderViewer({
             <div className="gt-leave-actions">
               <button type="button" className="gt-leave-btn primary" disabled={leaveBusy} onClick={() => void acceptLeave()}>
                 Save
+              </button>
+              <button type="button" className="gt-leave-btn" disabled={leaveBusy} onClick={discardLeave}>
+                Discard
               </button>
               <button type="button" className="gt-leave-btn" disabled={leaveBusy} onClick={() => setPendingLeave(null)}>
                 Cancel

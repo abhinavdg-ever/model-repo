@@ -22,7 +22,7 @@ import re
 from pathlib import Path
 from typing import Any, Optional
 
-from config import IMAGE_SUFFIXES, corrected_pages_dir, ensure_chart_dirs, pages_dir
+from config import IMAGE_SUFFIXES, ensure_chart_dirs, pages_dir
 from db import (
     connect,
     create_job,
@@ -250,44 +250,6 @@ def _pull_subdir_from_blob_output(
             )
             break
     return copied
-
-
-def _hydrate_corrected_pages(
-    *,
-    chart_name: str,
-    output_path: Optional[str],
-    blob_container: Optional[str],
-) -> int:
-    """Fill gaps in corrected-pages/ from output_path (local then blob)."""
-    out = (output_path or "").strip()
-    if not out:
-        return 0
-    dest = corrected_pages_dir(chart_name)
-    n = _hydrate_subdir_from_local_output(
-        chart_name=chart_name,
-        output_path=out,
-        subdir="corrected-pages",
-        dest=dest,
-        only_missing=True,
-    )
-    if n:
-        return n
-    container = (blob_container or "").strip()
-    if not container:
-        return 0
-    try:
-        ensure_blob_ready(container)
-    except Exception as exc:
-        logger.warning("Blob not ready for corrected-pages hydrate: %s", exc)
-        return 0
-    return _pull_subdir_from_blob_output(
-        container=container,
-        output_path=out,
-        chart_name=chart_name,
-        subdir="corrected-pages",
-        dest=dest,
-        only_missing=True,
-    )
 
 
 def _hydrate_pages_from_output(
