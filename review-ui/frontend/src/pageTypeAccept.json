@@ -1,5 +1,5 @@
 {
-  "comment": "Accuracy report: for each model type (the sub-type when the page type is Progress Note, else the page type), the ground-truth Page Type labels that count as a match. 'accept' and 'broader' (Also_Accepted_Broader_Values) both match. Case, spaces and punctuation are ignored. Order of checks: same name / one contains the other -> these lists -> semantic similarity > 0.8 (fallback). Source: model_type_accepted_values.csv (2026-10-11); pages = Pages_In_Pivot.",
+  "comment": "Accuracy report: for each model type (the sub-type when the page type is Progress Note, else the page type), the ground-truth Page Type labels that count as a match. 'accept' and 'broader' (Also_Accepted_Broader_Values) both match. Case, spaces and punctuation are ignored. Order of checks: same name / one contains the other -> these lists -> semantic similarity > 0.8 (fallback). Source: model_type_accepted_values.csv (2026-10-11); pages = Pages_In_Pivot. 'close' groups model types that are close matches of each other: a label that belongs to one member, scored against another member, is a partial (May be). 'close_labels' are extra labels that count only for the close-group partial, never as a full match.",
   "accept": {
     "Progress Note": [
       "Progress note",
@@ -580,5 +580,28 @@
     "Sleep Study": 0,
     "Social History": 0,
     "Vascular Studies": 0
+  },
+  "close": [
+    [
+      "Cardiac Report",
+      "Echocardiogram Report",
+      "EKG / ECG Tracing"
+    ]
+  ],
+  "close_labels": {
+    "Cardiac Report": [
+      "Cardiac",
+      "Cardiology"
+    ],
+    "Echocardiogram Report": [
+      "Echo",
+      "Echocardiogram",
+      "Echocardiography"
+    ],
+    "EKG / ECG Tracing": [
+      "ECG",
+      "EKG",
+      "Electrocardiogram"
+    ]
   }
 }

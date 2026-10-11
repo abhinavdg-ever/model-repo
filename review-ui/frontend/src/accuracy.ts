@@ -8,7 +8,7 @@ import { splitPageType } from "./ImagingPanel";
 
 export type Verdict = "yes" | "maybe" | "no";
 
-export type MetricId = "member" | "dos" | "blankJunk" | "pageType" | "codeable" | "signature";
+export type MetricId = "member" | "dos" | "blankJunk" | "pageType" | "codeable" | "credentials";
 
 export const METRICS: { id: MetricId; label: string; rule: string }[] = [
   {
@@ -37,9 +37,9 @@ export const METRICS: { id: MetricId; label: string; rule: string }[] = [
     rule: "Codeable label matches",
   },
   {
-    id: "signature",
-    label: "Provider Signature",
-    rule: "Yes or No signature label matches",
+    id: "credentials",
+    label: "Provider Credentials",
+    rule: "Credentials match (MD, DO, NP…; punctuation and order ignored); some shared is May be",
   },
 ];
 
@@ -195,14 +195,8 @@ function pageScores(
 
   const single = (field: GtBit[]): Verdict | null => (labeled(field) ? grade(field) : null);
 
-  const expectedSignature = yesNo(page.groundTruth?.providerSignature);
-  const actualSignature = yesNo(page.providerSignature);
-  const signature: Verdict | null =
-    expectedSignature == null || actualSignature == null
-      ? null
-      : expectedSignature === actualSignature
-        ? "yes"
-        : "no";
+  // The ground-truth Provider Credentials label is stored in providerSignature.
+  const credentials = credentialsVerdict(page.groundTruth?.providerSignature, page.providerCredentials);
 
   return {
     scores: {
@@ -211,7 +205,7 @@ function pageScores(
       blankJunk: single(bits.blankJunk),
       pageType: single(bits.pageType),
       codeable: single(bits.codeable),
-      signature,
+      credentials,
     },
     blankJunk: bits.blankJunk,
   };
@@ -224,6 +218,36 @@ function overallVerdict(scores: Record<MetricId, Verdict | null>): Verdict | nul
   if (matches === METRICS.length) return "yes";
   if (matches >= 3) return "maybe";
   return "no";
+}
+
+/** "M.D., Ph.D." -> {"MD", "PHD"}. */
+function credentialTokens(value: string | null | undefined): Set<string> {
+  return new Set(
+    (value ?? "")
+      .toUpperCase()
+      .replace(/\./g, "")
+      .split(/[^A-Z0-9]+/)
+      .filter((token) => token.length > 0),
+  );
+}
+
+/** Same credentials = Yes; some shared = May be; none shared or none extracted = No.
+ * A label that is only Yes / No (an old signature label) or NA is not scored. */
+function credentialsVerdict(
+  expected: string | null | undefined,
+  actual: string | null | undefined,
+): Verdict | null {
+  const folded = (expected ?? "").trim().toLowerCase();
+  if (!folded || yesNo(folded) != null || ["na", "n/a", "not found", "none"].includes(folded)) {
+    return null;
+  }
+  const want = credentialTokens(expected);
+  if (want.size === 0) return null;
+  const got = credentialTokens(actual);
+  if (got.size === 0) return "no";
+  const shared = [...want].filter((token) => got.has(token)).length;
+  if (shared === want.size && shared === got.size) return "yes";
+  return shared > 0 ? "maybe" : "no";
 }
 
 function yesNo(value: string | null | undefined): "yes" | "no" | null {

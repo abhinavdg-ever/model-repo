@@ -2077,15 +2077,25 @@ input {
   background: transparent;
 }
 
+/* One fixed Ground Truth width in every section, so a long value (a
+   provider name) cannot stretch one table's column. Long values end in "…"
+   with the full text on hover. */
 .imaging-detail-table.imaging-value-table .col-gt,
 .imaging-detail-table.imaging-value-table th.gt-shade,
 .imaging-detail-table.imaging-value-table td.gt-shade {
-  width: max-content;
-  min-width: calc(11.88rem * 0.9);
+  width: 15rem;
+  min-width: 15rem;
+  max-width: 15rem;
   background: #f8fbf5;
   overflow: visible;
   white-space: nowrap;
 }
+
+/* Page Type + Page Subtype share one ground-truth cell (one label for both). */
+.imaging-detail-table.imaging-value-table td.gt-shade.gt-merged {
+  vertical-align: middle;
+}
+
 
 .imaging-gt-head {
   display: flex;
@@ -2158,7 +2168,10 @@ input {
 
 .imaging-gt-text,
 .imaging-gt-copied {
-  overflow: visible;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

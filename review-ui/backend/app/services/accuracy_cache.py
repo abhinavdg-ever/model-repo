@@ -249,7 +249,8 @@ def _page(row: tuple) -> ImagingPageResult:
 def _with_signatures(
     pages: list[ImagingPageResult], data_root: Path, chart_name: str
 ) -> list[ImagingPageResult]:
-    """Yes/No signature from the chart CSV, so the accuracy donut can score it."""
+    """Provider name / credentials / signature from the chart CSV, so the accuracy
+    report can score provider credentials."""
     from app.services.imaging_overlays import (
         collect_rows,
         index_signature_rows,

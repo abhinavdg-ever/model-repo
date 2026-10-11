@@ -15,7 +15,14 @@ import {
   duplicateDisplayConfidence,
   formatDuplicateLabel,
 } from "./duplicateLabel";
-import { displayCodeable, displayIsoDates, groundTruthBits, spellCodeable, type GtBit } from "./groundTruth";
+import {
+  displayCodeable,
+  displayIsoDates,
+  groundTruthBits,
+  pageTypeVerdict,
+  spellCodeable,
+  type GtBit,
+} from "./groundTruth";
 import { PAGE_SUBTYPE_CHOICES, PAGE_TYPE_CHOICES } from "./reviewChoices";
 
 const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
@@ -378,9 +385,17 @@ type CompareRow = {
   key?: boolean;
   /** Shown on the right of Extracted and Final. Not part of the compared value. */
   note?: string;
+  /** The ground-truth cell spans this many rows (Page Type + Page Subtype share one). */
+  gtRowSpan?: number;
+  /** The row above's ground-truth cell covers this row. */
+  gtHidden?: boolean;
+  /** Custom scoring of the ground truth (default: ``enteredMark`` on Extracted / Final). */
+  compare?: (truth: string) => "match" | "partial" | "mismatch" | null;
 };
 
 const BLANK_JUNK_CHOICES = ["Yes (Blank)", "Yes (Junk)", "No"] as const;
+/** The merged Page Type / Page Subtype ground truth takes either kind of name. */
+const PAGE_TYPE_AND_SUBTYPE_CHOICES = [...new Set([...PAGE_TYPE_CHOICES, ...PAGE_SUBTYPE_CHOICES])];
 const DUPLICATE_CHOICES = ["Yes", "Partial", "No"] as const;
 const CODEABLE_CHOICES = ["Codeable", "Non-Codeable", "Discharge"] as const;
 const TYPE_CHOICES = ["Printed", "Handwritten", "Form", "Visual", "Blank"] as const;
@@ -731,8 +746,10 @@ function CompareSection({
                 <ValueWithNote value={row.processed} note={row.note} />
               </td>
               <td>{row.confidence}</td>
-              <td className="gt-gap" aria-hidden="true" />
-              <td className="gt-shade">
+              {row.gtHidden ? null : (
+              <>
+              <td className="gt-gap" aria-hidden="true" rowSpan={row.gtRowSpan} />
+              <td className={`gt-shade${row.gtRowSpan ? " gt-merged" : ""}`} rowSpan={row.gtRowSpan}>
                 <GroundTruthCell
                   row={row}
                   editing={editingId === row.id}
@@ -746,6 +763,8 @@ function CompareSection({
                   onStartEdit={() => onStartEdit(row.id)}
                 />
               </td>
+              </>
+              )}
             </tr>
           ))}
         </tbody>
@@ -796,7 +815,11 @@ function GroundTruthCell({
   const fromStore = !verdict && Boolean(stored);
   const effective = verdict ?? (fromStore ? "enter" : undefined);
   const compared =
-    effective === "enter" ? enteredMark(row.extracted, row.processed, stored, Boolean(row.presence)) : null;
+    effective === "enter"
+      ? row.compare
+        ? row.compare(stored)
+        : enteredMark(row.extracted, row.processed, stored, Boolean(row.presence))
+      : null;
   const mark =
     effective === "accept" ||
     (effective === "enter" && (compared === "match" || (compared == null && !fromStore))) ? (
@@ -846,7 +869,7 @@ function GroundTruthCell({
     const dim = !stored && !row.key;
     return (
       <span className="imaging-gt-slot">
-        <span className={dim ? "imaging-gt-copied" : "imaging-gt-text"}>{shown}</span>
+        <span className={dim ? "imaging-gt-copied" : "imaging-gt-text"} title={shown}>{shown}</span>
         {row.noMark ? null : mark}
         {actions}
       </span>
@@ -1457,10 +1480,22 @@ function PageDetails({
               id: "page_type",
               label: "Page Type",
               truth: bits.pageType,
-              choices: PAGE_TYPE_CHOICES,
+              choices: PAGE_TYPE_AND_SUBTYPE_CHOICES,
               key: true,
             }),
             processed: fmtPageType(finalParts.family, pageTypeKnown),
+            // One ground-truth label for Page Type and Page Subtype: scored
+            // against Final type/sub-type, then Extracted (May be), with the
+            // accuracy report's rules (accepted / broader / close labels).
+            gtRowSpan: 2,
+            compare: (truth: string) => {
+              if (!truth.trim() || !pageTypeKnown) return null;
+              const final = pageTypeVerdict(truth, finalParts.family, finalParts.subtype, page.pageTypeSemantic);
+              if (final === "unknown") return null;
+              if (final !== "mismatch") return final;
+              const own = pageTypeVerdict(truth, pageParts.family, pageParts.subtype, page.pageTypeSemantic);
+              return own === "match" || own === "partial" ? "partial" : "mismatch";
+            },
           },
           {
             ...sameValue(fmtPageType(pageParts.subtype, pageTypeKnown), fmtConfidence(null, pageTypeKnown), {
@@ -1471,6 +1506,7 @@ function PageDetails({
               key: true,
             }),
             processed: fmtPageType(finalParts.subtype, pageTypeKnown),
+            gtHidden: true,
           },
           {
             ...sameValue(fmtCodeable(page.isCodeable, page.pageType, codeableKnown), fmtConfidence(null, Boolean(sections.codeable)), {

@@ -255,7 +255,12 @@ function acceptKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
-type AcceptCanon = { accept: Record<string, string[]>; broader: Record<string, string[]> };
+type AcceptCanon = {
+  accept: Record<string, string[]>;
+  broader: Record<string, string[]>;
+  close?: string[][];
+  close_labels?: Record<string, string[]>;
+};
 
 function labelMap(table: Record<string, string[]>): Map<string, Set<string>> {
   return new Map(
@@ -269,6 +274,16 @@ function labelMap(table: Record<string, string[]>): Map<string, Set<string>> {
 /** model type -> accepted / broader ground-truth labels (``pageTypeAccept.json``), folded. */
 const ACCEPTED = labelMap((pageTypeAccept as AcceptCanon).accept);
 const BROADER = labelMap((pageTypeAccept as AcceptCanon).broader);
+const CLOSE_LABELS = labelMap((pageTypeAccept as AcceptCanon).close_labels ?? {});
+/** model type -> the other model types in its ``close`` group (folded). */
+const CLOSE: Map<string, string[]> = new Map(
+  ((pageTypeAccept as AcceptCanon).close ?? []).flatMap((group) =>
+    group.map((member) => [
+      acceptKey(member),
+      group.filter((other) => other !== member).map((other) => other.toLowerCase()),
+    ]),
+  ),
+);
 
 /** The model type of a prediction: the sub-type inside Progress Note, else the page type. */
 function modelTypeOf(pageType: string | null | undefined, pageSubtype: string | null | undefined): string {
@@ -282,9 +297,11 @@ function modelTypeOf(pageType: string | null | undefined, pageSubtype: string | 
  * else the page type), in order, the first that applies:
  *   match    a ground-truth name agrees with the model type (same name, or one
  *            contains the other) or is in its ``accept`` list (pageTypeAccept.json)
- *   partial  it is in the model type's ``broader`` list, or agrees only with the
- *            page type (a generic "Progress Note" for Progress Note / Summary):
- *            yellow, "May be" in the accuracy report
+ *   partial  it is in the model type's ``broader`` list, agrees only with the
+ *            page type (a generic "Progress Note" for Progress Note / Summary),
+ *            or names another model type of the same ``close`` group (Cardiac
+ *            Report / Echocardiogram Report / EKG / ECG Tracing): yellow,
+ *            "May be" in the accuracy report
  *   match    semantic similarity > PAGE_TYPE_SEMANTIC_MIN (backend score; fallback)
  *   mismatch otherwise
  */
@@ -319,9 +336,27 @@ function pageTypeMark(
     return names.some((name) => labels.has(acceptKey(name)));
   };
   if ((modelType && agrees(modelType)) || listed(ACCEPTED)) return bit(shown, "match");
-  if (listed(BROADER) || actuals.some(agrees)) return bit(shown, "partial");
+  const close = (CLOSE.get(acceptKey(modelType)) ?? []).some((other) => {
+    const labels = new Set([
+      ...(ACCEPTED.get(acceptKey(other)) ?? []),
+      ...(CLOSE_LABELS.get(acceptKey(other)) ?? []),
+    ]);
+    return agrees(other) || names.some((name) => labels.has(acceptKey(name)));
+  });
+  if (listed(BROADER) || actuals.some(agrees) || close) return bit(shown, "partial");
   if (semantic != null && semantic > PAGE_TYPE_SEMANTIC_MIN) return bit(shown, "match");
   return bit(shown, "mismatch");
+}
+
+/** One ground-truth page-type label against a predicted page type / sub-type:
+ * the same rules as the accuracy report (``pageTypeMark``). */
+export function pageTypeVerdict(
+  gt: string | null | undefined,
+  pageType: string | null | undefined,
+  pageSubtype: string | null | undefined,
+  semantic?: number | null,
+): MatchMark | null {
+  return pageTypeMark(gt, [pageType, pageSubtype], true, semantic)[0]?.mark ?? null;
 }
 
 function rotationMark(
