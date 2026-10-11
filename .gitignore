@@ -90,6 +90,7 @@ core-pipeline/models/hw/._*
 
 # Training data is chart content (OCR text and labels of patient pages), and
 # trained weights are large: neither is committed.
+training/bert-training/data/
 training/bert-training/output/
 training/annotation-tool/data/
 training/*/.venv/
