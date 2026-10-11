@@ -25,3 +25,4 @@ Dockerfile  text eol=lf
 *.pdf   binary
 *.woff  binary
 *.woff2 binary
+core-pipeline/models/page-family/model.safetensors filter=lfs diff=lfs merge=lfs -text
