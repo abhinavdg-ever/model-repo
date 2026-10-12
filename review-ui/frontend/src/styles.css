@@ -3062,18 +3062,6 @@ input {
   gap: 1.1rem;
 }
 
-.accuracy-rates-class {
-  font-size: 0.72rem;
-  color: var(--muted);
-}
-
-.accuracy-chart-rates {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
 .accuracy-compared {
   margin: 0.15rem 0 0.4rem;
   font-size: 0.9rem;
@@ -3232,9 +3220,77 @@ input {
   font-style: italic;
 }
 
-.accuracy-rates {
-  font-size: 0.66rem;
-  line-height: 1.35;
+/* The "= Yes" (Class 1) block under a donut: a label, then a 2 x 2 grid. */
+.accuracy-class {
+  margin-top: 0.45rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border);
+}
+
+.accuracy-class-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: var(--brand-800);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.accuracy-class-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.15rem 0.3rem;
+  margin: 0.3rem 0 0;
+}
+
+/* Label above value, so a cell fits the narrowest card. */
+.accuracy-class-grid > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  padding: 0.12rem 0.2rem;
+  border-radius: 5px;
+  background: var(--surface-2, #f3f5f7);
+}
+
+.accuracy-class-grid dt {
+  color: var(--muted);
+  font-size: 0.6rem;
+  line-height: 1.2;
+}
+
+.accuracy-class-grid dd {
+  margin: 0;
+  color: var(--brand-800);
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+/* One full-width row under the grid (Orientation's non-zero accuracy). */
+.accuracy-class-wide {
+  grid-template-columns: 1fr;
+  margin-top: 0.15rem;
+}
+
+.accuracy-class-wide > div {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.accuracy-class-wide dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+/* Wrap only between "Match n", "Partial n" and "No Match n". */
+.accuracy-distribution span {
+  white-space: nowrap;
 }
 
 .accuracy-donut {

@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -72,9 +71,8 @@ from classify import (  # noqa: E402
     CLASSIFICATION_LABELS,
     CODE_BLANK,
     CODE_DUPLICATE,
-    CODE_LETTER_FAX,
+    CODE_JUNK,
     CODE_MAIN,
-    CODE_OTHERS,
     DUPLICATE_NEIGHBOR_WINDOW,
     DUPLICATE_SIMILARITY_THRESHOLD,
     JUNK_CODES,
@@ -85,88 +83,12 @@ from classify import (  # noqa: E402
     text_similarity,
 )
 from model_bridge import classify_page  # noqa: E402
-from text_utils import word_count  # noqa: E402
+import postprocess  # noqa: E402
 
 STAGE = "blank_junk"
 
-# Pass 2: a page the model kept as Main with fewer words than this is Junk /
-# Others — unless it is a signature page (the key/value extraction found a
-# signature) or carries the word "signature".
-SHORT_PAGE_WORDS = 20
-_SIGNATURE_WORD = re.compile(r"\bsignature", re.IGNORECASE)
+# Every rule applied after the model lives in postprocess.py.
 
-
-# Post-processing, both passes: a page whose text says "signature" (or that
-# the key/value extraction found signed) is never Blank or Junk, whatever the
-# model or a rule said. The extraction skips blank/junk pages, so the word is
-# what reaches them. A duplicate stays a duplicate.
-SIGNED_KEEP_REASON = "the word 'signature' is on the page -> kept (overrules blank/junk)"
-
-
-def is_signed(text: str, signed: bool) -> bool:
-    return signed or bool(_SIGNATURE_WORD.search(text or ""))
-
-
-def short_page_is_junk(text: str, signed: bool) -> bool:
-    """Too little text to be a page of a document, and not a signature page."""
-    return word_count(text) < SHORT_PAGE_WORDS and not signed and not _SIGNATURE_WORD.search(text or "")
-
-
-# A page called Blank that still carries text (a letterhead or a medical
-# header) is Junk / Others unless the text itself says blank ("This page
-# intentionally left blank"). A page with no text stays Blank.
-_BLANK_WORD = re.compile(r"\bblank\b", re.IGNORECASE)
-
-
-def blank_with_text_is_junk(text: str) -> bool:
-    return bool((text or "").strip()) and not _BLANK_WORD.search(text or "")
-
-
-# A fax routing / cover sheet the model keeps as Main (it has not learned the
-# layout yet): the word "fax", at least FAX_COVER_MIN_FIELDS cover-sheet
-# fields ("To:", "From:", "Fax Number:", "Phone:", "Date/Time:", "Subject:",
-# ...), and under FAX_COVER_MAX_WORDS words -> Junk / Letter-Fax. Temporary
-# until the retrained blank/junk model covers these pages.
-FAX_COVER_MIN_FIELDS = 4
-FAX_COVER_MAX_WORDS = 80
-_FAX_WORD = re.compile(r"\bfax", re.IGNORECASE)
-_FAX_FIELDS = tuple(
-    re.compile(pattern, re.IGNORECASE)
-    for pattern in (
-        r"\bto\s*:",
-        r"\bfrom\s*:",
-        r"\bfax(?:\s*(?:number|no\.?|#))?\s*:",
-        r"\b(?:business\s+)?phone(?:\s*(?:number|no\.?|#))?\s*:",
-        r"\bdate(?:\s*/\s*time)?\s*:",
-        r"\b(?:subject|re)\s*:",
-        r"\bpages?\s*:",
-        r"\bcc\s*:",
-        r"\battn\.?\s*:",
-    )
-)
-
-
-def fax_cover_sheet(text: str) -> bool:
-    text = text or ""
-    if not _FAX_WORD.search(text) or word_count(text) >= FAX_COVER_MAX_WORDS:
-        return False
-    return sum(1 for field in _FAX_FIELDS if field.search(text)) >= FAX_COVER_MIN_FIELDS
-
-
-# A page the model keeps as Main that says "fax" (fax, faxed, faxes, Fax:) at
-# least FAX_MENTION_LIMIT times, at any length, is fax paperwork -> Junk /
-# Letter-Fax. One or two mentions are a letterhead ("Phone: / Fax:") or a
-# fax header line on a real clinical page, and stay Main. A signed page is
-# still kept by the signature rule.
-FAX_MENTION_LIMIT = 3
-
-
-def fax_mentions(text: str) -> int:
-    return len(_FAX_WORD.findall(text or ""))
-
-
-def fax_heavy_page(text: str) -> bool:
-    return fax_mentions(text) >= FAX_MENTION_LIMIT
 
 JUNK_CSV_COLS = [
     "chart_name",
@@ -207,6 +129,8 @@ def _to_db_flag(code: int) -> tuple[str, Optional[str]]:
         return "blank", None
     if code == CODE_DUPLICATE:
         return "duplicate", None
+    if code == CODE_JUNK:
+        return "junk", None
     if code in JUNK_CODES:
         return "junk", SUBTYPE_DB.get(label.strip().casefold(), "Others")
     return "not_blank_junk", None
@@ -333,24 +257,10 @@ def _classify(
             continue
         text = texts.get(page_id) or ""
         code, reason, conf = classify_page(text, docling=(docling_pages or {}).get(page_id))
-        if code == CODE_MAIN and fax_cover_sheet(text):
-            code, conf = CODE_LETTER_FAX, 0.85
-            reason = f"{reason}; rule: fax cover sheet (fax fields, < {FAX_COVER_MAX_WORDS} words) -> Letter/Fax"
-        elif code == CODE_MAIN and fax_heavy_page(text):
-            code, conf = CODE_LETTER_FAX, 0.85
-            reason = (
-                f"{reason}; rule: 'fax' {fax_mentions(text)} times "
-                f"(>= {FAX_MENTION_LIMIT}) -> Letter/Fax"
-            )
-        if code == CODE_BLANK and blank_with_text_is_junk(text):
-            code = CODE_OTHERS
-            reason = f"{reason}; blank page with text and no word 'blank' -> Junk / Others"
-        if short_pages and code == CODE_MAIN and short_page_is_junk(text, page_id in (signed_ids or ())):
-            code, conf = CODE_OTHERS, 0.9
-            reason = f"short page: {word_count(text)} words (< {SHORT_PAGE_WORDS}), not a signature page"
-        if code != CODE_MAIN and is_signed(text, page_id in (signed_ids or ())):
-            reason = f"{reason}; {SIGNED_KEEP_REASON}"
-            code, conf = CODE_MAIN, 0.9
+        code, reason, conf = postprocess.apply(
+            code, reason, conf, text,
+            signed=page_id in (signed_ids or ()), short_pages=short_pages,
+        )
         by_id[page_id] = _row_for(
             page, code=code, reason=reason, confidence=conf
         )
@@ -497,7 +407,6 @@ def _run_pass(
             non_printed = non_printed_page_ids(conn, chart_id)
             low_ids = low_quality_page_ids(conn, chart_id)
             quality = get_quality_map(conn, chart_id)
-            pass1_flags: dict[int, str] = {}
             # Final OCR 1 page objects, so the model reads them as b_jnk v3 does.
             docling_pages: dict[int, dict[str, Any]] = {}
 
@@ -541,7 +450,7 @@ def _run_pass(
                     else:
                         sources[pid] = "azuredocintel"
                 ocr_source = "azuredocintel"  # default; per-row override below
-                pass1 = pass1_flags = get_blank_junk_flags(conn, chart_id, pass_no=1)
+                pass1 = get_blank_junk_flags(conn, chart_id, pass_no=1)
                 # Eligible: non-printed + low-quality (never judged in pass 1),
                 # plus printed pages pass 1 did not already rule out.
                 pass1_skippers = non_printed | low_ids
@@ -598,26 +507,30 @@ def _run_pass(
             # Pages pass 1 already ruled blank / junk are not re-judged here
             # (pass 1 keeps signed pages itself; this covers a page whose
             # signature only shows in the final OCR). A pass-2 "kept" row wins
-            # as the highest pass.
-            for page_id, flag in sorted(pass1_flags.items()):
-                if flag not in ("blank", "junk"):
-                    continue
-                if not is_signed(texts.get(page_id) or "", page_id in signed_ids):
-                    continue
-                if any(row["page_id"] == page_id for row in classified):
-                    continue
-                upsert_blank_junk(
-                    conn,
-                    chart_id=chart_id,
-                    page_id=page_id,
-                    pass_no=pass_no,
-                    blank_junk_flag="not_blank_junk",
-                    ocr_source=sources.get(page_id, ocr_source),
-                    junk_subtype=None,
-                    duplicate_of_page_id=None,
-                    confidence=0.9,
-                    reason=f"pass 1: {pass1_flags[page_id]}; {SIGNED_KEEP_REASON}",
-                )
+            # as the highest pass. Forced junk is never kept.
+            if pass_no == 2:
+                classified_ids = {row["page_id"] for row in classified}
+                for page_id, flag in sorted(pass1.items()):
+                    text = texts.get(page_id) or ""
+                    if (
+                        flag not in ("blank", "junk")
+                        or page_id in classified_ids
+                        or not postprocess.is_signed(text, page_id in signed_ids)
+                        or postprocess.forced_junk(text) is not None
+                    ):
+                        continue
+                    upsert_blank_junk(
+                        conn,
+                        chart_id=chart_id,
+                        page_id=page_id,
+                        pass_no=pass_no,
+                        blank_junk_flag="not_blank_junk",
+                        ocr_source=sources.get(page_id, ocr_source),
+                        junk_subtype=None,
+                        duplicate_of_page_id=None,
+                        confidence=0.9,
+                        reason=f"pass 1: {flag}; {postprocess.SIGNED_KEEP_REASON}",
+                    )
             mark_blank_junk_final(conn, chart_id)
             path = _rewrite_csv(conn, chart_id, ctx.chart_name)
 

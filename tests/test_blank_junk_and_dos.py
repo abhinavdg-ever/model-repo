@@ -8,11 +8,9 @@ UI: similarity 100% → Yes; [98%, 100%) → May Be; else No.
 """
 from __future__ import annotations
 
-from datetime import date
-
-import pytest
-
 from stages.lib.blank_junk.stage import SUBTYPE_DB, _classify, _to_db_flag
+
+import classify  # noqa: E402  — on sys.path once the blank_junk stage is imported
 from stages.lib.dos.stage import _date_rows, _split_dates
 
 
@@ -316,12 +314,14 @@ class TestSubtypeMapping:
     def test_junk_always_gets_a_legal_subtype(self):
         """JUNK_CODES includes CODE_BLANK; blank is its own flag and takes
         precedence, so only the remaining codes become flag='junk'."""
-        from classify import CODE_BLANK, JUNK_CODES
+        from classify import CODE_BLANK, CODE_JUNK, JUNK_CODES
 
-        for code in JUNK_CODES - {CODE_BLANK}:
+        for code in JUNK_CODES - {CODE_BLANK, CODE_JUNK}:
             flag, subtype = _to_db_flag(code)
             assert flag == "junk"
             assert subtype in set(SUBTYPE_DB.values())
+        # Plain Junk (a blank page with text) has no sub-type.
+        assert _to_db_flag(CODE_JUNK) == ("junk", None)
 
     def test_blank_wins_over_junk_even_though_it_is_in_junk_codes(self):
         from classify import CODE_BLANK, JUNK_CODES
@@ -401,10 +401,8 @@ class TestDosStageWritesEachPageOnce:
         monkeypatch.setattr(dos_stage, "stage_run", fake_stage_run)
         monkeypatch.setattr(dos_stage, "connect", lambda: nullcontext(None))
         monkeypatch.setattr(dos_stage, "get_blank_junk_flags", lambda *a, **k: {})
-        monkeypatch.setattr(dos_stage, "get_chart", lambda *a, **k: None)
-        monkeypatch.setattr(dos_stage, "get_page_classification_map", lambda *a, **k: {})
         monkeypatch.setattr(dos_stage, "mark_skipped", lambda *a, **k: None)
-        monkeypatch.setattr(dos_stage, "_combined_text", lambda *a, **k: "")
+        monkeypatch.setattr(dos_stage, "_combined_text", lambda *a, **k: ("", {}))
         monkeypatch.setattr(
             dos_stage,
             "detect_dos_per_page",
@@ -425,91 +423,139 @@ class TestDosStageWritesEachPageOnce:
         assert ctx.done == 3
 
 
-class TestDosLayouts:
-    def test_encounter_date_with_at_before_the_month(self):
-        """CCD header: the visit date follows 'at', and file dates must not win."""
+def _pages(*bodies, **kwargs):
+    from dos_logic import detect_dos_per_page
+
+    text = "".join(f"===== {i}.jpg =====\n{body}\n" for i, body in enumerate(bodies, 1))
+    return detect_dos_per_page(text, None, use_llm=False, **kwargs)
+
+
+FILLER = " ".join(f"word{i}" for i in range(40))
+
+
+class TestDosTesseractOnlyWithoutFinal2:
+    def test_tesseract_is_offered_only_for_pages_without_final2(self, monkeypatch):
+        import stages.lib.dos.stage as dos_stage
+
+        texts = {
+            "azuredocintel": {1: "Final2 text"},
+            "docling": {1: "Final1 text", 2: "Final1 text"},
+            "tesseract": {1: "Encounter Date: 01/01/2024", 2: "Encounter Date: 02/02/2024",
+                          3: "Encounter Date: 03/03/2024"},
+        }
+        monkeypatch.setattr(dos_stage, "get_ocr_texts", lambda _c, _id, kind: texts[kind])
+        monkeypatch.setattr(dos_stage, "get_quality_map", lambda *_a: {3: {"printed_or_handwritten": "handwritten"}})
+        pages = [{"id": n, "page_name": f"{n}.jpg"} for n in (1, 2, 3)]
+        _text, tesseract = dos_stage._combined_text(None, 7, pages, {1, 2, 3})
+        # 1 has Final2; 3 is handwritten, so its Tesseract text is not trusted.
+        assert tesseract == {"2.jpg": "Encounter Date: 02/02/2024"}
+
+
+class TestDosEdgeKeyword:
+    """Rule 1: a DOS label in the first or last 20 words, with its date."""
+
+    def test_the_encounter_date_in_the_header_wins_over_the_hpi_admission(self):
+        """The screenshot case: header Encounter Date, admit/discharge deep in the HPI."""
         from dos_logic import extract_dos_from_page_text
 
         text = (
-            "Date of birth | 04/05/1993\n"
-            "Document Created: | April 15, 2026, 16:02:25 -0400\n"
-            "Encounter Date | at January 28, 2025\n"
-            "Legal authenticator | ZIYI WANG, MD signed at January 28, 2025, 12:17:31, EST\n"
-            "CCD Rendered Date | April 18, 2026\n"
-            "Reason for Visit\n"
+            "Patient Name: Anderson, Lisa Date of Birth: 04/06/1993 Sex: F "
+            "Encounter Id: 1092110 Encounter Date: May 20, 2025\n"
+            f"{FILLER}\nAdmission date: 05/13/25 Discharge date: 05/14/25\n{FILLER}"
         )
         hit = extract_dos_from_page_text(text)
-        assert hit["dos_from"] == "01-28-2025"
-        assert hit["dos_to"] == "01-28-2025"
-        assert hit["keyword"].casefold() == "encounter date"
+        assert (hit["dos_from"], hit["dos_to"]) == ("05-20-2025", "05-20-2025")
+        assert hit["keyword"] == "Encounter Date"
 
-    def test_header_date_on_a_visit_form_ignores_the_dob(self):
-        """The visit date is a bare cell under a Date column, rows below the DOB."""
+    def test_a_label_in_the_last_20_words_counts(self):
         from dos_logic import extract_dos_from_page_text
 
-        text = (
-            "Ph: 801.568.0200\n"
-            "Name - Sanders, Charles | DOB - 03/06/1972 | (69)\n"
-            "Date | Location | Location\n"
-            "PCP | Insurance | Insurance\n"
-            "12/31/2025 | Hoopes Vision Correction Center\n"
-            "Reason For Visit: Post-op Check - S/P Phaco PC IOL OD.\n"
-            "HPI: Post Op: vision is out of focus OD.\n"
+        hit = extract_dos_from_page_text(f"{FILLER}\nVisit Date: 03/14/2024")
+        assert hit["dos_from"] == "03-14-2024"
+
+    def test_a_label_in_the_middle_of_the_page_does_not(self):
+        from dos_logic import extract_dos_from_page_text
+
+        assert extract_dos_from_page_text(f"{FILLER}\nVisit Date: 03/14/2024\n{FILLER}") is None
+
+    def test_admission_is_from_and_discharge_is_to(self):
+        from dos_logic import extract_dos_from_page_text
+
+        hit = extract_dos_from_page_text(
+            f"Admission Date: 03/01/2024\n{FILLER}\nDischarge Date: 03/05/2024"
         )
-        assert extract_dos_from_page_text(text) is None
+        assert (hit["dos_from"], hit["dos_to"]) == ("03-01-2024", "03-05-2024")
+        assert hit["match_type"] == "admit_discharge_pair"
 
+    def test_a_discharge_date_alone_is_both_ends(self):
+        from dos_logic import extract_dos_from_page_text
 
-RECEIVED = date(2026, 5, 1)
+        hit = extract_dos_from_page_text(f"{FILLER}\nDischarged on 03/05/2024")
+        assert (hit["dos_from"], hit["dos_to"]) == ("03-05-2024", "03-05-2024")
+
+    def test_an_encounter_label_beats_admit_and_discharge(self):
+        from dos_logic import extract_dos_from_page_text
+
+        hit = extract_dos_from_page_text("Admit Date: 03/01/2024 Visit Date: 03/03/2024")
+        assert hit["dos_from"] == "03-03-2024"
+
+    def test_filler_words_between_label_and_date_are_allowed(self):
+        from dos_logic import extract_dos_from_page_text
+
+        assert extract_dos_from_page_text("Encounter Date | at January 28, 2025")["dos_from"] == "01-28-2025"
+        assert extract_dos_from_page_text("Visit Date/Time: 03/14/2024 10:00")["dos_from"] == "03-14-2024"
+
+    def test_a_label_never_takes_the_next_fields_date(self):
+        from dos_logic import extract_dos_from_page_text
+
+        assert extract_dos_from_page_text("Visit Date: | DOB: 01/02/1960") is None
+
+    def test_an_unlabelled_date_is_not_a_dos(self):
+        from dos_logic import extract_dos_from_page_text
+
+        assert extract_dos_from_page_text("Ph: 801.568.0200\n12/31/2025 | Hoopes Vision") is None
+
+    def test_a_written_range_keeps_both_ends(self):
+        from dos_logic import extract_dos_from_page_text
+
+        hit = extract_dos_from_page_text("DOS: 03/01/2024 to 03/05/2024")
+        assert (hit["dos_from"], hit["dos_to"]) == ("03-01-2024", "03-05-2024")
+
+    def test_the_four_date_shapes(self):
+        from dos_logic import extract_dos_from_page_text
+
+        for raw in ("12/31/2025", "2025-12-31", "December 31, 2025", "31 December 2025"):
+            assert extract_dos_from_page_text(f"Date of Service: {raw}")["dos_from"] == "12-31-2025"
+
+    def test_impossible_days_are_not_dates(self):
+        from dos_logic import extract_dos_from_page_text
+
+        assert extract_dos_from_page_text("Date of Service: 02/30/2024") is None
 
 
 class TestDosDriver:
-    def test_a_page_with_no_date_keeps_the_default(self):
-        """A page with no date of its own gets the default, not the previous visit."""
-        from dos_logic import detect_dos_per_page, profile
-
-        text = (
-            "===== 1.jpg =====\n"
-            "Office Visit  Date of Service: 03/14/2024\n"
-            "Patient seen for follow up.\n"
-            "\n"
-            "===== 2.jpg =====\n"
-            "Continued progress note with no date on it.\n"
-        )
-        hits = detect_dos_per_page(text, None, use_llm=False, received_date=RECEIVED)
-        assert len(hits) == 2
+    def test_each_page_keeps_its_own_date_nothing_is_carried(self):
+        hits = _pages("Office Visit  Date of Service: 03/14/2024", "Continued note with no date on it.")
         assert hits[0]["dos_from"] == "03-14-2024"
-        # No date on the page: the default prevails. The visit is not carried down.
+        assert hits[0]["final_dos"] == "2024-03-14"
         assert hits[1]["dos_from"] == ""
-        assert hits[1]["is_default"] is True
-        assert hits[1]["doc_dos_from_iso"] == profile().default_date
+        assert hits[1]["final_dos"] == ""
         assert hits[1]["match_type"] == "no_date_found"
 
-    def test_iso_columns_are_actually_iso(self):
-        from dos_logic import detect_dos_per_page
+    def test_a_page_with_no_date_reports_the_default_at_document_level(self):
+        from dos_logic import profile
 
-        text = "===== 1.jpg =====\nDate of Service: 03/14/2024\nVisit note.\n"
-        hits = detect_dos_per_page(text, None, use_llm=False, received_date=RECEIVED)
-        assert hits[0]["dos_from_iso"] == "2024-03-14"
-        assert hits[0]["doc_dos_from_iso"] == "2024-03-14"
-
-    def test_llm_is_not_called_when_no_client(self):
-        from dos_logic import detect_dos_per_page
-
-        text = "===== 1.jpg =====\nNo dates whatsoever on this page.\n"
-        hits = detect_dos_per_page(text, None, use_llm=False)
-        assert len(hits) == 1
-        assert hits[0]["match_type"] != "llm"
-
-    def test_nothing_found_is_the_flagged_default(self):
-        from dos_logic import detect_dos_per_page, profile
-
-        text = "===== 1.jpg =====\nNo dates whatsoever on this page.\n"
-        hit = detect_dos_per_page(text, None, use_llm=False)[0]
-        assert hit["dos_from"] == ""
-        assert hit["match_type"] == "no_date_found"
+        hit = _pages("No dates whatsoever on this page.")[0]
         assert hit["confidence"] == 0
         assert hit["is_default"] is True
         assert hit["doc_dos_from_iso"] == profile().default_date
+
+    def test_iso_columns_are_actually_iso(self):
+        hit = _pages("Date of Service: 03/14/2024\nVisit note.")[0]
+        assert hit["dos_from_iso"] == "2024-03-14"
+        assert hit["doc_dos_from_iso"] == "2024-03-14"
+        assert hit["match_type"] == "edge_keyword"
+        assert hit["page_source"] == "edge"
 
     def test_llm_is_the_fallback_on_clinical_pages_only(self, monkeypatch):
         import dos_logic
@@ -526,252 +572,38 @@ class TestDosDriver:
             "===== 2.jpg =====\nChief Complaint: knee pain, no date here.\n"
             "===== 3.jpg =====\nPlain page without a date or cue.\n"
         )
-        hits = dos_logic.detect_dos_per_page(
-            text, object(), use_llm=True, received_date=RECEIVED
-        )
-        assert len(calls) == 1  # page 1 scored a date; page 3 has no cue
+        hits = dos_logic.detect_dos_per_page(text, object(), use_llm=True)
+        assert len(calls) == 1  # page 1 had a date; page 3 has no cue
         assert hits[1]["dos_from_iso"] == "2024-05-06"
         assert hits[1]["page_source"] == "llm"
-        assert hits[0]["page_source"] == "rules"
+        assert hits[0]["page_source"] == "edge"
 
+    def test_tesseract_top_and_bottom_fill_in_when_the_final_text_dropped_the_banner(self):
+        """Docling can drop the page-header banner; Tesseract keeps it."""
+        final = "Reason for Visit\nFollow Up\nChief Complaint\nFollow Up\nAssessment"
+        tesseract = ("Patient Name: Anderson, Lisa Date of Birth: 04/05/1993 Sex:F "
+                     "Encounter Id:1220216 Encounter Date: December 03, 2025\n" + final)
+        hit = _pages(final, tesseract_texts={"1.jpg": tesseract})[0]
+        assert hit["dos_from_iso"] == "2025-12-03"
+        assert hit["match_type"] == "edge_keyword_tesseract"
 
+    def test_the_final_text_comes_before_tesseract(self):
+        hit = _pages("Visit Date: 03/14/2024",
+                     tesseract_texts={"1.jpg": "Visit Date: 03/15/2024"})[0]
+        assert (hit["dos_from_iso"], hit["page_source"]) == ("2024-03-14", "edge")
 
-def _scored(text, **kwargs):
-    """Stages A–C on one page; returns (candidates, profile)."""
-    from dos_logic import find_candidates, page_features, profile, score_candidate
+    def test_tesseract_comes_before_the_key_value_date(self):
+        kv = {"1.jpg": [{"iso": "2024-06-01", "keyword": "Date"}]}
+        hit = _pages("no label here", kv_dates=kv,
+                     tesseract_texts={"1.jpg": "Encounter Date: 03/15/2024"})[0]
+        assert hit["dos_from_iso"] == "2024-03-15"
 
-    prof = profile()
-    cands = find_candidates(text)
-    page_features(
-        text,
-        cands,
-        page_type=kwargs.get("page_type", ""),
-        received_year=RECEIVED.year,
-        prof=prof,
-    )
-    for cand in cands:
-        score_candidate(cand, prof)
-    return cands, prof
-
-
-class TestDosCandidates:
-    def test_four_shapes(self):
-        from dos_logic import find_candidates
-
-        text = "12/31/2025 and 1/5/24 and 2025-12-31 and January 28, 2025 and 28 January 2025"
-        assert [c.iso for c in find_candidates(text)] == [
-            "2025-12-31", "2024-01-05", "2025-12-31", "2025-01-28", "2025-01-28",
-        ]
-
-    def test_two_digit_years_pivot_at_50(self):
-        from dos_logic import find_candidates
-
-        assert [c.iso for c in find_candidates("1/5/49 1/5/50")] == ["2049-01-05", "1950-01-05"]
-
-    def test_impossible_days_are_dropped_old_years_are_kept(self):
-        from dos_logic import find_candidates
-
-        assert [c.iso for c in find_candidates("02/30/2024 DOB 04/05/1998")] == ["1998-04-05"]
-
-    def test_offsets_point_at_the_raw_text(self):
-        from dos_logic import find_candidates
-
-        text = "Seen on Jan. 3, 2024 today"
-        (cand,) = find_candidates(text)
-        assert text[cand.start : cand.end] == cand.raw == "Jan. 3, 2024"
-
-
-class TestDosFeaturesAndScore:
-    def test_label_classes(self):
-        cands, _ = _scored(
-            "Date of Service: 03/14/2024. DOB: 01/02/1960. Printed on 03/20/2024. "
-            "Return visit 06/01/2024. Colonoscopy 02/02/2024. Admit Date 03/10/2024. "
-            "Discharged 03/12/2024."
-        )
-        assert [c.label_class for c in cands] == [
-            "encounter", "birth", "doc_meta", "future", "procedure", "admit", "discharge",
-        ]
-
-    def test_a_label_does_not_reach_past_an_earlier_date(self):
-        cands, _ = _scored("DOB 03/06/1972 | 12/31/2025")
-        assert [c.label_class for c in cands] == ["birth", "none"]
-
-    def test_distance_decays_the_label(self):
-        near, _ = _scored("Date of Service: 03/14/2024")
-        far, _ = _scored("Date of Service" + " " * 60 + "03/14/2024")
-        assert far[0].label_distance > near[0].label_distance
-        assert far[0].score < near[0].score
-
-    def test_dob_is_a_weight_not_a_veto(self):
-        cands, prof = _scored("x " * 100 + "DOB: 01/02/2024" + " y" * 100)
-        (cand,) = cands
-        expected = prof.base + prof.label_weights["birth"] - prof.label_distance_decay * 1
-        assert cand.score == pytest.approx(max(0.0, expected))
-
-    def test_old_years_are_penalised_not_deleted(self):
-        from dos_logic import profile
-
-        prof = profile()
-        old_year = RECEIVED.year - prof.max_age_years - 1
-        pad = "x " * 100  # off the page edges, so neither score is clamped at 1
-        cands, _ = _scored(f"{pad}Date of Service: 03/14/{old_year}{pad}")
-        recent, _ = _scored(f"{pad}Date of Service: 03/14/{RECEIVED.year - 1}{pad}")
-        assert len(cands) == 1
-        assert cands[0].score == pytest.approx(recent[0].score - prof.age_penalty)
-
-    def test_cluster_counts_other_dates_within_30_days(self):
-        from dos_logic import chart_features, find_candidates, profile
-
-        cands = find_candidates("03/01/2024 03/20/2024 03/31/2024 06/01/2024")
-        chart_features(cands, profile())
-        assert [c.cluster_size for c in cands] == [2, 2, 2, 0]
-
-    def test_admit_discharge_pair_emits_a_range(self):
-        from dos_logic import best_page_date
-
-        cands, prof = _scored("Admit Date: 03/01/2024  Discharge Date: 03/05/2024")
-        assert all(c.in_range_pair for c in cands)
-        best = best_page_date(cands, prof)
-        assert (best.dos_from, best.dos_to) == ("2024-03-01", "2024-03-05")
-        assert all(c.chosen for c in cands)
-
-    def test_below_threshold_is_no_date(self):
-        from dos_logic import best_page_date
-
-        cands, prof = _scored("x " * 100 + "Printed on 03/20/2024" + " y" * 100)
-        assert cands and best_page_date(cands, prof) is None
-
-
-class TestDosTimestamps:
-    def test_time_beside_a_date_is_detected(self):
-        cands, _ = _scored(
-            "03/20/2024 10:15 AM | 2025-12-31T10:00:00 | 10:15 03/21/2024 | "
-            "03/22/2024, 4:05 pm | 03/23/2024 visit"
-        )
-        assert [c.has_time for c in cands] == [True, True, True, True, False]
-
-    def test_unlabelled_print_stamp_at_the_edge_does_not_win(self):
-        from dos_logic import extract_dos_from_page_text
-
-        body = "Chief Complaint: cough. " + "word " * 150
-        text = f"03/20/2025 10:15 AM\n{body}\nPage 1 of 2 03/20/2025 10:15 AM"
-        assert extract_dos_from_page_text(text, received_date=RECEIVED) is None
-
-    def test_print_stamp_loses_to_the_visit_date(self):
-        from dos_logic import extract_dos_from_page_text
-
-        text = (
-            "Printed: 04/18/2025 09:12 AM\n"
-            "Chief Complaint: cough\n"
-            "Seen 03/14/2025 in clinic.\n"
-            "04/18/2025 09:12 AM Page 1 of 1"
-        )
-        assert extract_dos_from_page_text(text, received_date=RECEIVED) is None
-
-    def test_a_labelled_encounter_time_under_0_75_is_not_used(self):
-        from dos_logic import extract_dos_from_page_text
-
-        text = "Arrival Date: 03/14/2025 14:32\nChief Complaint: chest pain"
-        assert extract_dos_from_page_text(text, received_date=RECEIVED) is None
-
-
-class TestDosResolve:
-    @staticmethod
-    def _run(pages, **kwargs):
-        from dos_logic import detect_dos_per_page
-
-        text = "".join(f"===== {i}.jpg =====\n{body}\n" for i, body in enumerate(pages, 1))
-        return detect_dos_per_page(text, None, use_llm=False, received_date=RECEIVED, **kwargs)
-
-    def test_every_page_keeps_its_own_date(self, monkeypatch):
-        """No progress-note span: an undated page after a note stays undated,
-        and final_dos is the page's own date. The continuity stage carries the
-        note's date across its pages as the Final DOS."""
-        import dos_logic
-
-        types = {"Progress Note\nDate of Service: 03/14/2024": "Progress Note"}
-        monkeypatch.setattr(dos_logic, "_page_type_name", lambda t, _n: types.get(t.strip(), ""))
-        hits = self._run([
-            "Progress Note\nDate of Service: 03/14/2024",
-            "Vitals stable. No date on this page.",
-            "Date of Service: 04/02/2024",
-        ])
-        assert hits[0]["final_dos"] == "2024-03-14"
-        assert hits[1]["dos_from_iso"] == ""
-        assert hits[1]["final_dos"] == ""
-        assert hits[1]["match_type"] == "no_date_found"
-        assert hits[2]["final_dos"] == "2024-04-02"
-        assert all(h["match_type"] not in ("span", "span_start") for h in hits)
-
-    def test_demographics_and_injection_pages_keep_the_default(self, monkeypatch):
-        import dos_logic
-
-        def page_type(text, _n):
-            if "Demographics" in text:
-                return "Patient Demographics"
-            if "Injection" in text:
-                return "Injection Visit"
-            return ""
-
-        monkeypatch.setattr(dos_logic, "_page_type_name", page_type)
-        hits = self._run([
-            "Date of Service: 03/14/2024",
-            "Demographics  Date of Service: 05/01/2024",
-            "Injection record  Date of Service: 06/01/2024",
-        ])
-        default = dos_logic.profile().default_date
-        assert hits[1]["dos_from"] == ""
-        assert hits[1]["doc_dos_from_iso"] == default
-        assert hits[1]["is_default"] is True
-        assert hits[1]["match_type"] == "default_page"
-        assert hits[2]["doc_dos_from_iso"] == default
-        assert hits[2]["is_default"] is True
-
-    def test_the_page_type_stage_sub_type_beats_the_keyword_guess(self, monkeypatch):
-        """Page type runs before DOS; its Extracted sub-type decides a
-        default-date page even when the keyword model would not."""
-        import dos_logic
-
-        monkeypatch.setattr(dos_logic, "_page_type_name", lambda t, _n: "")
-        hits = self._run(
-            ["Date of Service: 03/14/2024", "Date of Service: 05/01/2024"],
-            page_types={"2.jpg": "Patient Demographics"},
-        )
-        assert hits[0]["dos_from_iso"] == "2024-03-14"
-        assert hits[1]["match_type"] == "default_page"
-        assert hits[1]["dos_from"] == ""
-
-    def test_a_text_date_below_dos_min_score_is_not_used(self):
-        """The regex sweep is the backup to the key/value date, at 0.75."""
-        import dos_logic
-
-        assert dos_logic.profile().min_score == 0.75
-
-    def test_non_encounter_page_never_replaces_an_encounter(self, monkeypatch):
-        import dos_logic
-
-        monkeypatch.setattr(
-            dos_logic,
-            "_page_type_name",
-            lambda t, _n: "Medication List" if "Medication" in t else "",
-        )
-        hits = self._run([
-            "Date of Service: 03/14/2024",
-            "Medication List  Date of Service: 05/01/2024",
-        ])
-        assert hits[1]["dos_from_iso"] == "2024-05-01"
-        assert hits[1]["doc_dos_from_iso"] == "2024-03-14"
-        assert hits[1]["match_type"] == "non_encounter_page"
-
-    def test_candidate_log_has_every_candidate(self):
+    def test_candidate_log_has_every_edge_label(self):
         log: list = []
-        self._run(["DOB 01/02/1960  Date of Service: 03/14/2024"], candidate_log=log)
-        assert [(r["iso"], r["chosen"]) for r in log] == [
-            ("1960-01-02", False), ("2024-03-14", True),
+        _pages("Admit Date: 03/01/2024 Visit Date: 03/03/2024", candidate_log=log)
+        assert [(r["label_class"], r["iso"], r["chosen"]) for r in log] == [
+            ("admit", "2024-03-01", False), ("encounter", "2024-03-03", True),
         ]
-        assert {"label_class", "label_distance", "position", "edge_position", "page_type",
-                "has_clinical_cue", "year_delta", "cluster_size", "in_range_pair",
-                "score"} <= log[0].keys()
 
 
 def test_ccd_visit_page_dos_is_the_encounter_date():
@@ -780,8 +612,70 @@ def test_ccd_visit_page_dos_is_the_encounter_date():
     from dos_logic import extract_dos_from_page_text
 
     text = (Path(__file__).parent / "fixtures" / "ccd_visit_page.txt").read_text(encoding="utf-8")
-    assert extract_dos_from_page_text(text, received_date=RECEIVED)["dos_from"] == "01-28-2025"
+    assert extract_dos_from_page_text(text)["dos_from"] == "01-28-2025"
 
+
+def _bj(text, code_name, monkeypatch):
+    """The page's row when the model says ``code_name``."""
+    from stages.lib.blank_junk import stage as bj_stage
+
+    code = getattr(classify, code_name)
+    monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (code, "model", 0.97))
+    pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
+    return _classify(pages, {1: text}, {1})[0]
+
+
+CLINICAL = ("Chief Complaint: cough. History of Present Illness: three days. "
+            "Vital Signs stable. Assessment: bronchitis. Plan: rest.")
+
+
+class TestForcedJunkKeywords:
+    """Three or more hits of one junk category: Junk of that sub-type, always."""
+
+    def test_fax_three_times_is_letter_fax_at_any_length(self, monkeypatch):
+        text = "Fax transmission report. Faxed to the clinic; fax confirmation attached.\n" + "details " * 200
+        row = _bj(text, "CODE_MAIN", monkeypatch)
+        assert (row["flag"], row["subtype"]) == ("junk", "Letter/Fax")
+        assert "forced junk: letter_fax keywords 3 times" in row["reason"]
+
+    def test_fax_twice_stays_main(self, monkeypatch):
+        text = "Phone: 555-000-0000  Fax: 555-000-0001\nFAX from Example Clinic\nProgress note."
+        assert _bj(text, "CODE_MAIN", monkeypatch)["flag"] == "not_blank_junk"
+
+    def test_any_category_three_times_is_forced(self, monkeypatch):
+        text = "Invoice. Amount due. Balance due. Progress note, signature: ____"
+        assert _bj(text, "CODE_MAIN", monkeypatch)["subtype"] == "Invoice"
+
+    def test_it_wins_over_the_clinical_terms(self, monkeypatch):
+        text = CLINICAL + " Fax. Fax. Fax."
+        assert _bj(text, "CODE_OTHERS", monkeypatch)["subtype"] == "Letter/Fax"
+
+
+class TestBlankWithTextIsJunk:
+    def test_a_header_on_a_blank_page_makes_it_junk_others(self, monkeypatch):
+        row = _bj("Made Up Medical Group  Patient Encounter Record", "CODE_BLANK", monkeypatch)
+        assert (row["flag"], row["subtype"]) == ("junk", None)
+
+    def test_intentionally_left_blank_stays_blank(self, monkeypatch):
+        assert _bj("This page intentionally left blank", "CODE_BLANK", monkeypatch)["flag"] == "blank"
+
+    def test_an_empty_page_stays_blank(self, monkeypatch):
+        assert _bj("   ", "CODE_BLANK", monkeypatch)["flag"] == "blank"
+
+
+class TestClinicalJunkIsKept:
+    def test_junk_with_five_clinical_terms_is_main(self, monkeypatch):
+        row = _bj(CLINICAL, "CODE_OTHERS", monkeypatch)
+        assert row["flag"] == "not_blank_junk"
+        assert "clinical terms (>= 5) -> kept" in row["reason"]
+
+    def test_four_clinical_terms_stay_junk(self, monkeypatch):
+        text = "Chief Complaint: cough. Vital Signs stable. Assessment: bronchitis. Plan: rest."
+        assert _bj(text, "CODE_OTHERS", monkeypatch)["flag"] == "junk"
+
+    def test_a_signature_keeps_junk_but_not_forced_junk(self, monkeypatch):
+        assert _bj("Remittance copy. Provider Signature: ____", "CODE_OTHERS", monkeypatch)["flag"] == "not_blank_junk"
+        assert _bj("Fax. Fax. Fax. Provider Signature: ____", "CODE_MAIN", monkeypatch)["flag"] == "junk"
 
 
 class TestFaxCoverSheetRule:
@@ -800,7 +694,7 @@ class TestFaxCoverSheetRule:
     def _run(text, monkeypatch):
         from stages.lib.blank_junk import stage as bj_stage
 
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (bj_stage.CODE_MAIN, "model:keep", 0.99))
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (classify.CODE_MAIN, "model:keep", 0.99))
         pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
         return _classify(pages, {1: text}, {1})[0]
 
@@ -821,51 +715,6 @@ class TestFaxCoverSheetRule:
         text = "To: A\nFrom: B\nPhone: 1\nDate: 2\nSubject: 3"
         assert self._run(text, monkeypatch)["flag"] == "not_blank_junk"
 
-    def test_fax_three_times_is_letter_fax_at_any_length(self, monkeypatch):
-        text = (
-            "Fax transmission report. Faxed to the clinic; fax confirmation attached.\n"
-            + " ".join(["details"] * 200)
-        )
-        row = self._run(text, monkeypatch)
-        assert (row["flag"], row["subtype"]) == ("junk", "Letter/Fax")
-        assert "'fax' 3 times" in row["reason"]
-
-    def test_fax_twice_on_a_clinical_page_stays_main(self, monkeypatch):
-        text = (
-            "Example Clinic  Phone: 555-000-0000  Fax: 555-000-0001\n"
-            "FAX from Example Clinic Page 2 of 4\n"
-            "Progress Note\nAssessment: stable. Plan: follow up in 3 months."
-        )
-        assert self._run(text, monkeypatch)["flag"] == "not_blank_junk"
-
-    def test_a_signed_fax_heavy_page_is_kept(self, monkeypatch):
-        text = "Fax. Fax. Fax. Physician signature: ____"
-        assert self._run(text, monkeypatch)["flag"] == "not_blank_junk"
-
-
-class TestBlankWithTextIsJunk:
-    """A page the model calls Blank that still has text is Junk / Others,
-    unless the text says blank. An empty page stays Blank."""
-
-    @staticmethod
-    def _run(text, monkeypatch):
-        from stages.lib.blank_junk import stage as bj_stage
-
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (bj_stage.CODE_BLANK, "model:blank", 0.97))
-        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
-        return _classify(pages, {1: text}, {1})[0]
-
-    def test_a_header_on_a_blank_page_makes_it_junk_others(self, monkeypatch):
-        row = self._run("Made Up Medical Group  Patient Encounter Record", monkeypatch)
-        assert (row["flag"], row["subtype"]) == ("junk", "Others")
-        assert "no word 'blank'" in row["reason"]
-
-    def test_intentionally_left_blank_stays_blank(self, monkeypatch):
-        assert self._run("This page intentionally left blank", monkeypatch)["flag"] == "blank"
-
-    def test_an_empty_page_stays_blank(self, monkeypatch):
-        assert self._run("   ", monkeypatch)["flag"] == "blank"
-
 
 class TestShortPagesAreJunk:
     """Pass 2: under 20 words and not a signature page -> Junk / Others."""
@@ -874,7 +723,7 @@ class TestShortPagesAreJunk:
     def _run(text, *, signed=False, monkeypatch):
         from stages.lib.blank_junk import stage as bj_stage
 
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (bj_stage.CODE_MAIN, "model:keep", 0.9))
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (classify.CODE_MAIN, "model:keep", 0.9))
         pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
         return _classify(pages, {1: text}, {1}, short_pages=True, signed_ids={1} if signed else set())[0]
 
@@ -898,7 +747,7 @@ class TestShortPagesAreJunk:
     def test_pass_1_does_not_apply_it(self, monkeypatch):
         from stages.lib.blank_junk import stage as bj_stage
 
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (bj_stage.CODE_MAIN, "model:keep", 0.9))
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (classify.CODE_MAIN, "model:keep", 0.9))
         pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
         assert _classify(pages, {1: "made up short"}, {1})[0]["flag"] == "not_blank_junk"
 
@@ -910,7 +759,7 @@ class TestSignedPageIsKept:
     def _run(code_name, *, signed, monkeypatch, text="made up page text " * 10):
         from stages.lib.blank_junk import stage as bj_stage
 
-        code = getattr(bj_stage, code_name)
+        code = getattr(classify, code_name)
         monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (code, "model:junk", 0.95))
         pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
         return _classify(pages, {1: text}, {1}, short_pages=True, signed_ids={1} if signed else set())[0]
@@ -938,7 +787,7 @@ class TestSignedPageIsKept:
     def test_pass_1_applies_it_too(self, monkeypatch):
         from stages.lib.blank_junk import stage as bj_stage
 
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (bj_stage.CODE_LETTER_FAX, "model:junk", 0.95))
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (classify.CODE_LETTER_FAX, "model:junk", 0.95))
         pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
         row = _classify(pages, {1: "Fax cover. Signature: made up"}, {1})[0]
         assert row["flag"] == "not_blank_junk"

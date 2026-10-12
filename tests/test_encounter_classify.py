@@ -24,7 +24,7 @@ from stages.lib.encounter.encounter_classify import (  # noqa: E402
     visit_date,
 )
 
-DEFAULT = "2022-02-02"
+DEFAULT = "2222-02-02"
 
 
 @pytest.fixture(scope="module")

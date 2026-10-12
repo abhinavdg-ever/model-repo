@@ -38,3 +38,38 @@ def test_patient_data_matches_canon():
     score, label = best_header_match("PATIENT DATA", use_minilm=False)
     assert score >= 0.90
     assert "Patient" in label or "patient" in label.lower()
+
+
+def test_export_keeps_the_page_header_and_text_inside_pictures():
+    """Docling's default export drops the furniture layer (the page-header
+    banner with the encounter date) and text inside a picture region."""
+    import pytest
+
+    pytest.importorskip("docling_core")
+    from docling_core.types.doc import DocItemLabel, DoclingDocument
+    from docling_core.types.doc.document import ContentLayer
+
+    from stages.lib.ocr.docling_ocr import export_markdown
+
+    doc = DoclingDocument(name="page")
+    doc.add_text(label=DocItemLabel.PAGE_HEADER, text="Encounter Date: December 03, 2025",
+                 content_layer=ContentLayer.FURNITURE)
+    picture = doc.add_picture()
+    doc.add_text(label=DocItemLabel.TEXT, text="Date of birth 04/05/1993", parent=picture)
+    doc.add_text(label=DocItemLabel.SECTION_HEADER, text="Reason for Visit")
+
+    out = export_markdown(doc)
+    assert out.index("Encounter Date") < out.index("Reason for Visit")
+    assert "Date of birth 04/05/1993" in out
+
+
+def test_export_falls_back_on_an_old_docling_core():
+    from stages.lib.ocr.docling_ocr import export_markdown
+
+    class OldDoc:
+        def export_to_markdown(self, **kwargs):
+            if kwargs:
+                raise TypeError("unexpected keyword")
+            return "body only"
+
+    assert export_markdown(OldDoc()) == "body only"

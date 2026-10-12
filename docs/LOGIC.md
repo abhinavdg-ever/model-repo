@@ -17,7 +17,7 @@ the V1 prototypes. Where the port differs from them, it says so and why.
 5. [Member verification](#5-member-verification) ← the accept/reject decision
 6. [Date of service](#6-date-of-service)
 7. [Page type](#7-page-type)
-   - [Document continuity](#7b-document-continuity) ← Final page type and Final DOS
+   - [Document continuity](#7b-document-continuity) ← documents; Final page type
 8. [Encounter type](#8-encounter-type)
 9. [Chart status](#9-chart-status)
 
@@ -260,13 +260,19 @@ any junk code → `junk` (+ `junk_subtype`), else `not_blank_junk`.
 > blank page is flagged `blank`, never `junk`. Pinned by
 > `tests/test_blank_junk_and_dos.py::test_blank_wins_over_junk_even_though_it_is_in_junk_codes`.
 
-**Signed pages are kept (post-processing, both passes).** A page whose text
-contains the word "signature" (or that the key/value extraction marked
-`signature_present = Y`) is never Blank or Junk: each pass overrules its own
-verdict, and pass 2 also writes a `not_blank_junk` row for a page pass 1 had
-called blank or junk when the signature only shows in the final OCR (the
-highest pass wins). The word is what counts because the extraction skips pages
-already marked blank or junk. A duplicate stays a duplicate.
+**Post-processing (both passes, `blank_junk/postprocess.py`).** After the
+BERT model, in order:
+
+| # | Rule | Result |
+|---|---|---|
+| 1 | The model said Junk, and the page carries `clinical_min_terms` (5) or more distinct `clinical_terms` | Main (kept) |
+| 2 | Main, says "fax", ≥ 4 cover-sheet fields (To:, From:, Fax:, Phone:, Date/Time:, Subject:, …), under 80 words | Junk / Letter/Fax |
+| 3 | The model said Blank, the page has text, and the text does not say "blank" | Junk (no sub-type) |
+| 4 | Pass 2 only: Main with fewer than 20 words, not a signature page | Junk / Others |
+| 5 | The page says "signature", or the key/value extraction found it signed | Main (kept); pass 2 also re-keeps a page pass 1 had called blank or junk |
+| 6 | One junk keyword category — Letter/Fax (`letter_fax` plus the word "fax"), Invoice, Record Request, Instructions, Others (table of contents) — found `forced_junk_min_hits` (3) or more times | Junk of that sub-type, **forced**: nothing overrules it, a signature included |
+
+Terms and the thresholds of rules 1 and 6 live in `junk_keywords_canon.json`.
 
 `junk_subtype` is constrained by a `CHECK` to the six labels the review UI
 renders. Anything else the classifier produces maps to `Others` rather than
@@ -548,110 +554,40 @@ confidence — it reported detection source per field, which is what the UI show
 ## 6. Date of service
 
 **Engine:** `stages/lib/dos/dos_logic.py` · **Stage:** `stages/lib/dos/stage.py` ·
-**Profile:** `keyword-canon/dos_canon.json` (weights, labels, settings —
-reloads on change)
+**Profile:** `keyword-canon/dos_canon.json` (labels, settings — reloads on change)
 
-Every date on every page becomes a candidate. Each candidate is scored. The
-chart is then resolved page by page. Nothing is vetoed: a DOB label or an old
-year is a large negative weight, so a losing date keeps a score that says why
-it lost.
+Per page, the first rule that finds a date wins:
 
-```mermaid
-flowchart TD
-  TXT["Combined text, ===== page ===== markers"] --> A["A. find_candidates()<br/>four date shapes, real days only"]
-  A --> B["B. page_features() + chart_features()<br/>label, position, time stamp, page type, age, cluster, range pair"]
-  B --> C["C. score_candidate()<br/>weighted sum, clamped 0–1"]
-  C --> BEST{"best ≥ DOS_MIN_SCORE?"}
-  BEST -- no --> LLM{"clinical cue<br/>and a client?"}
-  LLM -- yes --> AOAI["extract_dos_range_with_llm()"]
-  LLM -- no --> D
-  AOAI --> D
-  BEST -- yes --> D["D. resolve in page order<br/>own date · non-encounter · default"]
-```
-
-### A. Candidates
-
-`MM/DD/YYYY` or `M/D/YY` (either `/` or `-`), `YYYY-MM-DD`, `Month D, YYYY`,
-`D Month YYYY`. Two-digit years below 50 are 20xx, 50 and above 19xx. Dates
-that are not real days (02/30) are dropped; everything else is kept.
-
-### B. Features
-
-| Feature | Meaning |
-|---|---|
-| `label_text` / `label_class` | Nearest label within 80 chars to the left: `encounter`, `admit`, `discharge`, `birth`, `doc_meta`, `future`, `procedure`, or `none`. A label never reaches past an earlier date. |
-| `label_distance` | Characters between the label and the date |
-| `position`, `edge_position` | Offset ÷ page length; in the first or last 60 words |
-| `has_time` | A clock time beside the date (`03/20/2024 10:15 AM`, `…T10:00`) — the shape of a print/fax stamp |
-| `page_type`, `has_clinical_cue` | `page_classify.keywords.classify()` sub-type (per page); `clinical_cues` |
-| `year_delta` | Candidate year − chart received year (`chart_list.created_at`) |
-| `cluster_size` | Other candidates in the chart within 30 days |
-| `in_range_pair` | Three ways: an admit and a discharge candidate within 200 chars; a date under an encounter label written as a range (`a - b`, `a to b`, `a thru/through b`, later date second); or a key/value range (the extractor's `dos_from` + `dos_to`) |
-
-### C. Score
-
-```
-score = base (0.5) + W[label_class] − 0.002 × label_distance
-      + 0.10 if edge_position (not when has_time)
-      − 0.30 if has_time
-      + 0.10 if has_clinical_cue
-      + 0.05 × min(cluster_size, 3)
-      − 0.35 if year_delta < −DOS_MAX_AGE_YEARS
-```
-
-`W`: encounter +0.40, admit/discharge +0.30, none −0.10, procedure −0.30,
-future −0.40, doc_meta −0.45, birth −0.50. Clamped to [0, 1]. The best
-candidate at or above `DOS_MIN_SCORE` (0.75) is the page's date — the backup when the key/value extraction chose no date (a key/value date always wins). If it is part
-of a range pair, the page gets the range, earlier date as From. An unlabelled
-`a - b` (a lab reference period, say) is not a range.
-
-*Changed 2026-10-12 (behaviour change to the V1 port):* a key/value range
-used to keep only its start date, and a written `a - b` only its first date,
-so From = To. Both now keep the end date. `dos_canon.json` and the extractor's
-`dos/keys.json` gained the labels *dates of service*, *service dates*,
-*service period* and *certification period* (the canon also *cert period*). The chosen score is the
-row's `confidence`.
-
-### D. Resolve
-
-| Page | Page level (extracted) | Document level | `final_dos` |
+| # | Rule | Confidence | `match_type` |
 |---|---|---|---|
-| A date of its own | its date | its date — the current encounter | its date |
-| Non-encounter page type (face sheet, demographics, problem/med/allergy list, vitals, immunization) | its date | the current encounter, never replaced (`non_encounter_page`) | its date |
-| No date of its own | blank | `DOS_DEFAULT_DATE`, confidence 0, `no_date_found`, `is_default` | blank |
+| 1 | **Edge keyword.** A DOS label starting within the first or last `edge_words` (20) words of the page, with a date within `label_reach_chars` (40) after it and only filler words (`label_gap_words`: at, on, of, from, is, time, date, dt) between. An encounter label (Encounter Date, Visit Date, Date of Service, DOS, Service Date, Appointment Date, Exam Date, ...) wins; otherwise Admission Date is **From** and Discharge Date is **To**; a discharge date alone is both. A written range after an encounter label ("DOS: a - b") keeps both ends. Read on the final OCR text; on a page with no Final2 text, then on the Tesseract text (not for handwritten / low-quality pages), because Docling (Final1) can drop the top banner | 0.95 | `edge_keyword` / `edge_keyword_tesseract` / `admit_discharge_pair` |
+| 2 | **Key/value.** The first date the key/value extractor selected for the page (a range keeps its end) | 0.90 | `kv` |
+| 3 | **Azure OpenAI**, when `DOS_LLM_ENABLED`, on pages matching `clinical_cues` (`discharge_cues` asks for admission + discharge) | 0.70 | `llm` |
+| 4 | Nothing: the page has no DOS | 0 | `no_date_found` |
 
-Every page keeps the date found on it. There are no progress-note spans here:
-carrying a document's date to its other pages is the continuity stage's Final
-DOS (see **Document continuity**).
+A word is a whitespace-separated token with a letter or digit, so table pipes
+do not count. Labels are matched overlapping, so "Office Visit  Date of
+Service: 03/14/2024" finds "Date of Service" even though "Visit Date" matches
+first. A label never takes the next field's date ("Visit Date: | DOB:
+01/02/1960" is no DOS).
 
-The profile's page types are sub-type names from `page_taxonomy.json` (a
-generic sub-type has its page type's name), read with the keyword model
-(`page_classify/keywords.py`) because DOS runs before the page-type stage.
+**Extracted vs Final.** This stage writes each page's own date (Extracted).
+The Final DOS is the document's first page's, on every page of it, set by
+`imaging_final` from the continuity documents (§7b). The `doc_dos_*` columns
+are the page's own date, or `DOS_DEFAULT_DATE` (2222-02-02) when it has none.
 
-### Settings (profile)
-
-| Key | Default | Meaning |
-|---|---|---|
-| `DOS_MAX_AGE_YEARS` | 6 | Age penalty applies to dates more than this many years before the received date. Replaces the fixed 2020 cutoff. |
-| `DOS_MIN_SCORE` | 0.75 | Lowest score for a text date, used only when no key/value date exists |
-| `DOS_DEFAULT_DATE` | 2022-02-02 | Delivered when nothing is found. review-ui and `encounter_classify` also know this value. |
-
-`DOS_DEBUG=true` (env) writes every candidate, its features, its score and
-whether it was chosen to `<chart>/debug/<chart>_dos_candidates.csv`. `debug/`
-is not exported.
+`DOS_DEBUG=true` (env) writes every DOS label found at a page's edges, its
+date, which edge and whether it was chosen to
+`<chart>/debug/<chart>_dos_candidates.csv`.
 
 **Writes**
 
 | Target | Columns |
 |---|---|
-| `dos_extraction_results` | `date_of_service_from/to`, `..._doclevel` (single-valued), `dates` (JSONB array of `{seq, date_of_service_from, date_of_service_to, source_keyword, confidence}`), `extraction_method` (`rules`\|`llm`\|`rules+llm`\|`kv`), `confidence`. `date_count` is generated from `dates`. |
+| `dos_extraction_results` | `date_of_service_from/to` (the page's own), `*_doclevel` (own, else the default), `dates`, `confidence`, `extraction_method` |
 | disk | `imaging/<chart>_dos.csv` |
 
-Without Azure OpenAI the stage runs rules-only and stamps
-`extraction_method='rules'` — visible in the data, not silent. "Without" means
-no endpoint, or no usable credential: either an API key or, on a VM with a
-managed identity, an Entra token and no key. Which one was used is in the run
-log (`auth=key` / `auth=entra`); the setting is
+The Azure OpenAI client is keyless-capable: see
 [`AZURE_OPENAI_AUTH`](API.md#azure-openai-key-or-no-key).
 
 ---
@@ -669,11 +605,12 @@ bert_medium → keyword_body → bert_low), then the sub-type, then codability
 from `page_taxonomy.json`. No model installed → keywords only, visible in
 `/health`. Text: Final2 → Final1 → Tesseract.
 
-Across pages (`imaging_final`, the **Final** answer): on the continuity
-stage's documents, an untitled Progress-Note-looking page that continues
-another document on a strong link takes that document's type, and a lab or
-radiology page inside a Progress Note becomes Progress Note / Laboratory Data
-(or Radiology Report). Weak evidence flags the page; it never changes it.
+Across pages (`imaging_final`, the **Final** answer): every page of a
+continuity document takes the **first page's page type**; the sub-type can
+differ (a page whose own type differs keeps it as the sub-type: Progress Note /
+Laboratory Data). Only when the first page is Unknown does a confidence-weighted
+vote decide. Inside a Progress Note, Laboratory Data and Medication List stay
+Non-Codable. A page on a weak link (an undated continue page) is flagged.
 
 **Writes**
 
@@ -688,76 +625,40 @@ radiology page inside a Progress Note becomes Progress Note / Laboratory Data
 
 **Runs:** after page type and DOS (`continuity`, seq 87), on every page that
 is not blank, junk or duplicate. **Decides:** which document each page belongs
-to. **Carries:** the document's first-page page type and DOS to every page in
-it, as the Final value. The page's own page type and DOS stay as their stages
-wrote them; review-ui shows them as Extracted beside Final.
+to. Settings live in `keyword-canon/continuity_canon.json` and reload on change.
 
-Each page is judged against the previous one (blank/junk/duplicate pages are
-passed over). Settings live in `keyword-canon/continuity_canon.json` and
-reload on change.
-
-| Tier | Signal | Effect |
+| Page | Result | `decided_by` |
 |---|---|---|
-| 1 | Printed `Page N of M` (or `pg`) in the header or footer band; the key/value extraction's page number when it chose one | Decides alone: `N+1 of M` continues; page 1, another total, or no step forward starts a new document |
-| 2 | A line repeated in the header band (+5) or footer band (+2); headers / footers that look alike (+2 each); a shared accession (+6), order or visit number (+5), MRN (+1) | Adds to the score |
-| 3 | A matched section header in the top 15% of this page (−6); a signature on the previous page (−3); "continued" (+6) | Adds to the score |
+| First page of the chart, or after a blank/junk page | new document | `first_page` / `blank_junk` |
+| Has a DOS, the same From and To as the open document's | continue (always, even after a signature) | `same_dos` |
+| Has a DOS, a different one | new document | `new_dos` |
+| No DOS, previous page signed | new document | `signature` |
+| No DOS, printed page number follows the previous page's (N → N+1 of the same M) | continue, confirmed — overrides the checks below | `pagination` |
+| No DOS, the previous page's printed number says it was the last ("page N of N") | new document | `page_number_end` |
+| No DOS, looks like a first page: the keyword model's title for a page type other than the previous page's | new document | `first_page_marker` |
+| No DOS, page type changes and the classifier is sure: the chance it is still the previous page's type (its confidence when the types agree, one minus it when they differ) is at most `document_end.max_same_type_probability` (10%) and its confidence in the new type is above `min_new_type_confidence` (70%) | new document | `page_type` |
+| No DOS, the previous page's text stops above `document_end.page_end_max` (60%) of the page height (footer band excluded; needs Final2/Final1 line positions) | new document | `page_end` |
+| No DOS, none of the above | continue | `continue_page` |
 
-Score ≥ 5 continues, ≤ −2 starts a new document. In between is **unknown**:
-the page starts its own document and is flagged for review, so nothing is
-copied onto it on no evidence.
+A duplicate page in between does not break a document. Printed `Page N of M`
+is recorded (`page_no` / `page_total`) and confirms a document's first page;
+on an undated page, consecutive numbers confirm a continue page and "page N of
+N" ends the document (above). Page numbers never split a document.
 
-**Bands come from positions.** The header band is lines whose top is above 10%
-of the page height, the footer band lines whose bottom is below 92%, read from
-the Final2 JSON's line polygons (Final1 words grouped into lines when Final2 is
-absent; first 4 / last 3 text lines when neither exists). Docling's markdown is
-not in top-to-bottom order, so its first lines are not the page header.
-
-**Progress notes.** A document whose first page is a Progress Note stays open
-through pages the signals cannot decide (`decided_by = progress_note`). It
-closes:
-
-* after the page with a signature (a signature block in the text, or
-  `signature_present` from the extraction) — that page is the note's last;
-* before a page the signals or pagination call a new document;
-* before the **next encounter**: a page whose own DOS differs from the note's
-  *and* that carries a visit-opening section header (`encounter_headers`:
-  Office Visit, Progress Note, History and Physical, Chief Complaint, …). This
-  overrides printed pagination, because one EMR printout paginates several
-  visits as one job (53688890: "page 1 of 17" across five office visits). A
-  differing date alone does not close the note: continuation pages carry stray
-  old dates (a 2017 problem-list date inside a 2025 note).
-
-**Final values** (written by the `imaging_final` stage, last in the chain, into
-`imaging_final` with every other field's Final value). Final page type follows
-the continuation rules in [PAGE_CLASSIFICATION.md](PAGE_CLASSIFICATION.md) §6
-(it is not copied from the first page).
-Final DOS = its first page's DOS; when that page has none, the first page in
-the document that has one, and the evidence says so. A continuation page with
-no date of its own shows Extracted DOS NA and the Final DOS of the first page.
-
-**Tuning.** Weights were set on 80 pagination-labelled page pairs from four
-charts (55 continuations, 25 new documents), counting a wrong merge three
-times worse than a wrong split — a merged page takes another document's page
-type and DOS. Without pagination they merge 6 of 25 new documents (the
-original weights merged 11) and split 1 of 55 continuations; 25 pairs are
-left unknown for review. A repeated header line fires on 28% of new documents
-(separate documents from one EMR share the patient banner), so it cannot
-decide alone. Sentence-level signals are not used: "previous page ends without
-punctuation" scored 28% on continuations against 29% on new documents.
-
-**Replaces** three earlier mechanisms that could disagree: the MiniLM /
-mid-sentence tagger (`stages/lib/continuation`), the DOS progress-note span
-(`span_page_types`, `span_override_score`), and the page-type span and
-fill-between (`continue`, `fill_between_families`).
+**Final values** (the `imaging_final` stage): Final page type = the document's
+first page's (sub-type can differ, §7). Final DOS and Final encounter type =
+the **first page's**, on every page; a stand-alone document whose every page is
+a `default_final_dos` type (demographics, registration, growth chart, problem
+list, immunizations) takes 2222-02-02. A document's DOS in review-ui's Doc Summary is its first
+page's.
 
 **Writes**
 
 | Target | Columns |
 |---|---|
-| `page_continuity_results` | `document_seq`, `seq` (page within the document), `position`, `relation`, `decided_by`, `confidence_level`, `score`, `review_required`, `evidence` |
-| `imaging_final` (the `imaging_final` stage) | one row per page: the Final value of every reviewer field; page type, classification and DOS carried from the document, with `page_type_source` / `dos_source` = `document` or `page`; a duplicate page copies the page it duplicates (`duplicate`, `duplicate_of_page_id`). See [CONTINUITY.md](CONTINUITY.md) |
-| `additional_page_details` (written by the key/value stage) | the printed page number and the page's `section_headers` JSON that continuity reads |
-| disk | `imaging/<chart>_continuity.csv`: the same per page, plus the printed `page_no` / `page_total` used, the `section_headers`, the page's own `page_type`, `dos_from`, `dos_to`, and `layout_source` (final2 / final1 / text) |
+| `page_continuity_results` | `document_seq`, `seq` (page within the document), `position`, `relation`, `decided_by`, `confidence_level`, `link_strength` (strong only when every link from the start is a shared DOS), `start_confirmed`, `evidence`; `score` and `review_required` are no longer used, `in_progress_note` is always false |
+| `imaging_final` (the `imaging_final` stage) | one row per page: the Final value of every reviewer field; page type agreed across the document (`page_type_source`), DOS and encounter type the first page's (`dos_source = document`); a duplicate page copies the page it duplicates (`duplicate`, `duplicate_of_page_id`). See [CONTINUITY.md](CONTINUITY.md) |
+| disk | `imaging/<chart>_continuity.csv`: the same per page, plus the printed `page_no` / `page_total`, the `section_headers`, the page's own `page_type`, `dos_from`, `dos_to`, and `layout_source` (final2 / final1 / text) |
 
 ---
 
@@ -877,7 +778,7 @@ v8 uses lifecycle `status` + `current_stage` + `current_pass`, with order in the
 | Member rules + NER | `core-pipeline/stages/lib/member/` |
 | Member driver (ported `run.py`) | `core-pipeline/stages/lib/member/engine.py` |
 | DOS regex + LLM | `core-pipeline/stages/lib/dos/dos_logic.py` |
-| Document continuity, Final page type + DOS | `core-pipeline/stages/lib/continuity/`, `keyword-canon/continuity_canon.json` |
+| Document continuity, Final page type | `core-pipeline/stages/lib/continuity/`, `keyword-canon/continuity_canon.json` |
 | Status derivation | `core-pipeline/db/chart_status.py` |
 | Persistence | `core-pipeline/db/__init__.py` |
 

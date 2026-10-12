@@ -9,7 +9,7 @@ Classifies pages from **existing preliminary OCR** (`ocr/<chart>_prelim.txt`) �
 | **Blank** | Yes (Blank) | Not Available | Empty OCR or &lt; 5 alphanumeric chars; “intentionally blank” |
 | **Cover Page** | Yes (Junk) | Cover Page | Accept / Unaccept / Cover page(s) / Discharge Summary with **&lt; 20 words** |
 | **Main (clinical)** | No | Not Available | Progress note / HPI / meds / vitals / … — **short-circuits before junk rules** so a fax confidentiality footer cannot flip them |
-| **Letter/Fax** | Yes (Junk) | Letter/Fax | Cover letter, fax transmission / facsimile / fax cover; confidentiality notice only when paired with fax language. After the model (`stage.py`, both passes): a kept page that is a fax cover sheet ("fax" + ≥4 cover fields, < 80 words), or says "fax" **≥ 3 times** at any length (`FAX_MENTION_LIMIT`) — unless signed |
+| **Letter/Fax** | Yes (Junk) | Letter/Fax | Cover letter, fax transmission / facsimile / fax cover; confidentiality notice only when paired with fax language. |
 | **Invoice** | Yes (Junk) | Invoice | invoice, amount due, unit price, superbill, remittance, **revenue reconciliation**, … (not bare “price”; weak phrases need ≥2 hits) |
 | **Record Request/Transmittal** | Yes (Junk) | Record Request/Transmittal | request letter; records↔request (any order); attached; transmittal/transmitted; Urgent Request for Records; Your Records requested |
 | **Instructions** | Yes (Junk) | Instructions | “what to send”, provide documentation, please send, … |
@@ -20,6 +20,17 @@ Classifies pages from **existing preliminary OCR** (`ocr/<chart>_prelim.txt`) �
 ### Priority order
 Blank → Cover Page → **clinical Main** → Letter/Fax → Invoice → Record Request → Instructions → Others → Main  
 (then Duplicate is applied across the chart)
+
+## After the model
+
+`postprocess.py`, both passes, in order: (1) model Junk with ≥ 5 distinct
+clinical terms → Main; (2) fax cover sheet (fax + ≥ 4 cover fields, < 80
+words) → Letter/Fax; (3) model Blank with text and no word "blank" → Junk (no
+sub-type); (4) pass 2: < 20 words and not signed → Junk / Others; (5) the word
+"signature" (or a signed page from the extraction) → Main; (6) forced, last:
+one junk keyword category (fax/letter, invoice, record request, instructions,
+table of contents) ≥ 3 times → Junk of that sub-type, even when signed.
+Settings in `../keyword-canon/junk_keywords_canon.json`.
 
 ## Run
 

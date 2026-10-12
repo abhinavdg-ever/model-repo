@@ -329,6 +329,26 @@ def converter_reason() -> Optional[str]:
     return _converter_reason
 
 
+def export_markdown(doc: Any) -> str:
+    """The page's markdown, page header / footer and text inside pictures included.
+
+    Docling's default export keeps only the BODY layer: whatever its layout
+    model labels a page header or footer (the "Patient Name ... Encounter
+    Date" banner) is dropped, and text it found inside a region it called a
+    picture (a shaded demographics table) is skipped. Both carry dates of
+    service, so both are exported. An older docling-core without these
+    arguments falls back to the default export."""
+    try:
+        from docling_core.types.doc.document import ContentLayer
+
+        return doc.export_to_markdown(
+            included_content_layers={ContentLayer.BODY, ContentLayer.FURNITURE},
+            traverse_pictures=True,
+        ) or ""
+    except (ImportError, TypeError):
+        return doc.export_to_markdown() or ""
+
+
 def clean_docling_markdown(text: str) -> str:
     """Strip Docling noise: image placeholders, empty tables, excess blank lines."""
     import re
@@ -795,7 +815,7 @@ def convert_image(image_path: Path, converter: Any | None = None) -> dict[str, A
     result = engine.convert(str(image_path))
     doc = result.document
     words, page_width, page_height = _words_from_docling_result(result)
-    markdown = clean_docling_markdown(doc.export_to_markdown() or "")
+    markdown = clean_docling_markdown(export_markdown(doc))
     candidates = _renorm_headers_for_image(extract_section_headers(doc), image_path)
     section_headers = list(candidates)
     try:

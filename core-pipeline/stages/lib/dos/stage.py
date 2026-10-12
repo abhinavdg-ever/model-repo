@@ -1,23 +1,20 @@
 """Stage: date-of-service extraction.
 
-Runs ``dos_logic.detect_dos_per_page`` over the chart's combined OCR text. The
-driver scores every date on every page and resolves the chart (see the
-dos_logic docstring); this stage feeds it the chart's received date — the
-``chart_list`` row's ``created_at`` — and writes one DB row and one CSV row per
-page.
+Runs ``dos_logic.detect_dos_per_page`` over the chart's combined OCR text with
+the key/value extractor's dates, and writes one DB row and one CSV row per
+page. Per page: a DOS label in the first or last 20 words, else the key/value
+date, else (when enabled) Azure OpenAI — see the dos_logic docstring.
 
-The Azure OpenAI pass is a fallback for clinical pages where no candidate
-clears DOS_MIN_SCORE. When it is not configured every row records
-``extraction_method='rules'``, so a degraded run is visible in the data.
+When Azure OpenAI is not configured every row records
+``extraction_method='rules'`` (or ``kv``), so a degraded run is visible in the data.
 
-With DOS_DEBUG on, every candidate, its features, its score and whether it was
-chosen go to ``<chart>/debug/<chart>_dos_candidates.csv``.
+With DOS_DEBUG on, every DOS label found at a page's edges, its date and
+whether it was chosen go to ``<chart>/debug/<chart>_dos_candidates.csv``.
 """
 from __future__ import annotations
 
 import logging
 import sys
-from datetime import date, datetime
 from typing import Any, Optional
 
 from config import (
@@ -30,8 +27,6 @@ from config import (
 from db import (
     connect,
     get_blank_junk_flags,
-    get_chart,
-    get_page_classification_map,
     get_ocr_texts,
     get_quality_map,
     upsert_dos,
@@ -40,6 +35,7 @@ from db.paths import imaging_csv, write_csv
 from stages._support import (
     BJ_EXCLUDE,
     best_page_text,
+    unwrap_ocr_content,
     mark_completed,
     mark_skipped,
     stage_run,
@@ -53,7 +49,7 @@ _DOS_LIB = CORE_ROOT / "stages" / "lib" / "dos"
 if str(_DOS_LIB) not in sys.path:
     sys.path.insert(0, str(_DOS_LIB))
 
-from dos_logic import Candidate, detect_dos_per_page, to_iso_date  # noqa: E402
+from dos_logic import LabelledDate, detect_dos_per_page, to_iso_date  # noqa: E402
 
 DOS_COLS = [
     "chart_name",
@@ -75,7 +71,7 @@ DOS_COLS = [
 ]
 
 
-CANDIDATE_COLS = ["chart_name", *(f for f in Candidate.__dataclass_fields__ if f != "pair")]
+CANDIDATE_COLS = ["chart_name", "page_name", *LabelledDate.__dataclass_fields__]
 
 
 def _page_method(hit: dict[str, Any], method: str) -> str:
@@ -85,15 +81,6 @@ def _page_method(hit: dict[str, Any], method: str) -> str:
     if source == "kv":
         return "kv"
     return method
-
-
-def _received_date(chart: Optional[dict[str, Any]]) -> Optional[date]:
-    created = (chart or {}).get("created_at")
-    if isinstance(created, datetime):
-        return created.date()
-    if isinstance(created, date):
-        return created
-    return None
 
 
 def _llm_client() -> Optional[Any]:
@@ -131,7 +118,7 @@ def _llm_client() -> Optional[Any]:
 
 def _combined_text(
     conn: Any, chart_id: int, pages: list[dict[str, Any]], eligible: set[int]
-) -> str:
+) -> tuple[str, dict[str, str]]:
     """Rebuild the chart's text with ``===== page =====`` markers.
 
     The reference splits on exactly this marker (``UI_PAGE_MARKER_RE``), and the
@@ -140,13 +127,22 @@ def _combined_text(
 
     Text preference: final2 → final1 → prelim. Prelim is never used for
     handwritten / uncertain / mixed / low-quality pages.
+
+    Also returns the Tesseract text of each page that has no Final2 text
+    (same restriction): the edge rule reads its top and bottom words when the
+    Final1 text has no DOS label there, because Docling can drop the page's
+    top banner (fixed in ``docling_ocr.export_markdown``, but OCR reused with
+    ``skip_ocr`` still has it missing).
     """
+    from db import page_blocks_prelim
+
     prelim = get_ocr_texts(conn, chart_id, "tesseract")
     final1 = get_ocr_texts(conn, chart_id, "docling")
     final2 = get_ocr_texts(conn, chart_id, "azuredocintel")
     quality = get_quality_map(conn, chart_id)
 
     blocks: list[str] = []
+    tesseract: dict[str, str] = {}
     for page in pages:
         page_id = page["id"]
         if page_id in eligible:
@@ -156,10 +152,17 @@ def _combined_text(
                 prelim=prelim.get(page_id),
                 quality_row=quality.get(page_id),
             )
+            # Only without Final2: Final1 (Docling) can drop the top banner.
+            if (
+                not unwrap_ocr_content(final2.get(page_id)).strip()
+                and prelim.get(page_id)
+                and not page_blocks_prelim(quality.get(page_id))
+            ):
+                tesseract[page["page_name"]] = prelim[page_id]
         else:
             text = ""
         blocks.append(f"===== {page['page_name']} =====\n{text.rstrip()}\n")
-    return "\n".join(blocks)
+    return "\n".join(blocks), tesseract
 
 
 def _split_dates(raw: Optional[str]) -> list[str]:
@@ -203,16 +206,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             ]
             mark_skipped(conn, ctx, drop, "blank_junk")
             eligible = set(ctx.todo)
-            text = _combined_text(conn, chart_id, ctx.pages, eligible)
-            received = _received_date(get_chart(conn, chart_id))
-            # The page-type stage runs first: its Extracted sub-type decides
-            # default-date and non-encounter pages.
-            classified = get_page_classification_map(conn, chart_id)
-        page_types = {
-            p["page_name"]: (classified.get(p["id"]) or {}).get("page_subtype") or ""
-            for p in ctx.pages
-            if (classified.get(p["id"]) or {}).get("page_type")
-        }
+            text, tesseract = _combined_text(conn, chart_id, ctx.pages, eligible)
 
         candidates: Optional[list[dict[str, Any]]] = [] if DOS_DEBUG else None
         from stages.lib.extraction.stage import ensure_staging
@@ -247,10 +241,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             text,
             client,
             use_llm=client is not None,
-            received_date=received,
             candidate_log=candidates,
             kv_dates=kv_dates,
-            page_types=page_types,
+            tesseract_texts=tesseract,
         )
 
         by_name = {p["page_name"]: p for p in ctx.pages}

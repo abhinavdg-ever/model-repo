@@ -177,10 +177,9 @@ class ImagingPageResult(BaseModel):
     documentSeq: int | None = None
     documentPosition: str | None = None  # single | first | continue | last
     documentLabel: str | None = None  # "First (Doc 3)", "Continue (Doc 3)", "Last (Doc 3)"
-    continuityRelation: str | None = None  # new_document | continue | unknown
+    continuityRelation: str | None = None  # new_document | continue
     continuityDecidedBy: str | None = None
     continuityEvidence: str | None = None
-    continuityReview: bool | None = None
     # Final values (imaging_final / <chart>_final.csv). On a page inside a
     # document these are its first page's; pageType / isCodeable / dosFrom-To
     # stay the page's own (Extracted).

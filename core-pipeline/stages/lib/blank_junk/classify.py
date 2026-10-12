@@ -23,6 +23,8 @@ CODE_RECORD_REQUEST = 5
 CODE_INSTRUCTIONS = 6
 CODE_OTHERS = 7
 CODE_LETTER_FAX = 8
+# Junk with no sub-type: a page the model called Blank that still has text.
+CODE_JUNK = 9
 
 # Back-compat alias
 CODE_COVER = CODE_COVER_PAGE
@@ -37,6 +39,7 @@ CLASSIFICATION_LABELS = {
     CODE_INSTRUCTIONS: "Instructions",
     CODE_OTHERS: "Others",
     CODE_LETTER_FAX: "Letter/Fax",
+    CODE_JUNK: "Junk",
 }
 
 JUNK_CODES = frozenset(
@@ -48,6 +51,7 @@ JUNK_CODES = frozenset(
         CODE_INSTRUCTIONS,
         CODE_OTHERS,
         CODE_LETTER_FAX,
+        CODE_JUNK,
     }
 )
 

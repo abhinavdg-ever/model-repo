@@ -18,18 +18,21 @@ export type MetricId =
   | "orientation";
 
 /** ``inOverall: false`` = scored, but not part of the page's overall match.
+ * ``binary`` = Match or No Match only, never Partial.
  * ``comingSoon`` = shown greyed as "Coming soon", not in the chart table. */
 export const METRICS: {
   id: MetricId;
   label: string;
   rule: string;
   inOverall?: boolean;
+  binary?: boolean;
   comingSoon?: boolean;
 }[] = [
   {
     id: "member",
     label: "Member Verification",
-    rule: "Two or more of the labelled Name, DOB, and ID match (the only one, when one is labelled)",
+    binary: true,
+    rule: "Exact match on the Name and DOB presence labels: a page is a Match only when the pipeline found (or did not find) the Name and the DOB exactly as the ground truth says. Scored on pages with both labels. Member ID is not scored (no ground truth)",
   },
   {
     id: "dos",
@@ -39,7 +42,8 @@ export const METRICS: {
   {
     id: "blankJunk",
     label: "Blank / Junk",
-    rule: "Blank or junk label matches",
+    binary: true,
+    rule: "Blank / Junk (Yes) or not (No) matches the ground truth. Blank vs junk, and the junk sub-type, do not count: Match or No Match, no Partial",
   },
   {
     id: "pageType",
@@ -54,7 +58,8 @@ export const METRICS: {
   {
     id: "credentials",
     label: "Provider Credentials",
-    rule: "Credentials match (MD, DO, NP…; punctuation and order ignored); some shared is May be",
+    binary: true,
+    rule: "Credentials match (MD, DO, NP…; punctuation and order ignored); some shared also counts as a Match. Match or No Match, no Partial",
   },
   {
     id: "orientation",
@@ -72,11 +77,8 @@ const OVERALL_METRICS = METRICS.filter((metric) => metric.inOverall !== false);
 
 export type Tally = { yes: number; no: number; maybe: number; scored: number };
 
-/** Blank or junk is the positive class. A subtype disagreement still counts as found. */
-/** Counts for one "Yes" class: true / false positives and negatives. */
-/** ``tpPartial``: the true positives that were only partly right (counted in
- * ``tp`` too). Recall gives each of them 0.5, like Partial in the donut. */
-export type ClassRates = { tp: number; tpPartial: number; fp: number; fn: number; tn: number };
+/** Counts for Class 1 (the "Yes" class): true / false positives and negatives. */
+export type ClassRates = { tp: number; fp: number; fn: number; tn: number };
 
 /** Charts whose last run is before this date are left out of the report. */
 export const MIN_LAST_RUN = "2026-10-12";
@@ -95,17 +97,16 @@ export type ChartAccuracy = {
   lastVerifiedAt?: string | null;
   metrics: Record<MetricId, Tally>;
   overall: Tally;
+  /** Class 1 = a blank or junk page. */
   blankJunkRates: ClassRates;
-  /** Blank / Junk scored on the pages the ground truth calls blank or junk only. */
-  blankJunkYes: Tally;
   /** Orientation scored on the pages the ground truth says are rotated (not 0). */
   orientationNonZero: Tally;
-  /** "Rotated" = Yes: recall / precision of finding turned pages. */
+  /** Class 1 = a rotated page (not 0°). */
   orientationRates: ClassRates;
-  /** "Yes" class = the member's name / DOB / ID is on the page. */
+  /** Class 1 = both the member's Name and DOB are on the page. */
   memberRates: ClassRates;
-  /** Member Verification scored on the pages the ground truth says carry the member only. */
-  memberYes: Tally;
+  /** Class 1 = the page carries a provider signature (credentials). */
+  credentialsRates: ClassRates;
 };
 
 const EMPTY_SECTIONS: ImagingSectionsProcessed = {
@@ -126,18 +127,14 @@ function emptyTally(): Tally {
 }
 
 function emptyRates(): ClassRates {
-  return { tp: 0, tpPartial: 0, fp: 0, fn: 0, tn: 0 };
+  return { tp: 0, fp: 0, fn: 0, tn: 0 };
 }
 
-function blankOrJunkPositive(label: string): boolean {
-  return label.trim().toLowerCase().startsWith("yes");
-}
-
-/** A page the ground truth calls blank or junk: Match, Partial (other sub-type)
- * or No Match. Pages the pipeline has not judged yet are left out. */
-function addBlankJunkYes(tally: Tally, bits: GtBit[]): void {
-  if (!labeled(bits) || !blankOrJunkPositive(bits[0].label) || bits[0].mark === "unknown") return;
-  add(tally, grade(bits));
+function addRates(rates: ClassRates, expected: boolean, predicted: boolean): void {
+  if (expected && predicted) rates.tp += 1;
+  else if (expected) rates.fn += 1;
+  else if (predicted) rates.fp += 1;
+  else rates.tn += 1;
 }
 
 /** 0..359 from "270", "270°" or "-90"; null when it is not a number. */
@@ -166,68 +163,37 @@ function addOrientationRates(
   const expectedTurn = quarterTurn(bits[0].label);
   const actualTurn = quarterTurn(angle);
   if (expectedTurn === null || actualTurn === null) return;
-  const expected = expectedTurn !== 0;
-  const predicted = actualTurn !== 0;
-  if (expected && predicted) rates.tp += 1;
-  else if (expected) rates.fn += 1;
-  else if (predicted) rates.fp += 1;
-  else rates.tn += 1;
+  addRates(rates, expectedTurn !== 0, actualTurn !== 0);
 }
 
-function addBlankJunk(rates: ClassRates, bits: GtBit[]): void {
-  if (!labeled(bits)) return;
-  const bit = bits[0];
-  const expected = blankOrJunkPositive(bit.label);
-  if (bit.mark === "match" || bit.mark === "partial") {
-    if (expected) {
-      rates.tp += 1;
-      // Found, but as the other of blank / junk.
-      if (bit.mark === "partial") rates.tpPartial += 1;
-    } else rates.tn += 1;
-    return;
-  }
-  if (expected) rates.fn += 1;
-  else if (bit.mark === "mismatch") rates.fp += 1;
+/** Blank / junk as Yes / No: blank vs junk and the junk sub-type do not count.
+ * A page the pipeline has not judged yet is left out. */
+function blankJunkCall(bits: GtBit[]): { expected: boolean; predicted: boolean } | null {
+  if (!labeled(bits) || bits[0].mark === "unknown") return null;
+  const expected = bits[0].label.trim().toLowerCase().startsWith("yes");
+  // "partial" = both sides say Yes, as the other of blank / junk.
+  const right = bits[0].mark === "match" || bits[0].mark === "partial";
+  return { expected, predicted: right ? expected : !expected };
 }
 
-/** A page the ground truth says carries the member (any labelled name, DOB or
- * ID is Yes): the page's Member Verification verdict. Fields the member stage
- * did not run on are left out, as in ``addMember``. */
-function addMemberYes(
-  tally: Tally,
-  fields: Array<[string | null | undefined, GtBit[]]>,
-  verdict: Verdict | null,
-): void {
-  const present = fields.some(
-    ([label, bits]) => yesNo(label) === "yes" && bits.length > 0 && bits[0].mark !== "unknown",
-  );
-  if (present) add(tally, verdict);
-}
-
-/** Member presence as a Yes / No class. A page is positive in the ground truth
- * when any labelled member field (name, DOB, ID) is Yes, and predicted positive
- * when the pipeline found any of those labelled fields. Unknown fields (the
- * member stage did not run) are left out. A found page whose Member
- * Verification is not a Match is a partial true positive (0.5 in recall). */
-function addMember(
-  rates: ClassRates,
-  fields: Array<[string | null | undefined, GtBit[]]>,
-  verdict: Verdict | null,
-): void {
-  const scored = fields.filter(
-    ([label, bits]) => yesNo(label) != null && bits.length > 0 && bits[0].mark !== "unknown",
-  );
-  if (scored.length === 0) return;
-  const expected = scored.some(([label]) => yesNo(label) === "yes");
-  const predicted = scored.some(
-    ([label, bits]) => (yesNo(label) === "yes") === (bits[0].mark === "match"),
-  );
-  if (expected && predicted) {
-    rates.tp += 1;
-    if (verdict !== "yes") rates.tpPartial += 1;
-  } else if (expected) rates.fn += 1;
-  else if (predicted) rates.fp += 1;
-  else rates.tn += 1;
+/** Name and DOB presence: what the ground truth says and what the pipeline
+ * found, for each. Null unless both are labelled Yes / No and the member stage ran. */
+function memberCall(
+  name: [string | null | undefined, GtBit[]],
+  dob: [string | null | undefined, GtBit[]],
+): { expected: [boolean, boolean]; predicted: [boolean, boolean] } | null {
+  const sides = [name, dob].map(([label, bits]) => {
+    const expected = yesNo(label);
+    if (expected === null || !labeled(bits) || bits[0].mark === "unknown") return null;
+    // "match" = the pipeline found it exactly when the ground truth says Yes.
+    const found = (expected === "yes") === (bits[0].mark === "match");
+    return { expected: expected === "yes", found };
+  });
+  if (sides[0] === null || sides[1] === null) return null;
+  return {
+    expected: [sides[0].expected, sides[1].expected],
+    predicted: [sides[0].found, sides[1].found],
+  };
 }
 
 function add(tally: Tally, verdict: Verdict | null) {
@@ -281,21 +247,16 @@ function finalOrExtracted(final: Verdict | null, extracted: Verdict | null): Ver
   return "no";
 }
 
-function idKey(value: string | null | undefined): string {
-  return (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
 function pageScores(
   page: ImagingPageResult,
   sections: ImagingSectionsProcessed,
-  manifestMemberId: string | null | undefined,
 ): {
   scores: Record<MetricId, Verdict | null>;
-  blankJunk: GtBit[];
+  blankJunk: ReturnType<typeof blankJunkCall>;
   rotation: GtBit[];
   /** The metrics a page is held to: all six, or five on a blank / junk page. */
   applicable: typeof METRICS;
-  member: Array<[string | null | undefined, GtBit[]]>;
+  member: ReturnType<typeof memberCall>;
 } {
   const parts = splitPageType(page.pageType);
   const input = {
@@ -339,27 +300,17 @@ function pageScores(
     dosTo: finalTo || null,
   });
 
-  // A labelled Member ID is checked against the page; otherwise the extracted
-  // id is compared with the manifest, but only alongside a labelled name or DOB.
-  const extractedId = idKey(page.memberId);
-  const expectedId = idKey(manifestMemberId);
-  const checks: Verdict[] = [];
-  if (labeled(bits.memberName)) checks.push(grade(bits.memberName));
-  if (labeled(bits.memberDob)) checks.push(grade(bits.memberDob));
-  if (labeled(bits.memberId)) {
-    checks.push(grade(bits.memberId));
-  } else if (checks.length > 0 && extractedId && expectedId) {
-    checks.push(extractedId === expectedId ? "yes" : "no");
-  }
-  const hits = checks.filter((item) => item === "yes").length;
-  const member: Verdict | null =
-    checks.length === 0
-      ? null
-      : hits >= Math.min(2, checks.length)
-        ? "yes"
-        : checks.some((item) => item === "maybe") && checks.every((item) => item !== "no")
-          ? "maybe"
-          : "no";
+  // Exact match on Name and DOB presence; Member ID has no ground truth.
+  const memberCalls = memberCall(
+    [page.groundTruth?.memberName, bits.memberName],
+    [page.groundTruth?.memberDob, bits.memberDob],
+  );
+  const member: Verdict | null = memberCalls
+    ? memberCalls.expected.every((value, index) => value === memberCalls.predicted[index])
+      ? "yes"
+      : "no"
+    : null;
+  const blankJunkCalls = blankJunkCall(bits.blankJunk);
 
   const dos = finalOrExtracted(dosVerdict(finalBits), dosVerdict(bits));
 
@@ -379,26 +330,24 @@ function pageScores(
     scores: {
       member,
       dos,
-      blankJunk: single(bits.blankJunk),
+      blankJunk: blankJunkCalls
+        ? blankJunkCalls.expected === blankJunkCalls.predicted ? "yes" : "no"
+        : null,
       pageType: blankOrJunk
         ? null
         : finalOrExtracted(single(finalBits.pageType), single(bits.pageType)),
       codeable: finalOrExtracted(single(finalBits.codeable), single(bits.codeable)),
-      credentials,
+      credentials: credentials === "maybe" ? "yes" : credentials,
       // An angle that is not a quarter turn, or a page the rotation stage did not run on, is
       // not scored (it is not a miss).
       orientation: bits.rotation[0]?.mark === "unknown" ? null : single(bits.rotation),
     },
-    blankJunk: bits.blankJunk,
+    blankJunk: blankJunkCalls,
     rotation: bits.rotation,
     applicable: blankOrJunk
       ? OVERALL_METRICS.filter((metric) => metric.id !== "pageType")
       : OVERALL_METRICS,
-    member: [
-      [page.groundTruth?.memberName, bits.memberName],
-      [page.groundTruth?.memberDob, bits.memberDob],
-      [page.groundTruth?.memberId, bits.memberId],
-    ] as Array<[string | null | undefined, GtBit[]]>,
+    member: memberCalls,
   };
 }
 
@@ -449,6 +398,19 @@ function credentialsVerdict(
   return shared > 0 ? "maybe" : "no";
 }
 
+/** Provider signature as Yes / No: the ground truth names credentials (or says
+ * Yes), or says No / NA; the pipeline found credentials or not. A blank
+ * ground-truth cell is not scored. */
+function signatureCall(
+  expected: string | null | undefined,
+  actual: string | null | undefined,
+): { expected: boolean; predicted: boolean } | null {
+  const folded = (expected ?? "").trim().toLowerCase();
+  if (!folded) return null;
+  const absent = yesNo(folded) === "no" || ["na", "n/a", "not found", "none"].includes(folded);
+  return { expected: !absent, predicted: credentialTokens(actual).size > 0 };
+}
+
 function yesNo(value: string | null | undefined): "yes" | "no" | null {
   const folded = (value ?? "").trim().toLowerCase();
   if (folded === "yes" || folded === "y" || folded === "true") return "yes";
@@ -467,23 +429,31 @@ export function scoreChart(
     Tally
   >;
   const blankJunkRates = emptyRates();
-  const blankJunkYes = emptyTally();
   const orientationNonZero = emptyTally();
   const orientationRates = emptyRates();
   const memberRates = emptyRates();
-  const memberYes = emptyTally();
+  const credentialsRates = emptyRates();
   const overall = emptyTally();
   for (const page of doc.pages) {
     if (!hasGroundTruth(page.groundTruth)) continue;
-    const scored = pageScores(page, sections, doc.manifest?.memberId);
+    const scored = pageScores(page, sections);
     for (const metric of METRICS) add(metrics[metric.id], scored.scores[metric.id]);
     add(overall, overallVerdict(scored.scores, scored.applicable));
-    addBlankJunk(blankJunkRates, scored.blankJunk);
-    addBlankJunkYes(blankJunkYes, scored.blankJunk);
+    if (scored.blankJunk) {
+      addRates(blankJunkRates, scored.blankJunk.expected, scored.blankJunk.predicted);
+    }
     addOrientationNonZero(orientationNonZero, scored.rotation);
     addOrientationRates(orientationRates, scored.rotation, page.orientationAngle);
-    addMember(memberRates, scored.member, scored.scores.member);
-    addMemberYes(memberYes, scored.member, scored.scores.member);
+    if (scored.member) {
+      // Class 1: both Name and DOB on the page.
+      addRates(
+        memberRates,
+        scored.member.expected.every(Boolean),
+        scored.member.predicted.every(Boolean),
+      );
+    }
+    const signature = signatureCall(page.groundTruth?.providerSignature, page.providerCredentials);
+    if (signature) addRates(credentialsRates, signature.expected, signature.predicted);
   }
   return {
     chartId,
@@ -491,11 +461,10 @@ export function scoreChart(
     metrics,
     overall,
     blankJunkRates,
-    blankJunkYes,
     orientationNonZero,
     orientationRates,
     memberRates,
-    memberYes,
+    credentialsRates,
   };
 }
 
@@ -503,7 +472,6 @@ export function sumRates(rows: ClassRates[]): ClassRates {
   const total = emptyRates();
   for (const row of rows) {
     total.tp += row.tp;
-    total.tpPartial += row.tpPartial;
     total.fp += row.fp;
     total.fn += row.fn;
     total.tn += row.tn;
@@ -521,13 +489,18 @@ export function formatPrecision(rates: ClassRates): string {
 }
 
 export function formatRecall(rates: ClassRates): string {
-  // A partly right catch counts 0.5, as Partial does in the donut.
-  return ratePercent(rates.tp - 0.5 * rates.tpPartial, rates.tp + rates.fn);
+  return ratePercent(rates.tp, rates.tp + rates.fn);
 }
 
-/** Share of pages where the Yes / No call was right: (TP + TN) / all. */
-export function formatClassAccuracy(rates: ClassRates): string {
-  return ratePercent(rates.tp + rates.tn, rates.tp + rates.tn + rates.fp + rates.fn);
+/** Accuracy on the Yes (Class 1) pages: the share of the ground truth's Yes
+ * pages the pipeline called Yes, TP / (TP + FN). */
+export function formatYesAccuracy(rates: ClassRates): string {
+  return ratePercent(rates.tp, rates.tp + rates.fn);
+}
+
+/** F1 = 2 × Precision × Recall / (Precision + Recall) = 2TP / (2TP + FP + FN). */
+export function formatF1(rates: ClassRates): string {
+  return ratePercent(2 * rates.tp, 2 * rates.tp + rates.fp + rates.fn);
 }
 
 export function sumTallies(rows: Tally[]): Tally {
@@ -541,7 +514,8 @@ export function sumTallies(rows: Tally[]): Tally {
   return total;
 }
 
-export function formatDistribution(tally: Tally): string {
+export function formatDistribution(tally: Tally, binary = false): string {
   if (tally.scored === 0) return "—";
+  if (binary) return `Match ${tally.yes} · No Match ${tally.no}`;
   return `Match ${tally.yes} · Partial ${tally.maybe} · No Match ${tally.no}`;
 }

@@ -1,12 +1,12 @@
 """Stage: document continuity → ``page_continuity_results``.
 
-Runs after page type and DOS, because a progress note stays open until its
-signature or the next date of service, and a document's start is confirmed by
-the keyword model's title hit on it. ``link_strength`` (strong only when every
-link from the start is printed evidence) and ``start_confirmed`` feed the
-continuation rules in ``imaging_final``. It writes only the grouping; the
-values a document's first page carries to the rest (Final page type and DOS)
-are written by the ``imaging_final`` stage, with every other Final value.
+Runs after page type and DOS, because pages sharing a date of service are one
+document and an undated page's document ends on a signature, a page-type
+change or text stopping mid-page (see ``engine``). ``link_strength`` (strong
+only when every link from the start is a shared DOS) and ``start_confirmed``
+feed the page-type continuation rules in ``imaging_final``. It writes only the
+grouping; Final values are written by the ``imaging_final`` stage. Final DOS
+is each page's own.
 
 Also writes ``imaging/<chart>_continuity.csv`` for review-ui Local Mode.
 """
@@ -47,11 +47,8 @@ CONTINUITY_COLS = [
     "relation",
     "link_strength",
     "start_confirmed",
-    "in_progress_note",
     "decided_by",
     "confidence",
-    "score",
-    "review_required",
     "page_no",
     "page_total",
     "page_type",
@@ -131,6 +128,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     section_headers=headers,
                     page_type=kind.get("page_type") or "",
                     page_subtype=kind.get("page_subtype") or "",
+                    page_confidence=(
+                        float(kind["confidence"]) if kind.get("confidence") is not None else None
+                    ),
                     title_hit=bool(kind.get("keyword_title_hit")),
                     dos_from=_iso(page_dos.get("date_of_service_from")),
                     dos_to=_iso(page_dos.get("date_of_service_to")),
@@ -166,11 +166,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "relation": row["relation"],
                         "link_strength": row["link_strength"] or "",
                         "start_confirmed": "y" if row["start_confirmed"] else ("n" if row["relation"] else ""),
-                        "in_progress_note": "y" if row["in_progress_note"] else ("n" if row["relation"] else ""),
                         "decided_by": row["decided_by"],
                         "confidence": row["confidence_level"],
-                        "score": "" if row["score"] is None else row["score"],
-                        "review_required": "y" if row["review_required"] else "n",
                         "page_no": row["page_no"] or "",
                         "page_total": row["page_total"] or "",
                         "page_type": row["page_type"],
@@ -185,16 +182,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 )
 
         path = write_csv(imaging_csv(ctx.chart_name, "continuity"), CONTINUITY_COLS, csv_rows)
-        review = sum(1 for row in rows if row["review_required"])
         logger.info(
-            "continuity chart=%s pages=%d documents=%d review=%d → %s",
-            ctx.chart_name, len(rows), documents, review, path,
+            "continuity chart=%s pages=%d documents=%d → %s",
+            ctx.chart_name, len(rows), documents, path,
         )
         return {
             "chart_id": chart_id,
             "continuity_csv": str(path),
             "documents": documents,
-            "review_required": review,
             "pages_done": ctx.done,
             "skipped": ctx.skipped,
         }

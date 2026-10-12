@@ -1,47 +1,41 @@
-"""Which document each page belongs to, and the values its pages share.
+"""Which document each page belongs to.
 
-Every page is judged against the previous page (blank, junk and duplicate
-pages are passed over). Three tiers, in order, from ``continuity_canon.json``:
+Pages are taken in order (blank, junk and duplicate pages are passed over and
+belong to no document). Each page is judged against the open document:
 
-  1. Printed pagination ("Page 3 of 7") in the header or footer decides on its
-     own: the next number of the same total continues; page 1, a different
-     total, or a number that does not step forward starts a new document.
-  2. Page furniture: a line repeated in the header or footer band of both
-     pages, headers or footers that look the same, a shared accession, order
-     or visit number. These add to a score.
-  3. Structure: a title at the top of this page or a signature on the previous
-     one subtracts; a "continued" marker adds.
+  * A page with a date of service of its own (the DOS stage's Extracted DOS)
+    joins the open document when the dates are the same, From and To, and
+    starts a new document when they differ. Same-DOS pages are always one
+    document.
+  * A page without a date is a continue page. It joins the open document
+    unless the document ended on the previous page:
+      1. the previous page carries a signature, or its printed page number
+         says it was the last ("page N of N");
+      2. the page type changes, and the page classifier is sure of it: the
+         probability that this page is the previous page's type is at most
+         ``max_same_type_probability`` (10%; its own confidence when the
+         types agree, one minus it when they differ) and its confidence in
+         the new type is above ``min_new_type_confidence`` (70%);
+      3. the previous page's text stops in the middle of the page: its last
+         body line (footer band excluded) ends above ``page_end_max`` of the
+         page height. Needs line positions from the OCR JSON;
+      4. this page looks like a first page: the keyword model's title for a
+         page type other than the previous page's.
+    Printed page numbers never split a document: they only end one ("page N
+    of N") or confirm a continue page — an undated page whose number follows
+    the previous page's (N -> N+1 of the same M) continues whatever the four
+    checks say.
+  * A blank or junk page in between always ends the document before it.
 
-A score at ``continue_at`` or above continues, at ``new_document_at`` or below
-starts a new document, and anything between is unknown. An unknown page starts
-its own document and is flagged for review, so no value is copied onto it on
-no evidence.
-
-Two breakers come first: a blank or junk page between two pages ends the
-document before it, and a page with a signature is always its document's last
-page (whatever its printed page numbers say).
-
-A document whose first page is a progress note stays open through pages the
-signals cannot decide. It closes after the page with the signature, before a
-page the signals or the pagination call a new document, and before the next
-encounter: a page with its own, different date of service that carries a
-visit-opening section header. The next encounter closes the note even while
-printed pagination continues, because one EMR printout paginates several
-visits as a single job.
-
-A document of two or more pages that opens like a progress note (first page
-a Progress Note, or carrying a visit-opening header such as Chief Complaint /
-HPI) and closes with a signature is marked ``in_progress_note``; the Final
-step makes each of its pages Progress Note, with the page's own type as the
-sub-type.
-
-Each document's first page sets the Final page type and the Final date of
-service of every page in it. When the first page has no date, the first page
-in the document that has one does, and the evidence says so.
+Every page of a document takes the first page's page type (the sub-type can
+differ), date of service and encounter type as its Final values
+(``document_finals``, used by ``imaging_final``). A stand-alone document whose
+every page is a non-visit type (``default_final_dos``: demographics,
+registration, growth chart, problem list, immunizations) takes
+DOS_DEFAULT_DATE instead. Each page's Extracted values are untouched.
 """
 from __future__ import annotations
 
-import difflib
 import re
 from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
@@ -70,6 +64,8 @@ class PageInput:
     section_headers: list[dict[str, Any]] = field(default_factory=list)
     page_type: str = ""
     page_subtype: str = ""
+    # The page classifier's confidence in ``page_type``, in [0, 1].
+    page_confidence: Optional[float] = None
     # The keyword model found a title term in the page's title zone.
     title_hit: bool = False
     dos_from: str = ""
@@ -87,13 +83,16 @@ class PageInput:
     def located(self) -> bool:
         return any(line.top is not None for line in self.lines)
 
+    @property
+    def dos(self) -> tuple[str, str]:
+        return (self.dos_from, self.dos_to or self.dos_from) if self.dos_from else ("", "")
+
 
 @dataclass(frozen=True)
 class Verdict:
-    relation: str  # new_document | continue | unknown
-    decided_by: str  # first_page | blank_junk | signature | pagination | signals | progress_note
-    confidence_level: str  # high | medium | low
-    score: Optional[float]
+    relation: str  # new_document | continue
+    decided_by: str  # first_page | blank_junk | same_dos | new_dos | pagination | signature | page_number_end | first_page_marker | page_type | page_end | continue_page
+    confidence_level: str  # high | medium
     evidence: str
 
 
@@ -106,33 +105,17 @@ class Rules:
     head_lines: int
     foot_lines: int
     text_band_fraction: float
-    min_line_chars: int
-    similarity_threshold: float
-    fingerprint: dict[str, float]
-    identity: dict[str, re.Pattern]
-    identity_weights: dict[str, float]
-    title_top: float
-    continued: re.Pattern
-    structure: dict[str, float]
-    continue_at: float
-    new_document_at: float
-    open_page_types: frozenset[str]
-    encounter_headers: frozenset[str]
-    envelope_min_pages: int = 2
-    envelope_page_types: frozenset[str] = frozenset()
-    envelope_headers: frozenset[str] = frozenset()
-    # Page types / sub-types (casefolded) whose document takes the default Final DOS.
+    page_end_max: float
+    max_same_type_probability: float
+    min_new_type_confidence: float
+    # Page types / sub-types (casefolded) whose stand-alone document takes the default Final DOS.
     default_dos_types: frozenset[str] = frozenset()
 
 
 def _build(data: dict[str, Any]) -> Rules:
     pag = data["pagination"]
     bands = data["bands"]
-    fp = data["fingerprint"]
-    ident = data["identity"]
-    struct = data["structure"]
-    decision = data["decision"]
-    envelope = data.get("progress_note_envelope") or {}
+    end = data["document_end"]
     return Rules(
         pagination=tuple(
             re.compile(p, re.IGNORECASE) for p in [*pag["patterns"], pag["bare_pattern"]]
@@ -143,25 +126,9 @@ def _build(data: dict[str, Any]) -> Rules:
         head_lines=int(bands["head_lines"]),
         foot_lines=int(bands["foot_lines"]),
         text_band_fraction=float(bands["text_band_fraction"]),
-        min_line_chars=int(fp["min_line_chars"]),
-        similarity_threshold=float(fp["similarity_threshold"]),
-        fingerprint={k: float(v) for k, v in fp["weights"].items()},
-        identity={k: re.compile(v, re.IGNORECASE) for k, v in ident["patterns"].items()},
-        identity_weights={k: float(v) for k, v in ident["weights"].items()},
-        title_top=float(struct["title_top"]),
-        continued=re.compile(struct["continued_pattern"], re.IGNORECASE),
-        structure={k: float(v) for k, v in struct["weights"].items()},
-        continue_at=float(decision["continue_at"]),
-        new_document_at=float(decision["new_document_at"]),
-        open_page_types=frozenset(data["open_until_signature"]["page_types"]),
-        encounter_headers=frozenset(
-            h.casefold() for h in data["open_until_signature"]["encounter_headers"]
-        ),
-        envelope_min_pages=int(envelope.get("min_pages", 2)),
-        envelope_page_types=frozenset(envelope.get("opening_page_types") or ()),
-        envelope_headers=frozenset(
-            h.casefold() for h in envelope.get("opening_headers") or ()
-        ),
+        page_end_max=float(end["page_end_max"]),
+        max_same_type_probability=float(end["max_same_type_probability"]),
+        min_new_type_confidence=float(end["min_new_type_confidence"]),
         default_dos_types=frozenset(
             t.casefold() for t in (data.get("default_final_dos") or {}).get("page_types") or ()
         ),
@@ -225,119 +192,83 @@ def pagination(page: PageInput, rules: Rules) -> Optional[tuple[int, int]]:
     return None
 
 
-def identity(text: str, rules: Rules) -> dict[str, str]:
-    found = {}
-    for key, pattern in rules.identity.items():
-        match = pattern.search(text or "")
-        if match:
-            found[key] = match.group(1).strip().lower()
-    return found
+# --- where a document ends ------------------------------------------------------
 
 
-def has_title(page: PageInput, rules: Rules) -> bool:
-    """A matched section header near the top. Unmatched header candidates do
-    not count: any bold line ("Respiratory:") is one."""
-    return any(
-        h.get("matched_canonical") and h.get("top") is not None and float(h["top"]) < rules.title_top
-        for h in page.section_headers
-    )
+def body_end(page: PageInput, rules: Rules) -> Optional[float]:
+    """Where the page's text stops (bottom of its last line above the footer
+    band), as a fraction of the page height; None without line positions."""
+    bottoms = [
+        l.bottom for l in page.lines
+        if l.top is not None and l.bottom is not None and l.top < rules.foot_bottom
+    ]
+    return max(bottoms) if bottoms else None
 
 
-# --- one pair -----------------------------------------------------------------
+def same_type_probability(previous: PageInput, current: PageInput) -> Optional[float]:
+    """How likely ``current`` is the previous page's type, from the classifier's
+    confidence in its own answer; None when either type or the confidence is
+    missing."""
+    if not previous.page_type or not current.page_type or current.page_confidence is None:
+        return None
+    confidence = float(current.page_confidence)
+    return confidence if current.page_type == previous.page_type else 1.0 - confidence
 
 
-def judge(previous: PageInput, current: PageInput, rules: Rules) -> Verdict:
-    """Does ``current`` continue ``previous``'s document?"""
+def first_page_marker(previous: PageInput, current: PageInput) -> str:
+    """Why ``current`` looks like a document's first page ('' when it does not):
+    a title for a page type other than the previous page's."""
+    if current.title_hit and current.page_type and current.page_type != previous.page_type:
+        return f"{current.page_type} title"
+    return ""
+
+
+def consecutive_pages(previous: PageInput, current: PageInput, rules: Rules) -> str:
+    """'page N->N+1' when the printed numbers follow on (same total), else ''."""
     before, now = pagination(previous, rules), pagination(current, rules)
-    if now and now[0] == 1 and before != now:
-        return Verdict("new_document", "pagination", "high", None, f"page 1 of {now[1]}")
     if before and now and before[1] == now[1] and now[0] == before[0] + 1:
-        return Verdict(
-            "continue", "pagination", "high", None, f"page {before[0]}->{now[0]}"
-        )
-    if before and now:
-        return Verdict(
-            "new_document", "pagination", "high", None,
-            f"pagination resets ({before[0]}/{before[1]} -> {now[0]}/{now[1]})",
-        )
+        return f"page {before[0]}->{now[0]} of {now[1]}"
+    return ""
 
-    score, why = 0.0, []
-    w = rules.fingerprint
-    big = lambda lines: {l for l in lines if len(l) >= rules.min_line_chars}  # noqa: E731
-    look_alike = lambda a, b: (  # noqa: E731
-        bool(a) and bool(b)
-        and difflib.SequenceMatcher(None, " ".join(a), " ".join(b)).ratio()
-        > rules.similarity_threshold
-    )
-    head_a, head_b = head(previous, rules), head(current, rules)
-    foot_a, foot_b = foot(previous, rules), foot(current, rules)
-    if big(head_a) & big(head_b):
-        score += w["repeated_head_line"]
-        why.append("repeated header line")
-    if big(foot_a) & big(foot_b):
-        score += w["repeated_foot_line"]
-        why.append("repeated footer line")
-    if look_alike(head_a, head_b):
-        score += w["head_looks_the_same"]
-        why.append("header looks the same")
-    if look_alike(foot_a, foot_b):
-        score += w["foot_looks_the_same"]
-        why.append("footer looks the same")
 
-    ids_a, ids_b = identity(previous.text, rules), identity(current.text, rules)
-    for key in sorted(ids_a.keys() & ids_b.keys()):
-        if ids_a[key] == ids_b[key]:
-            score += rules.identity_weights.get(key, 0.0)
-            why.append(f"same {key.replace('_', ' ')}")
-
-    s = rules.structure
-    if has_title(current, rules):
-        score += s["current_has_title"]
-        why.append("page has its own title")
+def document_ended(previous: PageInput, current: PageInput, rules: Rules) -> Optional[Verdict]:
+    """The reason the previous page was its document's last, or None."""
     if previous.signed:
-        score += s["previous_had_signature"]
-        why.append("previous page was signed")
-    if rules.continued.search("\n".join(head_b) or current.text[:300]):
-        score += s["current_has_continued_marker"]
-        why.append("marked continued")
-
-    if score >= rules.continue_at:
-        relation, level = "continue", "medium"
-    elif score <= rules.new_document_at:
-        relation, level = "new_document", "medium"
-    else:
-        relation, level = "unknown", "low"
-    return Verdict(relation, "signals", level, round(score, 1), "; ".join(why) or "no signal")
+        return Verdict("new_document", "signature", "high", "the previous page was signed")
+    printed = pagination(previous, rules)
+    if printed and printed[0] == printed[1]:
+        return Verdict(
+            "new_document", "page_number_end", "high",
+            f"the previous page was the last (page {printed[0]} of {printed[1]})",
+        )
+    marker = first_page_marker(previous, current)
+    if marker:
+        return Verdict("new_document", "first_page_marker", "medium", f"looks like a first page: {marker}")
+    chance = same_type_probability(previous, current)
+    if (
+        chance is not None
+        and round(chance, 4) <= rules.max_same_type_probability
+        and float(current.page_confidence or 0) > rules.min_new_type_confidence
+    ):
+        return Verdict(
+            "new_document", "page_type", "medium",
+            f"page type changes ({previous.page_type} -> {current.page_type}, "
+            f"{chance:.0%} it is still {previous.page_type})",
+        )
+    end = body_end(previous, rules)
+    if end is not None and end < rules.page_end_max:
+        return Verdict(
+            "new_document", "page_end", "medium",
+            f"the previous page's text ends {end:.0%} down the page",
+        )
+    return None
 
 
 # --- the chart ----------------------------------------------------------------
 
 
-def _dates_differ(page: PageInput, dos: tuple[str, str]) -> bool:
-    own = (page.dos_from, page.dos_to or page.dos_from)
-    return bool(page.dos_from and dos[0]) and own != dos
-
-
-def encounter_header(page: PageInput, rules: Rules) -> str:
-    """The first section header on the page that opens a visit, or ''."""
-    for header in page.section_headers:
-        name = str(header.get("matched_canonical") or "")
-        if name.casefold() in rules.encounter_headers:
-            return name
-    return ""
-
-
-def progress_note_opening(page: PageInput, rules: Rules) -> str:
-    """Why ``page`` opens like a progress note ('' when it does not): its own
-    page type, or the first visit-opening section header on it."""
-    if page.page_type and page.page_type in rules.envelope_page_types:
-        return page.page_type
-    opening = rules.envelope_headers | rules.encounter_headers
-    for header in page.section_headers:
-        name = str(header.get("matched_canonical") or "")
-        if name.casefold() in opening:
-            return name
-    return ""
+def _show(dos: tuple[str, str]) -> str:
+    return dos[0] if dos[0] == dos[1] else f"{dos[0]} - {dos[1]}"
 
 
 def assign(pages: Sequence[PageInput], rules: Optional[Rules] = None) -> list[dict[str, Any]]:
@@ -346,13 +277,7 @@ def assign(pages: Sequence[PageInput], rules: Optional[Rules] = None) -> list[di
     rows: list[dict[str, Any]] = []
     previous: Optional[PageInput] = None
     document = 0
-    first: Optional[PageInput] = None  # first page of the open document
-    # The open document began with a progress note: the next encounter ends it.
-    note_document = False
-    # ... and no signature yet: pages the signals cannot decide stay in it.
-    note_open = False
-    note_dos: tuple[str, str] = ("", "")
-
+    document_dos: tuple[str, str] = ("", "")
     broken = False  # a blank or junk page since the previous page
     for page in pages:
         if page.skipped:
@@ -360,44 +285,27 @@ def assign(pages: Sequence[PageInput], rules: Optional[Rules] = None) -> list[di
             broken = broken or page.breaks
             continue
 
-        # Two breakers decide before anything else: a blank / junk page in
-        # between, and a signature on the previous page — the signed page is
-        # always its document's last, whatever the page numbers say.
         if previous is None:
-            verdict = Verdict("new_document", "first_page", "high", None, "first page of chart")
+            verdict = Verdict("new_document", "first_page", "high", "first page of chart")
         elif broken:
-            verdict = Verdict("new_document", "blank_junk", "high", None, "after a blank or junk page")
-        elif previous.signed:
-            verdict = Verdict("new_document", "signature", "high", None, "the previous page was signed")
+            verdict = Verdict("new_document", "blank_junk", "high", "after a blank or junk page")
+        elif page.dos_from:
+            if page.dos == document_dos:
+                verdict = Verdict("continue", "same_dos", "high", f"same DOS {_show(page.dos)}")
+            else:
+                verdict = Verdict("new_document", "new_dos", "high", f"DOS {_show(page.dos)}")
+        elif consecutive := consecutive_pages(previous, page, rules):
+            verdict = Verdict("continue", "pagination", "high", f"no DOS of its own; {consecutive}")
         else:
-            verdict = judge(previous, page, rules)
-            if note_document and verdict.relation != "new_document":
-                opens = encounter_header(page, rules)
-                if opens and _dates_differ(page, note_dos):
-                    # The next encounter, even inside one printout's pagination.
-                    verdict = Verdict(
-                        "new_document", "progress_note", "medium", verdict.score,
-                        f"next encounter: {opens} on {page.dos_from}"
-                        + (f" ({verdict.evidence})" if verdict.decided_by == "pagination" else ""),
-                    )
-                elif note_open and verdict.relation == "unknown":
-                    verdict = Verdict(
-                        "continue", "progress_note", "medium", verdict.score,
-                        f"progress note open since page {first.page_number}"
-                        + (f"; {verdict.evidence}" if verdict.evidence != "no signal" else ""),
-                    )
+            verdict = document_ended(previous, page, rules) or Verdict(
+                "continue", "continue_page", "medium",
+                "no DOS of its own; previous page unsigned, same kind of page, text runs on",
+            )
 
         if verdict.relation != "continue":
             document += 1
-            first = page
-            note_document = note_open = page.page_type in rules.open_page_types
-            note_dos = (page.dos_from, page.dos_to or page.dos_from)
-        elif note_document and not note_dos[0] and page.dos_from:
-            note_dos = (page.dos_from, page.dos_to or page.dos_from)
-
+            document_dos = page.dos
         rows.append(_row(page, verdict, document))
-        if note_open and page.signed:
-            note_open = False
         previous = page
         broken = False
 
@@ -414,13 +322,11 @@ def _row(page: PageInput, verdict: Optional[Verdict], document: Optional[int]) -
         "relation": verdict.relation if verdict else "",
         "decided_by": verdict.decided_by if verdict else "blank_junk",
         "confidence_level": verdict.confidence_level if verdict else "",
-        "score": verdict.score if verdict else None,
-        "review_required": bool(verdict and verdict.relation == "unknown"),
-        # Printed evidence links this page to the previous one: page numbering,
-        # or a "continued" marker. Anything else that continues is weak.
+        # A shared date of service or consecutive printed page numbers link
+        # this page to the previous one; any other continue page is a weak link.
         "link": (
             None if not verdict or verdict.relation != "continue"
-            else "strong" if verdict.decided_by == "pagination" or "marked continued" in verdict.evidence
+            else "strong" if verdict.decided_by in ("same_dos", "pagination")
             else "weak"
         ),
         "evidence": verdict.evidence if verdict else "blank, junk or duplicate page",
@@ -428,7 +334,6 @@ def _row(page: PageInput, verdict: Optional[Verdict], document: Optional[int]) -
         "dos_from": page.dos_from,
         "dos_to": page.dos_to,
         "section_headers": page.section_headers,
-        "in_progress_note": False,
     }
 
 
@@ -455,20 +360,16 @@ def _finish(rows: list[dict[str, Any]], pages: Sequence[PageInput], rules: Rules
         carried = document_finals(
             [
                 {"page_type": p.page_type, "page_subtype": p.page_subtype,
-                 "dos_from": p.dos_from, "dos_to": p.dos_to, "page_number": p.page_number}
+                 "dos_from": p.dos_from, "dos_to": p.dos_to}
                 for _, p in members
             ]
         )
-        # Opens like a progress note and closes with a signature: one note.
-        closer = members[-1][1]
-        opening = progress_note_opening(opener, rules)
-        envelope = bool(opening) and closer.signed and count >= rules.envelope_min_pages
-        if envelope:
+        if carried["dos_default"]:
             members[0][0]["evidence"] += (
-                f"; progress note from {opening} to the signature on page {closer.page_number}"
+                f"; {opener.page_subtype or opener.page_type} is not a visit: "
+                f"Final DOS is the default {carried['dos_from']}"
             )
         for index, (row, page) in enumerate(members):
-            row["in_progress_note"] = envelope
             row["seq"] = index + 1
             row["start_confirmed"] = confirmed
             if index == 0:
@@ -486,16 +387,6 @@ def _finish(rows: list[dict[str, Any]], pages: Sequence[PageInput], rules: Rules
             row["final_page_type"] = carried["page_type"]
             row["final_dos_from"] = carried["dos_from"]
             row["final_dos_to"] = carried["dos_to"]
-            if index == 0 and carried["dos_default"]:
-                row["evidence"] += (
-                    f"; {page.page_subtype or page.page_type} is not a visit: "
-                    f"Final DOS is the default {carried['dos_from']}"
-                )
-            elif index == 0 and carried["dos_page_number"] not in (None, page.page_number):
-                row["evidence"] += (
-                    "; first page has no date of service, Final DOS from page "
-                    f"{carried['dos_page_number']}"
-                )
 
 
 def position_label(position: Optional[str], document: Optional[int]) -> str:
@@ -508,40 +399,34 @@ def position_label(position: Optional[str], document: Optional[int]) -> str:
 def document_finals(members: Sequence[dict[str, Any]]) -> dict[str, Any]:
     """The values a document's pages share, from its pages in order.
 
-    Each member has ``page_type``, ``dos_from``, ``dos_to``, ``page_number``
-    and, optionally, ``page_subtype`` and ``classification_category``. The page
-    type and category are the first page's. The DOS is the first page's, or the
-    first page in the document that has one (``dos_page_number`` says which
-    page), on every page: a continue page takes it whether or not it has a date
-    of its own. A stand-alone non-visit document — every page a non-visit type
-    (continuity_canon.json ``default_final_dos``: demographics, registration,
-    growth chart, problem list, immunizations) — takes DOS_DEFAULT_DATE instead
-    (``dos_default``). Such a page inside a visit's document takes the visit's DOS.
+    Each member has ``page_type``, ``dos_from``, ``dos_to`` and, optionally,
+    ``page_subtype``, ``classification_category`` and ``encounter_type``. Every
+    page takes the first page's page type, category, DOS and encounter type
+    (a continue page has no DOS of its own, or the same one). A stand-alone
+    non-visit document — every page a ``default_final_dos`` type — takes
+    DOS_DEFAULT_DATE instead (``dos_default``); such a page inside a visit's
+    document takes the visit's DOS.
     """
     opener = members[0]
     finals = {
         "page_type": opener.get("page_type") or None,
         "classification_category": opener.get("classification_category") or None,
+        "encounter_type": opener.get("encounter_type") or None,
         "dos_default": False,
     }
     default_date = _DOS_DEFAULT.get()
-    stand_alone = all(
-        uses_default_final_dos(member.get("page_type"), member.get("page_subtype"))
-        for member in members
-    )
-    if default_date and stand_alone:
-        return {**finals, "dos_from": default_date, "dos_to": default_date,
-                "dos_page_number": None, "dos_default": True}
-    dated = next((m for m in members if m.get("dos_from")), None)
+    if default_date and all(
+        uses_default_final_dos(m.get("page_type"), m.get("page_subtype")) for m in members
+    ):
+        return {**finals, "dos_from": default_date, "dos_to": default_date, "dos_default": True}
     return {
         **finals,
-        "dos_from": dated["dos_from"] if dated else None,
-        "dos_to": (dated.get("dos_to") or dated["dos_from"]) if dated else None,
-        "dos_page_number": dated.get("page_number") if dated else None,
+        "dos_from": opener.get("dos_from") or None,
+        "dos_to": (opener.get("dos_to") or opener.get("dos_from")) or None,
     }
 
 
 def uses_default_final_dos(*page_types: Optional[str]) -> bool:
-    """A non-visit page type or sub-type: its document's Final DOS is the default date."""
+    """A non-visit page type or sub-type: its stand-alone document's Final DOS is the default date."""
     listed = load_rules().default_dos_types
     return any((name or "").strip().casefold() in listed for name in page_types)

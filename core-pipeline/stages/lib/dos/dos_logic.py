@@ -1,35 +1,33 @@
-"""Date of service: find every date, score each one, resolve the chart.
+"""Date of service: a labelled date at the top or bottom of the page.
 
-  A. Candidates — one sweep over each page for four date shapes. Every real
-     calendar day is kept, birth dates and 1998 included.
-  B. Features   — the nearest label to the left, where the date sits on the
-     page, whether a clock time sits beside it (a print stamp), the page type,
-     its age against the chart's received date, and how many other dates in
-     the chart agree with it.
-  C. Score      — a weighted sum from ``dos_canon.json``, clamped to
-     [0, 1]. A key/value date is the page's date. Otherwise the best
-     candidate must reach 0.80.
-  D. Resolve    — each page keeps its own date. Demographics, injection
-     pages, and pages with no date keep DOS_DEFAULT_DATE at document level.
-     Carrying a note's date across its pages is the continuity stage's job
-     (Final DOS), not this one's.
+Per page, in order:
 
-Nothing is vetoed. A DOB label or an old year is a large negative weight, so
-a losing date keeps a score that says why it lost. Azure OpenAI is a fallback
-for clinical pages where no candidate clears DOS_MIN_SCORE.
+  1. Edge keyword — a DOS label (Encounter Date, Visit Date, Date of Service,
+     Admission Date, Discharge Date, ...) that starts within the first or last
+     ``edge_words`` (20) words of the page, with a date right after it. An
+     encounter label wins; otherwise an admission date is From and a
+     discharge date To; a discharge date alone is both. Read on the final
+     OCR text first, then on the Tesseract text the stage passes for pages
+     without Final2: Docling can drop a page's top banner (a page header).
+  2. Key/value — the date the key/value extractor selected for the page.
+  3. Azure OpenAI — only when enabled, on clinical pages.
+  4. Nothing — the page has no date of service.
+
+Each page keeps its own date here: this is the Extracted DOS. The Final DOS
+(the document's first page's, on every page) is ``continuity.engine.document_finals``.
+
+Labels and settings live in ``keyword-canon/dos_canon.json`` (reloads on change).
 """
 from __future__ import annotations
 
-import bisect
 import json
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from typing import Any, Optional
 
 from azure_llm import azure_deployment
 from stages.lib.canon_store import CANON_DIR, CanonFile
-from stages.lib.page_classify import keywords as page_keywords
 
 
 # --- editable config ---------------------------------------------------------
@@ -39,37 +37,21 @@ def _any_of(patterns: list[str]) -> re.Pattern[str]:
     return re.compile(r"(" + "|".join(patterns) + r")", re.IGNORECASE)
 
 
-LABEL_CLASSES = (
-    "encounter", "admit", "discharge", "birth", "doc_meta", "future", "procedure",
-)
+LABEL_CLASSES = ("encounter", "admit", "discharge")
 
 
 @dataclass(frozen=True)
 class DosProfile:
-    max_age_years: int
-    min_score: float
     default_date: str  # ISO
-    base: float
-    label_weights: dict[str, float]
-    label_distance_decay: float
-    edge_bonus: float
-    clinical_cue_bonus: float
-    cluster_bonus: float
-    cluster_cap: int
-    age_penalty: float
-    timestamp_penalty: float
-    llm_confidence: float
-    window_left_chars: int
-    window_right_chars: int
     edge_words: int
-    cluster_days: int
-    range_pair_chars: int
+    llm_words: int
+    # How far after a label its date may start, and the only words allowed between.
+    label_reach_chars: int
+    label_gap_words: frozenset[str]
+    confidence: dict[str, float]  # edge / kv / llm
     label_re: re.Pattern[str]
-    label_class: dict[str, str]  # letters-only phrase → class
-    non_encounter_page_types: frozenset[str]
-    default_page_types: frozenset[str]
-    default_page_type_contains: tuple[str, ...]
-    # has_clinical_cue, and the gate for the Azure OpenAI fallback.
+    label_class: dict[str, str]  # letters-only phrase -> class
+    # Gate for the Azure OpenAI fallback.
     clinical_cues: re.Pattern[str]
     discharge_cues: re.Pattern[str]
 
@@ -96,41 +78,16 @@ def _build_profile(data: dict[str, Any]) -> DosProfile:
         r"(?<![a-z])(?:" + "|".join(_phrase_pattern(p) for p in phrases) + r")(?![a-z])",
         re.IGNORECASE,
     )
-    weights = {cls: float(w) for cls, w in data["label_weights"].items()}
-    missing = {"none", *LABEL_CLASSES} - weights.keys()
-    if missing:
-        raise ValueError(f"label_weights is missing {sorted(missing)}")
     datetime.strptime(data["DOS_DEFAULT_DATE"], "%Y-%m-%d")
     return DosProfile(
-        max_age_years=int(data["DOS_MAX_AGE_YEARS"]),
-        min_score=float(data["DOS_MIN_SCORE"]),
         default_date=data["DOS_DEFAULT_DATE"],
-        base=float(data["base"]),
-        label_weights=weights,
-        label_distance_decay=float(data["label_distance_decay"]),
-        edge_bonus=float(data["edge_bonus"]),
-        clinical_cue_bonus=float(data["clinical_cue_bonus"]),
-        cluster_bonus=float(data["cluster_bonus"]),
-        cluster_cap=int(data["cluster_cap"]),
-        age_penalty=float(data["age_penalty"]),
-        timestamp_penalty=float(data["timestamp_penalty"]),
-        llm_confidence=float(data["llm_confidence"]),
-        window_left_chars=int(data["window_left_chars"]),
-        window_right_chars=int(data["window_right_chars"]),
         edge_words=int(data["edge_words"]),
-        cluster_days=int(data["cluster_days"]),
-        range_pair_chars=int(data["range_pair_chars"]),
+        llm_words=int(data["llm_words"]),
+        label_reach_chars=int(data["label_reach_chars"]),
+        label_gap_words=frozenset(w.casefold() for w in data["label_gap_words"]),
+        confidence={k: float(v) for k, v in data["confidence"].items()},
         label_re=label_re,
         label_class=label_class,
-        non_encounter_page_types=frozenset(
-            t.casefold() for t in data["non_encounter_page_types"]
-        ),
-        default_page_types=frozenset(
-            t.casefold() for t in data.get("default_page_types") or []
-        ),
-        default_page_type_contains=tuple(
-            t.casefold() for t in data.get("default_page_type_contains") or []
-        ),
         clinical_cues=_any_of(data["clinical_cues"]),
         discharge_cues=_any_of(data["discharge_cues"]),
     )
@@ -142,13 +99,6 @@ _PROFILE: CanonFile[DosProfile] = CanonFile(CANON_DIR / "dos_canon.json", _build
 
 def profile() -> DosProfile:
     return _PROFILE.get()
-
-
-def _uses_default_date(page_type: str, prof: DosProfile) -> bool:
-    """Demographics and injection pages keep the default date."""
-    if page_type in prof.default_page_types:
-        return True
-    return any(part in page_type for part in prof.default_page_type_contains)
 
 
 # --- page splitting ----------------------------------------------------------
@@ -244,218 +194,99 @@ def parse_date_match(match: re.Match[str]) -> Optional[str]:
         return None
 
 
-@dataclass
-class Candidate:
-    """One date on one page, its features, and its score."""
+# --- 1. edge keyword --------------------------------------------------------
 
-    page_index: int
-    page_number: Any
-    page_name: str
+
+@dataclass
+class LabelledDate:
+    """A DOS label at the page's edge and the date right after it."""
+
+    label: str
+    label_class: str  # encounter | admit | discharge
+    edge: str  # top | bottom
     raw: str
     iso: str
-    start: int  # offset within the page text
-    end: int
-    label_text: str = ""
-    label_class: str = "none"
-    label_distance: Optional[int] = None
-    position: float = 0.0
-    edge_position: bool = False
-    has_time: bool = False
-    page_type: str = ""
-    has_clinical_cue: bool = False
-    year_delta: Optional[int] = None
-    cluster_size: int = 0
-    in_range_pair: bool = False
-    pair_iso: Optional[str] = None
-    context: str = ""
-    score: float = 0.0
+    end: int  # offset just past the date
     chosen: bool = False
-    # "text" from the page sweep, "kv" when the key/value extractor supplied it.
-    origin: str = "text"
-    pair: Optional["Candidate"] = field(default=None, repr=False, compare=False)
-
-    def log_row(self) -> dict[str, Any]:
-        row = asdict(self)
-        row.pop("pair")
-        row["score"] = round(self.score, 4)
-        row["position"] = round(self.position, 4)
-        return row
 
 
-def find_candidates(
-    page_text: str, *, page_index: int = 0, page_number: Any = 1, page_name: str = ""
-) -> list[Candidate]:
-    out: list[Candidate] = []
-    for match in DATE_RE.finditer(page_text or ""):
-        iso = parse_date_match(match)
-        if iso is None:
-            continue
-        out.append(
-            Candidate(
-                page_index=page_index,
-                page_number=page_number,
-                page_name=page_name,
-                raw=match.group(0),
-                iso=iso,
-                start=match.start(),
-                end=match.end(),
-            )
-        )
-    return out
+def edge_spans(page_text: str, n_words: int) -> list[tuple[str, int, int]]:
+    """Character spans of the first and the last ``n_words`` words.
+
+    A word is a whitespace-separated token with a letter or digit in it, so
+    table pipes and bullets do not count. On a short page the two spans overlap
+    and cover the whole page."""
+    words = [m for m in re.finditer(r"\S+", page_text) if re.search(r"[A-Za-z0-9]", m.group(0))]
+    if not words:
+        return []
+    top = words[: n_words]
+    bottom = words[-n_words:]
+    return [
+        ("top", top[0].start(), top[-1].end()),
+        ("bottom", bottom[0].start(), bottom[-1].end()),
+    ]
 
 
-# --- Stage B: features -------------------------------------------------------
-
-# A clock time right after the date ("03/20/2024 10:15 AM", "2025-12-31T10:00")
-# or right before it ("10:15 03/20/2024") — the shape of a print or fax stamp.
-_TIME = r"\d{1,2}:\d{2}(?::\d{2})?(?:\s*[ap]\.?m\.?)?(?![\d:])"
-_TIME_AFTER_RE = re.compile(r"^(?:T|,?\s*(?:at\s+|@\s*)?)" + _TIME, re.IGNORECASE)
-_TIME_BEFORE_RE = re.compile(r"(?<![\d:])" + _TIME + r",?\s*$", re.IGNORECASE)
-
-
-def _has_time(page_text: str, start: int, end: int) -> bool:
-    return bool(
-        _TIME_AFTER_RE.match(page_text[end : end + 20])
-        or _TIME_BEFORE_RE.search(page_text[max(0, start - 20) : start])
-    )
+def _overlapping(pattern: re.Pattern[str], text: str, lo: int, hi: int):
+    """Every match starting in [lo, hi), including ones that overlap."""
+    position = lo
+    while (match := pattern.search(text, position)) is not None and match.start() < hi:
+        yield match
+        position = match.start() + 1
 
 
+def edge_dates(page_text: str, prof: Optional[DosProfile] = None) -> list[LabelledDate]:
+    """Every DOS label starting inside an edge span, with the date after it.
 
-def _edge_bounds(page_text: str, n_words: int) -> tuple[int, int]:
-    """(end of the first n words, start of the last n words)."""
-    words = list(re.finditer(r"\b\w+\b", page_text))
-    if len(words) <= 2 * n_words:
-        return len(page_text), 0
-    return words[n_words - 1].end(), words[-n_words].start()
-
-
-def _nearest_label(
-    page_text: str, lo: int, hi: int, prof: DosProfile
-) -> Optional[re.Match[str]]:
-    best: Optional[re.Match[str]] = None
-    for match in prof.label_re.finditer(page_text, lo, hi):
-        if best is None or match.end() >= best.end():
-            best = match
-    return best
-
-
-def page_features(
-    page_text: str,
-    candidates: list[Candidate],
-    *,
-    page_type: str,
-    received_year: int,
-    prof: DosProfile,
-) -> None:
-    """Fill every feature that depends on this page alone."""
-    length = max(1, len(page_text))
-    first_end, last_start = _edge_bounds(page_text, prof.edge_words)
-    clinical = bool(profile().clinical_cues.search(page_text))
-    previous_end = 0
-    for cand in candidates:
-        # A label belongs to the date after it, so it never reaches past
-        # an earlier date: "DOB 03/06/1972 ... 12/31/2025" leaves the second
-        # date unlabelled.
-        lo = max(previous_end, cand.start - prof.window_left_chars)
-        label = None if cand.origin == "kv" else _nearest_label(page_text, lo, cand.start, prof)
-        if label is not None:
-            cand.label_text = re.sub(r"\s+", " ", label.group(0)).strip()
-            cand.label_class = prof.label_class.get(_letters(label.group(0)), "none")
-            cand.label_distance = cand.start - label.end()
-        cand.position = cand.start / length
-        cand.edge_position = cand.start < first_end or cand.start >= last_start
-        cand.has_time = _has_time(page_text, cand.start, cand.end)
-        cand.page_type = page_type
-        cand.has_clinical_cue = clinical
-        cand.year_delta = int(cand.iso[:4]) - received_year
-        cand.context = re.sub(
-            r"\s+",
-            " ",
-            page_text[
-                max(0, cand.start - prof.window_left_chars) : cand.end + prof.window_right_chars
-            ],
-        ).strip()
-        previous_end = cand.end
-    _join_written_ranges(page_text, candidates)
-    _pair_ranges(candidates, prof)
-
-
-# "03/01/2024 - 03/05/2024", "... to ...", "... thru / through ..." with
-# nothing else between the two dates.
-_RANGE_JOIN_RE = re.compile(r"^\s*(?:-|–|—|to|thru|through)\s*$", re.IGNORECASE)
-
-
-def _join_written_ranges(page_text: str, candidates: list[Candidate]) -> None:
-    """A labelled DOS written as a range keeps both ends.
-
-    Only a date under an encounter label (or a key/value service date) starts
-    a range: an unlabelled "a - b" is as likely a lab reference period.
-    """
-    for first, second in zip(candidates, candidates[1:]):
-        if first.pair is not None or first.label_class != "encounter":
-            continue
-        if second.iso < first.iso:
-            continue
-        if not _RANGE_JOIN_RE.match(page_text[first.end : second.start]):
-            continue
-        for a, b in ((first, second), (second, first)):
-            if a.pair is None:
-                a.in_range_pair = True
-                a.pair = b
-                a.pair_iso = b.iso
-
-
-def _pair_ranges(candidates: list[Candidate], prof: DosProfile) -> None:
-    """Admit + discharge dates within range_pair_chars of each other."""
-    admits = [c for c in candidates if c.label_class == "admit"]
-    discharges = [c for c in candidates if c.label_class == "discharge"]
-    for admit in admits:
-        best: Optional[Candidate] = None
-        best_gap = prof.range_pair_chars + 1
-        for discharge in discharges:
-            if discharge.iso < admit.iso:
+    The date must start within ``label_reach_chars`` of the label, with only
+    ``label_gap_words`` between ("Encounter Date | at January 28, 2025",
+    "Visit Date/Time: ..."), so a label never takes a date that belongs to the
+    next field ("Visit Date: | DOB: 01/02/1960")."""
+    prof = prof or profile()
+    found: list[LabelledDate] = []
+    seen: set[int] = set()
+    for edge, lo, hi in edge_spans(page_text, prof.edge_words):
+        # Overlapping: "Office Visit  Date of Service" holds "visit date" and
+        # "date of service"; only the second has its date right after it.
+        for label in _overlapping(prof.label_re, page_text, lo, hi):
+            if label.start() in seen:
                 continue
-            gap = max(discharge.start - admit.end, admit.start - discharge.end, 0)
-            if gap < best_gap:
-                best, best_gap = discharge, gap
-        if best is None:
-            continue
-        for a, b in ((admit, best), (best, admit)):
-            if a.pair is None:
-                a.in_range_pair = True
-                a.pair = b
-                a.pair_iso = b.iso
+            seen.add(label.start())
+            reach = page_text[label.end() : label.end() + prof.label_reach_chars]
+            match = DATE_RE.search(reach)
+            if match is None:
+                continue
+            gap = reach[: match.start()]
+            if any(w.casefold() not in prof.label_gap_words for w in re.findall(r"[A-Za-z]+", gap)):
+                continue
+            iso = parse_date_match(match)
+            if iso is None:
+                continue
+            found.append(
+                LabelledDate(
+                    label=re.sub(r"\s+", " ", label.group(0)).strip(),
+                    label_class=prof.label_class.get(_letters(label.group(0)), "encounter"),
+                    edge=edge,
+                    raw=match.group(0),
+                    iso=iso,
+                    end=label.end() + match.end(),
+                )
+            )
+    return found
 
 
-def chart_features(candidates: list[Candidate], prof: DosProfile) -> None:
-    """cluster_size: other candidates in the chart within cluster_days."""
-    ordinals = sorted(date.fromisoformat(c.iso).toordinal() for c in candidates)
-    for cand in candidates:
-        day = date.fromisoformat(cand.iso).toordinal()
-        lo = bisect.bisect_left(ordinals, day - prof.cluster_days)
-        hi = bisect.bisect_right(ordinals, day + prof.cluster_days)
-        cand.cluster_size = hi - lo - 1
+# "03/01/2024 - 03/05/2024", "... to ...", "... thru / through ...".
+_RANGE_TAIL_RE = re.compile(r"^\s*(?:-|–|—|to|thru|through)\s*", re.IGNORECASE)
 
 
-# --- Stage C: score ----------------------------------------------------------
-
-
-def score_candidate(cand: Candidate, prof: DosProfile) -> float:
-    score = prof.base + prof.label_weights[cand.label_class]
-    if cand.label_distance is not None:
-        score -= prof.label_distance_decay * cand.label_distance
-    if cand.has_time:
-        # Print stamps live at the edges; the edge is no evidence for them.
-        score -= prof.timestamp_penalty
-    elif cand.edge_position:
-        score += prof.edge_bonus
-    if cand.has_clinical_cue:
-        score += prof.clinical_cue_bonus
-    score += prof.cluster_bonus * min(cand.cluster_size, prof.cluster_cap)
-    if cand.year_delta is not None and cand.year_delta < -prof.max_age_years:
-        score -= prof.age_penalty
-    cand.score = min(1.0, max(0.0, score))
-    return cand.score
+def _range_end(page_text: str, hit: LabelledDate) -> str:
+    """The end of a written range right after an encounter date, else ''."""
+    tail = _RANGE_TAIL_RE.match(page_text[hit.end : hit.end + 12])
+    if tail is None:
+        return ""
+    match = DATE_RE.match(page_text, hit.end + tail.end())
+    iso = parse_date_match(match) if match else None
+    return iso if iso and iso >= hit.iso else ""
 
 
 @dataclass
@@ -464,49 +295,60 @@ class PageDate:
     dos_to: str
     confidence: float
     keyword: str
-    source: str  # "rules" | "llm" | "kv"
+    source: str  # "edge" | "edge_tesseract" | "kv" | "llm"
     is_pair: bool = False
 
 
-def _date_source(cand: Candidate) -> str:
-    if cand.origin == "kv" or (cand.pair is not None and cand.pair.origin == "kv"):
-        return "kv"
-    return "rules"
-
-
-def best_page_date(candidates: list[Candidate], prof: DosProfile) -> Optional[PageDate]:
-    """Key/value date first. Otherwise, as the backup, the highest text
-    candidate at or above ``DOS_MIN_SCORE`` (dos_canon.json, 0.75).
-
-    A range pair (admit + discharge, a written "a - b" range, or a key/value
-    range) emits both ends.
-    """
-    kv = [c for c in candidates if c.origin == "kv"]
-    passing = kv or [c for c in candidates if c.score >= prof.min_score]
-    if not passing:
-        return None
-    best = max(passing, key=lambda c: c.score)  # ties: first on the page
-    best.chosen = True
-    if best.in_range_pair and best.pair is not None:
-        best.pair.chosen = True
-        # Earlier date is From: an admit/discharge pair is never reversed, and a
-        # written range or key/value range has no admit label to go by.
-        admit, discharge = sorted((best, best.pair), key=lambda c: c.iso)
-        return PageDate(
-            dos_from=admit.iso,
-            dos_to=discharge.iso,
-            confidence=best.score,
-            keyword=f"{admit.label_text}+{discharge.label_text}",
-            source=_date_source(best),
-            is_pair=True,
-        )
-    return PageDate(
-        dos_from=best.iso,
-        dos_to=best.iso,
-        confidence=best.score,
-        keyword=best.label_text,
-        source=_date_source(best),
+def edge_page_date(
+    page_text: str,
+    prof: Optional[DosProfile] = None,
+    hits: Optional[list[LabelledDate]] = None,
+) -> Optional[PageDate]:
+    """Rule 1: an encounter label first; else admission (From) + discharge (To).
+    The chosen ``hits`` are marked ``chosen``."""
+    prof = prof or profile()
+    if hits is None:
+        hits = edge_dates(page_text, prof)
+    confidence = prof.confidence["edge"]
+    encounter = next((h for h in hits if h.label_class == "encounter"), None)
+    if encounter is not None:
+        encounter.chosen = True
+        end = _range_end(page_text, encounter)
+        return PageDate(encounter.iso, end or encounter.iso, confidence, encounter.label,
+                        "edge", is_pair=bool(end))
+    admit = next((h for h in hits if h.label_class == "admit"), None)
+    discharge = next(
+        (h for h in hits if h.label_class == "discharge" and (admit is None or h.iso >= admit.iso)),
+        None,
     )
+    if admit is not None:
+        admit.chosen = True
+        if discharge is not None:
+            discharge.chosen = True
+            return PageDate(admit.iso, discharge.iso, confidence,
+                            f"{admit.label}+{discharge.label}", "edge", is_pair=True)
+        return PageDate(admit.iso, admit.iso, confidence, admit.label, "edge")
+    if discharge is not None:
+        discharge.chosen = True
+        return PageDate(discharge.iso, discharge.iso, confidence, discharge.label, "edge")
+    return None
+
+
+# --- 2. key/value -------------------------------------------------------------
+
+
+def kv_page_date(dates: list[dict[str, Any]], prof: Optional[DosProfile] = None) -> Optional[PageDate]:
+    """Rule 2: the first date the key/value extractor selected; a range keeps its end."""
+    prof = prof or profile()
+    for item in dates or []:
+        iso = str(item.get("iso") or "")
+        if len(iso) != 10:
+            continue
+        iso_to = str(item.get("iso_to") or "")
+        is_pair = len(iso_to) == 10 and iso_to > iso
+        return PageDate(iso, iso_to if is_pair else iso, prof.confidence["kv"],
+                        str(item.get("keyword") or ""), "kv", is_pair=is_pair)
+    return None
 
 
 # --- date formats ------------------------------------------------------------
@@ -517,7 +359,7 @@ def iso_to_mdy(iso: str) -> str:
     return f"{m}-{d}-{y}"
 
 
-def normalize_date(date_str: str, reference_date: Optional[str] = None) -> str:
+def normalize_date(date_str: str) -> str:
     """Any supported shape → MM-DD-YYYY, or "unknown". Used for LLM replies."""
     match = DATE_RE.search((date_str or "").strip())
     if not match:
@@ -543,38 +385,9 @@ def to_iso_date(mm_dd_yyyy: str) -> Optional[str]:
 # --- single page -------------------------------------------------------------
 
 
-def _page_type_name(page_text: str, page_number: Any) -> str:
-    """The page's sub-type by the keyword model (page_keyword_canon.json).
-
-    The fallback for a page the page-type stage has not classified (it runs
-    first in the chain). A generic sub-type carries its page type's name, so
-    the profile's lists can name either."""
-    match = page_keywords.classify(page_text)
-    return match.page_subtype if match is not None else ""
-
-
-def extract_dos_from_page_text(
-    page_text: str,
-    *,
-    received_date: Optional[date] = None,
-    page_type: Optional[str] = None,
-) -> Optional[dict]:
-    """Stages A–C on one page, without chart context (cluster_size is 0)."""
-    prof = profile()
-    candidates = find_candidates(page_text)
-    if not candidates:
-        return None
-    received = received_date or date.today()
-    page_features(
-        page_text,
-        candidates,
-        page_type=page_type if page_type is not None else _page_type_name(page_text, 1),
-        received_year=received.year,
-        prof=prof,
-    )
-    for cand in candidates:
-        score_candidate(cand, prof)
-    best = best_page_date(candidates, prof)
+def extract_dos_from_page_text(page_text: str) -> Optional[dict]:
+    """Rule 1 on one page (no key/value, no LLM)."""
+    best = edge_page_date(page_text)
     if best is None:
         return None
     return {
@@ -586,7 +399,7 @@ def extract_dos_from_page_text(
     }
 
 
-# --- Stage D: resolve the chart ---------------------------------------------
+# --- the chart ----------------------------------------------------------------
 
 
 def page_allows_llm(page_text: str) -> bool:
@@ -598,24 +411,24 @@ def is_discharge_like(page_text: str) -> bool:
     return bool(profile().discharge_cues.search(page_text or ""))
 
 
-def _row(
-    page: dict,
-    page_date: Optional[PageDate],
-    doc: Optional[PageDate],
-    *,
-    match_type: str,
-    prof: DosProfile,
-) -> dict:
-    """One output row. MM-DD-YYYY columns plus their ISO twins."""
-    is_default = doc is None
-    doc_from = doc.dos_from if doc else prof.default_date
-    doc_to = doc.dos_to if doc else prof.default_date
-    if page_date is not None:
-        confidence = page_date.confidence
-    elif doc is not None:
-        confidence = doc.confidence
+_MATCH_TYPE = {
+    "edge": "edge_keyword", "edge_tesseract": "edge_keyword_tesseract", "kv": "kv", "llm": "llm",
+}
+
+
+def _row(page: dict, page_date: Optional[PageDate], prof: DosProfile) -> dict:
+    """One output row. MM-DD-YYYY columns plus their ISO twins.
+
+    The document-level columns are the page's own date (DOS_DEFAULT_DATE when
+    it has none); nothing is carried from another page here."""
+    doc_from = page_date.dos_from if page_date else prof.default_date
+    doc_to = page_date.dos_to if page_date else prof.default_date
+    if page_date is None:
+        match_type = "no_date_found"
+    elif page_date.is_pair:
+        match_type = "admit_discharge_pair"
     else:
-        confidence = 0.0
+        match_type = _MATCH_TYPE[page_date.source]
     return {
         "page_name": page.get("page_name") or str(page.get("page")),
         "page_number": page.get("page"),
@@ -628,113 +441,12 @@ def _row(
         "doc_dos_from_iso": doc_from,
         "doc_dos_to_iso": doc_to,
         "match_type": match_type,
-        "final_dos": _final_date(page_date, doc, match_type),
+        "final_dos": page_date.dos_from if page_date else "",
         "keyword": page_date.keyword if page_date else None,
-        "confidence": round(confidence, 4),
+        "confidence": round(page_date.confidence, 4) if page_date else 0.0,
         "page_source": page_date.source if page_date else "",
-        "is_default": is_default,
+        "is_default": page_date is None,
     }
-
-
-def _final_date(
-    page_date: Optional[PageDate],
-    doc: Optional[PageDate],
-    match_type: str,
-) -> str:
-    """The page's own date. The document's date, carried across its pages, is
-    the continuity stage's Final DOS."""
-    return page_date.dos_from if page_date else ""
-
-
-_KV_LABEL = {"admit": "admit", "discharge": "discharge"}
-
-
-def add_kv_dates(
-    page_text: str,
-    candidates: list[Candidate],
-    dates: list[dict[str, Any]],
-    *,
-    page_index: int,
-    page_number: Any,
-    page_name: str,
-) -> None:
-    """Mark a key/value date as the page's date, or add it when the text missed it.
-
-    The same day already found in the text keeps its span and takes the
-    key/value label. A new one is inserted with the extractor's label
-    (admit, discharge, or encounter) so it is scored by the same weights.
-    """
-    seen = {cand.iso: cand for cand in candidates}
-    for item in dates:
-        iso = str(item.get("iso") or "")
-        if len(iso) != 10:
-            continue
-        existing = seen.get(iso)
-        if existing is not None:
-            # The same day already came from the text. Keep that span, but the
-            # key/value hit is the one the page uses.
-            existing.origin = "kv"
-            existing.label_text = str(item.get("keyword") or existing.label_text)
-            existing.label_class = _KV_LABEL.get(str(item.get("tier") or ""), "encounter")
-            _pair_kv_range(existing, item, seen)
-            continue
-        raw = str(item.get("raw") or "")
-        start = page_text.find(raw) if raw else -1
-        if start < 0:
-            start, end = 0, 0
-        else:
-            end = start + len(raw)
-        tier = str(item.get("tier") or "")
-        candidates.append(
-            Candidate(
-                page_index=page_index,
-                page_number=page_number,
-                page_name=page_name,
-                raw=raw or iso,
-                iso=iso,
-                start=start,
-                end=end,
-                label_text=str(item.get("keyword") or ""),
-                label_class=_KV_LABEL.get(tier, "encounter"),
-                origin="kv",
-            )
-        )
-        seen[iso] = candidates[-1]
-        _pair_kv_range(candidates[-1], item, seen)
-
-
-def _pair_kv_range(
-    start: Candidate, item: dict[str, Any], seen: dict[str, Candidate]
-) -> None:
-    """A key/value range ("Date of Service: a - b") keeps its end date.
-
-    The end is the text's own candidate for that day when there is one, else
-    a stand-in that only carries the date; it is never scored on its own.
-    """
-    iso_to = str(item.get("iso_to") or "")
-    if len(iso_to) != 10 or iso_to <= start.iso:
-        return
-    end = seen.get(iso_to)
-    if end is None:
-        end = Candidate(
-            page_index=start.page_index,
-            page_number=start.page_number,
-            page_name=start.page_name,
-            raw=iso_to,
-            iso=iso_to,
-            start=start.start,
-            end=start.end,
-            label_text=start.label_text,
-            label_class=start.label_class,
-            origin="kv",
-        )
-    start.in_range_pair = True
-    start.pair = end
-    start.pair_iso = iso_to
-    if end.pair is None:
-        end.in_range_pair = True
-        end.pair = start
-        end.pair_iso = start.iso
 
 
 def detect_dos_per_page(
@@ -742,34 +454,22 @@ def detect_dos_per_page(
     client: Any | None,
     *,
     use_llm: bool = True,
-    received_date: Optional[date] = None,
     candidate_log: Optional[list[dict]] = None,
     kv_dates: Optional[dict[str, list[dict[str, Any]]]] = None,
-    page_types: Optional[dict[str, str]] = None,
+    tesseract_texts: Optional[dict[str, str]] = None,
 ) -> list[dict]:
-    """One row per page.
+    """One row per page: edge keyword (final text, then Tesseract), else
+    key/value, else LLM, else nothing.
 
-    Page level (``dos_from`` / ``dos_to``): the date found on that page, or
-    blank. Document level (``doc_dos_*``): the encounter the page belongs to.
-    ``final_dos`` is the page's own date; the continuity stage carries a
-    document's date across its pages.
+    ``tesseract_texts`` maps a page name to its Tesseract text; only its
+    first and last ``edge_words`` words are read.
 
-    ``received_date`` is the chart's received date; DOS_MAX_AGE_YEARS counts
-    back from it (today when not given). ``candidate_log``, when passed, gets
-    every candidate with its features, score and whether it was chosen.
-
-    ``page_types`` maps a page name to its sub-type from the page-type stage
-    (the Extracted answer), which runs first. A page missing from it — or every
-    page, when the stage has not run — falls back to the keyword model.
-
-    ``kv_dates`` maps a page name to dates the key/value extractor chose
-    (``iso``, ``raw``, ``tier``, ``keyword``). They join the text sweep and
-    are scored with the same weights.
+    ``kv_dates`` maps a page name to the dates the key/value extractor chose
+    (``iso``, optional ``iso_to``, ``keyword``). ``candidate_log``, when
+    passed, gets every edge label with its date and whether it was chosen.
     """
     prof = profile()
-    received = received_date or date.today()
-
-    pages: list[dict] = []
+    rows: list[dict] = []
     for page in split_ocr_into_pages(text):
         page_text = text[page["start"] : page["end"]]
         cleaned = re.sub(
@@ -779,95 +479,34 @@ def detect_dos_per_page(
         if re.sub(r"\s+", " ", cleaned).strip().upper() == "UNACCEPT":
             break
         page_name = page.get("page_name") or ""
-        page_type = (page_types or {}).get(page_name) or (
-            _page_type_name(page_text, page.get("page")) if page_text.strip() else ""
-        )
-        candidates = find_candidates(
-            page_text,
-            page_index=page["index"],
-            page_number=page.get("page"),
-            page_name=page_name,
-        )
-        add_kv_dates(
-            page_text,
-            candidates,
-            (kv_dates or {}).get(page_name) or [],
-            page_index=page["index"],
-            page_number=page.get("page"),
-            page_name=page_name,
-        )
-        page_features(
-            page_text,
-            candidates,
-            page_type=page_type,
-            received_year=received.year,
-            prof=prof,
-        )
-        pages.append(
-            {**page, "text": page_text, "page_type": page_type, "candidates": candidates}
-        )
 
-    everything = [c for p in pages for c in p["candidates"]]
-    chart_features(everything, prof)
-    for cand in everything:
-        score_candidate(cand, prof)
-
-    rows: list[dict] = []
-    current: Optional[PageDate] = None
-
-    for page in pages:
-        page_text = page["text"]
-        page_type = page["page_type"].casefold()
-        found = best_page_date(page["candidates"], prof)
-
-        if (
-            found is None
-            and not _uses_default_date(page_type, prof)
-            and use_llm
-            and client is not None
-            and page_allows_llm(page_text)
-        ):
+        hits = edge_dates(page_text, prof)
+        found = edge_page_date(page_text, prof, hits)
+        if found is None and (tesseract_texts or {}).get(page_name):
+            tesseract_hits = edge_dates(tesseract_texts[page_name], prof)
+            found = edge_page_date(tesseract_texts[page_name], prof, tesseract_hits)
+            if found is not None:
+                found.source = "edge_tesseract"
+                for hit in tesseract_hits:
+                    hit.edge = f"tesseract_{hit.edge}"
+                hits = hits + tesseract_hits
+        if found is None:
+            found = kv_page_date((kv_dates or {}).get(page_name) or [], prof)
+        if found is None and use_llm and client is not None and page_allows_llm(page_text):
             pair = extract_dos_range_with_llm(
                 page_text,
-                str(page.get("page_name") or page.get("page")),
+                str(page_name or page.get("page")),
                 client,
-                reference_date=iso_to_mdy(current.dos_from) if current else None,
                 discharge_like=is_discharge_like(page_text),
             )
             if pair:
                 d_from, d_to = (to_iso_date(v) for v in pair)
                 if d_from:
-                    found = PageDate(
-                        dos_from=d_from,
-                        dos_to=d_to or d_from,
-                        confidence=prof.llm_confidence,
-                        keyword="",
-                        source="llm",
-                    )
+                    found = PageDate(d_from, d_to or d_from, prof.confidence["llm"], "", "llm")
 
-        assigned = found
-        if _uses_default_date(page_type, prof):
-            # Demographics and injection pages do not take a carried date.
-            assigned, doc, match_type = None, None, "default_page"
-        elif found is None:
-            assigned, doc, match_type = None, None, "no_date_found"
-        elif page_type in prof.non_encounter_page_types:
-            # A facesheet or med list never replaces an encounter already found.
-            assigned = found
-            doc = current or found
-            match_type = "non_encounter_page"
-        else:
-            current = found
-            assigned, doc = found, found
-            match_type = "admit_discharge_pair" if found.is_pair else "page_date"
-
-        if assigned is not None and assigned.source == "llm" and doc is assigned:
-            match_type = "llm"
-
-        rows.append(_row(page, assigned, doc, match_type=match_type, prof=prof))
-
-    if candidate_log is not None:
-        candidate_log.extend(c.log_row() for c in everything)
+        if candidate_log is not None:
+            candidate_log.extend({"page_name": page_name, **asdict(hit)} for hit in hits)
+        rows.append(_row(page, found, prof))
     return rows
 
 
@@ -894,7 +533,6 @@ def extract_dos_range_with_llm(
     page_text: str,
     page_label: str,
     client: Any,
-    reference_date: Optional[str] = None,
     *,
     discharge_like: bool = False,
 ) -> Optional[tuple[str, str]]:
@@ -905,7 +543,7 @@ def extract_dos_range_with_llm(
     if client is None or not page_text.strip():
         return None
 
-    words = profile().edge_words
+    words = profile().llm_words
     top = _slice_first_n_words(page_text, words)
     bottom = _slice_last_n_words(page_text, words)
     if top.strip() == bottom.strip():
@@ -937,7 +575,6 @@ or
 {{"dos_from":null,"dos_to":null}}
 
 Today's date (year reference): {today_str}
-Reference date if helpful: {reference_date or "none"}
 
 Text excerpt:
 {snippet}
@@ -982,11 +619,11 @@ Text excerpt:
         d_to = data.get("dos_to")
         if not d_from:
             return None
-        n_from = normalize_date(str(d_from), reference_date=reference_date)
+        n_from = normalize_date(str(d_from))
         if n_from == "unknown":
             return None
         if d_to:
-            n_to = normalize_date(str(d_to), reference_date=reference_date)
+            n_to = normalize_date(str(d_to))
             if n_to == "unknown":
                 n_to = n_from
         else:

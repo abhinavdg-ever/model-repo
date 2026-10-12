@@ -154,7 +154,6 @@ export type ImagingPageResult = {
   continuityRelation?: string | null;
   continuityDecidedBy?: string | null;
   continuityEvidence?: string | null;
-  continuityReview?: boolean | null;
   /** Final values (imaging_final). Inside a document, its first page's. */
   finalPageType?: string | null;
   /** Codeable | Non-Codeable | Discharge — follows finalPageType. */

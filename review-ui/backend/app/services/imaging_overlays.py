@@ -970,7 +970,6 @@ def index_continuity_rows(
                 "continuityRelation": (row.get("relation") or "").strip() or None,
                 "continuityDecidedBy": (row.get("decided_by") or "").strip() or None,
                 "continuityEvidence": (row.get("evidence") or "").strip() or None,
-                "continuityReview": (row.get("review_required") or "").strip().lower() == "y",
             },
         )
     return by_key

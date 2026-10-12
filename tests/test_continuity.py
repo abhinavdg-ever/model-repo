@@ -1,4 +1,4 @@
-"""Document continuity: grouping pages into documents and carrying Final values."""
+"""Document continuity: grouping pages into documents."""
 from __future__ import annotations
 
 import sys
@@ -13,10 +13,10 @@ from stages.lib.continuity.engine import (  # noqa: E402
     Line,
     PageInput,
     assign,
-    document_finals,
-    judge,
+    body_end,
     load_rules,
     pagination,
+    same_type_probability,
     text_lines,
 )
 from stages.lib.continuity.layout import lines_from_final1, lines_from_final2  # noqa: E402
@@ -25,40 +25,211 @@ BANNER = "patient: jane doe dob 01/02/1950 mrn 123456"
 FOOTER = "community clinic 100 main street springfield"
 
 
-def page(n, body="", *, head=BANNER, foot=FOOTER, page_type="", dos="",
-         signed=False, headers=(), skipped=False, printed=None, title_hit=False, breaks=False):
-    """A located page: head line at the top, body in the middle, foot line at the bottom."""
+def page(n, body="body", *, head=BANNER, foot=FOOTER, page_type="", confidence=None, dos="",
+         dos_to="", signed=False, skipped=False, printed=None, title_hit=False, breaks=False,
+         ends=0.85):
+    """A located page: head line at the top, body ending ``ends`` down the page, foot at the bottom."""
     lines = []
     if head:
         lines.append(Line(head, 0.03, 0.05))
     for i, text in enumerate(body.splitlines()):
         lines.append(Line(text.lower(), 0.30 + i * 0.02, 0.31 + i * 0.02))
+    lines.append(Line("last line of the body", ends - 0.01, ends))
     if foot:
         lines.append(Line(foot, 0.95, 0.97))
     return PageInput(
         page_id=n, page_name=f"{n}.jpg", page_number=n,
         text="\n".join(l.text for l in lines), lines=lines,
-        section_headers=[{"text": h, "matched_canonical": h, "top": top} for h, top in headers],
-        page_type=page_type, title_hit=title_hit, dos_from=dos, dos_to=dos,
+        page_type=page_type, page_confidence=confidence, title_hit=title_hit,
+        dos_from=dos, dos_to=dos_to or dos,
         signed=signed, skipped=skipped, printed=printed, breaks=breaks,
     )
 
 
-def bare(n, body="", **kw):
-    """A page sharing nothing with its neighbours: no banner, no footer."""
+def bare(n, body="body", **kw):
     return page(n, body, head="", foot="", **kw)
 
 
 RULES = load_rules()
 
 
+def docs(rows):
+    return [r["document_seq"] for r in rows]
+
+
+class TestSameDos:
+    def test_pages_with_the_same_dos_are_one_document(self):
+        rows = assign([page(1, dos="2024-03-14"), page(2, dos="2024-03-14"), page(3, dos="2024-03-14")])
+        assert docs(rows) == [1, 1, 1]
+        assert rows[1]["decided_by"] == "same_dos"
+        assert rows[2]["link_strength"] == "strong"
+
+    def test_a_different_dos_starts_a_new_document(self):
+        rows = assign([page(1, dos="2024-03-14"), page(2, dos="2024-05-01")])
+        assert docs(rows) == [1, 2]
+        assert rows[1]["decided_by"] == "new_dos"
+
+    def test_same_dos_clubs_even_after_a_signature(self):
+        rows = assign([page(1, dos="2024-03-14", signed=True), page(2, dos="2024-03-14")])
+        assert docs(rows) == [1, 1]
+
+    def test_from_and_to_must_both_match(self):
+        rows = assign([page(1, dos="2024-03-01", dos_to="2024-03-05"), page(2, dos="2024-03-01")])
+        assert docs(rows) == [1, 2]
+
+    def test_a_dated_page_after_an_undated_document_starts_a_new_one(self):
+        rows = assign([page(1), page(2, dos="2024-03-14")])
+        assert docs(rows) == [1, 2]
+
+
+class TestContinuePages:
+    def test_an_undated_page_continues_the_open_document(self):
+        rows = assign([page(1, dos="2024-03-14"), page(2), page(3)])
+        assert docs(rows) == [1, 1, 1]
+        assert rows[1]["decided_by"] == "continue_page"
+        assert rows[2]["link_strength"] == "weak"
+
+    def test_a_signature_on_the_previous_page_ends_the_document(self):
+        rows = assign([page(1, dos="2024-03-14", signed=True), page(2)])
+        assert docs(rows) == [1, 2]
+        assert rows[1]["decided_by"] == "signature"
+
+    def test_a_sure_page_type_change_ends_the_document(self):
+        rows = assign([page(1, dos="2024-03-14", page_type="Progress Note"),
+                       page(2, page_type="Laboratory Data", confidence=0.9)])
+        assert docs(rows) == [1, 2]
+        assert rows[1]["decided_by"] == "page_type"
+
+    def test_an_unsure_page_type_change_continues(self):
+        rows = assign([page(1, dos="2024-03-14", page_type="Progress Note"),
+                       page(2, page_type="Laboratory Data", confidence=0.6)])
+        assert docs(rows) == [1, 1]
+
+    def test_exactly_10_percent_is_sure_enough(self):
+        rows = assign([page(1, dos="2024-03-14", page_type="Progress Note"),
+                       page(2, page_type="Laboratory Data", confidence=0.90)])
+        assert rows[1]["decided_by"] == "page_type"
+
+    def test_a_type_change_also_needs_70_percent_on_the_new_type(self):
+        """Same type at 5% confidence: 5% it is the same, but the classifier is not sure."""
+        from dataclasses import replace
+
+        rules = replace(RULES, max_same_type_probability=0.5)
+        rows = assign([page(1, dos="2024-03-14", page_type="Lab"),
+                       page(2, page_type="Lab", confidence=0.4)], rules)
+        assert rows[1]["decided_by"] == "continue_page"
+
+    def test_printed_page_numbers_never_split(self):
+        rows = assign([page(1, dos="2024-03-14", printed=(2, 3)), page(2, printed=(1, 2))])
+        assert docs(rows) == [1, 1]
+
+    def test_the_last_printed_page_ends_the_document(self):
+        rows = assign([page(1, dos="2024-03-14", printed=(2, 2)), page(2)])
+        assert docs(rows) == [1, 2]
+        assert rows[1]["decided_by"] == "page_number_end"
+
+    def test_the_last_printed_page_does_not_split_the_same_dos(self):
+        rows = assign([page(1, dos="2024-03-14", printed=(1, 1)), page(2, dos="2024-03-14")])
+        assert docs(rows) == [1, 1]
+
+    def test_consecutive_page_numbers_confirm_a_continue_page(self):
+        """N -> N+1 of M continues even past a signature or a sure type change."""
+        rows = assign([page(1, dos="2024-03-14", printed=(1, 2), signed=True, page_type="Progress Note"),
+                       page(2, printed=(2, 2), page_type="Laboratory Data", confidence=0.95)])
+        assert docs(rows) == [1, 1]
+        assert (rows[1]["decided_by"], rows[1]["link_strength"]) == ("pagination", "strong")
+
+    def test_a_different_dos_still_splits_a_paginated_printout(self):
+        rows = assign([page(1, dos="2024-03-14", printed=(1, 2)),
+                       page(2, dos="2024-06-03", printed=(2, 2))])
+        assert docs(rows) == [1, 2]
+
+    def test_a_title_for_another_page_type_starts_a_new_document(self):
+        rows = assign([page(1, dos="2024-03-14", page_type="Progress Note"),
+                       page(2, page_type="Operative Report", title_hit=True)])
+        assert rows[1]["decided_by"] == "first_page_marker"
+
+    def test_a_title_for_the_same_page_type_continues(self):
+        rows = assign([page(1, dos="2024-03-14", page_type="Progress Note"),
+                       page(2, page_type="Progress Note", title_hit=True)])
+        assert docs(rows) == [1, 1]
+
+    def test_same_type_probability(self):
+        a = page(1, page_type="Progress Note")
+        assert same_type_probability(a, page(2, page_type="Progress Note", confidence=0.7)) == 0.7
+        assert round(same_type_probability(a, page(2, page_type="Lab", confidence=0.7)), 2) == 0.3
+        assert same_type_probability(a, page(2, page_type="Lab")) is None
+
+    def test_text_ending_mid_page_ends_the_document(self):
+        rows = assign([page(1, dos="2024-03-14", ends=0.45), page(2)])
+        assert docs(rows) == [1, 2]
+        assert rows[1]["decided_by"] == "page_end"
+
+    def test_the_footer_does_not_count_as_text(self):
+        p = page(1, ends=0.45)
+        assert body_end(p, RULES) == 0.45
+
+    def test_without_line_positions_there_is_no_page_end_signal(self):
+        p = PageInput(page_id=1, lines=text_lines("short\ntext"))
+        assert body_end(p, RULES) is None
+
+
+class TestFinalValues:
+    def test_continue_pages_take_the_first_pages_dos_and_type(self):
+        rows = assign([page(1, dos="2024-03-14", page_type="Progress Note"),
+                       page(2, page_type="Laboratory Data", confidence=0.5), page(3)])
+        assert [r["final_dos_from"] for r in rows] == ["2024-03-14"] * 3
+        assert [r["final_page_type"] for r in rows] == ["Progress Note"] * 3
+
+    def test_a_stand_alone_non_visit_document_takes_the_default_dos(self):
+        rows = assign([page(1, dos="2024-03-14", page_type="Patient Demographics"),
+                       page(2, page_type="Patient Demographics", confidence=0.9)])
+        assert [r["final_dos_from"] for r in rows] == ["2222-02-02"] * 2
+        assert "is not a visit" in rows[0]["evidence"]
+
+    def test_a_non_visit_page_inside_a_visit_takes_the_visit_dos(self):
+        rows = assign([page(1, dos="2024-03-14", page_type="Progress Note"),
+                       page(2, page_type="Problem List", confidence=0.6)])
+        assert [r["final_dos_from"] for r in rows] == ["2024-03-14"] * 2
+
+    def test_the_sub_type_decides_too(self):
+        from stages.lib.continuity.engine import document_finals
+
+        finals = document_finals([{"page_type": "Clinical Summary", "page_subtype": "Problem List",
+                                   "dos_from": "2024-01-01"}])
+        assert finals["dos_from"] == "2222-02-02" and finals["dos_default"]
+
+    def test_encounter_type_is_the_first_pages(self):
+        from stages.lib.continuity.engine import document_finals
+
+        finals = document_finals([
+            {"page_type": "Progress Note", "dos_from": "2024-01-01", "encounter_type": "Inpatient"},
+            {"page_type": "Progress Note", "dos_from": "", "encounter_type": "Outpatient (F2F)"},
+        ])
+        assert finals["encounter_type"] == "Inpatient"
+
+
+class TestBreakers:
+    def test_a_blank_or_junk_page_in_between_breaks_the_document(self):
+        rows = assign([page(1, dos="2024-01-01"), bare(2, skipped=True, breaks=True), page(3)])
+        assert rows[1]["document_seq"] is None
+        assert (rows[2]["document_seq"], rows[2]["decided_by"]) == (2, "blank_junk")
+
+    def test_a_duplicate_in_between_does_not_break(self):
+        rows = assign([page(1, dos="2024-01-01"), bare(2, skipped=True), page(3)])
+        assert rows[1]["decided_by"] == "blank_junk"
+        assert rows[2]["relation"] == "continue"
+        assert [rows[0]["position"], rows[2]["position"]] == ["first", "last"]
+
+    def test_labels_name_the_position_and_the_document(self):
+        rows = assign([page(1, dos="2024-01-01"), page(2), page(3),
+                       bare(4, skipped=True, breaks=True), page(5)])
+        assert [r["label"] for r in rows] == [
+            "First (Doc 1)", "Continue (Doc 1)", "Last (Doc 1)", "", "Single (Doc 2)"]
+
+
 class TestPagination:
-    def test_page_numbers_decide_on_their_own(self):
-        a, b = page(1, printed=(1, 3)), page(2, printed=(2, 3))
-        assert judge(a, b, RULES).relation == "continue"
-        assert judge(a, b, RULES).decided_by == "pagination"
-        assert judge(b, page(3, printed=(1, 2)), RULES).relation == "new_document"
-        assert "resets" in judge(b, page(3, printed=(3, 5)), RULES).evidence
+    """Printed page numbers are recorded and confirm a start; they do not group."""
 
     def test_only_the_header_and_footer_are_searched(self):
         body = page(1, "see page 2 of 4 of the attached report", head="x", foot="y")
@@ -69,148 +240,10 @@ class TestPagination:
     def test_a_date_is_not_a_page_number(self):
         assert pagination(page(1, foot="seen 26/24"), RULES) is None
 
-
-class TestSignals:
-    def test_a_repeated_banner_and_footer_continue(self):
-        verdict = judge(page(1, "assessment"), page(2, "plan"), RULES)
-        assert verdict.relation == "continue"
-        assert "repeated header line" in verdict.evidence
-
-    def test_a_title_and_a_signature_start_a_new_document(self):
-        previous = bare(1, "plan", signed=True)
-        current = bare(2, "x", headers=[("Office Visit", 0.08)])
-        assert judge(previous, current, RULES).relation == "new_document"
-
-    def test_a_shared_emr_banner_outweighs_a_title(self):
-        """Banner + footer (+11) against a title (-6): the pair continues. With
-        a signature on the previous page the signature breaker splits it."""
-        previous = page(1, "plan")
-        current = page(2, "x", headers=[("Office Visit", 0.08)])
-        assert judge(previous, current, RULES).relation == "continue"
-
-    def test_an_unmatched_header_candidate_is_not_a_title(self):
-        current = page(2, "x")
-        current.section_headers = [{"text": "Respiratory:", "matched_canonical": "", "top": 0.05}]
-        assert "own title" not in judge(page(1), current, RULES).evidence
-
-    def test_no_signal_is_unknown_and_starts_its_own_document_for_review(self):
-        rows = assign([bare(1, "alpha"), bare(2, "beta")])
-        assert rows[1]["relation"] == "unknown"
-        assert rows[1]["review_required"] is True
-        assert rows[1]["document_seq"] == 2
-        assert rows[1]["final_page_type"] is None or rows[1]["final_page_type"] == ""
-
-
-class TestProgressNote:
-    NOTE = dict(page_type="Progress Note")
-
-    def test_an_open_note_keeps_pages_the_signals_cannot_decide(self):
-        rows = assign([bare(1, dos="2024-03-14", **self.NOTE), bare(2), bare(3)])
-        assert [r["document_seq"] for r in rows] == [1, 1, 1]
-        assert rows[2]["decided_by"] == "progress_note"
-        assert rows[2]["final_page_type"] == "Progress Note"
-        assert rows[2]["final_dos_from"] == "2024-03-14"
-        assert rows[2]["dos_from"] == ""  # Extracted stays the page's own
-
-    def test_the_signature_page_is_the_last_page(self):
-        rows = assign([bare(1, dos="2024-03-14", **self.NOTE), bare(2, signed=True), bare(3)])
-        assert [r["document_seq"] for r in rows] == [1, 1, 2]
-        assert rows[1]["position"] == "last"
-        assert rows[2]["relation"] == "new_document"
-        assert rows[2]["final_dos_from"] is None
-
-    def test_the_next_encounter_ends_the_note_even_inside_one_printout(self):
-        rows = assign([
-            page(1, dos="2024-03-28", printed=(1, 4), **self.NOTE),
-            page(2, printed=(2, 4)),
-            page(3, dos="2024-06-03", printed=(3, 4), headers=[("Office Visit", 0.32)]),
-            page(4, printed=(4, 4)),
-        ])
-        assert [r["document_seq"] for r in rows] == [1, 1, 2, 2]
-        assert rows[2]["evidence"].startswith("next encounter: Office Visit on 2024-06-03")
-        assert rows[3]["final_dos_from"] == "2024-06-03"
-
-    def test_a_stray_date_without_a_visit_header_does_not_end_the_note(self):
-        rows = assign([
-            bare(1, dos="2025-01-23", **self.NOTE),
-            bare(2, dos="2017-11-14", headers=[("Problem List", 0.7)]),
-        ])
-        assert [r["document_seq"] for r in rows] == [1, 1]
-        assert rows[1]["final_dos_from"] == "2025-01-23"
-
-
-class TestFinalValues:
-    def test_the_first_page_sets_the_final_page_type_and_dos(self):
-        rows = assign([
-            page(1, page_type="Laboratory Report", dos="2024-10-01"),
-            page(2, page_type="Patient Demographics", dos=""),
-        ])
-        assert rows[1]["final_page_type"] == "Laboratory Report"
-        assert rows[1]["final_dos_from"] == "2024-10-01"
-        assert rows[1]["page_type"] == "Patient Demographics"
-
-    def test_an_undated_first_page_takes_the_first_dated_page(self):
-        rows = assign([page(1, page_type="Lab"), page(2, dos="2024-10-01")])
-        assert rows[0]["final_dos_from"] == "2024-10-01"
-        assert "Final DOS from page 2" in rows[0]["evidence"]
-
-    def test_a_continue_page_takes_the_start_dos_dated_or_not(self):
-        rows = assign([
-            page(1, page_type="Progress Note", dos="2024-03-28", printed=(1, 3)),
-            page(2, printed=(2, 3)),
-            page(3, dos="2024-05-01", printed=(3, 3)),
-        ])
-        assert [r["final_dos_from"] for r in rows] == ["2024-03-28"] * 3
-        assert rows[2]["dos_from"] == "2024-05-01"  # Extracted stays the page's own
-
-    def test_a_stand_alone_non_visit_document_takes_the_default_final_dos(self):
-        rows = assign([
-            page(1, page_type="Patient Demographics", dos="2024-10-01", printed=(1, 2)),
-            page(2, page_type="Patient Demographics", dos="2024-11-05", printed=(2, 2)),
-        ])
-        assert [r["final_dos_from"] for r in rows] == ["2022-02-02", "2022-02-02"]
-        assert [r["final_dos_to"] for r in rows] == ["2022-02-02", "2022-02-02"]
-        assert rows[0]["dos_from"] == "2024-10-01"
-        assert "is not a visit" in rows[0]["evidence"]
-
-    def test_a_non_visit_page_inside_a_visit_takes_the_visit_dos(self):
-        rows = assign([
-            page(1, page_type="Patient Demographics", printed=(1, 2)),
-            page(2, page_type="Progress Note", dos="2024-11-05", printed=(2, 2)),
-        ])
-        assert [r["final_dos_from"] for r in rows] == ["2024-11-05", "2024-11-05"]
-        note = page(1, page_type="Progress Note", dos="2024-03-28", printed=(1, 2))
-        problems = page(2, page_type="Progress Note", printed=(2, 2))
-        problems.page_subtype = "Problem List"
-        assert [r["final_dos_from"] for r in assign([note, problems])] == ["2024-03-28"] * 2
-
-    def test_the_sub_type_decides_too(self):
-        alone = page(1, page_type="Progress Note", dos="2024-10-01")
-        alone.page_subtype = "Problem List"
-        assert assign([alone])[0]["final_dos_from"] == "2022-02-02"
-        for name in ("Patient Information", "Patient Registration", "Growth chart",
-                     "Immunizations", "Immunization list"):
-            assert document_finals(
-                [{"page_type": "X", "page_subtype": name, "dos_from": "2024-01-01", "page_number": 1}]
-            )["dos_from"] == "2022-02-02", name
-
-    def test_a_visit_document_keeps_its_own_date(self):
-        finals = document_finals(
-            [{"page_type": "Progress Note", "page_subtype": "Office Visit",
-              "dos_from": "2024-01-01", "page_number": 1}]
-        )
-        assert (finals["dos_from"], finals["dos_default"]) == ("2024-01-01", False)
-
-    def test_blank_and_junk_pages_belong_to_no_document_and_are_passed_over(self):
-        rows = assign([
-            page(1, dos="2024-01-01", printed=(1, 2)),
-            bare(2, skipped=True),
-            page(3, printed=(2, 2)),
-        ])
-        assert rows[1]["document_seq"] is None
-        assert rows[1]["decided_by"] == "blank_junk"
-        assert rows[2]["relation"] == "continue"
-        assert [rows[0]["position"], rows[2]["position"]] == ["first", "last"]
+    def test_page_1_confirms_the_start(self):
+        rows = assign([page(1, printed=(1, 2)), page(2, printed=(2, 2))])
+        assert rows[0]["start_confirmed"] is True
+        assert rows[1]["page_no"] == 2
 
 
 class TestLayout:
@@ -236,7 +269,7 @@ class TestLayout:
 
 class TestStage:
     """Continuity then imaging_final, end to end on the in-memory store:
-    grouping from the Final2 JSON, Final values carried from the first page."""
+    grouping from the Final2 JSON, the first page's values on every page."""
 
     def test_run_writes_rows_and_csv(self, tmp_path, monkeypatch):
         import csv
@@ -278,7 +311,7 @@ class TestStage:
             pages_json = [
                 {"pageNumber": n, "fileName": f"{n}.jpg", "content": f"note {n}",
                  "pagesMeta": [{"height": 1000.0, "lines": [
-                     line("Progress Note", 30), line(f"body of page {n}", 400),
+                     line("Progress Note", 30), line(f"body of page {n}", 800),
                      line(f"Page {n} of 2", 960)]}],
                  "section_headers": []}
                 for n in (1, 2)
@@ -320,6 +353,7 @@ class TestStage:
             result = continuity_stage.run(cid, force=True)
             assert result["documents"] == 1
             grouping = {r["page_id"]: r for r in store.continuity.values()}
+            # Undated, printed "Page 2 of 2" after "Page 1 of 2": a confirmed continue page.
             assert grouping[second]["decided_by"] == "pagination"
             with open(result["continuity_csv"], newline="", encoding="utf-8") as handle:
                 written = list(csv.DictReader(handle))
@@ -331,7 +365,7 @@ class TestStage:
             rows = {r["page_id"]: r for r in store.imaging_final.values()}
             assert grouping[second]["link_strength"] == "strong"
             assert grouping[second]["start_confirmed"] is True
-            # Continue decided -> page type replicated -> DOS carried.
+            # Continue decided -> the first page's page type and DOS.
             assert rows[second]["page_type"] == "Discharge Summary"
             assert rows[second]["page_type_source"] == "continuation"
             assert rows[second]["continuation_rule"] == "agreed_first_page"
@@ -371,55 +405,3 @@ class TestStage:
 
 
 
-class TestBreakers:
-    def test_a_signed_page_always_ends_its_document_even_inside_pagination(self):
-        rows = assign([page(1, printed=(1, 3), signed=True), page(2, printed=(2, 3)), page(3, printed=(3, 3))])
-        assert [r["document_seq"] for r in rows] == [1, 2, 2]
-        assert (rows[1]["relation"], rows[1]["decided_by"]) == ("new_document", "signature")
-
-    def test_a_blank_or_junk_page_in_between_breaks_the_document(self):
-        rows = assign([page(1, printed=(1, 2)), bare(2, skipped=True, breaks=True), page(3, printed=(2, 2))])
-        assert rows[1]["document_seq"] is None
-        assert (rows[2]["document_seq"], rows[2]["decided_by"]) == (2, "blank_junk")
-
-    def test_a_duplicate_in_between_does_not_break(self):
-        rows = assign([page(1, printed=(1, 2)), bare(2, skipped=True), page(3, printed=(2, 2))])
-        assert rows[2]["relation"] == "continue"
-
-    def test_labels_name_the_position_and_the_document(self):
-        rows = assign([page(1, printed=(1, 3)), page(2, printed=(2, 3)), page(3, printed=(3, 3)),
-                       bare(4, skipped=True, breaks=True), page(5)])
-        assert [r["label"] for r in rows] == [
-            "First (Doc 1)", "Continue (Doc 1)", "Last (Doc 1)", "", "Single (Doc 2)"]
-
-
-class TestProgressNoteEnvelope:
-    """Opens like a progress note, ends signed -> every page in_progress_note."""
-
-    def test_chief_complaint_to_signature_marks_the_whole_document(self):
-        rows = assign([
-            page(1, printed=(1, 3), page_type="Clinical Summary", headers=[("Chief Complaint", 0.2)]),
-            page(2, printed=(2, 3), page_type="Laboratory Data"),
-            page(3, printed=(3, 3), page_type="Medication List", signed=True),
-        ])
-        assert [r["in_progress_note"] for r in rows] == [True, True, True]
-        assert "progress note from Chief Complaint to the signature on page 3" in rows[0]["evidence"]
-
-    def test_a_progress_note_first_page_opens_it(self):
-        rows = assign([page(1, printed=(1, 2), page_type="Progress Note"),
-                       page(2, printed=(2, 2), page_type="Laboratory Data", signed=True)])
-        assert all(r["in_progress_note"] for r in rows)
-
-    def test_no_signature_at_the_end_is_not_a_note(self):
-        rows = assign([page(1, printed=(1, 2), headers=[("HPI", 0.2)]),
-                       page(2, printed=(2, 2), page_type="Laboratory Data")])
-        assert not any(r["in_progress_note"] for r in rows)
-
-    def test_no_opening_is_not_a_note(self):
-        rows = assign([page(1, printed=(1, 2), page_type="Laboratory Data"),
-                       page(2, printed=(2, 2), page_type="Laboratory Data", signed=True)])
-        assert not any(r["in_progress_note"] for r in rows)
-
-    def test_a_single_signed_page_is_left_alone(self):
-        rows = assign([page(1, page_type="Clinical Summary", headers=[("Chief Complaint", 0.2)], signed=True)])
-        assert rows[0]["in_progress_note"] is False

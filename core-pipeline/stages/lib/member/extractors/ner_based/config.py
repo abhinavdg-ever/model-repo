@@ -107,7 +107,7 @@ def _env_bool(key: str, default: bool = False) -> bool:
 
 
 # Master switch for the NER layer.
-ner_enabled = _env_bool("MEMBER_NER_ENABLED", False)
+ner_enabled = _env_bool("MEMBER_NER_ENABLED", True)
 
 # Which checkpoint the extractor loads. This is the ONLY model knob.
 #

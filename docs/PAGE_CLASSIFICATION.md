@@ -181,15 +181,15 @@ or export, not one document.
 ### 6.1 Page type — agreed across the document
 
 "Per-page" is the Extracted answer. Across the pages of one continuity
-document the **page type is agreed**; the **sub-type stays each page's own**.
+document every page takes the **first page's page type**; the **sub-type can
+differ**.
 
 **The agreed type** (`agree_document_type`), first that applies:
 
 | Basis | When | Agreed page type |
 |---|---|---|
-| `progress_note` | the document (2+ pages) opens like a progress note — first page's Extracted type is Progress Note, or it carries Chief Complaint / CC / HPI / History of Present Illness / Reason for Visit / Subjective or any visit-opening header — and ends with a signature (continuity `in_progress_note`) | Progress Note |
-| `first_page` | the first page is confirmed: a keyword title on it, or a printed "page 1" | the first page's type |
-| `vote` | otherwise, when one type holds ≥ 60% of the confidence weight (`document_agreement.vote_min_share`) | the page types of the document's pages, weighted by page-type confidence (§4.3a); a tie goes to the first page's type |
+| `first_page` | the first page has a page type (not Unknown) | the first page's type |
+| `vote` | the first page is Unknown, when one type holds ≥ 60% of the confidence weight (`document_agreement.vote_min_share`) | the page types of the document's pages, weighted by page-type confidence (§4.3a); a tie goes to the first page's type |
 | — | no clear majority | none: every page keeps its own type, flagged for review (`no_agreement`) |
 
 **Each page** (`decide_final`):
@@ -199,20 +199,18 @@ document the **page type is agreed**; the **sub-type stays each page's own**.
 | `agreed` | the page's own type is the agreed type | kept as is |
 | `agreed_first_page` / `agreed_vote` | its own type differs | agreed type; sub-type = the keyword sub-type if it belongs to the agreed type (score ≥ 3), else the page's own type (an Unknown page: the agreed type's generic sub-type). `agreed_vote`, or a weak link, flags the page for review. `page_type_source = continuation` |
 | `no_agreement` | the vote has no clear majority | kept as is, **flagged for review** |
-| `progress_note` | the document is a signed progress note | Progress Note; sub-type = the page's own type (a Progress Note page keeps its sub-type; Unknown → Progress Note / Progress Note, flagged). `page_type_source = progress_note` |
 | `embedded_same_page` | page in no multi-page document, per-page Laboratory Data / Radiology Report, keyword Progress Note title on the same page | Progress Note / that name |
 | `no_change` | page in no multi-page document | kept as is |
 
 **Codability** is the agreed type's. Inside a Progress Note it is Codable,
 **except Laboratory Data and Medication List, which stay Non-Codable**
-(`page_arbitration.json` → `inside_progress_note`). Settings for the signed
-progress note: `continuity_canon.json` → `progress_note_envelope`.
+(`page_arbitration.json` → `inside_progress_note`).
 
 ### 6.2 Date of service
 
-After the page type: the document's first page's DOS, else its first dated
-page's. A continuation page with no date shows Extracted DOS = NA and Final
-DOS = the document's.
+The document's first page's DOS (2222-02-02 for a stand-alone non-visit
+document). A continuation page with no date shows Extracted DOS = NA and Final
+DOS = the first page's.
 
 **Written:** `imaging_final` — `page_type`, `page_subtype`, `model_type`,
 `codability`, `classification_category`, `page_type_source`

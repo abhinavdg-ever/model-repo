@@ -2,9 +2,10 @@
 
 Which document each page belongs to, and the values a document's pages share.
 
-> Status, 2026-10-10: implemented and tested (19 tests in `tests/test_continuity.py`,
-> full suite green apart from 4 failures that predate this work). Dry-run on the
-> four local charts only. Not yet run against a live Postgres or a full batch.
+> Status, 2026-10-12: grouping rewritten to the date-of-service rules in §4.
+> Final DOS is each page's own (no carrying); Final page type is the first
+> page's. Tested in `tests/test_continuity.py`; not yet re-run on a live batch.
+> §9–§11 describe the earlier tiered engine and are kept as history.
 
 ---
 
@@ -15,24 +16,17 @@ sheets, letters. Most fields are extracted per page, but a page usually only
 makes sense as part of its document. The second page of an office visit has no
 title and often no date of service, yet its page type and DOS are the visit's.
 
-Continuity answers two questions:
-
-1. **Grouping.** Does this page continue the previous page's document, or start
-   a new one?
-2. **Carrying.** For every page in a document, what is its Final DOS (the
-   document's first dated page's), and does its page type change? Page type
-   follows the continuation rules in [PAGE_CLASSIFICATION.md](PAGE_CLASSIFICATION.md)
-   §6 — an untitled Progress-Note-looking page continuing another document
-   takes its type; lab or radiology inside a Progress Note becomes Progress
-   Note / Laboratory Data — and is otherwise the page's own.
-
-Each page keeps its own values too. review-ui shows both:
+Continuity answers one question: does this page continue the previous page's
+document, or start a new one? The Final page type of every page in a document
+is its first page's (the sub-type can differ), and so are its Final DOS and
+encounter type. A stand-alone document of non-visit page types takes the
+default DOS 2222-02-02.
 
 | | Extracted | Final |
 |---|---|---|
 | First page of a visit | Progress Note (SOAP Note), 2024-03-28 | Progress Note (SOAP Note), 2024-03-28 |
 | Page 2, no title, no date | Progress Note, NA | Progress Note, 2024-03-28 |
-| Page 3, a lab table inside the visit | Laboratory Data, 2017-11-14 | Progress Note / Laboratory Data, 2024-03-28 |
+| Page 3, a lab table inside the visit | Laboratory Data, 2024-03-28 | Progress Note / Laboratory Data, 2024-03-28 |
 
 ---
 
@@ -78,122 +72,58 @@ top-to-bottom, so its "first lines" are not the page header.
 
 ## 4. The decision, page by page
 
-Each page is judged against the previous non-skipped page.
+Each page is judged against the open document (blank/junk/duplicate pages are
+passed over; a blank or junk page in between ends the document).
 
-### Tier 1 — printed pagination (decides alone)
-
-Searched only in the header and footer bands, and only with the word `page` /
-`pg`, so a date like `26/24` is not "page 26 of 24".
-
-| Previous | Current | Result |
+| Page | Result | `decided_by` |
 |---|---|---|
-| N of M | N+1 of M | continue |
-| anything (not the same) | 1 of M | new document |
-| N of M | anything else of any total | new document ("pagination resets") |
+| Has a DOS equal to the open document's (From and To) | continue — same-DOS pages are always one document | `same_dos` |
+| Has a different DOS | new document | `new_dos` |
+| No DOS, previous page signed | new document | `signature` |
+| No DOS, printed page number follows the previous page's (N → N+1 of M) | continue, confirmed — overrides the checks below | `pagination` |
+| No DOS, previous page printed "page N of N" (its last) | new document | `page_number_end` |
+| No DOS, looks like a first page (a keyword title for another page type) | new document | `first_page_marker` |
+| No DOS, page type changes and the classifier is sure | new document | `page_type` |
+| No DOS, previous page's text ends mid-page | new document | `page_end` |
+| No DOS, otherwise | continue | `continue_page` |
 
-### Tier 2 — page furniture (adds to a score)
+**Page type change.** The chance that this page is the previous page's type is
+the classifier's confidence when the two types agree, and one minus it when
+they differ. At or below `document_end.max_same_type_probability` (10%), with
+the classifier above `min_new_type_confidence` (70%) on the new type, the
+document ends: a Lab page after a Progress Note at 90% confidence (10%) ends
+it; at 60% (40%) it continues.
 
-| Signal | Weight |
-|---|---|
-| A line (≥ 12 chars) repeated in the header band of both pages | +5 |
-| A line repeated in the footer band | +2 |
-| Header bands look alike (similarity > 0.5) | +2 |
-| Footer bands look alike | +2 |
-| Same accession number | +6 |
-| Same order / visit / encounter number | +5 |
-| Same MRN | +1 |
+**Mid-page ending.** The bottom of the previous page's last line above the
+footer band (a line starting below 92% is footer). Above
+`document_end.page_end_max` (60%) of the page height, the document ended there.
+Needs line positions (Final2 polygons, else Final1 words); a text-only page
+gives no signal.
 
-### Tier 3 — structure (adds to the score)
-
-| Signal | Weight |
-|---|---|
-| A **matched** section header in the top 15% of this page (a title) | −6 |
-| A signature on the previous page | −3 |
-| "continued" / "cont'd" near the top | +6 |
-
-Unmatched header candidates do not count as titles — any bold line
-("Respiratory:") is a candidate.
-
-### Score → relation
-
-| Score | Relation | What happens |
-|---|---|---|
-| ≥ 5 | continue | joins the open document |
-| ≤ −2 | new_document | opens a new document |
-| between | **unknown** | opens its own document, `review_required = true` — nothing is copied onto it |
-
-### Bands
-
-| | With positions | Without |
-|---|---|---|
-| Header | lines whose top < 10% of page height | first 4 lines |
-| Footer | lines whose bottom > 92% | last 3 lines |
-| Pagination search | header + footer bands | first and last quarter of the lines |
+**Printed pagination** is read (header/footer bands, or the key/value page
+number) and recorded as `page_no` / `page_total`. On an undated page,
+consecutive numbers confirm a continue page and "page N of N" ends the
+document; page 1 confirms a document's start. Page numbers never split a
+document.
 
 ---
 
 ## 5. Progress notes
 
-A document whose first page's family is `progress_note` gets extra rules.
-
-**Stays open** through pages the signals cannot decide (`unknown` → continue,
-`decided_by = progress_note`).
-
-**Closes:**
-
-1. **After the signature page.** That page is the note's last. The next page is
-   judged normally (and the previous-signature −3 applies).
-2. **Before a page the signals or pagination call a new document.**
-3. **Before the next encounter:** a page whose own DOS differs from the note's
-   **and** that carries a visit-opening section header. This overrides
-   continuing pagination.
-
-Visit-opening headers (`encounter_headers` in the canon): Office Visit, Office
-visits, Initial office note, Progress Note(s), History and Physical, Admission
-Note, Consultation (Note), Consult Note, Reason for Visit, Annual Wellness Visit,
-Encounter visit, Patient Encounter, Encounter Form, Emergency visit records,
-Follow-up Visits, Telephone Encounter / Visit, Visit summary, Home Health /
-Skilled Nursing visit notes, Chief Complaint, CC, and a few more.
-
-**Why both a new DOS and a header.** Measured on the local charts:
-
-* *Pagination is a print job, not an encounter.* 53688890 prints five office
-  visits as "page 1 of 17 … 17 of 17". A new date has to be able to split it.
-* *A new date alone is too eager.* Continuation pages carry stray old dates —
-  a 2017-11-14 problem-list date inside a 2025 note (60307605 pages 7, 17, 21),
-  labelled only "Date". Splitting on it breaks the note.
-* The true new visits all had a date found by an encounter label ("Office Visit
-  on") and a matched "Office Visit" header. The stray dates had neither.
-
-After a signature closes a note, the document still remembers it began as a
-progress note, so the next-encounter check keeps working inside a long printout.
-
-**Signed progress notes (`in_progress_note`).** A document of two or more
-pages whose first page opens like a progress note — its Extracted type is
-Progress Note, or it carries a header from `progress_note_envelope.opening_headers`
-(Chief Complaint, CC, HPI, History of Present Illness, Reason for Visit,
-Subjective, SOAP) or `encounter_headers` — and whose last page is signed is
-marked `in_progress_note` on every page. `imaging_final` then makes each page
-Progress Note with its own page type as the sub-type, and Progress Note's
-codability — except Laboratory Data and Medication List, which stay
-Non-Codable (PAGE_CLASSIFICATION.md §6.1 rule 0). The first page's evidence says
-"progress note from Chief Complaint to the signature on page 12".
+No special rules any more: a progress note is grouped like any other document.
 
 ---
 
 ## 6. Final values
 
-Per document:
-
 | Final | Rule |
 |---|---|
-| Final page type | the first page's page type |
-| Final DOS | the first page's DOS; if it has none, the first page in the document that has one (the evidence says "Final DOS from page N"). A stand-alone non-visit document — every page's page type or sub-type is Patient Demographics, Patient Information, Patient Registration, Growth chart, Problem List, Immunizations or Immunization list (`continuity_canon.json` → `default_final_dos`) — takes `DOS_DEFAULT_DATE` (2022-02-02) instead (the evidence says "is not a visit"). Such a page inside a visit's document takes the visit's DOS |
+| Final page type | the first page's page type; the sub-type can differ (PAGE_CLASSIFICATION.md §6) |
+| Final DOS | the first page's DOS on every page. A stand-alone document whose every page's type or sub-type is Patient Demographics, Patient Information, Patient Registration, Growth chart, Problem List, Immunizations or Immunization list (`continuity_canon.json` → `default_final_dos`) takes `DOS_DEFAULT_DATE` (2222-02-02); such a page inside a visit's document takes the visit's DOS |
+| Final encounter type | the first page's |
 
-A continuation page with no date shows Extracted DOS = NA and Final DOS = the
-first page's; one with a date of its own still shows the first page's as its
-Final DOS. A page outside any document (blank/junk/duplicate) has no Final
-values.
+A document's DOS (review-ui Doc Summary, "Start Page 1 – End Page 3") is its
+first page's.
 
 ---
 
@@ -234,8 +164,8 @@ every stage's stored output. The Final value of every reviewer field:
 | Quality & orientation | `printed_or_handwritten`, `handwritten_area_pct`, `is_visible`, `quality_tag`, `orientation_angle`, `tilt_angle`, `mirrored` | the page's own (stage 1) |
 | Classification | `blank_junk_flag`, `is_duplicate` | the page's own |
 | Document | `document_seq` | from continuity |
-| Page type | `page_type`, `page_subtype`, `model_type`, `codability`, `classification_category`, `page_type_source`, `continuation_rule` | **agreed across the document** (signed progress note → Progress Note; else a confirmed first page's type; else a ≥60% confidence-weighted vote; else each page's own, flagged); the sub-type stays the page's own — see PAGE_CLASSIFICATION.md §6.1 |
-| Date of service | `dos_from`, `dos_to`, `dos_source` | **the document's first dated page's** (`source = document`), else the page's own |
+| Page type | `page_type`, `page_subtype`, `model_type`, `codability`, `classification_category`, `page_type_source`, `continuation_rule` | **the document's first page's type** (a ≥60% confidence-weighted vote only when the first page is Unknown; else each page's own, flagged); the sub-type can differ — see PAGE_CLASSIFICATION.md §6.1 |
+| Date of service | `dos_from`, `dos_to`, `dos_source` | **the document's first page's** (`source = document`; the default for a stand-alone non-visit document), else the page's own |
 | Encounter | `encounter_type` | the page's own (already one per visit) |
 | Provider | `provider_name`, `signature_present` | the page's own (key/value staging) |
 | Sequence | `seq` | suggested sequence |
@@ -248,8 +178,6 @@ DOS, encounter type and provider of the page it duplicates, with
 orientation, blank/junk flag and `seq` (`COPIED_FROM_REFERENCE` in
 `imaging_final/stage.py`).
 
-The carry rule lives in one function, `continuity.engine.document_finals`, used
-by both stages.
 
 ### review-ui
 
@@ -282,7 +210,7 @@ model-named families). Both are per-page.
 
 ---
 
-## 9. How the weights were chosen
+## 9. History: how the tiered engine's weights were chosen
 
 80 page pairs from four charts, labelled by printed pagination (55 continuations,
 25 new documents), scored with pagination hidden.
@@ -313,7 +241,7 @@ model-named families). Both are per-page.
 
 ---
 
-## 10. Dry run on the local charts
+## 10. History: dry run of the tiered engine
 
 | Chart | Pages | Documents | Notes |
 |---|---|---|---|
@@ -324,7 +252,7 @@ model-named families). Both are per-page.
 
 ---
 
-## 11. Open questions — for the brainstorm
+## 11. History: open questions on the tiered engine
 
 1. **Tuning data is thin.** 80 labelled pairs, four charts, one or two EMRs.
    The prototype's corpus (366 charts in `continuity_sample.csv`) has its OCR

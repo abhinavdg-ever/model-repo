@@ -212,11 +212,13 @@ KV_DEBUG = _flag("KV_DEBUG", False)
 SEQUENCING_CROSS_ENCODER = _flag("SEQUENCING_CROSS_ENCODER", False)
 
 # --- Member verification ----------------------------------------------------
-# The NER layer needs the GLiNER checkpoints, which are not in the repo. With it
-# off the pipeline runs the reference's rule pass only — and no page can be
-# classified wrong_member, so no document can be Rejected. See
+# GLiNER (the NER layer) is on by default: member verification reads names off
+# the page with it. It needs the checkpoints under models/ner/ (the key/value
+# extraction loads the same one). Without them the member stage logs it and
+# runs the rule pass only — no page can be wrong_member, so no document can be
+# Rejected — and /health says member_ner.ready=false. See
 # stages/lib/member/engine.py.
-MEMBER_NER_ENABLED = _flag("MEMBER_NER_ENABLED", False)
+MEMBER_NER_ENABLED = _flag("MEMBER_NER_ENABLED", True)
 MEMBER_NER_MODEL_ID = (
     os.environ.get("MEMBER_NER_MODEL_ID") or "gliner_medium"
 ).strip()

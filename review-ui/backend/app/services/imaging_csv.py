@@ -37,7 +37,7 @@ CSV_HEADERS = [
     "member_verification_status",
 ]
 
-DEFAULT_DOC_DOS = "2022-02-02"
+DEFAULT_DOC_DOS = "2222-02-02"
 DEFAULT_DOC_DOS_CONFIDENCE = 0.8
 
 
@@ -50,7 +50,7 @@ def _cell(value: Any) -> str:
 
 
 def fill_doc_dos_for_download(pages: list[ImagingPageResult]) -> list[ImagingPageResult]:
-    """Prefer docDos*, else the page's own DOS, else the default 2022-02-02 @ 80%.
+    """Prefer docDos*, else the page's own DOS, else the default 2222-02-02 @ 80%.
     A page never takes the DOS of the page before it."""
     out: list[ImagingPageResult] = []
     for page in sorted(pages, key=lambda p: p.pageNumber):

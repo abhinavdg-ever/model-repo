@@ -4,17 +4,18 @@ The last stage. It reads every stage's stored output and writes, per page, the
 value a reviewer should take as final, so review-ui and reports read Finals
 from one place instead of re-deriving them.
 
-Most Finals are the page's own value. Two are decided across a document:
+Most Finals are the page's own value. Three are decided across a document:
 
-* **Page type** (with sub-type, model type, codability): agreed across the
-  pages of each continuity document — ``page_classify.arbitration.decide_final``
-  (Progress Note for a signed progress note, else a confirmed first page's
-  type, else a confidence-weighted vote). The sub-type stays the page's own. ``page_type_source`` is page / continuation / embedded /
-  progress_note (a signed document that opens like a progress note: every
-  page becomes Progress Note, its own type the sub-type), and
+* **Page type** (with model type, codability): every page of a continuity
+  document takes its first page's page type —
+  ``page_classify.arbitration.decide_final`` (a confidence-weighted vote only
+  when the first page is Unknown). The sub-type can differ: a page whose own
+  type differs keeps it as the sub-type (Progress Note / Laboratory Data).
+  ``page_type_source`` is page / continuation / embedded, and
   ``continuation_rule`` names the rule.
-* **Date of service**: the document's first page's, else its first dated
-  page's (``continuity.engine.document_finals``); ``dos_source`` = document.
+* **Date of service** and **encounter type**: the document's first page's
+  (``continuity.engine.document_finals``; ``dos_source`` = document). A
+  stand-alone document of non-visit page types takes DOS_DEFAULT_DATE.
 
 Blank and junk pages belong to no document and keep their own values. A
 duplicate page is skipped by every stage after blank/junk, so it takes the
@@ -117,8 +118,6 @@ def _final_page(page_id: int, kind: dict[str, Any], link: dict[str, Any]) -> Fin
         document_seq=link.get("document_seq"),
         seq=link.get("seq"),
         link_strength=link.get("link_strength"),
-        start_confirmed=bool(link.get("start_confirmed")),
-        in_progress_note=bool(link.get("in_progress_note")),
         confidence=_number(kind.get("confidence")),
     )
 
@@ -136,33 +135,30 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             continuity = get_continuity_map(conn, chart_id)
         signatures = _signatures(chart_id, ctx.chart_name)
 
-        # Order, with no step reading a later one's output (so no cycle):
-        #   1. own values — each page's DOS (dos_extract) and Extracted page
-        #      type (page_subtype), decided page by page;
-        #   2. continue — continuity grouped the pages from those own values;
-        #   3. page type replicated — the continuation rules, below;
-        #   4. DOS — carried over the same documents, after the page type.
+        # Each page's own DOS, Extracted page type and encounter type come
+        # first; continuity grouped the pages from them; then every page of a
+        # document takes its first page's page type, DOS and encounter type.
         # Continuity never reads a Final value, so a Final cannot feed back
-        # into the continue decision.
-        own_dos: dict[int, dict[str, Any]] = {}
+        # into the grouping.
+        own: dict[int, dict[str, Any]] = {}
         for page in ctx.pages:
             page_dos = dos.get(page["id"]) or {}
             kind = classification.get(page["id"]) or {}
-            own_dos[page["id"]] = {
+            own[page["id"]] = {
                 "dos_from": _iso(page_dos.get("date_of_service_from")),
                 "dos_to": _iso(page_dos.get("date_of_service_to")),
-                "page_number": page.get("page_number"),
-                # The first page's type decides a non-visit document's default DOS.
+                # A stand-alone non-visit document takes the default DOS.
                 "page_type": kind.get("page_type"),
                 "page_subtype": kind.get("page_subtype"),
+                "encounter_type": (encounters.get(page["id"]) or {}).get("encounter_type"),
             }
         documents = _documents(ctx.pages, continuity)
-        carried_dos: dict[int, dict[str, Any]] = {}
+        carried: dict[int, dict[str, Any]] = {}
         document_of: dict[int, list[int]] = {}
         for document_pages in documents.values():
-            finals = document_finals([own_dos[pid] for pid in document_pages])
+            finals = document_finals([own[pid] for pid in document_pages])
             for pid in document_pages:
-                carried_dos[pid] = finals
+                carried[pid] = finals
                 document_of[pid] = document_pages
         final_pages = {
             page["id"]: _final_page(
@@ -186,9 +182,10 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 final_pages[page_id],
                 [final_pages[pid] for pid in document_of.get(page_id, [])] or None,
             )
-            # DOS: the document's when the page belongs to one, else its own.
-            document = carried_dos.get(page_id)
-            dates = document or own_dos[page_id]
+            # DOS and encounter type: the document's (its first page's) when
+            # the page belongs to one, else its own.
+            document = carried.get(page_id)
+            dates = document or own[page_id]
             dos_origin = "document" if document else "page"
             row = {
                 "member_name": member.get("extracted_name") or None,
@@ -218,7 +215,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "dos_from": dates["dos_from"],
                 "dos_to": dates["dos_to"],
                 "dos_source": dos_origin if dates["dos_from"] else None,
-                "encounter_type": (encounters.get(page_id) or {}).get("encounter_type"),
+                "encounter_type": (document or own[page_id])["encounter_type"],
                 "provider_name": signature.get("provider_name"),
                 "signature_present": signature.get("signature_present") if signature else None,
                 "seq": (sequencing.get(page_id) or {}).get("seq"),
@@ -259,7 +256,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         path = write_csv(imaging_csv(ctx.chart_name, "final"), FINAL_COLS, csv_rows)
         changed = sum(
             1 for r in csv_rows
-            if r["page_type_source"] in ("continuation", "embedded", "progress_note")
+            if r["page_type_source"] in ("continuation", "embedded")
         )
         logger.info(
             "imaging_final chart=%s pages=%d page_type_changed_by_continuation=%d → %s",

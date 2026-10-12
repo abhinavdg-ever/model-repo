@@ -39,7 +39,7 @@ const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
 };
 
 /** The DOS of a page with no date (DOS_DEFAULT_DATE in dos_canon.json), at 80% confidence. */
-const DEFAULT_DOS = "2022-02-02";
+const DEFAULT_DOS = "2222-02-02";
 const DEFAULT_DOS_CONFIDENCE = 0.8;
 
 function text(value: string | null | undefined): string | null {
@@ -171,7 +171,7 @@ function finalDosValue(
   processed: boolean,
   skipped: boolean,
 ): string {
-  // The continuity stage's document date, carried from the first page.
+  // imaging_final's Final DOS: the document's first page's date.
   const carried = side === "from" ? page.finalDosFrom : page.finalDosTo ?? page.finalDosFrom;
   if (carried) return displayIsoDates(carried);
   if (page.documentSeq != null) return extracted;
@@ -1685,7 +1685,7 @@ function DocSummary({
   sections: ImagingSectionsProcessed;
 }) {
   const [view, setView] = useState<DocView>("documents");
-  // Each page's own DOS, else the default 2022-02-02; never the previous page's.
+  // Each page's own DOS, else the default 2222-02-02; never the previous page's.
   const rows = useMemo(() => withPageDos(pages, sections.dos), [pages, sections.dos]);
   const showConfidence = view === "confidence";
 

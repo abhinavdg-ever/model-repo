@@ -30,11 +30,9 @@ stage's documents. The page **type** is agreed across a document's pages; the
 **sub-type** stays each page's own.
 
   The agreed page type (``agree_document_type``), first that applies:
-    progress_note  the document opens like a progress note and ends signed
-                   (continuity ``in_progress_note``) → Progress Note
-    first_page     the first page is confirmed (keyword title, or printed
-                   page 1) → the first page's type
-    vote           else the page types of the document's pages, weighted by
+    first_page     the first page's type, whenever it has one: every
+                   continue page takes it
+    vote           else (an Unknown first page) the page types of the document's pages, weighted by
                    page-type confidence, when one type holds at least
                    ``document_agreement.vote_min_share`` (0.60) of the weight;
                    a tie goes to the first page's type (flagged for review
@@ -236,9 +234,6 @@ class FinalPage:
     document_seq: Optional[int] = None
     seq: Optional[int] = None  # position within the document; 1 = start
     link_strength: Optional[str] = None  # strong | weak (chain from the start)
-    start_confirmed: bool = False
-    # Continuity: the document opens like a progress note and ends signed.
-    in_progress_note: bool = False
     # The page type's confidence (page_classification.confidence): its vote weight.
     confidence: Optional[float] = None
 
@@ -249,7 +244,7 @@ class FinalResult:
     page_subtype: Optional[str]
     model_type: Optional[str]
     codability: Optional[str]
-    source: str  # page | continuation | embedded | progress_note
+    source: str  # page | continuation | embedded
     continuation_rule: str
     needs_review: bool
 
@@ -293,34 +288,15 @@ def _keep(page: FinalPage, rule: str, review: bool) -> FinalResult:
     )
 
 
-def _progress_note(page: FinalPage) -> FinalResult:
-    """Rule 0: the page is part of a signed progress note. Codability is
-    Progress Note's, except Laboratory Data / Medication List."""
-    if page.page_type == tax.PROGRESS_NOTE:
-        return _keep(page, "progress_note", False)
-    unknown = page.page_type in (None, "", UNKNOWN)
-    subtype = tax.PROGRESS_NOTE if unknown else page.page_type
-    return FinalResult(
-        page_type=tax.PROGRESS_NOTE,
-        page_subtype=subtype,
-        model_type=subtype,
-        codability=codability_inside_note(subtype),
-        source="progress_note",
-        continuation_rule="progress_note",
-        needs_review=unknown,
-    )
-
-
 def agree_document_type(document: Sequence[FinalPage]) -> tuple[Optional[str], str]:
-    """The page type a document's pages agree on, and why:
-    progress_note / first_page / vote (``(None, "")`` for no document)."""
+    """The page type a document's pages agree on, and why: first_page (the
+    first page's type, whenever it has one) / vote (``(None, "")`` for no
+    document)."""
     if not document:
         return None, ""
-    if any(p.in_progress_note for p in document):
-        return tax.PROGRESS_NOTE, "progress_note"
     first = document[0]
     known = lambda t: t not in (None, "", UNKNOWN)  # noqa: E731
-    if known(first.page_type) and (first.start_confirmed or first.keyword_title_hit):
+    if known(first.page_type):
         return first.page_type, "first_page"
     weights: dict[str, float] = {}
     for p in document:
@@ -346,13 +322,9 @@ def decide_final(
 ) -> FinalResult:
     """The Final page type of one page. ``document`` is every page of its
     continuity document in order (None / one page: the page stands alone)."""
-    if page.in_progress_note:
-        return _progress_note(page)
     taxonomy = tax.load()
     if document and len(document) > 1:
         agreed, basis = agree_document_type(document)
-        if basis == "progress_note":
-            return _progress_note(page)
         if basis == "no_agreement":
             return _keep(page, "no_agreement", True)
         if agreed is None or page.page_type == agreed:

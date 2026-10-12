@@ -80,7 +80,7 @@ curl -fL -o models/rapidocr/ppocrv6_dict.txt "$BASE/paddle/PP-OCRv6/rec/PP-OCRv6
 
 The first Docling run also pulls Docling’s own layout weights into the Hugging Face cache. Final OCR 2 is Azure Document Intelligence, so that is an API key, not a file.
 
-Set `MEMBER_NER_ENABLED=true` after `models/ner/` is in place. Without it, no chart can be rejected.
+`MEMBER_NER_ENABLED` defaults to `true`; put the checkpoints in `models/ner/`. Without them (or with it set to `false`) the member stage runs rules-only and no chart can be rejected.
 
 ### Copied in by hand
 

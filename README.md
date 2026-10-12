@@ -169,8 +169,8 @@ Both are deliberate, current limitations rather than oversights:
   The viewer's login screen keeps a casual visitor off the page; it is not an
   access control, and the API behind it is reachable without it.
 - **Rejecting a chart for wrong-member evidence requires the optional NER layer.**
-  It is off by default because the runtime and model weights are large (~4.5 GB
-  together) and are not shipped with the code. While it is off, member verification
+  It is on by default, but the runtime and model weights are large (~4.5 GB
+  together) and are not shipped with the code. While they are missing, member verification
   still runs and still flags charts for review — but no chart can be *rejected*
   outright, so every chart returns accepted or needs-review.
   [`GET /health`](docs/API.md#3-starting-uvicorn) reports whether it is active.

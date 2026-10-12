@@ -18,8 +18,8 @@ Blank / junk / duplicate pages are ``non_codeable`` and keep their junk label
 as the sub-type; a label that is a taxonomy sub-type (Invoice) also gives its
 page type.
 
-Runs before ``dos_extract``, which reads its sub-type to decide default-date
-and non-encounter pages; it reads no DOS itself.
+Runs before ``continuity``, which reads its page type and confidence to see
+where a document ends; it reads no DOS itself.
 
 Also writes ``imaging/<chart>_codeable.csv`` for review-ui Local Mode.
 """

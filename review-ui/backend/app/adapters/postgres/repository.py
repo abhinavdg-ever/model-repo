@@ -991,7 +991,7 @@ class PostgresFolderRepository(FolderRepository):
                         cur.execute(
                             """
                             SELECT p.page_name, k.document_seq, k.position, k.relation,
-                                   k.decided_by, k.evidence, k.review_required
+                                   k.decided_by, k.evidence
                             FROM page_continuity_results k
                             JOIN page_list p ON p.id = k.page_id
                             JOIN chart_list c ON c.id = k.chart_id
@@ -1000,7 +1000,7 @@ class PostgresFolderRepository(FolderRepository):
                             (folder_id,),
                         )
                         for (page_name, document, position, relation, decided_by,
-                             evidence, review) in cur.fetchall():
+                             evidence) in cur.fetchall():
                             fields = _ensure(str(page_name))
                             fields["documentSeq"] = int(document)
                             fields["documentPosition"] = position
@@ -1008,7 +1008,6 @@ class PostgresFolderRepository(FolderRepository):
                             fields["continuityRelation"] = relation
                             fields["continuityDecidedBy"] = decided_by
                             fields["continuityEvidence"] = evidence
-                            fields["continuityReview"] = bool(review)
 
                     cur.execute("SELECT to_regclass('imaging_final')")
                     if (cur.fetchone() or [None])[0]:
