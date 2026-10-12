@@ -163,20 +163,31 @@ class TestFinalValues:
         assert [r["final_dos_from"] for r in rows] == ["2024-03-28"] * 3
         assert rows[2]["dos_from"] == "2024-05-01"  # Extracted stays the page's own
 
-    def test_a_non_visit_document_takes_the_default_final_dos(self):
+    def test_a_stand_alone_non_visit_document_takes_the_default_final_dos(self):
         rows = assign([
             page(1, page_type="Patient Demographics", dos="2024-10-01", printed=(1, 2)),
-            page(2, dos="2024-11-05", printed=(2, 2)),
+            page(2, page_type="Patient Demographics", dos="2024-11-05", printed=(2, 2)),
         ])
         assert [r["final_dos_from"] for r in rows] == ["2022-02-02", "2022-02-02"]
         assert [r["final_dos_to"] for r in rows] == ["2022-02-02", "2022-02-02"]
         assert rows[0]["dos_from"] == "2024-10-01"
         assert "is not a visit" in rows[0]["evidence"]
 
+    def test_a_non_visit_page_inside_a_visit_takes_the_visit_dos(self):
+        rows = assign([
+            page(1, page_type="Patient Demographics", printed=(1, 2)),
+            page(2, page_type="Progress Note", dos="2024-11-05", printed=(2, 2)),
+        ])
+        assert [r["final_dos_from"] for r in rows] == ["2024-11-05", "2024-11-05"]
+        note = page(1, page_type="Progress Note", dos="2024-03-28", printed=(1, 2))
+        problems = page(2, page_type="Progress Note", printed=(2, 2))
+        problems.page_subtype = "Problem List"
+        assert [r["final_dos_from"] for r in assign([note, problems])] == ["2024-03-28"] * 2
+
     def test_the_sub_type_decides_too(self):
-        first = page(1, page_type="Progress Note", dos="2024-10-01")
-        first.page_subtype = "Problem List"
-        assert assign([first])[0]["final_dos_from"] == "2022-02-02"
+        alone = page(1, page_type="Progress Note", dos="2024-10-01")
+        alone.page_subtype = "Problem List"
+        assert assign([alone])[0]["final_dos_from"] == "2022-02-02"
         for name in ("Patient Information", "Patient Registration", "Growth chart",
                      "Immunizations", "Immunization list"):
             assert document_finals(

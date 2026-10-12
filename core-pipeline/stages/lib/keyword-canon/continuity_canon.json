@@ -85,7 +85,7 @@
     ]
   },
   "default_final_dos": {
-    "comment": "A document whose first page's page type or sub-type is listed here is not a visit: its Final DOS is DOS_DEFAULT_DATE (dos_canon.json, 2022-02-02) on every page, whatever dates its pages carry. Each page's Extracted DOS is untouched. Names are page_taxonomy.json page types / sub-types, matched without case.",
+    "comment": "A stand-alone document of these pages (every page's page type or sub-type listed here) is not a visit: its Final DOS is DOS_DEFAULT_DATE (dos_canon.json, 2022-02-02) on every page, whatever dates its pages carry. One of these pages inside a visit's document (a progress note with a problem-list page) takes the visit's DOS. Each page's Extracted DOS is untouched. Names are page_taxonomy.json page types / sub-types, matched without case.",
     "page_types": [
       "Patient Demographics", "Patient Information", "Patient Registration",
       "Growth chart", "Problem List",

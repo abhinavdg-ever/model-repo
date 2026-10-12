@@ -513,10 +513,10 @@ def document_finals(members: Sequence[dict[str, Any]]) -> dict[str, Any]:
     type and category are the first page's. The DOS is the first page's, or the
     first page in the document that has one (``dos_page_number`` says which
     page), on every page: a continue page takes it whether or not it has a date
-    of its own. A document whose first page is a non-visit type
+    of its own. A stand-alone non-visit document — every page a non-visit type
     (continuity_canon.json ``default_final_dos``: demographics, registration,
-    growth chart, problem list, immunizations) takes DOS_DEFAULT_DATE instead
-    (``dos_default``).
+    growth chart, problem list, immunizations) — takes DOS_DEFAULT_DATE instead
+    (``dos_default``). Such a page inside a visit's document takes the visit's DOS.
     """
     opener = members[0]
     finals = {
@@ -525,7 +525,11 @@ def document_finals(members: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "dos_default": False,
     }
     default_date = _DOS_DEFAULT.get()
-    if default_date and uses_default_final_dos(opener.get("page_type"), opener.get("page_subtype")):
+    stand_alone = all(
+        uses_default_final_dos(member.get("page_type"), member.get("page_subtype"))
+        for member in members
+    )
+    if default_date and stand_alone:
         return {**finals, "dos_from": default_date, "dos_to": default_date,
                 "dos_page_number": None, "dos_default": True}
     dated = next((m for m in members if m.get("dos_from")), None)
