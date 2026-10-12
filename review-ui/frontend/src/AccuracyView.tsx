@@ -7,7 +7,6 @@ import {
   MIN_LAST_RUN,
   MIN_LAST_RUN_LABEL,
   accuracyPercent,
-  formatClassAccuracy,
   formatDistribution,
   formatPrecision,
   formatRecall,
@@ -95,8 +94,7 @@ const NON_ZERO_INFO =
   "Most pages are upright, so this is the figure that shows whether turned pages are caught.";
 const RATES_INFO =
   "For the Yes class. Recall = TP / (TP + FN): share of the real Yes pages the pipeline caught. " +
-  "Precision = TP / (TP + FP): share of the pipeline's Yes calls that were right. " +
-  "Accuracy = (TP + TN) / all pages: share of Yes / No calls that were right.";
+  "Precision = TP / (TP + FP): share of the pipeline's Yes calls that were right.";
 const MEMBER_RATES_INFO =
   RATES_INFO +
   " Accuracy of Yes: the pages the ground truth says carry the member, scored like the donut " +
@@ -166,9 +164,14 @@ function Donut({
       <svg className="accuracy-donut" viewBox="0 0 100 100" role="img" aria-label={rates ? `${label} ${percentLabel(tally)}. ${formatDistribution(tally)}. Precision ${formatPrecision(rates)}. Recall ${formatRecall(rates)}` : `${label} ${percentLabel(tally)}. ${formatDistribution(tally)}`}>
         <circle className="accuracy-donut-track" cx="50" cy="50" r={radius} />
         {arcs}
-        <text className="accuracy-donut-pct" x="50" y="54">
+        <text className="accuracy-donut-pct" x="50" y={tally.scored > 0 ? 51 : 54}>
           {percentLabel(tally)}
         </text>
+        {tally.scored > 0 ? (
+          <text className="accuracy-donut-caption" x="50" y="64">
+            Accuracy
+          </text>
+        ) : null}
       </svg>
       <figcaption>
         {label} <InfoTip text={`${detail} ${SCORE_INFO}`} />
@@ -184,9 +187,9 @@ function Donut({
               <br />
             </>
           ) : null}
-          Recall {formatRecall(rates)}
+          Recall of Yes {formatRecall(rates)}
           <br />
-          Precision {formatPrecision(rates)}
+          Precision of Yes {formatPrecision(rates)}
           <br />
           {yesLabel} {percentLabel(yesTally)}
         </p>
@@ -200,11 +203,9 @@ function Donut({
               <br />
             </>
           ) : null}
-          Recall {formatRecall(rates)}
+          Recall of Yes {formatRecall(rates)}
           <br />
-          Precision {formatPrecision(rates)}
-          <br />
-          Accuracy {formatClassAccuracy(rates)}
+          Precision of Yes {formatPrecision(rates)}
           {yesTally && yesAtBottom ? (
             <>
               <br />
