@@ -6,7 +6,7 @@ The primary model is the b_jnk DistilBERT page classifier
 JUNK_COVER_PAGE, JUNK_RECORD_REQUEST, JUNK_INSTRUCTIONS, JUNK_LETTER_FAX,
 JUNK_OTHERS). Its decision rules come with it (vendored ``src/models/decision.py``
 and ``src/inference/predict.py``, settings in ``default.json`` → ``decision``):
-BLANK / JUNK only at ≥ 0.85 for one label and KEEP probability ≤ 0.10,
+BLANK / JUNK only at ≥ 0.60 for one label (min_flag_confidence 0.60) and KEEP probability ≤ 0.10,
 clinical-image / demographic retention safeguards, the invoice rule, and the
 junk sub-type named by trigger phrases (the model decides mixed or untriggered
 pages). A page the model is unsure about stays KEEP with review.
