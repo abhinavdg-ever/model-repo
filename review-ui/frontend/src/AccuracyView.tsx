@@ -290,9 +290,25 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
     () => sumTallies(rows.map((row) => row.orientationNonZero)),
     [rows],
   );
+  const orientationRates = useMemo(
+    () => sumRates(rows.map((row) => row.orientationRates)),
+    [rows],
+  );
   /** Recall / precision / accuracy of the "Yes" class, across all files. */
   const ratesFor = (id: MetricId) =>
-    id === "blankJunk" ? blankJunkRates : id === "member" ? memberRates : undefined;
+    id === "blankJunk"
+      ? blankJunkRates
+      : id === "member"
+        ? memberRates
+        : id === "orientation"
+          ? orientationRates
+          : undefined;
+  const ratesLabelFor = (id: MetricId) =>
+    id === "member"
+      ? "Member on page = Yes"
+      : id === "orientation"
+        ? "Rotated (not 0°) = Yes"
+        : "Blank / Junk = Yes";
 
   return (
     <div className="workspace accuracy-view">
@@ -341,7 +357,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                   detail={metric.rule}
                   tally={overallByMetric[metric.id]}
                   rates={ratesFor(metric.id)}
-                  ratesLabel={metric.id === "member" ? "Member on page = Yes" : "Blank / Junk = Yes"}
+                  ratesLabel={ratesLabelFor(metric.id)}
                   yesTally={
                     metric.id === "blankJunk"
                       ? blankJunkYes

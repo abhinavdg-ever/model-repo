@@ -88,6 +88,8 @@ export type ChartAccuracy = {
   blankJunkYes: Tally;
   /** Orientation scored on the pages the ground truth says are rotated (not 0). */
   orientationNonZero: Tally;
+  /** "Rotated" = Yes: recall / precision of finding turned pages. */
+  orientationRates: ClassRates;
   /** "Yes" class = the member's name / DOB / ID is on the page. */
   memberRates: ClassRates;
 };
@@ -124,12 +126,38 @@ function addBlankJunkYes(tally: Tally, bits: GtBit[]): void {
   add(tally, grade(bits));
 }
 
+/** 0..359 from "270", "270°" or "-90"; null when it is not a number. */
+function quarterTurn(value: string | number | null | undefined): number | null {
+  const n = typeof value === "number" ? value : Number(String(value ?? "").trim().replace(/°$/, ""));
+  if (!Number.isFinite(n)) return null;
+  return ((Math.round(n) % 360) + 360) % 360;
+}
+
 /** A page the ground truth says is rotated (90 / 180 / 270): Match or No Match. */
 function addOrientationNonZero(tally: Tally, bits: GtBit[]): void {
   if (!labeled(bits) || bits[0].mark === "unknown") return;
-  const expected = Number(bits[0].label.trim().replace(/°$/, ""));
-  if (!Number.isFinite(expected) || ((Math.round(expected) % 360) + 360) % 360 === 0) return;
+  const expected = quarterTurn(bits[0].label);
+  if (expected === null || expected === 0) return;
   add(tally, grade(bits));
+}
+
+/** "Rotated" (not 0) as a Yes / No class. A rotated page reported at another
+ * non-zero angle still counts as caught; the exact angle is "Accuracy of non-zero". */
+function addOrientationRates(
+  rates: ClassRates,
+  bits: GtBit[],
+  angle: number | null | undefined,
+): void {
+  if (!labeled(bits) || bits[0].mark === "unknown") return;
+  const expectedTurn = quarterTurn(bits[0].label);
+  const actualTurn = quarterTurn(angle);
+  if (expectedTurn === null || actualTurn === null) return;
+  const expected = expectedTurn !== 0;
+  const predicted = actualTurn !== 0;
+  if (expected && predicted) rates.tp += 1;
+  else if (expected) rates.fn += 1;
+  else if (predicted) rates.fp += 1;
+  else rates.tn += 1;
 }
 
 function addBlankJunk(rates: ClassRates, bits: GtBit[]): void {
@@ -368,6 +396,7 @@ export function scoreChart(
   const blankJunkRates = emptyRates();
   const blankJunkYes = emptyTally();
   const orientationNonZero = emptyTally();
+  const orientationRates = emptyRates();
   const memberRates = emptyRates();
   const overall = emptyTally();
   for (const page of doc.pages) {
@@ -378,6 +407,7 @@ export function scoreChart(
     addBlankJunk(blankJunkRates, scored.blankJunk);
     addBlankJunkYes(blankJunkYes, scored.blankJunk);
     addOrientationNonZero(orientationNonZero, scored.rotation);
+    addOrientationRates(orientationRates, scored.rotation, page.orientationAngle);
     addMember(memberRates, scored.member);
   }
   return {
@@ -388,6 +418,7 @@ export function scoreChart(
     blankJunkRates,
     blankJunkYes,
     orientationNonZero,
+    orientationRates,
     memberRates,
   };
 }
