@@ -103,6 +103,8 @@ export type ChartAccuracy = {
   orientationRates: ClassRates;
   /** "Yes" class = the member's name / DOB / ID is on the page. */
   memberRates: ClassRates;
+  /** Member Verification scored on the pages the ground truth says carry the member only. */
+  memberYes: Tally;
 };
 
 const EMPTY_SECTIONS: ImagingSectionsProcessed = {
@@ -182,6 +184,20 @@ function addBlankJunk(rates: ClassRates, bits: GtBit[]): void {
   }
   if (expected) rates.fn += 1;
   else if (bit.mark === "mismatch") rates.fp += 1;
+}
+
+/** A page the ground truth says carries the member (any labelled name, DOB or
+ * ID is Yes): the page's Member Verification verdict. Fields the member stage
+ * did not run on are left out, as in ``addMember``. */
+function addMemberYes(
+  tally: Tally,
+  fields: Array<[string | null | undefined, GtBit[]]>,
+  verdict: Verdict | null,
+): void {
+  const present = fields.some(
+    ([label, bits]) => yesNo(label) === "yes" && bits.length > 0 && bits[0].mark !== "unknown",
+  );
+  if (present) add(tally, verdict);
 }
 
 /** Member presence as a Yes / No class. A page is positive in the ground truth
@@ -442,6 +458,7 @@ export function scoreChart(
   const orientationNonZero = emptyTally();
   const orientationRates = emptyRates();
   const memberRates = emptyRates();
+  const memberYes = emptyTally();
   const overall = emptyTally();
   for (const page of doc.pages) {
     if (!hasGroundTruth(page.groundTruth)) continue;
@@ -453,6 +470,7 @@ export function scoreChart(
     addOrientationNonZero(orientationNonZero, scored.rotation);
     addOrientationRates(orientationRates, scored.rotation, page.orientationAngle);
     addMember(memberRates, scored.member);
+    addMemberYes(memberYes, scored.member, scored.scores.member);
   }
   return {
     chartId,
@@ -464,6 +482,7 @@ export function scoreChart(
     orientationNonZero,
     orientationRates,
     memberRates,
+    memberYes,
   };
 }
 

@@ -97,6 +97,10 @@ const RATES_INFO =
   "For the Yes class. Recall = TP / (TP + FN): share of the real Yes pages the pipeline caught. " +
   "Precision = TP / (TP + FP): share of the pipeline's Yes calls that were right. " +
   "Accuracy = (TP + TN) / all pages: share of Yes / No calls that were right.";
+const MEMBER_RATES_INFO =
+  RATES_INFO +
+  " Accuracy of Yes: the pages the ground truth says carry the member, scored like the donut " +
+  "(Match / Partial / No Match on the labelled Name, DOB and ID).";
 const YES_ONLY_RATES_INFO =
   "For the Yes class. Recall = TP / (TP + FN): share of the real Yes pages the pipeline caught. " +
   "Precision = TP / (TP + FP): share of the pipeline's Yes calls that were right. " +
@@ -113,6 +117,8 @@ function Donut({
   yesLabel = "Accuracy of Yes",
   yesInfo = YES_INFO,
   yesOnly = false,
+  yesAtBottom = false,
+  ratesInfo = RATES_INFO,
 }: {
   label: string;
   detail: string;
@@ -126,6 +132,9 @@ function Donut({
   yesInfo?: string;
   /** Show Recall, Precision and the Accuracy of Yes only (no all-pages Accuracy). */
   yesOnly?: boolean;
+  /** Add the Accuracy of Yes as the last line under Recall / Precision / Accuracy. */
+  yesAtBottom?: boolean;
+  ratesInfo?: string;
 }) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
@@ -186,7 +195,7 @@ function Donut({
           {ratesLabel ? (
             <>
               <span className="accuracy-rates-class">
-                {ratesLabel} <InfoTip text={RATES_INFO} />
+                {ratesLabel} <InfoTip text={ratesInfo} />
               </span>
               <br />
             </>
@@ -196,9 +205,15 @@ function Donut({
           Precision {formatPrecision(rates)}
           <br />
           Accuracy {formatClassAccuracy(rates)}
+          {yesTally && yesAtBottom ? (
+            <>
+              <br />
+              {yesLabel} {percentLabel(yesTally)}
+            </>
+          ) : null}
         </p>
       ) : null}
-      {yesTally && !yesOnly ? (
+      {yesTally && !yesOnly && !yesAtBottom ? (
         <p className="accuracy-rates">
           <span className="accuracy-rates-class">
             {yesLabel} {percentLabel(yesTally)} <InfoTip text={yesInfo} />
@@ -351,6 +366,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
   );
   const memberRates = useMemo(() => sumRates(rows.map((row) => row.memberRates)), [rows]);
   const blankJunkYes = useMemo(() => sumTallies(rows.map((row) => row.blankJunkYes)), [rows]);
+  const memberYes = useMemo(() => sumTallies(rows.map((row) => row.memberYes)), [rows]);
   const orientationNonZero = useMemo(
     () => sumTallies(rows.map((row) => row.orientationNonZero)),
     [rows],
@@ -435,13 +451,17 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                   yesTally={
                     metric.id === "blankJunk"
                       ? blankJunkYes
-                      : metric.id === "orientation"
+                      : metric.id === "member"
+                        ? memberYes
+                        : metric.id === "orientation"
                         ? orientationNonZero
                         : undefined
                   }
                   yesLabel={metric.id === "orientation" ? "Accuracy of non-zero" : undefined}
                   yesInfo={metric.id === "orientation" ? NON_ZERO_INFO : undefined}
                   yesOnly={metric.id === "blankJunk"}
+                  yesAtBottom={metric.id === "member"}
+                  ratesInfo={metric.id === "member" ? MEMBER_RATES_INFO : undefined}
                 />
                 ),
               )}

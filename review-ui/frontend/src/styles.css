@@ -3079,6 +3079,7 @@ input {
   justify-content: space-between;
   gap: 0.75rem;
   flex-wrap: wrap;
+  margin-bottom: 0.65rem;
 }
 
 .accuracy-search {
