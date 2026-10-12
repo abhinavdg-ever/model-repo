@@ -75,7 +75,9 @@ export type Tally = { yes: number; no: number; maybe: number; scored: number };
 
 /** Blank or junk is the positive class. A subtype disagreement still counts as found. */
 /** Counts for one "Yes" class: true / false positives and negatives. */
-export type ClassRates = { tp: number; fp: number; fn: number; tn: number };
+/** ``tpPartial``: the true positives that were only partly right (counted in
+ * ``tp`` too). Recall gives each of them 0.5, like Partial in the donut. */
+export type ClassRates = { tp: number; tpPartial: number; fp: number; fn: number; tn: number };
 
 /** Charts whose last run is before this date are left out of the report. */
 export const MIN_LAST_RUN = "2026-10-12";
@@ -125,7 +127,7 @@ function emptyTally(): Tally {
 }
 
 function emptyRates(): ClassRates {
-  return { tp: 0, fp: 0, fn: 0, tn: 0 };
+  return { tp: 0, tpPartial: 0, fp: 0, fn: 0, tn: 0 };
 }
 
 function blankOrJunkPositive(label: string): boolean {
@@ -178,8 +180,11 @@ function addBlankJunk(rates: ClassRates, bits: GtBit[]): void {
   const bit = bits[0];
   const expected = blankOrJunkPositive(bit.label);
   if (bit.mark === "match" || bit.mark === "partial") {
-    if (expected) rates.tp += 1;
-    else rates.tn += 1;
+    if (expected) {
+      rates.tp += 1;
+      // Found, but as the other of blank / junk.
+      if (bit.mark === "partial") rates.tpPartial += 1;
+    } else rates.tn += 1;
     return;
   }
   if (expected) rates.fn += 1;
@@ -203,8 +208,13 @@ function addMemberYes(
 /** Member presence as a Yes / No class. A page is positive in the ground truth
  * when any labelled member field (name, DOB, ID) is Yes, and predicted positive
  * when the pipeline found any of those labelled fields. Unknown fields (the
- * member stage did not run) are left out. */
-function addMember(rates: ClassRates, fields: Array<[string | null | undefined, GtBit[]]>): void {
+ * member stage did not run) are left out. A found page whose Member
+ * Verification is not a Match is a partial true positive (0.5 in recall). */
+function addMember(
+  rates: ClassRates,
+  fields: Array<[string | null | undefined, GtBit[]]>,
+  verdict: Verdict | null,
+): void {
   const scored = fields.filter(
     ([label, bits]) => yesNo(label) != null && bits.length > 0 && bits[0].mark !== "unknown",
   );
@@ -213,8 +223,10 @@ function addMember(rates: ClassRates, fields: Array<[string | null | undefined, 
   const predicted = scored.some(
     ([label, bits]) => (yesNo(label) === "yes") === (bits[0].mark === "match"),
   );
-  if (expected && predicted) rates.tp += 1;
-  else if (expected) rates.fn += 1;
+  if (expected && predicted) {
+    rates.tp += 1;
+    if (verdict !== "yes") rates.tpPartial += 1;
+  } else if (expected) rates.fn += 1;
   else if (predicted) rates.fp += 1;
   else rates.tn += 1;
 }
@@ -469,7 +481,7 @@ export function scoreChart(
     addBlankJunkYes(blankJunkYes, scored.blankJunk);
     addOrientationNonZero(orientationNonZero, scored.rotation);
     addOrientationRates(orientationRates, scored.rotation, page.orientationAngle);
-    addMember(memberRates, scored.member);
+    addMember(memberRates, scored.member, scored.scores.member);
     addMemberYes(memberYes, scored.member, scored.scores.member);
   }
   return {
@@ -490,6 +502,7 @@ export function sumRates(rows: ClassRates[]): ClassRates {
   const total = emptyRates();
   for (const row of rows) {
     total.tp += row.tp;
+    total.tpPartial += row.tpPartial;
     total.fp += row.fp;
     total.fn += row.fn;
     total.tn += row.tn;
@@ -507,7 +520,8 @@ export function formatPrecision(rates: ClassRates): string {
 }
 
 export function formatRecall(rates: ClassRates): string {
-  return ratePercent(rates.tp, rates.tp + rates.fn);
+  // A partly right catch counts 0.5, as Partial does in the donut.
+  return ratePercent(rates.tp - 0.5 * rates.tpPartial, rates.tp + rates.fn);
 }
 
 /** Share of pages where the Yes / No call was right: (TP + TN) / all. */

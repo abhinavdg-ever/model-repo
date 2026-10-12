@@ -93,14 +93,16 @@ const NON_ZERO_INFO =
   "stored text orientation: Match = same angle, No Match = any other. " +
   "Most pages are upright, so this is the figure that shows whether turned pages are caught.";
 const RATES_INFO =
-  "For the Yes class. Recall = TP / (TP + FN): share of the real Yes pages the pipeline caught. " +
+  "For the Yes class. Recall = (TP − 0.5 × partial TP) / (TP + FN): share of the real Yes pages the pipeline caught, " +
+  "a partly right catch counting 0.5. " +
   "Precision = TP / (TP + FP): share of the pipeline's Yes calls that were right.";
 const MEMBER_RATES_INFO =
   RATES_INFO +
   " Accuracy of Yes: the pages the ground truth says carry the member, scored like the donut " +
   "(Match / Partial / No Match on the labelled Name, DOB and ID).";
 const YES_ONLY_RATES_INFO =
-  "For the Yes class. Recall = TP / (TP + FN): share of the real Yes pages the pipeline caught. " +
+  "For the Yes class. Recall = (TP − 0.5 × partial TP) / (TP + FN): share of the real Yes pages the pipeline caught, " +
+  "a partly right catch counting 0.5. " +
   "Precision = TP / (TP + FP): share of the pipeline's Yes calls that were right. " +
   "Accuracy of Yes: the real Yes pages scored like the donut (Match = same type, " +
   "Partial = the other of blank / junk, No Match = kept as a real page).";
