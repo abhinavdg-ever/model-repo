@@ -12,11 +12,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 # tesseract-ocr        — preliminary OCR (stage 2)
+# tesseract-ocr-osd    — page orientation (stage 1). Without it OSD answers
+#                        nothing and every page reports orientation 0.
 # libgl1 / libglib2.0  — OpenCV runtime (rotation / quality)
 # libgomp1             — ONNX Runtime (RapidOCR) and scikit-learn
 RUN apt-get update && apt-get install -y --no-install-recommends \
         tesseract-ocr \
         tesseract-ocr-eng \
+        tesseract-ocr-osd \
         libgl1 \
         libglib2.0-0 \
         libgomp1 \
@@ -53,6 +56,21 @@ text = ( \
 code, reason = classify_text(text); \
 assert code == CODE_MAIN and reason == 'clinical_content', (code, reason); \
 print('junk clinical short-circuit ok')"
+
+# Fail the build if stage 1 cannot judge orientation, or if the canons from
+# this checkout did not land: OSD data, the reading vocabulary, the stored
+# text-orientation convention, taxonomy 1.2 and the DOS range labels.
+RUN tesseract --list-langs 2>&1 | grep -qx osd \
+ && test -s stages/lib/image_preprocess/english_words.txt.gz \
+ && python -c "\
+import json; \
+from stages.lib.image_preprocess.stage import text_orientation; \
+assert [text_orientation(c) for c in (0, 90, 180, 270)] == [0, 270, 180, 90]; \
+tax = json.load(open('stages/lib/keyword-canon/page_taxonomy.json')); \
+assert tax['version'] == '1.2' and len(tax['page_types']) == 51, tax['version']; \
+dos = json.load(open('stages/lib/keyword-canon/dos_canon.json')); \
+assert 'certification period' in dos['labels']['encounter']; \
+print('orientation + canons ok')"
 
 # Engines live under stages/lib/image_preprocess/ and stages/lib/ocr/; weights are bind-mounted at runtime.
 # Weight paths match .env: relative to core-pipeline/ (this image's WORKDIR).
