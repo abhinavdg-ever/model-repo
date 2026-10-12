@@ -1652,7 +1652,7 @@ function DocSummary({
           verificationProcessed={sections.verification}
         />
       ) : (
-        <table className="imaging-summary-table">
+        <table className="imaging-summary-table imaging-doc-table">
           <thead>
             <tr>
               <th scope="col">Page #</th>

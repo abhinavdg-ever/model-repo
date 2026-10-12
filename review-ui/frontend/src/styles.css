@@ -283,7 +283,10 @@ input {
 .landing {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  /* Short screens (laptops at 125-150% zoom): the page scrolls rather than
+     pushing the table's last rows and pagination out of reach. */
+  overflow-x: hidden;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   background: var(--bg);
@@ -704,9 +707,9 @@ input {
 
 .landing-history-scroll {
   flex: 1;
-  min-height: 0;
-  /* Prefer room for ~10 compact rows (header ~28px + 10×36px). */
-  min-height: 390px;
+  /* flex: 1 fills the screen on tall windows; on short ones the table
+     shrinks to a few rows and scrolls inside itself. */
+  min-height: 180px;
   overflow: auto;
 }
 
@@ -2024,9 +2027,23 @@ input {
   width: 26%;
 }
 
+/* Page Details tables fill the panel up to their full design width
+   (Field 13.5rem, Extracted / Final / Ground Truth 10.69rem, Confidence
+   7.13rem, gap 0.55rem) and shrink proportionally below it, so no column
+   is pushed out of a narrow panel. */
 .imaging-detail-table.imaging-value-table {
-  width: max-content;
+  width: 100%;
+  max-width: calc(13.5rem + 3 * 10.692rem + 7.128rem + 0.55rem);
   min-width: 0;
+}
+
+.imaging-detail-table.imaging-value-table th,
+.imaging-detail-table.imaging-value-table td {
+  overflow-wrap: anywhere;
+}
+
+.imaging-detail-table.imaging-value-table thead th {
+  white-space: normal;
 }
 
 /* 90% of the previous Page Details widths: Field 15rem, Extracted and
@@ -2035,7 +2052,7 @@ input {
 .imaging-detail-table.imaging-value-table .col-field,
 .imaging-detail-table.imaging-value-table thead th:nth-child(1),
 .imaging-detail-table.imaging-value-table tbody th {
-  width: calc(15rem * 0.9);
+  width: 25.4%;
 }
 
 .imaging-detail-table.imaging-value-table .col-extracted,
@@ -2044,7 +2061,7 @@ input {
 .imaging-detail-table.imaging-value-table tbody td:nth-child(2),
 .imaging-detail-table.imaging-value-table thead th:nth-child(3),
 .imaging-detail-table.imaging-value-table tbody td:nth-child(3) {
-  width: calc(11.88rem * 0.9);
+  width: 20.1%;
 }
 
 .value-with-note {
@@ -2061,10 +2078,15 @@ input {
   white-space: nowrap;
 }
 
+.imaging-value-table .value-with-note {
+  flex-wrap: wrap;
+  gap: 0.15rem 0.75rem;
+}
+
 .imaging-detail-table.imaging-value-table .col-confidence,
 .imaging-detail-table.imaging-value-table thead th:nth-child(4),
 .imaging-detail-table.imaging-value-table tbody td:nth-child(4) {
-  width: calc(7.92rem * 0.9);
+  width: 13.3%;
 }
 
 .imaging-detail-table.imaging-value-table .col-gap,
@@ -2082,9 +2104,7 @@ input {
 .imaging-detail-table.imaging-value-table .col-gt,
 .imaging-detail-table.imaging-value-table th.gt-shade,
 .imaging-detail-table.imaging-value-table td.gt-shade {
-  width: calc(11.88rem * 0.9);
-  min-width: calc(11.88rem * 0.9);
-  max-width: calc(11.88rem * 0.9);
+  width: 20.1%;
   background: #f8fbf5;
   overflow: visible;
   white-space: normal;
@@ -2662,6 +2682,45 @@ input {
 }
 
 .imaging-summary-table tbody tr:nth-child(even) {
+  background: var(--neutral-50);
+}
+
+/* Doc Summary has 20+ columns and scrolls sideways inside the panel: Page #
+   and File stay pinned on the left so every row is still identifiable. */
+.imaging-summary-table.imaging-doc-table th:nth-child(1),
+.imaging-summary-table.imaging-doc-table td:nth-child(1),
+.imaging-summary-table.imaging-doc-table th:nth-child(2),
+.imaging-summary-table.imaging-doc-table td:nth-child(2) {
+  position: sticky;
+  z-index: 1;
+  background: #fff;
+}
+
+.imaging-summary-table.imaging-doc-table th:nth-child(1),
+.imaging-summary-table.imaging-doc-table td:nth-child(1) {
+  /* -1rem = .ocr-panel's side padding: pinned cells sit flush with the
+     panel edge, so scrolled columns cannot show through the padding. */
+  left: -1rem;
+  box-sizing: border-box;
+  width: 3.6rem;
+  min-width: 3.6rem;
+  max-width: 3.6rem;
+}
+
+.imaging-summary-table.imaging-doc-table th:nth-child(2),
+.imaging-summary-table.imaging-doc-table td:nth-child(2) {
+  left: calc(3.6rem - 1rem - 2px); /* overlap the collapsed border so nothing shows between */
+  box-shadow: 1px 0 0 var(--border), 4px 0 6px -4px rgba(0, 0, 0, 0.12);
+}
+
+.imaging-summary-table.imaging-doc-table thead th:nth-child(1),
+.imaging-summary-table.imaging-doc-table thead th:nth-child(2) {
+  background: var(--neutral-50);
+  z-index: 2;
+}
+
+.imaging-summary-table.imaging-doc-table tbody tr:nth-child(even) td:nth-child(1),
+.imaging-summary-table.imaging-doc-table tbody tr:nth-child(even) td:nth-child(2) {
   background: var(--neutral-50);
 }
 

@@ -97,6 +97,11 @@ const RATES_INFO =
   "For the Yes class. Recall = TP / (TP + FN): share of the real Yes pages the pipeline caught. " +
   "Precision = TP / (TP + FP): share of the pipeline's Yes calls that were right. " +
   "Accuracy = (TP + TN) / all pages: share of Yes / No calls that were right.";
+const YES_ONLY_RATES_INFO =
+  "For the Yes class. Recall = TP / (TP + FN): share of the real Yes pages the pipeline caught. " +
+  "Precision = TP / (TP + FP): share of the pipeline's Yes calls that were right. " +
+  "Accuracy of Yes: the real Yes pages scored like the donut (Match = same type, " +
+  "Partial = the other of blank / junk, No Match = kept as a real page).";
 
 function Donut({
   label,
@@ -107,6 +112,7 @@ function Donut({
   yesTally,
   yesLabel = "Accuracy of Yes",
   yesInfo = YES_INFO,
+  yesOnly = false,
 }: {
   label: string;
   detail: string;
@@ -118,6 +124,8 @@ function Donut({
   yesTally?: Tally;
   yesLabel?: string;
   yesInfo?: string;
+  /** Show Recall, Precision and the Accuracy of Yes only (no all-pages Accuracy). */
+  yesOnly?: boolean;
 }) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
@@ -157,7 +165,23 @@ function Donut({
         {label} <InfoTip text={`${detail} ${SCORE_INFO}`} />
       </figcaption>
       <p>{formatDistribution(tally)}</p>
-      {rates ? (
+      {rates && yesOnly && yesTally ? (
+        <p className="accuracy-rates">
+          {ratesLabel ? (
+            <>
+              <span className="accuracy-rates-class">
+                {ratesLabel} <InfoTip text={YES_ONLY_RATES_INFO} />
+              </span>
+              <br />
+            </>
+          ) : null}
+          Recall {formatRecall(rates)}
+          <br />
+          Precision {formatPrecision(rates)}
+          <br />
+          {yesLabel} {percentLabel(yesTally)}
+        </p>
+      ) : rates ? (
         <p className="accuracy-rates">
           {ratesLabel ? (
             <>
@@ -174,7 +198,7 @@ function Donut({
           Accuracy {formatClassAccuracy(rates)}
         </p>
       ) : null}
-      {yesTally ? (
+      {yesTally && !yesOnly ? (
         <p className="accuracy-rates">
           <span className="accuracy-rates-class">
             {yesLabel} {percentLabel(yesTally)} <InfoTip text={yesInfo} />
@@ -208,12 +232,51 @@ function CalculatingPanel() {
 
 const CHARTS_PER_PAGE = 15;
 
+type SortKey = "name" | "run" | "verified";
+type SortDir = "asc" | "desc";
+
+/** Milliseconds for sorting; a missing date sorts last whichever way. */
+function timeOf(value: string | null | undefined): number | null {
+  const t = value ? new Date(value).getTime() : NaN;
+  return Number.isNaN(t) ? null : t;
+}
+
+function compareRows(a: ChartAccuracy, b: ChartAccuracy, key: SortKey, dir: SortDir): number {
+  const sign = dir === "asc" ? 1 : -1;
+  if (key === "name") return sign * a.chartName.localeCompare(b.chartName, undefined, { numeric: true });
+  const ta = timeOf(key === "run" ? a.lastUpdatedAt : a.lastVerifiedAt);
+  const tb = timeOf(key === "run" ? b.lastUpdatedAt : b.lastVerifiedAt);
+  if (ta === null || tb === null) {
+    if (ta === tb) return a.chartName.localeCompare(b.chartName, undefined, { numeric: true });
+    return ta === null ? 1 : -1;
+  }
+  return sign * (ta - tb) || a.chartName.localeCompare(b.chartName, undefined, { numeric: true });
+}
+
 export default function AccuracyView({ onBack, onOpenChart }: Props) {
   const [rows, setRows] = useState<ChartAccuracy[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  // Same behaviour as the home page: click again to flip; name starts A→Z, dates newest first.
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "name" ? "asc" : "desc");
+    }
+    setPage(1);
+  }
+
+  function sortIndicator(key: SortKey): string {
+    if (sortKey !== key) return "";
+    return sortDir === "asc" ? " ↑" : " ↓";
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -260,8 +323,9 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
   // "By chart": search by file / chart name, 15 per page. The donuts stay on all files.
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return needle ? rows.filter((row) => row.chartName.toLowerCase().includes(needle)) : rows;
-  }, [rows, query]);
+    const matched = needle ? rows.filter((row) => row.chartName.toLowerCase().includes(needle)) : rows;
+    return [...matched].sort((a, b) => compareRows(a, b, sortKey, sortDir));
+  }, [rows, query, sortKey, sortDir]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / CHARTS_PER_PAGE));
   const currentPage = Math.min(page, totalPages);
   const pageRows = filtered.slice(
@@ -377,6 +441,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                   }
                   yesLabel={metric.id === "orientation" ? "Accuracy of non-zero" : undefined}
                   yesInfo={metric.id === "orientation" ? NON_ZERO_INFO : undefined}
+                  yesOnly={metric.id === "blankJunk"}
                 />
                 ),
               )}
@@ -404,14 +469,35 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
             <table className="landing-history-table accuracy-table">
               <thead>
                 <tr>
-                  <th scope="col">
-                    Chart <InfoTip text="The file (chart). Click it to open the file in the viewer." />
+                  <th scope="col" aria-sort={sortKey === "name" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
+                    <button
+                      type="button"
+                      className={`th-sort${sortKey === "name" ? " active" : ""}`}
+                      onClick={() => toggleSort("name")}
+                    >
+                      Chart{sortIndicator("name")}
+                    </button> 
+                    <InfoTip text="The file (chart). Click it to open the file in the viewer." />
                   </th>
-                  <th scope="col">
-                    Last Run At <InfoTip text={`When the pipeline last ran this file. Only runs on or after ${MIN_LAST_RUN_LABEL} are shown.`} />
+                  <th scope="col" aria-sort={sortKey === "run" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
+                    <button
+                      type="button"
+                      className={`th-sort${sortKey === "run" ? " active" : ""}`}
+                      onClick={() => toggleSort("run")}
+                    >
+                      Last Run At{sortIndicator("run")}
+                    </button> 
+                    <InfoTip text={`When the pipeline last ran this file. Only runs on or after ${MIN_LAST_RUN_LABEL} are shown.`} />
                   </th>
-                  <th scope="col">
-                    Last Verified At <InfoTip text="When ground truth was last saved for this file." />
+                  <th scope="col" aria-sort={sortKey === "verified" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
+                    <button
+                      type="button"
+                      className={`th-sort${sortKey === "verified" ? " active" : ""}`}
+                      onClick={() => toggleSort("verified")}
+                    >
+                      Last Verified At{sortIndicator("verified")}
+                    </button> 
+                    <InfoTip text="When ground truth was last saved for this file." />
                   </th>
                   <th scope="col">
                     Pages <InfoTip text="Pages of this file compared (pages that have ground truth)." />
