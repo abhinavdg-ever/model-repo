@@ -28,7 +28,7 @@ from app.services.db import connection
 from app.services.folder_list import FolderListParams, build_folder_list
 from app.services import semantic
 from app.services.ground_truth import spell_codeable
-from app.services.imaging_overlays import display_page_type
+from app.services.imaging_overlays import compose_page_type, display_page_type
 
 _ready: set[tuple[str, str]] = set()
 _ready_lock = threading.Lock()
@@ -93,7 +93,14 @@ SELECT
     EXISTS (SELECT 1 FROM dos_extraction_results dx WHERE dx.chart_id = c.id) AS dos_known,
     EXISTS (SELECT 1 FROM blank_junk_classification bx WHERE bx.chart_id = c.id) AS junk_known,
     EXISTS (SELECT 1 FROM page_classification px WHERE px.chart_id = c.id) AS codeable_known,
-    g.updated_at AS ground_truth_updated_at
+    g.updated_at AS ground_truth_updated_at,
+    q.orientation_angle,
+    EXISTS (SELECT 1 FROM ocr_quality_results qx WHERE qx.chart_id = c.id) AS rotation_known,
+    f.page_type AS final_page_type,
+    f.page_subtype AS final_page_subtype,
+    f.classification_category AS final_category,
+    f.dos_from AS final_dos_from,
+    f.dos_to AS final_dos_to
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name
@@ -112,6 +119,8 @@ LEFT JOIN member_extraction_results m ON m.page_id = pl.id
 LEFT JOIN dos_extraction_results d ON d.page_id = pl.id
 LEFT JOIN v_page_blank_junk_final b ON b.page_id = pl.id
 LEFT JOIN page_classification pc ON pc.page_id = pl.id
+LEFT JOIN ocr_quality_results q ON q.page_id = pl.id
+LEFT JOIN imaging_final f ON f.page_id = pl.id
 """
 
 _SELECT = """
@@ -124,7 +133,9 @@ SELECT chart_name, page_number, source_page_id,
        date_of_service_from, date_of_service_to,
        blank_junk_flag, junk_subtype, page_subtype, classification_category,
        external_member_id, member_known, dos_known, junk_known, codeable_known,
-       ground_truth_updated_at
+       ground_truth_updated_at,
+       orientation_angle, rotation_known,
+       final_page_type, final_page_subtype, final_category, final_dos_from, final_dos_to
   FROM v_accuracy_page
  WHERE chart_name = ANY(%s)
  ORDER BY chart_name, page_number
@@ -144,6 +155,10 @@ def _ensure(conn, database_url: str, db_schema: str) -> None:
         _ready.add(key)
 
 
+# A chart still running has half-written results; it joins the report once done.
+_RUNNING = frozenset({"IN_PROGRESS", "IMAGING_IN_PROGRESS"})
+
+
 def _eligible(settings: Settings) -> list[tuple[str, str, datetime | None]]:
     data_root = settings.resolved_data_root
     root = data_root if isinstance(data_root, Path) else Path(data_root)
@@ -157,7 +172,9 @@ def _eligible(settings: Settings) -> list[tuple[str, str, datetime | None]]:
     return [
         (folder.id, folder.name, folder.last_updated_at)
         for folder in listed.items
-        if folder.ground_truth_available and folder.on_disk
+        if folder.ground_truth_available
+        and folder.on_disk
+        and folder.ocr_status not in _RUNNING
     ]
 
 
@@ -191,7 +208,14 @@ def _page_type_semantic(gt_page_type: str | None, encounter_type: str | None,
     return semantic.best_similarity(expected, actual)
 
 
-def _page(row: tuple) -> ImagingPageResult:
+def _float(value: object) -> float | None:
+    try:
+        return None if value is None else float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
     (
         _chart, page_number, source_page_id,
         member_name, member_dob, member_id,
@@ -211,6 +235,11 @@ def _page(row: tuple) -> ImagingPageResult:
     page_type = display_page_type(subtype) if subtype else junk_type
     key = _text(category) or ""
     is_codeable = _CODEABLE.get(key, key or None) if key or subtype else None
+    (
+        orientation, _rotation_known,
+        final_type, final_subtype, final_category, final_from, final_to,
+    ) = (tuple(extra) + (None,) * 7)[:7]
+    final_key = _text(final_category) or ""
     return ImagingPageResult(
         pageNumber=int(page_number),
         fileName=file_name,
@@ -223,6 +252,11 @@ def _page(row: tuple) -> ImagingPageResult:
         pageType=page_type,
         isCodeable=is_codeable,
         pageTypeSemantic=_page_type_semantic(gt_page_type, encounter_type, page_subtype),
+        orientationAngle=_float(orientation),
+        finalPageType=compose_page_type(_text(final_type), _text(final_subtype)) or None,
+        finalCodeable=_CODEABLE.get(final_key, final_key or None) if final_key else None,
+        finalDosFrom=_fmt_date(final_from),
+        finalDosTo=_fmt_date(final_to),
         groundTruth=PageGroundTruth(
             pageNumber=int(page_number),
             sourcePageId=_text(source_page_id),
@@ -288,12 +322,13 @@ def load_report(settings: Settings) -> AccuracyReportResponse:
     verified: dict[str, datetime | None] = {}
     for row in rows:
         chart_name = str(row[0])
-        pages.setdefault(chart_name, []).append(_page(row[:34]))
+        pages.setdefault(chart_name, []).append(_page(row[:34], row[35:]))
         sections[chart_name] = ImagingSectionsProcessed(
             member=bool(row[30]),
             dos=bool(row[31]),
             junk=bool(row[32]),
             codeable=bool(row[33]),
+            rotation=bool(row[36]),
         )
         manifests[chart_name] = _text(row[29])
         moment = row[34]

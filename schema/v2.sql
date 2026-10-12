@@ -91,6 +91,11 @@
 --  * encounter_type_results + page_sequencing_results live in v1.sql.
 --  * member_verification_summary.final_status also allows 'skipped'
 --    (all-blank/junk charts). Defined in v1.sql.
+--  * v_accuracy_page (v1.sql) appends orientation_angle, rotation_known and
+--    the Final page type / sub-type / category / DOS from imaging_final, so
+--    the accuracy view can score Orientation and Final ahead of Extracted.
+--  * ocr_quality_results.orientation_angle holds the text's orientation as
+--    scanned (degrees clockwise), not the correction applied.
 --  * ocr_quality_results gains document_type, handwritten_probability,
 --    is_visible, handwritten_area_pct and review_required (page-tag
 --    model). Defined in v1.sql, with the ALTER for an existing database.

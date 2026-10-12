@@ -945,7 +945,17 @@ SELECT
     EXISTS (SELECT 1 FROM dos_extraction_results dx WHERE dx.chart_id = c.id) AS dos_known,
     EXISTS (SELECT 1 FROM blank_junk_classification bx WHERE bx.chart_id = c.id) AS junk_known,
     EXISTS (SELECT 1 FROM page_classification px WHERE px.chart_id = c.id) AS codeable_known,
-    g.updated_at                                              AS ground_truth_updated_at
+    g.updated_at                                              AS ground_truth_updated_at,
+    -- Appended (a replaced view keeps its earlier columns in order): the
+    -- stored text orientation, and the Final values the accuracy view scores
+    -- ahead of the Extracted ones.
+    q.orientation_angle,
+    EXISTS (SELECT 1 FROM ocr_quality_results qx WHERE qx.chart_id = c.id) AS rotation_known,
+    f.page_type                                               AS final_page_type,
+    f.page_subtype                                            AS final_page_subtype,
+    f.classification_category                                 AS final_category,
+    f.dos_from                                                AS final_dos_from,
+    f.dos_to                                                  AS final_dos_to
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name
@@ -963,4 +973,6 @@ LEFT JOIN LATERAL (
 LEFT JOIN member_extraction_results m ON m.page_id = pl.id
 LEFT JOIN dos_extraction_results d ON d.page_id = pl.id
 LEFT JOIN v_page_blank_junk_final b ON b.page_id = pl.id
-LEFT JOIN page_classification pc ON pc.page_id = pl.id;
+LEFT JOIN page_classification pc ON pc.page_id = pl.id
+LEFT JOIN ocr_quality_results q ON q.page_id = pl.id
+LEFT JOIN imaging_final f ON f.page_id = pl.id;
