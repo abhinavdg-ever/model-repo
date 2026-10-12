@@ -176,6 +176,17 @@ def _print_summary(summary: GenerateSummary) -> None:
         print(f"  {name}")
 
 
+def _print_checks(store: Store) -> None:
+    """Rows to re-tag under the loaded taxonomy (file names and labels only)."""
+    print(f"Needs re-tag: {len(store.invalid_pair)} row(s) with a pair not in taxonomy.json, "
+          f"{len(store.rule_broken)} breaking the model type rule (filter 'Needs re-tag')")
+    for index in sorted(store.invalid_pair | store.rule_broken)[:50]:
+        row = store.rows[index]
+        why = "invalid pair" if index in store.invalid_pair else "model type rule"
+        print(f"  {row.get('image')}: {row.get('page_type')} / {row.get('page_subtype')} "
+              f"-> {row.get('model_type')} ({why})")
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("folder", nargs="?", help="image folder (holds image_labels.csv)")
@@ -187,8 +198,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     folder = args.folder or input("Image folder: ").strip().strip('"')
     store = Store(Path(folder))
     counts = store.counts()
+    tax = store.taxonomy
+    print(f"taxonomy.json {tax.version}: {tax.counts['page_types']} page types, "
+          f"{tax.counts['sub_types']} sub-types, {tax.counts['model_types']} model types")
     print(f"{store.root}: {counts['images']} images, {counts['untagged']} untagged, "
           f"{counts['in_training']} in training, {counts['not_in_training']} not in training yet")
+    _print_checks(store)
 
     if args.generate:
         if store_needs_ocr(store):

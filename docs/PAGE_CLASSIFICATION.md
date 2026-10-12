@@ -18,9 +18,9 @@ Every page gets three labels, all from `keyword-canon/page_taxonomy.json`:
 
 | Name | What it is | Count |
 |---|---|---|
-| `page_type` | The family. Decides Codable / Non-Codable / Discharge | 49 |
-| `page_subtype` | The kind of page inside the family. Every page type has a generic sub-type with its own name | 190 |
-| `model_type` | What BERT predicts: the sub-type for a Progress Note, otherwise the page type | 58 |
+| `page_type` | The family. Decides Codable / Non-Codable / Discharge | 51 |
+| `page_subtype` | The kind of page inside the family. Every page type has a generic sub-type with its own name | 191 |
+| `model_type` | What BERT predicts: the sub-type for a Progress Note, otherwise the page type | 60 |
 
 Sub-type names are unique, so a sub-type always implies its page type. Two
 extra pairs exist only after the continuation rules: **Progress Note /
@@ -77,7 +77,7 @@ planned post-processing.
 |---|---|---|
 | Predicts | `model_type` + confidence (softmax) | `page_subtype` + score, margin, title hit |
 | From | `core-pipeline/models/page-family/bert/` | `keyword-canon/page_keyword_canon.json` |
-| Reaches | only the model types it was trained on (21 today) | every one of the 190 sub-types |
+| Reaches | only the model types it was trained on (21 today) | every one of the 191 sub-types |
 | Good at | pages without a clear title | page kinds with few training images |
 
 **Keyword scoring** (the canon's `how_to_match`):

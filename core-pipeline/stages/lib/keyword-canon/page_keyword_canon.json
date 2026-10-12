@@ -162,6 +162,26 @@
     },
     {
       "page_type": "Progress Note",
+      "page_subtype": "Social History",
+      "model_type": "Social History",
+      "is_generic": false,
+      "codability": "Codable",
+      "title_terms": [
+        "Social History"
+      ],
+      "body_terms": [
+        "social work",
+        "psychosocial",
+        "living situation",
+        "tobacco",
+        "alcohol",
+        "caregiver",
+        "support system"
+      ],
+      "ambiguous_terms": []
+    },
+    {
+      "page_type": "Progress Note",
       "page_subtype": "Office Visit",
       "model_type": "Office Visit",
       "is_generic": false,
@@ -199,26 +219,6 @@
       "ambiguous_terms": [
         "DME"
       ]
-    },
-    {
-      "page_type": "Progress Note",
-      "page_subtype": "Social History",
-      "model_type": "Social History",
-      "is_generic": false,
-      "codability": "Codable",
-      "title_terms": [
-        "Social History"
-      ],
-      "body_terms": [
-        "social work",
-        "psychosocial",
-        "living situation",
-        "tobacco",
-        "alcohol",
-        "caregiver",
-        "support system"
-      ],
-      "ambiguous_terms": []
     },
     {
       "page_type": "Laboratory Data",
@@ -826,7 +826,6 @@
       "body_terms": [
         "agreement",
         "acknowledgment",
-        "policy",
         "pre-admission testing",
         "health maintenance"
       ],
@@ -928,7 +927,8 @@
       "codability": "Non-Codable",
       "title_terms": [
         "HIPAA Form",
-        "authorization to release PHI"
+        "authorization to release PHI",
+        "privacy policy"
       ],
       "body_terms": [
         "HIPAA",
@@ -1707,48 +1707,6 @@
       ]
     },
     {
-      "page_type": "Nursing Note",
-      "page_subtype": "Nursing Note",
-      "model_type": "Nursing Note",
-      "is_generic": true,
-      "codability": "Non-Codable",
-      "title_terms": [
-        "Nursing Note",
-        "Nurse's note",
-        "nursing chart",
-        "home health visit",
-        "skilled nursing visit"
-      ],
-      "body_terms": [
-        "vital signs",
-        "flowsheet"
-      ],
-      "ambiguous_terms": [
-        "RN",
-        "LPN"
-      ]
-    },
-    {
-      "page_type": "Nursing Note",
-      "page_subtype": "Growth chart",
-      "model_type": "Nursing Note",
-      "is_generic": false,
-      "codability": "Non-Codable",
-      "title_terms": [
-        "Growth chart"
-      ],
-      "body_terms": [
-        "percentile",
-        "stature-for-age",
-        "weight-for-age",
-        "BMI-for-age"
-      ],
-      "ambiguous_terms": [
-        "CDC",
-        "WHO"
-      ]
-    },
-    {
       "page_type": "Billing / Invoice",
       "page_subtype": "Billing / Invoice",
       "model_type": "Billing / Invoice",
@@ -1815,6 +1773,28 @@
         "TTE",
         "LVEF",
         "ejection fraction"
+      ]
+    },
+    {
+      "page_type": "Nursing Note",
+      "page_subtype": "Nursing Note",
+      "model_type": "Nursing Note",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Nursing Note",
+        "Nurse's note",
+        "nursing chart",
+        "home health visit",
+        "skilled nursing visit"
+      ],
+      "body_terms": [
+        "vital signs",
+        "flowsheet"
+      ],
+      "ambiguous_terms": [
+        "RN",
+        "LPN"
       ]
     },
     {
@@ -2544,6 +2524,28 @@
       ]
     },
     {
+      "page_type": "Policy",
+      "page_subtype": "Policy",
+      "model_type": "Policy",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Policy",
+        "office policy",
+        "office policies",
+        "financial policy",
+        "payment policy",
+        "no-show policy",
+        "cancellation policy",
+        "appointment policy",
+        "policy pages"
+      ],
+      "body_terms": [
+        "patient rights and responsibilities"
+      ],
+      "ambiguous_terms": []
+    },
+    {
       "page_type": "Emergency Note",
       "page_subtype": "Emergency Note",
       "model_type": "Emergency Note",
@@ -2629,6 +2631,28 @@
         "Allergies",
         "NKDA",
         "severity"
+      ]
+    },
+    {
+      "page_type": "Growth chart",
+      "page_subtype": "Growth chart",
+      "model_type": "Growth chart",
+      "is_generic": true,
+      "codability": "Non-Codable",
+      "title_terms": [
+        "Growth chart"
+      ],
+      "body_terms": [
+        "percentile",
+        "stature-for-age",
+        "length-for-age",
+        "weight-for-age",
+        "head circumference-for-age",
+        "BMI-for-age"
+      ],
+      "ambiguous_terms": [
+        "CDC",
+        "WHO"
       ]
     },
     {

@@ -82,6 +82,8 @@
     aside, section { border: 0; }
   }
   .name .status { margin-left: 0.4rem; font-size: 0.72rem; color: #6f6c63; }
+  .embedded-row { margin: 8px 0 0; font-size: 13px; }
+  .embedded-row label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -101,6 +103,7 @@
       <option value="untagged">Untagged</option>
       <option value="not_in_training">Not in training yet</option>
       <option value="in_training">In training</option>
+      <option value="retag">Needs re-tag</option>
       <option value="missing">Missing files (labels only)</option>
     </select>
     <select id="filterType"><option value="">Any model type</option></select>
@@ -145,6 +148,11 @@
     <input id="stInput" type="text" placeholder="Pick a page type first" autocomplete="off" disabled>
     <div class="menu" id="stMenu" hidden></div>
   </div>
+  <!-- Shown only for the embedded page types (taxonomy.json embedded_in_progress_note):
+       style.display, not the hidden attribute, which a label style overrides. -->
+  <div id="embeddedRow" class="embedded-row" style="display:none">
+    <label><input type="checkbox" id="embedded"> This page sits inside a Progress Note</label>
+  </div>
 
 
   <dl class="kv" style="margin-top:12px">
@@ -166,7 +174,8 @@
 const $ = (id) => document.getElementById(id);
 let tax = null, items = [], cur = -1, zoom = 1, turn = 0, fitWidth = true;
 // The two boxes, before Save.
-let draft = {page_type: "", page_subtype: ""};
+let draft = {page_type: "", page_subtype: "", embedded: false};
+const embeddable = (pt) => (tax.embedded_types || []).includes(pt);
 
 async function api(path, body) {
   const res = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"},
@@ -237,7 +246,7 @@ makeCombo($("ptInput"), $("ptMenu"),
   (value, fromList) => {
     if (value !== draft.page_type) {
       // A new page type clears the sub-type.
-      draft = {page_type: value, page_subtype: ""};
+      draft = {page_type: value, page_subtype: "", embedded: false};
     }
     renderDraft();
     if (fromList && !$("stInput").disabled) $("stInput").focus();
@@ -282,7 +291,8 @@ function renderCounts(c) {
   $("showCompletedLabel").textContent = `Show completed (${c.completed || 0})`;
   $("counts").innerHTML = "";
   for (const [k, label] of [["to_do","to do"],["completed","completed"],["images","images"],["untagged","untagged"],
-                            ["in_training","in training"],["missing_files","rows without a file"]]) {
+                            ["in_training","in training"],["missing_files","rows without a file"],
+                            ["needs_retag","need re-tag"]]) {
     const s = document.createElement("span");
     const b = document.createElement("b"); b.textContent = c[k];
     s.append(b, document.createTextNode(" " + label));
@@ -308,7 +318,7 @@ function renderList() {
     li.dataset.pos = i;
     const name = document.createElement("div"); name.className = "name";
     const dot = document.createElement("span"); dot.className = "dot" + (it.in_training ? " yes" : "");
-    name.append(dot, document.createTextNode(it.image + (it.missing ? " (missing)" : "")));
+    name.append(dot, document.createTextNode(it.image + (it.missing ? " (missing)" : "") + (it.needs_retag ? " (re-tag)" : "")));
     if (it.completed) {
       const done = document.createElement("span"); done.className = "done"; done.textContent = "✓";
       done.title = it.saved_at ? `Saved ${it.saved_at}` : "Completed";
@@ -352,12 +362,20 @@ function loadDraft(it) {
   $("saved").textContent = it ? describe(it) : "—";
   $("tr").textContent = it ? (it.in_training ? "Yes" : "No — waiting for Add to Training JSON") : "—";
   $("doneState").textContent = it ? (it.completed ? "Completed" : "To do") : "—";
-  draft = {page_type: it && it.page_type || "", page_subtype: it && it.page_subtype || ""};
+  if (it && it.embedded) {
+    // Saved as Progress Note / Laboratory Data: shown as that page type, ticked.
+    draft = {page_type: it.page_subtype, page_subtype: "", embedded: true};
+  } else {
+    draft = {page_type: it && it.page_type || "", page_subtype: it && it.page_subtype || "", embedded: false};
+  }
   renderDraft();
 }
 
 function labelsOf(d) {
   if (!d.page_type) return null;
+  if (d.embedded && embeddable(d.page_type)) {
+    return {page_type: tax.progress_note, page_subtype: d.page_type, model_type: d.page_type};
+  }
   const sub = d.page_subtype || d.page_type;
   return {page_type: d.page_type, page_subtype: sub,
           model_type: d.page_type === tax.progress_note ? sub : d.page_type};
@@ -374,9 +392,14 @@ function renderDraft() {
   $("ptInput").value = draft.page_type;
   const info = pageTypeInfo(draft.page_type);
   const st = $("stInput");
-  st.disabled = !info;
-  st.placeholder = !info ? "Pick a page type first" : "Type any word… (empty = generic)";
-  st.value = draft.page_subtype;
+  const canEmbed = embeddable(draft.page_type);
+  if (!canEmbed) draft.embedded = false;
+  $("embeddedRow").style.display = canEmbed ? "" : "none";
+  $("embedded").checked = Boolean(draft.embedded);
+  st.disabled = !info || draft.embedded;
+  st.placeholder = !info ? "Pick a page type first"
+    : draft.embedded ? "Sub-type is the page type's name" : "Type any word… (empty = generic)";
+  st.value = draft.embedded ? "" : draft.page_subtype;
   const l = labelsOf(draft);
   $("mt").textContent = l ? l.model_type : "—";
   $("cod").textContent = l ? (pageTypeInfo(l.page_type) || {}).codability || "—" : "—";
@@ -386,7 +409,7 @@ function renderDraft() {
 async function save() {
   const it = items[cur]; if (!it) return;
   if (!draft.page_type) { showError("Pick a page type, or Skip."); return; }
-  if (draft.page_subtype) {
+  if (draft.page_subtype && !draft.embedded) {
     const info = pageTypeInfo(draft.page_type);
     const savedPair = draft.page_type === it.page_type && draft.page_subtype === it.page_subtype;
     if (!info.sub_types.includes(draft.page_subtype) && !savedPair) {
@@ -394,8 +417,9 @@ async function save() {
     }
   }
   try {
+    const embedded = Boolean(draft.embedded && embeddable(draft.page_type));
     const data = await api("/api/label", {index: it.index, page_type: draft.page_type,
-                                          page_subtype: draft.page_subtype});
+                                          page_subtype: embedded ? "" : draft.page_subtype, embedded});
     renderCounts(data.counts);
     if ($("showCompleted").checked) {
       items[cur] = data.item; renderList(); select(Math.min(cur + 1, items.length - 1));
@@ -426,6 +450,7 @@ $("view").onchange = () => loadItems();
 $("showCompleted").onchange = () => loadItems((items[cur] || {}).index);
 $("filterType").onchange = () => loadItems();
 $("search").oninput = () => loadItems();
+$("embedded").addEventListener("change", () => { draft.embedded = $("embedded").checked; draft.page_subtype = ""; renderDraft(); });
 $("stInput").addEventListener("input", () => { draft.page_subtype = $("stInput").value.trim(); $("dirty").textContent = isDirty() ? "Not saved — Save keeps it, Skip discards it." : ""; });
 $("save").onclick = save;
 $("skip").onclick = skip;

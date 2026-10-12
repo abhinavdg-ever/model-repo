@@ -1,6 +1,6 @@
 # Page classification nomenclature
 
-Reference for the medical-record page classifier. It defines the names the model and the downstream keyword step must use. Version 1.1. The machine-readable copy of everything below is `core-pipeline/stages/lib/keyword-canon/page_taxonomy.json`; if this document and that file ever disagree, the JSON wins. How the names are used at inference: [PAGE_CLASSIFICATION.md](PAGE_CLASSIFICATION.md).
+Reference for the medical-record page classifier. It defines the names the model and the downstream keyword step must use. Version 1.2 (adds Policy and Growth chart as page types). The machine-readable copy of everything below is `core-pipeline/stages/lib/keyword-canon/page_taxonomy.json`; if this document and that file ever disagree, the JSON wins. How the names are used at inference: [PAGE_CLASSIFICATION.md](PAGE_CLASSIFICATION.md).
 
 ## 1. The three names
 
@@ -8,12 +8,12 @@ Every page of a chart gets three labels.
 
 | Name | What it is | How many |
 |---|---|---|
-| `page_type` | The family of document the page belongs to. Decides whether the page is codable. | 49 |
-| `page_subtype` | The specific kind of page inside that family. | 190, plus 2 embedded pairs (rule 8) |
-| `model_type` | The class the model is trained to predict. | 58 |
+| `page_type` | The family of document the page belongs to. Decides whether the page is codable. | 51 |
+| `page_subtype` | The specific kind of page inside that family. | 191, plus 2 embedded pairs (rule 8) |
+| `model_type` | The class the model is trained to predict. | 60 |
 
 **Model type rule.** If `page_type` is `Progress Note`, the `model_type` is the `page_subtype`. For every other page type, the `model_type` is the `page_type`.
-So the model's classes are the 10 Progress Note sub-types plus the 48 other page types.
+So the model's classes are the 10 Progress Note sub-types plus the 50 other page types.
 
 ## 2. Rules
 
@@ -164,10 +164,12 @@ A type changes only on printed evidence (page numbering or a "continued" heading
 | Occupational & Physical Exams | Occupational & Physical Exams | Codable | 0 |
 | Pain & Palliative Note | Pain & Palliative Note | Codable | 0 |
 | Social History | Progress Note | Codable | 0 |
+| Policy | Policy | Non-Codable | new in 1.2 |
+| Growth chart | Growth chart | Non-Codable | new in 1.2 |
 
 ## 5. Page types and their sub-types
 
-27 page types are Codable, 19 are Non-Codable and 3 are Discharge. The first sub-type listed for each page type is the generic one. Descriptions and keywords for every sub-type are in `taxonomy.json`.
+27 page types are Codable, 21 are Non-Codable and 3 are Discharge. The first sub-type listed for each page type is the generic one. Descriptions and keywords for every sub-type are in `taxonomy.json`.
 
 ### Progress Note  (Codable)
 
@@ -236,12 +238,12 @@ Documents written when a hospital stay or episode ends, including transfer and t
 
 Forms, consents, questionnaires, checklists and score sheets.
 
-- **Forms** *(generic)*: Form where the title does not say which kind. Also catches intake and history forms, agreements, policies, pre-op checklists, pre-admission testing records and screening / health maintenance records.
+- **Forms** *(generic)*: Form where the title does not say which kind. Also catches intake and history forms, agreements, pre-op checklists, pre-admission testing records and screening / health maintenance records.
 - **Consent Form**: Signed permission or authorization: consent to treat, surgical, transfusion or vaccine consent, release of information.
 - **Questionnaire**: Patient-completed form with no provider note attached.
 - **Checklist**: Any tick-box checklist page.
 - **Mini-Mental State Exam**: Cognitive score sheet: the 30-point Mini-Mental exam, or the shorter Mini-Cog with clock drawing.
-- **HIPAA Form**: Privacy acknowledgment or authorization form.
+- **HIPAA Form**: Privacy acknowledgment or authorization form. Also catches a privacy (HIPAA) policy page.
 
 ### Clinical Summary  (Non-Codable)
 
@@ -340,7 +342,6 @@ Medication lists, prescriptions and refill logs.
 Nursing documentation, home health and skilled nursing visits, vitals print-outs.
 
 - **Nursing Note** *(generic)*: Nursing documentation of patient status and care given. Also catches home health and skilled nursing visit notes and vitals print-outs.
-- **Growth chart**: Paediatric height / weight / head-circumference percentile chart.
 
 ### Billing / Invoice  (Non-Codable)
 
@@ -434,6 +435,12 @@ Evaluation forms and notes that fit no other page type.
 - **Other Evaluation** *(generic)*: Evaluation form or note that fits no other page type.
 - **Nutrition assessment**: Dietitian evaluation of nutritional status, weight and diet plan.
 
+### Policy  (Non-Codable)
+
+Practice or facility policy pages: office, financial, appointment and patient-rights policies.
+
+- **Policy** *(generic)*: Practice or facility policy text given to the patient: office, financial, appointment / no-show or patient-rights policy. Often ends with a place to accept or sign. A privacy (HIPAA) policy goes to Forms / HIPAA Form.
+
 ### Emergency Note  (Codable)
 
 Emergency department, urgent care and ambulance notes.
@@ -447,6 +454,12 @@ Emergency department, urgent care and ambulance notes.
 List of allergies and reactions.
 
 - **Allergies Report** *(generic)*: List of the patient's allergies and reactions.
+
+### Growth chart  (Non-Codable)
+
+Paediatric growth charts: height, weight and head-circumference percentiles.
+
+- **Growth chart** *(generic)*: Paediatric growth chart: height, weight, head-circumference or BMI plotted against age percentiles.
 
 ### Therapy  (Codable)
 
@@ -617,7 +630,7 @@ Implant records and device checks.
 
 ## 7. State of the training data
 
-- 712 labelled images across 53 of the 58 model types.
+- 712 labelled images across 53 of the 58 model types of taxonomy 1.1 (before Policy and Growth chart were added).
 - 31 model types have fewer than 10 images; 5 have none (Social History, ICU Note, Occupational & Physical Exams, Nephrology, Pain & Palliative Note).
 - The images are a mix of clean scanned pages (`.jpg`) and phone photos of a screen (`.HEIC`). The photos include browser chrome and a file name around the page and need cropping before or after OCR.
 - Training code must cope with this: skip or report classes below a minimum count, weight the loss for imbalance, and report per-class metrics rather than accuracy alone.

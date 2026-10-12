@@ -2,5 +2,7 @@ flask>=3.0
 pillow>=10.0
 pillow-heif>=0.16
 pytesseract>=0.3.10
+# phone-photo cleaning (Gaussian background division)
+numpy>=1.24
 # tests only
 pytest>=8.0

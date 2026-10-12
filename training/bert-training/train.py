@@ -23,6 +23,7 @@ import json
 import os
 import platform
 import random
+import re
 import sys
 import time
 from collections import Counter
@@ -53,7 +54,7 @@ SEED = 42
 MIN_PAGES = 5  # model types with fewer usable pages are left to the keyword model
 EPOCHS = 4  # a new run; --resume adds 1 unless --epochs says otherwise
 VAL_FRACTION = 0.2
-MIN_CHARS = 30  # pages with fewer non-space characters are left out
+MIN_CHARS = 20  # pages with fewer non-space characters are left out (and counted)
 
 STATE_FILE = "state.pt"
 OUTPUT_FILES = (
@@ -93,6 +94,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 # --- Data ---------------------------------------------------------------------
 
 
+def chart_group(chart_id: Any) -> str | None:
+    """The leading number of a chart id. ``53688890`` and ``53688890_240126_2000``
+    are one chart, so both land on the same side of the split."""
+    text = str(chart_id or "").strip()
+    if not text:
+        return None
+    match = re.match(r"\d+", text)
+    return match.group(0) if match else text
+
+
 def load_taxonomy(path: Path = TAXONOMY) -> dict[str, dict[str, str]]:
     """model_type → {page_type, codability}, in taxonomy order."""
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -120,12 +131,13 @@ def load_records(path: Path, taxonomy: dict[str, Any], min_chars: int) -> tuple[
             if len("".join(text.split())) < min_chars:
                 short += 1
                 continue
-            chart = row.get("chart_id")
+            chart = chart_group(row.get("chart_id"))
             records.append({
                 "image": str(row.get("image") or f"line-{number}"),
                 "text": text,
                 "label": label,
-                "group": str(chart) if chart not in (None, "") else f"image:{row.get('image') or number}",
+                # A page with no chart_id is its own group.
+                "group": f"chart:{chart}" if chart else f"image:{row.get('image') or number}",
             })
     if unknown:
         listed = ", ".join(f"{name!r} ({count})" for name, count in sorted(unknown.items()))
@@ -382,6 +394,17 @@ def main(argv: list[str] | None = None) -> int:
         kept = [r for r in records if r["label"] in classes]
         val_images = group_split(kept, classes, args.val_fraction, args.seed)
     else:
+        # The saved model's output layer has one unit per saved class. If the
+        # data or taxonomy now gives a different class list, it cannot resume.
+        current, _ = choose_classes(records, taxonomy, args.min_pages)
+        if list(current) != list(state["classes"]):
+            added = sorted(set(current) - set(state["classes"]))
+            removed = sorted(set(state["classes"]) - set(current))
+            raise SystemExit(
+                "--resume refused: the class list changed since this run was saved "
+                f"({len(state['classes'])} saved, {len(current)} now; added: {added or 'none'}, "
+                f"removed: {removed or 'none'}). Start a new run with --restart."
+            )
         classes, skipped, val_images = state["classes"], state["skipped"], set(state["val_images"])
         kept = [r for r in records if r["label"] in classes]
         missing = val_images - {r["image"] for r in kept}

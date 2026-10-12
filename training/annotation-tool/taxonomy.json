@@ -1,5 +1,5 @@
 {
-  "version": "1.1",
+  "version": "1.2",
   "rules": {
     "model_type": "If page_type == 'Progress Note' the model_type is the page_subtype; otherwise the model_type is the page_type.",
     "codability": "Decided per page_type (Codable / Non-Codable / Discharge). Every page_subtype inherits it.",
@@ -67,17 +67,17 @@
       "codability": "Codable"
     },
     {
+      "model_type": "Social History",
+      "page_type": "Progress Note",
+      "codability": "Codable"
+    },
+    {
       "model_type": "Office Visit",
       "page_type": "Progress Note",
       "codability": "Codable"
     },
     {
       "model_type": "F2F Evaluation Note",
-      "page_type": "Progress Note",
-      "codability": "Codable"
-    },
-    {
-      "model_type": "Social History",
       "page_type": "Progress Note",
       "codability": "Codable"
     },
@@ -162,11 +162,6 @@
       "codability": "Non-Codable"
     },
     {
-      "model_type": "Nursing Note",
-      "page_type": "Nursing Note",
-      "codability": "Non-Codable"
-    },
-    {
       "model_type": "Billing / Invoice",
       "page_type": "Billing / Invoice",
       "codability": "Non-Codable"
@@ -175,6 +170,11 @@
       "model_type": "Echocardiogram Report",
       "page_type": "Echocardiogram Report",
       "codability": "Codable"
+    },
+    {
+      "model_type": "Nursing Note",
+      "page_type": "Nursing Note",
+      "codability": "Non-Codable"
     },
     {
       "model_type": "Pathology Report",
@@ -222,6 +222,11 @@
       "codability": "Codable"
     },
     {
+      "model_type": "Policy",
+      "page_type": "Policy",
+      "codability": "Non-Codable"
+    },
+    {
       "model_type": "Emergency Note",
       "page_type": "Emergency Note",
       "codability": "Codable"
@@ -229,6 +234,11 @@
     {
       "model_type": "Allergies Report",
       "page_type": "Allergies Report",
+      "codability": "Non-Codable"
+    },
+    {
+      "model_type": "Growth chart",
+      "page_type": "Growth chart",
       "codability": "Non-Codable"
     },
     {
@@ -438,6 +448,22 @@
           ]
         },
         {
+          "page_subtype": "Social History",
+          "is_generic": false,
+          "model_type": "Social History",
+          "description": "Social history section or social work report: living situation, support, tobacco and alcohol use.",
+          "keywords": [
+            "Social History",
+            "social work",
+            "psychosocial",
+            "living situation",
+            "tobacco",
+            "alcohol",
+            "caregiver",
+            "support system"
+          ]
+        },
+        {
           "page_subtype": "Office Visit",
           "is_generic": false,
           "model_type": "Office Visit",
@@ -464,22 +490,6 @@
             "home health certification",
             "DME",
             "clinical findings support"
-          ]
-        },
-        {
-          "page_subtype": "Social History",
-          "is_generic": false,
-          "model_type": "Social History",
-          "description": "Social history section or social work report: living situation, support, tobacco and alcohol use.",
-          "keywords": [
-            "Social History",
-            "social work",
-            "psychosocial",
-            "living situation",
-            "tobacco",
-            "alcohol",
-            "caregiver",
-            "support system"
           ]
         }
       ]
@@ -973,14 +983,13 @@
           "page_subtype": "Forms",
           "is_generic": true,
           "model_type": "Forms",
-          "description": "Form where the title does not say which kind. Also catches intake and history forms, agreements, policies, pre-op checklists, pre-admission testing records and screening / health maintenance records.",
+          "description": "Form where the title does not say which kind. Also catches intake and history forms, agreements, pre-op checklists, pre-admission testing records and screening / health maintenance records.",
           "keywords": [
             "Form",
             "intake form",
             "patient history form",
             "agreement",
             "acknowledgment",
-            "policy",
             "pre-op checklist",
             "pre-admission testing",
             "screening",
@@ -1054,10 +1063,11 @@
           "page_subtype": "HIPAA Form",
           "is_generic": false,
           "model_type": "Forms",
-          "description": "Privacy acknowledgment or authorization form.",
+          "description": "Privacy acknowledgment or authorization form. Also catches a privacy (HIPAA) policy page.",
           "keywords": [
             "HIPAA",
             "notice of privacy practices",
+            "privacy policy",
             "acknowledgment of receipt",
             "authorization to release PHI",
             "signature"
@@ -1738,47 +1748,6 @@
       ]
     },
     {
-      "page_type": "Nursing Note",
-      "codability": "Non-Codable",
-      "codability_basis": "data",
-      "description": "Nursing documentation, home health and skilled nursing visits, vitals print-outs.",
-      "model_input": "page_type",
-      "sub_types": [
-        {
-          "page_subtype": "Nursing Note",
-          "is_generic": true,
-          "model_type": "Nursing Note",
-          "description": "Nursing documentation of patient status and care given. Also catches home health and skilled nursing visit notes and vitals print-outs.",
-          "keywords": [
-            "Nurse's note",
-            "nursing note",
-            "nursing chart",
-            "RN",
-            "LPN",
-            "home health visit",
-            "skilled nursing visit",
-            "vital signs",
-            "flowsheet"
-          ]
-        },
-        {
-          "page_subtype": "Growth chart",
-          "is_generic": false,
-          "model_type": "Nursing Note",
-          "description": "Paediatric height / weight / head-circumference percentile chart.",
-          "keywords": [
-            "Growth chart",
-            "percentile",
-            "stature-for-age",
-            "weight-for-age",
-            "CDC",
-            "WHO",
-            "BMI-for-age"
-          ]
-        }
-      ]
-    },
-    {
       "page_type": "Billing / Invoice",
       "codability": "Non-Codable",
       "codability_basis": "data",
@@ -1843,6 +1812,32 @@
             "valve regurgitation/stenosis",
             "diastolic dysfunction",
             "wall motion"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Nursing Note",
+      "codability": "Non-Codable",
+      "codability_basis": "data",
+      "description": "Nursing documentation, home health and skilled nursing visits, vitals print-outs.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Nursing Note",
+          "is_generic": true,
+          "model_type": "Nursing Note",
+          "description": "Nursing documentation of patient status and care given. Also catches home health and skilled nursing visit notes and vitals print-outs.",
+          "keywords": [
+            "Nurse's note",
+            "nursing note",
+            "nursing chart",
+            "RN",
+            "LPN",
+            "home health visit",
+            "skilled nursing visit",
+            "vital signs",
+            "flowsheet"
           ]
         }
       ]
@@ -2460,6 +2455,33 @@
       ]
     },
     {
+      "page_type": "Policy",
+      "codability": "Non-Codable",
+      "codability_basis": "data (few pages)",
+      "description": "Practice or facility policy pages: office, financial, appointment and patient-rights policies.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Policy",
+          "is_generic": true,
+          "model_type": "Policy",
+          "description": "Practice or facility policy text given to the patient: office, financial, appointment / no-show or patient-rights policy. Often ends with a place to accept or sign. A privacy (HIPAA) policy goes to Forms / HIPAA Form.",
+          "keywords": [
+            "Policy",
+            "office policy",
+            "office policies",
+            "financial policy",
+            "payment policy",
+            "no-show policy",
+            "cancellation policy",
+            "appointment policy",
+            "patient rights and responsibilities",
+            "policy pages"
+          ]
+        }
+      ]
+    },
+    {
       "page_type": "Emergency Note",
       "codability": "Codable",
       "codability_basis": "list",
@@ -2536,6 +2558,32 @@
             "reaction",
             "severity",
             "intolerance"
+          ]
+        }
+      ]
+    },
+    {
+      "page_type": "Growth chart",
+      "codability": "Non-Codable",
+      "codability_basis": "data (few pages)",
+      "description": "Paediatric growth charts: height, weight and head-circumference percentiles.",
+      "model_input": "page_type",
+      "sub_types": [
+        {
+          "page_subtype": "Growth chart",
+          "is_generic": true,
+          "model_type": "Growth chart",
+          "description": "Paediatric growth chart: height, weight, head-circumference or BMI plotted against age percentiles.",
+          "keywords": [
+            "Growth chart",
+            "percentile",
+            "stature-for-age",
+            "length-for-age",
+            "weight-for-age",
+            "head circumference-for-age",
+            "BMI-for-age",
+            "CDC",
+            "WHO"
           ]
         }
       ]

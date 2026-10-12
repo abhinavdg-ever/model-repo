@@ -35,6 +35,17 @@ class Taxonomy:
         }
         embedded = data.get("embedded_in_progress_note") or {}
         self.embedded_types: list[str] = list(embedded.get("page_types") or [])
+        # Every (page_type, page_subtype) a row may hold: the taxonomy's pairs
+        # plus embedded_in_progress_note.valid_pairs.
+        self.valid_pairs: frozenset[tuple[str, str]] = frozenset(
+            [(p, s) for p, subs in self.sub_types.items() for s in subs]
+            + [(v["page_type"], v["page_subtype"]) for v in embedded.get("valid_pairs") or []]
+        )
+        self.counts = {
+            "page_types": len(self.page_types),
+            "sub_types": len({s for subs in self.sub_types.values() for s in subs}),
+            "model_types": len(self.model_types),
+        }
 
     # -- lookups -----------------------------------------------------------
     def page_type_of(self, model_type: str) -> Optional[str]:
@@ -45,6 +56,14 @@ class Taxonomy:
 
     def is_embedded_pair(self, page_type: str, page_subtype: str) -> bool:
         return page_type == PROGRESS_NOTE and page_subtype in self.embedded_types
+
+    def is_valid_pair(self, page_type: str, page_subtype: str) -> bool:
+        return (page_type, page_subtype) in self.valid_pairs
+
+    @staticmethod
+    def rule_model_type(page_type: str, page_subtype: str) -> str:
+        """The model-type rule: the sub-type for a Progress Note, else the page type."""
+        return page_subtype if page_type == PROGRESS_NOTE else page_type
 
     def subtype_belongs(self, page_type: str, page_subtype: str) -> bool:
         return page_subtype in self.sub_types.get(page_type, [])

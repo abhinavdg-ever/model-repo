@@ -91,7 +91,7 @@ def test_one_epoch_writes_every_file_then_resume(tmp_path, tiny_model, capsys):
     assert not (out / train.STATE_FILE).exists()  # resume file stays outside the model folder
     out_text = capsys.readouterr().out
     assert "Reload check passed" in out_text
-    assert "fewer than 30 characters" in out_text
+    assert "fewer than 20 characters" in out_text
 
     import torch
 
@@ -107,6 +107,13 @@ def test_one_epoch_writes_every_file_then_resume(tmp_path, tiny_model, capsys):
     log = list(csv.DictReader((out / "training_log.csv").open()))
     assert [r["epoch"] for r in log] == ["1", "2"]
     assert "Reload check passed" in capsys.readouterr().out
+
+    # The class list changes (a skipped class reaches the minimum): no resume.
+    rows = [json.loads(line) for line in (tmp_path / "data.jsonl").read_text().splitlines() if line]
+    extra = [dict(r, image=f"extra{i}.jpg") for i, r in enumerate(x for x in rows if x["model_type"] == RARE)]
+    (tmp_path / "data.jsonl").write_text("\n".join(json.dumps(r) for r in rows + extra * 3) + "\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="class list changed"):
+        run(tmp_path, tiny_model, "--resume")
 
 
 def test_group_split_keeps_each_chart_on_one_side(tmp_path):
@@ -153,3 +160,30 @@ def test_predict_classifies_text_with_the_saved_model(tmp_path, tiny_model, caps
     capsys.readouterr()
     clf.show("made up text for a page")
     assert "model type" in capsys.readouterr().out
+
+
+def test_chart_ids_with_the_same_leading_number_are_one_group(tmp_path):
+    assert train.chart_group("53688890_240126_2000") == train.chart_group("53688890") == "53688890"
+    assert train.chart_group("") is None and train.chart_group(None) is None
+    taxonomy = train.load_taxonomy()
+    label = next(iter(WORDS))
+    rows = [
+        {"image": "a.jpg", "text": "made up page text long enough", "model_type": label, "chart_id": "53688890"},
+        {"image": "b.jpg", "text": "made up page text long enough", "model_type": label,
+         "chart_id": "53688890_240126_2000"},
+        {"image": "c.jpg", "text": "made up page text long enough", "model_type": label, "chart_id": None},
+        {"image": "d.jpg", "text": "too short", "model_type": label, "chart_id": "1"},
+    ]
+    path = tmp_path / "d.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    records, short = train.load_records(path, taxonomy, train.MIN_CHARS)
+    groups = {r["image"]: r["group"] for r in records}
+    assert groups["a.jpg"] == groups["b.jpg"] != groups["c.jpg"]
+    assert short == 1  # "too short" has 8 non-space characters, under 20
+
+
+def test_taxonomy_1_2_has_policy_and_growth_chart():
+    taxonomy = train.load_taxonomy()
+    assert len(taxonomy) == 60
+    assert taxonomy["Policy"]["page_type"] == "Policy"
+    assert taxonomy["Growth chart"]["page_type"] == "Growth chart"

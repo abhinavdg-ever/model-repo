@@ -64,7 +64,6 @@
       "Authorization page",
       "Patinet History",
       "Patient Agreement Form",
-      "Policy",
       "Consent for tretment",
       "Pre Op Form",
       "Information pages",
@@ -79,7 +78,6 @@
       "PAT record",
       "Questionnaires",
       "Patient Form",
-      "Policy Pages",
       "Pre admission Testing",
       "Agreement Form",
       "Testing Form",
@@ -236,7 +234,6 @@
       "Nurshing Chart",
       "Nursing Note",
       "Nursing Notes",
-      "Growth chart",
       "Vital signs",
       "Vital",
       "Pain Data",
@@ -388,7 +385,14 @@
     "Sleep Study": [],
     "Social History": [],
     "Vascular Studies": [],
-    "History": []
+    "History": [],
+    "Policy": [
+      "Policy",
+      "Policy Pages"
+    ],
+    "Growth chart": [
+      "Growth chart"
+    ]
   },
   "broader": {
     "Progress Note": [],
@@ -529,7 +533,9 @@
       "Encounter details",
       "Progressnote",
       "Encounter Detalis"
-    ]
+    ],
+    "Policy": [],
+    "Growth chart": []
   },
   "pages": {
     "Progress Note": 12654,
@@ -538,7 +544,7 @@
     "Radiology Report": 234,
     "Patient Demographics": 209,
     "Discharge Summary": 204,
-    "Forms": 194,
+    "Forms": 185,
     "Clinical Summary": 159,
     "Orders": 126,
     "Cardiac Report": 122,
@@ -550,7 +556,7 @@
     "Messages": 65,
     "Administration": 63,
     "Medication List": 55,
-    "Nursing Note": 55,
+    "Nursing Note": 51,
     "Triage Note": 55,
     "Billing / Invoice": 52,
     "Echocardiogram Report": 51,
@@ -589,7 +595,9 @@
     "Respiratory": 0,
     "Sleep Study": 0,
     "Social History": 0,
-    "Vascular Studies": 0
+    "Vascular Studies": 0,
+    "Policy": 9,
+    "Growth chart": 4
   },
   "close": [
     [

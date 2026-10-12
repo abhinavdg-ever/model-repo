@@ -48,9 +48,9 @@ ALL = frozenset(taxonomy.load().model_types)
 class TestTaxonomy:
     def test_counts_and_rules(self):
         names = taxonomy.load()
-        assert len(names.page_types) == 49
-        assert len(names.subtype_page_type) == 190
-        assert len(names.model_types) == 58
+        assert len(names.page_types) == 51
+        assert len(names.subtype_page_type) == 191
+        assert len(names.model_types) == 60
         for page_type in names.page_types:  # every page type has its generic sub-type
             assert names.page_type_of_subtype(page_type) == page_type
 

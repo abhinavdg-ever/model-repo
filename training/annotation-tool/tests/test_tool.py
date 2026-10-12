@@ -196,8 +196,7 @@ def test_interrupted_generate_resumes(folder, store_cls, monkeypatch):
 def test_cli_generate_prints_no_page_text(folder, capsys, monkeypatch):
     import ocr
 
-    monkeypatch.setattr(ocr, "ocr_image", lambda p: "SECRET MADE UP PATIENT TEXT")
-    monkeypatch.setattr(ocr, "engine_label", lambda: "test-engine")
+    monkeypatch.setattr(ocr, "read_page", lambda p: ("SECRET MADE UP PATIENT TEXT", "test-engine"))
     monkeypatch.setattr(ocr, "tesseract_version", lambda: "5")
     from app import main
 
@@ -300,12 +299,22 @@ def test_a_page_saved_inside_a_progress_note_saves_again_without_a_tick(folder, 
     assert (item["page_type"], item["page_subtype"], item["model_type"]) == ("Progress Note", lab, lab)
 
 
-def test_the_page_has_no_inside_a_progress_note_tick(folder, store_cls):
+def test_the_inside_a_progress_note_tick_is_back_and_saves_the_embedded_pair(folder, store_cls):
     from app import create_app
 
-    page = create_app(store_cls(folder)).test_client().get("/").get_data(as_text=True)
-    assert "sits inside a Progress Note" not in page
+    store = store_cls(folder)
+    client = create_app(store).test_client()
+    page = client.get("/").get_data(as_text=True)
+    assert "sits inside a Progress Note" in page
+    # Shown with style.display, never the hidden attribute a label style overrides.
+    assert 'id="embeddedRow" class="embedded-row" style="display:none"' in page
     assert page.index('id="pending"') < page.index('id="add"')  # count beside the button, top right
+    item = client.post("/api/label", json={"index": 2, "page_type": "Laboratory Data",
+                                           "page_subtype": "", "embedded": True}).get_json()["item"]
+    assert (item["page_type"], item["page_subtype"], item["model_type"]) == (
+        "Progress Note", "Laboratory Data", "Laboratory Data")
+    refused = client.post("/api/label", json={"index": 2, "page_type": "Forms", "embedded": True})
+    assert refused.status_code == 400  # only the embedded page types can be inside a note
 
 
 def test_one_backup_ever_the_original_csv(folder, store_cls):
@@ -384,3 +393,84 @@ def test_save_and_untag_write_a_status_to_the_labels_csv(folder, store_cls):
     assert store.item(0)["status"] == "Saved"
     untouched = next(r for r in read_labels(folder) if r["image"].endswith("Pg2.jpg"))
     assert untouched["status"] == ""  # never saved in the tool
+
+
+def test_taxonomy_1_2_policy_and_growth_chart(folder, store_cls):
+    store = store_cls(folder)
+    tax = store.taxonomy
+    assert {"Policy", "Growth chart"} <= set(tax.model_types)
+    assert not tax.subtype_belongs("Nursing Note", "Growth chart")
+    assert not tax.subtype_belongs("Forms", "Policy")
+    item = store.set_labels(2, "Policy")
+    assert (item["page_type"], item["page_subtype"], item["model_type"]) == ("Policy", "Policy", "Policy")
+
+
+def test_rows_needing_a_re_tag_are_listed_not_changed(folder, store_cls):
+    from app import create_app
+
+    rows = read_labels(folder)
+    rows.append({"image": "70000001_Pg1.jpg", "page_type": "Nursing Note",
+                 "page_subtype": "Growth chart", "model_type": "Nursing Note"})
+    rows[0]["model_type"] = "Office Visit"  # Progress Note / Progress Note -> must be Progress Note
+    write_labels(folder, rows, list(rows[0].keys()))
+    before = (folder / "image_labels.csv").read_bytes()
+    store = store_cls(folder)
+    # The old Nursing Note / Growth chart pair is invalid; its model type still
+    # follows the rule. Row 0 breaks the rule only.
+    assert len(store.invalid_pair) == 1 and len(store.rule_broken) == 1
+    payload = create_app(store).test_client().get("/api/items?view=retag&completed=1").get_json()
+    assert payload["counts"]["needs_retag"] == 2
+    assert all(i["needs_retag"] for i in payload["items"]) and len(payload["items"]) >= 1
+    assert (folder / "image_labels.csv").read_bytes() == before  # nothing changed silently
+
+
+def test_chart_id_drops_tif_and_groups_on_the_leading_number():
+    from store import chart_and_index, chart_group
+
+    assert chart_and_index("60143458.tif_Pg7.jpg") == ("60143458", 7)
+    assert chart_and_index("53688890_240126_2000_Pg10.jpg") == ("53688890_240126_2000", 10)
+    assert chart_group("53688890_240126_2000") == chart_group("53688890") == "53688890"
+    assert chart_and_index("IMG_1234.heic") == (None, None)
+
+
+def test_a_protected_reading_is_kept_on_a_label_change(folder, store_cls):
+    store = store_cls(folder)
+    store.generate(ocr=fake_ocr, engine="test")
+    image = store.rows[0]["image"]
+    store.records[image]["ocr_engine"] = "read by Claude from the image"
+    store.records[image].pop("file_size")  # even with no size recorded
+    store.save_training()
+    store = store_cls(folder)
+    store.set_labels(0, "Forms")
+    calls = []
+    store.generate(ocr=lambda p: calls.append(p) or "new text", engine="test")
+    assert image not in [str(c) for c in calls] and store.records[image]["ocr_engine"] == "read by Claude from the image"
+
+
+def test_screen_lines_are_dropped_from_photo_text_only_at_the_edges():
+    from ocr import drop_screen_lines
+
+    text = "\n".join([
+        "sites/Shared Documents/AllItems.aspx",
+        "70000001_Pg3.png",
+        "Acceptable  Unacceptable",
+        "MADE UP CLINIC",
+        "Progress Note",
+        "Assessment: the made up result was acceptable to the patient",
+        "body line one", "body line two", "body line three", "body line four",
+        "Search",
+    ])
+    out = drop_screen_lines(text).splitlines()
+    assert out[0] == "MADE UP CLINIC" and "Search" not in out
+    assert "Assessment: the made up result was acceptable to the patient" in out  # long line kept
+
+
+def test_cleaning_keeps_size_and_stretches_to_full_range():
+    from PIL import Image
+    import ocr
+
+    image = Image.linear_gradient("L").resize((300, 200))
+    cleaned = ocr.clean_photo(image)
+    assert cleaned.size == image.size and cleaned.mode == "L"
+    low, high = cleaned.getextrema()
+    assert low == 0 and high == 255

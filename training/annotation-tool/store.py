@@ -47,14 +47,26 @@ CHECKPOINT_EVERY = 5
 
 _PAGE_NAME = re.compile(r"^(?P<chart>.+?)_Pg(?P<index>\d+)$", re.IGNORECASE)
 
+# Text from these readers is never replaced unless the image file itself changed.
+PROTECTED_ENGINES = frozenset({"read by Claude from the image", "tesseract 5.3.4 (cleaned image)"})
+
 
 def chart_and_index(image: str) -> tuple[Optional[str], Optional[int]]:
     """``60307605_Pg12.jpg`` → ("60307605", 12); ``60143458.tif_Pg7.jpg`` →
-    ("60143458.tif", 7); anything else → (None, None)."""
+    ("60143458", 7) — a trailing ``.tif`` is not part of the chart id;
+    anything else → (None, None). Ids that start with the same number
+    (``53688890`` and ``53688890_240126_2000``) are one chart: see chart_group."""
     match = _PAGE_NAME.match(Path(image).stem)
     if not match:
         return None, None
-    return match.group("chart"), int(match.group("index"))
+    chart = re.sub(r"\.tiff?$", "", match.group("chart"), flags=re.IGNORECASE)
+    return chart, int(match.group("index"))
+
+
+def chart_group(chart_id: Optional[str]) -> Optional[str]:
+    """The leading number of a chart id: ``53688890_240126_2000`` → ``53688890``."""
+    match = re.match(r"\d+", str(chart_id or ""))
+    return match.group(0) if match else (str(chart_id) if chart_id else None)
 
 
 def _atomic_write(path: Path, data: bytes) -> None:
@@ -178,6 +190,41 @@ class Store:
         for row in self.rows:
             if row.get(FLAG) == "Yes" and row.get("image") not in self.records:
                 row[FLAG] = "No"
+        self.check_rows()
+
+    # -- taxonomy checks ---------------------------------------------------------
+    def check_rows(self) -> None:
+        """Rows that need re-tagging under the loaded taxonomy. Nothing is changed:
+        ``invalid_pair`` = (page_type, page_subtype) is not a taxonomy pair or an
+        embedded pair; ``rule_broken`` = model_type is not what the model-type
+        rule gives for that pair."""
+        self.invalid_pair: set[int] = set()
+        self.rule_broken: set[int] = set()
+        for index, row in enumerate(self.rows):
+            if not self.tagged(row):
+                continue
+            page_type = (row.get("page_type") or "").strip()
+            page_subtype = (row.get("page_subtype") or "").strip()
+            if not self.taxonomy.is_valid_pair(page_type, page_subtype):
+                self.invalid_pair.add(index)
+            if (row.get("model_type") or "").strip() != self.taxonomy.rule_model_type(page_type, page_subtype):
+                self.rule_broken.add(index)
+
+    def _recheck(self, index: int) -> None:
+        """Re-run the taxonomy checks for one row after a save, untag or undo."""
+        self.invalid_pair.discard(index)
+        self.rule_broken.discard(index)
+        row = self.rows[index]
+        if self.tagged(row):
+            page_type = (row.get("page_type") or "").strip()
+            page_subtype = (row.get("page_subtype") or "").strip()
+            if not self.taxonomy.is_valid_pair(page_type, page_subtype):
+                self.invalid_pair.add(index)
+            if (row.get("model_type") or "").strip() != self.taxonomy.rule_model_type(page_type, page_subtype):
+                self.rule_broken.add(index)
+
+    def needs_retag(self, index: int) -> bool:
+        return index in self.invalid_pair or index in self.rule_broken
 
     # -- display ---------------------------------------------------------------
     def tagged(self, row: dict[str, str]) -> bool:
@@ -198,6 +245,7 @@ class Store:
             "completed": row.get(DONE) == "Yes",
             "tagged": self.tagged(row),
             "missing": self.files.get(index) is None,
+            "needs_retag": self.needs_retag(index),
             "status": row.get(STATUS) or "",
             "saved_at": row.get(SAVED_AT) or "",
         }
@@ -216,6 +264,7 @@ class Store:
             "completed": sum(1 for r in present if r.get(DONE) == "Yes"),
             "to_do": sum(1 for r in present if r.get(DONE) != "Yes"),
             "missing_files": len(rows) - len(present),
+            "needs_retag": len(self.invalid_pair | self.rule_broken),
         }
 
     def image_path(self, index: int) -> Optional[Path]:
@@ -322,6 +371,7 @@ class Store:
         row.update(values)
         if labels_changed:
             row[FLAG] = "No"
+        self._recheck(index)
         self._undo.append((index, before))
         self.save_labels()
         return self.item(index)
@@ -333,6 +383,7 @@ class Store:
             index, before = self._undo.pop()
             self.rows[index].clear()
             self.rows[index].update(before)
+            self._recheck(index)
             self.save_labels()
             return self.item(index)
 
@@ -364,7 +415,7 @@ class Store:
         """
         import ocr as ocr_module
 
-        read = ocr or ocr_module.ocr_image
+        read = ocr or ocr_module.read_page
         summary = summary or GenerateSummary()
         summary.running = True
         with self.lock:
@@ -380,8 +431,8 @@ class Store:
             != self.image_path(i).stat().st_size
             for i in candidates
         )
-        if needs_ocr and engine is None and ocr is None:
-            engine = ocr_module.engine_label()  # raises with install help when missing
+        if needs_ocr and ocr is None:
+            ocr_module.tesseract_version()  # raises with install help when missing
         try:
             pending = 0
             for index in candidates:
@@ -391,16 +442,25 @@ class Store:
                     path = self.image_path(index)
                     size = path.stat().st_size
                     record = self.records.get(image)
-                if record is not None and record.get("file_size") == size and "text" in record:
+                # A label change never triggers OCR: same file size = same image.
+                # Protected text (read by Claude, cleaned-image Tesseract) is kept
+                # even without a recorded size; only a changed file is re-read.
+                same_image = record is not None and "text" in record and (
+                    record.get("file_size") == size
+                    or (record.get("file_size") in (None, "")
+                        and record.get("ocr_engine") in PROTECTED_ENGINES)
+                )
+                if same_image:
                     if self._record_labels(record, row):
                         summary.label_changes += 1
                 else:
                     try:
-                        text = read(path)
-                    except Exception:
+                        result = read(path)
+                    except Exception:  # unreadable or over the time limit
                         summary.unreadable.append(image)
                         summary.done += 1
                         continue
+                    text, page_engine = result if isinstance(result, tuple) else (result, engine or "")
                     chart_id, page_index = chart_and_index(image)
                     record = {
                         "image": image,
@@ -411,7 +471,7 @@ class Store:
                         "chart_id": chart_id,
                         "page_index": page_index,
                         "n_chars": len(text),
-                        "ocr_engine": engine or "",
+                        "ocr_engine": page_engine,
                         "file_size": size,
                     }
                     summary.pages_read += 1
@@ -475,13 +535,15 @@ def filter_items(
         # they stay in image_labels.csv, so no label is lost.
         if (view == "missing") != (store.files.get(index) is None):
             continue
-        if not show_completed and row.get(DONE) == "Yes" and view != "missing":
+        if not show_completed and row.get(DONE) == "Yes" and view not in ("missing", "retag"):
             continue
         if view == "untagged" and store.tagged(row):
             continue
         if view == "not_in_training" and (not store.tagged(row) or row.get(FLAG) == "Yes"):
             continue
         if view == "in_training" and row.get(FLAG) != "Yes":
+            continue
+        if view == "retag" and not store.needs_retag(index):
             continue
         if model_type and row.get("model_type") != model_type:
             continue
