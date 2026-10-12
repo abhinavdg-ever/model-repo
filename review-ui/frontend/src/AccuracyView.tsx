@@ -45,6 +45,19 @@ function fmtUpdated(iso: string | null | undefined): string {
   }).format(d);
 }
 
+/** Date on one line, time under it, so the column stays narrow. */
+function DateLines({ iso }: { iso: string | null | undefined }) {
+  const text = fmtUpdated(iso);
+  const cut = text.lastIndexOf(", ");
+  if (cut < 0) return <>{text}</>;
+  return (
+    <>
+      <span>{text.slice(0, cut)}</span>
+      <span>{text.slice(cut + 2)}</span>
+    </>
+  );
+}
+
 /** An ⓘ that shows what a number means: on hover, and on click / tap. */
 function InfoTip({ text, className }: { text: string; className?: string }) {
   const [open, setOpen] = useState(false);
@@ -556,8 +569,12 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                         {row.chartName}
                       </button>
                     </th>
-                    <td className="landing-col-updated">{fmtUpdated(row.lastUpdatedAt)}</td>
-                    <td className="landing-col-updated">{fmtUpdated(row.lastVerifiedAt)}</td>
+                    <td className="landing-col-updated accuracy-col-date">
+                      <DateLines iso={row.lastUpdatedAt} />
+                    </td>
+                    <td className="landing-col-updated accuracy-col-date">
+                      <DateLines iso={row.lastVerifiedAt} />
+                    </td>
                     <td>{row.overall.scored}</td>
                     {LIVE_METRICS.map((metric) => (
                       <td key={metric.id}>
