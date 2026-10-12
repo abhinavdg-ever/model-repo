@@ -38,72 +38,55 @@ const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
   verification: false,
 };
 
-/** Doc Summary fallback when a page has no DOS and nothing to inherit. */
+/** The DOS of a page with no date (DOS_DEFAULT_DATE in dos_canon.json), at 80% confidence. */
 const DEFAULT_DOS = "2022-02-02";
-/** Hardcoded default DOS confidence */
 const DEFAULT_DOS_CONFIDENCE = 0.8;
 
-function hasDos(value: string | null | undefined): value is string {
-  return value != null && String(value).trim() !== "";
+function text(value: string | null | undefined): string | null {
+  return (value ?? "").trim() || null;
 }
 
-/**
- * Doc Summary only: missing DOS inherits the previous page's DOS;
- * if nothing precedes, use 2022-02-02 at 80% confidence.
- * Skipped when DOS section was never run for this folder.
- */
-function fillDosForward(
-  pages: ImagingPageResult[],
-  dosProcessed: boolean,
-): ImagingPageResult[] {
-  if (!dosProcessed) return pages;
+/** A page's DOS: its own, else the default. Never the DOS of the page before it. */
+function withDefaultDos(
+  from: string | null,
+  to: string | null,
+  confidence: number | null,
+): { dosFrom: string; dosTo: string; dosConfidence: number | null } {
+  if (!from && !to) {
+    return { dosFrom: DEFAULT_DOS, dosTo: DEFAULT_DOS, dosConfidence: DEFAULT_DOS_CONFIDENCE };
+  }
+  const dosFrom = displayIsoDates((from ?? to) as string);
+  const dosTo = displayIsoDates((to ?? from) as string);
+  const isDefault = dosFrom === DEFAULT_DOS || dosTo === DEFAULT_DOS;
+  return { dosFrom, dosTo, dosConfidence: confidence ?? (isDefault ? DEFAULT_DOS_CONFIDENCE : null) };
+}
 
-  let prevFrom: string | null = null;
-  let prevTo: string | null = null;
-  let prevConf: number | null = null;
+/** Doc Summary rows, in page order, each with its own DOS or the default. */
+function withPageDos(pages: ImagingPageResult[], dosProcessed: boolean): ImagingPageResult[] {
+  const ordered = [...pages].sort((a, b) => a.pageNumber - b.pageNumber);
+  if (!dosProcessed) return ordered;
+  return ordered.map((page) => ({
+    ...page,
+    ...withDefaultDos(text(page.dosFrom), text(page.dosTo), page.dosConfidence ?? null),
+  }));
+}
 
+/** Document-level DOS for download: the document date, else the page's own, else the default. */
+export function fillDocDosForDownload(pages: ImagingPageResult[]): ImagingPageResult[] {
   return [...pages]
     .sort((a, b) => a.pageNumber - b.pageNumber)
     .map((page) => {
-      let dosFrom = hasDos(page.dosFrom) ? displayIsoDates(page.dosFrom.trim()) : null;
-      let dosTo = hasDos(page.dosTo) ? displayIsoDates(page.dosTo.trim()) : null;
-      let dosConfidence = page.dosConfidence ?? null;
-      let usedDefault = false;
-
-      if (!dosFrom && !dosTo) {
-        if (prevFrom) {
-          dosFrom = prevFrom;
-          dosTo = prevTo ?? prevFrom;
-          dosConfidence = prevConf;
-        } else {
-          dosFrom = DEFAULT_DOS;
-          dosTo = DEFAULT_DOS;
-          dosConfidence = DEFAULT_DOS_CONFIDENCE;
-          usedDefault = true;
-        }
-      } else {
-        if (!dosFrom) dosFrom = dosTo ?? prevFrom ?? DEFAULT_DOS;
-        if (!dosTo) dosTo = dosFrom ?? prevTo ?? DEFAULT_DOS;
-        if (
-          (dosFrom === DEFAULT_DOS || dosTo === DEFAULT_DOS) &&
-          dosConfidence == null
-        ) {
-          dosConfidence = DEFAULT_DOS_CONFIDENCE;
-          usedDefault = true;
-        }
-      }
-
-      prevFrom = dosFrom;
-      prevTo = dosTo;
-      prevConf = usedDefault
-        ? DEFAULT_DOS_CONFIDENCE
-        : (dosConfidence ?? prevConf);
-      return { ...page, dosFrom, dosTo, dosConfidence };
+      const { dosFrom, dosTo, dosConfidence } = withDefaultDos(
+        text(page.docDosFrom) ?? text(page.dosFrom),
+        text(page.docDosTo) ?? text(page.dosTo),
+        page.dosConfidence ?? null,
+      );
+      return { ...page, docDosFrom: dosFrom, docDosTo: dosTo, dosConfidence };
     });
 }
 
 type ImagingTab = "page" | "sequencing" | "doc" | "additional";
-type DocView = "values" | "confidence" | "rejection";
+type DocView = "documents" | "values" | "confidence" | "rejection";
 
 type Props = {
   tab: ImagingTab;
@@ -1598,6 +1581,100 @@ function RejectionRulesTable({
   );
 }
 
+type DocumentRow = {
+  seq: number;
+  startPage: number;
+  endPage: number;
+  pageType: string | null;
+  encounterType: string | null;
+  dosFrom: string | null;
+  dosTo: string | null;
+};
+
+/** One row per document (continuity stage), in page order. Its type and DOS are the
+ * document's Final values; the encounter type is the first one its pages carry. */
+function documentRows(pages: ImagingPageResult[]): DocumentRow[] {
+  const byDocument = new Map<number, ImagingPageResult[]>();
+  for (const page of pages) {
+    if (page.documentSeq == null) continue;
+    const members = byDocument.get(page.documentSeq) ?? [];
+    members.push(page);
+    byDocument.set(page.documentSeq, members);
+  }
+  const rows: DocumentRow[] = [];
+  for (const [seq, members] of byDocument) {
+    members.sort((a, b) => a.pageNumber - b.pageNumber);
+    const first = members[0];
+    const text = (value: string | null | undefined) => (value ?? "").trim() || null;
+    rows.push({
+      seq,
+      startPage: first.pageNumber,
+      endPage: members[members.length - 1].pageNumber,
+      pageType: text(first.finalPageType) ?? text(first.pageType),
+      encounterType: members.map((page) => text(page.encounterType)).find(Boolean) ?? null,
+      dosFrom: text(first.finalDosFrom),
+      dosTo: text(first.finalDosTo),
+    });
+  }
+  return rows.sort((a, b) => a.startPage - b.startPage);
+}
+
+function fmtDocumentDos(from: string | null, to: string | null): string {
+  if (!from && !to) return NOT_FOUND;
+  const start = displayIsoDates(from ?? to ?? "");
+  const end = displayIsoDates(to ?? from ?? "");
+  return start === end ? start : `${start} – ${end}`;
+}
+
+function DocumentsTable({
+  pages,
+  sections,
+}: {
+  pages: ImagingPageResult[];
+  sections: ImagingSectionsProcessed;
+}) {
+  const rows = useMemo(() => documentRows(pages), [pages]);
+  if (rows.length === 0) {
+    return (
+      <div className="ocr-empty">
+        {pages.some((page) => page.documentPosition != null)
+          ? "No documents in this chart: every page is blank, junk or a duplicate."
+          : "Documents appear once the continuity stage has run on this chart."}
+      </div>
+    );
+  }
+  const typeKnown = Boolean(sections.junk || sections.codeable);
+  const encounterKnown = Boolean(sections.encounter) || rows.some((row) => row.encounterType);
+  return (
+    <table className="imaging-summary-table imaging-documents-table">
+      <thead>
+        <tr>
+          <th scope="col">Doc</th>
+          <th scope="col">Start Page</th>
+          <th scope="col">End Page</th>
+          <th scope="col">Type</th>
+          <th scope="col">Encounter Type</th>
+          <th scope="col">DOS</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.seq}>
+            <td>{row.seq}</td>
+            <td>{row.startPage}</td>
+            <td>{row.endPage}</td>
+            <td>{fmtPageType(row.pageType, typeKnown)}</td>
+            <td>{fmt(row.encounterType, encounterKnown)}</td>
+            <td className="imaging-mono">
+              {sections.dos ? fmtDocumentDos(row.dosFrom, row.dosTo) : YET_TO_PROCESS}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function DocSummary({
   pages,
   verifications,
@@ -1607,16 +1684,23 @@ function DocSummary({
   verifications: ImagingVerificationDetails[];
   sections: ImagingSectionsProcessed;
 }) {
-  const [view, setView] = useState<DocView>("values");
-  const rows = useMemo(
-    () => fillDosForward(pages, sections.dos),
-    [pages, sections.dos],
-  );
+  const [view, setView] = useState<DocView>("documents");
+  // Each page's own DOS, else the default 2022-02-02; never the previous page's.
+  const rows = useMemo(() => withPageDos(pages, sections.dos), [pages, sections.dos]);
   const showConfidence = view === "confidence";
 
   return (
     <div className="imaging-doc-summary">
       <div className="output-tabs imaging-doc-tabs" role="tablist" aria-label="Doc summary view">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "documents"}
+          className={view === "documents" ? "active" : ""}
+          onClick={() => setView("documents")}
+        >
+          Documents
+        </button>
         <button
           type="button"
           role="tab"
@@ -1646,7 +1730,9 @@ function DocSummary({
         </button>
       </div>
 
-      {view === "rejection" ? (
+      {view === "documents" ? (
+        <DocumentsTable pages={pages} sections={sections} />
+      ) : view === "rejection" ? (
         <RejectionRulesTable
           rows={verifications}
           verificationProcessed={sections.verification}

@@ -50,36 +50,21 @@ def _cell(value: Any) -> str:
 
 
 def fill_doc_dos_for_download(pages: list[ImagingPageResult]) -> list[ImagingPageResult]:
-    """Prefer docDos*; else carry-forward / default 2022-02-02 @ 80%."""
-    prev_from: str | None = None
-    prev_to: str | None = None
-    prev_conf: float | None = None
+    """Prefer docDos*, else the page's own DOS, else the default 2022-02-02 @ 80%.
+    A page never takes the DOS of the page before it."""
     out: list[ImagingPageResult] = []
     for page in sorted(pages, key=lambda p: p.pageNumber):
         dos_from = (page.docDosFrom or page.dosFrom or "").strip() or None
         dos_to = (page.docDosTo or page.dosTo or "").strip() or None
         dos_confidence = page.dosConfidence
         if not dos_from and not dos_to:
-            if prev_from:
-                dos_from = prev_from
-                dos_to = prev_to or prev_from
-                dos_confidence = prev_conf
-            else:
-                dos_from = DEFAULT_DOC_DOS
-                dos_to = DEFAULT_DOC_DOS
-                dos_confidence = DEFAULT_DOC_DOS_CONFIDENCE
+            dos_from = dos_to = DEFAULT_DOC_DOS
+            dos_confidence = DEFAULT_DOC_DOS_CONFIDENCE
         else:
-            if not dos_from:
-                dos_from = dos_to or prev_from or DEFAULT_DOC_DOS
-            if not dos_to:
-                dos_to = dos_from or prev_to or DEFAULT_DOC_DOS
-            if (
-                dos_from == DEFAULT_DOC_DOS or dos_to == DEFAULT_DOC_DOS
-            ) and dos_confidence is None:
+            dos_from = dos_from or dos_to
+            dos_to = dos_to or dos_from
+            if DEFAULT_DOC_DOS in (dos_from, dos_to) and dos_confidence is None:
                 dos_confidence = DEFAULT_DOC_DOS_CONFIDENCE
-        prev_from = dos_from
-        prev_to = dos_to
-        prev_conf = dos_confidence if dos_confidence is not None else prev_conf
         out.append(
             page.model_copy(
                 update={

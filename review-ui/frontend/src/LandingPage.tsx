@@ -21,11 +21,10 @@ import {
   OCR_STATUS_LABELS,
   type FolderSummary,
   type ImagingDocumentResponse,
-  type ImagingPageResult,
   type OcrRunStatus,
 } from "./api";
 import { formatDuplicateDownload } from "./duplicateLabel";
-import { displayIsoDates } from "./groundTruth";
+import { fillDocDosForDownload } from "./ImagingPanel";
 
 const PAGE_SIZE = 15;
 const LANDING_FILTERS_KEY = "advantmed_imaging_landing_filters";
@@ -299,50 +298,6 @@ const RESULTS_CSV_HEADERS = [
   "member_verification_status",
 ] as const;
 
-const DEFAULT_DOC_DOS = "2022-02-02";
-const DEFAULT_DOC_DOS_CONFIDENCE = 0.8;
-
-function fillDocDosForDownload(pages: ImagingPageResult[]): ImagingPageResult[] {
-  let prevFrom: string | null = null;
-  let prevTo: string | null = null;
-  let prevConf: number | null = null;
-  return [...pages]
-    .sort((a, b) => a.pageNumber - b.pageNumber)
-    .map((page) => {
-      let dosFrom = displayIsoDates((page.docDosFrom || page.dosFrom || "").trim()) || null;
-      let dosTo = displayIsoDates((page.docDosTo || page.dosTo || "").trim()) || null;
-      let dosConfidence = page.dosConfidence ?? null;
-      if (!dosFrom && !dosTo) {
-        if (prevFrom) {
-          dosFrom = prevFrom;
-          dosTo = prevTo ?? prevFrom;
-          dosConfidence = prevConf;
-        } else {
-          dosFrom = DEFAULT_DOC_DOS;
-          dosTo = DEFAULT_DOC_DOS;
-          dosConfidence = DEFAULT_DOC_DOS_CONFIDENCE;
-        }
-      } else {
-        if (!dosFrom) dosFrom = dosTo ?? prevFrom ?? DEFAULT_DOC_DOS;
-        if (!dosTo) dosTo = dosFrom ?? prevTo ?? DEFAULT_DOC_DOS;
-        if (
-          (dosFrom === DEFAULT_DOC_DOS || dosTo === DEFAULT_DOC_DOS) &&
-          dosConfidence == null
-        ) {
-          dosConfidence = DEFAULT_DOC_DOS_CONFIDENCE;
-        }
-      }
-      prevFrom = dosFrom;
-      prevTo = dosTo;
-      prevConf = dosConfidence ?? prevConf;
-      return {
-        ...page,
-        docDosFrom: dosFrom,
-        docDosTo: dosTo,
-        dosConfidence,
-      };
-    });
-}
 
 function csvEscape(value: unknown): string {
   const s = value === null || value === undefined ? "" : String(value);

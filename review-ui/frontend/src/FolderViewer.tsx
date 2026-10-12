@@ -33,6 +33,7 @@ import {
 } from "./api";
 import ImagingPanel, {
   additionalSectionHeaders,
+  fillDocDosForDownload,
   type GroundTruthLeave,
   type ImagingTab,
 } from "./ImagingPanel";
@@ -44,7 +45,6 @@ import {
   matchRateToneClass,
   pageMatchRate,
 } from "./ocrMatchRate";
-import { displayIsoDates } from "./groundTruth";
 import { ocrTextForFilename } from "./ocrPages";
 import { prepareOcrLines } from "./ocrFormat";
 import FullscreenPageChrome from "./FullscreenPageChrome";
@@ -83,52 +83,6 @@ function downloadTextFile(filename: string, text: string, mime = "text/plain;cha
 
 function downloadJsonFile(filename: string, data: unknown) {
   downloadTextFile(filename, JSON.stringify(data, null, 2), "application/json;charset=utf-8");
-}
-
-/** Document-level DOS for download: prefer docDos*, else carry-forward / 2022-02-02 @ 80%. */
-const DEFAULT_DOC_DOS = "2022-02-02";
-const DEFAULT_DOC_DOS_CONFIDENCE = 0.8;
-
-function fillDocDosForDownload(pages: ImagingPageResult[]): ImagingPageResult[] {
-  let prevFrom: string | null = null;
-  let prevTo: string | null = null;
-  let prevConf: number | null = null;
-  return [...pages]
-    .sort((a, b) => a.pageNumber - b.pageNumber)
-    .map((page) => {
-      let dosFrom = displayIsoDates((page.docDosFrom || page.dosFrom || "").trim()) || null;
-      let dosTo = displayIsoDates((page.docDosTo || page.dosTo || "").trim()) || null;
-      let dosConfidence = page.dosConfidence ?? null;
-      if (!dosFrom && !dosTo) {
-        if (prevFrom) {
-          dosFrom = prevFrom;
-          dosTo = prevTo ?? prevFrom;
-          dosConfidence = prevConf;
-        } else {
-          dosFrom = DEFAULT_DOC_DOS;
-          dosTo = DEFAULT_DOC_DOS;
-          dosConfidence = DEFAULT_DOC_DOS_CONFIDENCE;
-        }
-      } else {
-        if (!dosFrom) dosFrom = dosTo ?? prevFrom ?? DEFAULT_DOC_DOS;
-        if (!dosTo) dosTo = dosFrom ?? prevTo ?? DEFAULT_DOC_DOS;
-        if (
-          (dosFrom === DEFAULT_DOC_DOS || dosTo === DEFAULT_DOC_DOS) &&
-          dosConfidence == null
-        ) {
-          dosConfidence = DEFAULT_DOC_DOS_CONFIDENCE;
-        }
-      }
-      prevFrom = dosFrom;
-      prevTo = dosTo;
-      prevConf = dosConfidence ?? prevConf;
-      return {
-        ...page,
-        docDosFrom: dosFrom,
-        docDosTo: dosTo,
-        dosConfidence,
-      };
-    });
 }
 
 function findImagingPage(
