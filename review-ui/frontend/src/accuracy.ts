@@ -60,6 +60,8 @@ export type ChartAccuracy = {
   metrics: Record<MetricId, Tally>;
   overall: Tally;
   blankJunkRates: ClassRates;
+  /** Blank / Junk scored on the pages the ground truth calls blank or junk only. */
+  blankJunkYes: Tally;
   /** "Yes" class = the member's name / DOB / ID is on the page. */
   memberRates: ClassRates;
 };
@@ -87,6 +89,13 @@ function emptyRates(): ClassRates {
 
 function blankOrJunkPositive(label: string): boolean {
   return label.trim().toLowerCase().startsWith("yes");
+}
+
+/** A page the ground truth calls blank or junk: Match, Partial (other sub-type)
+ * or No Match. Pages the pipeline has not judged yet are left out. */
+function addBlankJunkYes(tally: Tally, bits: GtBit[]): void {
+  if (!labeled(bits) || !blankOrJunkPositive(bits[0].label) || bits[0].mark === "unknown") return;
+  add(tally, grade(bits));
 }
 
 function addBlankJunk(rates: ClassRates, bits: GtBit[]): void {
@@ -318,6 +327,7 @@ export function scoreChart(
     Tally
   >;
   const blankJunkRates = emptyRates();
+  const blankJunkYes = emptyTally();
   const memberRates = emptyRates();
   const overall = emptyTally();
   for (const page of doc.pages) {
@@ -326,9 +336,10 @@ export function scoreChart(
     for (const metric of METRICS) add(metrics[metric.id], scored.scores[metric.id]);
     add(overall, overallVerdict(scored.scores, scored.applicable));
     addBlankJunk(blankJunkRates, scored.blankJunk);
+    addBlankJunkYes(blankJunkYes, scored.blankJunk);
     addMember(memberRates, scored.member);
   }
-  return { chartId, chartName, metrics, overall, blankJunkRates, memberRates };
+  return { chartId, chartName, metrics, overall, blankJunkRates, blankJunkYes, memberRates };
 }
 
 export function sumRates(rows: ClassRates[]): ClassRates {

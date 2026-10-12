@@ -82,6 +82,11 @@ function StackedTally({ tally }: { tally: Tally }) {
 
 const SCORE_INFO =
   "Accuracy score = (Match + 0.5 × Partial) / Total, where Total = Match + Partial + No Match.";
+const YES_INFO =
+  "Pages the ground truth calls blank or junk, scored like the donut: " +
+  "Match = the pipeline found it with the same type (blank, or junk), " +
+  "Partial = found it as the other type, No Match = kept it as a real page. " +
+  SCORE_INFO.replace("Accuracy score", "Score");
 const RATES_INFO =
   "For the Yes class. Recall = TP / (TP + FN): share of the real Yes pages the pipeline caught. " +
   "Precision = TP / (TP + FP): share of the pipeline's Yes calls that were right. " +
@@ -93,6 +98,7 @@ function Donut({
   tally,
   rates,
   ratesLabel,
+  yesTally,
 }: {
   label: string;
   detail: string;
@@ -100,6 +106,8 @@ function Donut({
   rates?: ClassRates;
   /** The positive ("Yes") class the precision / recall are for. */
   ratesLabel?: string;
+  /** The same score on the ground-truth "Yes" pages alone. */
+  yesTally?: Tally;
 }) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
@@ -154,6 +162,15 @@ function Donut({
           Precision {formatPrecision(rates)}
           <br />
           Accuracy {formatClassAccuracy(rates)}
+        </p>
+      ) : null}
+      {yesTally ? (
+        <p className="accuracy-rates">
+          <span className="accuracy-rates-class">
+            Accuracy of Yes {percentLabel(yesTally)} <InfoTip text={YES_INFO} />
+          </span>
+          <br />
+          {formatDistribution(yesTally)}
         </p>
       ) : null}
     </figure>
@@ -259,6 +276,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
     [rows],
   );
   const memberRates = useMemo(() => sumRates(rows.map((row) => row.memberRates)), [rows]);
+  const blankJunkYes = useMemo(() => sumTallies(rows.map((row) => row.blankJunkYes)), [rows]);
   /** Recall / precision / accuracy of the "Yes" class, across all files. */
   const ratesFor = (id: MetricId) =>
     id === "blankJunk" ? blankJunkRates : id === "member" ? memberRates : undefined;
@@ -311,6 +329,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                   tally={overallByMetric[metric.id]}
                   rates={ratesFor(metric.id)}
                   ratesLabel={metric.id === "member" ? "Member on page = Yes" : "Blank / Junk = Yes"}
+                  yesTally={metric.id === "blankJunk" ? blankJunkYes : undefined}
                 />
               ))}
             </div>
