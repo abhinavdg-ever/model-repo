@@ -69,6 +69,7 @@ class PageInput:
     # [{"text", "matched_canonical", "top"}] from the OCR JSON.
     section_headers: list[dict[str, Any]] = field(default_factory=list)
     page_type: str = ""
+    page_subtype: str = ""
     # The keyword model found a title term in the page's title zone.
     title_hit: bool = False
     dos_from: str = ""
@@ -120,6 +121,8 @@ class Rules:
     envelope_min_pages: int = 2
     envelope_page_types: frozenset[str] = frozenset()
     envelope_headers: frozenset[str] = frozenset()
+    # Page types / sub-types (casefolded) whose document takes the default Final DOS.
+    default_dos_types: frozenset[str] = frozenset()
 
 
 def _build(data: dict[str, Any]) -> Rules:
@@ -159,10 +162,17 @@ def _build(data: dict[str, Any]) -> Rules:
         envelope_headers=frozenset(
             h.casefold() for h in envelope.get("opening_headers") or ()
         ),
+        default_dos_types=frozenset(
+            t.casefold() for t in (data.get("default_final_dos") or {}).get("page_types") or ()
+        ),
     )
 
 
 _RULES: CanonFile[Rules] = CanonFile(CANON_DIR / "continuity_canon.json", _build)
+# DOS_DEFAULT_DATE: the one place the default date is set (the DOS stage reads it too).
+_DOS_DEFAULT: CanonFile[Optional[str]] = CanonFile(
+    CANON_DIR / "dos_canon.json", lambda data: str(data.get("DOS_DEFAULT_DATE") or "") or None
+)
 
 
 def load_rules() -> Rules:
@@ -444,8 +454,8 @@ def _finish(rows: list[dict[str, Any]], pages: Sequence[PageInput], rules: Rules
         chain = "strong"
         carried = document_finals(
             [
-                {"page_type": p.page_type, "dos_from": p.dos_from, "dos_to": p.dos_to,
-                 "page_number": p.page_number}
+                {"page_type": p.page_type, "page_subtype": p.page_subtype,
+                 "dos_from": p.dos_from, "dos_to": p.dos_to, "page_number": p.page_number}
                 for _, p in members
             ]
         )
@@ -476,7 +486,12 @@ def _finish(rows: list[dict[str, Any]], pages: Sequence[PageInput], rules: Rules
             row["final_page_type"] = carried["page_type"]
             row["final_dos_from"] = carried["dos_from"]
             row["final_dos_to"] = carried["dos_to"]
-            if index == 0 and carried["dos_page_number"] not in (None, page.page_number):
+            if index == 0 and carried["dos_default"]:
+                row["evidence"] += (
+                    f"; {page.page_subtype or page.page_type} is not a visit: "
+                    f"Final DOS is the default {carried['dos_from']}"
+                )
+            elif index == 0 and carried["dos_page_number"] not in (None, page.page_number):
                 row["evidence"] += (
                     "; first page has no date of service, Final DOS from page "
                     f"{carried['dos_page_number']}"
@@ -494,16 +509,35 @@ def document_finals(members: Sequence[dict[str, Any]]) -> dict[str, Any]:
     """The values a document's pages share, from its pages in order.
 
     Each member has ``page_type``, ``dos_from``, ``dos_to``, ``page_number``
-    and, optionally, ``classification_category``. The page type and category
-    are the first page's. The DOS is the first page's, or the first page in
-    the document that has one (``dos_page_number`` says which page).
+    and, optionally, ``page_subtype`` and ``classification_category``. The page
+    type and category are the first page's. The DOS is the first page's, or the
+    first page in the document that has one (``dos_page_number`` says which
+    page), on every page: a continue page takes it whether or not it has a date
+    of its own. A document whose first page is a non-visit type
+    (continuity_canon.json ``default_final_dos``: demographics, registration,
+    growth chart, problem list, immunizations) takes DOS_DEFAULT_DATE instead
+    (``dos_default``).
     """
     opener = members[0]
-    dated = next((m for m in members if m.get("dos_from")), None)
-    return {
+    finals = {
         "page_type": opener.get("page_type") or None,
         "classification_category": opener.get("classification_category") or None,
+        "dos_default": False,
+    }
+    default_date = _DOS_DEFAULT.get()
+    if default_date and uses_default_final_dos(opener.get("page_type"), opener.get("page_subtype")):
+        return {**finals, "dos_from": default_date, "dos_to": default_date,
+                "dos_page_number": None, "dos_default": True}
+    dated = next((m for m in members if m.get("dos_from")), None)
+    return {
+        **finals,
         "dos_from": dated["dos_from"] if dated else None,
         "dos_to": (dated.get("dos_to") or dated["dos_from"]) if dated else None,
         "dos_page_number": dated.get("page_number") if dated else None,
     }
+
+
+def uses_default_final_dos(*page_types: Optional[str]) -> bool:
+    """A non-visit page type or sub-type: its document's Final DOS is the default date."""
+    listed = load_rules().default_dos_types
+    return any((name or "").strip().casefold() in listed for name in page_types)

@@ -147,10 +147,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         own_dos: dict[int, dict[str, Any]] = {}
         for page in ctx.pages:
             page_dos = dos.get(page["id"]) or {}
+            kind = classification.get(page["id"]) or {}
             own_dos[page["id"]] = {
                 "dos_from": _iso(page_dos.get("date_of_service_from")),
                 "dos_to": _iso(page_dos.get("date_of_service_to")),
                 "page_number": page.get("page_number"),
+                # The first page's type decides a non-visit document's default DOS.
+                "page_type": kind.get("page_type"),
+                "page_subtype": kind.get("page_subtype"),
             }
         documents = _documents(ctx.pages, continuity)
         carried_dos: dict[int, dict[str, Any]] = {}

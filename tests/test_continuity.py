@@ -13,6 +13,7 @@ from stages.lib.continuity.engine import (  # noqa: E402
     Line,
     PageInput,
     assign,
+    document_finals,
     judge,
     load_rules,
     pagination,
@@ -152,6 +153,42 @@ class TestFinalValues:
         rows = assign([page(1, page_type="Lab"), page(2, dos="2024-10-01")])
         assert rows[0]["final_dos_from"] == "2024-10-01"
         assert "Final DOS from page 2" in rows[0]["evidence"]
+
+    def test_a_continue_page_takes_the_start_dos_dated_or_not(self):
+        rows = assign([
+            page(1, page_type="Progress Note", dos="2024-03-28", printed=(1, 3)),
+            page(2, printed=(2, 3)),
+            page(3, dos="2024-05-01", printed=(3, 3)),
+        ])
+        assert [r["final_dos_from"] for r in rows] == ["2024-03-28"] * 3
+        assert rows[2]["dos_from"] == "2024-05-01"  # Extracted stays the page's own
+
+    def test_a_non_visit_document_takes_the_default_final_dos(self):
+        rows = assign([
+            page(1, page_type="Patient Demographics", dos="2024-10-01", printed=(1, 2)),
+            page(2, dos="2024-11-05", printed=(2, 2)),
+        ])
+        assert [r["final_dos_from"] for r in rows] == ["2022-02-02", "2022-02-02"]
+        assert [r["final_dos_to"] for r in rows] == ["2022-02-02", "2022-02-02"]
+        assert rows[0]["dos_from"] == "2024-10-01"
+        assert "is not a visit" in rows[0]["evidence"]
+
+    def test_the_sub_type_decides_too(self):
+        first = page(1, page_type="Progress Note", dos="2024-10-01")
+        first.page_subtype = "Problem List"
+        assert assign([first])[0]["final_dos_from"] == "2022-02-02"
+        for name in ("Patient Information", "Patient Registration", "Growth chart",
+                     "Immunizations", "Immunization list"):
+            assert document_finals(
+                [{"page_type": "X", "page_subtype": name, "dos_from": "2024-01-01", "page_number": 1}]
+            )["dos_from"] == "2022-02-02", name
+
+    def test_a_visit_document_keeps_its_own_date(self):
+        finals = document_finals(
+            [{"page_type": "Progress Note", "page_subtype": "Office Visit",
+              "dos_from": "2024-01-01", "page_number": 1}]
+        )
+        assert (finals["dos_from"], finals["dos_default"]) == ("2024-01-01", False)
 
     def test_blank_and_junk_pages_belong_to_no_document_and_are_passed_over(self):
         rows = assign([

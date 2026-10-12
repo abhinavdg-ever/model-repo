@@ -130,6 +130,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     lines=lines or text_lines(text),
                     section_headers=headers,
                     page_type=kind.get("page_type") or "",
+                    page_subtype=kind.get("page_subtype") or "",
                     title_hit=bool(kind.get("keyword_title_hit")),
                     dos_from=_iso(page_dos.get("date_of_service_from")),
                     dos_to=_iso(page_dos.get("date_of_service_to")),

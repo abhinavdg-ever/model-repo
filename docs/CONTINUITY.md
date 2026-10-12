@@ -188,10 +188,11 @@ Per document:
 | Final | Rule |
 |---|---|
 | Final page type | the first page's page type |
-| Final DOS | the first page's DOS; if it has none, the first page in the document that has one (the evidence says "Final DOS from page N") |
+| Final DOS | the first page's DOS; if it has none, the first page in the document that has one (the evidence says "Final DOS from page N"). A document whose first page's page type or sub-type is a non-visit type — Patient Demographics, Patient Information, Patient Registration, Growth chart, Problem List, Immunizations, Immunization list (`continuity_canon.json` → `default_final_dos`) — takes `DOS_DEFAULT_DATE` (2022-02-02) instead (the evidence says "is not a visit") |
 
 A continuation page with no date shows Extracted DOS = NA and Final DOS = the
-first page's. A page outside any document (blank/junk/duplicate) has no Final
+first page's; one with a date of its own still shows the first page's as its
+Final DOS. A page outside any document (blank/junk/duplicate) has no Final
 values.
 
 ---
