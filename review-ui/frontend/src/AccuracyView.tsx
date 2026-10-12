@@ -10,7 +10,6 @@ import {
   formatDistribution,
   formatF1,
   formatPrecision,
-  formatYesAccuracy,
   formatRecall,
   scoreChart,
   sumRates,
@@ -47,10 +46,10 @@ function fmtUpdated(iso: string | null | undefined): string {
 }
 
 /** An ⓘ that shows what a number means: on hover, and on click / tap. */
-function InfoTip({ text }: { text: string }) {
+function InfoTip({ text, className }: { text: string; className?: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <span className="accuracy-info">
+    <span className={className ? `accuracy-info ${className}` : "accuracy-info"}>
       <button
         type="button"
         className="accuracy-info-btn"
@@ -71,15 +70,64 @@ function InfoTip({ text }: { text: string }) {
   );
 }
 
-/** Match / Partial / No Match on three lines, so every metric column fits. */
-function StackedTally({ tally, binary = false }: { tally: Tally; binary?: boolean }) {
+/** "Match n · Partial n · No Match n", wrapping only between the parts. */
+function Distribution({ tally, binary = false }: { tally: Tally; binary?: boolean }) {
+  return (
+    <>
+      {formatDistribution(tally, binary)
+        .split(" · ")
+        .map((part, index) => (
+          <Fragment key={part}>
+            {index > 0 ? " · " : null}
+            <span>{part}</span>
+          </Fragment>
+        ))}
+    </>
+  );
+}
+
+/** Class 1 Precision / Recall / F1, label above value. */
+function RatesGrid({ rates }: { rates: ClassRates }) {
+  return (
+    <dl className="accuracy-class-grid">
+      {[
+        ["Precision", formatPrecision(rates)],
+        ["Recall", formatRecall(rates)],
+        ["F1", formatF1(rates)],
+      ].map(([name, value]) => (
+        <div key={name}>
+          <dt>{name}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** One table cell: the donut card's numbers, compact. */
+function CompactScore({
+  tally,
+  binary = false,
+  rates,
+  nonZero,
+}: {
+  tally: Tally;
+  binary?: boolean;
+  rates?: ClassRates;
+  nonZero?: Tally;
+}) {
   if (tally.scored === 0) return <>—</>;
   return (
-    <span className="accuracy-tally">
-      <span>Match {tally.yes}</span>
-      {binary ? null : <span>Partial {tally.maybe}</span>}
-      <span>No Match {tally.no}</span>
-    </span>
+    <div className="accuracy-cell">
+      <strong>{percentLabel(tally)}</strong>
+      <p className="accuracy-distribution">
+        <Distribution tally={tally} binary={binary} />
+      </p>
+      {rates ? <RatesGrid rates={rates} /> : null}
+      {nonZero && nonZero.scored > 0 ? (
+        <p className="accuracy-cell-extra">Non-zero {percentLabel(nonZero)}</p>
+      ) : null}
+    </div>
   );
 }
 
@@ -90,8 +138,7 @@ const NON_ZERO_INFO =
   "stored text orientation: Match = same angle, No Match = any other. " +
   "Most pages are upright, so this is the figure that shows whether turned pages are caught.";
 const RATES_INFO =
-  "Class 1 (the Yes pages) only. Accuracy = share of the pages the ground truth calls Yes that the " +
-  "pipeline also called Yes. Precision = TP / (TP + FP): share of the pipeline's Class 1 calls that were right. " +
+  "Class 1 (the Yes pages) only. Precision = TP / (TP + FP): share of the pipeline's Class 1 calls that were right. " +
   "Recall = TP / (TP + FN): share of the real Class 1 pages the pipeline caught. " +
   "F1 = 2 × Precision × Recall / (Precision + Recall). " +
   "These matter because Class 1 pages are rare: the overall accuracy can be high while they are missed.";
@@ -156,47 +203,26 @@ function Donut({
           </text>
         ) : null}
       </svg>
-      <figcaption>
-        {label} <InfoTip text={`${detail} ${SCORE_INFO}`} />
-      </figcaption>
+      <InfoTip
+        className="accuracy-info-corner"
+        text={[detail, SCORE_INFO, rates ? RATES_INFO : "", yesTally ? NON_ZERO_INFO : ""]
+          .filter(Boolean)
+          .join(" ")}
+      />
+      <figcaption>{label}</figcaption>
       <p className="accuracy-distribution">
-        {formatDistribution(tally, binary)
-          .split(" · ")
-          .map((part, index) => (
-            <Fragment key={part}>
-              {index > 0 ? " · " : null}
-              <span>{part}</span>
-            </Fragment>
-          ))}
+        <Distribution tally={tally} binary={binary} />
       </p>
       {rates ? (
         <div className="accuracy-class">
-          {ratesLabel ? (
-            <div className="accuracy-class-head">
-              {ratesLabel} <InfoTip text={RATES_INFO} />
-            </div>
-          ) : null}
-          <dl className="accuracy-class-grid">
-            {[
-              ["Accuracy", formatYesAccuracy(rates)],
-              ["Precision", formatPrecision(rates)],
-              ["Recall", formatRecall(rates)],
-              ["F1", formatF1(rates)],
-            ].map(([name, value]) => (
-              <div key={name}>
-                <dt>{name}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
-          </dl>
+          {ratesLabel ? <div className="accuracy-class-head">{ratesLabel}</div> : null}
+          <RatesGrid rates={rates} />
         </div>
       ) : null}
       {yesTally ? (
         <dl className="accuracy-class-grid accuracy-class-wide" title={formatDistribution(yesTally)}>
           <div>
-            <dt>
-              Accuracy of non-zero <InfoTip text={NON_ZERO_INFO} />
-            </dt>
+            <dt>Accuracy of non-zero</dt>
             <dd>{percentLabel(yesTally)}</dd>
           </div>
         </dl>
@@ -224,7 +250,7 @@ function CalculatingPanel() {
   );
 }
 
-const CHARTS_PER_PAGE = 15;
+const CHARTS_PER_PAGE = 10;
 
 type SortKey = "name" | "run" | "verified";
 type SortDir = "asc" | "desc";
@@ -233,6 +259,15 @@ type SortDir = "asc" | "desc";
 function timeOf(value: string | null | undefined): number | null {
   const t = value ? new Date(value).getTime() : NaN;
   return Number.isNaN(t) ? null : t;
+}
+
+/** One file's Class 1 counts for a metric, where the metric has a Class 1. */
+function rowRatesFor(row: ChartAccuracy, id: MetricId): ClassRates | undefined {
+  if (id === "blankJunk") return row.blankJunkRates;
+  if (id === "member") return row.memberRates;
+  if (id === "credentials") return row.credentialsRates;
+  if (id === "orientation") return row.orientationRates;
+  return undefined;
 }
 
 function compareRows(a: ChartAccuracy, b: ChartAccuracy, key: SortKey, dir: SortDir): number {
@@ -314,7 +349,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
 
   const overall = useMemo(() => sumTallies(rows.map((row) => row.overall)), [rows]);
 
-  // "By chart": search by file / chart name, 15 per page. The donuts stay on all files.
+  // "By chart": search by file / chart name, 10 per page. The donuts stay on all files.
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const matched = needle ? rows.filter((row) => row.chartName.toLowerCase().includes(needle)) : rows;
@@ -469,8 +504,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                       onClick={() => toggleSort("name")}
                     >
                       Chart{sortIndicator("name")}
-                    </button> 
-                    <InfoTip text="The file (chart). Click it to open the file in the viewer." />
+                    </button>
                   </th>
                   <th scope="col" aria-sort={sortKey === "run" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
                     <button
@@ -479,8 +513,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                       onClick={() => toggleSort("run")}
                     >
                       Last Run At{sortIndicator("run")}
-                    </button> 
-                    <InfoTip text={`When the pipeline last ran this file. Only runs on or after ${MIN_LAST_RUN_LABEL} are shown.`} />
+                    </button>
                   </th>
                   <th scope="col" aria-sort={sortKey === "verified" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
                     <button
@@ -489,19 +522,18 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                       onClick={() => toggleSort("verified")}
                     >
                       Last Verified At{sortIndicator("verified")}
-                    </button> 
-                    <InfoTip text="When ground truth was last saved for this file." />
+                    </button>
                   </th>
                   <th scope="col">
-                    Pages <InfoTip text="Pages of this file compared (pages that have ground truth)." />
+                    Pages
                   </th>
                   {LIVE_METRICS.map((metric) => (
                     <th key={metric.id} scope="col">
-                      {metric.label} <InfoTip text={metric.rule} />
+                      {metric.label}
                     </th>
                   ))}
                   <th scope="col">
-                    Accuracy <InfoTip text={`Overall page score for this file. ${SCORE_INFO}`} />
+                    Overall
                   </th>
                 </tr>
               </thead>
@@ -529,14 +561,16 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                     <td>{row.overall.scored}</td>
                     {LIVE_METRICS.map((metric) => (
                       <td key={metric.id}>
-                        <StackedTally tally={row.metrics[metric.id]} binary={metric.binary} />
+                        <CompactScore
+                          tally={row.metrics[metric.id]}
+                          binary={metric.binary}
+                          rates={rowRatesFor(row, metric.id)}
+                          nonZero={metric.id === "orientation" ? row.orientationNonZero : undefined}
+                        />
                       </td>
                     ))}
                     <td>
-                      <strong>{percentLabel(row.overall)}</strong>
-                      <span className="accuracy-chart-ratio">
-                        <StackedTally tally={row.overall} />
-                      </span>
+                      <CompactScore tally={row.overall} />
                     </td>
                   </tr>
                 ))}

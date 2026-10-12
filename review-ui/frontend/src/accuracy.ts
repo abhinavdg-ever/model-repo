@@ -492,12 +492,6 @@ export function formatRecall(rates: ClassRates): string {
   return ratePercent(rates.tp, rates.tp + rates.fn);
 }
 
-/** Accuracy on the Yes (Class 1) pages: the share of the ground truth's Yes
- * pages the pipeline called Yes, TP / (TP + FN). */
-export function formatYesAccuracy(rates: ClassRates): string {
-  return ratePercent(rates.tp, rates.tp + rates.fn);
-}
-
 /** F1 = 2 × Precision × Recall / (Precision + Recall) = 2TP / (2TP + FP + FN). */
 export function formatF1(rates: ClassRates): string {
   return ratePercent(2 * rates.tp, 2 * rates.tp + rates.fp + rates.fn);

@@ -3188,12 +3188,26 @@ input {
 }
 
 .accuracy-donut-card {
+  position: relative;
   margin: 0;
   padding: 0.7rem 0.45rem 0.6rem;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 10px;
   text-align: center;
+}
+
+/* The card's single ⓘ, pinned top-right; its popover opens leftwards. */
+.accuracy-info-corner {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+}
+
+.accuracy-info-corner .accuracy-info-pop {
+  left: auto;
+  right: 0;
+  transform: none;
 }
 
 .accuracy-donut-card figcaption {
@@ -3220,7 +3234,7 @@ input {
   font-style: italic;
 }
 
-/* The "= Yes" (Class 1) block under a donut: a label, then a 2 x 2 grid. */
+/* The "= Yes" (Class 1) block under a donut: a label, then Precision / Recall / F1. */
 .accuracy-class {
   margin-top: 0.45rem;
   padding-top: 0.4rem;
@@ -3239,7 +3253,7 @@ input {
 
 .accuracy-class-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.15rem 0.3rem;
   margin: 0.3rem 0 0;
 }
@@ -3392,16 +3406,39 @@ input {
   text-underline-offset: 2px;
 }
 
-.accuracy-chart-ratio {
-  color: var(--muted);
-  font-weight: 500;
-}
-
-.accuracy-tally {
+/* A table cell: the donut card's numbers, compact. */
+.accuracy-cell {
   display: flex;
   flex-direction: column;
-  line-height: 1.35;
+  gap: 0.15rem;
+  min-width: 8.5rem;
+  max-width: 11rem;
+  white-space: normal;
   font-size: 12px;
+  line-height: 1.3;
+}
+
+.accuracy-cell > strong {
+  color: var(--brand-800);
+  font-size: 0.85rem;
+}
+
+.accuracy-cell p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.accuracy-cell .accuracy-class-grid {
+  margin: 0.1rem 0 0;
+}
+
+.accuracy-cell .accuracy-class-grid dt {
+  font-size: 0.56rem;
+}
+
+.accuracy-cell .accuracy-class-grid dd {
+  font-size: 0.7rem;
 }
 
 .accuracy-table td {
