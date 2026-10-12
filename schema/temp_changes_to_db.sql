@@ -370,3 +370,12 @@ LEFT JOIN page_classification pc ON pc.page_id = pl.id;
 ALTER TABLE page_continuity_results DROP CONSTRAINT IF EXISTS page_continuity_results_decided_by_check;
 ALTER TABLE page_continuity_results ADD CONSTRAINT page_continuity_results_decided_by_check
     CHECK (decided_by IN ('first_page','blank_junk','signature','pagination','signals','progress_note'));
+
+-- 2026-10-12: continuity decides on DOS first (same_dos / new_dos), then
+-- pagination and why the previous page ended. The old 'signals' and
+-- 'progress_note' stay allowed so rows from earlier runs still pass.
+ALTER TABLE page_continuity_results DROP CONSTRAINT IF EXISTS page_continuity_results_decided_by_check;
+ALTER TABLE page_continuity_results ADD CONSTRAINT page_continuity_results_decided_by_check
+    CHECK (decided_by IN ('first_page','blank_junk','same_dos','new_dos','pagination',
+                          'signature','page_number_end','first_page_marker','page_type',
+                          'page_end','continue_page','signals','progress_note'));

@@ -405,3 +405,19 @@ class TestStage:
 
 
 
+
+
+class TestSchema:
+    def test_every_decided_by_the_engine_writes_is_allowed_by_the_schema(self):
+        """The engine's reasons must pass page_continuity_results' CHECK, or the
+        stage fails the whole chart on insert."""
+        import re
+
+        engine = (CORE / "stages/lib/continuity/engine.py").read_text(encoding="utf-8")
+        written = set(re.findall(r'Verdict\(\s*"[a-z_]+",\s*"([a-z_]+)"', engine))
+        schema = (REPO / "schema/v1.sql").read_text(encoding="utf-8")
+        check = re.search(r"decided_by\s+VARCHAR\(20\)[^;]*?CHECK \(decided_by IN \((.*?)\)\)", schema, re.S)
+        allowed = set(re.findall(r"'([a-z_]+)'", check.group(1)))
+        assert written, "no Verdict(...) reasons found in the engine"
+        assert written <= allowed, sorted(written - allowed)
+        assert all(len(value) <= 20 for value in written)

@@ -657,7 +657,9 @@ CREATE TABLE page_continuity_results (
     position             VARCHAR(10) NOT NULL CHECK (position IN ('single','first','continue','last')),
     relation             VARCHAR(20) NOT NULL CHECK (relation IN ('new_document','continue','unknown')),
     decided_by           VARCHAR(20) NOT NULL CHECK (decided_by IN (
-                             'first_page','blank_junk','signature','pagination','signals','progress_note'
+                             'first_page','blank_junk','same_dos','new_dos','pagination',
+                             'signature','page_number_end','first_page_marker','page_type',
+                             'page_end','continue_page'
                          )),
     confidence_level     VARCHAR(10) CHECK (confidence_level IS NULL OR confidence_level IN (
                              'high','medium','low'
