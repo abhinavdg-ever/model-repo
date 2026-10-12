@@ -8,9 +8,17 @@ import { splitPageType } from "./ImagingPanel";
 
 export type Verdict = "yes" | "maybe" | "no";
 
-export type MetricId = "member" | "dos" | "blankJunk" | "pageType" | "codeable" | "credentials";
+export type MetricId =
+  | "member"
+  | "dos"
+  | "blankJunk"
+  | "pageType"
+  | "codeable"
+  | "credentials"
+  | "orientation";
 
-export const METRICS: { id: MetricId; label: string; rule: string }[] = [
+/** ``inOverall: false`` = shown and scored, but not part of the page's overall match. */
+export const METRICS: { id: MetricId; label: string; rule: string; inOverall?: boolean }[] = [
   {
     id: "member",
     label: "Member Verification",
@@ -41,7 +49,16 @@ export const METRICS: { id: MetricId; label: string; rule: string }[] = [
     label: "Provider Credentials",
     rule: "Credentials match (MD, DO, NP…; punctuation and order ignored); some shared is May be",
   },
+  {
+    id: "orientation",
+    label: "Orientation",
+    rule: "Ground-truth rotation equals the stored text orientation (degrees the text sits clockwise: 0 / 90 / 180 / 270). Not part of the overall page match",
+    inOverall: false,
+  },
 ];
+
+/** The metrics a page's overall match is built from. */
+const OVERALL_METRICS = METRICS.filter((metric) => metric.inOverall !== false);
 
 export type Tally = { yes: number; no: number; maybe: number; scored: number };
 
@@ -62,6 +79,8 @@ export type ChartAccuracy = {
   blankJunkRates: ClassRates;
   /** Blank / Junk scored on the pages the ground truth calls blank or junk only. */
   blankJunkYes: Tally;
+  /** Orientation scored on the pages the ground truth says are rotated (not 0). */
+  orientationNonZero: Tally;
   /** "Yes" class = the member's name / DOB / ID is on the page. */
   memberRates: ClassRates;
 };
@@ -95,6 +114,14 @@ function blankOrJunkPositive(label: string): boolean {
  * or No Match. Pages the pipeline has not judged yet are left out. */
 function addBlankJunkYes(tally: Tally, bits: GtBit[]): void {
   if (!labeled(bits) || !blankOrJunkPositive(bits[0].label) || bits[0].mark === "unknown") return;
+  add(tally, grade(bits));
+}
+
+/** A page the ground truth says is rotated (90 / 180 / 270): Match or No Match. */
+function addOrientationNonZero(tally: Tally, bits: GtBit[]): void {
+  if (!labeled(bits) || bits[0].mark === "unknown") return;
+  const expected = Number(bits[0].label.trim().replace(/°$/, ""));
+  if (!Number.isFinite(expected) || ((Math.round(expected) % 360) + 360) % 360 === 0) return;
   add(tally, grade(bits));
 }
 
@@ -171,6 +198,7 @@ function pageScores(
 ): {
   scores: Record<MetricId, Verdict | null>;
   blankJunk: GtBit[];
+  rotation: GtBit[];
   /** The metrics a page is held to: all six, or five on a blank / junk page. */
   applicable: typeof METRICS;
   member: Array<[string | null | undefined, GtBit[]]>;
@@ -254,9 +282,13 @@ function pageScores(
       pageType: blankOrJunk ? null : single(bits.pageType),
       codeable: single(bits.codeable),
       credentials,
+      orientation: single(bits.rotation),
     },
     blankJunk: bits.blankJunk,
-    applicable: blankOrJunk ? METRICS.filter((metric) => metric.id !== "pageType") : METRICS,
+    rotation: bits.rotation,
+    applicable: blankOrJunk
+      ? OVERALL_METRICS.filter((metric) => metric.id !== "pageType")
+      : OVERALL_METRICS,
     member: [
       [page.groundTruth?.memberName, bits.memberName],
       [page.groundTruth?.memberDob, bits.memberDob],
@@ -270,7 +302,7 @@ function pageScores(
  * fewer miss. */
 function overallVerdict(
   scores: Record<MetricId, Verdict | null>,
-  applicable: typeof METRICS = METRICS,
+  applicable: typeof METRICS = OVERALL_METRICS,
 ): Verdict | null {
   if (applicable.every((metric) => scores[metric.id] == null)) return null;
   const matches = applicable.filter((metric) => scores[metric.id] === "yes").length;
@@ -328,6 +360,7 @@ export function scoreChart(
   >;
   const blankJunkRates = emptyRates();
   const blankJunkYes = emptyTally();
+  const orientationNonZero = emptyTally();
   const memberRates = emptyRates();
   const overall = emptyTally();
   for (const page of doc.pages) {
@@ -337,9 +370,19 @@ export function scoreChart(
     add(overall, overallVerdict(scored.scores, scored.applicable));
     addBlankJunk(blankJunkRates, scored.blankJunk);
     addBlankJunkYes(blankJunkYes, scored.blankJunk);
+    addOrientationNonZero(orientationNonZero, scored.rotation);
     addMember(memberRates, scored.member);
   }
-  return { chartId, chartName, metrics, overall, blankJunkRates, blankJunkYes, memberRates };
+  return {
+    chartId,
+    chartName,
+    metrics,
+    overall,
+    blankJunkRates,
+    blankJunkYes,
+    orientationNonZero,
+    memberRates,
+  };
 }
 
 export function sumRates(rows: ClassRates[]): ClassRates {

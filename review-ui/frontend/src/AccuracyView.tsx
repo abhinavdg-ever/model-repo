@@ -87,6 +87,10 @@ const YES_INFO =
   "Match = the pipeline found it with the same type (blank, or junk), " +
   "Partial = found it as the other type, No Match = kept it as a real page. " +
   SCORE_INFO.replace("Accuracy score", "Score");
+const NON_ZERO_INFO =
+  "Pages the ground truth says are rotated (90, 180 or 270), scored on the " +
+  "stored text orientation: Match = same angle, No Match = any other. " +
+  "Most pages are upright, so this is the figure that shows whether turned pages are caught.";
 const RATES_INFO =
   "For the Yes class. Recall = TP / (TP + FN): share of the real Yes pages the pipeline caught. " +
   "Precision = TP / (TP + FP): share of the pipeline's Yes calls that were right. " +
@@ -99,6 +103,8 @@ function Donut({
   rates,
   ratesLabel,
   yesTally,
+  yesLabel = "Accuracy of Yes",
+  yesInfo = YES_INFO,
 }: {
   label: string;
   detail: string;
@@ -106,8 +112,10 @@ function Donut({
   rates?: ClassRates;
   /** The positive ("Yes") class the precision / recall are for. */
   ratesLabel?: string;
-  /** The same score on the ground-truth "Yes" pages alone. */
+  /** The same score on one slice of the pages (the ground-truth "Yes" pages). */
   yesTally?: Tally;
+  yesLabel?: string;
+  yesInfo?: string;
 }) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
@@ -167,7 +175,7 @@ function Donut({
       {yesTally ? (
         <p className="accuracy-rates">
           <span className="accuracy-rates-class">
-            Accuracy of Yes {percentLabel(yesTally)} <InfoTip text={YES_INFO} />
+            {yesLabel} {percentLabel(yesTally)} <InfoTip text={yesInfo} />
           </span>
           <br />
           {formatDistribution(yesTally)}
@@ -277,6 +285,10 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
   );
   const memberRates = useMemo(() => sumRates(rows.map((row) => row.memberRates)), [rows]);
   const blankJunkYes = useMemo(() => sumTallies(rows.map((row) => row.blankJunkYes)), [rows]);
+  const orientationNonZero = useMemo(
+    () => sumTallies(rows.map((row) => row.orientationNonZero)),
+    [rows],
+  );
   /** Recall / precision / accuracy of the "Yes" class, across all files. */
   const ratesFor = (id: MetricId) =>
     id === "blankJunk" ? blankJunkRates : id === "member" ? memberRates : undefined;
@@ -318,7 +330,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
             <div className="accuracy-donuts">
               <Donut
                 label="Overall"
-                detail="A page matches when every metric that applies matches (all 6, or 5 on a blank / junk page, where page type is not scored), is partial at 3 or more, and misses at 0 to 2"
+                detail="A page matches when every metric that applies matches (the 6 other than Orientation, or 5 on a blank / junk page, where page type is not scored), is partial at 3 or more, and misses at 0 to 2. Orientation is scored on its own card only"
                 tally={overall}
               />
               {METRICS.map((metric) => (
@@ -329,7 +341,15 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                   tally={overallByMetric[metric.id]}
                   rates={ratesFor(metric.id)}
                   ratesLabel={metric.id === "member" ? "Member on page = Yes" : "Blank / Junk = Yes"}
-                  yesTally={metric.id === "blankJunk" ? blankJunkYes : undefined}
+                  yesTally={
+                    metric.id === "blankJunk"
+                      ? blankJunkYes
+                      : metric.id === "orientation"
+                        ? orientationNonZero
+                        : undefined
+                  }
+                  yesLabel={metric.id === "orientation" ? "Accuracy of non-zero" : undefined}
+                  yesInfo={metric.id === "orientation" ? NON_ZERO_INFO : undefined}
                 />
               ))}
             </div>

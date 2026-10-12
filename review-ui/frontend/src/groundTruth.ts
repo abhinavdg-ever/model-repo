@@ -365,12 +365,14 @@ function rotationMark(
   known: boolean,
 ): GtBit[] {
   if (missing(gt)) return [];
-  const expected = Number(text(gt));
+  // "270", "270°" and "-90" are the same orientation.
+  const expected = Number(text(gt).replace(/°$/, ""));
   if (!Number.isFinite(expected)) return bit(gt, "unknown");
   if (!known || angle === null || angle === undefined || Number.isNaN(angle)) {
     return bit(gt, "unknown");
   }
-  return bit(gt, Math.abs(expected - angle) < 0.5 ? "match" : "mismatch");
+  const turn = (value: number) => ((Math.round(value) % 360) + 360) % 360;
+  return bit(gt, turn(expected) === turn(angle) ? "match" : "mismatch");
 }
 
 function sequenceMark(
