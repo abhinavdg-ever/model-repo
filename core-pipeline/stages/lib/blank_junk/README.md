@@ -9,7 +9,7 @@ Classifies pages from **existing preliminary OCR** (`ocr/<chart>_prelim.txt`) �
 | **Blank** | Yes (Blank) | Not Available | Empty OCR or &lt; 5 alphanumeric chars; “intentionally blank” |
 | **Cover Page** | Yes (Junk) | Cover Page | Accept / Unaccept / Cover page(s) / Discharge Summary with **&lt; 20 words** |
 | **Main (clinical)** | No | Not Available | Progress note / HPI / meds / vitals / … — **short-circuits before junk rules** so a fax confidentiality footer cannot flip them |
-| **Letter/Fax** | Yes (Junk) | Letter/Fax | Cover letter, fax transmission / facsimile / fax cover; confidentiality notice only when paired with fax language |
+| **Letter/Fax** | Yes (Junk) | Letter/Fax | Cover letter, fax transmission / facsimile / fax cover; confidentiality notice only when paired with fax language. After the model (`stage.py`, both passes): a kept page that is a fax cover sheet ("fax" + ≥4 cover fields, < 80 words), or says "fax" **≥ 3 times** at any length (`FAX_MENTION_LIMIT`) — unless signed |
 | **Invoice** | Yes (Junk) | Invoice | invoice, amount due, unit price, superbill, remittance, **revenue reconciliation**, … (not bare “price”; weak phrases need ≥2 hits) |
 | **Record Request/Transmittal** | Yes (Junk) | Record Request/Transmittal | request letter; records↔request (any order); attached; transmittal/transmitted; Urgent Request for Records; Your Records requested |
 | **Instructions** | Yes (Junk) | Instructions | “what to send”, provide documentation, please send, … |

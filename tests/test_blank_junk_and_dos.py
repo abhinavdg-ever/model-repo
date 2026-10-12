@@ -821,6 +821,27 @@ class TestFaxCoverSheetRule:
         text = "To: A\nFrom: B\nPhone: 1\nDate: 2\nSubject: 3"
         assert self._run(text, monkeypatch)["flag"] == "not_blank_junk"
 
+    def test_fax_three_times_is_letter_fax_at_any_length(self, monkeypatch):
+        text = (
+            "Fax transmission report. Faxed to the clinic; fax confirmation attached.\n"
+            + " ".join(["details"] * 200)
+        )
+        row = self._run(text, monkeypatch)
+        assert (row["flag"], row["subtype"]) == ("junk", "Letter/Fax")
+        assert "'fax' 3 times" in row["reason"]
+
+    def test_fax_twice_on_a_clinical_page_stays_main(self, monkeypatch):
+        text = (
+            "Example Clinic  Phone: 555-000-0000  Fax: 555-000-0001\n"
+            "FAX from Example Clinic Page 2 of 4\n"
+            "Progress Note\nAssessment: stable. Plan: follow up in 3 months."
+        )
+        assert self._run(text, monkeypatch)["flag"] == "not_blank_junk"
+
+    def test_a_signed_fax_heavy_page_is_kept(self, monkeypatch):
+        text = "Fax. Fax. Fax. Physician signature: ____"
+        assert self._run(text, monkeypatch)["flag"] == "not_blank_junk"
+
 
 class TestBlankWithTextIsJunk:
     """A page the model calls Blank that still has text is Junk / Others,

@@ -152,6 +152,22 @@ def fax_cover_sheet(text: str) -> bool:
         return False
     return sum(1 for field in _FAX_FIELDS if field.search(text)) >= FAX_COVER_MIN_FIELDS
 
+
+# A page the model keeps as Main that says "fax" (fax, faxed, faxes, Fax:) at
+# least FAX_MENTION_LIMIT times, at any length, is fax paperwork -> Junk /
+# Letter-Fax. One or two mentions are a letterhead ("Phone: / Fax:") or a
+# fax header line on a real clinical page, and stay Main. A signed page is
+# still kept by the signature rule.
+FAX_MENTION_LIMIT = 3
+
+
+def fax_mentions(text: str) -> int:
+    return len(_FAX_WORD.findall(text or ""))
+
+
+def fax_heavy_page(text: str) -> bool:
+    return fax_mentions(text) >= FAX_MENTION_LIMIT
+
 JUNK_CSV_COLS = [
     "chart_name",
     "page_name",
@@ -320,6 +336,12 @@ def _classify(
         if code == CODE_MAIN and fax_cover_sheet(text):
             code, conf = CODE_LETTER_FAX, 0.85
             reason = f"{reason}; rule: fax cover sheet (fax fields, < {FAX_COVER_MAX_WORDS} words) -> Letter/Fax"
+        elif code == CODE_MAIN and fax_heavy_page(text):
+            code, conf = CODE_LETTER_FAX, 0.85
+            reason = (
+                f"{reason}; rule: 'fax' {fax_mentions(text)} times "
+                f"(>= {FAX_MENTION_LIMIT}) -> Letter/Fax"
+            )
         if code == CODE_BLANK and blank_with_text_is_junk(text):
             code = CODE_OTHERS
             reason = f"{reason}; blank page with text and no word 'blank' -> Junk / Others"
