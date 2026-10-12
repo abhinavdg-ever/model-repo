@@ -2,6 +2,10 @@
   "service": [
     "DOS",
     "Date of Service",
+    "Dates of Service",
+    "Service Dates",
+    "Service Period",
+    "Certification Period",
     "Service Date",
     "Service Date/Time",
     "Visit Date",

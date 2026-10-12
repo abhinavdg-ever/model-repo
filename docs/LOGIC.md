@@ -83,6 +83,12 @@ Both the classifier and the detector are built **once per process**. The v6
 implementation rebuilt them inside the per-page function, unpickling the model
 for every page in the chart.
 
+`orientation_angle` (database, `rotation_deg` / `orientation` in the CSV,
+review-ui) is the **text's orientation as scanned**: how far the text sits
+rotated clockwise from upright. The correction applied to the image is
+360 − that. Text running bottom-to-top is stored as 270 and turned 90°
+clockwise. This matches how client ground truth records rotation.
+
 Coarse orientation starts from Tesseract OSD. No correction — turn, mirror
 or tilt — is kept unless Tesseract reads the page at least as well with it as
 without it. A read is scored in English dictionary words, and it *reads* when
@@ -572,7 +578,7 @@ that are not real days (02/30) are dropped; everything else is kept.
 | `page_type`, `has_clinical_cue` | `page_classify.keywords.classify()` sub-type (per page); `clinical_cues` |
 | `year_delta` | Candidate year − chart received year (`chart_list.created_at`) |
 | `cluster_size` | Other candidates in the chart within 30 days |
-| `in_range_pair` | An admit and a discharge candidate within 200 chars |
+| `in_range_pair` | Three ways: an admit and a discharge candidate within 200 chars; a date under an encounter label written as a range (`a - b`, `a to b`, `a thru/through b`, later date second); or a key/value range (the extractor's `dos_from` + `dos_to`) |
 
 ### C. Score
 
@@ -588,7 +594,14 @@ score = base (0.5) + W[label_class] − 0.002 × label_distance
 `W`: encounter +0.40, admit/discharge +0.30, none −0.10, procedure −0.30,
 future −0.40, doc_meta −0.45, birth −0.50. Clamped to [0, 1]. The best
 candidate at or above `DOS_MIN_SCORE` (0.75) is the page's date — the backup when the key/value extraction chose no date (a key/value date always wins). If it is part
-of an admit/discharge pair, the page gets the range. The chosen score is the
+of a range pair, the page gets the range, earlier date as From. An unlabelled
+`a - b` (a lab reference period, say) is not a range.
+
+*Changed 2026-10-12 (behaviour change to the V1 port):* a key/value range
+used to keep only its start date, and a written `a - b` only its first date,
+so From = To. Both now keep the end date. `dos_canon.json` and the extractor's
+`dos/keys.json` gained the labels *dates of service*, *service dates*,
+*service period* and *certification period* (the canon also *cert period*). The chosen score is the
 row's `confidence`.
 
 ### D. Resolve

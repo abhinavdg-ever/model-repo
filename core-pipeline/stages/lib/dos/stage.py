@@ -230,9 +230,12 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 iso = canonical_date(raw)
                 if len(iso) != 10:
                     continue
+                # A range ("Date of Service: a - b") keeps its end date.
+                iso_to = canonical_date(str(row.get("dos_to") or ""))
                 found.append(
                     {
                         "iso": iso,
+                        "iso_to": iso_to if len(iso_to) == 10 and iso_to > iso else "",
                         "raw": raw,
                         "tier": row.get("tier") or "",
                         "keyword": row.get("key") or "",

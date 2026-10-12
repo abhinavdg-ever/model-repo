@@ -376,7 +376,33 @@ def page_features(
             ],
         ).strip()
         previous_end = cand.end
+    _join_written_ranges(page_text, candidates)
     _pair_ranges(candidates, prof)
+
+
+# "03/01/2024 - 03/05/2024", "... to ...", "... thru / through ..." with
+# nothing else between the two dates.
+_RANGE_JOIN_RE = re.compile(r"^\s*(?:-|–|—|to|thru|through)\s*$", re.IGNORECASE)
+
+
+def _join_written_ranges(page_text: str, candidates: list[Candidate]) -> None:
+    """A labelled DOS written as a range keeps both ends.
+
+    Only a date under an encounter label (or a key/value service date) starts
+    a range: an unlabelled "a - b" is as likely a lab reference period.
+    """
+    for first, second in zip(candidates, candidates[1:]):
+        if first.pair is not None or first.label_class != "encounter":
+            continue
+        if second.iso < first.iso:
+            continue
+        if not _RANGE_JOIN_RE.match(page_text[first.end : second.start]):
+            continue
+        for a, b in ((first, second), (second, first)):
+            if a.pair is None:
+                a.in_range_pair = True
+                a.pair = b
+                a.pair_iso = b.iso
 
 
 def _pair_ranges(candidates: list[Candidate], prof: DosProfile) -> None:
@@ -452,7 +478,8 @@ def best_page_date(candidates: list[Candidate], prof: DosProfile) -> Optional[Pa
     """Key/value date first. Otherwise, as the backup, the highest text
     candidate at or above ``DOS_MIN_SCORE`` (dos_canon.json, 0.75).
 
-    A range pair emits both ends.
+    A range pair (admit + discharge, a written "a - b" range, or a key/value
+    range) emits both ends.
     """
     kv = [c for c in candidates if c.origin == "kv"]
     passing = kv or [c for c in candidates if c.score >= prof.min_score]
@@ -462,9 +489,9 @@ def best_page_date(candidates: list[Candidate], prof: DosProfile) -> Optional[Pa
     best.chosen = True
     if best.in_range_pair and best.pair is not None:
         best.pair.chosen = True
-        admit, discharge = (
-            (best, best.pair) if best.label_class == "admit" else (best.pair, best)
-        )
+        # Earlier date is From: an admit/discharge pair is never reversed, and a
+        # written range or key/value range has no admit label to go by.
+        admit, discharge = sorted((best, best.pair), key=lambda c: c.iso)
         return PageDate(
             dos_from=admit.iso,
             dos_to=discharge.iso,
@@ -649,6 +676,7 @@ def add_kv_dates(
             existing.origin = "kv"
             existing.label_text = str(item.get("keyword") or existing.label_text)
             existing.label_class = _KV_LABEL.get(str(item.get("tier") or ""), "encounter")
+            _pair_kv_range(existing, item, seen)
             continue
         raw = str(item.get("raw") or "")
         start = page_text.find(raw) if raw else -1
@@ -672,6 +700,41 @@ def add_kv_dates(
             )
         )
         seen[iso] = candidates[-1]
+        _pair_kv_range(candidates[-1], item, seen)
+
+
+def _pair_kv_range(
+    start: Candidate, item: dict[str, Any], seen: dict[str, Candidate]
+) -> None:
+    """A key/value range ("Date of Service: a - b") keeps its end date.
+
+    The end is the text's own candidate for that day when there is one, else
+    a stand-in that only carries the date; it is never scored on its own.
+    """
+    iso_to = str(item.get("iso_to") or "")
+    if len(iso_to) != 10 or iso_to <= start.iso:
+        return
+    end = seen.get(iso_to)
+    if end is None:
+        end = Candidate(
+            page_index=start.page_index,
+            page_number=start.page_number,
+            page_name=start.page_name,
+            raw=iso_to,
+            iso=iso_to,
+            start=start.start,
+            end=start.end,
+            label_text=start.label_text,
+            label_class=start.label_class,
+            origin="kv",
+        )
+    start.in_range_pair = True
+    start.pair = end
+    start.pair_iso = iso_to
+    if end.pair is None:
+        end.in_range_pair = True
+        end.pair = start
+        end.pair_iso = start.iso
 
 
 def detect_dos_per_page(

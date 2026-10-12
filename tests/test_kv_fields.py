@@ -111,3 +111,34 @@ def test_staged_member_fields_fill_what_the_rules_missed():
     assert filled["Detected_DOB"] == "03/15/1980"
     assert filled["Detected_MemberID"] == "M123"
     assert names == ["Jane Q Public"]
+
+
+def _page_dates(body, kv=None):
+    hit = detect_dos_per_page(
+        f"===== 1.jpg =====\n{body}\n", None, use_llm=False, kv_dates={"1.jpg": kv} if kv else None
+    )[0]
+    return hit["dos_from_iso"], hit["dos_to_iso"]
+
+
+def test_a_key_value_range_keeps_its_end_date():
+    kv = [{"iso": "2024-03-01", "iso_to": "2024-03-07", "raw": "03/01/2024 - 03/07/2024",
+           "tier": "service", "keyword": "Date of Service"}]
+    assert _page_dates("Seen today. Assessment stable.", kv) == ("2024-03-01", "2024-03-07")
+
+
+def test_a_written_dos_range_keeps_both_ends():
+    assert _page_dates("Date of Service: 03/01/2024 - 03/05/2024") == ("2024-03-01", "2024-03-05")
+    assert _page_dates("DOS: 03/01/2024 to 03/05/2024") == ("2024-03-01", "2024-03-05")
+    assert _page_dates("Certification Period: 03/01/2024 through 04/29/2024") == (
+        "2024-03-01", "2024-04-29")
+
+
+def test_an_unlabelled_or_reversed_range_is_not_a_dos_range():
+    # A reference period on a lab page is not a date of service.
+    assert _page_dates("Reference period 01/01/2024 - 02/01/2024") == ("", "")
+    assert _page_dates("Date of Service: 03/05/2024 - 03/01/2024") == ("2024-03-05", "2024-03-05")
+
+
+def test_admit_and_discharge_still_pair_in_date_order():
+    assert _page_dates("Admission Date: 03/01/2024\nDischarge Date: 03/05/2024") == (
+        "2024-03-01", "2024-03-05")
