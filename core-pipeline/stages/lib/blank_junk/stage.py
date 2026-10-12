@@ -9,8 +9,9 @@ Two passes, as the pipeline spec requires:
           RapidOCR), for handwritten + low-quality pages plus any printed
           page pass 1 did not already rule out.
 
-Blank/junk uses the TF-IDF model (KEEP / BLANK / JUNK). Regex rules run
-only when the model is missing, errors, or flags the page for review.
+Blank/junk uses the b_jnk v3 model (BERT, TF-IDF safety net; KEEP / BLANK /
+JUNK) via ``model_bridge``. Regex rules run only when the model is missing or
+errors.
 Duplicate detection is unchanged (neighbor similarity, not the model).
 
 Duplicate detection (after the model, among Main pages only):
@@ -32,6 +33,7 @@ is fully rewritten from the database after each pass.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import sys
@@ -265,6 +267,18 @@ def _ultimate_original(dup_of: dict[int, int], page_id: int) -> int:
     return cur
 
 
+def _docling_page(raw: Optional[str]) -> Optional[dict[str, Any]]:
+    """The stored Final OCR 1 page object (``{"markdown", "document", ...}``), or None."""
+    text = (raw or "").strip()
+    if not text.startswith("{"):
+        return None
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def _prior_main_ids(conn: Any, chart_id: int) -> set[int]:
     """Pages already judged main in an earlier pass (eligible duplicate targets)."""
     existing = get_blank_junk_flags(conn, chart_id)
@@ -279,6 +293,7 @@ def _classify(
     *,
     short_pages: bool = False,
     signed_ids: Optional[set[int]] = None,
+    docling_pages: Optional[dict[int, dict[str, Any]]] = None,
 ) -> list[dict[str, Any]]:
     """Classify ``todo`` pages, then look for duplicates among Main pages.
 
@@ -301,7 +316,7 @@ def _classify(
         if page_id not in todo:
             continue
         text = texts.get(page_id) or ""
-        code, reason, conf = classify_page(text)
+        code, reason, conf = classify_page(text, docling=(docling_pages or {}).get(page_id))
         if code == CODE_MAIN and fax_cover_sheet(text):
             code, conf = CODE_LETTER_FAX, 0.85
             reason = f"{reason}; rule: fax cover sheet (fax fields, < {FAX_COVER_MAX_WORDS} words) -> Letter/Fax"
@@ -461,6 +476,8 @@ def _run_pass(
             low_ids = low_quality_page_ids(conn, chart_id)
             quality = get_quality_map(conn, chart_id)
             pass1_flags: dict[int, str] = {}
+            # Final OCR 1 page objects, so the model reads them as b_jnk v3 does.
+            docling_pages: dict[int, dict[str, Any]] = {}
 
             if pass_no == 1:
                 ocr_source = "tesseract"
@@ -496,6 +513,9 @@ def _run_pass(
                         sources[pid] = "azuredocintel"
                     elif unwrap_ocr_content(final1.get(pid)).strip():
                         sources[pid] = "docling"
+                        page_obj = _docling_page(final1.get(pid))
+                        if page_obj is not None:
+                            docling_pages[pid] = page_obj
                     else:
                         sources[pid] = "azuredocintel"
                 ocr_source = "azuredocintel"  # default; per-row override below
@@ -530,6 +550,7 @@ def _run_pass(
         classified = _classify(
             ctx.pages, texts, ctx.todo, prior_main_ids=prior_mains,
             short_pages=pass_no == 2, signed_ids=signed_ids,
+            docling_pages=docling_pages,
         )
 
         with connect() as conn:

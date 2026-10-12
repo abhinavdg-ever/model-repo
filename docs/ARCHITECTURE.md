@@ -339,7 +339,7 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/junk-classification/`.
 | File | Role |
 |---|---|
 | `classify.py` | The entry point: `classify_text()` tries each detector in priority order and returns a code; also the code constants, labels, `text_similarity()` / `fingerprint()` helpers and confidences. |
-| `model_bridge.py` | `classify_page()`: the TF-IDF model decides keep / blank / junk; `classify_text()` names the junk subtype; regex fallback stamped `regex_fallback:<why>`. |
+| `model_bridge.py` | `classify_page()`: wired like b_jnk v3 `scripts/infer.py` — BERT decides keep / blank / junk, TF-IDF is a junk safety net (p_junk ≥ 0.80 on a BERT keep → junk with review); Final OCR 1 pages go in through `extract_docling_page()`, plain text through `clean_ocr_text()`. TF-IDF alone when BERT is unavailable; regex fallback stamped `regex_fallback:<why>`. |
 | `model/src/` | Bundled model code the pickled checkpoint (`models/blank-junk/tfidf_flat.joblib`) unpickles against. |
 | `kw.py` | Compiles `keyword-canon/junk_keywords_canon.json`; reloads on edit. |
 | `classify_junk.py` | The fuller CLI-era classifier retained from the V1 prototype. |

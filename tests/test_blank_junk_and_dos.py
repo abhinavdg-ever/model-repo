@@ -800,7 +800,7 @@ class TestFaxCoverSheetRule:
     def _run(text, monkeypatch):
         from stages.lib.blank_junk import stage as bj_stage
 
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t: (bj_stage.CODE_MAIN, "model:keep", 0.99))
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (bj_stage.CODE_MAIN, "model:keep", 0.99))
         pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
         return _classify(pages, {1: text}, {1})[0]
 
@@ -830,7 +830,7 @@ class TestBlankWithTextIsJunk:
     def _run(text, monkeypatch):
         from stages.lib.blank_junk import stage as bj_stage
 
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t: (bj_stage.CODE_BLANK, "model:blank", 0.97))
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (bj_stage.CODE_BLANK, "model:blank", 0.97))
         pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
         return _classify(pages, {1: text}, {1})[0]
 
@@ -853,7 +853,7 @@ class TestShortPagesAreJunk:
     def _run(text, *, signed=False, monkeypatch):
         from stages.lib.blank_junk import stage as bj_stage
 
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t: (bj_stage.CODE_MAIN, "model:keep", 0.9))
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (bj_stage.CODE_MAIN, "model:keep", 0.9))
         pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
         return _classify(pages, {1: text}, {1}, short_pages=True, signed_ids={1} if signed else set())[0]
 
@@ -877,7 +877,7 @@ class TestShortPagesAreJunk:
     def test_pass_1_does_not_apply_it(self, monkeypatch):
         from stages.lib.blank_junk import stage as bj_stage
 
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t: (bj_stage.CODE_MAIN, "model:keep", 0.9))
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (bj_stage.CODE_MAIN, "model:keep", 0.9))
         pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
         assert _classify(pages, {1: "made up short"}, {1})[0]["flag"] == "not_blank_junk"
 
@@ -890,7 +890,7 @@ class TestSignedPageIsKept:
         from stages.lib.blank_junk import stage as bj_stage
 
         code = getattr(bj_stage, code_name)
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t: (code, "model:junk", 0.95))
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (code, "model:junk", 0.95))
         pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
         return _classify(pages, {1: text}, {1}, short_pages=True, signed_ids={1} if signed else set())[0]
 
@@ -917,7 +917,7 @@ class TestSignedPageIsKept:
     def test_pass_1_applies_it_too(self, monkeypatch):
         from stages.lib.blank_junk import stage as bj_stage
 
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t: (bj_stage.CODE_LETTER_FAX, "model:junk", 0.95))
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (bj_stage.CODE_LETTER_FAX, "model:junk", 0.95))
         pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
         row = _classify(pages, {1: "Fax cover. Signature: made up"}, {1})[0]
         assert row["flag"] == "not_blank_junk"
