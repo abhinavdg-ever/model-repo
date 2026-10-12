@@ -56,7 +56,7 @@ export const METRICS: {
     id: "codeable",
     label: "Codable / Non-Codable",
     tableLabel: "Codability",
-    rule: "Codable label matches the Final codability: Match. Matches only the Extracted one: Partial. Neither: No Match",
+    rule: "Codable label matches the Final codability: Match. Matches only the Extracted one: Partial. Neither: No Match. A page the ground truth or the pipeline calls Discharge is not scored",
   },
   {
     id: "credentials",
@@ -67,6 +67,7 @@ export const METRICS: {
   {
     id: "orientation",
     label: "Orientation",
+    binary: true,
     rule: "Ground-truth rotation equals the stored text orientation (degrees the text sits clockwise: 0 / 90 / 180 / 270). A label that is not one of those (12°) is not scored. Not part of the overall page match",
     inOverall: false,
   },
@@ -229,6 +230,10 @@ function grade(bits: GtBit[]): Verdict {
   return "no";
 }
 
+function isDischarge(value: string | null | undefined): boolean {
+  return (value ?? "").trim().toLowerCase().startsWith("discharge");
+}
+
 function text(value: string | null | undefined): string {
   return (value ?? "").trim();
 }
@@ -339,7 +344,10 @@ function pageScores(
       pageType: blankOrJunk
         ? null
         : finalOrExtracted(single(finalBits.pageType), single(bits.pageType)),
-      codeable: finalOrExtracted(single(finalBits.codeable), single(bits.codeable)),
+      // Discharge is a third type, not Codable or Non-Codable: left out.
+      codeable: [page.groundTruth?.codeable, page.finalCodeable, page.isCodeable].some(isDischarge)
+        ? null
+        : finalOrExtracted(single(finalBits.codeable), single(bits.codeable)),
       credentials: credentials === "maybe" ? "yes" : credentials,
       // An angle that is not a quarter turn, or a page the rotation stage did not run on, is
       // not scored (it is not a miss).
