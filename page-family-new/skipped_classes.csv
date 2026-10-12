@@ -1,0 +1,14 @@
+model_type,pages,reason
+Physician Note,2,fewer than 5 pages
+F2F Evaluation Note,2,fewer than 5 pages
+Functional Assessment,1,fewer than 5 pages
+Other Evaluation,2,fewer than 5 pages
+Therapy,1,fewer than 5 pages
+Wound & Infection Care,2,fewer than 5 pages
+Interim Summary,1,fewer than 5 pages
+ICU Note,1,fewer than 5 pages
+Nuclear Medicine Report,2,fewer than 5 pages
+Occupational & Physical Exams,0,no pages
+Neurology,1,fewer than 5 pages
+Nephrology,2,fewer than 5 pages
+Pain & Palliative Note,0,no pages
