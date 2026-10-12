@@ -17,8 +17,15 @@ export type MetricId =
   | "credentials"
   | "orientation";
 
-/** ``inOverall: false`` = shown and scored, but not part of the page's overall match. */
-export const METRICS: { id: MetricId; label: string; rule: string; inOverall?: boolean }[] = [
+/** ``inOverall: false`` = scored, but not part of the page's overall match.
+ * ``comingSoon`` = shown greyed as "Coming soon", not in the chart table. */
+export const METRICS: {
+  id: MetricId;
+  label: string;
+  rule: string;
+  inOverall?: boolean;
+  comingSoon?: boolean;
+}[] = [
   {
     id: "member",
     label: "Member Verification",
@@ -54,8 +61,12 @@ export const METRICS: { id: MetricId; label: string; rule: string; inOverall?: b
     label: "Orientation",
     rule: "Ground-truth rotation equals the stored text orientation (degrees the text sits clockwise: 0 / 90 / 180 / 270). Not part of the overall page match",
     inOverall: false,
+    comingSoon: true,
   },
 ];
+
+/** The metrics with a score on screen (the chart table's columns). */
+export const LIVE_METRICS = METRICS.filter((metric) => !metric.comingSoon);
 
 /** The metrics a page's overall match is built from. */
 const OVERALL_METRICS = METRICS.filter((metric) => metric.inOverall !== false);

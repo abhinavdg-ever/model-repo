@@ -3151,6 +3151,16 @@ input {
   font-size: 0.74rem;
 }
 
+/* A metric not live yet: the card is shown greyed, with no numbers. */
+.accuracy-coming-soon {
+  opacity: 0.5;
+  filter: grayscale(1);
+}
+
+.accuracy-coming-soon p {
+  font-style: italic;
+}
+
 .accuracy-rates {
   font-size: 0.66rem;
   line-height: 1.35;

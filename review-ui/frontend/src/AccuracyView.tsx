@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Info, Loader2, Search } from "lucide-react";
 import { getAccuracyReport } from "./api";
 import {
+  LIVE_METRICS,
   METRICS,
   MIN_LAST_RUN,
   MIN_LAST_RUN_LABEL,
@@ -350,7 +351,16 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                 detail="Each page is judged on the metrics it has ground truth for (Orientation, and page type on a blank / junk page, are left out): all of them matching is a match, at least half is partial, fewer is a miss. A metric with no ground-truth label does not count against the page"
                 tally={overall}
               />
-              {METRICS.map((metric) => (
+              {METRICS.map((metric) =>
+                metric.comingSoon ? (
+                  <figure key={metric.id} className="accuracy-donut-card accuracy-coming-soon" aria-label={`${metric.label}: coming soon`}>
+                    <svg className="accuracy-donut" viewBox="0 0 100 100" aria-hidden="true">
+                      <circle className="accuracy-donut-track" cx="50" cy="50" r="36" />
+                    </svg>
+                    <figcaption>{metric.label}</figcaption>
+                    <p>Coming soon</p>
+                  </figure>
+                ) : (
                 <Donut
                   key={metric.id}
                   label={metric.label}
@@ -368,7 +378,8 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                   yesLabel={metric.id === "orientation" ? "Accuracy of non-zero" : undefined}
                   yesInfo={metric.id === "orientation" ? NON_ZERO_INFO : undefined}
                 />
-              ))}
+                ),
+              )}
             </div>
           </section>
 
@@ -405,7 +416,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                   <th scope="col">
                     Pages <InfoTip text="Pages of this file compared (pages that have ground truth)." />
                   </th>
-                  {METRICS.map((metric) => (
+                  {LIVE_METRICS.map((metric) => (
                     <th key={metric.id} scope="col">
                       {metric.label} <InfoTip text={metric.rule} />
                     </th>
@@ -418,7 +429,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
               <tbody>
                 {pageRows.length === 0 ? (
                   <tr>
-                    <td colSpan={METRICS.length + 5} className="accuracy-empty">
+                    <td colSpan={LIVE_METRICS.length + 5} className="accuracy-empty">
                       No file matches “{query.trim()}”.
                     </td>
                   </tr>
@@ -437,7 +448,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                     <td className="landing-col-updated">{fmtUpdated(row.lastUpdatedAt)}</td>
                     <td className="landing-col-updated">{fmtUpdated(row.lastVerifiedAt)}</td>
                     <td>{row.overall.scored}</td>
-                    {METRICS.map((metric) => (
+                    {LIVE_METRICS.map((metric) => (
                       <td key={metric.id}>
                         <StackedTally tally={row.metrics[metric.id]} />
                       </td>
