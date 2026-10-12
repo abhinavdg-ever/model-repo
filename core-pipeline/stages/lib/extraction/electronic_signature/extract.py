@@ -1,9 +1,10 @@
-﻿"""Read provider name + signature date from an electronic-signature key box.
+﻿"""Read the signer name, designation, and signature date from an electronic-signature key box.
 
 Rules from Data/examp/esign.csv:
   - Words are read in raw OCR order (sorting by line position interleaves lines).
-  - Provider name is returned as printed, from the first name word to the last
-    credential: "Agati, Alicia, APRN.CNP", "Reilly, Thomas J MD", "LAUBERT CNP, MATTHEW".
+  - The signer is returned as printed, from the first name word to the last credential:
+    "Agati, Alicia, APRN.CNP", "LAUBERT CNP, MATTHEW". Any credential from
+    provider_name/suffixes.txt is also returned on its own as the designation ("APRN.CNP", "CNP").
   - Name right after the key: credential optional (any key).
   - Name right before the key (nothing usable after it): credential optional for
     strong keys ("... by", "Electronically/Digitally ..."), required for weak keys.
@@ -15,7 +16,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-
 from ..provider_name.extract import _NON_NAME, geometry_confidence, load_suffixes
 from ..util.dates import find_dates, normalize_date
 from ..util.keys import KeyHit, extract_field_keys
@@ -43,6 +43,7 @@ class ESigHit:
     scale: str = ""
     ner_text: str = ""
     provider_name: str = ""
+    designation: str = ""
     signature_date: str = ""
     score: float = 0.0
     accepted: bool = False
@@ -108,7 +109,10 @@ def _parse_name(tokens: list[Token], start: int, stop: int, line_h: float) -> _N
                 break
         if _PUNCT_ONLY.match(token.text):
             nxt = _next_meaningful(tokens, index, stop)
-            if nxt is None or not is_credential(tokens[nxt].text.strip(",;")):
+            if nxt is None:
+                break
+            nxt_text = tokens[nxt].text.strip(",;")
+            if not (is_credential(nxt_text) or (has_credential and _is_name_word(nxt_text))):
                 break
             index += 1
             continue
@@ -118,10 +122,12 @@ def _parse_name(tokens: list[Token], start: int, stop: int, line_h: float) -> _N
             index += 1
             continue
         if has_credential:
-            # "LAUBERT CNP, MATTHEW": one surname, credential, comma, first name.
-            if len(core) == 1 and tokens[index - 1].text.endswith(",") and _is_name_word(stripped):
+            # A credential can sit in the middle: "LAUBERT CNP, MATTHEW", "John MD Smith".
+            if _is_name_word(stripped) and len(core) < _MAX_CORE:
                 core.append(stripped)
                 last = index
+                index += 1
+                continue
             break
         if _is_name_word(stripped) and len(core) < _MAX_CORE:
             core.append(stripped)
@@ -137,6 +143,22 @@ def _parse_name(tokens: list[Token], start: int, stop: int, line_h: float) -> _N
 
 def _printed(tokens: list[Token], name: _Name, text: str) -> str:
     return text[tokens[name.first].start : tokens[name.last].end].strip(" ,;:-")
+
+
+def split_name_designation(printed: str) -> tuple[str, str]:
+    """Split a signature name into the person and the credential.
+
+    A designation is a suffix from provider_name/suffixes.txt. It may be the first word
+    ('MD Smith, John'), the last ('Agati, Alicia, APRN.CNP'), or in the middle
+    ('LAUBERT CNP, MATTHEW'). Every credential word is the designation; the rest is the name.
+    """
+    words = [word for word in printed.split() if word.strip(",;")]
+    if not words:
+        return "", ""
+    taken = [index for index in range(len(words)) if is_credential(words[index])]
+    name = " ".join(words[index] for index in range(len(words)) if index not in taken).strip(" ,;:-")
+    designation = " ".join(words[index].strip(",;") for index in taken)
+    return name, designation
 
 
 def _after_key(tokens: list[Token], key_last: int, line_h: float) -> _Name | None:
@@ -272,7 +294,10 @@ def extract_box(hit: KeyHit) -> ESigHit:
         name = _in_window(tokens, key_first, key_last, line_h)
         source, geometry = "printed_window", 0.65
 
+    # provider_name stays as printed (credential included): it is the page's provider name
+    # downstream. The credential is also kept on its own as the designation.
     provider = _printed(tokens, name, text) if name else ""
+    designation = split_name_designation(provider)[1]
     name_end = tokens[name.last].end if name else None
     signature_date, date_score = nearest_signature_date(text, key_at, after=name_end)
     if not provider and not signature_date:
@@ -290,6 +315,7 @@ def extract_box(hit: KeyHit) -> ESigHit:
         scale=scale,
         ner_text=ner_text or provider,
         provider_name=provider,
+        designation=designation,
         signature_date=signature_date,
         score=round(score, 4),
         accepted=bool(provider),

@@ -14,7 +14,8 @@ from dataclasses import dataclass
 
 from .geometry import Box, Word
 
-_SUB_TOKEN = re.compile(r"[^\s,]+,*|,+")
+# A colon splits a key from a value glued into one OCR word ('Ptnt:Marija', 'MRN:88234.0').
+_SUB_TOKEN = re.compile(r"[^\s,:]+,*|:+|,+")
 
 
 @dataclass

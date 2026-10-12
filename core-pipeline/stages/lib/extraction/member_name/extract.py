@@ -23,6 +23,7 @@ import re
 from dataclasses import dataclass, field
 
 from ..electronic_signature.extract import is_credential
+from ..member_id.extract import is_member_id_value
 from ..util.keys import KeyHit, linked
 from ..util.model import predict
 from ..util.geometry import (
@@ -458,6 +459,174 @@ def extract_running_header(words, page_h: float, hits: list[KeyHit]) -> NameHit 
     return None
 
 
+_LINE_LABEL = re.compile(r"(?i)^(mrn|dob|acct|account|page|ssn|patient|name|id|pt|ptnt)$")
+# 'Exam Name: US Retroperitoneum' names an exam, not the patient.
+_NOT_PATIENT_LABEL_BEFORE = frozenset(
+    {"exam", "test", "procedure", "study", "order", "facility", "provider", "doctor", "specimen"}
+)
+# A street address ('800 E. DAWSON TYLER 1612 TX 75701') is not a demographic strip.
+_ADDRESS = re.compile(r"\b\d{2,6}\s+[NSEW]\.?\s+[A-Z]|\b[A-Z]{2}\s+\d{5}(?:-\d{4})?\b")
+_PERSON_SCORE = 0.5
+
+
+def _reads_as_person(value: str) -> bool:
+    """GLiNER finds a person covering most of the value ('Collected By', an exam name: no)."""
+    letters = len(re.sub(r"[^A-Za-z]", "", value))
+    for raw in predict(value, LABELS):
+        found = len(re.sub(r"[^A-Za-z]", "", raw["text"]))
+        if raw["score"] >= _PERSON_SCORE and letters and found >= 0.6 * letters:
+            return True
+    return False
+
+
+def _line_groups(words, page_h: float) -> list[tuple[str, list]]:
+    """Header and footer lines, top to bottom within each band."""
+    if not words or page_h <= 0:
+        return []
+    text_box = union_boxes([word.box for word in words])
+    height = median_height(words)
+    bands: dict[str, list] = {"header": [], "footer": []}
+    for word in words:
+        band = edge_band(word.box, page_h, text_box)
+        if band:
+            bands[band].append(word)
+    grouped: list[tuple[str, list]] = []
+    for band, band_words in bands.items():
+        band_words.sort(key=lambda word: (round(word.box.cy / max(height, 1.0)), word.box.left))
+        current: list = []
+        for word in band_words:
+            if current and abs(word.box.cy - current[-1].box.cy) > 0.6 * height:
+                grouped.append((band, sorted(current, key=lambda item: item.box.left)))
+                current = []
+            current.append(word)
+        if current:
+            grouped.append((band, sorted(current, key=lambda item: item.box.left)))
+    return grouped
+
+
+def extract_edge_lines(words, page_h: float, hits: list[KeyHit]) -> list[NameHit]:
+    """A header or footer line that is a demographic strip: a person name next to a date,
+    an id, or a label (MRN, DOB, Page), and no credential on the line (that is a provider)."""
+    found: list[NameHit] = []
+    for band, line in _line_groups(words, page_h):
+        if any(is_credential(word.content) for word in line):
+            continue
+        tokens, text = ordered_tokens(line)
+        if not tokens or _ADDRESS.search(text):
+            continue
+        labels = [
+            token
+            for at, token in enumerate(tokens)
+            if _LINE_LABEL.fullmatch(token.text.strip(":#."))
+            and not (at and tokens[at - 1].text.strip(":,.").casefold() in _NOT_PATIENT_LABEL_BEFORE)
+        ]
+        dated = bool(find_dates(text))
+        numbered = [token for token in tokens if is_member_id_value(token.text)]
+        if not labels and not (dated and numbered):
+            continue
+        anchors = {id(token) for token in labels + numbered}
+        anchor_at = [index for index, token in enumerate(tokens) if id(token) in anchors]
+        stops = _stop_positions(tokens, hits, None)
+        line_h = median_height(line)
+        best: tuple[int, _Parsed] | None = None
+        for start in range(len(tokens)):
+            parsed = _parse(tokens, start, line_h, stops, allow_initial=True)
+            if parsed is None or parsed.credential_after:
+                continue
+            before = tokens[parsed.first - 1].text.strip(":,.").casefold() if parsed.first else ""
+            if before in _PROVIDER_BEFORE:
+                continue
+            distance = min(abs(parsed.last - index) for index in anchor_at)
+            if distance > 4:
+                continue
+            if best is None or distance < best[0]:
+                best = (distance, parsed)
+        if best is None:
+            continue
+        parsed = best[1]
+        value = _printed(tokens, parsed, text)
+        if not _reads_as_person(value):
+            continue
+        found.append(
+            NameHit(
+                key="near:header" if band == "header" else "near:footer",
+                region=f"keyless_{band}",
+                sentence=text,
+                ner_text=value,
+                value=value,
+                score=0.84,
+                accepted=True,
+                source="edge_line",
+            )
+        )
+    return found
+
+
+def propagate_names(pages) -> None:
+    """Copy a record's established patient name onto later pages that print it but have no
+    name key. One strong read (a selected keyed name) is enough; prose mentions are skipped."""
+    from ..util.mentions import _in_prose, locate_value, mention_runs
+
+    totals: dict[str, int] = {}
+    exemplars: dict[str, str] = {}
+    for page in pages:
+        seen: set[str] = set()
+        for row in page.rows.get("name", []):
+            if not (row.accepted and row.value) or row.source in {"repeat", "record"}:
+                continue
+            weight = 0
+            if row.source in {"after_key", "below_key", "split_combined"}:
+                weight = 5 if row.selected else 3
+            elif row.source in {"keyless_adjacent", "keyless_running_header", "edge_line", "keyless_ner"}:
+                weight = 2 if row.selected else 1
+            else:
+                continue
+            marker = _canon(row.value)
+            if not marker or marker in seen:
+                continue
+            seen.add(marker)
+            totals[marker] = totals.get(marker, 0) + weight
+            exemplars.setdefault(marker, row.value)
+    if not totals:
+        return
+    marker = max(totals, key=totals.get)
+    if totals[marker] < 3:
+        return
+    value = exemplars[marker]
+    for page in pages:
+        rows = page.rows.setdefault("name", [])
+        if any(row.accepted and _canon(getattr(row, "value", "")) == marker for row in rows):
+            continue
+        taken: set[int] = set()
+        for row in rows:
+            if getattr(row, "value", ""):
+                taken.update(word.index for word in locate_value("name", row, row.value, page.words))
+        for run in mention_runs("name", value, page.words):
+            indexes = {word.index for word in run}
+            if indexes & taken or _in_prose(run, page.words):
+                continue
+            last = run[-1]
+            position = {word.index: at for at, word in enumerate(page.words)}.get(last.index)
+            if position is not None and position + 1 < len(page.words):
+                nxt = page.words[position + 1]
+                if abs(nxt.box.cy - last.box.cy) < 0.6 * max(last.box.height(), 1.0) and is_credential(nxt.content):
+                    continue
+            taken |= indexes
+            band = edge_band(union_boxes([word.box for word in run]), page.page_h, union_boxes([word.box for word in page.words]))
+            copy = NameHit(
+                key="Record Name",
+                region=f"keyless_{band}" if band else "mid",
+                sentence=" ".join(word.content for word in run),
+                ner_text=value,
+                value=value,
+                score=0.88,
+                accepted=True,
+                source="record",
+            )
+            copy.value_at = run
+            rows.append(copy)
+
+
 def _canon(value: str) -> str:
     """Order-free comparison key: 'Gonzalez, Nicole' == 'Nicole Gonzalez'."""
     words = [word.casefold() for word in re.findall(r"[A-Za-z]{2,}", value)]
@@ -530,7 +699,7 @@ def extract_page(
     role_hints: list | None = None,
 ) -> list[NameHit]:
     """Keyed: every name key, header/footer first (selection prefers them). Keyless:
-    header/footer only + role blocks.
+    header/footer only + role blocks + demographic header/footer lines.
 
     role_hints: member names above provider designation blocks, when the caller has
     already run Provider extraction on this page (else they are computed here).
@@ -574,6 +743,7 @@ def extract_page(
                 source=hint.source,
             )
         )
+    keyless.extend(extract_edge_lines(words, page_h, hits))
 
     rows = merge_page_names(keyed, keyless)
     mark_selected(rows)

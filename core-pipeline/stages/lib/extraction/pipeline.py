@@ -4,9 +4,13 @@ Each page is parsed once and its catalog keys are found once; every field reads 
 same key list. Provider runs before Member Name so the member names found above
 provider designation blocks are reused, not recomputed. DOB and Name then get
 a copy of each accepted value at its other occurrences on the page (util/mentions.py).
+Once every page is read, a record's established patient name is copied onto later pages
+that print it without a name key (member_name.extract.propagate_names).
 
 Headings run after the KV fields on the same words and keys (a heading candidate knows
 whether its words are a KV key); each layout detector is its own field (heading/extract.py).
+A page header that repeats on two or more pages (a fax line, a letterhead) is a running
+header, not a heading.
 
 Overlays and the Excel workbook of the standalone tool are not part of the pipeline: what
 a run extracted is staged (staging.py) for the stages that use it, then dropped.
@@ -33,6 +37,7 @@ from .member_id import output as id_output
 from .member_id.extract import extract_page as id_page
 from .member_name import output as name_output
 from .member_name.extract import extract_page as name_page
+from .member_name.extract import propagate_names
 from .page_no import output as page_no_output
 from .page_no.extract import extract_page as page_no_page
 from .provider_credentials import output as credential_output
@@ -41,6 +46,7 @@ from .provider_name import output as provider_output
 from .provider_name.extract import extract_provider_hits, role_member_hints
 from .training.features import COLUMNS as CANDIDATE_COLUMNS
 from .training.features import document_rows
+from .training.normalize import norm_heading
 from .util.geometry import Word, page_size, words_from_page
 from .util.keys import KeyHit, find_key_hits
 from .util.mentions import REPEAT_FIELDS, repeat_mentions
@@ -137,14 +143,33 @@ class DocumentResult:
         return pd.DataFrame(rows, columns=CANDIDATE_COLUMNS)
 
 
+def _mark_running_headers(pages: list[PageResult]) -> None:
+    """A page header that is the same text on more than one page of a document (a fax line, a
+    letterhead) is a running header, not a heading of any page's content."""
+    if len(pages) < 2:
+        return
+    for name in heading_fields():
+        seen: dict[str, set[int]] = {}
+        for number, page in enumerate(pages):
+            for row in page.rows.get(name, []):
+                if row.kind == "page_header" and row.accepted:
+                    seen.setdefault(norm_heading(row.text), set()).add(number)
+        for page in pages:
+            for row in page.rows.get(name, []):
+                if row.kind == "page_header" and row.accepted and len(seen.get(norm_heading(row.text), ())) >= 2:
+                    row.accepted, row.note = False, "running header"
+
+
 def extract_document(document, *, headings: bool = True) -> DocumentResult:
     started = time.perf_counter()
     pages = [extract_page_all(page) for page in document.pages]
+    propagate_names(pages)
     if headings:
         for result in pages:
             result.rows.update(
                 heading_page(document.record_id, result.page, result.words, result.hits, result.page_w, result.page_h)
             )
+        _mark_running_headers(pages)
     return DocumentResult(
         record_id=document.record_id,
         pages=pages,

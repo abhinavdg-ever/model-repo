@@ -70,5 +70,17 @@
   "Social Security #",
   "SS#",
   "SSN",
-  "Unit#"
+  "Unit#",
+  "Unit Num",
+  "Unit #",
+  "Rep #",
+  "Chart Number",
+  "Med Rec Num",
+  "Medical Rec Num",
+  "Subscriber No",
+  "Member ID Number",
+  "Primary Insurance ID",
+  "SS No",
+  "PM Pt ID",
+  "Account Num"
 ]

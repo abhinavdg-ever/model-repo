@@ -11,7 +11,8 @@ Acceptance (all member_id keys):
 
 Chart is hash-required (Chart# / Chart # only). Similar OCR keys match via fuzzy matcher.
 No keyless member-id extraction — only catalog key hits. An untrusted key counts only when
-it reads an ID a trusted key already read on the page.
+it reads an ID a trusted key already read on the page. A number glued into the key word
+('(ID #718,', 'MRN:88234.0') is the value, and '(ID #…)' is trusted on its own.
 """
 
 from __future__ import annotations
@@ -26,9 +27,13 @@ from ..util.model import predict
 LABELS = ["ID", "identifier"]
 _PHONE = re.compile(r"^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$")
 _SLASH_DATE = re.compile(r"^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$")
-_EDGE = re.compile(r"^[#.,;:|()\[\]]+|[#.,;:|()\[\]]+$")
+# Punctuation and OCR specks glued to the edge of an ID token ("48497'" is the ID 48497).
+_EDGE_CHARS = "#.,;:|'\"`‘’“”"
+_EDGE = re.compile(rf"^[{re.escape(_EDGE_CHARS)}()\[\]]+|[{re.escape(_EDGE_CHARS)}()\[\]]+$")
 # Must contain at least one digit; letters and internal hyphens optional.
 _ID_SHAPE = re.compile(r"^(?=.*\d)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$")
+# MRNs printed as 88234.0 or 88234.0-1. A short decimal (3.14) is not an id.
+_DECIMAL_ID = re.compile(r"^\d{4,}\.\d+(?:-[A-Za-z0-9]+)?$")
 _ALPHA_ONLY = re.compile(r"^[A-Za-z]+$")
 # Masked SSN-style: xxx-xx-1234 / XXX-XX-0594 — keep only when last 4 are digits.
 _MASKED_SSN = re.compile(r"^[Xx]{2,}-[Xx]{2,}-(\d{4})$")
@@ -50,7 +55,7 @@ class IdHit:
 
 
 def _normalize(text: str) -> str:
-    return text.strip().strip("#.,;:|")
+    return text.strip().strip(_EDGE_CHARS)
 
 
 def is_member_id_value(text: str) -> bool:
@@ -71,6 +76,8 @@ def accept(text: str) -> str:
         return ""
     if _PHONE.fullmatch(text.strip()) or _SLASH_DATE.fullmatch(cleaned):
         return ""
+    if _DECIMAL_ID.fullmatch(cleaned):
+        return cleaned
     masked = _MASKED_SSN.fullmatch(cleaned)
     if masked:
         return cleaned  # last-4 digits available
@@ -122,9 +129,26 @@ def _word_gap(sentence: str, key_at: tuple[int, int], token_at: tuple[int, int])
     return len(middle.split()), after, char_gap
 
 
+# The id sits in the key's own word: '(ID #718,' or 'MRN:88234.0'.
+_GLUED_ID = re.compile(r"(?i)[#:]\s*([A-Za-z0-9]+(?:[.\-][A-Za-z0-9]+)*)")
+
+
 def _id_token(raw: str) -> str:
     token = _EDGE.sub("", raw.strip())
     return accept(token)
+
+
+def _id_pieces(part: str) -> list[tuple[str, int, int]]:
+    """ID spans inside one whitespace-separated piece, as (value, start, end)."""
+    whole = _id_token(part)
+    if whole:
+        return [(whole, 0, len(part))]
+    found: list[tuple[str, int, int]] = []
+    for match in _GLUED_ID.finditer(part):
+        token = accept(match.group(1))
+        if token:
+            found.append((token, match.start(1), match.end(1)))
+    return found
 
 
 def geometry_confidence(word_gap: int) -> float:
@@ -142,9 +166,8 @@ def nearest(sentence: str, key_at: tuple[int, int] | None, raws: list[dict] | No
     for part in text.split(" "):
         if offset:
             offset += 1
-        token = _id_token(part)
-        if token:
-            found.append((token, offset, offset + len(part)))
+        for token, start, end in _id_pieces(part):
+            found.append((token, offset + start, offset + end))
         offset += len(part)
     if not found:
         return "", 0.0
@@ -212,16 +235,17 @@ def extract_box(hit: KeyHit, hits: list[KeyHit] | None = None, words: list[Word]
     table's header row reads its column: the value under it, never the next header."""
     if hits and _in_header_row(hit, hits):
         value = _column_value(hit, words or hit.value_words)
-        return IdHit(
-            key=hit.key,
-            region=hit.region,
-            sentence=hit.value_text,
-            ner_text=value,
-            value=value,
-            score=geometry_confidence(0) if value else 0.0,
-            accepted=bool(value),
-            source="column" if value else "ner",
-        )
+        if value:
+            return IdHit(
+                key=hit.key,
+                region=hit.region,
+                sentence=hit.value_text,
+                ner_text=value,
+                value=value,
+                score=geometry_confidence(0),
+                accepted=True,
+                source="column",
+            )
     raws = predict(hit.value_text, LABELS)
     value, score = nearest(hit.value_text, key_span(hit.value_text, hit.value_words, hit.word_indexes), raws)
     if value and not is_member_id_value(value):

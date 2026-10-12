@@ -4,5 +4,16 @@
       "print",
       "printed"
     ]
+  },
+  "Visit": {
+    "before": [
+      "next",
+      "last",
+      "previous",
+      "prior",
+      "follow",
+      "followup",
+      "first"
+    ]
   }
 }

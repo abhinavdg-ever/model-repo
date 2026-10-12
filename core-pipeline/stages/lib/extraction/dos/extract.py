@@ -46,6 +46,10 @@ _NOTE_LABEL = re.compile(r"(?i)\b(?:note|visit|consult(?:ation)?)\b")
 _KEYLESS_NOISE = frozenset(
     {"from", "fax", "faxed", "sent", "signed", "electronically", "printed", "received"}
 )
+_MONTH_NAME = re.compile(
+    r"(?i)\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|"
+    r"aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b"
+)
 
 
 @dataclass
@@ -108,6 +112,18 @@ def _confidence(word_gap: int) -> float:
     return round(max(0.55, 0.92 - 0.12 * word_gap), 4)
 
 
+def _value_origin(tokens: list[Token], text: str, key_first: int, key_last: int) -> int:
+    """Where the value may start. A date glued onto the key token ('DATE OF SERVICE:02/12/2024')
+    starts inside that token, after the key words, not after the token."""
+    start = tokens[key_first].start
+    end = tokens[key_last].end
+    key_text = text[start:end]
+    match = re.match(r"(?i)^(?:[A-Za-z][A-Za-z.]*[\s.:/#-]*)+", key_text)
+    if match and match.end() < len(key_text) and re.search(r"\d", key_text[match.end():]):
+        return start + match.end()
+    return end
+
+
 def _pick(
     tokens: list[Token],
     text: str,
@@ -118,8 +134,9 @@ def _pick(
     header_row: bool = False,
 ) -> tuple[_Span, float, str] | None:
     key_start, key_end = tokens[key_first], tokens[key_last]
+    origin = _value_origin(tokens, text, key_first, key_last)
     line_h = median_height([token.word for token in tokens])
-    spans = [span for span in date_spans(text, blocked) if span.start >= key_end.end]
+    spans = [span for span in date_spans(text, blocked) if span.start >= origin]
     for span in spans:
         covered = _span_tokens(tokens, span)
         if not covered:
@@ -278,12 +295,14 @@ def extract_keyless(words: list[Word], page_h: float, blocked: set[str]) -> list
         tokens, text = ordered_tokens(band_words)
         seen: set[str] = set()
         for run in _segments(tokens, line_h):
-            if len(run) > _KEYLESS_MAX_TOKENS:
-                continue
             if any(token.text.strip(":,.").casefold() in _KEYLESS_NOISE for token in run):
                 continue
             start, end = run[0].start, run[-1].end
             segment = text[start:end]
+            # A month-name date in a banner ('Tuesday, September 24, 2024') is longer than
+            # the usual header stamp, so the short-line cap does not apply to it.
+            if len(run) > (24 if _MONTH_NAME.search(segment) else _KEYLESS_MAX_TOKENS):
+                continue
             for span in date_spans(segment, blocked):
                 if _TIME_AFTER.match(segment[span.end :]):
                     continue

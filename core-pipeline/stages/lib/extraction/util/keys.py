@@ -59,7 +59,7 @@ _FUZZY = {
 # Keys whose alphanumeric form must appear with '#' (Chart / Chart# / Chart #) or their colon (Chart:).
 _HASH_REQUIRED = frozenset({"chart"})
 # Common words that are a key only when printed with their colon ('For: Diaz Sarah').
-_COLON_REQUIRED = frozenset({"for", "scribe", "technician"})
+_COLON_REQUIRED = frozenset({"for", "scribe", "technician", "re", "visit", "appointment"})
 # E-signature keys shorter than this (letters only) never fuzzy-match.
 _ESIG_FUZZY_MIN = 10
 _DOS_FUZZY_MIN = 5
@@ -430,6 +430,9 @@ def _name_context_ok(words: list[Word], indexes: list[int], key: str) -> bool:
         if position is None or not _key_capitalized(words[position].content, parts[0]):
             return False
     if parts != ["name"]:
+        return True
+    # 'Name: Diaz Sarah' is a label even when the word before it is not Legal/Patient/...
+    if _span_has_colon(words, indexes, key):
         return True
     first = positions.get(indexes[0])
     if first is None or first <= 0:
@@ -854,6 +857,14 @@ def _printed_as_label(hit: KeyHit, by_index: dict[int, Word]) -> bool:
     return False
 
 
+def _embedded_paren_id(hit: KeyHit, by_index: dict[int, Word] | None) -> bool:
+    """'(ID #718,' prints the member id inside the key word, so the label stands alone."""
+    if hit.field != "member_id" or not by_index:
+        return False
+    blob = " ".join(by_index[index].content for index in hit.word_indexes if index in by_index)
+    return bool(re.search(r"(?i)\(\s*id\s*#\s*\d{3,}", blob))
+
+
 def _mark_trusted(hits: list[KeyHit], page_w: float, page_h: float, by_index: dict[int, Word] | None = None) -> None:
     if not hits:
         return
@@ -862,13 +873,29 @@ def _mark_trusted(hits: list[KeyHit], page_w: float, page_h: float, by_index: di
         for index in group:
             hit = hits[index]
             hit.cluster_size = len(group)
+            if _embedded_paren_id(hit, by_index):
+                if hit.region == "mid":
+                    hit.region = "mid_cluster"
+                hit.trusted, hit.trusted_reason = True, "paren_id"
+                continue
             # Patient: require another key within keyless-band proximity.
             if hit.key.casefold() == "patient" and hit.field == "name":
-                if not _patient_has_nearby_key(hits, index, page_w, page_h, by_index):
+                labeled = bool(by_index) and _span_has_colon(
+                    [by_index[i] for i in sorted(by_index)], hit.word_indexes, hit.key
+                )
+                if not labeled and not _patient_has_nearby_key(hits, index, page_w, page_h, by_index):
                     continue
                 if hit.region == "mid":
                     hit.region = "mid_cluster"
-                hit.trusted, hit.trusted_reason = True, "patient_near_key"
+                hit.trusted, hit.trusted_reason = True, "patient_label" if labeled else "patient_near_key"
+                continue
+            # 'Re: Jane Doe' and 'Visit: 28.Feb.2024' are labels wherever the colon is printed.
+            if "".join(_parts(hit.key)) in {"re", "visit", "appointment"} and by_index and _span_has_colon(
+                [by_index[i] for i in sorted(by_index)], hit.word_indexes, hit.key
+            ):
+                if hit.region == "mid":
+                    hit.region = "mid_cluster"
+                hit.trusted, hit.trusted_reason = True, "colon_label"
                 continue
             if hit.weak and not _strong_in_same_band(hits, group, hit):
                 continue

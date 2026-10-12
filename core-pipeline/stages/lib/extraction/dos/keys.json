@@ -27,7 +27,14 @@
     "Est Dt/Tm",
     "OccDt",
     "Collection Date",
-    "Order Date"
+    "Order Date",
+    "Date of Visit",
+    "Document Date",
+    "Initial Visit",
+    "Date of Admission",
+    "D.OS",
+    "DIAS",
+    "Visit"
   ],
   "admit": [
     "Admit",

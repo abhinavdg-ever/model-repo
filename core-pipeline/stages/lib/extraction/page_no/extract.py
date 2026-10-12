@@ -3,8 +3,10 @@
 Patterns from Data/examp/page.csv:
   - Page word + number / "of" total / slash total: Page 6, Page #: 2, PAGE: 002 OF 003, PAGE 03/04
   - OCR spellings of the page word: Pago, Fago, Pg., pq, P. / P (P only right before a number)
-  - Bare "N of M" and bare "N/M" (the whole line segment must be just that)
-  - Bare page number only when alone on its line inside the core header/footer band
+  - "N of M" and "N/M" in the header or footer, including on a line that also has other text
+    ("Smith 2 of 5"). A following word ("2 of 3 criteria") is not a page label
+  - Bare page number only when alone on its line inside the core header/footer band, and only
+    when the band has no real page label (a speck or a stray digit looks like a bare number)
 
 Header (28%) and footer (20%) only, of the image or of the text's extent (geometry.edge_band:
 screenshots end the page well above the image bottom); mid-page is never read. A page can carry
@@ -53,9 +55,12 @@ _PATTERNS: list[tuple[str, float, re.Pattern[str]]] = [
         ),
     ),
 ]
-# Bare forms must be the whole line segment ("4 of 7" yes, "2 of 3 criteria" no).
-_BARE_OF = re.compile(rf"^\s*(?P<n>{_NUM})\s+{_OF}\s+(?P<t>{_NUM})\s*$", re.IGNORECASE)
-_BARE_SLASH = re.compile(r"^\s*(?P<n>\d{1,3})\s*/\s*(?P<t>\d{1,3})\s*$")
+# "2 of 5" / "2/5" on a header line that also has the patient or the date.
+# A following word ("2 of 3 criteria", "01/02/2024") is not a page label.
+# Never part of a date or a range either: "07/11/24" holds 11/24, "6/6-6/20/2024" holds 6/6.
+_INLINE_OF = re.compile(rf"(?i)(?<![\d/.\-])\b(?P<n>{_NUM})\s+{_OF}\s+(?P<t>{_NUM})\b(?!\s*[A-Za-z])")
+_INLINE_SLASH = re.compile(r"(?<![\d/.\-])\b(?P<n>\d{1,3})\s*/\s*(?P<t>\d{1,3})\b(?![\d/\-])(?!\s*[A-Za-z/])")
+_INLINE_SOURCES = frozenset({"inline_of", "inline_slash"})
 _BARE_NUMBER = re.compile(r"^\s*(?P<n>\d{1,3})\s*$")
 _EDGE_PUNCT = " :;,.|#"
 
@@ -196,12 +201,12 @@ def _segment_hits(segment: _Segment, region: str) -> list[PageHit]:
             )
     if hits:
         return hits
-    for source, score, pattern in (("bare_of", 0.8, _BARE_OF), ("bare_slash", 0.75, _BARE_SLASH)):
-        bare = pattern.match(segment.text.strip(_EDGE_PUNCT))
-        if bare and _valid(bare.group("n"), bare.group("t")):
+    for source, score, pattern in (("inline_of", 0.8, _INLINE_OF), ("inline_slash", 0.75, _INLINE_SLASH)):
+        match = pattern.search(segment.text)
+        if match and _valid(match.group("n"), match.group("t")):
             hits.append(
-                _hit(region, segment, segment.text, bare.group("n"), bare.group("t"), score,
-                     source, union_boxes([word.box for word in segment.words]))
+                _hit(region, segment, match.group(0), match.group("n"), match.group("t"), score,
+                     source, _span_box(segment, match.start(), match.end()))
             )
             break
     return hits
@@ -210,12 +215,18 @@ def _segment_hits(segment: _Segment, region: str) -> list[PageHit]:
 def extract_page(words: list[Word], page_h: float) -> list[PageHit]:
     """Every page label in the header and footer bands (duplicates within a band merged)."""
     line_h = median_height(words)
-    rows: list[PageHit] = []
+    bands: list[tuple[list[PageHit], list[PageHit], list[PageHit]]] = []
     for region, band in _band_words(words, page_h).items():
-        seen: set[str] = set()
+        labelled: list[PageHit] = []
+        inline: list[PageHit] = []
+        bare_numbers: list[PageHit] = []
         for segment in _segments(band, line_h):
             found = _segment_hits(segment, region)
-            if not found and len(segment.words) == 1:
+            if found:
+                for hit in found:
+                    (inline if hit.source in _INLINE_SOURCES else labelled).append(hit)
+                continue
+            if len(segment.words) == 1:
                 word = segment.words[0]
                 bare = _BARE_NUMBER.match(word.content.strip(_EDGE_PUNCT))
                 if (
@@ -224,12 +235,27 @@ def extract_page(words: list[Word], page_h: float) -> list[PageHit]:
                     and _in_core(word.box, page_h, region)
                     and _alone_on_line(word, band, line_h)
                 ):
-                    found = [_hit(region, segment, bare.group("n"), bare.group("n"), "", 0.6,
-                                  "bare_number", word.box)]
-            for hit in found:
-                marker = hit.value.casefold()
-                if marker in seen:
-                    continue
-                seen.add(marker)
-                rows.append(hit)
+                    bare_numbers.append(
+                        _hit(region, segment, bare.group("n"), bare.group("n"), "", 0.6, "bare_number", word.box)
+                    )
+        bands.append((labelled, inline, bare_numbers))
+    # Weakest last: a bare "N of M" / "N/M" on a line with other text ("Dose 1/3") counts only
+    # when the page has no page-word label in either band, and a bare number (an OCR speck or
+    # a stray digit looks like one) only when its band has neither.
+    # Of the inline forms, "6 of 10" beats a slash pair ("Dose 3/3") anywhere on the page.
+    page_labelled = any(labelled for labelled, _, _ in bands)
+    page_inline_of = any(hit.source == "inline_of" for _, inline, _ in bands for hit in inline)
+    rows: list[PageHit] = []
+    for labelled, inline, bare_numbers in bands:
+        seen: set[str] = set()
+        if page_labelled:
+            inline = []
+        elif page_inline_of:
+            inline = [hit for hit in inline if hit.source == "inline_of"]
+        for hit in labelled or inline or bare_numbers:
+            marker = hit.value.casefold()
+            if marker in seen:
+                continue
+            seen.add(marker)
+            rows.append(hit)
     return rows
