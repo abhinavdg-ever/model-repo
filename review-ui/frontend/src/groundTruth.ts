@@ -367,7 +367,8 @@ function rotationMark(
   if (missing(gt)) return [];
   // "270", "270°" and "-90" are the same orientation.
   const expected = Number(text(gt).replace(/°$/, ""));
-  if (!Number.isFinite(expected)) return bit(gt, "unknown");
+  // An orientation is a quarter turn; "12°" is a typo or a tilt, so it is not scored.
+  if (!Number.isFinite(expected) || Math.round(expected) % 90 !== 0) return bit(gt, "unknown");
   if (!known || angle === null || angle === undefined || Number.isNaN(angle)) {
     return bit(gt, "unknown");
   }

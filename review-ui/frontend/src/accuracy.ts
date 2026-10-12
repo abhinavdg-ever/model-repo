@@ -59,9 +59,8 @@ export const METRICS: {
   {
     id: "orientation",
     label: "Orientation",
-    rule: "Ground-truth rotation equals the stored text orientation (degrees the text sits clockwise: 0 / 90 / 180 / 270). Not part of the overall page match",
+    rule: "Ground-truth rotation equals the stored text orientation (degrees the text sits clockwise: 0 / 90 / 180 / 270). A label that is not one of those (12°) is not scored. Not part of the overall page match",
     inOverall: false,
-    comingSoon: true,
   },
 ];
 
@@ -386,7 +385,9 @@ function pageScores(
         : finalOrExtracted(single(finalBits.pageType), single(bits.pageType)),
       codeable: finalOrExtracted(single(finalBits.codeable), single(bits.codeable)),
       credentials,
-      orientation: single(bits.rotation),
+      // An angle that is not a quarter turn, or a page the rotation stage did not run on, is
+      // not scored (it is not a miss).
+      orientation: bits.rotation[0]?.mark === "unknown" ? null : single(bits.rotation),
     },
     blankJunk: bits.blankJunk,
     rotation: bits.rotation,
