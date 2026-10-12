@@ -405,6 +405,8 @@ CREATE TABLE ocr_quality_results (
     -- Low quality (not on a blank page), uncertain type, or not visible.
     review_required         BOOLEAN,
 
+    -- Text orientation as scanned: degrees clockwise the text sits from upright
+    -- (0/90/180/270). The correction applied is 360 minus this.
     orientation_angle       NUMERIC(6,2),
     tilt_angle              NUMERIC(6,2),
     mirrored                BOOLEAN,

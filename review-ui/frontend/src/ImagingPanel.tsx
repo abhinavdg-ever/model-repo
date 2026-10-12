@@ -1436,7 +1436,7 @@ function PageDetails({
           }),
           sameValue(fmtDegrees(page.orientationAngle, sections.rotation), fmtConfidence(null, sections.rotation), {
             id: "orientation",
-            label: "Orientation Angle (Page)",
+            label: "Text Orientation (clockwise)",
             truth: bits.rotation,
           }),
           sameValue(fmtDegrees(page.tiltAngle, sections.rotation), fmtConfidence(null, sections.rotation), {
@@ -1664,7 +1664,7 @@ function DocSummary({
               <th scope="col">Handwritten %</th>
               <th scope="col">Visibility</th>
               <th scope="col">Quality</th>
-              <th scope="col">Orient.</th>
+              <th scope="col" title="How far the text sits rotated clockwise from upright, as scanned">Orient. (CW)</th>
               <th scope="col">Tilt</th>
               <th scope="col">Mirrored</th>
               <th scope="col">DOS From</th>

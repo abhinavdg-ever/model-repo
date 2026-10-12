@@ -165,6 +165,17 @@ def _apply_quality_postprocess(
     return quality
 
 
+def text_orientation(correction: float) -> float:
+    """How far the text sits rotated clockwise from upright, as scanned.
+
+    ``_detect_rotation`` works in the correction (the clockwise turn that makes
+    the page upright); what is stored and shown is the text's orientation,
+    which is what client ground truth records. Text running bottom-to-top
+    needs a 90 turn and is stored as 270.
+    """
+    return float((360 - int(round(float(correction or 0)))) % 360)
+
+
 def _detect_rotation(image_path: Path) -> dict[str, Any]:
     try:
         import cv2
@@ -510,7 +521,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     chart_id=chart_id,
                     page_id=item["page_id"],
                     printed_or_handwritten=item["hw_label"],
-                    orientation_angle=rot["orientation_angle"],
+                    # Stored as the text's orientation, not the correction.
+                    orientation_angle=text_orientation(rot["orientation_angle"]),
                     tilt_angle=rot["tilt_angle"],
                     mirrored=rot["mirrored"],
                     rotation_applied=rot["rotation_applied"],
