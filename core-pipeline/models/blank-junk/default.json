@@ -41,8 +41,8 @@
     "classifier": "logistic_regression"
   },
   "decision": {
-    "min_flag_confidence": 0.6,
-    "junk_blank_min_confidence": 0.6,
+    "min_flag_confidence": 0.7,
+    "junk_blank_min_confidence": 0.85,
     "keep_veto_prob": 0.1,
     "enforce_retention_safeguards": true,
     "demographic_override_labels": [
