@@ -347,7 +347,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
             <div className="accuracy-donuts">
               <Donut
                 label="Overall"
-                detail="A page matches when every metric that applies matches (the 6 other than Orientation, or 5 on a blank / junk page, where page type is not scored), is partial at 3 or more, and misses at 0 to 2. Orientation is scored on its own card only"
+                detail="Each page is judged on the metrics it has ground truth for (Orientation, and page type on a blank / junk page, are left out): all of them matching is a match, at least half is partial, fewer is a miss. A metric with no ground-truth label does not count against the page"
                 tally={overall}
               />
               {METRICS.map((metric) => (

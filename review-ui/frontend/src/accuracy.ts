@@ -27,7 +27,7 @@ export const METRICS: { id: MetricId; label: string; rule: string; inOverall?: b
   {
     id: "dos",
     label: "DOS",
-    rule: "Each labelled date (From, To) matches",
+    rule: "Each labelled date (From, To) matches the Final DOS: Match. Matches only the Extracted DOS: Partial. Neither: No Match",
   },
   {
     id: "blankJunk",
@@ -37,12 +37,12 @@ export const METRICS: { id: MetricId; label: string; rule: string; inOverall?: b
   {
     id: "pageType",
     label: "Page Type",
-    rule: "Ground-truth page type matches the page type or subtype, or is an accepted label for the model type; a broader label is May be; else semantic similarity > 0.8. Not scored on blank or junk pages",
+    rule: "Ground-truth page type matches the Final page type or subtype, or is an accepted label for its model type (else semantic similarity > 0.8): Match. Matches only the Extracted page type, or is a broader label: Partial. Neither: No Match. Not scored on blank or junk pages",
   },
   {
     id: "codeable",
     label: "Codeable / Non-Codeable",
-    rule: "Codeable label matches",
+    rule: "Codeable label matches the Final codeability: Match. Matches only the Extracted one: Partial. Neither: No Match",
   },
   {
     id: "credentials",
@@ -222,6 +222,27 @@ function grade(bits: GtBit[]): Verdict {
   return "no";
 }
 
+function text(value: string | null | undefined): string {
+  return (value ?? "").trim();
+}
+
+/** Each labelled date (From, To) must match exactly. A date that only shares
+ * its year or month is wrong: the 0.5 is kept for "matches the Extracted DOS". */
+function dosVerdict(bits: { dosFrom: GtBit[]; dosTo: GtBit[] }): Verdict | null {
+  const grades = [bits.dosFrom, bits.dosTo].filter(labeled).map(grade);
+  if (grades.length === 0) return null;
+  return grades.every((item) => item === "yes") ? "yes" : "no";
+}
+
+/** Matching the Final value is a full match (1). Matching only the Extracted
+ * value, or a partial on either, is Partial (0.5). Neither is No Match (0). */
+function finalOrExtracted(final: Verdict | null, extracted: Verdict | null): Verdict | null {
+  if (final === null && extracted === null) return null;
+  if (final === "yes") return "yes";
+  if (extracted === "yes" || final === "maybe" || extracted === "maybe") return "maybe";
+  return "no";
+}
+
 function idKey(value: string | null | undefined): string {
   return (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -239,7 +260,7 @@ function pageScores(
   member: Array<[string | null | undefined, GtBit[]]>;
 } {
   const parts = splitPageType(page.pageType);
-  const bits = groundTruthBits({
+  const input = {
     gt: page.groundTruth,
     memberName: page.memberName,
     memberDob: page.memberDob,
@@ -262,6 +283,22 @@ function pageScores(
       (page.isCodeable != null && String(page.isCodeable).trim() !== ""),
     actualSequence: page.actualSequence,
     sequenceKnown: Boolean(sections.sequencing),
+  };
+  const bits = groundTruthBits(input);
+  // Final (imaging_final, after continuity) where the run has one; a field the
+  // Final stage left empty is the Extracted value, so it scores in full.
+  const finalType = text(page.finalPageType) || text(page.pageType);
+  const finalParts = splitPageType(finalType);
+  const finalFrom = text(page.finalDosFrom) || text(page.dosFrom);
+  const finalTo = text(page.finalDosTo) || (text(page.finalDosFrom) ? text(page.finalDosFrom) : text(page.dosTo));
+  const finalBits = groundTruthBits({
+    ...input,
+    pageType: finalParts.family,
+    pageSubtype: finalParts.subtype,
+    pageTypeSemantic: finalType === text(page.pageType) ? page.pageTypeSemantic : null,
+    isCodeable: text(page.finalCodeable) || page.isCodeable,
+    dosFrom: finalFrom || null,
+    dosTo: finalTo || null,
   });
 
   // A labelled Member ID is checked against the page; otherwise the extracted
@@ -286,16 +323,7 @@ function pageScores(
           ? "maybe"
           : "no";
 
-  const dosDates = [bits.dosFrom, bits.dosTo].filter(labeled);
-  const dosGrades = dosDates.map(grade);
-  const dos: Verdict | null =
-    dosGrades.length === 0
-      ? null
-      : dosGrades.every((item) => item === "yes")
-        ? "yes"
-        : dosGrades.some((item) => item === "no")
-          ? "no"
-          : "maybe";
+  const dos = finalOrExtracted(dosVerdict(finalBits), dosVerdict(bits));
 
   const single = (field: GtBit[]): Verdict | null => (labeled(field) ? grade(field) : null);
 
@@ -314,8 +342,10 @@ function pageScores(
       member,
       dos,
       blankJunk: single(bits.blankJunk),
-      pageType: blankOrJunk ? null : single(bits.pageType),
-      codeable: single(bits.codeable),
+      pageType: blankOrJunk
+        ? null
+        : finalOrExtracted(single(finalBits.pageType), single(bits.pageType)),
+      codeable: finalOrExtracted(single(finalBits.codeable), single(bits.codeable)),
       credentials,
       orientation: single(bits.rotation),
     },
@@ -332,17 +362,20 @@ function pageScores(
   };
 }
 
-/** Every applicable metric matching is a page match (six, or five on a blank /
- * junk page, where page type is not scored). Three or more are partial. Two or
- * fewer miss. */
+/** A page's overall match, over the metrics it has ground truth for (page type
+ * is not one on a blank / junk page, and Orientation never is): all of them
+ * matching is a match, at least half is partial, fewer is a miss. */
 function overallVerdict(
   scores: Record<MetricId, Verdict | null>,
   applicable: typeof METRICS = OVERALL_METRICS,
 ): Verdict | null {
-  if (applicable.every((metric) => scores[metric.id] == null)) return null;
-  const matches = applicable.filter((metric) => scores[metric.id] === "yes").length;
-  if (matches === applicable.length) return "yes";
-  if (matches >= 3) return "maybe";
+  // Only the metrics this page has ground truth for: an unlabelled metric is
+  // not a miss. (Before, a page could only fully match with all six labelled.)
+  const scored = applicable.filter((metric) => scores[metric.id] != null);
+  if (scored.length === 0) return null;
+  const matches = scored.filter((metric) => scores[metric.id] === "yes").length;
+  if (matches === scored.length) return "yes";
+  if (2 * matches >= scored.length) return "maybe";
   return "no";
 }
 
