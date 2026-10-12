@@ -880,3 +880,29 @@ class TestShortPagesAreJunk:
         monkeypatch.setattr(bj_stage, "classify_page", lambda t: (bj_stage.CODE_MAIN, "model:keep", 0.9))
         pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
         assert _classify(pages, {1: "made up short"}, {1})[0]["flag"] == "not_blank_junk"
+
+
+class TestSignedPageIsKept:
+    """Post-processing: a page with a signature is never blank or junk."""
+
+    @staticmethod
+    def _run(code_name, *, signed, monkeypatch, text="made up page text " * 10):
+        from stages.lib.blank_junk import stage as bj_stage
+
+        code = getattr(bj_stage, code_name)
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t: (code, "model:junk", 0.95))
+        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
+        return _classify(pages, {1: text}, {1}, short_pages=True, signed_ids={1} if signed else set())[0]
+
+    def test_model_junk_with_a_signature_is_kept(self, monkeypatch):
+        row = self._run("CODE_LETTER_FAX", signed=True, monkeypatch=monkeypatch)
+        assert row["flag"] == "not_blank_junk"
+        assert "signature present" in row["reason"]
+
+    def test_model_blank_with_a_signature_is_kept(self, monkeypatch):
+        row = self._run("CODE_BLANK", signed=True, monkeypatch=monkeypatch, text="")
+        assert row["flag"] == "not_blank_junk"
+
+    def test_without_a_signature_the_verdict_stands(self, monkeypatch):
+        row = self._run("CODE_LETTER_FAX", signed=False, monkeypatch=monkeypatch)
+        assert row["flag"] == "junk"

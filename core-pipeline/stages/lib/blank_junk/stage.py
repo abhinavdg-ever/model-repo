@@ -94,6 +94,12 @@ SHORT_PAGE_WORDS = 20
 _SIGNATURE_WORD = re.compile(r"\bsignature", re.IGNORECASE)
 
 
+# Post-processing, pass 2: a page the key/value extraction found a signature
+# on is a signed document page, never Blank or Junk — whatever the model or a
+# rule said, and whichever pass said it. A duplicate stays a duplicate.
+SIGNED_KEEP_REASON = "signature present on the page -> kept (overrules blank/junk)"
+
+
 def short_page_is_junk(text: str, signed: bool) -> bool:
     """Too little text to be a page of a document, and not a signature page."""
     return word_count(text) < SHORT_PAGE_WORDS and not signed and not _SIGNATURE_WORD.search(text or "")
@@ -300,6 +306,9 @@ def _classify(
         if short_pages and code == CODE_MAIN and short_page_is_junk(text, page_id in (signed_ids or ())):
             code, conf = CODE_OTHERS, 0.9
             reason = f"short page: {word_count(text)} words (< {SHORT_PAGE_WORDS}), not a signature page"
+        if code != CODE_MAIN and page_id in (signed_ids or ()):
+            reason = f"{reason}; {SIGNED_KEEP_REASON}"
+            code, conf = CODE_MAIN, 0.9
         by_id[page_id] = _row_for(
             page, code=code, reason=reason, confidence=conf
         )
@@ -446,6 +455,7 @@ def _run_pass(
             non_printed = non_printed_page_ids(conn, chart_id)
             low_ids = low_quality_page_ids(conn, chart_id)
             quality = get_quality_map(conn, chart_id)
+            pass1_flags: dict[int, str] = {}
 
             if pass_no == 1:
                 ocr_source = "tesseract"
@@ -484,7 +494,7 @@ def _run_pass(
                     else:
                         sources[pid] = "azuredocintel"
                 ocr_source = "azuredocintel"  # default; per-row override below
-                pass1 = get_blank_junk_flags(conn, chart_id, pass_no=1)
+                pass1 = pass1_flags = get_blank_junk_flags(conn, chart_id, pass_no=1)
                 # Eligible: non-printed + low-quality (never judged in pass 1),
                 # plus printed pages pass 1 did not already rule out.
                 pass1_skippers = non_printed | low_ids
@@ -537,6 +547,26 @@ def _run_pass(
                 # Demoted prior-main pages are upserted but were not in todo.
                 if row["page_id"] in ctx.todo:
                     mark_completed(conn, ctx, row["page_id"])
+            # Pages pass 1 already ruled blank / junk are not re-judged here,
+            # so a signed one gets a pass-2 "kept" row, which wins as the
+            # highest pass.
+            for page_id in sorted(signed_ids):
+                if pass1_flags.get(page_id) not in ("blank", "junk"):
+                    continue
+                if any(row["page_id"] == page_id for row in classified):
+                    continue
+                upsert_blank_junk(
+                    conn,
+                    chart_id=chart_id,
+                    page_id=page_id,
+                    pass_no=pass_no,
+                    blank_junk_flag="not_blank_junk",
+                    ocr_source=sources.get(page_id, ocr_source),
+                    junk_subtype=None,
+                    duplicate_of_page_id=None,
+                    confidence=0.9,
+                    reason=f"pass 1: {pass1_flags[page_id]}; {SIGNED_KEEP_REASON}",
+                )
             mark_blank_junk_final(conn, chart_id)
             path = _rewrite_csv(conn, chart_id, ctx.chart_name)
 
