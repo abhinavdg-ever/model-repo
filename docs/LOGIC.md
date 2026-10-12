@@ -260,12 +260,13 @@ any junk code → `junk` (+ `junk_subtype`), else `not_blank_junk`.
 > blank page is flagged `blank`, never `junk`. Pinned by
 > `tests/test_blank_junk_and_dos.py::test_blank_wins_over_junk_even_though_it_is_in_junk_codes`.
 
-**Signed pages are kept (post-processing, pass 2).** A page the key/value
-extraction marks `signature_present = Y` is never Blank or Junk: pass 2
-overrules its own verdict, and writes a pass-2 `not_blank_junk` row for a page
-pass 1 had already called blank or junk (the highest pass wins). The reason
-reads `signature present on the page -> kept`. A duplicate stays a duplicate.
-The extraction runs after pass 1 (stage 6b), so pass 1 cannot apply it itself.
+**Signed pages are kept (post-processing, both passes).** A page whose text
+contains the word "signature" (or that the key/value extraction marked
+`signature_present = Y`) is never Blank or Junk: each pass overrules its own
+verdict, and pass 2 also writes a `not_blank_junk` row for a page pass 1 had
+called blank or junk when the signature only shows in the final OCR (the
+highest pass wins). The word is what counts because the extraction skips pages
+already marked blank or junk. A duplicate stays a duplicate.
 
 `junk_subtype` is constrained by a `CHECK` to the six labels the review UI
 renders. Anything else the classifier produces maps to `Others` rather than

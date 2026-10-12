@@ -94,10 +94,15 @@ SHORT_PAGE_WORDS = 20
 _SIGNATURE_WORD = re.compile(r"\bsignature", re.IGNORECASE)
 
 
-# Post-processing, pass 2: a page the key/value extraction found a signature
-# on is a signed document page, never Blank or Junk — whatever the model or a
-# rule said, and whichever pass said it. A duplicate stays a duplicate.
-SIGNED_KEEP_REASON = "signature present on the page -> kept (overrules blank/junk)"
+# Post-processing, both passes: a page whose text says "signature" (or that
+# the key/value extraction found signed) is never Blank or Junk, whatever the
+# model or a rule said. The extraction skips blank/junk pages, so the word is
+# what reaches them. A duplicate stays a duplicate.
+SIGNED_KEEP_REASON = "the word 'signature' is on the page -> kept (overrules blank/junk)"
+
+
+def is_signed(text: str, signed: bool) -> bool:
+    return signed or bool(_SIGNATURE_WORD.search(text or ""))
 
 
 def short_page_is_junk(text: str, signed: bool) -> bool:
@@ -306,7 +311,7 @@ def _classify(
         if short_pages and code == CODE_MAIN and short_page_is_junk(text, page_id in (signed_ids or ())):
             code, conf = CODE_OTHERS, 0.9
             reason = f"short page: {word_count(text)} words (< {SHORT_PAGE_WORDS}), not a signature page"
-        if code != CODE_MAIN and page_id in (signed_ids or ()):
+        if code != CODE_MAIN and is_signed(text, page_id in (signed_ids or ())):
             reason = f"{reason}; {SIGNED_KEEP_REASON}"
             code, conf = CODE_MAIN, 0.9
         by_id[page_id] = _row_for(
@@ -547,11 +552,14 @@ def _run_pass(
                 # Demoted prior-main pages are upserted but were not in todo.
                 if row["page_id"] in ctx.todo:
                     mark_completed(conn, ctx, row["page_id"])
-            # Pages pass 1 already ruled blank / junk are not re-judged here,
-            # so a signed one gets a pass-2 "kept" row, which wins as the
-            # highest pass.
-            for page_id in sorted(signed_ids):
-                if pass1_flags.get(page_id) not in ("blank", "junk"):
+            # Pages pass 1 already ruled blank / junk are not re-judged here
+            # (pass 1 keeps signed pages itself; this covers a page whose
+            # signature only shows in the final OCR). A pass-2 "kept" row wins
+            # as the highest pass.
+            for page_id, flag in sorted(pass1_flags.items()):
+                if flag not in ("blank", "junk"):
+                    continue
+                if not is_signed(texts.get(page_id) or "", page_id in signed_ids):
                     continue
                 if any(row["page_id"] == page_id for row in classified):
                     continue

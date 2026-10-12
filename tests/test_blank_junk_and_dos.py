@@ -897,7 +897,7 @@ class TestSignedPageIsKept:
     def test_model_junk_with_a_signature_is_kept(self, monkeypatch):
         row = self._run("CODE_LETTER_FAX", signed=True, monkeypatch=monkeypatch)
         assert row["flag"] == "not_blank_junk"
-        assert "signature present" in row["reason"]
+        assert "signature" in row["reason"]
 
     def test_model_blank_with_a_signature_is_kept(self, monkeypatch):
         row = self._run("CODE_BLANK", signed=True, monkeypatch=monkeypatch, text="")
@@ -906,3 +906,18 @@ class TestSignedPageIsKept:
     def test_without_a_signature_the_verdict_stands(self, monkeypatch):
         row = self._run("CODE_LETTER_FAX", signed=False, monkeypatch=monkeypatch)
         assert row["flag"] == "junk"
+
+    def test_the_word_signature_alone_keeps_it(self, monkeypatch):
+        # The extraction skips blank / junk pages, so the word is what reaches them.
+        row = self._run("CODE_LETTER_FAX", signed=False, monkeypatch=monkeypatch,
+                        text="Records request. Provider Signature: made up")
+        assert row["flag"] == "not_blank_junk"
+        assert "signature" in row["reason"]
+
+    def test_pass_1_applies_it_too(self, monkeypatch):
+        from stages.lib.blank_junk import stage as bj_stage
+
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t: (bj_stage.CODE_LETTER_FAX, "model:junk", 0.95))
+        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
+        row = _classify(pages, {1: "Fax cover. Signature: made up"}, {1})[0]
+        assert row["flag"] == "not_blank_junk"
