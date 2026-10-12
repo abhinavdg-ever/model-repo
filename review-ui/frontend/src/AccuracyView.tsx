@@ -68,6 +68,18 @@ function InfoTip({ text }: { text: string }) {
   );
 }
 
+/** Match / Partial / No Match on three lines, so every metric column fits. */
+function StackedTally({ tally }: { tally: Tally }) {
+  if (tally.scored === 0) return <>—</>;
+  return (
+    <span className="accuracy-tally">
+      <span>Match {tally.yes}</span>
+      <span>Partial {tally.maybe}</span>
+      <span>No Match {tally.no}</span>
+    </span>
+  );
+}
+
 const SCORE_INFO =
   "Accuracy score = (Match + 0.5 × Partial) / Total, where Total = Match + Partial + No Match.";
 const RATES_INFO =
@@ -167,7 +179,7 @@ function CalculatingPanel() {
   );
 }
 
-const CHARTS_PER_PAGE = 10;
+const CHARTS_PER_PAGE = 15;
 
 export default function AccuracyView({ onBack, onOpenChart }: Props) {
   const [rows, setRows] = useState<ChartAccuracy[]>([]);
@@ -218,7 +230,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
 
   const overall = useMemo(() => sumTallies(rows.map((row) => row.overall)), [rows]);
 
-  // "By chart": search by file / chart name, 10 per page. The donuts stay on all files.
+  // "By chart": search by file / chart name, 15 per page. The donuts stay on all files.
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return needle ? rows.filter((row) => row.chartName.toLowerCase().includes(needle)) : rows;
@@ -288,7 +300,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
             <div className="accuracy-donuts">
               <Donut
                 label="Overall"
-                detail="A page matches when all 6 metrics match, is partial at 3 to 5, and misses at 0 to 2"
+                detail="A page matches when every metric that applies matches (all 6, or 5 on a blank / junk page, where page type is not scored), is partial at 3 or more, and misses at 0 to 2"
                 tally={overall}
               />
               {METRICS.map((metric) => (
@@ -370,11 +382,15 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                     <td className="landing-col-updated">{fmtUpdated(row.lastVerifiedAt)}</td>
                     <td>{row.overall.scored}</td>
                     {METRICS.map((metric) => (
-                      <td key={metric.id}>{formatDistribution(row.metrics[metric.id])}</td>
+                      <td key={metric.id}>
+                        <StackedTally tally={row.metrics[metric.id]} />
+                      </td>
                     ))}
                     <td>
-                      {percentLabel(row.overall)}
-                      <span className="accuracy-chart-ratio"> {formatDistribution(row.overall)}</span>
+                      <strong>{percentLabel(row.overall)}</strong>
+                      <span className="accuracy-chart-ratio">
+                        <StackedTally tally={row.overall} />
+                      </span>
                     </td>
                   </tr>
                 ))}

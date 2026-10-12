@@ -3253,6 +3253,22 @@ input {
   font-weight: 500;
 }
 
+.accuracy-tally {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.35;
+  font-size: 12px;
+}
+
+.accuracy-table td {
+  vertical-align: top;
+}
+
+/* Headers wrap so a column is as wide as its "No Match n" line, not its title. */
+.accuracy-table thead th {
+  white-space: normal;
+}
+
 /* ---------- Page zoom / fullscreen ---------- */
 
 .page-toolbar {

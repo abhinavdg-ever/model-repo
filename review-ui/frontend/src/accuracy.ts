@@ -3,7 +3,7 @@ import type {
   ImagingPageResult,
   ImagingSectionsProcessed,
 } from "./api";
-import { groundTruthBits, hasGroundTruth, type GtBit } from "./groundTruth";
+import { blankJunkTruth, groundTruthBits, hasGroundTruth, type GtBit } from "./groundTruth";
 import { splitPageType } from "./ImagingPanel";
 
 export type Verdict = "yes" | "maybe" | "no";
@@ -29,7 +29,7 @@ export const METRICS: { id: MetricId; label: string; rule: string }[] = [
   {
     id: "pageType",
     label: "Page Type",
-    rule: "Ground-truth page type matches the page type or subtype, or is an accepted label for the model type; a broader label is May be; else semantic similarity > 0.8",
+    rule: "Ground-truth page type matches the page type or subtype, or is an accepted label for the model type; a broader label is May be; else semantic similarity > 0.8. Not scored on blank or junk pages",
   },
   {
     id: "codeable",
@@ -162,6 +162,8 @@ function pageScores(
 ): {
   scores: Record<MetricId, Verdict | null>;
   blankJunk: GtBit[];
+  /** The metrics a page is held to: all six, or five on a blank / junk page. */
+  applicable: typeof METRICS;
   member: Array<[string | null | undefined, GtBit[]]>;
 } {
   const parts = splitPageType(page.pageType);
@@ -225,6 +227,13 @@ function pageScores(
 
   const single = (field: GtBit[]): Verdict | null => (labeled(field) ? grade(field) : null);
 
+  // A blank or junk page has no page type to score: the ground truth says so,
+  // or, when it has no blank / junk label, the pipeline does.
+  const truth = page.groundTruth ? blankJunkTruth(page.groundTruth) : null;
+  const blankOrJunk = truth
+    ? truth.toLowerCase().startsWith("yes")
+    : (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
+
   // The ground-truth Provider Credentials label is stored in providerSignature.
   const credentials = credentialsVerdict(page.groundTruth?.providerSignature, page.providerCredentials);
 
@@ -233,11 +242,12 @@ function pageScores(
       member,
       dos,
       blankJunk: single(bits.blankJunk),
-      pageType: single(bits.pageType),
+      pageType: blankOrJunk ? null : single(bits.pageType),
       codeable: single(bits.codeable),
       credentials,
     },
     blankJunk: bits.blankJunk,
+    applicable: blankOrJunk ? METRICS.filter((metric) => metric.id !== "pageType") : METRICS,
     member: [
       [page.groundTruth?.memberName, bits.memberName],
       [page.groundTruth?.memberDob, bits.memberDob],
@@ -246,11 +256,16 @@ function pageScores(
   };
 }
 
-/** Six full matches are a page match. Three to five are partial. Two or fewer miss. */
-function overallVerdict(scores: Record<MetricId, Verdict | null>): Verdict | null {
-  if (METRICS.every((metric) => scores[metric.id] == null)) return null;
-  const matches = METRICS.filter((metric) => scores[metric.id] === "yes").length;
-  if (matches === METRICS.length) return "yes";
+/** Every applicable metric matching is a page match (six, or five on a blank /
+ * junk page, where page type is not scored). Three or more are partial. Two or
+ * fewer miss. */
+function overallVerdict(
+  scores: Record<MetricId, Verdict | null>,
+  applicable: typeof METRICS = METRICS,
+): Verdict | null {
+  if (applicable.every((metric) => scores[metric.id] == null)) return null;
+  const matches = applicable.filter((metric) => scores[metric.id] === "yes").length;
+  if (matches === applicable.length) return "yes";
   if (matches >= 3) return "maybe";
   return "no";
 }
@@ -309,7 +324,7 @@ export function scoreChart(
     if (!hasGroundTruth(page.groundTruth)) continue;
     const scored = pageScores(page, sections, doc.manifest?.memberId);
     for (const metric of METRICS) add(metrics[metric.id], scored.scores[metric.id]);
-    add(overall, overallVerdict(scored.scores));
+    add(overall, overallVerdict(scored.scores, scored.applicable));
     addBlankJunk(blankJunkRates, scored.blankJunk);
     addMember(memberRates, scored.member);
   }

@@ -206,7 +206,7 @@ function codeableMark(
 }
 
 /** Blank Page / Junk Page / Is Invoice collapsed into the pipeline's own format. */
-function blankJunkTruth(gt: PageGroundTruth): string | null {
+export function blankJunkTruth(gt: PageGroundTruth): string | null {
   const blank = yesNo(gt.blankPage);
   const junk = yesNo(gt.junkPage);
   const invoice = yesNo(gt.isInvoice);
