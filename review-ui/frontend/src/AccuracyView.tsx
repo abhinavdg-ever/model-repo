@@ -4,6 +4,7 @@ import { getAccuracyReport } from "./api";
 import {
   METRICS,
   MIN_LAST_RUN,
+  MIN_LAST_RUN_LABEL,
   accuracyPercent,
   formatClassAccuracy,
   formatDistribution,
@@ -313,7 +314,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
         <CalculatingPanel />
       ) : rows.length === 0 ? (
         <p className="accuracy-status">
-          No pages with ground truth to score from runs on or after 11 Oct 2026.
+          No pages with ground truth to score from runs on or after {MIN_LAST_RUN_LABEL}.
         </p>
       ) : (
         <>
@@ -322,7 +323,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
             <p className="accuracy-compared">
               <strong>{rows.length}</strong> {rows.length === 1 ? "file" : "files"} compared ·{" "}
               <strong>{overall.scored}</strong> {overall.scored === 1 ? "page" : "pages"} compared{" "}
-              <InfoTip text="Files last run on or after 11 Oct 2026 with at least one page that has ground truth. A page is compared when it has any ground-truth label." />
+              <InfoTip text={`Files last run on or after ${MIN_LAST_RUN_LABEL} with at least one page that has ground truth. A page is compared when it has any ground-truth label.`} />
             </p>
             <p className="accuracy-note">
               Match counts as 1, Partial as 0.5, and No Match as 0. <InfoTip text={SCORE_INFO} />
@@ -380,7 +381,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                     Chart <InfoTip text="The file (chart). Click it to open the file in the viewer." />
                   </th>
                   <th scope="col">
-                    Last Run At <InfoTip text="When the pipeline last ran this file. Only runs on or after 11 Oct 2026 are shown." />
+                    Last Run At <InfoTip text={`When the pipeline last ran this file. Only runs on or after ${MIN_LAST_RUN_LABEL} are shown.`} />
                   </th>
                   <th scope="col">
                     Last Verified At <InfoTip text="When ground truth was last saved for this file." />

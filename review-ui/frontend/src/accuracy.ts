@@ -67,7 +67,14 @@ export type Tally = { yes: number; no: number; maybe: number; scored: number };
 export type ClassRates = { tp: number; fp: number; fn: number; tn: number };
 
 /** Charts whose last run is before this date are left out of the report. */
-export const MIN_LAST_RUN = "2026-10-11";
+export const MIN_LAST_RUN = "2026-10-12";
+/** MIN_LAST_RUN as people read it ("12 Oct 2026"), for the page's text. */
+export const MIN_LAST_RUN_LABEL = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+}).format(new Date(`${MIN_LAST_RUN}T00:00:00Z`));
 
 export type ChartAccuracy = {
   chartId: string;
