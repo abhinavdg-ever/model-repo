@@ -7,8 +7,11 @@ JUNK_COVER_PAGE, JUNK_RECORD_REQUEST, JUNK_INSTRUCTIONS, JUNK_LETTER_FAX,
 JUNK_OTHERS). Its decision rules come with it (vendored ``src/models/decision.py``
 and ``src/inference/predict.py``, settings in ``default.json`` → ``decision``):
 BLANK / JUNK only at ≥ 0.60 for one label (min_flag_confidence 0.60) and KEEP probability ≤ 0.10,
-clinical-image / demographic retention safeguards, the invoice rule, and the
-junk sub-type named by trigger phrases (the model decides mixed or untriggered
+clinical-image / demographic retention safeguards, the invoice rule, the
+cover / letter-fax rule and the short "end of patient record" rule (v3; these
+three mark a page junk with review whatever the model says, never a clinical
+image or a page with note content), and the junk sub-type named by trigger
+phrases (the model decides mixed or untriggered
 pages). A page the model is unsure about stays KEEP with review.
 
 Fallbacks, each stamped in the reason so a degraded run is visible:

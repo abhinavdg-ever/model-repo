@@ -169,3 +169,42 @@ def filter_training_rows(
             continue
         out.append(r)
     return out
+
+
+def load_annotated_pages(path: Path | str, already: Iterable[PageRecord] = ()) -> list[PageRecord]:
+    """b_jnk_creator labels joined to page text (scripts/build_annotated_pages.py).
+
+    Missing file = none. A page whose text is already in ``already`` or earlier
+    in the file is skipped, so a label never fights a hand label.
+    """
+    path = Path(path)
+    if not path.is_file():
+        return []
+    seen = {r.text_hash for r in already if (r.ocr_text or "").strip()}
+    out: list[PageRecord] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        obj = json.loads(line)
+        text = str(obj.get("text") or "").strip()
+        label = str(obj.get("label") or "")
+        if not text or label not in ACTION_BY_CLASS or to_flag(label) is None:
+            continue
+        text_hash = _sha1_norm(text)
+        if text_hash in seen:
+            continue
+        seen.add(text_hash)
+        out.append(PageRecord(
+            page_id=str(obj.get("id") or ""),
+            ocr_text=text,
+            primary_class=label,
+            keep_delete=ACTION_BY_CLASS[label],
+            confidence="HIGH",
+            train_eligible=True,
+            # One chart folder stays on one side of the train / test split.
+            split_group=str(obj.get("group") or obj.get("id") or ""),
+            text_hash=text_hash,
+            ocr_char_count=len(text),
+            raw=obj,
+        ))
+    return out

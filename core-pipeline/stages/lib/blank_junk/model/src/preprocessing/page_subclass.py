@@ -2,8 +2,10 @@
 
 The model decides KEEP vs BLANK vs JUNK. These rules name the subtype of a
 page that is already BLANK or JUNK, so training labels and inference subtypes
-always agree. The invoice rule is the exception: one strong billing phrase,
-or two weak ones, marks the page JUNK_INVOICE. When a page carries triggers of several subtypes, its main
+always agree. Four rules also set the flag to JUNK: a billing phrase
+(JUNK_INVOICE), a cover-page phrase (JUNK_COVER_PAGE), a letter or fax
+phrase (JUNK_LETTER_FAX), and a short closer such as "end of patient record"
+(JUNK_OTHERS). When a page carries triggers of several subtypes, its main
 purpose wins: the subtype named first in the page heading, else the one with
 the most triggers. The typology list order (Invoice, Cover Page, Record
 Request, Instructions, Letter/Fax, Others) only breaks exact ties.
@@ -30,6 +32,8 @@ BLANK_SUBTYPES = (
 )
 
 SHORT_PAGE_MAX_WORDS = 19
+# A closer is a name, this line, and a page number. A real note is longer.
+END_RECORD_MAX_WORDS = 40
 HEADING_WORDS = 30
 
 INVOICE_STRONG = (
@@ -40,8 +44,44 @@ INVOICE_WEAK = (
     "bill to", "ship to", "unit price", "charge description", "payments received",
     "revenue reconciliation",
 )
+# "accept" is a stamp on a short separator. On a long note it is the verb "accepted".
+COVER_ANY_LENGTH = ("cover page", "cover sheet")
+COVER_SHORT_ONLY = ("accept", "unaccept")
+# Openings and fax shells. A visit note that only says "please find attached"
+# next to a clinical section is not a letter.
+LETTER_SOFT = (
+    "please find attached", "please find the attached",
+    "dear doctor", "dear dr", "dear provider",
+)
+# The page itself is the end of the chart. Not "end of report": that line
+# sits under a real report.
+END_RECORD_PHRASES = (
+    "end of patient record",
+    "end of the patient record",
+    "end of patient's record",
+    "end of medical record",
+    "end of the medical record",
+    "end of chart",
+    "end of the chart",
+    "end of this record",
+)
+# These name the page itself, so a stray clinical word ("Re: follow up", an
+# ICD code on an HCC stamp) does not save it. "Cover letter" is not here: a
+# consult says "see cover letter from referring office".
+SHELL_STRONG = frozenset(COVER_ANY_LENGTH + COVER_SHORT_ONLY + ("fax cover", "fax transmission", "fax sheet"))
+# The filled-in fields of a fax cover form. A faxed note has at most a
+# "From: ... To: ..." header line.
+FAX_FORM_RE = re.compile(
+    r"(?<![a-z])(fax\s*(?:to|from|#|no\.?|number)?\s*:|to\s*:|from\s*:|pages?\b[^:\n]{0,20}:|"
+    r"re\s*:|subject\s*:|attn\s*:?|attention\s*:)",
+    re.I,
+)
+FAX_FORM_MIN_FIELDS = 4
+# A fax form alone (no cover wording) is a cover only on a short page or one with no
+# clinical wording: a faxed note can open with the sender's form block.
+FAX_FORM_MAX_WORDS = 150
 TRIGGERS: dict[str, tuple[str, ...]] = {
-    "JUNK_COVER_PAGE": ("accept", "unaccept", "cover page"),
+    "JUNK_COVER_PAGE": COVER_ANY_LENGTH + COVER_SHORT_ONLY,
     "JUNK_RECORD_REQUEST": (
         "medical records request", "records requested", "transmittal sheet", "records attached",
         "risk adjustment request", "audit fulfillment",
@@ -53,7 +93,9 @@ TRIGGERS: dict[str, tuple[str, ...]] = {
     ),
     "JUNK_LETTER_FAX": (
         "cover letter", "fax transmission", "fax cover", "facsimile", "fax sheet", "this fax",
-        "intended recipient",
+        "intended recipient", "this message is intended", "if you have received this",
+        "to whom it may concern", "dear sir", "dear madam",
+        *LETTER_SOFT,
     ),
 }
 PROXIMITY_NAME = "records~request"
@@ -69,6 +111,23 @@ SIGNATURE_RE = re.compile(r"signed by|electronically signed|attestation", re.I)
 CLINICAL_SECTION_RE = re.compile(
     r"(?<![a-z])(encounters|medications?|allergies|problems?|vital signs|results|procedures?|"
     r"labs?|imaging|diagnos[ie]s|assessment|immunizations?|history|plan of (?:care|treatment))(?![a-z])",
+    re.I,
+)
+# Wider than the section names: the wording of a note, an order, or a dose.
+# Only the cover and letter/fax rule uses it, so the invoice rule is unchanged.
+NOTE_CONTENT_RE = re.compile(
+    CLINICAL_SECTION_RE.pattern
+    + r"|(?<![a-z])(hpi|mdm|ros|dx|chief complaint|physical exam|exam|impression|"
+    r"consultation|referred by|pleasure of seeing|seen today|follow[- ]?up|f/u|"
+    r"med rec|discharge|admission|surgery|prescribed|allerg[a-z]*|intolerances?)(?![a-z])"
+    r"|\b[A-TV-Z]\d{2}\.\d{1,4}\b|\b\d+(?:\.\d+)?\s?(?:mg|mcg|ml)\b"
+    # A faxed chart page with little text: a continuation, a signature, a
+    # registration sheet, or a section divider. Not bare "notes": a fax cover
+    # has a "Notes:" field.
+    r"|(?<![a-z])(rtc|return\s+(?:in\s+)?\d+|call with concerns|continued|counsel(?:ing|ed)|"
+    r"electronically signed|e-signed|attestation|examined|registration|demographic|"
+    r"patient information|behavioral health|radiology|reports|"
+    r"(?:consult|progress|clinical|nursing|physician|visit|office)\s+notes)(?![a-z])",
     re.I,
 )
 
@@ -100,14 +159,20 @@ def _ci_token(token: str) -> str:
 def _phrase_re(phrase: str) -> re.Pattern[str]:
     # Word-start match; trailing letters allowed ("invoiced", "accepted").
     # A lowercase letter running into an uppercase letter is also a word start.
-    # OCR often glues the patient name to the next heading ("NameHEADING").
+    # OCR often glues the patient name to the next heading ("NameHEADING"),
+    # and a date to the next line ("09/11/2024To Whom").
     body = r"\s+".join(_ci_token(token) for token in phrase.split())
-    return re.compile(r"(?:(?<![A-Za-z0-9])|(?<=[a-z])(?=[A-Z]))" + body)
+    return re.compile(r"(?:(?<![A-Za-z0-9])|(?<=[a-z0-9])(?=[A-Z]))" + body)
 
 
 MATCHERS: dict[str, re.Pattern[str]] = {
     p: _phrase_re(p)
-    for p in (*INVOICE_STRONG, *INVOICE_WEAK, *(q for v in TRIGGERS.values() for q in v))
+    for p in (
+        *INVOICE_STRONG,
+        *INVOICE_WEAK,
+        *END_RECORD_PHRASES,
+        *(q for v in TRIGGERS.values() for q in v),
+    )
 }
 
 
@@ -153,11 +218,22 @@ def _candidate_hits(text: str) -> dict[str, list[str]]:
         # on a visit stays a visit.
         if not (set(hits) <= {"billing"} and CLINICAL_SECTION_RE.search(text or "")):
             out["JUNK_INVOICE"] = hits
-    if groups["JUNK_COVER_PAGE"] and word_count(text) <= SHORT_PAGE_MAX_WORDS:
-        out["JUNK_COVER_PAGE"] = groups["JUNK_COVER_PAGE"]
-    for s in ("JUNK_RECORD_REQUEST", "JUNK_INSTRUCTIONS", "JUNK_LETTER_FAX"):
-        if groups[s]:
-            out[s] = groups[s]
+    cover = list(groups["JUNK_COVER_PAGE"])
+    if word_count(text) > SHORT_PAGE_MAX_WORDS:
+        cover = [phrase for phrase in cover if phrase in COVER_ANY_LENGTH]
+    if cover:
+        out["JUNK_COVER_PAGE"] = cover
+    for subtype in ("JUNK_RECORD_REQUEST", "JUNK_INSTRUCTIONS", "JUNK_LETTER_FAX"):
+        if groups[subtype]:
+            out[subtype] = groups[subtype]
+    letter = out.get("JUNK_LETTER_FAX") or []
+    if letter and set(letter) <= set(LETTER_SOFT) and CLINICAL_SECTION_RE.search(text or ""):
+        del out["JUNK_LETTER_FAX"]
+    # Only when nothing more specific matched, so a bill or a cover keeps its name.
+    if not out and word_count(text) <= END_RECORD_MAX_WORDS:
+        hits = [p for p in END_RECORD_PHRASES if MATCHERS[p].search(text or "")]
+        if hits:
+            out["JUNK_OTHERS"] = hits
     return out
 
 
@@ -175,6 +251,55 @@ def invoice_page_reason(text: str) -> str | None:
     if set(hits) <= {"billing"} and CLINICAL_SECTION_RE.search(text or ""):
         return None
     return hits[0]
+
+
+def end_record_reason(text: str) -> str | None:
+    """Short closer: a name and "end of patient record", and little else.
+
+    A longer page that only has this line in the footer stays with the model.
+    """
+    if word_count(text) > END_RECORD_MAX_WORDS:
+        return None
+    for phrase in END_RECORD_PHRASES:
+        if MATCHERS[phrase].search(text or ""):
+            return phrase
+    return None
+
+
+def shell_page_reason(text: str) -> tuple[str, str] | None:
+    """Cover sheet or letter/fax rule. Returns (subtype, phrase) or nothing.
+
+    A cover sheet says cover page or cover sheet at any length. Accept and
+    unaccept count only on a short page. A letter or fax says one of the
+    letter phrases. A page with clinical content is left alone: a faxed note
+    carries "this fax" and "intended recipient" in its header and footer, and
+    a consult letter opens with "Dear Dr.". A page that names itself a cover
+    (or fax cover), or is a filled-in fax cover form, is junk anyway. A fax
+    form ("Fax To: / From: / Pages: / Re:") is a cover even with no cover
+    wording, when the page is short or has no clinical wording.
+    """
+    chosen = {
+        subtype: hits
+        for subtype, hits in _candidate_hits(text).items()
+        if subtype in {"JUNK_COVER_PAGE", "JUNK_LETTER_FAX"}
+    }
+    fields = {re.sub(r"[^a-z]", "", m.lower())[:4] for m in FAX_FORM_RE.findall(text or "")}
+    fax_form = len(fields) >= FAX_FORM_MIN_FIELDS and any(f.startswith("fax") for f in fields)
+    clinical = NOTE_CONTENT_RE.search(text or "")
+    if not chosen:
+        if fax_form and (not clinical or word_count(text) <= FAX_FORM_MAX_WORDS):
+            return "JUNK_LETTER_FAX", "fax form"
+        return None
+    if clinical:
+        strong = any(phrase in SHELL_STRONG for hits in chosen.values() for phrase in hits)
+        if not strong and len(fields) < FAX_FORM_MIN_FIELDS:
+            return None
+    if len(chosen) == 1:
+        subtype, hits = next(iter(chosen.items()))
+        return subtype, hits[0]
+    subtype, reason = main_purpose(text, chosen)
+    phrase = reason.split(":", 1)[-1]
+    return subtype, phrase
 
 
 def junk_trigger_groups(text: str) -> list[str]:
