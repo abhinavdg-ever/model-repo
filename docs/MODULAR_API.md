@@ -66,10 +66,10 @@ Blank / junk / duplicate.
 
 ### 4. `POST` / `GET` `/classification/page-type`
 
-Codeable / Non-Codeable page type.
+Codable / Non-Codable page type.
 
 - **Model today** — BERT from `models/page-family/bert` (model type) plus the keyword model (`page_keyword_canon.json`), arbitrated by `page_arbitration.json`; names from `page_taxonomy.json`. Missing model ⇒ keywords only. See [PAGE_CLASSIFICATION.md](PAGE_CLASSIFICATION.md).
-- **Out** — `page_type`, tag (codeable / non-codeable / discharge)  
+- **Out** — `page_type`, tag (codeable / non-codable / discharge)  
 - **Toggle** — project-specific canon  
 
 ### 5. `POST` / `GET` `/classification/encounter`

@@ -34,8 +34,8 @@ _ready: set[tuple[str, str]] = set()
 _ready_lock = threading.Lock()
 
 _CODEABLE = {
-    "codeable": "Codeable",
-    "non_codeable": "Non-Codeable",
+    "codeable": "Codable",
+    "non_codeable": "Non-Codable",
     "discharge_summary": "Discharge",
     "discharge_frequency": "Discharge",
     "not_sure": "Not Sure",

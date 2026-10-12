@@ -31,7 +31,7 @@
 --   member_extraction_results    member_verify
 --   member_verification_summary  member_verify
 --   dos_extraction_results       dos_extract
---   page_classification          page_subtype (codeable / non-codeable / discharge)
+--   page_classification          page_subtype (codeable / non-codable / discharge)
 --   encounter_type_results       encounter_type  (was a V2 proposal)
 --   page_sequencing_results      page_sequencing (was a V2 proposal)
 --   pipeline_jobs                run log
@@ -120,7 +120,7 @@ INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1) VALUES
     ('blank_junk',       2, 60, 'Blank/Junk/Duplicate — pass 2',  TRUE),
     ('member_verify',    1, 70, 'Member Extraction + Verify',    TRUE),
     -- Page type before DOS: DOS reads the Extracted sub-type.
-    ('page_subtype',     1, 75, 'Codeable / Non Codeable (TF)', TRUE),
+    ('page_subtype',     1, 75, 'Codable / Non Codable (TF)', TRUE),
     ('dos_extract',      1, 80, 'Date-of-Service Extraction',    TRUE),
     ('continuity',       1, 87, 'Document Continuity',           TRUE),
     ('encounter_type',   1, 90, 'Encounter Type (TF)',           TRUE),

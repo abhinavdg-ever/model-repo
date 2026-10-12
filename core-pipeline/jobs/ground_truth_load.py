@@ -144,10 +144,10 @@ _CODEABLE = re.compile(r"\b(?:(non)[\s_-]*)?code?able\b", re.IGNORECASE)
 
 
 def spell_codeable(value: Optional[str]) -> Optional[str]:
-    """Codeable / Non-Codeable, however a sheet or an older run spelled it."""
+    """Codable / Non-Codable, however a sheet or an older run spelled it."""
     if not value:
         return value
-    return _CODEABLE.sub(lambda m: "Non-Codeable" if m.group(1) else "Codeable", value)
+    return _CODEABLE.sub(lambda m: "Non-Codable" if m.group(1) else "Codable", value)
 
 
 def parse_rows(headers: list[Any], data_rows: list[list[Any]]) -> list[dict[str, Any]]:

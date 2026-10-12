@@ -23,6 +23,8 @@ export type MetricId =
 export const METRICS: {
   id: MetricId;
   label: string;
+  /** Shorter header for the By chart table, where it differs. */
+  tableLabel?: string;
   rule: string;
   inOverall?: boolean;
   binary?: boolean;
@@ -52,8 +54,9 @@ export const METRICS: {
   },
   {
     id: "codeable",
-    label: "Codeable / Non-Codeable",
-    rule: "Codeable label matches the Final codeability: Match. Matches only the Extracted one: Partial. Neither: No Match",
+    label: "Codable / Non-Codable",
+    tableLabel: "Codability",
+    rule: "Codable label matches the Final codability: Match. Matches only the Extracted one: Partial. Neither: No Match",
   },
   {
     id: "credentials",

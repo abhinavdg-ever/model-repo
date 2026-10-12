@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 STAGE = "page_subtype"
 
-_DISPLAY = {"codeable": "Codeable", "non_codeable": "Non-Codeable", "discharge_summary": "Discharge"}
+_DISPLAY = {"codeable": "Codable", "non_codeable": "Non-Codable", "discharge_summary": "Discharge"}
 
 CODEABLE_COLS = [
     "chart_name",

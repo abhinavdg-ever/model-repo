@@ -183,9 +183,9 @@ export function displayWords(value: string | null | undefined): string {
 // Codeable, Non Codeable, Non-Codeable, NonCodeable, non_codeable, Codable …
 const CODEABLE = /\b(?:(non)[\s_-]*)?code?able\b/gi;
 
-/** Codeable / Non-Codeable, however a sheet or an older run spelled it. */
+/** Codable / Non-Codable, however a sheet or an older run spelled it. */
 export function spellCodeable(value: string): string {
-  return value.replace(CODEABLE, (_match, non) => (non ? "Non-Codeable" : "Codeable"));
+  return value.replace(CODEABLE, (_match, non) => (non ? "Non-Codable" : "Codable"));
 }
 
 export function displayCodeable(value: string | null | undefined): string {

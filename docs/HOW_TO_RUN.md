@@ -190,7 +190,7 @@ curl -fsS localhost:8001/api/stages | python -m json.tool
 | `section_headers` | Canon match on OCR JSON | No |
 | `member_verify` | Member extract + verify | No |
 | `dos_extract` | Date of service | No (LLM optional) |
-| `page_subtype` | Codeable / Non-Codeable / Discharge | No |
+| `page_subtype` | Codable / Non-Codable / Discharge | No |
 | `encounter_type` | Outpatient F2F / Tele / Inpatient / Home | No |
 | `page_sequencing` | Suggested page order | No |
 
@@ -425,7 +425,7 @@ Poll: `GET /api/charts/by-name/{chart_name}` (blob) / `GET /api/charts/{id}` (lo
 | Blank/junk pass 2 | `["blank_junk:2"]` |
 | Member verification (e.g. after enabling NER) | `["member_verify"]` |
 | DOS only | `["dos_extract"]` |
-| Codeable only | `["page_subtype"]` |
+| Codable only | `["page_subtype"]` |
 | Encounter only | `["encounter_type"]` |
 | Sequencing only | `["page_sequencing"]` |
 
@@ -604,5 +604,5 @@ curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/j
   }'
 ```
 
-4. Review-ui → Codeable / Encounter Type / Actual Sequence populate from the
+4. Review-ui → Codable / Encounter Type / Actual Sequence populate from the
    new CSVs (or DB in production mode)

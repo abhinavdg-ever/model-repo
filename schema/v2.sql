@@ -177,7 +177,7 @@ ON CONFLICT (email) DO NOTHING;
 -- ---------------------------------------------------------------------
 -- PAGE-LEVEL RESULT TABLES
 -- ---------------------------------------------------------------------
--- page_classification lives in v1.sql (codeable / non-codeable / discharge).
+-- page_classification lives in v1.sql (codeable / non-codable / discharge).
 
 CREATE TABLE chunk_results (
     id           BIGSERIAL PRIMARY KEY,

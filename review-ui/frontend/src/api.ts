@@ -156,7 +156,7 @@ export type ImagingPageResult = {
   continuityEvidence?: string | null;
   /** Final values (imaging_final). Inside a document, its first page's. */
   finalPageType?: string | null;
-  /** Codeable | Non-Codeable | Discharge — follows finalPageType. */
+  /** Codable | Non-Codable | Discharge — follows finalPageType. */
   finalCodeable?: string | null;
   finalDosFrom?: string | null;
   finalDosTo?: string | null;
@@ -171,7 +171,7 @@ export type ImagingPageResult = {
   pageTypeConfidence: number | null;
   /** Accuracy report: semantic similarity of the ground-truth page type (0–1). */
   pageTypeSemantic?: number | null;
-  /** Codeable | Non-Codeable | Discharge (older runs: Codeable / Non Codeable). */
+  /** Codable | Non-Codable | Discharge (older runs: Codeable / Non Codeable). */
   isCodeable?: string | null;
   /** Pipeline / file order (1-based). */
   currentSequence?: number | null;

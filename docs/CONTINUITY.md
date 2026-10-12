@@ -181,7 +181,7 @@ orientation, blank/junk flag and `seq` (`COPIED_FROM_REFERENCE` in
 
 ### review-ui
 
-Page Type, Page Subtype, Codeable and DOS show Extracted (own) vs Final (from
+Page Type, Page Subtype, Codable and DOS show Extracted (own) vs Final (from
 `imaging_final`). A "Document" row shows `Document 3 · continue — page 7->8 of
 17`. Runs from before these stages still display through the old `finalDos` /
 `dosMatch = span` path.

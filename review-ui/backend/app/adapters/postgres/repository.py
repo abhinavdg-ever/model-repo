@@ -902,7 +902,7 @@ class PostgresFolderRepository(FolderRepository):
                         if conf is not None:
                             fields["dosConfidence"] = float(conf)
 
-                    # Codeable / non-codeable / discharge (page_classification)
+                    # Codable / non-codable / discharge (page_classification)
                     cur.execute(
                         """
                         SELECT p.page_name, pc.page_subtype,
@@ -916,8 +916,8 @@ class PostgresFolderRepository(FolderRepository):
                         (folder_id,),
                     )
                     codeable_display = {
-                        "codeable": "Codeable",
-                        "non_codeable": "Non-Codeable",
+                        "codeable": "Codable",
+                        "non_codeable": "Non-Codable",
                         "discharge_summary": "Discharge",
                         "discharge_frequency": "Discharge",
                         "not_sure": "Not Sure",
@@ -933,7 +933,7 @@ class PostgresFolderRepository(FolderRepository):
                             fields["pageTypeConfidence"] = float(conf)
 
                     # Main pages with no page_classification row keep junk's
-                    # pageType=\"Not Available\" — stamp Not Sure for codeability.
+                    # pageType=\"Not Available\" — stamp Not Sure for codability.
                     for fields in by_page.values():
                         pt = str(fields.get("pageType") or "").strip()
                         if (

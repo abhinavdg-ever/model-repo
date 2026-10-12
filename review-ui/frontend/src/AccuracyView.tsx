@@ -542,7 +542,7 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                   </th>
                   {LIVE_METRICS.map((metric) => (
                     <th key={metric.id} scope="col">
-                      {metric.label}
+                      {metric.tableLabel ?? metric.label}
                     </th>
                   ))}
                   <th scope="col">

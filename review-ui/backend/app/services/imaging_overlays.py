@@ -843,8 +843,8 @@ def index_codeable_rows(
     """
     by_key: dict[str, dict[str, Any]] = {}
     display = {
-        "codeable": "Codeable",
-        "non_codeable": "Non-Codeable",
+        "codeable": "Codable",
+        "non_codeable": "Non-Codable",
         "discharge_frequency": "Discharge",
         "discharge_summary": "Discharge",
         "not_sure": "Not Sure",
@@ -870,7 +870,7 @@ def index_codeable_rows(
         # A CSV from an earlier run says Codeable / Non Codeable.
         label = spell_codeable(label) or ""
         # Blank/Duplicate rows always have a page_type (Blank / Duplicate / …).
-        # Empty or Not Available → Not Sure for codeability.
+        # Empty or Not Available → Not Sure for codability.
         if not label:
             if not page_type or page_type.casefold() == "not available":
                 label = "Not Sure"
@@ -984,8 +984,8 @@ def document_label(position: str | None, document: int | None) -> str | None:
 
 
 _CATEGORY_DISPLAY = {
-    "codeable": "Codeable",
-    "non_codeable": "Non-Codeable",
+    "codeable": "Codable",
+    "non_codeable": "Non-Codable",
     "discharge_summary": "Discharge",
 }
 

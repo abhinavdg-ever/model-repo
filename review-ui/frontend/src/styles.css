@@ -3450,7 +3450,7 @@ input {
 .accuracy-table th + th,
 .accuracy-table th + td,
 .accuracy-table td + td {
-  border-left: 1px solid var(--neutral-200);
+  border-left: 1px solid var(--neutral-100);
 }
 
 /* Last Run At / Last Verified At: date over time, small. */

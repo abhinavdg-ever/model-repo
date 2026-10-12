@@ -200,7 +200,7 @@ class ImagingPageResult(BaseModel):
     # Accuracy report only: best semantic similarity (0-1) between the
     # ground-truth page type and the predicted page type / sub-type.
     pageTypeSemantic: float | None = None
-    # Codeable | Non-Codeable | Discharge (from page_subtype CSV)
+    # Codable | Non-Codable | Discharge (from page_subtype CSV)
     isCodeable: str | None = None
     # Outpatient (F2F) | Outpatient (Tele) | Inpatient | Home
     encounterType: str | None = None

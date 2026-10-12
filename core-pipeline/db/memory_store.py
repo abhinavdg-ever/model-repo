@@ -60,7 +60,7 @@ DEFAULT_PIPELINE_STAGES: list[dict[str, Any]] = [
     {"stage_name": "member_verify", "pass_no": 1, "seq": 70,
      "label": "Member Extraction + Verify", "is_phase1": True},
     {"stage_name": "page_subtype", "pass_no": 1, "seq": 75,
-     "label": "Codeable / Non Codeable (TF)", "is_phase1": True},
+     "label": "Codable / Non Codable (TF)", "is_phase1": True},
     {"stage_name": "dos_extract", "pass_no": 1, "seq": 80,
      "label": "Date-of-Service Extraction", "is_phase1": True},
     {"stage_name": "continuity", "pass_no": 1, "seq": 87,

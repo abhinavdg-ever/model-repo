@@ -380,7 +380,7 @@ const BLANK_JUNK_CHOICES = ["Yes (Blank)", "Yes (Junk)", "No"] as const;
 /** The merged Page Type / Page Subtype ground truth takes either kind of name. */
 const PAGE_TYPE_AND_SUBTYPE_CHOICES = [...new Set([...PAGE_TYPE_CHOICES, ...PAGE_SUBTYPE_CHOICES])];
 const DUPLICATE_CHOICES = ["Yes", "Partial", "No"] as const;
-const CODEABLE_CHOICES = ["Codeable", "Non-Codeable", "Discharge"] as const;
+const CODEABLE_CHOICES = ["Codable", "Non-Codable", "Discharge"] as const;
 const TYPE_CHOICES = ["Printed", "Handwritten", "Form", "Visual", "Blank"] as const;
 
 /** Page type; a page classified before document type existed shows its old label. */
@@ -1498,7 +1498,7 @@ function PageDetails({
           {
             ...sameValue(fmtCodeable(page.isCodeable, page.pageType, codeableKnown), fmtConfidence(null, Boolean(sections.codeable)), {
               id: "codeable",
-              label: "Is Codeable Or Non-Codeable",
+              label: "Is Codable Or Non-Codable",
               truth: bits.codeable,
               choices: CODEABLE_CHOICES,
             }),
@@ -1759,7 +1759,7 @@ function DocSummary({
               <th scope="col">Duplicate</th>
               <th scope="col">Page Type</th>
               <th scope="col">Page Subtype</th>
-              <th scope="col">Codeable / Non-Codeable</th>
+              <th scope="col">Codable / Non-Codable</th>
               <th scope="col">Current Sequence</th>
               <th scope="col">Actual Sequence</th>
               {showConfidence ? (

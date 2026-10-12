@@ -31,12 +31,12 @@ _CODEABLE = re.compile(r"\b(?:(non)[\s_-]*)?code?able\b", re.IGNORECASE)
 
 
 def spell_codeable(value: str | None) -> str | None:
-    """Codeable / Non-Codeable, however a sheet, an older run, or an older
+    """Codable / Non-Codable, however a sheet, an older run, or an older
     ground-truth row spelled it. Blank and NA stay empty."""
     text = clean_label(value)
     if text is None:
         return None
-    return _CODEABLE.sub(lambda m: "Non-Codeable" if m.group(1) else "Codeable", text)
+    return _CODEABLE.sub(lambda m: "Non-Codable" if m.group(1) else "Codable", text)
 
 
 def clean_label(value: str | None) -> str | None:

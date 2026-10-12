@@ -61,8 +61,8 @@ def test_parse_keeps_client_yes_no_and_dates():
     assert kept[0]["member_name"] == "Yes"
     assert kept[0]["dos_from"] == "07/17/2025"
     assert kept[0]["page_type"] == "Accept"
-    assert kept[0]["codeable"] == "Codeable"
-    assert kept[1]["codeable"] == "Non-Codeable"
+    assert kept[0]["codeable"] == "Codable"
+    assert kept[1]["codeable"] == "Non-Codable"
     assert kept[0]["is_invoice"] is None
     assert kept[1]["page_number"] == 2
     assert kept[1]["blank_page"] == "Yes"
@@ -85,14 +85,14 @@ def test_csv_file_round_trip(tmp_path):
 
 def test_every_spelling_of_codable_reads_as_codable_or_non_codable():
     """Sheets and older runs say Codeable / Non Codeable / NonCodeable. They
-    are stored and shown as Codeable / Non-Codeable."""
+    are stored and shown as Codable / Non-Codable."""
     from jobs.ground_truth_load import spell_codeable
 
-    for value in ("Codeable", "codeable", "Codeable", "CODEABLE"):
-        assert spell_codeable(value) == "Codeable"
+    for value in ("Codeable", "codeable", "Codable", "CODEABLE"):
+        assert spell_codeable(value) == "Codable"
     for value in ("Non Codeable", "Non-Codeable", "NonCodeable", "non_codeable",
-                  "Non Codable", "Non-Codeable"):
-        assert spell_codeable(value) == "Non-Codeable"
+                  "Non Codable", "Non-Codable"):
+        assert spell_codeable(value) == "Non-Codable"
     assert spell_codeable("Discharge") == "Discharge"
     assert spell_codeable("uncodeable") == "uncodeable"
     assert spell_codeable(None) is None
@@ -105,4 +105,4 @@ def test_the_codeable_header_spelling_is_accepted():
         ["Chart Name", "Id", "Codeable or Non Codeable"],
         [["c1", "1.jpg", "Non Codeable"]],
     )
-    assert rows[0]["codeable"] == "Non-Codeable"
+    assert rows[0]["codeable"] == "Non-Codable"
