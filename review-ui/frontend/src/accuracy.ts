@@ -7,7 +7,6 @@ import {
   blankJunkTruth,
   groundTruthBits,
   gtCredentials,
-  gtSignature,
   hasGroundTruth,
   type GtBit,
 } from "./groundTruth";
@@ -114,8 +113,6 @@ export type ChartAccuracy = {
   orientationRates: ClassRates;
   /** Class 1 = both the member's Name and DOB are on the page. */
   memberRates: ClassRates;
-  /** Class 1 = the page carries a provider signature (credentials). */
-  credentialsRates: ClassRates;
 };
 
 const EMPTY_SECTIONS: ImagingSectionsProcessed = {
@@ -409,19 +406,6 @@ function credentialsVerdict(
   return shared > 0 ? "maybe" : "no";
 }
 
-/** Provider signature as Yes / No: the ground truth names credentials (or says
- * Yes), or says No / NA; the pipeline found credentials or not. A blank
- * ground-truth cell is not scored. */
-function signatureCall(
-  expected: string | null | undefined,
-  actual: string | null | undefined,
-): { expected: boolean; predicted: boolean } | null {
-  const folded = (expected ?? "").trim().toLowerCase();
-  if (!folded) return null;
-  const absent = yesNo(folded) === "no" || ["na", "n/a", "not found", "none"].includes(folded);
-  return { expected: !absent, predicted: credentialTokens(actual).size > 0 };
-}
-
 function yesNo(value: string | null | undefined): "yes" | "no" | null {
   const folded = (value ?? "").trim().toLowerCase();
   if (folded === "yes" || folded === "y" || folded === "true") return "yes";
@@ -442,7 +426,6 @@ export function scoreChart(
   const blankJunkRates = emptyRates();
   const orientationRates = emptyRates();
   const memberRates = emptyRates();
-  const credentialsRates = emptyRates();
   const overall = emptyTally();
   for (const page of doc.pages) {
     if (!hasGroundTruth(page.groundTruth)) continue;
@@ -461,8 +444,6 @@ export function scoreChart(
         scored.member.predicted.every(Boolean),
       );
     }
-    const signature = signatureCall(gtSignature(page.groundTruth), page.providerCredentials);
-    if (signature) addRates(credentialsRates, signature.expected, signature.predicted);
   }
   return {
     chartId,
@@ -472,7 +453,6 @@ export function scoreChart(
     blankJunkRates,
     orientationRates,
     memberRates,
-    credentialsRates,
   };
 }
 

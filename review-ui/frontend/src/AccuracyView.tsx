@@ -258,7 +258,6 @@ function timeOf(value: string | null | undefined): number | null {
 function rowRatesFor(row: ChartAccuracy, id: MetricId): ClassRates | undefined {
   if (id === "blankJunk") return row.blankJunkRates;
   if (id === "member") return row.memberRates;
-  if (id === "credentials") return row.credentialsRates;
   if (id === "orientation") return row.orientationRates;
   return undefined;
 }
@@ -373,10 +372,6 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
     [rows],
   );
   const memberRates = useMemo(() => sumRates(rows.map((row) => row.memberRates)), [rows]);
-  const credentialsRates = useMemo(
-    () => sumRates(rows.map((row) => row.credentialsRates)),
-    [rows],
-  );
   const orientationRates = useMemo(
     () => sumRates(rows.map((row) => row.orientationRates)),
     [rows],
@@ -387,19 +382,15 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
       ? blankJunkRates
       : id === "member"
         ? memberRates
-        : id === "credentials"
-          ? credentialsRates
-          : id === "orientation"
-            ? orientationRates
-            : undefined;
+        : id === "orientation"
+          ? orientationRates
+          : undefined;
   const ratesLabelFor = (id: MetricId) =>
     id === "member"
       ? "Member & DOB = Yes"
-      : id === "credentials"
-        ? "Provider Signature = Yes"
-        : id === "orientation"
-          ? "Rotated (not 0°) = Yes"
-          : "Blank/Junk = Yes";
+      : id === "orientation"
+        ? "Rotated (not 0°) = Yes"
+        : "Blank/Junk = Yes";
 
   return (
     <div className="workspace accuracy-view">
