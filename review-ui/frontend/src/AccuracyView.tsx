@@ -301,8 +301,9 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
-  const [sortKey, setSortKey] = useState<SortKey>("name");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  // Newest run first, like the home page.
+  const [sortKey, setSortKey] = useState<SortKey>("run");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   // Same behaviour as the home page: click again to flip; name starts A→Z, dates newest first.
   function toggleSort(key: SortKey) {

@@ -77,8 +77,9 @@ function readLandingFilters(): LandingFilters {
     statusFilter: [],
     runFilter: [],
     batchFilter: [],
-    sortKey: "filename",
-    sortDir: "asc",
+    // Newest run first.
+    sortKey: "updated",
+    sortDir: "desc",
     page: 1,
   };
   try {
