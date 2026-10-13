@@ -23,13 +23,15 @@ Blank → Cover Page → **clinical Main** → Letter/Fax → Invoice → Record
 
 ## After the model
 
-`postprocess.py`, both passes, in order: (1) model Junk with ≥ 5 distinct
-clinical terms → Main; (2) fax cover sheet (fax + ≥ 4 cover fields, < 80
-words) → Letter/Fax; (3) model Blank with text and no word "blank" → Junk (no
-sub-type); (4) pass 2: < 20 words and not signed → Junk / Others; (5) the word
-"signature" (or a signed page from the extraction) → Main; (6) forced, last:
-one junk keyword category (fax/letter, invoice, record request, instructions,
-table of contents) ≥ 3 times → Junk of that sub-type, even when signed.
+`postprocess.py`, after the model or the regex fallback, both passes, in order:
+(1) model Blank/Junk with ≥ 2 clinical section headings → Main; (2) model Blank
+with text and no word "blank" → Junk (no sub-type); (3) pass 2 only: < 20 words,
+not signed, not a clinical note → Junk / Others; (4) Provider Signature = Yes, or
+< 20 words with the word "signature" → Main; (5) forced: one junk keyword
+category (fax/letter, invoice, record request, instructions, table of contents)
+≥ 3 times → Junk of that sub-type; only Provider Signature = Yes overrules it.
+The regex fallback has no short-page rule of its own: short pages are judged by
+(3) only, so pass 1 never junks a page for being short.
 Settings in `../keyword-canon/junk_keywords_canon.json`.
 
 ## Run

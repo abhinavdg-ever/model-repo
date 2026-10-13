@@ -54,10 +54,6 @@ def looks_like_clinical_content(text: str) -> bool:
     return word_count(text) > CLINICAL_CONTENT_MIN_WORDS and is_clinical_note(text)
 
 
-def is_signature_page(text: str) -> bool:
-    return bool(rules().signature.search(text or ""))
-
-
 def is_gibberish_ocr(
     text: str,
     *,

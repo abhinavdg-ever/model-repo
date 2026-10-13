@@ -1,17 +1,19 @@
-"""Others junk — TOC, short non-signature pages, and OCR gibberish."""
+"""Others junk — table of contents and OCR gibberish.
+
+Short pages are not judged here: postprocess.py junks them in pass 2 only, with the
+same signature test as every other rule.
+"""
 
 from __future__ import annotations
 
 import re
 
 from kw import rules
-from text_utils import is_gibberish_ocr, is_signature_page, word_count
-
-_MAX_WORDS = 20
+from text_utils import is_gibberish_ocr
 
 
 def detect_others_page(text: str) -> bool:
-    """TOC, short non-signature pages (< 20 words), or mostly gibberish OCR."""
+    """A table of contents, or mostly gibberish OCR."""
     if not text or not text.strip():
         return False
     kw = rules()
@@ -20,8 +22,6 @@ def detect_others_page(text: str) -> bool:
     if kw.others_emr_toc_title.search(text) and any(
         m.search(text) for m in kw.others_emr_toc_markers
     ):
-        return True
-    if word_count(text) < _MAX_WORDS and not is_signature_page(text):
         return True
     if is_gibberish_ocr(text):
         return True
@@ -37,8 +37,6 @@ def others_reason(text: str) -> str:
         m.search(text or "") for m in kw.others_emr_toc_markers
     ):
         return "others_emr_toc"
-    if word_count(text) < _MAX_WORDS and not is_signature_page(text):
-        return "others_short"
     if is_gibberish_ocr(text):
         return "others_gibberish"
     return "others"

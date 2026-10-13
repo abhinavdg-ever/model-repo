@@ -122,14 +122,5 @@
     "\\btotal\\s+pages\\b",
     "\\b\\d{1,4}\\s+to\\s+\\d{1,4}\\b"
   ],
-  "blank_phrase": "intentionally\\s+blank|\\bblank\\b",
-  "signature": [
-    "signature",
-    "signed\\s+by",
-    "electronically\\s+signed",
-    "e[\\s-]?sign",
-    "patient\\s+signature",
-    "provider\\s+signature",
-    "sign\\s+here"
-  ]
+  "blank_phrase": "intentionally\\s+blank|\\bblank\\b"
 }

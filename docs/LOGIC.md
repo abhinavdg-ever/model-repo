@@ -278,7 +278,8 @@ day: rule 5 covers fax pages.
 
 The regex fallback (only when the BERT model is missing or fails) uses the same
 headings: a page with more than 25 words and 2 or more clinical section headings
-is Main before any junk keyword rule runs.
+is Main before any junk keyword rule runs. The fallback has no short-page rule of its own: a short
+page is junked only by rule 3, in pass 2, with the same signature test as rule 4.
 
 `junk_subtype` is constrained by a `CHECK` to the six labels the review UI
 renders. Anything else the classifier produces maps to `Others` rather than

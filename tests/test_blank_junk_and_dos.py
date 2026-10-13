@@ -689,6 +689,27 @@ class TestRegexFallbackClinicalContent:
         assert not self._clinical(text)
 
 
+class TestRegexFallbackShortPages:
+    """The fallback has no short-page rule: pass 1 keeps a short page, pass 2 junks it."""
+
+    @staticmethod
+    def _run(pass_two, monkeypatch):
+        from stages.lib.blank_junk import stage as bj_stage
+
+        monkeypatch.setattr(
+            bj_stage, "classify_page", lambda t, **_: (*classify.classify_text(t), None)
+        )
+        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
+        return _classify(pages, {1: "made up short page text"}, {1}, short_pages=pass_two)[0]
+
+    def test_the_fallback_keeps_a_short_page_in_pass_1(self, monkeypatch):
+        assert self._run(False, monkeypatch)["flag"] == "not_blank_junk"
+
+    def test_pass_2_junks_the_short_page(self, monkeypatch):
+        row = self._run(True, monkeypatch)
+        assert (row["flag"], row["subtype"]) == ("junk", "Others")
+
+
 class TestClinicalHeadingsKeepThePage:
     """Model Blank / Junk with 2+ clinical section headings, each heading a line -> Main."""
 

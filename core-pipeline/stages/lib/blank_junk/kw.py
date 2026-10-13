@@ -31,7 +31,6 @@ class JunkRules:
     others_emr_toc_markers: tuple[re.Pattern[str], ...]
     record_request_phrases: tuple[str, ...]
     record_request_patterns: tuple[re.Pattern[str], ...]
-    signature: re.Pattern[str]
 
 
 def _icase(patterns: list[str]) -> tuple[re.Pattern[str], ...]:
@@ -58,9 +57,6 @@ def _build(data: dict[str, Any]) -> JunkRules:
         others_emr_toc_markers=_icase(data["others_emr_toc_markers"]),
         record_request_phrases=tuple(data["record_request"]),
         record_request_patterns=_word_patterns(data["record_request"]),
-        signature=re.compile(
-            r"\b(" + "|".join(data["signature"]) + r")\b", re.IGNORECASE
-        ),
     )
 
 
