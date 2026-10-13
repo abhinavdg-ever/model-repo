@@ -3376,6 +3376,23 @@ input {
   color: inherit;
 }
 
+.accuracy-chart-newtab {
+  display: inline-flex;
+  margin-left: 0.3rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--brand-800);
+  opacity: 0.6;
+  vertical-align: middle;
+}
+
+.accuracy-chart-newtab:hover,
+.accuracy-chart-newtab:focus-visible {
+  opacity: 1;
+}
+
 .accuracy-chart-link {
   border: 0;
   background: transparent;

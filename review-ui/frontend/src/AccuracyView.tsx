@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, Info, Loader2, Search } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Info, Loader2, Search } from "lucide-react";
 import { getAccuracyReport } from "./api";
 import {
   LIVE_METRICS,
@@ -23,6 +23,8 @@ import {
 type Props = {
   onBack: () => void;
   onOpenChart: (folderId: string) => void;
+  /** The chart's URL, so it can open in a new tab. */
+  chartHref: (folderId: string) => string;
 };
 
 function percentLabel(tally: Tally): string {
@@ -274,7 +276,7 @@ function compareRows(a: ChartAccuracy, b: ChartAccuracy, key: SortKey, dir: Sort
   return sign * (ta - tb) || a.chartName.localeCompare(b.chartName, undefined, { numeric: true });
 }
 
-export default function AccuracyView({ onBack, onOpenChart }: Props) {
+export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) {
   const [rows, setRows] = useState<ChartAccuracy[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -528,12 +530,27 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                 {pageRows.map((row) => (
                   <tr key={row.chartId}>
                     <th scope="row">
-                      <button
-                        type="button"
+                      <a
                         className="accuracy-chart-link"
-                        onClick={() => onOpenChart(row.chartId)}
+                        href={chartHref(row.chartId)}
+                        onClick={(event) => {
+                          // Cmd / Ctrl / Shift / middle click keep the browser's new-tab behaviour.
+                          if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                          event.preventDefault();
+                          onOpenChart(row.chartId);
+                        }}
                       >
                         {row.chartName}
+                      </a>
+                      <button
+                        type="button"
+                        className="accuracy-chart-newtab"
+                        title="Open in new tab"
+                        aria-label={`Open ${row.chartName} in a new tab`}
+                        // window.open (not a target=_blank link) so the new tab keeps this tab's sign-in.
+                        onClick={() => window.open(chartHref(row.chartId), "_blank")}
+                      >
+                        <ExternalLink size={12} aria-hidden="true" />
                       </button>
                     </th>
                     <td className="landing-col-updated accuracy-col-date">

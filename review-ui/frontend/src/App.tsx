@@ -208,6 +208,9 @@ export default function App() {
             onOpenChart={(folderId) =>
               navigate({ view: "folder", folderId, mode: "imaging", from: "accuracy" })
             }
+            chartHref={(folderId) =>
+              pathFor({ view: "folder", folderId, mode: "imaging", from: "accuracy" })
+            }
           />
         ) : route.view === "file-viewer" ? (
           <FileViewer
