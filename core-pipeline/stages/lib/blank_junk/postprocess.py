@@ -23,7 +23,7 @@ this order:
      included. Only Provider Signature = Yes overrules it. No other keyword
      category forces junk.
   6. Release-of-information vendor -> Junk / Record Request (absolute, last):
-     the ``vendor_names`` (Optum, Datavant) found more than twice in all
+     the ``vendor_names`` (Optum, OptumCare, Datavant) found more than twice in all
      (``vendor_min_hits``, 3). Nothing overrules it, Provider Signature = Yes
      included.
 
@@ -145,7 +145,7 @@ def forced_junk(text: str) -> Optional[tuple[int, str]]:
 
 
 def vendor_hits(text: str) -> int:
-    """Mentions of the ``vendor_names`` (Optum, Datavant), all of them together."""
+    """Mentions of the ``vendor_names`` (Optum, OptumCare, Datavant), all together."""
     names = rules().raw.get("vendor_names") or []
     if not names:
         return 0

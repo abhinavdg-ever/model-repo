@@ -665,6 +665,10 @@ class TestVendorJunk:
         assert (row["flag"], row["subtype"]) == ("junk", "Record Request/Transmittal")
         assert "vendor junk" in row["reason"]
 
+    def test_optumcare_counts(self, monkeypatch):
+        text = "OptumCare Medical Group. OptumCare referral. Datavant request.\n" + "details " * 30
+        assert _bj(text, "CODE_MAIN", monkeypatch)["flag"] == "junk"
+
     def test_two_mentions_stay_main(self, monkeypatch):
         assert _bj("Datavant request. Optum ID 123.", "CODE_MAIN", monkeypatch)["flag"] == "not_blank_junk"
 

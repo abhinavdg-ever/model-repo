@@ -270,7 +270,7 @@ BERT model, in order:
 | 3 | Pass 2 only: Main with fewer than 20 words, not a signature page, not a clinical note (rule 1) | Junk / Others |
 | 4 | Provider Signature = Yes (the key/value extraction found the page signed), **or** a page under 20 words that says "signature" | Main (kept); pass 2 also re-keeps a page pass 1 had called blank or junk |
 | 5 | Fax (`letter_fax` plus the word "fax") or Record Request (`record_request` phrases) found `forced_junk_min_hits` (3) or more times. No other keyword category forces junk | Junk of that sub-type, **forced**: only Provider Signature = Yes overrules it (clinical headings and the word "signature" do not) |
-| 6 | `vendor_names` (Optum, Datavant) found `vendor_min_hits` (3) or more times in all | Junk / Record Request, **absolute**: nothing overrules it, Provider Signature = Yes included |
+| 6 | `vendor_names` (Optum, OptumCare, Datavant) found `vendor_min_hits` (3) or more times in all | Junk / Record Request, **absolute**: nothing overrules it, Provider Signature = Yes included |
 
 The headings, vendor names and thresholds live in `junk_keywords_canon.json`.
 Invoice, instructions and table-of-contents words stopped forcing

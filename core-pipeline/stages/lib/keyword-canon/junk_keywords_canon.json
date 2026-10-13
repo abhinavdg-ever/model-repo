@@ -4,6 +4,7 @@
   "vendor_min_hits": 3,
   "vendor_names": [
     "Optum",
+    "OptumCare",
     "Datavant"
   ],
   "clinical_min_headings": 2,
