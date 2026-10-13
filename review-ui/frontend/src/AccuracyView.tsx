@@ -102,10 +102,12 @@ function Distribution({ tally, binary = false }: { tally: Tally; binary?: boolea
 }
 
 /** Class 1 Precision / Recall / F1, label above value. */
-function RatesGrid({ rates }: { rates: ClassRates }) {
+/** Precision / Recall / F1 of Class 1; with ``accuracy``, that score on the Class 1 pages first. */
+function RatesGrid({ rates, accuracy }: { rates: ClassRates; accuracy?: Tally }) {
   return (
-    <dl className="accuracy-class-grid">
+    <dl className={`accuracy-class-grid${accuracy ? " accuracy-class-grid-4" : ""}`}>
       {[
+        ...(accuracy ? [["Accuracy", percentLabel(accuracy)]] : []),
         ["Precision", formatPrecision(rates)],
         ["Recall", formatRecall(rates)],
         ["F1", formatF1(rates)],
@@ -124,10 +126,12 @@ function CompactScore({
   tally,
   binary = false,
   rates,
+  classAccuracy,
 }: {
   tally: Tally;
   binary?: boolean;
   rates?: ClassRates;
+  classAccuracy?: Tally;
 }) {
   if (tally.scored === 0) return <>—</>;
   return (
@@ -136,7 +140,7 @@ function CompactScore({
       <p className="accuracy-distribution">
         <Distribution tally={tally} binary={binary} />
       </p>
-      {rates ? <RatesGrid rates={rates} /> : null}
+      {rates ? <RatesGrid rates={rates} accuracy={classAccuracy} /> : null}
     </div>
   );
 }
@@ -155,6 +159,7 @@ function Donut({
   tally,
   rates,
   ratesLabel,
+  classAccuracy,
   binary = false,
 }: {
   label: string;
@@ -166,6 +171,8 @@ function Donut({
   rates?: ClassRates;
   /** What Class 1 is ("Blank / Junk = Yes"). */
   ratesLabel?: string;
+  /** The accuracy score on the Class 1 pages only (Orientation: rotated pages). */
+  classAccuracy?: Tally;
 }) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
@@ -219,7 +226,7 @@ function Donut({
       {rates ? (
         <div className="accuracy-class">
           {ratesLabel ? <div className="accuracy-class-head">{ratesLabel}</div> : null}
-          <RatesGrid rates={rates} />
+          <RatesGrid rates={rates} accuracy={classAccuracy} />
         </div>
       ) : null}
     </figure>
@@ -374,6 +381,10 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     [rows],
   );
   const memberRates = useMemo(() => sumRates(rows.map((row) => row.memberRates)), [rows]);
+  const orientationNonZero = useMemo(
+    () => sumTallies(rows.map((row) => row.orientationNonZero)),
+    [rows],
+  );
   const orientationRates = useMemo(
     () => sumRates(rows.map((row) => row.orientationRates)),
     [rows],
@@ -451,6 +462,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                   tally={overallByMetric[metric.id]}
                   rates={ratesFor(metric.id)}
                   ratesLabel={ratesLabelFor(metric.id)}
+                  classAccuracy={metric.id === "orientation" ? orientationNonZero : undefined}
                   binary={metric.binary}
                 />
                 ),
@@ -566,6 +578,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                           tally={row.metrics[metric.id]}
                           binary={metric.binary}
                           rates={rowRatesFor(row, metric.id)}
+                          classAccuracy={metric.id === "orientation" ? row.orientationNonZero : undefined}
                         />
                       </td>
                     ))}

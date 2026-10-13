@@ -3259,6 +3259,10 @@ input {
 }
 
 /* Label above value, so a cell fits the narrowest card. */
+.accuracy-class-grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .accuracy-class-grid > div {
   display: flex;
   flex-direction: column;
