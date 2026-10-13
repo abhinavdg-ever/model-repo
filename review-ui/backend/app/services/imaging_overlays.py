@@ -322,6 +322,32 @@ def overlay_fields(
     return out
 
 
+def inherit_duplicate_blank_junk(pages: list[ImagingPageResult]) -> list[ImagingPageResult]:
+    """A duplicate page shows its original's Blank/Junk tag.
+
+    Duplicates are found among Main pages, but the original can be junked later
+    (pass 2), so a fixed "No" on the duplicate would disagree with the page it copies.
+    ``duplicateOf`` is the original's file name; a page whose original is not found
+    keeps its own tag.
+    """
+    by_name: dict[str, ImagingPageResult] = {}
+    for page in pages:
+        by_name[page.fileName.lower()] = page
+        by_name.setdefault(Path(page.fileName).stem.lower(), page)
+    out: list[ImagingPageResult] = []
+    for page in pages:
+        original_name = (page.duplicateOf or "").strip().lower()
+        original = (
+            (by_name.get(original_name) or by_name.get(Path(original_name).stem))
+            if original_name
+            else None
+        )
+        if page.isDuplicate and original is not None and original is not page and original.blankOrJunk:
+            page = page.model_copy(update={"blankOrJunk": original.blankOrJunk})
+        out.append(page)
+    return out
+
+
 def overlay_dos_decision(
     pages: list[ImagingPageResult],
     by_key: dict[str, dict[str, Any]],

@@ -1705,6 +1705,7 @@ class LocalFolderRepository(FolderRepository):
             index_member_extraction_rows,
             index_quality_rows,
             index_rotation_rows,
+            inherit_duplicate_blank_junk,
             load_verification,
             load_verifications,
             overlay_fields,
@@ -1864,6 +1865,7 @@ class LocalFolderRepository(FolderRepository):
         imaging_pages = overlay_fields(
             imaging_pages, index_signature_rows(signature_rows, chart)
         )
+        imaging_pages = inherit_duplicate_blank_junk(imaging_pages)
 
         ver_rows = collect_rows(
             folder_dir=folder_dir,

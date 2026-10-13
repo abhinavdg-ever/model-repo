@@ -36,6 +36,7 @@ from app.services.chart_run_batch import with_run_batch_default
 from app.services.db import psycopg_url as _psycopg_url
 from app.services.ground_truth import attach_ground_truth
 from app.services.imaging_overlays import (
+    inherit_duplicate_blank_junk,
     compose_page_type,
     document_label,
     empty_imaging_pages,
@@ -1065,6 +1066,7 @@ class PostgresFolderRepository(FolderRepository):
                 merged.append(page.model_copy(update=hit))
             else:
                 merged.append(page)
+        merged = inherit_duplicate_blank_junk(merged)
         merged = attach_ground_truth(
             merged, folder_id, self.database_url, self.db_schema
         )

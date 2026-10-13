@@ -31,3 +31,17 @@ def test_duplicate_display_confidence():
     assert abs(duplicate_display_confidence(True, 0.95) - 0.50) < 1e-9
     assert abs(duplicate_display_confidence(True, 0.985) - 0.85) < 1e-9
     assert duplicate_display_confidence(None, 1.0) is None
+
+
+def test_a_duplicate_shows_its_originals_blank_junk_tag():
+    from app.core.schemas import ImagingPageResult
+    from app.services.imaging_overlays import inherit_duplicate_blank_junk
+
+    pages = [
+        ImagingPageResult(pageNumber=1, fileName="1.jpg", blankOrJunk="Yes (Junk)", isDuplicate=False),
+        ImagingPageResult(pageNumber=2, fileName="2.jpg", blankOrJunk="No", isDuplicate=True, duplicateOf="1.jpg"),
+        ImagingPageResult(pageNumber=3, fileName="3.jpg", blankOrJunk="No", isDuplicate=True, duplicateOf="9.jpg"),
+    ]
+    out = inherit_duplicate_blank_junk(pages)
+    assert [page.blankOrJunk for page in out] == ["Yes (Junk)", "Yes (Junk)", "No"]
+    assert out[1].isDuplicate is True

@@ -28,7 +28,11 @@ from app.services.db import connection
 from app.services.folder_list import FolderListParams, build_folder_list
 from app.services import semantic
 from app.services.ground_truth import spell_codeable
-from app.services.imaging_overlays import compose_page_type, display_page_type
+from app.services.imaging_overlays import (
+    compose_page_type,
+    display_page_type,
+    inherit_duplicate_blank_junk,
+)
 
 _ready: set[tuple[str, str]] = set()
 _ready_lock = threading.Lock()
@@ -139,6 +143,18 @@ SELECT chart_name, page_number, source_page_id,
   FROM v_accuracy_page
  WHERE chart_name = ANY(%s)
  ORDER BY chart_name, page_number
+"""
+
+
+# Duplicate page -> the page it duplicates, so a duplicate scores with its original's
+# Blank/Junk tag (as review-ui shows it).
+_DUPLICATES = """
+SELECT c.chart_name, p.page_name, orig.page_name
+  FROM v_page_blank_junk_final b
+  JOIN chart_list c ON c.id = b.chart_id
+  JOIN page_list p ON p.id = b.page_id
+  JOIN page_list orig ON orig.id = b.duplicate_of_page_id
+ WHERE b.blank_junk_flag = 'duplicate' AND c.chart_name = ANY(%s)
 """
 
 
@@ -316,13 +332,19 @@ def load_report(settings: Settings) -> AccuracyReportResponse:
         with conn.cursor() as cur:
             cur.execute(_SELECT, (names,))
             rows = cur.fetchall()
+            cur.execute(_DUPLICATES, (names,))
+            duplicates = {(str(chart), str(page)): str(original) for chart, page, original in cur.fetchall()}
     pages: dict[str, list[ImagingPageResult]] = {}
     sections: dict[str, ImagingSectionsProcessed] = {}
     manifests: dict[str, str | None] = {}
     verified: dict[str, datetime | None] = {}
     for row in rows:
         chart_name = str(row[0])
-        pages.setdefault(chart_name, []).append(_page(row[:34], row[35:]))
+        page = _page(row[:34], row[35:])
+        original = duplicates.get((chart_name, page.fileName))
+        if original:
+            page = page.model_copy(update={"isDuplicate": True, "duplicateOf": original})
+        pages.setdefault(chart_name, []).append(page)
         sections[chart_name] = ImagingSectionsProcessed(
             member=bool(row[30]),
             dos=bool(row[31]),
@@ -338,7 +360,9 @@ def load_report(settings: Settings) -> AccuracyReportResponse:
     data_root = settings.resolved_data_root
     root = data_root if isinstance(data_root, Path) else Path(data_root)
     for chart_name, chart_pages in pages.items():
-        pages[chart_name] = _with_signatures(chart_pages, root, chart_name)
+        pages[chart_name] = inherit_duplicate_blank_junk(
+            _with_signatures(chart_pages, root, chart_name)
+        )
     charts = [
         AccuracyChartPayload(
             chartId=chart_id,
