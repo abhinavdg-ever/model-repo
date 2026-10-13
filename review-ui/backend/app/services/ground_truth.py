@@ -20,7 +20,8 @@ _COLUMNS = """
     to_jsonb(page_ground_truth) ->> 'is_visible',
     to_jsonb(page_ground_truth) ->> 'rendering_provider',
     to_jsonb(page_ground_truth) ->> 'provider_signature',
-    to_jsonb(page_ground_truth) ->> 'member_id'
+    to_jsonb(page_ground_truth) ->> 'member_id',
+    to_jsonb(page_ground_truth) ->> 'provider_credentials'
 """
 
 _EMPTY = {"", "na", "n/a", "not found", "not available"}
@@ -60,7 +61,7 @@ def yes_no_label(value: str | None) -> str | None:
     return None
 
 
-# is_visible, rendering_provider, provider_signature, and member_id are read
+# is_visible, rendering_provider, provider_signature, member_id, and provider_credentials are read
 # through to_jsonb so a database created before the column existed returns
 # NULL instead of failing the whole lookup.
 
@@ -69,7 +70,7 @@ LABEL_COLUMNS = (
     "member_name", "member_dob", "member_id", "dos_from", "dos_to",
     "encounter_type", "page_type", "codeable",
     "blank_page", "junk_page", "is_invoice", "page_sequence", "rotation",
-    "is_visible", "rendering_provider", "provider_signature",
+    "is_visible", "rendering_provider", "provider_signature", "provider_credentials",
 )
 
 
@@ -157,6 +158,7 @@ def _ground_truth_from_row(row: tuple) -> PageGroundTruth:
         renderingProvider=row[15] if len(row) > 15 else None,
         providerSignature=row[16] if len(row) > 16 else None,
         memberId=row[17] if len(row) > 17 else None,
+        providerCredentials=row[18] if len(row) > 18 else None,
     )
 
 
@@ -174,14 +176,14 @@ INSERT INTO page_ground_truth (
     encounter_type, page_type, codeable,
     blank_page, junk_page, is_invoice,
     rotation, is_visible,
-    rendering_provider, provider_signature
+    rendering_provider, provider_signature, provider_credentials
 ) VALUES (
     %s, %s, %s,
     %s, %s, %s, %s, %s,
     %s, %s, %s,
     %s, %s, %s,
     %s, %s,
-    %s, %s
+    %s, %s, %s
 )
 ON CONFLICT (chart_name, page_number) DO UPDATE SET
     source_page_id = COALESCE(EXCLUDED.source_page_id, page_ground_truth.source_page_id),
@@ -200,6 +202,7 @@ ON CONFLICT (chart_name, page_number) DO UPDATE SET
     is_visible = EXCLUDED.is_visible,
     rendering_provider = EXCLUDED.rendering_provider,
     provider_signature = EXCLUDED.provider_signature,
+    provider_credentials = EXCLUDED.provider_credentials,
     updated_at = now()
 RETURNING
     page_number, source_page_id,
@@ -207,7 +210,7 @@ RETURNING
     encounter_type, page_type, codeable,
     blank_page, junk_page, is_invoice, page_sequence, rotation,
     is_visible, rendering_provider, provider_signature,
-    member_id
+    member_id, provider_credentials
 """
 
 
@@ -244,7 +247,8 @@ def upsert_page_ground_truth(
         clean_label(body.rotation),
         clean_label(body.isVisible),
         clean_label(body.renderingProvider),
-        clean_label(body.providerSignature),
+        yes_no_label(body.providerSignature),
+        clean_label(body.providerCredentials),
     )
     with connection(database_url, db_schema) as conn:
         with conn.cursor() as cur:

@@ -3,7 +3,14 @@ import type {
   ImagingPageResult,
   ImagingSectionsProcessed,
 } from "./api";
-import { blankJunkTruth, groundTruthBits, hasGroundTruth, type GtBit } from "./groundTruth";
+import {
+  blankJunkTruth,
+  groundTruthBits,
+  gtCredentials,
+  gtSignature,
+  hasGroundTruth,
+  type GtBit,
+} from "./groundTruth";
 import { splitPageType } from "./ImagingPanel";
 
 export type Verdict = "yes" | "maybe" | "no";
@@ -321,8 +328,7 @@ function pageScores(
     ? truth.toLowerCase().startsWith("yes")
     : (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
 
-  // The ground-truth Provider Credentials label is stored in providerSignature.
-  const credentials = credentialsVerdict(page.groundTruth?.providerSignature, page.providerCredentials);
+  const credentials = credentialsVerdict(gtCredentials(page.groundTruth), page.providerCredentials);
 
   return {
     scores: {
@@ -455,7 +461,7 @@ export function scoreChart(
         scored.member.predicted.every(Boolean),
       );
     }
-    const signature = signatureCall(page.groundTruth?.providerSignature, page.providerCredentials);
+    const signature = signatureCall(gtSignature(page.groundTruth), page.providerCredentials);
     if (signature) addRates(credentialsRates, signature.expected, signature.predicted);
   }
   return {

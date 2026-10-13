@@ -140,7 +140,9 @@ class PageGroundTruth(BaseModel):
     rotation: str | None = None
     isVisible: str | None = None
     renderingProvider: str | None = None
+    # Yes / No. Older rows hold credentials here (before providerCredentials was saved).
     providerSignature: str | None = None
+    providerCredentials: str | None = None
 
 
 class ImagingPageResult(BaseModel):

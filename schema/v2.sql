@@ -99,6 +99,10 @@
 --  * ocr_quality_results gains document_type, handwritten_probability,
 --    is_visible, handwritten_area_pct and review_required (page-tag
 --    model). Defined in v1.sql, with the ALTER for an existing database.
+--  * v_accuracy_page (v1.sql) appends gt_provider_credentials. Review UI saves
+--    Provider Credentials to page_ground_truth.provider_credentials and
+--    Provider Signature (Yes / No) to provider_signature; older rows with
+--    credentials in provider_signature are read as both.
 --
 -- WHAT CHANGED IN v8 (applies to both files)
 -- ---------------------------------------------------------------------

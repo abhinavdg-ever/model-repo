@@ -19,6 +19,8 @@ import {
   displayCodeable,
   displayIsoDates,
   groundTruthBits,
+  gtCredentials,
+  gtSignature,
   pageTypeVerdict,
   spellCodeable,
   type GtBit,
@@ -555,8 +557,8 @@ function storedGroundTruth(gt: PageGroundTruth | null | undefined): Record<strin
     dob: presenceStored(gt?.memberDob),
     member_id: presenceStored(gt?.memberId),
     provider_name: (gt?.renderingProvider ?? "").trim(),
-    provider_credentials: (gt?.providerSignature ?? "").trim(),
-    electronic_signature: "",
+    provider_credentials: gtCredentials(gt),
+    electronic_signature: gtSignature(gt),
     quality: visibilityLabel(gt?.isVisible),
     orientation: rotationLabel(gt?.rotation),
     encounter: "",
@@ -581,7 +583,8 @@ function groundTruthBody(
     memberDob: presenceStored(values.dob) || null,
     memberId: presenceStored(values.member_id) || null,
     renderingProvider: cleanGt(values.provider_name),
-    providerSignature: cleanGt(values.provider_credentials),
+    providerSignature: presenceStored(values.electronic_signature) || null,
+    providerCredentials: cleanGt(values.provider_credentials),
     isVisible: visibilityStored(values.quality ?? ""),
     rotation: cleanGt((values.orientation ?? "").replace(/°$/, "")),
     // Page type ground truth is stored in Encounter Type (what accuracy reads).
@@ -608,6 +611,7 @@ const PERSISTED_GT = new Set([
   "codeable",
   "provider_name",
   "provider_credentials",
+  "electronic_signature",
 ]);
 
 function confirmedValue(processed: string): string {
@@ -789,8 +793,10 @@ function GroundTruthCell({
   }
 
   const stored = row.presence ? presenceStored(value) : value.trim();
+  // A Yes / No Final ("Provider Signature: No") is copied as itself, not as "a value was found".
+  const processedSide = yesNo(row.processed);
   const copied = row.presence
-    ? (valueFound(row.processed) ? "Yes" : "No")
+    ? (processedSide ? processedSide === "yes" : valueFound(row.processed)) ? "Yes" : "No"
     : confirmedValue(row.processed);
   const accepted = stored || copied;
   // Ground truth already stored (imported or saved earlier) is scored straight

@@ -203,7 +203,9 @@ export type PageGroundTruth = {
   rotation?: string | null;
   isVisible?: string | null;
   renderingProvider?: string | null;
+  /** Yes / No. Older rows hold credentials here. */
   providerSignature?: string | null;
+  providerCredentials?: string | null;
 };
 
 export type ImagingManifestDetails = {

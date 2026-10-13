@@ -31,7 +31,9 @@ export type PageGroundTruth = {
   rotation?: string | null;
   isVisible?: string | null;
   renderingProvider?: string | null;
+  /** Yes / No. Older rows hold credentials here (see gtCredentials). */
   providerSignature?: string | null;
+  providerCredentials?: string | null;
 };
 
 export type GtBit = { label: string; mark: MatchMark };
@@ -405,7 +407,27 @@ const LABEL_FIELDS: Array<keyof PageGroundTruth> = [
   "isVisible",
   "renderingProvider",
   "providerSignature",
+  "providerCredentials",
 ];
+
+/** Provider Credentials ground truth. Rows saved before it had its own column
+ * keep the credentials in providerSignature. */
+export function gtCredentials(gt: PageGroundTruth | null | undefined): string {
+  const own = (gt?.providerCredentials ?? "").trim();
+  if (own) return own;
+  const legacy = (gt?.providerSignature ?? "").trim();
+  return legacy && !missing(legacy) && yesNo(legacy) === null ? legacy : "";
+}
+
+/** Provider Signature ground truth as Yes / No ("" when unlabelled). Credentials
+ * in an older row mean the page is signed; NA / None there means it is not. */
+export function gtSignature(gt: PageGroundTruth | null | undefined): "Yes" | "No" | "" {
+  const side = yesNo(gt?.providerSignature);
+  if (side) return side === "yes" ? "Yes" : "No";
+  if (gtCredentials(gt)) return "Yes";
+  const folded = (gt?.providerSignature ?? "").trim().toLowerCase();
+  return ["na", "n/a", "not found", "none"].includes(folded) ? "No" : "";
+}
 
 /** True when at least one ground-truth cell on the page holds a value. */
 export function hasGroundTruth(gt: PageGroundTruth | null | undefined): boolean {

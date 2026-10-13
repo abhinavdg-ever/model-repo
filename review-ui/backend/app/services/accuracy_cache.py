@@ -104,7 +104,8 @@ SELECT
     f.page_subtype AS final_page_subtype,
     f.classification_category AS final_category,
     f.dos_from AS final_dos_from,
-    f.dos_to AS final_dos_to
+    f.dos_to AS final_dos_to,
+    g.provider_credentials AS gt_provider_credentials
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name
@@ -139,7 +140,8 @@ SELECT chart_name, page_number, source_page_id,
        external_member_id, member_known, dos_known, junk_known, codeable_known,
        ground_truth_updated_at,
        orientation_angle, rotation_known,
-       final_page_type, final_page_subtype, final_category, final_dos_from, final_dos_to
+       final_page_type, final_page_subtype, final_category, final_dos_from, final_dos_to,
+       gt_provider_credentials
   FROM v_accuracy_page
  WHERE chart_name = ANY(%s)
  ORDER BY chart_name, page_number
@@ -254,7 +256,8 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
     (
         orientation, _rotation_known,
         final_type, final_subtype, final_category, final_from, final_to,
-    ) = (tuple(extra) + (None,) * 7)[:7]
+        gt_provider_credentials,
+    ) = (tuple(extra) + (None,) * 8)[:8]
     final_key = _text(final_category) or ""
     return ImagingPageResult(
         pageNumber=int(page_number),
@@ -292,6 +295,7 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
             isVisible=_text(is_visible),
             renderingProvider=_text(rendering_provider),
             providerSignature=_text(provider_signature),
+            providerCredentials=_text(gt_provider_credentials),
         ),
     )
 
