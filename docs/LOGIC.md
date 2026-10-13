@@ -265,14 +265,20 @@ BERT model, in order:
 
 | # | Rule | Result |
 |---|---|---|
-| 1 | The model said Junk, and the page carries `clinical_min_terms` (5) or more distinct `clinical_terms` | Main (kept) |
-| 2 | Main, says "fax", ≥ 4 cover-sheet fields (To:, From:, Fax:, Phone:, Date/Time:, Subject:, …), under 80 words | Junk / Letter/Fax |
-| 3 | The model said Blank, the page has text, and the text does not say "blank" | Junk (no sub-type) |
-| 4 | Pass 2 only: Main with fewer than 20 words, not a signature page | Junk / Others |
-| 5 | The page says "signature", or the key/value extraction found it signed | Main (kept); pass 2 also re-keeps a page pass 1 had called blank or junk |
-| 6 | One junk keyword category — Letter/Fax (`letter_fax` plus the word "fax"), Invoice, Record Request, Instructions, Others (table of contents) — found `forced_junk_min_hits` (3) or more times | Junk of that sub-type, **forced**: nothing overrules it, a signature included |
+| 1 | The model said Blank or Junk, and the page has `clinical_min_headings` (2) or more distinct `clinical_headings` (Chief Complaint, HPI, Assessment, Plan, …), each starting its own line, alone or as a label ("Chief Complaint: cough") | Main (kept) |
+| 2 | The model said Blank, the page has text, and the text does not say "blank" | Junk (no sub-type) |
+| 3 | Pass 2 only: Main with fewer than 20 words, not a signature page, not a clinical note (rule 1) | Junk / Others |
+| 4 | Signature page: fewer than 20 words, and the page says "signature" or the key/value extraction found it signed | Main (kept); pass 2 also re-keeps a page pass 1 had called blank or junk. A longer page keeps the model's verdict |
+| 5 | One junk keyword category — Letter/Fax (`letter_fax` plus the word "fax"), Invoice, Record Request, Instructions, Others (table of contents) — found `forced_junk_min_hits` (3) or more times | Junk of that sub-type, **forced**: nothing overrules it, clinical headings and a signature included |
 
-Terms and the thresholds of rules 1 and 6 live in `junk_keywords_canon.json`.
+The headings and the thresholds of rules 1 and 5 live in `junk_keywords_canon.json`.
+Clinical words inside sentences do not keep a page; only headings do (2026-10-13,
+replacing the clinical-terms rule). The fax cover sheet rule was removed the same
+day: rule 5 covers fax pages.
+
+The regex fallback (only when the BERT model is missing or fails) uses the same
+headings: a page with more than 25 words and 2 or more clinical section headings
+is Main before any junk keyword rule runs.
 
 `junk_subtype` is constrained by a `CHECK` to the six labels the review UI
 renders. Anything else the classifier produces maps to `Others` rather than

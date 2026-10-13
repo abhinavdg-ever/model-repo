@@ -505,8 +505,8 @@ def _run_pass(
                 if row["page_id"] in ctx.todo:
                     mark_completed(conn, ctx, row["page_id"])
             # Pages pass 1 already ruled blank / junk are not re-judged here
-            # (pass 1 keeps signed pages itself; this covers a page whose
-            # signature only shows in the final OCR). A pass-2 "kept" row wins
+            # (pass 1 keeps short signature pages itself; this covers a page
+            # whose signature only shows in the final OCR). A pass-2 "kept" row wins
             # as the highest pass. Forced junk is never kept.
             if pass_no == 2:
                 classified_ids = {row["page_id"] for row in classified}
@@ -515,7 +515,7 @@ def _run_pass(
                     if (
                         flag not in ("blank", "junk")
                         or page_id in classified_ids
-                        or not postprocess.is_signed(text, page_id in signed_ids)
+                        or not postprocess.is_signature_page(text, page_id in signed_ids)
                         or postprocess.forced_junk(text) is not None
                     ):
                         continue

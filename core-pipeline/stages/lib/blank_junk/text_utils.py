@@ -10,51 +10,48 @@ _WORD_RE = re.compile(r"\b\w+\b", re.UNICODE)
 _ALPHA_WORD_RE = re.compile(r"[A-Za-z]{2,}")
 _VOWEL_RE = re.compile(r"[aeiouAEIOU]")
 
-# Dense clinical notes often carry fax "confidentiality notice" footers and
-# occasional billing words — those must not flip the page to junk.
-_CLINICAL_CUE_PATTERNS = [
-    re.compile(p, re.IGNORECASE)
-    for p in (
-        r"\bprogress\s+notes?\b",
-        r"\bhistory\s+of\s+present\s+illness\b",
-        r"\bhpi\b",
-        r"\bchief\s+complaint\b",
-        r"\breason\s+for\s+(appointment|visit|consult(?:ation)?)\b",
-        r"\bcurrent\s+medications?\b",
-        r"\bmedication\s+list\b",
-        r"\bvital\s+signs?\b",
-        r"\bphysical\s+exam(?:ination)?\b",
-        r"\breview\s+of\s+systems\b",
-        r"\bassessment\s+and\s+plan\b",
-        r"\bassessments?\b",
-        r"\btreatment\s+plan\b",
-        r"\boffice\s+visit\b",
-        r"\bfollow[\s-]?up\b",
-        r"\bhospital\s+course\b",
-        r"\bdischarge\s+(summary|note|diagnos\w*|instructions?)\b",
-        r"\bconsult(?:ation)?\s+note\b",
-        r"\bpast\s+medical\s+history\b",
-        r"\bsocial\s+history\b",
-        r"\bfamily\s+history\b",
-    )
-]
-
 
 def word_count(text: str) -> int:
     return len(_WORD_RE.findall(text or ""))
 
 
+def _heading_pattern(heading: str) -> re.Pattern[str]:
+    """The heading at the start of a line (after any markdown / numbering), then the
+    end of the line or a colon / dash: "HPI", "## Assessment", "Chief Complaint: cough"."""
+    words = r"\s+".join(re.escape(word) for word in heading.split())
+    return re.compile(
+        rf"^[\s#*>\-\d.)]*{words}\s*(?:$|[:\-\u2013])",
+        re.IGNORECASE | re.MULTILINE,
+    )
+
+
+def clinical_headings(text: str) -> list[str]:
+    """The distinct ``clinical_headings`` (junk_keywords_canon.json) that head a line."""
+    return [
+        heading
+        for heading in rules().raw.get("clinical_headings") or []
+        if _heading_pattern(heading).search(text or "")
+    ]
+
+
+def clinical_min_headings() -> int:
+    return int(rules().raw.get("clinical_min_headings", 2))
+
+
+def is_clinical_note(text: str) -> bool:
+    """``clinical_min_headings`` (2) or more distinct clinical section headings."""
+    return len(clinical_headings(text)) >= clinical_min_headings()
+
+
+# A clinical note in the regex fallback: more than this many words, and headings.
+CLINICAL_CONTENT_MIN_WORDS = 25
+
+
 def looks_like_clinical_content(text: str) -> bool:
-    """True for substantive clinical notes — junk rules should not fire."""
-    words = word_count(text)
-    if words < 25:
-        return False
-    hits = sum(1 for p in _CLINICAL_CUE_PATTERNS if p.search(text or ""))
-    # Two clinical section cues on a short-but-real note (e.g. one-page H&P).
-    if hits >= 2:
-        return True
-    # One strong section header on a long page is enough.
-    return hits >= 1 and words >= 100
+    """A real clinical note, so the junk rules should not fire: more than
+    CLINICAL_CONTENT_MIN_WORDS words and ``clinical_min_headings`` (2) or more
+    distinct clinical section headings. Clinical words inside sentences do not count."""
+    return word_count(text) > CLINICAL_CONTENT_MIN_WORDS and is_clinical_note(text)
 
 
 def is_signature_page(text: str) -> bool:
