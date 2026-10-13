@@ -260,6 +260,15 @@ any junk code → `junk` (+ `junk_subtype`), else `not_blank_junk`.
 > blank page is flagged `blank`, never `junk`. Pinned by
 > `tests/test_blank_junk_and_dos.py::test_blank_wins_over_junk_even_though_it_is_in_junk_codes`.
 
+**Inside the model package (`models/blank-junk/default.json` → `decision`).** A page
+with demographic fields (DOB, MRN, face sheet, registration, guarantor, emergency
+contact…) that the model calls Junk or Blank is kept (`protocol_retain_demographic`),
+unless the model is ≥ 95% sure of Record Request / Instructions / Letter-Fax / Cover /
+Invoice **and** the page carries that type's trigger phrase (`model_over_demographic`).
+Since 2026-10-13 Invoice needs its trigger too (`demographic_override_no_trigger_labels`
+is empty): an ED facesheet with Hospital Account / Billed / Coverage sections was being
+junked as Invoice on the score alone.
+
 **Post-processing (both passes, `blank_junk/postprocess.py`).** After the
 BERT model, in order:
 
