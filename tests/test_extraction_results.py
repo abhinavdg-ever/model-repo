@@ -230,14 +230,20 @@ def test_a_name_without_dr_or_a_credential_is_left_out():
     ]
 
 
-def test_rd_is_removed_from_the_provider_name():
-    from stages.lib.extraction.results import drop_credentials
+def test_credentials_must_be_in_capitals():
+    from stages.lib.extraction.results import caps_credentials_only
 
-    assert drop_credentials("Jane Doe, RD") == "Jane Doe"
-    assert drop_credentials("Jane Doe R.D., LD") == "Jane Doe, LD"
-    assert drop_credentials("Jane Doe, MD") == "Jane Doe, MD"
-    assert drop_credentials("Richard Roe, MD") == "Richard Roe, MD"
-    assert drop_credentials("RD") is None
-    assert drop_credentials(None) is None
-    fields = signature_fields({"provider_name": "Jane Doe, RD", "score": 0.9})
+    assert caps_credentials_only("Jane Doe, RD") == "Jane Doe, RD"
+    assert caps_credentials_only("Jane Doe R.D., LD") == "Jane Doe R.D., LD"
+    assert caps_credentials_only("Jane Doe Rd") == "Jane Doe"
+    assert caps_credentials_only("Jane Doe, Md") == "Jane Doe"
+    assert caps_credentials_only("Jane Doe, Md, NP") == "Jane Doe, NP"
+    assert caps_credentials_only("Doe, Ed") == "Doe, Ed"
+    assert caps_credentials_only("Jane Doe, PhD") == "Jane Doe, PhD"
+    assert caps_credentials_only("Jane Doe, Ph.D.") == "Jane Doe, Ph.D."
+    assert caps_credentials_only("Jane Doe, PharmD") == "Jane Doe, PharmD"
+    assert caps_credentials_only("Jane Doe, phd") == "Jane Doe"
+    assert caps_credentials_only("Richard Roe, MD") == "Richard Roe, MD"
+    assert caps_credentials_only(None) is None
+    fields = signature_fields({"provider_name": "Jane Doe Rd", "score": 0.9})
     assert fields["provider_name"] == "Jane Doe"

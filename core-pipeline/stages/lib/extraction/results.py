@@ -49,26 +49,56 @@ def _as_hits(hit: Any) -> list[dict[str, Any]]:
     return []
 
 
-# Credentials removed from the extracted provider name ("Jane Doe, RD" -> "Jane Doe").
-DROPPED_CREDENTIALS = frozenset({"RD"})
+# Credentials from provider_name/suffixes.txt that are normally printed in mixed case
+# (normalized: lower case, no dots or spaces). Accepted when they start with a capital.
+MIXED_CASE_CREDENTIALS = frozenset({
+    "phd", "psy-d", "psyd", "pharmd", "edd", "med", "chb", "mbchb", "bch", "bchir", "cpht", "tech",
+})
 
 
-def drop_credentials(name: Optional[str]) -> Optional[str]:
-    """The provider name without any DROPPED_CREDENTIALS token (written in capitals,
-    dots allowed: "RD", "R.D."). Other credentials and the name stay as printed."""
+def _is_caps(token: str) -> bool:
+    letters = [char for char in token if char.isalpha()]
+    return bool(letters) and all(char.isupper() for char in letters)
+
+
+def _printed_as_credential(token: str, norm: str) -> bool:
+    """In capitals, or one of MIXED_CASE_CREDENTIALS starting with a capital."""
+    if _is_caps(token):
+        return True
+    letters = [char for char in token if char.isalpha()]
+    return norm in MIXED_CASE_CREDENTIALS and bool(letters) and letters[0].isupper()
+
+
+def caps_credentials_only(name: Optional[str]) -> Optional[str]:
+    """The provider name with its trailing credentials kept only when the document
+    prints them in capitals ("RD", "R.D.", "MD"), or in their usual mixed case for
+    MIXED_CASE_CREDENTIALS ("PhD", "PharmD"). A credential spelled otherwise is
+    rejected and removed: "Rd" is a road, "Md" a state. The name keeps at least two
+    words before its credentials, so "Doe, Ed" is left alone."""
     if not name:
         return name
-    pieces = []
-    dropped = False
-    for piece in name.split(","):
-        tokens = piece.split()
-        kept = [token for token in tokens if token.replace(".", "") not in DROPPED_CREDENTIALS]
-        dropped = dropped or len(kept) != len(tokens)
-        if kept:
-            pieces.append(" ".join(kept))
-    if not dropped:
+    from .provider_name.extract import _norm_suffix, load_suffixes
+
+    catalog = load_suffixes()
+    pieces = [piece.split() for piece in name.split(",")]
+    flat = [(at, token) for at, tokens in enumerate(pieces) for token in tokens]
+    start = len(flat)
+    while start > 0 and _norm_suffix(flat[start - 1][1]) in catalog:
+        start -= 1
+    if start < 2:
         return name
-    return ", ".join(pieces) or None
+    rejected = {
+        index
+        for index in range(start, len(flat))
+        if not _printed_as_credential(flat[index][1], _norm_suffix(flat[index][1]))
+    }
+    if not rejected:
+        return name
+    kept: list[list[str]] = [[] for _ in pieces]
+    for index, (at, token) in enumerate(flat):
+        if index not in rejected:
+            kept[at].append(token)
+    return ", ".join(" ".join(tokens) for tokens in kept if tokens) or None
 
 
 def signature_fields(
@@ -111,7 +141,7 @@ def signature_fields(
         "scale": _text(primary, "scale"),
         "sentence": _text(primary, "sentence"),
         "ner_text": ner_text,
-        "provider_name": drop_credentials(best[0]) if best else None,
+        "provider_name": caps_credentials_only(best[0]) if best else None,
         "signature_date": _iso_date(printed_date),
         "confidence": _score(primary),
         "source": _text(primary, "source"),
