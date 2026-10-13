@@ -1,6 +1,11 @@
 {
-  "note_postprocess": "blank_junk/postprocess.py, after the model, in order: (1) model Blank/Junk with clinical_min_headings or more distinct clinical_headings, each starting its own line (alone or as 'Heading:') -> Main; (2) model Blank with text and no word 'blank' -> Junk (no sub-type); (3) pass 2: under 20 words, not signed, not a clinical note -> Junk / Others; (4) signature page (under 20 words, 'signature' on the page or signed by the extraction) -> Main; (5) forced, last: one category (letter_fax plus the word 'fax', invoice, record_request, instructions, others_toc) matching forced_junk_min_hits times or more -> Junk of that sub-type, even with clinical headings or a signature.",
+  "note_postprocess": "blank_junk/postprocess.py, after the model, in order: (1) model Blank/Junk with clinical_min_headings or more distinct clinical_headings, each starting its own line (alone or as 'Heading:') -> Main; (2) model Blank with text and no word 'blank' -> Junk (no sub-type); (3) pass 2: under 20 words, not signed, not a clinical note -> Junk / Others; (4) Provider Signature = Yes, or under 20 words with the word 'signature' -> Main; (5) forced: letter_fax plus the word 'fax', or record_request, forced_junk_min_hits times or more -> Junk of that sub-type, overruled only by Provider Signature = Yes (no other category forces junk); (6) absolute, last: vendor_names together vendor_min_hits times or more -> Junk / Record Request, no override.",
   "forced_junk_min_hits": 3,
+  "vendor_min_hits": 3,
+  "vendor_names": [
+    "Optum",
+    "Datavant"
+  ],
   "clinical_min_headings": 2,
   "clinical_headings": [
     "Chief Complaint",

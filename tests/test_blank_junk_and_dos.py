@@ -630,7 +630,7 @@ CLINICAL = ("Chief Complaint: cough. History of Present Illness: three days. "
 
 
 class TestForcedJunkKeywords:
-    """Three or more hits of one junk category: Junk of that sub-type, always."""
+    """Fax or record request three or more times: Junk of that sub-type. No other category forces junk."""
 
     def test_fax_three_times_is_letter_fax_at_any_length(self, monkeypatch):
         text = "Fax transmission report. Faxed to the clinic; fax confirmation attached.\n" + "details " * 200
@@ -642,13 +642,43 @@ class TestForcedJunkKeywords:
         text = "Phone: 555-000-0000  Fax: 555-000-0001\nFAX from Example Clinic\nProgress note."
         assert _bj(text, "CODE_MAIN", monkeypatch)["flag"] == "not_blank_junk"
 
-    def test_any_category_three_times_is_forced(self, monkeypatch):
+    def test_record_request_three_times_is_forced(self, monkeypatch):
+        text = "Request for medical records. Records requested: 2024. Medical records attached.\n" + "details " * 50
+        assert _bj(text, "CODE_MAIN", monkeypatch)["subtype"] == "Record Request/Transmittal"
+
+    def test_other_categories_no_longer_force_junk(self, monkeypatch):
         text = "Invoice. Amount due. Balance due. Progress note, signature: ____"
-        assert _bj(text, "CODE_MAIN", monkeypatch)["subtype"] == "Invoice"
+        assert _bj(text, "CODE_MAIN", monkeypatch)["flag"] == "not_blank_junk"
 
     def test_it_wins_over_clinical_content(self, monkeypatch):
         text = CLINICAL + " Fax. Fax. Fax."
         assert _bj(text, "CODE_OTHERS", monkeypatch)["subtype"] == "Letter/Fax"
+
+
+class TestVendorJunk:
+    """Optum + Datavant more than twice in all: Junk / Record Request, no override."""
+
+    TEXT = "Datavant release of information. Optum request ID 123. Return to Datavant.\n"
+
+    def test_three_mentions_are_junk(self, monkeypatch):
+        row = _bj(self.TEXT, "CODE_MAIN", monkeypatch)
+        assert (row["flag"], row["subtype"]) == ("junk", "Record Request/Transmittal")
+        assert "vendor junk" in row["reason"]
+
+    def test_two_mentions_stay_main(self, monkeypatch):
+        assert _bj("Datavant request. Optum ID 123.", "CODE_MAIN", monkeypatch)["flag"] == "not_blank_junk"
+
+    def test_clinical_headings_do_not_overrule_it(self, monkeypatch):
+        text = "Chief Complaint: cough\nAssessment: bronchitis\n" + self.TEXT
+        assert _bj(text, "CODE_OTHERS", monkeypatch)["flag"] == "junk"
+
+    def test_provider_signature_yes_does_not_overrule_it(self, monkeypatch):
+        from stages.lib.blank_junk import stage as bj_stage
+
+        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (classify.CODE_MAIN, "model:keep", 0.9))
+        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
+        row = _classify(pages, {1: self.TEXT + "word " * 40}, {1}, short_pages=True, signed_ids={1})[0]
+        assert row["flag"] == "junk"
 
 
 class TestBlankWithTextIsJunk:

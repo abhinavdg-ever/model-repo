@@ -518,6 +518,7 @@ def _run_pass(
                         or page_id in classified_ids
                         or not postprocess.is_signature_page(text, page_id in signed_ids)
                         or (page_id not in signed_ids and postprocess.forced_junk(text) is not None)
+                        or postprocess.vendor_junk(text) is not None
                     ):
                         continue
                     upsert_blank_junk(

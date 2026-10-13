@@ -16,16 +16,18 @@ this order:
   4. Signature -> Main: Provider Signature = Yes (the key/value extraction
      found the page signed), OR a page under SHORT_PAGE_WORDS words that says
      "signature". Either is never Blank or Junk.
-  5. Repeated junk keywords -> Junk (forced): a junk keyword category found
-     ``forced_junk_min_hits`` (3) times or more makes the page Junk of that
-     sub-type, whatever came before, clinical headings and the word
-     "signature" included. Only Provider Signature = Yes overrules it. Categories: Letter/Fax (the word "fax" plus the ``letter_fax``
-     patterns), Invoice, Record Request, Instructions, Others (table of
-     contents). The cover-page words are left out: "summary" and "discharge
-     summary" sit on real clinical pages.
+  5. Repeated fax / record request -> Junk (forced): Letter/Fax (the word
+     "fax" plus the ``letter_fax`` patterns) or Record Request
+     (``record_request`` phrases) found ``forced_junk_min_hits`` (3) times or
+     more, whatever came before, clinical headings and the word "signature"
+     included. Only Provider Signature = Yes overrules it. No other keyword
+     category forces junk.
+  6. Release-of-information vendor -> Junk / Record Request (absolute, last):
+     the ``vendor_names`` (Optum, Datavant) found more than twice in all
+     (``vendor_min_hits``, 3). Nothing overrules it, Provider Signature = Yes
+     included.
 
-The headings and the thresholds of rules 1 and 5 live in
-``junk_keywords_canon.json``.
+The headings, vendor names and thresholds live in ``junk_keywords_canon.json``.
 """
 from __future__ import annotations
 
@@ -35,8 +37,6 @@ from typing import Optional
 from classify import (
     CLASSIFICATION_LABELS,
     CODE_BLANK,
-    CODE_INSTRUCTIONS,
-    CODE_INVOICE,
     CODE_JUNK,
     CODE_LETTER_FAX,
     CODE_MAIN,
@@ -96,15 +96,14 @@ def is_signature_page(text: str, signed: bool) -> bool:
     return signed or (word_count(text) < SHORT_PAGE_WORDS and bool(_SIGNATURE_WORD.search(text or "")))
 
 
-# --- 5. repeated junk keywords ----------------------------------------------------
+# --- 5. repeated fax / record request ----------------------------------------------
 
-# Category in junk_keywords_canon.json -> (junk code, plain phrases?).
+# Category in junk_keywords_canon.json -> (junk code, plain phrases?). Invoice,
+# instructions and table-of-contents words forced junk on clinical pages that merely
+# mentioned them, so they no longer do.
 _FORCED_CATEGORIES = (
     ("letter_fax", CODE_LETTER_FAX, False),
-    ("invoice", CODE_INVOICE, True),
     ("record_request", CODE_RECORD_REQUEST, True),
-    ("instructions", CODE_INSTRUCTIONS, False),
-    ("others_toc", CODE_OTHERS, False),
 )
 
 
@@ -142,6 +141,31 @@ def forced_junk(text: str) -> Optional[tuple[int, str]]:
     )
 
 
+# --- 6. release-of-information vendor ---------------------------------------------
+
+
+def vendor_hits(text: str) -> int:
+    """Mentions of the ``vendor_names`` (Optum, Datavant), all of them together."""
+    names = rules().raw.get("vendor_names") or []
+    if not names:
+        return 0
+    pattern = re.compile("|".join(rf"\b{re.escape(name)}\b" for name in names), re.IGNORECASE)
+    return len(pattern.findall(text or ""))
+
+
+def vendor_junk(text: str) -> Optional[tuple[int, str]]:
+    """(Record Request, reason) when the vendor names appear ``vendor_min_hits``
+    (3) times or more. Absolute: nothing overrules it."""
+    limit = int(rules().raw.get("vendor_min_hits", 3))
+    hits = vendor_hits(text)
+    if hits < limit:
+        return None
+    return CODE_RECORD_REQUEST, (
+        f"vendor junk: Optum / Datavant {hits} times (>= {limit}) "
+        f"-> {CLASSIFICATION_LABELS[CODE_RECORD_REQUEST]} (no override)"
+    )
+
+
 # --- all of them ------------------------------------------------------------------
 
 
@@ -175,5 +199,9 @@ def apply(
         reason = f"{reason}; {SIGNED_KEEP_REASON if signed else SIGNATURE_WORD_KEEP_REASON}"
     forced = forced_junk(text)
     if forced is not None and not signed:
-        return forced[0], f"{reason}; {forced[1]}", 0.95
+        code, confidence = forced[0], 0.95
+        reason = f"{reason}; {forced[1]}"
+    vendor = vendor_junk(text)
+    if vendor is not None:
+        return vendor[0], f"{reason}; {vendor[1]}", 0.99
     return code, reason, confidence

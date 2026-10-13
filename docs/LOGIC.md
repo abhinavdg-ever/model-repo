@@ -269,9 +269,12 @@ BERT model, in order:
 | 2 | The model said Blank, the page has text, and the text does not say "blank" | Junk (no sub-type) |
 | 3 | Pass 2 only: Main with fewer than 20 words, not a signature page, not a clinical note (rule 1) | Junk / Others |
 | 4 | Provider Signature = Yes (the key/value extraction found the page signed), **or** a page under 20 words that says "signature" | Main (kept); pass 2 also re-keeps a page pass 1 had called blank or junk |
-| 5 | One junk keyword category — Letter/Fax (`letter_fax` plus the word "fax"), Invoice, Record Request, Instructions, Others (table of contents) — found `forced_junk_min_hits` (3) or more times | Junk of that sub-type, **forced**: only Provider Signature = Yes overrules it (clinical headings and the word "signature" do not) |
+| 5 | Fax (`letter_fax` plus the word "fax") or Record Request (`record_request` phrases) found `forced_junk_min_hits` (3) or more times. No other keyword category forces junk | Junk of that sub-type, **forced**: only Provider Signature = Yes overrules it (clinical headings and the word "signature" do not) |
+| 6 | `vendor_names` (Optum, Datavant) found `vendor_min_hits` (3) or more times in all | Junk / Record Request, **absolute**: nothing overrules it, Provider Signature = Yes included |
 
-The headings and the thresholds of rules 1 and 5 live in `junk_keywords_canon.json`.
+The headings, vendor names and thresholds live in `junk_keywords_canon.json`.
+Invoice, instructions and table-of-contents words stopped forcing
+junk on 2026-10-13: they did more harm than good on clinical pages.
 Clinical words inside sentences do not keep a page; only headings do (2026-10-13,
 replacing the clinical-terms rule). The fax cover sheet rule was removed the same
 day: rule 5 covers fax pages.

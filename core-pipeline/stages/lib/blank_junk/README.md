@@ -27,9 +27,10 @@ Blank → Cover Page → **clinical Main** → Letter/Fax → Invoice → Record
 (1) model Blank/Junk with ≥ 2 clinical section headings → Main; (2) model Blank
 with text and no word "blank" → Junk (no sub-type); (3) pass 2 only: < 20 words,
 not signed, not a clinical note → Junk / Others; (4) Provider Signature = Yes, or
-< 20 words with the word "signature" → Main; (5) forced: one junk keyword
-category (fax/letter, invoice, record request, instructions, table of contents)
-≥ 3 times → Junk of that sub-type; only Provider Signature = Yes overrules it.
+< 20 words with the word "signature" → Main; (5) forced: fax (letter_fax plus
+the word "fax") or record request ≥ 3 times → Junk of that sub-type; only
+Provider Signature = Yes overrules it, and no other category forces junk; (6) absolute, last: Optum +
+Datavant ≥ 3 times in all → Junk / Record Request, no override.
 The regex fallback has no short-page rule of its own: short pages are judged by
 (3) only, so pass 1 never junks a page for being short.
 Settings in `../keyword-canon/junk_keywords_canon.json`.
