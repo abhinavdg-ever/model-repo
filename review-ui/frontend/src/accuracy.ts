@@ -74,7 +74,7 @@ export const METRICS: {
     id: "orientation",
     label: "Orientation",
     binary: true,
-    rule: "Ground-truth rotation equals the stored text orientation (degrees the text sits clockwise: 0 / 90 / 180 / 270), on every labelled page. Under Rotated (not 0°) = Yes, Accuracy is the same score on the rotated pages only, and a rotated page counts toward Precision / Recall only at its own angle (a wrong angle is a false call and a miss). A label that is not a quarter turn (12°) is not scored. Not part of the overall page match",
+    rule: "Ground-truth rotation equals the stored text orientation (degrees the text sits clockwise: 0 / 90 / 180 / 270), on every labelled page. Under Rotated (not 0°) = Yes, every figure is on the rotated pages only (upright pages never count): Accuracy = same angle; Precision = of the rotated pages the pipeline turned, the share at the right angle; Recall = of the rotated pages, the share found at the right angle. A label that is not a quarter turn (12°) is not scored. Not part of the overall page match",
     inOverall: false,
   },
 ];
@@ -160,8 +160,9 @@ function addOrientationNonZero(tally: Tally, bits: GtBit[]): void {
   add(tally, grade(bits));
 }
 
-/** "Rotated" (not 0) as the Yes class, angle included: a rotated page is caught only
- * at its own angle. One reported at another angle is a wrong call (FP) and a miss (FN). */
+/** Pages the ground truth says are rotated (not 0°) only; upright pages never count.
+ * Same angle = TP; reported upright = FN (missed); another angle = FP + FN (a wrong
+ * call that also misses the page). */
 function addOrientationRates(
   rates: ClassRates,
   bits: GtBit[],
@@ -170,13 +171,15 @@ function addOrientationRates(
   if (!labeled(bits) || bits[0].mark === "unknown") return;
   const expectedTurn = quarterTurn(bits[0].label);
   const actualTurn = quarterTurn(angle);
-  if (expectedTurn === null || actualTurn === null) return;
-  if (expectedTurn === 0 || actualTurn === 0 || expectedTurn === actualTurn) {
-    addRates(rates, expectedTurn !== 0, actualTurn !== 0);
-    return;
+  if (expectedTurn === null || expectedTurn === 0 || actualTurn === null) return;
+  if (actualTurn === expectedTurn) {
+    rates.tp += 1;
+  } else if (actualTurn === 0) {
+    rates.fn += 1;
+  } else {
+    rates.fp += 1;
+    rates.fn += 1;
   }
-  rates.fp += 1;
-  rates.fn += 1;
 }
 
 /** Blank / junk as Yes / No: blank vs junk and the junk sub-type do not count.
