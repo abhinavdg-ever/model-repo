@@ -228,3 +228,16 @@ def test_a_name_without_dr_or_a_credential_is_left_out():
         "Daniel J Hamilton, MD",
         "Ann Lee",
     ]
+
+
+def test_rd_is_removed_from_the_provider_name():
+    from stages.lib.extraction.results import drop_credentials
+
+    assert drop_credentials("Jane Doe, RD") == "Jane Doe"
+    assert drop_credentials("Jane Doe R.D., LD") == "Jane Doe, LD"
+    assert drop_credentials("Jane Doe, MD") == "Jane Doe, MD"
+    assert drop_credentials("Richard Roe, MD") == "Richard Roe, MD"
+    assert drop_credentials("RD") is None
+    assert drop_credentials(None) is None
+    fields = signature_fields({"provider_name": "Jane Doe, RD", "score": 0.9})
+    assert fields["provider_name"] == "Jane Doe"

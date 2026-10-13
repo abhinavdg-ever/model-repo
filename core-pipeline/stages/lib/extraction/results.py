@@ -49,6 +49,28 @@ def _as_hits(hit: Any) -> list[dict[str, Any]]:
     return []
 
 
+# Credentials removed from the extracted provider name ("Jane Doe, RD" -> "Jane Doe").
+DROPPED_CREDENTIALS = frozenset({"RD"})
+
+
+def drop_credentials(name: Optional[str]) -> Optional[str]:
+    """The provider name without any DROPPED_CREDENTIALS token (written in capitals,
+    dots allowed: "RD", "R.D."). Other credentials and the name stay as printed."""
+    if not name:
+        return name
+    pieces = []
+    dropped = False
+    for piece in name.split(","):
+        tokens = piece.split()
+        kept = [token for token in tokens if token.replace(".", "") not in DROPPED_CREDENTIALS]
+        dropped = dropped or len(kept) != len(tokens)
+        if kept:
+            pieces.append(" ".join(kept))
+    if not dropped:
+        return name
+    return ", ".join(pieces) or None
+
+
 def signature_fields(
     hit: Any = None,
     provider_hits: Optional[list[dict[str, Any]]] = None,
@@ -89,7 +111,7 @@ def signature_fields(
         "scale": _text(primary, "scale"),
         "sentence": _text(primary, "sentence"),
         "ner_text": ner_text,
-        "provider_name": best[0] if best else None,
+        "provider_name": drop_credentials(best[0]) if best else None,
         "signature_date": _iso_date(printed_date),
         "confidence": _score(primary),
         "source": _text(primary, "source"),
