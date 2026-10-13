@@ -64,3 +64,34 @@ class TestMemberNameEdgeLine:
     def test_a_street_address_is_not_a_demographic_strip(self):
         assert _ADDRESS.search("MF Lab 800 E. DAWSON TYLER 1612 TX 75701 USA")
         assert not _ADDRESS.search("Patient: Smith, John DOB: 01/02/1950 MRN: 023466")
+
+
+def _dos_row(key: str, tier: str, value: str):
+    from stages.lib.extraction.dos.extract import DosHit
+
+    return DosHit(key=key, region="body", sentence="", tier=tier, value=value,
+                  dos_from=value, dos_to=value, score=0.9, accepted=True)
+
+
+def test_lab_dos_collected_then_received_then_printed():
+    from stages.lib.extraction.dos.extract import mark_selected
+    from stages.lib.extraction.util.keys import load_key_tiers
+
+    tiers = load_key_tiers("dos")
+    assert tiers["collection date"] == "collected"
+    assert tiers["date received"] == "received"
+    assert tiers["printed"] == "printed"
+
+    def chosen(*rows):
+        return [row.key for row in mark_selected(list(rows)) if row.selected]
+
+    collected = _dos_row("Collection Date", "collected", "10/01/2024")
+    received = _dos_row("Received", "received", "10/02/2024")
+    printed = _dos_row("Printed", "printed", "10/05/2024")
+    order = _dos_row("Order Date", "service", "09/30/2024")
+    assert chosen(printed, received, collected, order) == ["Collection Date"]
+    received, printed = _dos_row("Received", "received", "10/02/2024"), _dos_row("Printed", "printed", "10/05/2024")
+    assert chosen(printed, received) == ["Received"]
+    weak, printed = _dos_row("Report Date", "weak", "10/04/2024"), _dos_row("Printed", "printed", "10/05/2024")
+    assert chosen(printed, weak) == ["Report Date"]
+    assert chosen(_dos_row("Printed", "printed", "10/05/2024")) == ["Printed"]

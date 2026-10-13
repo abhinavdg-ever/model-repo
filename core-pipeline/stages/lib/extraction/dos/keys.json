@@ -26,7 +26,6 @@
     "Reg Dt/Tm",
     "Est Dt/Tm",
     "OccDt",
-    "Collection Date",
     "Order Date",
     "Date of Visit",
     "Document Date",
@@ -52,12 +51,36 @@
     "Discharge Date/Time",
     "End Time"
   ],
+  "collected": [
+    "Collection Date",
+    "Collection Date/Time",
+    "Collected",
+    "Collected Date",
+    "Collected On",
+    "Date Collected",
+    "Specimen Collected",
+    "Coll Date"
+  ],
+  "received": [
+    "Received",
+    "Received Date",
+    "Received Date/Time",
+    "Received On",
+    "Date Received",
+    "Specimen Received"
+  ],
+  "printed": [
+    "Printed",
+    "Printed On",
+    "Printed Date",
+    "Print Date",
+    "Date Printed"
+  ],
   "weak": [
     "Date",
     "dd",
     "dt",
     "Report Date",
-    "Received",
     "Service",
     "Chief Complaint",
     "Chief Complaint/Reason For Visit",

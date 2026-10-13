@@ -1,14 +1,17 @@
 """Date of service from DOS keys, admit/discharge pairs, or header/footer dates.
 
 Rules from Data/examp/dos.csv (keys and tiers live in DOS/keys.json):
-  - Tiers per page: service keys > admit/discharge > weak keys (Date, dd, dt, Report Date, ...).
-    The best tier with a valid date wins; weak keys are only a fallback.
+  - Tiers per page: service keys > admit/discharge > received > weak keys (Date, dd, dt,
+    Report Date, ...) > printed. The best tier with a valid date wins; weak keys are only a
+    fallback. A lab's Collection date ranks with the service keys and wins among them, so a
+    lab page is Collected > Received > Printed.
   - Value: single date (6/28/2024, 9/24/24, 2024-12-02, 08-19-2024, Jul 1, 2024,
     November 6, 2024; a trailing time is dropped) or a range "date - date"
     (-, –, to, thru, through). Admit + discharge on one page are both selected and
     become a range in the record summary.
   - Keyed value: first date after the key on the key's line (weak keys: right after
-    the key), else the column-aligned date just below the key (table headers).
+    the key; received/printed too), else the column-aligned date just below the key (table
+    headers).
   - Year must be 2000..next year; dates equal to the page's DOB are never used.
   - Keyless: header/footer only, only when no keyed DOS; dates followed by a clock
     time (fax/print stamps), fax/signature/print lines, prose lines and page labels
@@ -30,7 +33,12 @@ from ..util.geometry import FOOTER_FRAC, HEADER_FRAC, Word, is_edge_region, medi
 from ..util.keys import KeyHit, linked, load_key_tiers, trusted_field_hits
 from ..util.tokens import Token, key_token_span, ordered_tokens, same_line
 
-TIER_RANK = {"service": 0, "admit": 1, "discharge": 1, "weak": 2, "keyless": 3}
+TIER_RANK = {
+    "service": 0, "collected": 0, "admit": 1, "discharge": 1,
+    "received": 2, "weak": 3, "printed": 4, "keyless": 5,
+}
+# Tiers whose date must sit right after the key ('Received: 10/02/2024'), as weak keys.
+_NEAR_TIERS = frozenset({"weak", "received", "printed"})
 _MIN_YEAR = 2000
 _MAX_GAP_WORDS = 6
 _WEAK_GAP_WORDS = 1
@@ -149,7 +157,7 @@ def _pick(
         if not on_line:
             continue
         gap = len(text[key_end.end : span.start].split())
-        if gap <= (_WEAK_GAP_WORDS if tier == "weak" else _MAX_GAP_WORDS):
+        if gap <= (_WEAK_GAP_WORDS if tier in _NEAR_TIERS else _MAX_GAP_WORDS):
             return span, _confidence(gap), "same_line"
         # 'Encounter Note by Davis, Alfred H III, PA at 06/12/2024': introduced on the key's line.
         if tier == "service" and _INTRODUCED.search(text[key_end.end : span.start]):
@@ -162,7 +170,7 @@ def _pick(
         covered = _span_tokens(tokens, spans[0])
         if covered and 0 < covered[0].word.box.top - key_end.word.box.bottom + 0.3 * line_h < 2.0 * line_h:
             return spans[0], 0.85, "next_line"
-    if tier == "weak":
+    if tier in _NEAR_TIERS:
         return _column_below(tokens, spans, key_start, key_end, line_h) if header_row else None
     key_left = key_start.word.box.left
     key_right = key_end.word.box.right
@@ -242,7 +250,7 @@ def extract_box(hit: KeyHit, tier: str, blocked: set[str], words: list[Word] | N
     positions = key_token_span(tokens, hit.word_indexes, hit.key)
     if positions is None:
         return blank
-    header_row = tier == "weak" and bool(words) and _header_row(hit, words)
+    header_row = tier in _NEAR_TIERS and bool(words) and _header_row(hit, words)
     picked = _pick(tokens, text, positions[0], positions[1], tier, blocked, header_row)
     if picked is None:
         return blank
@@ -357,12 +365,14 @@ def _best(rows: list[DosHit]) -> DosHit:
 
 def mark_selected(rows: list[DosHit]) -> list[DosHit]:
     """Pick one DOS per page: best tier first; with both an admit and a discharge date, both
-    are selected (the record summary makes them a range)."""
+    are selected (the record summary makes them a range). A lab's Collection date wins over
+    the other service keys (Order Date, Date of Service) on its page."""
     accepted = [row for row in rows if row.accepted and row.value]
     if not accepted:
         return rows
     top = min(TIER_RANK.get(row.tier, 9) for row in accepted)
     pool = [row for row in accepted if TIER_RANK.get(row.tier, 9) == top]
+    pool = [row for row in pool if row.tier == "collected"] or pool
     admits = [row for row in pool if row.tier == "admit"]
     discharges = [row for row in pool if row.tier == "discharge"]
     if admits and discharges:

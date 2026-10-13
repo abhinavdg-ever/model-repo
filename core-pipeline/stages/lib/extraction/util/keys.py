@@ -838,7 +838,7 @@ def _patient_has_nearby_key(
 
 def _dos_trusted_alone(key: str) -> bool:
     tier = load_key_tiers("dos").get(key.strip().casefold(), "")
-    return tier in {"service", "admit", "discharge"} and len(_parts(key)) >= 2
+    return tier in {"service", "collected", "admit", "discharge"} and len(_parts(key)) >= 2
 
 
 def _printed_as_label(hit: KeyHit, by_index: dict[int, Word]) -> bool:
@@ -908,7 +908,7 @@ def _mark_trusted(hits: list[KeyHit], page_w: float, page_h: float, by_index: di
                     hit.region = "mid_cluster"
                 hit.trusted, hit.trusted_reason = True, "provider_label"
                 continue
-            # Multi-word DOS service/admit/discharge keys are trusted alone mid-page.
+            # Multi-word DOS service/collected/admit/discharge keys are trusted alone mid-page.
             if hit.field == "dos" and _dos_trusted_alone(hit.key):
                 if hit.region == "mid":
                     hit.region = "mid_cluster"
