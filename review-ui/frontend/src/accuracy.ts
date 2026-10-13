@@ -74,7 +74,7 @@ export const METRICS: {
     id: "orientation",
     label: "Orientation",
     binary: true,
-    rule: "Ground-truth rotation equals the stored text orientation (degrees the text sits clockwise: 0 / 90 / 180 / 270), on every labelled page. Under Rotated (not 0°) = Yes, Accuracy is the same score on the rotated pages only. A label that is not a quarter turn (12°) is not scored. Not part of the overall page match",
+    rule: "Ground-truth rotation equals the stored text orientation (degrees the text sits clockwise: 0 / 90 / 180 / 270), on every labelled page. Under Rotated (not 0°) = Yes, Accuracy is the same score on the rotated pages only, and a rotated page counts toward Precision / Recall only at its own angle (a wrong angle is a false call and a miss). A label that is not a quarter turn (12°) is not scored. Not part of the overall page match",
     inOverall: false,
   },
 ];
@@ -160,8 +160,8 @@ function addOrientationNonZero(tally: Tally, bits: GtBit[]): void {
   add(tally, grade(bits));
 }
 
-/** "Rotated" (not 0) as a Yes / No class. A rotated page reported at another
- * non-zero angle still counts as caught; the exact angle is the Orientation score. */
+/** "Rotated" (not 0) as the Yes class, angle included: a rotated page is caught only
+ * at its own angle. One reported at another angle is a wrong call (FP) and a miss (FN). */
 function addOrientationRates(
   rates: ClassRates,
   bits: GtBit[],
@@ -171,7 +171,12 @@ function addOrientationRates(
   const expectedTurn = quarterTurn(bits[0].label);
   const actualTurn = quarterTurn(angle);
   if (expectedTurn === null || actualTurn === null) return;
-  addRates(rates, expectedTurn !== 0, actualTurn !== 0);
+  if (expectedTurn === 0 || actualTurn === 0 || expectedTurn === actualTurn) {
+    addRates(rates, expectedTurn !== 0, actualTurn !== 0);
+    return;
+  }
+  rates.fp += 1;
+  rates.fn += 1;
 }
 
 /** Blank / junk as Yes / No: blank vs junk and the junk sub-type do not count.
