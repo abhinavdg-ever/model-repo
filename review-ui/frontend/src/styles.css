@@ -3284,24 +3284,6 @@ input {
   font-variant-numeric: tabular-nums;
 }
 
-/* One full-width row under the grid (Orientation's non-zero accuracy). */
-.accuracy-class-wide {
-  grid-template-columns: 1fr;
-  margin-top: 0.15rem;
-}
-
-.accuracy-class-wide > div {
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.accuracy-class-wide dt {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.15rem;
-}
-
 /* Wrap only between "Match n", "Partial n" and "No Match n". */
 .accuracy-distribution span {
   white-space: nowrap;

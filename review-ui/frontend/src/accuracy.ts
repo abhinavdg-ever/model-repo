@@ -68,7 +68,7 @@ export const METRICS: {
     id: "orientation",
     label: "Orientation",
     binary: true,
-    rule: "Ground-truth rotation equals the stored text orientation (degrees the text sits clockwise: 0 / 90 / 180 / 270). A label that is not one of those (12°) is not scored. Not part of the overall page match",
+    rule: "Pages the ground truth says are rotated (90 / 180 / 270) only: Match when the stored text orientation (degrees the text sits clockwise) is the same angle. Upright (0°) pages are not scored here; they count in Precision / Recall. A label that is not a quarter turn (12°) is not scored. Not part of the overall page match",
     inOverall: false,
   },
 ];
@@ -103,8 +103,6 @@ export type ChartAccuracy = {
   overall: Tally;
   /** Class 1 = a blank or junk page. */
   blankJunkRates: ClassRates;
-  /** Orientation scored on the pages the ground truth says are rotated (not 0). */
-  orientationNonZero: Tally;
   /** Class 1 = a rotated page (not 0°). */
   orientationRates: ClassRates;
   /** Class 1 = both the member's Name and DOB are on the page. */
@@ -148,16 +146,8 @@ function quarterTurn(value: string | number | null | undefined): number | null {
   return ((Math.round(n) % 360) + 360) % 360;
 }
 
-/** A page the ground truth says is rotated (90 / 180 / 270): Match or No Match. */
-function addOrientationNonZero(tally: Tally, bits: GtBit[]): void {
-  if (!labeled(bits) || bits[0].mark === "unknown") return;
-  const expected = quarterTurn(bits[0].label);
-  if (expected === null || expected === 0) return;
-  add(tally, grade(bits));
-}
-
 /** "Rotated" (not 0) as a Yes / No class. A rotated page reported at another
- * non-zero angle still counts as caught; the exact angle is "Accuracy of non-zero". */
+ * non-zero angle still counts as caught; the exact angle is the Orientation score. */
 function addOrientationRates(
   rates: ClassRates,
   bits: GtBit[],
@@ -349,9 +339,13 @@ function pageScores(
         ? null
         : finalOrExtracted(single(finalBits.codeable), single(bits.codeable)),
       credentials: credentials === "maybe" ? "yes" : credentials,
-      // An angle that is not a quarter turn, or a page the rotation stage did not run on, is
-      // not scored (it is not a miss).
-      orientation: bits.rotation[0]?.mark === "unknown" ? null : single(bits.rotation),
+      // Only pages the ground truth says are rotated: upright pages are most of every chart
+      // and would swamp the score. An angle that is not a quarter turn, or a page the
+      // rotation stage did not run on, is not scored (it is not a miss).
+      orientation:
+        bits.rotation[0]?.mark === "unknown" || !quarterTurn(bits.rotation[0]?.label)
+          ? null
+          : single(bits.rotation),
     },
     blankJunk: blankJunkCalls,
     rotation: bits.rotation,
@@ -440,7 +434,6 @@ export function scoreChart(
     Tally
   >;
   const blankJunkRates = emptyRates();
-  const orientationNonZero = emptyTally();
   const orientationRates = emptyRates();
   const memberRates = emptyRates();
   const credentialsRates = emptyRates();
@@ -453,7 +446,6 @@ export function scoreChart(
     if (scored.blankJunk) {
       addRates(blankJunkRates, scored.blankJunk.expected, scored.blankJunk.predicted);
     }
-    addOrientationNonZero(orientationNonZero, scored.rotation);
     addOrientationRates(orientationRates, scored.rotation, page.orientationAngle);
     if (scored.member) {
       // Class 1: both Name and DOB on the page.
@@ -472,7 +464,6 @@ export function scoreChart(
     metrics,
     overall,
     blankJunkRates,
-    orientationNonZero,
     orientationRates,
     memberRates,
     credentialsRates,

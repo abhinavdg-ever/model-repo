@@ -122,12 +122,10 @@ function CompactScore({
   tally,
   binary = false,
   rates,
-  nonZero,
 }: {
   tally: Tally;
   binary?: boolean;
   rates?: ClassRates;
-  nonZero?: Tally;
 }) {
   if (tally.scored === 0) return <>—</>;
   return (
@@ -137,19 +135,12 @@ function CompactScore({
         <Distribution tally={tally} binary={binary} />
       </p>
       {rates ? <RatesGrid rates={rates} /> : null}
-      {nonZero && nonZero.scored > 0 ? (
-        <p className="accuracy-cell-extra">Non-zero {percentLabel(nonZero)}</p>
-      ) : null}
     </div>
   );
 }
 
 const SCORE_INFO =
   "Accuracy score = (Match + 0.5 × Partial) / Total, where Total = Match + Partial + No Match.";
-const NON_ZERO_INFO =
-  "Pages the ground truth says are rotated (90, 180 or 270), scored on the " +
-  "stored text orientation: Match = same angle, No Match = any other. " +
-  "Most pages are upright, so this is the figure that shows whether turned pages are caught.";
 const RATES_INFO =
   "Class 1 (the Yes pages) only. Precision = TP / (TP + FP): share of the pipeline's Class 1 calls that were right. " +
   "Recall = TP / (TP + FN): share of the real Class 1 pages the pipeline caught. " +
@@ -162,7 +153,6 @@ function Donut({
   tally,
   rates,
   ratesLabel,
-  yesTally,
   binary = false,
 }: {
   label: string;
@@ -174,8 +164,6 @@ function Donut({
   rates?: ClassRates;
   /** What Class 1 is ("Blank / Junk = Yes"). */
   ratesLabel?: string;
-  /** Orientation: the score on the pages the ground truth says are rotated. */
-  yesTally?: Tally;
 }) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
@@ -218,7 +206,7 @@ function Donut({
       </svg>
       <InfoTip
         className="accuracy-info-corner"
-        text={[detail, SCORE_INFO, rates ? RATES_INFO : "", yesTally ? NON_ZERO_INFO : ""]
+        text={[detail, SCORE_INFO, rates ? RATES_INFO : ""]
           .filter(Boolean)
           .join(" ")}
       />
@@ -231,14 +219,6 @@ function Donut({
           {ratesLabel ? <div className="accuracy-class-head">{ratesLabel}</div> : null}
           <RatesGrid rates={rates} />
         </div>
-      ) : null}
-      {yesTally ? (
-        <dl className="accuracy-class-grid accuracy-class-wide" title={formatDistribution(yesTally)}>
-          <div>
-            <dt>Accuracy of non-zero</dt>
-            <dd>{percentLabel(yesTally)}</dd>
-          </div>
-        </dl>
       ) : null}
     </figure>
   );
@@ -397,10 +377,6 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
     () => sumRates(rows.map((row) => row.credentialsRates)),
     [rows],
   );
-  const orientationNonZero = useMemo(
-    () => sumTallies(rows.map((row) => row.orientationNonZero)),
-    [rows],
-  );
   const orientationRates = useMemo(
     () => sumRates(rows.map((row) => row.orientationRates)),
     [rows],
@@ -482,7 +458,6 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                   tally={overallByMetric[metric.id]}
                   rates={ratesFor(metric.id)}
                   ratesLabel={ratesLabelFor(metric.id)}
-                  yesTally={metric.id === "orientation" ? orientationNonZero : undefined}
                   binary={metric.binary}
                 />
                 ),
@@ -583,7 +558,6 @@ export default function AccuracyView({ onBack, onOpenChart }: Props) {
                           tally={row.metrics[metric.id]}
                           binary={metric.binary}
                           rates={rowRatesFor(row, metric.id)}
-                          nonZero={metric.id === "orientation" ? row.orientationNonZero : undefined}
                         />
                       </td>
                     ))}
