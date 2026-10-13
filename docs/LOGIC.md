@@ -268,8 +268,8 @@ BERT model, in order:
 | 1 | The model said Blank or Junk, and the page has `clinical_min_headings` (2) or more distinct `clinical_headings` (Chief Complaint, HPI, Assessment, Plan, …), each starting its own line, alone or as a label ("Chief Complaint: cough") | Main (kept) |
 | 2 | The model said Blank, the page has text, and the text does not say "blank" | Junk (no sub-type) |
 | 3 | Pass 2 only: Main with fewer than 20 words, not a signature page, not a clinical note (rule 1) | Junk / Others |
-| 4 | Signature page: fewer than 20 words, and the page says "signature" or the key/value extraction found it signed | Main (kept); pass 2 also re-keeps a page pass 1 had called blank or junk. A longer page keeps the model's verdict |
-| 5 | One junk keyword category — Letter/Fax (`letter_fax` plus the word "fax"), Invoice, Record Request, Instructions, Others (table of contents) — found `forced_junk_min_hits` (3) or more times | Junk of that sub-type, **forced**: nothing overrules it, clinical headings and a signature included |
+| 4 | Provider Signature = Yes (the key/value extraction found the page signed), **or** a page under 20 words that says "signature" | Main (kept); pass 2 also re-keeps a page pass 1 had called blank or junk |
+| 5 | One junk keyword category — Letter/Fax (`letter_fax` plus the word "fax"), Invoice, Record Request, Instructions, Others (table of contents) — found `forced_junk_min_hits` (3) or more times | Junk of that sub-type, **forced**: only Provider Signature = Yes overrules it (clinical headings and the word "signature" do not) |
 
 The headings and the thresholds of rules 1 and 5 live in `junk_keywords_canon.json`.
 Clinical words inside sentences do not keep a page; only headings do (2026-10-13,

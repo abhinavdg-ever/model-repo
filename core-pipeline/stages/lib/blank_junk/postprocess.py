@@ -13,13 +13,13 @@ this order:
      Junk, no sub-type.
   3. Short page (pass 2 only) -> Junk / Others: Main with fewer than
      SHORT_PAGE_WORDS words, not a signature page and not a clinical note.
-  4. Signature page -> Main: a page under SHORT_PAGE_WORDS words that says
-     "signature" (or that the key/value extraction found signed) is never
-     Blank or Junk. A longer page keeps the model's verdict.
-  5. Repeated junk keywords -> Junk (forced, last): a junk keyword category
-     found ``forced_junk_min_hits`` (3) times or more makes the page Junk of
-     that sub-type, whatever came before, clinical headings and a signature
-     included. Categories: Letter/Fax (the word "fax" plus the ``letter_fax``
+  4. Signature -> Main: Provider Signature = Yes (the key/value extraction
+     found the page signed), OR a page under SHORT_PAGE_WORDS words that says
+     "signature". Either is never Blank or Junk.
+  5. Repeated junk keywords -> Junk (forced): a junk keyword category found
+     ``forced_junk_min_hits`` (3) times or more makes the page Junk of that
+     sub-type, whatever came before, clinical headings and the word
+     "signature" included. Only Provider Signature = Yes overrules it. Categories: Letter/Fax (the word "fax" plus the ``letter_fax``
      patterns), Invoice, Record Request, Instructions, Others (table of
      contents). The cover-page words are left out: "summary" and "discharge
      summary" sit on real clinical pages.
@@ -80,9 +80,9 @@ def short_page_is_junk(text: str, signed: bool) -> bool:
 
 # --- 4. signature page ------------------------------------------------------------
 
-# The extraction skips blank/junk pages, so the word is what reaches them.
-SIGNED_KEEP_REASON = (
-    f"signature page (signed, < {SHORT_PAGE_WORDS} words) -> kept (overrules blank/junk)"
+SIGNED_KEEP_REASON = "Provider Signature = Yes -> kept (overrules blank/junk)"
+SIGNATURE_WORD_KEEP_REASON = (
+    f"signature page ('signature', < {SHORT_PAGE_WORDS} words) -> kept (overrules blank/junk)"
 )
 
 
@@ -91,8 +91,9 @@ def is_signed(text: str, signed: bool) -> bool:
 
 
 def is_signature_page(text: str, signed: bool) -> bool:
-    """A short page that is the signature: under SHORT_PAGE_WORDS words, signed."""
-    return word_count(text) < SHORT_PAGE_WORDS and is_signed(text, signed)
+    """Provider Signature = Yes (``signed``, from the key/value extraction), OR a page
+    under SHORT_PAGE_WORDS words that says "signature"."""
+    return signed or (word_count(text) < SHORT_PAGE_WORDS and bool(_SIGNATURE_WORD.search(text or "")))
 
 
 # --- 5. repeated junk keywords ----------------------------------------------------
@@ -171,8 +172,8 @@ def apply(
         reason = f"short page: {word_count(text)} words (< {SHORT_PAGE_WORDS}), not a signature page"
     if code != CODE_MAIN and is_signature_page(text, signed):
         code, confidence = CODE_MAIN, 0.9
-        reason = f"{reason}; {SIGNED_KEEP_REASON}"
+        reason = f"{reason}; {SIGNED_KEEP_REASON if signed else SIGNATURE_WORD_KEEP_REASON}"
     forced = forced_junk(text)
-    if forced is not None:
+    if forced is not None and not signed:
         return forced[0], f"{reason}; {forced[1]}", 0.95
     return code, reason, confidence

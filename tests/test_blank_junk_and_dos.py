@@ -784,7 +784,7 @@ class TestSignedPageIsKept:
     def test_model_junk_with_a_signature_is_kept(self, monkeypatch):
         row = self._run("CODE_LETTER_FAX", signed=True, monkeypatch=monkeypatch)
         assert row["flag"] == "not_blank_junk"
-        assert "signature" in row["reason"]
+        assert "Provider Signature = Yes" in row["reason"]
 
     def test_model_blank_with_a_signature_is_kept(self, monkeypatch):
         row = self._run("CODE_BLANK", signed=True, monkeypatch=monkeypatch, text="")
@@ -801,10 +801,21 @@ class TestSignedPageIsKept:
         assert row["flag"] == "not_blank_junk"
         assert "signature" in row["reason"]
 
-    def test_a_long_signed_page_keeps_the_models_verdict(self, monkeypatch):
-        row = self._run("CODE_LETTER_FAX", signed=True, monkeypatch=monkeypatch,
+    def test_the_word_on_a_long_page_keeps_the_models_verdict(self, monkeypatch):
+        row = self._run("CODE_LETTER_FAX", signed=False, monkeypatch=monkeypatch,
                         text="Records request. Provider Signature: made up " + "word " * 20)
         assert row["flag"] == "junk"
+
+    def test_provider_signature_yes_keeps_a_long_page(self, monkeypatch):
+        row = self._run("CODE_LETTER_FAX", signed=True, monkeypatch=monkeypatch,
+                        text="Records request. " + "word " * 40)
+        assert row["flag"] == "not_blank_junk"
+        assert "Provider Signature = Yes" in row["reason"]
+
+    def test_provider_signature_yes_overrules_forced_junk(self, monkeypatch):
+        row = self._run("CODE_MAIN", signed=True, monkeypatch=monkeypatch,
+                        text="Fax. Fax. Fax. " + "word " * 40)
+        assert row["flag"] == "not_blank_junk"
 
     def test_pass_1_applies_it_too(self, monkeypatch):
         from stages.lib.blank_junk import stage as bj_stage

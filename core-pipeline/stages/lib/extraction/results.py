@@ -52,7 +52,7 @@ def _as_hits(hit: Any) -> list[dict[str, Any]]:
 # Credentials from provider_name/suffixes.txt that are normally printed in mixed case
 # (normalized: lower case, no dots or spaces). Accepted when they start with a capital.
 MIXED_CASE_CREDENTIALS = frozenset({
-    "phd", "psy-d", "psyd", "pharmd", "edd", "med", "chb", "mbchb", "bch", "bchir", "cpht", "tech",
+    "phd", "psy-d", "psyd", "pharmd", "edd", "med", "chb", "mbchb", "bch", "bchir", "cpht",
 })
 
 
