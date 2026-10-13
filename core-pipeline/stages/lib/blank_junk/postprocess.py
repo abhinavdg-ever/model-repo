@@ -27,6 +27,13 @@ this order:
      (``vendor_min_hits``, 3). Nothing overrules it, Provider Signature = Yes
      included.
 
+After pass 2, across the chart (``visual_pages_kept``):
+
+  7. Visual page beside a kept page -> Main: a page the page-tag model calls
+     Visual (a picture, chart or scan with little text) whose final verdict is
+     Blank or Junk, with the page right before or right after it kept (Main).
+     Forced and vendor junk (5, 6) stay junk.
+
 The headings, vendor names and thresholds live in ``junk_keywords_canon.json``.
 """
 from __future__ import annotations
@@ -205,3 +212,21 @@ def apply(
     if vendor is not None:
         return vendor[0], f"{reason}; {vendor[1]}", 0.99
     return code, reason, confidence
+
+
+# --- 7. visual page beside a kept page ----------------------------------------------
+
+VISUAL_KEEP_REASON = "Visual page next to a kept page -> kept"
+
+
+def visual_pages_kept(order: list[int], finals: dict[int, str], visual: set[int]) -> list[int]:
+    """Visual pages ruled Blank or Junk whose previous or next page (in ``order``)
+    is kept. ``finals`` is each page's final flag; a page with none is not kept."""
+    kept = []
+    for index, page_id in enumerate(order):
+        if page_id not in visual or finals.get(page_id) not in ("blank", "junk"):
+            continue
+        neighbors = order[max(0, index - 1) : index] + order[index + 1 : index + 2]
+        if any(finals.get(other) == "not_blank_junk" for other in neighbors):
+            kept.append(page_id)
+    return kept

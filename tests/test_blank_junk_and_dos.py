@@ -879,3 +879,21 @@ class TestSignedPageIsKept:
         pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
         row = _classify(pages, {1: "Fax cover. Signature: made up"}, {1})[0]
         assert row["flag"] == "not_blank_junk"
+
+
+def test_visual_page_beside_a_kept_page_is_kept():
+    from stages.lib.blank_junk import stage as bj_stage
+
+    kept = bj_stage.postprocess.visual_pages_kept
+    order = [1, 2, 3, 4, 5, 6]
+    finals = {
+        1: "not_blank_junk", 2: "junk", 3: "blank",
+        4: "junk", 5: "junk", 6: "duplicate",
+    }
+    # 2 is after a kept page; 3 sits between junk pages; 5 is before a duplicate;
+    # 4 is junk but not Visual.
+    assert kept(order, finals, {2, 3, 5}) == [2]
+    assert kept(order, {**finals, 6: "not_blank_junk"}, {2, 3, 5}) == [2, 5]
+    # Only Blank / Junk is changed, and a page with no verdict is not "kept".
+    assert kept([1, 2], {2: "junk"}, {2}) == []
+    assert kept([1, 2], {1: "not_blank_junk", 2: "duplicate"}, {2}) == []

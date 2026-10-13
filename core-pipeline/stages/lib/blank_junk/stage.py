@@ -49,6 +49,7 @@ from db import (
     low_quality_page_ids,
     non_printed_page_ids,
     mark_blank_junk_final,
+    page_type,
     upsert_blank_junk,
 )
 from db.paths import imaging_csv, write_csv
@@ -535,6 +536,28 @@ def _run_pass(
                             postprocess.SIGNED_KEEP_REASON if page_id in signed_ids
                             else postprocess.SIGNATURE_WORD_KEEP_REASON
                         ),
+                    )
+                # A Visual page beside a kept page belongs to that document.
+                finals = get_blank_junk_flags(conn, chart_id)
+                visual = {
+                    p["id"] for p in ctx.pages if page_type(quality.get(p["id"])) == "visual"
+                }
+                order = [p["id"] for p in ctx.pages]
+                for page_id in postprocess.visual_pages_kept(order, finals, visual):
+                    text = texts.get(page_id) or ""
+                    if postprocess.forced_junk(text) is not None or postprocess.vendor_junk(text) is not None:
+                        continue
+                    upsert_blank_junk(
+                        conn,
+                        chart_id=chart_id,
+                        page_id=page_id,
+                        pass_no=pass_no,
+                        blank_junk_flag="not_blank_junk",
+                        ocr_source=sources.get(page_id, ocr_source),
+                        junk_subtype=None,
+                        duplicate_of_page_id=None,
+                        confidence=0.9,
+                        reason=f"{finals[page_id]}; {postprocess.VISUAL_KEEP_REASON}",
                     )
             mark_blank_junk_final(conn, chart_id)
             path = _rewrite_csv(conn, chart_id, ctx.chart_name)

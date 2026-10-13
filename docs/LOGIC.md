@@ -280,6 +280,7 @@ BERT model, in order:
 | 4 | Provider Signature = Yes (the key/value extraction found the page signed), **or** a page under 20 words that says "signature" | Main (kept); pass 2 also re-keeps a page pass 1 had called blank or junk |
 | 5 | Fax (`letter_fax` plus the word "fax") or Record Request (`record_request` phrases) found `forced_junk_min_hits` (3) or more times. No other keyword category forces junk | Junk of that sub-type, **forced**: only Provider Signature = Yes overrules it (clinical headings and the word "signature" do not) |
 | 6 | `vendor_names` (Optum, OptumCare, Datavant) found `vendor_min_hits` (3) or more times in all | Junk / Record Request, **absolute**: nothing overrules it, Provider Signature = Yes included |
+| 7 | End of pass 2, across the chart: a page the page-tag model calls **Visual** whose final verdict is Blank or Junk, with the page right before or right after it kept (Main) | Main (kept). Forced and vendor junk (5, 6) stay junk |
 
 The headings, vendor names and thresholds live in `junk_keywords_canon.json`.
 Invoice, instructions and table-of-contents words stopped forcing

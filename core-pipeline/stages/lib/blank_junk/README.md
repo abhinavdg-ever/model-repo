@@ -30,7 +30,9 @@ not signed, not a clinical note → Junk / Others; (4) Provider Signature = Yes,
 < 20 words with the word "signature" → Main; (5) forced: fax (letter_fax plus
 the word "fax") or record request ≥ 3 times → Junk of that sub-type; only
 Provider Signature = Yes overrules it, and no other category forces junk; (6) absolute, last: Optum +
-Datavant ≥ 3 times in all → Junk / Record Request, no override.
+Datavant ≥ 3 times in all → Junk / Record Request, no override. Then, at the end
+of pass 2 across the chart: (7) a Visual page (page-tag model) ruled Blank or Junk
+with the previous or next page kept → Main, unless (5) or (6) applies.
 The regex fallback has no short-page rule of its own: short pages are judged by
 (3) only, so pass 1 never junks a page for being short.
 Settings in `../keyword-canon/junk_keywords_canon.json`.
