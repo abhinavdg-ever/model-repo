@@ -119,6 +119,8 @@ type Props = {
     groundTruth: PageGroundTruth,
   ) => void;
   groundTruthLeave?: MutableRefObject<GroundTruthLeave | null>;
+  /** The fullscreen drawer: the page table only (no manifest), without Confidence. */
+  compact?: boolean;
 };
 
 export type GroundTruthLeave = {
@@ -681,6 +683,7 @@ function CompareSection({
   saving,
   verdicts,
   toolbar,
+  hideConfidence = false,
 }: {
   title: string;
   rows: CompareRow[];
@@ -694,6 +697,7 @@ function CompareSection({
   saving: boolean;
   verdicts: Record<string, "accept" | "enter">;
   toolbar?: ReactNode;
+  hideConfidence?: boolean;
 }) {
   return (
     <section className="imaging-section">
@@ -706,7 +710,7 @@ function CompareSection({
           <col className="col-field" />
           <col className="col-extracted" />
           <col className="col-processed" />
-          <col className="col-confidence" />
+          {hideConfidence ? null : <col className="col-confidence" />}
           <col className="col-gap" />
           <col className="col-gt" />
         </colgroup>
@@ -715,7 +719,7 @@ function CompareSection({
             <th scope="col">Field</th>
             <th scope="col">Extracted</th>
             <th scope="col">Final</th>
-            <th scope="col">Confidence</th>
+            {hideConfidence ? null : <th scope="col">Confidence</th>}
             <th className="gt-gap" aria-hidden="true" />
             <th scope="col" className="gt-shade">
               Ground Truth
@@ -732,7 +736,7 @@ function CompareSection({
               <td>
                 <ValueWithNote value={row.processed} note={row.note} />
               </td>
-              <td>{row.confidence}</td>
+              {hideConfidence ? null : <td>{row.confidence}</td>}
               {row.gtHidden ? null : (
               <>
               <td className="gt-gap" aria-hidden="true" rowSpan={row.gtRowSpan} />
@@ -1197,12 +1201,14 @@ function PageDetails({
   extraction,
   onSaved,
   groundTruthLeave,
+  hideConfidence = false,
 }: {
   folderId: string;
   page: ImagingPageResult;
   sections: ImagingSectionsProcessed;
   extraction: ExtractionReviewResponse | null;
   onSaved: (groundTruth: PageGroundTruth) => void;
+  hideConfidence?: boolean;
   groundTruthLeave?: MutableRefObject<GroundTruthLeave | null>;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1312,6 +1318,7 @@ function PageDetails({
   }, [groundTruthLeave]);
 
   const sectionProps = {
+    hideConfidence,
     values,
     editingId,
     saving,
@@ -1907,6 +1914,7 @@ export default function ImagingPanel({
   onHeaderHighlight,
   onGroundTruthSaved,
   groundTruthLeave,
+  compact = false,
 }: Props) {
   if (tab === "additional") {
     return (
@@ -2018,12 +2026,13 @@ export default function ImagingPanel({
 
   return (
     <div className="imaging-panel-stack">
-      <ManifestDetails manifest={manifest} />
+      {compact ? null : <ManifestDetails manifest={manifest} />}
       <PageDetails
         folderId={document.folder_id}
         page={currentPage}
         sections={sections}
         extraction={extraction}
+        hideConfidence={compact}
         groundTruthLeave={groundTruthLeave}
         onSaved={(groundTruth) =>
           onGroundTruthSaved?.(currentPage.pageNumber, currentPage.fileName, groundTruth)

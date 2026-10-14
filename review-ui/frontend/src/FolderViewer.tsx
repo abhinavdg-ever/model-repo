@@ -12,6 +12,8 @@ import {
   Minimize2,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   ScanSearch,
   ZoomIn,
   ZoomOut,
@@ -208,6 +210,8 @@ export default function FolderViewer({
   const [copied, setCopied] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Fullscreen: the page results drawer on the right, collapsed on entry.
+  const [fsResultsOpen, setFsResultsOpen] = useState(false);
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
   const [leaveBusy, setLeaveBusy] = useState(false);
   const groundTruthLeave = useRef<GroundTruthLeave | null>(null);
@@ -329,6 +333,7 @@ export default function FolderViewer({
       if (on) {
         setZoom(1);
         resetPan();
+        setFsResultsOpen(false);
       }
     }
     document.addEventListener("fullscreenchange", onFsChange);
@@ -1000,6 +1005,20 @@ export default function FolderViewer({
     setZoom((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round((z + delta) * 100) / 100)));
   }
 
+  function keepSavedGroundTruth(pageNumber: number, fileName: string, groundTruth: PageGroundTruth) {
+    setImagingDoc((doc) => {
+      if (!doc) return doc;
+      return {
+        ...doc,
+        pages: doc.pages.map((row) =>
+          row.pageNumber === pageNumber && row.fileName === fileName
+            ? { ...row, groundTruth }
+            : row,
+        ),
+      };
+    });
+  }
+
   async function toggleFullscreen() {
     const el = pageStageRef.current;
     if (!el) return;
@@ -1296,6 +1315,47 @@ export default function FolderViewer({
                   onExitFullscreen={exitFullscreen}
                 />
               ) : null}
+              {isFullscreen ? (
+                // Inside the fullscreen element, or it would not show. Pointer and
+                // wheel stop here so scrolling or clicking the table never pans the page.
+                <aside
+                  className={`fullscreen-results${fsResultsOpen ? " is-open" : ""}`}
+                  aria-label="Page results"
+                  title=""
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onWheel={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    className="fullscreen-results-toggle"
+                    onClick={() => setFsResultsOpen((v) => !v)}
+                    aria-expanded={fsResultsOpen}
+                    title={fsResultsOpen ? "Hide page results" : "Show page results"}
+                  >
+                    {fsResultsOpen ? (
+                      <PanelRightClose size={15} aria-hidden="true" />
+                    ) : (
+                      <PanelRightOpen size={15} aria-hidden="true" />
+                    )}
+                    <span>Results</span>
+                  </button>
+                  {fsResultsOpen ? (
+                    <div className="fullscreen-results-body">
+                      <ImagingPanel
+                        tab="page"
+                        compact
+                        loading={loadingFolder || loadingImaging || (!imagingDoc && !imagingError)}
+                        error={imagingError}
+                        document={displayImagingDoc}
+                        currentPage={imagingPage}
+                        currentFileName={page?.filename ?? null}
+                        extraction={extraction}
+                        onGroundTruthSaved={keepSavedGroundTruth}
+                      />
+                    </div>
+                  ) : null}
+                </aside>
+              ) : null}
             </div>
             {bootDone && folder && folder.pages.length > 0 && (
               <div className="filmstrip" role="listbox" aria-label="Page thumbnails">
@@ -1500,19 +1560,7 @@ export default function FolderViewer({
                   headerHighlight={headerHighlight}
                   onHeaderHighlight={setHeaderHighlight}
                   groundTruthLeave={groundTruthLeave}
-                  onGroundTruthSaved={(pageNumber, fileName, groundTruth: PageGroundTruth) => {
-                    setImagingDoc((doc) => {
-                      if (!doc) return doc;
-                      return {
-                        ...doc,
-                        pages: doc.pages.map((row) =>
-                          row.pageNumber === pageNumber && row.fileName === fileName
-                            ? { ...row, groundTruth }
-                            : row,
-                        ),
-                      };
-                    });
-                  }}
+                  onGroundTruthSaved={keepSavedGroundTruth}
                 />
               ) : loadingOcr ? (
                 <div className="ocr-loading">Loading OCR output…</div>
