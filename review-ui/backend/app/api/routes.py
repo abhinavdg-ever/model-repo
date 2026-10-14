@@ -699,6 +699,21 @@ def _ground_from_database(
     return excel_compare.database_ground.ground_csv(rows), "ground_truth_database.csv"
 
 
+def _as_ground_truth(upload: tuple[bytes, str]) -> tuple[bytes, str]:
+    """An uploaded sheet in the page_ground_truth format (chart_name,
+    page_number, ...) is read exactly as the database rows are; any other
+    sheet is read by its headers as before."""
+    database_ground = excel_compare.database_ground
+    try:
+        if database_ground.is_table_format(*upload):
+            return database_ground.from_upload(*upload), "ground_truth_upload.csv"
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # unreadable sheet: the comparison reports it
+        logger.info("ground truth sheet not read as page_ground_truth: %s", exc)
+    return upload
+
+
 def _pdf_ids(upload: tuple[bytes, str], label: str) -> list[str]:
     try:
         return excel_compare.database_system.pdf_ids(*upload, label=label)
@@ -724,7 +739,7 @@ async def _inputs(
     ground = await _upload_bytes("Ground Truth", ground_file) if ground_source == "upload" else None
     system = await _upload_bytes("Algo Generated", system_file) if system_source == "upload" else None
     if ground is not None:
-        return ground, system
+        return _as_ground_truth(ground), system
     pdf_ids = _pdf_ids(system, "Algo Generated") if system is not None else None
     return _ground_from_database(settings, pdf_ids, ground_truth), system
 

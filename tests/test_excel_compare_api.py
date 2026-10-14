@@ -276,7 +276,7 @@ def test_a_chart_header_is_the_pdf_id(client):
     assert (body["correctCount"], body["errorCount"], body["missingCount"], body["extraCount"]) == (1, 1, 1, 0)
 
 
-def test_database_ground_truth_page_type_is_the_encounter_type():
+def test_database_ground_truth_page_type_is_encounter_type_only():
     import csv
 
     from app.services.excel_compare.database_ground import ground_csv
@@ -287,7 +287,8 @@ def test_database_ground_truth_page_type_is_the_encounter_type():
         ("100", 2, {"page_type": "Outpatient (F2F)", "provider_signature": "D.O."}),
         ("100", 3, {"provider_signature": "Yes"}),
     ]).decode())))
-    assert [row["Page Type"] for row in rows] == ["Inpatient", "Outpatient (F2F)", ""]
+    # encounter_type only; page_type is ignored.
+    assert [row["Page Type"] for row in rows] == ["Inpatient", "", ""]
     assert [row["Provider Credentials"] for row in rows] == ["MD", "D.O.", ""]
 
 
@@ -379,3 +380,21 @@ def test_offline_ground_truth_page_type_is_encounter_type_only():
     # Without an encounter_type column, Page Type is the page type column as before.
     plain = normalize_headers(pd.DataFrame({"PDF ID": ["c"], "Page Number": [1], "page type": ["Lab Report"]}))
     assert list(plain["Page Type"]) == ["Lab Report"]
+
+
+def test_an_uploaded_page_ground_truth_mirror_reads_like_the_database(client, repo):
+    ground = (
+        "chart_name,page_number,member_id,dos_from,dos_to,encounter_type,page_type,codeable,"
+        "blank_page,junk_page,provider_signature,provider_credentials\n"
+        "100,1,Yes,03/15/2024,03/15/2024,,Lab Report,Codable,No,No,,MD\n"
+        "100,2,,03/17/2024,03/16/2024,,,Non Codable,No,No,,\n"
+    )
+    res = client.post("/api/excel-compare", files=_ground_only(ground))
+    assert res.status_code == 200, res.text
+    body = res.json()
+    # page_type is ignored and encounter_type is blank: no Page Type column.
+    assert "Page Type" not in body["fields"]
+    # Member ID "Yes" is presence (none extracted); page 2's blank / junk "No"
+    # against the pipeline's junk page. Everything else agrees.
+    mismatched = {row["pageNumber"]: row["mismatched"] for row in body["rows"]}
+    assert mismatched == {"1": ["Member ID"], "2": ["Is Blank or Junk?"]}

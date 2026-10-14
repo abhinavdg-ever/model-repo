@@ -1,12 +1,13 @@
-"""Ground truth for Manual Review read from page_ground_truth instead of an
-uploaded sheet.
+"""Ground truth for Manual Review in the page_ground_truth format: rows read
+from the table, or an uploaded sheet that mirrors it (``from_upload``). Both
+go through ``ground_csv``, so the two read the same way.
 
 PDF ID is the chart name and Page Number the page number. Only the labels
-whose meaning matches an Excel Compare column are carried over; member name
-and DOB are Yes / No presence labels in the database, not the extracted
-values the tool compares, so they are left out. A column no page has a value
-for is dropped, so it reads as "not present" rather than as a blank on every
-row.
+whose meaning matches a Manual Review column are carried over. Member name,
+DOB and ID are Yes / No presence labels; the comparison reads them as "was a
+value found" (field_comparator.PRESENCE_FIELDS). Page Type is encounter_type;
+page_type is ignored. A column no page has a value for is dropped, so it
+reads as "not present" rather than as a blank on every row.
 """
 
 from __future__ import annotations
@@ -16,6 +17,9 @@ import io
 
 # Manual Review column -> page_ground_truth column.
 DIRECT_COLUMNS = {
+    "Extracted Name": "member_name",
+    "Extracted DOB": "member_dob",
+    "Member ID": "member_id",
     "DOS From": "dos_from",
     "DOS To": "dos_to",
     "Page Subtype": "page_subtype",
@@ -43,13 +47,8 @@ def _blank_or_junk(labels: dict) -> str:
 
 
 def _page_type(labels: dict) -> str:
-    """The encounter type, as the Accuracy tab reads it: encounter_type, else
-    page_type (which older loads filled with the encounter label)."""
-    for source in ("encounter_type", "page_type"):
-        value = str(labels.get(source) or "").strip()
-        if value:
-            return value
-    return ""
+    """encounter_type; page_type is ignored."""
+    return str(labels.get("encounter_type") or "").strip()
 
 
 def _credentials(labels: dict) -> str:
@@ -87,3 +86,47 @@ def ground_csv(rows: list[tuple[str, int, dict]]) -> bytes:
     writer.writerows(records)
     return buffer.getvalue().encode("utf-8")
 
+
+# The two columns that make a sheet a page_ground_truth mirror.
+KEY_COLUMNS = ("chart_name", "page_number")
+
+
+def is_table_format(data: bytes, filename: str) -> bool:
+    """True when the sheet's headers include chart_name and page_number."""
+    return all(column in _read(data, filename).columns for column in KEY_COLUMNS)
+
+
+def from_upload(data: bytes, filename: str) -> bytes:
+    """An uploaded page_ground_truth mirror as the same Ground Truth CSV the
+    database rows become (``ground_csv``)."""
+    frame = _read(data, filename)
+    rows = []
+    for record in frame.to_dict("records"):
+        chart = str(record.get("chart_name") or "").strip()
+        page = str(record.get("page_number") or "").strip()
+        if not chart or not page:
+            continue
+        try:
+            page_number = int(float(page))
+        except ValueError:
+            continue
+        labels = {key: (None if value == "" else value) for key, value in record.items()}
+        rows.append((chart, page_number, labels))
+    if not rows:
+        raise ValueError("Ground Truth file has no rows with a chart_name and page_number.")
+    return ground_csv(rows)
+
+
+def _read(data: bytes, filename: str):
+    """Every cell as text, blanks as "" (no NaN), headers as written."""
+    import pandas as pd
+
+    from . import _upload
+
+    source = _upload(data, filename)
+    if filename.lower().endswith(".csv"):
+        frame = pd.read_csv(source, dtype=str, keep_default_na=False)
+    else:
+        frame = pd.read_excel(source, dtype=str, keep_default_na=False)
+    frame.columns = [str(column).strip().lower() for column in frame.columns]
+    return frame
