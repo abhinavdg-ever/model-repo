@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Filter, Info, Loader2, Search } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Filter, Info, Loader2, RefreshCw, Search } from "lucide-react";
 import { getAccuracyReport } from "./api";
 import { saveAccuracyOrder } from "./chartSequence";
 import { useViewState } from "./viewState";
+import { readGroundTruthSource } from "./groundTruthSource";
 import {
   LIVE_METRICS,
   METRICS,
@@ -467,9 +468,17 @@ function compareRows(a: ChartAccuracy, b: ChartAccuracy, key: SortKey, dir: Sort
   return sign * (va - vb) || byName;
 }
 
+/** The last scored rows, kept while review-ui is open so reopening the page (or
+ * Back from a chart) shows them at once while a fresh copy loads behind them. */
+let lastRows: { source: string; rows: ChartAccuracy[] } | null = null;
+
 export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) {
-  const [rows, setRows] = useState<ChartAccuracy[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cached = lastRows?.source === readGroundTruthSource() ? lastRows.rows : null;
+  const [rows, setRows] = useState<ChartAccuracy[]>(cached ?? []);
+  // Nothing to show yet: the full Calculating panel. Cached rows on screen: a small note.
+  const [loading, setLoading] = useState(cached === null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [reloads, setReloads] = useState(0);
   const [error, setError] = useState<string | null>(null);
   // Search, column filters, sort and page survive opening a chart and coming Back.
   // Newest run first, like the home page.
@@ -534,10 +543,13 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      setLoading(true);
+      const showing = lastRows?.source === readGroundTruthSource();
+      if (showing) setRefreshing(true);
+      else setLoading(true);
       setError(null);
       try {
-        const report = await getAccuracyReport();
+        // Refresh (reloads > 0) skips the backend's minute-long reuse.
+        const report = await getAccuracyReport(reloads > 0);
         if (cancelled) return;
         const scored: ChartAccuracy[] = [];
         for (const chart of report.charts) {
@@ -551,17 +563,23 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
           if (row.overall.scored > 0 && recent) scored.push(row);
         }
         scored.sort((a, b) => a.chartName.localeCompare(b.chartName));
-        if (!cancelled) setRows(scored);
+        if (!cancelled) {
+          lastRows = { source: readGroundTruthSource(), rows: scored };
+          setRows(scored);
+        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Could not load accuracy");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloads]);
 
   const overallByMetric = useMemo(() => {
     const out = {} as Record<MetricId, Tally>;
@@ -639,6 +657,26 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
             <h1>Accuracy View</h1>
           </div>
         </div>
+        {!loading ? (
+          <div className="accuracy-refresh">
+            {refreshing ? (
+              <span className="accuracy-refresh-note">
+                <Loader2 size={13} className="accuracy-calculating-spin" aria-hidden="true" />
+                Updating…
+              </span>
+            ) : null}
+            <button
+              type="button"
+              className="back-btn"
+              disabled={refreshing}
+              title="Recalculate from the latest pipeline results and ground truth"
+              onClick={() => setReloads((n) => n + 1)}
+            >
+              <RefreshCw size={14} aria-hidden="true" />
+              Refresh
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {error ? <div className="error-banner">{error}</div> : null}

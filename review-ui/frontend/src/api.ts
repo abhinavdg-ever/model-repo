@@ -371,8 +371,11 @@ export type AccuracyChartPayload = {
   document?: ImagingDocumentResponse | null;
 };
 
-export function getAccuracyReport(): Promise<{ charts: AccuracyChartPayload[] }> {
-  return api(`/api/accuracy${groundTruthQuery()}`);
+/** ``fresh`` skips the backend's minute-long reuse of the report (Refresh). */
+export function getAccuracyReport(fresh = false): Promise<{ charts: AccuracyChartPayload[] }> {
+  const query = groundTruthQuery();
+  const refresh = fresh ? `${query ? "&" : "?"}refresh=true` : "";
+  return api(`/api/accuracy${query}${refresh}`);
 }
 
 

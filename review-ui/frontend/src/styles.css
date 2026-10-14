@@ -3178,6 +3178,22 @@ input {
   text-align: center;
 }
 
+/* Header: Refresh on the right; "Updating…" while cached rows are on screen. */
+.accuracy-refresh {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-left: auto;
+}
+
+.accuracy-refresh-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .accuracy-calculating-spin {
   color: var(--brand-600);
   animation: imaging-spin 0.9s linear infinite;

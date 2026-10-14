@@ -82,3 +82,26 @@ def test_bulk_mode_swaps_in_bulk_labels_and_drops_manual_only_pages():
     # A column the load never set is not the manual value either.
     assert out[0][_GT_CELLS["provider_credentials"]] is None
     assert out[0][_GT_UPDATED_AT] == "loaded"
+
+
+def test_accuracy_report_is_reused_for_a_minute(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.services import accuracy_cache
+
+    built = []
+    monkeypatch.setattr(accuracy_cache, "_build_report", lambda _settings, source: built.append(source) or object())
+    accuracy_cache.clear_report_cache()
+    settings = SimpleNamespace(database_url="postgresql://x/db", db_schema="public")
+
+    first = accuracy_cache.load_report(settings, "latest")
+    assert accuracy_cache.load_report(settings, "latest") is first  # cached
+    accuracy_cache.load_report(settings, "bulk_upload")  # its own entry
+    assert accuracy_cache.load_report(settings, "latest", fresh=True) is not first  # Refresh rebuilds
+    accuracy_cache.clear_report_cache()  # a ground-truth save
+    accuracy_cache.load_report(settings, "latest")
+    assert built == ["latest", "bulk_upload", "latest", "latest"]
+
+    monkeypatch.setattr(accuracy_cache, "REPORT_TTL_SEC", 0.0)  # expired
+    accuracy_cache.load_report(settings, "latest")
+    assert len(built) == 5

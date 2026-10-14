@@ -34,7 +34,7 @@ from app.services.annotations import annotation_file, load_annotations, save_ann
 from app.services.extraction_review import load_extraction_review
 from app.services.imaging_csv import filter_folder, iter_csv_lines
 from app.services.chart_run_batch import database_url_usable
-from app.services.accuracy_cache import load_report
+from app.services.accuracy_cache import clear_report_cache, load_report
 from app.services import excel_compare
 from app.services.ground_truth import (
     GroundTruthSource,
@@ -575,12 +575,14 @@ def save_folder_ground_truth(
     if not database_url_usable(settings.database_url):
         raise HTTPException(status_code=503, detail="Database is not configured")
     try:
-        return upsert_page_ground_truth(
+        saved = upsert_page_ground_truth(
             settings.database_url,
             folder_id,
             body,
             settings.db_schema,
         )
+        clear_report_cache()  # the accuracy report reads ground truth
+        return saved
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -594,13 +596,15 @@ def get_accuracy(
         default="latest",
         description="latest = newest value from any source; bulk_upload = each page's latest spreadsheet load, manual edits hidden.",
     ),
+    refresh: bool = Query(default=False, description="Rebuild instead of reusing the last minute's report."),
     settings: Settings = Depends(get_settings),
 ) -> AccuracyReportResponse:
-    """Saved scores. A chart whose results changed comes back unscored, with a slim document."""
+    """Saved scores. A chart whose results changed comes back unscored, with a slim document.
+    Reused for up to a minute (see accuracy_cache.REPORT_TTL_SEC) unless ``refresh``."""
     if not database_url_usable(settings.database_url):
         raise HTTPException(status_code=503, detail="Database is not configured")
     try:
-        return load_report(settings, ground_truth)
+        return load_report(settings, ground_truth, fresh=refresh)
     except Exception as exc:
         logger.warning("accuracy report failed: %s", exc)
         raise HTTPException(status_code=502, detail="Could not load accuracy") from exc

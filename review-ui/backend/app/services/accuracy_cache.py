@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -353,9 +354,39 @@ def _with_signatures(
     return overlay_fields(pages, index_signature_rows(rows, chart_name))
 
 
+# A built report is reused for this long, so reopening the page (or Back from
+# a chart) does not re-query Postgres. A ground-truth save here clears it at
+# once; a pipeline run elsewhere shows up within the window, or on Refresh.
+REPORT_TTL_SEC = 60.0
+
+_reports: dict[tuple[str, str, str], tuple[float, AccuracyReportResponse]] = {}
+_reports_lock = threading.Lock()
+
+
+def clear_report_cache() -> None:
+    with _reports_lock:
+        _reports.clear()
+
+
 def load_report(
-    settings: Settings, source: GroundTruthSource = "latest"
+    settings: Settings, source: GroundTruthSource = "latest", fresh: bool = False
 ) -> AccuracyReportResponse:
+    """The report, from the cache when it is under REPORT_TTL_SEC old and
+    ``fresh`` is not asked for."""
+    key = (settings.database_url, settings.db_schema, source)
+    now = time.monotonic()
+    if not fresh:
+        with _reports_lock:
+            cached = _reports.get(key)
+        if cached and now - cached[0] < REPORT_TTL_SEC:
+            return cached[1]
+    report = _build_report(settings, source)
+    with _reports_lock:
+        _reports[key] = (time.monotonic(), report)
+    return report
+
+
+def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyReportResponse:
     if not database_url_usable(settings.database_url):
         raise RuntimeError("database is not configured")
     eligible = _eligible(settings)
