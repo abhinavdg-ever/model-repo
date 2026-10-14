@@ -80,6 +80,9 @@ COLUMN_ALIASES = {
     "credentials": "Provider Credentials",
     "credential": "Provider Credentials",
     "duplicate": "Duplicate",
+    "is duplicate": "Duplicate",
+    "member name": "Extracted Name",
+    "member dob": "Extracted DOB",
     "dup": "Duplicate",
     "page type": "Page Type",
     "encounter type": "Page Type",
@@ -87,6 +90,8 @@ COLUMN_ALIASES = {
     "page subtype": "Page Subtype",
     "pagesubtype": "Page Subtype",
     "codable non codable": "Codable / Non-Codable",
+    "codeable": "Codable / Non-Codable",
+    "codable": "Codable / Non-Codable",
     "codable or non codable": "Codable / Non-Codable",
     "codable status": "Codable / Non-Codable",
     "current sequence": "Current Sequence",
@@ -152,19 +157,101 @@ def build_header_rename_map(columns):
     return rename_map
 
 
+# When several headers in one file name the same canonical column, these
+# spellings win (then an exact canonical header, then file order).
+MERGE_PRIORITY = {
+    "Page Type": ["encounter type", "encounter"],
+}
+
+# A file with one of these columns uses it alone: the others are dropped, not
+# used as a fallback. An offline ground-truth CSV's Page Type is its
+# encounter_type; its page_type is ignored.
+EXCLUSIVE = {
+    "Page Type": ["encounter type", "encounter"],
+}
+
+
+def _merge_order(canonical, columns):
+    preferred = [_normalize_for_matching(alias) for alias in MERGE_PRIORITY.get(canonical, [])]
+    exact = _normalize_for_matching(canonical)
+
+    def rank(position_and_column):
+        position, column = position_and_column
+        key = _normalize_for_matching(column)
+        if key in preferred:
+            return (0, preferred.index(key), position)
+        if key == exact:
+            return (1, 0, position)
+        return (2, 0, position)
+
+    return [column for _, column in sorted(enumerate(columns), key=rank)]
+
+
 def normalize_headers(df):
     """
     Return a copy of df with recognized headers renamed to their
     canonical form. Unrecognized headers are left untouched.
 
+    Several headers naming the same canonical column (an export with
+    both page_type and encounter_type) become one column holding, per
+    row, the first non-blank value in MERGE_PRIORITY order -- never two
+    columns with one name, which would make every row lookup ambiguous.
+
     This never modifies the caller's DataFrame (and therefore
-    never touches the uploaded file it was read from) -- it
-    returns a new object via pandas' rename().
+    never touches the uploaded file it was read from).
     """
+
+    import pandas as pd
 
     rename_map = build_header_rename_map(df.columns)
 
     if not rename_map:
         return df
 
-    return df.rename(columns=rename_map)
+    sources = {}
+    for column in df.columns:
+        canonical = rename_map.get(column, column)
+        sources.setdefault(canonical, []).append(column)
+
+    merged = {}
+    for canonical, columns in sources.items():
+        only = [_normalize_for_matching(alias) for alias in EXCLUSIVE.get(canonical, [])]
+        chosen = [column for column in columns if _normalize_for_matching(column) in only]
+        ordered = _merge_order(canonical, chosen or columns)
+        value = df[ordered[0]]
+        for column in ordered[1:]:
+            blank = value.isna() | (value.astype(str).str.strip() == "")
+            value = value.mask(blank, df[column])
+        merged[canonical] = value
+
+    frame = pd.DataFrame(merged, index=df.index)
+    return _with_blank_or_junk(frame)
+
+
+def _with_blank_or_junk(frame):
+    """A page_ground_truth export has blank_page / junk_page, not one
+    "Is Blank or Junk?" column: derive it as database ground truth does."""
+
+    from .database_ground import BLANK_OR_JUNK, _blank_or_junk
+
+    if BLANK_OR_JUNK in frame.columns:
+        return frame
+
+    columns = {
+        _normalize_for_matching(column): column for column in frame.columns
+    }
+    blank, junk = columns.get("blank page"), columns.get("junk page")
+
+    if blank is None and junk is None:
+        return frame
+
+    def cell(row, column):
+        value = row[column] if column is not None else None
+        return None if value is None or value != value else value  # NaN -> None
+
+    frame = frame.copy()
+    frame[BLANK_OR_JUNK] = [
+        _blank_or_junk({"blank_page": cell(row, blank), "junk_page": cell(row, junk)})
+        for _, row in frame.iterrows()
+    ]
+    return frame

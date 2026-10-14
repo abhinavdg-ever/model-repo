@@ -157,9 +157,13 @@ def normalize_yes_no(value):
 
 _CODABLE_ALIASES = {
     "codable": "codable",
+    "codeable": "codable",
     "non codable": "non codable",
+    "non codeable": "non codable",
     "noncodable": "non codable",
+    "noncodeable": "non codable",
     "not codable": "non codable",
+    "not codeable": "non codable",
 }
 
 

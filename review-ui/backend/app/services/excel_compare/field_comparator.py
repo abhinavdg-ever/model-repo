@@ -78,6 +78,14 @@ CREDENTIAL_FIELDS = {
     "Provider Credentials",
 }
 
+# Ground truth may label these as present / absent (Yes / No, as
+# page_ground_truth does) rather than with the value itself.
+PRESENCE_FIELDS = {
+    "Extracted Name",
+    "Extracted DOB",
+    "Member ID",
+}
+
 CODABLE_FIELDS = {
     "Codable / Non-Codable",
 }
@@ -140,8 +148,16 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
 
         gt_normalized = normalize_field_value(field_name, gt_raw)
         system_normalized = normalize_field_value(field_name, system_raw)
+        presence = normalize_yes_no(gt_raw) if field_name in PRESENCE_FIELDS else ""
 
-        if field_name in CREDENTIAL_FIELDS:
+        if not gt_raw:
+            # Not labelled: ground truth says nothing, so it is not an error.
+            # ("-" or "N/A" is a label -- "none" -- and is compared.)
+            is_match = True
+        elif presence in ("yes", "no"):
+            # "Is a member ID on the page?" -- found or not, not the value.
+            is_match = (presence == "yes") == bool(clean_text(system_raw))
+        elif field_name in CREDENTIAL_FIELDS:
             is_match = credentials_match(gt_raw, system_raw)
         else:
             is_match = gt_normalized == system_normalized
@@ -150,11 +166,14 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
             gt_raw = display_date(gt_raw)
             system_raw = display_date(system_raw)
 
-        # Credentials can match while written differently ("MD" / "MD, PhD"):
-        # both sides are shown then, so the reader sees what each one said.
-        differs = field_name in CREDENTIAL_FIELDS and (
-            clean_text(gt_raw) != clean_text(system_raw)
-        )
+        # Both sides are shown when they read differently but still count as a
+        # match: credentials ("MD" / "MD, PhD"), a Yes / No presence label, or
+        # an unlabelled field next to an algo value.
+        differs = (
+            field_name in CREDENTIAL_FIELDS
+            or presence in ("yes", "no")
+            or not gt_raw
+        ) and clean_text(gt_raw) != clean_text(system_raw)
 
         if is_match and not differs:
             display_value = gt_raw

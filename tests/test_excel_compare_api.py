@@ -311,6 +311,23 @@ def test_pipeline_final_values_win_over_extracted():
     assert row["Page Subtype"] == "Office Visit"
 
 
+def test_unlabelled_and_presence_ground_truth():
+    from app.services.excel_compare.field_comparator import compare_fields
+
+    def compare(field, gt, algo):
+        return compare_fields({field: gt}, {field: algo}, [field])[field]
+
+    # A blank cell is "not labelled": not an error, both sides shown.
+    assert compare("DOS From", "", "2025-08-27") == {"match": True, "display": "GT:  | Algo: 08/27/2025"}
+    # "-" is a label ("no date") and is compared.
+    assert compare("DOS From", "-", "2025-08-27")["match"] is False
+    # Yes / No member labels are presence: is a value on the page?
+    assert compare("Member ID", "Yes", "500-50")["match"] is True
+    assert compare("Member ID", "Yes", "")["match"] is False
+    assert compare("Member ID", "No", "")["match"] is True
+    assert compare("Member ID", "500-50", "500-51")["match"] is False
+
+
 def test_credentials_match_as_the_accuracy_tab_scores_them():
     from app.services.excel_compare.field_comparator import compare_fields
 
@@ -324,3 +341,41 @@ def test_credentials_match_as_the_accuracy_tab_scores_them():
     assert compare("MD", "NP")["match"] is False
     assert compare("NA", "")["match"] is True
     assert compare("MD", "")["match"] is False
+
+
+def test_a_page_ground_truth_export_uploads_as_ground_truth(client):
+    # The columns of a page_ground_truth export: page_type and encounter_type
+    # both name Page Type, and blank / junk are two columns.
+    ground = (
+        "id,chart_name,page_number,member_id,dos_from,dos_to,encounter_type,page_type,"
+        "codeable,blank_page,junk_page,provider_signature,provider_credentials\n"
+        "1,100,1,,03/15/2024,03/15/2024,,Progress Note,Codable,No,No,,MD\n"
+        "2,100,2,,03/16/2024,03/16/2024,Inpatient,Progress Note,Non Codable,No,Yes,,\n"
+    )
+    algo = (
+        "PDF ID,Page Number,DOS From,DOS To,Page Type,Codable / Non-Codable,Is Blank or Junk?,Provider Credentials\n"
+        "100,1,2024-03-15,2024-03-15,Progress Note,Codable,No,M.D.\n"
+        "100,2,2024-03-16,2024-03-16,Inpatient,Non-Codable,Yes,\n"
+    )
+    res = client.post("/api/excel-compare", files=_files(ground=ground, system=algo), data=UPLOAD)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert "Page Type" in body["fields"] and "Is Blank or Junk?" in body["fields"]
+    # Page 1: encounter_type is blank -> Page Type unlabelled (page_type is ignored).
+    # Page 2: encounter_type "Inpatient" is the Page Type ground truth.
+    assert (body["correctCount"], body["errorCount"]) == (2, 0)
+
+
+def test_offline_ground_truth_page_type_is_encounter_type_only():
+    import pandas as pd
+
+    from app.services.excel_compare.header_normalizer import normalize_headers
+
+    frame = normalize_headers(pd.DataFrame({
+        "chart_name": ["c", "c"], "page_number": [1, 2],
+        "page_type": ["Progress Note", "Lab Report"], "encounter_type": ["Inpatient", None],
+    }))
+    assert list(frame["Page Type"].fillna("")) == ["Inpatient", ""]
+    # Without an encounter_type column, Page Type is the page type column as before.
+    plain = normalize_headers(pd.DataFrame({"PDF ID": ["c"], "Page Number": [1], "page type": ["Lab Report"]}))
+    assert list(plain["Page Type"]) == ["Lab Report"]

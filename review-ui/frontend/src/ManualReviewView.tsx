@@ -283,7 +283,11 @@ function sideValue(row: ManualReviewRow, field: string, side: "gt" | "algo"): st
   const sides = splitDisplay(display);
   if (!sides) return display;
   // A one-row (Correct) record shows both sides in its one cell.
-  if (row.status === "CORRECT") return sides.gt === sides.system ? sides.gt : `${sides.gt} · Algo: ${sides.system}`;
+  if (row.status === "CORRECT") {
+    if (sides.gt === sides.system) return sides.gt;
+    // Unlabelled in ground truth: only the algo value to show.
+    return sides.gt ? `${sides.gt} · Algo: ${sides.system}` : `Algo: ${sides.system}`;
+  }
   return side === "gt" ? sides.gt : sides.system;
 }
 
