@@ -1,6 +1,7 @@
 from urllib.parse import quote
 import json
 import logging
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -746,6 +747,9 @@ _GROUND_TRUTH = Form(
     default="latest",
     description="With ground_source=db: latest, or bulk_upload (manual edits hidden).",
 )
+# How often a streaming Manual Review logs "X/Y charts compared".
+_PROGRESS_LOG_SEC = 10.0
+
 _SYSTEM_SOURCE = Form(default="db", description="db = the pipeline output review-ui shows; upload = the Algo Generated file")
 
 
@@ -809,8 +813,28 @@ async def post_excel_compare_stream(
         raise HTTPException(status_code=400, detail=f"Comparison failed: {exc}") from exc
 
     def lines():
+        total = first.get("charts", 0)
+        done = 0
+        started = last_log = time.monotonic()
+        logger.info("manual review: comparing %d charts", total)
         yield json.dumps(first) + "\n"
         for event in events:
+            if event["type"] == "chart":
+                done += 1
+                now = time.monotonic()
+                if now - last_log >= _PROGRESS_LOG_SEC:
+                    logger.info("manual review: %d/%d charts compared", done, total)
+                    last_log = now
+            elif event["type"] == "done":
+                logger.info(
+                    "manual review: %d/%d charts compared in %.1fs",
+                    done, total, time.monotonic() - started,
+                )
+            elif event["type"] == "error":
+                logger.warning(
+                    "manual review: stopped at chart %s after %d/%d: %s",
+                    event.get("pdfId"), done, total, event.get("detail"),
+                )
             yield json.dumps(event) + "\n"
 
     return StreamingResponse(

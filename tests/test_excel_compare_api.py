@@ -149,8 +149,8 @@ def test_pipeline_output_as_the_system_csv():
     assert (first["Provider Signature"], second["Provider Signature"]) == ("Yes", "")
     assert (first["Is Blank or Junk?"], first["Duplicate"]) == ("No", "No")
     assert second["Is Blank or Junk?"] == "Yes"
-    # A page with no DOS carries the default Download Results ships.
-    assert (fourth["DOS From"], fourth["DOS To"]) == ("2222-02-02", "2222-02-02")
+    # A page with no DOS stays blank (no 2222-02-02 default).
+    assert (fourth["DOS From"], fourth["DOS To"]) == ("", "")
 
 
 def test_no_system_output_for_the_pdf_ids_is_a_400(client, repo):
@@ -287,3 +287,23 @@ def test_database_ground_truth_page_type_is_the_encounter_type():
     ]).decode())))
     assert [row["Page Type"] for row in rows] == ["Inpatient", "Outpatient (F2F)"]
     assert rows[0]["Provider Signature"] == "No"
+
+
+def test_pipeline_final_values_win_over_extracted():
+    import csv
+
+    from app.core.schemas import ImagingDocumentResponse, ImagingPageResult
+    from app.services.excel_compare.database_system import system_csv
+
+    page = ImagingPageResult(
+        pageNumber=3, fileName="3.png",
+        dosFrom="2024-01-01", dosTo="2024-01-01", finalDosFrom="2024-02-02",
+        isCodeable="Non-Codable", finalCodeable="Codable",
+        pageType="Lab Report", finalPageType="Progress Note (Office Visit)",
+    )
+    doc = ImagingDocumentResponse.model_construct(pages=[page], verifications=[], verification=None)
+    (row,) = csv.DictReader(io.StringIO(system_csv([("100", doc)]).decode()))
+    # As the Accuracy tab reads them: Final where the run has it, else extracted.
+    assert (row["DOS From"], row["DOS To"]) == ("2024-02-02", "2024-02-02")
+    assert row["Codable / Non-Codable"] == "Codable"
+    assert row["Page Subtype"] == "Office Visit"
