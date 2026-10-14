@@ -251,7 +251,11 @@ export type ImagingDocumentResponse = {
 export type BlobAuthMode = "entra" | "sas";
 
 export type AppConfig = {
+  /** The mode this browser is in: its Local / DB switch, else DATA_MODE. */
   data_mode: string;
+  /** A database is configured, so the DB side of the switch is offered. */
+  db_available?: boolean;
+  default_mode?: string;
   mode_label?: string;
   file_viewer_blob_enabled: boolean;
   blob_auth_mode: BlobAuthMode;

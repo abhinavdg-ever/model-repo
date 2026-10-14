@@ -342,8 +342,13 @@ class HealthResponse(BaseModel):
 
 
 class AppConfigResponse(BaseModel):
+    # The mode this browser is in (its Local / DB switch, else DATA_MODE).
     data_mode: str
     mode_label: str = "Local Mode"
+    # A database is configured, so the DB side of the switch can be offered.
+    db_available: bool = False
+    # DATA_MODE: what a browser that never chose sees.
+    default_mode: str = "local"
     file_viewer_blob_enabled: bool = False
     blob_auth_mode: BlobAuthMode = "entra"
     blob_account_url: str = ""

@@ -36,7 +36,7 @@ class _FakeConn:
         return _FakeCursor(self._rows, self._log)
 
 
-def _repo_with_pages(monkeypatch, n_pages):
+def _repo_with_pages(monkeypatch, n_pages, processed_pages=False):
     from app.adapters.postgres.repository import PostgresFolderRepository
     from app.services import blob_store
 
@@ -57,6 +57,9 @@ def _repo_with_pages(monkeypatch, n_pages):
 
     def fake_list(container, prefix):
         listings.append(prefix)
+        # The pipeline uploads pages/ to Processed only with write_mode=all_files.
+        if prefix.startswith("Processed") and not processed_pages:
+            return []
         return [(f"{prefix}/{i}.jpg", f"etag-{i}") for i in range(1, n_pages + 1)]
 
     monkeypatch.setattr(blob_store, "list_image_blobs", fake_list)
@@ -74,9 +77,19 @@ def test_every_page_of_a_chart_resolves_from_one_query_and_one_listing(monkeypat
     locs = [repo.resolve_page_blob("chart", n) for n in range(1, 41)]
 
     assert len(queries) == 1
-    assert len(listings) == 1
+    # One listing per location for the whole chart: Processed pages/, Raw_Input.
+    assert listings == ["Processed/chart/pages", "Raw_Input/R1/B1/chart"]
     assert locs[0]["key"] == "Raw_Input/R1/B1/chart/1.jpg"
     assert locs[39]["etag"] == "etag-40"
+
+
+def test_processed_pages_win_over_raw_input_when_uploaded(monkeypatch):
+    repo, _queries, listings = _repo_with_pages(monkeypatch, 3, processed_pages=True)
+
+    locs = [repo.resolve_page_blob("chart", n) for n in range(1, 4)]
+
+    assert [loc["key"] for loc in locs] == [f"Processed/chart/pages/{n}.jpg" for n in range(1, 4)]
+    assert listings == ["Processed/chart/pages"]  # Raw_Input never listed
 
 
 def test_unknown_page_is_none_without_extra_queries(monkeypatch):

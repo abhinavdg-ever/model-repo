@@ -1,22 +1,45 @@
 from functools import lru_cache
 import logging
 
+from fastapi import Request
+
 from app.adapters.base import FolderRepository
 from app.adapters.local.repository import LocalFolderRepository
 from app.adapters.postgres.repository import PostgresFolderRepository
 from app.core.config import Settings, get_settings
+from app.services.chart_run_batch import database_url_usable
 
 logger = logging.getLogger("review_ui.adapters")
 
 
-@lru_cache
-def get_repository() -> FolderRepository:
+# Each browser picks Local or DB with the top-bar switch; the choice rides in
+# this cookie, so <img> page requests follow it too.
+MODE_COOKIE = "advantmed_data_mode"
+
+
+def request_is_production(request: Request) -> bool:
+    """DB (Postgres + Azure Blob) for this request: the browser's choice when it
+    made one and a database is configured, else DATA_MODE."""
     settings = get_settings()
-    return build_repository(settings)
+    choice = (request.cookies.get(MODE_COOKIE) or "").strip().lower()
+    if choice == "local":
+        return False
+    if choice == "db" and database_url_usable(settings.database_url):
+        return True
+    return settings.is_production_mode
 
 
-def build_repository(settings: Settings) -> FolderRepository:
-    if settings.is_production_mode:
+@lru_cache(maxsize=2)
+def _repository(production: bool) -> FolderRepository:
+    return build_repository(get_settings(), production=production)
+
+
+def get_repository(request: Request) -> FolderRepository:
+    return _repository(request_is_production(request))
+
+
+def build_repository(settings: Settings, production: bool | None = None) -> FolderRepository:
+    if settings.is_production_mode if production is None else production:
         logger.info(
             "repository=postgres schema=%s data_root=%s metadata_root=%s",
             settings.db_schema,

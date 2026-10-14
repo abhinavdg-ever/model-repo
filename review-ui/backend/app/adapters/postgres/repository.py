@@ -157,6 +157,8 @@ class PostgresFolderRepository(FolderRepository):
         self._page_rows_cache: dict[str, tuple[float, dict[int, tuple]]] = {}
         # (folder_id, page_number) → resolved blob location
         self._resolved_blobs: dict[tuple[str, int, bool], tuple[float, dict[str, str]]] = {}
+        # Processed <output_path>/pages/ per chart: page file name -> (key, etag).
+        self._processed_pages: dict[str, tuple[float, dict[str, tuple[str, str]]]] = {}
 
     def _optional_local(self) -> LocalFolderRepository | None:
         return self._local
@@ -457,8 +459,11 @@ class PostgresFolderRepository(FolderRepository):
     ) -> dict[str, str] | None:
         """Locate the Azure blob for a page using chart_list + page_list.
 
-        Default is the scan as it arrived: Raw_Input, then Processed ``pages/``.
-        ``corrected=True`` prefers Processed ``corrected-pages/``.
+        Processed (``chart_list.output_path``) first: ``corrected-pages/`` when
+        ``corrected``, then ``pages/``; then the scan as it arrived in
+        Raw_Input. The pipeline uploads ``pages/`` to Processed only with
+        ``write_mode=all_files``, so most charts take their originals from
+        Raw_Input.
 
         Returns ``container``, ``key``, ``filename`` and ``etag`` (empty when
         unknown). Results are cached per page for ``_BLOB_LIST_TTL_SEC``.
@@ -475,6 +480,11 @@ class PostgresFolderRepository(FolderRepository):
             return None
         container, blob_path, output_path, page_name, _use_corrected, image_path, idx = hit
         if not container:
+            # chart_list.blob_container wins; BLOB_CONTAINER is the default.
+            from app.core.config import get_settings
+
+            container = get_settings().blob_container.strip().strip("/")
+        if not container:
             return None
 
         out = (output_path or "").strip().strip("/")
@@ -487,21 +497,14 @@ class PostgresFolderRepository(FolderRepository):
             if rel.startswith("corrected-pages/"):
                 candidates.append(f"{out}/{rel}")
 
-        # Raw_Input comes from a live listing, so the key is known to exist —
-        # no existence probe needed. The corrected view falls back to it when
-        # that chart has no corrected file.
-        raw = self._raw_input_blob(folder_id, container, blob_path, idx)
-        if not corrected and raw:
-            key, etag = raw
-            out_loc = {"container": container, "key": key, "filename": Path(key).name or page_name, "etag": etag}
-            self._resolved_blobs[cache_key] = (now, out_loc)
-            return out_loc
-
-        if out:
-            candidates.append(f"{out}/pages/{page_name}")
-
         ordered = list(dict.fromkeys(k.lstrip("/") for k in candidates if k.lstrip("/")))
         found = self._first_existing_blob(container, ordered) if ordered else None
+        if found is None and out:
+            # Processed pages/: one listing per chart, not a probe per image.
+            found = self._processed_page_blob(folder_id, container, out, page_name)
+
+        # Raw_Input comes from a live listing, so the key is known to exist.
+        raw = None if found else self._raw_input_blob(folder_id, container, blob_path, idx)
         if found is None and raw:
             key, etag = raw
             out_loc = {"container": container, "key": key, "filename": Path(key).name or page_name, "etag": etag}
@@ -513,6 +516,28 @@ class PostgresFolderRepository(FolderRepository):
         out_loc = {"container": container, "key": key, "filename": Path(key).name or page_name, "etag": etag}
         self._resolved_blobs[cache_key] = (now, out_loc)
         return out_loc
+
+    def _processed_page_blob(
+        self, folder_id: str, container: str, output_path: str, page_name: str
+    ) -> tuple[str, str] | None:
+        """(key, etag) of ``<output_path>/pages/<page_name>`` when Processed has it."""
+        now = time.monotonic()
+        cached = self._processed_pages.get(folder_id)
+        if cached and (now - cached[0]) < _BLOB_LIST_TTL_SEC:
+            by_name = cached[1]
+        else:
+            try:
+                from app.services.blob_store import list_image_blobs
+
+                by_name = {
+                    Path(key).name: (key, etag)
+                    for key, etag in list_image_blobs(container, f"{output_path}/pages")
+                }
+            except Exception as exc:
+                logger.warning("Processed pages list failed for %s: %s", folder_id, exc)
+                by_name = {}
+            self._processed_pages[folder_id] = (now, by_name)
+        return by_name.get(page_name)
 
     def _first_existing_blob(self, container: str, keys: list[str]) -> tuple[str, str] | None:
         """First key that exists, with its ETag (fallback path only)."""

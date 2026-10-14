@@ -8,9 +8,12 @@
 #   * the chart workspace volume, mounted READ-ONLY here
 # It never calls the core-pipeline API, and core-pipeline never calls this one.
 #
-# Compose is pinned to Local Mode (OCR / imaging / page images from /data/folders).
-# Production Mode (Postgres + blob_path images) is implemented in code — switch
-# DATA_MODE in .env / compose when ready; do not rely on that path from this file yet.
+# Two modes, switched per browser from the top bar (Local / DB):
+#   Local — OCR / imaging / page images from /data/folders.
+#   DB    — Postgres for results, Azure Blob for page images (Processed
+#           output_path first, then Raw_Input). Needs DATABASE_URL and blob
+#           access (BLOB_ACCOUNT_URL + AZURE_* or a managed identity).
+# DATA_MODE (local | production) is what a browser that never chose sees.
 
 services:
   backend:
@@ -21,14 +24,13 @@ services:
     env_file:
       - ./.env
     environment:
-      # Pinned Local Mode for this compose file.
-      DATA_MODE: local
+      DATA_MODE: ${DATA_MODE:-local}
       DATA_ROOT: /data/folders
       METADATA_ROOT: ${METADATA_ROOT:-/data/metadata}
       PIPELINE_ROOT: /data/pipeline
       MONOREPO_ROOT: /data/pipeline
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://127.0.0.1:4001,http://localhost:4001}
-      # Kept for a later Production Mode switch; unused while DATA_MODE=local.
+      # DB mode, Manual Review and Accuracy read Postgres through this.
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://USER:PASSWORD@HOST:5432/imaging_outputs}
       DB_SCHEMA: ${DB_SCHEMA:-public}
       # Seconds a scan of /data/folders is trusted before it is rechecked

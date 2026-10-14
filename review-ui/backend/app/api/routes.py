@@ -5,11 +5,11 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
 
 from app.adapters.base import FolderRepository
-from app.adapters.factory import get_repository
+from app.adapters.factory import get_repository, request_is_production
 from app.core.config import ROOT_DIR, Settings, get_settings
 from app.core.schemas import (
     AnnotationListResponse,
@@ -93,24 +93,29 @@ def _filename_for_page(repo: FolderRepository, folder_id: str, page_number: int)
     raise HTTPException(status_code=404, detail=f"Page {page_number} not found in {folder_id}")
 
 
+def _mode(request: Request) -> tuple[str, str]:
+    """(data_mode, label) this browser is in: its Local / DB switch, else DATA_MODE."""
+    production = request_is_production(request)
+    return ("production", "Production Mode") if production else ("local", "Local Mode")
+
+
 @router.get("/health", response_model=HealthResponse)
-def health() -> HealthResponse:
-    settings = get_settings()
-    return HealthResponse(
-        status="ok",
-        data_mode=settings.data_mode,
-        mode_label=settings.mode_label,
-    )
+def health(request: Request) -> HealthResponse:
+    data_mode, label = _mode(request)
+    return HealthResponse(status="ok", data_mode=data_mode, mode_label=label)
 
 
 @router.get("/config", response_model=AppConfigResponse)
-def app_config() -> AppConfigResponse:
+def app_config(request: Request) -> AppConfigResponse:
     """Public UI config. Does not expose secrets."""
     settings = get_settings()
     sas_configured = bool(settings.blob_sas_token.strip())
+    data_mode, label = _mode(request)
     return AppConfigResponse(
-        data_mode=settings.data_mode,
-        mode_label=settings.mode_label,
+        data_mode=data_mode,
+        mode_label=label,
+        db_available=database_url_usable(settings.database_url),
+        default_mode="production" if settings.is_production_mode else "local",
         file_viewer_blob_enabled=settings.file_viewer_blob_enabled,
         blob_auth_mode=settings.blob_auth_mode,
         blob_account_url=settings.blob_account_url.strip().rstrip("/"),
@@ -291,76 +296,77 @@ def get_page_image(
         if thumb
         else "private, max-age=300"
     )
-    if settings.is_production_mode:
-        from app.adapters.postgres.repository import PostgresFolderRepository
+    from app.adapters.postgres.repository import PostgresFolderRepository
+
+    # DB mode (this browser's switch, or DATA_MODE): Azure Blob first.
+    if isinstance(repo, PostgresFolderRepository):
         from app.services.blob_store import download_blob_at
 
-        if isinstance(repo, PostgresFolderRepository):
-            loc = repo.resolve_page_blob(folder_id, page_number, corrected=corrected)
-            if loc:
-                name = loc.get("filename") or loc["key"]
-                etag = loc.get("etag") or ""
-                # With an ETag, a derived JPEG (thumb / TIFF conversion) is
-                # served from disk without touching the blob at all.
-                if etag and (thumb or is_tiff_name(name)):
-                    stamp = f"blob|{loc['container']}|{loc['key']}|{etag}|{'thumb' if thumb else 'full'}"
+        loc = repo.resolve_page_blob(folder_id, page_number, corrected=corrected)
+        if loc:
+            name = loc.get("filename") or loc["key"]
+            etag = loc.get("etag") or ""
+            # With an ETag, a derived JPEG (thumb / TIFF conversion) is
+            # served from disk without touching the blob at all.
+            if etag and (thumb or is_tiff_name(name)):
+                stamp = f"blob|{loc['container']}|{loc['key']}|{etag}|{'thumb' if thumb else 'full'}"
 
-                    def _produce() -> bytes:
-                        raw, _ = download_blob_at(
-                            container=loc["container"], key=loc["key"], filename=name
-                        )
-                        return bytes_to_display_jpeg(raw, thumb=thumb)
-
-                    try:
-                        data = cached_derived_jpeg(stamp, _produce)
-                    except HTTPException:
-                        raise
-                    except Exception as exc:
-                        logger.exception(
-                            "Blob image encode failed folder=%s page=%s key=%s",
-                            folder_id,
-                            page_number,
-                            loc["key"],
-                        )
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Could not convert image for display: {exc}",
-                        ) from exc
-                    return Response(
-                        content=data,
-                        media_type="image/jpeg",
-                        headers={"Cache-Control": cache_hdr},
+                def _produce() -> bytes:
+                    raw, _ = download_blob_at(
+                        container=loc["container"], key=loc["key"], filename=name
                     )
+                    return bytes_to_display_jpeg(raw, thumb=thumb)
 
-                data, media_type = download_blob_at(
-                    container=loc["container"],
-                    key=loc["key"],
-                    filename=loc.get("filename"),
-                )
-                is_tiff = is_tiff_name(name) or (media_type or "").lower() in {
-                    "image/tiff",
-                    "image/tif",
-                }
-                if thumb or is_tiff:
-                    try:
-                        data = bytes_to_display_jpeg(data, thumb=thumb)
-                        media_type = "image/jpeg"
-                    except Exception as exc:
-                        logger.exception(
-                            "Blob image encode failed folder=%s page=%s key=%s",
-                            folder_id,
-                            page_number,
-                            loc["key"],
-                        )
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Could not convert image for display: {exc}",
-                        ) from exc
+                try:
+                    data = cached_derived_jpeg(stamp, _produce)
+                except HTTPException:
+                    raise
+                except Exception as exc:
+                    logger.exception(
+                        "Blob image encode failed folder=%s page=%s key=%s",
+                        folder_id,
+                        page_number,
+                        loc["key"],
+                    )
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Could not convert image for display: {exc}",
+                    ) from exc
                 return Response(
                     content=data,
-                    media_type=media_type or "application/octet-stream",
+                    media_type="image/jpeg",
                     headers={"Cache-Control": cache_hdr},
                 )
+
+            data, media_type = download_blob_at(
+                container=loc["container"],
+                key=loc["key"],
+                filename=loc.get("filename"),
+            )
+            is_tiff = is_tiff_name(name) or (media_type or "").lower() in {
+                "image/tiff",
+                "image/tif",
+            }
+            if thumb or is_tiff:
+                try:
+                    data = bytes_to_display_jpeg(data, thumb=thumb)
+                    media_type = "image/jpeg"
+                except Exception as exc:
+                    logger.exception(
+                        "Blob image encode failed folder=%s page=%s key=%s",
+                        folder_id,
+                        page_number,
+                        loc["key"],
+                    )
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Could not convert image for display: {exc}",
+                    ) from exc
+            return Response(
+                content=data,
+                media_type=media_type or "application/octet-stream",
+                headers={"Cache-Control": cache_hdr},
+            )
 
     try:
         path = repo.get_page_image_path(folder_id, page_number, corrected=corrected)

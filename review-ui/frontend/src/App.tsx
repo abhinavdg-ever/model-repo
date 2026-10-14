@@ -85,6 +85,16 @@ function readAuth(): boolean {
   }
 }
 
+/** The top-bar Local / DB choice. A cookie, not localStorage, so the browser
+ * sends it with <img> page requests too; the backend picks the repository from it. */
+const MODE_COOKIE = "advantmed_data_mode";
+
+function switchDataMode(mode: "local" | "db") {
+  document.cookie = `${MODE_COOKIE}=${mode}; path=/; max-age=31536000; SameSite=Lax`;
+  // Every screen holds data from the old source: start again from it.
+  window.location.reload();
+}
+
 function modePillClass(label: string): string {
   return label.toLowerCase().includes("production")
     ? "mode-pill mode-pill-production"
@@ -202,16 +212,47 @@ export default function App() {
           </div>
         </div>
         <div className="topbar-meta">
-          <span
-            className={modePillClass(modeLabel)}
-            title={
-              modeLabel === "Production Mode"
-                ? "OCR + imaging outputs read from Postgres"
-                : "OCR + imaging outputs read from local data/folders"
-            }
-          >
-            {modeLabel}
-          </span>
+          {appConfig?.db_available ? (
+            <div className="mode-switch" role="radiogroup" aria-label="Data source">
+              {(
+                [
+                  ["local", "Local", "OCR, imaging and page images from the local data/folders workspace"],
+                  ["db", "DB", "Results from Postgres; page images from Azure Blob (Processed, then Raw_Input)"],
+                ] as const
+              ).map(([id, label, title]) => {
+                const active = (appConfig.data_mode === "production") === (id === "db");
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    title={title}
+                    className={`mode-switch-btn${active ? ` active ${modePillClass(id === "db" ? "Production Mode" : "Local Mode")}` : ""}`}
+                    onClick={() => {
+                      if (active) return;
+                      // Unsaved ground truth gets the same prompt as leaving the page.
+                      if (leaveGuard.current) leaveGuard.current(() => switchDataMode(id));
+                      else switchDataMode(id);
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <span
+              className={modePillClass(modeLabel)}
+              title={
+                modeLabel === "Production Mode"
+                  ? "OCR + imaging outputs read from Postgres"
+                  : "OCR + imaging outputs read from local data/folders"
+              }
+            >
+              {modeLabel}
+            </span>
+          )}
           {gtSource === "bulk_upload" ? (
             <span
               className="mode-pill gt-source-pill"

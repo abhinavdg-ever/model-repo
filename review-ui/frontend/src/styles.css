@@ -250,6 +250,37 @@ input {
   color: #1b5e20;
 }
 
+/* Top-bar Local / DB switch: the active side wears its mode-pill colours. */
+.mode-switch {
+  display: inline-flex;
+  padding: 0.15rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+}
+
+.mode-switch-btn {
+  padding: 0.2rem 0.65rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+
+.mode-switch-btn:hover:not(.active) {
+  color: var(--text);
+}
+
+.mode-switch-btn.active {
+  cursor: default;
+}
+
 .logout-btn {
   display: inline-flex;
   align-items: center;

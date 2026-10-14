@@ -7,7 +7,13 @@ Vite + React frontend and FastAPI backend for chart OCR/imaging review.
 | `DATA_MODE` | UI label | OCR / imaging source | Page images |
 |-------------|----------|----------------------|-------------|
 | `local` | Local Mode | `data/folders/*/ocr` + `imaging/*.csv` | `data/folders/*/pages` |
-| `production` (alias: `postgres`) | Production Mode | Postgres v1 tables | Azure Blob via `chart_list.blob_container` + `blob_path` (Processed `output_path` fallback) |
+| `production` (alias: `postgres`) | Production Mode | Postgres v1 tables | Azure Blob: Processed `chart_list.output_path` (`corrected-pages/`, `pages/`) first, then Raw_Input `blob_path` |
+
+With a usable `DATABASE_URL`, each browser can switch between the two from the
+**Local / DB** control in the top bar (a cookie, so page images follow it).
+`DATA_MODE` is what a browser that has not chosen sees. Processed holds the
+original `pages/` only when the pipeline wrote with `write_mode=all_files`;
+otherwise originals come from Raw_Input.
 
 ```bash
 # Local Mode (default)
@@ -21,8 +27,7 @@ BLOB_ACCOUNT_URL=https://<account>.blob.core.windows.net
 # AZURE_TENANT_ID= / AZURE_CLIENT_ID= / AZURE_CLIENT_SECRET=  (or MI / az login)
 ```
 
-Restart the backend after changing `.env`. The top bar shows **Local Mode** or
-**Production Mode** from `/api/config`.
+Restart the backend after changing `.env`.
 
 ## Run locally
 
@@ -40,8 +45,9 @@ npm install
 npm run dev
 ```
 
-Docker: host ports **4000** (API) / **4001** (web). Compose is **Local Mode
-only** for now (`DATA_MODE=local` pinned).
+Docker: host ports **4000** (API) / **4001** (web). Compose reads `DATA_MODE`
+from `.env` (default `local`); the top-bar switch works whenever
+`DATABASE_URL` is set.
 
 ```bash
 cp .env.example .env
