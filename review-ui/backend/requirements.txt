@@ -17,3 +17,7 @@ psycopg-pool>=3.2
 onnxruntime>=1.17
 tokenizers>=0.15
 numpy>=1.26
+# Excel Compare (QA ground truth vs system sheet): reading CSV / XLSX and
+# writing the report workbook. .xls input also needs xlrd.
+pandas>=2.2
+openpyxl>=3.1

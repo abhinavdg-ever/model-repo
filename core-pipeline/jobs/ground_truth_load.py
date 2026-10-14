@@ -5,6 +5,9 @@ Id is the page file stem: 1, 1.jpg, 1.png, and 1.tif are the same page.
 
 A load can run before the chart exists. Re-runs upsert on
 (chart_name, page_number). Pages absent from a later file are left in place.
+Each row written also appends a ``bulk_upload`` entry to
+page_ground_truth_entry, so review-ui can show the latest load with manual
+edits hidden.
 
 Usage:
   python -m jobs.ground_truth_load --local /path/to/ground_truth.xlsx
@@ -13,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import csv
+import json
 import re
 import sys
 from pathlib import Path
@@ -68,7 +72,25 @@ _TEXT_FIELDS = (
 # Databases created before is_visible existed gain the column on first load.
 _ADD_IS_VISIBLE = "ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS is_visible TEXT"
 
+# Databases created before page_ground_truth_entry gain it on first load.
+# Kept in step with schema/v1.sql and review-ui's services/ground_truth.py.
+_ADD_ENTRY_TABLE = """
+CREATE TABLE IF NOT EXISTS page_ground_truth_entry (
+    id                      BIGSERIAL PRIMARY KEY,
+    page_ground_truth_id    BIGINT NOT NULL REFERENCES page_ground_truth(id) ON DELETE CASCADE,
+    entry_mode              VARCHAR(20) NOT NULL
+                            CHECK (entry_mode IN ('bulk_upload', 'manual_entry')),
+    labels                  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source_path             TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_page_ground_truth_entry_page_ground_truth_id_entry_mode
+    ON page_ground_truth_entry(page_ground_truth_id, entry_mode);
+"""
+
 _UPSERT = """
+WITH g AS (
 INSERT INTO page_ground_truth (
     chart_name, page_number, source_page_id,
     member_name, member_dob, dos_from, dos_to,
@@ -105,6 +127,10 @@ ON CONFLICT (chart_name, page_number) DO UPDATE SET
     deleted_level = EXCLUDED.deleted_level,
     source_path = EXCLUDED.source_path,
     updated_at = now()
+RETURNING id
+)
+INSERT INTO page_ground_truth_entry (page_ground_truth_id, entry_mode, labels, source_path)
+SELECT id, 'bulk_upload', %(labels)s::jsonb, %(source_path)s FROM g
 """
 
 
@@ -218,6 +244,12 @@ def read_table(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def entry_labels(row: dict[str, Any]) -> str:
+    """The labels a load writes, as the page_ground_truth_entry JSON. An empty
+    cell is kept as null: the load cleared that column."""
+    return json.dumps({field: row.get(field) for field in _TEXT_FIELDS})
+
+
 def iter_files(path: Path) -> Iterator[Path]:
     if path.is_file():
         yield path
@@ -254,7 +286,8 @@ def run_load(local_path: str) -> dict[str, Any]:
         with connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(_ADD_IS_VISIBLE)
-                cur.executemany(_UPSERT, writable)
+                cur.execute(_ADD_ENTRY_TABLE)
+                cur.executemany(_UPSERT, [{**row, "labels": entry_labels(row)} for row in writable])
 
     return {
         "files": files,

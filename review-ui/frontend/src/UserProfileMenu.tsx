@@ -5,9 +5,12 @@ type Props = {
   displayName?: string;
   initials?: string;
   /** "file-viewer" shows History link; otherwise shows File Browser link */
-  currentView?: "landing" | "folder" | "file-viewer" | "accuracy";
+  currentView?: "landing" | "folder" | "file-viewer" | "accuracy" | "excel-compare";
   onOpenFileViewer?: () => void;
   onOpenHistory?: () => void;
+  /** True while manual ground-truth edits are hidden (latest bulk upload only). */
+  hideManualGroundTruth?: boolean;
+  onToggleManualGroundTruth?: () => void;
   onLogout: () => void;
 };
 
@@ -17,6 +20,8 @@ export default function UserProfileMenu({
   currentView = "landing",
   onOpenFileViewer,
   onOpenHistory,
+  hideManualGroundTruth = false,
+  onToggleManualGroundTruth,
   onLogout,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -91,6 +96,24 @@ export default function UserProfileMenu({
               File Browser
             </button>
           )}
+
+          {onToggleManualGroundTruth ? (
+            // A labelled checkbox, like the page viewer's menu toggles.
+            <label
+              className="user-menu-item user-menu-check"
+              title="Show each page's latest bulk-uploaded ground truth, without manual edits"
+            >
+              <input
+                type="checkbox"
+                checked={hideManualGroundTruth}
+                onChange={() => {
+                  setOpen(false);
+                  onToggleManualGroundTruth();
+                }}
+              />
+              Hide manual ground truth
+            </label>
+          ) : null}
 
           <button
             type="button"

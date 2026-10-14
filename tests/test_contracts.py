@@ -2021,11 +2021,11 @@ class TestCorrectedPages:
         assert list(cdir.iterdir()) == []
 
     def test_stored_orientation_is_the_texts_not_the_correction(self):
-        """Client ground truth records how the text sits as scanned. An ECG
-        printed bottom-to-top is turned 90° clockwise and stored as 270."""
+        """Client ground truth records how far the text sits counter-clockwise.
+        An ECG printed bottom-to-top is turned 90° clockwise and stored as 90."""
         from stages.lib.image_preprocess.stage import text_orientation
 
-        assert [text_orientation(c) for c in (0, 90, 180, 270)] == [0, 270, 180, 90]
+        assert [text_orientation(c) for c in (0, 90, 180, 270)] == [0, 90, 180, 270]
         assert text_orientation(None) == 0
 
     def test_a_tilt_over_the_limit_is_recorded_not_applied(self):

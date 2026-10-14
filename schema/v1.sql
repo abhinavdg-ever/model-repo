@@ -347,6 +347,30 @@ CREATE TRIGGER trg_page_ground_truth_updated_at
     BEFORE UPDATE ON page_ground_truth
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+-- Every ground-truth write, appended: a spreadsheet load (bulk_upload) or a
+-- save in review-ui (manual_entry). page_ground_truth keeps the latest
+-- values; this keeps where they came from, so review-ui can show each page's
+-- latest bulk upload with manual edits hidden. labels holds only the
+-- page_ground_truth columns that write set, keyed by column name.
+-- Rows are never updated. review-ui seeds one entry for a page written before
+-- this table existed: bulk_upload when it has a source_path, else manual_entry.
+CREATE TABLE page_ground_truth_entry (
+    id                      BIGSERIAL PRIMARY KEY,
+    page_ground_truth_id    BIGINT NOT NULL REFERENCES page_ground_truth(id) ON DELETE CASCADE,
+    entry_mode              VARCHAR(20) NOT NULL
+                            CHECK (entry_mode IN ('bulk_upload', 'manual_entry')),
+    labels                  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source_path             TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_page_ground_truth_entry_page_ground_truth_id_entry_mode
+    ON page_ground_truth_entry(page_ground_truth_id, entry_mode);
+
+CREATE TRIGGER trg_page_ground_truth_entry_updated_at
+    BEFORE UPDATE ON page_ground_truth_entry
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 
 -- ---------------------------------------------------------------------
 -- PAGE-LEVEL RESULT TABLES
@@ -417,6 +441,10 @@ CREATE TABLE ocr_quality_results (
 );
 CREATE INDEX idx_ocr_quality_results_chart_id ON ocr_quality_results(chart_id);
 CREATE INDEX idx_ocr_quality_results_page_id ON ocr_quality_results(page_id);
+-- Also marks the database as already on the counter-clockwise convention, so
+-- schema/temp_changes_to_db.sql does not flip its angles.
+COMMENT ON COLUMN ocr_quality_results.orientation_angle
+    IS 'Text orientation, degrees counter-clockwise';
 
 CREATE TRIGGER trg_ocr_quality_results_updated_at
     BEFORE UPDATE ON ocr_quality_results

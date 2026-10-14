@@ -2,7 +2,7 @@ from urllib.parse import quote
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
 
 from app.adapters.base import FolderRepository
@@ -33,7 +33,13 @@ from app.services.extraction_review import load_extraction_review
 from app.services.imaging_csv import filter_folder, iter_csv_lines
 from app.services.chart_run_batch import database_url_usable
 from app.services.accuracy_cache import load_report
-from app.services.ground_truth import upsert_page_ground_truth
+from app.services import excel_compare
+from app.services.ground_truth import (
+    GroundTruthSource,
+    bulk_ground_truth,
+    ground_truth_labels,
+    upsert_page_ground_truth,
+)
 from app.services.page_images import (
     bytes_to_display_jpeg,
     cached_derived_jpeg,
@@ -580,24 +586,147 @@ def save_folder_ground_truth(
 
 
 @router.get("/accuracy", response_model=AccuracyReportResponse)
-def get_accuracy(settings: Settings = Depends(get_settings)) -> AccuracyReportResponse:
+def get_accuracy(
+    ground_truth: GroundTruthSource = Query(
+        default="latest",
+        description="latest = newest value from any source; bulk_upload = each page's latest spreadsheet load, manual edits hidden.",
+    ),
+    settings: Settings = Depends(get_settings),
+) -> AccuracyReportResponse:
     """Saved scores. A chart whose results changed comes back unscored, with a slim document."""
     if not database_url_usable(settings.database_url):
         raise HTTPException(status_code=503, detail="Database is not configured")
     try:
-        return load_report(settings)
+        return load_report(settings, ground_truth)
     except Exception as exc:
         logger.warning("accuracy report failed: %s", exc)
         raise HTTPException(status_code=502, detail="Could not load accuracy") from exc
 
 
+async def _upload_bytes(label: str, upload: UploadFile | None) -> tuple[bytes, str]:
+    if upload is None or not upload.filename:
+        raise HTTPException(status_code=400, detail=f"{label} file is required")
+    name = upload.filename
+    if not name.lower().endswith((".xlsx", ".xls", ".csv")):
+        raise HTTPException(status_code=400, detail=f"{label} file must be .xlsx, .xls or .csv")
+    data = await upload.read()
+    if len(data) > excel_compare.MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"{label} file is over 25 MB")
+    return data, name
+
+
+async def _compare_inputs(
+    settings: Settings,
+    system_file: UploadFile,
+    ground_file: UploadFile | None,
+    ground_source: str,
+    ground_truth: GroundTruthSource,
+) -> tuple[tuple[bytes, str], tuple[bytes, str]]:
+    """(ground, system). Ground truth is the uploaded sheet, or page_ground_truth
+    for the PDF IDs (chart names) in the system file."""
+    system = await _upload_bytes("System Generated", system_file)
+    if ground_source == "upload":
+        return await _upload_bytes("Ground Truth", ground_file), system
+    if ground_source != "db":
+        raise HTTPException(status_code=400, detail="ground_source must be upload or db")
+    if not database_url_usable(settings.database_url):
+        raise HTTPException(status_code=503, detail="Database is not configured")
+    try:
+        pdf_ids = excel_compare.database_ground.system_pdf_ids(*system)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        rows = ground_truth_labels(settings.database_url, pdf_ids, ground_truth, settings.db_schema)
+    except Exception as exc:
+        logger.warning("excel compare ground truth lookup failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not read ground truth") from exc
+    if not rows:
+        shown = ", ".join(pdf_ids[:5]) + (" …" if len(pdf_ids) > 5 else "")
+        raise HTTPException(
+            status_code=400,
+            detail=f"No ground truth in the database for the PDF IDs in the system file ({shown}). "
+            "PDF ID must be the chart name.",
+        )
+    return (excel_compare.database_ground.ground_csv(rows), "ground_truth_database.csv"), system
+
+
+_GROUND_SOURCE = Form(default="upload", description="upload = the Ground Truth file; db = page_ground_truth")
+_GROUND_TRUTH = Form(
+    default="latest",
+    description="With ground_source=db: latest, or bulk_upload (manual edits hidden).",
+)
+
+
+@router.get("/excel-compare/columns")
+def get_excel_compare_columns() -> dict:
+    """The columns a System Generated file needs, and the header spellings accepted."""
+    return excel_compare.columns()
+
+
+@router.post("/excel-compare")
+async def post_excel_compare(
+    system_file: UploadFile = File(...),
+    ground_file: UploadFile | None = File(default=None),
+    ground_source: str = _GROUND_SOURCE,
+    ground_truth: GroundTruthSource = _GROUND_TRUTH,
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Compare ground truth with a system-generated sheet. Nothing is stored."""
+    ground, system = await _compare_inputs(settings, system_file, ground_file, ground_source, ground_truth)
+    try:
+        return excel_compare.run(ground, system)
+    except ValueError as exc:
+        # Missing key column, duplicate PDF ID / Page Number, unreadable file.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("excel compare failed: %s", exc)
+        raise HTTPException(status_code=400, detail=f"Comparison failed: {exc}") from exc
+
+
+@router.post("/excel-compare/report")
+async def post_excel_compare_report(
+    system_file: UploadFile = File(...),
+    ground_file: UploadFile | None = File(default=None),
+    ground_source: str = _GROUND_SOURCE,
+    ground_truth: GroundTruthSource = _GROUND_TRUTH,
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """The same comparison as an Excel workbook (Comparison Results, Summary, Exempted Columns)."""
+    ground, system = await _compare_inputs(settings, system_file, ground_file, ground_source, ground_truth)
+    try:
+        data = excel_compare.report(ground, system)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("excel compare report failed: %s", exc)
+        raise HTTPException(status_code=400, detail=f"Comparison failed: {exc}") from exc
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="comparison_report.xlsx"'},
+    )
+
+
 @router.get("/folders/{folder_id}/imaging", response_model=ImagingDocumentResponse)
 def get_folder_imaging(
     folder_id: str,
+    ground_truth: GroundTruthSource = Query(
+        default="latest",
+        description="latest = newest value from any source; bulk_upload = each page's latest spreadsheet load, manual edits hidden.",
+    ),
     repo: FolderRepository = Depends(get_repository),
+    settings: Settings = Depends(get_settings),
 ) -> ImagingDocumentResponse:
     """Imaging page/document results (dummy/local JSON until Postgres schema lands)."""
     doc = repo.get_imaging(folder_id)
+    if ground_truth == "bulk_upload":
+        doc = doc.model_copy(
+            update={
+                "pages": bulk_ground_truth(
+                    doc.pages, folder_id, settings.database_url, settings.db_schema
+                )
+            }
+        )
     logger.info(
         "get_imaging id=%s pages=%d",
         folder_id,

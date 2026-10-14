@@ -85,9 +85,9 @@ for every page in the chart.
 
 `orientation_angle` (database, `rotation_deg` / `orientation` in the CSV,
 review-ui) is the **text's orientation as scanned**: how far the text sits
-rotated clockwise from upright. The correction applied to the image is
-360 − that. Text running bottom-to-top is stored as 270 and turned 90°
-clockwise. This matches how client ground truth records rotation.
+rotated counter-clockwise from upright, which is also the clockwise turn
+applied to straighten it. Text running bottom-to-top is stored as 90 and
+turned 90° clockwise. This matches how client ground truth records rotation.
 
 Coarse orientation starts from Tesseract OSD. No correction — turn, mirror
 or tilt — is kept unless Tesseract reads the page at least as well with it as

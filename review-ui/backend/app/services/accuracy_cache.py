@@ -27,7 +27,7 @@ from app.services.chart_run_batch import database_url_usable
 from app.services.db import connection
 from app.services.folder_list import FolderListParams, build_folder_list
 from app.services import semantic
-from app.services.ground_truth import spell_codeable
+from app.services.ground_truth import GroundTruthSource, latest_bulk_labels, spell_codeable
 from app.services.imaging_overlays import (
     compose_page_type,
     display_page_type,
@@ -158,6 +158,35 @@ SELECT c.chart_name, p.page_name, orig.page_name
   JOIN page_list orig ON orig.id = b.duplicate_of_page_id
  WHERE b.blank_junk_flag = 'duplicate' AND c.chart_name = ANY(%s)
 """
+
+
+# Position in a _SELECT row of each ground-truth cell, by page_ground_truth column.
+_GT_CELLS = {
+    "member_name": 3, "member_dob": 4, "member_id": 5, "dos_from": 6, "dos_to": 7,
+    "encounter_type": 8, "page_type": 9, "codeable": 10, "blank_page": 11,
+    "junk_page": 12, "is_invoice": 13, "page_sequence": 14, "rotation": 15,
+    "is_visible": 16, "rendering_provider": 17, "provider_signature": 18,
+    "provider_credentials": 42,
+}
+_GT_UPDATED_AT = 34
+
+
+def _with_bulk_labels(rows: list[tuple], bulk: dict) -> list[tuple]:
+    """Rows whose ground truth is the page's latest bulk upload. A page with
+    no bulk upload drops out: it has only manual labels."""
+    out: list[tuple] = []
+    for row in rows:
+        hit = bulk.get((str(row[0]), int(row[1])))
+        if hit is None:
+            continue
+        labels, loaded_at = hit
+        cells = list(row)
+        for column, index in _GT_CELLS.items():
+            value = labels.get(column)
+            cells[index] = None if value is None else str(value)
+        cells[_GT_UPDATED_AT] = loaded_at
+        out.append(tuple(cells))
+    return out
 
 
 def _ensure(conn, database_url: str, db_schema: str) -> None:
@@ -324,7 +353,9 @@ def _with_signatures(
     return overlay_fields(pages, index_signature_rows(rows, chart_name))
 
 
-def load_report(settings: Settings) -> AccuracyReportResponse:
+def load_report(
+    settings: Settings, source: GroundTruthSource = "latest"
+) -> AccuracyReportResponse:
     if not database_url_usable(settings.database_url):
         raise RuntimeError("database is not configured")
     eligible = _eligible(settings)
@@ -338,6 +369,10 @@ def load_report(settings: Settings) -> AccuracyReportResponse:
             rows = cur.fetchall()
             cur.execute(_DUPLICATES, (names,))
             duplicates = {(str(chart), str(page)): str(original) for chart, page, original in cur.fetchall()}
+        if source == "bulk_upload":
+            rows = _with_bulk_labels(
+                rows, latest_bulk_labels(conn, settings.database_url, names, settings.db_schema)
+            )
     pages: dict[str, list[ImagingPageResult]] = {}
     sections: dict[str, ImagingSectionsProcessed] = {}
     manifests: dict[str, str | None] = {}

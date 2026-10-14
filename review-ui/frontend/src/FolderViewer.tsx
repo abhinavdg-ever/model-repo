@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  ArrowRight,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -51,11 +52,15 @@ import FullscreenPageChrome from "./FullscreenPageChrome";
 import PageJump from "./PageJump";
 import { useImagePan } from "./useImagePan";
 import { usePageViewerHotkeys } from "./usePageViewerHotkeys";
+import type { ChartRef } from "./chartSequence";
 
 type Props = {
   folderId: string;
   initialMode?: OutputMode;
   onBack: () => void;
+  /** The chart after this one in the list it was opened from; null at the end. */
+  findNextChart?: () => Promise<ChartRef | null>;
+  onOpenNext?: (folderId: string) => void;
   onModeChange?: (mode: OutputMode) => void;
   onBindLeave?: (guard: ((run: () => void) => void) | null) => void;
 };
@@ -177,6 +182,8 @@ export default function FolderViewer({
   folderId,
   initialMode = "ocr",
   onBack,
+  findNextChart,
+  onOpenNext,
   onModeChange,
   onBindLeave,
 }: Props) {
@@ -329,6 +336,24 @@ export default function FolderViewer({
   }, [resetPan]);
 
   pageIndexRef.current = pageIndex;
+
+  // undefined while it is being looked up.
+  const [nextChart, setNextChart] = useState<ChartRef | null | undefined>(undefined);
+  useEffect(() => {
+    if (!findNextChart) return;
+    let cancelled = false;
+    findNextChart()
+      .then((next) => {
+        if (!cancelled) setNextChart(next);
+      })
+      .catch(() => {
+        if (!cancelled) setNextChart(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Looked up once per chart: the viewer remounts on a new folderId.
+  }, []);
 
   function guardLeave(run: () => void) {
     if (!groundTruthLeave.current?.dirty) {
@@ -1025,6 +1050,26 @@ export default function FolderViewer({
             <ArrowLeft size={15} aria-hidden="true" />
             Back
           </button>
+          {findNextChart && onOpenNext ? (
+            <button
+              type="button"
+              className="back-btn"
+              disabled={!nextChart}
+              title={
+                nextChart === undefined
+                  ? "Finding the next chart…"
+                  : nextChart
+                    ? `Next chart: ${nextChart.name}`
+                    : "This is the last chart in the list"
+              }
+              onClick={() => {
+                if (nextChart) guardLeave(() => onOpenNext(nextChart.id));
+              }}
+            >
+              Next
+              <ArrowRight size={15} aria-hidden="true" />
+            </button>
+          ) : null}
           <div className="workspace-title">
             <h1>{folder?.name ?? folderId}</h1>
             <p>

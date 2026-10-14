@@ -1,0 +1,349 @@
+from pathlib import Path
+
+import pandas as pd
+
+from .field_comparator import ACTIVE_COMPARISON_FIELDS
+
+
+# =============================================================
+# RESULT ROW BUILDERS
+# =============================================================
+
+def _raw_value(row, field_name):
+
+    value = row.get(field_name, "")
+
+    if pd.isna(value):
+        return ""
+
+    return str(value).strip()
+
+
+def build_associated_result(
+    pdf_id,
+    page_number,
+    field_results,
+    status,
+    reason,
+    fields=None,
+):
+    """
+    Build a compact human-readable result row for a matched
+    Ground Truth / System Generated pair.
+
+    `fields` is the subset of ACTIVE_COMPARISON_FIELDS actually
+    compared for this run (fields exempted -- either always, or
+    because they weren't present in both files -- are left out
+    of the row entirely).
+
+    Matching (PDF ID + Page Number) only determines which rows
+    correspond. Status here comes exclusively from
+    field_comparator.determine_status, which independently
+    compares the actual field values.
+    """
+
+    if fields is None:
+        fields = ACTIVE_COMPARISON_FIELDS
+
+    row = {
+        "PDF ID": pdf_id,
+        "Page Number": page_number,
+    }
+
+    for field_name in fields:
+        row[field_name] = field_results[field_name]["display"]
+
+    row["Status"] = status
+    row["Reason"] = reason
+
+    return row
+
+
+def build_missing_result(gt_row, fields=None):
+    """
+    Build a result row for a Ground Truth record that has no
+    corresponding System Generated record.
+    """
+
+    if fields is None:
+        fields = ACTIVE_COMPARISON_FIELDS
+
+    pdf_id = _raw_value(gt_row, "PDF ID")
+    page_number = _raw_value(gt_row, "Page Number")
+
+    row = {
+        "PDF ID": pdf_id,
+        "Page Number": page_number,
+    }
+
+    for field_name in fields:
+        row[field_name] = _raw_value(gt_row, field_name)
+
+    row["Status"] = "MISSING"
+    row["Reason"] = (
+        f"No corresponding System Generated record found for "
+        f"PDF ID {pdf_id}, Page Number {page_number}."
+    )
+
+    return row
+
+
+def build_extra_result(system_row, fields=None):
+    """
+    Build a result row for a System Generated record that has
+    no corresponding Ground Truth record.
+    """
+
+    if fields is None:
+        fields = ACTIVE_COMPARISON_FIELDS
+
+    pdf_id = _raw_value(system_row, "PDF ID")
+    page_number = _raw_value(system_row, "Page Number")
+
+    row = {
+        "PDF ID": pdf_id,
+        "Page Number": page_number,
+    }
+
+    for field_name in fields:
+        row[field_name] = _raw_value(system_row, field_name)
+
+    row["Status"] = "EXTRA"
+    row["Reason"] = (
+        f"No corresponding Ground Truth record found for "
+        f"PDF ID {pdf_id}, Page Number {page_number}."
+    )
+
+    return row
+
+
+# =============================================================
+# SUMMARY
+# =============================================================
+
+def build_summary(ground_count, system_count, result_rows):
+    """
+    Build compact summary metrics across all compared records.
+    """
+
+    df = pd.DataFrame(result_rows)
+
+    if df.empty:
+        df = pd.DataFrame(columns=["Status"])
+
+    correct_count = int((df["Status"] == "CORRECT").sum())
+    error_count = int((df["Status"] == "ERROR").sum())
+    missing_count = int((df["Status"] == "MISSING").sum())
+    extra_count = int((df["Status"] == "EXTRA").sum())
+
+    # ---------------------------------------------------------
+    # Match Percentage
+    #
+    # Correct records / all Ground Truth records. Missing
+    # records therefore count as not successfully matched.
+    # ---------------------------------------------------------
+
+    if ground_count:
+        match_percentage = (correct_count / ground_count) * 100
+    else:
+        match_percentage = 0.0
+
+    # ---------------------------------------------------------
+    # Overall Disparity/Error Percentage
+    #
+    # Ground Truth records with either ERROR or MISSING.
+    # ---------------------------------------------------------
+
+    disparity_count = error_count + missing_count
+
+    if ground_count:
+        disparity_percentage = (disparity_count / ground_count) * 100
+    else:
+        disparity_percentage = 0.0
+
+    # ---------------------------------------------------------
+    # Extra Percentage
+    # ---------------------------------------------------------
+
+    if system_count:
+        extra_percentage = (extra_count / system_count) * 100
+    else:
+        extra_percentage = 0.0
+
+    summary_rows = [
+        {
+            "Metric": "Total Ground Truth Records",
+            "Count": ground_count,
+            "Percentage": 100.0 if ground_count else 0.0,
+        },
+        {
+            "Metric": "Total System Records",
+            "Count": system_count,
+            "Percentage": 100.0 if system_count else 0.0,
+        },
+        {
+            "Metric": "Correct Records",
+            "Count": correct_count,
+            "Percentage": round(match_percentage, 2),
+        },
+        {
+            "Metric": "Errors",
+            "Count": error_count,
+            "Percentage": round(
+                error_count / ground_count * 100, 2
+            ) if ground_count else 0.0,
+        },
+        {
+            "Metric": "Missing Records",
+            "Count": missing_count,
+            "Percentage": round(
+                missing_count / ground_count * 100, 2
+            ) if ground_count else 0.0,
+        },
+        {
+            "Metric": "Extra Records",
+            "Count": extra_count,
+            "Percentage": round(extra_percentage, 2),
+        },
+        {
+            "Metric": "Match Percentage",
+            "Count": correct_count,
+            "Percentage": round(match_percentage, 2),
+        },
+        {
+            "Metric": "Overall Disparity Rate",
+            "Count": disparity_count,
+            "Percentage": round(disparity_percentage, 2),
+        },
+    ]
+
+    return pd.DataFrame(summary_rows)
+
+
+# =============================================================
+# EXEMPTED COLUMNS
+#
+# Columns recognized by the schema but not compared this run --
+# either always exempt by design (subjective fields) or
+# exempted because they weren't present in both input files.
+# =============================================================
+
+def build_exempted_columns_df(exempted_columns):
+    """
+    Build a small reference table of exempted columns and why
+    each one was left out of the comparison.
+
+    `exempted_columns` is a list of {"column": str, "reason": str}.
+    """
+
+    if not exempted_columns:
+        return pd.DataFrame(columns=["Column", "Reason"])
+
+    return pd.DataFrame(
+        [
+            {"Column": entry["column"], "Reason": entry["reason"]}
+            for entry in exempted_columns
+        ]
+    )
+
+
+# =============================================================
+# EXCEL WRITER
+# =============================================================
+
+def write_report(
+    output_path,
+    result_rows,
+    summary_df,
+    fields=None,
+    exempted_columns=None,
+):
+    """
+    Write the final compact Excel report.
+    """
+
+    if fields is None:
+        fields = ACTIVE_COMPARISON_FIELDS
+
+    if isinstance(output_path, (str, Path)):
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # ---------------------------------------------------------
+    # Explicit column order
+    # ---------------------------------------------------------
+
+    result_columns = (
+        ["PDF ID", "Page Number"]
+        + fields
+        + ["Status", "Reason"]
+    )
+
+    results_df = pd.DataFrame(result_rows)
+
+    for column in result_columns:
+        if column not in results_df.columns:
+            results_df[column] = ""
+
+    results_df = results_df[result_columns]
+
+    exempted_df = build_exempted_columns_df(exempted_columns)
+
+    # ---------------------------------------------------------
+    # Write workbook
+    # ---------------------------------------------------------
+
+    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+
+        results_df.to_excel(
+            writer,
+            sheet_name="Comparison Results",
+            index=False,
+        )
+
+        summary_df.to_excel(
+            writer,
+            sheet_name="Summary",
+            index=False,
+        )
+
+        exempted_df.to_excel(
+            writer,
+            sheet_name="Exempted Columns",
+            index=False,
+        )
+
+        workbook = writer.book
+
+        # -----------------------------------------------------
+        # Formatting
+        # -----------------------------------------------------
+
+        for worksheet in workbook.worksheets:
+
+            worksheet.freeze_panes = "A2"
+
+            worksheet.auto_filter.ref = worksheet.dimensions
+
+            # Header formatting
+            for cell in worksheet[1]:
+                cell.font = cell.font.copy(bold=True)
+
+            # Column widths
+            for column_cells in worksheet.columns:
+
+                max_length = 0
+                column_letter = column_cells[0].column_letter
+
+                for cell in column_cells:
+
+                    if cell.value is None:
+                        continue
+
+                    max_length = max(max_length, len(str(cell.value)))
+
+                worksheet.column_dimensions[column_letter].width = min(
+                    max_length + 2, 60
+                )
+
+    return output_path

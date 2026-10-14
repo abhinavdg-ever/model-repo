@@ -41,3 +41,44 @@ def test_member_fields_keep_only_yes_or_no():
     assert yes_no_label("07/17/2025") is None
     assert yes_no_label("500-50") is None
     assert yes_no_label("NA") is None
+
+
+def test_a_manual_save_records_exactly_the_columns_it_sets():
+    """The manual_entry labels pair each saved value with its column, in the
+    upsert's parameter order."""
+    import re
+
+    from app.services.ground_truth import _MANUAL_COLUMNS, _UPSERT
+
+    insert = re.search(r"INSERT INTO page_ground_truth \((.*?)\)", _UPSERT, re.S)
+    columns = [c.strip() for c in insert.group(1).split(",")]
+    assert tuple(columns[3:]) == _MANUAL_COLUMNS
+    assert "'manual_entry'" in _UPSERT
+
+
+def test_bulk_ground_truth_is_read_from_the_entry_labels():
+    from app.services.ground_truth import _ground_truth_from_labels
+
+    truth = _ground_truth_from_labels(
+        3, "3.jpg", {"rotation": "90", "codeable": "non codeable", "member_name": None}
+    )
+    assert truth.pageNumber == 3
+    assert truth.rotation == "90"
+    assert truth.codeable == "Non-Codable"
+    assert truth.memberName is None
+
+
+def test_bulk_mode_swaps_in_bulk_labels_and_drops_manual_only_pages():
+    from app.services.accuracy_cache import _GT_CELLS, _GT_UPDATED_AT, _with_bulk_labels
+
+    row = tuple(["chart", 1] + ["manual"] * 41)
+    manual_only = tuple(["chart", 2] + ["manual"] * 41)
+    out = _with_bulk_labels(
+        [row, manual_only], {("chart", 1): ({"rotation": "270", "member_name": None}, "loaded")}
+    )
+    assert len(out) == 1
+    assert out[0][_GT_CELLS["rotation"]] == "270"
+    assert out[0][_GT_CELLS["member_name"]] is None
+    # A column the load never set is not the manual value either.
+    assert out[0][_GT_CELLS["provider_credentials"]] is None
+    assert out[0][_GT_UPDATED_AT] == "loaded"

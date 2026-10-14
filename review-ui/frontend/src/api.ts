@@ -1,3 +1,5 @@
+import { groundTruthQuery, readGroundTruthSource } from "./groundTruthSource";
+
 export type OcrRunStatus =
   | "QUEUED"
   | "IN_PROGRESS"
@@ -356,7 +358,7 @@ export function getFolderOcr(folderId: string, kind: OcrKind): Promise<OcrTextRe
 }
 
 export function getFolderImaging(folderId: string): Promise<ImagingDocumentResponse> {
-  return api(`/api/folders/${encodeURIComponent(folderId)}/imaging`);
+  return api(`/api/folders/${encodeURIComponent(folderId)}/imaging${groundTruthQuery()}`);
 }
 
 export type AccuracyChartPayload = {
@@ -370,7 +372,7 @@ export type AccuracyChartPayload = {
 };
 
 export function getAccuracyReport(): Promise<{ charts: AccuracyChartPayload[] }> {
-  return api("/api/accuracy");
+  return api(`/api/accuracy${groundTruthQuery()}`);
 }
 
 
@@ -422,4 +424,81 @@ export function pageImageUrl(
 
 export function blobPageImageUrl(folderId: string, pageNumber: number): string {
   return `/api/blob/${encodeURIComponent(folderId)}/pages/${pageNumber}/image`;
+}
+
+export type ExcelCompareStatus = "CORRECT" | "ERROR" | "MISSING" | "EXTRA";
+
+export type ExcelCompareRow = {
+  pdfId: string;
+  pageNumber: string;
+  /** Field -> the value, or "GT: … | System: …" when the two differ. */
+  values: Record<string, string>;
+  mismatched: string[];
+  status: ExcelCompareStatus;
+  reason: string;
+};
+
+export type ExcelCompareResult = {
+  groundCount: number;
+  systemCount: number;
+  correctCount: number;
+  errorCount: number;
+  missingCount: number;
+  extraCount: number;
+  /** The fields compared this run, in report order. */
+  fields: string[];
+  exemptedColumns: { column: string; reason: string }[];
+  summary: { metric: string; count: number; percentage: number }[];
+  rows: ExcelCompareRow[];
+};
+
+/** Ground truth: an uploaded sheet, or the database (page_ground_truth) for the
+ * system file's PDF IDs, following the user menu's manual-edits choice. */
+export type ExcelCompareInput = { system: File; ground: File | null; groundSource: "upload" | "db" };
+
+export type ExcelCompareColumns = {
+  required: { column: string; aliases: string[] }[];
+  compared: { column: string; aliases: string[] }[];
+  exempt: string[];
+};
+
+function excelCompareForm({ system, ground, groundSource }: ExcelCompareInput): FormData {
+  const form = new FormData();
+  form.append("system_file", system);
+  form.append("ground_source", groundSource);
+  if (groundSource === "upload" && ground) form.append("ground_file", ground);
+  if (groundSource === "db") form.append("ground_truth", readGroundTruthSource());
+  return form;
+}
+
+export function getExcelCompareColumns(): Promise<ExcelCompareColumns> {
+  return api("/api/excel-compare/columns");
+}
+
+/** FastAPI's {"detail": "..."} as plain text. */
+async function errorText(res: Response): Promise<string> {
+  const body = await res.text().catch(() => "");
+  try {
+    const detail = (JSON.parse(body) as { detail?: unknown }).detail;
+    if (typeof detail === "string") return detail;
+  } catch {
+    // not JSON
+  }
+  return body || `${res.status} ${res.statusText}`;
+}
+
+/** Multipart, so not api(): that helper sends JSON. */
+export async function compareExcel(input: ExcelCompareInput): Promise<ExcelCompareResult> {
+  const res = await fetch("/api/excel-compare", { method: "POST", body: excelCompareForm(input) });
+  if (!res.ok) throw new Error(await errorText(res));
+  return res.json() as Promise<ExcelCompareResult>;
+}
+
+export async function downloadExcelCompareReport(input: ExcelCompareInput): Promise<Blob> {
+  const res = await fetch("/api/excel-compare/report", {
+    method: "POST",
+    body: excelCompareForm(input),
+  });
+  if (!res.ok) throw new Error(await errorText(res));
+  return res.blob();
 }

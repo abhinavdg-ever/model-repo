@@ -6,6 +6,7 @@ import {
   Download,
   FileText,
   FolderOpen,
+  FileSpreadsheet,
   Gauge,
   Inbox,
   RefreshCw,
@@ -19,9 +20,12 @@ import {
   getFolderImaging,
   listFolders,
   OCR_STATUS_LABELS,
+  type FolderListParams,
   type FolderSummary,
   type ImagingDocumentResponse,
+  type ImagingPageResult,
   type OcrRunStatus,
+  type PageGroundTruth,
 } from "./api";
 import { formatDuplicateDownload } from "./duplicateLabel";
 import { fillDocDosForDownload } from "./ImagingPanel";
@@ -69,6 +73,20 @@ function normalizeIdList(raw: unknown): string[] {
 
 function normalizeStatusList(raw: unknown): OcrRunStatus[] {
   return normalizeIdList(raw).filter((v): v is OcrRunStatus => STATUS_VALUES.has(v));
+}
+
+/** The History list's saved search, filters and sort, unpaged: the order the
+ * chart view's Next button walks. */
+export function savedHistoryListParams(): FolderListParams {
+  const saved = readLandingFilters();
+  return {
+    q: saved.query,
+    status: saved.statusFilter,
+    run: saved.runFilter,
+    batch: saved.batchFilter,
+    sort: saved.sortKey,
+    sort_dir: saved.sortDir,
+  };
 }
 
 function readLandingFilters(): LandingFilters {
@@ -239,6 +257,7 @@ type Props = {
   onView: (folderId: string, mode?: "ocr" | "imaging") => void;
   onOpenFileViewer?: () => void;
   onOpenAccuracy?: () => void;
+  onOpenExcelCompare?: () => void;
 };
 
 function fmtUpdated(iso: string | null): string {
@@ -272,33 +291,78 @@ function statusClass(status: OcrRunStatus): string {
   }
 }
 
-const RESULTS_CSV_HEADERS = [
-  "chartName",
-  "pageName",
-  "memberName",
-  "memberID",
-  "confidence",
-  "memberDob",
-  "handwrittenOrPrinted",
-  "handwrittenOrPrintedConfidence",
-  "documentType",
-  "isVisible",
-  "handwrittenAreaPct",
-  "orientationAngle",
-  "tiltAngle",
-  "mirrored",
-  "pageQualityTag",
-  "pageQualityConfidence",
-  "blankOrJunk",
-  "isDuplicate",
-  "pageType",
-  "pageTypeConfidence",
-  "dosFrom",
-  "dosTo",
-  "dosConfidence",
-  "member_verification_status",
-] as const;
+/** One column of the results CSV: its value, and where the page has one, the
+ * ground-truth label written in a gt_<header> column right after it. */
+type ResultsColumn = {
+  header: string;
+  value: (page: ImagingPageResult, status: string) => unknown;
+  truth?: (gt: PageGroundTruth) => string | null | undefined;
+};
 
+const RESULTS_COLUMNS: ResultsColumn[] = [
+  { header: "chartName", value: () => "" },
+  { header: "pageName", value: (p) => p.fileName },
+  // Member name / DOB / ID ground truth is Yes or No: whether it is on the page.
+  { header: "memberName", value: (p) => p.memberName, truth: (gt) => gt.memberName },
+  { header: "memberID", value: (p) => p.memberId, truth: (gt) => gt.memberId },
+  { header: "confidence", value: (p) => p.memberConfidence },
+  { header: "memberDob", value: (p) => p.memberDob, truth: (gt) => gt.memberDob },
+  { header: "handwrittenOrPrinted", value: (p) => p.handwrittenOrPrinted },
+  { header: "handwrittenOrPrintedConfidence", value: (p) => p.handwrittenOrPrintedConfidence ?? "" },
+  { header: "documentType", value: (p) => p.documentType ?? "" },
+  { header: "isVisible", value: (p) => p.isVisible ?? "", truth: (gt) => gt.isVisible },
+  { header: "handwrittenAreaPct", value: (p) => p.handwrittenAreaPct ?? "" },
+  { header: "orientationAngle", value: (p) => p.orientationAngle, truth: (gt) => gt.rotation },
+  { header: "tiltAngle", value: (p) => p.tiltAngle },
+  { header: "mirrored", value: (p) => p.mirrored },
+  { header: "pageQualityTag", value: (p) => p.pageQualityTag ?? "" },
+  { header: "pageQualityConfidence", value: (p) => p.pageQualityConfidence },
+  {
+    header: "blankOrJunk",
+    value: (p) => p.blankOrJunk ?? "NA",
+    truth: (gt) => gtBlankOrJunk(gt),
+  },
+  {
+    header: "isDuplicate",
+    value: (p) =>
+      p.isDuplicate == null
+        ? "NA"
+        : formatDuplicateDownload(p.isDuplicate, p.pageTypeConfidence, p.duplicateOf),
+  },
+  {
+    header: "pageType",
+    value: (p) => p.pageType ?? "Not Available",
+    // The accuracy report's rule: the Encounter Type label, else Page Type.
+    truth: (gt) => gt.encounterType || gt.pageType,
+  },
+  { header: "pageTypeConfidence", value: (p) => p.pageTypeConfidence },
+  { header: "dosFrom", value: (p) => p.docDosFrom ?? p.dosFrom, truth: (gt) => gt.dosFrom },
+  { header: "dosTo", value: (p) => p.docDosTo ?? p.dosTo, truth: (gt) => gt.dosTo },
+  { header: "dosConfidence", value: (p) => p.dosConfidence ?? "" },
+  { header: "member_verification_status", value: (_p, status) => status },
+];
+
+/** Ground-truth labels with no matching result column: last, with ground truth only. */
+const GROUND_TRUTH_ONLY_COLUMNS: { header: string; truth: (gt: PageGroundTruth) => string | null | undefined }[] = [
+  { header: "gt_codable", truth: (gt) => gt.codeable },
+  { header: "gt_providerSignature", truth: (gt) => gt.providerSignature },
+];
+
+/** "Blank" / "Junk" / "No" from the separate Blank Page and Junk Page labels;
+ * empty when neither is labelled. */
+function gtBlankOrJunk(gt: PageGroundTruth): string {
+  const yes = (v: string | null | undefined) => (v ?? "").trim().toLowerCase().startsWith("y");
+  if (yes(gt.blankPage)) return "Blank";
+  if (yes(gt.junkPage)) return "Junk";
+  return (gt.blankPage ?? "").trim() || (gt.junkPage ?? "").trim() ? "No" : "";
+}
+
+function resultsHeaders(withTruth: boolean): string[] {
+  const headers = RESULTS_COLUMNS.flatMap((column) =>
+    withTruth && column.truth ? [column.header, `gt_${column.header}`] : [column.header],
+  );
+  return withTruth ? [...headers, ...GROUND_TRUTH_ONLY_COLUMNS.map((column) => column.header)] : headers;
+}
 
 function csvEscape(value: unknown): string {
   const s = value === null || value === undefined ? "" : String(value);
@@ -314,36 +378,22 @@ function verificationStatus(doc: ImagingDocumentResponse): string {
   );
 }
 
-function imagingDocToCsvRows(chartName: string, doc: ImagingDocumentResponse): string[] {
+function imagingDocToCsvRows(
+  chartName: string,
+  doc: ImagingDocumentResponse,
+  withTruth: boolean,
+): string[] {
   const status = verificationStatus(doc);
-  return fillDocDosForDownload(doc.pages).map((p) =>
+  // Blank where the page has no ground truth, or no label for the column.
+  const truthOf = (page: ImagingPageResult, read: (gt: PageGroundTruth) => string | null | undefined) =>
+    page.groundTruth ? (read(page.groundTruth) ?? "") : "";
+  return fillDocDosForDownload(doc.pages).map((page) =>
     [
-      chartName,
-      p.fileName,
-      p.memberName,
-      p.memberId,
-      p.memberConfidence,
-      p.memberDob,
-      p.handwrittenOrPrinted,
-      p.handwrittenOrPrintedConfidence ?? "",
-      p.documentType ?? "",
-      p.isVisible ?? "",
-      p.handwrittenAreaPct ?? "",
-      p.orientationAngle,
-      p.tiltAngle,
-      p.mirrored,
-      p.pageQualityTag ?? "",
-      p.pageQualityConfidence,
-      p.blankOrJunk ?? "NA",
-      p.isDuplicate == null
-        ? "NA"
-        : formatDuplicateDownload(p.isDuplicate, p.pageTypeConfidence, p.duplicateOf),
-      p.pageType ?? "Not Available",
-      p.pageTypeConfidence,
-      p.docDosFrom ?? p.dosFrom,
-      p.docDosTo ?? p.dosTo,
-      p.dosConfidence ?? "",
-      status,
+      ...RESULTS_COLUMNS.flatMap((column) => {
+        const value = column.header === "chartName" ? chartName : column.value(page, status);
+        return withTruth && column.truth ? [value, truthOf(page, column.truth)] : [value];
+      }),
+      ...(withTruth ? GROUND_TRUTH_ONLY_COLUMNS.map((column) => truthOf(page, column.truth)) : []),
     ]
       .map(csvEscape)
       .join(","),
@@ -363,7 +413,7 @@ function downloadTextFile(filename: string, text: string, mime: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy }: Props) {
+export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, onOpenExcelCompare }: Props) {
   const saved = useMemo(() => readLandingFilters(), []);
   const [folders, setFolders] = useState<FolderSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -387,6 +437,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy }
   const skipFilterPageReset = useRef(true);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
+  const [downloadWithTruth, setDownloadWithTruth] = useState(false);
   const [downloadDone, setDownloadDone] = useState(0);
   const [downloadTotal, setDownloadTotal] = useState(0);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -530,7 +581,8 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy }
     setDownloadError(null);
     setDownloadDone(0);
 
-    const lines: string[] = [RESULTS_CSV_HEADERS.join(",")];
+    const withTruth = downloadWithTruth;
+    const lines: string[] = [resultsHeaders(withTruth).join(",")];
     let processed = 0;
     try {
       const all = await listFolders({
@@ -546,7 +598,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy }
         if (downloadCancelRef.current) break;
         try {
           const doc = await getFolderImaging(folder.id);
-          lines.push(...imagingDocToCsvRows(folder.name, doc));
+          lines.push(...imagingDocToCsvRows(folder.name, doc, withTruth));
         } catch {
           /* skip charts that fail to load; continue the pack */
         }
@@ -555,7 +607,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy }
       }
       if (!downloadCancelRef.current) {
         downloadTextFile(
-          "imaging_export.csv",
+          withTruth ? "imaging_export_with_ground_truth.csv" : "imaging_export.csv",
           `${lines.join("\n")}\n`,
           "text/csv;charset=utf-8",
         );
@@ -613,6 +665,16 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy }
               >
                 <Gauge size={15} aria-hidden="true" />
                 Accuracy View
+              </button>
+            ) : null}
+            {onOpenExcelCompare ? (
+              <button
+                type="button"
+                className="landing-file-viewer-btn"
+                onClick={onOpenExcelCompare}
+              >
+                <FileSpreadsheet size={15} aria-hidden="true" />
+                Excel Compare
               </button>
             ) : null}
           </div>
@@ -919,6 +981,32 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy }
               the {total} chart{total === 1 ? "" : "s"} in
               the current filter.
             </p>
+            <div className="download-results-choice" role="radiogroup" aria-label="What to download">
+              {(
+                [
+                  [false, "Results only", "The pipeline output, one row per page."],
+                  [
+                    true,
+                    "Results with ground truth",
+                    "Adds a gt_ column after each result that has a ground-truth label (member, visibility, orientation, blank / junk, page type, DOS), then gt_codable and gt_providerSignature at the end. Blank where a page has no label.",
+                  ],
+                ] as const
+              ).map(([value, title, detail]) => (
+                <label key={title} className={downloadWithTruth === value ? "active" : undefined}>
+                  <input
+                    type="radio"
+                    name="download-results-choice"
+                    checked={downloadWithTruth === value}
+                    disabled={downloadBusy}
+                    onChange={() => setDownloadWithTruth(value)}
+                  />
+                  <span>
+                    <strong>{title}</strong>
+                    <span>{detail}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
             {downloadBusy || downloadDone > 0 ? (
               <div className="download-results-progress" aria-live="polite">
                 <div className="download-results-progress-meta">

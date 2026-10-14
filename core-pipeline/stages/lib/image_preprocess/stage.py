@@ -166,14 +166,13 @@ def _apply_quality_postprocess(
 
 
 def text_orientation(correction: float) -> float:
-    """How far the text sits rotated clockwise from upright, as scanned.
+    """How far the text sits rotated counter-clockwise from upright, as scanned.
 
-    ``_detect_rotation`` works in the correction (the clockwise turn that makes
-    the page upright); what is stored and shown is the text's orientation,
-    which is what client ground truth records. Text running bottom-to-top
-    needs a 90 turn and is stored as 270.
+    That is the clockwise turn that straightens the page, which is how client
+    ground truth records it. Text running bottom-to-top needs a 90 turn and is
+    stored as 90.
     """
-    return float((360 - int(round(float(correction or 0)))) % 360)
+    return float(int(round(float(correction or 0))) % 360)
 
 
 def _detect_rotation(image_path: Path) -> dict[str, Any]:

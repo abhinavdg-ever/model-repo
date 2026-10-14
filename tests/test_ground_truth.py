@@ -106,3 +106,14 @@ def test_the_codeable_header_spelling_is_accepted():
         [["c1", "1.jpg", "Non Codeable"]],
     )
     assert rows[0]["codeable"] == "Non-Codable"
+
+
+def test_a_load_appends_a_bulk_upload_entry_with_the_labels_it_wrote():
+    import json
+
+    from jobs.ground_truth_load import _TEXT_FIELDS, _UPSERT, entry_labels
+
+    assert "'bulk_upload'" in _UPSERT and "%(labels)s::jsonb" in _UPSERT
+    labels = json.loads(entry_labels({"rotation": "90", "member_name": None}))
+    assert set(labels) == set(_TEXT_FIELDS)
+    assert labels["rotation"] == "90" and labels["member_name"] is None

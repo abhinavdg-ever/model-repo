@@ -1,12 +1,14 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Info, Loader2, Search } from "lucide-react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Filter, Info, Loader2, Search } from "lucide-react";
 import { getAccuracyReport } from "./api";
+import { saveAccuracyOrder } from "./chartSequence";
 import {
   LIVE_METRICS,
   METRICS,
   MIN_LAST_RUN,
   MIN_LAST_RUN_LABEL,
   accuracyPercent,
+  f1Percent,
   formatDistribution,
   formatF1,
   formatPrecision,
@@ -102,12 +104,10 @@ function Distribution({ tally, binary = false }: { tally: Tally; binary?: boolea
 }
 
 /** Class 1 Precision / Recall / F1, label above value. */
-/** Precision / Recall / F1 of Class 1; with ``accuracy``, that score on the Class 1 pages first. */
-function RatesGrid({ rates, accuracy }: { rates: ClassRates; accuracy?: Tally }) {
+function RatesGrid({ rates }: { rates: ClassRates }) {
   return (
-    <dl className={`accuracy-class-grid${accuracy ? " accuracy-class-grid-4" : ""}`}>
+    <dl className="accuracy-class-grid">
       {[
-        ...(accuracy ? [["Accuracy", percentLabel(accuracy)]] : []),
         ["Precision", formatPrecision(rates)],
         ["Recall", formatRecall(rates)],
         ["F1", formatF1(rates)],
@@ -126,12 +126,10 @@ function CompactScore({
   tally,
   binary = false,
   rates,
-  classAccuracy,
 }: {
   tally: Tally;
   binary?: boolean;
   rates?: ClassRates;
-  classAccuracy?: Tally;
 }) {
   if (tally.scored === 0) return <>—</>;
   return (
@@ -140,7 +138,7 @@ function CompactScore({
       <p className="accuracy-distribution">
         <Distribution tally={tally} binary={binary} />
       </p>
-      {rates ? <RatesGrid rates={rates} accuracy={classAccuracy} /> : null}
+      {rates ? <RatesGrid rates={rates} /> : null}
     </div>
   );
 }
@@ -159,7 +157,6 @@ function Donut({
   tally,
   rates,
   ratesLabel,
-  classAccuracy,
   binary = false,
 }: {
   label: string;
@@ -171,8 +168,6 @@ function Donut({
   rates?: ClassRates;
   /** What Class 1 is ("Blank / Junk = Yes"). */
   ratesLabel?: string;
-  /** The accuracy score on the Class 1 pages only (Orientation: rotated pages). */
-  classAccuracy?: Tally;
 }) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
@@ -226,7 +221,7 @@ function Donut({
       {rates ? (
         <div className="accuracy-class">
           {ratesLabel ? <div className="accuracy-class-head">{ratesLabel}</div> : null}
-          <RatesGrid rates={rates} accuracy={classAccuracy} />
+          <RatesGrid rates={rates} />
         </div>
       ) : null}
     </figure>
@@ -254,8 +249,186 @@ function CalculatingPanel() {
 
 const CHARTS_PER_PAGE = 10;
 
-type SortKey = "name" | "run" | "verified";
+type SortKey = "name" | "run" | "verified" | "pages" | "overall" | MetricId;
 type SortDir = "asc" | "desc";
+
+/** A score column: one metric, or Overall. */
+type ScoreColumn = MetricId | "overall";
+
+/** Inclusive percent range; a row with no score is hidden while a range is set. */
+type Range = { min: number; max: number };
+
+/** Filters keyed by column, then by what is filtered: Accuracy, or F1 of Class Yes. */
+type Filters = Partial<Record<ScoreColumn, { accuracy?: Range; f1?: Range }>>;
+
+function columnTally(row: ChartAccuracy, column: ScoreColumn): Tally {
+  return column === "overall" ? row.overall : row.metrics[column];
+}
+
+function inRange(value: number | null, range: Range | undefined): boolean {
+  if (!range) return true;
+  return value !== null && value >= range.min && value <= range.max;
+}
+
+function passesFilters(row: ChartAccuracy, filters: Filters): boolean {
+  for (const [column, f] of Object.entries(filters) as [ScoreColumn, Filters[ScoreColumn]][]) {
+    if (!f) continue;
+    if (!inRange(accuracyPercent(columnTally(row, column)), f.accuracy)) return false;
+    if (f.f1) {
+      const rates = column === "overall" ? undefined : rowRatesFor(row, column);
+      if (!inRange(rates ? f1Percent(rates) : null, f.f1)) return false;
+    }
+  }
+  return true;
+}
+
+/** One 0–100 bar with a Min and a Max handle: two range inputs stacked on one
+ * track, where only the handles take the pointer. */
+function RangeSliders({
+  label,
+  range,
+  onChange,
+}: {
+  label: string;
+  range: Range;
+  onChange: (range: Range) => void;
+}) {
+  return (
+    <fieldset className="accuracy-filter-range">
+      <legend>
+        {label}: <strong>{range.min}%–{range.max}%</strong>
+      </legend>
+      <div className="accuracy-range">
+        <div className="accuracy-range-track" aria-hidden="true">
+          <div
+            className="accuracy-range-fill"
+            style={{ left: `${range.min}%`, right: `${100 - range.max}%` }}
+          />
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={range.min}
+          aria-label={`${label} minimum`}
+          // When both handles meet at the top, the Min handle must stay grabbable.
+          className={range.min > 50 ? "on-top" : undefined}
+          onChange={(e) => onChange({ min: Math.min(Number(e.target.value), range.max), max: range.max })}
+        />
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={range.max}
+          aria-label={`${label} maximum`}
+          onChange={(e) => onChange({ min: range.min, max: Math.max(Number(e.target.value), range.min) })}
+        />
+      </div>
+      <div className="accuracy-range-scale" aria-hidden="true">
+        <span>0</span>
+        <span>100</span>
+      </div>
+    </fieldset>
+  );
+}
+
+const FULL_RANGE: Range = { min: 0, max: 100 };
+
+/** The filter button at the right of a score column's header, and its slider popover.
+ * The popover is fixed-position so the table's scroll box does not clip it. */
+function ColumnFilter({
+  label,
+  value,
+  f1Label,
+  onChange,
+}: {
+  label: string;
+  value: { accuracy?: Range; f1?: Range } | undefined;
+  /** Set on a column with a Class Yes block: also filter on its F1. */
+  f1Label?: string;
+  onChange: (value: { accuracy?: Range; f1?: Range } | undefined) => void;
+}) {
+  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const active = Boolean(value?.accuracy || value?.f1);
+
+  useEffect(() => {
+    if (!anchor) return;
+    const close = (event: Event) => {
+      const target = event.target as Node;
+      if (popoverRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
+      setAnchor(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAnchor(null);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", close);
+    // Scrolling the table or page would leave the popover behind its column.
+    window.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [anchor]);
+
+  function toggle() {
+    if (anchor) {
+      setAnchor(null);
+      return;
+    }
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = 220;
+    setAnchor({
+      top: rect.bottom + 6,
+      left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+    });
+  }
+
+  function set(part: "accuracy" | "f1", range: Range) {
+    const full = range.min === 0 && range.max === 100;
+    const next = { ...value, [part]: full ? undefined : range };
+    onChange(next.accuracy || next.f1 ? next : undefined);
+  }
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className={`accuracy-filter-btn${active ? " active" : ""}`}
+        title={`Filter ${label}`}
+        aria-label={`Filter ${label}`}
+        aria-expanded={anchor !== null}
+        onClick={toggle}
+      >
+        <Filter size={11} aria-hidden="true" />
+      </button>
+      {anchor ? (
+        <div
+          ref={popoverRef}
+          className="accuracy-filter-popover"
+          style={{ top: anchor.top, left: anchor.left }}
+          role="dialog"
+          aria-label={`Filter ${label}`}
+        >
+          <RangeSliders label="Accuracy" range={value?.accuracy ?? FULL_RANGE} onChange={(r) => set("accuracy", r)} />
+          {f1Label ? (
+            <RangeSliders label={f1Label} range={value?.f1 ?? FULL_RANGE} onChange={(r) => set("f1", r)} />
+          ) : null}
+          <button type="button" className="accuracy-filter-clear" disabled={!active} onClick={() => onChange(undefined)}>
+            Clear
+          </button>
+        </div>
+      ) : null}
+    </>
+  );
+}
 
 /** Milliseconds for sorting; a missing date sorts last whichever way. */
 function timeOf(value: string | null | undefined): number | null {
@@ -271,16 +444,26 @@ function rowRatesFor(row: ChartAccuracy, id: MetricId): ClassRates | undefined {
   return undefined;
 }
 
+/** The number a column sorts on: a time, a page count or an accuracy percent. */
+function sortValue(row: ChartAccuracy, key: Exclude<SortKey, "name">): number | null {
+  if (key === "run") return timeOf(row.lastUpdatedAt);
+  if (key === "verified") return timeOf(row.lastVerifiedAt);
+  if (key === "pages") return row.overall.scored;
+  return accuracyPercent(columnTally(row, key));
+}
+
+/** A missing value sorts last whichever way; ties fall back to the chart name. */
 function compareRows(a: ChartAccuracy, b: ChartAccuracy, key: SortKey, dir: SortDir): number {
   const sign = dir === "asc" ? 1 : -1;
-  if (key === "name") return sign * a.chartName.localeCompare(b.chartName, undefined, { numeric: true });
-  const ta = timeOf(key === "run" ? a.lastUpdatedAt : a.lastVerifiedAt);
-  const tb = timeOf(key === "run" ? b.lastUpdatedAt : b.lastVerifiedAt);
-  if (ta === null || tb === null) {
-    if (ta === tb) return a.chartName.localeCompare(b.chartName, undefined, { numeric: true });
-    return ta === null ? 1 : -1;
+  const byName = a.chartName.localeCompare(b.chartName, undefined, { numeric: true });
+  if (key === "name") return sign * byName;
+  const va = sortValue(a, key);
+  const vb = sortValue(b, key);
+  if (va === null || vb === null) {
+    if (va === vb) return byName;
+    return va === null ? 1 : -1;
   }
-  return sign * (ta - tb) || a.chartName.localeCompare(b.chartName, undefined, { numeric: true });
+  return sign * (va - vb) || byName;
 }
 
 export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) {
@@ -292,8 +475,19 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
   // Newest run first, like the home page.
   const [sortKey, setSortKey] = useState<SortKey>("run");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [filters, setFilters] = useState<Filters>({});
 
-  // Same behaviour as the home page: click again to flip; name starts A→Z, dates newest first.
+  function setFilter(column: ScoreColumn, value: Filters[ScoreColumn]) {
+    setFilters((prev) => {
+      const next = { ...prev };
+      if (value) next[column] = value;
+      else delete next[column];
+      return next;
+    });
+    setPage(1);
+  }
+
+  // Same behaviour as the home page: click again to flip; name starts A→Z, numbers highest first.
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -307,6 +501,32 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
   function sortIndicator(key: SortKey): string {
     if (sortKey !== key) return "";
     return sortDir === "asc" ? " ↑" : " ↓";
+  }
+
+  function SortHeader({ sort, label, filter }: { sort: SortKey; label: string; filter?: ScoreColumn }) {
+    const rates = filter && filter !== "overall" ? ratesFor(filter) : undefined;
+    return (
+      <th scope="col" aria-sort={sortKey === sort ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
+        <span className="accuracy-th">
+          <button
+            type="button"
+            className={`th-sort${sortKey === sort ? " active" : ""}`}
+            onClick={() => toggleSort(sort)}
+          >
+            {label}
+            {sortIndicator(sort)}
+          </button>
+          {filter ? (
+            <ColumnFilter
+              label={label}
+              value={filters[filter]}
+              f1Label={rates && filter !== "overall" ? `F1 (${ratesLabelFor(filter)})` : undefined}
+              onChange={(value) => setFilter(filter, value)}
+            />
+          ) : null}
+        </span>
+      </th>
+    );
   }
 
   useEffect(() => {
@@ -351,12 +571,16 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
 
   const overall = useMemo(() => sumTallies(rows.map((row) => row.overall)), [rows]);
 
-  // "By chart": search by file / chart name, 10 per page. The donuts stay on all files.
+  // "By chart": search by file / chart name and the column filters, 10 per page. The
+  // donuts stay on all files.
+  const filterCount = Object.keys(filters).length;
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const matched = needle ? rows.filter((row) => row.chartName.toLowerCase().includes(needle)) : rows;
-    return [...matched].sort((a, b) => compareRows(a, b, sortKey, sortDir));
-  }, [rows, query, sortKey, sortDir]);
+    const matched = rows.filter(
+      (row) => (!needle || row.chartName.toLowerCase().includes(needle)) && passesFilters(row, filters),
+    );
+    return matched.sort((a, b) => compareRows(a, b, sortKey, sortDir));
+  }, [rows, query, filters, sortKey, sortDir]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / CHARTS_PER_PAGE));
   const currentPage = Math.min(page, totalPages);
   const pageRows = filtered.slice(
@@ -381,10 +605,6 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     [rows],
   );
   const memberRates = useMemo(() => sumRates(rows.map((row) => row.memberRates)), [rows]);
-  const orientationNonZero = useMemo(
-    () => sumTallies(rows.map((row) => row.orientationNonZero)),
-    [rows],
-  );
   const orientationRates = useMemo(
     () => sumRates(rows.map((row) => row.orientationRates)),
     [rows],
@@ -462,7 +682,6 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                   tally={overallByMetric[metric.id]}
                   rates={ratesFor(metric.id)}
                   ratesLabel={ratesLabelFor(metric.id)}
-                  classAccuracy={metric.id === "orientation" ? orientationNonZero : undefined}
                   binary={metric.binary}
                 />
                 ),
@@ -491,51 +710,25 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
             <table className="landing-history-table accuracy-table">
               <thead>
                 <tr>
-                  <th scope="col" aria-sort={sortKey === "name" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
-                    <button
-                      type="button"
-                      className={`th-sort${sortKey === "name" ? " active" : ""}`}
-                      onClick={() => toggleSort("name")}
-                    >
-                      Chart{sortIndicator("name")}
-                    </button>
-                  </th>
-                  <th scope="col" aria-sort={sortKey === "run" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
-                    <button
-                      type="button"
-                      className={`th-sort${sortKey === "run" ? " active" : ""}`}
-                      onClick={() => toggleSort("run")}
-                    >
-                      Last Run At{sortIndicator("run")}
-                    </button>
-                  </th>
-                  <th scope="col" aria-sort={sortKey === "verified" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
-                    <button
-                      type="button"
-                      className={`th-sort${sortKey === "verified" ? " active" : ""}`}
-                      onClick={() => toggleSort("verified")}
-                    >
-                      Last Verified At{sortIndicator("verified")}
-                    </button>
-                  </th>
-                  <th scope="col">
-                    Pages
-                  </th>
+                  {SortHeader({ sort: "name", label: "Chart" })}
+                  {SortHeader({ sort: "run", label: "Last Run At" })}
+                  {SortHeader({ sort: "verified", label: "Last Verified At" })}
+                  {SortHeader({ sort: "pages", label: "Pages" })}
                   {LIVE_METRICS.map((metric) => (
-                    <th key={metric.id} scope="col">
-                      {metric.tableLabel ?? metric.label}
-                    </th>
+                    <Fragment key={metric.id}>
+                      {SortHeader({ sort: metric.id, label: metric.tableLabel ?? metric.label, filter: metric.id })}
+                    </Fragment>
                   ))}
-                  <th scope="col">
-                    Overall
-                  </th>
+                  {SortHeader({ sort: "overall", label: "Overall", filter: "overall" })}
                 </tr>
               </thead>
               <tbody>
                 {pageRows.length === 0 ? (
                   <tr>
                     <td colSpan={LIVE_METRICS.length + 5} className="accuracy-empty">
-                      No file matches “{query.trim()}”.
+                      {query.trim()
+                        ? `No file matches “${query.trim()}”${filterCount ? " and the column filters" : ""}.`
+                        : "No file matches the column filters."}
                     </td>
                   </tr>
                 ) : null}
@@ -549,6 +742,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                           // Cmd / Ctrl / Shift / middle click keep the browser's new-tab behaviour.
                           if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
                           event.preventDefault();
+                          saveAccuracyOrder(filtered.map((r) => ({ id: r.chartId, name: r.chartName })));
                           onOpenChart(row.chartId);
                         }}
                       >
@@ -560,7 +754,10 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                         title="Open in new tab"
                         aria-label={`Open ${row.chartName} in a new tab`}
                         // window.open (not a target=_blank link) so the new tab keeps this tab's sign-in.
-                        onClick={() => window.open(chartHref(row.chartId), "_blank")}
+                        onClick={() => {
+                          saveAccuracyOrder(filtered.map((r) => ({ id: r.chartId, name: r.chartName })));
+                          window.open(chartHref(row.chartId), "_blank");
+                        }}
                       >
                         <ExternalLink size={12} aria-hidden="true" />
                       </button>
@@ -578,7 +775,6 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                           tally={row.metrics[metric.id]}
                           binary={metric.binary}
                           rates={rowRatesFor(row, metric.id)}
-                          classAccuracy={metric.id === "orientation" ? row.orientationNonZero : undefined}
                         />
                       </td>
                     ))}
@@ -594,7 +790,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
               <div className="landing-pagination" aria-label="Files pagination">
                 <span className="landing-pagination-meta">
                   {rangeStart}–{rangeEnd} of {filtered.length}
-                  {query.trim() ? ` (of ${rows.length})` : ""}
+                  {query.trim() || filterCount ? ` (of ${rows.length})` : ""}
                 </span>
                 <div className="landing-pagination-controls">
                   <button

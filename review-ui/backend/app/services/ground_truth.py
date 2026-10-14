@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
+import threading
+from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 from app.core.schemas import ImagingPageResult, PageGroundTruth
 from app.services.chart_run_batch import database_url_usable
@@ -25,6 +29,74 @@ _COLUMNS = """
 """
 
 _EMPTY = {"", "na", "n/a", "not found", "not available"}
+
+# Which ground truth the screens show: the latest value, whoever wrote it, or
+# each page's latest spreadsheet load with manual edits hidden.
+GroundTruthSource = Literal["latest", "bulk_upload"]
+
+# Kept in step with schema/v1.sql and core-pipeline's jobs/ground_truth_load.py.
+_ADD_ENTRY_TABLE = """
+CREATE TABLE IF NOT EXISTS page_ground_truth_entry (
+    id                      BIGSERIAL PRIMARY KEY,
+    page_ground_truth_id    BIGINT NOT NULL REFERENCES page_ground_truth(id) ON DELETE CASCADE,
+    entry_mode              VARCHAR(20) NOT NULL
+                            CHECK (entry_mode IN ('bulk_upload', 'manual_entry')),
+    labels                  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source_path             TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_page_ground_truth_entry_page_ground_truth_id_entry_mode
+    ON page_ground_truth_entry(page_ground_truth_id, entry_mode);
+"""
+
+# A page written before the entry table existed gets one entry holding its
+# current labels: bulk_upload when a load set its source_path, else
+# manual_entry. A loaded page edited by hand since counts as bulk_upload.
+_SEED_ENTRIES = """
+INSERT INTO page_ground_truth_entry
+    (page_ground_truth_id, entry_mode, labels, source_path, created_at, updated_at)
+SELECT g.id,
+       CASE WHEN g.source_path IS NOT NULL THEN 'bulk_upload' ELSE 'manual_entry' END,
+       to_jsonb(g) - 'id' - 'chart_name' - 'page_number' - 'source_page_id'
+                   - 'source_path' - 'created_at' - 'updated_at',
+       g.source_path, g.updated_at, g.updated_at
+  FROM page_ground_truth g
+ WHERE NOT EXISTS (
+       SELECT 1 FROM page_ground_truth_entry e WHERE e.page_ground_truth_id = g.id
+ )
+"""
+
+_entries_ready: set[tuple[str, str]] = set()
+_entries_lock = threading.Lock()
+
+
+def ensure_entries(conn, database_url: str, db_schema: str) -> None:
+    """Create page_ground_truth_entry if missing and seed pages that predate it.
+    Once per process: every later write appends its own entry."""
+    key = (database_url, db_schema)
+    if key in _entries_ready:
+        return
+    with _entries_lock:
+        if key in _entries_ready:
+            return
+        with conn.cursor() as cur:
+            cur.execute(_ADD_ENTRY_TABLE)
+            cur.execute(_SEED_ENTRIES)
+        conn.commit()
+        _entries_ready.add(key)
+
+
+# Each page's newest bulk_upload entry.
+_LATEST_BULK = """
+SELECT DISTINCT ON (g.id)
+       g.chart_name, g.page_number, g.source_page_id, e.labels, e.created_at
+  FROM page_ground_truth g
+  JOIN page_ground_truth_entry e
+    ON e.page_ground_truth_id = g.id AND e.entry_mode = 'bulk_upload'
+ WHERE g.chart_name = ANY(%s)
+ ORDER BY g.id, e.created_at DESC, e.id DESC
+"""
 
 
 # Codeable, Non Codeable, Non-Codeable, NonCodeable, non_codeable, Codable …
@@ -170,6 +242,7 @@ def _chart_name(folder_id: str) -> str:
 
 
 _UPSERT = """
+WITH g AS (
 INSERT INTO page_ground_truth (
     chart_name, page_number, source_page_id,
     member_name, member_dob, member_id, dos_from, dos_to,
@@ -205,13 +278,34 @@ ON CONFLICT (chart_name, page_number) DO UPDATE SET
     provider_credentials = EXCLUDED.provider_credentials,
     updated_at = now()
 RETURNING
+    id, page_number, source_page_id,
+    member_name, member_dob, dos_from, dos_to,
+    encounter_type, page_type, codeable,
+    blank_page, junk_page, is_invoice, page_sequence, rotation,
+    is_visible, rendering_provider, provider_signature,
+    member_id, provider_credentials
+), e AS (
+INSERT INTO page_ground_truth_entry (page_ground_truth_id, entry_mode, labels)
+SELECT id, 'manual_entry', %s::jsonb FROM g
+)
+SELECT
     page_number, source_page_id,
     member_name, member_dob, dos_from, dos_to,
     encounter_type, page_type, codeable,
     blank_page, junk_page, is_invoice, page_sequence, rotation,
     is_visible, rendering_provider, provider_signature,
     member_id, provider_credentials
+  FROM g
 """
+
+# The page_ground_truth columns a manual save sets, in _UPSERT's parameter order.
+_MANUAL_COLUMNS = (
+    "member_name", "member_dob", "member_id", "dos_from", "dos_to",
+    "encounter_type", "page_type", "codeable",
+    "blank_page", "junk_page", "is_invoice",
+    "rotation", "is_visible",
+    "rendering_provider", "provider_signature", "provider_credentials",
+)
 
 
 def upsert_page_ground_truth(
@@ -225,6 +319,7 @@ def upsert_page_ground_truth(
     A later manual save of the same page hits the same
     ``(chart_name, page_number)`` key. Columns this screen does not edit
     (page sequence, specialty, deleted level, source path) are left as they are.
+    The save is also appended to page_ground_truth_entry as a manual_entry.
     """
     chart = _chart_name(folder_id)
     if body.pageNumber < 1:
@@ -250,13 +345,124 @@ def upsert_page_ground_truth(
         yes_no_label(body.providerSignature),
         clean_label(body.providerCredentials),
     )
+    labels = json.dumps(dict(zip(_MANUAL_COLUMNS, params[3:])))
     with connection(database_url, db_schema) as conn:
+        ensure_entries(conn, database_url, db_schema)
         with conn.cursor() as cur:
-            cur.execute(_UPSERT, params)
+            cur.execute(_UPSERT, (*params, labels))
             row = cur.fetchone()
     if row is None:
         raise RuntimeError("ground truth upsert returned no row")
     return _ground_truth_from_row(row)
+
+
+def _ground_truth_from_labels(
+    page_number: int, source_page_id: str | None, labels: dict
+) -> PageGroundTruth:
+    def get(column: str) -> str | None:
+        value = labels.get(column)
+        return None if value is None else str(value)
+
+    return PageGroundTruth(
+        pageNumber=int(page_number),
+        sourcePageId=source_page_id,
+        memberName=get("member_name"),
+        memberDob=get("member_dob"),
+        memberId=get("member_id"),
+        dosFrom=get("dos_from"),
+        dosTo=get("dos_to"),
+        encounterType=get("encounter_type"),
+        pageType=get("page_type"),
+        codeable=spell_codeable(get("codeable")),
+        blankPage=get("blank_page"),
+        junkPage=get("junk_page"),
+        isInvoice=get("is_invoice"),
+        pageSequence=get("page_sequence"),
+        rotation=get("rotation"),
+        isVisible=get("is_visible"),
+        renderingProvider=get("rendering_provider"),
+        providerSignature=get("provider_signature"),
+        providerCredentials=get("provider_credentials"),
+    )
+
+
+def latest_bulk_labels(
+    conn, database_url: str, chart_names: list[str], db_schema: str = "public"
+) -> dict[tuple[str, int], tuple[dict, datetime | None]]:
+    """(chart, page number) -> (labels, loaded at) from each page's newest
+    bulk_upload entry. A page only ever edited by hand is absent."""
+    ensure_entries(conn, database_url, db_schema)
+    with conn.cursor() as cur:
+        cur.execute(_LATEST_BULK, (chart_names,))
+        rows = cur.fetchall()
+    out: dict[tuple[str, int], tuple[dict, datetime | None]] = {}
+    for chart, page_number, source_page_id, labels, created_at in rows:
+        if isinstance(labels, str):
+            labels = json.loads(labels)
+        out[(str(chart), int(page_number))] = (
+            {**(labels or {}), "source_page_id": source_page_id},
+            created_at,
+        )
+    return out
+
+
+def ground_truth_labels(
+    database_url: str,
+    chart_names: list[str],
+    source: GroundTruthSource = "latest",
+    db_schema: str = "public",
+) -> list[tuple[str, int, dict]]:
+    """(chart, page number, labels keyed by page_ground_truth column) for the
+    given charts: the latest values, or each page's latest bulk upload."""
+    with connection(database_url, db_schema) as conn:
+        if source == "bulk_upload":
+            bulk = latest_bulk_labels(conn, database_url, chart_names, db_schema)
+            return [
+                (chart, page_number, labels)
+                for (chart, page_number), (labels, _loaded_at) in sorted(bulk.items())
+            ]
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT chart_name, page_number, to_jsonb(g) FROM page_ground_truth g "
+                "WHERE chart_name = ANY(%s) ORDER BY chart_name, page_number",
+                (chart_names,),
+            )
+            rows = cur.fetchall()
+    out: list[tuple[str, int, dict]] = []
+    for chart, page_number, labels in rows:
+        if isinstance(labels, str):
+            labels = json.loads(labels)
+        out.append((str(chart), int(page_number), labels or {}))
+    return out
+
+
+def bulk_ground_truth(
+    pages: list[ImagingPageResult],
+    chart_name: str,
+    database_url: str | None,
+    db_schema: str = "public",
+) -> list[ImagingPageResult]:
+    """Each page's ground truth as of its latest bulk upload; a page with no
+    bulk upload shows none, so manual edits are hidden."""
+    if not database_url or not database_url_usable(database_url) or not chart_name:
+        return pages
+    try:
+        with connection(database_url, db_schema) as conn:
+            bulk = latest_bulk_labels(conn, database_url, [chart_name], db_schema)
+    except Exception as exc:
+        logger.warning("page_ground_truth_entry lookup failed: %s", exc)
+        return pages
+    out: list[ImagingPageResult] = []
+    for page in pages:
+        number = _page_id(page.fileName)
+        hit = bulk.get((chart_name, number)) if number is not None else None
+        truth = (
+            _ground_truth_from_labels(number, hit[0].get("source_page_id"), hit[0])
+            if hit
+            else None
+        )
+        out.append(page.model_copy(update={"groundTruth": truth}))
+    return out
 
 
 def attach_ground_truth(

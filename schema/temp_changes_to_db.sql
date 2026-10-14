@@ -1,5 +1,5 @@
 -- One-time changes for a database that already has schema/v1.sql applied.
--- Covers 8–9 Oct 2026. Do not re-apply schema/v1.sql, and do not run
+-- Covers 8–14 Oct 2026. Do not re-apply schema/v1.sql, and do not run
 -- schema/v2.sql (that file also creates tables nothing writes yet).
 -- Safe to run more than once.
 --
@@ -379,3 +379,69 @@ ALTER TABLE page_continuity_results ADD CONSTRAINT page_continuity_results_decid
     CHECK (decided_by IN ('first_page','blank_junk','same_dos','new_dos','pagination',
                           'signature','page_number_end','first_page_marker','page_type',
                           'page_end','continue_page','signals','progress_note'));
+
+-- 2026-10-14: ground-truth history. Every ground-truth write is appended to
+-- page_ground_truth_entry as bulk_upload (spreadsheet load) or manual_entry
+-- (review-ui save); review-ui's "Hide manual ground truth" reads it.
+-- review-ui and the loader also create the table on first use, so this block
+-- only does it up front. Same definition as schema/v1.sql.
+CREATE TABLE IF NOT EXISTS page_ground_truth_entry (
+    id                      BIGSERIAL PRIMARY KEY,
+    page_ground_truth_id    BIGINT NOT NULL REFERENCES page_ground_truth(id) ON DELETE CASCADE,
+    entry_mode              VARCHAR(20) NOT NULL
+                            CHECK (entry_mode IN ('bulk_upload', 'manual_entry')),
+    labels                  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source_path             TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_page_ground_truth_entry_page_ground_truth_id_entry_mode
+    ON page_ground_truth_entry(page_ground_truth_id, entry_mode);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'trg_page_ground_truth_entry_updated_at'
+    ) THEN
+        CREATE TRIGGER trg_page_ground_truth_entry_updated_at
+            BEFORE UPDATE ON page_ground_truth_entry
+            FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+    END IF;
+END $$;
+
+-- One entry for each page written before the table existed: bulk_upload when a
+-- load set its source_path, else manual_entry. A loaded page edited by hand
+-- since counts as bulk_upload; the old table cannot tell the two apart.
+INSERT INTO page_ground_truth_entry
+    (page_ground_truth_id, entry_mode, labels, source_path, created_at, updated_at)
+SELECT g.id,
+       CASE WHEN g.source_path IS NOT NULL THEN 'bulk_upload' ELSE 'manual_entry' END,
+       to_jsonb(g) - 'id' - 'chart_name' - 'page_number' - 'source_page_id'
+                   - 'source_path' - 'created_at' - 'updated_at',
+       g.source_path, g.updated_at, g.updated_at
+  FROM page_ground_truth g
+ WHERE NOT EXISTS (
+       SELECT 1 FROM page_ground_truth_entry e WHERE e.page_ground_truth_id = g.id
+ );
+
+-- 2026-10-14: orientation_angle is now how far the text sits COUNTER-clockwise
+-- (= the clockwise turn that straightens the page); it was clockwise. 0 and
+-- 180 are unchanged, 90 and 270 swap. Rows already stored are flipped once:
+-- the column comment marks a database as done, so a second run changes nothing.
+DO $$
+BEGIN
+    IF col_description('ocr_quality_results'::regclass,
+           (SELECT attnum FROM pg_attribute
+             WHERE attrelid = 'ocr_quality_results'::regclass AND attname = 'orientation_angle'))
+       IS DISTINCT FROM 'Text orientation, degrees counter-clockwise'
+    THEN
+        UPDATE ocr_quality_results
+           SET orientation_angle = (360 - orientation_angle) % 360
+         WHERE orientation_angle IN (90, 270);
+        UPDATE imaging_final
+           SET orientation_angle = (360 - orientation_angle) % 360
+         WHERE orientation_angle IN (90, 270);
+        COMMENT ON COLUMN ocr_quality_results.orientation_angle
+            IS 'Text orientation, degrees counter-clockwise';
+    END IF;
+END $$;
