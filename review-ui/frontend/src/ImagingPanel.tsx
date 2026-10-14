@@ -119,7 +119,8 @@ type Props = {
     groundTruth: PageGroundTruth,
   ) => void;
   groundTruthLeave?: MutableRefObject<GroundTruthLeave | null>;
-  /** The fullscreen drawer: the page table only (no manifest), without Confidence. */
+  /** The fullscreen drawer: the page table only (no manifest): Field / Extracted /
+   * Final / Ground Truth, no Confidence, read-only. */
   compact?: boolean;
 };
 
@@ -683,7 +684,8 @@ function CompareSection({
   saving,
   verdicts,
   toolbar,
-  hideConfidence = false,
+  compact = false,
+  withTruth = true,
 }: {
   title: string;
   rows: CompareRow[];
@@ -697,34 +699,57 @@ function CompareSection({
   saving: boolean;
   verdicts: Record<string, "accept" | "enter">;
   toolbar?: ReactNode;
-  hideConfidence?: boolean;
+  /** The fullscreen pane: Field / Extracted / Final / Ground Truth side by side,
+   * no gap, read-only. */
+  compact?: boolean;
+  /** Compact only: false drops the Ground Truth column (the page has none). */
+  withTruth?: boolean;
 }) {
+  const truthColumn = !compact || withTruth;
   return (
     <section className="imaging-section">
       <div className="imaging-section-head">
         <h3 className="imaging-section-title">{title}</h3>
         {toolbar}
       </div>
-      <table className="imaging-detail-table imaging-value-table">
-        <colgroup>
-          <col className="col-field" />
-          <col className="col-extracted" />
-          <col className="col-processed" />
-          {hideConfidence ? null : <col className="col-confidence" />}
-          <col className="col-gap" />
-          <col className="col-gt" />
-        </colgroup>
+      <table className={`imaging-detail-table imaging-value-table${compact ? " is-compact" : ""}`}>
+        {compact ? (
+          <colgroup>
+            <col className="col-field" />
+            <col className="col-extracted" />
+            <col className="col-processed" />
+            {truthColumn ? <col className="col-gt" /> : null}
+          </colgroup>
+        ) : (
+          <colgroup>
+            <col className="col-field" />
+            <col className="col-extracted" />
+            <col className="col-processed" />
+            <col className="col-confidence" />
+            <col className="col-gap" />
+            <col className="col-gt" />
+          </colgroup>
+        )}
         <thead>
-          <tr>
-            <th scope="col">Field</th>
-            <th scope="col">Extracted</th>
-            <th scope="col">Final</th>
-            {hideConfidence ? null : <th scope="col">Confidence</th>}
-            <th className="gt-gap" aria-hidden="true" />
-            <th scope="col" className="gt-shade">
-              Ground Truth
-            </th>
-          </tr>
+          {compact ? (
+            <tr>
+              <th scope="col">Field</th>
+              <th scope="col">Extracted</th>
+              <th scope="col">Final</th>
+              {truthColumn ? <th scope="col">Ground Truth</th> : null}
+            </tr>
+          ) : (
+            <tr>
+              <th scope="col">Field</th>
+              <th scope="col">Extracted</th>
+              <th scope="col">Final</th>
+              <th scope="col">Confidence</th>
+              <th className="gt-gap" aria-hidden="true" />
+              <th scope="col" className="gt-shade">
+                Ground Truth
+              </th>
+            </tr>
+          )}
         </thead>
         <tbody>
           {rows.map((row) => (
@@ -736,13 +761,17 @@ function CompareSection({
               <td>
                 <ValueWithNote value={row.processed} note={row.note} />
               </td>
-              {hideConfidence ? null : <td>{row.confidence}</td>}
-              {row.gtHidden ? null : (
+              {compact ? null : <td>{row.confidence}</td>}
+              {row.gtHidden || !truthColumn ? null : (
               <>
-              <td className="gt-gap" aria-hidden="true" rowSpan={row.gtRowSpan} />
-              <td className={`gt-shade${row.gtRowSpan ? " gt-merged" : ""}`} rowSpan={row.gtRowSpan}>
+              {compact ? null : <td className="gt-gap" aria-hidden="true" rowSpan={row.gtRowSpan} />}
+              <td
+                className={compact ? (row.gtRowSpan ? "gt-merged" : undefined) : `gt-shade${row.gtRowSpan ? " gt-merged" : ""}`}
+                rowSpan={row.gtRowSpan}
+              >
                 <GroundTruthCell
                   row={row}
+                  readOnly={compact}
                   editing={editingId === row.id}
                   value={values[row.id] ?? ""}
                   saving={saving}
@@ -775,8 +804,10 @@ function GroundTruthCell({
   onCancel,
   onDraft,
   onStartEdit,
+  readOnly = false,
 }: {
   row: CompareRow;
+  readOnly?: boolean;
   editing: boolean;
   value: string;
   saving: boolean;
@@ -822,6 +853,17 @@ function GroundTruthCell({
     ) : compared === "mismatch" ? (
       <span className="imaging-gt-mark gt-mismatch" aria-label="No">✕</span>
     ) : null;
+  if (readOnly) {
+    // The fullscreen pane: the saved ground truth and its mark, nothing to edit.
+    return (
+      <span className="imaging-gt-slot">
+        <span className={stored ? "imaging-gt-text" : "imaging-gt-copied"} title={stored || undefined}>
+          {stored || "—"}
+        </span>
+        {stored && !row.noMark ? mark : null}
+      </span>
+    );
+  }
   const actions = effective ? (
     <button
       type="button"
@@ -1201,14 +1243,14 @@ function PageDetails({
   extraction,
   onSaved,
   groundTruthLeave,
-  hideConfidence = false,
+  compact = false,
 }: {
   folderId: string;
   page: ImagingPageResult;
   sections: ImagingSectionsProcessed;
   extraction: ExtractionReviewResponse | null;
   onSaved: (groundTruth: PageGroundTruth) => void;
-  hideConfidence?: boolean;
+  compact?: boolean;
   groundTruthLeave?: MutableRefObject<GroundTruthLeave | null>;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1317,8 +1359,14 @@ function PageDetails({
     };
   }, [groundTruthLeave]);
 
+  // Compact pane: a page nobody has labelled shows Field / Final only.
+  const withTruth = Object.entries(page.groundTruth ?? {}).some(
+    ([key, value]) =>
+      key !== "pageNumber" && key !== "sourcePageId" && value != null && String(value).trim() !== "",
+  );
   const sectionProps = {
-    hideConfidence,
+    compact,
+    withTruth,
     values,
     editingId,
     saving,
@@ -2032,7 +2080,7 @@ export default function ImagingPanel({
         page={currentPage}
         sections={sections}
         extraction={extraction}
-        hideConfidence={compact}
+        compact={compact}
         groundTruthLeave={groundTruthLeave}
         onSaved={(groundTruth) =>
           onGroundTruthSaved?.(currentPage.pageNumber, currentPage.fileName, groundTruth)

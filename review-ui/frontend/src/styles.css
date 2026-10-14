@@ -3793,6 +3793,11 @@ input {
   max-height: 100vh;
 }
 
+/* The drawer's table spans the drawer; its columns share the width. */
+.imaging-detail-table.imaging-value-table.is-compact {
+  max-width: none;
+}
+
 /* Fullscreen page results: a drawer on the right, collapsed to its tab. */
 .fullscreen-results {
   position: absolute;
