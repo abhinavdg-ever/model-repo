@@ -20,7 +20,9 @@ from typing import Callable
 
 logger = logging.getLogger("review_ui.images")
 
-_TIFF_SUFFIXES = {".tif", ".tiff"}
+# Formats a browser <img> cannot show: re-encoded to JPEG on the way out. The
+# is_tiff_* names predate the non-TIFF entries (JPEG 2000, Netpbm, DIB).
+_TIFF_SUFFIXES = {".tif", ".tiff", ".jp2", ".j2k", ".pbm", ".pgm", ".ppm", ".pnm", ".dib"}
 _JPEG_QUALITY = 85
 _THUMB_QUALITY = 70
 _THUMB_MAX_EDGE = 120

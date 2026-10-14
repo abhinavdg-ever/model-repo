@@ -30,7 +30,10 @@ logger = logging.getLogger("review_ui.folder_list")
 SortKey = Literal["filename", "pages", "updated"]
 SortDir = Literal["asc", "desc"]
 
-IMAGE_RE = re.compile(r"\.(jpe?g|png|webp|tif{1,2})$", re.IGNORECASE)
+# Every image type core-pipeline downloads (config.IMAGE_SUFFIXES).
+IMAGE_RE = re.compile(
+    r"\.(jpe?g|jpe|jfif|png|webp|gif|bmp|dib|tiff?|jp2|j2k|pbm|pgm|ppm|pnm)$", re.IGNORECASE
+)
 
 # chart_list.status (+ current_stage) → landing pill. Mirrors postgres adapter.
 _CHART_STATUS_TO_OCR: dict[str, str] = {

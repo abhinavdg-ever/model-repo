@@ -949,8 +949,12 @@ def _media_type(suffix: str) -> str:
     mapping = {
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
+        ".jpe": "image/jpeg",
+        ".jfif": "image/jpeg",
         ".png": "image/png",
         ".webp": "image/webp",
+        ".gif": "image/gif",
+        ".bmp": "image/bmp",
         ".tif": "image/tiff",
         ".tiff": "image/tiff",
     }

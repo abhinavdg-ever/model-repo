@@ -39,7 +39,10 @@ from app.services.metadata_csv import manifest_for_record, run_batch_for_record
 
 PAGE_RE = re.compile(r"^page_(\d+)\.(jpe?g|png|webp|tif{1,2})$", re.IGNORECASE)
 PLAIN_NUM_RE = re.compile(r"^(\d+)\.(jpe?g|png|webp|tif{1,2})$", re.IGNORECASE)
-IMAGE_RE = re.compile(r"\.(jpe?g|png|webp|tif{1,2})$", re.IGNORECASE)
+# Every image type core-pipeline downloads (config.IMAGE_SUFFIXES).
+IMAGE_RE = re.compile(
+    r"\.(jpe?g|jpe|jfif|png|webp|gif|bmp|dib|tiff?|jp2|j2k|pbm|pgm|ppm|pnm)$", re.IGNORECASE
+)
 
 # API kind → filename suffix: <folder>_<suffix>.{txt|json}
 KIND_TO_SUFFIX: dict[str, str] = {
@@ -1443,15 +1446,9 @@ class LocalFolderRepository(FolderRepository):
         )
 
     def _pages_dir_has_images(self, folder_dir: Path) -> bool:
-        pages_dir = folder_dir / "pages"
-        if not pages_dir.is_dir():
-            return False
-        return any(
-            path.is_file()
-            and not path.name.startswith("._")
-            and IMAGE_RE.search(path.name)
-            for path in pages_dir.iterdir()
-        )
+        """Page images in pages/, or at the folder root when pages/ has none (as
+        _page_files reads them): a chart downloaded but not yet run still shows."""
+        return folder_dir.is_dir() and bool(self._page_files(folder_dir))
 
     def _corrected_page_path(self, folder_dir: Path, page_path: Path) -> Path | None:
         corrected_dir = folder_dir / "corrected-pages"
