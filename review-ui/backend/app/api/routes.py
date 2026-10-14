@@ -625,32 +625,59 @@ async def _upload_bytes(label: str, upload: UploadFile | None) -> tuple[bytes, s
 
 class _PipelineCharts:
     """Each chart's pipeline output as Algo Generated CSV bytes, and when it
-    last ran. A chart is read by name (its folder id): never the full
-    repo.list_folders(), which in Local Mode scans every page of every chart
-    and could stall a large workspace for minutes before the first row."""
+    last ran. With a database, charts are fetched excel_compare.database_algo
+    .BATCH at a time in one query each (the page values only); without one, a
+    chart is read by name through the repository. Never repo.list_folders(),
+    which in Local Mode scans every page of every chart."""
 
-    def __init__(self, repo: FolderRepository, settings: Settings) -> None:
+    def __init__(self, repo: FolderRepository, settings: Settings, pdf_ids: list[str]) -> None:
         self._repo = repo
         self._settings = settings
-        self._runs: dict[str, datetime | None] | None = None
+        self._order = list(pdf_ids)
+        self._use_db = database_url_usable(settings.database_url)
+        self._docs: dict[str, ImagingDocumentResponse | None] = {}
+        self._runs: dict[str, datetime | None] | None = {} if self._use_db else None
+
+    def _data_root(self) -> Path:
+        root = self._settings.resolved_data_root
+        return root if isinstance(root, Path) else Path(root)
+
+    def _fetch_from(self, pdf_id: str) -> None:
+        """This chart and the next unfetched ones, one query."""
+        start = self._order.index(pdf_id) if pdf_id in self._order else 0
+        batch = [pdf_id] + [
+            name for name in self._order[start + 1:] if name not in self._docs and name != pdf_id
+        ][: excel_compare.database_algo.BATCH - 1]
+        docs, runs = excel_compare.database_algo.fetch(
+            self._settings.database_url, self._settings.db_schema, self._data_root(), batch
+        )
+        for name in batch:
+            self._docs[name] = docs.get(name)
+        self._runs.update(runs)
 
     def load(self, pdf_id: str) -> bytes | None:
-        """None when review-ui has no output for the chart."""
-        try:
-            doc = self._repo.get_imaging(pdf_id)
-        except HTTPException:
-            return None  # no such chart, or no imaging output yet
-        return excel_compare.database_system.system_csv([(pdf_id, doc)])
+        """None when there is no output for the chart."""
+        if self._use_db:
+            if pdf_id not in self._docs:
+                self._fetch_from(pdf_id)
+            doc = self._docs.get(pdf_id)
+        else:
+            try:
+                doc = self._repo.get_imaging(pdf_id)
+            except HTTPException:
+                doc = None  # no such chart, or no imaging output yet
+        return excel_compare.database_system.system_csv([(pdf_id, doc)]) if doc else None
 
     def last_run(self, pdf_id: str) -> str | None:
-        """ISO time of the chart's last pipeline run; None when never run.
-        From the light chart list (chart_list + a folder listing), once."""
-        if self._runs is None:
-            data_root = self._settings.resolved_data_root
+        """ISO time of the chart's last pipeline run; None when never run."""
+        if self._use_db:
+            if pdf_id not in self._docs:
+                self._fetch_from(pdf_id)
+        elif self._runs is None:
             listed = build_folder_list(
                 database_url=self._settings.database_url,
                 db_schema=self._settings.db_schema,
-                data_root=data_root if isinstance(data_root, Path) else Path(data_root),
+                data_root=self._data_root(),
                 full_local_rows=None,
                 params=FolderListParams(),
             )
@@ -663,7 +690,7 @@ def _system_from_pipeline(
     repo: FolderRepository, settings: Settings, pdf_ids: list[str]
 ) -> tuple[bytes, str]:
     """The pipeline output for the charts named by the ground truth's PDF IDs, as one sheet."""
-    charts = _PipelineCharts(repo, settings)
+    charts = _PipelineCharts(repo, settings, pdf_ids)
     try:
         parts = [data for data in (charts.load(pdf_id) for pdf_id in pdf_ids) if data]
     except Exception as exc:
@@ -824,7 +851,7 @@ async def post_excel_compare_stream(
     while later charts are still being read. Bad input fails before the
     stream starts; a failure part-way is an ``error`` line."""
     ground, system = await _inputs(settings, ground_file, ground_source, ground_truth, system_file, system_source)
-    charts = _PipelineCharts(repo, settings)
+    charts = _PipelineCharts(repo, settings, _pdf_ids(ground, "Ground Truth"))
     events = excel_compare.stream(
         ground,
         system,

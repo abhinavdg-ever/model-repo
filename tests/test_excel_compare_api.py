@@ -125,12 +125,23 @@ def repo(client):
 
     import app.api.routes as routes
 
+    from app.services.excel_compare import database_algo
+
     fake = _Repo()
     client.app.dependency_overrides[get_repository] = lambda: fake
-    routes_build = routes.build_folder_list
+
+    def fetch(_url, _schema, _root, names):
+        # The batched database read, served from the same fake charts.
+        fake.asked.extend(names)
+        docs = {name: fake.doc for name in names if name == "100"}
+        runs = {f.name: f.last_updated_at for f in fake.folders if f.name in names}
+        return docs, runs
+
+    saved = routes.build_folder_list, database_algo.fetch
     routes.build_folder_list = lambda **_kwargs: SimpleNamespace(items=fake.folders)
+    database_algo.fetch = fetch
     yield fake
-    routes.build_folder_list = routes_build
+    routes.build_folder_list, database_algo.fetch = saved
 
 
 def test_system_output_defaults_to_the_pipeline(client, repo):
@@ -407,3 +418,36 @@ def test_an_uploaded_page_ground_truth_mirror_reads_like_the_database(client, re
     # against the pipeline's junk page. Everything else agrees.
     mismatched = {row["pageNumber"]: row["mismatched"] for row in body["rows"]}
     assert mismatched == {"1": ["Member ID"], "2": ["Is Blank or Junk?"]}
+
+
+def test_batched_database_rows_map_like_the_chart_view():
+    from datetime import date
+
+    from app.services.excel_compare.database_algo import _page
+
+    def row(**cells):
+        base = dict(
+            chart="100", page_number=3, page_name="3.jpg",
+            name=None, dob=None, member_id=None, dos_from=None, dos_to=None,
+            flag="not_blank_junk", junk_subtype=None,
+            classified=False, page_type=None, subtype=None, category=None,
+            final_type=None, final_subtype=None, final_category=None, final_from=None, final_to=None,
+            sequenced=False, current=None, actual=None,
+        )
+        base.update(cells)
+        return tuple(base.values())
+
+    classified = _page(row(
+        classified=True, page_type="Progress Note", subtype="Office Visit", category="codeable",
+        dos_from=date(2025, 8, 27), final_from=date(2025, 9, 1), sequenced=True, current=3, actual=5,
+        flag="duplicate",
+    ))
+    assert classified.pageType == "Progress Note (Office Visit)"
+    assert (classified.isCodeable, classified.isDuplicate, classified.blankOrJunk) == ("Codable", True, "No")
+    assert (classified.dosFrom, classified.finalDosFrom) == ("2025-08-27", "2025-09-01")
+    assert (classified.currentSequence, classified.actualSequence) == (3, 5)
+    # A main page with no classification row reads Not Sure, as get_imaging stamps it.
+    assert _page(row()).isCodeable == "Not Sure"
+    # A classified page with a blank category is Not Sure too; a junk page keeps its tag.
+    assert _page(row(classified=True, page_type="Lab", subtype="Lab")).isCodeable == "Not Sure"
+    assert _page(row(flag="junk", junk_subtype="Fax Cover")).blankOrJunk == "Yes (Junk)"

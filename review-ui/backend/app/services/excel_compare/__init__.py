@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterator
 from io import BytesIO
 from typing import Any
 
-from . import database_ground, database_system  # noqa: F401  (no pandas at import)
+from . import database_algo, database_ground, database_system  # noqa: F401  (no pandas at import)
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
