@@ -19,12 +19,19 @@ def clean_text(value):
     return value
 
 
+_NO_DATE_VALUES = {"", "-", "--", "na", "n/a", "none", "null", "nil"}
+
+
 def clean_date(value):
     """
-    Normalize dates into YYYY-MM-DD where possible.
+    Normalize dates into YYYY-MM-DD where possible. "-", "N/A" and blank
+    all mean "no date" and compare equal.
     """
 
     if pd.isna(value):
+        return ""
+
+    if str(value).strip().lower() in _NO_DATE_VALUES:
         return ""
 
     parsed = pd.to_datetime(value, errors="coerce")

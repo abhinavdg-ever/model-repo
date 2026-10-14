@@ -106,3 +106,9 @@ def test_clean_text_trims_and_collapses_whitespace_and_case():
 
     assert clean_text("  New   Patient ") == "new patient"
     assert clean_text(pd.NA) == ""
+
+
+def test_no_date_placeholders_compare_equal():
+    from app.services.excel_compare.normalizer import clean_date
+
+    assert {clean_date(value) for value in ("-", "N/A", "", "  ", None)} == {""}
