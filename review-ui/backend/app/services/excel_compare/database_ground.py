@@ -21,11 +21,11 @@ DIRECT_COLUMNS = {
     "Page Subtype": "page_subtype",
     "Codable / Non-Codable": "codeable",
     "Duplicate": "is_duplicate",
-    "Provider Signature": "provider_signature",
 }
 
 BLANK_OR_JUNK = "Is Blank or Junk?"
 PAGE_TYPE = "Page Type"
+CREDENTIALS = "Provider Credentials"
 
 
 def _yes(value: object) -> bool:
@@ -52,6 +52,18 @@ def _page_type(labels: dict) -> str:
     return ""
 
 
+def _credentials(labels: dict) -> str:
+    """provider_credentials; older rows kept credentials in provider_signature,
+    so that is read when it holds more than Yes / No / NA (as the Accuracy tab does)."""
+    own = str(labels.get("provider_credentials") or "").strip()
+    if own:
+        return own
+    legacy = str(labels.get("provider_signature") or "").strip()
+    if legacy.lower() in {"", "yes", "y", "no", "n", "true", "false", "na", "n/a", "none", "not found"}:
+        return ""
+    return legacy
+
+
 def ground_csv(rows: list[tuple[str, int, dict]]) -> bytes:
     """The database labels as the CSV an uploaded Ground Truth file would be."""
     records = []
@@ -61,11 +73,12 @@ def ground_csv(rows: list[tuple[str, int, dict]]) -> bytes:
             value = labels.get(source)
             record[column] = "" if value is None else str(value).strip()
         record[PAGE_TYPE] = _page_type(labels)
+        record[CREDENTIALS] = _credentials(labels)
         record[BLANK_OR_JUNK] = _blank_or_junk(labels)
         records.append(record)
     columns = ["PDF ID", "Page Number"] + [
         column
-        for column in [*DIRECT_COLUMNS, PAGE_TYPE, BLANK_OR_JUNK]
+        for column in [*DIRECT_COLUMNS, PAGE_TYPE, BLANK_OR_JUNK, CREDENTIALS]
         if any(record[column] for record in records)
     ]
     buffer = io.StringIO()

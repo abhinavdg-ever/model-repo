@@ -66,6 +66,45 @@ def display_date(value):
 
 
 # =============================================================
+# PROVIDER CREDENTIALS
+#
+# As the Accuracy tab scores them: punctuation and order ignored
+# ("M.D., Ph.D." = "PhD MD"), and sharing some credentials counts
+# as a match. NA / None / blank mean "no credentials".
+# =============================================================
+
+_NO_CREDENTIALS = {"", "na", "n/a", "none", "not found", "null", "nil", "-"}
+
+
+def credential_tokens(value):
+    """ "M.D., Ph.D." -> {"MD", "PHD"}; nothing for NA / blank."""
+
+    if pd.isna(value):
+        return frozenset()
+
+    text = str(value).strip()
+
+    if text.lower() in _NO_CREDENTIALS:
+        return frozenset()
+
+    return frozenset(
+        token
+        for token in re.split(r"[^A-Z0-9]+", text.upper().replace(".", ""))
+        if token
+    )
+
+
+def credentials_match(gt_value, system_value):
+    gt_tokens = credential_tokens(gt_value)
+    system_tokens = credential_tokens(system_value)
+
+    if not gt_tokens or not system_tokens:
+        return gt_tokens == system_tokens
+
+    return bool(gt_tokens & system_tokens)
+
+
+# =============================================================
 # YES/NO NORMALIZATION
 #
 # Recognizes explicit equivalent spellings of Yes/No only.

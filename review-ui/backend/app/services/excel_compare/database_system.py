@@ -31,7 +31,7 @@ COLUMNS = [
     "Page Type",
     "Page Subtype",
     "Codable / Non-Codable",
-    "Provider Signature",
+    "Provider Credentials",
     "Current Sequence",
     "Actual Sequence",
 ]
@@ -87,7 +87,7 @@ def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
                     "Page Type": page_type,
                     "Page Subtype": page_subtype,
                     "Codable / Non-Codable": _text(page.finalCodeable) or _text(page.isCodeable),
-                    "Provider Signature": _text(page.providerSignature),
+                    "Provider Credentials": _text(page.providerCredentials),
                     "Current Sequence": _text(page.currentSequence),
                     "Actual Sequence": _text(page.actualSequence),
                 }

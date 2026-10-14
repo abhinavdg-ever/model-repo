@@ -95,7 +95,7 @@ class _Repo:
         pages = [
             ImagingPageResult(pageNumber=1, fileName="1.png", dosFrom="2024-03-15", dosTo="2024-03-15",
                               isCodeable="Codable", pageType="Progress Note (Office Visit)",
-                              encounterType="Outpatient (F2F)", providerSignature="Yes",
+                              encounterType="Outpatient (F2F)", providerCredentials="MD",
                               blankOrJunk="No", isDuplicate=False),
             ImagingPageResult(pageNumber=2, fileName="2.png", dosFrom="2024-03-17", dosTo="2024-03-16",
                               isCodeable="Non-Codable", blankOrJunk="Yes (Junk)"),
@@ -146,7 +146,7 @@ def test_pipeline_output_as_the_system_csv():
     first, second, fourth = rows
     # Page Type / Subtype are the classifier's, not the encounter type.
     assert (first["Page Type"], first["Page Subtype"]) == ("Progress Note", "Office Visit")
-    assert (first["Provider Signature"], second["Provider Signature"]) == ("Yes", "")
+    assert (first["Provider Credentials"], second["Provider Credentials"]) == ("MD", "")
     assert (first["Is Blank or Junk?"], first["Duplicate"]) == ("No", "No")
     assert second["Is Blank or Junk?"] == "Yes"
     # A page with no DOS stays blank (no 2222-02-02 default).
@@ -282,11 +282,13 @@ def test_database_ground_truth_page_type_is_the_encounter_type():
     from app.services.excel_compare.database_ground import ground_csv
 
     rows = list(csv.DictReader(io.StringIO(ground_csv([
-        ("100", 1, {"encounter_type": "Inpatient", "page_type": "Outpatient (F2F)", "provider_signature": "No"}),
-        ("100", 2, {"page_type": "Outpatient (F2F)"}),
+        ("100", 1, {"encounter_type": "Inpatient", "page_type": "Outpatient (F2F)", "provider_credentials": "MD"}),
+        # An older row kept credentials in provider_signature; a bare Yes / No there is not one.
+        ("100", 2, {"page_type": "Outpatient (F2F)", "provider_signature": "D.O."}),
+        ("100", 3, {"provider_signature": "Yes"}),
     ]).decode())))
-    assert [row["Page Type"] for row in rows] == ["Inpatient", "Outpatient (F2F)"]
-    assert rows[0]["Provider Signature"] == "No"
+    assert [row["Page Type"] for row in rows] == ["Inpatient", "Outpatient (F2F)", ""]
+    assert [row["Provider Credentials"] for row in rows] == ["MD", "D.O.", ""]
 
 
 def test_pipeline_final_values_win_over_extracted():
@@ -307,3 +309,18 @@ def test_pipeline_final_values_win_over_extracted():
     assert (row["DOS From"], row["DOS To"]) == ("2024-02-02", "2024-02-02")
     assert row["Codable / Non-Codable"] == "Codable"
     assert row["Page Subtype"] == "Office Visit"
+
+
+def test_credentials_match_as_the_accuracy_tab_scores_them():
+    from app.services.excel_compare.field_comparator import compare_fields
+
+    def compare(gt, algo):
+        result = compare_fields({"Provider Credentials": gt}, {"Provider Credentials": algo}, ["Provider Credentials"])
+        return result["Provider Credentials"]
+
+    assert compare("M.D., Ph.D.", "PhD MD") == {"match": True, "display": "GT: M.D., Ph.D. | Algo: PhD MD"}
+    assert compare("MD", "MD")["display"] == "MD"
+    assert compare("MD", "MD, PhD")["match"] is True  # some shared counts
+    assert compare("MD", "NP")["match"] is False
+    assert compare("NA", "")["match"] is True
+    assert compare("MD", "")["match"] is False

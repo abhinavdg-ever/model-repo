@@ -279,8 +279,11 @@ function sideValue(row: ManualReviewRow, field: string, side: "gt" | "algo"): st
   const display = row.values[field] ?? "";
   if (row.status === "MISSING") return side === "gt" ? display : "";
   if (row.status === "EXTRA") return side === "algo" ? display : "";
-  const sides = row.mismatched.includes(field) ? splitDisplay(display) : null;
+  // A mismatch, or a match written differently (credentials "MD" / "MD, PhD").
+  const sides = splitDisplay(display);
   if (!sides) return display;
+  // A one-row (Correct) record shows both sides in its one cell.
+  if (row.status === "CORRECT") return sides.gt === sides.system ? sides.gt : `${sides.gt} · Algo: ${sides.system}`;
   return side === "gt" ? sides.gt : sides.system;
 }
 
@@ -848,7 +851,10 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                         {result.fields.map((field) => {
                           const mismatched = row.mismatched.includes(field);
                           // A value both sides agree on is shown once, across both rows.
-                          const agreed = !mismatched && row.status === "ERROR";
+                          const agreed =
+                            !mismatched &&
+                            row.status === "ERROR" &&
+                            !splitDisplay(row.values[field] ?? "");
                           if (agreed && side === "algo") return null;
                           return (
                             <td

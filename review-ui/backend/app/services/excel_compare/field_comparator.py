@@ -3,6 +3,7 @@ import pandas as pd
 from .normalizer import (
     clean_text,
     clean_date,
+    credentials_match,
     display_date,
     normalize_yes_no,
     normalize_codable,
@@ -38,7 +39,7 @@ ACTIVE_COMPARISON_FIELDS = [
     "Page Type",
     "Page Subtype",
     "Codable / Non-Codable",
-    "Provider Signature",
+    "Provider Credentials",
     "Current Sequence",
     "Actual Sequence",
 ]
@@ -71,7 +72,10 @@ DATE_FIELDS = {
 YES_NO_FIELDS = {
     "Is Blank or Junk?",
     "Duplicate",
-    "Provider Signature",
+}
+
+CREDENTIAL_FIELDS = {
+    "Provider Credentials",
 }
 
 CODABLE_FIELDS = {
@@ -137,13 +141,22 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
         gt_normalized = normalize_field_value(field_name, gt_raw)
         system_normalized = normalize_field_value(field_name, system_raw)
 
-        is_match = gt_normalized == system_normalized
+        if field_name in CREDENTIAL_FIELDS:
+            is_match = credentials_match(gt_raw, system_raw)
+        else:
+            is_match = gt_normalized == system_normalized
 
         if field_name in DATE_FIELDS:
             gt_raw = display_date(gt_raw)
             system_raw = display_date(system_raw)
 
-        if is_match:
+        # Credentials can match while written differently ("MD" / "MD, PhD"):
+        # both sides are shown then, so the reader sees what each one said.
+        differs = field_name in CREDENTIAL_FIELDS and (
+            clean_text(gt_raw) != clean_text(system_raw)
+        )
+
+        if is_match and not differs:
             display_value = gt_raw
         else:
             display_value = f"GT: {gt_raw} | Algo: {system_raw}"
