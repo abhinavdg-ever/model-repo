@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Database,
   Download,
+  ExternalLink,
   FileSpreadsheet,
   Info,
   Link2,
@@ -23,11 +24,15 @@ import {
   type ManualReviewRow,
   type ManualReviewStatus,
 } from "./api";
+import { saveChartOrder } from "./chartSequence";
 import { readGroundTruthSource } from "./groundTruthSource";
 import { readFile, readSources, writeFile, writeSources, type Source } from "./manualReviewStore";
+import { useViewState } from "./viewState";
 
 type Props = {
   onBack: () => void;
+  onOpenChart: (folderId: string) => void;
+  chartHref: (folderId: string) => string;
 };
 
 const ROWS_PER_PAGE = 10;
@@ -285,7 +290,7 @@ function percent(value: number | undefined): string {
  * page shows it again. Cleared whenever an input changes. */
 let lastResult: ManualReviewResult | null = null;
 
-export default function ManualReviewView({ onBack }: Props) {
+export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Props) {
   const [ground, setGround] = useState<File | null>(null);
   const [system, setSystem] = useState<File | null>(null);
   const [groundSource, setGroundSource] = useState<Source>(() => readSources().ground);
@@ -317,9 +322,15 @@ export default function ManualReviewView({ onBack }: Props) {
   const [comparing, setComparing] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<Filter>("ALL");
-  const [page, setPage] = useState(1);
-  const [query, setQuery] = useState("");
+  // Status filter, search and page survive opening a chart and coming Back.
+  const [view, setView] = useViewState<{ filter: Filter; page: number; query: string }>(
+    "manual-review",
+    { filter: "ALL", page: 1, query: "" },
+  );
+  const { filter, page, query } = view;
+  const setFilter = (value: Filter) => setView({ filter: value });
+  const setPage = (value: number) => setView({ page: value });
+  const setQuery = (value: string) => setView({ query: value });
   // Charts read so far while a comparison streams in; null when idle.
   const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
   const streamRef = useRef<AbortController | null>(null);
@@ -448,6 +459,11 @@ export default function ManualReviewView({ onBack }: Props) {
   const filtered = useMemo(
     () => (filter === "ALL" ? searched : searched.filter((row) => row.status === filter)),
     [searched, filter],
+  );
+  // Next on a chart opened from here walks the charts in this filtered order.
+  const chartOrder = useMemo(
+    () => [...new Set(filtered.map((row) => row.pdfId))].map((id) => ({ id, name: id })),
+    [filtered],
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
   const currentPage = Math.min(page, totalPages);
@@ -761,7 +777,32 @@ export default function ManualReviewView({ onBack }: Props) {
                         {side === "gt" ? (
                           <>
                             <th scope="rowgroup" rowSpan={span}>
-                              {row.pdfId}
+                              <a
+                                className="accuracy-chart-link"
+                                href={chartHref(row.pdfId)}
+                                onClick={(event) => {
+                                  // Cmd / Ctrl / Shift / middle click keep the browser's new-tab behaviour.
+                                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                                  event.preventDefault();
+                                  saveChartOrder("manual-review", chartOrder);
+                                  onOpenChart(row.pdfId);
+                                }}
+                              >
+                                {row.pdfId}
+                              </a>
+                              <button
+                                type="button"
+                                className="accuracy-chart-newtab"
+                                title="Open in new tab"
+                                aria-label={`Open ${row.pdfId} in a new tab`}
+                                // window.open (not a target=_blank link) so the new tab keeps this tab's sign-in.
+                                onClick={() => {
+                                  saveChartOrder("manual-review", chartOrder);
+                                  window.open(chartHref(row.pdfId), "_blank");
+                                }}
+                              >
+                                <ExternalLink size={12} aria-hidden="true" />
+                              </button>
                             </th>
                             <td rowSpan={span}>{row.pageNumber}</td>
                           </>

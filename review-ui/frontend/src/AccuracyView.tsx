@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Filter, Info, Loader2, Search } from "lucide-react";
 import { getAccuracyReport } from "./api";
 import { saveAccuracyOrder } from "./chartSequence";
+import { useViewState } from "./viewState";
 import {
   LIVE_METRICS,
   METRICS,
@@ -470,32 +471,33 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
   const [rows, setRows] = useState<ChartAccuracy[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
+  // Search, column filters, sort and page survive opening a chart and coming Back.
   // Newest run first, like the home page.
-  const [sortKey, setSortKey] = useState<SortKey>("run");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [filters, setFilters] = useState<Filters>({});
+  const [view, setView] = useViewState<{
+    query: string;
+    page: number;
+    sortKey: SortKey;
+    sortDir: SortDir;
+    filters: Filters;
+  }>("accuracy", { query: "", page: 1, sortKey: "run", sortDir: "desc", filters: {} });
+  const { query, page, sortKey, sortDir, filters } = view;
+  const setQuery = (value: string) => setView({ query: value });
+  const setPage = (value: number) => setView({ page: value });
 
   function setFilter(column: ScoreColumn, value: Filters[ScoreColumn]) {
-    setFilters((prev) => {
-      const next = { ...prev };
-      if (value) next[column] = value;
-      else delete next[column];
-      return next;
-    });
-    setPage(1);
+    const next = { ...filters };
+    if (value) next[column] = value;
+    else delete next[column];
+    setView({ filters: next, page: 1 });
   }
 
   // Same behaviour as the home page: click again to flip; name starts A→Z, numbers highest first.
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      setView({ sortDir: sortDir === "asc" ? "desc" : "asc", page: 1 });
     } else {
-      setSortKey(key);
-      setSortDir(key === "name" ? "asc" : "desc");
+      setView({ sortKey: key, sortDir: key === "name" ? "asc" : "desc", page: 1 });
     }
-    setPage(1);
   }
 
   function sortIndicator(key: SortKey): string {

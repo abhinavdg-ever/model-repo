@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import LandingPage, { savedHistoryListParams } from "./LandingPage";
-import { nextChart } from "./chartSequence";
+import { nextChart, type ChartSource } from "./chartSequence";
 import FolderViewer from "./FolderViewer";
 import FileViewer from "./FileViewer";
 import AccuracyView from "./AccuracyView";
@@ -18,13 +18,17 @@ const AUTH_KEY = "advantmed_imaging_auth";
 
 type Route =
   | { view: "landing" }
-  | { view: "folder"; folderId: string; mode: OutputMode; from?: "accuracy" }
+  | { view: "folder"; folderId: string; mode: OutputMode; from?: ChartSource }
   | { view: "file-viewer"; folderId?: string }
   | { view: "accuracy" }
   | { view: "manual-review" };
 
 function parseMode(raw: string | null): OutputMode {
   return raw === "imaging" ? "imaging" : "ocr";
+}
+
+function parseFrom(raw: string | null): ChartSource | undefined {
+  return raw === "accuracy" || raw === "manual-review" ? raw : undefined;
 }
 
 function parsePath(pathname: string, search: string): Route {
@@ -48,7 +52,7 @@ function parsePath(pathname: string, search: string): Route {
       view: "folder",
       folderId: decodeURIComponent(match[1]),
       mode: parseMode(params.get("mode")),
-      from: params.get("from") === "accuracy" ? "accuracy" : undefined,
+      from: parseFrom(params.get("from")),
     };
   }
   return { view: "landing" };
@@ -59,7 +63,7 @@ function pathFor(route: Route): string {
     const base = `/folders/${encodeURIComponent(route.folderId)}`;
     const params = new URLSearchParams();
     if (route.mode === "imaging") params.set("mode", "imaging");
-    if (route.from === "accuracy") params.set("from", "accuracy");
+    if (route.from) params.set("from", route.from);
     const qs = params.toString();
     return qs ? `${base}?${qs}` : base;
   }
@@ -239,7 +243,15 @@ export default function App() {
             onOpenManualReview={() => navigate({ view: "manual-review" })}
           />
         ) : route.view === "manual-review" ? (
-          <ManualReviewView onBack={() => navigate({ view: "landing" })} />
+          <ManualReviewView
+            onBack={() => navigate({ view: "landing" })}
+            onOpenChart={(folderId) =>
+              navigate({ view: "folder", folderId, mode: "imaging", from: "manual-review" })
+            }
+            chartHref={(folderId) =>
+              pathFor({ view: "folder", folderId, mode: "imaging", from: "manual-review" })
+            }
+          />
         ) : route.view === "accuracy" ? (
           <AccuracyView
             key={gtSource}
@@ -262,7 +274,7 @@ export default function App() {
             folderId={route.folderId}
             initialMode={route.mode}
             onBack={() =>
-              navigate(route.from === "accuracy" ? { view: "accuracy" } : { view: "landing" })
+              navigate(route.from ? { view: route.from } : { view: "landing" })
             }
             findNextChart={() => nextChart(route.folderId, route.from, savedHistoryListParams())}
             onOpenNext={(folderId) =>

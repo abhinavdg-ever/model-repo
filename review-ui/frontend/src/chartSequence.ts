@@ -1,26 +1,31 @@
 import { listFolders, type FolderListParams } from "./api";
 
 /** The chart after this one in the list the chart was opened from: the Accuracy
- * View's filtered and sorted rows, or the History list with its saved search,
- * filters and sort (also the fallback for a chart opened by URL). */
+ * View's or Manual Review's filtered and sorted rows, or the History list with
+ * its saved search, filters and sort (also the fallback for a chart opened by URL). */
 
 export type ChartRef = { id: string; name: string };
+export type ChartSource = "accuracy" | "manual-review";
 
-const ACCURACY_ORDER_KEY = "advantmed_accuracy_chart_order";
+const orderKey = (source: ChartSource) => `advantmed_${source}_chart_order`;
 
-/** Called when the Accuracy View opens a chart. sessionStorage, so a tab opened
- * from it (window.open) starts with a copy. */
-export function saveAccuracyOrder(charts: ChartRef[]): void {
+/** Called when a list opens a chart. sessionStorage, so a tab opened from it
+ * (window.open) starts with a copy. */
+export function saveChartOrder(source: ChartSource, charts: ChartRef[]): void {
   try {
-    sessionStorage.setItem(ACCURACY_ORDER_KEY, JSON.stringify(charts));
+    sessionStorage.setItem(orderKey(source), JSON.stringify(charts));
   } catch {
     // Blocked storage: Next falls back to the History order.
   }
 }
 
-function readAccuracyOrder(): ChartRef[] | null {
+export function saveAccuracyOrder(charts: ChartRef[]): void {
+  saveChartOrder("accuracy", charts);
+}
+
+function readChartOrder(source: ChartSource): ChartRef[] | null {
   try {
-    const raw = sessionStorage.getItem(ACCURACY_ORDER_KEY);
+    const raw = sessionStorage.getItem(orderKey(source));
     const parsed = raw ? (JSON.parse(raw) as unknown) : null;
     return Array.isArray(parsed) ? (parsed as ChartRef[]) : null;
   } catch {
@@ -35,11 +40,11 @@ function after(charts: ChartRef[], current: string): ChartRef | null {
 
 export async function nextChart(
   current: string,
-  from: "accuracy" | undefined,
+  from: ChartSource | undefined,
   historyParams: FolderListParams,
 ): Promise<ChartRef | null> {
-  if (from === "accuracy") {
-    const order = readAccuracyOrder();
+  if (from) {
+    const order = readChartOrder(from);
     if (order?.some((chart) => chart.id === current)) return after(order, current);
   }
   const list = await listFolders(historyParams);
