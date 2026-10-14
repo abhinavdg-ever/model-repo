@@ -89,10 +89,12 @@ def ensure_models(model_version: str, rules_version: str = "v0") -> None:
         logger.info("models present: %s", ", ".join(str(folder) for folder in folders))
 
     if model_version != rules_version:
-        folder = config.trained_folder(model_version)
-        if not (folder / "manifest.json").is_file():
+        folders = config.trained_folders(model_version)
+        if not any((folder / "manifest.json").is_file() for folder in folders):
+            root = Path(config.Model_Registry)
             raise SystemExit(
-                f"trained version {model_version} not found at {folder}. It is trained locally from "
+                f"trained version {model_version} not found: expected {root / f'KV_{model_version}'} and / or "
+                f"{root / f'Heading_{model_version}'} (or {folders[0]}). It is trained locally from "
                 f"reviews: copy the weights into models/kv-extraction, or run with --model-version {rules_version}."
             )
 

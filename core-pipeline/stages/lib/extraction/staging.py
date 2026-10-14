@@ -8,7 +8,7 @@ rest write their own rows, and the orchestrator drops the staging when the chart
 
 One JSON file per chart at ``<chart>/staging/extraction.json``::
 
-    {"version": 1, "chart_name": …, "model_version": "v002", "extracted_at": …,
+    {"version": 1, "chart_name": …, "model_version": "v004", "extracted_at": …,
      "pages": {"<page name>": {"page_number": 1, "width": …, "height": …,
                                "fields": {"name": [<hit>, …], "dos": […], …}}}}
 

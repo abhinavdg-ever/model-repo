@@ -14,8 +14,10 @@ grows with every reviewed batch; heading_common is the match with common_heading
 A training row's vocabulary counts leave out its own record, so the model learns what the
 vocabulary is worth on documents it has not seen.
 
-Version folder: ``models/kv-extraction`` for the pinned copy, or
-``models/kv-extraction/vNNN`` for a version trained later. Files:
+Version folders (config.trained_folders): ``models/kv-extraction/KV_vNNN`` and / or
+``Heading_vNNN`` (split layout, v003+), else ``models/kv-extraction`` for the v002 copy or
+``models/kv-extraction/vNNN`` for a version trained here. A version is every field any of its
+folders trained; each folder keeps its own feature lists. Files in each:
     ranker_{field}.txt, level_{field}.txt   LightGBM boosters
     vocab_{field}.json                      heading vocabulary {text: [true records, false records]}
                                             (texts never confirmed as headings only as a hash)
@@ -191,37 +193,46 @@ class FieldModel:
     categories: dict[str, list[str]]
     level: Any = None
     vocab: Vocab | None = None
+    # The columns this field's folder was trained with (KV and Heading may differ).
+    numeric: list[str] | None = None
+    categorical: list[str] | None = None
 
 
 class Version:
-    """A trained version loaded from the registry."""
+    """A trained version loaded from the registry: the fields of every folder it has."""
 
     def __init__(self, name: str):
         import lightgbm as lgb
 
-        folder = version_dir(name)
-        features = json.loads((folder / "features.json").read_text(encoding="utf-8"))
-        thresholds = json.loads((folder / "thresholds.json").read_text(encoding="utf-8"))
         self.name = name
-        self.numeric: list[str] = features.get("numeric") or NUMERIC
-        self.categorical: list[str] = features.get("categorical") or CATEGORICAL
         self.fields: dict[str, FieldModel] = {}
-        for field, threshold in thresholds.items():
-            path = folder / f"ranker_{field}.txt"
-            if not path.is_file():
+        self.folders: list[Path] = []
+        for folder in config.trained_folders(name):
+            if not (folder / "thresholds.json").is_file():
                 continue
-            level = folder / f"level_{field}.txt"
-            vocab = folder / f"vocab_{field}.json"
-            self.fields[field] = FieldModel(
-                booster=lgb.Booster(model_file=str(path)),
-                threshold=float(threshold),
-                categories=features["categories"][field],
-                level=lgb.Booster(model_file=str(level)) if level.is_file() else None,
-                vocab={
-                    norm: tuple(counts)
-                    for norm, counts in json.loads(vocab.read_text(encoding="utf-8")).items()
-                } if vocab.is_file() else None,
-            )
+            self.folders.append(folder)
+            features = json.loads((folder / "features.json").read_text(encoding="utf-8"))
+            thresholds = json.loads((folder / "thresholds.json").read_text(encoding="utf-8"))
+            numeric: list[str] = features.get("numeric") or NUMERIC
+            categorical: list[str] = features.get("categorical") or CATEGORICAL
+            for field, threshold in thresholds.items():
+                path = folder / f"ranker_{field}.txt"
+                if not path.is_file():
+                    continue
+                level = folder / f"level_{field}.txt"
+                vocab = folder / f"vocab_{field}.json"
+                self.fields[field] = FieldModel(
+                    booster=lgb.Booster(model_file=str(path)),
+                    threshold=float(threshold),
+                    categories=features["categories"][field],
+                    level=lgb.Booster(model_file=str(level)) if level.is_file() else None,
+                    vocab={
+                        norm: tuple(counts)
+                        for norm, counts in json.loads(vocab.read_text(encoding="utf-8")).items()
+                    } if vocab.is_file() else None,
+                    numeric=numeric,
+                    categorical=categorical,
+                )
 
     def score(self, frame: pd.DataFrame, field: str) -> tuple[np.ndarray, np.ndarray, list[str]]:
         """(probabilities, selected, levels) for prepared rows of one field. A candidate is
@@ -229,7 +240,7 @@ class Version:
         model = self.fields[field]
         if model.vocab is not None:
             frame = add_vocab(frame, model.vocab)
-        x = matrix(frame, model.categories, self.numeric, self.categorical)
+        x = matrix(frame, model.categories, model.numeric, model.categorical)
         probs = model.booster.predict(x)
         chosen = select(frame["group_id"], probs, field in MULTI_VALUE, model.threshold)
         levels = [""] * len(frame)

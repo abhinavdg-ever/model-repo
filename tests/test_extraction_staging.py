@@ -210,7 +210,7 @@ class TestReadiness:
 
 
 class TestPinnedVersion:
-    def test_the_pipeline_runs_v002_and_the_environment_cannot_change_it(self, monkeypatch):
+    def test_the_pipeline_runs_v004_and_the_environment_cannot_change_it(self, monkeypatch):
         import importlib
 
         import config
@@ -218,25 +218,75 @@ class TestPinnedVersion:
         monkeypatch.setenv("EXTRACTION_MODEL_VERSION", "v001")
         importlib.reload(config)
         try:
-            assert config.EXTRACTION_MODEL_VERSION == "v002"
+            assert config.EXTRACTION_MODEL_VERSION == "v004"
         finally:
             monkeypatch.delenv("EXTRACTION_MODEL_VERSION")
             importlib.reload(config)
 
-    def test_engine_reports_v002_and_it_is_the_trained_version_on_disk(self):
+    def test_engine_reports_v004(self):
+        from stages.lib.extraction import engine
+
+        assert engine.model_version() == "v004"
+
+    def test_v002_still_resolves_to_the_single_folder_for_a_roll_back(self):
         import json
 
-        from stages.lib.extraction import engine
         from stages.lib.extraction.util import config as kv_config
 
-        assert engine.model_version() == "v002"
         folder = kv_config.trained_folder("v002")
         if not (folder / "manifest.json").is_file():
             pytest.skip("models/kv-extraction is not installed")
         manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
         assert manifest["version"] == "v002"
         assert folder == kv_config.Model_Registry
-        assert (folder / "thresholds.json").is_file()
+        assert kv_config.trained_folders("v002") == [kv_config.Model_Registry]
+
+
+class TestSplitLayout:
+    """v003+ is KV_vNNN and / or Heading_vNNN beside each other, as the standalone tool writes them."""
+
+    @staticmethod
+    def _folder(root, name, fields):
+        import json
+
+        folder = root / name
+        folder.mkdir(parents=True)
+        (folder / "manifest.json").write_text(json.dumps({"fields_trained": fields}), encoding="utf-8")
+        (folder / "thresholds.json").write_text(json.dumps({f: 0.5 for f in fields}), encoding="utf-8")
+        return folder
+
+    def test_both_folders_are_found_kv_first(self, tmp_path, monkeypatch):
+        from stages.lib.extraction.util import config as kv_config
+
+        monkeypatch.setattr(kv_config, "Model_Registry", tmp_path)
+        kv = self._folder(tmp_path, "KV_v004", ["dob", "dos"])
+        heading = self._folder(tmp_path, "Heading_v004", ["heading_heron"])
+        assert kv_config.trained_folders("v004") == [kv, heading]
+
+    def test_one_folder_is_enough_to_run(self, tmp_path, monkeypatch):
+        from stages.lib.extraction.training import registry
+        from stages.lib.extraction.util import config as kv_config
+
+        monkeypatch.setattr(kv_config, "Model_Registry", tmp_path)
+        self._folder(tmp_path, "KV_v004", ["dob"])
+        assert registry.is_runnable("v004")
+        assert not registry.is_runnable("v005")
+        listed = {v["id"]: v for v in registry.list_versions()}
+        assert listed["v004"]["runnable"] is True
+
+    def test_readiness_names_both_folders_when_missing(self, tmp_path, monkeypatch):
+        from stages.lib.extraction import engine
+        from stages.lib.extraction.training import registry
+        from stages.lib.extraction.util import config as kv_config
+
+        monkeypatch.setattr(kv_config, "Model_Registry", tmp_path)
+        monkeypatch.setattr(engine, "REQUIRED_PACKAGES", ())
+        monkeypatch.setattr(kv_config, "ner_weights_present", lambda folder: True)
+        monkeypatch.setattr(engine, "missing_models", lambda folders: {})
+        assert not registry.is_runnable("v004")
+        status = engine.readiness()
+        assert status["ready"] is False
+        assert "KV_v004" in status["reason"] and "Heading_v004" in status["reason"]
 
 
 def test_kv_debug_writes_the_raw_payload_only_when_asked(tmp_path, monkeypatch):

@@ -312,7 +312,10 @@ PAGE_FAMILY_MODEL_DIR = _path_under_core(
 # Key/value extraction weights (stages/lib/extraction). The ranker version is
 # pinned: a different version changes the member, DOS and page-number values
 # the later stages read. GLiNER and Heron are downloaded beside it.
-EXTRACTION_MODEL_VERSION = "v002"
+# v004 is the standalone tool's split layout: models/kv-extraction/KV_v004/ and
+# models/kv-extraction/Heading_v004/. v002 (files directly in models/kv-extraction)
+# stays on disk for a roll-back: set this back to "v002".
+EXTRACTION_MODEL_VERSION = "v004"
 EXTRACTION_MODELS_ROOT = _path_under_core(
     os.environ.get("EXTRACTION_MODELS_ROOT"),
     "models",

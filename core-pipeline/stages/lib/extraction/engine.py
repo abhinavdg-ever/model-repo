@@ -9,7 +9,7 @@ extracts and drops the rest: this is ``run.py::_write_document`` without the wri
      find every candidate, the version picks among them.
   3. The picks are pushed back into the rows, which staging.py then writes.
 
-Only the trained version pinned in config.py (EXTRACTION_MODEL_VERSION, v002) runs. It is not
+Only the trained version pinned in config.py (EXTRACTION_MODEL_VERSION, v004) runs. It is not
 selectable per run, and one that is not on disk is an error — never a silent fall back to
 rules or to another version, which would change what every later stage reads.
 """
@@ -74,8 +74,15 @@ def readiness() -> dict[str, Any]:
         status["reason"] = "model files missing under " + ", ".join(sorted(str(folder) for folder in gaps))
         return status
     if not registry.is_runnable(version):
-        status["reason"] = f"trained version {version} not found at {config.trained_folder(version)}"
+        root = Path(config.Model_Registry)
+        status["reason"] = (
+            f"trained version {version} not found: copy KV_{version} and Heading_{version} "
+            f"into {root}"
+        )
         return status
+    status["model_folders"] = [
+        str(folder) for folder in config.trained_folders(version) if (folder / "thresholds.json").is_file()
+    ]
     status["ready"] = True
     return status
 

@@ -31,11 +31,15 @@ Training_Data = Output_Root / "Training"
 # pipeline names (util/model_setup.py downloads it when run by hand).
 Models_Root = EXTRACTION_MODELS_ROOT
 
-# Trained extraction weights. The pinned version's files sit directly in this
-# folder (manifest.json beside the rankers). A later training run writes
-# {Model_Registry}/vNNN/. v0 (rules) needs nothing here.
+# Trained extraction weights, in one of two layouts. v0 (rules) needs nothing here.
+#   split (v003+): {Model_Registry}/KV_vNNN/ (key-value ranker, OCR JSON only) and
+#                  {Model_Registry}/Heading_vNNN/ (heading ranker, needs the page image),
+#                  as the standalone tool writes them; either may be missing.
+#   single (v002): the version's files directly in {Model_Registry}, or {Model_Registry}/vNNN/.
 # Trained locally from reviews, so they are copied with the models folder, never downloaded.
 Model_Registry = Models_Root / "kv-extraction"
+# Folder prefixes of the split layout: the key-value model and the heading model.
+SPLIT_PREFIXES = ("KV", "Heading")
 
 def ner_model_path() -> Path:
     """The GLiNER checkpoint member verification already uses.
@@ -90,6 +94,18 @@ def trained_folder(version: str) -> Path:
         if found == version:
             return root
     return nested
+
+
+def trained_folders(version: str) -> list[Path]:
+    """Every folder holding ``version``'s rankers: KV_vNNN and / or Heading_vNNN when the
+    split layout has them, else the single folder ``trained_folder`` names."""
+    root = Path(Model_Registry)
+    split = [
+        root / f"{prefix}_{version}"
+        for prefix in SPLIT_PREFIXES
+        if (root / f"{prefix}_{version}" / "manifest.json").is_file()
+    ]
+    return split or [trained_folder(version)]
 
 
 def make_output_folders() -> None:
