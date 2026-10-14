@@ -105,3 +105,33 @@ def test_accuracy_report_is_reused_for_a_minute(monkeypatch):
     monkeypatch.setattr(accuracy_cache, "REPORT_TTL_SEC", 0.0)  # expired
     accuracy_cache.load_report(settings, "latest")
     assert len(built) == 5
+
+
+def test_provider_credentials_come_from_blob_before_disk(tmp_path, monkeypatch):
+    from app.core.schemas import ImagingPageResult
+    from app.services import accuracy_cache, blob_store
+
+    page = ImagingPageResult(pageNumber=1, fileName="1.jpg")
+    chart = tmp_path / "c1" / "imaging"
+    chart.mkdir(parents=True)
+    (chart / "c1_provider_signature.csv").write_text(
+        "chart_name,page_name,provider_name,signature_present\nc1,1.jpg,Disk Doe MD,yes\n", encoding="utf-8"
+    )
+    blob_rows = [{"chart_name": "c1", "page_name": "1.jpg", "provider_name": "Blob Roe DO", "signature_present": "yes"}]
+
+    # The Blob copy (Processed output_path) wins; the disk copy is the fallback.
+    from_blob = accuracy_cache._with_signatures([page], tmp_path, "c1", blob_rows)[0]
+    from_disk = accuracy_cache._with_signatures([page], tmp_path, "c1", [])[0]
+    assert (from_blob.providerCredentials, from_disk.providerCredentials) == ("DO", "MD")
+
+    # Downloaded from <output_path>/imaging/<chart>_provider_signature.csv.
+    asked = []
+    monkeypatch.setattr(blob_store, "resolved_blob_account_url", lambda *_a: "https://acct.blob.core.windows.net")
+    monkeypatch.setattr(
+        blob_store,
+        "download_blob_at",
+        lambda **kw: asked.append((kw["container"], kw["key"])) or (b"chart_name,provider_name\nc1,X MD\n", "text/csv"),
+    )
+    rows = accuracy_cache.blob_signature_rows({"c1": ("imaging", "Processed/R1/B1/c1"), "c2": ("imaging", "")}, ["c1", "c2"])
+    assert asked == [("imaging", "Processed/R1/B1/c1/imaging/c1_provider_signature.csv")]
+    assert rows == {"c1": [{"chart_name": "c1", "provider_name": "X MD"}]}  # c2 has no output_path

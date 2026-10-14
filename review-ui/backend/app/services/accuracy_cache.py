@@ -330,27 +330,93 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
     )
 
 
+_LOCATIONS = """
+SELECT chart_name, blob_container, output_path FROM chart_list WHERE chart_name = ANY(%s)
+"""
+
+# Signature CSVs downloaded at once (Accuracy reads one per chart).
+_BLOB_WORKERS = 8
+
+
+def chart_locations(conn, chart_names: list[str]) -> dict[str, tuple[str, str]]:
+    """chart -> (blob container, Processed output_path) from chart_list. An empty
+    container is BLOB_CONTAINER, as for page images."""
+    from app.core.config import get_settings
+
+    default = get_settings().blob_container.strip().strip("/")
+    with conn.cursor() as cur:
+        cur.execute(_LOCATIONS, (chart_names,))
+        return {
+            str(chart): ((str(container or "").strip().strip("/") or default), str(out or "").strip().strip("/"))
+            for chart, container, out in cur.fetchall()
+        }
+
+
+def _blob_signature_rows(chart_name: str, location: tuple[str, str] | None) -> list[dict[str, str]]:
+    """``<output_path>/imaging/<chart>_provider_signature.csv`` from Azure Blob,
+    where the pipeline uploads it. [] when there is no blob location or file."""
+    import csv
+    import io
+
+    from app.services.blob_store import download_blob_at, resolved_blob_account_url
+
+    container, output_path = location or ("", "")
+    if not container or not output_path or not resolved_blob_account_url():
+        return []
+    key = f"{output_path}/imaging/{chart_name}_provider_signature.csv"
+    try:
+        data, _ = download_blob_at(container=container, key=key)
+    except Exception:  # noqa: BLE001 - missing or unreadable: the disk copy is tried
+        return []
+    reader = csv.DictReader(io.StringIO(data.decode("utf-8-sig", errors="replace")))
+    return [
+        {(k or "").strip(): (v or "").strip() for k, v in raw.items() if k is not None}
+        for raw in reader
+    ]
+
+
+def blob_signature_rows(
+    locations: dict[str, tuple[str, str]], chart_names: list[str]
+) -> dict[str, list[dict[str, str]]]:
+    """The signature CSV of each chart from Blob, several downloads at once."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    wanted = [name for name in chart_names if locations.get(name, ("", ""))[1]]
+    if not wanted:
+        return {}
+    with ThreadPoolExecutor(max_workers=_BLOB_WORKERS) as pool:
+        rows = pool.map(lambda name: _blob_signature_rows(name, locations.get(name)), wanted)
+        return dict(zip(wanted, rows))
+
+
 def _with_signatures(
-    pages: list[ImagingPageResult], data_root: Path, chart_name: str
+    pages: list[ImagingPageResult],
+    data_root: Path,
+    chart_name: str,
+    blob_rows: list[dict[str, str]] | None = None,
 ) -> list[ImagingPageResult]:
-    """Provider name / credentials / signature from the chart CSV, so the accuracy
-    report can score provider credentials."""
+    """Provider name / credentials / signature from the chart's signature CSV, so
+    the report can score provider credentials: the Azure Blob copy
+    (``blob_rows``, Processed output_path) when there is one, else the copy in
+    the local chart workspace."""
     from app.services.imaging_overlays import (
         collect_rows,
         index_signature_rows,
         overlay_fields,
     )
 
-    try:
-        rows = collect_rows(
-            folder_dir=data_root / chart_name,
-            data_root=data_root,
-            per_chart_name=f"{chart_name}_provider_signature.csv",
-            combined_rel=None,
-            chart_name=chart_name,
-        )
-    except OSError:
-        return pages
+    rows = blob_rows or []
+    if not rows:
+        try:
+            rows = collect_rows(
+                folder_dir=data_root / chart_name,
+                data_root=data_root,
+                per_chart_name=f"{chart_name}_provider_signature.csv",
+                combined_rel=None,
+                chart_name=chart_name,
+            )
+        except OSError:
+            return pages
     return overlay_fields(pages, index_signature_rows(rows, chart_name))
 
 
@@ -404,6 +470,8 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
             rows = _with_bulk_labels(
                 rows, latest_bulk_labels(conn, settings.database_url, names, settings.db_schema)
             )
+        locations = chart_locations(conn, names)
+    signatures = blob_signature_rows(locations, names)
     pages: dict[str, list[ImagingPageResult]] = {}
     sections: dict[str, ImagingSectionsProcessed] = {}
     manifests: dict[str, str | None] = {}
@@ -431,7 +499,7 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
     root = data_root if isinstance(data_root, Path) else Path(data_root)
     for chart_name, chart_pages in pages.items():
         pages[chart_name] = inherit_duplicate_blank_junk(
-            _with_signatures(chart_pages, root, chart_name)
+            _with_signatures(chart_pages, root, chart_name, signatures.get(chart_name))
         )
     charts = [
         AccuracyChartPayload(

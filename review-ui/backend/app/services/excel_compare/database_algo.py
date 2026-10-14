@@ -97,7 +97,7 @@ def fetch(
 ) -> tuple[dict[str, ImagingDocumentResponse], dict[str, datetime | None]]:
     """(chart -> its pages as a slim document, chart -> last run) for charts in
     chart_list. A chart with no pages there is absent from the documents."""
-    from app.services.accuracy_cache import _with_signatures
+    from app.services.accuracy_cache import _with_signatures, blob_signature_rows, chart_locations
     from app.services.imaging_overlays import inherit_duplicate_blank_junk
 
     pages: dict[str, list[ImagingPageResult]] = {}
@@ -109,11 +109,15 @@ def fetch(
             pages.setdefault(str(row[0]), []).append(_page(row))
         cur.execute(_LAST_RUN, (chart_names,))
         last_run = {str(name): updated for name, updated in cur.fetchall()}
+        locations = chart_locations(conn, list(pages))
+    # Provider credentials: the signature CSV in Blob (Processed), else on disk.
+    signatures = blob_signature_rows(locations, list(pages))
     documents = {
-        # Provider credentials live in the chart's signature CSV, as for Accuracy.
         chart: ImagingDocumentResponse.model_construct(
             folder_id=chart,
-            pages=inherit_duplicate_blank_junk(_with_signatures(chart_pages, data_root, chart)),
+            pages=inherit_duplicate_blank_junk(
+                _with_signatures(chart_pages, data_root, chart, signatures.get(chart))
+            ),
             verifications=[],
             verification=None,
         )
