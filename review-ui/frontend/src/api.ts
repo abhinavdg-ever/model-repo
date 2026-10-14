@@ -450,6 +450,8 @@ export type ManualReviewResult = {
   exemptedColumns: { column: string; reason: string }[];
   summary: { metric: string; count: number; percentage: number }[];
   rows: ManualReviewRow[];
+  /** Chart -> its last pipeline run (ISO); null when never run. Streamed compare only. */
+  lastRun?: Record<string, string | null>;
 };
 
 /** Each side is an uploaded sheet or the database. Database ground truth follows the
@@ -509,7 +511,7 @@ type ManualReviewCounts = Pick<
 
 export type ManualReviewEvent =
   | ({ type: "start"; charts: number } & Pick<ManualReviewResult, "fields" | "exemptedColumns">)
-  | ({ type: "chart"; pdfId: string; rows: ManualReviewRow[] } & ManualReviewCounts)
+  | ({ type: "chart"; pdfId: string; lastRunAt: string | null; rows: ManualReviewRow[] } & ManualReviewCounts)
   | ({ type: "done"; summary: ManualReviewResult["summary"] } & ManualReviewCounts)
   | { type: "error"; pdfId: string; detail: string };
 

@@ -51,7 +51,7 @@ function fmtUpdated(iso: string | null | undefined): string {
 }
 
 /** Date on one line, time under it, so the column stays narrow. */
-function DateLines({ iso }: { iso: string | null | undefined }) {
+export function DateLines({ iso }: { iso: string | null | undefined }) {
   const text = fmtUpdated(iso);
   const cut = text.lastIndexOf(", ");
   if (cut < 0) return <>{text}</>;

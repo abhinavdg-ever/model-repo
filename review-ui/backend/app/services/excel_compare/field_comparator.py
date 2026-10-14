@@ -38,6 +38,7 @@ ACTIVE_COMPARISON_FIELDS = [
     "Page Type",
     "Page Subtype",
     "Codable / Non-Codable",
+    "Provider Signature",
     "Current Sequence",
     "Actual Sequence",
 ]
@@ -70,6 +71,7 @@ DATE_FIELDS = {
 YES_NO_FIELDS = {
     "Is Blank or Junk?",
     "Duplicate",
+    "Provider Signature",
 }
 
 CODABLE_FIELDS = {

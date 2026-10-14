@@ -4463,6 +4463,17 @@ input {
   transform: none;
 }
 
+.excel-compare-stop {
+  background: var(--card);
+  color: var(--status-error-fg);
+  border-color: var(--status-error-fg);
+}
+
+.excel-compare-stopped {
+  margin: 0.5rem 0 0;
+  color: var(--status-warning-fg);
+}
+
 /* Results head: title and status pills on the left, search on the right. */
 .excel-compare-status-filters {
   margin-right: auto;

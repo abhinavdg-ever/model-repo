@@ -18,13 +18,14 @@ import io
 DIRECT_COLUMNS = {
     "DOS From": "dos_from",
     "DOS To": "dos_to",
-    "Page Type": "page_type",
     "Page Subtype": "page_subtype",
     "Codable / Non-Codable": "codeable",
     "Duplicate": "is_duplicate",
+    "Provider Signature": "provider_signature",
 }
 
 BLANK_OR_JUNK = "Is Blank or Junk?"
+PAGE_TYPE = "Page Type"
 
 
 def _yes(value: object) -> bool:
@@ -41,6 +42,16 @@ def _blank_or_junk(labels: dict) -> str:
     return ""
 
 
+def _page_type(labels: dict) -> str:
+    """The encounter type, as the Accuracy tab reads it: encounter_type, else
+    page_type (which older loads filled with the encounter label)."""
+    for source in ("encounter_type", "page_type"):
+        value = str(labels.get(source) or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def ground_csv(rows: list[tuple[str, int, dict]]) -> bytes:
     """The database labels as the CSV an uploaded Ground Truth file would be."""
     records = []
@@ -49,11 +60,12 @@ def ground_csv(rows: list[tuple[str, int, dict]]) -> bytes:
         for column, source in DIRECT_COLUMNS.items():
             value = labels.get(source)
             record[column] = "" if value is None else str(value).strip()
+        record[PAGE_TYPE] = _page_type(labels)
         record[BLANK_OR_JUNK] = _blank_or_junk(labels)
         records.append(record)
     columns = ["PDF ID", "Page Number"] + [
         column
-        for column in [*DIRECT_COLUMNS, BLANK_OR_JUNK]
+        for column in [*DIRECT_COLUMNS, PAGE_TYPE, BLANK_OR_JUNK]
         if any(record[column] for record in records)
     ]
     buffer = io.StringIO()

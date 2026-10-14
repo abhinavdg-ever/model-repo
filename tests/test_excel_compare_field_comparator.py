@@ -24,6 +24,7 @@ def make_row(**overrides):
         "Page Type": "Medical Record",
         "Page Subtype": "Progress Note",
         "Codable / Non-Codable": "Codable",
+        "Provider Signature": "Yes",
         "Current Sequence": "1",
         "Actual Sequence": "1",
     }

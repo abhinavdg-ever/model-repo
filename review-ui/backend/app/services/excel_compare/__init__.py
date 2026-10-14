@@ -84,18 +84,26 @@ def stream(
     ground: tuple[bytes, str],
     system: tuple[bytes, str] | None = None,
     load_system: Callable[[str], bytes | None] | None = None,
+    last_run: Callable[[str], str | None] | None = None,
 ) -> Iterator[dict[str, Any]]:
     """The comparison one PDF ID at a time, for the screen to fill in as it goes.
+    Ground truth is the base: only its charts and pages are compared.
 
     The Algo side is an uploaded sheet (``system``) or, chart by chart,
     ``load_system(pdf_id)``: the pipeline output as CSV bytes, None when the
-    chart has none. Events: ``start`` (charts, fields, exemptions), one
+    chart has none. ``last_run(pdf_id)`` is the chart's last pipeline run. Events: ``start`` (charts, fields, exemptions), one
     ``chart`` per PDF ID with its rows, then ``done`` with the summary. A
     failure part-way is an ``error`` event; what was sent stays valid.
     """
     import pandas as pd
 
-    from .compare import _read_file, _resolve_comparison_fields, _validate_columns, compare_frames
+    from .compare import (
+        _read_file,
+        _resolve_comparison_fields,
+        _validate_columns,
+        compare_frames,
+        restrict_to_ground,
+    )
     from .database_system import COLUMNS
     from .record_matcher import normalize_key
     from .result_builder import build_summary
@@ -112,10 +120,10 @@ def stream(
     def key(frame) -> "pd.Series":
         return frame["PDF ID"].map(lambda value: normalize_key(value, 0)[0])
 
+    # Ground truth is the base: its charts, in its order (see restrict_to_ground).
     ground_keys = key(ground_df)
     system_keys = key(system_df) if system is not None else None
-    pdf_ids = list(dict.fromkeys(ground_keys.tolist() + (system_keys.tolist() if system_keys is not None else [])))
-    pdf_ids = [pdf_id for pdf_id in pdf_ids if pdf_id]
+    pdf_ids = [pdf_id for pdf_id in dict.fromkeys(ground_keys.tolist()) if pdf_id]
 
     yield {
         "type": "start",
@@ -134,6 +142,7 @@ def stream(
             else:
                 data = load_system(pdf_id) if load_system else None
                 system_part = _read_file(_upload(data, "algo.csv")) if data else pd.DataFrame(columns=COLUMNS)
+            system_part = restrict_to_ground(ground_part, system_part)
             rows, missing, extra = compare_frames(ground_part, system_part, fields)
         except Exception as exc:  # noqa: BLE001 - reported to the screen, not raised mid-stream
             yield {"type": "error", "pdfId": pdf_id, "detail": str(exc)}
@@ -145,7 +154,17 @@ def stream(
         counts["errorCount"] += sum(1 for row in rows if row["Status"] == "ERROR")
         counts["missingCount"] += missing
         counts["extraCount"] += extra
-        yield {"type": "chart", "pdfId": pdf_id, "rows": [_row(row, fields) for row in rows], **counts}
+        try:
+            ran = last_run(pdf_id) if last_run else None
+        except Exception:  # noqa: BLE001 - a missing timestamp must not stop the comparison
+            ran = None
+        yield {
+            "type": "chart",
+            "pdfId": pdf_id,
+            "lastRunAt": ran,
+            "rows": [_row(row, fields) for row in rows],
+            **counts,
+        }
 
     summary = build_summary(counts["groundCount"], counts["systemCount"], all_rows)
     yield {"type": "done", **counts, "summary": _summary(summary)}

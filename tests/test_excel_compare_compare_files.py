@@ -74,8 +74,10 @@ def test_full_pipeline_correct_error_missing_extra_and_multi_pdf():
         build_row("111111", 1),
         build_row("111111", 2, **{"Page Type": "Billing Record"}),
         build_row("222222", 1),
-        # PDF 111111, page 4: no ground truth counterpart -> EXTRA
+        # PDF 111111, page 4: no ground truth row -> left out (GT is the base)
         build_row("111111", 4),
+        # PDF 333333: a chart the ground truth never lists -> left out
+        build_row("333333", 1),
     ]
 
     ground_df = pd.DataFrame(ground_rows)
@@ -101,17 +103,19 @@ def test_full_pipeline_correct_error_missing_extra_and_multi_pdf():
     )
 
     assert rows_by_key[("111111", "3")]["Status"] == "MISSING"
-    assert rows_by_key[("111111", "4")]["Status"] == "EXTRA"
+    # Ground truth is the base: unlabelled algo pages are not compared.
+    assert ("111111", "4") not in rows_by_key
+    assert ("333333", "1") not in rows_by_key
 
     # Second PDF ID in the same upload is matched and compared too
     assert rows_by_key[("222222", "1")]["Status"] == "CORRECT"
 
     assert result["ground_count"] == 4
-    assert result["system_count"] == 4
+    assert result["system_count"] == 3
     assert result["correct_count"] == 2
     assert result["error_count"] == 1
     assert result["missing_count"] == 1
-    assert result["extra_count"] == 1
+    assert result["extra_count"] == 0
 
 
 def test_exact_key_match_does_not_imply_correctness():

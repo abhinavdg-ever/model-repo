@@ -49,7 +49,7 @@ def test_compare_returns_rows_with_the_mismatched_fields(client):
     res = client.post("/api/excel-compare", files=_files(), data=UPLOAD)
     assert res.status_code == 200
     body = res.json()
-    assert (body["correctCount"], body["errorCount"], body["missingCount"], body["extraCount"]) == (1, 1, 1, 1)
+    assert (body["correctCount"], body["errorCount"], body["missingCount"], body["extraCount"]) == (1, 1, 1, 0)
     assert body["fields"] == ["DOS From", "DOS To", "Codable / Non-Codable"]
     error = next(row for row in body["rows"] if row["status"] == "ERROR")
     assert error["pdfId"] == "100" and error["pageNumber"] == "2"
@@ -86,10 +86,16 @@ class _Repo:
         from app.core.schemas import FolderSummary, ImagingDocumentResponse, ImagingPageResult
 
         self.asked = []
-        self.folders = [FolderSummary(id="f100", name="100"), FolderSummary(id="f200", name="200")]
+        from datetime import datetime, timezone
+
+        self.folders = [
+            FolderSummary(id="f100", name="100", last_updated_at=datetime(2026, 10, 14, 8, 8, tzinfo=timezone.utc)),
+            FolderSummary(id="f200", name="200"),
+        ]
         pages = [
             ImagingPageResult(pageNumber=1, fileName="1.png", dosFrom="2024-03-15", dosTo="2024-03-15",
                               isCodeable="Codable", pageType="Progress Note (Office Visit)",
+                              encounterType="Outpatient (F2F)", providerSignature="Yes",
                               blankOrJunk="No", isDuplicate=False),
             ImagingPageResult(pageNumber=2, fileName="2.png", dosFrom="2024-03-17", dosTo="2024-03-16",
                               isCodeable="Non-Codable", blankOrJunk="Yes (Junk)"),
@@ -125,8 +131,8 @@ def test_system_output_defaults_to_the_pipeline(client, repo):
     body = res.json()
     # Only the ground truth's PDF IDs are read; chart 200 has no output yet.
     assert repo.asked == ["f100", "f200"]
-    assert (body["groundCount"], body["systemCount"]) == (3, 3)
-    assert (body["correctCount"], body["errorCount"], body["missingCount"], body["extraCount"]) == (1, 1, 1, 1)
+    assert (body["groundCount"], body["systemCount"]) == (3, 2)
+    assert (body["correctCount"], body["errorCount"], body["missingCount"], body["extraCount"]) == (1, 1, 1, 0)
     error = next(row for row in body["rows"] if row["status"] == "ERROR")
     assert error["mismatched"] == ["DOS From"]
 
@@ -138,7 +144,9 @@ def test_pipeline_output_as_the_system_csv():
 
     rows = list(csv.DictReader(io.StringIO(system_csv([("100", _Repo().doc)]).decode())))
     first, second, fourth = rows
-    assert (first["Page Type"], first["Page Subtype"]) == ("Progress Note", "Office Visit")
+    # Page Type is the encounter type; the classifier's sub-type is Page Subtype.
+    assert (first["Page Type"], first["Page Subtype"]) == ("Outpatient (F2F)", "Office Visit")
+    assert (first["Provider Signature"], second["Provider Signature"]) == ("Yes", "")
     assert (first["Is Blank or Junk?"], first["Duplicate"]) == ("No", "No")
     assert second["Is Blank or Junk?"] == "Yes"
     # A page with no DOS carries the default Download Results ships.
@@ -187,7 +195,7 @@ def test_ground_truth_from_the_database_for_the_system_file(client, monkeypatch)
     body = res.json()
     # Only the PDF IDs in the system file are looked up.
     assert asked == {"charts": ["100"], "source": "bulk_upload"}
-    assert (body["groundCount"], body["correctCount"], body["extraCount"]) == (2, 2, 1)
+    assert (body["groundCount"], body["correctCount"], body["extraCount"]) == (2, 2, 0)
 
 
 def test_both_sides_from_the_database(client, repo, monkeypatch):
@@ -199,8 +207,8 @@ def test_both_sides_from_the_database(client, repo, monkeypatch):
     # Every chart with ground truth, then the pipeline output for the labelled ones.
     assert asked == {"charts": ["100", "300"], "source": "latest"}
     assert repo.asked == ["f100"]
-    assert (body["groundCount"], body["systemCount"]) == (2, 3)
-    assert (body["correctCount"], body["errorCount"], body["extraCount"]) == (2, 0, 1)
+    assert (body["groundCount"], body["systemCount"]) == (2, 2)
+    assert (body["correctCount"], body["errorCount"], body["extraCount"]) == (2, 0, 0)
 
 
 def test_database_ground_truth_needs_a_database(client, monkeypatch):
@@ -239,9 +247,11 @@ def test_stream_sends_one_chart_at_a_time(client, repo):
     start, first, second, done = events
     assert start["charts"] == 2 and start["fields"] == ["DOS From", "DOS To", "Codable / Non-Codable"]
     # Chart 100 against its pipeline output, then 200, which has none: all Missing.
-    assert first["pdfId"] == "100" and len(first["rows"]) == 3
+    assert first["pdfId"] == "100" and len(first["rows"]) == 2
     assert [row["status"] for row in second["rows"]] == ["MISSING"]
-    assert (done["correctCount"], done["errorCount"], done["missingCount"], done["extraCount"]) == (1, 1, 1, 1)
+    # Each chart carries its last pipeline run; one never run has none.
+    assert (first["lastRunAt"], second["lastRunAt"]) == ("2026-10-14T08:08:00+00:00", None)
+    assert (done["correctCount"], done["errorCount"], done["missingCount"], done["extraCount"]) == (1, 1, 1, 0)
     assert any(item["metric"] == "Match Percentage" for item in done["summary"])
     # The pipeline is read chart by chart, as the stream reaches each one.
     assert repo.asked == ["f100", "f200"]
@@ -263,4 +273,17 @@ def test_stream_bad_headers_fail_before_the_stream(client, repo):
 def test_a_chart_header_is_the_pdf_id(client):
     ground = GROUND.replace("PDF Id", "Chart Name")
     body = client.post("/api/excel-compare", files=_files(ground=ground), data=UPLOAD).json()
-    assert (body["correctCount"], body["errorCount"], body["missingCount"], body["extraCount"]) == (1, 1, 1, 1)
+    assert (body["correctCount"], body["errorCount"], body["missingCount"], body["extraCount"]) == (1, 1, 1, 0)
+
+
+def test_database_ground_truth_page_type_is_the_encounter_type():
+    import csv
+
+    from app.services.excel_compare.database_ground import ground_csv
+
+    rows = list(csv.DictReader(io.StringIO(ground_csv([
+        ("100", 1, {"encounter_type": "Inpatient", "page_type": "Outpatient (F2F)", "provider_signature": "No"}),
+        ("100", 2, {"page_type": "Outpatient (F2F)"}),
+    ]).decode())))
+    assert [row["Page Type"] for row in rows] == ["Inpatient", "Outpatient (F2F)"]
+    assert rows[0]["Provider Signature"] == "No"

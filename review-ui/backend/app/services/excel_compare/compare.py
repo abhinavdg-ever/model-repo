@@ -141,6 +141,27 @@ def _resolve_comparison_fields(ground, system):
 # CORE COMPARISON
 # =============================================================
 
+def restrict_to_ground(ground, system):
+    """
+    The Algo Generated rows whose (PDF ID, Page Number) the ground truth
+    lists -- a left join on the ground truth. Ground truth is the base: an
+    unlabelled algo page or chart is not compared, so it never counts as
+    Extra. A labelled page with no algo row still comes out Missing.
+    """
+
+    from .record_matcher import normalize_key
+
+    def keys(frame):
+        return [
+            normalize_key(pdf_id, page_number)
+            for pdf_id, page_number in zip(frame["PDF ID"], frame["Page Number"])
+        ]
+
+    labelled = set(keys(ground))
+    keep = [key in labelled for key in keys(system)]
+    return system[keep]
+
+
 def compare_frames(ground, system, fields_to_compare):
     """
     Match and compare two already-read, already-validated frames.
@@ -225,6 +246,8 @@ def compare_files(ground_file, system_file):
     fields_to_compare, exempted_columns = _resolve_comparison_fields(
         ground, system
     )
+
+    system = restrict_to_ground(ground, system)
 
     result_rows, missing_count, extra_count = compare_frames(
         ground, system, fields_to_compare

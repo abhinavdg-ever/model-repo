@@ -617,32 +617,42 @@ async def _upload_bytes(label: str, upload: UploadFile | None) -> tuple[bytes, s
     return data, name
 
 
-def _pipeline_loader(repo: FolderRepository):
-    """pdf_id -> that chart's pipeline output as Algo Generated CSV bytes,
-    or None when review-ui has no output for it. Folders are listed once."""
-    folders: dict[str, str] | None = None
+class _PipelineCharts:
+    """The charts review-ui knows, listed once on first use: each one's
+    pipeline output as Algo Generated CSV bytes, and when it last ran."""
 
-    def load(pdf_id: str) -> bytes | None:
-        nonlocal folders
-        if folders is None:
-            folders = {folder.name: folder.id for folder in repo.list_folders()}
-        folder_id = folders.get(pdf_id)
-        if folder_id is None:
+    def __init__(self, repo: FolderRepository) -> None:
+        self._repo = repo
+        self._folders: dict[str, FolderSummary] | None = None
+
+    def _folder(self, pdf_id: str) -> FolderSummary | None:
+        if self._folders is None:
+            self._folders = {folder.name: folder for folder in self._repo.list_folders()}
+        return self._folders.get(pdf_id)
+
+    def load(self, pdf_id: str) -> bytes | None:
+        """None when review-ui has no output for the chart."""
+        folder = self._folder(pdf_id)
+        if folder is None:
             return None
         try:
-            doc = repo.get_imaging(folder_id)
+            doc = self._repo.get_imaging(folder.id)
         except HTTPException:
             return None  # no imaging output for this chart yet
         return excel_compare.database_system.system_csv([(pdf_id, doc)])
 
-    return load
+    def last_run(self, pdf_id: str) -> str | None:
+        """ISO time of the chart's last pipeline run; None when never run."""
+        folder = self._folder(pdf_id)
+        moment = folder.last_updated_at if folder else None
+        return moment.isoformat() if moment else None
 
 
 def _system_from_pipeline(repo: FolderRepository, pdf_ids: list[str]) -> tuple[bytes, str]:
     """The pipeline output for the charts named by the ground truth's PDF IDs, as one sheet."""
-    load = _pipeline_loader(repo)
+    charts = _PipelineCharts(repo)
     try:
-        parts = [data for data in (load(pdf_id) for pdf_id in pdf_ids) if data]
+        parts = [data for data in (charts.load(pdf_id) for pdf_id in pdf_ids) if data]
     except Exception as exc:
         logger.warning("manual review algo output lookup failed: %s", exc)
         raise HTTPException(status_code=502, detail="Could not read the algo output") from exc
@@ -783,8 +793,12 @@ async def post_excel_compare_stream(
     while later charts are still being read. Bad input fails before the
     stream starts; a failure part-way is an ``error`` line."""
     ground, system = await _inputs(settings, ground_file, ground_source, ground_truth, system_file, system_source)
+    charts = _PipelineCharts(repo)
     events = excel_compare.stream(
-        ground, system, load_system=None if system is not None else _pipeline_loader(repo)
+        ground,
+        system,
+        load_system=None if system is not None else charts.load,
+        last_run=charts.last_run,
     )
     try:
         first = next(events)  # reads and checks both files' headers

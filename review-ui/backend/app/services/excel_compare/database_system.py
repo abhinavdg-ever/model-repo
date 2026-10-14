@@ -4,8 +4,9 @@ review-ui already shows, instead of an uploaded sheet.
 PDF ID is the chart name and Page Number the page number. Values are the
 ones Download Results ships (document DOS, then the page's own, then the
 2222-02-02 default), so the comparison scores what a reader of that file
-would see. Page type is shown as ``Type (Sub-type)``; it is split back into
-the two columns here.
+would see. Page Type is the encounter type (Outpatient (F2F), Inpatient, …),
+which is what ground truth labels as page type; Page Subtype is the page
+classifier's sub-type, split back out of its ``Type (Sub-type)`` display.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ COLUMNS = [
     "Page Type",
     "Page Subtype",
     "Codable / Non-Codable",
+    "Provider Signature",
     "Current Sequence",
     "Actual Sequence",
 ]
@@ -51,13 +53,12 @@ def _blank_or_junk(value: str | None) -> str:
     return "Yes" if text.lower().startswith("y") else "No"
 
 
-def _page_type(shown: str | None) -> tuple[str, str]:
-    """``Type (Sub-type)`` -> (Type, Sub-type); a bare name is both."""
+def _page_subtype(shown: str | None) -> str:
+    """``Type (Sub-type)`` -> Sub-type; a bare name is its own sub-type."""
     text = _text(shown)
     if text.endswith(")") and " (" in text:
-        page_type, _, subtype = text[:-1].partition(" (")
-        return page_type.strip(), subtype.strip()
-    return text, text
+        return text[:-1].partition(" (")[2].strip()
+    return text
 
 
 def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
@@ -67,7 +68,6 @@ def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
     writer.writeheader()
     for chart_name, doc in docs:
         for page in fill_doc_dos_for_download(doc.pages):
-            page_type, page_subtype = _page_type(page.pageType)
             writer.writerow(
                 {
                     "PDF ID": chart_name,
@@ -79,9 +79,10 @@ def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
                     "DOS To": _text(page.docDosTo),
                     "Is Blank or Junk?": _blank_or_junk(page.blankOrJunk),
                     "Duplicate": _yes_no(page.isDuplicate),
-                    "Page Type": page_type,
-                    "Page Subtype": page_subtype,
+                    "Page Type": _text(page.encounterType),
+                    "Page Subtype": _page_subtype(page.pageType),
                     "Codable / Non-Codable": _text(page.isCodeable),
+                    "Provider Signature": _text(page.providerSignature),
                     "Current Sequence": _text(page.currentSequence),
                     "Actual Sequence": _text(page.actualSequence),
                 }

@@ -12,6 +12,7 @@ import {
   Link2,
   Loader2,
   Search,
+  Square,
   Upload,
   X,
 } from "lucide-react";
@@ -24,6 +25,7 @@ import {
   type ManualReviewRow,
   type ManualReviewStatus,
 } from "./api";
+import { DateLines } from "./AccuracyView";
 import { saveChartOrder } from "./chartSequence";
 import { readGroundTruthSource } from "./groundTruthSource";
 import { readFile, readSources, writeFile, writeSources, type Source } from "./manualReviewStore";
@@ -334,6 +336,15 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
   // Charts read so far while a comparison streams in; null when idle.
   const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
   const streamRef = useRef<AbortController | null>(null);
+  // Set when Stop ends a comparison early: the charts loaded so far stay on screen.
+  const [stopped, setStopped] = useState<{ loaded: number; total: number } | null>(null);
+
+  function stopCompare() {
+    const controller = streamRef.current;
+    if (!controller) return;
+    setStopped(progress ?? { loaded: 0, total: 0 });
+    controller.abort();
+  }
 
   // Leaving the page stops a comparison still streaming; a partial one is not kept.
   useEffect(
@@ -349,6 +360,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
   function pick(side: "ground" | "system", setter: (file: File | null) => void) {
     return (file: File | null) => {
       streamRef.current?.abort();
+      setStopped(null);
       setter(file);
       void writeFile(side, file);
       // A result belongs to the files it was run on.
@@ -365,6 +377,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
   function chooseSource(setter: (source: Source) => void) {
     return (source: Source) => {
       streamRef.current?.abort();
+      setStopped(null);
       setter(source);
       setResult(null);
       setError(null);
@@ -378,6 +391,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     streamRef.current = controller;
     setComparing(true);
     setError(null);
+    setStopped(null);
     setFilter("ALL");
     setPage(1);
     // Filled in chart by chart as the backend reads each one.
@@ -403,11 +417,18 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
           } else if (event.type === "error") {
             setError(`Stopped at chart ${event.pdfId}: ${event.detail}`);
             return;
-          } else if (current) {
-            const { type: _type, ...rest } = event;
-            const rows = event.type === "chart" ? [...current.rows, ...event.rows] : current.rows;
-            current = { ...current, ...rest, rows };
-            if (event.type === "chart") setProgress((p) => (p ? { ...p, loaded: p.loaded + 1 } : p));
+          } else if (current && event.type === "chart") {
+            const { type: _type, pdfId, lastRunAt, rows, ...counts } = event;
+            current = {
+              ...current,
+              ...counts,
+              rows: [...current.rows, ...rows],
+              lastRun: { ...current.lastRun, [pdfId]: lastRunAt },
+            };
+            setProgress((p) => (p ? { ...p, loaded: p.loaded + 1 } : p));
+          } else if (current && event.type === "done") {
+            const { type: _type, ...totals } = event;
+            current = { ...current, ...totals };
           }
           setResult(current);
         },
@@ -491,7 +512,6 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
         { id: "ALL", label: "All", count: searched.length },
         { id: "ERROR", label: "Errors", count: statusCount("ERROR") },
         { id: "MISSING", label: "Missing", count: statusCount("MISSING") },
-        { id: "EXTRA", label: "Extra", count: statusCount("EXTRA") },
         { id: "CORRECT", label: "Correct", count: statusCount("CORRECT") },
       ]
     : [];
@@ -589,6 +609,12 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                 : "Comparing…"
               : "Compare Files"}
           </button>
+          {comparing ? (
+            <button type="button" className="landing-file-viewer-btn excel-compare-stop" onClick={stopCompare}>
+              <Square size={13} aria-hidden="true" />
+              Stop
+            </button>
+          ) : null}
           {result && !comparing ? (
             <button
               type="button"
@@ -612,6 +638,12 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
       </section>
 
       {error ? <div className="error-banner">{error}</div> : null}
+      {stopped && result ? (
+        <p className="accuracy-note excel-compare-stopped">
+          Stopped after {stopped.loaded} of {stopped.total} charts. Counts and results cover those charts only;
+          Compare Files runs it again in full.
+        </p>
+      ) : null}
 
       {result ? (
         <>
@@ -633,7 +665,6 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                     ["exact matches", result.correctCount],
                     ["field errors", result.errorCount],
                     ["missing", result.missingCount],
-                    ["extra", result.extraCount],
                   ],
                 },
                 {
@@ -742,6 +773,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                 <thead>
                   <tr>
                     <th scope="col">Chart</th>
+                    <th scope="col">Last Run At</th>
                     <th scope="col">Page</th>
                     <th scope="col">Source</th>
                     {result.fields.map((field) => (
@@ -757,7 +789,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                   {pageRows.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={result.fields.length + 5}
+                        colSpan={result.fields.length + 6}
                         className="accuracy-empty"
                       >
                         No records match.
@@ -804,6 +836,9 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                                 <ExternalLink size={12} aria-hidden="true" />
                               </button>
                             </th>
+                            <td rowSpan={span} className="landing-col-updated accuracy-col-date">
+                              <DateLines iso={result.lastRun?.[row.pdfId]} />
+                            </td>
                             <td rowSpan={span}>{row.pageNumber}</td>
                           </>
                         ) : null}
