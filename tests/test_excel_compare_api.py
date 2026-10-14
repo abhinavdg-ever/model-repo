@@ -88,9 +88,10 @@ class _Repo:
         self.asked = []
         from datetime import datetime, timezone
 
+        # The light chart list Last Run At reads (build_folder_list).
         self.folders = [
-            FolderSummary(id="f100", name="100", last_updated_at=datetime(2026, 10, 14, 8, 8, tzinfo=timezone.utc)),
-            FolderSummary(id="f200", name="200"),
+            FolderSummary(id="100", name="100", last_updated_at=datetime(2026, 10, 14, 8, 8, tzinfo=timezone.utc)),
+            FolderSummary(id="200", name="200"),
         ]
         pages = [
             ImagingPageResult(pageNumber=1, fileName="1.png", dosFrom="2024-03-15", dosTo="2024-03-15",
@@ -104,13 +105,14 @@ class _Repo:
         self.doc = ImagingDocumentResponse.model_construct(pages=pages, verifications=[], verification=None)
 
     def list_folders(self):
-        return self.folders
+        # Local Mode scans every page of every chart here: Manual Review must not call it.
+        raise AssertionError("Manual Review read the full folder list")
 
     def get_imaging(self, folder_id):
         from fastapi import HTTPException
 
         self.asked.append(folder_id)
-        if folder_id != "f100":
+        if folder_id != "100":
             raise HTTPException(status_code=404, detail="no imaging")
         return self.doc
 
@@ -119,9 +121,16 @@ class _Repo:
 def repo(client):
     from app.adapters.factory import get_repository
 
+    from types import SimpleNamespace
+
+    import app.api.routes as routes
+
     fake = _Repo()
     client.app.dependency_overrides[get_repository] = lambda: fake
-    return fake
+    routes_build = routes.build_folder_list
+    routes.build_folder_list = lambda **_kwargs: SimpleNamespace(items=fake.folders)
+    yield fake
+    routes.build_folder_list = routes_build
 
 
 def test_system_output_defaults_to_the_pipeline(client, repo):
@@ -130,7 +139,7 @@ def test_system_output_defaults_to_the_pipeline(client, repo):
     assert res.status_code == 200, res.text
     body = res.json()
     # Only the ground truth's PDF IDs are read; chart 200 has no output yet.
-    assert repo.asked == ["f100", "f200"]
+    assert repo.asked == ["100", "200"]
     assert (body["groundCount"], body["systemCount"]) == (3, 2)
     assert (body["correctCount"], body["errorCount"], body["missingCount"], body["extraCount"]) == (1, 1, 1, 0)
     error = next(row for row in body["rows"] if row["status"] == "ERROR")
@@ -206,7 +215,7 @@ def test_both_sides_from_the_database(client, repo, monkeypatch):
     body = res.json()
     # Every chart with ground truth, then the pipeline output for the labelled ones.
     assert asked == {"charts": ["100", "300"], "source": "latest"}
-    assert repo.asked == ["f100"]
+    assert repo.asked == ["100"]
     assert (body["groundCount"], body["systemCount"]) == (2, 2)
     assert (body["correctCount"], body["errorCount"], body["extraCount"]) == (2, 0, 0)
 
@@ -254,7 +263,7 @@ def test_stream_sends_one_chart_at_a_time(client, repo):
     assert (done["correctCount"], done["errorCount"], done["missingCount"], done["extraCount"]) == (1, 1, 1, 0)
     assert any(item["metric"] == "Match Percentage" for item in done["summary"])
     # The pipeline is read chart by chart, as the stream reaches each one.
-    assert repo.asked == ["f100", "f200"]
+    assert repo.asked == ["100", "200"]
 
 
 def test_stream_with_an_uploaded_algo_file_matches_the_whole_compare(client):
