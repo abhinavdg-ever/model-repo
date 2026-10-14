@@ -1,269 +1,485 @@
-# Blank / Junk — Current Logic and Proposed Redesign
+# Blank / Junk — Methodology
 
-Status: PROPOSAL for review (2026-10-14). Nothing here is implemented yet.
-Sections 1-3 describe the code as it is; sections 4-14 are the proposed design.
-
----
-
-## 1. Summary
-
-- The repo's blank/junk model code (`core-pipeline/stages/lib/blank_junk/model/src/`) was last synced from b_jnk v3 on 2026-10-12 (commit c274b09). The `b_jnk_v3` zip of 2026-10-14 is **newer**: most model-side differences are improvements the repo does not have yet.
-- The repo adds its own layer on top of the model: two passes, a TF-IDF safety net, seven post-model rules, duplicate detection.
-- Several of those post-model rules patch false-junk cases that v3 now fixes inside the model.
-- The proposal: standardise on three voters (DistilBERT, TF-IDF, a keyword-context voter driven by an editable canon), decide by 2-of-3 with a clinical veto, keep pass 1 conservative, and record every vote.
+Status: PROPOSAL (2026-10-14), written from scratch. Nothing here is implemented.
+Canon: `core-pipeline/stages/lib/keyword-canon/blank_junk_context_canon.json`.
 
 ---
 
-## 2. Current logic (repo)
+## 1. Principle
 
-### 2.1 Passes and inputs
+A clinical page that is junked loses billable content and cannot be recovered
+downstream. A junk page that is kept only costs a reviewer a few seconds.
+So:
 
-| | Pass 1 | Pass 2 |
+- Every tie, abstention and missing signal resolves to **KEEP**.
+- JUNK needs **agreement**: at least two independent methods saying JUNK and
+  no veto.
+- A small set of deterministic rules decide before any vote, so obvious pages
+  never depend on a model.
+- Every vote is written to the database, so any verdict can be explained and
+  thresholds can be tuned from data.
+
+---
+
+## 2. Verdicts
+
+| Verdict | Meaning | Subtypes |
 |---|---|---|
-| Runs after | Preliminary OCR (Tesseract) | Final OCR 1 + 2, section headers, kv_extract |
-| Text | Tesseract | Azure DocIntel, else Docling/RapidOCR (prelim not used) |
-| Pages | Printed only; handwritten and quality_tag=low skipped | Pages pass 1 did not call blank / junk / duplicate |
-| Docling page object | no | only when final2 is empty and final1 is used |
+| `blank` | No content | — |
+| `junk` | Non-clinical page | Invoice, Cover Page, Record Request/Transmittal, Instructions, Letter/Fax, Others |
+| `duplicate` | Same content as a kept page nearby | — |
+| `not_blank_junk` | Main page, kept | — |
 
-### 2.2 Model decision (vendored b_jnk package)
-
-1. **Route:** empty or structurally empty text → BLANK; picture but no text (Docling only) → KEEP + review.
-2. **DistilBERT** (8 labels: KEEP, BLANK, six JUNK_*), probabilities bucketed into KEEP / BLANK / JUNK.
-3. **Retention:** a clinical image is always KEEP; a demographic page is KEEP + review unless the model is at least 0.95 sure of a junk label and that label's trigger phrase is on the page.
-4. **Keep veto:** p(KEEP) > 0.10 → KEEP + review.
-5. **Confidence floor:** best label below 0.85, or page below 0.70 → KEEP + review.
-6. **Word rules:** invoice, shell (cover / letter-fax) and end-of-record phrases force JUNK + review.
-7. **Subtype:** single trigger wins; otherwise the model's pick if among the triggers, else main purpose; short / gibberish → Others.
-8. **TF-IDF safety net (repo only):** BERT says KEEP but TF-IDF p(junk) ≥ 0.60 and not a clinical image → JUNK + review.
-9. **Fallbacks:** TF-IDF only when BERT / torch is missing; regex classifier when no model loads.
-
-### 2.3 Clinical-image recognition
-
-Text patterns only (`model/src/preprocessing/protocol.py:112-123`); any match anywhere on the page keeps it and skips the word rules and the safety net:
-
-| Pattern | Example |
-|---|---|
-| wound + photo / image / tracking / care | Wound care photo |
-| dermatology(-ic) + photo / image / lesion | Dermatology lesion |
-| lesion + photo / image / capture | Lesion capture |
-| endoscopy / endoscopic | the word alone |
-| colonoscopy / colonoscopic | the word alone |
-| retinal + scan / image / photo | Retinal scan |
-| fundus + photo / image / exam | Fundus exam |
-| ophthalmolog… | the word alone |
-| clinical + photo / image / imaging | Clinical imaging |
-| OCT + nerve / mac / scan | OCT scan |
-| slit lamp | Slit lamp |
-
-Weak spot: endoscopy, colonoscopy and ophthalmology match on their own, so a fax cover from "XYZ Endoscopy" is always kept. v3 requires photo / image / picture for endoscopy and colonoscopy, and allows the bare specialty name only on pages of 60 words or fewer.
-
-### 2.4 Post-model rules (repo only, both passes, in order)
-
-1. At least 2 clinical headings at line start → Main (0.9).
-2. Model said BLANK, page has text and no "blank" word → Junk with **no subtype**.
-3. Pass 2 only: Main page under 20 words, not signed, not a clinical note → Others (0.9).
-4. Signed, or under 20 words containing "signature" → Main (0.9).
-5. Forced junk: letter/fax phrases (incl. "fax") or record-request phrases hit at least 3 times → that subtype (0.95); skipped when signed.
-6. Vendor junk: Optum / OptumCare / Datavant at least 3 times → Record Request (0.99), absolute.
-7. End of pass 2: a Visual page next to a kept page → Main, unless rule 5 or 6 applies.
-
-### 2.5 Duplicates
-
-Kept (Main) pages only, within ±2 positions, normalised text of at least 300 characters; a match at SequenceMatcher ≥ 0.98 or when one text is contained in the other (stored as 1.0). The longer page is kept (earlier on a tie); chains resolve to the original.
-
-### 2.6 Written to the database
-
-`blank_junk_classification`: `blank_junk_flag` (blank / junk / duplicate / not_blank_junk), `junk_subtype` (Invoice, Cover Page, Record Request/Transmittal, Instructions, Letter/Fax, Others, or NULL), `duplicate_of_page_id`, `ocr_source`, `confidence`, `reason`, `pass_no`, `is_final`. There is **no review column**: the model's review flag survives only as words inside `reason`.
+A junk verdict always carries a subtype. Others is the fallback; NULL is never
+written.
 
 ---
 
-## 3. Findings
+## 3. Inputs
 
-### 3.1 b_jnk_v3 zip vs repo
-
-| What | v3 zip | Repo | Verdict |
+| Signal | Source | Pass 1 | Pass 2 |
 |---|---|---|---|
-| TF-IDF safety net | none | p(junk) ≥ 0.60 → Junk | repo's deliberate addition |
-| Demographic override for Invoice | needs a billing/card regex match | any trigger may override | both deliberate, different fixes |
-| Fax stamps on lab pages as triggers | ignored | counted | v3 newer (repo junks faxed labs) |
-| Rule veto: p(keep) ≥ 0.95 and ≥ 3 clinical words cancels word rules | yes | no | v3 newer |
-| Admin pages (retrieval paperwork, header-only, contents, placeholder, C-CDA metadata) → Junk | yes | no | v3 newer |
-| Always-keep: forms, clinical letters, signature pages, labs, dense values | yes | no | v3 newer |
-| Bare endoscopy / ophthalmology keeps any page | short pages only | any page | v3 newer |
-| "billing address" not billing; "birth date" demographic | yes | no | v3 newer |
-| Two passes, duplicates, post-model rules | n/a | yes | repo pipeline design |
+| Text | Tesseract prelim (pass 1); Azure DocIntel, else Docling/RapidOCR (pass 2) | yes | yes |
+| Line coordinates | `final2.pagesMeta[].lines[].polygon`, else `final1.words[].polygon` | no | yes |
+| Ink map | Page image (same ink measure the HW stage uses, `page_marks`) | yes | yes |
+| Page type | `ocr_quality_results.document_type`: printed / handwritten / form / **visual** / blank / uncertain, and `handwritten_area_pct`, page-tag model (`convnext_page_tags`) | yes | yes |
+| Signature | KV extraction (`kv_extract`, seq 56): Provider Signature = Yes. Runs after final OCR and **before** pass 2 (seq 60) | no | yes |
+| DistilBERT | 8-label page model (KEEP, BLANK, 6 × JUNK_*) | yes | yes |
+| TF-IDF | `tfidf_flat.joblib`, p(junk) | yes | yes |
+| Keyword context | `blank_junk_context_canon.json` | yes | yes |
 
-### 3.2 Bugs in the repo
+**Visual.** Read from one place only: `ocr_quality_results.document_type = 'visual'`
+(CSV: `document_type` in `imaging/<chart>_hw_printed.csv`). This is the same value
+review-ui shows as Type. No extra confidence cut-off is applied: the page-tag model
+already turns a weak call into `uncertain`. There is no proxy. A page without
+page-tag output (`method` other than `convnext_page_tags`) is simply not Visual. Its
+row records `visual_source = "none"`, so a run on the old 2-class checkpoint
+shows in the data. The four charts under `review-ui/data/folders/` were run that
+way and carry no Visual tags.
 
-1. **Visual rescue undoes forced junk.** A page pass 1 force-junked gets no final OCR, so pass 2 sees empty text; the "forced junk stays junk" check cannot fire, and the page turns Main next to a kept page.
-2. **Faxed clinical pages become Letter/Fax in pass 1 with no way back.** "Fax:" letterhead + fax header + "this facsimile" footer reach 3 hits; pass 1 never knows the page is signed, and a junk page gets no final OCR.
-3. **The pass-2 re-keep of signed pass-1 junk never fires** on a fresh run (same empty-text cause).
-4. **Silent degradation:** a missing provider-signature CSV switches the signature protections off with nothing recorded in the data.
-5. **A corrupt BERT checkpoint falls back to regex**, even when TF-IDF is available.
-6. **Junk with NULL subtype** shows "Junk" in DB mode, "Not Available" in Local mode, and the CSV calls it "Main".
-7. **Stale docs:** `docs/LOGIC.md` still describes the regex classifier; `PLAN.md` is referenced but missing; CLAUDE.md says quality_tag must not drive logic, yet pass 1 filters on it.
-
----
-
-## 4. Proposed design — overview
-
-```
-Page
- ├─ 0. Route (no vote): empty → BLANK; "intentionally left blank" → JUNK;
- │                      Visual → KEEP (skip pass 2)
- ├─ 1. Voters: DistilBERT · TF-IDF · Keyword context (canon)
- ├─ 2. Hard rules (current rules that still apply) override
- ├─ 3. Decide: 2-of-3 with clinical veto; ties → KEEP
- ├─ 4. Post-processing (pass 2): short top-only page, blank-with-text
- ├─ 5. Duplicates (±5 pages)
- └─ 6. Record every vote (votes JSONB) + review flag
-```
-
-Principle: junking a clinical page loses billable content; keeping junk only costs review time. Every tie and abstention goes to KEEP, and a clinical hit blocks JUNK.
+A Visual page is decided in **pass 1** (R8) and **pass 2 is skipped** for it.
 
 ---
 
-## 5. Context canon
+## 4. Context canon (the JSON)
 
-A new `core-pipeline/stages/lib/keyword-canon/context-canon.json`, reloaded on change by `canon_store.py` like the other canons, so thresholds and terms are tuned without code changes.
+`blank_junk_context_canon.json` holds lists of words. It reloads on change,
+like the other canons. The words are sorted into three **contexts**, and each
+context is split into **groups** of similar words:
+
+| Context | Groups | What a high score means |
+|---|---|---|
+| **clinical** | section_headings, assessment_language, vitals, exam_findings, diagnosis_coding, conditions, medications_orders, labs_results, imaging_procedures, signature | The page is part of a medical record |
+| **junk** | fax_cover, cover_page, cover_stamps (Accept / Unaccept), record_request, roi_vendors, invoice, placeholder | The page is retrieval or billing paperwork; each group names the junk subtype |
+| **demographic** | identity, registration | A face sheet or registration page: administrative-looking, but a chart page |
+| **neutral** | fax, phone, page, confidential, PHI, and all insurance wording | Never scored: it appears on every kind of page |
+
+Two lists are deliberately absent:
+
+- **No `instructions` junk group.** Patient instructions (discharge, medication,
+  after-visit) are clinical pages. The Instructions subtype can still come from
+  DistilBERT, but no word list pushes a page toward it.
+- **No `insurance` group.** Insurance wording sits on clinical notes, face
+  sheets and retrieval letters alike, so it tells us nothing. It is neutral.
+
+### 4.1 How a page gets a score
+
+Each group has two numbers.
+
+- **Weight:** how much one hit of that group is worth. It reflects how sure the
+  word makes us.
+- **Cap:** the most the group can add in total, however many times its words
+  appear.
+
+| Weight | Meaning | Example |
+|---|---|---|
+| 1 | Common or ambiguous: suggests, never proves | "diabetes", "mg", "dob": also appear in request letters and forms |
+| 2 | Typical of the context | "Assessment:" at line start, "fax cover sheet", "face sheet" |
+| 3 | Nearly decisive | "request for medical records", "invoice number", "electronically signed by" |
+| 4 | Decisive on its own | An ROI vendor name: Datavant, Ciox, Optum |
+| 6 | Placeholder only | "intentionally left blank" |
+
+**The calculation, in three steps:**
+
+1. **Count unique hits.** Each distinct word or phrase of the group counts
+   **once**, however often it appears. "Datavant" on every line of a
+   letterhead is 1 hit; "Datavant" and "Ciox" are 2. Where phrases overlap,
+   the longest wins: "fax cover sheet" is one hit, not also a hit for
+   "fax cover".
+2. **Group score** = weight × unique hits, cut down to the cap if it is higher.
+3. **Context score** = the group scores of that context added together.
+
+The page ends up with three numbers: **clinical**, **junk** and
+**demographic**. Each is then compared with its threshold:
+
+| Threshold | Value | Name used below |
+|---|---|---|
+| clinical ≥ 4 | 4 | **C**: clinical evidence present |
+| clinical ≥ 8 | 8 | **C⁺**: clearly a clinical note |
+| junk ≥ 4 | 4 | **J**: junk evidence present |
+| junk ≥ 7 | 7 | **J⁺**: clearly retrieval / billing paperwork |
+| demographic ≥ 3 | 3 | **D**: demographic page |
+
+**Worked example 1 — a progress note.**
+
+| Group | Unique hits on the page | Weight | Weight × hits | Cap | Group score |
+|---|---|---|---|---|---|
+| section_headings | "HPI:", "Assessment:", "Plan:" = 3 | 2 | 6 | 8 | 6 |
+| conditions | "diabetes" (3 times, counts once), "hypertension" = 2 | 1 | 2 | 4 | 2 |
+| medications_orders | "metformin", "lisinopril", "daily", a dose like "500 mg" (the dose pattern counts once) = 4 | 1 | 4 | 3 | **3** (capped) |
+| | | | | **clinical** | **11 → C⁺** |
+
+**Worked example 2 — a record-request letter that lists diagnoses.**
+
+| Group | Unique hits | Weight | Score |
+|---|---|---|---|
+| record_request | "request for medical records", "dates of service requested" = 2 | 3 | 6 |
+| roi_vendors | "Datavant" (twice, counts once) = 1 | 4 | 4 |
+| | | **junk** | **10 → J⁺** |
+| conditions | "diabetes", "CKD" = 2 | 1 | 2 |
+| | | **clinical** | **2: below C** |
+
+**Why unique hits.** A word repeated in a letterhead, a footer or a fax
+banner on every line says nothing new after the first time. Counting it once
+keeps repetition from building a score.
+
+**Why the cap matters.** A medication list naming 20 different drugs has 20
+unique hits; without a cap it would score 20 and look like the strongest
+clinical page in the chart. With the cap of 3, one kind of word can never
+reach a threshold alone. For
+example, conditions max 4 < C⁺ at 8. A page reaches C⁺ only with evidence from
+**several different groups**: headings, plus conditions, plus medications.
+Junk works the same way. One vendor name gives at most 8 points; a vendor plus
+request wording is J⁺. The fax-cover group is capped at 6, so a fax cover alone
+is J but never J⁺.
+
+**Three refinements:**
+
+- **`line_start`** (section headings only): "Plan" counts only at the start of
+  a line, alone or followed by `:` or `-`. Inside a sentence ("we plan to…")
+  it does not count.
+- **Patterns** catch value-bearing evidence: `BP 128/76`, `10 mg`, `$45.00`. A
+  form label "BP: ____" does not match; a measured BP does.
+- **Zones** (pass 2 only): the header is the top 12% of the page, the footer
+  the bottom 8%. Junk words there count only if the body also has a junk hit.
+  A fax banner across the top of a lab report does not make it junk.
+
+## 5. The three voters
+
+Each voter returns **JUNK**, **KEEP** or **ABSTAIN**, a strength
+(**strong** / **weak**) and, for JUNK, a subtype. The voters are independent:
+none reads another's output.
+
+### 5.1 DistilBERT (semantic)
+
+The raw softmax over the 8 labels is used, not the vendored decision rules.
+Those rules embed their own vetoes, which would count the same evidence twice.
+
+```
+p_keep  = P(KEEP)
+p_junk  = Σ P(JUNK_*) + P(BLANK)        # BLANK on a page with text is junk
+top_junk_label = argmax over JUNK_* (BLANK → Others)
+```
+
+| Condition | Vote | Strength |
+|---|---|---|
+| fewer than 8 words of text | ABSTAIN | — |
+| p_junk ≥ 0.85 | JUNK | strong |
+| 0.60 ≤ p_junk < 0.85 | JUNK | weak |
+| p_keep ≥ 0.85 | KEEP | strong |
+| 0.50 ≤ p_keep < 0.85 | KEEP | weak |
+| otherwise | ABSTAIN | — |
+
+Subtype: `top_junk_label`.
+
+### 5.2 TF-IDF (lexical statistics)
+
+| Condition | Vote | Strength |
+|---|---|---|
+| p_junk ≥ 0.85 | JUNK | strong |
+| 0.60 ≤ p_junk < 0.85 | JUNK | weak |
+| p_junk ≤ 0.15 | KEEP | strong |
+| 0.15 < p_junk ≤ 0.40 | KEEP | weak |
+| 0.40 < p_junk < 0.60 | ABSTAIN | — |
+
+Subtype: none of its own. It agrees or disagrees on JUNK, and the subtype comes
+from the others (§8).
+
+### 5.3 Keyword context (canon)
+
+| J | C | D | Vote | Strength | Subtype |
+|---|---|---|---|---|---|
+| J⁺ | — | — | JUNK | strong | best junk group |
+| J | — | — | JUNK | weak | best junk group |
+| J / J⁺ | — | D | JUNK if the junk comes from record_request / roi_vendors / invoice, else KEEP (weak) | as above | best junk group |
+| any | C | any | KEEP | weak | — |
+| any | C⁺ | any | KEEP | strong | — |
+| — | — | D | KEEP | weak | — |
+| — | — | — | ABSTAIN | — | — |
+
+"—" means below threshold. When J and C both hit, the keyword voter says KEEP
+and the page is flagged for review (§9). The best junk group is the group with
+the highest score; a tie goes to the group with the higher weight.
+
+The keyword voter **abstains** when it has no evidence; it does not vote KEEP.
+A page with no hits is decided by the two models.
+
+---
+
+## 6. Precedence ladder
+
+Rules run top to bottom. The first rule that fires decides, and nothing below
+it runs. Rules R1–R8 are deterministic; R9 is the vote.
+
+| # | Rule | Verdict | Overrides |
+|---|---|---|---|
+| **R1** | **Blank.** No ink above the blank threshold (`blank_page` / `faint_marks_only` from the HW stage), **or** fewer than 15 non-space OCR characters and the page is not Visual | `blank` | everything |
+| **R2** | **Placeholder.** A `placeholder` term ("intentionally left blank") and 25 words or fewer | `junk` / Others | everything below |
+| **R3** | **Signature.** Provider Signature = Yes from KV extraction (`kv_extract`, seq 56, runs before pass 2), or the clinical `signature` group hits in the body | `not_blank_junk` | R4–R9 |
+| **R4** | **DistilBERT force.** DistilBERT p(junk) **> 0.85** (Σ JUNK_* + BLANK), pass 2. Nothing below can overrule it: not the clinical veto, not strong clinical, not the vote | `junk` / DistilBERT's top junk label | R5–R9 |
+| **R5** | **Short page.** Content ends in the top **15%** of page height (§7). Fires **even when the page carries a clinical heading**, and **whatever the neighbouring pages are**: no adjacency check | `junk` / Others | R6–R9, including the clinical veto |
+| **R6** | **Junk counter-veto.** record_request + roi_vendors ≥ 7 (J⁺ from retrieval terms alone) and not C⁺ | `junk` / Record Request/Transmittal | R7–R9 |
+| **R7** | **Strong clinical.** C⁺ (score ≥ 8) | `not_blank_junk` | R8–R9 |
+| **R8** | **Visual.** `document_type = 'visual'`. Decided in **pass 1**; pass 2 is skipped for these pages | `not_blank_junk`, unless invoice / record_request / roi_vendors ≥ 7, then `junk` with that group's subtype | R9 |
+| **R9** | **Vote** (§8) | per §8 | — |
+
+Why this order:
+
+- **DistilBERT force (R4).** Above 85% the model is trusted outright.
+  Only blank, placeholder and signature sit above it. A signed page stays kept,
+  for the same reason it is exempt from the short-page rule (next point).
+  Because of R4, a DistilBERT JUNK ballot that reaches the vote (R9) is always
+  weak (0.60–0.85); its strong JUNK band in §5.1 is used only in pass 1.
+- **Signature (R3) above DistilBERT force (R4) and short page (R5).** In risk adjustment a diagnosis is
+  only valid on a signed, credentialed note. A page holding only "Electronically
+  signed by Dr X, MD" at the top is the attestation of the previous page's
+  note. Junking it can invalidate that date of service. This is the **only**
+  exemption from R5.
+- **Short page (R5) above the clinical veto.** As requested: a lone
+  "Assessment and Plan" heading or a header block with nothing beneath it is
+  not codable content.
+- **R6 above strong-clinical (R7) only below C⁺.** A request letter lists
+  diagnoses and dates ("please send records for diabetes, CKD"), which gives a
+  moderate clinical score. A real note reaches C⁺ and survives R6.
+- **Visual (R8)** has little text, so the text voters are unreliable on it.
+  It is kept by default; only very strong retrieval or invoice wording junks
+  it. A logo-heavy fax cover can be tagged Visual.
+
+---
+
+## 7. Short page (R5) — exact definition
+
+Pass 2 only, because it needs line coordinates and Provider Signature from KV extraction (which runs just before pass 2).
+
+1. **Page height H:** `pagesMeta.height` (DocIntel), else `final1.height`.
+   Normalise every polygon to top-left origin, since Docling headers may be
+   bottom-left.
+2. **Lines:** DocIntel lines; else Docling words grouped into lines (same
+   baseline ± half the median word height).
+3. **Drop** lines that start in the bottom 6% (page numbers, footers) and lines
+   matching `ignore_line_patterns`: "Page 2 of 5", a bare number, fax
+   transmission stamps, "Printed on …", "Confidential…".
+4. **content_bottom** = max bottom-y of the remaining lines ÷ H.
+5. **Ink check:** the band from 17% to 94% of the height must hold no ink
+   above `body_ink_max_fraction` (1e-4, the same blank cut-off as the HW stage).
+   This catches a picture, a handwritten block or a stamp that OCR did not read.
+6. **Fire** when `content_bottom ≤ 0.15` and the ink check passes and R3 did
+   not fire.
+
+**Not considered:**
+
+- Clinical headings on the page.
+- The previous and next page.
+- Word count: a page that ends in the top 15% is short by construction.
+
+| Page | Result |
+|---|---|
+| "PROGRESS NOTE — Patient: J Doe DOB 01/02/1950", nothing below | JUNK / Others |
+| "Assessment and Plan:" alone at the top | JUNK / Others |
+| Header block, then a wound photo mid-page (no text) | Kept: ink in the body band |
+| Header block, then "Page 3 of 7" at the bottom | JUNK / Others: footer ignored |
+| "Electronically signed by A. Smith, MD 03/14/24" alone at the top | Kept by R3 |
+
+---
+
+## 8. How the three voters agree (R9)
+
+### 8.1 Counting
+
+Each voter casts one ballot: J (JUNK), K (KEEP) or A (ABSTAIN). Strong and
+weak are kept on every ballot. With three voters there are ten possible
+ballot sets.
+
+### 8.2 Decision table
+
+`s` = strong, `w` = weak. "C" = the keyword clinical score is at or above 4.
+
+| # | Ballots | Verdict | Review | Notes |
+|---|---|---|---|---|
+| 1 | J J J | **JUNK** | no; yes if any J is weak or C | Unanimous |
+| 2 | J J K | **JUNK** only if both J are strong **and** the K is weak; else **KEEP** | yes | One dissent. A strong KEEP blocks |
+| 3 | J J A | **JUNK** if at least one J is strong; else **KEEP** | yes if any J is weak | Two agree, one silent |
+| 4 | J K K | **KEEP** | yes if the J is strong | Majority keep |
+| 5 | J K A | **KEEP** | yes | Split, no majority |
+| 6 | J A A | **KEEP** | yes if the J is strong | One voice is not agreement |
+| 7 | K K K | **KEEP** | no | |
+| 8 | K K A | **KEEP** | no | |
+| 9 | K A A | **KEEP** | no | |
+| 10 | A A A | **KEEP** | yes | Nothing could judge the page |
+
+### 8.3 Vetoes applied to a JUNK result from the table
+
+Applied in order to rows 1–3. Any veto turns the result into **KEEP + review**.
+
+| Veto | Condition | Effect |
+|---|---|---|
+| **Clinical veto** | C (clinical ≥ 4) | KEEP + review. Even 3 strong JUNK ballots are blocked |
+| **Demographic veto** | D and the junk score does not come from record_request / roi_vendors / invoice | KEEP + review (face sheets, registration) |
+| **Handwritten veto** | `handwritten_area_pct` **> 30%** (page-tag model) | KEEP + review. A page that is mostly handwriting is clinical far more often than admin, and OCR on it is weak. A printed form with a few handwritten fields (≤ 30%) is not protected |
+
+C⁺ never reaches R9 (R7 kept it). So the clinical veto here covers the
+moderate band, score 4–7.
+
+### 8.4 Why two-of-three, and why strength matters
+
+- **Independence.** DistilBERT reads meaning, TF-IDF reads word statistics, and
+  the canon reads curated phrases. They fail differently: BERT is fooled by
+  long letters, TF-IDF by vocabulary overlap, and keywords by OCR noise.
+  Agreement between two of them is much rarer by chance than either alone.
+- **A strong KEEP is a veto in all but name** (row 2). If any method is
+  confident the page is clinical, two other methods saying junk is not enough.
+- **Two weak JUNKs are not agreement** (row 3 with both weak, and row 2). Weak
+  means "leaning". Two leanings plus a silent third stays KEEP and goes to
+  review.
+- **Abstention is not a KEEP vote.** It removes the voter. That is why row 6
+  (one J, two silent) keeps the page: the only evidence is one voter.
+
+### 8.5 Confidence written to the row
+
+```
+JUNK:  confidence = mean(p_junk of the voters that voted JUNK)
+       (keyword p = min(1, junk_score / 10))
+KEEP:  confidence = mean(1 − p_junk of the voters that voted KEEP), or 0.50 if none did
+Rules R1–R8: fixed values — R1 1.00, R2 0.99, R3 0.95, R5 0.95, R6 0.97, R7 0.95, R8 0.90; R4 = DistilBERT's p(junk)
+```
+
+---
+
+## 9. Subtype
+
+When the verdict is JUNK (R9), the subtype is chosen in this order:
+
+1. The keyword voter's best junk group, if the keyword voter voted JUNK.
+2. Else DistilBERT's `top_junk_label`, if BERT voted JUNK.
+3. Else Others.
+
+Flag for review when keyword and BERT both voted JUNK with **different**
+subtypes and both were strong.
+
+Mapping: fax_cover → Letter/Fax · cover_page → Cover Page · record_request,
+roi_vendors → Record Request/Transmittal · invoice → Invoice · placeholder →
+Others · cover_stamps → Cover Page. There is no instructions word list, so
+Instructions comes only from DistilBERT's label.
+
+---
+
+## 10. Review flag
+
+Review is set when:
+
+- the table in §8.2 sets it,
+- any veto in §8.3 fired,
+- J and C both hit,
+- subtypes disagree (§9),
+- a voter was unavailable (§12).
+
+---
+
+## 11. Pass 1 and pass 2
+
+| | Pass 1 (Tesseract) | Pass 2 (final OCR) |
+|---|---|---|
+| Pages | All pages. Visual is **decided here** (R8). Handwritten and uncertain pages are deferred | Everything pass 1 deferred; **Visual pages skipped** |
+| Rules | R1, R2, R6, R7, R8 | R1–R9 in full (R8 never reached: Visual is already decided) |
+| DistilBERT > 0.85 | Not forced (no Provider Signature yet); counts as a strong JUNK ballot | **Forced JUNK** (R4) unless signed |
+| Vote | Only **row 1 with all three strong** and no veto is final | Full table |
+| Everything else | Deferred: stays Main, gets final OCR, decided in pass 2 | Final |
+
+Pass 1 only removes pages it is certain about, which saves the stage-5 bill. A
+page that pass 1 junks never gets final OCR, so pass 1 must never be wrong
+cheaply. DistilBERT force (R4), short page (R5) and signature (R3) wait for pass 2 because they need
+coordinates and Provider Signature, which KV extraction writes just before
+pass 2.
+
+---
+
+## 12. Degraded runs
+
+| Missing | Behaviour | Recorded |
+|---|---|---|
+| DistilBERT | Its ballot is A. Two voters remain, so JUNK needs both, and both strong | `votes.bert = "unavailable"`, review |
+| TF-IDF | Same | `votes.tfidf = "unavailable"`, review |
+| Canon fails to load | Last good version (canon_store); first load raises | — |
+| Page-tag model | No page is Visual; R8 never fires | `visual_source = "none"` |
+| KV extraction (Provider Signature) | R3 uses the canon `signature` group only | `signature_source = "canon_only"` |
+| Handwritten area (old 2-class model) | Handwritten veto does not apply | `hw_area = "none"` |
+| Coordinates (pass 2 text only) | R5 does not run | `short_page = "no_geometry"` |
+
+---
+
+## 13. Duplicates
+
+Run after the verdict, on kept pages only. The method is unchanged:
+normalised text of at least 300 characters, SequenceMatcher ≥ 0.98 or one text
+contained in the other, keep the longer page. The window grows to ±5 pages,
+and the comparison only runs when the two lengths are within 10% of each other.
+
+---
+
+## 14. Recording
+
+New column `blank_junk_classification.votes JSONB`:
 
 ```json
 {
-  "version": 1,
-  "thresholds": { "junk": 4, "clinical": 6, "demographic": 4 },
-  "contexts": {
-    "clinical": {
-      "assessment_plan": { "weight": 2, "terms": ["assessment and plan", "a/p", "plan of care"] },
-      "vitals":          { "weight": 1, "terms": ["blood pressure", "bp", "pulse", "temp", "spo2", "bmi"] },
-      "history":         { "weight": 1, "terms": ["hpi", "history of present illness", "pmh", "ros"] },
-      "meds_dx":         { "weight": 1, "terms": ["medications", "diagnosis", "icd-10", "allergies"] },
-      "labs":            { "weight": 1, "terms": ["result", "reference range", "hemoglobin", "a1c"] },
-      "imaging":         { "weight": 2, "terms": ["wound photo", "fundus exam", "slit lamp", "oct scan"] },
-      "signature":       { "weight": 2, "terms": ["electronically signed by", "signed by", "attestation"] }
-    },
-    "junk": {
-      "fax_cover":       { "weight": 1, "zone": "body", "terms": ["fax cover", "number of pages", "this facsimile"] },
-      "record_request":  { "weight": 2, "terms": ["request for records", "medical records request", "authorization to release"] },
-      "invoice":         { "weight": 2, "terms": ["invoice", "amount due", "remit to", "balance due"] },
-      "instructions":    { "weight": 1, "terms": ["instructions", "please complete", "return this form"] },
-      "roi_vendors":     { "weight": 3, "terms": ["optum", "datavant", "ciox", "mrocorp", "healthport"] }
-    },
-    "demographic": {
-      "identity":        { "weight": 1, "terms": ["date of birth", "dob", "mrn", "medical record number"] },
-      "registration":    { "weight": 2, "terms": ["face sheet", "registration", "guarantor", "emergency contact"] },
-      "insurance":       { "weight": 1, "terms": ["insurance", "subscriber", "policy number", "member id"] }
-    }
-  }
+  "rule": "R9",
+  "bert":  {"vote": "JUNK", "strength": "strong", "p_junk": 0.91, "label": "JUNK_LETTER_FAX"},
+  "tfidf": {"vote": "JUNK", "strength": "weak",   "p_junk": 0.68},
+  "kw":    {"vote": "KEEP", "strength": "weak", "junk": 6, "clinical": 5, "demographic": 0,
+            "junk_group": "fax_cover", "hits": {"clinical.section_headings": ["assessment", "plan"]}},
+  "ballots": "JJK", "row": 2, "veto": "clinical",
+  "visual_source": "page_tags", "signature_source": "kv_extract", "hw_area_pct": 4.2,
+  "short_page": {"content_bottom": 0.41},
+  "review": true
 }
 ```
 
-Rules:
-
-- **Score = sum of weights of distinct terms hit.** "fax" twelve times counts once; repeated letterhead is what makes today's "≥ 3 fax" rule misfire.
-- **Zones** (`any` / `header` / `footer` / `body`): pass 2 has line coordinates from Docling and Azure, so header and footer junk terms count only when the body is junk too. Pass 1 (Tesseract text) treats every term as `any`.
-- **Provider names:** release-of-information **vendors** (Optum, Datavant, Ciox, …) belong in junk. **Physician names** belong under clinical `signature`: a doctor's name usually marks a real, signed note. The provider-signature CSV and extraction already give the provider per page.
-- **Seed** from what exists: v3's always-keep patterns, the current fax / record-request / vendor regexes, and `section_header_canon.json` (curated clinical headings).
+Schema change per CLAUDE.md §5: edit `schema/v1.sql`, readers and writers,
+docs, and the WHAT CHANGED block in `v2.sql`. review-ui shows `review` and the
+ballots on the page panel.
 
 ---
 
-## 6. Keyword voter
+## 15. Evaluation before switching
 
-J, C, D = junk, clinical, demographic score at or above its threshold.
-
-| J | C | D | Keyword vote | Subtype |
-|---|---|---|---|---|
-| yes | no | no | JUNK | best-scoring junk group |
-| yes | no | yes | JUNK (see note) | best-scoring junk group |
-| yes | yes | any | KEEP | — |
-| no | yes | any | KEEP | — |
-| no | no | yes | KEEP | — |
-| no | no | no | abstain | — |
-
-- **No hits abstains** rather than voting KEEP; the voter only counts when it has evidence.
-- **J + D:** emergency-department face sheets and registration forms carry demographics plus "authorization / release" wording and are real chart pages. Suggested: JUNK only when the junk score comes from `record_request` or `roi_vendors`; KEEP otherwise.
+1. **Shadow mode:** compute and write `votes`, but leave `blank_junk_flag` as it
+   is today.
+2. Compare against `page_ground_truth` (`blank_page`, `junk_page`) for each
+   voter, each rule and the ensemble.
+3. The number that matters is **clinical pages marked junk**. Tune canon
+   weights and thresholds until it is close to zero, then report junk recall.
+4. Check R5 separately: every page it fires on, by hand, on at least 3 charts
+   run with the page-tag model.
+5. Switch the flag to the new verdict.
 
 ---
 
-## 7. Voting
+## 16. Open points
 
-```
-0. Route (no vote)
-   no text / fewer than N characters        → BLANK
-   "intentionally left blank" (± header)    → JUNK (Others, or a new placeholder subtype)
-   Visual (quality analysis)                → KEEP; skip pass 2
-1. Voters, each KEEP / JUNK (+ subtype) or abstain
-   DistilBERT   BLANK with text counts as JUNK
-   TF-IDF       p(junk) ≥ 0.60 → JUNK
-   Keywords     table in section 6
-2. Hard rules first (override the vote)
-   ≥ 2 clinical headings → KEEP; signed → KEEP; vendor score ≥ threshold → Record Request
-3. Decide
-   JUNK  if ≥ 2 voters say JUNK and C is not hit
-   KEEP  otherwise
-   subtype: keyword subtype if it voted JUNK, else BERT's, else Others
-   review:  a 2-1 split, or J and C both hit
-```
-
----
-
-## 8. Pass 1 vs pass 2
-
-| | Pass 1 (Tesseract, printed only) | Pass 2 (final OCR) |
-|---|---|---|
-| Decides | BLANK; JUNK only when all 3 voters agree, or vendor / record-request is very strong | Full 2-of-3 vote |
-| Uncertain | Defer: stays Main, gets final OCR | KEEP + review |
-| Visual pages | KEEP, skip pass 2 | — |
-| Zones | none (text only) | header / body / footer from coordinates |
-
-A conservative pass 1 removes findings 3.2.1-3.2.3: nothing is junked on Tesseract noise and then never revisited.
-
----
-
-## 9. Post-processing (pass 2)
-
-1. **Short top-only page → JUNK (Others)** when all hold: the last text line ends in the top ~35% of the page; fewer than ~40 words; not a signature page (signature CSV or clinical `signature` group); clinical score below threshold. **Guard:** skip when the previous page was kept and this page has any clinical hit — a continuation page ("Plan: f/u 2 wks") must stay.
-2. **Model said BLANK but the page has text → JUNK, subtype Others.** Never write junk with an empty subtype.
-
----
-
-## 10. Duplicates
-
-Window ±5 pages (was ±2). Run SequenceMatcher only when the two lengths are within ~10% of each other, so the cost stays flat. Everything else unchanged: kept pages only, at least 300 characters, ≥ 0.98 similar or contained.
-
----
-
-## 11. Recording and review
-
-- New column `blank_junk_classification.votes JSONB`, e.g.
-  `{"bert": "JUNK_LETTER_FAX 0.91", "tfidf": 0.72, "kw": {"junk": 5, "clinical": 2, "demo": 0, "junk_group": "fax_cover"}, "review": true, "signature_source": "csv"}`
-- `review` becomes visible in review-ui (chart view and Accuracy filter).
-- `signature_source` = `csv` / `extraction` / `missing` makes a degraded run visible (finding 3.2.4).
-- Schema change: edit `schema/v1.sql`, every reader and writer, docs, and the "WHAT CHANGED" block (CLAUDE.md §5).
-
----
-
-## 12. Evaluation before switching
-
-- Run all three voters and the ensemble in **score-only mode** (written to `votes`, flag unchanged).
-- Compare against `page_ground_truth` (`blank_page`, `junk_page`): precision / recall for JUNK and BLANK per voter and for the ensemble.
-- The key number: **clinical pages marked JUNK** (false junk). Tune canon thresholds until it is close to zero, then switch the flag to the vote.
-
----
-
-## 13. Open questions
-
-1. "Intentionally left blank": its own subtype, or Others?
-2. J + D: always JUNK, or only when the junk comes from record-request / vendor terms?
-3. Visual pages: keep with no check, or still junk when the vendor / record-request score is very high (a logo-heavy fax cover can be classed Visual)?
-4. Sync `model/src` from the v3 zip first (keeping the repo's `no_trigger_labels=[]` and the safety net)?
-
----
-
-## 14. Build order
-
-1. Sync model code from the v3 zip (optional, independent).
-2. Context canon + keyword voter, score-only.
-3. `votes` column + recording; review flag in review-ui.
-4. Evaluation against ground truth; tune thresholds.
-5. Switch decisions to the vote; conservative pass 1; post-processing rules; duplicate window ±5.
-6. Fix the remaining findings (3.2.5-3.2.7) and update `docs/LOGIC.md`.
+1. `advantmed` is listed as an ROI vendor (its own retrieval cover sheets).
+   Remove it if Advantmed letterhead appears on clinical pages.
+2. Should R5 also run in pass 1 using ink alone? It would save stage-5 cost on
+   short pages, but it would lose the signature exemption.
+3. DistilBERT force (R4) keeps signed pages. Should a signed page above 85% be
+   junked too? Should R4 also run in pass 1, saving the stage-5 bill but before
+   Provider Signature is known?
