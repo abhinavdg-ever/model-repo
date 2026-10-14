@@ -4,11 +4,10 @@ review-ui already shows, instead of an uploaded sheet.
 PDF ID is the chart name and Page Number the page number. Values follow
 the Accuracy tab: the Final value (imaging_final, after document continuity)
 where the run has one, else the page's own extracted value -- for DOS,
-codability and page sub-type. A page with no date is left blank, not given
-the 2222-02-02 default Download Results ships. Page Type is the encounter
-type (Outpatient (F2F), Inpatient, …), which is what ground truth labels as
-page type; Page Subtype is the classifier's sub-type, split back out of its
-``Type (Sub-type)`` display.
+codability and page type. A page with no date is left blank, not given
+the 2222-02-02 default Download Results ships. Page Type and Page Subtype
+are the page classifier's, split back out of its ``Type (Sub-type)``
+display.
 """
 
 from __future__ import annotations
@@ -54,12 +53,13 @@ def _blank_or_junk(value: str | None) -> str:
     return "Yes" if text.lower().startswith("y") else "No"
 
 
-def _page_subtype(shown: str | None) -> str:
-    """``Type (Sub-type)`` -> Sub-type; a bare name is its own sub-type."""
+def _page_type(shown: str | None) -> tuple[str, str]:
+    """``Type (Sub-type)`` -> (Type, Sub-type); a bare name is both."""
     text = _text(shown)
     if text.endswith(")") and " (" in text:
-        return text[:-1].partition(" (")[2].strip()
-    return text
+        page_type, _, subtype = text[:-1].partition(" (")
+        return page_type.strip(), subtype.strip()
+    return text, text
 
 
 def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
@@ -72,6 +72,7 @@ def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
             # Final first, then extracted, as accuracy.ts reads them.
             dos_from = _text(page.finalDosFrom) or _text(page.dosFrom)
             dos_to = _text(page.finalDosTo) or _text(page.finalDosFrom) or _text(page.dosTo)
+            page_type, page_subtype = _page_type(page.finalPageType or page.pageType)
             writer.writerow(
                 {
                     "PDF ID": chart_name,
@@ -83,8 +84,8 @@ def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
                     "DOS To": dos_to,
                     "Is Blank or Junk?": _blank_or_junk(page.blankOrJunk),
                     "Duplicate": _yes_no(page.isDuplicate),
-                    "Page Type": _text(page.encounterType),
-                    "Page Subtype": _page_subtype(page.finalPageType or page.pageType),
+                    "Page Type": page_type,
+                    "Page Subtype": page_subtype,
                     "Codable / Non-Codable": _text(page.finalCodeable) or _text(page.isCodeable),
                     "Provider Signature": _text(page.providerSignature),
                     "Current Sequence": _text(page.currentSequence),

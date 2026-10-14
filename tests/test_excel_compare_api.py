@@ -144,8 +144,8 @@ def test_pipeline_output_as_the_system_csv():
 
     rows = list(csv.DictReader(io.StringIO(system_csv([("100", _Repo().doc)]).decode())))
     first, second, fourth = rows
-    # Page Type is the encounter type; the classifier's sub-type is Page Subtype.
-    assert (first["Page Type"], first["Page Subtype"]) == ("Outpatient (F2F)", "Office Visit")
+    # Page Type / Subtype are the classifier's, not the encounter type.
+    assert (first["Page Type"], first["Page Subtype"]) == ("Progress Note", "Office Visit")
     assert (first["Provider Signature"], second["Provider Signature"]) == ("Yes", "")
     assert (first["Is Blank or Junk?"], first["Duplicate"]) == ("No", "No")
     assert second["Is Blank or Junk?"] == "Yes"
