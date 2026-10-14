@@ -28,7 +28,7 @@ def make_field_results(fields, all_match=True):
         else:
             field_results[field_name] = {
                 "match": False,
-                "display": "GT: Yes | System: No",
+                "display": "GT: Yes | Algo: No",
             }
 
     return field_results
@@ -89,7 +89,7 @@ def test_build_missing_result_uses_gt_values():
     assert row["PDF ID"] == "123456"
     assert row["Page Number"] == "2"
     assert row["Status"] == "MISSING"
-    assert "No corresponding System Generated record" in row["Reason"]
+    assert "No corresponding Algo Generated record" in row["Reason"]
     assert row["Extracted Name"] == "Jane Doe"
 
 
@@ -140,7 +140,7 @@ def test_build_summary_metrics():
     percentages = dict(zip(summary_df["Metric"], summary_df["Percentage"]))
 
     assert metrics["Total Ground Truth Records"] == 4
-    assert metrics["Total System Records"] == 4
+    assert metrics["Total Algo Records"] == 4
     assert metrics["Correct Records"] == 2
     assert metrics["Errors"] == 1
     assert metrics["Missing Records"] == 1

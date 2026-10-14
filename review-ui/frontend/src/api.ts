@@ -426,19 +426,19 @@ export function blobPageImageUrl(folderId: string, pageNumber: number): string {
   return `/api/blob/${encodeURIComponent(folderId)}/pages/${pageNumber}/image`;
 }
 
-export type ExcelCompareStatus = "CORRECT" | "ERROR" | "MISSING" | "EXTRA";
+export type ManualReviewStatus = "CORRECT" | "ERROR" | "MISSING" | "EXTRA";
 
-export type ExcelCompareRow = {
+export type ManualReviewRow = {
   pdfId: string;
   pageNumber: string;
-  /** Field -> the value, or "GT: … | System: …" when the two differ. */
+  /** Field -> the value, or "GT: … | Algo: …" when the two differ. */
   values: Record<string, string>;
   mismatched: string[];
-  status: ExcelCompareStatus;
+  status: ManualReviewStatus;
   reason: string;
 };
 
-export type ExcelCompareResult = {
+export type ManualReviewResult = {
   groundCount: number;
   systemCount: number;
   correctCount: number;
@@ -449,29 +449,37 @@ export type ExcelCompareResult = {
   fields: string[];
   exemptedColumns: { column: string; reason: string }[];
   summary: { metric: string; count: number; percentage: number }[];
-  rows: ExcelCompareRow[];
+  rows: ManualReviewRow[];
 };
 
-/** Ground truth: an uploaded sheet, or the database (page_ground_truth) for the
- * system file's PDF IDs, following the user menu's manual-edits choice. */
-export type ExcelCompareInput = { system: File; ground: File | null; groundSource: "upload" | "db" };
+/** Each side is an uploaded sheet or the database. Database ground truth follows the
+ * user menu's manual-edits choice and covers the system file's PDF IDs (every chart
+ * with ground truth when the system side is the database too). Database system output
+ * covers the ground truth's PDF IDs. */
+export type ManualReviewInput = {
+  ground: File | null;
+  groundSource: "upload" | "db";
+  system: File | null;
+  systemSource: "db" | "upload";
+};
 
-export type ExcelCompareColumns = {
+export type ManualReviewColumns = {
   required: { column: string; aliases: string[] }[];
   compared: { column: string; aliases: string[] }[];
   exempt: string[];
 };
 
-function excelCompareForm({ system, ground, groundSource }: ExcelCompareInput): FormData {
+function manualReviewForm({ ground, groundSource, system, systemSource }: ManualReviewInput): FormData {
   const form = new FormData();
-  form.append("system_file", system);
   form.append("ground_source", groundSource);
   if (groundSource === "upload" && ground) form.append("ground_file", ground);
   if (groundSource === "db") form.append("ground_truth", readGroundTruthSource());
+  form.append("system_source", systemSource);
+  if (systemSource === "upload" && system) form.append("system_file", system);
   return form;
 }
 
-export function getExcelCompareColumns(): Promise<ExcelCompareColumns> {
+export function getManualReviewColumns(): Promise<ManualReviewColumns> {
   return api("/api/excel-compare/columns");
 }
 
@@ -488,16 +496,54 @@ async function errorText(res: Response): Promise<string> {
 }
 
 /** Multipart, so not api(): that helper sends JSON. */
-export async function compareExcel(input: ExcelCompareInput): Promise<ExcelCompareResult> {
-  const res = await fetch("/api/excel-compare", { method: "POST", body: excelCompareForm(input) });
+export async function compareManualReview(input: ManualReviewInput): Promise<ManualReviewResult> {
+  const res = await fetch("/api/excel-compare", { method: "POST", body: manualReviewForm(input) });
   if (!res.ok) throw new Error(await errorText(res));
-  return res.json() as Promise<ExcelCompareResult>;
+  return res.json() as Promise<ManualReviewResult>;
 }
 
-export async function downloadExcelCompareReport(input: ExcelCompareInput): Promise<Blob> {
+type ManualReviewCounts = Pick<
+  ManualReviewResult,
+  "groundCount" | "systemCount" | "correctCount" | "errorCount" | "missingCount" | "extraCount"
+>;
+
+export type ManualReviewEvent =
+  | ({ type: "start"; charts: number } & Pick<ManualReviewResult, "fields" | "exemptedColumns">)
+  | ({ type: "chart"; pdfId: string; rows: ManualReviewRow[] } & ManualReviewCounts)
+  | ({ type: "done"; summary: ManualReviewResult["summary"] } & ManualReviewCounts)
+  | { type: "error"; pdfId: string; detail: string };
+
+/** The comparison one chart at a time (NDJSON), handed to ``onEvent`` as each
+ * line arrives. Input errors reject before any event. */
+export async function streamManualReview(
+  input: ManualReviewInput,
+  onEvent: (event: ManualReviewEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch("/api/excel-compare/stream", {
+    method: "POST",
+    body: manualReviewForm(input),
+    signal,
+  });
+  if (!res.ok || !res.body) throw new Error(await errorText(res));
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffered = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (value) buffered += value;
+    const lines = buffered.split("\n");
+    buffered = done ? "" : (lines.pop() ?? "");
+    for (const line of lines) {
+      if (line.trim()) onEvent(JSON.parse(line) as ManualReviewEvent);
+    }
+    if (done) return;
+  }
+}
+
+export async function downloadManualReviewReport(input: ManualReviewInput): Promise<Blob> {
   const res = await fetch("/api/excel-compare/report", {
     method: "POST",
-    body: excelCompareForm(input),
+    body: manualReviewForm(input),
   });
   if (!res.ok) throw new Error(await errorText(res));
   return res.blob();

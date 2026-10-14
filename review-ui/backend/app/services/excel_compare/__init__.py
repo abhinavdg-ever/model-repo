@@ -1,5 +1,6 @@
-"""Excel Compare: a manual QA ground-truth sheet against a system-generated
-sheet, matched on (PDF ID, Page Number).
+"""Manual Review: a manual QA ground-truth sheet against the system output
+(an uploaded sheet or the pipeline's own results), matched on
+(PDF ID, Page Number).
 
 Ported from the standalone Streamlit ExcelCompare tool. The comparison and
 report modules are its code with package-relative imports; the only change is
@@ -9,10 +10,11 @@ The API layer is ``run`` and ``report`` below.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
 from io import BytesIO
 from typing import Any
 
-from . import database_ground  # noqa: F401  (no pandas at import)
+from . import database_ground, database_system  # noqa: F401  (no pandas at import)
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
@@ -33,6 +35,28 @@ def _text(value: Any) -> str:
     return str(value)
 
 
+def _row(row: dict, fields: list[str]) -> dict[str, Any]:
+    return {
+        "pdfId": _text(row.get("PDF ID")),
+        "pageNumber": _text(row.get("Page Number")),
+        "values": {field: _text(row.get(field, "")) for field in fields},
+        "mismatched": list(row.get("Mismatched", [])),
+        "status": row["Status"],
+        "reason": row["Reason"],
+    }
+
+
+def _summary(summary_df) -> list[dict[str, Any]]:
+    return [
+        {
+            "metric": str(item["Metric"]),
+            "count": int(item["Count"]),
+            "percentage": float(item["Percentage"]),
+        }
+        for item in summary_df.to_dict("records")
+    ]
+
+
 def run(ground: tuple[bytes, str], system: tuple[bytes, str]) -> dict[str, Any]:
     """The comparison as JSON for the review-ui screen."""
     # pandas is imported here, not at app start, so the rest of review-ui runs without it.
@@ -40,25 +64,8 @@ def run(ground: tuple[bytes, str], system: tuple[bytes, str]) -> dict[str, Any]:
 
     result = compare_files(_upload(*ground), _upload(*system))
     fields = list(result["active_comparison_fields"])
-    rows = [
-        {
-            "pdfId": _text(row.get("PDF ID")),
-            "pageNumber": _text(row.get("Page Number")),
-            "values": {field: _text(row.get(field, "")) for field in fields},
-            "mismatched": list(row.get("Mismatched", [])),
-            "status": row["Status"],
-            "reason": row["Reason"],
-        }
-        for row in result["result_rows"]
-    ]
-    summary = [
-        {
-            "metric": str(item["Metric"]),
-            "count": int(item["Count"]),
-            "percentage": float(item["Percentage"]),
-        }
-        for item in result["summary_df"].to_dict("records")
-    ]
+    rows = [_row(row, fields) for row in result["result_rows"]]
+    summary = _summary(result["summary_df"])
     return {
         "groundCount": int(result["ground_count"]),
         "systemCount": int(result["system_count"]),
@@ -73,8 +80,79 @@ def run(ground: tuple[bytes, str], system: tuple[bytes, str]) -> dict[str, Any]:
     }
 
 
+def stream(
+    ground: tuple[bytes, str],
+    system: tuple[bytes, str] | None = None,
+    load_system: Callable[[str], bytes | None] | None = None,
+) -> Iterator[dict[str, Any]]:
+    """The comparison one PDF ID at a time, for the screen to fill in as it goes.
+
+    The Algo side is an uploaded sheet (``system``) or, chart by chart,
+    ``load_system(pdf_id)``: the pipeline output as CSV bytes, None when the
+    chart has none. Events: ``start`` (charts, fields, exemptions), one
+    ``chart`` per PDF ID with its rows, then ``done`` with the summary. A
+    failure part-way is an ``error`` event; what was sent stays valid.
+    """
+    import pandas as pd
+
+    from .compare import _read_file, _resolve_comparison_fields, _validate_columns, compare_frames
+    from .database_system import COLUMNS
+    from .record_matcher import normalize_key
+    from .result_builder import build_summary
+
+    ground_df = _read_file(_upload(*ground))
+    _validate_columns(ground_df, "Ground Truth")
+    if system is not None:
+        system_df = _read_file(_upload(*system))
+        _validate_columns(system_df, "Algo Generated")
+    else:
+        system_df = pd.DataFrame(columns=COLUMNS)
+    fields, exempted = _resolve_comparison_fields(ground_df, system_df)
+
+    def key(frame) -> "pd.Series":
+        return frame["PDF ID"].map(lambda value: normalize_key(value, 0)[0])
+
+    ground_keys = key(ground_df)
+    system_keys = key(system_df) if system is not None else None
+    pdf_ids = list(dict.fromkeys(ground_keys.tolist() + (system_keys.tolist() if system_keys is not None else [])))
+    pdf_ids = [pdf_id for pdf_id in pdf_ids if pdf_id]
+
+    yield {
+        "type": "start",
+        "charts": len(pdf_ids),
+        "fields": fields,
+        "exemptedColumns": exempted,
+    }
+
+    all_rows: list[dict] = []
+    counts = {"groundCount": 0, "systemCount": 0, "correctCount": 0, "errorCount": 0, "missingCount": 0, "extraCount": 0}
+    for pdf_id in pdf_ids:
+        try:
+            ground_part = ground_df[ground_keys == pdf_id]
+            if system_keys is not None:
+                system_part = system_df[system_keys == pdf_id]
+            else:
+                data = load_system(pdf_id) if load_system else None
+                system_part = _read_file(_upload(data, "algo.csv")) if data else pd.DataFrame(columns=COLUMNS)
+            rows, missing, extra = compare_frames(ground_part, system_part, fields)
+        except Exception as exc:  # noqa: BLE001 - reported to the screen, not raised mid-stream
+            yield {"type": "error", "pdfId": pdf_id, "detail": str(exc)}
+            return
+        all_rows.extend(rows)
+        counts["groundCount"] += len(ground_part)
+        counts["systemCount"] += len(system_part)
+        counts["correctCount"] += sum(1 for row in rows if row["Status"] == "CORRECT")
+        counts["errorCount"] += sum(1 for row in rows if row["Status"] == "ERROR")
+        counts["missingCount"] += missing
+        counts["extraCount"] += extra
+        yield {"type": "chart", "pdfId": pdf_id, "rows": [_row(row, fields) for row in rows], **counts}
+
+    summary = build_summary(counts["groundCount"], counts["systemCount"], all_rows)
+    yield {"type": "done", **counts, "summary": _summary(summary)}
+
+
 def columns() -> dict[str, Any]:
-    """What a System Generated file needs, from the tool's own column lists."""
+    """What a Algo Generated file needs, from the tool's own column lists."""
     from .field_comparator import ACTIVE_COMPARISON_FIELDS, ALWAYS_EXEMPT_FIELDS
     from .header_normalizer import COLUMN_ALIASES
     from .record_matcher import KEY_COLUMNS

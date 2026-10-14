@@ -257,7 +257,7 @@ type Props = {
   onView: (folderId: string, mode?: "ocr" | "imaging") => void;
   onOpenFileViewer?: () => void;
   onOpenAccuracy?: () => void;
-  onOpenExcelCompare?: () => void;
+  onOpenManualReview?: () => void;
 };
 
 function fmtUpdated(iso: string | null): string {
@@ -413,7 +413,7 @@ function downloadTextFile(filename: string, text: string, mime: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, onOpenExcelCompare }: Props) {
+export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, onOpenManualReview }: Props) {
   const saved = useMemo(() => readLandingFilters(), []);
   const [folders, setFolders] = useState<FolderSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -667,14 +667,14 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
                 Accuracy View
               </button>
             ) : null}
-            {onOpenExcelCompare ? (
+            {onOpenManualReview ? (
               <button
                 type="button"
                 className="landing-file-viewer-btn"
-                onClick={onOpenExcelCompare}
+                onClick={onOpenManualReview}
               >
                 <FileSpreadsheet size={15} aria-hidden="true" />
-                Excel Compare
+                Manual Review
               </button>
             ) : null}
           </div>

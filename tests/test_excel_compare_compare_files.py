@@ -97,7 +97,7 @@ def test_full_pipeline_correct_error_missing_extra_and_multi_pdf():
     assert error_row["Status"] == "ERROR"
     assert "Page Type" in error_row["Reason"]
     assert error_row["Page Type"] == (
-        "GT: Medical Record | System: Billing Record"
+        "GT: Medical Record | Algo: Billing Record"
     )
 
     assert rows_by_key[("111111", "3")]["Status"] == "MISSING"

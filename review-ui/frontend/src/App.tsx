@@ -4,7 +4,7 @@ import { nextChart } from "./chartSequence";
 import FolderViewer from "./FolderViewer";
 import FileViewer from "./FileViewer";
 import AccuracyView from "./AccuracyView";
-import ExcelCompareView from "./ExcelCompareView";
+import ManualReviewView from "./ManualReviewView";
 import LoginPage from "./LoginPage";
 import UserProfileMenu from "./UserProfileMenu";
 import {
@@ -21,7 +21,7 @@ type Route =
   | { view: "folder"; folderId: string; mode: OutputMode; from?: "accuracy" }
   | { view: "file-viewer"; folderId?: string }
   | { view: "accuracy" }
-  | { view: "excel-compare" };
+  | { view: "manual-review" };
 
 function parseMode(raw: string | null): OutputMode {
   return raw === "imaging" ? "imaging" : "ocr";
@@ -32,8 +32,8 @@ function parsePath(pathname: string, search: string): Route {
   if (pathname === "/accuracy" || pathname === "/accuracy/") {
     return { view: "accuracy" };
   }
-  if (pathname === "/excel-compare" || pathname === "/excel-compare/") {
-    return { view: "excel-compare" };
+  if (pathname === "/manual-review" || pathname === "/manual-review/") {
+    return { view: "manual-review" };
   }
   const fileMatch = pathname.match(/^\/file-viewer(?:\/([^/]+))?\/?$/);
   if (fileMatch) {
@@ -64,7 +64,7 @@ function pathFor(route: Route): string {
     return qs ? `${base}?${qs}` : base;
   }
   if (route.view === "accuracy") return "/accuracy";
-  if (route.view === "excel-compare") return "/excel-compare";
+  if (route.view === "manual-review") return "/manual-review";
   if (route.view === "file-viewer") {
     return route.folderId
       ? `/file-viewer/${encodeURIComponent(route.folderId)}`
@@ -236,10 +236,10 @@ export default function App() {
             }
             onOpenFileViewer={() => navigate({ view: "file-viewer" })}
             onOpenAccuracy={() => navigate({ view: "accuracy" })}
-            onOpenExcelCompare={() => navigate({ view: "excel-compare" })}
+            onOpenManualReview={() => navigate({ view: "manual-review" })}
           />
-        ) : route.view === "excel-compare" ? (
-          <ExcelCompareView onBack={() => navigate({ view: "landing" })} />
+        ) : route.view === "manual-review" ? (
+          <ManualReviewView onBack={() => navigate({ view: "landing" })} />
         ) : route.view === "accuracy" ? (
           <AccuracyView
             key={gtSource}

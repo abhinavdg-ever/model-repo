@@ -5,7 +5,7 @@ import pandas as pd
 # KEY COLUMNS
 #
 # These columns establish which Ground Truth row corresponds
-# to which System Generated row. They are NEVER compared as
+# to which Algo Generated row. They are NEVER compared as
 # content and must not influence correctness in any way.
 # =============================================================
 
@@ -74,7 +74,7 @@ def _build_key_map(df, label):
 def match_records(ground_df, system_df):
     """
     Establish which Ground Truth rows correspond to which
-    System Generated rows, using an exact match on
+    Algo Generated rows, using an exact match on
     (PDF ID, Page Number).
 
     This function determines correspondence ONLY. It must
@@ -94,7 +94,7 @@ def match_records(ground_df, system_df):
 
     system_keys = _build_key_map(
         system_df,
-        "System Generated",
+        "Algo Generated",
     )
 
     matched_pairs = []

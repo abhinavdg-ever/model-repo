@@ -2,6 +2,7 @@ import pandas as pd
 
 from app.services.excel_compare.field_comparator import (
     ACTIVE_COMPARISON_FIELDS,
+    DATE_FIELDS,
     ALWAYS_EXEMPT_FIELDS,
     compare_fields,
     determine_status,
@@ -45,7 +46,8 @@ def test_all_fields_match_gives_correct_status():
 
     for field_name in ACTIVE_COMPARISON_FIELDS:
         assert field_results[field_name]["match"] is True
-        assert field_results[field_name]["display"] == gt_row[field_name]
+        expected = "07/25/2024" if field_name in DATE_FIELDS else gt_row[field_name]
+        assert field_results[field_name]["display"] == expected
 
 
 def test_single_mismatch_gives_error_status_and_display():
@@ -63,7 +65,7 @@ def test_single_mismatch_gives_error_status_and_display():
 
     assert field_results["Page Type"]["match"] is False
     assert field_results["Page Type"]["display"] == (
-        "GT: Medical Record | System: Billing Record"
+        "GT: Medical Record | Algo: Billing Record"
     )
 
     # Unaffected fields still show their common value

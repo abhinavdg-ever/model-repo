@@ -66,6 +66,10 @@ def _pool_for(url: str, schema: str):
                 max_size=POOL_MAX_SIZE,
                 timeout=POOL_WAIT_SEC,
                 kwargs=_connect_kwargs(schema),
+                # A pooled socket can die under us (laptop sleep, Wi-Fi or VPN
+                # change: "Can't assign requested address"). Test each one on
+                # borrow and reconnect, rather than fail the request mid-query.
+                check=ConnectionPool.check_connection,
                 open=True,
                 name=f"review-ui:{schema}",
             )

@@ -2,7 +2,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from .field_comparator import ACTIVE_COMPARISON_FIELDS
+from .field_comparator import ACTIVE_COMPARISON_FIELDS, DATE_FIELDS
+from .normalizer import display_date
 
 
 # =============================================================
@@ -19,6 +20,17 @@ def _raw_value(row, field_name):
     return str(value).strip()
 
 
+def _field_value(row, field_name):
+    """A field shown on its own (Missing / Extra): dates read MM/DD/YYYY."""
+
+    value = _raw_value(row, field_name)
+
+    if field_name in DATE_FIELDS:
+        return display_date(value)
+
+    return value
+
+
 def build_associated_result(
     pdf_id,
     page_number,
@@ -29,7 +41,7 @@ def build_associated_result(
 ):
     """
     Build a compact human-readable result row for a matched
-    Ground Truth / System Generated pair.
+    Ground Truth / Algo Generated pair.
 
     `fields` is the subset of ACTIVE_COMPARISON_FIELDS actually
     compared for this run (fields exempted -- either always, or
@@ -62,7 +74,7 @@ def build_associated_result(
 def build_missing_result(gt_row, fields=None):
     """
     Build a result row for a Ground Truth record that has no
-    corresponding System Generated record.
+    corresponding Algo Generated record.
     """
 
     if fields is None:
@@ -77,11 +89,11 @@ def build_missing_result(gt_row, fields=None):
     }
 
     for field_name in fields:
-        row[field_name] = _raw_value(gt_row, field_name)
+        row[field_name] = _field_value(gt_row, field_name)
 
     row["Status"] = "MISSING"
     row["Reason"] = (
-        f"No corresponding System Generated record found for "
+        f"No corresponding Algo Generated record found for "
         f"PDF ID {pdf_id}, Page Number {page_number}."
     )
 
@@ -90,7 +102,7 @@ def build_missing_result(gt_row, fields=None):
 
 def build_extra_result(system_row, fields=None):
     """
-    Build a result row for a System Generated record that has
+    Build a result row for a Algo Generated record that has
     no corresponding Ground Truth record.
     """
 
@@ -106,7 +118,7 @@ def build_extra_result(system_row, fields=None):
     }
 
     for field_name in fields:
-        row[field_name] = _raw_value(system_row, field_name)
+        row[field_name] = _field_value(system_row, field_name)
 
     row["Status"] = "EXTRA"
     row["Reason"] = (
@@ -177,7 +189,7 @@ def build_summary(ground_count, system_count, result_rows):
             "Percentage": 100.0 if ground_count else 0.0,
         },
         {
-            "Metric": "Total System Records",
+            "Metric": "Total Algo Records",
             "Count": system_count,
             "Percentage": 100.0 if system_count else 0.0,
         },

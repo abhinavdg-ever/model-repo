@@ -406,6 +406,13 @@ def latest_bulk_labels(
     return out
 
 
+def ground_truth_charts(database_url: str, db_schema: str = "public") -> list[str]:
+    """Every chart with at least one ground-truth page."""
+    with connection(database_url, db_schema) as conn, conn.cursor() as cur:
+        cur.execute("SELECT DISTINCT chart_name FROM page_ground_truth ORDER BY chart_name")
+        return [str(row[0]) for row in cur.fetchall()]
+
+
 def ground_truth_labels(
     database_url: str,
     chart_names: list[str],

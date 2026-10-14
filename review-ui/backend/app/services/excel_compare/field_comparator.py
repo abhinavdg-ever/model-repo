@@ -3,6 +3,7 @@ import pandas as pd
 from .normalizer import (
     clean_text,
     clean_date,
+    display_date,
     normalize_yes_no,
     normalize_codable,
 )
@@ -12,7 +13,7 @@ from .normalizer import (
 # COMPARISON FIELDS
 #
 # ACTIVE_COMPARISON_FIELDS are the fields actually compared
-# between a matched Ground Truth row and System Generated row
+# between a matched Ground Truth row and Algo Generated row
 # (subject also to being present in both files -- see
 # generate_report.py for the per-run "present in both" filter).
 #
@@ -30,7 +31,6 @@ ACTIVE_COMPARISON_FIELDS = [
     "Extracted Name",
     "Extracted DOB",
     "Member ID",
-    "Type (Printed/HW)",
     "DOS From",
     "DOS To",
     "Is Blank or Junk?",
@@ -43,6 +43,7 @@ ACTIVE_COMPARISON_FIELDS = [
 ]
 
 ALWAYS_EXEMPT_FIELDS = [
+    "Type (Printed/HW)",
     "Handwritten %",
     "Visibility",
     "Quality",
@@ -136,10 +137,14 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
 
         is_match = gt_normalized == system_normalized
 
+        if field_name in DATE_FIELDS:
+            gt_raw = display_date(gt_raw)
+            system_raw = display_date(system_raw)
+
         if is_match:
             display_value = gt_raw
         else:
-            display_value = f"GT: {gt_raw} | System: {system_raw}"
+            display_value = f"GT: {gt_raw} | Algo: {system_raw}"
 
         field_results[field_name] = {
             "match": is_match,

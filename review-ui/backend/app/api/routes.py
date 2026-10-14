@@ -1,4 +1,5 @@
 from urllib.parse import quote
+import json
 import logging
 from pathlib import Path
 
@@ -37,6 +38,7 @@ from app.services import excel_compare
 from app.services.ground_truth import (
     GroundTruthSource,
     bulk_ground_truth,
+    ground_truth_charts,
     ground_truth_labels,
     upsert_page_ground_truth,
 )
@@ -615,39 +617,118 @@ async def _upload_bytes(label: str, upload: UploadFile | None) -> tuple[bytes, s
     return data, name
 
 
-async def _compare_inputs(
-    settings: Settings,
-    system_file: UploadFile,
-    ground_file: UploadFile | None,
-    ground_source: str,
-    ground_truth: GroundTruthSource,
-) -> tuple[tuple[bytes, str], tuple[bytes, str]]:
-    """(ground, system). Ground truth is the uploaded sheet, or page_ground_truth
-    for the PDF IDs (chart names) in the system file."""
-    system = await _upload_bytes("System Generated", system_file)
-    if ground_source == "upload":
-        return await _upload_bytes("Ground Truth", ground_file), system
-    if ground_source != "db":
-        raise HTTPException(status_code=400, detail="ground_source must be upload or db")
-    if not database_url_usable(settings.database_url):
-        raise HTTPException(status_code=503, detail="Database is not configured")
+def _pipeline_loader(repo: FolderRepository):
+    """pdf_id -> that chart's pipeline output as Algo Generated CSV bytes,
+    or None when review-ui has no output for it. Folders are listed once."""
+    folders: dict[str, str] | None = None
+
+    def load(pdf_id: str) -> bytes | None:
+        nonlocal folders
+        if folders is None:
+            folders = {folder.name: folder.id for folder in repo.list_folders()}
+        folder_id = folders.get(pdf_id)
+        if folder_id is None:
+            return None
+        try:
+            doc = repo.get_imaging(folder_id)
+        except HTTPException:
+            return None  # no imaging output for this chart yet
+        return excel_compare.database_system.system_csv([(pdf_id, doc)])
+
+    return load
+
+
+def _system_from_pipeline(repo: FolderRepository, pdf_ids: list[str]) -> tuple[bytes, str]:
+    """The pipeline output for the charts named by the ground truth's PDF IDs, as one sheet."""
+    load = _pipeline_loader(repo)
     try:
-        pdf_ids = excel_compare.database_ground.system_pdf_ids(*system)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    try:
-        rows = ground_truth_labels(settings.database_url, pdf_ids, ground_truth, settings.db_schema)
+        parts = [data for data in (load(pdf_id) for pdf_id in pdf_ids) if data]
     except Exception as exc:
-        logger.warning("excel compare ground truth lookup failed: %s", exc)
-        raise HTTPException(status_code=502, detail="Could not read ground truth") from exc
-    if not rows:
+        logger.warning("manual review algo output lookup failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not read the algo output") from exc
+    if not parts:
         shown = ", ".join(pdf_ids[:5]) + (" …" if len(pdf_ids) > 5 else "")
         raise HTTPException(
             status_code=400,
-            detail=f"No ground truth in the database for the PDF IDs in the system file ({shown}). "
+            detail=f"No algo output for the PDF IDs in the Ground Truth file ({shown}). "
             "PDF ID must be the chart name.",
         )
-    return (excel_compare.database_ground.ground_csv(rows), "ground_truth_database.csv"), system
+    # Every part carries the same header; keep the first one's.
+    body = parts[0] + b"".join(part.split(b"\n", 1)[1] for part in parts[1:])
+    return body, "algo_output_database.csv"
+
+
+def _ground_from_database(
+    settings: Settings, pdf_ids: list[str] | None, ground_truth: GroundTruthSource
+) -> tuple[bytes, str]:
+    """page_ground_truth as a Ground Truth sheet: for ``pdf_ids``, or every
+    chart that has ground truth when None."""
+    if not database_url_usable(settings.database_url):
+        raise HTTPException(status_code=503, detail="Database is not configured")
+    try:
+        if pdf_ids is None:
+            pdf_ids = ground_truth_charts(settings.database_url, settings.db_schema)
+        rows = ground_truth_labels(settings.database_url, pdf_ids, ground_truth, settings.db_schema)
+    except Exception as exc:
+        logger.warning("manual review ground truth lookup failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not read ground truth") from exc
+    if not rows:
+        shown = ", ".join(pdf_ids[:5]) + (" …" if len(pdf_ids) > 5 else "")
+        detail = (
+            f"No ground truth in the database for the PDF IDs in the Algo Generated file ({shown}). "
+            "PDF ID must be the chart name."
+            if pdf_ids
+            else "No ground truth in the database."
+        )
+        raise HTTPException(status_code=400, detail=detail)
+    return excel_compare.database_ground.ground_csv(rows), "ground_truth_database.csv"
+
+
+def _pdf_ids(upload: tuple[bytes, str], label: str) -> list[str]:
+    try:
+        return excel_compare.database_system.pdf_ids(*upload, label=label)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+async def _inputs(
+    settings: Settings,
+    ground_file: UploadFile | None,
+    ground_source: str,
+    ground_truth: GroundTruthSource,
+    system_file: UploadFile | None,
+    system_source: str,
+) -> tuple[tuple[bytes, str], tuple[bytes, str] | None]:
+    """(ground, uploaded algo sheet or None when the algo side is the
+    database). Database ground truth covers the algo file's PDF IDs, or every
+    chart with ground truth when the algo side is the database too."""
+    if ground_source not in ("upload", "db"):
+        raise HTTPException(status_code=400, detail="ground_source must be upload or db")
+    if system_source not in ("db", "upload"):
+        raise HTTPException(status_code=400, detail="system_source must be db or upload")
+    ground = await _upload_bytes("Ground Truth", ground_file) if ground_source == "upload" else None
+    system = await _upload_bytes("Algo Generated", system_file) if system_source == "upload" else None
+    if ground is not None:
+        return ground, system
+    pdf_ids = _pdf_ids(system, "Algo Generated") if system is not None else None
+    return _ground_from_database(settings, pdf_ids, ground_truth), system
+
+
+async def _compare_inputs(
+    settings: Settings,
+    repo: FolderRepository,
+    ground_file: UploadFile | None,
+    ground_source: str,
+    ground_truth: GroundTruthSource,
+    system_file: UploadFile | None,
+    system_source: str,
+) -> tuple[tuple[bytes, str], tuple[bytes, str]]:
+    """(ground, algo) as two whole sheets; database algo output covers the
+    ground truth's PDF IDs."""
+    ground, system = await _inputs(settings, ground_file, ground_source, ground_truth, system_file, system_source)
+    if system is None:
+        system = _system_from_pipeline(repo, _pdf_ids(ground, "Ground Truth"))
+    return ground, system
 
 
 _GROUND_SOURCE = Form(default="upload", description="upload = the Ground Truth file; db = page_ground_truth")
@@ -655,55 +736,101 @@ _GROUND_TRUTH = Form(
     default="latest",
     description="With ground_source=db: latest, or bulk_upload (manual edits hidden).",
 )
+_SYSTEM_SOURCE = Form(default="db", description="db = the pipeline output review-ui shows; upload = the Algo Generated file")
 
 
 @router.get("/excel-compare/columns")
 def get_excel_compare_columns() -> dict:
-    """The columns a System Generated file needs, and the header spellings accepted."""
+    """The columns a Ground Truth or Algo Generated file needs, and the header spellings accepted."""
     return excel_compare.columns()
 
 
 @router.post("/excel-compare")
 async def post_excel_compare(
-    system_file: UploadFile = File(...),
     ground_file: UploadFile | None = File(default=None),
     ground_source: str = _GROUND_SOURCE,
     ground_truth: GroundTruthSource = _GROUND_TRUTH,
+    system_file: UploadFile | None = File(default=None),
+    system_source: str = _SYSTEM_SOURCE,
+    repo: FolderRepository = Depends(get_repository),
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    """Compare ground truth with a system-generated sheet. Nothing is stored."""
-    ground, system = await _compare_inputs(settings, system_file, ground_file, ground_source, ground_truth)
+    """Manual Review: compare ground truth with the system output. Nothing is stored."""
+    ground, system = await _compare_inputs(
+        settings, repo, ground_file, ground_source, ground_truth, system_file, system_source
+    )
     try:
         return excel_compare.run(ground, system)
     except ValueError as exc:
         # Missing key column, duplicate PDF ID / Page Number, unreadable file.
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        logger.warning("excel compare failed: %s", exc)
+        logger.warning("manual review compare failed: %s", exc)
         raise HTTPException(status_code=400, detail=f"Comparison failed: {exc}") from exc
+
+
+@router.post("/excel-compare/stream")
+async def post_excel_compare_stream(
+    ground_file: UploadFile | None = File(default=None),
+    ground_source: str = _GROUND_SOURCE,
+    ground_truth: GroundTruthSource = _GROUND_TRUTH,
+    system_file: UploadFile | None = File(default=None),
+    system_source: str = _SYSTEM_SOURCE,
+    repo: FolderRepository = Depends(get_repository),
+    settings: Settings = Depends(get_settings),
+) -> StreamingResponse:
+    """The comparison as NDJSON, one chart per line, so the screen fills in
+    while later charts are still being read. Bad input fails before the
+    stream starts; a failure part-way is an ``error`` line."""
+    ground, system = await _inputs(settings, ground_file, ground_source, ground_truth, system_file, system_source)
+    events = excel_compare.stream(
+        ground, system, load_system=None if system is not None else _pipeline_loader(repo)
+    )
+    try:
+        first = next(events)  # reads and checks both files' headers
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("manual review stream failed: %s", exc)
+        raise HTTPException(status_code=400, detail=f"Comparison failed: {exc}") from exc
+
+    def lines():
+        yield json.dumps(first) + "\n"
+        for event in events:
+            yield json.dumps(event) + "\n"
+
+    return StreamingResponse(
+        lines(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/excel-compare/report")
 async def post_excel_compare_report(
-    system_file: UploadFile = File(...),
     ground_file: UploadFile | None = File(default=None),
     ground_source: str = _GROUND_SOURCE,
     ground_truth: GroundTruthSource = _GROUND_TRUTH,
+    system_file: UploadFile | None = File(default=None),
+    system_source: str = _SYSTEM_SOURCE,
+    repo: FolderRepository = Depends(get_repository),
     settings: Settings = Depends(get_settings),
 ) -> Response:
     """The same comparison as an Excel workbook (Comparison Results, Summary, Exempted Columns)."""
-    ground, system = await _compare_inputs(settings, system_file, ground_file, ground_source, ground_truth)
+    ground, system = await _compare_inputs(
+        settings, repo, ground_file, ground_source, ground_truth, system_file, system_source
+    )
     try:
         data = excel_compare.report(ground, system)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        logger.warning("excel compare report failed: %s", exc)
+        logger.warning("manual review report failed: %s", exc)
         raise HTTPException(status_code=400, detail=f"Comparison failed: {exc}") from exc
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": 'attachment; filename="comparison_report.xlsx"'},
+        headers={"Content-Disposition": 'attachment; filename="manual_review_report.xlsx"'},
     )
 
 

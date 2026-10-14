@@ -5,7 +5,7 @@ type Props = {
   displayName?: string;
   initials?: string;
   /** "file-viewer" shows History link; otherwise shows File Browser link */
-  currentView?: "landing" | "folder" | "file-viewer" | "accuracy" | "excel-compare";
+  currentView?: "landing" | "folder" | "file-viewer" | "accuracy" | "manual-review";
   onOpenFileViewer?: () => void;
   onOpenHistory?: () => void;
   /** True while manual ground-truth edits are hidden (latest bulk upload only). */

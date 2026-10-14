@@ -141,48 +141,20 @@ def _resolve_comparison_fields(ground, system):
 # CORE COMPARISON
 # =============================================================
 
-def compare_files(ground_file, system_file):
+def compare_frames(ground, system, fields_to_compare):
     """
-    Compare Ground Truth and System Generated files on the
-    active QA checklist fields.
+    Match and compare two already-read, already-validated frames.
 
-    Records are matched by an exact (PDF ID, Page Number) key
-    -- this determines correspondence only. Once matched, the
-    active comparison fields are compared independently to
-    decide correctness. A single file pair may contain rows for
-    multiple PDF IDs; all are matched and compared in one pass.
-
-    Fields that are always exempt by design, or that aren't
-    present in both files, are excluded from comparison and
-    from the report entirely; see "exempted_columns" in the
-    returned dict for exactly which fields and why.
-
-    Accepts filesystem paths or Streamlit UploadedFile objects.
+    Returns (result_rows, missing_count, extra_count). compare_files
+    runs this once over whole files; review-ui's streaming compare
+    runs it once per PDF ID.
     """
-
-    ground = _read_file(ground_file)
-    system = _read_file(system_file)
-
-    _validate_columns(ground, "Ground Truth")
-    _validate_columns(system, "System Generated")
-
-    fields_to_compare, exempted_columns = _resolve_comparison_fields(
-        ground, system
-    )
-
-    # ---------------------------------------------------------
-    # Match
-    # ---------------------------------------------------------
 
     (
         matched_pairs,
         missing_gt_indices,
         extra_system_indices,
     ) = match_records(ground, system)
-
-    # ---------------------------------------------------------
-    # Build result rows
-    # ---------------------------------------------------------
 
     result_rows = []
 
@@ -222,6 +194,42 @@ def compare_files(ground_file, system_file):
             build_extra_result(system.loc[system_index], fields_to_compare)
         )
 
+    return result_rows, len(missing_gt_indices), len(extra_system_indices)
+
+
+def compare_files(ground_file, system_file):
+    """
+    Compare Ground Truth and Algo Generated files on the
+    active QA checklist fields.
+
+    Records are matched by an exact (PDF ID, Page Number) key
+    -- this determines correspondence only. Once matched, the
+    active comparison fields are compared independently to
+    decide correctness. A single file pair may contain rows for
+    multiple PDF IDs; all are matched and compared in one pass.
+
+    Fields that are always exempt by design, or that aren't
+    present in both files, are excluded from comparison and
+    from the report entirely; see "exempted_columns" in the
+    returned dict for exactly which fields and why.
+
+    Accepts filesystem paths or Streamlit UploadedFile objects.
+    """
+
+    ground = _read_file(ground_file)
+    system = _read_file(system_file)
+
+    _validate_columns(ground, "Ground Truth")
+    _validate_columns(system, "Algo Generated")
+
+    fields_to_compare, exempted_columns = _resolve_comparison_fields(
+        ground, system
+    )
+
+    result_rows, missing_count, extra_count = compare_frames(
+        ground, system, fields_to_compare
+    )
+
     # ---------------------------------------------------------
     # Summary
     # ---------------------------------------------------------
@@ -240,8 +248,8 @@ def compare_files(ground_file, system_file):
         "system_count": len(system),
         "correct_count": correct_count,
         "error_count": error_count,
-        "missing_count": len(missing_gt_indices),
-        "extra_count": len(extra_system_indices),
+        "missing_count": missing_count,
+        "extra_count": extra_count,
         "result_rows": result_rows,
         "summary_df": summary_df,
         "active_comparison_fields": fields_to_compare,
