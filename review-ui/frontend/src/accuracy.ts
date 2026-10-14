@@ -40,7 +40,7 @@ export const METRICS: {
     id: "member",
     label: "Member Verification",
     binary: true,
-    rule: "Exact match on the Name and DOB presence labels: a page is a Match only when the pipeline found (or did not find) the Name and the DOB exactly as the ground truth says. Scored on pages with both labels. Member ID is not scored (no ground truth)",
+    rule: "Exact match on the Name and DOB presence labels: a page is a Match only when the pipeline found (or did not find) the Name and the DOB exactly as the ground truth says. Scored on pages with both labels. Member ID is not scored (no ground truth). Under Member & DOB = Yes: Accuracy = of the pages where the ground truth or the pipeline has both Name and DOB, the share where both do; Precision, Recall and F1 on the same pages",
   },
   {
     id: "dos",
@@ -51,7 +51,7 @@ export const METRICS: {
     id: "blankJunk",
     label: "Blank / Junk",
     binary: true,
-    rule: "Blank / Junk (Yes) or not (No) matches the ground truth. Blank vs junk, and the junk sub-type, do not count: Match or No Match, no Partial",
+    rule: "Blank / Junk (Yes) or not (No) matches the ground truth, on every labelled page. Blank vs junk, and the junk sub-type, do not count: Match or No Match, no Partial. Under Blank/Junk = Yes: Accuracy = of the pages the ground truth or the pipeline calls blank / junk, the share where both do; Precision, Recall and F1 on the same pages",
   },
   {
     id: "pageType",
@@ -74,7 +74,7 @@ export const METRICS: {
     id: "orientation",
     label: "Orientation",
     binary: true,
-    rule: "Ground-truth rotation equals the stored text orientation (degrees the text sits counter-clockwise: 0 / 90 / 180 / 270), on every labelled page. Under Rotated (not 0°) = Yes, every figure is on the rotated pages only (upright pages never count): Precision = of the rotated pages the pipeline turned, the share at the right angle; Recall = of the rotated pages, the share found at the right angle. A label that is not a quarter turn (12°) is not scored. Not part of the overall page match",
+    rule: "Accuracy = of every page with an orientation label, the share where the stored text orientation equals the ground truth (0 / 90 / 180 / 270, degrees the text sits counter-clockwise); an upright page left upright is a match. Under Rotated (not 0°) = Yes: Accuracy = the same, on the subset where the ground truth or the pipeline says the page is rotated; Precision = of the pages the pipeline turned, the share at the right angle (an upright page turned by mistake counts against it); Recall = of the rotated pages, the share found at the right angle. A label that is not a quarter turn (12°) is not scored. Not part of the overall page match",
     inOverall: false,
   },
 ];
@@ -111,6 +111,8 @@ export type ChartAccuracy = {
   blankJunkRates: ClassRates;
   /** Class 1 = a rotated page (not 0°). */
   orientationRates: ClassRates;
+  /** Orientation on the pages the ground truth or the pipeline calls rotated (not 0°). */
+  orientationNonZero: Tally;
   /** Class 1 = both the member's Name and DOB are on the page. */
   memberRates: ClassRates;
 };
@@ -150,9 +152,10 @@ function quarterTurn(value: string | number | null | undefined): number | null {
   return ((Math.round(n) % 360) + 360) % 360;
 }
 
-/** Pages the ground truth says are rotated (not 0°) only; upright pages never count.
- * Same angle = TP; reported upright = FN (missed); another angle = FP + FN (a wrong
- * call that also misses the page). */
+/** Class 1 = a rotated page (not 0°). Rotated in the ground truth and found at
+ * the same angle = TP; reported upright = FN; another angle = FP + FN (a wrong
+ * call that also misses the page). Upright in the ground truth but turned = FP.
+ * Upright on both sides = TN. */
 function addOrientationRates(
   rates: ClassRates,
   bits: GtBit[],
@@ -161,8 +164,11 @@ function addOrientationRates(
   if (!labeled(bits) || bits[0].mark === "unknown") return;
   const expectedTurn = quarterTurn(bits[0].label);
   const actualTurn = quarterTurn(angle);
-  if (expectedTurn === null || expectedTurn === 0 || actualTurn === null) return;
-  if (actualTurn === expectedTurn) {
+  if (expectedTurn === null || actualTurn === null) return;
+  if (expectedTurn === 0) {
+    if (actualTurn === 0) rates.tn += 1;
+    else rates.fp += 1;
+  } else if (actualTurn === expectedTurn) {
     rates.tp += 1;
   } else if (actualTurn === 0) {
     rates.fn += 1;
@@ -170,6 +176,17 @@ function addOrientationRates(
     rates.fp += 1;
     rates.fn += 1;
   }
+}
+
+/** The non-zero subset: pages where the ground truth or the pipeline says the
+ * page is rotated. Null for a page both call upright (or one not scored). */
+function nonZeroOrientationVerdict(bits: GtBit[], angle: number | null | undefined): Verdict | null {
+  if (!labeled(bits) || bits[0].mark === "unknown") return null;
+  const expectedTurn = quarterTurn(bits[0].label);
+  const actualTurn = quarterTurn(angle);
+  if (expectedTurn === null || actualTurn === null) return null;
+  if (expectedTurn === 0 && actualTurn === 0) return null;
+  return expectedTurn === actualTurn ? "yes" : "no";
 }
 
 /** Blank / junk as Yes / No: blank vs junk and the junk sub-type do not count.
@@ -429,6 +446,7 @@ export function scoreChart(
   >;
   const blankJunkRates = emptyRates();
   const orientationRates = emptyRates();
+  const orientationNonZero = emptyTally();
   const memberRates = emptyRates();
   const overall = emptyTally();
   for (const page of doc.pages) {
@@ -440,6 +458,7 @@ export function scoreChart(
       addRates(blankJunkRates, scored.blankJunk.expected, scored.blankJunk.predicted);
     }
     addOrientationRates(orientationRates, scored.rotation, page.orientationAngle);
+    add(orientationNonZero, nonZeroOrientationVerdict(scored.rotation, page.orientationAngle));
     if (scored.member) {
       // Class 1: both Name and DOB on the page.
       addRates(
@@ -456,6 +475,7 @@ export function scoreChart(
     overall,
     blankJunkRates,
     orientationRates,
+    orientationNonZero,
     memberRates,
   };
 }

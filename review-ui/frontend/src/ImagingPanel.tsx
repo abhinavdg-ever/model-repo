@@ -283,12 +283,20 @@ function fmtVisibility(value: boolean | null | undefined, processed = true): str
   return value ? "Visible" : "Not visible";
 }
 
-function fmtPercent(value: number | null | undefined, processed = true): string {
+/** Handwritten share of the page as a band; the model's exact figure is
+ * not precise enough to show to a decimal. */
+const HW_AREA_BANDS = [
+  { below: 5, label: "Negligible (~0%)" },
+  { below: 20, label: "Low (<10%)" },
+  { below: 50, label: "Medium (~25%)" },
+  { below: Infinity, label: "High (50% or higher)" },
+] as const;
+const HW_AREA_CHOICES = HW_AREA_BANDS.map((band) => band.label);
+
+function fmtHandwrittenArea(value: number | null | undefined, processed = true): string {
   if (!processed) return YET_TO_PROCESS;
-  if (value === null || value === undefined) return NOT_MEASURED;
-  // A dusting of ink is not handwriting. Under 5% is shown as none.
-  if (value < 5) return "0%";
-  return `${value.toFixed(1)}%`;
+  if (value === null || value === undefined || Number.isNaN(value)) return NOT_MEASURED;
+  return HW_AREA_BANDS.find((band) => value < band.below)!.label;
 }
 
 function fmtQualityTag(value: string | null | undefined, processed = true): string {
@@ -424,14 +432,6 @@ function canonicalDegrees(value: string): string | null {
   return `${text}°`;
 }
 
-function canonicalPercent(value: string): string | null {
-  const text = value.trim().replace(/%$/, "").trim();
-  if (!/^\d+(\.\d+)?$/.test(text)) return null;
-  const amount = Number(text);
-  if (!Number.isFinite(amount) || amount < 0 || amount > 100) return null;
-  return `${text}%`;
-}
-
 function canonicalLabel(value: string): string | null {
   const text = value.trim();
   if (PLACEHOLDER_ENTRY.has(text.toLowerCase())) return null;
@@ -441,7 +441,7 @@ function canonicalLabel(value: string): string | null {
 type EntryRule = {
   presence?: boolean;
   choices?: readonly string[];
-  kind?: "date" | "degrees" | "percent" | "text";
+  kind?: "date" | "degrees" | "text";
 };
 
 const ENTRY_RULES: Record<string, EntryRule> = {
@@ -461,7 +461,7 @@ const ENTRY_RULES: Record<string, EntryRule> = {
   dos_to: { kind: "date" },
   orientation: { kind: "degrees" },
   tilt: { kind: "degrees" },
-  handwritten_area: { kind: "percent" },
+  handwritten_area: { choices: HW_AREA_CHOICES },
   provider_name: { kind: "text" },
   provider_credentials: { kind: "text" },
 };
@@ -475,7 +475,6 @@ function normalizeEntry(id: string, value: string): string | null {
   if (rule.choices) return exactOption(value, rule.choices);
   if (rule.kind === "date") return canonicalDate(value);
   if (rule.kind === "degrees") return canonicalDegrees(value);
-  if (rule.kind === "percent") return canonicalPercent(value);
   return canonicalLabel(value);
 }
 
@@ -484,7 +483,6 @@ function entryHint(id: string): string {
   if (!rule || rule.presence || rule.choices) return "Invalid Value";
   if (rule.kind === "date") return "Enter a date";
   if (rule.kind === "degrees") return "Enter an angle";
-  if (rule.kind === "percent") return "Enter a percent from 0 to 100";
   return "That value can't be saved";
 }
 
@@ -1464,9 +1462,10 @@ function PageDetails({
             label: "Type (Printed/HW)",
             choices: TYPE_CHOICES,
           }),
-          sameValue(fmtPercent(page.handwrittenAreaPct, sections.hw), fmtConfidence(null, sections.hw), {
+          sameValue(fmtHandwrittenArea(page.handwrittenAreaPct, sections.hw), fmtConfidence(null, sections.hw), {
             id: "handwritten_area",
             label: "Handwritten %",
+            choices: HW_AREA_CHOICES,
           }),
           sameValue(fmtVisibility(page.isVisible, sections.hw), fmtConfidence(null, sections.hw), {
             id: "visibility",
@@ -1851,7 +1850,7 @@ function DocSummary({
                 </td>
                 <td>{fmt(p.memberId, sections.member, skip)}</td>
                 <td>{fmtHandwriting(pageTypeOf(p), sections.hw)}</td>
-                <td>{fmtPercent(p.handwrittenAreaPct, sections.hw)}</td>
+                <td>{fmtHandwrittenArea(p.handwrittenAreaPct, sections.hw)}</td>
                 <td>{fmtVisibility(p.isVisible, sections.hw)}</td>
                 <td>
                   {fmtQualityTag(
