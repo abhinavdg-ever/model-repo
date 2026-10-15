@@ -70,13 +70,19 @@ context is split into **groups** of similar words:
 
 | Context | Groups | What a high score means |
 |---|---|---|
-| **clinical** | section_headings, assessment_language, vitals, exam_findings, diagnosis_coding, conditions, medications_orders, labs_results, imaging_procedures, signature | The page is part of a medical record |
+| **clinical** | section_headings, assessment_language, vitals, exam_findings, diagnosis_coding, conditions, medications_orders, labs_results, imaging_procedures, **patient_education**, signature | The page is part of a medical record |
 | **junk** | fax_cover, cover_page, cover_stamps (Accept / Unaccept), record_request, roi_vendors, invoice, placeholder | The page is retrieval or billing paperwork; each group names the junk subtype |
 | **demographic** | identity, registration | A face sheet or registration page: administrative-looking, but a chart page |
 | **neutral** | fax, phone, page, confidential, PHI, and all insurance wording | Never scored: it appears on every kind of page |
 
 Two lists are deliberately absent:
 
+- **Patient education counts as clinical.** Handouts and instruction sheets
+  ("Consumer Information Use and Disclaimer", "after visit summary", "call your
+  doctor if") are part of the record. Page classification has a Patient
+  Education page type, but it runs after blank/junk, so a junked handout never
+  reaches it. Two `patient_education` hits make the page C, so DistilBERT cannot
+  force it to junk (R4) and the vote keeps it.
 - **No `instructions` junk group.** Patient instructions (discharge, medication,
   after-visit) are clinical pages. The Instructions subtype can still come from
   DistilBERT, but no word list pushes a page toward it.
@@ -219,7 +225,7 @@ from the others (§8).
 | — | — | — | ABSTAIN | — | — |
 
 "—" means below threshold. When J and C both hit, the keyword voter says KEEP
-and the page is flagged for review (§9). The best junk group is the group with
+and the call is uncertain (§10). The best junk group is the group with
 the highest score; a tie goes to the group with the higher weight.
 
 The keyword voter **abstains** when it has no evidence; it does not vote KEEP.
@@ -320,7 +326,7 @@ ballot sets.
 
 `s` = strong, `w` = weak. "C" = the keyword clinical score is at or above 4.
 
-| # | Ballots | Verdict | Review | Notes |
+| # | Ballots | Verdict | Uncertain (confidence ≤ 0.60) | Notes |
 |---|---|---|---|---|
 | 1 | J J J | **JUNK** | no; yes if any J is weak or C | Unanimous |
 | 2 | J J K | **JUNK** only if both J are strong **and** the K is weak; else **KEEP** | yes | One dissent. A strong KEEP blocks |
@@ -335,13 +341,13 @@ ballot sets.
 
 ### 8.3 Vetoes applied to a JUNK result from the table
 
-Applied in order to rows 1–3. Any veto turns the result into **KEEP + review**.
+Applied in order to rows 1–3. Any veto turns the result into **KEEP, uncertain**.
 
 | Veto | Condition | Effect |
 |---|---|---|
-| **Clinical veto** | C (clinical ≥ 4) | KEEP + review. Even 3 strong JUNK ballots are blocked |
-| **Demographic veto** | D and the junk score does not come from record_request / roi_vendors / invoice | KEEP + review (face sheets, registration) |
-| **Handwritten veto** | `handwritten_area_pct` **> 30%** (page-tag model) | KEEP + review. A page that is mostly handwriting is clinical far more often than admin, and OCR on it is weak. A printed form with a few handwritten fields (≤ 30%) is not protected |
+| **Clinical veto** | C (clinical ≥ 4) | KEEP, uncertain. Even 3 strong JUNK ballots are blocked |
+| **Demographic veto** | D and the junk score does not come from record_request / roi_vendors / invoice | KEEP, uncertain (face sheets, registration) |
+| **Handwritten veto** | `handwritten_area_pct` **> 30%** (page-tag model) | KEEP, uncertain. A page that is mostly handwriting is clinical far more often than admin, and OCR on it is weak. A printed form with a few handwritten fields (≤ 30%) is not protected |
 
 C⁺ never reaches R9 (R7 kept it). So the clinical veto here covers the
 moderate band, score 4–7.
@@ -355,8 +361,7 @@ moderate band, score 4–7.
 - **A strong KEEP is a veto in all but name** (row 2). If any method is
   confident the page is clinical, two other methods saying junk is not enough.
 - **Two weak JUNKs are not agreement** (row 3 with both weak, and row 2). Weak
-  means "leaning". Two leanings plus a silent third stays KEEP and goes to
-  review.
+  means "leaning". Two leanings plus a silent third stays KEEP, with low confidence.
 - **Abstention is not a KEEP vote.** It removes the voter. That is why row 6
   (one J, two silent) keeps the page: the only evidence is one voter.
 
@@ -379,7 +384,7 @@ When the verdict is JUNK (R9), the subtype is chosen in this order:
 2. Else DistilBERT's `top_junk_label`, if BERT voted JUNK.
 3. Else Others.
 
-Flag for review when keyword and BERT both voted JUNK with **different**
+The call is uncertain when keyword and BERT both voted JUNK with **different**
 subtypes and both were strong.
 
 Mapping: fax_cover → Letter/Fax · cover_page → Cover Page · record_request,
@@ -389,15 +394,23 @@ Instructions comes only from DistilBERT's label.
 
 ---
 
-## 10. Review flag
+## 10. Uncertain calls: lower confidence, never "no verdict"
 
-Review is set when:
+This is client-facing, so every page gets one verdict: blank, junk (with a
+subtype), duplicate or Main. There is no separate review flag. When the call is
+uncertain, the verdict stands and its **confidence is capped at 0.60**
+(`uncertain_confidence_cap` in the canon). Filter on confidence ≤ 0.60 to see
+the pages worth a second look.
 
-- the table in §8.2 sets it,
+A call is uncertain when:
+
+- the table in §8.2 marks it,
 - any veto in §8.3 fired,
 - J and C both hit,
 - subtypes disagree (§9),
 - a voter was unavailable (§12).
+
+Rules R1–R8 are not uncertain: they keep their fixed confidence.
 
 ---
 
@@ -423,8 +436,8 @@ pass 2.
 
 | Missing | Behaviour | Recorded |
 |---|---|---|
-| DistilBERT | Its ballot is A. Two voters remain, so JUNK needs both, and both strong | `votes.bert = "unavailable"`, review |
-| TF-IDF | Same | `votes.tfidf = "unavailable"`, review |
+| DistilBERT | Its ballot is A. Two voters remain, so JUNK needs both, and both strong | `"note": "unavailable"` on the DistilBERT ballot; confidence ≤ 0.60 |
+| TF-IDF | Same | `"note": "unavailable"` on the TF-IDF ballot; confidence ≤ 0.60 |
 | Canon fails to load | Last good version (canon_store); first load raises | — |
 | Page-tag model | No page is Visual; R8 never fires | `visual_source = "none"` |
 | KV extraction (Provider Signature) | R3 uses the canon `signature` group only | `signature_source = "canon_only"` |
@@ -444,36 +457,34 @@ and the comparison only runs when the two lengths are within 10% of each other.
 
 ## 14. Recording
 
-Two columns on `blank_junk_classification`: `votes JSONB` and
-`review_required BOOLEAN`. The junk CSV gains a `review_required` column.
-`votes` as written:
+The database row is unchanged: `blank_junk_flag`, `junk_subtype`,
+`confidence` (≤ 0.60 when uncertain) and `reason` (the deciding rule, e.g.
+`R9 vote JKK row 4 -> Main (veto: clinical)`). No schema change.
+
+Every ballot is staged on disk beside the key/value extraction's
+`extraction.json`, at `<chart>/staging/blank_junk.json`. Each pass replaces its
+own entries and keeps the other pass's:
 
 ```json
-{
-  "pass": 2, "rule": "R9",
-  "bert":  {"vote": "JUNK", "strength": "strong", "p_junk": 0.91, "subtype": "Letter/Fax", "label": "JUNK_LETTER_FAX"},
-  "tfidf": {"vote": "JUNK", "strength": "weak",   "p_junk": 0.68},
-  "kw":    {"vote": "KEEP", "strength": "weak", "p_junk": 0.6, "clinical": 5, "junk": 6, "demographic": 0,
-            "junk_group": "fax_cover", "hits": {"clinical.section_headings": ["Assessment", "Plan"]}},
-  "ballots": "JJK", "row": 2, "veto": "clinical", "r4_skipped": "clinical",
-  "visual_source": "page_tags", "signature_source": "kv_extract", "hw_area": 4.2,
-  "short_page": {"content_bottom": 0.41}
-}
+{"version": 1, "chart_name": "53688890", "updated_at": "2026-10-15T10:12:03+00:00",
+ "pages": {"24.jpg": {"pass_2": {
+   "pass": 2, "rule": "R9",
+   "bert":  {"vote": "JUNK", "strength": "strong", "p_junk": 0.98, "subtype": "Record Request/Transmittal",
+             "label": "JUNK_RECORD_REQUEST"},
+   "tfidf": {"vote": "KEEP", "strength": "strong", "p_junk": 0.0},
+   "kw":    {"vote": "KEEP", "strength": "weak", "p_junk": 0.0, "clinical": 5, "junk": 0,
+             "demographic": 1, "junk_group": null, "hits": {"clinical.section_headings": ["PLAN"]}},
+   "ballots": "JKK", "row": 4, "r4_skipped": "clinical", "uncertain": true,
+   "visual_source": "none", "signature_source": "kv_extract", "hw_area": "none",
+   "short_page": {"content_bottom": 0.415},
+   "verdict": "Main", "confidence": 0.6, "reason": "R9 vote JKK row 4 -> Main"}}}}
 ```
 
 `visual_source` is `none` when the page-tag model did not tag the page,
 `signature_source` is `canon_only` when the KV signature output was missing,
 `short_page` is `no_geometry` when the page had no word boxes, and a model that
-was not loaded shows `"note": "unavailable"` on its ballot.
-
-An existing database needs the two columns (the schema itself is recreated from
-`schema/v1.sql` per CLAUDE.md §5):
-
-```sql
-ALTER TABLE blank_junk_classification
-  ADD COLUMN IF NOT EXISTS votes JSONB,
-  ADD COLUMN IF NOT EXISTS review_required BOOLEAN NOT NULL DEFAULT FALSE;
-```
+was not loaded shows `"note": "unavailable"` on its ballot. A duplicate keeps
+the votes of its verdict, plus a `duplicate` entry.
 
 ---
 
@@ -488,11 +499,11 @@ charts that have Final OCR (84 pages), against the old verdicts in their
 | Same verdict as before | 80 |
 | R4 junk, old Main — header / footer only (`Printed … Pg 8 of 10`) | 1 (53688890 p28) |
 | R4 junk, old Main — tail of a note (care team, confidentiality footer) | 1 (53688890 p16) |
-| R4 junk, old Main — patient-education handouts (fall prevention, first-aid kit) | 2 (60306165 p27, p29) |
-| Face sheet and BCG administration page | kept after R4 was narrowed (vote, review) |
+| Patient-education handouts (fall prevention, first-aid kit): R4 junk until the `patient_education` canon group was added; now Main (clinical 6, confidence 0.60) | 2 (60306165 p27, p29) |
+| Face sheet and BCG administration page | kept after R4 was narrowed (vote, confidence 0.60) |
 
 Still to do: compare against `page_ground_truth` (`blank_page`, `junk_page`)
-per voter and per rule from `votes`, with the number that matters being
+per voter and per rule from `staging/blank_junk.json`, with the number that matters being
 clinical pages marked junk; and check R5 by hand on charts run with the
 page-tag model.
 
@@ -507,7 +518,3 @@ page-tag model.
 3. DistilBERT force (R4) keeps signed pages. Should a signed page above 85% be
    junked too? Should R4 also run in pass 1, saving the stage-5 bill but before
    Provider Signature is known?
-4. Patient-education handouts score 0 on the canon and DistilBERT calls them
-   Record Request, so R4 junks them. Are they junk? If not, add handout words
-   ("consumer information", "this generalized information") to a clinical or
-   neutral group.

@@ -354,7 +354,7 @@ def imaging_dir(chart_name: str) -> Path:
 
 
 def staging_dir(chart_name: str) -> Path:
-    """Key/value extraction for one chart: ``staging/extraction.json``.
+    """Staged results for one chart: ``staging/extraction.json`` (key/value extraction) and ``staging/blank_junk.json`` (blank/junk votes).
 
     Member verification, date of service and page sequencing read it. It stays
     on disk after the chart finishes so provider name and e-signature, which

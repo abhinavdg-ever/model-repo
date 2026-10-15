@@ -792,8 +792,6 @@ class MemoryStore:
         confidence: Optional[float] = None,
         reason: Optional[str] = None,
         is_final: bool = False,
-        votes: Optional[dict[str, Any]] = None,
-        review_required: bool = False,
     ) -> None:
         with self._lock:
             key = (page_id, pass_no)
@@ -811,8 +809,6 @@ class MemoryStore:
                 "confidence": confidence,
                 "reason": reason,
                 "is_final": bool(is_final),
-                "votes": votes,
-                "review_required": bool(review_required),
                 "updated_at": _now(),
             }
 
@@ -942,7 +938,6 @@ class MemoryStore:
                         "ocr_source": row.get("ocr_source"),
                         "pass_no": row["pass_no"],
                         "is_final": row.get("is_final"),
-                        "review_required": row.get("review_required", False),
                         "duplicate_of_page": (orig or {}).get("page_name") or "",
                     }
                 )

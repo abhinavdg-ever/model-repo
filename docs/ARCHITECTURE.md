@@ -340,7 +340,8 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/junk-classification/`.
 | File | Role |
 |---|---|
 | `classify.py` | The entry point: `classify_text()` tries each detector in priority order and returns a code; also the code constants, labels, `text_similarity()` / `fingerprint()` helpers and confidences. |
-| `model_bridge.py` | `classify_page()`: wired like b_jnk v3 `scripts/infer.py` — BERT decides keep / blank / junk, TF-IDF is a junk safety net (p_junk ≥ 0.80 on a BERT keep → junk with review); Final OCR 1 pages go in through `extract_docling_page()`, plain text through `clean_ocr_text()`. TF-IDF alone when BERT is unavailable; regex fallback stamped `regex_fallback:<why>`. |
+| `method.py` | The blank/junk decision: rules R1–R8 and the three-voter vote; uncertain calls keep their verdict with confidence ≤ 0.60; ballots staged in `staging/blank_junk.json`. |
+| `model_bridge.py` | `model_scores()`: DistilBERT's and TF-IDF's raw probabilities for `method.py`. `classify_page()` (no longer called by the stage): wired like b_jnk v3 `scripts/infer.py` — BERT decides keep / blank / junk, TF-IDF is a junk safety net (p_junk ≥ 0.80 on a BERT keep → junk with review); Final OCR 1 pages go in through `extract_docling_page()`, plain text through `clean_ocr_text()`. TF-IDF alone when BERT is unavailable; regex fallback stamped `regex_fallback:<why>`. |
 | `model/src/` | Bundled model code the pickled checkpoint (`models/blank-junk/tfidf_flat.joblib`) unpickles against. |
 | `kw.py` | Compiles `keyword-canon/junk_keywords_canon.json`; reloads on edit. |
 | `classify_junk.py` | The fuller CLI-era classifier retained from the V1 prototype. |

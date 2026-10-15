@@ -363,6 +363,38 @@
           "pulmonary function"
         ]
       },
+      "patient_education": {
+        "weight": 2,
+        "cap": 6,
+        "note": "Patient education and instruction handouts are part of the record (Non-Codable page type 'Patient Education' / 'Discharge Instructions' in page classification, which runs after blank/junk). Two hits make the page clinical (C), so DistilBERT cannot force it to junk (R4) and the vote keeps it.",
+        "terms": [
+          "patient education",
+          "patient instructions",
+          "patient information sheet",
+          "after visit summary",
+          "discharge instructions",
+          "home care instructions",
+          "care instructions",
+          "instructions for home",
+          "consumer information",
+          "this generalized information",
+          "use and disclaimer",
+          "is not meant to be comprehensive",
+          "educational material",
+          "education material",
+          "what you need to know",
+          "when to call your doctor",
+          "call your doctor if",
+          "seek medical care",
+          "how to care for",
+          "learning about",
+          "krames",
+          "healthwise",
+          "lexicomp",
+          "medlineplus",
+          "uptodate"
+        ]
+      },
       "signature": {
         "weight": 3,
         "cap": 6,
@@ -646,5 +678,7 @@
   "handwritten_veto": {
     "note": "Section 8.3: a JUNK vote is turned into KEEP + review only when the handwritten share of the page is above this. Needs the page-tag model (handwritten_area_pct); without it the veto does not apply and votes.hw_area = 'none'.",
     "min_handwritten_area_pct": 30
-  }
+  },
+  "uncertain_confidence_cap": 0.6,
+  "note_uncertain": "Every page gets one verdict. When the call is uncertain (a split vote, a veto, clinical and junk evidence together, a model not loaded) its confidence is capped at uncertain_confidence_cap, so low-confidence pages can be filtered for review."
 }

@@ -20,6 +20,10 @@ The ladder, first rule that fires decides (R4, R5 and R3's KV half need pass 2):
 Pass 1 only lets R1, R2, R6, R8 and a unanimous strong vote decide; every other page stays
 Main and is judged again in pass 2 on the final OCR.
 
+Every page gets one verdict. When the call is uncertain (a split vote, a veto, clinical and
+junk evidence together, a model that did not load) its confidence is capped at the canon's
+``uncertain_confidence_cap`` (0.60), so those pages can be filtered for a second look.
+
 The words, weights, thresholds and geometry live in
 ``keyword-canon/blank_junk_context_canon.json`` (reloads on change).
 """
@@ -450,7 +454,7 @@ class Verdict:
     confidence: float
     rule: str
     reason: str
-    review: bool = False
+    uncertain: bool = False
     votes: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -478,31 +482,31 @@ def _vote(inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes:
     n_j, n_k = len(junk), len(keep)
 
     if n_j == 3:
-        row, verdict, review = 1, JUNK, bool(weak_j) or c_hit
+        row, verdict, uncertain = 1, JUNK, bool(weak_j) or c_hit
     elif n_j == 2 and n_k == 1:
         ok = len(strong_j) == 2 and keep[0].strength == WEAK
-        row, verdict, review = 2, JUNK if ok else KEEP, True
+        row, verdict, uncertain = 2, JUNK if ok else KEEP, True
     elif n_j == 2:
-        row, verdict, review = 3, JUNK if strong_j else KEEP, bool(weak_j)
+        row, verdict, uncertain = 3, JUNK if strong_j else KEEP, bool(weak_j)
     elif n_j == 1 and n_k == 2:
-        row, verdict, review = 4, KEEP, bool(strong_j)
+        row, verdict, uncertain = 4, KEEP, bool(strong_j)
     elif n_j == 1 and n_k == 1:
-        row, verdict, review = 5, KEEP, True
+        row, verdict, uncertain = 5, KEEP, True
     elif n_j == 1:
-        row, verdict, review = 6, KEEP, bool(strong_j)
+        row, verdict, uncertain = 6, KEEP, bool(strong_j)
     elif n_k == 3:
-        row, verdict, review = 7, KEEP, False
+        row, verdict, uncertain = 7, KEEP, False
     elif n_k == 2:
-        row, verdict, review = 8, KEEP, False
+        row, verdict, uncertain = 8, KEEP, False
     elif n_k == 1:
-        row, verdict, review = 9, KEEP, False
+        row, verdict, uncertain = 9, KEEP, False
     else:
-        row, verdict, review = 10, KEEP, True
+        row, verdict, uncertain = 10, KEEP, True
 
     if inputs.pass_no == 1:
         # Pass 1 only takes a unanimous, all-strong JUNK; anything else waits for final OCR.
         if not (n_j == 3 and len(strong_j) == 3):
-            verdict, review = KEEP, False
+            verdict, uncertain = KEEP, False
     votes.update(ballots=letters, row=row)
 
     veto = ""
@@ -516,13 +520,13 @@ def _vote(inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes:
         elif inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit:
             veto = "handwritten"
         if veto:
-            verdict, review = KEEP, True
+            verdict, uncertain = KEEP, True
             votes["veto"] = veto
 
     if c_hit and scores.junk >= t["junk"]:
-        review = True
+        uncertain = True
     if any(b.note == "unavailable" for b in ballots.values()):
-        review = True
+        uncertain = True
 
     if verdict == KEEP:
         ps = [1.0 - b.p_junk for b in keep if b.p_junk is not None]
@@ -530,7 +534,7 @@ def _vote(inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes:
         reason = f"R9 vote {letters} row {row} -> Main" + (f" (veto: {veto})" if veto else "")
         if inputs.pass_no == 1 and n_j:
             reason += " (pass 1: deferred to final OCR)"
-        return Verdict(CODE_MAIN, confidence, "R9", reason, review, votes)
+        return Verdict(CODE_MAIN, confidence, "R9", reason, uncertain, votes)
 
     kw, bert = ballots["kw"], ballots["bert"]
     if kw.vote == JUNK:
@@ -540,10 +544,10 @@ def _vote(inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes:
     else:
         subtype = "Others"
     if kw.vote == JUNK and bert.vote == JUNK and kw.strength == bert.strength == STRONG and kw.subtype != bert.subtype:
-        review = True
+        uncertain = True
     ps = [b.p_junk for b in junk if b.p_junk is not None]
     confidence = sum(ps) / len(ps) if ps else 0.5
-    return Verdict(_junk_code(subtype), confidence, "R9", f"R9 vote {letters} row {row} -> Junk / {subtype}", review, votes)
+    return Verdict(_junk_code(subtype), confidence, "R9", f"R9 vote {letters} row {row} -> Junk / {subtype}", uncertain, votes)
 
 
 def decide(inputs: PageInputs) -> Verdict:
@@ -575,9 +579,9 @@ def decide(inputs: PageInputs) -> Verdict:
     if inputs.bert:
         votes["bert"]["label"] = inputs.bert.get("top_junk_label") or ""
 
-    def ruled(code: int, rule: str, reason: str, *, confidence: Optional[float] = None, review: bool = False) -> Verdict:
+    def ruled(code: int, rule: str, reason: str, *, confidence: Optional[float] = None) -> Verdict:
         votes["rule"] = rule
-        return Verdict(code, RULE_CONFIDENCE.get(rule, 0.9) if confidence is None else confidence, rule, reason, review, votes)
+        return Verdict(code, RULE_CONFIDENCE.get(rule, 0.9) if confidence is None else confidence, rule, reason, False, votes)
 
     # R1 blank
     if inputs.no_ink or (len(re.sub(r"\s", "", text)) < MIN_TEXT_CHARS and not visual):
@@ -629,4 +633,8 @@ def decide(inputs: PageInputs) -> Verdict:
             return ruled(_junk_code(subtype), "R8", f"R8 Visual with retrieval / invoice wording -> Junk / {subtype}")
         return ruled(CODE_MAIN, "R8", "R8 Visual -> Main")
     votes["rule"] = "R9"
-    return _vote(inputs, scores, ballots, votes)
+    verdict = _vote(inputs, scores, ballots, votes)
+    if verdict.uncertain:
+        verdict.confidence = min(verdict.confidence, float(prof.raw["uncertain_confidence_cap"]))
+        votes["uncertain"] = True
+    return verdict

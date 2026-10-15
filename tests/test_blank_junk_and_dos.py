@@ -644,3 +644,19 @@ class TestRegexFallbackClinicalContent:
     def test_clinical_words_in_sentences_do_not_count(self):
         text = "The patient was seen for a follow up and the assessment and plan were discussed. " * 4
         assert not self._clinical(text)
+
+
+def test_votes_are_staged_beside_the_chart_and_each_pass_keeps_its_own(tmp_path, monkeypatch):
+    import json
+
+    from stages.lib.blank_junk import stage as bj_stage
+
+    monkeypatch.setattr(bj_stage, "staging_dir", lambda name: tmp_path / name / "staging")
+    row = {"page_name": "1.jpg", "label": "Main", "confidence": 0.9, "reason": "R7", "votes": {"rule": "R7"}}
+    bj_stage._write_votes("c", 1, [row])
+    bj_stage._write_votes("c", 2, [{**row, "reason": "R3", "votes": {"rule": "R3"}}])
+    bj_stage._write_votes("c", 2, [{**row, "reason": "R9", "votes": {"rule": "R9"}}])
+    data = json.loads((tmp_path / "c" / "staging" / "blank_junk.json").read_text(encoding="utf-8"))
+    assert data["version"] == 1 and data["chart_name"] == "c"
+    assert data["pages"]["1.jpg"]["pass_1"]["rule"] == "R7"
+    assert data["pages"]["1.jpg"]["pass_2"]["rule"] == "R9"

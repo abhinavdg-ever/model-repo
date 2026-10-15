@@ -272,12 +272,15 @@ other combination is Main. Then the vetoes turn a JUNK into Main + review:
 clinical (C), demographic (D without retrieval / invoice wording), handwritten
 area > 30%. Pass 1 only takes a unanimous all-strong JUNK; everything else stays
 Main and is judged again in pass 2 on final OCR. A model that is not loaded
-abstains, and the row is flagged for review.
+abstains.
 
 Subtype: the canon's best junk group, else DistilBERT's label, else Others.
-Every verdict stores its ballots and deciding rule in `votes` (JSONB) and sets
-`review_required` on a split vote, a veto, clinical-and-junk evidence together,
-or a missing model.
+Every page gets one verdict (client-facing). An uncertain call — a split vote, a
+veto, clinical and junk evidence together, a missing model — keeps its verdict
+with **confidence capped at 0.60**; filter on that to review. Patient-education
+handouts score as clinical (`patient_education` canon group), so DistilBERT
+cannot force them to junk. Every ballot and the deciding rule are staged in
+`<chart>/staging/blank_junk.json` (beside `extraction.json`), not the database.
 
 `junk_subtype` is constrained by a `CHECK` to the six labels the review UI
 renders. Anything else maps to `Others` rather than becoming an unrenderable
@@ -317,8 +320,9 @@ Downstream stages read `v_page_blank_junk_final` and never re-derive precedence.
 
 | Target | Columns |
 |---|---|
-| `blank_junk_classification` | `pass_no`, `blank_junk_flag`, `junk_subtype`, `duplicate_of_page_id`, `ocr_source`, `confidence`, `reason`, `votes`, `review_required`, `is_final` |
-| disk | `imaging/<chart>_junk.csv` — **fully rewritten from the database** after each pass (now with a `review_required` column) |
+| `blank_junk_classification` | `pass_no`, `blank_junk_flag`, `junk_subtype`, `duplicate_of_page_id`, `ocr_source`, `confidence`, `reason`, `is_final` |
+| disk | `imaging/<chart>_junk.csv` — **fully rewritten from the database** after each pass |
+| disk | `staging/blank_junk.json` — every ballot and deciding rule per page and pass |
 
 > v6 truncated the CSV in pass 1 and appended in pass 2, so re-running pass 2
 > alone duplicated every row. The full rewrite makes the file converge.

@@ -12,8 +12,10 @@ Two passes, as the pipeline spec requires:
 
 The verdict is ``method.decide`` (docs/BLANK_JUNK_PROPOSAL.md): rules R1-R8, then
 DistilBERT, TF-IDF and the keyword canon vote (R9). Pass 1 only removes what it
-is sure of; every other page stays Main and gets final OCR. Every ballot and the
-deciding rule are stored in ``votes``, with ``review_required``.
+is sure of; every other page stays Main and gets final OCR. An uncertain call
+keeps its verdict with a confidence of at most 0.60. Every ballot and the
+deciding rule go to ``<chart>/staging/blank_junk.json`` beside the key/value
+extraction's ``extraction.json`` (not the database).
 
 Duplicate detection (after the verdict, among Main pages only):
 
@@ -41,7 +43,7 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from config import CORE_ROOT, page_image_path
+from config import CORE_ROOT, page_image_path, staging_dir
 from db import (
     connect,
     delete_blank_junk,
@@ -107,7 +109,6 @@ JUNK_CSV_COLS = [
     "pass_no",
     "is_final",
     "duplicate_of_page",
-    "review_required",
 ]
 
 # classify.py's label -> the constrained junk_subtype values in schema v7.
@@ -170,7 +171,6 @@ def _row_for(
     duplicate_of: Optional[int] = None,
     confidence: Optional[float] = None,
     votes: Optional[dict[str, Any]] = None,
-    review: bool = False,
 ) -> dict[str, Any]:
     flag, subtype = _to_db_flag(code)
     return {
@@ -186,7 +186,6 @@ def _row_for(
         "group": _page_group(code),
         "reason": reason,
         "votes": votes,
-        "review": review,
     }
 
 
@@ -272,7 +271,7 @@ def _classify(
         verdict = method.decide(page_inputs)
         by_id[page_id] = _row_for(
             page, code=verdict.code, reason=verdict.reason, confidence=verdict.confidence,
-            votes=verdict.votes, review=verdict.review,
+            votes=verdict.votes,
         )
 
     def _comparable(page_id: int) -> bool:
@@ -348,12 +347,14 @@ def _classify(
             f"({match} within ±{DUPLICATE_NEIGHBOR_WINDOW})"
         )
         page = page_by_id[dup_id]
+        earlier = (by_id.get(dup_id) or {}).get("votes")
         by_id[dup_id] = _row_for(
             page,
             code=CODE_DUPLICATE,
             reason=reason,
             duplicate_of=orig_id,
             confidence=sim,
+            votes={**earlier, "duplicate": reason} if earlier else None,
         )
 
     rows: list[dict[str, Any]] = []
@@ -403,7 +404,6 @@ def _rewrite_csv(conn: Any, chart_id: int, chart_name: str) -> Path:
                 "pass_no": row["pass_no"],
                 "is_final": row["is_final"],
                 "duplicate_of_page": row.get("duplicate_of_page") or "",
-                "review_required": bool(row.get("review_required")),
             }
         )
     return write_csv(imaging_csv(chart_name, "junk"), JUNK_CSV_COLS, out)
@@ -505,6 +505,62 @@ def _page_inputs(
                 inputs.body_ink = _body_ink(ctx.chart_name, page["page_name"])
         out[pid] = inputs
     return out
+
+
+VOTES_FILE = "blank_junk.json"
+VOTES_VERSION = 1
+
+
+def votes_path(chart_name: str) -> Path:
+    return staging_dir(chart_name) / VOTES_FILE
+
+
+def _write_votes(chart_name: str, pass_no: int, rows: list[dict[str, Any]]) -> Optional[Path]:
+    """Every page's ballots and deciding rule for this pass, staged beside the chart::
+
+        {"version": 1, "chart_name": …, "updated_at": …,
+         "pages": {"<page name>": {"pass_1": {...}, "pass_2": {...}}}}
+
+    This pass's entries are replaced and the other pass's kept, so after a full run the
+    file holds both passes.
+    """
+    from datetime import datetime, timezone
+
+    path = votes_path(chart_name)
+    try:
+        existing = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, ValueError):
+        existing = {}
+    if existing.get("version") != VOTES_VERSION:
+        existing = {}
+    pages: dict[str, Any] = existing.get("pages") or {}
+    key = f"pass_{pass_no}"
+    for page in pages.values():
+        page.pop(key, None)
+    for row in rows:
+        if row.get("votes") is None:
+            continue
+        pages.setdefault(row["page_name"], {})[key] = {
+            **row["votes"],
+            "verdict": row["label"],
+            "confidence": round(float(row["confidence"]), 4),
+            "reason": row["reason"],
+        }
+    payload = {
+        "version": VOTES_VERSION,
+        "chart_name": chart_name,
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "pages": pages,
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, indent=1, default=str), encoding="utf-8")
+        tmp.replace(path)
+    except OSError as exc:
+        logger.warning("could not write %s: %s", path, exc)
+        return None
+    return path
 
 
 def _run_pass(
@@ -615,14 +671,13 @@ def _run_pass(
                     duplicate_of_page_id=row["duplicate_of"],
                     confidence=row["confidence"],
                     reason=row["reason"],
-                    votes=row["votes"],
-                    review_required=row["review"],
                 )
                 # Demoted prior-main pages are upserted but were not in todo.
                 if row["page_id"] in ctx.todo:
                     mark_completed(conn, ctx, row["page_id"])
             mark_blank_junk_final(conn, chart_id)
             path = _rewrite_csv(conn, chart_id, ctx.chart_name)
+        votes_file = _write_votes(ctx.chart_name, pass_no, classified)
 
         counts: dict[str, int] = {}
         for row in classified:
@@ -632,6 +687,7 @@ def _run_pass(
             "chart_id": chart_id,
             "pass_no": pass_no,
             "junk_csv": str(path),
+            "votes_json": str(votes_file) if votes_file else None,
             "classified": len(classified),
             "skipped": ctx.skipped,
             "counts": counts,

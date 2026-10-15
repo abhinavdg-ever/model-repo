@@ -145,8 +145,9 @@ class TestRules:
 class TestVote:
     def test_three_strong_junk_ballots(self):
         verdict = run(JUNK_TEXT, bert=bert(0.84), tfidf=tfidf(0.95))
-        # bert 0.84 is weak, so review; kw is J+ (invoice + fax cover)
-        assert verdict.code == classify.CODE_INVOICE and verdict.votes["row"] == 1 and verdict.review
+        # bert 0.84 is weak, so uncertain; kw is J+ (invoice + fax cover)
+        assert verdict.code == classify.CODE_INVOICE and verdict.votes["row"] == 1 and verdict.uncertain
+        assert verdict.confidence <= 0.60
 
     def test_two_strong_junk_and_a_weak_keep_is_junk(self):
         verdict = run(FILLER, pass_no=1, bert=bert(0.95), tfidf=tfidf(0.95))
@@ -160,26 +161,33 @@ class TestVote:
 
     def test_two_weak_junk_and_a_silent_third_stays_main(self):
         verdict = run(FILLER, bert=bert(0.70), tfidf=tfidf(0.70))
-        assert (verdict.votes["row"], verdict.code, verdict.review) == (3, classify.CODE_MAIN, True)
+        assert (verdict.votes["row"], verdict.code, verdict.uncertain) == (3, classify.CODE_MAIN, True)
 
     def test_two_junk_one_strong_and_a_silent_third_is_junk(self):
         verdict = run(FILLER, bert=bert(0.70), tfidf=tfidf(0.90))
         assert (verdict.votes["row"], verdict.code) == (3, classify.CODE_INVOICE)  # DistilBERT voted JUNK: its label
-        assert verdict.confidence == pytest.approx(0.80)
+        # mean p(junk) 0.80, capped at 0.60: one of the two junk votes is weak
+        assert verdict.confidence == pytest.approx(0.60) and verdict.uncertain
 
-    def test_nothing_to_judge_is_main_with_review(self):
+    def test_nothing_to_judge_is_main_with_low_confidence(self):
         verdict = run(FILLER, bert=bert(0.55), tfidf=tfidf(0.5))
-        assert (verdict.votes["row"], verdict.code, verdict.review) == (10, classify.CODE_MAIN, True)
+        assert (verdict.votes["row"], verdict.code, verdict.uncertain) == (10, classify.CODE_MAIN, True)
+        assert verdict.confidence <= 0.60
 
-    def test_a_missing_model_abstains_and_asks_for_review(self):
+    def test_a_missing_model_abstains_and_lowers_the_confidence(self):
         verdict = run(FILLER, tfidf=tfidf(0.1))
-        assert verdict.votes["bert"]["note"] == "unavailable" and verdict.review
+        assert verdict.votes["bert"]["note"] == "unavailable" and verdict.uncertain
 
     def test_clinical_veto(self):
         text = JUNK_TEXT + "\nAssessment:\nstable\nPlan:\nrest"
         verdict = run(text, bert=bert(0.84), tfidf=tfidf(0.95))
         assert verdict.code == classify.CODE_MAIN
         assert verdict.votes.get("veto") in (None, "clinical")  # kw votes KEEP on C, or the veto fires
+
+    def test_a_clear_call_keeps_its_confidence(self):
+        verdict = run(FILLER, bert=bert(0.02), tfidf=tfidf(0.02))
+        assert verdict.code == classify.CODE_MAIN and not verdict.uncertain
+        assert verdict.confidence == pytest.approx(0.98)
 
     def test_handwritten_veto_above_30_percent(self):
         verdict = run(JUNK_TEXT, bert=bert(0.84), tfidf=tfidf(0.95), hw_area_pct=45.0)
@@ -199,6 +207,23 @@ class TestVote:
         verdict = run(JUNK_TEXT, bert=bert(0.84), tfidf=tfidf(0.95))
         assert {"bert", "tfidf", "kw", "rule", "ballots", "row"} <= set(verdict.votes)
         assert verdict.votes["kw"]["junk_group"] == "invoice"
+
+
+class TestPatientEducation:
+    HANDOUT = (
+        "Dim lighting Loose rug Clutter. This picture shows some of the things that can cause a fall in "
+        "your home. Consumer Information Use and Disclaimer. This generalized information is a limited "
+        "summary of diagnosis, treatment, and/or medication information."
+    )
+
+    def test_a_handout_is_clinical_so_distilbert_cannot_force_it(self):
+        verdict = run(self.HANDOUT, bert=bert(0.99, "JUNK_RECORD_REQUEST"), tfidf=tfidf(0.0))
+        assert verdict.code == classify.CODE_MAIN
+        assert verdict.votes["r4_skipped"] == "clinical"
+
+    def test_after_visit_summary_wording_counts(self):
+        scores = score_text("After Visit Summary. Discharge instructions: call your doctor if the fever returns.")
+        assert scores.group("clinical", "patient_education") >= 4
 
 
 class TestGeometry:
