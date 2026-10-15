@@ -371,3 +371,40 @@ def classify_page(text: str, *, docling: Any = None) -> tuple[int, str, float | 
     if flag == "KEEP":
         return CODE_MAIN, reason, conf
     return _regex(text, why=f"unknown_flag:{flag}")
+
+
+def model_scores(text: str, *, docling: Any = None) -> dict[str, Any]:
+    """DistilBERT's and TF-IDF's raw probabilities for one page, for the voters in method.py.
+
+    ``{"bert": {"p_keep", "p_junk", "top_junk_label"} | None, "tfidf": {"p_junk"} | None}``.
+    p_junk is every JUNK_* label plus BLANK. A model that is not loaded, or that raises, is
+    None: its voter abstains and the verdict records it as unavailable.
+    """
+    from method import bucket
+
+    out: dict[str, Any] = {"bert": None, "tfidf": None}
+    service = _load_service()
+    if service is None:
+        return out
+    try:
+        model_text, _meta = _model_input(text, docling)
+    except Exception:
+        logger.exception("Blank/junk model input failed")
+        return out
+    if not model_text.strip():
+        return out
+    bert = service.model if "+bert" in str(service.model_version) else None
+    tfidf = _safety_net_service.model if _safety_net_service is not None else (
+        None if bert is not None else service.model
+    )
+    for name, model in (("bert", bert), ("tfidf", tfidf)):
+        if model is None:
+            continue
+        try:
+            probs = [float(p) for p in model.predict_proba([model_text])[0]]
+        except Exception:
+            logger.exception("Blank/junk %s predict failed", name)
+            continue
+        p_keep, p_junk, top = bucket(list(model.labels), probs)
+        out[name] = {"p_keep": p_keep, "p_junk": p_junk, "top_junk_label": top}
+    return out

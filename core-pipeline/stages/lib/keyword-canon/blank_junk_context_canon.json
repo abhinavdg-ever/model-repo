@@ -31,12 +31,13 @@
     ],
     "body_ink_max_fraction": 0.0001,
     "ignore_line_patterns": [
-      "^page\\s*\\d+\\s*(of|/)\\s*\\d+$",
-      "^\\d{1,4}$",
-      "^(fax|from|to)\\b.*\\d{3}.*\\d{4}",
-      "^(printed|print date|printed on|printed by)\\b",
-      "^confidential"
-    ]
+      "\\b(?:page|pg|pge)\\.?\\s*#?\\s*\\d+\\s*(?:of|/)\\s*\\d+\\b",
+      "^\\s*\\d{1,4}\\s*$",
+      "\\b(?:printed|print date|printed on|printed by)\\b\\s*:?\\s*\\d",
+      "^\\s*(?:fax|from|to)\\b.*\\d{3}.*\\d{4}",
+      "^\\s*confidential"
+    ],
+    "note_patterns": "A line matching any of these (anywhere in the line) is a running header / footer stamp, not content: 'Page 3 of 7', 'MRN: 023466 Printed: 10/30/2025 8:10 AM Pg 14 of 17', a bare page number, a fax transmission line."
   },
   "visual": {
     "note": "Visual = ocr_quality_results.document_type == 'visual' (CSV column document_type). Decided in pass 1 (R8): kept, or junk on very strong retrieval / invoice wording. Pass 2 is skipped for these pages. No confidence cut-off, no proxy.",
@@ -630,7 +631,7 @@
       "keep_weak": 0.5,
       "min_words": 8,
       "force_junk_above": 0.85,
-      "note": "Pass 2: p(junk) = sum of JUNK_* + BLANK above force_junk_above -> JUNK forced (method R4), overruled only by blank, placeholder and Provider Signature = Yes. Pass 1: not forced, counts as a strong JUNK ballot."
+      "note": "Pass 2: p(junk) = sum of JUNK_* + BLANK above force_junk_above -> JUNK forced (method R4), overruled only by blank, placeholder and Provider Signature = Yes, and not applied when the canon finds clinical (>= thresholds.clinical) or demographic (>= thresholds.demographic) evidence: then the vote decides. Pass 1: not forced, counts as a strong JUNK ballot."
     },
     "tfidf": {
       "junk_strong": 0.85,

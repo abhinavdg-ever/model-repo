@@ -927,6 +927,8 @@ def upsert_blank_junk(
     confidence: Optional[float] = None,
     reason: Optional[str] = None,
     is_final: bool = False,
+    votes: Optional[dict[str, Any]] = None,
+    review_required: bool = False,
 ) -> None:
     """Write one pass's verdict. `is_final` is set separately by mark_final()
     so that exactly one row per page carries it."""
@@ -934,8 +936,9 @@ def upsert_blank_junk(
         """
         INSERT INTO blank_junk_classification (
             chart_id, page_id, pass_no, blank_junk_flag, junk_subtype,
-            duplicate_of_page_id, ocr_source, confidence, reason, is_final
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            duplicate_of_page_id, ocr_source, confidence, reason, is_final,
+            votes, review_required
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
         ON CONFLICT (page_id, pass_no) DO UPDATE SET
             blank_junk_flag      = EXCLUDED.blank_junk_flag,
             junk_subtype         = EXCLUDED.junk_subtype,
@@ -943,11 +946,15 @@ def upsert_blank_junk(
             ocr_source           = EXCLUDED.ocr_source,
             confidence           = EXCLUDED.confidence,
             reason               = EXCLUDED.reason,
+            votes                = EXCLUDED.votes,
+            review_required      = EXCLUDED.review_required,
             updated_at           = now()
         """,
         (
             chart_id, page_id, pass_no, blank_junk_flag, junk_subtype,
             duplicate_of_page_id, ocr_source, confidence, reason, is_final,
+            json.dumps(votes, default=str) if votes is not None else None,
+            bool(review_required),
         ),
     )
 
@@ -1910,7 +1917,7 @@ def list_blank_junk_for_csv(conn: Any, chart_id: int) -> list[dict[str, Any]]:
             """
             SELECT c.chart_name, p.page_name, p.page_number,
                    b.blank_junk_flag, b.junk_subtype, b.confidence, b.reason,
-                   b.ocr_source, b.pass_no, b.is_final,
+                   b.ocr_source, b.pass_no, b.is_final, b.review_required,
                    orig.page_name AS duplicate_of_page
               FROM blank_junk_classification b
               JOIN page_list p  ON p.id = b.page_id

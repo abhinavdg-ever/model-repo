@@ -1,6 +1,17 @@
-# Junk / blank page classification
+# Blank / junk / duplicate
 
-Classifies pages from **existing preliminary OCR** (`ocr/<chart>_prelim.txt`) — does **not** re-OCR.
+**The pipeline decides with `method.py`** (stage 3 and 7, `stage.py`): rules R1–R8, then
+DistilBERT, TF-IDF and the keyword canon vote (R9). Words, weights, thresholds and the
+short-page geometry live in `../keyword-canon/blank_junk_context_canon.json`. The method, with
+worked examples, is `docs/BLANK_JUNK_PROPOSAL.md`; the summary is `docs/LOGIC.md` §3.
+
+Duplicates: Main pages only, ≥ 98% similar OCR text (SequenceMatcher, only when the lengths
+are within 10%) to a Main neighbour within ±5 pages, or text wholly contained in it; pages
+under 300 characters never compared; the longer (or earlier) page is kept.
+
+The rest of this file describes the older regex classifier (`classify_junk.py` and the
+detector modules) and the former post-model rules (`postprocess.py`). The stage no longer
+calls either; they remain for the standalone script below.
 
 ## Categories
 
@@ -14,16 +25,16 @@ Classifies pages from **existing preliminary OCR** (`ocr/<chart>_prelim.txt`) �
 | **Record Request/Transmittal** | Yes (Junk) | Record Request/Transmittal | request letter; records↔request (any order); attached; transmittal/transmitted; Urgent Request for Records; Your Records requested |
 | **Instructions** | Yes (Junk) | Instructions | “what to send”, provide documentation, please send, … |
 | **Others** | Yes (Junk) | Others | Table of contents; **&lt; 20 words** and not a signature page; **gibberish Tesseract OCR** (many no-vowel tokens / junk symbols) |
-| **Duplicate** | No | Not Available | Main pages only: ≥98% similar OCR text to a ±2 Main neighbor, or text wholly contained in it; pages under 300 chars never compared; longer (or earlier) page kept; UI Yes at 100% / May Be at 98–<100% |
+| **Duplicate** | No | Not Available | Main pages only: ≥98% similar OCR text to a ±5 Main neighbor, or text wholly contained in it; pages under 300 chars never compared; longer (or earlier) page kept; UI Yes at 100% / May Be at 98–<100% |
 | **Main** | No | Not Available | Everything else |
 
 ### Priority order
 Blank → Cover Page → **clinical Main** → Letter/Fax → Invoice → Record Request → Instructions → Others → Main  
 (then Duplicate is applied across the chart)
 
-## After the model
+## Former post-model rules (no longer run by the stage)
 
-`postprocess.py`, after the model or the regex fallback, both passes, in order:
+`postprocess.py`, formerly after the model or the regex fallback, both passes, in order:
 (1) model Blank/Junk with ≥ 2 clinical section headings → Main; (2) model Blank
 with text and no word "blank" → Junk (no sub-type); (3) pass 2 only: < 20 words,
 not signed, not a clinical note → Junk / Others; (4) Provider Signature = Yes, or

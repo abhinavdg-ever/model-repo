@@ -7,18 +7,20 @@ Two passes, as the pipeline spec requires:
           prelim text is not trusted to judge them.
   pass 2  on final2 (Azure) text when present, else final1 (Docling /
           RapidOCR), for handwritten + low-quality pages plus any printed
-          page pass 1 did not already rule out.
+          page pass 1 did not already rule out. A Visual page pass 1 judged
+          is not judged again.
 
-Blank/junk uses the b_jnk v3 model (BERT, TF-IDF safety net; KEEP / BLANK /
-JUNK) via ``model_bridge``. Regex rules run only when the model is missing or
-errors.
-Duplicate detection is unchanged (neighbor similarity, not the model).
+The verdict is ``method.decide`` (docs/BLANK_JUNK_PROPOSAL.md): rules R1-R8, then
+DistilBERT, TF-IDF and the keyword canon vote (R9). Pass 1 only removes what it
+is sure of; every other page stays Main and gets final OCR. Every ballot and the
+deciding rule are stored in ``votes``, with ``review_required``.
 
-Duplicate detection (after the model, among Main pages only):
+Duplicate detection (after the verdict, among Main pages only):
 
-* Compare each comparable page only to neighbors **±2** in page order.
-* Match when normalized-text similarity is **≥ 98%** (SequenceMatcher), or
-  when one page's text is wholly contained in the other's.
+* Compare each comparable page only to neighbors **±5** in page order.
+* Match when normalized-text similarity is **≥ 98%** (SequenceMatcher, run only
+  when the two lengths are within 10% of each other), or when one page's text
+  is wholly contained in the other's.
 * Store that ratio as ``confidence`` (UI: 100% → Yes, [98%, 100%) → May Be);
   a contained page scores 1.0.
 * On a match, keep the page with the **higher character count** as the
@@ -39,7 +41,7 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from config import CORE_ROOT
+from config import CORE_ROOT, page_image_path
 from db import (
     connect,
     delete_blank_junk,
@@ -83,12 +85,14 @@ from classify import (  # noqa: E402
     text_is_contained,
     text_similarity,
 )
-from model_bridge import classify_page  # noqa: E402
-import postprocess  # noqa: E402
+import method  # noqa: E402
+from model_bridge import model_scores  # noqa: E402
 
 STAGE = "blank_junk"
 
-# Every rule applied after the model lives in postprocess.py.
+# Every rule and the vote live in method.py.
+# Two pages' lengths must be within this share of each other for SequenceMatcher.
+DUPLICATE_LENGTH_RATIO = 0.10
 
 
 JUNK_CSV_COLS = [
@@ -103,6 +107,7 @@ JUNK_CSV_COLS = [
     "pass_no",
     "is_final",
     "duplicate_of_page",
+    "review_required",
 ]
 
 # classify.py's label -> the constrained junk_subtype values in schema v7.
@@ -164,6 +169,8 @@ def _row_for(
     reason: str,
     duplicate_of: Optional[int] = None,
     confidence: Optional[float] = None,
+    votes: Optional[dict[str, Any]] = None,
+    review: bool = False,
 ) -> dict[str, Any]:
     flag, subtype = _to_db_flag(code)
     return {
@@ -178,6 +185,8 @@ def _row_for(
         "label": CLASSIFICATION_LABELS.get(code, "Main"),
         "group": _page_group(code),
         "reason": reason,
+        "votes": votes,
+        "review": review,
     }
 
 
@@ -232,16 +241,16 @@ def _classify(
     todo: set[int],
     prior_main_ids: Optional[set[int]] = None,
     *,
-    short_pages: bool = False,
-    signed_ids: Optional[set[int]] = None,
+    inputs: Optional[dict[int, "method.PageInputs"]] = None,
     docling_pages: Optional[dict[int, dict[str, Any]]] = None,
 ) -> list[dict[str, Any]]:
     """Classify ``todo`` pages, then look for duplicates among Main pages.
 
-    Duplicates are checked only after the model's verdict, and only between
-    Main pages within ±2 in page order that are at least
-    ``DUPLICATE_MIN_CHARS`` long. A pair matches at ≥ 98% similarity, or when
-    one page's text is wholly contained in the other's (confidence 1.0).
+    ``inputs`` carries each page's method.PageInputs without the model scores, which
+    are added here. Duplicates are checked only after the verdict, and only between
+    Main pages within ±5 in page order that are at least ``DUPLICATE_MIN_CHARS``
+    long. A pair matches at ≥ 98% similarity, or when one page's text is wholly
+    contained in the other's (confidence 1.0).
 
     ``prior_main_ids`` are pages already ``not_blank_junk`` from an earlier pass;
     they participate as comparison neighbors (and may be demoted to duplicate
@@ -249,21 +258,21 @@ def _classify(
     (1.0 → UI Yes; [0.98, 1.0) → May Be).
     """
     prior = set(prior_main_ids or ())
-    # Phase 1 — the model (KEEP/BLANK/JUNK). Regex only when the model is
-    # missing or errors.
     by_id: dict[int, dict[str, Any]] = {}
     for page in pages:
         page_id = page["id"]
         if page_id not in todo:
             continue
         text = texts.get(page_id) or ""
-        code, reason, conf = classify_page(text, docling=(docling_pages or {}).get(page_id))
-        code, reason, conf = postprocess.apply(
-            code, reason, conf, text,
-            signed=page_id in (signed_ids or ()), short_pages=short_pages,
-        )
+        page_inputs = (inputs or {}).get(page_id) or method.PageInputs(text=text, pass_no=1)
+        page_inputs.text = text
+        scores = model_scores(text, docling=(docling_pages or {}).get(page_id)) if text.strip() else {}
+        page_inputs.bert = scores.get("bert")
+        page_inputs.tfidf = scores.get("tfidf")
+        verdict = method.decide(page_inputs)
         by_id[page_id] = _row_for(
-            page, code=code, reason=reason, confidence=conf
+            page, code=verdict.code, reason=verdict.reason, confidence=verdict.confidence,
+            votes=verdict.votes, review=verdict.review,
         )
 
     def _comparable(page_id: int) -> bool:
@@ -295,6 +304,9 @@ def _classify(
             if is_contained:
                 sim = 1.0
             else:
+                a_len, b_len = duplicate_char_count(a_text), duplicate_char_count(b_text)
+                if abs(a_len - b_len) > DUPLICATE_LENGTH_RATIO * max(a_len, b_len, 1):
+                    continue
                 sim = text_similarity(a_text, b_text)
                 if sim < DUPLICATE_SIMILARITY_THRESHOLD:
                     continue
@@ -391,9 +403,108 @@ def _rewrite_csv(conn: Any, chart_id: int, chart_name: str) -> Path:
                 "pass_no": row["pass_no"],
                 "is_final": row["is_final"],
                 "duplicate_of_page": row.get("duplicate_of_page") or "",
+                "review_required": bool(row.get("review_required")),
             }
         )
     return write_csv(imaging_csv(chart_name, "junk"), JUNK_CSV_COLS, out)
+
+
+# HW-stage methods that mean "no ink on the page" (image_preprocess/hw_printed.py).
+NO_INK_METHODS = frozenset({"blank_page", "faint_marks_only"})
+PAGE_TAG_METHOD = "convnext_page_tags"
+
+
+def _ocr_json(raw: Optional[str]) -> Optional[dict[str, Any]]:
+    text = (raw or "").strip()
+    if not text.startswith("{"):
+        return None
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _page_lines(
+    final2: Optional[str], final1: Optional[str], *, page: dict[str, Any], chart_name: str
+) -> Optional[list["method.Line"]]:
+    """The page's text lines with their height on the page (final2 word boxes, else final1)."""
+    from stages.lib.extraction.ocr_input import page_for_extraction
+
+    found = page_for_extraction(
+        _ocr_json(final2), _ocr_json(final1),
+        page_name=page["page_name"], page_number=page.get("page_number"),
+        image_path=page_image_path(chart_name, page["page_name"]),
+    )
+    if not found or not found.get("height"):
+        return None
+    return method.lines_from_words(found["words"], float(found["height"])) or None
+
+
+def _body_ink(chart_name: str, page_name: str) -> Optional[bool]:
+    """Ink below the short-page band (a picture, handwriting or stamp OCR did not read).
+    None when the image cannot be read."""
+    try:
+        from PIL import Image
+
+        from stages.lib.image_preprocess.hw_printed import _image_bgr, page_marks
+
+        short = method.canon().raw["short_page"]
+        top, bottom = (float(v) for v in short["body_ink_band"])
+        with Image.open(page_image_path(chart_name, page_name)) as image:
+            width, height = image.size
+            band = image.convert("RGB").crop((0, int(top * height), width, int(bottom * height)))
+        marks = page_marks(_image_bgr(band))
+        return float(marks["strong_fraction"]) >= float(short["body_ink_max_fraction"])
+    except Exception as exc:  # noqa: BLE001 - a missing image only switches the rule off
+        logger.warning("short-page ink check failed for %s/%s: %s", chart_name, page_name, exc)
+        return None
+
+
+def _page_inputs(
+    ctx: Any,
+    pass_no: int,
+    quality: dict[int, dict[str, Any]],
+    *,
+    final2: Optional[dict[int, str]] = None,
+    final1: Optional[dict[int, str]] = None,
+) -> dict[int, "method.PageInputs"]:
+    """Everything method.decide needs per page except the text and the model scores."""
+    signed: set[str] = set()
+    signature_known = False
+    if pass_no == 2:
+        from db.paths import imaging_csv
+        from stages.lib.continuity.signature import signed_page_names
+
+        signed = signed_page_names(ctx.chart_name)
+        signature_known = imaging_csv(ctx.chart_name, "provider_signature").is_file()
+    top = float(method.canon().raw["short_page"]["top_fraction"])
+    out: dict[int, method.PageInputs] = {}
+    for page in ctx.pages:
+        pid = page["id"]
+        if pid not in ctx.todo:
+            continue
+        q = quality.get(pid) or {}
+        area = q.get("handwritten_area_pct")
+        inputs = method.PageInputs(
+            text="",
+            pass_no=pass_no,
+            document_type=page_type(q),
+            page_tags=str(q.get("hw_method") or "") == PAGE_TAG_METHOD,
+            hw_area_pct=float(area) if area is not None else None,
+            signed=page["page_name"] in signed,
+            signature_known=signature_known,
+            no_ink=str(q.get("hw_method") or "") in NO_INK_METHODS,
+        )
+        if pass_no == 2:
+            inputs.lines = _page_lines(
+                (final2 or {}).get(pid), (final1 or {}).get(pid), page=page, chart_name=ctx.chart_name
+            )
+            bottom = method.content_bottom(inputs.lines) if inputs.lines else None
+            if bottom is not None and bottom <= top:
+                inputs.body_ink = _body_ink(ctx.chart_name, page["page_name"])
+        out[pid] = inputs
+    return out
 
 
 def _run_pass(
@@ -461,6 +572,12 @@ def _run_pass(
                     and pass1.get(pid, "not_blank_junk") in BJ_EXCLUDE
                 ]
                 mark_skipped(conn, ctx, not_eligible, "blank_junk_pass1")
+                # A Visual page is decided in pass 1 (R8); pass 2 does not judge it again.
+                visual_done = [
+                    pid for pid in ctx.todo
+                    if pid in pass1 and page_type(quality.get(pid)) == "visual"
+                ]
+                mark_skipped(conn, ctx, visual_done, "visual_pass1")
                 no_text = [
                     pid for pid in ctx.todo if not (texts.get(pid) or "").strip()
                 ]
@@ -473,16 +590,13 @@ def _run_pass(
             )
             prior_mains = _prior_main_ids(conn, chart_id)
 
-        signed_ids: set[int] = set()
         if pass_no == 2:
-            from stages.lib.continuity.signature import signed_page_names
-
-            signed = signed_page_names(ctx.chart_name)
-            signed_ids = {p["id"] for p in ctx.pages if p["page_name"] in signed}
+            inputs = _page_inputs(ctx, pass_no, quality, final2=final2, final1=final1)
+        else:
+            inputs = _page_inputs(ctx, pass_no, quality)
         classified = _classify(
             ctx.pages, texts, ctx.todo, prior_main_ids=prior_mains,
-            short_pages=pass_no == 2, signed_ids=signed_ids,
-            docling_pages=docling_pages,
+            inputs=inputs, docling_pages=docling_pages,
         )
 
         with connect() as conn:
@@ -501,64 +615,12 @@ def _run_pass(
                     duplicate_of_page_id=row["duplicate_of"],
                     confidence=row["confidence"],
                     reason=row["reason"],
+                    votes=row["votes"],
+                    review_required=row["review"],
                 )
                 # Demoted prior-main pages are upserted but were not in todo.
                 if row["page_id"] in ctx.todo:
                     mark_completed(conn, ctx, row["page_id"])
-            # Pages pass 1 already ruled blank / junk are not re-judged here
-            # (pass 1 keeps signature pages itself; this covers a page whose
-            # signature only shows in the final OCR or the extraction). A pass-2
-            # "kept" row wins as the highest pass. Forced junk is kept only with
-            # Provider Signature = Yes.
-            if pass_no == 2:
-                classified_ids = {row["page_id"] for row in classified}
-                for page_id, flag in sorted(pass1.items()):
-                    text = texts.get(page_id) or ""
-                    if (
-                        flag not in ("blank", "junk")
-                        or page_id in classified_ids
-                        or not postprocess.is_signature_page(text, page_id in signed_ids)
-                        or (page_id not in signed_ids and postprocess.forced_junk(text) is not None)
-                        or postprocess.vendor_junk(text) is not None
-                    ):
-                        continue
-                    upsert_blank_junk(
-                        conn,
-                        chart_id=chart_id,
-                        page_id=page_id,
-                        pass_no=pass_no,
-                        blank_junk_flag="not_blank_junk",
-                        ocr_source=sources.get(page_id, ocr_source),
-                        junk_subtype=None,
-                        duplicate_of_page_id=None,
-                        confidence=0.9,
-                        reason=f"pass 1: {flag}; " + (
-                            postprocess.SIGNED_KEEP_REASON if page_id in signed_ids
-                            else postprocess.SIGNATURE_WORD_KEEP_REASON
-                        ),
-                    )
-                # A Visual page beside a kept page belongs to that document.
-                finals = get_blank_junk_flags(conn, chart_id)
-                visual = {
-                    p["id"] for p in ctx.pages if page_type(quality.get(p["id"])) == "visual"
-                }
-                order = [p["id"] for p in ctx.pages]
-                for page_id in postprocess.visual_pages_kept(order, finals, visual):
-                    text = texts.get(page_id) or ""
-                    if postprocess.forced_junk(text) is not None or postprocess.vendor_junk(text) is not None:
-                        continue
-                    upsert_blank_junk(
-                        conn,
-                        chart_id=chart_id,
-                        page_id=page_id,
-                        pass_no=pass_no,
-                        blank_junk_flag="not_blank_junk",
-                        ocr_source=sources.get(page_id, ocr_source),
-                        junk_subtype=None,
-                        duplicate_of_page_id=None,
-                        confidence=0.9,
-                        reason=f"{finals[page_id]}; {postprocess.VISUAL_KEEP_REASON}",
-                    )
             mark_blank_junk_final(conn, chart_id)
             path = _rewrite_csv(conn, chart_id, ctx.chart_name)
 

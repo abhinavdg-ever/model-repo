@@ -1,6 +1,7 @@
 # Blank / Junk — Methodology
 
-Status: PROPOSAL (2026-10-14), written from scratch. Nothing here is implemented.
+Status: **IMPLEMENTED (2026-10-15)** in `core-pipeline/stages/lib/blank_junk/method.py`, called by
+the blank/junk stage in both passes. Written 2026-10-14; R4 narrowed on 2026-10-15 (§6).
 Canon: `core-pipeline/stages/lib/keyword-canon/blank_junk_context_canon.json`.
 
 ---
@@ -235,8 +236,8 @@ it runs. Rules R1–R8 are deterministic; R9 is the vote.
 |---|---|---|---|
 | **R1** | **Blank.** No ink above the blank threshold (`blank_page` / `faint_marks_only` from the HW stage), **or** fewer than 15 non-space OCR characters and the page is not Visual | `blank` | everything |
 | **R2** | **Placeholder.** A `placeholder` term ("intentionally left blank") and 25 words or fewer | `junk` / Others | everything below |
-| **R3** | **Signature.** Provider Signature = Yes from KV extraction (`kv_extract`, seq 56, runs before pass 2), or the clinical `signature` group hits in the body | `not_blank_junk` | R4–R9 |
-| **R4** | **DistilBERT force.** DistilBERT p(junk) **> 0.85** (Σ JUNK_* + BLANK), pass 2. Nothing below can overrule it: not the clinical veto, not strong clinical, not the vote | `junk` / DistilBERT's top junk label | R5–R9 |
+| **R3** | **Signature.** Provider Signature = Yes from KV extraction (`kv_extract`, seq 56, runs before pass 2), or one of the clinical `signature` group's phrases ("electronically signed by", "attestation" …; a credential at a line end alone is not enough) | `not_blank_junk` | R4–R9 |
+| **R4** | **DistilBERT force.** DistilBERT p(junk) **> 0.85** (Σ JUNK_* + BLANK), pass 2, **unless the canon finds clinical (C, ≥ 4) or demographic (D, ≥ 3) evidence** — then the page goes on down the ladder and the vote decides (`votes.r4_skipped`) | `junk` / DistilBERT's top junk label | R5–R9 |
 | **R5** | **Short page.** Content ends in the top **15%** of page height (§7). Fires **even when the page carries a clinical heading**, and **whatever the neighbouring pages are**: no adjacency check | `junk` / Others | R6–R9, including the clinical veto |
 | **R6** | **Junk counter-veto.** record_request + roi_vendors ≥ 7 (J⁺ from retrieval terms alone) and not C⁺ | `junk` / Record Request/Transmittal | R7–R9 |
 | **R7** | **Strong clinical.** C⁺ (score ≥ 8) | `not_blank_junk` | R8–R9 |
@@ -245,11 +246,14 @@ it runs. Rules R1–R8 are deterministic; R9 is the vote.
 
 Why this order:
 
-- **DistilBERT force (R4).** Above 85% the model is trusted outright.
-  Only blank, placeholder and signature sit above it. A signed page stays kept,
-  for the same reason it is exempt from the short-page rule (next point).
-  Because of R4, a DistilBERT JUNK ballot that reaches the vote (R9) is always
-  weak (0.60–0.85); its strong JUNK band in §5.1 is used only in pass 1.
+- **DistilBERT force (R4).** Above 85% the model is trusted outright, except on
+  a page the canon calls clinical or demographic. Run on the local charts, the
+  unrestricted rule junked a Patient Demographics face sheet and a BCG
+  medication-administration page (DistilBERT p(junk) 0.98–1.0 on both), so on
+  2026-10-15 it was narrowed: those pages go to the vote, where the clinical
+  and demographic vetoes apply. Only blank, placeholder and signature sit above
+  R4. A signed page stays kept, for the same reason it is exempt from the
+  short-page rule (next point).
 - **Signature (R3) above DistilBERT force (R4) and short page (R5).** In risk adjustment a diagnosis is
   only valid on a signed, credentialed note. A page holding only "Electronically
   signed by Dr X, MD" at the top is the attestation of the previous page's
@@ -277,8 +281,10 @@ Pass 2 only, because it needs line coordinates and Provider Signature from KV ex
 2. **Lines:** DocIntel lines; else Docling words grouped into lines (same
    baseline ± half the median word height).
 3. **Drop** lines that start in the bottom 6% (page numbers, footers) and lines
-   matching `ignore_line_patterns`: "Page 2 of 5", a bare number, fax
-   transmission stamps, "Printed on …", "Confidential…".
+   matching `ignore_line_patterns` **anywhere in the line**: "Page 2 of 5" /
+   "Pg 14 of 17", a bare number, "Printed: <date>", fax transmission stamps,
+   "Confidential…". A running footer such as `MRN: 023466 Printed: 10/30/2025
+   8:10 AM Pg 14 of 17` at 92% of the height is a stamp, not content.
 4. **content_bottom** = max bottom-y of the remaining lines ÷ H.
 5. **Ink check:** the band from 17% to 94% of the height must hold no ink
    above `body_ink_max_fraction` (1e-4, the same blank cut-off as the HW stage).
@@ -438,39 +444,57 @@ and the comparison only runs when the two lengths are within 10% of each other.
 
 ## 14. Recording
 
-New column `blank_junk_classification.votes JSONB`:
+Two columns on `blank_junk_classification`: `votes JSONB` and
+`review_required BOOLEAN`. The junk CSV gains a `review_required` column.
+`votes` as written:
 
 ```json
 {
-  "rule": "R9",
-  "bert":  {"vote": "JUNK", "strength": "strong", "p_junk": 0.91, "label": "JUNK_LETTER_FAX"},
+  "pass": 2, "rule": "R9",
+  "bert":  {"vote": "JUNK", "strength": "strong", "p_junk": 0.91, "subtype": "Letter/Fax", "label": "JUNK_LETTER_FAX"},
   "tfidf": {"vote": "JUNK", "strength": "weak",   "p_junk": 0.68},
-  "kw":    {"vote": "KEEP", "strength": "weak", "junk": 6, "clinical": 5, "demographic": 0,
-            "junk_group": "fax_cover", "hits": {"clinical.section_headings": ["assessment", "plan"]}},
-  "ballots": "JJK", "row": 2, "veto": "clinical",
-  "visual_source": "page_tags", "signature_source": "kv_extract", "hw_area_pct": 4.2,
-  "short_page": {"content_bottom": 0.41},
-  "review": true
+  "kw":    {"vote": "KEEP", "strength": "weak", "p_junk": 0.6, "clinical": 5, "junk": 6, "demographic": 0,
+            "junk_group": "fax_cover", "hits": {"clinical.section_headings": ["Assessment", "Plan"]}},
+  "ballots": "JJK", "row": 2, "veto": "clinical", "r4_skipped": "clinical",
+  "visual_source": "page_tags", "signature_source": "kv_extract", "hw_area": 4.2,
+  "short_page": {"content_bottom": 0.41}
 }
 ```
 
-Schema change per CLAUDE.md §5: edit `schema/v1.sql`, readers and writers,
-docs, and the WHAT CHANGED block in `v2.sql`. review-ui shows `review` and the
-ballots on the page panel.
+`visual_source` is `none` when the page-tag model did not tag the page,
+`signature_source` is `canon_only` when the KV signature output was missing,
+`short_page` is `no_geometry` when the page had no word boxes, and a model that
+was not loaded shows `"note": "unavailable"` on its ballot.
+
+An existing database needs the two columns (the schema itself is recreated from
+`schema/v1.sql` per CLAUDE.md §5):
+
+```sql
+ALTER TABLE blank_junk_classification
+  ADD COLUMN IF NOT EXISTS votes JSONB,
+  ADD COLUMN IF NOT EXISTS review_required BOOLEAN NOT NULL DEFAULT FALSE;
+```
 
 ---
 
-## 15. Evaluation before switching
+## 15. Checked on the local charts (2026-10-15)
 
-1. **Shadow mode:** compute and write `votes`, but leave `blank_junk_flag` as it
-   is today.
-2. Compare against `page_ground_truth` (`blank_page`, `junk_page`) for each
-   voter, each rule and the ensemble.
-3. The number that matters is **clinical pages marked junk**. Tune canon
-   weights and thresholds until it is close to zero, then report junk recall.
-4. Check R5 separately: every page it fires on, by hand, on at least 3 charts
-   run with the page-tag model.
-5. Switch the flag to the new verdict.
+Implemented directly, without the shadow-mode step. Run on the three local
+charts that have Final OCR (84 pages), against the old verdicts in their
+`junk.csv`:
+
+| Result | Pages |
+|---|---|
+| Same verdict as before | 80 |
+| R4 junk, old Main — header / footer only (`Printed … Pg 8 of 10`) | 1 (53688890 p28) |
+| R4 junk, old Main — tail of a note (care team, confidentiality footer) | 1 (53688890 p16) |
+| R4 junk, old Main — patient-education handouts (fall prevention, first-aid kit) | 2 (60306165 p27, p29) |
+| Face sheet and BCG administration page | kept after R4 was narrowed (vote, review) |
+
+Still to do: compare against `page_ground_truth` (`blank_page`, `junk_page`)
+per voter and per rule from `votes`, with the number that matters being
+clinical pages marked junk; and check R5 by hand on charts run with the
+page-tag model.
 
 ---
 
@@ -483,3 +507,7 @@ ballots on the page panel.
 3. DistilBERT force (R4) keeps signed pages. Should a signed page above 85% be
    junked too? Should R4 also run in pass 1, saving the stage-5 bill but before
    Provider Signature is known?
+4. Patient-education handouts score 0 on the canon and DistilBERT calls them
+   Record Request, so R4 junks them. Are they junk? If not, add handout words
+   ("consumer information", "this generalized information") to a clinical or
+   neutral group.

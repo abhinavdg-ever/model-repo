@@ -73,20 +73,25 @@ class TestDuplicateScope:
         assert by_id[1]["flag"] == "duplicate"
         assert by_id[1]["duplicate_of"] == 2
 
-    def test_pages_more_than_two_apart_are_not_compared(self):
-        pages = [page(1, 1), page(2, 2), page(3, 3), page(4, 4)]
+    def test_pages_more_than_five_apart_are_not_compared(self):
+        pages = [page(i, i) for i in range(1, 8)]
         body = _body()
-        # page 1 and page 4 are identical but 3 steps apart (> ±2)
-        texts = {
-            1: body,
-            2: "Completely different progress note content here. " * 6,
-            3: "Another unrelated assessment and plan page text. " * 6,
-            4: body,
-        }
-        rows = _classify(pages, texts, {1, 2, 3, 4})
+        # page 1 and page 7 are identical but 6 steps apart (> ±5)
+        texts = {i: f"Unrelated progress note number {i} with its own findings. " * 6 for i in range(2, 7)}
+        texts[1] = texts[7] = body
+        rows = _classify(pages, texts, set(range(1, 8)))
         flags = {r["page_id"]: r["flag"] for r in rows}
         assert flags[1] == "not_blank_junk"
-        assert flags[4] == "not_blank_junk"
+        assert flags[7] == "not_blank_junk"
+
+    def test_pages_five_apart_are_compared(self):
+        pages = [page(i, i) for i in range(1, 7)]
+        body = _body()
+        texts = {i: f"Unrelated progress note number {i} with its own findings. " * 6 for i in range(2, 6)}
+        texts[1] = texts[6] = body
+        rows = _classify(pages, texts, set(range(1, 7)))
+        flags = {r["page_id"]: r["flag"] for r in rows}
+        assert flags[6] == "duplicate"
 
     def test_similarity_below_threshold_is_not_duplicate(self):
         pages = [page(1, 1), page(2, 2)]
@@ -615,88 +620,6 @@ def test_ccd_visit_page_dos_is_the_encounter_date():
     assert extract_dos_from_page_text(text)["dos_from"] == "01-28-2025"
 
 
-def _bj(text, code_name, monkeypatch):
-    """The page's row when the model says ``code_name``."""
-    from stages.lib.blank_junk import stage as bj_stage
-
-    code = getattr(classify, code_name)
-    monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (code, "model", 0.97))
-    pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
-    return _classify(pages, {1: text}, {1})[0]
-
-
-CLINICAL = ("Chief Complaint: cough. History of Present Illness: three days. "
-            "Vital Signs stable. Assessment: bronchitis. Plan: rest.")
-
-
-class TestForcedJunkKeywords:
-    """Fax or record request three or more times: Junk of that sub-type. No other category forces junk."""
-
-    def test_fax_three_times_is_letter_fax_at_any_length(self, monkeypatch):
-        text = "Fax transmission report. Faxed to the clinic; fax confirmation attached.\n" + "details " * 200
-        row = _bj(text, "CODE_MAIN", monkeypatch)
-        assert (row["flag"], row["subtype"]) == ("junk", "Letter/Fax")
-        assert "forced junk: letter_fax keywords 3 times" in row["reason"]
-
-    def test_fax_twice_stays_main(self, monkeypatch):
-        text = "Phone: 555-000-0000  Fax: 555-000-0001\nFAX from Example Clinic\nProgress note."
-        assert _bj(text, "CODE_MAIN", monkeypatch)["flag"] == "not_blank_junk"
-
-    def test_record_request_three_times_is_forced(self, monkeypatch):
-        text = "Request for medical records. Records requested: 2024. Medical records attached.\n" + "details " * 50
-        assert _bj(text, "CODE_MAIN", monkeypatch)["subtype"] == "Record Request/Transmittal"
-
-    def test_other_categories_no_longer_force_junk(self, monkeypatch):
-        text = "Invoice. Amount due. Balance due. Progress note, signature: ____"
-        assert _bj(text, "CODE_MAIN", monkeypatch)["flag"] == "not_blank_junk"
-
-    def test_it_wins_over_clinical_content(self, monkeypatch):
-        text = CLINICAL + " Fax. Fax. Fax."
-        assert _bj(text, "CODE_OTHERS", monkeypatch)["subtype"] == "Letter/Fax"
-
-
-class TestVendorJunk:
-    """Optum + Datavant more than twice in all: Junk / Record Request, no override."""
-
-    TEXT = "Datavant release of information. Optum request ID 123. Return to Datavant.\n"
-
-    def test_three_mentions_are_junk(self, monkeypatch):
-        row = _bj(self.TEXT, "CODE_MAIN", monkeypatch)
-        assert (row["flag"], row["subtype"]) == ("junk", "Record Request/Transmittal")
-        assert "vendor junk" in row["reason"]
-
-    def test_optumcare_counts(self, monkeypatch):
-        text = "OptumCare Medical Group. OptumCare referral. Datavant request.\n" + "details " * 30
-        assert _bj(text, "CODE_MAIN", monkeypatch)["flag"] == "junk"
-
-    def test_two_mentions_stay_main(self, monkeypatch):
-        assert _bj("Datavant request. Optum ID 123.", "CODE_MAIN", monkeypatch)["flag"] == "not_blank_junk"
-
-    def test_clinical_headings_do_not_overrule_it(self, monkeypatch):
-        text = "Chief Complaint: cough\nAssessment: bronchitis\n" + self.TEXT
-        assert _bj(text, "CODE_OTHERS", monkeypatch)["flag"] == "junk"
-
-    def test_provider_signature_yes_does_not_overrule_it(self, monkeypatch):
-        from stages.lib.blank_junk import stage as bj_stage
-
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (classify.CODE_MAIN, "model:keep", 0.9))
-        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
-        row = _classify(pages, {1: self.TEXT + "word " * 40}, {1}, short_pages=True, signed_ids={1})[0]
-        assert row["flag"] == "junk"
-
-
-class TestBlankWithTextIsJunk:
-    def test_a_header_on_a_blank_page_makes_it_junk_others(self, monkeypatch):
-        row = _bj("Made Up Medical Group  Patient Encounter Record", "CODE_BLANK", monkeypatch)
-        assert (row["flag"], row["subtype"]) == ("junk", None)
-
-    def test_intentionally_left_blank_stays_blank(self, monkeypatch):
-        assert _bj("This page intentionally left blank", "CODE_BLANK", monkeypatch)["flag"] == "blank"
-
-    def test_an_empty_page_stays_blank(self, monkeypatch):
-        assert _bj("   ", "CODE_BLANK", monkeypatch)["flag"] == "blank"
-
-
 class TestRegexFallbackClinicalContent:
     """Regex fallback: Main only with > 25 words and 2+ clinical section headings."""
 
@@ -721,179 +644,3 @@ class TestRegexFallbackClinicalContent:
     def test_clinical_words_in_sentences_do_not_count(self):
         text = "The patient was seen for a follow up and the assessment and plan were discussed. " * 4
         assert not self._clinical(text)
-
-
-class TestRegexFallbackShortPages:
-    """The fallback has no short-page rule: pass 1 keeps a short page, pass 2 junks it."""
-
-    @staticmethod
-    def _run(pass_two, monkeypatch):
-        from stages.lib.blank_junk import stage as bj_stage
-
-        monkeypatch.setattr(
-            bj_stage, "classify_page", lambda t, **_: (*classify.classify_text(t), None)
-        )
-        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
-        return _classify(pages, {1: "made up short page text"}, {1}, short_pages=pass_two)[0]
-
-    def test_the_fallback_keeps_a_short_page_in_pass_1(self, monkeypatch):
-        assert self._run(False, monkeypatch)["flag"] == "not_blank_junk"
-
-    def test_pass_2_junks_the_short_page(self, monkeypatch):
-        row = self._run(True, monkeypatch)
-        assert (row["flag"], row["subtype"]) == ("junk", "Others")
-
-
-class TestClinicalHeadingsKeepThePage:
-    """Model Blank / Junk with 2+ clinical section headings, each heading a line -> Main."""
-
-    NOTE = (
-        "Made Up Clinic\n"
-        "CHIEF COMPLAINT\ncough for three days\n"
-        "Assessment: acute bronchitis\n"
-        "## Plan\nrest and fluids, follow up in one week\n"
-    )
-
-    def test_two_headings_keep_junk(self, monkeypatch):
-        row = _bj(self.NOTE, "CODE_OTHERS", monkeypatch)
-        assert row["flag"] == "not_blank_junk"
-        assert "clinical note: 3 section headings" in row["reason"]
-
-    def test_two_headings_keep_blank(self, monkeypatch):
-        assert _bj(self.NOTE, "CODE_BLANK", monkeypatch)["flag"] == "not_blank_junk"
-
-    def test_one_heading_stays_junk(self, monkeypatch):
-        text = "Patient instructions\nPlan:\ndrink fluids and rest, call the office with questions"
-        assert _bj(text, "CODE_INSTRUCTIONS", monkeypatch)["flag"] == "junk"
-
-    def test_clinical_words_inside_sentences_stay_junk(self, monkeypatch):
-        # The old clinical-terms rule kept this page; headings do not.
-        row = _bj(CLINICAL, "CODE_OTHERS", monkeypatch)
-        assert row["flag"] == "junk"
-
-    def test_forced_junk_still_wins(self, monkeypatch):
-        text = self.NOTE + "Fax: 555-0100\nFax cover\nfax transmission report"
-        assert _bj(text, "CODE_OTHERS", monkeypatch)["subtype"] == "Letter/Fax"
-
-    def test_headings_keep_a_short_page_in_pass_2(self, monkeypatch):
-        from stages.lib.blank_junk import stage as bj_stage
-
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (classify.CODE_MAIN, "model:keep", 0.9))
-        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
-        row = _classify(pages, {1: "Subjective: cough\nObjective: afebrile"}, {1}, short_pages=True)[0]
-        assert row["flag"] == "not_blank_junk"
-
-    def test_a_signature_keeps_short_junk_but_not_forced_junk(self, monkeypatch):
-        assert _bj("Remittance copy. Provider Signature: ____", "CODE_OTHERS", monkeypatch)["flag"] == "not_blank_junk"
-        assert _bj("Fax. Fax. Fax. Provider Signature: ____", "CODE_MAIN", monkeypatch)["flag"] == "junk"
-
-
-class TestShortPagesAreJunk:
-    """Pass 2: under 20 words and not a signature page -> Junk / Others."""
-
-    @staticmethod
-    def _run(text, *, signed=False, monkeypatch):
-        from stages.lib.blank_junk import stage as bj_stage
-
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (classify.CODE_MAIN, "model:keep", 0.9))
-        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
-        return _classify(pages, {1: text}, {1}, short_pages=True, signed_ids={1} if signed else set())[0]
-
-    def test_a_short_page_becomes_junk_others(self, monkeypatch):
-        row = self._run("made up short page text", monkeypatch=monkeypatch)
-        assert (row["flag"], row["subtype"]) == ("junk", "Others")
-        assert row["reason"].startswith("short page")
-
-    def test_the_word_signature_keeps_it(self, monkeypatch):
-        row = self._run("Provider Signature: made up", monkeypatch=monkeypatch)
-        assert row["flag"] == "not_blank_junk"
-
-    def test_a_signature_page_from_the_extraction_keeps_it(self, monkeypatch):
-        row = self._run("made up short page", signed=True, monkeypatch=monkeypatch)
-        assert row["flag"] == "not_blank_junk"
-
-    def test_twenty_words_or_more_stays_main(self, monkeypatch):
-        row = self._run(" ".join(["word"] * 20), monkeypatch=monkeypatch)
-        assert row["flag"] == "not_blank_junk"
-
-    def test_pass_1_does_not_apply_it(self, monkeypatch):
-        from stages.lib.blank_junk import stage as bj_stage
-
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (classify.CODE_MAIN, "model:keep", 0.9))
-        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
-        assert _classify(pages, {1: "made up short"}, {1})[0]["flag"] == "not_blank_junk"
-
-
-class TestSignedPageIsKept:
-    """Post-processing: a signature page (under 20 words, signed) is never blank or junk."""
-
-    @staticmethod
-    def _run(code_name, *, signed, monkeypatch, text="made up page text"):
-        from stages.lib.blank_junk import stage as bj_stage
-
-        code = getattr(classify, code_name)
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (code, "model:junk", 0.95))
-        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
-        return _classify(pages, {1: text}, {1}, short_pages=True, signed_ids={1} if signed else set())[0]
-
-    def test_model_junk_with_a_signature_is_kept(self, monkeypatch):
-        row = self._run("CODE_LETTER_FAX", signed=True, monkeypatch=monkeypatch)
-        assert row["flag"] == "not_blank_junk"
-        assert "Provider Signature = Yes" in row["reason"]
-
-    def test_model_blank_with_a_signature_is_kept(self, monkeypatch):
-        row = self._run("CODE_BLANK", signed=True, monkeypatch=monkeypatch, text="")
-        assert row["flag"] == "not_blank_junk"
-
-    def test_without_a_signature_the_verdict_stands(self, monkeypatch):
-        row = self._run("CODE_LETTER_FAX", signed=False, monkeypatch=monkeypatch)
-        assert row["flag"] == "junk"
-
-    def test_the_word_signature_alone_keeps_it(self, monkeypatch):
-        # The extraction skips blank / junk pages, so the word is what reaches them.
-        row = self._run("CODE_LETTER_FAX", signed=False, monkeypatch=monkeypatch,
-                        text="Records request. Provider Signature: made up")
-        assert row["flag"] == "not_blank_junk"
-        assert "signature" in row["reason"]
-
-    def test_the_word_on_a_long_page_keeps_the_models_verdict(self, monkeypatch):
-        row = self._run("CODE_LETTER_FAX", signed=False, monkeypatch=monkeypatch,
-                        text="Records request. Provider Signature: made up " + "word " * 20)
-        assert row["flag"] == "junk"
-
-    def test_provider_signature_yes_keeps_a_long_page(self, monkeypatch):
-        row = self._run("CODE_LETTER_FAX", signed=True, monkeypatch=monkeypatch,
-                        text="Records request. " + "word " * 40)
-        assert row["flag"] == "not_blank_junk"
-        assert "Provider Signature = Yes" in row["reason"]
-
-    def test_provider_signature_yes_overrules_forced_junk(self, monkeypatch):
-        row = self._run("CODE_MAIN", signed=True, monkeypatch=monkeypatch,
-                        text="Fax. Fax. Fax. " + "word " * 40)
-        assert row["flag"] == "not_blank_junk"
-
-    def test_pass_1_applies_it_too(self, monkeypatch):
-        from stages.lib.blank_junk import stage as bj_stage
-
-        monkeypatch.setattr(bj_stage, "classify_page", lambda t, **_: (classify.CODE_LETTER_FAX, "model:junk", 0.95))
-        pages = [{"id": 1, "page_name": "1.jpg", "page_number": 1}]
-        row = _classify(pages, {1: "Fax cover. Signature: made up"}, {1})[0]
-        assert row["flag"] == "not_blank_junk"
-
-
-def test_visual_page_beside_a_kept_page_is_kept():
-    from stages.lib.blank_junk import stage as bj_stage
-
-    kept = bj_stage.postprocess.visual_pages_kept
-    order = [1, 2, 3, 4, 5, 6]
-    finals = {
-        1: "not_blank_junk", 2: "junk", 3: "blank",
-        4: "junk", 5: "junk", 6: "duplicate",
-    }
-    # 2 is after a kept page; 3 sits between junk pages; 5 is before a duplicate;
-    # 4 is junk but not Visual.
-    assert kept(order, finals, {2, 3, 5}) == [2]
-    assert kept(order, {**finals, 6: "not_blank_junk"}, {2, 3, 5}) == [2, 5]
-    # Only Blank / Junk is changed, and a page with no verdict is not "kept".
-    assert kept([1, 2], {2: "junk"}, {2}) == []
-    assert kept([1, 2], {1: "not_blank_junk", 2: "duplicate"}, {2}) == []

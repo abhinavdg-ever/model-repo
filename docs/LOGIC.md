@@ -220,7 +220,7 @@ else final1).
 flowchart TD
   subgraph P1["Pass 1 — prelim (Tesseract) text"]
     A{"HW / form / blank / uncertain<br/>or quality=low?"} -- yes --> SKIP["skipped"]
-    A -- no --> CLS1["classify_text()"]
+    A -- no --> CLS1["method.decide() — pass 1"]
   end
 
   CLS1 --> OUT1{"verdict"}
@@ -229,7 +229,7 @@ flowchart TD
   SKIP --> F
 
   subgraph P2["Pass 2 — final2 else final1"]
-    F --> CLS2["classify_text()"]
+    F --> CLS2["method.decide() — pass 2"]
     CLS2 --> OUT2["verdict"]
   end
 
@@ -238,77 +238,65 @@ flowchart TD
   FINAL --> V[("v_page_blank_junk_final<br/>exactly one row per page")]
 ```
 
-### The classifier
+### The decision (`blank_junk/method.py`)
 
-`classify_text()` returns one code; the order it tries them in is the priority:
+Full method, with reasoning and worked examples: [`BLANK_JUNK_PROPOSAL.md`](BLANK_JUNK_PROPOSAL.md).
+Words, weights, thresholds and geometry: `keyword-canon/blank_junk_context_canon.json`
+(reloads on change).
 
-| Code | Label | Detector |
-|---|---|---|
-| 1 | Blank | `blank.py` — empty OCR, declared-blank text, or a near-empty image |
-| 2 | Invoice | `invoice.py` |
-| 3 | Cover Page | `cover.py` |
-| 5 | Record Request/Transmittal | `record_request.py` |
-| 6 | Instructions | `instructions.py` |
-| 8 | Letter/Fax | `letter_fax.py` |
-| 7 | Others | `others.py` — gibberish OCR, signature-only pages |
-| 0 | Main | nothing matched — a real chart page |
+**Keyword canon.** Three contexts — clinical, junk (one group per subtype),
+demographic — plus a neutral list that never scores (fax, phone, insurance…).
+Group score = weight × **unique** hits, capped per group; context score = sum of
+its groups. C = clinical ≥ 4, C⁺ ≥ 8, J = junk ≥ 4, J⁺ ≥ 7, D = demographic ≥ 3.
+In pass 2 a junk word in the header (top 12%) or footer (bottom 8%) counts only
+when the body has a junk word too.
 
-Codes map to `blank_junk_flag` as: blank → `blank`, duplicate → `duplicate`,
-any junk code → `junk` (+ `junk_subtype`), else `not_blank_junk`.
+**Rules, first that fires decides:**
 
-> `JUNK_CODES` contains `CODE_BLANK`, but `blank` is checked first and wins — a
-> blank page is flagged `blank`, never `junk`. Pinned by
-> `tests/test_blank_junk_and_dos.py::test_blank_wins_over_junk_even_though_it_is_in_junk_codes`.
+| # | Rule | Verdict | Pass |
+|---|---|---|---|
+| R1 | No ink (HW stage `blank_page` / `faint_marks_only`), or < 15 characters and not Visual | `blank` | 1, 2 |
+| R2 | "Intentionally left blank" on ≤ 25 words | junk / Others | 1, 2 |
+| R3 | Provider Signature = Yes (KV extraction), or a canon signature phrase | Main | 2 |
+| R4 | DistilBERT p(junk) > 0.85 — **not** when C or D (then the vote decides) | junk / DistilBERT's subtype | 2 |
+| R5 | Content ends in the top 15% of the page (running header / footer lines ignored) and no ink from 17% to 94% of the height — whatever the page says | junk / Others | 2 |
+| R6 | record_request + roi_vendors ≥ 7 and not C⁺ | junk / Record Request | 1, 2 |
+| R7 | C⁺ | Main | 1, 2 |
+| R8 | `document_type = 'visual'` → Main, unless invoice / retrieval wording ≥ 7 | Main or junk | 1 (pass 2 skips these pages) |
+| R9 | The vote, below | | 1, 2 |
 
-**Inside the model package (`models/blank-junk/default.json` → `decision`).** A page
-with demographic fields (DOB, MRN, face sheet, registration, guarantor, emergency
-contact…) that the model calls Junk or Blank is kept (`protocol_retain_demographic`),
-unless the model is ≥ 95% sure of Record Request / Instructions / Letter-Fax / Cover /
-Invoice **and** the page carries that type's trigger phrase (`model_over_demographic`).
-Since 2026-10-13 Invoice needs its trigger too (`demographic_override_no_trigger_labels`
-is empty): an ED facesheet with Hospital Account / Billed / Coverage sections was being
-junked as Invoice on the score alone.
+**The vote (R9).** DistilBERT (raw 8-label softmax), TF-IDF (p(junk)) and the
+keyword canon each cast JUNK / KEEP / ABSTAIN, strong or weak. JUNK needs two
+JUNK ballots with at least one strong and no strong KEEP against them; every
+other combination is Main. Then the vetoes turn a JUNK into Main + review:
+clinical (C), demographic (D without retrieval / invoice wording), handwritten
+area > 30%. Pass 1 only takes a unanimous all-strong JUNK; everything else stays
+Main and is judged again in pass 2 on final OCR. A model that is not loaded
+abstains, and the row is flagged for review.
 
-**Post-processing (both passes, `blank_junk/postprocess.py`).** After the
-BERT model, in order:
-
-| # | Rule | Result |
-|---|---|---|
-| 1 | The model said Blank or Junk, and the page has `clinical_min_headings` (2) or more distinct `clinical_headings` (Chief Complaint, HPI, Assessment, Plan, …), each starting its own line, alone or as a label ("Chief Complaint: cough") | Main (kept) |
-| 2 | The model said Blank, the page has text, and the text does not say "blank" | Junk (no sub-type) |
-| 3 | Pass 2 only: Main with fewer than 20 words, not a signature page, not a clinical note (rule 1) | Junk / Others |
-| 4 | Provider Signature = Yes (the key/value extraction found the page signed), **or** a page under 20 words that says "signature" | Main (kept); pass 2 also re-keeps a page pass 1 had called blank or junk |
-| 5 | Fax (`letter_fax` plus the word "fax") or Record Request (`record_request` phrases) found `forced_junk_min_hits` (3) or more times. No other keyword category forces junk | Junk of that sub-type, **forced**: only Provider Signature = Yes overrules it (clinical headings and the word "signature" do not) |
-| 6 | `vendor_names` (Optum, OptumCare, Datavant) found `vendor_min_hits` (3) or more times in all | Junk / Record Request, **absolute**: nothing overrules it, Provider Signature = Yes included |
-| 7 | End of pass 2, across the chart: a page the page-tag model calls **Visual** whose final verdict is Blank or Junk, with the page right before or right after it kept (Main) | Main (kept). Forced and vendor junk (5, 6) stay junk |
-
-The headings, vendor names and thresholds live in `junk_keywords_canon.json`.
-Invoice, instructions and table-of-contents words stopped forcing
-junk on 2026-10-13: they did more harm than good on clinical pages.
-Clinical words inside sentences do not keep a page; only headings do (2026-10-13,
-replacing the clinical-terms rule). The fax cover sheet rule was removed the same
-day: rule 5 covers fax pages.
-
-The regex fallback (only when the BERT model is missing or fails) uses the same
-headings: a page with more than 25 words and 2 or more clinical section headings
-is Main before any junk keyword rule runs. The fallback has no short-page rule of its own: a short
-page is junked only by rule 3, in pass 2, with the same signature test as rule 4.
+Subtype: the canon's best junk group, else DistilBERT's label, else Others.
+Every verdict stores its ballots and deciding rule in `votes` (JSONB) and sets
+`review_required` on a split vote, a veto, clinical-and-junk evidence together,
+or a missing model.
 
 `junk_subtype` is constrained by a `CHECK` to the six labels the review UI
-renders. Anything else the classifier produces maps to `Others` rather than
-becoming an unrenderable string.
+renders. Anything else maps to `Others` rather than becoming an unrenderable
+string. The previous post-model rules (`postprocess.py`: repeated fax / record
+request, vendor ×3, two-heading keep, 20-word short page, Visual-neighbour keep)
+no longer run; the ladder above replaces them.
 
 ### Duplicate detection
 
 Duplicates are checked **after** the model's verdict, and only between pages the
 model kept as Main — a blank or junk page is never compared. A Main page is a
 duplicate when its normalized OCR text is **≥ 98% similar**
-(`difflib.SequenceMatcher`) to a Main neighbor **within ±2 pages** in chart
-order, or when its text is **wholly contained** in that neighbor's.
+(`difflib.SequenceMatcher`, run only when the two lengths are within 10% of each
+other) to a Main neighbor **within ±5 pages** in chart order, or when its text is
+**wholly contained** in that neighbor's.
 
 | Rule | Behaviour |
 |---|---|
-| Window | Compare only pages 2 before / 2 after (page order) |
+| Window | Compare only pages 5 before / 5 after (page order); SequenceMatcher only when the lengths are within 10% |
 | Threshold | Similarity **≥ 0.98** on whitespace-stripped lowercase text (UI: 100% → Yes, [98%, 100%) → May Be; May Be display confidence = `1 + (sim − 1) × 10`, e.g. 98%→80% / 99%→90%) |
 | Containment | The shorter page's normalized text appears whole inside the longer one → duplicate, confidence 1.0 |
 | Who wins | Higher normalized character count stays **main**; on a tie, the **earlier** page |
@@ -329,8 +317,8 @@ Downstream stages read `v_page_blank_junk_final` and never re-derive precedence.
 
 | Target | Columns |
 |---|---|
-| `blank_junk_classification` | `pass_no`, `blank_junk_flag`, `junk_subtype`, `duplicate_of_page_id`, `ocr_source`, `confidence`, `reason`, `is_final` |
-| disk | `imaging/<chart>_junk.csv` — **fully rewritten from the database** after each pass |
+| `blank_junk_classification` | `pass_no`, `blank_junk_flag`, `junk_subtype`, `duplicate_of_page_id`, `ocr_source`, `confidence`, `reason`, `votes`, `review_required`, `is_final` |
+| disk | `imaging/<chart>_junk.csv` — **fully rewritten from the database** after each pass (now with a `review_required` column) |
 
 > v6 truncated the CSV in pass 1 and appended in pass 2, so re-running pass 2
 > alone duplicated every row. The full rewrite makes the file converge.

@@ -486,6 +486,9 @@ CREATE TABLE blank_junk_classification (
     is_final          BOOLEAN NOT NULL DEFAULT FALSE,
     confidence        NUMERIC(5,4),
     reason            TEXT,
+    -- Every voter's ballot and the rule that decided (docs/BLANK_JUNK_PROPOSAL.md §14).
+    votes             JSONB,
+    review_required   BOOLEAN NOT NULL DEFAULT FALSE,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (page_id, pass_no)
