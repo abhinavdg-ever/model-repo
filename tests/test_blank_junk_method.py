@@ -68,6 +68,18 @@ class TestRules:
     def test_r1_does_not_blank_a_visual_page_with_no_text(self):
         assert run("", document_type="visual").code == classify.CODE_MAIN
 
+    def test_r1_the_word_blank_under_30_characters_is_blank(self):
+        verdict = run("Intentionally left blank")
+        assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")
+
+    def test_r1_under_15_characters_is_junk_others(self):
+        verdict = run("Page 3 of 7")
+        assert (verdict.code, verdict.rule) == (classify.CODE_OTHERS, "R1")
+
+    def test_r1_under_15_characters_with_a_cover_term_is_cover_page(self):
+        verdict = run("COVER SHEET")
+        assert (verdict.code, verdict.rule) == (classify.CODE_COVER_PAGE, "R1")
+
     def test_r2_placeholder(self):
         verdict = run("This page intentionally left blank")
         assert (verdict.code, verdict.rule) == (classify.CODE_OTHERS, "R2")

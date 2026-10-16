@@ -6,7 +6,9 @@ handwritten share from the page-tag model, and Provider Signature from KV extrac
 
 The ladder, first rule that fires decides (R4, R5 and R3's KV half need pass 2):
 
-  R1 blank          no ink, or < 15 characters of text on a page that is not Visual
+  R1 blank / tiny   no ink -> Blank. Not Visual: 0 characters, or the word "blank" in
+                    < 30 characters -> Blank; else < 15 characters -> Junk / Cover Page
+                    when a Cover Page term is there, Junk / Others otherwise
   R2 placeholder    "intentionally left blank" on a page of <= 25 words -> Junk / Others
   R3 signature      Provider Signature = Yes, or a canon signature phrase -> Main
   R4 DistilBERT     p(junk) > 0.85 -> Junk, DistilBERT's subtype, unless the canon finds
@@ -74,6 +76,8 @@ HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice")
 
 RULE_CONFIDENCE = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R5": 0.95, "R6": 0.97, "R7": 0.95, "R8": 0.90}
 MIN_TEXT_CHARS = 15
+BLANK_WORD_MAX_CHARS = 30
+BLANK_WORD = re.compile(r"\bblank\b", re.IGNORECASE)
 PLACEHOLDER_MAX_WORDS = 25
 
 
@@ -583,9 +587,18 @@ def decide(inputs: PageInputs) -> Verdict:
         votes["rule"] = rule
         return Verdict(code, RULE_CONFIDENCE.get(rule, 0.9) if confidence is None else confidence, rule, reason, False, votes)
 
-    # R1 blank
-    if inputs.no_ink or (len(re.sub(r"\s", "", text)) < MIN_TEXT_CHARS and not visual):
-        return ruled(CODE_BLANK, "R1", "R1 blank: no ink" if inputs.no_ink else f"R1 blank: < {MIN_TEXT_CHARS} characters")
+    # R1 blank, or a tiny page that is junk
+    chars = len(re.sub(r"\s", "", text))
+    if inputs.no_ink:
+        return ruled(CODE_BLANK, "R1", "R1 blank: no ink")
+    if not visual and chars == 0:
+        return ruled(CODE_BLANK, "R1", "R1 blank: no text")
+    if not visual and chars < BLANK_WORD_MAX_CHARS and BLANK_WORD.search(text):
+        return ruled(CODE_BLANK, "R1", f"R1 blank: the word 'blank' in < {BLANK_WORD_MAX_CHARS} characters")
+    if not visual and chars < MIN_TEXT_CHARS:
+        cover = sum(scores.group("junk", g.name) for g in prof.groups.values() if g.context == "junk" and g.subtype == "Cover Page")
+        subtype = "Cover Page" if cover > 0 else "Others"
+        return ruled(_junk_code(subtype), "R1", f"R1 tiny page: < {MIN_TEXT_CHARS} characters -> Junk / {subtype}")
     # R2 placeholder
     if scores.group("junk", "placeholder") > 0 and words <= PLACEHOLDER_MAX_WORDS:
         return ruled(CODE_OTHERS, "R2", "R2 placeholder ('intentionally left blank') -> Junk / Others")

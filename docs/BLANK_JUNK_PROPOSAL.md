@@ -240,7 +240,7 @@ it runs. Rules R1–R8 are deterministic; R9 is the vote.
 
 | # | Rule | Verdict | Overrides |
 |---|---|---|---|
-| **R1** | **Blank.** No ink above the blank threshold (`blank_page` / `faint_marks_only` from the HW stage), **or** fewer than 15 non-space OCR characters and the page is not Visual | `blank` | everything |
+| **R1** | **Blank.** No ink above the blank threshold (`blank_page` / `faint_marks_only` from the HW stage), **or**, on a page that is not Visual, 0 non-space OCR characters or the word "blank" in fewer than 30. **Tiny page:** otherwise fewer than 15 characters (not Visual) → junk, Cover Page when a Cover Page term is there, else Others | `blank` / junk | everything |
 | **R2** | **Placeholder.** A `placeholder` term ("intentionally left blank") and 25 words or fewer | `junk` / Others | everything below |
 | **R3** | **Signature.** Provider Signature = Yes from KV extraction (`kv_extract`, seq 56, runs before pass 2), or one of the clinical `signature` group's phrases ("electronically signed by", "attestation" …; a credential at a line end alone is not enough) | `not_blank_junk` | R4–R9 |
 | **R4** | **DistilBERT force.** DistilBERT p(junk) **> 0.85** (Σ JUNK_* + BLANK), pass 2, **unless the canon finds clinical (C, ≥ 4) or demographic (D, ≥ 3) evidence** — then the page goes on down the ladder and the vote decides (`votes.r4_skipped`) | `junk` / DistilBERT's top junk label | R5–R9 |
