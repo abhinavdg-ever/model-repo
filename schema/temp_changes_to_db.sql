@@ -1,5 +1,5 @@
 -- One-time changes for a database that already has schema/v1.sql applied.
--- Covers 8–14 Oct 2026. Do not re-apply schema/v1.sql, and do not run
+-- Covers 8–16 Oct 2026. Do not re-apply schema/v1.sql, and do not run
 -- schema/v2.sql (that file also creates tables nothing writes yet).
 -- Safe to run more than once.
 --
@@ -445,3 +445,12 @@ BEGIN
             IS 'Text orientation, degrees counter-clockwise';
     END IF;
 END $$;
+
+-- 2026-10-16: the v24 page-axes model decides page_type / page_subtype; its
+-- whole answer (L1/L2/L3, specialty, codeability, who decided each, the raw
+-- prediction) is one JSON column. Page classification fails on insert without it.
+ALTER TABLE page_classification ADD COLUMN IF NOT EXISTS axes JSONB;
+
+-- 2026-10-16: Final specialty, the page's own from the page axes; the pipeline
+-- writes 'Unknown' on a classified page without one. No ground truth exists.
+ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS specialty VARCHAR(100);
