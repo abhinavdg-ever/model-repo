@@ -1,0 +1,249 @@
+{
+  "taxonomy_version": "v24",
+  "section_L1": "Progress Note",
+  "fallback": "Others",
+  "other_L1": "OTHER",
+  "L1": [
+    "Progress Note",
+    "Lab Report/Result",
+    "Operative Note",
+    "Discharge Summary",
+    "Demographics",
+    "Medication Record",
+    "Order and Requisition",
+    "Consent Form",
+    "Authorization",
+    "Problem List",
+    "Forms and Questionnaires",
+    "Patient Communication",
+    "Administrative",
+    "OTHER"
+  ],
+  "L1_fold": {
+    "Procedure Note": "OTHER",
+    "Immunization": "OTHER",
+    "Others": "OTHER"
+  },
+  "L1_with_L2": [
+    "Progress Note",
+    "Lab Report/Result",
+    "Operative Note",
+    "Procedure Note",
+    "Discharge Summary",
+    "Demographics",
+    "Immunization",
+    "Medication Record",
+    "Order and Requisition",
+    "Consent Form",
+    "Authorization",
+    "Forms and Questionnaires",
+    "Patient Communication",
+    "Administrative"
+  ],
+  "L2": [
+    "Lab Report/Result > Diagnostic Study",
+    "Lab Report/Result > Laboratory",
+    "Lab Report/Result > Pathology",
+    "Lab Report/Result > Radiology",
+    "Operative Note > Surgery Report",
+    "Operative Note > Triage Report",
+    "Operative Note > Others",
+    "Discharge Summary > Depart/Discharge Note",
+    "Discharge Summary > Discharge Instruction",
+    "Discharge Summary > Short Stay Summary",
+    "Discharge Summary > Transfer of Care",
+    "Demographics > Face Sheet",
+    "Demographics > Patient Demographics",
+    "Medication Record > Medication List",
+    "Order and Requisition > Physician Order",
+    "Consent Form > HIPAA Form",
+    "Consent Form > Immunization Consent Form",
+    "Consent Form > Others",
+    "Authorization > Referral Authorization",
+    "Authorization > Release of Information Authorization",
+    "Forms and Questionnaires > Assessment",
+    "Forms and Questionnaires > Questionnaire",
+    "Patient Communication > Notice",
+    "Patient Communication > Patient Education Material",
+    "Patient Communication > Patient Message",
+    "Patient Communication > Provider Letter",
+    "Administrative > Administrative Record",
+    "Administrative > Appointment Record",
+    "Administrative > Billing Statement"
+  ],
+  "L2_by_L1": {
+    "Progress Note": [],
+    "Lab Report/Result": [
+      "Lab Report/Result > Diagnostic Study",
+      "Lab Report/Result > Laboratory",
+      "Lab Report/Result > Pathology",
+      "Lab Report/Result > Radiology"
+    ],
+    "Operative Note": [
+      "Operative Note > Surgery Report",
+      "Operative Note > Triage Report",
+      "Operative Note > Others"
+    ],
+    "Discharge Summary": [
+      "Discharge Summary > Depart/Discharge Note",
+      "Discharge Summary > Discharge Instruction",
+      "Discharge Summary > Short Stay Summary",
+      "Discharge Summary > Transfer of Care"
+    ],
+    "Demographics": [
+      "Demographics > Face Sheet",
+      "Demographics > Patient Demographics"
+    ],
+    "Medication Record": [
+      "Medication Record > Medication List"
+    ],
+    "Order and Requisition": [
+      "Order and Requisition > Physician Order"
+    ],
+    "Consent Form": [
+      "Consent Form > HIPAA Form",
+      "Consent Form > Immunization Consent Form",
+      "Consent Form > Others"
+    ],
+    "Authorization": [
+      "Authorization > Referral Authorization",
+      "Authorization > Release of Information Authorization"
+    ],
+    "Problem List": [],
+    "Forms and Questionnaires": [
+      "Forms and Questionnaires > Assessment",
+      "Forms and Questionnaires > Questionnaire"
+    ],
+    "Patient Communication": [
+      "Patient Communication > Notice",
+      "Patient Communication > Patient Education Material",
+      "Patient Communication > Patient Message",
+      "Patient Communication > Provider Letter"
+    ],
+    "Administrative": [
+      "Administrative > Administrative Record",
+      "Administrative > Appointment Record",
+      "Administrative > Billing Statement"
+    ],
+    "OTHER": []
+  },
+  "L3": [
+    "Lab Report/Result > Diagnostic Study > Cardiac Catheterization Report",
+    "Lab Report/Result > Diagnostic Study > Colonoscopy Report",
+    "Lab Report/Result > Diagnostic Study > Echocardiogram Report",
+    "Lab Report/Result > Diagnostic Study > Electrocardiogram",
+    "Lab Report/Result > Diagnostic Study > Extremity Doppler Report",
+    "Lab Report/Result > Diagnostic Study > Holter Monitor Report",
+    "Lab Report/Result > Diagnostic Study > Oximetry Report",
+    "Lab Report/Result > Diagnostic Study > Pacemaker Device Report",
+    "Lab Report/Result > Diagnostic Study > Pap and HPV Report",
+    "Lab Report/Result > Diagnostic Study > Pulmonary Function Test",
+    "Lab Report/Result > Diagnostic Study > Sleep Study Report",
+    "Lab Report/Result > Diagnostic Study > Visual Field Interpretation",
+    "Lab Report/Result > Diagnostic Study > Others",
+    "Lab Report/Result > Laboratory > Allergy Testing Report",
+    "Lab Report/Result > Laboratory > Chemistry Report",
+    "Lab Report/Result > Laboratory > Glucose Report",
+    "Lab Report/Result > Laboratory > Hematology Report",
+    "Lab Report/Result > Laboratory > Microbiology Report",
+    "Lab Report/Result > Laboratory > Urinalysis Report",
+    "Lab Report/Result > Laboratory > Others",
+    "Lab Report/Result > Pathology > Biopsy Report",
+    "Lab Report/Result > Pathology > Molecular Diagnostics Report",
+    "Lab Report/Result > Pathology > Others",
+    "Lab Report/Result > Radiology > Bone Mineral Density Report",
+    "Lab Report/Result > Radiology > CT Scan Report",
+    "Lab Report/Result > Radiology > MRI Report",
+    "Lab Report/Result > Radiology > Mammogram Report",
+    "Lab Report/Result > Radiology > Ultrasound Report",
+    "Lab Report/Result > Radiology > X-Ray Report",
+    "Lab Report/Result > Radiology > Others"
+  ],
+  "L3_fold": {
+    "Lab Report/Result > Pathology > Cytology Report": "Lab Report/Result > Pathology > Others",
+    "Lab Report/Result > Diagnostic Study > Esophagogastroduodenoscopy Report": "Lab Report/Result > Diagnostic Study > Others",
+    "Lab Report/Result > Diagnostic Study > Stress Test Report": "Lab Report/Result > Diagnostic Study > Others",
+    "Lab Report/Result > Laboratory > FISH Report": "Lab Report/Result > Laboratory > Others",
+    "Lab Report/Result > Laboratory > Laboratory Flow Sheet": "Lab Report/Result > Laboratory > Others",
+    "Lab Report/Result > Diagnostic Study > Plethysmography Report": "Lab Report/Result > Diagnostic Study > Others",
+    "Lab Report/Result > Laboratory > INR and Prothrombin Time": "Lab Report/Result > Laboratory > Others",
+    "Lab Report/Result > Diagnostic Study > Carotid Duplex Report": "Lab Report/Result > Diagnostic Study > Others",
+    "Lab Report/Result > Laboratory > Genetic Test Report": "Lab Report/Result > Laboratory > Others",
+    "Lab Report/Result > Diagnostic Study > Electromyography and Nerve Conduction": "Lab Report/Result > Diagnostic Study > Others",
+    "Lab Report/Result > Radiology > Nuclear Medicine Report": "Lab Report/Result > Radiology > Others"
+  },
+  "L3_parents": [
+    "Lab Report/Result > Diagnostic Study",
+    "Lab Report/Result > Laboratory",
+    "Lab Report/Result > Pathology",
+    "Lab Report/Result > Radiology"
+  ],
+  "L3_by_L2": {
+    "Lab Report/Result > Diagnostic Study": [
+      "Lab Report/Result > Diagnostic Study > Cardiac Catheterization Report",
+      "Lab Report/Result > Diagnostic Study > Colonoscopy Report",
+      "Lab Report/Result > Diagnostic Study > Echocardiogram Report",
+      "Lab Report/Result > Diagnostic Study > Electrocardiogram",
+      "Lab Report/Result > Diagnostic Study > Extremity Doppler Report",
+      "Lab Report/Result > Diagnostic Study > Holter Monitor Report",
+      "Lab Report/Result > Diagnostic Study > Oximetry Report",
+      "Lab Report/Result > Diagnostic Study > Pacemaker Device Report",
+      "Lab Report/Result > Diagnostic Study > Pap and HPV Report",
+      "Lab Report/Result > Diagnostic Study > Pulmonary Function Test",
+      "Lab Report/Result > Diagnostic Study > Sleep Study Report",
+      "Lab Report/Result > Diagnostic Study > Visual Field Interpretation",
+      "Lab Report/Result > Diagnostic Study > Others"
+    ],
+    "Lab Report/Result > Laboratory": [
+      "Lab Report/Result > Laboratory > Allergy Testing Report",
+      "Lab Report/Result > Laboratory > Chemistry Report",
+      "Lab Report/Result > Laboratory > Glucose Report",
+      "Lab Report/Result > Laboratory > Hematology Report",
+      "Lab Report/Result > Laboratory > Microbiology Report",
+      "Lab Report/Result > Laboratory > Urinalysis Report",
+      "Lab Report/Result > Laboratory > Others"
+    ],
+    "Lab Report/Result > Pathology": [
+      "Lab Report/Result > Pathology > Biopsy Report",
+      "Lab Report/Result > Pathology > Molecular Diagnostics Report",
+      "Lab Report/Result > Pathology > Others"
+    ],
+    "Lab Report/Result > Radiology": [
+      "Lab Report/Result > Radiology > Bone Mineral Density Report",
+      "Lab Report/Result > Radiology > CT Scan Report",
+      "Lab Report/Result > Radiology > MRI Report",
+      "Lab Report/Result > Radiology > Mammogram Report",
+      "Lab Report/Result > Radiology > Ultrasound Report",
+      "Lab Report/Result > Radiology > X-Ray Report",
+      "Lab Report/Result > Radiology > Others"
+    ]
+  },
+  "specialty": [
+    "Anesthesia",
+    "Audiology",
+    "Behavioral Health",
+    "Cardiology",
+    "Emergency",
+    "Gastroenterology",
+    "Nursing",
+    "Obstetrics and Gynecology",
+    "Oncology",
+    "Ophthalmology",
+    "Pathology",
+    "Sleep Study",
+    "Unknown"
+  ],
+  "codeability": [
+    "codeable",
+    "non_codeable",
+    "discharge",
+    "needs_review"
+  ],
+  "base_model": "distilbert-base-uncased",
+  "max_length": 512,
+  "head_fraction": 0.85,
+  "dropout": 0.1,
+  "route_model": 0.5,
+  "route_canon": 0.25,
+  "route_margin": 0.1
+}

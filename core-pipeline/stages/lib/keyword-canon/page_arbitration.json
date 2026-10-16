@@ -156,7 +156,7 @@
     "route_model": 0.4,
     "route_margin": 0.1,
     "route_canon": 0.25,
-    "l2_min": 0.4,
+    "l2_min": 0.5,
     "canon_min": 0.5,
     "l3_canon_min": 0.5,
     "specialty_min": 0.7,

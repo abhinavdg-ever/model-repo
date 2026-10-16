@@ -81,6 +81,7 @@ ENV PYTHONPATH=/app/core-pipeline \
     SECTION_HEADER_MINILM_PATH=models/semantic-model \
     MEMBER_NER_MODELS_PATH=models/ner \
     PAGE_FAMILY_MODEL_DIR=models/page-family/bert \
+    PAGE_AXES_MODEL_DIR=models/page-family/page-axes \
     EXTRACTION_MODELS_ROOT=models \
     API_HOST=0.0.0.0 \
     API_PORT=8001

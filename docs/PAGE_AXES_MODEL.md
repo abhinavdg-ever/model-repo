@@ -25,9 +25,9 @@ last columns of `imaging/<chart>_codeable.csv`.
 
 | Path | What | Status |
 |---|---|---|
-| `core-pipeline/models/page-family/page-axes/` | where the page-axes model goes (`PAGE_AXES_MODEL_DIR`) | **placeholder** — only `README.md` |
+| `core-pipeline/models/page-family/page-axes/` | the page-axes model (`PAGE_AXES_MODEL_DIR`) | **installed 2026-10-16** — `encoder/`, `heads.pt`, `label_space.json` (v24, 14 L1 classes) |
 | `core-pipeline/models/page-family-backup/2026-10-16/` | the old single-head BERT (was `page-family/bert/`) | **retired — backup only, not used** |
-| `core-pipeline/stages/lib/keyword-canon/page_arbitration.json` → `axes` | the gates | L1 / L2 0.40, canon 0.50, L3 canon 0.50 |
+| `core-pipeline/stages/lib/keyword-canon/page_arbitration.json` → `axes` | the gates | L1 0.40, L2 0.50, canon 0.50, L3 canon 0.50 |
 | `core-pipeline/stages/lib/keyword-canon/page_canon_v24.json` | the v24 keyword canon (fallback, and all of L3) | rebuilt 2026-10-16 by `build_canon.py` |
 
 Until the model is installed the v24 keyword canon decides every level alone
@@ -76,11 +76,12 @@ Replace all three together. `heads.pt` only works with the `encoder/` and
 `label_space.json` from the same run; a mix loads but predicts nonsense, or
 fails on a shape mismatch.
 
-The weights are not committed: `.gitignore` drops
-`encoder/model.safetensors` and `heads.pt`, while the small files (configs,
-tokenizer, `label_space.json`) can be. Copy the weights onto every host that
-runs the pipeline. In Docker they arrive through the
-models mount (`MODELS_HOST_PATH`, default `./models`), so no rebuild is needed.
+The model is committed. The weights (`encoder/model.safetensors`, `heads.pt`)
+go through **git LFS** (`.gitattributes`), so `git lfs install` once, then
+`git clone` / `git pull` brings them down (`git lfs pull` if a clone predates
+LFS). Committing a new model is `git add` of the three paths as usual; LFS
+stores the weights. In Docker they arrive through the models mount
+(`MODELS_HOST_PATH`, default `./models`, which is this folder), so no rebuild is needed.
 
 A different folder works too: set `PAGE_AXES_MODEL_DIR` in `core-pipeline/.env`.
 
@@ -125,7 +126,7 @@ on 10+ pages; `--target 0.95` for stricter). Copy the ones you accept into
 |---|---|---|
 | `route_model` | model decides L1 at or above this … | 0.40 |
 | `route_margin` | … and this far ahead of its second choice | 0.10 |
-| `l2_min` | model decides L2 | 0.40 |
+| `l2_min` | model decides L2 | 0.50 |
 | `canon_min` | canon decides L1 / L2 when the model did not | 0.50 |
 | `l3_canon_min` | canon decides L3 (always the canon) | 0.50 |
 | `specialty_min`, `specialty_lead`, `specialty_min_train_pages` | model asserts a specialty | 0.70, 0.20, 10 |
