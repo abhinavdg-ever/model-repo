@@ -21,6 +21,17 @@ CONNECT_TIMEOUT_SEC = 3
 POOL_MAX_SIZE = 10
 # How long a request waits for a free pooled connection before failing.
 POOL_WAIT_SEC = 5.0
+# After a failed connect, every DB read fails at once for this long instead of
+# each waiting POOL_WAIT_SEC: an unreachable database (firewall, VPN, wrong
+# host) would otherwise add seconds to every request, even in Local mode.
+DOWN_RETRY_SEC = 30.0
+
+
+class DatabaseUnavailable(RuntimeError):
+    """The database did not answer recently; not retried until DOWN_RETRY_SEC."""
+
+
+_down_until: dict[tuple[str, str], float] = {}
 
 _pools: dict[tuple[str, str], object] = {}
 _pools_lock = threading.Lock()
@@ -84,20 +95,52 @@ def connection(database_url: str, db_schema: str | None = "public") -> Iterator:
     Commits on clean exit, rolls back on error, then returns the connection to
     the pool — same semantics as ``with psycopg.connect(...) as conn``.
     """
+    import time
+
     url = psycopg_url(database_url)
     schema = valid_schema(db_schema)
+    key = (url, schema)
+    now = time.monotonic()
+    if _down_until.get(key, 0.0) > now:
+        raise DatabaseUnavailable(
+            f"database unreachable; next try in {_down_until[key] - now:.0f}s"
+        )
     try:
         pool = _pool_for(url, schema)
     except ImportError:
         pool = None
-    if pool is None:
-        import psycopg
+    try:
+        if pool is None:
+            import psycopg
 
-        with psycopg.connect(url, **_connect_kwargs(schema)) as conn:
-            yield conn
-        return
-    with pool.connection() as conn:  # type: ignore[attr-defined]
+            borrowed = psycopg.connect(url, **_connect_kwargs(schema))
+        else:
+            borrowed = pool.connection()  # type: ignore[attr-defined]
+        conn = borrowed.__enter__()
+    except Exception as exc:
+        # Getting a connection failed (not a query): stop trying for a while.
+        if key not in _down_until or _down_until[key] <= now:
+            logger.warning(
+                "database unreachable (%s); DB reads fail fast for %.0fs",
+                str(exc).splitlines()[0][:160], DOWN_RETRY_SEC,
+            )
+        _down_until[key] = time.monotonic() + DOWN_RETRY_SEC
+        # A pool left open keeps reconnecting (and logging) in the background;
+        # drop it, and the next try after DOWN_RETRY_SEC builds a fresh one.
+        with _pools_lock:
+            dead = _pools.pop(key, None)
+        if dead is not None:
+            # close() waits for its workers; do not hold the request for it.
+            threading.Thread(target=dead.close, name="db-pool-close", daemon=True).start()  # type: ignore[attr-defined]
+        raise
+    _down_until.pop(key, None)
+    try:
         yield conn
+    except BaseException as exc:
+        if not borrowed.__exit__(type(exc), exc, exc.__traceback__):
+            raise
+    else:
+        borrowed.__exit__(None, None, None)
 
 
 def close_pools() -> None:
