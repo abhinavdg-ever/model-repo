@@ -39,8 +39,7 @@ export const METRICS: {
   {
     id: "member",
     label: "Member Verification",
-    binary: true,
-    rule: "Exact match on the Name and DOB presence labels: a page is a Match only when the pipeline found (or did not find) the Name and the DOB exactly as the ground truth says. Scored on pages with both labels. Member ID is not scored (no ground truth). Under Member & DOB = Yes (cases = pages the ground truth has both on): Precision, Recall and F1",
+    rule: "Name and DOB presence labels against what the pipeline found (or did not find): both right = Match, one right = Partial, neither = No Match. Not Available = a page with ground truth but no Name and DOB label, or one the member stage did not judge (blank / junk); it is counted, not scored. Member ID is not scored (no ground truth). Under Member & DOB = Yes (cases = pages the ground truth has both on): Precision, Recall and F1",
   },
   {
     id: "dos",
@@ -85,7 +84,8 @@ export const LIVE_METRICS = METRICS.filter((metric) => !metric.comingSoon);
 /** The metrics a page's overall match is built from. */
 const OVERALL_METRICS = METRICS.filter((metric) => metric.inOverall !== false);
 
-export type Tally = { yes: number; no: number; maybe: number; scored: number };
+/** yes = Match, maybe = Partial, no = No Match; na = Not Available (counted, not scored). */
+export type Tally = { yes: number; no: number; maybe: number; scored: number; na: number };
 
 /** Counts for Class 1 (the "Yes" class): true / false positives and negatives. */
 export type ClassRates = { tp: number; fp: number; fn: number; tn: number };
@@ -129,7 +129,7 @@ const EMPTY_SECTIONS: ImagingSectionsProcessed = {
 };
 
 function emptyTally(): Tally {
-  return { yes: 0, no: 0, maybe: 0, scored: 0 };
+  return { yes: 0, no: 0, maybe: 0, scored: 0, na: 0 };
 }
 
 function emptyRates(): ClassRates {
@@ -314,16 +314,17 @@ function pageScores(
     dosTo: finalTo || null,
   });
 
-  // Exact match on Name and DOB presence; Member ID has no ground truth.
+  // Name and DOB presence: both right = Match, one = Partial, neither = No
+  // Match. Member ID has no ground truth.
   const memberCalls = memberCall(
     [page.groundTruth?.memberName, bits.memberName],
     [page.groundTruth?.memberDob, bits.memberDob],
   );
-  const member: Verdict | null = memberCalls
-    ? memberCalls.expected.every((value, index) => value === memberCalls.predicted[index])
-      ? "yes"
-      : "no"
+  const memberRight = memberCalls
+    ? memberCalls.expected.filter((value, index) => value === memberCalls.predicted[index]).length
     : null;
+  const member: Verdict | null =
+    memberRight === null ? null : memberRight === 2 ? "yes" : memberRight === 1 ? "maybe" : "no";
   const blankJunkCalls = blankJunkCall(bits.blankJunk);
 
   const dos = finalOrExtracted(dosVerdict(finalBits), dosVerdict(bits));
@@ -439,6 +440,8 @@ export function scoreChart(
     if (!hasGroundTruth(page.groundTruth)) continue;
     const scored = pageScores(page, sections);
     for (const metric of METRICS) add(metrics[metric.id], scored.scores[metric.id]);
+    // A page with ground truth that Member cannot score is Not Available.
+    if (!scored.scores.member) metrics.member.na += 1;
     add(overall, overallVerdict(scored.scores, scored.applicable));
     if (scored.blankJunk) {
       addRates(blankJunkRates, scored.blankJunk.expected, scored.blankJunk.predicted);
@@ -506,12 +509,14 @@ export function sumTallies(rows: Tally[]): Tally {
     total.no += row.no;
     total.maybe += row.maybe;
     total.scored += row.scored;
+    total.na += row.na;
   }
   return total;
 }
 
 export function formatDistribution(tally: Tally, binary = false): string {
-  if (tally.scored === 0) return "—";
-  if (binary) return `Match ${tally.yes} · No Match ${tally.no}`;
-  return `Match ${tally.yes} · Partial ${tally.maybe} · No Match ${tally.no}`;
+  const na = tally.na > 0 ? ` · Not Available ${tally.na}` : "";
+  if (tally.scored === 0) return na ? na.slice(3) : "—";
+  if (binary) return `Match ${tally.yes} · No Match ${tally.no}${na}`;
+  return `Match ${tally.yes} · Partial ${tally.maybe} · No Match ${tally.no}${na}`;
 }
