@@ -42,6 +42,9 @@ _SKIP_DIRS = {
     "__pycache__", ".git", "node_modules", "site-packages", "dist", "build",
     ".mypy_cache", ".pytest_cache", ".tox", ".eggs",
 }
+# Downloaded model folders: Hub snapshots ship their own scripts (e.g.
+# semantic-model/train_script.py). Pruned by path — other code has models/ dirs.
+_SKIP_PATHS = {REPO_ROOT / "core-pipeline" / "models"}
 
 
 def _is_venv(directory):
@@ -68,7 +71,8 @@ def repo_python_files(*roots):
                 continue
             for entry in entries:
                 if entry.is_dir():
-                    if entry.name in _SKIP_DIRS or entry.name.startswith("."):
+                    if (entry.name in _SKIP_DIRS or entry.name.startswith(".")
+                            or entry in _SKIP_PATHS):
                         continue
                     stack.append(entry)
                 elif entry.suffix == ".py" and not entry.name.startswith("._"):
@@ -346,7 +350,7 @@ class TestSchemaSplit:
         code = "\n".join(re.sub(r"--.*$", "", ln) for ln in text.splitlines())
         v1, v2 = self._relations("v1.sql"), self._relations("v2.sql")
         referenced = set(re.findall(r"REFERENCES\s+(\w+)\s*\(", code)) | set(
-            re.findall(r"(?:FROM|JOIN)\s+([a-z_][a-z0-9_]*)\b", code)
+            re.findall(r"(?<!DISTINCT )(?:FROM|JOIN)\s+([a-z_][a-z0-9_]*)\b", code)
         )
         assert not (referenced & v2), f"V1 depends on V2: {sorted(referenced & v2)}"
         assert not (referenced - v1), f"V1 references undefined: {sorted(referenced - v1)}"

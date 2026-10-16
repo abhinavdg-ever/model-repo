@@ -106,15 +106,15 @@ class TestLevelOne:
 
 
 class TestLevelTwoAndThree:
-    def test_model_l2_at_forty_percent_and_l3_from_the_canon(self):
-        result = gate(raw(l2_p=0.41, l3="MRI Report", l3_p=0.99))
+    def test_model_l2_at_fifty_percent_and_l3_from_the_canon(self):
+        result = gate(raw(l2_p=0.51, l3="MRI Report", l3_p=0.99))
         assert (result.l2, result.sources[1]) == ("Radiology", "model")
         assert (result.l3, result.sources[2]) == ("CT Scan Report", "canon")
         assert result.l3_confidence >= 0.5
         assert result.prediction["L3"] == "MRI Report"  # the model's L3 is kept, not used
 
     def test_low_model_l2_falls_back_to_the_canon(self):
-        result = gate(raw(l2="Laboratory", l2_p=0.35))
+        result = gate(raw(l2="Laboratory", l2_p=0.45))
         assert (result.l2, result.sources[1]) == ("Radiology", "canon")
 
     def test_l3_needs_the_canon_to_be_sure(self):
