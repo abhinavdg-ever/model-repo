@@ -147,6 +147,35 @@ def _blob_service_client() -> BlobServiceClient:
     return BlobServiceClient(account_url=account_url, credential=_credential(settings))
 
 
+def blob_auth_label(settings: Settings) -> str:
+    """Which credential _blob_service_client uses, for the startup banner."""
+    if settings.blob_auth_mode == "sas":
+        return "sas token" if settings.blob_sas_token.strip() else "sas (no BLOB_SAS_TOKEN)"
+    if settings.azure_storage_connection_string.strip():
+        return "connection string"
+    if settings.azure_storage_account_key.strip():
+        return "account key"
+    if settings.azure_tenant_id.strip() and settings.azure_client_id.strip() and settings.azure_client_secret.strip():
+        return "entra app (client secret)"
+    return "entra (managed identity / az login)"
+
+
+def check_blob_access(settings: Settings) -> str:
+    """Reach the default container once: 'OK', or why not. Never raises."""
+    container = settings.blob_container.strip().strip("/")
+    if not resolved_blob_account_url(settings):
+        return "off — AZURE_STORAGE_ACCOUNT_NAME (or BLOB_ACCOUNT_URL) not set"
+    if settings.blob_auth_mode == "sas":
+        return "not checked (sas redirect)"
+    if not container:
+        return "not checked — no default container (AZURE_STORAGE_CONTAINER); each chart's blob_container is used"
+    try:
+        client = _blob_service_client().get_container_client(container)
+        return "OK" if client.exists(timeout=10) else f"container {container!r} not found"
+    except Exception as exc:  # noqa: BLE001 — reported, not raised
+        return f"FAILED — {type(exc).__name__}: {str(exc).splitlines()[0][:200]}"
+
+
 def clear_blob_client_cache() -> None:
     _blob_service_client.cache_clear()
 

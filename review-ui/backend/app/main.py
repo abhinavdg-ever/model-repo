@@ -1,3 +1,5 @@
+import threading
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -5,6 +7,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 from app.api.routes import router
 from app.core.config import get_settings
 from app.core.logging_setup import RequestLoggingMiddleware, configure_logging, logger
+from app.services.blob_store import blob_auth_label, check_blob_access, resolved_blob_account_url
+from app.services.chart_run_batch import database_url_usable
 from app.services.db import close_pools
 
 settings = get_settings()
@@ -25,13 +29,57 @@ app.add_middleware(
 app.include_router(router, prefix="/api")
 
 
+def _safe_db(url: str) -> str:
+    """host:port/db of DATABASE_URL, no credentials."""
+    tail = url.rsplit("@", 1)[-1]
+    return tail if "@" in url else "(not set)"
+
+
+def _folder_count(path) -> str:
+    if not path.is_dir():
+        return "MISSING"
+    return f"{sum(1 for p in path.iterdir() if p.is_dir() and not p.name.startswith('.'))} chart folder(s)"
+
+
+def _check_sources(production: bool, db_on: bool) -> None:
+    """The slow checks, off the startup path. Opening the DB pool here also
+    means the first page load does not pay for it."""
+    if db_on:
+        try:
+            from app.services.db import connection
+
+            with connection(settings.database_url, settings.db_schema) as conn:
+                charts = conn.execute("SELECT count(*) FROM chart_list").fetchone()[0]
+            logger.info("  db check    : reachable, %s chart(s) in chart_list", charts)
+        except Exception as exc:  # noqa: BLE001 — reported, not raised
+            logger.warning("  db check    : NOT reachable — %s", str(exc).splitlines()[0][:200])
+    if production:
+        logger.info("  blob access : %s", check_blob_access(settings))
+
+
 @app.on_event("startup")
 def _startup() -> None:
-    logger.info(
-        "review-ui starting — data_mode=%s data_root=%s",
-        settings.data_mode,
-        settings.resolved_data_root,
-    )
+    # The source is DATA_MODE in review-ui/.env; nothing in the UI changes it.
+    production = settings.is_production_mode
+    db_on = database_url_usable(settings.database_url)
+    logger.info("review-ui starting — %s (DATA_MODE=%s)", settings.mode_label, settings.data_mode)
+    if production:
+        logger.info("  results     : Postgres %s (schema %s)", _safe_db(settings.database_url), settings.db_schema)
+        logger.info("  page images : Azure Blob")
+        logger.info("  account     : %s", resolved_blob_account_url(settings) or "(not set)")
+        logger.info("  auth        : %s", blob_auth_label(settings))
+        logger.info("  container   : %s", settings.blob_container.strip() or "(per chart: chart_list.blob_container)")
+        logger.info("  file viewer : %s", "on" if settings.file_viewer_blob_enabled else "off")
+    else:
+        logger.info("  results     : %s — %s", settings.resolved_data_root, _folder_count(settings.resolved_data_root))
+        logger.info("  metadata    : %s%s", settings.resolved_metadata_root,
+                    "" if settings.resolved_metadata_root.is_dir() else " — MISSING")
+        logger.info(
+            "  database    : %s",
+            f"{_safe_db(settings.database_url)} (Run/Batch, manifest, ground truth)" if db_on
+            else "off — DATABASE_URL not set; Run/Batch from metadata CSVs",
+        )
+    threading.Thread(target=_check_sources, args=(production, db_on), name="source-check", daemon=True).start()
 
 
 @app.on_event("shutdown")

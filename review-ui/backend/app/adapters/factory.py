@@ -7,26 +7,14 @@ from app.adapters.base import FolderRepository
 from app.adapters.local.repository import LocalFolderRepository
 from app.adapters.postgres.repository import PostgresFolderRepository
 from app.core.config import Settings, get_settings
-from app.services.chart_run_batch import database_url_usable
 
 logger = logging.getLogger("review_ui.adapters")
 
 
-# Each browser picks Local or DB with the top-bar switch; the choice rides in
-# this cookie, so <img> page requests follow it too.
-MODE_COOKIE = "advantmed_data_mode"
-
-
 def request_is_production(request: Request) -> bool:
-    """DB (Postgres + Azure Blob) for this request: the browser's choice when it
-    made one and a database is configured, else DATA_MODE."""
-    settings = get_settings()
-    choice = (request.cookies.get(MODE_COOKIE) or "").strip().lower()
-    if choice == "local":
-        return False
-    if choice == "db" and database_url_usable(settings.database_url):
-        return True
-    return settings.is_production_mode
+    """DB (Postgres + Azure Blob) or Local: DATA_MODE alone. The old top-bar
+    switch's cookie (advantmed_data_mode) is ignored."""
+    return get_settings().is_production_mode
 
 
 @lru_cache(maxsize=2)

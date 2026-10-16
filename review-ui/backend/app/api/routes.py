@@ -94,7 +94,7 @@ def _filename_for_page(repo: FolderRepository, folder_id: str, page_number: int)
 
 
 def _mode(request: Request) -> tuple[str, str]:
-    """(data_mode, label) this browser is in: its Local / DB switch, else DATA_MODE."""
+    """(data_mode, label) from DATA_MODE."""
     production = request_is_production(request)
     return ("production", "Production Mode") if production else ("local", "Local Mode")
 
