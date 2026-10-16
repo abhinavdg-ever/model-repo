@@ -84,11 +84,11 @@ class CanonError(ValueError):
 
 
 def _page_type_ids() -> set[str]:
-    """Every page type and sub-type name in page_taxonomy.json."""
-    from stages.lib.page_classify import taxonomy
+    """Every v24 name a page can carry: canon page types and L1 / L2 / L3
+    (page_canon_v24.json)."""
+    from stages.lib.page_classify import axes
 
-    names = taxonomy.load()
-    return set(names.page_types) | set(names.subtype_page_type)
+    return set(axes.v24_names())
 
 
 def _validate(raw: dict[str, Any], page_type_ids: Optional[set[str]]) -> None:
@@ -99,7 +99,7 @@ def _validate(raw: dict[str, Any], page_type_ids: Optional[set[str]]) -> None:
         if setting not in settings:
             errors.append(f"tier1_page_types.{pt_id}: unknown setting {setting!r}")
         if page_type_ids is not None and pt_id not in page_type_ids:
-            errors.append(f"tier1_page_types.{pt_id}: not a page type or sub-type in page_taxonomy.json")
+            errors.append(f"tier1_page_types.{pt_id}: not a v24 canon page type or L1 / L2 / L3 in page_canon_v24.json")
 
     owner: dict[str, str] = {}
     for tier in ("tier2", "tier3"):

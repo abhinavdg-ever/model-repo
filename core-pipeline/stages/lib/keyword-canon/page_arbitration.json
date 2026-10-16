@@ -1,5 +1,5 @@
 {
-  "version": "1.1",
+  "version": "1.2",
   "status": "Default ladder. Thresholds, settings and patterns are starting values to be tuned on a validation split. 2026-10-11: BERT wins at >= bert_high (0.50), or at >= bert_low (0.25) with a lead >= bert_lead (0.10) over its second choice. Below bert_low the keyword model wins when clear (title hit); otherwise the two models' top 3 page types are compared. Below bert_unknown (0.10) the page is Unknown.",
   "inputs": {
     "bert": "model_type with a confidence (softmax probability). Implies page_type; implies page_subtype only when page_type is Progress Note.",
@@ -25,10 +25,15 @@
     "review_cap": 0.49
   },
   "inside_progress_note": {
-    "comment": "A page whose Final page type becomes Progress Note (signed progress-note document, or Laboratory Data / Radiology Report embedded in a Progress Note) takes Progress Note's codability (Codable), except these sub-types, which stay Non-Codable inside a Progress Note.",
-    "non_codeable_sub_types": [
+    "comment": "v24 Final rules (imaging_final, arbitration.decide_final). A page whose Final family becomes the section L1 (Progress Note) — continuing a Progress Note document, or embedded_families on a page headed by a Progress Note title — takes the document's codability, except a page carrying one of non_codeable_names (any of its canon page type / L3 / L2 / L1), which stays Non-Codable.",
+    "non_codeable_names": [
+      "Laboratory",
       "Laboratory Data",
+      "Medication Record",
       "Medication List"
+    ],
+    "embedded_families": [
+      "Lab Report/Result"
     ]
   },
   "document_agreement": {
@@ -143,5 +148,23 @@
     "document_start",
     "continuation_link",
     "continuation_rule"
-  ]
+  ],
+  "axes": {
+    "comment": "The v24 page axes: they decide page_classification.page_type / page_subtype (L1 / L1, L1 / L2, or 'L1 (L2)' / L3) and the category; the whole answer is in page_classification.axes. Each level is decided by the model when it clears its gate, otherwise by the v24 keyword canon (page_canon_v24.json) when the canon is sure enough; otherwise the column is NULL. axes.sources says which decided each level (model / canon / -). L1 from the model: route 'model' = top L1 >= route_model, ahead of the second by >= route_margin, not the folded OTHER class ('canon' = OTHER or >= route_canon, else 'review'; only 'model' lets the model decide). L1 from the canon: the best L1 among all canon entries, keyword confidence >= canon_min. L2 (not under section_L1, whose L2 is the content section from section tagging): the model's when the model decided L1 and L2 >= l2_min; else the canon's best L2 under that L1, >= canon_min. L3: always the canon's best L3 under that L1 > L2, keyword confidence >= l3_canon_min; the model's L3 is kept in axes.prediction only. Keyword confidence is page_arbitration.json → confidence (title hit 0.60, body 0.30, +0.05 per point of margin, capped). Specialty: the model's when it is not one of specialty_not_asserted, >= specialty_min, ahead of the second by >= specialty_lead, and trained on >= specialty_min_train_pages pages; else the specialty of the canon entry that decided the deepest level, when it has one. Codeability is always the canon's: the tag of the canon page type behind the decided path (the best keyword match among the entries under L1 [> L2 [> L3]], else the entry for exactly that path); needs_review when its rule is context (the Final step resolves it from the page's document) or source. The model's codeability is kept in axes.prediction only. Tune with training/bert-training/tune_thresholds.py on predictions_val.csv.",
+    "taxonomy_version": "v24",
+    "section_L1": "Progress Note",
+    "route_model": 0.4,
+    "route_margin": 0.1,
+    "route_canon": 0.25,
+    "l2_min": 0.4,
+    "canon_min": 0.5,
+    "l3_canon_min": 0.5,
+    "specialty_min": 0.7,
+    "specialty_lead": 0.2,
+    "specialty_min_train_pages": 10,
+    "specialty_not_asserted": [
+      "Unknown",
+      "Others"
+    ]
+  }
 }

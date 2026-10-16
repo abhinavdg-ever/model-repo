@@ -62,8 +62,10 @@ class PageInput:
     lines: list[Line] = field(default_factory=list)
     # [{"text", "matched_canonical", "top"}] from the OCR JSON.
     section_headers: list[dict[str, Any]] = field(default_factory=list)
-    page_type: str = ""
+    page_type: str = ""  # the family (v24 L1) the pages are compared on
     page_subtype: str = ""
+    # Every v24 name of the page (axes.names_of): the default-DOS check.
+    names: tuple[str, ...] = ()
     # The page classifier's confidence in ``page_type``, in [0, 1].
     page_confidence: Optional[float] = None
     # The keyword model found a title term in the page's title zone.
@@ -359,7 +361,7 @@ def _finish(rows: list[dict[str, Any]], pages: Sequence[PageInput], rules: Rules
         chain = "strong"
         carried = document_finals(
             [
-                {"page_type": p.page_type, "page_subtype": p.page_subtype,
+                {"page_type": p.page_type, "page_subtype": p.page_subtype, "names": p.names,
                  "dos_from": p.dos_from, "dos_to": p.dos_to}
                 for _, p in members
             ]
@@ -400,7 +402,8 @@ def document_finals(members: Sequence[dict[str, Any]]) -> dict[str, Any]:
     """The values a document's pages share, from its pages in order.
 
     Each member has ``page_type``, ``dos_from``, ``dos_to`` and, optionally,
-    ``page_subtype``, ``classification_category`` and ``encounter_type``. Every
+    ``page_subtype``, ``names`` (its v24 names), ``classification_category``
+    and ``encounter_type``. Every
     page takes the first page's page type, category, DOS and encounter type
     (a continue page has no DOS of its own, or the same one). A stand-alone
     non-visit document — every page a ``default_final_dos`` type — takes
@@ -416,7 +419,8 @@ def document_finals(members: Sequence[dict[str, Any]]) -> dict[str, Any]:
     }
     default_date = _DOS_DEFAULT.get()
     if default_date and all(
-        uses_default_final_dos(m.get("page_type"), m.get("page_subtype")) for m in members
+        uses_default_final_dos(*(m.get("names") or (m.get("page_type"), m.get("page_subtype"))))
+        for m in members
     ):
         return {**finals, "dos_from": default_date, "dos_to": default_date, "dos_default": True}
     return {

@@ -223,10 +223,13 @@ class TestPinnedVersion:
             monkeypatch.delenv("EXTRACTION_MODEL_VERSION")
             importlib.reload(config)
 
-    def test_engine_reports_v004(self):
+    def test_engine_pins_v004_with_v002_as_fallback(self):
+        import config
+
         from stages.lib.extraction import engine
 
-        assert engine.model_version() == "v004"
+        assert engine.pinned_version() == "v004"
+        assert config.EXTRACTION_FALLBACK_VERSION == "v002"
 
     def test_v002_still_resolves_to_the_single_folder_for_a_roll_back(self):
         import json
@@ -274,6 +277,40 @@ class TestSplitLayout:
         listed = {v["id"]: v for v in registry.list_versions()}
         assert listed["v004"]["runnable"] is True
 
+    @staticmethod
+    def _ready_except_weights(monkeypatch, tmp_path):
+        from stages.lib.extraction import engine
+        from stages.lib.extraction.util import config as kv_config
+
+        monkeypatch.setattr(kv_config, "Model_Registry", tmp_path)
+        monkeypatch.setattr(engine, "REQUIRED_PACKAGES", ())
+        monkeypatch.setattr(kv_config, "ner_weights_present", lambda folder: True)
+        monkeypatch.setattr(engine, "missing_models", lambda folders: {})
+        return engine
+
+    @staticmethod
+    def _v002(root):
+        import json
+
+        (root / "manifest.json").write_text(json.dumps({"version": "v002", "fields_trained": ["dob"]}), encoding="utf-8")
+        (root / "thresholds.json").write_text(json.dumps({"dob": 0.5}), encoding="utf-8")
+
+    def test_v004_runs_when_on_disk_even_beside_v002(self, tmp_path, monkeypatch):
+        engine = self._ready_except_weights(monkeypatch, tmp_path)
+        self._v002(tmp_path)
+        self._folder(tmp_path, "KV_v004", ["dob"])
+        status = engine.readiness()
+        assert engine.model_version() == "v004"
+        assert status["ready"] and status["model_version"] == "v004" and status["fallback"] is False
+
+    def test_v002_runs_as_fallback_and_says_so(self, tmp_path, monkeypatch):
+        engine = self._ready_except_weights(monkeypatch, tmp_path)
+        self._v002(tmp_path)
+        status = engine.readiness()
+        assert engine.model_version() == "v002" and engine.require_ready() == "v002"
+        assert status["ready"] and status["fallback"] is True
+        assert (status["pinned_version"], status["model_version"]) == ("v004", "v002")
+
     def test_readiness_names_both_folders_when_missing(self, tmp_path, monkeypatch):
         from stages.lib.extraction import engine
         from stages.lib.extraction.training import registry
@@ -287,6 +324,7 @@ class TestSplitLayout:
         status = engine.readiness()
         assert status["ready"] is False
         assert "KV_v004" in status["reason"] and "Heading_v004" in status["reason"]
+        assert "v002" in status["reason"]  # the fallback was looked for too
 
 
 def test_kv_debug_writes_the_raw_payload_only_when_asked(tmp_path, monkeypatch):

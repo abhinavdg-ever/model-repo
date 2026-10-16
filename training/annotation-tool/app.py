@@ -20,6 +20,7 @@ import argparse  # noqa: E402
 import io  # noqa: E402
 import logging  # noqa: E402
 import threading
+from collections import Counter
 from pathlib import Path
 from typing import Optional
 
@@ -27,7 +28,7 @@ from flask import Flask, abort, jsonify, render_template, request, send_file
 from PIL import Image, ImageOps
 
 import ocr
-from store import GenerateSummary, Store, filter_items
+from store import VIEWS, GenerateSummary, Store, filter_items
 
 HERE = Path(__file__).resolve().parent
 # Formats a browser cannot show: converted to JPEG on the way out.
@@ -45,28 +46,19 @@ def create_app(store: Store) -> Flask:
 
     @app.get("/api/taxonomy")
     def taxonomy():
-        tax = store.taxonomy
-        return jsonify(
-            {
-                "page_types": [
-                    {"page_type": p, "codability": tax.codability_of(p),
-                     "sub_types": tax.sub_types.get(p, [])}
-                    for p in tax.page_types
-                ],
-                "model_types": tax.model_types,
-                "embedded_types": tax.embedded_types,
-                "progress_note": "Progress Note",
-            }
-        )
+        # The whole label space: the page reads every name from here.
+        return jsonify(store.taxonomy.data)
 
     @app.get("/api/items")
     def items():
         view = request.args.get("view", "all")
-        model_type = request.args.get("model_type", "")
+        if view not in VIEWS:
+            abort(400)
+        l1 = request.args.get("l1", "")
         search = request.args.get("search", "")
         show_completed = request.args.get("completed", "0") == "1"
         with store.lock:
-            indexes = list(filter_items(store, view, model_type, search, show_completed))
+            indexes = list(filter_items(store, view, l1, search, show_completed))
             return jsonify(
                 {"items": [store.item(i) for i in indexes], "counts": store.counts()}
             )
@@ -95,16 +87,14 @@ def create_app(store: Store) -> Flask:
         index = int(body.get("index", -1))
         if index < 0 or index >= len(store.rows):
             abort(404)
+        text = lambda key: str(body.get(key) or "")  # noqa: E731
         try:
-            if body.get("clear"):
-                item = store.clear(index)
-            else:
-                item = store.set_labels(
-                    index,
-                    str(body.get("page_type") or ""),
-                    str(body.get("page_subtype") or ""),
-                    embedded=bool(body.get("embedded")),
-                )
+            item = store.set_labels(
+                index, text("L1"), text("L2"), text("L3"), text("specialty"),
+                override=text("codeability_override"),
+                override_reason=text("codeability_override_reason"),
+                resolution=text("resolution"),
+            )
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         return jsonify({"item": item, "counts": store.counts()})
@@ -119,7 +109,7 @@ def create_app(store: Store) -> Flask:
         thread = job.get("thread")
         if isinstance(thread, threading.Thread) and thread.is_alive():
             return jsonify({"error": "already running"}), 409
-        if store_needs_ocr(store):
+        if store.needs_ocr():
             try:
                 ocr.tesseract_version()
             except ocr.TesseractMissing as exc:
@@ -148,20 +138,6 @@ def create_app(store: Store) -> Flask:
     return app
 
 
-def store_needs_ocr(store: Store) -> bool:
-    """True when some row waiting for training has no reusable text."""
-    for index, row in enumerate(store.rows):
-        if not store.tagged(row):
-            continue
-        if row.get("is_training_added") == "Yes" and not store._image_changed(index):
-            continue
-        path = store.image_path(index)
-        record = store.records.get(row.get("image"))
-        if path and (record is None or record.get("file_size") != path.stat().st_size):
-            return True
-    return False
-
-
 def _print_summary(summary: GenerateSummary) -> None:
     print(f"rows waiting: {summary.candidates}")
     print(f"pages read (OCR): {summary.pages_read}")
@@ -177,14 +153,14 @@ def _print_summary(summary: GenerateSummary) -> None:
 
 
 def _print_checks(store: Store) -> None:
-    """Rows to re-tag under the loaded taxonomy (file names and labels only)."""
-    print(f"Needs re-tag: {len(store.invalid_pair)} row(s) with a pair not in taxonomy.json, "
-          f"{len(store.rule_broken)} breaking the model type rule (filter 'Needs re-tag')")
-    for index in sorted(store.invalid_pair | store.rule_broken)[:50]:
-        row = store.rows[index]
-        why = "invalid pair" if index in store.invalid_pair else "model type rule"
-        print(f"  {row.get('image')}: {row.get('page_type')} / {row.get('page_subtype')} "
-              f"-> {row.get('model_type')} ({why})")
+    """The work queues (file names and counts only)."""
+    c = store.counts()
+    print(f"Queues: {c['disagreements']} disagreement(s) to review, {c['invalid']} label(s) not valid "
+          f"under the taxonomy, {c['needs_review']} needs_review, {c['specialty_other']} specialty "
+          f"'{store.taxonomy.specialty_other}'")
+    reasons = Counter(store.invalid.values())
+    for reason, n in reasons.most_common(10):
+        print(f"  {n:>4}  {reason}")
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -199,14 +175,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     store = Store(Path(folder))
     counts = store.counts()
     tax = store.taxonomy
-    print(f"taxonomy.json {tax.version}: {tax.counts['page_types']} page types, "
-          f"{tax.counts['sub_types']} sub-types, {tax.counts['model_types']} model types")
+    print(f"taxonomy {tax.version}: {len(tax.l1)} L1, {tax.counts.get('L2')} L2, {tax.counts.get('L3')} L3, "
+          f"{len(tax.specialty)} specialties")
     print(f"{store.root}: {counts['images']} images, {counts['untagged']} untagged, "
           f"{counts['in_training']} in training, {counts['not_in_training']} not in training yet")
     _print_checks(store)
 
     if args.generate:
-        if store_needs_ocr(store):
+        if store.needs_ocr():
             try:
                 ocr.tesseract_version()
             except ocr.TesseractMissing as exc:

@@ -9,9 +9,11 @@ extracts and drops the rest: this is ``run.py::_write_document`` without the wri
      find every candidate, the version picks among them.
   3. The picks are pushed back into the rows, which staging.py then writes.
 
-Only the trained version pinned in config.py (EXTRACTION_MODEL_VERSION, v004) runs. It is not
-selectable per run, and one that is not on disk is an error — never a silent fall back to
-rules or to another version, which would change what every later stage reads.
+The trained version pinned in config.py (EXTRACTION_MODEL_VERSION, v004) runs when it is on
+disk; otherwise the fallback (EXTRACTION_FALLBACK_VERSION, v002). Neither is selectable per
+run. The fallback is never silent: the staged JSON carries the version that ran, /health
+reports ``fallback``, and a warning is logged. Neither on disk is an error — never a fall back
+to rules, which would change what every later stage reads.
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from config import EXTRACTION_MODEL_VERSION
+from config import EXTRACTION_FALLBACK_VERSION, EXTRACTION_MODEL_VERSION
 
 from .training import registry
 from .util import config
@@ -40,8 +42,19 @@ class ExtractionNotReady(RuntimeError):
     """The weights or packages the extraction needs are not there."""
 
 
-def model_version() -> str:
+def pinned_version() -> str:
     return EXTRACTION_MODEL_VERSION
+
+
+def model_version() -> str:
+    """The version that runs: the pinned one when it is on disk, else the fallback
+    when that is. With neither, the pinned one, so readiness names what is missing."""
+    pinned = pinned_version()
+    if registry.is_runnable(pinned):
+        return pinned
+    if EXTRACTION_FALLBACK_VERSION and registry.is_runnable(EXTRACTION_FALLBACK_VERSION):
+        return EXTRACTION_FALLBACK_VERSION
+    return pinned
 
 
 def readiness() -> dict[str, Any]:
@@ -52,6 +65,8 @@ def readiness() -> dict[str, Any]:
     version = model_version()
     status: dict[str, Any] = {
         "model_version": version,
+        "pinned_version": pinned_version(),
+        "fallback": version != pinned_version(),
         "models_root": str(config.Models_Root),
         "ready": False,
         "reason": None,
@@ -77,7 +92,8 @@ def readiness() -> dict[str, Any]:
         root = Path(config.Model_Registry)
         status["reason"] = (
             f"trained version {version} not found: copy KV_{version} and Heading_{version} "
-            f"into {root}"
+            f"into {root}" + (f" (fallback {EXTRACTION_FALLBACK_VERSION} not found either)"
+                              if EXTRACTION_FALLBACK_VERSION else "")
         )
         return status
     status["model_folders"] = [
@@ -88,7 +104,7 @@ def readiness() -> dict[str, Any]:
 
 
 def require_ready() -> str:
-    """The pinned version, or ExtractionNotReady naming what is missing."""
+    """The version that runs, or ExtractionNotReady naming what is missing."""
     version = model_version()
     status = readiness()
     if not status["ready"]:
@@ -103,6 +119,9 @@ def extract_chart(record_id: str, pages: list[dict[str, Any]]) -> "pipeline.Docu
     from . import pipeline
 
     version = require_ready()
+    if version != pinned_version():
+        logger.warning("extraction %s: %s is not on disk, running fallback %s",
+                       record_id, pinned_version(), version)
     result = pipeline.extract_document(Document(record_id=record_id, pages=pages, source=""))
     from .training.model import load_version
 

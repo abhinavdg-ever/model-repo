@@ -103,6 +103,10 @@
 --    Provider Credentials to page_ground_truth.provider_credentials and
 --    Provider Signature (Yes / No) to provider_signature; older rows with
 --    credentials in provider_signature are read as both.
+--  * page_classification (v1.sql) gains axes JSONB: the v24 page axes
+--    (L1/L2/L3, specialty, codeability, who decided each, the model's raw
+--    answer). page_type / page_subtype now hold the v24 names built from them.
+--    ALTER TABLE page_classification ADD COLUMN IF NOT EXISTS axes JSONB;
 --
 -- WHAT CHANGED IN v8 (applies to both files)
 -- ---------------------------------------------------------------------

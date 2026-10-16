@@ -9,6 +9,13 @@ the code is `core-pipeline/stages/lib/page_classify/`.
 > `tests/test_page_classify.py`). No trained BERT model is installed yet, so
 > today the pipeline classifies by keywords alone and says so. Training lives
 > in `training/` (see `training/README.md`).
+>
+> 2026-10-16: the v24 **page axes** (L1, L2, L3, specialty, codeability)
+> decide `page_type` / `page_subtype` — §4.6. The ladder of §4.1–4.3 still
+> runs, for its raw `bert_*` / `keyword_*` columns only. The old single-head
+> BERT is retired (backup in `models/page-family-backup/2026-10-16/`);
+> `models/page-family/page-axes/` holds a placeholder until the page-axes
+> model is trained, and the v24 keyword canon decides alone until then.
 
 ---
 
@@ -147,13 +154,84 @@ From the page type, in the taxonomy. Never predicted.
 ### 4.5 Blank, junk and duplicate pages
 
 Not classified. They are `non_codeable`, keep their junk label as the sub-type
-(`decided_by = blank_junk`), and a label that is a taxonomy sub-type (Invoice)
-also gives its page type.
+(`decided_by = blank_junk`), and have no page type — not even when the label
+is also a canon page type (Invoice).
+
+### 4.6 Page axes, v24 — the page type written
+
+On the same pages and text, `axes.py` gives the v24 axes, and they are the
+page's classification:
+
+| Levels decided | `page_type` | `page_subtype` | `model_type` |
+|---|---|---|---|
+| L1 only | L1 | L1 | L1 |
+| L1, L2 | L1 | L2 | L1 > L2 |
+| L1, L2, L3 | L1 (L2) | L3 | L1 > L2 > L3 |
+| none | Unknown | Unknown | — (needs review) |
+
+e.g. *Lab Report/Result (Radiology)* / *CT Scan Report*; *Lab Report/Result* /
+*Radiology*; *Progress Note* / *Progress Note*. `classification_category`
+comes from the **canon's** codeability — never the model's — (`discharge` →
+`discharge_summary`; `needs_review` → `non_codeable` with `needs_review` set), `confidence` is
+L1's, and `decided_by` is `axes:` plus who decided L1 / L2 / L3
+(`axes:model/model/canon`). The ladder's page type is no longer written.
+
+Each level is the page-axes model's when it clears its gate, otherwise the v24
+keyword canon's (`keyword-canon/page_canon_v24.json`, the same matcher as §4.1
+restricted to the entries under the levels already decided). Gates are in
+`page_arbitration.json` → `axes`:
+
+| Level | Model decides when | Otherwise |
+|---|---|---|
+| L1 | top L1 ≥ **0.40**, ahead of the second by ≥ 0.10, not the folded `OTHER` (`route = model`) | the canon's best L1, keyword confidence ≥ **0.50** |
+| L2 | the model decided L1 and L2 ≥ **0.40** | the canon's best L2 under that L1, ≥ **0.50** |
+| L3 | never — the model's L3 is kept in `axes.prediction` only | the canon's best L3 under that L1 > L2, ≥ **0.50** |
+| Specialty | not Unknown / Others, ≥ 0.70, ahead of the second by ≥ 0.20, trained on ≥ 10 pages | the specialty of the canon entry behind the deepest canon-decided level, if it has one |
+| Codeability | never — kept in `axes.prediction` only | the tag of the canon page type behind the decided path (below); `needs_review` when its rule is `context` / `source` |
+
+Keyword confidence is §4.3a's `k`. Under Progress Note there is no L2 or L3:
+its L2 is the content section, from section tagging. `axes.sources` records
+who decided L1 / L2 / L3 / specialty / codeability (`model`, `canon` or `-`),
+e.g. `model/model/canon/-/model`. Without a model the canon decides every
+level and `axes.route` is null; `/health` → `page_axes_model` says why.
+
+**The canon page type behind the path.** After the levels are decided, the
+canon's best keyword match among its entries under L1 [> L2 [> L3]] (else the
+entry for exactly that path) is the page's `axes.canon_page_type`: e.g.
+*Telephone Encounter* under Progress Note. Its tag is the codeability, its
+specialty the fallback specialty, and its name the most specific name the
+stages below can match.
+
+**Downstream, in v24 names.** Every stage after this one reads v24 names
+from the row (`axes.names_of`: canon page type, L3, L2, L1, most specific
+first; `axes.family_of`: the L1):
+
+* continuity compares pages on their L1 and takes "own title" from a v24 canon
+  title (`axes.title_l1`); `continuity_canon.json` → `default_final_dos` lists
+  v24 names (Demographics, Patient Demographics, Immunization, Problem List…).
+* encounter type tier 1 takes the page's most specific name listed in
+  `encounter_canon.json` → `tier1_page_types` (canon page types such as
+  Telephone Encounter, Office Visit; L1 / L2 such as Operative Note), checked
+  against `page_canon_v24.json` at load.
+* the Final rules (§6.1) agree on the L1 and use v24 names for the inside-note
+  and embedded rules (`page_arbitration.json` → `inside_progress_note`).
+* review-ui splits `Lab Report/Result (Radiology) (CT Scan Report)` into its
+  three names before scoring against ground truth (semantic similarity, so v1
+  ground-truth labels still score).
+
+The model is `train_axes.py`'s output folder in `models/page-family/page-axes/`
+(`PAGE_AXES_MODEL_DIR`). Its inference code is copied into
+`page_classify/axes_model.py`; `tests/test_page_axes.py` fails when the copy
+drifts from the trainer. Pick the gates from a trained model with
+`training/bert-training/tune_thresholds.py`.
 
 **Written:** `page_classification` — `page_type`, `page_subtype`, `model_type`,
 `classification_category`, `decided_by`, `needs_review`, `bert_model_type`,
 `bert_confidence`, `keyword_page_subtype`, `keyword_score`, `keyword_margin`,
-`keyword_title_hit` — and `imaging/<chart>_codeable.csv`.
+`keyword_title_hit`, `axes` (JSONB: route, l1 / l2 / l3, specialty,
+codeability, each with its confidence; sources; canon_page_type; the model's
+raw prediction) — and `imaging/<chart>_codeable.csv` (axes columns appended at
+the end).
 
 ---
 
@@ -181,30 +259,34 @@ or export, not one document.
 ### 6.1 Page type — agreed across the document
 
 "Per-page" is the Extracted answer. Across the pages of one continuity
-document every page takes the **first page's page type**; the **sub-type can
-differ**.
+document every page takes the **first page's family (L1)**; each page keeps
+its own names below it.
 
-**The agreed type** (`agree_document_type`), first that applies:
+**The agreed family** (`agree_document_type`), first that applies:
 
-| Basis | When | Agreed page type |
+| Basis | When | Agreed family |
 |---|---|---|
-| `first_page` | the first page has a page type (not Unknown) | the first page's type |
-| `vote` | the first page is Unknown, when one type holds ≥ 60% of the confidence weight (`document_agreement.vote_min_share`) | the page types of the document's pages, weighted by page-type confidence (§4.3a); a tie goes to the first page's type |
-| — | no clear majority | none: every page keeps its own type, flagged for review (`no_agreement`) |
+| `first_page` | the first page has an L1 (not Unknown) | the first page's L1 |
+| `vote` | the first page is Unknown, when one L1 holds ≥ 60% of the confidence weight (`document_agreement.vote_min_share`) | the pages' L1s, weighted by page-type confidence; a tie goes to the first page's |
+| — | no clear majority | none: every page keeps its own, flagged for review (`no_agreement`) |
 
 **Each page** (`decide_final`):
 
 | `continuation_rule` | When | Final |
 |---|---|---|
-| `agreed` | the page's own type is the agreed type | kept as is |
-| `agreed_first_page` / `agreed_vote` | its own type differs | agreed type; sub-type = the keyword sub-type if it belongs to the agreed type (score ≥ 3), else the page's own type (an Unknown page: the agreed type's generic sub-type). `agreed_vote`, or a weak link, flags the page for review. `page_type_source = continuation` |
+| `agreed` | the page's L1 is the agreed family | kept as is (*Lab Report/Result (Laboratory)* stays under a *Lab Report/Result (Radiology)* first page) |
+| `agreed_first_page` / `agreed_vote` | its L1 differs | page type = the agreed L1; sub-type = the page's own page type (an Unknown page: the agreed L1). `agreed_vote`, or a weak link, flags the page for review. `page_type_source = continuation` |
 | `no_agreement` | the vote has no clear majority | kept as is, **flagged for review** |
-| `embedded_same_page` | page in no multi-page document, per-page Laboratory Data / Radiology Report, keyword Progress Note title on the same page | Progress Note / that name |
+| `embedded_same_page` | page in no multi-page document, of an `embedded_families` L1 (Lab Report/Result), headed by a Progress Note canon title | Progress Note / its own page type |
 | `no_change` | page in no multi-page document | kept as is |
 
-**Codability** is the agreed type's. Inside a Progress Note it is Codable,
-**except Laboratory Data and Medication List, which stay Non-Codable**
-(`page_arbitration.json` → `inside_progress_note`).
+**Codability** comes from the canon (the page's own category). A page that
+takes the agreed family, or whose canon rule is `context` (e.g. *Clinical
+Summary*), takes the **document's** codability — its first page of that
+family. Inside a Progress Note, a page carrying one of
+`inside_progress_note.non_codeable_names` (**Laboratory**, Medication Record…)
+**stays Non-Codable**; radiology does not (`page_arbitration.json` →
+`inside_progress_note`).
 
 ### 6.2 Date of service
 
@@ -242,7 +324,10 @@ DOS = the first page's.
 | Keyword terms and weights | `keyword-canon/page_keyword_canon.json` |
 | Ladder thresholds, level 3 rules | `keyword-canon/page_arbitration.json` |
 | Continuity signals, page-counter limit | `keyword-canon/continuity_canon.json` |
-| The model | `core-pipeline/models/page-family/bert/` (`PAGE_FAMILY_MODEL_DIR`) |
+| The old BERT | retired; backup in `core-pipeline/models/page-family-backup/2026-10-16/` (`PAGE_FAMILY_MODEL_DIR` points at a missing folder) |
+| Page-axes gates | `keyword-canon/page_arbitration.json` → `axes` |
+| v24 canon (axes fallback, L3) | `keyword-canon/page_canon_v24.json` — a copy written by `training/taxonomy/build_canon.py` |
+| The page-axes model | `core-pipeline/models/page-family/page-axes/` (`PAGE_AXES_MODEL_DIR`) |
 
 The three `page_*.json` files came from the spec package (now retired; its
 naming rules are kept in [PAGE_TAXONOMY.md](PAGE_TAXONOMY.md)). If a JSON file
@@ -271,12 +356,16 @@ reason, and every page has `bert_model_type = NULL`.
 
 ## 10. Open items
 
-1. **Train BERT** and copy it into `models/page-family/bert/` — then re-measure the
-   ladder: how often each step decides, and how accurate each is.
-2. **Tune the thresholds** on the validation split. Now: 0.50, or 0.25 with a 0.10
-   lead; Unknown below 0.10 (set 2026-10-11 after retraining).
-3. **Prune the keyword canon** — written from general knowledge, untuned; run a
+1. **Train the page-axes model** and copy it into `models/page-family/page-axes/`
+   ([PAGE_AXES_MODEL.md](PAGE_AXES_MODEL.md)); tune its gates with
+   `tune_thresholds.py`.
+2. **Move the downstream name lists to v24** (§4.6, "Downstream, still in v1
+   names"): continuity's default-DOS types, encounter tier 1, the Final
+   embedded / inside-note rules, review-ui's ground truth.
+3. **Tune the v1 ladder's thresholds** — moot while the ladder only fills its raw
+   columns. Now: 0.50, or 0.25 with a 0.10 lead; Unknown below 0.10.
+4. **Prune the keyword canon** — written from general knowledge, untuned; run a
    term report on the labelled text.
-4. **Text normalisation** between Azure and Tesseract text.
-5. **Encounter type tier 1** lost two entries with no taxonomy equivalent
+5. **Text normalisation** between Azure and Tesseract text.
+6. **Encounter type tier 1** lost two entries with no taxonomy equivalent
    (home health visit note, skilled nursing visit note).

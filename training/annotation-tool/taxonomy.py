@@ -1,135 +1,87 @@
-"""Names from taxonomy.json, and the rules that turn a model type into labels.
+"""The label space from taxonomy_v24.json: L1 > L2 > L3, specialty, codeability.
 
-Nothing here hard-codes a page type or sub-type name except "Progress Note",
-which the model-type rule itself names (taxonomy.json ``rules.model_type``).
+Four parallel axes, not one tree. A page carries one path (L1, L2, L3) and,
+beside it, one specialty; codeability is derived elsewhere and only displayed.
+No page type, section or specialty name is written in this file — every one
+comes from the JSON, which build_taxonomy.py makes from Page_Taxonomy.xlsx.
 """
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-TAXONOMY_PATH = Path(__file__).resolve().parent / "taxonomy.json"
-PROGRESS_NOTE = "Progress Note"
+TAXONOMY_PATH = Path(__file__).resolve().parent / "taxonomy_v24.json"
+SEP = " > "
 
 
-@dataclass(frozen=True)
-class Labels:
-    model_type: str
-    page_type: str
-    page_subtype: str
+def join_path(l1: str, l2: str = "", l3: str = "") -> str:
+    return SEP.join(part for part in (l1, l2, l3) if part)
 
 
 class Taxonomy:
     def __init__(self, path: Path = TAXONOMY_PATH):
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-        self.version = str(data.get("version", ""))
-        self.model_types: list[str] = [m["model_type"] for m in data["model_types"]]
-        self._model_page_type = {m["model_type"]: m["page_type"] for m in data["model_types"]}
-        self.page_types: list[str] = [p["page_type"] for p in data["page_types"]]
-        self.codability = {p["page_type"]: p["codability"] for p in data["page_types"]}
-        self.sub_types: dict[str, list[str]] = {
-            p["page_type"]: [s["page_subtype"] for s in p.get("sub_types", [])]
-            for p in data["page_types"]
-        }
-        embedded = data.get("embedded_in_progress_note") or {}
-        self.embedded_types: list[str] = list(embedded.get("page_types") or [])
-        # Every (page_type, page_subtype) a row may hold: the taxonomy's pairs
-        # plus embedded_in_progress_note.valid_pairs.
-        self.valid_pairs: frozenset[tuple[str, str]] = frozenset(
-            [(p, s) for p, subs in self.sub_types.items() for s in subs]
-            + [(v["page_type"], v["page_subtype"]) for v in embedded.get("valid_pairs") or []]
-        )
-        self.counts = {
-            "page_types": len(self.page_types),
-            "sub_types": len({s for subs in self.sub_types.values() for s in subs}),
-            "model_types": len(self.model_types),
-        }
+        self.data = json.loads(Path(path).read_text(encoding="utf-8"))
+        self.version = str(self.data.get("version", ""))
+        rules = self.data["rules"]
+        self.section_l1: str = rules["section_L1"]
+        self.fallback: str = rules["fallback"]
+        self.specialty_unknown: str = rules["specialty_unknown"]
+        self.specialty_other: str = rules["specialty_other"]
+        self.codeability_values: list[str] = list(rules["codeability_values"])
+        self.codeability_default: str = rules["codeability_default"]
 
-    # -- lookups -----------------------------------------------------------
-    def page_type_of(self, model_type: str) -> Optional[str]:
-        return self._model_page_type.get(model_type)
+        self.l1: list[str] = [x["name"] for x in self.data["L1"]]
+        self._l1_entry = {x["name"]: x for x in self.data["L1"]}
+        self._l2 = {a: {x["name"]: x for x in items} for a, items in self.data["L2"].items()}
+        self._l3 = {key: {x["name"]: x for x in items} for key, items in self.data["L3"].items()}
+        self.specialty: list[str] = [x["name"] for x in self.data["specialty"]]
+        self.counts = dict(self.data.get("counts") or {})
 
-    def is_model_type(self, value: str) -> bool:
-        return value in self._model_page_type
+    # -- structure -----------------------------------------------------------
+    def l2_of(self, l1: str) -> list[str]:
+        return list(self._l2.get(l1, {}))
 
-    def is_embedded_pair(self, page_type: str, page_subtype: str) -> bool:
-        return page_type == PROGRESS_NOTE and page_subtype in self.embedded_types
+    def l3_of(self, l1: str, l2: str) -> list[str]:
+        return list(self._l3.get(join_path(l1, l2), {}))
 
-    def is_valid_pair(self, page_type: str, page_subtype: str) -> bool:
-        return (page_type, page_subtype) in self.valid_pairs
+    def is_section_l1(self, l1: str) -> bool:
+        return l1 == self.section_l1
 
-    @staticmethod
-    def rule_model_type(page_type: str, page_subtype: str) -> str:
-        """The model-type rule: the sub-type for a Progress Note, else the page type."""
-        return page_subtype if page_type == PROGRESS_NOTE else page_type
+    def problem(self, l1: str, l2: str, l3: str, specialty: str) -> Optional[str]:
+        """Why this label is not valid under the taxonomy, or None.
 
-    def subtype_belongs(self, page_type: str, page_subtype: str) -> bool:
-        return page_subtype in self.sub_types.get(page_type, [])
-
-    def specific_subtypes(self, page_type: str) -> list[str]:
-        """Sub-types other than the generic one (same name as the page type)."""
-        return [s for s in self.sub_types.get(page_type, []) if s != page_type]
-
-    # -- the labelling rule ------------------------------------------------
-    def labels_for(
-        self,
-        model_type: str,
-        *,
-        embedded: bool = False,
-        page_subtype: Optional[str] = None,
-        old_subtype: str = "",
-    ) -> Labels:
-        """Labels after choosing ``model_type``.
-
-        * a Progress Note sub-type: page_type Progress Note, page_subtype = model_type
-        * Laboratory Data / Radiology Report with ``embedded``: the embedded pair
-        * any other model type: page_type = model_type; the chosen sub-type, else
-          the old one when it belongs to that page type, else the generic one
+        An L1 with L2 children needs one of them; an L1 without needs none.
+        Where an L2 has named L3 children one of them (the fallback included) is
+        required and the blank is not; where it has none, the blank is correct.
         """
-        page_type = self.page_type_of(model_type)
-        if page_type is None:
-            raise ValueError(f"not a model type in taxonomy.json: {model_type!r}")
-        if embedded:
-            if model_type not in self.embedded_types:
-                raise ValueError(f"{model_type!r} cannot sit inside a Progress Note")
-            return Labels(model_type, PROGRESS_NOTE, model_type)
-        if page_type == PROGRESS_NOTE:
-            return Labels(model_type, PROGRESS_NOTE, model_type)
-        if page_subtype:
-            if not self.subtype_belongs(page_type, page_subtype):
-                raise ValueError(f"{page_subtype!r} is not a sub-type of {page_type!r}")
-            return Labels(model_type, page_type, page_subtype)
-        if old_subtype and self.subtype_belongs(page_type, old_subtype):
-            return Labels(model_type, page_type, old_subtype)
-        return Labels(model_type, page_type, page_type)
+        if l1 not in self._l1_entry:
+            return f"L1 {l1!r} is not in the taxonomy" if l1 else "no L1"
+        children = self.l2_of(l1)
+        if children and l2 not in children:
+            return f"{l2!r} is not an L2 of {l1}" if l2 else f"{l1} needs an L2"
+        if not children and l2:
+            return f"{l1} takes no L2"
+        named = self.l3_of(l1, l2) if l2 else []
+        if named and l3 not in named:
+            return (f"{l3!r} is not an L3 of {join_path(l1, l2)}" if l3
+                    else f"{join_path(l1, l2)} needs an L3 ({self.fallback} if none fits)")
+        if not named and l3:
+            return f"{join_path(l1, l2)} takes no L3"
+        if specialty not in self.specialty:
+            return f"specialty {specialty!r} is not in the list" if specialty else "no specialty"
+        return None
 
-    def labels_from(
-        self, page_type: str, page_subtype: str = "", *, embedded: bool = False
-    ) -> Labels:
-        """Labels from the two boxes: a page type and (optionally) a sub-type.
-
-        * ``embedded`` (Laboratory Data / Radiology Report only): the page sits
-          inside a Progress Note → Progress Note / that name.
-        * an empty sub-type is the generic one (the page type's own name);
-        * the sub-type must belong to the page type;
-        * model type = the sub-type for a Progress Note, otherwise the page type.
-        """
-        if page_type not in self.codability:
-            raise ValueError(f"not a page type in taxonomy.json: {page_type!r}")
-        if embedded:
-            if page_type not in self.embedded_types:
-                raise ValueError(f"{page_type!r} cannot sit inside a Progress Note")
-            return Labels(page_type, PROGRESS_NOTE, page_type)
-        page_subtype = page_subtype or page_type
-        if self.is_embedded_pair(page_type, page_subtype):
-            # Saved before the tick box was removed: keep it as it is.
-            return Labels(page_subtype, PROGRESS_NOTE, page_subtype)
-        if not self.subtype_belongs(page_type, page_subtype):
-            raise ValueError(f"{page_subtype!r} is not a sub-type of {page_type!r}")
-        model_type = page_subtype if page_type == PROGRESS_NOTE else page_type
-        return Labels(model_type, page_type, page_subtype)
-
-    def codability_of(self, page_type: str) -> str:
-        return self.codability.get(page_type, "")
+    # -- codeability ---------------------------------------------------------
+    def path_codeability(self, l1: str, l2: str = "", l3: str = "") -> str:
+        """The taxonomy's tag for the most specific level of the path. A hint
+        only: the derived value comes from the canon page type and the rules,
+        which can differ. Unrecognised is needs_review, never non_codeable."""
+        entry = None
+        if l3:
+            entry = self._l3.get(join_path(l1, l2), {}).get(l3)
+        if entry is None and l2:
+            entry = self._l2.get(l1, {}).get(l2)
+        if entry is None:
+            entry = self._l1_entry.get(l1)
+        return (entry or {}).get("codeability") or self.codeability_default

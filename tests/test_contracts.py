@@ -1562,6 +1562,8 @@ class TestCapabilityReporting:
             "HW model",
             "RapidOCR",
             "blank/junk model",
+            "page-family model",
+            "page-axes model",
             "final1 Docling",
             "final2 OCR",
             "DOS LLM",

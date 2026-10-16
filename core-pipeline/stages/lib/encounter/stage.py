@@ -7,8 +7,8 @@ stamped on every page of the visit. Pages without a usable date, and visits
 with no setting evidence, stay empty with a reason; they never inherit.
 
 Tier 1 evidence is the page type: the page's own (Extracted) classification
-from ``page_classification``, its sub-type when the encounter canon names it,
-else its page type.
+from ``page_classification``, its most specific v24 name the encounter canon
+lists (canon page type, L3, L2, L1), else its family (L1).
 
 Runs after ``continuity``. Writes ``encounter_type_results`` for resolved
 pages (and removes rows for pages that are now unresolved), and
@@ -42,6 +42,7 @@ from stages._support import (
 )
 from stages.lib.encounter.encounter_classify import classify_pages, visit_date
 from stages.lib.encounter.encounter_classify import load_canon as load_encounter_canon
+from stages.lib.page_classify import axes
 from stages.lib.page_classify.stage import _DOS_PROFILE
 
 logger = logging.getLogger(__name__)
@@ -162,13 +163,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 }
             )
 
-        # Tier 1 reads the page's own (Extracted) classification: its sub-type
-        # when the canon names it, else its page type.
+        # Tier 1 reads the page's own (Extracted) classification: its most
+        # specific v24 name the canon lists (canon page type, L3, L2, L1),
+        # else its family.
         tier1 = load_encounter_canon().tier1
         for page_input in page_inputs:
             kind = classification.get(page_input["page_id"]) or {}
-            subtype, page_type = kind.get("page_subtype") or "", kind.get("page_type") or ""
-            page_input["page_type_id"] = subtype if subtype in tier1 else page_type
+            names = axes.names_of(kind)
+            page_input["page_type_id"] = next((n for n in names if n in tier1), axes.family_of(kind))
             page_input["page_type_name"] = page_input["page_type_id"]
             # The continuity stage's document: one visit, one encounter type.
             page_input["document"] = (continuity.get(page_input["page_id"]) or {}).get("document_seq")

@@ -8,30 +8,28 @@
   :root {
     --bg: #f6f6f4; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66;
     --line: #e2e1dc; --accent: #2f5d8a; --accent-ink: #ffffff; --warn: #a3471f;
-    --ok: #2e6b3f; --sel: #e8eef5;
+    --ok: #2e6b3f; --sel: #e8eef5; --flag: #fbf1e6; --flag-line: #e7c9a6;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #a09f98;
       --line: #33332f; --accent: #6f9fd0; --accent-ink: #10161d; --warn: #e08a63;
-      --ok: #7fbf8e; --sel: #26303b;
+      --ok: #7fbf8e; --sel: #26303b; --flag: #2c241c; --flag-line: #5a4632;
     }
   }
   * { box-sizing: border-box; }
   body { margin: 0; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
          background: var(--bg); color: var(--ink); height: 100vh; display: grid;
-         grid-template-columns: 280px 1fr 340px; grid-template-rows: auto 1fr; }
+         grid-template-columns: 280px 1fr 380px; grid-template-rows: auto 1fr; }
   header { grid-column: 1 / -1; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
            padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
   header .counts { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
+  header .counts b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  header .counts .hot b { color: var(--warn); }
   header .spacer { flex: 1; }
   header .pending { font-size: 13px; color: var(--muted); }
-  header label.toggle { display: flex; gap: 6px; align-items: center; font-size: 13px; cursor: pointer; }
-  #list .done { color: var(--ok); margin-left: 4px; }
-  #empty { padding: 16px 12px; color: var(--muted); }
-  #empty b { color: var(--ok); }
   header .pending b { color: var(--warn); font-variant-numeric: tabular-nums; }
-  header .counts b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  header label.toggle { display: flex; gap: 6px; align-items: center; font-size: 13px; cursor: pointer; }
   #status { font-size: 12px; color: var(--muted); white-space: pre-wrap; flex-basis: 100%; }
   #status:empty { display: none; }
   aside, main, section { min-height: 0; }
@@ -41,16 +39,20 @@
   input, select, button { font: inherit; color: inherit; }
   input[type=text], input[type=search], select { width: 100%; padding: 6px 8px; border: 1px solid var(--line);
          border-radius: 6px; background: var(--bg); }
-  input:disabled { opacity: .55; }
   button { padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); cursor: pointer; }
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button.on { background: var(--sel); border-color: var(--accent); font-weight: 600; }
   button:disabled { opacity: .5; cursor: default; }
+  button.link { border: 0; background: none; padding: 0 4px; color: var(--accent); text-decoration: underline; }
   #list { overflow: auto; flex: 1; margin: 0; padding: 0; list-style: none; }
   #list li { padding: 6px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
   #list li.sel { background: var(--sel); }
   #list .name { font-size: 12px; word-break: break-all; }
   #list .tag { font-size: 12px; color: var(--muted); }
   #list .tag.none { color: var(--warn); }
+  #list .done { color: var(--ok); margin-left: 4px; }
+  #list .mark { color: var(--warn); margin-left: 4px; font-size: 11px; }
+  #empty { padding: 16px 12px; color: var(--muted); }
   .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; background: var(--line); }
   .dot.yes { background: var(--ok); }
   main { display: flex; flex-direction: column; }
@@ -58,14 +60,14 @@
   .toolbar .spacer { flex: 1; }
   #viewer { flex: 1; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 12px; }
   #page { transform-origin: center center; box-shadow: 0 1px 6px rgba(0,0,0,.2); background: #fff; }
-  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 6px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 18px 0 6px; }
   h2:first-child { margin-top: 0; }
-  .kv { display: grid; grid-template-columns: 96px 1fr; gap: 4px 8px; }
+  .kv { display: grid; grid-template-columns: 104px 1fr; gap: 3px 8px; margin: 0; }
   .kv dt { color: var(--muted); }
   .kv dd { margin: 0; font-weight: 600; word-break: break-word; }
   .combo { position: relative; }
   .combo .menu { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; margin-top: 2px;
-                 max-height: 280px; overflow: auto; background: var(--panel); border: 1px solid var(--line);
+                 max-height: 300px; overflow: auto; background: var(--panel); border: 1px solid var(--line);
                  border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.12); }
   .combo .menu[hidden] { display: none; }
   .combo .menu div { padding: 5px 8px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
@@ -73,7 +75,21 @@
   .combo .menu small { color: var(--muted); white-space: nowrap; }
   .combo .menu .empty { color: var(--muted); cursor: default; }
   label.field { display: block; margin: 10px 0 4px; color: var(--muted); font-size: 13px; }
-  .actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 14px; }
+  .desc { font-size: 12px; color: var(--muted); margin: 4px 0 0; }
+  .hint { font-size: 12px; margin: 6px 0 0; }
+  .hint b { font-weight: 600; }
+  .callout { background: var(--flag); border: 1px solid var(--flag-line); border-radius: 8px; padding: 10px; margin-bottom: 12px; }
+  .callout h3 { margin: 0 0 8px; font-size: 13px; }
+  .choice { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; margin-top: 6px; }
+  .choice button { white-space: nowrap; }
+  .choice div { font-size: 13px; }
+  .choice small { display: block; color: var(--muted); }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--line); font-weight: 600; }
+  .badge.needs_review { border-color: var(--warn); color: var(--warn); }
+  .row2 { display: flex; gap: 6px; margin-top: 6px; }
+  .row2 > * { flex: 1; }
+  .warn { color: var(--warn); }
+  .actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 18px; }
   #dirty { font-size: 12px; color: var(--warn); margin-top: 6px; min-height: 1em; }
   #error { font-size: 12px; color: var(--warn); margin-top: 8px; white-space: pre-wrap; }
   .muted { color: var(--muted); }
@@ -81,9 +97,6 @@
     body { grid-template-columns: 1fr; grid-template-rows: auto 220px 60vh auto; height: auto; }
     aside, section { border: 0; }
   }
-  .name .status { margin-left: 0.4rem; font-size: 0.72rem; color: #6f6c63; }
-  .embedded-row { margin: 8px 0 0; font-size: 13px; }
-  .embedded-row label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -92,21 +105,14 @@
   <div class="counts" id="counts"></div>
   <span class="spacer"></span>
   <span class="pending" id="pending"></span>
-  <button id="add" class="primary" title="OCR new pages, refresh labels of pages already in the file">Add to Training JSON</button>
+  <button id="add" class="primary" title="Write labels into training_data.jsonl; OCR only pages that have no text yet">Add to Training JSON</button>
   <div id="status"></div>
 </header>
 
 <aside>
   <div class="filters">
-    <select id="view">
-      <option value="all">All images</option>
-      <option value="untagged">Untagged</option>
-      <option value="not_in_training">Not in training yet</option>
-      <option value="in_training">In training</option>
-      <option value="retag">Needs re-tag</option>
-      <option value="missing">Missing files (labels only)</option>
-    </select>
-    <select id="filterType"><option value="">Any model type</option></select>
+    <select id="view"></select>
+    <select id="filterL1"><option value="">Any L1</option></select>
     <input id="search" type="search" placeholder="Search file name">
   </div>
   <ul id="list"></ul>
@@ -128,41 +134,83 @@
 </main>
 
 <section>
+  <div id="disagree" class="callout" hidden>
+    <h3>The text reads differently from the label</h3>
+    <div class="choice">
+      <button id="keepLabel" title="Keep the label (1)">1 · Keep</button>
+      <div><span id="dLabel"></span><small id="dAnnotator"></small></div>
+    </div>
+    <div class="choice">
+      <button id="takeCanon" title="Take the canon's reading (2)">2 · Canon</button>
+      <div><span id="dCanon"></span><small id="dCanonNote"></small></div>
+    </div>
+  </div>
+
   <h2>This page</h2>
   <dl class="kv">
     <dt>File</dt><dd id="file">—</dd>
-    <dt>Saved as</dt><dd id="saved">—</dd>
-    <dt>Training</dt><dd id="tr">—</dd>
     <dt>Status</dt><dd id="doneState">—</dd>
+    <dt>Training</dt><dd id="tr">—</dd>
+    <dt>Canon type</dt><dd id="canonType">—</dd>
+    <dt>Original label</dt><dd id="original">—</dd>
   </dl>
 
-  <h2>Label</h2>
-  <label class="field" for="ptInput">Page type</label>
+  <h2>Page type</h2>
+  <label class="field" for="l1Input">L1</label>
   <div class="combo">
-    <input id="ptInput" type="text" placeholder="Type any word… (t)" autocomplete="off">
-    <div class="menu" id="ptMenu" hidden></div>
+    <input id="l1Input" type="text" placeholder="Type any word… (t)" autocomplete="off">
+    <div class="menu" id="l1Menu" hidden></div>
+  </div>
+  <p class="desc" id="l1Desc"></p>
+
+  <div id="l2Block">
+    <label class="field" for="l2Input" id="l2Label">L2</label>
+    <div class="combo">
+      <input id="l2Input" type="text" autocomplete="off">
+      <div class="menu" id="l2Menu" hidden></div>
+    </div>
+    <p class="hint" id="sectionHint" hidden></p>
+    <p class="desc" id="l2Desc"></p>
   </div>
 
-  <label class="field" for="stInput">Sub-type</label>
+  <div id="l3Block">
+    <label class="field" for="l3Input">L3</label>
+    <div class="combo">
+      <input id="l3Input" type="text" autocomplete="off">
+      <div class="menu" id="l3Menu" hidden></div>
+    </div>
+    <p class="desc" id="l3Desc"></p>
+  </div>
+
+  <h2>Specialty</h2>
   <div class="combo">
-    <input id="stInput" type="text" placeholder="Pick a page type first" autocomplete="off" disabled>
-    <div class="menu" id="stMenu" hidden></div>
+    <input id="spInput" type="text" placeholder="A service line… (p)" autocomplete="off">
+    <div class="menu" id="spMenu" hidden></div>
   </div>
-  <!-- Shown only for the embedded page types (taxonomy.json embedded_in_progress_note):
-       style.display, not the hidden attribute, which a label style overrides. -->
-  <div id="embeddedRow" class="embedded-row" style="display:none">
-    <label><input type="checkbox" id="embedded"> This page sits inside a Progress Note</label>
+  <div class="row2">
+    <button id="spUnknown"></button>
+    <button id="spOther"></button>
   </div>
+  <p class="hint" id="spHint"></p>
+  <p class="desc" id="spDesc"></p>
 
-
-  <dl class="kv" style="margin-top:12px">
-    <dt>Model type</dt><dd id="mt">—</dd>
-    <dt>Codability</dt><dd id="cod">—</dd>
+  <h2>Codeability <span class="muted">— derived, not chosen</span></h2>
+  <dl class="kv">
+    <dt>Derived</dt><dd><span id="codValue" class="badge">—</span></dd>
+    <dt>Rule</dt><dd id="codRule">—</dd>
+    <dt>Reason</dt><dd id="codReason" style="font-weight:400">—</dd>
   </dl>
+  <p class="hint warn" id="codStale" hidden></p>
+  <p class="hint"><button class="link" id="overrideToggle">Override…</button> <span id="overrideState" class="muted"></span></p>
+  <div id="overrideBlock" hidden>
+    <select id="overrideValue"></select>
+    <input id="overrideReason" type="text" placeholder="Why the derived value is wrong (required)" style="margin-top:6px">
+    <p class="desc" id="overrideAdvice"></p>
+  </div>
 
   <div class="actions">
     <button id="undo" title="Undo the last save (u)">Undo</button>
-    <button id="clear" title="Remove this page's labels">Untag</button>
+    <button id="reset" title="Back to what is saved">Reset</button>
     <button id="save" class="primary" title="Save and go to the next image (Enter)">Save</button>
     <button id="skip" title="Next image without saving (s)">Skip</button>
   </div>
@@ -173,9 +221,8 @@
 <script>
 const $ = (id) => document.getElementById(id);
 let tax = null, items = [], cur = -1, zoom = 1, turn = 0, fitWidth = true;
-// The two boxes, before Save.
-let draft = {page_type: "", page_subtype: "", embedded: false};
-const embeddable = (pt) => (tax.embedded_types || []).includes(pt);
+let draft = {};
+const FIELDS = ["L1", "L2", "L3", "specialty", "codeability_override", "codeability_override_reason"];
 
 async function api(path, body) {
   const res = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"},
@@ -185,14 +232,21 @@ async function api(path, body) {
   return data;
 }
 const showError = (msg) => { $("error").textContent = msg || ""; };
-const pageTypeInfo = (name) => tax.page_types.find((p) => p.page_type === name);
 
-// Search: every typed word must match the start of some word in the option,
-// in any order — "visit" finds "Office Visit", "op rep" finds "Operative Report".
+// ---- the label space, all from taxonomy_v24.json --------------------------
+const R = () => tax.rules;
+const l1Entry = (a) => tax.L1.find((x) => x.name === a);
+const l2Entries = (a) => tax.L2[a] || [];
+const l3Entries = (a, b) => (b && tax.L3[`${a} > ${b}`]) || [];
+const l2Entry = (a, b) => l2Entries(a).find((x) => x.name === b);
+const l3Entry = (a, b, c) => l3Entries(a, b).find((x) => x.name === c);
+const spEntry = (s) => tax.specialty.find((x) => x.name === s);
+const pathOf = (d) => [d.L1, d.L2, d.L3].filter(Boolean).join(" > ");
+
+// Search: every typed word must match the start of some word in the option.
 function matches(option, query) {
   const words = option.toLowerCase().split(/[^a-z0-9&]+/).filter(Boolean);
-  return query.toLowerCase().split(/\s+/).filter(Boolean)
-    .every((q) => words.some((w) => w.startsWith(q)));
+  return query.toLowerCase().split(/\s+/).filter(Boolean).every((q) => words.some((w) => w.startsWith(q)));
 }
 function rank(option, query) {
   const o = option.toLowerCase(), q = query.toLowerCase().trim();
@@ -228,9 +282,8 @@ function makeCombo(input, menu, options, onPick) {
   input.addEventListener("input", () => { hi = 0; open(); });
   input.addEventListener("blur", () => {
     close();
-    // A typed name that is exactly an option counts as picked.
     const exact = options().find((o) => o.value.toLowerCase() === input.value.trim().toLowerCase());
-    if (exact) { input.value = exact.value; onPick(exact.value, false); }
+    if (exact) onPick(exact.value, false); else renderDraft();  // a non-option snaps back
   });
   input.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown") { if (menu.hidden) open(); hi = Math.min(hi + 1, shown.length - 1); render(); e.preventDefault(); }
@@ -241,34 +294,63 @@ function makeCombo(input, menu, options, onPick) {
   });
 }
 
-makeCombo($("ptInput"), $("ptMenu"),
-  () => tax.page_types.map((p) => ({value: p.page_type, note: p.codability})),
-  (value, fromList) => {
-    if (value !== draft.page_type) {
-      // A new page type clears the sub-type.
-      draft = {page_type: value, page_subtype: "", embedded: false};
-    }
-    renderDraft();
-    if (fromList && !$("stInput").disabled) $("stInput").focus();
-  });
+// ---- dependent choices ----------------------------------------------------
+function chooseL1(value) {
+  if (value === draft.L1) return;
+  draft.L1 = value; draft.L3 = "";
+  const children = l2Entries(value);
+  const it = items[cur];
+  if (value === R().section_L1 && it) draft.L2 = it.section.L2;  // pre-select the section tagger
+  else draft.L2 = children.length === 1 ? children[0].name : "";
+}
+function chooseL2(value) {
+  if (value === draft.L2) return;
+  draft.L2 = value; draft.L3 = "";
+}
 
-makeCombo($("stInput"), $("stMenu"),
-  () => {
-    const info = pageTypeInfo(draft.page_type);
-    return info ? info.sub_types.map((s) => ({value: s, note: s === info.page_type ? "generic" : ""})) : [];
-  },
-  (value) => { draft.page_subtype = value; renderDraft(); });
+makeCombo($("l1Input"), $("l1Menu"), () => tax.L1.map((x) => ({value: x.name})),
+  (v, fromList) => { chooseL1(v); renderDraft(); if (fromList) focusNext("l1"); });
+makeCombo($("l2Input"), $("l2Menu"),
+  () => l2Entries(draft.L1).map((x) => ({value: x.name, note: x.codeability})),
+  (v, fromList) => { chooseL2(v); renderDraft(); if (fromList) focusNext("l2"); });
+makeCombo($("l3Input"), $("l3Menu"),
+  () => l3Entries(draft.L1, draft.L2).map((x) => ({value: x.name, note: x.codeability})),
+  (v, fromList) => { draft.L3 = v; renderDraft(); if (fromList) $("spInput").focus(); });
+makeCombo($("spInput"), $("spMenu"),
+  () => tax.specialty.filter((x) => x.name !== R().specialty_unknown && x.name !== R().specialty_other)
+                     .map((x) => ({value: x.name})),
+  (v) => { draft.specialty = v; renderDraft(); });
+
+function focusNext(from) {
+  if (from === "l1" && l2Entries(draft.L1).length && !draft.L2) $("l2Input").focus();
+  else if (l3Entries(draft.L1, draft.L2).length && !draft.L3) $("l3Input").focus();
+  else $("spInput").focus();
+}
+
+// ---- loading --------------------------------------------------------------
+const VIEWS = [["all", "All images"], ["disagreements", "Disagreements: text vs label"],
+  ["invalid", "Not valid under the taxonomy"], ["needs_review", "Codeability needs_review"],
+  ["specialty_other", "Specialty: Others (extend the lexicon)"], ["overridden", "Codeability overridden"],
+  ["untagged", "Untagged"], ["not_in_training", "Not in training yet"], ["in_training", "In training"],
+  ["missing", "Missing files (labels only)"]];
 
 async function loadTaxonomy() {
   tax = await api("/api/taxonomy");
-  for (const m of tax.model_types) {
-    const o = document.createElement("option"); o.value = m; o.textContent = m;
-    $("filterType").appendChild(o);
+  for (const [v, label] of VIEWS) {
+    const o = document.createElement("option"); o.value = v; o.textContent = label; $("view").appendChild(o);
   }
+  for (const x of tax.L1) {
+    const o = document.createElement("option"); o.value = x.name; o.textContent = x.name; $("filterL1").appendChild(o);
+  }
+  for (const v of R().codeability_values) {
+    const o = document.createElement("option"); o.value = v; o.textContent = v; $("overrideValue").appendChild(o);
+  }
+  $("spUnknown").textContent = `${R().specialty_unknown} — no signal on the page`;
+  $("spOther").textContent = `${R().specialty_other} — a service line not on the list`;
 }
 
 async function loadItems(keepImage) {
-  const q = new URLSearchParams({view: $("view").value, model_type: $("filterType").value, search: $("search").value,
+  const q = new URLSearchParams({view: $("view").value, l1: $("filterL1").value, search: $("search").value,
                                  completed: $("showCompleted").checked ? "1" : "0"});
   const data = await api("/api/items?" + q);
   items = data.items;
@@ -279,7 +361,6 @@ async function loadItems(keepImage) {
 }
 
 function renderCounts(c) {
-  // Saved since the last Add: these rows are what the button will add or update.
   const waiting = c.not_in_training || 0;
   $("pending").innerHTML = "";
   if (waiting) {
@@ -290,10 +371,12 @@ function renderCounts(c) {
   }
   $("showCompletedLabel").textContent = `Show completed (${c.completed || 0})`;
   $("counts").innerHTML = "";
-  for (const [k, label] of [["to_do","to do"],["completed","completed"],["images","images"],["untagged","untagged"],
-                            ["in_training","in training"],["missing_files","rows without a file"],
-                            ["needs_retag","need re-tag"]]) {
-    const s = document.createElement("span");
+  for (const [k, label, hot] of [["to_do", "to do"], ["completed", "completed"], ["disagreements", "disagreements", 1],
+                                 ["invalid", "not valid", 1], ["needs_review", "needs_review"],
+                                 ["specialty_other", `specialty ${R().specialty_other}`, 1],
+                                 ["overridden", "overridden"], ["missing_files", "rows without a file"]]) {
+    if (!c[k] && hot) continue;
+    const s = document.createElement("span"); if (hot && c[k]) s.className = "hot";
     const b = document.createElement("b"); b.textContent = c[k];
     s.append(b, document.createTextNode(" " + label));
     $("counts").appendChild(s);
@@ -302,45 +385,26 @@ function renderCounts(c) {
 
 function renderList() {
   const ul = $("list"); ul.innerHTML = "";
-  const empty = $("empty");
-  empty.hidden = items.length > 0;
-  if (!items.length) {
-    empty.innerHTML = "";
-    if (!$("showCompleted").checked && !$("search").value && !$("filterType").value && $("view").value === "all") {
-      const b = document.createElement("b"); b.textContent = "All pages completed.";
-      empty.append(b, document.createTextNode(" Tick Show completed at the top to see them again."));
-    } else {
-      empty.textContent = "No pages match. Clear the filters or tick Show completed.";
-    }
-  }
+  $("empty").hidden = items.length > 0;
+  $("empty").textContent = "No pages match. Clear the filters or tick Show completed.";
   items.forEach((it, i) => {
-    const li = document.createElement("li");
-    li.dataset.pos = i;
+    const li = document.createElement("li"); li.dataset.pos = i;
     const name = document.createElement("div"); name.className = "name";
     const dot = document.createElement("span"); dot.className = "dot" + (it.in_training ? " yes" : "");
-    name.append(dot, document.createTextNode(it.image + (it.missing ? " (missing)" : "") + (it.needs_retag ? " (re-tag)" : "")));
+    name.append(dot, document.createTextNode(it.image + (it.missing ? " (missing)" : "")));
     if (it.completed) {
       const done = document.createElement("span"); done.className = "done"; done.textContent = "✓";
-      done.title = it.saved_at ? `Saved ${it.saved_at}` : "Completed";
-      name.appendChild(done);
+      done.title = it.saved_at ? `Saved ${it.saved_at}` : "Completed"; name.appendChild(done);
     }
-    if (it.status) {
-      // What was last done here in the tool (image_labels.csv "status").
-      const st = document.createElement("span"); st.className = "status";
-      st.textContent = it.status === "Saved" && it.saved_at ? `Saved ${it.saved_at.slice(5, 16)}` : it.status;
-      name.appendChild(st);
+    for (const [on, text] of [[it.flagged && !it.resolution, "disagrees"], [it.problem, "not valid"]]) {
+      if (on) { const m = document.createElement("span"); m.className = "mark"; m.textContent = text; name.appendChild(m); }
     }
     const tag = document.createElement("div"); tag.className = "tag" + (it.tagged ? "" : " none");
-    tag.textContent = it.tagged ? describe(it) : "untagged";
+    tag.textContent = it.tagged ? `${it.path} · ${it.specialty}` : "untagged";
     li.append(name, tag);
     li.onclick = () => select(i);
     ul.appendChild(li);
   });
-}
-
-function describe(it) {
-  if (!it.page_type) return "untagged";
-  return it.page_subtype && it.page_subtype !== it.page_type ? `${it.page_type} / ${it.page_subtype}` : it.page_type;
 }
 
 function select(pos) {
@@ -356,78 +420,146 @@ function select(pos) {
   loadDraft(it);
 }
 
-// The boxes start from what is saved.
 function loadDraft(it) {
+  draft = {resolution: it ? it.resolution : ""};
+  for (const f of FIELDS) draft[f] = it ? it[f] || "" : "";
   $("file").textContent = it ? it.image : "—";
-  $("saved").textContent = it ? describe(it) : "—";
+  $("doneState").textContent = it ? (it.completed ? `Completed${it.saved_at ? " " + it.saved_at : ""}` : "To do") : "—";
   $("tr").textContent = it ? (it.in_training ? "Yes" : "No — waiting for Add to Training JSON") : "—";
-  $("doneState").textContent = it ? (it.completed ? "Completed" : "To do") : "—";
-  if (it && it.embedded) {
-    // Saved as Progress Note / Laboratory Data: shown as that page type, ticked.
-    draft = {page_type: it.page_subtype, page_subtype: "", embedded: true};
-  } else {
-    draft = {page_type: it && it.page_type || "", page_subtype: it && it.page_subtype || "", embedded: false};
-  }
+  $("canonType").textContent = it && it.page_type || "—";
+  $("original").textContent = it && it.annotator_page_type
+    ? [it.annotator_page_type, it.annotator_page_subtype].filter(Boolean).join(" / ") : "—";
+  $("overrideBlock").hidden = !(it && it.codeability_override);
+  renderDisagreement(it);
   renderDraft();
 }
 
-function labelsOf(d) {
-  if (!d.page_type) return null;
-  if (d.embedded && embeddable(d.page_type)) {
-    return {page_type: tax.progress_note, page_subtype: d.page_type, model_type: d.page_type};
+function renderDisagreement(it) {
+  $("disagree").hidden = !(it && it.flagged);
+  if (!it || !it.flagged) return;
+  $("dLabel").textContent = it.path || "(no label)";
+  $("dAnnotator").textContent = it.annotator_page_type
+    ? `annotator: ${[it.annotator_page_type, it.annotator_page_subtype].filter(Boolean).join(" / ")}` : "";
+  const c = it.canon;
+  if (!c) { $("dCanon").textContent = "—"; $("dCanonNote").textContent = ""; $("takeCanon").disabled = true; return; }
+  $("takeCanon").disabled = false;
+  const p = pathOf(c);
+  $("dCanon").textContent = p || c.name;
+  $("dCanonNote").textContent = `canon reads the text as ${c.name}` +
+    (c.complete ? "" : p ? " — pick the rest of the path" : " — no path known for it; pick one");
+  if (it.resolution) $("dCanonNote").textContent += ` · resolved: ${it.resolution}`;
+}
+
+// ---- the panel from the draft ---------------------------------------------
+function renderDraft() {
+  const it = items[cur];
+  const d = draft;
+  $("l1Input").value = d.L1 || "";
+  $("l1Desc").textContent = (l1Entry(d.L1) || {}).description || "";
+
+  const l2s = l2Entries(d.L1), isSection = d.L1 === R().section_L1;
+  $("l2Block").hidden = !d.L1 || !l2s.length;   // an L1 with no L2: no control
+  $("l2Label").textContent = isSection ? "L2 — the content section on this page" : "L2";
+  $("l2Input").value = d.L2 || "";
+  $("l2Input").placeholder = "Type any word…";
+  $("l2Desc").textContent = (l2Entry(d.L1, d.L2) || {}).description || "";
+  const hint = $("sectionHint");
+  hint.hidden = !(isSection && it);
+  if (isSection && it) {
+    const s = it.section;
+    hint.innerHTML = "";
+    const b = document.createElement("b"); b.textContent = s.L2;
+    hint.append("Section tagger: ", b);
+    if (s.dominant) hint.append(` — dominant header “${s.dominant}”`);
+    if (s.sections) hint.append(` · found: ${s.sections.split(";").join(", ")}`);
+    if (d.L2 !== s.L2) {
+      const use = document.createElement("button"); use.className = "link"; use.textContent = "use it";
+      use.onclick = () => { draft.L2 = s.L2; renderDraft(); };
+      hint.append(" ", use);
+    }
   }
-  const sub = d.page_subtype || d.page_type;
-  return {page_type: d.page_type, page_subtype: sub,
-          model_type: d.page_type === tax.progress_note ? sub : d.page_type};
+
+  const l3s = l3Entries(d.L1, d.L2);
+  $("l3Block").hidden = !l3s.length;           // blank is correct where no named L3 exists
+  $("l3Input").value = d.L3 || "";
+  $("l3Input").placeholder = `Required — ${R().fallback} if none fits`;
+  $("l3Desc").textContent = ((l3Entry(d.L1, d.L2, d.L3) || {}).description || "").split(". ")[0];
+
+  const named = d.specialty && d.specialty !== R().specialty_unknown && d.specialty !== R().specialty_other;
+  $("spInput").value = named ? d.specialty : "";
+  $("spInput").placeholder = named ? "" : "A service line… (p)";
+  $("spUnknown").classList.toggle("on", d.specialty === R().specialty_unknown);
+  $("spOther").classList.toggle("on", d.specialty === R().specialty_other);
+  $("spDesc").textContent = (spEntry(d.specialty) || {}).description || "";
+  $("spHint").textContent = it && it.suggested.specialty && it.suggested.specialty !== d.specialty
+    ? `Detector proposed: ${it.suggested.specialty}` : "";
+
+  renderCodeability(it);
+  $("dirty").textContent = isDirty() ? "Not saved — Save keeps it, Skip discards it." : "";
+}
+
+function renderCodeability(it) {
+  const v = it ? it.codeability || R().codeability_default : "—";
+  $("codValue").textContent = v; $("codValue").className = "badge " + v;
+  $("codRule").textContent = it ? it.codeability_rule || "—" : "—";
+  $("codReason").textContent = it ? it.codeability_reason || "—" : "—";
+  // Derived for the machine's path; a different path may derive differently.
+  const changed = it && it.suggested.L1 && pathOf(draft) !== pathOf(it.suggested);
+  $("codStale").hidden = !changed;
+  if (changed) {
+    const tag = pathTag(draft);
+    $("codStale").textContent = `Derived for ${pathOf(it.suggested)}. The taxonomy tags ${pathOf(draft)} as ` +
+      `${tag}; rerun retag.py to re-derive, or override below.`;
+  }
+  $("overrideState").textContent = draft.codeability_override
+    ? `overridden to ${draft.codeability_override}` : "";
+  $("overrideValue").value = draft.codeability_override || v;
+  $("overrideReason").value = draft.codeability_override_reason || "";
+  const rule = it ? it.codeability_rule : "";
+  $("overrideAdvice").textContent =
+    rule === "page_type_tag" ? "Overriding a page_type_tag verdict says the canon's tag for this page type is wrong — fix it in the canon too."
+    : rule === "context" ? "Overriding a context verdict usually means continuity grouped this page with the wrong document."
+    : rule === "source" ? "The source rule needs the ingest source, which is not on the page."
+    : "";
+}
+
+function pathTag(d) {
+  const e = l3Entry(d.L1, d.L2, d.L3) || l2Entry(d.L1, d.L2) || l1Entry(d.L1) || {};
+  return e.codeability || R().codeability_default;
 }
 
 function isDirty() {
   const it = items[cur]; if (!it) return false;
-  const l = labelsOf(draft);
-  if (!l) return Boolean(it.page_type);
-  return l.page_type !== it.page_type || l.page_subtype !== it.page_subtype;
+  return FIELDS.some((f) => (draft[f] || "") !== (it[f] || "")) || (draft.resolution || "") !== (it.resolution || "");
 }
 
-function renderDraft() {
-  $("ptInput").value = draft.page_type;
-  const info = pageTypeInfo(draft.page_type);
-  const st = $("stInput");
-  const canEmbed = embeddable(draft.page_type);
-  if (!canEmbed) draft.embedded = false;
-  $("embeddedRow").style.display = canEmbed ? "" : "none";
-  $("embedded").checked = Boolean(draft.embedded);
-  st.disabled = !info || draft.embedded;
-  st.placeholder = !info ? "Pick a page type first"
-    : draft.embedded ? "Sub-type is the page type's name" : "Type any word… (empty = generic)";
-  st.value = draft.embedded ? "" : draft.page_subtype;
-  const l = labelsOf(draft);
-  $("mt").textContent = l ? l.model_type : "—";
-  $("cod").textContent = l ? (pageTypeInfo(l.page_type) || {}).codability || "—" : "—";
-  $("dirty").textContent = isDirty() ? "Not saved — Save keeps it, Skip discards it." : "";
-}
-
+// ---- actions --------------------------------------------------------------
 async function save() {
   const it = items[cur]; if (!it) return;
-  if (!draft.page_type) { showError("Pick a page type, or Skip."); return; }
-  if (draft.page_subtype && !draft.embedded) {
-    const info = pageTypeInfo(draft.page_type);
-    const savedPair = draft.page_type === it.page_type && draft.page_subtype === it.page_subtype;
-    if (!info.sub_types.includes(draft.page_subtype) && !savedPair) {
-      showError(`"${draft.page_subtype}" is not a sub-type of ${draft.page_type}.`); return;
-    }
-  }
+  if (!draft.L1) { showError("Pick an L1, or Skip."); return; }
   try {
-    const embedded = Boolean(draft.embedded && embeddable(draft.page_type));
-    const data = await api("/api/label", {index: it.index, page_type: draft.page_type,
-                                          page_subtype: embedded ? "" : draft.page_subtype, embedded});
+    const data = await api("/api/label", {index: it.index, ...draft});
     renderCounts(data.counts);
-    if ($("showCompleted").checked) {
-      items[cur] = data.item; renderList(); select(Math.min(cur + 1, items.length - 1));
-    } else {
-      // Completed pages leave the list; the next page moves into this place.
-      items.splice(cur, 1); renderList(); select(Math.min(cur, items.length - 1));
-    }
+    const leaves = !$("showCompleted").checked && ["all", "untagged", "not_in_training", "disagreements"].includes($("view").value);
+    if (leaves) { items.splice(cur, 1); renderList(); select(Math.min(cur, items.length - 1)); }
+    else { items[cur] = data.item; renderList(); select(Math.min(cur + 1, items.length - 1)); }
   } catch (e) { showError(e.message); }
+}
+
+function keepLabel() {
+  const it = items[cur]; if (!it || !it.flagged) return;
+  draft.resolution = "label";
+  save();
+}
+function takeCanon() {
+  const it = items[cur]; if (!it || !it.flagged || !it.canon) return;
+  const c = it.canon;
+  draft.resolution = "canon";
+  if (c.L1) { draft.L1 = c.L1; draft.L2 = c.L2; draft.L3 = c.L3; }
+  renderDraft();
+  if (c.complete) { save(); return; }
+  showError("The canon gives only part of the path — finish it, then Save.");
+  if (!draft.L1) $("l1Input").focus(); else focusNext("l1");
 }
 
 function skip() { if (cur < items.length - 1) select(cur + 1); }
@@ -448,24 +580,35 @@ $("fit").onclick = () => { fitWidth = true; zoom = 1; applyView(); };
 $("rotate").onclick = () => { turn = (turn + 90) % 360; applyView(); };
 $("view").onchange = () => loadItems();
 $("showCompleted").onchange = () => loadItems((items[cur] || {}).index);
-$("filterType").onchange = () => loadItems();
+$("filterL1").onchange = () => loadItems();
 $("search").oninput = () => loadItems();
-$("embedded").addEventListener("change", () => { draft.embedded = $("embedded").checked; draft.page_subtype = ""; renderDraft(); });
-$("stInput").addEventListener("input", () => { draft.page_subtype = $("stInput").value.trim(); $("dirty").textContent = isDirty() ? "Not saved — Save keeps it, Skip discards it." : ""; });
+$("spUnknown").onclick = () => { draft.specialty = R().specialty_unknown; renderDraft(); };
+$("spOther").onclick = () => { draft.specialty = R().specialty_other; renderDraft(); };
+$("overrideToggle").onclick = () => {
+  const block = $("overrideBlock"); block.hidden = !block.hidden;
+  if (block.hidden) { draft.codeability_override = ""; draft.codeability_override_reason = ""; renderDraft(); }
+  else $("overrideReason").focus();
+};
+$("overrideValue").onchange = () => {
+  const it = items[cur]; if (!it) return;
+  const value = $("overrideValue").value;
+  draft.codeability_override = value === (it.codeability || "") ? "" : value;
+  renderDraft();
+};
+$("overrideReason").oninput = () => {
+  draft.codeability_override_reason = $("overrideReason").value;
+  $("dirty").textContent = isDirty() ? "Not saved — Save keeps it, Skip discards it." : "";
+};
+$("keepLabel").onclick = keepLabel;
+$("takeCanon").onclick = takeCanon;
 $("save").onclick = save;
 $("skip").onclick = skip;
+$("reset").onclick = () => loadDraft(items[cur]);
 $("undo").onclick = async () => {
   try {
     const data = await api("/api/undo", {});
     renderCounts(data.counts);
     await loadItems(data.item ? data.item.index : (items[cur] || {}).index);
-  } catch (e) { showError(e.message); }
-};
-$("clear").onclick = async () => {
-  const it = items[cur]; if (!it) return;
-  try {
-    const data = await api("/api/label", {index: it.index, clear: true});
-    items[cur] = data.item; renderCounts(data.counts); renderList(); select(cur);
   } catch (e) { showError(e.message); }
 };
 
@@ -490,22 +633,26 @@ $("add").onclick = async () => {
   }, 1000);
 };
 
+const COMBOS = ["l1Input", "l2Input", "l3Input", "spInput"];
 document.addEventListener("keydown", (e) => {
-  const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName);
-  if (e.key === "Enter" && (!typing || ["ptInput", "stInput"].includes(document.activeElement.id))) {
-    // Enter in a box with its list closed, or anywhere else: Save.
-    if (!$("ptMenu").hidden || !$("stMenu").hidden) return;
+  const active = document.activeElement;
+  const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(active.tagName);
+  if (e.key === "Enter" && (!typing || COMBOS.includes(active.id) || active.id === "overrideReason")) {
+    if (COMBOS.some((id) => !$(id.replace("Input", "Menu")).hidden)) return;
     e.preventDefault(); save(); return;
   }
   if (typing) return;
-  if (e.key === "ArrowRight" || e.key === "j" || e.key === "s") skip();
+  if (e.key === "1") keepLabel();
+  else if (e.key === "2") takeCanon();
+  else if (e.key === "ArrowRight" || e.key === "j" || e.key === "s") skip();
   else if (e.key === "ArrowLeft" || e.key === "k") $("prev").click();
   else if (e.key === "+" || e.key === "=") $("zoomIn").click();
   else if (e.key === "-") $("zoomOut").click();
   else if (e.key === "0") $("fit").click();
   else if (e.key === "r") $("rotate").click();
   else if (e.key === "u") $("undo").click();
-  else if (e.key === "t") { $("ptInput").focus(); e.preventDefault(); }
+  else if (e.key === "t") { $("l1Input").focus(); e.preventDefault(); }
+  else if (e.key === "p") { $("spInput").focus(); e.preventDefault(); }
 });
 
 loadTaxonomy().then(() => loadItems()).catch((e) => showError(e.message));

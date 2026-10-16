@@ -19,6 +19,12 @@
 #   blank-junk/tfidf_flat.joblib + default.json
 #       TF-IDF fallback when bert/ or torch is missing (committed). Regex is the
 #       last fallback. /health -> blank_junk_model.engine says which one ran.
+#   page-family/page-axes/   page-axes model (PAGE_AXES_MODEL_DIR): decides page_type /
+#       page_subtype. encoder/, heads.pt, label_space.json from
+#       training/bert-training/train_axes.py. Weights (*.safetensors, heads.pt) stay
+#       local. Missing ⇒ the v24 keyword canon decides alone. Steps: docs/PAGE_AXES_MODEL.md.
+#   page-family-backup/2026-10-16/   the old single-head BERT, retired 2026-10-16 (was
+#       page-family/bert/, PAGE_FAMILY_MODEL_DIR). Backup only; not used.
 #   page-family/family.joblib
 #       TF-IDF + XGBoost page family. Keywords choose the subtype; no hit
 #       leaves the subtype equal to the family. Missing file ⇒ keywords choose

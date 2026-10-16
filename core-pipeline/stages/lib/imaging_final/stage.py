@@ -45,6 +45,7 @@ from db import (
 from db.paths import imaging_csv, write_csv
 from stages._support import mark_completed, stage_run
 from stages.lib.continuity.engine import document_finals
+from stages.lib.page_classify import axes
 from stages.lib.page_classify.arbitration import FinalPage, decide_final
 from stages.lib.page_classify.taxonomy import CATEGORY
 
@@ -112,9 +113,12 @@ def _final_page(page_id: int, kind: dict[str, Any], link: dict[str, Any]) -> Fin
         page_id=page_id,
         page_type=kind.get("page_type"),
         page_subtype=kind.get("page_subtype"),
-        keyword_page_subtype=kind.get("keyword_page_subtype"),
-        keyword_score=_number(kind.get("keyword_score")),
-        keyword_title_hit=bool(kind.get("keyword_title_hit")),
+        family=axes.family_of(kind) or None,
+        names=axes.names_of(kind),
+        category=kind.get("classification_category"),
+        codeability_rule=axes.stored(kind).get("codeability_rule"),
+        title_l1=axes.title_of(kind),
+        model_type=kind.get("model_type"),
         document_seq=link.get("document_seq"),
         seq=link.get("seq"),
         link_strength=link.get("link_strength"),
@@ -150,6 +154,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 # A stand-alone non-visit document takes the default DOS.
                 "page_type": kind.get("page_type"),
                 "page_subtype": kind.get("page_subtype"),
+                "names": axes.names_of(kind),
                 "encounter_type": (encounters.get(page["id"]) or {}).get("encounter_type"),
             }
         documents = _documents(ctx.pages, continuity)

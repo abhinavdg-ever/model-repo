@@ -91,6 +91,23 @@ def _build(data: dict[str, Any]) -> _Canon:
 _CANON: CanonFile[_Canon] = CanonFile(CANON_DIR / "page_keyword_canon.json", _build)
 
 
+def build_v24(data: dict[str, Any]) -> _Canon:
+    """The v24 canon (``page_canon_v24.json``, built by
+    ``training/taxonomy/build_canon.py``) in the same shape: each canon page
+    type is a sub-type, grouped by its L1, with its path as the model type."""
+    sub_types = []
+    for entry in data["page_types"]:
+        path, lexicon = entry["path"], entry.get("lexicon") or {}
+        sub_types.append({
+            "page_subtype": entry["page_type"],
+            "page_type": path["L1"],
+            "model_type": " > ".join(x for x in (path["L1"], path.get("L2"), path.get("L3")) if x),
+            **{f"{kind}_terms": lexicon.get(f"{kind}_terms") or [] for kind in ("title", "body", "ambiguous")},
+        })
+    return _build({"sub_types": sub_types, "weights": data["weights"],
+                   "title_zone_lines": data["title_zone_lines"]})
+
+
 TOP_N = 3
 
 
@@ -131,13 +148,24 @@ def is_heading(line: str, term: str, headings: frozenset[str], *, one_word: bool
     )
 
 
-def classify(text: str, headings: Iterable[str] = ()) -> Optional[KeywordResult]:
+def classify(
+    text: str,
+    headings: Iterable[str] = (),
+    *,
+    canon: Optional[_Canon] = None,
+    subtypes: Optional[frozenset[str]] = None,
+    group_of: Optional[dict[str, str]] = None,
+) -> Optional[KeywordResult]:
     """The page's best sub-type by keywords, or None when nothing matched.
 
     ``headings`` are the page's heading lines as the OCR layout detected them
     (section-header candidates); without them only the line's own shape decides.
+    ``canon`` defaults to ``page_keyword_canon.json``; ``subtypes`` limits the
+    match to those sub-types, and ``group_of`` ranks them by another grouping
+    than their page type (the axes gate ranks v24 entries by L1, L2 or L3).
     """
-    canon = _CANON.get()
+    canon = canon or _CANON.get()
+    group_of = group_of or canon.subtype_page_type
     lines = _lines(text)
     if not lines:
         return None
@@ -147,6 +175,8 @@ def classify(text: str, headings: Iterable[str] = ()) -> Optional[KeywordResult]
     # Every match, then longest-match-wins across all terms.
     found = []
     for term in canon.terms:
+        if subtypes is not None and term.page_subtype not in subtypes:
+            continue
         for m in term.pattern.finditer(text):
             found.append((m.start(), m.end(), term))
     found.sort(key=lambda f: (-(f[1] - f[0]), f[0]))
@@ -190,7 +220,7 @@ def classify(text: str, headings: Iterable[str] = ()) -> Optional[KeywordResult]
 
     best_per_type: dict[str, tuple[float, bool, str]] = {}
     for sub, score in subtype_scores.items():
-        page_type = canon.subtype_page_type[sub]
+        page_type = group_of[sub]
         key = (score, sub in title_hits)
         if page_type not in best_per_type or key > best_per_type[page_type][:2]:
             best_per_type[page_type] = (score, sub in title_hits, sub)

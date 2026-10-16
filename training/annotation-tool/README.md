@@ -1,52 +1,70 @@
 # Annotation tool
 
-Tag page images with a model type and build `training_data.jsonl` for the
-BERT page classifier. Runs on your machine only (bound to `127.0.0.1`, no
-outside calls). Stands alone: it imports nothing from `bert-training/` or
-`core-pipeline/`, and names come only from its own `taxonomy.json` (a copy of
-(a copy of `core-pipeline/stages/lib/keyword-canon/page_taxonomy.json`); copy it again when the taxonomy
-changes).
+Verify page labels against taxonomy v24 and keep `training_data.jsonl` in step
+with them. Runs on your machine only (bound to `127.0.0.1`, no outside calls).
+Stands alone: names come only from its own `taxonomy_v24.json`, which
+`../taxonomy/build_taxonomy.py` writes from `Page_Taxonomy.xlsx`. A new page
+type is a workbook edit and a re-run of that script, never a code change.
 
 ## What it does
 
-* Opens a folder of page images (jpg, jpeg, png, tif, tiff, bmp, webp, heic,
-  heif), including every sub-folder. `image_labels.csv` sits in the folder's
-  root.
-* Shows each image (zoom, fit to width, turn) with two searchable boxes:
-  **Page type**, then **Sub-type**. Search matches the start of any word, in
-  any order: `visit` finds *Office Visit*, `op rep` finds *Operative Report*.
-  * Changing the page type clears the sub-type; the sub-type box lists only
-    that page type's sub-types. Left empty, the sub-type is the generic one
-    (the page type's own name).
-  * A lab or radiology page is tagged as Laboratory Data / Radiology Report
-    even when it sits inside a Progress Note: the model type is the same, and
-    the pipeline assigns Progress Note / Laboratory Data at inference. Pages
-    saved earlier as Progress Note / Laboratory Data still open and save.
-  * The model type and codability follow and are shown: the sub-type for a
-    Progress Note, otherwise the page type.
-* **Save** writes the row to `image_labels.csv` (marking it "not in training
-  yet") and moves to the next image. **Skip** moves on without saving. Nothing
-  is written until Save.
-* **Completed:** a saved page is marked completed (column `is_completed` in
-  `image_labels.csv`), even if its labels did not change, and drops out of the
-  list. Tick **Show completed (N)** at the top to see them again. Skip does not
-  complete a page; Untag and Undo send it back to the list.
-* **Add to Training JSON** (top right, with the number of pages it will add or
-  update beside it) is the only thing that changes
-  `training_data.jsonl`. It takes every saved row not yet in training, and any
-  page whose image file changed since it was read: a page whose image is
-  unchanged keeps its text and only takes the new labels; a new or changed
-  image is read with OCR. Then those rows are set to `Yes`. Progress is saved
-  every few pages; click again to carry on.
+A page carries four parallel things, not one tree:
 
-Opening a folder changes nothing on disk. A missing `is_training_added`
-column, images with no row, and `Yes` rows with no training record are fixed
-in memory and only written on the first Save or Add to Training JSON. Before the tool first writes to a folder, `image_labels.csv` is copied once
-to `image_labels.backup.csv` (the original); later sessions leave that copy alone
-and make no more.
+* **L1** (16 values), with the client's definition shown under the box.
+* **L2**, offered **only under the chosen L1**; `Consent Form > Radiology`
+  cannot be picked. Under the section L1 (Progress Note) L2 is the *content
+  section on the page*: the section tagger's choice is pre-selected and its
+  dominant header and the sections found are shown as the reason. L1s with no
+  L2 (Problem List, Others) hide the box.
+* **L3**, shown only where the L2 has named L3s (the four Lab Report/Result
+  buckets). There `Others` is valid and blank is not; everywhere else blank is
+  the correct answer.
+* **Specialty**, its own control, pre-filled by the detector. **Unknown** (no
+  signal on the page) and **Others** (a real service line the list lacks: extend
+  the lexicon) are separate buttons, and Others is counted in the header.
 
-Page text is patient data: the screen, the terminal and the logs never show
-it. Only counts and file names are printed.
+**Codeability is displayed, not chosen**: the derived value with the rule and
+reason retag.py recorded. If the path is changed, the panel says the value was
+derived for the old path and shows the taxonomy's tag for the new one; re-run
+retag.py to re-derive. **Override** needs a reason, and both values are kept
+(`codeability` and `codeability_override` / `_reason`). An override of a
+`page_type_tag` verdict means the canon tag is wrong; of a `context` verdict,
+usually that continuity grouped the page wrongly. Unrecognised is
+`needs_review`, never `non_codeable`.
+
+### Queues (the list's first box)
+
+* **Disagreements: text vs label** — rows where `label_agrees_with_text` is
+  `n`. The callout shows the label and the canon's reading of the text: `1`
+  keeps the label, `2` takes the canon. Where the canon names only part of a
+  path, `2` fills what it can and asks for the rest. The choice is stored in
+  `disagreement_resolution`. Start here.
+* **Not valid under the taxonomy** — e.g. a Lab Report/Result page with a blank L3.
+* **Codeability needs_review**, **Specialty: Others**, **Codeability overridden**,
+  untagged, not in training, in training, missing files.
+
+### The CSV
+
+All existing columns stay, including `annotator_page_type` /
+`annotator_page_subtype`, the audit trail to the original labelling. The tool
+adds `suggested_L1/L2/L3/specialty` (what the machine proposed, snapshotted
+before the first review), the override columns, `disagreement_resolution`,
+`is_training_added`, `is_completed`, `status`, `saved_at`. Before the first
+write the CSV is copied once to `image_labels.v24.backup.csv`.
+
+**Add to Training JSON** writes the labels (L1, L2, L3, path, specialty, and
+the override if any, else the derived codeability) into
+`training_data.jsonl`. A record keeps its text unless its image is known to
+have changed; only new pages are read with OCR. The old derived `L1_train` /
+`L2_train` fields are dropped: the trainer derives folding and masks itself.
+
+### Not here yet
+
+`canon_suggests` is a canon page-type name. Until `codeable_canon.v3.json` and
+`resolve_taxonomy.py` are in the repo, the tool maps it to a path by how this
+CSV's own unreviewed rows resolved that page type. New images get no
+pre-filled section or specialty, because the section tagger and specialty
+detector are not here either.
 
 ## OCR settings
 
@@ -92,12 +110,11 @@ python app.py                                        # asks for the folder
 
 Windows: `python app.py C:\Users\me\Desktop\Training\processed`.
 
-Keys: `t` jump to the Page type box; in a box, arrows + Enter choose from the
-list, and Enter with the list closed saves; `Enter` Save, `s` / `→` Skip,
+Keys: `t` jump to L1, `p` to specialty; `1` / `2` resolve a disagreement; in a
+box, arrows + Enter choose from the list, and Enter with the list closed saves; `Enter` Save, `s` / `→` Skip,
 `←` previous, `+` / `-` zoom, `0` fit width, `r` turn, `u` undo the last save.
 
-Filters: untagged, not in training yet, in training, by model type; search by
-file name.
+`python check_taxonomy.py <folder>` prints the same queues without the screen.
 
 ## Tests
 

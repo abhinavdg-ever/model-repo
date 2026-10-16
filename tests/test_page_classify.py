@@ -65,14 +65,21 @@ class TestTaxonomy:
         assert not names.is_valid_pair(PN, "Chemistry")
 
     def test_the_training_copies_match_the_pipeline_taxonomy(self):
-        """The annotation tool and BERT training each keep their own copy, so
-        they stand alone; all three must name the same classes."""
+        """The single-head BERT trainer (whose model this stage loads) keeps its
+        own copy of the pipeline taxonomy; it must name the same classes. The
+        annotation tool and the multi-head trainer use taxonomy v24 instead,
+        whose copies must all equal the one build_taxonomy.py writes."""
         pipeline = json.loads(
             (CORE / "stages/lib/keyword-canon/page_taxonomy.json").read_text(encoding="utf-8")
         )
-        for folder in ("annotation-tool", "bert-training"):
-            copy = REPO / "training" / folder / "taxonomy.json"
-            assert json.loads(copy.read_text(encoding="utf-8")) == pipeline, folder
+        copy = REPO / "training" / "bert-training" / "taxonomy.json"
+        assert json.loads(copy.read_text(encoding="utf-8")) == pipeline
+        v24 = [REPO / "training" / folder / "taxonomy_v24.json"
+               for folder in ("taxonomy", "annotation-tool", "bert-training")]
+        texts = {path.read_text(encoding="utf-8") for path in v24}
+        assert len(texts) == 1, "run training/taxonomy/build_taxonomy.py"
+        canon = [REPO / "training" / folder / "page_canon_v24.json" for folder in ("taxonomy", "annotation-tool")]
+        assert len({path.read_text(encoding="utf-8") for path in canon}) == 1, "run training/taxonomy/build_canon.py"
 
 
 # --- keyword model ----------------------------------------------------------------
@@ -217,86 +224,103 @@ class TestLadder:
         assert (r.page_type, r.decided_by) == ("Laboratory Data", "keyword_title")
 
 
-# --- level 3: the Final answer -------------------------------------------------------
+# --- level 3: the Final answer (v24 names) -----------------------------------------
+
+LAB = "Lab Report/Result"
+DS = "Discharge Summary"
 
 
-def fp(pid, page_type, page_subtype=None, *, seq=None, link=None,
-       title=False, kw_sub=None, kw_score=None, conf=None):
-    return FinalPage(pid, page_type, page_subtype or page_type, keyword_page_subtype=kw_sub,
-                     keyword_score=kw_score, keyword_title_hit=title,
+def fp(pid, page_type, page_subtype=None, *, family=None, names=(), category="codeable", rule="page_type_tag",
+       title=None, seq=None, link=None, conf=None):
+    return FinalPage(pid, page_type, page_subtype or page_type, family=family, names=names, category=category,
+                     codeability_rule=rule, title_l1=title, model_type=page_type,
                      document_seq=1 if seq else None, seq=seq, link_strength=link, confidence=conf)
 
 
 class TestAgreedPageType:
-    """Every page takes the first page's page type; the sub-type can differ."""
+    """Every page takes the first page's family (L1); its own names stay below it."""
 
-    def test_the_first_page_sets_the_type_and_pages_keep_their_own_as_sub_type(self):
-        doc = [fp(1, "Discharge Summary", seq=1, title=True),
-               fp(2, PN, "Office Visit", seq=2, link="strong"),
-               fp(3, "Laboratory Data", "Chemistry", seq=3, link="strong")]
+    def test_the_first_page_sets_the_family_and_pages_keep_their_own_as_sub_type(self):
+        doc = [fp(1, DS, "Depart/Discharge Note", category="discharge_summary", seq=1),
+               fp(2, PN, seq=2, link="strong"),
+               fp(3, f"{LAB} (Laboratory)", "Chemistry Panel", family=LAB, category="non_codeable",
+                  names=("Chemistry Panel", "Laboratory", LAB), seq=3, link="strong")]
         finals = [decide_final(p, doc) for p in doc]
-        assert [f.page_type for f in finals] == ["Discharge Summary"] * 3
-        assert [f.page_subtype for f in finals] == ["Discharge Summary", PN, "Laboratory Data"]
+        assert [f.page_type for f in finals] == [DS] * 3
+        assert [f.page_subtype for f in finals] == ["Depart/Discharge Note", PN, f"{LAB} (Laboratory)"]
         assert [f.continuation_rule for f in finals] == ["agreed", "agreed_first_page", "agreed_first_page"]
-        assert {f.codability for f in finals} == {taxonomy.load().codability("Discharge Summary")}
+        assert {f.codability for f in finals} == {"Discharge"}
         assert not any(f.needs_review for f in finals)
 
-    def test_lab_inside_a_progress_note_stays_non_codable(self):
-        doc = [fp(1, PN, "Office Visit", seq=1, title=True),
-               fp(2, "Laboratory Data", "Chemistry", seq=2, link="strong"),
-               fp(3, "Radiology Report", seq=3, link="strong")]
-        lab, rad = decide_final(doc[1], doc), decide_final(doc[2], doc)
-        assert (lab.page_type, lab.page_subtype, lab.codability) == (PN, "Laboratory Data", "Non-Codable")
-        assert (rad.page_type, rad.page_subtype, rad.codability) == (PN, "Radiology Report", "Codable")
+    def test_a_page_of_the_same_family_keeps_its_own_names_and_codability(self):
+        doc = [fp(1, f"{LAB} (Radiology)", "CT Scan Report", family=LAB, category="non_codeable", seq=1),
+               fp(2, f"{LAB} (Laboratory)", "Chemistry Panel", family=LAB, category="non_codeable",
+                  seq=2, link="strong")]
+        second = decide_final(doc[1], doc)
+        assert (second.page_type, second.page_subtype, second.continuation_rule) == (
+            f"{LAB} (Laboratory)", "Chemistry Panel", "agreed")
+        assert second.codability == "Non-Codable"
 
-    def test_the_first_pages_type_wins_even_unconfirmed_and_outvoted(self):
-        doc = [fp(1, "Clinical Summary", seq=1, conf=0.40),
-               fp(2, "Laboratory Data", seq=2, link="strong", conf=0.90),
-               fp(3, "Laboratory Data", seq=3, link="strong", conf=0.80)]
+    def test_lab_inside_a_progress_note_stays_non_codable_radiology_does_not(self):
+        doc = [fp(1, PN, seq=1),
+               fp(2, f"{LAB} (Laboratory)", "Chemistry Panel", family=LAB, category="non_codeable",
+                  names=("Chemistry Panel", "Laboratory", LAB), seq=2, link="strong"),
+               fp(3, f"{LAB} (Radiology)", "CT Scan Report", family=LAB, category="non_codeable",
+                  names=("CT Scan Report", "Radiology", LAB), seq=3, link="strong")]
+        lab, rad = decide_final(doc[1], doc), decide_final(doc[2], doc)
+        assert (lab.page_type, lab.page_subtype, lab.codability) == (PN, f"{LAB} (Laboratory)", "Non-Codable")
+        assert (rad.page_type, rad.page_subtype, rad.codability) == (PN, f"{LAB} (Radiology)", "Codable")
+
+    def test_a_context_page_takes_its_documents_codability(self):
+        doc = [fp(1, "Problem List", seq=1, category="codeable"),
+               fp(2, "Problem List", "Clinical Summary", category="non_codeable", rule="context",
+                  seq=2, link="strong")]
+        assert decide_final(doc[1], doc).codability == "Codable"
+        alone = fp(5, "Problem List", "Clinical Summary", category="non_codeable", rule="context")
+        assert decide_final(alone, None).codability == "Non-Codable"
+
+    def test_the_first_pages_family_wins_even_outvoted(self):
+        doc = [fp(1, "Problem List", seq=1, conf=0.40),
+               fp(2, LAB, family=LAB, seq=2, link="strong", conf=0.90),
+               fp(3, LAB, family=LAB, seq=3, link="strong", conf=0.80)]
         finals = [decide_final(p, doc) for p in doc]
-        assert [f.page_type for f in finals] == ["Clinical Summary"] * 3
-        assert [f.page_subtype for f in finals] == ["Clinical Summary", "Laboratory Data", "Laboratory Data"]
+        assert [f.page_type for f in finals] == ["Problem List"] * 3
         assert finals[1].continuation_rule == "agreed_first_page"
 
     def test_an_unknown_first_page_falls_back_to_the_weighted_vote(self):
         doc = [fp(1, "Unknown", seq=1, conf=0.40),
-               fp(2, "Laboratory Data", seq=2, link="strong", conf=0.90),
-               fp(3, "Laboratory Data", seq=3, link="strong", conf=0.80)]
+               fp(2, f"{LAB} (Laboratory)", "Chemistry Panel", family=LAB, seq=2, link="strong", conf=0.90),
+               fp(3, LAB, "Radiology", family=LAB, seq=3, link="strong", conf=0.80)]
         first = decide_final(doc[0], doc)
-        assert (first.page_type, first.continuation_rule, first.needs_review) == (
-            "Laboratory Data", "agreed_vote", True)
+        assert (first.page_type, first.page_subtype, first.continuation_rule, first.needs_review) == (
+            LAB, LAB, "agreed_vote", True)
 
     def test_no_clear_majority_keeps_each_page_and_flags_it(self):
         doc = [fp(1, "Unknown", seq=1, conf=0.6), fp(2, PN, seq=2, link="strong", conf=0.7),
-               fp(3, "Orders", seq=3, link="strong", conf=0.8), fp(4, "Clinical Summary", seq=4, conf=0.75)]
+               fp(3, "Administrative", seq=3, link="strong", conf=0.8), fp(4, "Problem List", seq=4, conf=0.75)]
         finals = [decide_final(p, doc) for p in doc]
-        assert [f.page_type for f in finals] == ["Unknown", PN, "Orders", "Clinical Summary"]
+        assert [f.page_type for f in finals] == ["Unknown", PN, "Administrative", "Problem List"]
         assert all(f.continuation_rule == "no_agreement" and f.needs_review for f in finals)
 
-    def test_the_keyword_sub_type_is_used_when_it_fits_the_agreed_type(self):
-        doc = [fp(1, "Discharge Summary", seq=1, title=True),
-               fp(2, PN, seq=2, link="strong", kw_sub="Depart Note", kw_score=3)]
-        assert decide_final(doc[1], doc).page_subtype == "Depart Note"
-
-    def test_an_unknown_page_takes_the_agreed_generic_sub_type(self):
-        doc = [fp(1, "Discharge Summary", seq=1, title=True), fp(2, "Unknown", seq=2, link="strong")]
-        final = decide_final(doc[1], doc)
-        assert (final.page_type, final.page_subtype) == ("Discharge Summary", "Discharge Summary")
-
     def test_a_weak_link_still_agrees_but_flags(self):
-        doc = [fp(1, "Discharge Summary", seq=1, title=True), fp(2, PN, seq=2, link="weak")]
+        doc = [fp(1, DS, category="discharge_summary", seq=1), fp(2, PN, seq=2, link="weak")]
         final = decide_final(doc[1], doc)
-        assert (final.page_type, final.needs_review) == ("Discharge Summary", True)
+        assert (final.page_type, final.needs_review) == (DS, True)
 
     def test_a_page_alone_keeps_its_type(self):
-        assert decide_final(fp(1, "Laboratory Data", "Chemistry"), None).page_type == "Laboratory Data"
-        single = [fp(1, "Laboratory Data", seq=1)]
-        assert decide_final(single[0], single).continuation_rule == "no_change"
+        page = fp(1, f"{LAB} (Radiology)", "CT Scan Report", family=LAB, category="non_codeable")
+        final = decide_final(page, None)
+        assert (final.page_type, final.codability, final.continuation_rule) == (
+            f"{LAB} (Radiology)", "Non-Codable", "no_change")
 
     def test_embedded_same_page_needs_no_document(self):
-        lab = fp(5, "Laboratory Data", kw_sub="Progress Note", kw_score=4, title=True)
+        lab = fp(5, f"{LAB} (Laboratory)", "Chemistry Panel", family=LAB, category="non_codeable",
+                 names=("Chemistry Panel", "Laboratory", LAB), title=PN)
         final = decide_final(lab, None)
-        assert (final.page_type, final.continuation_rule, final.codability) == (PN, "embedded_same_page", "Non-Codable")
+        assert (final.page_type, final.page_subtype, final.continuation_rule, final.codability) == (
+            PN, f"{LAB} (Laboratory)", "embedded_same_page", "Non-Codable")
+        rad = fp(6, f"{LAB} (Radiology)", "CT Scan Report", family=LAB, names=("Radiology", LAB), title=PN)
+        assert decide_final(rad, None).codability == "Codable"
 
 
 class TestPageTypeConfidence:

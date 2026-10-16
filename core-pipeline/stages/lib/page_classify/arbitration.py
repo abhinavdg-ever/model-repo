@@ -1,6 +1,11 @@
-"""Who wins between BERT and the keyword model: ``page_arbitration.json``.
+"""Who wins between BERT and the keyword model, and the Final page type:
+``page_arbitration.json``.
 
-Per page (``classify_page``) — the **Extracted** answer:
+The **Extracted** page type is the v24 page axes (``axes.py``); the v1 ladder
+below (``classify_page``) still runs for its raw ``bert_*`` / ``keyword_*``
+columns only.
+
+Per page (``classify_page``) — the v1 ladder:
 
   Level 1, page type: the first ladder step that applies wins.
     1 agreement          both give the same page type
@@ -26,30 +31,33 @@ Per page (``classify_page``) — the **Extracted** answer:
   Level 4, codability from the page type (``taxonomy``).
 
 Per document (``decide_final``) — the **Final** answer, on the continuity
-stage's documents. The page **type** is agreed across a document's pages; the
-**sub-type** stays each page's own.
+stage's documents, in v24 names. The **family** (L1) is agreed across a
+document's pages; each page keeps its own names below it.
 
-  The agreed page type (``agree_document_type``), first that applies:
-    first_page     the first page's type, whenever it has one: every
-                   continue page takes it
-    vote           else (an Unknown first page) the page types of the document's pages, weighted by
-                   page-type confidence, when one type holds at least
+  The agreed family (``agree_document_type``), first that applies:
+    first_page     the first page's L1, whenever it has one
+    vote           else (an Unknown first page) the pages' L1s, weighted by
+                   page-type confidence, when one holds at least
                    ``document_agreement.vote_min_share`` (0.60) of the weight;
-                   a tie goes to the first page's type (flagged for review
-                   when it changes a page)
-    (none)         no clear majority: pages keep their own types, flagged
-                   for review (``no_agreement``)
+                   a tie goes to the first page's (flagged for review when it
+                   changes a page)
+    (none)         no clear majority: pages keep their own, flagged for review
+                   (``no_agreement``)
 
-  A page whose own type differs takes the agreed type; its own type becomes
-  the sub-type (Laboratory Data → Clinical Summary / Laboratory Data), unless
-  the keyword model found a sub-type of the agreed type (score ≥
-  keyword_min_score). An Unknown page takes the agreed type's generic
-  sub-type. Codability is the agreed type's; inside a Progress Note,
-  Laboratory Data / Medication List stay Non-Codable (``inside_progress_note``).
+  A page of the agreed family keeps its own page type and sub-type. A page of
+  another family takes the agreed L1 as its page type, and its own page type
+  becomes the sub-type (Progress Note / Lab Report/Result (Radiology)); an
+  Unknown page takes the agreed L1 as both.
+
+  Codability comes from the canon (the page's own category). A page that takes
+  the agreed family, or whose own canon rule is ``context``, takes the
+  document's codability — its first page of that family — except that inside
+  a Progress Note a page carrying an ``inside_progress_note.non_codeable_names``
+  name (Laboratory, Medication Record…) stays Non-Codable.
 
   A page in no document (or a one-page document) keeps its own answer, except
-  embedded_same_page: per-page Laboratory Data / Radiology Report with a
-  Progress Note title on the same page → Progress Note / that name.
+  embedded_same_page: a page of an ``embedded_families`` L1 (Lab Report/Result)
+  headed by a Progress Note title → Progress Note / its own page type.
 """
 from __future__ import annotations
 
@@ -218,7 +226,10 @@ def classify_page(
     )
 
 
-# --- level 3, step C ------------------------------------------------------------
+# --- level 3: the Final answer (v24) ---------------------------------------------
+
+# classification_category → codability label (imaging_final.codability).
+CODABILITY_OF = {category: codability for codability, category in tax.CATEGORY.items()}
 
 
 @dataclass(frozen=True)
@@ -226,11 +237,14 @@ class FinalPage:
     """What level 3 needs about one page (from page_classification + continuity)."""
 
     page_id: Any
-    page_type: Optional[str]
+    page_type: Optional[str]  # as written: L1, or "L1 (L2)"
     page_subtype: Optional[str]
-    keyword_page_subtype: Optional[str] = None
-    keyword_score: Optional[float] = None
-    keyword_title_hit: bool = False
+    family: Optional[str] = None  # L1; None reads page_type
+    names: tuple[str, ...] = ()  # canon page type, L3, L2, L1 (axes.names_of)
+    category: Optional[str] = None  # its own classification_category (from the canon)
+    codeability_rule: Optional[str] = None  # page_type_tag | context | source
+    title_l1: Optional[str] = None  # the L1 whose canon title heads the page
+    model_type: Optional[str] = None
     document_seq: Optional[int] = None
     seq: Optional[int] = None  # position within the document; 1 = start
     link_strength: Optional[str] = None  # strong | weak (chain from the start)
@@ -249,39 +263,40 @@ class FinalResult:
     needs_review: bool
 
 
-def codability_inside_note(page_subtype: Optional[str]) -> Optional[str]:
-    """Codability of a page whose Final type is Progress Note with this
-    sub-type: Progress Note's, except the ``inside_progress_note`` sub-types
-    (Laboratory Data, Medication List), which stay Non-Codable."""
-    taxonomy = tax.load()
-    exceptions = (_ARBITRATION.get().get("inside_progress_note") or {}).get("non_codeable_sub_types") or ()
-    if page_subtype in exceptions:
-        return "Non-Codable"
-    return taxonomy.codability(tax.PROGRESS_NOTE)
+def _family(page: FinalPage) -> Optional[str]:
+    return page.family or page.page_type
 
 
-def _embedded(page: FinalPage, rule: str) -> FinalResult:
-    return FinalResult(
-        page_type=tax.PROGRESS_NOTE,
-        page_subtype=page.page_type,
-        model_type=page.page_type,
-        codability=codability_inside_note(page.page_type),
-        source="embedded",
-        continuation_rule=rule,
-        needs_review=False,
-    )
+def _known(name: Optional[str]) -> bool:
+    return name not in (None, "", UNKNOWN)
 
 
-def _keep(page: FinalPage, rule: str, review: bool) -> FinalResult:
-    taxonomy = tax.load()
+def _note_rules() -> dict[str, Any]:
+    return _ARBITRATION.get().get("inside_progress_note") or {}
+
+
+def _section_l1() -> str:
+    return (_ARBITRATION.get().get("axes") or {}).get("section_L1", tax.PROGRESS_NOTE)
+
+
+def _inside_note_non_codable(page: FinalPage) -> bool:
+    listed = set(_note_rules().get("non_codeable_names") or ())
+    return any(name in listed for name in (page.names or (page.page_subtype, page.page_type)))
+
+
+def _codability_in(agreed: str, page: FinalPage, document_codability: Optional[str]) -> Optional[str]:
+    """A page bound into a document of the ``agreed`` family."""
+    if agreed == _section_l1() and _inside_note_non_codable(page):
+        return CODABILITY_OF["non_codeable"]
+    return document_codability
+
+
+def _keep(page: FinalPage, rule: str, review: bool, codability: Optional[str] = None) -> FinalResult:
     return FinalResult(
         page_type=page.page_type,
         page_subtype=page.page_subtype,
-        model_type=(
-            taxonomy.model_type(page.page_type, page.page_subtype)
-            if page.page_type and page.page_subtype and taxonomy.codability(page.page_type) else None
-        ),
-        codability=taxonomy.codability(page.page_type),
+        model_type=page.model_type,
+        codability=codability or CODABILITY_OF.get(page.category or ""),
         source="page",
         continuation_rule=rule,
         needs_review=review,
@@ -289,21 +304,19 @@ def _keep(page: FinalPage, rule: str, review: bool) -> FinalResult:
 
 
 def agree_document_type(document: Sequence[FinalPage]) -> tuple[Optional[str], str]:
-    """The page type a document's pages agree on, and why: first_page (the
-    first page's type, whenever it has one) / vote (``(None, "")`` for no
+    """The family (L1) a document's pages agree on, and why: first_page (the
+    first page's, whenever it has one) / vote (``(None, "")`` for no
     document)."""
     if not document:
         return None, ""
-    first = document[0]
-    known = lambda t: t not in (None, "", UNKNOWN)  # noqa: E731
-    if known(first.page_type):
-        return first.page_type, "first_page"
+    first = _family(document[0])
+    if _known(first):
+        return first, "first_page"
     weights: dict[str, float] = {}
     for p in document:
-        if known(p.page_type):
-            weights[p.page_type] = weights.get(p.page_type, 0.0) + (
-                p.confidence if p.confidence is not None else 0.5
-            )
+        family = _family(p)
+        if _known(family):
+            weights[family] = weights.get(family, 0.0) + (p.confidence if p.confidence is not None else 0.5)
     if not weights:
         return None, ""
     best = max(weights.values())
@@ -311,9 +324,9 @@ def agree_document_type(document: Sequence[FinalPage]) -> tuple[Optional[str], s
     if best < share * sum(weights.values()):
         return None, "no_agreement"
     tied = [t for t, w in weights.items() if abs(w - best) < 1e-9]
-    if first.page_type in tied:
-        return first.page_type, "vote"
-    order = [p.page_type for p in document]
+    if first in tied:
+        return first, "vote"
+    order = [_family(p) for p in document]
     return min(tied, key=order.index), "vote"
 
 
@@ -322,43 +335,37 @@ def decide_final(
 ) -> FinalResult:
     """The Final page type of one page. ``document`` is every page of its
     continuity document in order (None / one page: the page stands alone)."""
-    taxonomy = tax.load()
     if document and len(document) > 1:
         agreed, basis = agree_document_type(document)
         if basis == "no_agreement":
             return _keep(page, "no_agreement", True)
-        if agreed is None or page.page_type == agreed:
+        if agreed is None:
             return _keep(page, "agreed", False)
-        min_score = thresholds()["keyword_min_score"]
-        if (
-            page.keyword_page_subtype
-            and taxonomy.page_type_of_subtype(page.keyword_page_subtype) == agreed
-            and (page.keyword_score or 0) >= min_score
-        ):
-            subtype = page.keyword_page_subtype
-        elif page.page_type in (None, "", UNKNOWN):
-            subtype = agreed
-        else:
-            subtype = page.page_type
+        opener = next((p for p in document if _family(p) == agreed), document[0])
+        document_codability = CODABILITY_OF.get(opener.category or "")
+        if _family(page) == agreed:
+            context = page.codeability_rule == "context" and page is not opener
+            return _keep(page, "agreed", False,
+                         _codability_in(agreed, page, document_codability) if context else None)
+        subtype = page.page_type if _known(page.page_type) else agreed
         return FinalResult(
             page_type=agreed,
             page_subtype=subtype,
-            model_type=taxonomy.model_type(agreed, subtype),
-            codability=(
-                codability_inside_note(subtype) if agreed == tax.PROGRESS_NOTE
-                else taxonomy.codability(agreed)
-            ),
+            model_type=page.model_type,
+            codability=_codability_in(agreed, page, document_codability),
             source="continuation",
             continuation_rule=f"agreed_{basis}",
             needs_review=basis == "vote" or page.link_strength == "weak",
         )
-    keyword_type = (
-        taxonomy.page_type_of_subtype(page.keyword_page_subtype) if page.keyword_page_subtype else None
-    )
-    if (
-        page.page_type in taxonomy.embedded_page_types
-        and keyword_type == tax.PROGRESS_NOTE
-        and page.keyword_title_hit
-    ):
-        return _embedded(page, "embedded_same_page")
+    section = _section_l1()
+    if _family(page) in set(_note_rules().get("embedded_families") or ()) and page.title_l1 == section:
+        return FinalResult(
+            page_type=section,
+            page_subtype=page.page_type,
+            model_type=page.model_type,
+            codability=_codability_in(section, page, CODABILITY_OF["codeable"]),
+            source="embedded",
+            continuation_rule="embedded_same_page",
+            needs_review=False,
+        )
     return _keep(page, "no_change", False)

@@ -317,6 +317,16 @@ def page_family_model_status() -> dict[str, Any]:
         return {"ready": False, "loaded": False, "reason": str(exc)}
 
 
+def page_axes_model_status() -> dict[str, Any]:
+    """Page-axes model in models/page-family/page-axes. Never raises; never loads the weights."""
+    try:
+        from stages.lib.page_classify.axes import describe
+
+        return describe()
+    except Exception as exc:
+        return {"ready": False, "loaded": False, "reason": str(exc)}
+
+
 def blank_junk_model_status() -> dict[str, Any]:
     """TF-IDF blank/junk model. Never raises; never loads the model."""
     try:
@@ -379,6 +389,7 @@ def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
         "hw_model": hw_model_status(),
         "blank_junk_model": blank_junk_model_status(),
         "page_family_model": page_family_model_status(),
+        "page_axes_model": page_axes_model_status(),
         "rapidocr_models": rapidocr_models_status(),
         "extraction": extraction_status(),
         "skip_ocr": {
@@ -419,6 +430,7 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     rapid = caps.get("rapidocr_models") or {}
     bj = caps.get("blank_junk_model") or {}
     family = caps.get("page_family_model") or {}
+    page_axes = caps.get("page_axes_model") or {}
 
     blob_on = f"OK — {blob.get('auth')}"
     if blob.get("account"):
@@ -441,6 +453,10 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
         f"OK — BERT, {family.get('classes')} classes; "
         f"{len(family.get('untrained_model_types') or [])} model types by keywords only"
     )
+    axes_on = (
+        f"OK — {page_axes.get('taxonomy_version')}, {page_axes.get('l1_classes')} L1 classes, "
+        f"{page_axes.get('specialties')} specialties"
+    )
     skip_on = "ON"
 
     skip_line = (
@@ -455,6 +471,7 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
         ("RapidOCR", _one_line(rapid, rapid_on)),
         ("blank/junk model", _one_line(bj, bj_on)),
         ("page-family model", _one_line(family, family_on)),
+        ("page-axes model", _one_line(page_axes, axes_on)),
         ("final1 Docling", _one_line(docling, docling_on)),
         ("final2 OCR", _one_line(di, di_on)),
         ("DOS LLM", _one_line(llm, llm_on)),

@@ -584,6 +584,11 @@ CREATE TABLE page_classification (
     confidence_level          VARCHAR(10) CHECK (confidence_level IS NULL OR confidence_level IN (
                                   'high','medium','low'
                               )),
+    -- The v24 page axes behind page_type / page_subtype (page_classify/axes.py):
+    -- route, l1/l2/l3, specialty, codeability (each + _confidence), sources
+    -- (model/canon/- per level), canon_page_type, and the model's raw
+    -- prediction. NULL for blank / junk / duplicate pages.
+    axes                      JSONB,
     created_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (page_id)

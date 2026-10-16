@@ -30,6 +30,7 @@ from db.paths import imaging_csv, write_csv
 from stages._support import BJ_EXCLUDE, best_page_text, mark_completed, mark_skipped, stage_run
 from stages.lib.continuity.engine import PageInput, assign, text_lines
 from stages.lib.continuity.layout import load_pages, page_layout
+from stages.lib.page_classify import axes
 from stages.lib.continuity.signature import has_signature_section, signed_page_names
 
 logger = logging.getLogger(__name__)
@@ -126,12 +127,15 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     text=text,
                     lines=lines or text_lines(text),
                     section_headers=headers,
-                    page_type=kind.get("page_type") or "",
+                    # Pages are compared on their family (v24 L1).
+                    page_type=axes.family_of(kind),
                     page_subtype=kind.get("page_subtype") or "",
+                    names=axes.names_of(kind),
                     page_confidence=(
                         float(kind["confidence"]) if kind.get("confidence") is not None else None
                     ),
-                    title_hit=bool(kind.get("keyword_title_hit")),
+                    # Its own title: a v24 canon title term heads the page.
+                    title_hit=bool(axes.title_of(kind)) if axes.stored(kind) else bool(kind.get("keyword_title_hit")),
                     dos_from=_iso(page_dos.get("date_of_service_from")),
                     dos_to=_iso(page_dos.get("date_of_service_to")),
                     signed=name in signed_names or has_signature_section(text),

@@ -63,7 +63,7 @@ def _raw():
     [
         (lambda r: r["tier2"]["home"].append("hospital course"), "is in both"),
         (lambda r: r["tier3"]["inpatient"].append("chief complaint"), "is in both"),
-        (lambda r: r["tier1_page_types"].update({"no_such_type": "home"}), "not a page type or sub-type"),
+        (lambda r: r["tier1_page_types"].update({"no_such_type": "home"}), "not a v24 canon page type"),
         (lambda r: r["tier1_page_types"].update({"Discharge Summary": "space"}), "unknown setting"),
         (lambda r: r["negatives"].append({"phrase": "x y", "cancels": ["not a phrase"]}),
          "not a tier 2 or tier 3 phrase"),

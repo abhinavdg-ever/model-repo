@@ -239,10 +239,13 @@ def _labels(value: str | None) -> list[str]:
 
 
 def _predicted(composed: str | None) -> list[str]:
-    """``"Progress Note (Office Visit)"`` -> ``["Progress Note", "Office Visit"]``."""
+    """Every name in a composed page type, outermost first:
+    ``"Progress Note (Office Visit)"`` -> ``["Progress Note", "Office Visit"]``;
+    ``"Lab Report/Result (Radiology) (CT Scan Report)"`` -> the three v24 levels."""
     text = (composed or "").strip()
-    match = re.fullmatch(r"(.+?)\s*\((.+)\)", text)
-    return [match.group(1).strip(), match.group(2).strip()] if match else ([text] if text else [])
+    head = re.split(r"\s*\(", text, maxsplit=1)[0].strip()
+    inner = [part.strip() for part in re.findall(r"\(([^()]+)\)", text)]
+    return [name for name in [head, *inner] if name]
 
 
 def _page_type_semantic(gt_page_type: str | None, encounter_type: str | None,

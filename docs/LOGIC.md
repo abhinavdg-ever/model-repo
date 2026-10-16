@@ -628,7 +628,7 @@ Non-Codable. A page on a weak link (an undated continue page) is flagged.
 
 | Target | Columns |
 |---|---|
-| `page_classification` | `page_type`, `page_subtype`, `model_type`, `classification_category`, `decided_by`, `needs_review`, `bert_model_type`, `bert_confidence`, `keyword_page_subtype`, `keyword_score`, `keyword_margin`, `keyword_title_hit` |
+| `page_classification` | `page_type`, `page_subtype`, `model_type`, `classification_category`, `decided_by`, `needs_review`, `bert_model_type`, `bert_confidence`, `keyword_page_subtype`, `keyword_score`, `keyword_margin`, `keyword_title_hit`; `axes` (JSONB, the v24 page axes behind `page_type` / `page_subtype`) |
 | disk | `imaging/<chart>_codeable.csv` |
 
 ---

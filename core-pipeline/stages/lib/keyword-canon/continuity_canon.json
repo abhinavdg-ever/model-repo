@@ -19,13 +19,13 @@
     "text_band_fraction": 0.25
   },
   "document_end": {
-    "comment": "When an undated page does NOT continue the previous page's document: (1) the previous page is signed, or its printed number says it was the last ('page N of N'); (4) this page looks like a first page \u2014 the keyword model's title for another page type; (2) the page type changes and the classifier is sure \u2014 the chance this page is the previous page's type (its confidence when the types agree, one minus it when they differ) is at most max_same_type_probability AND its confidence in the new type is above min_new_type_confidence; (3) the previous page's last body line ends above page_end_max of the page height (needs Final2/Final1 line positions). Consecutive printed page numbers (N -> N+1 of M) override all four.",
+    "comment": "When an undated page does NOT continue the previous page's document: (1) the previous page is signed, or its printed number says it was the last ('page N of N'); (4) this page looks like a first page — the keyword model's title for another page type; (2) the page type changes and the classifier is sure — the chance this page is the previous page's type (its confidence when the types agree, one minus it when they differ) is at most max_same_type_probability AND its confidence in the new type is above min_new_type_confidence; (3) the previous page's last body line ends above page_end_max of the page height (needs Final2/Final1 line positions). Consecutive printed page numbers (N -> N+1 of M) override all four.",
     "page_end_max": 0.6,
     "max_same_type_probability": 0.1,
     "min_new_type_confidence": 0.7
   },
   "default_final_dos": {
-    "comment": "A stand-alone document of these pages (every page's page type or sub-type listed here) is not a visit: its Final DOS is DOS_DEFAULT_DATE (dos_canon.json, 2222-02-02) on every page, whatever dates its pages carry. One of these pages inside a visit's document (a progress note with a problem-list page) takes the visit's DOS. Each page's Extracted DOS is untouched. Names are page_taxonomy.json page types / sub-types, matched without case.",
+    "comment": "A stand-alone document of these pages (every page carrying a name listed here) is not a visit: its Final DOS is DOS_DEFAULT_DATE (dos_canon.json, 2222-02-02) on every page, whatever dates its pages carry. One of these pages inside a visit's document (a progress note with a problem-list page) takes the visit's DOS. Each page's Extracted DOS is untouched. Names are v24 names — canon page types (page_canon_v24.json) or L1 / L2 / L3 — matched without case against every name of the page (axes.names_of).",
     "page_types": [
       "Patient Demographics",
       "Patient Information",
@@ -33,7 +33,10 @@
       "Growth chart",
       "Problem List",
       "Immunizations",
-      "Immunization list"
+      "Immunization list",
+      "Demographics",
+      "Immunization",
+      "Immunization Record"
     ]
   }
 }

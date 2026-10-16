@@ -1132,7 +1132,7 @@ PAGE_CLASSIFICATION_FIELDS = (
     "page_type", "page_subtype", "model_type", "classification_category",
     "duplicate_flag", "confidence", "confidence_level", "decided_by", "needs_review",
     "bert_model_type", "bert_confidence", "keyword_page_subtype", "keyword_score",
-    "keyword_margin", "keyword_title_hit",
+    "keyword_margin", "keyword_title_hit", "axes",
 )
 
 
@@ -1153,6 +1153,7 @@ def upsert_page_classification(
         "page_type": None, "model_type": None, "decided_by": None, "needs_review": False,
         "bert_model_type": None, "bert_confidence": None, "keyword_page_subtype": None,
         "keyword_score": None, "keyword_margin": None, "keyword_title_hit": None,
+        "axes": None,
         **fields,
         "page_subtype": (page_subtype or "")[:200] or None,
         "classification_category": classification_category,
@@ -1160,6 +1161,8 @@ def upsert_page_classification(
         "confidence": confidence,
         "confidence_level": _confidence_level(confidence),
     }
+    if row["axes"] is not None:
+        row["axes"] = json.dumps(row["axes"], default=str)
     values = [row[name] for name in PAGE_CLASSIFICATION_FIELDS]
     conn.execute(
         f"""

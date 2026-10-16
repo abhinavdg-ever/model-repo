@@ -8,13 +8,28 @@ Neither imports from the other or from `core-pipeline/`.
 | `annotation-tool/` | Tag page images with a page type and sub-type; read their text (Tesseract) into a training file | a folder of page images with `image_labels.csv` | `image_labels.csv` and `training_data.jsonl`, in that same image folder |
 | `bert-training/` | Train the BERT page classifier | `bert-training/data/training_data.jsonl` | `bert-training/output/page-family/` (the model) |
 
-Names (page type, sub-type, model type) come from each folder's own copy of
-`taxonomy.json` (a copy of `core-pipeline/stages/lib/keyword-canon/page_taxonomy.json`). Full detail is in each
-folder's README.
+Labels follow **taxonomy v24**: L1 > L2 > L3, plus specialty, plus a derived
+codeability. `taxonomy/build_taxonomy.py` turns the client's
+`taxonomy/Page_Taxonomy.xlsx` into `taxonomy_v24.json` and copies it into both
+folders; re-run it whenever the workbook changes (`--check` fails on a stale
+copy). The annotation tool and the multi-head trainer (`train_axes.py`,
+`page_axes.ipynb`) read only that file. The old single-head `train.py` keeps
+`bert-training/taxonomy.json`, a copy of the pipeline's
+`page_taxonomy.json`, because core-pipeline still loads its model. Full detail
+is in each folder's README.
 
 > **Patient data.** Page images, OCR text and labels are patient records.
 > Nothing here prints page text. `bert-training/data/`, `bert-training/output/`
 > and every `*.jsonl` under `training/` are git-ignored — keep it that way.
+
+
+**The canon** (`taxonomy/page_canon_v24.json`, 298 canon page types) maps
+each canon page type to its v24 path, codeability tag and lexicon. Build it
+with `python taxonomy/build_canon.py` (sources: retag.py's labels, the v1
+keyword canon, `taxonomy/canon_hand_map.json`, the workbook; `--check` fails
+on a stale copy). `python taxonomy/canon.py score <training_data.jsonl>`
+scores every page against it and reports agreement with the labels. The
+lexicons are the untuned v1 starting lists: tune them there.
 
 ---
 
@@ -66,8 +81,10 @@ python app.py ~/Desktop/Training/processed          # opens http://127.0.0.1:505
 python app.py ~/Desktop/Training/processed --add-to-training   # Add to Training JSON, no screen
 ```
 
-* Pick a **Page type** and **Sub-type** (searchable; any word matches) and
-  press **Save** — or **Skip**. Saving marks the row "not in training yet".
+* Start with the **Disagreements** queue (`1` keep label, `2` take the canon),
+  then confirm **L1**, **L2** (masked by L1), **L3** (Lab Report/Result only)
+  and **Specialty**, and press **Save** — or **Skip**. Codeability is shown,
+  derived; override it only with a reason.
 * **Add to Training JSON** (top right; the number beside it is how many pages
   it will add or update) is the only thing that updates
   `training_data.jsonl`: existing records get their new labels without OCR;
