@@ -2705,3 +2705,43 @@ class TestCredentialListCopy:
             "copy core-pipeline/.../provider_name/suffixes.txt to "
             "review-ui/backend/app/data/credential_suffixes.txt"
         )
+
+
+class TestNoModelWeightsInGit:
+    """Model weights are copied onto each host, never committed (the repo is
+    public, and the page-axes weights were trained on chart text). Small files
+    that ship on purpose (tfidf_flat.joblib, image_type_classification.pkl,
+    configs, tokenizers) are not weights in this sense."""
+
+    WEIGHT_SUFFIXES = (".safetensors", ".pt", ".pth", ".bin", ".onnx", ".h5", ".ckpt", ".ot", ".gguf")
+    MAX_TRACKED_BYTES = 20 * 1024 * 1024
+
+    @staticmethod
+    def _tracked() -> list[str]:
+        import shutil
+        import subprocess
+
+        if not shutil.which("git") or not (REPO_ROOT / ".git").exists():
+            pytest.skip("not a git checkout")
+        out = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "ls-files", "-z"],
+            capture_output=True, check=True,
+        ).stdout.decode("utf-8")
+        return [p for p in out.split("\0") if p]
+
+    def test_no_weight_file_is_tracked(self):
+        weights = [p for p in self._tracked() if p.lower().endswith(self.WEIGHT_SUFFIXES)]
+        assert not weights, f"model weights tracked in git (copy them onto each host instead): {weights}"
+
+    def test_no_large_file_is_tracked(self):
+        large = [
+            p for p in self._tracked()
+            if (REPO_ROOT / p).is_file() and (REPO_ROOT / p).stat().st_size > self.MAX_TRACKED_BYTES
+        ]
+        assert not large, f"files over 20 MB tracked in git: {large}"
+
+    def test_no_git_lfs_rule(self):
+        attributes = REPO_ROOT / ".gitattributes"
+        text = attributes.read_text(encoding="utf-8") if attributes.is_file() else ""
+        rules = [ln for ln in text.splitlines() if "filter=lfs" in ln and not ln.lstrip().startswith("#")]
+        assert not rules, f"git LFS rules in .gitattributes: {rules}"

@@ -1,0 +1,8 @@
+# Model weights are copied onto each host, never committed (git LFS included).
+# Configs, tokenizer and label_space.json stay in git. Checked by
+# tests/test_contracts.py::TestNoModelWeightsInGit.
+heads.pt
+encoder/model.safetensors
+*.safetensors
+*.pt
+*.bin
