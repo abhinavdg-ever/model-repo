@@ -105,22 +105,17 @@ function Distribution({ tally, binary = false }: { tally: Tally; binary?: boolea
   );
 }
 
-/** Accuracy on the Class 1 subset: pages where the ground truth or the pipeline
- * says Class 1. For a yes / no metric a match there is both saying Yes, so it
- * is TP / (TP + FP + FN). Orientation keeps its own tally, since a wrong angle
- * is one page but counts as both FP and FN. */
-function classSubset(id: MetricId, rates: ClassRates, orientation: Tally): Tally {
-  if (id === "orientation") return orientation;
-  const scored = rates.tp + rates.fp + rates.fn;
-  return { yes: rates.tp, no: rates.fp + rates.fn, maybe: 0, scored };
+/** Class 1 pages in the ground truth: each is a TP or an FN (a rotated page
+ * found at the wrong angle is an FN too). */
+function classCases(rates: ClassRates): number {
+  return rates.tp + rates.fn;
 }
 
-/** Class 1 subset accuracy, then Precision / Recall / F1, label above value. */
-function RatesGrid({ rates, subset }: { rates: ClassRates; subset?: Tally }) {
+/** Precision / Recall / F1 for Class 1, label above value. */
+function RatesGrid({ rates }: { rates: ClassRates }) {
   return (
     <dl className="accuracy-class-grid">
       {[
-        ...(subset ? [["Accuracy", subset.scored === 0 ? "—" : `${percentLabel(subset)} (${subset.yes}/${subset.scored})`]] : []),
         ["Precision", formatPrecision(rates)],
         ["Recall", formatRecall(rates)],
         ["F1", formatF1(rates)],
@@ -139,12 +134,10 @@ function CompactScore({
   tally,
   binary = false,
   rates,
-  subset,
 }: {
   tally: Tally;
   binary?: boolean;
   rates?: ClassRates;
-  subset?: Tally;
 }) {
   if (tally.scored === 0) return <>—</>;
   return (
@@ -153,7 +146,7 @@ function CompactScore({
       <p className="accuracy-distribution">
         <Distribution tally={tally} binary={binary} />
       </p>
-      {rates ? <RatesGrid rates={rates} subset={subset} /> : null}
+      {rates ? <RatesGrid rates={rates} /> : null}
     </div>
   );
 }
@@ -161,7 +154,7 @@ function CompactScore({
 const SCORE_INFO =
   "Accuracy score = (Match + 0.5 × Partial) / Total, where Total = Match + Partial + No Match.";
 const RATES_INFO =
-  "Class 1 (the Yes pages) only. Accuracy here = of the pages where the ground truth or the pipeline says Class 1, the share where both do (Orientation: at the same angle). " +
+  "The accuracy above counts every labelled page, Yes and No. Below it, Class 1 (the Yes pages) only; cases = the pages the ground truth calls Class 1. " +
   "Precision = TP / (TP + FP): share of the pipeline's Class 1 calls that were right. " +
   "Recall = TP / (TP + FN): share of the real Class 1 pages the pipeline caught. " +
   "F1 = 2 × Precision × Recall / (Precision + Recall). " +
@@ -173,7 +166,6 @@ function Donut({
   tally,
   rates,
   ratesLabel,
-  subset,
   binary = false,
 }: {
   label: string;
@@ -185,8 +177,6 @@ function Donut({
   rates?: ClassRates;
   /** What Class 1 is ("Blank / Junk = Yes"). */
   ratesLabel?: string;
-  /** Accuracy on the Class 1 subset, shown with the rates (see classSubset). */
-  subset?: Tally;
 }) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
@@ -239,8 +229,12 @@ function Donut({
       </p>
       {rates ? (
         <div className="accuracy-class">
-          {ratesLabel ? <div className="accuracy-class-head">{ratesLabel}</div> : null}
-          <RatesGrid rates={rates} subset={subset} />
+          {ratesLabel ? (
+            <div className="accuracy-class-head">
+              {ratesLabel} ({classCases(rates).toLocaleString()} {classCases(rates) === 1 ? "case" : "cases"})
+            </div>
+          ) : null}
+          <RatesGrid rates={rates} />
         </div>
       ) : null}
     </figure>
@@ -646,10 +640,6 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     () => sumRates(rows.map((row) => row.orientationRates)),
     [rows],
   );
-  const orientationNonZero = useMemo(
-    () => sumTallies(rows.map((row) => row.orientationNonZero)),
-    [rows],
-  );
   /** Class 1 counts across all files. */
   const ratesFor = (id: MetricId) =>
     id === "blankJunk"
@@ -743,10 +733,6 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                   tally={overallByMetric[metric.id]}
                   rates={ratesFor(metric.id)}
                   ratesLabel={ratesLabelFor(metric.id)}
-                  subset={(() => {
-                    const rates = ratesFor(metric.id);
-                    return rates ? classSubset(metric.id, rates, orientationNonZero) : undefined;
-                  })()}
                   binary={metric.binary}
                 />
                 ),
@@ -840,10 +826,6 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                           tally={row.metrics[metric.id]}
                           binary={metric.binary}
                           rates={rowRatesFor(row, metric.id)}
-                          subset={(() => {
-                            const rates = rowRatesFor(row, metric.id);
-                            return rates ? classSubset(metric.id, rates, row.orientationNonZero) : undefined;
-                          })()}
                         />
                       </td>
                     ))}

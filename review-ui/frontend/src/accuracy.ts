@@ -40,7 +40,7 @@ export const METRICS: {
     id: "member",
     label: "Member Verification",
     binary: true,
-    rule: "Exact match on the Name and DOB presence labels: a page is a Match only when the pipeline found (or did not find) the Name and the DOB exactly as the ground truth says. Scored on pages with both labels. Member ID is not scored (no ground truth). Under Member & DOB = Yes: Accuracy = of the pages where the ground truth or the pipeline has both Name and DOB, the share where both do; Precision, Recall and F1 on the same pages",
+    rule: "Exact match on the Name and DOB presence labels: a page is a Match only when the pipeline found (or did not find) the Name and the DOB exactly as the ground truth says. Scored on pages with both labels. Member ID is not scored (no ground truth). Under Member & DOB = Yes (cases = pages the ground truth has both on): Precision, Recall and F1",
   },
   {
     id: "dos",
@@ -51,7 +51,7 @@ export const METRICS: {
     id: "blankJunk",
     label: "Blank / Junk",
     binary: true,
-    rule: "Blank / Junk (Yes) or not (No) matches the ground truth, on every labelled page. Blank vs junk, and the junk sub-type, do not count: Match or No Match, no Partial. Under Blank/Junk = Yes: Accuracy = of the pages the ground truth or the pipeline calls blank / junk, the share where both do; Precision, Recall and F1 on the same pages",
+    rule: "Blank / Junk (Yes) or not (No) matches the ground truth, on every labelled page. Blank vs junk, and the junk sub-type, do not count: Match or No Match, no Partial. Under Blank/Junk = Yes (cases = pages the ground truth calls blank / junk): Precision, Recall and F1",
   },
   {
     id: "pageType",
@@ -74,7 +74,7 @@ export const METRICS: {
     id: "orientation",
     label: "Orientation",
     binary: true,
-    rule: "Accuracy = of every page with an orientation label, the share where the stored text orientation equals the ground truth (0 / 90 / 180 / 270, degrees the text sits counter-clockwise); an upright page left upright is a match. Under Rotated (not 0°) = Yes: Accuracy = the same, on the subset where the ground truth or the pipeline says the page is rotated; Precision = of the pages the pipeline turned, the share at the right angle (an upright page turned by mistake counts against it); Recall = of the rotated pages, the share found at the right angle. A label that is not a quarter turn (12°) is not scored. Not part of the overall page match",
+    rule: "Accuracy = of every page with an orientation label, the share where the stored text orientation equals the ground truth (0 / 90 / 180 / 270, degrees the text sits counter-clockwise); an upright page left upright is a match. Under Rotated (not 0°) = Yes (cases = pages the ground truth calls rotated): Precision = of the pages the pipeline turned, the share at the right angle (an upright page turned by mistake counts against it); Recall = of the rotated pages, the share found at the right angle. A label that is not a quarter turn (12°) is not scored. Not part of the overall page match",
     inOverall: false,
   },
 ];
@@ -111,8 +111,6 @@ export type ChartAccuracy = {
   blankJunkRates: ClassRates;
   /** Class 1 = a rotated page (not 0°). */
   orientationRates: ClassRates;
-  /** Orientation on the pages the ground truth or the pipeline calls rotated (not 0°). */
-  orientationNonZero: Tally;
   /** Class 1 = both the member's Name and DOB are on the page. */
   memberRates: ClassRates;
 };
@@ -176,17 +174,6 @@ function addOrientationRates(
     rates.fp += 1;
     rates.fn += 1;
   }
-}
-
-/** The non-zero subset: pages where the ground truth or the pipeline says the
- * page is rotated. Null for a page both call upright (or one not scored). */
-function nonZeroOrientationVerdict(bits: GtBit[], angle: number | null | undefined): Verdict | null {
-  if (!labeled(bits) || bits[0].mark === "unknown") return null;
-  const expectedTurn = quarterTurn(bits[0].label);
-  const actualTurn = quarterTurn(angle);
-  if (expectedTurn === null || actualTurn === null) return null;
-  if (expectedTurn === 0 && actualTurn === 0) return null;
-  return expectedTurn === actualTurn ? "yes" : "no";
 }
 
 /** Blank / junk as Yes / No: blank vs junk and the junk sub-type do not count.
@@ -446,7 +433,6 @@ export function scoreChart(
   >;
   const blankJunkRates = emptyRates();
   const orientationRates = emptyRates();
-  const orientationNonZero = emptyTally();
   const memberRates = emptyRates();
   const overall = emptyTally();
   for (const page of doc.pages) {
@@ -458,7 +444,6 @@ export function scoreChart(
       addRates(blankJunkRates, scored.blankJunk.expected, scored.blankJunk.predicted);
     }
     addOrientationRates(orientationRates, scored.rotation, page.orientationAngle);
-    add(orientationNonZero, nonZeroOrientationVerdict(scored.rotation, page.orientationAngle));
     if (scored.member) {
       // Class 1: both Name and DOB on the page.
       addRates(
@@ -475,7 +460,6 @@ export function scoreChart(
     overall,
     blankJunkRates,
     orientationRates,
-    orientationNonZero,
     memberRates,
   };
 }
