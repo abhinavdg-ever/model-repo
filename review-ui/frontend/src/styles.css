@@ -3233,6 +3233,11 @@ input {
   box-shadow: 0 1px 2px rgba(42, 58, 32, 0.04), 0 3px 10px rgba(42, 58, 32, 0.05);
   text-align: center;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  /* A column, so the "= Yes" box can sit on the card's bottom edge: cards in
+     a row are the same height, and their boxes line up. */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .accuracy-donut-card:hover {
@@ -3288,9 +3293,15 @@ input {
 
 /* The "= Yes" (Class 1) block under a donut: a label, then Precision / Recall / F1. */
 .accuracy-class {
-  margin-top: 0.45rem;
+  align-self: stretch;
+  margin-top: auto;
   padding-top: 0.4rem;
   border-top: 1px dashed var(--border);
+}
+
+/* The gap above the "= Yes" box, now that its margin is auto. */
+.accuracy-donut-card > .accuracy-distribution {
+  margin-bottom: 0.45rem;
 }
 
 .accuracy-class-head {
