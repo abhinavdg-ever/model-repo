@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import time
 from functools import lru_cache
@@ -96,12 +95,24 @@ def _normalize_account_url(raw: str) -> str:
     return f"https://{value}.blob.core.windows.net"
 
 
+def _connection_string_account(connection_string: str) -> str:
+    """AccountName=... from an Azure Storage connection string, else ""."""
+    for part in connection_string.split(";"):
+        key, _, value = part.partition("=")
+        if key.strip().lower() == "accountname":
+            return value.strip()
+    return ""
+
+
 def resolved_blob_account_url(settings: Settings | None = None) -> str:
-    """BLOB_ACCOUNT_URL, else AZURE_STORAGE_ACCOUNT_NAME (same account as pipeline)."""
+    """BLOB_ACCOUNT_URL, else AZURE_STORAGE_ACCOUNT_NAME, else the connection
+    string's account (the same variables as core-pipeline)."""
     cfg = settings or get_settings()
-    raw = (cfg.blob_account_url or "").strip()
-    if not raw:
-        raw = (os.environ.get("AZURE_STORAGE_ACCOUNT_NAME") or "").strip()
+    raw = (
+        (cfg.blob_account_url or "").strip()
+        or (cfg.azure_storage_account_name or "").strip()
+        or _connection_string_account(cfg.azure_storage_connection_string or "")
+    )
     return _normalize_account_url(raw)
 
 
@@ -127,6 +138,12 @@ def _blob_service_client() -> BlobServiceClient:
         raise RuntimeError(
             "BLOB_ACCOUNT_URL (or AZURE_STORAGE_ACCOUNT_NAME) is not configured"
         )
+    connection_string = settings.azure_storage_connection_string.strip()
+    if connection_string:
+        return BlobServiceClient.from_connection_string(connection_string)
+    account_key = settings.azure_storage_account_key.strip()
+    if account_key:
+        return BlobServiceClient(account_url=account_url, credential=account_key)
     return BlobServiceClient(account_url=account_url, credential=_credential(settings))
 
 
@@ -240,7 +257,8 @@ def download_blob_bytes(
     if not resolved_blob_account_url(settings) or not container:
         raise HTTPException(
             status_code=400,
-            detail="BLOB_ACCOUNT_URL and BLOB_CONTAINER must be set for Entra blob access",
+            detail="BLOB_ACCOUNT_URL (or AZURE_STORAGE_ACCOUNT_NAME) and BLOB_CONTAINER "
+            "(or AZURE_STORAGE_CONTAINER) must be set for blob access",
         )
 
     key = build_blob_key(

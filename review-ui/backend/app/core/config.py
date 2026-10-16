@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[3]  # review-ui app root
@@ -44,13 +44,25 @@ class Settings(BaseSettings):
     api_port: int = 8002
     allowed_origins: str = "http://127.0.0.1:5174,http://localhost:5174"
 
-    # File Viewer — Azure Blob
+    # File Viewer — Azure Blob. The core-pipeline names (AZURE_STORAGE_*) are
+    # accepted too, so one block can be copied between the two .env files.
     file_viewer_blob_enabled: bool = False
-    # entra = Microsoft Entra ID (recommended when Shared Key is disabled)
-    # sas   = legacy Shared Key / account-or-service SAS (blocked if AllowSharedKeyAccess=false)
+    # entra = the server reads the blob and serves the bytes (Entra ID, or the
+    #         account key / connection string when one is set). core-pipeline's
+    #         key | entra_interactive | managed_identity all mean this here.
+    # sas   = legacy: redirect to the blob URL with BLOB_SAS_TOKEN
+    # BLOB_AUTH_MODE / BLOB_CONTAINER win when set (non-empty); else
+    # AZURE_STORAGE_AUTH / AZURE_STORAGE_CONTAINER fill them (_core_names).
     blob_auth_mode: Literal["entra", "sas"] = "entra"
     blob_account_url: str = ""
     blob_container: str = ""
+    # Same variables as core-pipeline. Account name stands in for
+    # BLOB_ACCOUNT_URL; a key or connection string replaces Entra ID.
+    azure_storage_auth: str = ""
+    azure_storage_container: str = ""
+    azure_storage_account_name: str = ""
+    azure_storage_account_key: str = ""
+    azure_storage_connection_string: str = ""
     # Path inside container. Tokens: {folder} {filename} {page}
     blob_path_template: str = "{folder}/pages/{filename}"
 
@@ -61,6 +73,20 @@ class Settings(BaseSettings):
 
     # Legacy SAS only (blob_auth_mode=sas). Not usable when Shared Key is disabled.
     blob_sas_token: str = ""
+
+    @field_validator("blob_auth_mode", mode="before")
+    @classmethod
+    def _normalize_blob_auth_mode(cls, value: object) -> str:
+        raw = str(value or "entra").strip().lower()
+        return "sas" if raw == "sas" else "entra"
+
+    @model_validator(mode="after")
+    def _core_names(self) -> "Settings":
+        if not self.blob_container.strip() and self.azure_storage_container.strip():
+            self.blob_container = self.azure_storage_container.strip()
+        if "blob_auth_mode" not in self.model_fields_set and self.azure_storage_auth.strip():
+            self.blob_auth_mode = self._normalize_blob_auth_mode(self.azure_storage_auth)
+        return self
 
     @field_validator("data_mode", mode="before")
     @classmethod
