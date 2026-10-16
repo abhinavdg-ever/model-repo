@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://USER:PASSWORD@HOST:5432/imaging_outputs"
     # POC tables are in public (database name is imaging_outputs)
     db_schema: str = "public"
+    # Pooled connections (app/services/db.py). core-pipeline's pool is 20 by
+    # default; 20 + 20 stays under Postgres' default max_connections (100).
+    db_pool_min: int = 1
+    db_pool_max: int = 20
+    # Seconds a request waits for a free pooled connection.
+    db_pool_wait_sec: float = 10.0
     api_host: str = "127.0.0.1"
     api_port: int = 8002
     allowed_origins: str = "http://127.0.0.1:5174,http://localhost:5174"

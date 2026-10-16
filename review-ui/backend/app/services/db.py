@@ -18,11 +18,11 @@ from typing import Iterator
 logger = logging.getLogger("review_ui.db")
 
 CONNECT_TIMEOUT_SEC = 3
-POOL_MAX_SIZE = 10
-# How long a request waits for a free pooled connection before failing.
-POOL_WAIT_SEC = 5.0
+# Pool size and wait: DB_POOL_MIN / DB_POOL_MAX / DB_POOL_WAIT_SEC in
+# review-ui/.env (Settings; 1, 20 and 10 s by default). While core-pipeline writes, reads slow
+# down and a busy page holds several connections at once; 10 ran out.
 # After a failed connect, every DB read fails at once for this long instead of
-# each waiting POOL_WAIT_SEC: an unreachable database (firewall, VPN, wrong
+# each waiting the pool timeout: an unreachable database (firewall, VPN, wrong
 # host) would otherwise add seconds to every request, even in Local mode.
 DOWN_RETRY_SEC = 30.0
 
@@ -71,11 +71,14 @@ def _pool_for(url: str, schema: str):
     with _pools_lock:
         pool = _pools.get(key)
         if pool is None:
+            from app.core.config import get_settings
+
+            settings = get_settings()
             pool = ConnectionPool(
                 url,
-                min_size=1,
-                max_size=POOL_MAX_SIZE,
-                timeout=POOL_WAIT_SEC,
+                min_size=max(0, min(settings.db_pool_min, settings.db_pool_max)),
+                max_size=max(1, settings.db_pool_max),
+                timeout=max(1.0, settings.db_pool_wait_sec),
                 kwargs=_connect_kwargs(schema),
                 # A pooled socket can die under us (laptop sleep, Wi-Fi or VPN
                 # change: "Can't assign requested address"). Test each one on
@@ -118,7 +121,17 @@ def connection(database_url: str, db_schema: str | None = "public") -> Iterator:
             borrowed = pool.connection()  # type: ignore[attr-defined]
         conn = borrowed.__enter__()
     except Exception as exc:
-        # Getting a connection failed (not a query): stop trying for a while.
+        # A busy pool (every connection lent out) is not a dead database: only
+        # stop trying when the pool could not keep a single connection open.
+        stats = pool.get_stats() if pool is not None else {}  # type: ignore[attr-defined]
+        if stats.get("pool_size", 0) > 0:
+            logger.warning(
+                "database pool busy (%s of %s connections in use, %s waiting): %s",
+                stats.get("pool_size", 0) - stats.get("pool_available", 0),
+                stats.get("pool_max"), stats.get("requests_waiting"),
+                str(exc).splitlines()[0][:160],
+            )
+            raise
         if key not in _down_until or _down_until[key] <= now:
             logger.warning(
                 "database unreachable (%s); DB reads fail fast for %.0fs",
