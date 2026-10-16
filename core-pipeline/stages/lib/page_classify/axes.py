@@ -383,8 +383,41 @@ def _raw_json(raw: dict[str, Any]) -> dict[str, Any]:
 # --- The model --------------------------------------------------------------------------
 
 
+# The weight files. A clone made while they were in git LFS, on a machine
+# without git-lfs, has a ~130-byte text pointer in their place.
+WEIGHT_FILES = ("heads.pt", "encoder/model.safetensors")
+_LFS_POINTER = b"version https://git-lfs"
+
+
 def _missing(folder: Path) -> list[str]:
     return [name for name in MODEL_FILES if not (folder / name).is_file()]
+
+
+def _lfs_pointers(folder: Path) -> list[str]:
+    """Weight files that are git LFS pointers, not weights."""
+    out = []
+    for name in WEIGHT_FILES:
+        path = folder / name
+        try:
+            if path.is_file() and path.stat().st_size < 1024:
+                with path.open("rb") as handle:
+                    if handle.read(len(_LFS_POINTER)) == _LFS_POINTER:
+                        out.append(name)
+        except OSError:
+            continue
+    return out
+
+
+def _unusable(folder: Path) -> Optional[str]:
+    """Why the folder cannot be loaded, or None."""
+    missing = _missing(folder)
+    if missing:
+        return f"no model at {folder} ({', '.join(missing)} missing)"
+    pointers = _lfs_pointers(folder)
+    if pointers:
+        return (f"{', '.join(pointers)} in {folder} is a git LFS pointer, not the model; "
+                "copy the real file there (docs/PAGE_AXES_MODEL.md)")
+    return None
 
 
 def check_taxonomy(space: dict[str, Any], folder: Path) -> None:
@@ -405,9 +438,9 @@ def _load() -> Optional[dict[str, Any]]:
         if _loaded is not None or _failed is not None:
             return _loaded
         folder = model_dir()
-        missing = _missing(folder)
-        if missing:
-            _failed = f"no model at {folder} ({', '.join(missing)} missing)"
+        unusable = _unusable(folder)
+        if unusable:
+            _failed = unusable
             logger.warning("Page axes: %s; canon only", _failed)
             return None
         if not (find_spec("transformers") and find_spec("torch")):
@@ -418,8 +451,13 @@ def _load() -> Optional[dict[str, Any]]:
 
         from stages.lib.page_classify import axes_model
 
-        model, tokenizer, space = axes_model.load_model(folder)
-        check_taxonomy(space, folder)
+        try:
+            model, tokenizer, space = axes_model.load_model(folder)
+            check_taxonomy(space, folder)
+        except Exception as exc:  # noqa: BLE001 — a bad model must not sink the chart
+            _failed = f"model at {folder} failed to load: {str(exc).splitlines()[0][:200]}"
+            logger.error("Page axes: %s; canon only", _failed)
+            return None
         _loaded = {"model": model, "tokenizer": tokenizer, "space": space, "torch": torch}
         logger.info("Page axes: %d L1 classes, %d specialties from %s",
                     len(space["L1"]), len(space["specialty"]), folder)
@@ -461,10 +499,9 @@ def describe() -> dict[str, Any]:
     import json
 
     folder = model_dir()
-    missing = _missing(folder)
-    if missing:
-        return {"ready": False, "reason": f"no model at {folder} ({', '.join(missing)} missing); canon only",
-                "path": str(folder)}
+    unusable = _unusable(folder)
+    if unusable:
+        return {"ready": False, "reason": f"{unusable}; canon only", "path": str(folder)}
     try:
         space = json.loads((folder / "label_space.json").read_text(encoding="utf-8"))
         check_taxonomy(space, folder)

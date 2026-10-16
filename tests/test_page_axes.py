@@ -292,3 +292,20 @@ class TestDownstreamNames:
         demographics = {"axes": {"l1": "Demographics", "l2": "Patient Demographics"}}
         assert uses_default_final_dos(*axes.names_of(demographics))
         assert not uses_default_final_dos(*axes.names_of(self.ROW))
+
+
+class TestUnusableModelFolder:
+    def test_git_lfs_pointer_is_not_a_model(self, tmp_path):
+        from stages.lib.page_classify import axes
+
+        (tmp_path / "encoder").mkdir()
+        (tmp_path / "encoder" / "config.json").write_text("{}", encoding="utf-8")
+        (tmp_path / "label_space.json").write_text("{}", encoding="utf-8")
+        (tmp_path / "heads.pt").write_bytes(b"version https://git-lfs.github.com/spec/v1\noid sha256:ab\nsize 280789\n")
+        reason = axes._unusable(tmp_path)
+        assert reason and "git LFS pointer" in reason and "heads.pt" in reason
+
+    def test_missing_files_are_named(self, tmp_path):
+        from stages.lib.page_classify import axes
+
+        assert "heads.pt" in (axes._unusable(tmp_path) or "")

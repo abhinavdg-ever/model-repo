@@ -2714,6 +2714,9 @@ class TestNoModelWeightsInGit:
     configs, tokenizers) are not weights in this sense."""
 
     WEIGHT_SUFFIXES = (".safetensors", ".pt", ".pth", ".bin", ".onnx", ".h5", ".ckpt", ".ot", ".gguf")
+    # Small on purpose: the page-axes heads (280 KB). The encoder they sit on
+    # (encoder/model.safetensors, 265 MB) is never committed.
+    ALLOWED = {"core-pipeline/models/page-family/page-axes/heads.pt"}
     MAX_TRACKED_BYTES = 20 * 1024 * 1024
 
     @staticmethod
@@ -2730,7 +2733,10 @@ class TestNoModelWeightsInGit:
         return [p for p in out.split("\0") if p]
 
     def test_no_weight_file_is_tracked(self):
-        weights = [p for p in self._tracked() if p.lower().endswith(self.WEIGHT_SUFFIXES)]
+        weights = [
+            p for p in self._tracked()
+            if p.lower().endswith(self.WEIGHT_SUFFIXES) and p not in self.ALLOWED
+        ]
         assert not weights, f"model weights tracked in git (copy them onto each host instead): {weights}"
 
     def test_no_large_file_is_tracked(self):

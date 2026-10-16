@@ -76,10 +76,10 @@ Replace all three together. `heads.pt` only works with the `encoder/` and
 `label_space.json` from the same run; a mix loads but predicts nonsense, or
 fails on a shape mismatch.
 
-The weights are not committed: `encoder/model.safetensors` (265 MB) and
-`heads.pt` are git-ignored, while the small files (configs, tokenizer,
-`label_space.json`) are in git. Copy the two weight files onto every host that
-runs the pipeline. In Docker they arrive through the models mount
+`encoder/model.safetensors` (265 MB) is not committed: copy it onto every host
+that runs the pipeline. Everything else is in git: `heads.pt` (280 KB), the
+configs, the tokenizer and `label_space.json`. `heads.pt` only works with the
+`model.safetensors` from the same training run, so replace the two together. In Docker they arrive through the models mount
 (`MODELS_HOST_PATH`, default `./models`), so no rebuild is needed.
 
 A different folder works too: set `PAGE_AXES_MODEL_DIR` in `core-pipeline/.env`.
