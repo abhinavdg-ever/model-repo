@@ -44,7 +44,7 @@ export const METRICS: {
   {
     id: "dos",
     label: "DOS",
-    rule: "Each labelled date (From, To) matches the Final DOS: Match. Matches only the Extracted DOS: Partial. Neither: No Match",
+    rule: "Every page is compared. Labelled dates (From, To) match the Final DOS: Match; only the Extracted DOS: Partial; neither: No Match. A page whose DOS label is blank / NA / Not Available expects no date: the pipeline finding none is a Match, finding one is a No Match. Under Date on either side (cases = pages where the ground truth or the pipeline has a date): Accuracy on those pages; Precision = of the pages the pipeline dated, the share right; Recall = of the pages the ground truth dates, the share found",
   },
   {
     id: "blankJunk",
@@ -55,19 +55,19 @@ export const METRICS: {
   {
     id: "pageType",
     label: "Page Type",
-    rule: "Ground-truth page type matches the Final page type or subtype, or is an accepted label for its model type (else semantic similarity > 0.8): Match. Matches only the Extracted page type, or is a broader label: Partial. Neither: No Match. Not scored on blank or junk pages",
+    rule: "Scored on the pages the ground truth says are not blank / junk. Ground-truth page type matches the Final page type or subtype, or is an accepted label for its model type (else semantic similarity > 0.8): Match. Matches only the Extracted page type, or is a broader label: Partial. Neither: No Match. A page the pipeline called blank / junk has the type Blank/Junk: No Match",
   },
   {
     id: "codeable",
     label: "Codable / Non-Codable",
     tableLabel: "Codability",
-    rule: "Codable label matches the Final codability: Match. Matches only the Extracted one: Partial. Neither: No Match. A page the ground truth or the pipeline calls Discharge is not scored",
+    rule: "Every labelled page. Codable label matches the Final codability: Match. Matches only the Extracted one: Partial. Neither: No Match. Discharge counts as Codable on both sides; a page the pipeline called blank / junk is Non-Codable",
   },
   {
     id: "credentials",
     label: "Provider Credentials",
     binary: true,
-    rule: "Credentials match (MD, DO, NP…; punctuation and order ignored); some shared also counts as a Match. Match or No Match, no Partial. Not Available = the label is NA / Not Available / None; counted, not scored. Under Credentials = Yes (cases = pages the ground truth gives credentials): Precision = of the pages where the pipeline extracted credentials, the share right; Recall = of the cases, the share found",
+    rule: "Every page is compared. Credentials match (MD, DO, NP…; punctuation and order ignored); some shared also counts as a Match. A page whose label is blank / NA / Not Available / None expects none: the pipeline extracting none is a Match, some is a No Match. Match or No Match, no Partial. Under Credential on either side (cases = pages where the ground truth or the pipeline has credentials): Accuracy on those pages; Precision = of the pages the pipeline gave credentials, the share right; Recall = of the pages the ground truth gives credentials, the share found",
   },
   {
     id: "orientation",
@@ -115,6 +115,12 @@ export type ChartAccuracy = {
   memberRates: ClassRates;
   /** Class 1 = the ground truth gives the provider's credentials. */
   credentialsRates: ClassRates;
+  /** Credentials on the pages where either side has some. */
+  credentialsEither: Tally;
+  /** Class 1 = the ground truth dates the page. */
+  dosRates: ClassRates;
+  /** DOS on the pages where either side has a date. */
+  dosEither: Tally;
 };
 
 const EMPTY_SECTIONS: ImagingSectionsProcessed = {
@@ -243,10 +249,6 @@ function grade(bits: GtBit[]): Verdict {
   return "no";
 }
 
-function isDischarge(value: string | null | undefined): boolean {
-  return (value ?? "").trim().toLowerCase().startsWith("discharge");
-}
-
 function text(value: string | null | undefined): string {
   return (value ?? "").trim();
 }
@@ -278,6 +280,8 @@ function pageScores(
   /** The metrics a page is held to: all six, or five on a blank / junk page. */
   applicable: typeof METRICS;
   member: ReturnType<typeof memberCall>;
+  dos: PresenceCall | null;
+  credentials: PresenceCall | null;
 } {
   const parts = splitPageType(page.pageType);
   const input = {
@@ -334,18 +338,40 @@ function pageScores(
     memberRight === null ? null : memberRight === 2 ? "yes" : memberRight === 1 ? "maybe" : "no";
   const blankJunkCalls = blankJunkCall(bits.blankJunk);
 
-  const dos = finalOrExtracted(dosVerdict(finalBits), dosVerdict(bits));
+  // DOS on every page: a ground truth with no date expects none.
+  const pipelineDated = Boolean(finalFrom || finalTo);
+  const gtDated = !noValue(page.groundTruth?.dosFrom) || !noValue(page.groundTruth?.dosTo);
+  const dosCall: PresenceCall | null = gtDated
+    ? (() => {
+        const verdict = finalOrExtracted(dosVerdict(finalBits), dosVerdict(bits));
+        return verdict ? { expected: true, predicted: pipelineDated, verdict } : null;
+      })()
+    : { expected: false, predicted: pipelineDated, verdict: pipelineDated ? "no" : "yes" };
+  const dos = dosCall?.verdict ?? null;
 
   const single = (field: GtBit[]): Verdict | null => (labeled(field) ? grade(field) : null);
 
-  // A blank or junk page has no page type to score: the ground truth says so,
-  // or, when it has no blank / junk label, the pipeline does.
+  // Page type is scored on the pages the ground truth says are not blank /
+  // junk. One the pipeline called blank / junk has the type Blank/Junk: a miss.
   const truth = page.groundTruth ? blankJunkTruth(page.groundTruth) : null;
-  const blankOrJunk = truth
-    ? truth.toLowerCase().startsWith("yes")
-    : (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
+  const blankOrJunk = (truth ?? "").toLowerCase().startsWith("yes");
+  const pipelineBlankJunk = (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
+  const pageTypeLabelled = labeled(bits.pageType) || labeled(finalBits.pageType);
 
-  const credentials = credentialsVerdict(gtCredentials(page.groundTruth), page.providerCredentials);
+  // Codability on every labelled page; Discharge is Codable. A page the
+  // pipeline called blank / junk carries no codability: it is Non-Codable.
+  const codeableBits = (value: string | null | undefined) =>
+    groundTruthBits({
+      ...input,
+      isCodeable: pipelineBlankJunk && !text(value) ? "Non-Codable" : value,
+      codeableKnown: input.codeableKnown || pipelineBlankJunk,
+    }).codeable;
+  const codeable = finalOrExtracted(
+    single(codeableBits(text(page.finalCodeable) || page.isCodeable)),
+    single(codeableBits(page.isCodeable)),
+  );
+
+  const credentialsCalled = credentialsCall(page);
 
   return {
     scores: {
@@ -354,14 +380,13 @@ function pageScores(
       blankJunk: blankJunkCalls
         ? blankJunkCalls.expected === blankJunkCalls.predicted ? "yes" : "no"
         : null,
-      pageType: blankOrJunk
+      pageType: blankOrJunk || !pageTypeLabelled
         ? null
-        : finalOrExtracted(single(finalBits.pageType), single(bits.pageType)),
-      // Discharge is a third type, not Codable or Non-Codable: left out.
-      codeable: [page.groundTruth?.codeable, page.finalCodeable, page.isCodeable].some(isDischarge)
-        ? null
-        : finalOrExtracted(single(finalBits.codeable), single(bits.codeable)),
-      credentials: credentials === "maybe" ? "yes" : credentials,
+        : pipelineBlankJunk
+          ? "no"
+          : finalOrExtracted(single(finalBits.pageType), single(bits.pageType)),
+      codeable,
+      credentials: credentialsCalled?.verdict ?? null,
       // An angle that is not a quarter turn, or a page the rotation stage did not run on, is
       // not scored (it is not a miss).
       orientation: bits.rotation[0]?.mark === "unknown" ? null : single(bits.rotation),
@@ -372,6 +397,8 @@ function pageScores(
       ? OVERALL_METRICS.filter((metric) => metric.id !== "pageType")
       : OVERALL_METRICS,
     member: memberCalls,
+    dos: dosCall,
+    credentials: credentialsCalled,
   };
 }
 
@@ -405,27 +432,47 @@ function credentialTokens(value: string | null | undefined): Set<string> {
 
 /** Same credentials = Yes; some shared = May be; none shared or none extracted = No.
  * A label that is only Yes / No (an old signature label) or NA is not scored. */
-/** NA / Not Available / None (not a blank label): the field is labelled, but
- * there is nothing to compare. */
-function isNotAvailable(value: string | null | undefined): boolean {
-  return ["na", "n/a", "not available", "not found", "none"].includes((value ?? "").trim().toLowerCase());
+/** A ground-truth value that says "nothing here": blank, NA, Not Available, None. */
+const NO_VALUE = new Set(["", "na", "n/a", "not available", "not applicable", "not found", "none"]);
+
+function noValue(value: string | null | undefined): boolean {
+  return NO_VALUE.has((value ?? "").trim().toLowerCase());
 }
 
-/** Class 1 = the ground truth names credentials. Right (some shared) = TP;
- * none extracted = FN; wrong ones = FP + FN, as a wrong angle is for Orientation. */
-function addCredentialsRates(
-  rates: ClassRates,
-  expected: string | null | undefined,
-  actual: string | null | undefined,
-): void {
-  const verdict = credentialsVerdict(expected, actual);
-  if (!verdict) return;
-  if (verdict !== "no") rates.tp += 1;
-  else if (credentialTokens(actual).size === 0) rates.fn += 1;
-  else {
+/** A field compared on every page: whether the ground truth and the pipeline
+ * have a value, and the verdict. */
+type PresenceCall = { expected: boolean; predicted: boolean; verdict: Verdict };
+
+/** Class 1 = the ground truth has a value. Right = TP; none found = FN; a wrong
+ * value = FP + FN (as a wrong angle is for Orientation); one where the ground
+ * truth has none = FP; neither = TN. */
+function addPresenceRates(rates: ClassRates, call: PresenceCall | null): void {
+  if (!call) return;
+  if (call.expected && call.verdict === "yes") rates.tp += 1;
+  else if (call.expected && !call.predicted) rates.fn += 1;
+  else if (call.expected) {
     rates.fp += 1;
     rates.fn += 1;
-  }
+  } else if (call.predicted) rates.fp += 1;
+  else rates.tn += 1;
+}
+
+/** The subset where the ground truth or the pipeline has a value. */
+function addEither(tally: Tally, call: PresenceCall | null): void {
+  if (call && (call.expected || call.predicted)) add(tally, call.verdict);
+}
+
+/** Credentials on every page. Old rows with only a Yes / No signature label
+ * say nothing about credentials and are left out. */
+function credentialsCall(page: ImagingPageResult): PresenceCall | null {
+  const gt = page.groundTruth;
+  const label = gtCredentials(gt);
+  if (!label && yesNo(gt?.providerSignature) === "yes") return null;
+  const predicted = credentialTokens(page.providerCredentials).size > 0;
+  if (noValue(label)) return { expected: false, predicted, verdict: predicted ? "no" : "yes" };
+  const verdict = credentialsVerdict(label, page.providerCredentials);
+  if (!verdict) return null;
+  return { expected: true, predicted, verdict: verdict === "maybe" ? "yes" : verdict };
 }
 
 function credentialsVerdict(
@@ -433,7 +480,7 @@ function credentialsVerdict(
   actual: string | null | undefined,
 ): Verdict | null {
   const folded = (expected ?? "").trim().toLowerCase();
-  if (!folded || yesNo(folded) != null || isNotAvailable(folded)) {
+  if (!folded || yesNo(folded) != null || noValue(folded)) {
     return null;
   }
   const want = credentialTokens(expected);
@@ -466,6 +513,9 @@ export function scoreChart(
   const orientationRates = emptyRates();
   const memberRates = emptyRates();
   const credentialsRates = emptyRates();
+  const credentialsEither = emptyTally();
+  const dosRates = emptyRates();
+  const dosEither = emptyTally();
   const overall = emptyTally();
   for (const page of doc.pages) {
     if (!hasGroundTruth(page.groundTruth)) continue;
@@ -473,9 +523,10 @@ export function scoreChart(
     for (const metric of METRICS) add(metrics[metric.id], scored.scores[metric.id]);
     // A page with ground truth that Member cannot score is Not Available.
     if (!scored.scores.member) metrics.member.na += 1;
-    const credentialsLabel = gtCredentials(page.groundTruth);
-    if (isNotAvailable(credentialsLabel)) metrics.credentials.na += 1;
-    addCredentialsRates(credentialsRates, credentialsLabel, page.providerCredentials);
+    addPresenceRates(credentialsRates, scored.credentials);
+    addEither(credentialsEither, scored.credentials);
+    addPresenceRates(dosRates, scored.dos);
+    addEither(dosEither, scored.dos);
     add(overall, overallVerdict(scored.scores, scored.applicable));
     if (scored.blankJunk) {
       addRates(blankJunkRates, scored.blankJunk.expected, scored.blankJunk.predicted);
@@ -499,6 +550,9 @@ export function scoreChart(
     orientationRates,
     memberRates,
     credentialsRates,
+    credentialsEither,
+    dosRates,
+    dosEither,
   };
 }
 
