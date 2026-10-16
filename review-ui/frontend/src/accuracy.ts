@@ -44,7 +44,7 @@ export const METRICS: {
   {
     id: "dos",
     label: "DOS",
-    rule: "Every page is compared. Labelled dates (From, To) match the Final DOS: Match; only the Extracted DOS: Partial; neither: No Match. A page whose DOS label is blank / NA / Not Available expects no date: the pipeline finding none is a Match, finding one is a No Match. Under Date on either side (cases = pages where the ground truth or the pipeline has a date): Accuracy on those pages; Precision = of the pages the pipeline dated, the share right; Recall = of the pages the ground truth dates, the share found",
+    rule: "Every page is compared. Labelled dates (From, To) match the Final DOS: Match; only the Extracted DOS: Partial; neither: No Match. A page whose DOS label is blank / NA / Not Available expects no date: the pipeline finding none is a Match, finding one is a No Match. Under Date = Yes (cases = pages the ground truth dates): Precision = of the pages the pipeline dated, the share right; Recall = of the cases, the share found",
   },
   {
     id: "blankJunk",
@@ -67,7 +67,7 @@ export const METRICS: {
     id: "credentials",
     label: "Provider Credentials",
     binary: true,
-    rule: "Every page is compared. Credentials match (MD, DO, NP…; punctuation and order ignored); some shared also counts as a Match. A page whose label is blank / NA / Not Available / None expects none: the pipeline extracting none is a Match, some is a No Match. Match or No Match, no Partial. Under Credential on either side (cases = pages where the ground truth or the pipeline has credentials): Accuracy on those pages; Precision = of the pages the pipeline gave credentials, the share right; Recall = of the pages the ground truth gives credentials, the share found",
+    rule: "Every page is compared. Credentials match (MD, DO, NP…; punctuation and order ignored); some shared also counts as a Match. A page whose label is blank / NA / Not Available / None expects none: the pipeline extracting none is a Match, some is a No Match. Match or No Match, no Partial. Under Credentials = Yes (cases = pages the ground truth gives credentials): Precision = of the pages the pipeline gave credentials, the share right; Recall = of the cases, the share found",
   },
   {
     id: "orientation",
@@ -115,12 +115,8 @@ export type ChartAccuracy = {
   memberRates: ClassRates;
   /** Class 1 = the ground truth gives the provider's credentials. */
   credentialsRates: ClassRates;
-  /** Credentials on the pages where either side has some. */
-  credentialsEither: Tally;
   /** Class 1 = the ground truth dates the page. */
   dosRates: ClassRates;
-  /** DOS on the pages where either side has a date. */
-  dosEither: Tally;
 };
 
 const EMPTY_SECTIONS: ImagingSectionsProcessed = {
@@ -457,11 +453,6 @@ function addPresenceRates(rates: ClassRates, call: PresenceCall | null): void {
   else rates.tn += 1;
 }
 
-/** The subset where the ground truth or the pipeline has a value. */
-function addEither(tally: Tally, call: PresenceCall | null): void {
-  if (call && (call.expected || call.predicted)) add(tally, call.verdict);
-}
-
 /** Credentials on every page. Old rows with only a Yes / No signature label
  * say nothing about credentials and are left out. */
 function credentialsCall(page: ImagingPageResult): PresenceCall | null {
@@ -513,9 +504,7 @@ export function scoreChart(
   const orientationRates = emptyRates();
   const memberRates = emptyRates();
   const credentialsRates = emptyRates();
-  const credentialsEither = emptyTally();
   const dosRates = emptyRates();
-  const dosEither = emptyTally();
   const overall = emptyTally();
   for (const page of doc.pages) {
     if (!hasGroundTruth(page.groundTruth)) continue;
@@ -524,9 +513,8 @@ export function scoreChart(
     // A page with ground truth that Member cannot score is Not Available.
     if (!scored.scores.member) metrics.member.na += 1;
     addPresenceRates(credentialsRates, scored.credentials);
-    addEither(credentialsEither, scored.credentials);
     addPresenceRates(dosRates, scored.dos);
-    addEither(dosEither, scored.dos);
+
     add(overall, overallVerdict(scored.scores, scored.applicable));
     if (scored.blankJunk) {
       addRates(blankJunkRates, scored.blankJunk.expected, scored.blankJunk.predicted);
@@ -550,9 +538,7 @@ export function scoreChart(
     orientationRates,
     memberRates,
     credentialsRates,
-    credentialsEither,
     dosRates,
-    dosEither,
   };
 }
 

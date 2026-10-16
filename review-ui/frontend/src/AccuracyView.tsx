@@ -111,20 +111,11 @@ function classCases(rates: ClassRates): number {
   return rates.tp + rates.fn;
 }
 
-/** DOS and Credentials: the pages where either side has a value. */
-function eitherFor(row: { dosEither: Tally; credentialsEither: Tally }, id: MetricId): Tally | undefined {
-  if (id === "dos") return row.dosEither;
-  if (id === "credentials") return row.credentialsEither;
-  return undefined;
-}
-
-/** Precision / Recall / F1 for Class 1, label above value; first the accuracy
- * on the either-side subset, for DOS and Credentials. */
-function RatesGrid({ rates, either }: { rates: ClassRates; either?: Tally }) {
+/** Precision / Recall / F1 for Class 1, label above value. */
+function RatesGrid({ rates }: { rates: ClassRates }) {
   return (
     <dl className="accuracy-class-grid">
       {[
-        ...(either ? [["Accuracy", percentLabel(either)]] : []),
         ["Precision", formatPrecision(rates)],
         ["Recall", formatRecall(rates)],
         ["F1", formatF1(rates)],
@@ -143,12 +134,10 @@ function CompactScore({
   tally,
   binary = false,
   rates,
-  either,
 }: {
   tally: Tally;
   binary?: boolean;
   rates?: ClassRates;
-  either?: Tally;
 }) {
   if (tally.scored === 0) return <>—</>;
   return (
@@ -157,7 +146,7 @@ function CompactScore({
       <p className="accuracy-distribution">
         <Distribution tally={tally} binary={binary} />
       </p>
-      {rates ? <RatesGrid rates={rates} either={either} /> : null}
+      {rates ? <RatesGrid rates={rates} /> : null}
     </div>
   );
 }
@@ -165,7 +154,7 @@ function CompactScore({
 const SCORE_INFO =
   "Accuracy score = (Match + 0.5 × Partial) / Total, where Total = Match + Partial + No Match.";
 const RATES_INFO =
-  "The accuracy above counts every labelled page, Yes and No. Below it, Class 1 (the Yes pages) only; cases = the pages the ground truth calls Class 1 (DOS and Credentials: the pages where either side has a value, with the accuracy on them). " +
+  "The accuracy above counts every labelled page, Yes and No. Below it, Class 1 (the Yes pages) only; cases = the pages the ground truth calls Class 1. " +
   "Precision = TP / (TP + FP): share of the pipeline's Class 1 calls that were right. " +
   "Recall = TP / (TP + FN): share of the real Class 1 pages the pipeline caught. " +
   "F1 = 2 × Precision × Recall / (Precision + Recall). " +
@@ -177,7 +166,6 @@ function Donut({
   tally,
   rates,
   ratesLabel,
-  either,
   binary = false,
 }: {
   label: string;
@@ -189,11 +177,9 @@ function Donut({
   rates?: ClassRates;
   /** What Class 1 is ("Blank / Junk = Yes"). */
   ratesLabel?: string;
-  /** DOS / Credentials: the pages where either side has a value (the cases). */
-  either?: Tally;
 }) {
   const radius = 36;
-  const cases = either ? either.scored : rates ? classCases(rates) : 0;
+  const cases = rates ? classCases(rates) : 0;
   const circumference = 2 * Math.PI * radius;
   const segments = [
     { key: "yes", count: tally.yes, tone: "accuracy-donut-yes" },
@@ -249,7 +235,7 @@ function Donut({
               {ratesLabel} ({cases.toLocaleString()} {cases === 1 ? "case" : "cases"})
             </div>
           ) : null}
-          <RatesGrid rates={rates} either={either} />
+          <RatesGrid rates={rates} />
         </div>
       ) : null}
     </figure>
@@ -658,13 +644,6 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     [rows],
   );
   const dosRates = useMemo(() => sumRates(rows.map((row) => row.dosRates)), [rows]);
-  const either = useMemo(
-    () => ({
-      dosEither: sumTallies(rows.map((row) => row.dosEither)),
-      credentialsEither: sumTallies(rows.map((row) => row.credentialsEither)),
-    }),
-    [rows],
-  );
   const orientationRates = useMemo(
     () => sumRates(rows.map((row) => row.orientationRates)),
     [rows],
@@ -688,9 +667,9 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
       : id === "orientation"
         ? "Rotated (not 0°) = Yes"
         : id === "credentials"
-          ? "Credential on either side"
+          ? "Credentials = Yes"
           : id === "dos"
-            ? "Date on either side"
+            ? "Date = Yes"
             : "Blank/Junk = Yes";
 
   return (
@@ -770,7 +749,6 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                   tally={overallByMetric[metric.id]}
                   rates={ratesFor(metric.id)}
                   ratesLabel={ratesLabelFor(metric.id)}
-                  either={eitherFor(either, metric.id)}
                   binary={metric.binary}
                 />
                 ),
@@ -864,7 +842,6 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                           tally={row.metrics[metric.id]}
                           binary={metric.binary}
                           rates={rowRatesFor(row, metric.id)}
-                          either={eitherFor(row, metric.id)}
                         />
                       </td>
                     ))}
