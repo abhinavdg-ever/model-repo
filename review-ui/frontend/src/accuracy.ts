@@ -39,7 +39,7 @@ export const METRICS: {
   {
     id: "member",
     label: "Member Verification",
-    rule: "Name and DOB presence labels against what the pipeline found (or did not find): both right = Match, one right = Partial, neither = No Match. Not Available = a page with ground truth but no Name and DOB label, or one the member stage did not judge (blank / junk); it is counted, not scored. Member ID is not scored (no ground truth). Under Member & DOB = Yes (cases = pages the ground truth has both on): Precision, Recall and F1",
+    rule: "Name and DOB presence labels against what the pipeline found (or did not find): both right = Match, one right = Partial, neither = No Match. Not Available = a page whose Name or DOB label is NA / Not Available (or missing), or one the member stage did not judge (blank / junk); it is counted, not scored. Member ID is not scored (no ground truth). Under Member & DOB = Yes (cases = pages the ground truth has both on): Precision, Recall and F1",
   },
   {
     id: "dos",
@@ -188,11 +188,16 @@ function blankJunkCall(bits: GtBit[]): { expected: boolean; predicted: boolean }
 
 /** Name and DOB presence: what the ground truth says and what the pipeline
  * found, for each. Null unless both are labelled Yes / No and the member stage ran. */
+/** Ground-truth labels that mean "not available" rather than Yes / No. */
+const NOT_AVAILABLE = new Set(["", "na", "n/a", "not available"]);
+
 function memberCall(
   name: [string | null | undefined, GtBit[]],
   dob: [string | null | undefined, GtBit[]],
 ): { expected: [boolean, boolean]; predicted: [boolean, boolean] } | null {
   const sides = [name, dob].map(([label, bits]) => {
+    // NA / Not Available (or no label) is not a Yes / No: the page is Not Available.
+    if (NOT_AVAILABLE.has((label ?? "").trim().toLowerCase())) return null;
     const expected = yesNo(label);
     if (expected === null || !labeled(bits) || bits[0].mark === "unknown") return null;
     // "match" = the pipeline found it exactly when the ground truth says Yes.
