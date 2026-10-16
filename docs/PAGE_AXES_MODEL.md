@@ -76,12 +76,11 @@ Replace all three together. `heads.pt` only works with the `encoder/` and
 `label_space.json` from the same run; a mix loads but predicts nonsense, or
 fails on a shape mismatch.
 
-The model is committed. The weights (`encoder/model.safetensors`, `heads.pt`)
-go through **git LFS** (`.gitattributes`), so `git lfs install` once, then
-`git clone` / `git pull` brings them down (`git lfs pull` if a clone predates
-LFS). Committing a new model is `git add` of the three paths as usual; LFS
-stores the weights. In Docker they arrive through the models mount
-(`MODELS_HOST_PATH`, default `./models`, which is this folder), so no rebuild is needed.
+The weights are not committed: `encoder/model.safetensors` (265 MB) and
+`heads.pt` are git-ignored, while the small files (configs, tokenizer,
+`label_space.json`) are in git. Copy the two weight files onto every host that
+runs the pipeline. In Docker they arrive through the models mount
+(`MODELS_HOST_PATH`, default `./models`), so no rebuild is needed.
 
 A different folder works too: set `PAGE_AXES_MODEL_DIR` in `core-pipeline/.env`.
 

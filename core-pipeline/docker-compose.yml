@@ -96,7 +96,7 @@ services:
       - ${METADATA_HOST_PATH:-../review-ui/data/metadata}:/data/metadata
       # core-pipeline/models/ on the host: large checkpoints plus the small
       # models (blank-junk/, page-family/page-axes/ = the page-axes classifier,
-      # stored in git LFS, kv-extraction/, hw/).
+      # weights copied by hand, kv-extraction/, hw/).
       # .env paths such as models/page-family/page-axes resolve here. Writable: GLiNER
       # repairs encoder config.json on first load.
       - ${MODELS_HOST_PATH:-./models}:/app/core-pipeline/models
