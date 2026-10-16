@@ -67,7 +67,7 @@ export const METRICS: {
     id: "credentials",
     label: "Provider Credentials",
     binary: true,
-    rule: "Credentials match (MD, DO, NP…; punctuation and order ignored); some shared also counts as a Match. Match or No Match, no Partial",
+    rule: "Credentials match (MD, DO, NP…; punctuation and order ignored); some shared also counts as a Match. Match or No Match, no Partial. Not Available = the label is NA / Not Available / None; counted, not scored. Under Credentials = Yes (cases = pages the ground truth gives credentials): Precision = of the pages where the pipeline extracted credentials, the share right; Recall = of the cases, the share found",
   },
   {
     id: "orientation",
@@ -113,6 +113,8 @@ export type ChartAccuracy = {
   orientationRates: ClassRates;
   /** Class 1 = both the member's Name and DOB are on the page. */
   memberRates: ClassRates;
+  /** Class 1 = the ground truth gives the provider's credentials. */
+  credentialsRates: ClassRates;
 };
 
 const EMPTY_SECTIONS: ImagingSectionsProcessed = {
@@ -403,12 +405,35 @@ function credentialTokens(value: string | null | undefined): Set<string> {
 
 /** Same credentials = Yes; some shared = May be; none shared or none extracted = No.
  * A label that is only Yes / No (an old signature label) or NA is not scored. */
+/** NA / Not Available / None (not a blank label): the field is labelled, but
+ * there is nothing to compare. */
+function isNotAvailable(value: string | null | undefined): boolean {
+  return ["na", "n/a", "not available", "not found", "none"].includes((value ?? "").trim().toLowerCase());
+}
+
+/** Class 1 = the ground truth names credentials. Right (some shared) = TP;
+ * none extracted = FN; wrong ones = FP + FN, as a wrong angle is for Orientation. */
+function addCredentialsRates(
+  rates: ClassRates,
+  expected: string | null | undefined,
+  actual: string | null | undefined,
+): void {
+  const verdict = credentialsVerdict(expected, actual);
+  if (!verdict) return;
+  if (verdict !== "no") rates.tp += 1;
+  else if (credentialTokens(actual).size === 0) rates.fn += 1;
+  else {
+    rates.fp += 1;
+    rates.fn += 1;
+  }
+}
+
 function credentialsVerdict(
   expected: string | null | undefined,
   actual: string | null | undefined,
 ): Verdict | null {
   const folded = (expected ?? "").trim().toLowerCase();
-  if (!folded || yesNo(folded) != null || ["na", "n/a", "not found", "none"].includes(folded)) {
+  if (!folded || yesNo(folded) != null || isNotAvailable(folded)) {
     return null;
   }
   const want = credentialTokens(expected);
@@ -440,6 +465,7 @@ export function scoreChart(
   const blankJunkRates = emptyRates();
   const orientationRates = emptyRates();
   const memberRates = emptyRates();
+  const credentialsRates = emptyRates();
   const overall = emptyTally();
   for (const page of doc.pages) {
     if (!hasGroundTruth(page.groundTruth)) continue;
@@ -447,6 +473,9 @@ export function scoreChart(
     for (const metric of METRICS) add(metrics[metric.id], scored.scores[metric.id]);
     // A page with ground truth that Member cannot score is Not Available.
     if (!scored.scores.member) metrics.member.na += 1;
+    const credentialsLabel = gtCredentials(page.groundTruth);
+    if (isNotAvailable(credentialsLabel)) metrics.credentials.na += 1;
+    addCredentialsRates(credentialsRates, credentialsLabel, page.providerCredentials);
     add(overall, overallVerdict(scored.scores, scored.applicable));
     if (scored.blankJunk) {
       addRates(blankJunkRates, scored.blankJunk.expected, scored.blankJunk.predicted);
@@ -469,6 +498,7 @@ export function scoreChart(
     blankJunkRates,
     orientationRates,
     memberRates,
+    credentialsRates,
   };
 }
 

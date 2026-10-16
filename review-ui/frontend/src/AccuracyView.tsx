@@ -454,6 +454,7 @@ function rowRatesFor(row: ChartAccuracy, id: MetricId): ClassRates | undefined {
   if (id === "blankJunk") return row.blankJunkRates;
   if (id === "member") return row.memberRates;
   if (id === "orientation") return row.orientationRates;
+  if (id === "credentials") return row.credentialsRates;
   return undefined;
 }
 
@@ -636,6 +637,10 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     [rows],
   );
   const memberRates = useMemo(() => sumRates(rows.map((row) => row.memberRates)), [rows]);
+  const credentialsRates = useMemo(
+    () => sumRates(rows.map((row) => row.credentialsRates)),
+    [rows],
+  );
   const orientationRates = useMemo(
     () => sumRates(rows.map((row) => row.orientationRates)),
     [rows],
@@ -648,13 +653,17 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
         ? memberRates
         : id === "orientation"
           ? orientationRates
-          : undefined;
+          : id === "credentials"
+            ? credentialsRates
+            : undefined;
   const ratesLabelFor = (id: MetricId) =>
     id === "member"
       ? "Member & DOB = Yes"
       : id === "orientation"
         ? "Rotated (not 0°) = Yes"
-        : "Blank/Junk = Yes";
+        : id === "credentials"
+          ? "Credentials = Yes"
+          : "Blank/Junk = Yes";
 
   return (
     <div className="workspace accuracy-view">
