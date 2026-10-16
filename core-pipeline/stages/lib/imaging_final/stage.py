@@ -53,6 +53,8 @@ logger = logging.getLogger(__name__)
 
 STAGE = "imaging_final"
 
+DEFAULT_SPECIALTY = "Unknown"
+
 FINAL_COLS = ["chart_name", "page_name", "page_number", *IMAGING_FINAL_COLUMNS]
 
 # What a duplicate page takes from the page it duplicates. Every stage after
@@ -62,7 +64,7 @@ FINAL_COLS = ["chart_name", "page_name", "page_number", *IMAGING_FINAL_COLUMNS]
 COPIED_FROM_REFERENCE = (
     "member_name", "member_dob", "member_id",
     "document_seq",
-    "page_type", "page_subtype", "model_type", "codability", "classification_category",
+    "page_type", "page_subtype", "specialty", "model_type", "codability", "classification_category",
     "continuation_rule", "needs_review",
     "dos_from", "dos_to",
     "encounter_type", "provider_name", "signature_present",
@@ -225,6 +227,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "signature_present": signature.get("signature_present") if signature else None,
                 "seq": (sequencing.get(page_id) or {}).get("seq"),
                 "duplicate_of_page_id": None,
+                # The page's own, like the sub-type; not carried across the document.
+                # Unknown on a classified page the axes gave no specialty.
+                "specialty": axes.stored(kind).get("specialty") or (DEFAULT_SPECIALTY if kind else None),
             }
             rows[page_id] = row
 

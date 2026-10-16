@@ -910,6 +910,9 @@ def index_codeable_rows(
         confidence = _parse_confidence(row.get("confidence"))
         if confidence is not None:
             fields["pageTypeConfidence"] = confidence
+        fields["specialty"] = (row.get("specialty") or "").strip() or "Unknown"
+        if (row.get("specialty") or "").strip():
+            fields["specialtyConfidence"] = _parse_confidence(row.get("specialty_confidence"))
         if page_type:
             fields["pageType"] = display_page_type(page_type)
         elif label == "Not Sure":
@@ -1034,6 +1037,7 @@ def index_final_rows(
                 "finalCodeable": _CATEGORY_DISPLAY.get(category),
                 "finalDosFrom": show_date(row.get("dos_from")),
                 "finalDosTo": show_date(row.get("dos_to")),
+                "finalSpecialty": (row.get("specialty") or "").strip() or None,
             },
         )
     return by_key

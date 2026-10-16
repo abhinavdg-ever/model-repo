@@ -1344,6 +1344,8 @@ IMAGING_FINAL_COLUMNS = (
     "signature_present",
     "seq",
     "duplicate_of_page_id",
+    # Appended so the Final CSV's columns above keep their places.
+    "specialty",
 )
 
 

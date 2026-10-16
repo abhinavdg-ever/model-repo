@@ -190,6 +190,8 @@ from there (`"only": ["page_subtype", "continuity", "encounter_type",
 
 ## 7. When the labels change
 
+What to label next, class by class: [PAGE_AXES_TRAINING_NEEDS.md](PAGE_AXES_TRAINING_NEEDS.md).
+
 1. Retrain (`train_axes.py`) and repeat §2–§4.
 2. Rebuild the keyword canon from the new labels. It writes all three copies,
    including the pipeline's:

@@ -1556,6 +1556,14 @@ function PageDetails({
             gtHidden: true,
           },
           {
+            ...sameValue(fmt(page.specialty, pageTypeKnown), fmtConfidence(page.specialtyConfidence ?? null, pageTypeKnown), {
+              id: "specialty",
+              label: "Specialty",
+              noGroundTruth: true,
+            }),
+            processed: fmt(page.finalSpecialty ?? page.specialty, pageTypeKnown),
+          },
+          {
             ...sameValue(fmtCodeable(page.isCodeable, page.pageType, codeableKnown), fmtConfidence(null, Boolean(sections.codeable)), {
               id: "codeable",
               label: "Is Codable Or Non-Codable",

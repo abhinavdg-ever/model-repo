@@ -724,7 +724,9 @@ CREATE TRIGGER trg_page_continuity_results_updated_at
 -- first dated page's (dos_source = document) or the page's own. A duplicate
 -- page (skipped after blank/junk) copies its content fields from the page it
 -- duplicates: page_type_source = dos_source = 'duplicate', and
--- duplicate_of_page_id names that page.
+-- duplicate_of_page_id names that page. specialty is the page's own (the page
+-- axes' specialty in page_classification.axes), 'Unknown' on a classified page
+-- without one; no ground truth exists for it.
 CREATE TABLE imaging_final (
     id                       BIGSERIAL PRIMARY KEY,
     chart_id                 BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
@@ -744,6 +746,7 @@ CREATE TABLE imaging_final (
     document_seq             INT,
     page_type                VARCHAR(100),
     page_subtype             VARCHAR(200),
+    specialty                VARCHAR(100),
     model_type               VARCHAR(100),
     codability               VARCHAR(20),
     classification_category  VARCHAR(20),

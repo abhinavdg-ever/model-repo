@@ -68,6 +68,9 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * imaging_final.specialty (v1.sql): the page's own specialty from the page
+--    axes. Existing databases:
+--      ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS specialty VARCHAR(100);
 --  * dos_extraction_results.extraction_method also allows 'kv' (a date the
 --    key/value ranker supplied). The CHECK is widened below; v1.sql is unchanged.
 --  * pipeline_stage gains kv_extract (seq 56), after section_headers.

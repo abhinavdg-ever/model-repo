@@ -187,6 +187,7 @@ class ImagingPageResult(BaseModel):
     # stay the page's own (Extracted).
     finalPageType: str | None = None
     finalCodeable: str | None = None
+    finalSpecialty: str | None = None
     finalDosFrom: str | None = None
     finalDosTo: str | None = None
     # None = classification not run → UI shows NA
@@ -199,6 +200,9 @@ class ImagingPageResult(BaseModel):
     # Blank / Main / Duplicate → "Not Available"; Invoice|Cover → that label
     pageType: str | None = None
     pageTypeConfidence: float | None = None
+    # Page-axes specialty (page_classification.axes); no ground truth exists.
+    specialty: str | None = None
+    specialtyConfidence: float | None = None
     # Accuracy report only: best semantic similarity (0-1) between the
     # ground-truth page type and the predicted page type / sub-type.
     pageTypeSemantic: float | None = None

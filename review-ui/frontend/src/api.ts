@@ -162,6 +162,8 @@ export type ImagingPageResult = {
   finalCodeable?: string | null;
   finalDosFrom?: string | null;
   finalDosTo?: string | null;
+  /** Final specialty (imaging_final): the page's own. */
+  finalSpecialty?: string | null;
   /** null = not classified yet → UI shows NA; else "Yes (Blank)" | "Yes (Junk)" | "No" */
   blankOrJunk?: string | null;
   /** null = not classified → NA */
@@ -171,6 +173,9 @@ export type ImagingPageResult = {
   /** Blank/Main/Duplicate → Not Available; Invoice|Cover → type */
   pageType: string | null;
   pageTypeConfidence: number | null;
+  /** Page-axes specialty; no ground truth exists for it. */
+  specialty?: string | null;
+  specialtyConfidence?: number | null;
   /** Accuracy report: semantic similarity of the ground-truth page type (0–1). */
   pageTypeSemantic?: number | null;
   /** Codable | Non-Codable | Discharge (older runs: Codeable / Non Codeable). */

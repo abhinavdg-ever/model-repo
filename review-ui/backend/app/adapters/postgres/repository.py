@@ -933,7 +933,9 @@ class PostgresFolderRepository(FolderRepository):
                         """
                         SELECT p.page_name, pc.page_subtype,
                                pc.classification_category, pc.confidence,
-                               to_jsonb(pc) ->> 'page_type'
+                               to_jsonb(pc) ->> 'page_type',
+                               to_jsonb(pc) -> 'axes' ->> 'specialty',
+                               to_jsonb(pc) -> 'axes' ->> 'specialty_confidence'
                         FROM page_classification pc
                         JOIN page_list p ON p.id = pc.page_id
                         JOIN chart_list c ON c.id = pc.chart_id
@@ -948,8 +950,11 @@ class PostgresFolderRepository(FolderRepository):
                         "discharge_frequency": "Discharge",
                         "not_sure": "Not Sure",
                     }
-                    for page_name, subtype, cat, conf, page_type in cur.fetchall():
+                    for page_name, subtype, cat, conf, page_type, specialty, specialty_conf in cur.fetchall():
                         fields = _ensure(str(page_name))
+                        fields["specialty"] = specialty or "Unknown"
+                        if specialty_conf:
+                            fields["specialtyConfidence"] = float(specialty_conf)
                         key = str(cat or "").strip()
                         shown = compose_page_type(page_type, subtype)
                         if shown:
@@ -1040,7 +1045,8 @@ class PostgresFolderRepository(FolderRepository):
                         cur.execute(
                             """
                             SELECT p.page_name, f.page_type, f.classification_category,
-                                   f.dos_from, f.dos_to, to_jsonb(f) ->> 'page_subtype'
+                                   f.dos_from, f.dos_to, to_jsonb(f) ->> 'page_subtype',
+                                   to_jsonb(f) ->> 'specialty'
                             FROM imaging_final f
                             JOIN page_list p ON p.id = f.page_id
                             JOIN chart_list c ON c.id = f.chart_id
@@ -1048,8 +1054,9 @@ class PostgresFolderRepository(FolderRepository):
                             """,
                             (folder_id,),
                         )
-                        for page_name, final_type, category, final_from, final_to, final_sub in cur.fetchall():
+                        for page_name, final_type, category, final_from, final_to, final_sub, final_specialty in cur.fetchall():
                             fields = _ensure(str(page_name))
+                            fields["finalSpecialty"] = final_specialty or None
                             fields["finalPageType"] = compose_page_type(final_type, final_sub) or None
                             fields["finalCodeable"] = codeable_display.get(category or "")
                             fields["finalDosFrom"] = _fmt_date(final_from)
