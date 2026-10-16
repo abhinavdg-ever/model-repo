@@ -74,7 +74,8 @@ MODEL_SUBTYPE = {
 RETRIEVAL_GROUPS = ("record_request", "roi_vendors")
 HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice")
 
-# The three voters as the vote's reason names them (K = Keep, J = Junk, A = Abstain).
+# The three voters, in the order their letters are written in the vote
+# ("R9 vote JAK (DistilBERT, TF-IDF, keywords)"): K = Keep, J = Junk, A = Abstain.
 VOTER_NAMES = {"bert": "DistilBERT", "tfidf": "TF-IDF", "kw": "keywords"}
 
 RULE_CONFIDENCE = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R5": 0.95, "R6": 0.97, "R7": 0.95, "R8": 0.90}
@@ -480,9 +481,10 @@ def _junk_code(subtype: str) -> int:
 def _vote(inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes: dict[str, Any]) -> Verdict:
     """R9: the ballot table (method §8.2), then the vetoes (§8.3)."""
     t = canon().thresholds
-    letters = "".join(sorted(b.letter() for b in ballots.values()))  # e.g. "AJJ"
-    # Who said what: the sorted letters alone do not say ("AJK").
-    who = ", ".join(f"{VOTER_NAMES.get(name, name)} {b.letter()}" for name, b in ballots.items())
+    # One letter per voter, always in VOTER_NAMES order (DistilBERT, TF-IDF,
+    # keywords), so "JAK" says who cast which ballot.
+    letters = "".join(ballots[name].letter() for name in VOTER_NAMES)
+    who = ", ".join(VOTER_NAMES.values())
     junk = [b for b in ballots.values() if b.vote == JUNK]
     keep = [b for b in ballots.values() if b.vote == KEEP]
     strong_j = [b for b in junk if b.strength == STRONG]

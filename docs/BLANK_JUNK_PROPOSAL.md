@@ -474,11 +474,15 @@ own entries and keeps the other pass's:
    "tfidf": {"vote": "KEEP", "strength": "strong", "p_junk": 0.0},
    "kw":    {"vote": "KEEP", "strength": "weak", "p_junk": 0.0, "clinical": 5, "junk": 0,
              "demographic": 1, "junk_group": null, "hits": {"clinical.section_headings": ["PLAN"]}},
-   "ballots": "JKK", "row": 4, "r4_skipped": "clinical", "uncertain": true,
+   "ballots": "JKK", "by_voter": {"bert": "J", "tfidf": "K", "kw": "K"},
+   "row": 4, "r4_skipped": "clinical", "uncertain": true,
    "visual_source": "none", "signature_source": "kv_extract", "hw_area": "none",
    "short_page": {"content_bottom": 0.415},
-   "verdict": "Main", "confidence": 0.6, "reason": "R9 vote JKK row 4 -> Main"}}}}
+   "verdict": "Main", "confidence": 0.6, "reason": "R9 vote JKK (DistilBERT, TF-IDF, keywords) row 4 -> Main"}}}}
 ```
+
+`ballots` is one letter per voter, always in the order DistilBERT, TF-IDF,
+keywords (K = Keep, J = Junk, A = Abstain), so it says who cast which ballot.
 
 `visual_source` is `none` when the page-tag model did not tag the page,
 `signature_source` is `canon_only` when the KV signature output was missing,
