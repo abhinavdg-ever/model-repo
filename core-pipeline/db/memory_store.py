@@ -1334,7 +1334,9 @@ class MemoryStore:
                 chart["updated_at"] = _now()
         return deleted
 
-    def clear_chart_outputs(self, chart_id: int, *, keep_ocr: bool) -> dict[str, int]:
+    def clear_chart_outputs(
+        self, chart_id: int, *, keep_ocr: bool, keep_quality: bool = False
+    ) -> dict[str, int]:
         ocr_stages = {"ocr_prelim", "ocr_final1", "ocr_final2"}
         deleted: dict[str, int] = {}
         with self._lock:
@@ -1358,7 +1360,8 @@ class MemoryStore:
             _purge(self.additional_details, "additional_page_details")
             _purge(self.imaging_final, "imaging_final")
             _purge(self.blank_junk, "blank_junk_classification")
-            _purge(self.quality, "ocr_quality_results")
+            if not keep_quality:
+                _purge(self.quality, "ocr_quality_results")
             if not keep_ocr:
                 _purge(self.ocr, "ocr_results")
             _purge(

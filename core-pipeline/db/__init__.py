@@ -1673,18 +1673,22 @@ OCR_STAGE_NAMES = ("ocr_prelim", "ocr_final1", "ocr_final2")
 
 @_dispatch
 def clear_chart_outputs(
-    conn: Any, chart_id: int, *, keep_ocr: bool
+    conn: Any, chart_id: int, *, keep_ocr: bool, keep_quality: bool = False
 ) -> dict[str, int]:
     """Clear a chart's results before a full re-run.
 
     ``keep_ocr=True`` (skip_ocr) keeps ``ocr_results`` and the OCR stages'
     ``page_stage_status`` rows; everything else is rebuilt. ``keep_ocr=False``
-    clears OCR too. ``chart_list`` and ``page_list`` are never touched, so
-    ``page_count`` and page ids survive.
+    clears OCR too. ``keep_quality`` also keeps ``ocr_quality_results``: a
+    batch clears its charts up front with it, so a skip_ocr run can still
+    snapshot the old rotation when the chart starts. ``chart_list`` and
+    ``page_list`` are never touched, so ``page_count`` and page ids survive.
     """
     deleted: dict[str, int] = {}
     for table in CHART_RESULT_TABLES:
         if keep_ocr and table == "ocr_results":
+            continue
+        if keep_quality and table == "ocr_quality_results":
             continue
         if keep_ocr and table == "page_stage_status":
             result = conn.execute(

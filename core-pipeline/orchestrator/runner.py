@@ -109,7 +109,9 @@ def resolve_stage(token: str) -> int:
     )
 
 
-def _clear_for_rerun(chart_id: int, chart_name: str, *, keep_ocr: bool) -> dict[str, Any]:
+def _clear_for_rerun(
+    chart_id: int, chart_name: str, *, keep_ocr: bool, keep_quality: bool = False
+) -> dict[str, Any]:
     """Clear DB results and workspace outputs so a full re-run starts clean.
 
     ``pages/`` is always kept (``skip_page_download=false`` clears it at intake).
@@ -119,7 +121,7 @@ def _clear_for_rerun(chart_id: int, chart_name: str, *, keep_ocr: bool) -> dict[
     from db.paths import clear_chart_subdirs
 
     with connect() as conn:
-        db_rows = clear_chart_outputs(conn, chart_id, keep_ocr=keep_ocr)
+        db_rows = clear_chart_outputs(conn, chart_id, keep_ocr=keep_ocr, keep_quality=keep_quality)
     subdirs = ("imaging", "corrected-pages") if keep_ocr else ("ocr", "imaging", "corrected-pages")
     files = clear_chart_subdirs(chart_name, subdirs)
     logger.info(
@@ -130,6 +132,31 @@ def _clear_for_rerun(chart_id: int, chart_name: str, *, keep_ocr: bool) -> dict[
         " + ocr/" if keep_ocr else "",
     )
     return {"db": db_rows, "files": files, "kept_ocr": keep_ocr}
+
+
+def clear_before_batch(
+    chart_id: int,
+    chart_name: str,
+    *,
+    force: bool,
+    only: Optional[list[str]],
+    through: Optional[str],
+    skip_ocr: Optional[bool],
+) -> Optional[dict[str, Any]]:
+    """The clear run_pipeline_for_chart does for a full run, done for every
+    chart of a batch when the batch starts, so a chart still waiting in the
+    queue does not show its previous results. A skip_ocr run also keeps
+    quality here (the chart's own start snapshots it, then clears it). A
+    partial run (only / run_through) clears nothing, as for one chart."""
+    from config import SKIP_OCR
+
+    if only or through:
+        return None
+    if (SKIP_OCR if skip_ocr is None else bool(skip_ocr)) and not force:
+        return _clear_for_rerun(chart_id, chart_name, keep_ocr=True, keep_quality=True)
+    if force:
+        return _clear_for_rerun(chart_id, chart_name, keep_ocr=False)
+    return None
 
 
 def run_pipeline_for_chart(
