@@ -74,6 +74,9 @@ MODEL_SUBTYPE = {
 RETRIEVAL_GROUPS = ("record_request", "roi_vendors")
 HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice")
 
+# The three voters as the vote's reason names them (K = Keep, J = Junk, A = Abstain).
+VOTER_NAMES = {"bert": "DistilBERT", "tfidf": "TF-IDF", "kw": "keywords"}
+
 RULE_CONFIDENCE = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R5": 0.95, "R6": 0.97, "R7": 0.95, "R8": 0.90}
 MIN_TEXT_CHARS = 15
 BLANK_WORD_MAX_CHARS = 30
@@ -478,6 +481,8 @@ def _vote(inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes:
     """R9: the ballot table (method §8.2), then the vetoes (§8.3)."""
     t = canon().thresholds
     letters = "".join(sorted(b.letter() for b in ballots.values()))  # e.g. "AJJ"
+    # Who said what: the sorted letters alone do not say ("AJK").
+    who = ", ".join(f"{VOTER_NAMES.get(name, name)} {b.letter()}" for name, b in ballots.items())
     junk = [b for b in ballots.values() if b.vote == JUNK]
     keep = [b for b in ballots.values() if b.vote == KEEP]
     strong_j = [b for b in junk if b.strength == STRONG]
@@ -511,7 +516,7 @@ def _vote(inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes:
         # Pass 1 only takes a unanimous, all-strong JUNK; anything else waits for final OCR.
         if not (n_j == 3 and len(strong_j) == 3):
             verdict, uncertain = KEEP, False
-    votes.update(ballots=letters, row=row)
+    votes.update(ballots=letters, row=row, by_voter={name: b.letter() for name, b in ballots.items()})
 
     veto = ""
     if verdict == JUNK:
@@ -535,7 +540,7 @@ def _vote(inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes:
     if verdict == KEEP:
         ps = [1.0 - b.p_junk for b in keep if b.p_junk is not None]
         confidence = sum(ps) / len(ps) if ps else 0.5
-        reason = f"R9 vote {letters} row {row} -> Main" + (f" (veto: {veto})" if veto else "")
+        reason = f"R9 vote {letters} ({who}) row {row} -> Main" + (f" (veto: {veto})" if veto else "")
         if inputs.pass_no == 1 and n_j:
             reason += " (pass 1: deferred to final OCR)"
         return Verdict(CODE_MAIN, confidence, "R9", reason, uncertain, votes)
@@ -551,7 +556,7 @@ def _vote(inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes:
         uncertain = True
     ps = [b.p_junk for b in junk if b.p_junk is not None]
     confidence = sum(ps) / len(ps) if ps else 0.5
-    return Verdict(_junk_code(subtype), confidence, "R9", f"R9 vote {letters} row {row} -> Junk / {subtype}", uncertain, votes)
+    return Verdict(_junk_code(subtype), confidence, "R9", f"R9 vote {letters} ({who}) row {row} -> Junk / {subtype}", uncertain, votes)
 
 
 def decide(inputs: PageInputs) -> Verdict:

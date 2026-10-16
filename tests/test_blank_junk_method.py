@@ -164,6 +164,10 @@ class TestVote:
     def test_two_strong_junk_and_a_weak_keep_is_junk(self):
         verdict = run(FILLER, pass_no=1, bert=bert(0.95), tfidf=tfidf(0.95))
         assert verdict.votes["ballots"] == "AJJ" and verdict.votes["row"] == 3
+        # Who said what, in the votes and in the reason.
+        assert sorted(verdict.votes["by_voter"].values()) == ["A", "J", "J"]
+        assert set(verdict.votes["by_voter"]) == {"bert", "tfidf", "kw"}
+        assert "DistilBERT " in verdict.reason and "TF-IDF " in verdict.reason and "keywords " in verdict.reason
 
     def test_a_strong_keep_blocks_two_junk_votes(self):
         # kw abstains on filler; give it clinical-weak text so it votes KEEP
