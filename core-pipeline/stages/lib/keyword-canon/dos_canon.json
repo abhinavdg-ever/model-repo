@@ -10,8 +10,10 @@
     "edge": 0.95,
     "kv": 0.9,
     "llm": 0.7,
-    "kv_low": 0.5
+    "kv_low": 0.5,
+    "edge_spaced": 0.8
   },
+  "note_edge_spaced": "edge_spaced: the edge-keyword confidence when the date was read with spaced slashes ('05 / 20 / 2025'), a looser pattern than '05/20/2025'.",
   "note_kv_low": "Rule 4, last resort: when the key/value model chose no date for a page and the LLM found none, the date its rules accepted (best model score first) is used, match_type kv_low. Its confidence is the model's own probability (below the DOS threshold, so low); kv_low here is used only when that score is missing.",
   "labels": {
     "encounter": [

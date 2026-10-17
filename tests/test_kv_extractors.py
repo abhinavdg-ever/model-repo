@@ -95,3 +95,44 @@ def test_lab_dos_collected_then_received_then_printed():
     weak, printed = _dos_row("Report Date", "weak", "10/04/2024"), _dos_row("Printed", "printed", "10/05/2024")
     assert chosen(printed, weak) == ["Report Date"]
     assert chosen(_dos_row("Printed", "printed", "10/05/2024")) == ["Printed"]
+
+
+class TestSpacedSlashDates:
+    """'DATE: 05 / 20 / 2025' on a printed form (chart 67992303_56072120 p7)."""
+
+    def test_the_date_is_found_and_normalised(self):
+        from stages.lib.extraction.util.dates import canonical_date, find_date_ranges, find_dates, normalize_date
+
+        found = [m.group(1) for m in find_dates("DATE: 05 / 20 / 2025 FACILITY: GREENVALLEY")]
+        assert found == ["05 / 20 / 2025"]
+        assert normalize_date(found[0]) == "05/20/2025" and canonical_date(found[0]) == "2025-05-20"
+        # Not dates: a spaced '-' (the range separator) and a blood pressure.
+        assert find_dates("1 - 2 - 2024") == [] and find_dates("BP 120 / 80") == []
+        assert [(m.group(1), m.group(2)) for m in find_date_ranges("01/02/2024 - 01/05/2024")] == [
+            ("01/02/2024", "01/05/2024")
+        ]
+
+    def test_the_kv_dos_row_reads_it_at_a_lower_score(self):
+        from stages.lib.extraction.dos.extract import SPACED_DATE_PENALTY, extract_page
+        from stages.lib.extraction.util.keys import KeyHit
+
+        def dos_row(text):
+            words = _page((100, text))
+            key = words[0]
+            hit = KeyHit(field="dos", key="DATE:", word_indexes=[key.index], box=key.box, weak=True,
+                         region="header", trusted=True, value_words=words[1:],
+                         value_text=" ".join(word.content for word in words[1:]))
+            return next(row for row in extract_page([hit], words, PAGE_H) if row.key == "DATE:")
+
+        spaced, plain = dos_row("DATE: 05 / 20 / 2025"), dos_row("DATE: 05/20/2025")
+        assert (spaced.value, spaced.accepted) == ("05/20/2025", True)
+        assert spaced.score == round(plain.score - SPACED_DATE_PENALTY, 4)
+
+    def test_the_edge_label_rule_reads_it_at_edge_spaced(self):
+        import stages.lib.dos.stage  # noqa: F401  — puts dos/ on sys.path
+        from dos_logic import detect_dos_per_page
+
+        hit = detect_dos_per_page("===== 7.png =====\nDate of Service: 05 / 20 / 2025\n", None, use_llm=False)[0]
+        assert hit["dos_from_iso"] == "2025-05-20" and hit["confidence"] == 0.8
+        plain = detect_dos_per_page("===== 7.png =====\nDate of Service: 05/20/2025\n", None, use_llm=False)[0]
+        assert plain["confidence"] == 0.95

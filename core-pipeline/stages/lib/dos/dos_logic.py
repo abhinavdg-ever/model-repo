@@ -163,12 +163,16 @@ _MONTH_NAME = (
 DATE_RE = re.compile(
     r"(?<![\d/-])(?:"
     r"(?P<iy>\d{4})(?P<isep>[-/])(?P<im>\d{1,2})(?P=isep)(?P<id>\d{1,2})"
-    r"|(?P<nm>\d{1,2})(?P<nsep>[/-])(?P<nd>\d{1,2})(?P=nsep)(?P<ny>\d{4}|\d{2})"
+    # Also '05 / 20 / 2025' (spaced slashes, the same both times); never a spaced '-'.
+    r"|(?P<nm>\d{1,2})(?P<nsep>[/-]| ?/ ?)(?P<nd>\d{1,2})(?P=nsep)(?P<ny>\d{4}|\d{2})"
     r"|(?P<tm>" + _MONTH_NAME + r")\.?\s+(?P<td>\d{1,2})(?:st|nd|rd|th)?,?\s+(?P<ty>\d{4})"
     r"|(?P<dd>\d{1,2})(?:st|nd|rd|th)?\s+(?P<dm>" + _MONTH_NAME + r")\.?,?\s+(?P<dy>\d{4})"
     r")(?!\d)",
     re.IGNORECASE,
 )
+
+
+_SPACED_SLASH = re.compile(r"\d\s/|/\s\d")
 
 
 def _two_digit_year(year: str) -> int:
@@ -310,12 +314,18 @@ def edge_page_date(
     prof = prof or profile()
     if hits is None:
         hits = edge_dates(page_text, prof)
-    confidence = prof.confidence["edge"]
+
+    def confidence(*chosen: LabelledDate) -> float:
+        # A date read with spaced slashes ('05 / 20 / 2025') is a looser pattern: edge_spaced.
+        if any(_SPACED_SLASH.search(hit.raw) for hit in chosen):
+            return prof.confidence.get("edge_spaced", prof.confidence["edge"])
+        return prof.confidence["edge"]
+
     encounter = next((h for h in hits if h.label_class == "encounter"), None)
     if encounter is not None:
         encounter.chosen = True
         end = _range_end(page_text, encounter)
-        return PageDate(encounter.iso, end or encounter.iso, confidence, encounter.label,
+        return PageDate(encounter.iso, end or encounter.iso, confidence(encounter), encounter.label,
                         "edge", is_pair=bool(end))
     admit = next((h for h in hits if h.label_class == "admit"), None)
     discharge = next(
@@ -326,12 +336,12 @@ def edge_page_date(
         admit.chosen = True
         if discharge is not None:
             discharge.chosen = True
-            return PageDate(admit.iso, discharge.iso, confidence,
+            return PageDate(admit.iso, discharge.iso, confidence(admit, discharge),
                             f"{admit.label}+{discharge.label}", "edge", is_pair=True)
-        return PageDate(admit.iso, admit.iso, confidence, admit.label, "edge")
+        return PageDate(admit.iso, admit.iso, confidence(admit), admit.label, "edge")
     if discharge is not None:
         discharge.chosen = True
-        return PageDate(discharge.iso, discharge.iso, confidence, discharge.label, "edge")
+        return PageDate(discharge.iso, discharge.iso, confidence(discharge), discharge.label, "edge")
     return None
 
 

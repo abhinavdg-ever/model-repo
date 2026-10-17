@@ -1,7 +1,7 @@
 """Shared date finders for DOB, DOS and electronic-signature extraction.
 
-Supports numeric dates, dates that mix numbers with short/full month names,
-and date ranges ("05/10/2024 - 05/10/2024", "1/4/2024 to 1/6/2024").
+Supports numeric dates (also with spaced slashes, '05 / 20 / 2025'), dates that mix
+numbers with short/full month names, and date ranges ("05/10/2024 - 05/10/2024", "1/4/2024 to 1/6/2024").
 """
 
 from __future__ import annotations
@@ -20,6 +20,9 @@ _DATE_BODY = (
     r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)?"
     r"|"
     r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}"
+    r"|"
+    # A printed form's spaced slashes: '05 / 20 / 2025'. Only around '/': ' - ' is a range.
+    r"\d{1,2} ?/ ?\d{1,2} ?/ ?\d{2,4}"
     r"|"
     # OCR form seen in dob.csv: 26.Nov.1953 / 28.Feb.2024
     rf"\d{{1,2}}\.{_MONTH}\.\d{{2,4}}"
@@ -46,6 +49,15 @@ _YEAR_TAIL = re.compile(r"(\d{2,4})\s*$")
 _ISO_YEAR = re.compile(r"^(\d{4})-")
 
 
+_SPACED_SLASH = re.compile(r"\d\s/|/\s\d")
+
+
+def spaced_date(raw: str) -> bool:
+    """True for a date read with spaced slashes ('05 / 20 / 2025'): a looser pattern, so
+    its readers give it a lower confidence."""
+    return bool(_SPACED_SLASH.search(raw or ""))
+
+
 def find_dates(text: str) -> list[re.Match[str]]:
     return list(_DATE.finditer(text or ""))
 
@@ -56,6 +68,8 @@ def find_date_ranges(text: str) -> list[re.Match[str]]:
 
 def normalize_date(raw: str) -> str:
     text = _CLEAN.sub(" ", (raw or "").strip()).rstrip(".,;")
+    # '05 / 20 / 2025' -> '05/20/2025'
+    text = re.sub(r"(?<=\d) ?/ ?(?=\d)", "/", text)
     if not text:
         return ""
     iso = re.match(

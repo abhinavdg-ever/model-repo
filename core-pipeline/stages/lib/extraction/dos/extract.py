@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from ..member_dob.extract import nearest_date as dob_nearest_date
-from ..util.dates import canonical_date, date_year, find_date_ranges, find_dates, normalize_date
+from ..util.dates import canonical_date, date_year, find_date_ranges, find_dates, normalize_date, spaced_date
 from ..util.geometry import FOOTER_FRAC, HEADER_FRAC, Word, is_edge_region, median_height
 from ..util.keys import KeyHit, linked, load_key_tiers, trusted_field_hits
 from ..util.tokens import Token, key_token_span, ordered_tokens, same_line
@@ -40,6 +40,10 @@ TIER_RANK = {
 # Tiers whose date must sit right after the key ('Received: 10/02/2024'), as weak keys.
 _NEAR_TIERS = frozenset({"weak", "received", "printed"})
 _MIN_YEAR = 2000
+# A date read with spaced slashes ('05 / 20 / 2025') is a looser pattern: its score drops by
+# this much, never below _SPACED_MIN_SCORE.
+SPACED_DATE_PENALTY = 0.15
+_SPACED_MIN_SCORE = 0.5
 _MAX_GAP_WORDS = 6
 _WEAK_GAP_WORDS = 1
 _BELOW_LINES = 4.0
@@ -83,6 +87,11 @@ class _Span:
     value: str
     dos_from: str
     dos_to: str
+    spaced: bool = False
+
+
+def _spaced_score(span: _Span, score: float) -> float:
+    return round(max(_SPACED_MIN_SCORE, score - SPACED_DATE_PENALTY), 4) if span.spaced else score
 
 
 def _plausible(raw: str) -> bool:
@@ -100,7 +109,7 @@ def date_spans(text: str, blocked: set[str]) -> list[_Span]:
         if canonical_date(left) in blocked or canonical_date(right) in blocked:
             continue
         low, high = normalize_date(left), normalize_date(right)
-        spans.append(_Span(match.start(), match.end(), f"{low} - {high}", low, high))
+        spans.append(_Span(match.start(), match.end(), f"{low} - {high}", low, high, spaced_date(match.group(0))))
     for match in find_dates(text):
         if any(match.start() < span.end and match.end() > span.start for span in spans):
             continue
@@ -108,7 +117,7 @@ def date_spans(text: str, blocked: set[str]) -> list[_Span]:
         if not _plausible(raw) or canonical_date(raw) in blocked:
             continue
         value = normalize_date(raw)
-        spans.append(_Span(match.start(1), match.end(1), value, value, value))
+        spans.append(_Span(match.start(1), match.end(1), value, value, value, spaced_date(raw)))
     return sorted(spans, key=lambda span: span.start)
 
 
@@ -255,6 +264,7 @@ def extract_box(hit: KeyHit, tier: str, blocked: set[str], words: list[Word] | N
     if picked is None:
         return blank
     span, score, source = picked
+    score = _spaced_score(span, score)
     row = DosHit(
         key=hit.key,
         region=hit.region,
@@ -329,7 +339,7 @@ def extract_keyless(words: list[Word], page_h: float, blocked: set[str]) -> list
                     value=span.value,
                     dos_from=span.dos_from,
                     dos_to=span.dos_to,
-                    score=0.7,
+                    score=_spaced_score(span, 0.7),
                     accepted=True,
                     source="keyless_edge",
                 )
