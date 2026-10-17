@@ -65,11 +65,12 @@ RUN tesseract --list-langs 2>&1 | grep -qx osd \
  && python -c "\
 import json; \
 from stages.lib.image_preprocess.stage import text_orientation; \
-assert [text_orientation(c) for c in (0, 90, 180, 270)] == [0, 270, 180, 90]; \
+orient = [text_orientation(c) for c in (0, 90, 180, 270)]; \
+assert orient == [0, 90, 180, 270], ('text_orientation', orient); \
 tax = json.load(open('stages/lib/keyword-canon/page_taxonomy.json')); \
 assert tax['version'] == '1.2' and len(tax['page_types']) == 51, tax['version']; \
 dos = json.load(open('stages/lib/keyword-canon/dos_canon.json')); \
-assert 'certification period' in dos['labels']['encounter']; \
+assert 'certification period' in dos['labels']['encounter'], 'dos_canon labels'; \
 print('orientation + canons ok')"
 
 # Engines live under stages/lib/image_preprocess/ and stages/lib/ocr/; weights are bind-mounted at runtime.
