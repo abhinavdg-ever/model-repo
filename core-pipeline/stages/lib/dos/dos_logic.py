@@ -1,17 +1,18 @@
-"""Date of service: a labelled date at the top or bottom of the page.
+"""Date of service: the key/value date, else a labelled date at the top or bottom of the page.
 
 Per page, in order:
 
-  1. Edge keyword — a DOS label (Encounter Date, Visit Date, Date of Service,
+  1. Key/value — the date the key/value extractor selected for the page.
+  2. Edge keyword — a DOS label (Encounter Date, Visit Date, Date of Service,
      Admission Date, Discharge Date, ...) that starts within the first or last
      ``edge_words`` (20) words of the page, with a date right after it. An
      encounter label wins; otherwise an admission date is From and a
      discharge date To; a discharge date alone is both. Read on the final
      OCR text first, then on the Tesseract text the stage passes for pages
      without Final2: Docling can drop a page's top banner (a page header).
-  2. Key/value — the date the key/value extractor selected for the page.
   3. Azure OpenAI — only when enabled, on clinical pages.
-  4. Nothing — the page has no date of service.
+  4. Key/value, low confidence — a date only the extractor's rules accepted.
+  5. Nothing — the page has no date of service.
 
 Each page keeps its own date here: this is the Extracted DOS. The Final DOS
 (the document's first page's, on every page) is ``continuity.engine.document_finals``.
@@ -194,7 +195,7 @@ def parse_date_match(match: re.Match[str]) -> Optional[str]:
         return None
 
 
-# --- 1. edge keyword --------------------------------------------------------
+# --- 2. edge keyword --------------------------------------------------------
 
 
 @dataclass
@@ -304,7 +305,7 @@ def edge_page_date(
     prof: Optional[DosProfile] = None,
     hits: Optional[list[LabelledDate]] = None,
 ) -> Optional[PageDate]:
-    """Rule 1: an encounter label first; else admission (From) + discharge (To).
+    """Rule 2: an encounter label first; else admission (From) + discharge (To).
     The chosen ``hits`` are marked ``chosen``."""
     prof = prof or profile()
     if hits is None:
@@ -334,13 +335,13 @@ def edge_page_date(
     return None
 
 
-# --- 2. key/value -------------------------------------------------------------
+# --- 1. key/value -------------------------------------------------------------
 
 
 def kv_page_date(
     dates: list[dict[str, Any]], prof: Optional[DosProfile] = None, *, source: str = "kv"
 ) -> Optional[PageDate]:
-    """Rule 2: the first date the key/value extractor selected; a range keeps its end.
+    """Rule 1: the first date the key/value extractor selected; a range keeps its end.
 
     With ``source="kv_low"`` (rule 4) the dates are the ones the rules accepted but the
     model did not: the confidence is the model's own probability, else the canon's kv_low.
@@ -395,7 +396,7 @@ def to_iso_date(mm_dd_yyyy: str) -> Optional[str]:
 
 
 def extract_dos_from_page_text(page_text: str) -> Optional[dict]:
-    """Rule 1 on one page (no key/value, no LLM)."""
+    """Rule 2 (edge keyword) alone on one page (no key/value, no LLM)."""
     best = edge_page_date(page_text)
     if best is None:
         return None
@@ -469,8 +470,8 @@ def detect_dos_per_page(
     tesseract_texts: Optional[dict[str, str]] = None,
     kv_fallback: Optional[dict[str, list[dict[str, Any]]]] = None,
 ) -> list[dict]:
-    """One row per page: edge keyword (final text, then Tesseract), else
-    key/value, else LLM, else a key/value date only the rules accepted (low
+    """One row per page: key/value, else edge keyword (final text, then
+    Tesseract), else LLM, else a key/value date only the rules accepted (low
     confidence), else nothing.
 
     ``tesseract_texts`` maps a page name to its Tesseract text; only its
@@ -494,8 +495,11 @@ def detect_dos_per_page(
             break
         page_name = page.get("page_name") or ""
 
+        # Rule 1: the key/value date. The edge labels are still read for the candidate log.
+        found = kv_page_date((kv_dates or {}).get(page_name) or [], prof)
         hits = edge_dates(page_text, prof)
-        found = edge_page_date(page_text, prof, hits)
+        if found is None:
+            found = edge_page_date(page_text, prof, hits)
         if found is None and (tesseract_texts or {}).get(page_name):
             tesseract_hits = edge_dates(tesseract_texts[page_name], prof)
             found = edge_page_date(tesseract_texts[page_name], prof, tesseract_hits)
@@ -504,8 +508,6 @@ def detect_dos_per_page(
                 for hit in tesseract_hits:
                     hit.edge = f"tesseract_{hit.edge}"
                 hits = hits + tesseract_hits
-        if found is None:
-            found = kv_page_date((kv_dates or {}).get(page_name) or [], prof)
         if found is None and use_llm and client is not None and page_allows_llm(page_text):
             pair = extract_dos_range_with_llm(
                 page_text,

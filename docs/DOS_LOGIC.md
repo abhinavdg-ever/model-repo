@@ -12,16 +12,17 @@ The `dos_extract` stage gives every page that is not blank, junk or a
 duplicate **its own** date of service: the **Extracted DOS**. The first rule
 that produces a date wins:
 
-1. A DOS label within the first or last 20 words of the page, with a date right
+1. The date that the key/value extractor (`kv_extract`) selected.
+2. A DOS label within the first or last 20 words of the page, with a date right
    after it. This rule reads the final OCR text first, then the Tesseract text.
-2. The date that the key/value extractor (`kv_extract`) selected.
 3. Azure OpenAI, when it is enabled and the page looks clinical.
 4. A date the key/value **rules** accepted but its model did not, when the
    model chose no date for the page (best model score first; `match_type`
    `kv_low`, stored as method `kv`).
 5. No date.
 
-Rules 1–3 have a fixed confidence: 0.95, 0.90 and 0.70, and 0 for rule 5.
+Rules 1–3 have a fixed confidence: 0.90 (key/value), 0.95 (edge keyword) and
+0.70 (LLM), and 0 for rule 5. The key/value date comes first since 2026-10-17.
 Rule 4's confidence is the model's own probability for that date (below its
 DOS threshold of 0.85, so it reads low), or `kv_low` (0.50) in `dos_canon.json`
 when the staging has no score (written before `model_score` was staged: then

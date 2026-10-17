@@ -28,7 +28,7 @@ def test_an_extracted_date_is_the_page_date_when_the_edges_have_none():
     assert hits[0]["page_source"] == "kv"
 
 
-def test_an_edge_label_comes_before_the_key_value_date():
+def test_the_key_value_date_comes_before_an_edge_label():
     text = "===== 1.jpg =====\nDate of Service: 01/02/2024\n"
     hits = detect_dos_per_page(
         text,
@@ -37,13 +37,21 @@ def test_an_edge_label_comes_before_the_key_value_date():
         kv_dates={
             "1.jpg": [
                 {
-                    "iso": "2024-01-02",
-                    "raw": "01/02/2024",
+                    "iso": "2024-03-15",
+                    "raw": "03/15/2024",
                     "tier": "encounter",
-                    "keyword": "Date of Service",
+                    "keyword": "Visit Date",
                 }
             ]
         },
+    )
+    assert hits[0]["dos_from_iso"] == "2024-03-15"
+    assert hits[0]["page_source"] == "kv"
+
+
+def test_an_edge_label_is_used_when_there_is_no_key_value_date():
+    hits = detect_dos_per_page(
+        "===== 1.jpg =====\nDate of Service: 01/02/2024\n", None, use_llm=False, kv_dates={}
     )
     assert hits[0]["dos_from_iso"] == "2024-01-02"
     assert hits[0]["page_source"] == "edge"

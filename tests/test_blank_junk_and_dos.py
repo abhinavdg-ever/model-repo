@@ -542,11 +542,15 @@ class TestDosDriver:
                      tesseract_texts={"1.jpg": "Visit Date: 03/15/2024"})[0]
         assert (hit["dos_from_iso"], hit["page_source"]) == ("2024-03-14", "edge")
 
-    def test_tesseract_comes_before_the_key_value_date(self):
+    def test_the_key_value_date_comes_before_tesseract(self):
         kv = {"1.jpg": [{"iso": "2024-06-01", "keyword": "Date"}]}
         hit = _pages("no label here", kv_dates=kv,
                      tesseract_texts={"1.jpg": "Encounter Date: 03/15/2024"})[0]
-        assert hit["dos_from_iso"] == "2024-03-15"
+        assert (hit["dos_from_iso"], hit["page_source"]) == ("2024-06-01", "kv")
+
+    def test_tesseract_is_read_when_there_is_no_key_value_date(self):
+        hit = _pages("no label here", tesseract_texts={"1.jpg": "Encounter Date: 03/15/2024"})[0]
+        assert (hit["dos_from_iso"], hit["page_source"]) == ("2024-03-15", "edge_tesseract")
 
     def test_candidate_log_has_every_edge_label(self):
         log: list = []
