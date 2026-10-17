@@ -11,7 +11,7 @@ import {
   type OcrSectionHeader,
   type PageGroundTruth,
 } from "./api";
-import { credentialsVerdict } from "./accuracy";
+import { credentialsVerdict, noValue } from "./accuracy";
 import {
   duplicateDisplayConfidence,
   formatDuplicateLabel,
@@ -22,6 +22,7 @@ import {
   groundTruthBits,
   gtCredentials,
   gtSignature,
+  hasGroundTruth,
   pageTypeVerdict,
   spellCodeable,
   type GtBit,
@@ -389,6 +390,9 @@ type CompareRow = {
   gtHidden?: boolean;
   /** Custom scoring of the ground truth (default: ``enteredMark`` on Extracted / Final). */
   compare?: (truth: string) => "match" | "partial" | "mismatch" | null;
+  /** A blank (or NA) label expects no value: a value from the pipeline is a cross, as in
+   * the accuracy report. Set on DOS rows of a page whose ground truth has no date. */
+  blankIsNone?: boolean;
 };
 
 const BLANK_JUNK_CHOICES = ["Yes (Blank)", "Yes (Junk)", "No"] as const;
@@ -833,7 +837,14 @@ function GroundTruthCell({
         ? row.compare(stored)
         : enteredMark(row.extracted, row.processed, stored, Boolean(row.presence))
       : null;
-  const mark = !stored ? null : effective === "accept" ||
+  // A blank label on a row that expects none (DOS): a date from the pipeline is wrong. The
+  // 2222-02-02 placeholder is not a date.
+  const truthBlank = noValue(stored);
+  const blankCross =
+    truthBlank && Boolean(row.blankIsNone) && valueFound(row.processed) && !row.processed.includes("2222");
+  const mark = blankCross ? (
+    <span className="imaging-gt-mark gt-mismatch" aria-label="No">✕</span>
+  ) : !stored ? null : effective === "accept" ||
     (effective === "enter" && (compared === "match" || (compared == null && !fromStore))) ? (
       <span className="imaging-gt-mark" aria-label="Yes">✓</span>
     ) : compared === "partial" ? (
@@ -848,7 +859,7 @@ function GroundTruthCell({
         <span className={stored ? "imaging-gt-text" : "imaging-gt-copied"} title={stored || undefined}>
           {stored || NOT_FOUND}
         </span>
-        {stored && !row.noMark ? mark : null}
+        {(stored || blankCross) && !row.noMark ? mark : null}
       </span>
     );
   }
@@ -1188,6 +1199,12 @@ function dosCompareRow(
     confidence,
     truth,
     key: true,
+    // Only when the ground truth gives the page no date at all (From and To blank or NA):
+    // a label with only From does not make a To a cross.
+    blankIsNone:
+      hasGroundTruth(page.groundTruth) &&
+      noValue(page.groundTruth?.dosFrom) &&
+      noValue(page.groundTruth?.dosTo),
   };
 }
 

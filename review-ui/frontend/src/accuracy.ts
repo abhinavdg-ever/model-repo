@@ -446,7 +446,7 @@ function credentialTokens(value: string | null | undefined): Set<string> {
 /** A ground-truth value that says "nothing here": blank, NA, Not Available, None. */
 const NO_VALUE = new Set(["", "na", "n/a", "not available", "not applicable", "not found", "none"]);
 
-function noValue(value: string | null | undefined): boolean {
+export function noValue(value: string | null | undefined): boolean {
   return NO_VALUE.has((value ?? "").trim().toLowerCase());
 }
 
