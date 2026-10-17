@@ -163,11 +163,12 @@ FALLBACK = {"4.png": [{"iso": "2025-05-20", "raw": "5/20/25", "tier": "weak", "k
                        "confidence": 0.62}]}
 
 
-def test_a_date_only_the_rules_accepted_is_the_last_resort_at_the_models_confidence():
+def test_a_date_only_the_rules_accepted_is_the_last_resort_capped_as_a_backup():
     hit = _dos("CT & MRI scheduling form, nothing dated at the edges.", kv_fallback=FALLBACK)
     assert hit["dos_from_iso"] == "2025-05-20"
     assert (hit["page_source"], hit["match_type"]) == ("kv_low", "kv_low")
-    assert hit["confidence"] == 0.62
+    # The model's 0.62, capped at backup_max: a backup always reads as low confidence.
+    assert hit["confidence"] == 0.5
 
 
 def test_the_fallback_without_a_model_score_uses_the_canon_kv_low():

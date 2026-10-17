@@ -366,6 +366,10 @@ def kv_page_date(
         confidence = prof.confidence[source]
         if source == "kv_low" and item.get("confidence") is not None:
             confidence = float(item["confidence"])
+        # A date read by a looser pattern is capped: spaced slashes, or spaces only.
+        cap = {"spaced_slash": "kv_spaced", "spaces_only": "kv_spaces_only"}.get(str(item.get("pattern") or ""))
+        if cap:
+            confidence = min(confidence, prof.confidence.get(cap, confidence))
         return PageDate(iso, iso_to if is_pair else iso, confidence,
                         str(item.get("keyword") or ""), source, is_pair=is_pair)
     return None
@@ -534,6 +538,10 @@ def detect_dos_per_page(
 
         if candidate_log is not None:
             candidate_log.extend({"page_name": page_name, **asdict(hit)} for hit in hits)
+        if found is not None and found.source != "kv":
+            # Not the key/value model's pick (edge label, LLM, rules-only fallback): a backup,
+            # flagged with a low confidence.
+            found.confidence = min(found.confidence, prof.confidence.get("backup_max", found.confidence))
         rows.append(_row(page, found, prof))
     return rows
 

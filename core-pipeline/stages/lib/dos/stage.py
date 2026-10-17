@@ -213,6 +213,7 @@ def _kv_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "tier": row.get("tier") or "",
                 "keyword": row.get("key") or "",
                 "confidence": row.get("model_score"),
+                "pattern": row.get("pattern") or "",
             }
         )
     return found

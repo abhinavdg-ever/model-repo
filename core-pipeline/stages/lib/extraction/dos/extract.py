@@ -1,5 +1,9 @@
 """Date of service from DOS keys, admit/discharge pairs, or header/footer dates.
 
+A date printed with spaced slashes ('05 / 20 / 2025') scores SPACED_DATE_SCORE; one with
+spaces only ('06 12 24') is read only right after a DOS key, only when no key on the page
+has another date, at SPACES_ONLY_SCORE.
+
 Rules from Data/examp/dos.csv (keys and tiers live in DOS/keys.json):
   - Tiers per page: service keys > admit/discharge > received > weak keys (Date, dd, dt,
     Report Date, ...) > printed. The best tier with a valid date wins; weak keys are only a
@@ -28,7 +32,15 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from ..member_dob.extract import nearest_date as dob_nearest_date
-from ..util.dates import canonical_date, date_year, find_date_ranges, find_dates, normalize_date, spaced_date
+from ..util.dates import (
+    canonical_date,
+    date_year,
+    find_date_ranges,
+    find_dates,
+    find_spaces_only_dates,
+    normalize_date,
+    spaced_date,
+)
 from ..util.geometry import FOOTER_FRAC, HEADER_FRAC, Word, is_edge_region, median_height
 from ..util.keys import KeyHit, linked, load_key_tiers, trusted_field_hits
 from ..util.tokens import Token, key_token_span, ordered_tokens, same_line
@@ -42,6 +54,9 @@ _NEAR_TIERS = frozenset({"weak", "received", "printed"})
 _MIN_YEAR = 2000
 # A date read with spaced slashes ('05 / 20 / 2025') is a looser pattern: it scores this.
 SPACED_DATE_SCORE = 0.5
+# Spaces only ('06 12 24'): read only right after a DOS key on its line, only when the page
+# has no other keyed date, and at a very low score.
+SPACES_ONLY_SCORE = 0.3
 _MAX_GAP_WORDS = 6
 _WEAK_GAP_WORDS = 1
 _BELOW_LINES = 4.0
@@ -75,6 +90,8 @@ class DosHit:
     accepted: bool = False
     selected: bool = False
     source: str = ""
+    # How the date was read: "" (a plain date), "spaced_slash" or "spaces_only".
+    pattern: str = ""
     key_hit: KeyHit | None = field(default=None, repr=False, compare=False)
 
 
@@ -274,6 +291,7 @@ def extract_box(hit: KeyHit, tier: str, blocked: set[str], words: list[Word] | N
         score=score,
         accepted=True,
         source=source,
+        pattern="spaced_slash" if span.spaced else "",
     )
     # The same date is often printed twice on a line ('(Order Date - 12/13/2023) (Collection Date - 12/13/2023)').
     row.value_at = [token.word for token in _span_tokens(tokens, span)]
@@ -320,7 +338,8 @@ def extract_keyless(words: list[Word], page_h: float, blocked: set[str]) -> list
             if len(run) > (24 if _MONTH_NAME.search(segment) else _KEYLESS_MAX_TOKENS):
                 continue
             for span in date_spans(segment, blocked):
-                if _TIME_AFTER.match(segment[span.end :]):
+                # A keyless stamp must be a plain date; a spaced one ('06 12 24') is too loose.
+                if span.spaced or _TIME_AFTER.match(segment[span.end :]):
                     continue
                 window = segment[max(0, span.start - 14) : span.end + 14]
                 if _PAGE_LABEL.search(window):
@@ -337,7 +356,7 @@ def extract_keyless(words: list[Word], page_h: float, blocked: set[str]) -> list
                     value=span.value,
                     dos_from=span.dos_from,
                     dos_to=span.dos_to,
-                    score=_spaced_score(span, 0.7),
+                    score=0.7,
                     accepted=True,
                     source="keyless_edge",
                 )
@@ -435,6 +454,37 @@ def drop_shared_values(rows: list[DosHit]) -> list[DosHit]:
     return rows
 
 
+def _spaces_only_row(hit: KeyHit, tier: str, blocked: set[str], words: list[Word]) -> DosHit | None:
+    """A spaces-only date ('06 12 24') right after the key on its line (at most one word
+    between), at SPACES_ONLY_SCORE."""
+    tokens, text = ordered_tokens(_reach(hit, words))
+    positions = key_token_span(tokens, hit.word_indexes, hit.key)
+    if positions is None:
+        return None
+    key_end = tokens[positions[1]]
+    line_h = median_height([token.word for token in tokens])
+    for match in find_spaces_only_dates(text):
+        if match.start(1) < key_end.end:
+            continue
+        raw = match.group(1)
+        if not _plausible(raw) or canonical_date(raw) in blocked:
+            continue
+        covered = [token for token in tokens if token.start < match.end(1) and token.end > match.start(1)]
+        if not covered or abs(covered[0].word.box.cy - key_end.word.box.cy) > 0.6 * line_h:
+            break
+        if len(text[key_end.end : match.start(1)].split()) > _WEAK_GAP_WORDS:
+            break
+        value = normalize_date(raw)
+        row = DosHit(
+            key=hit.key, region=hit.region, sentence=text, tier=tier, value=value,
+            dos_from=value, dos_to=value, score=SPACES_ONLY_SCORE, accepted=True,
+            source="same_line_spaces", pattern="spaces_only",
+        )
+        row.value_at = [token.word for token in covered]
+        return linked(row, hit)
+    return None
+
+
 def extract_page(hits: list[KeyHit], words: list[Word], page_h: float) -> list[DosHit]:
     """Keyed DOS rows (all tiers), keyless header/footer dates only if none accepted."""
     tiers = load_key_tiers("dos")
@@ -444,6 +494,13 @@ def extract_page(hits: list[KeyHit], words: list[Word], page_h: float) -> list[D
         for hit in trusted_field_hits(hits, "dos")
     ]
     rows = drop_shared_values(rows + _note_label_rows(hits, words, blocked))
+    if not any(row.accepted for row in rows):
+        # Fallback: a spaces-only date right after a DOS key ('Date: 06 12 24').
+        spaced = [
+            _spaces_only_row(hit, tiers.get(hit.key.strip().casefold(), "weak"), blocked, words)
+            for hit in trusted_field_hits(hits, "dos")
+        ]
+        rows.extend(row for row in spaced if row is not None)
     if not any(row.accepted for row in rows):
         rows.extend(extract_keyless(words, page_h, blocked))
     return mark_selected(rows)

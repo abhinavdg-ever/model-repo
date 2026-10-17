@@ -11,10 +11,15 @@
     "kv": 0.9,
     "llm": 0.7,
     "kv_low": 0.5,
-    "edge_spaced": 0.5
+    "edge_spaced": 0.5,
+    "kv_spaced": 0.5,
+    "kv_spaces_only": 0.3,
+    "backup_max": 0.5
   },
+  "note_backup_max": "backup_max caps every DOS that is not the key/value model's pick (edge label, LLM, the rules-only kv_low fallback), so a backup date always reads as low confidence. The model's pick keeps kv (capped only for spaced patterns).",
+  "note_kv_patterns": "kv_spaced / kv_spaces_only cap a key/value date read with spaced slashes ('05 / 20 / 2025') or with spaces only ('06 12 24'). A spaces-only date is read only right after a DOS key, and only when the page has no other keyed date.",
   "note_edge_spaced": "edge_spaced: the edge-keyword confidence when the date was read with spaced slashes ('05 / 20 / 2025'), a looser pattern than '05/20/2025'.",
-  "note_kv_low": "Rule 4, last resort: when the key/value model chose no date for a page and the LLM found none, the date its rules accepted (best model score first) is used, match_type kv_low. Its confidence is the model's own probability (below the DOS threshold, so low); kv_low here is used only when that score is missing.",
+  "note_kv_low": "Rule 4, last resort: when the key/value model chose no date for a page and the LLM found none, the date its rules accepted (best model score first) is used, match_type kv_low. Its confidence is the model's own probability (below the DOS threshold, so low), capped at backup_max; kv_low here is used only when that score is missing.",
   "labels": {
     "encounter": [
       "encounter date",
