@@ -34,13 +34,15 @@ def build_repository(settings: Settings, production: bool | None = None) -> Fold
             settings.resolved_data_root,
             settings.resolved_metadata_root,
         )
-        # Production reads Postgres and Azure Blob only: no local workspace, so no disk
-        # fallback for charts, page lists or images, and nothing from staging.
+        # Production reads its data from Postgres only: no disk fallback for a chart, its
+        # page list or the folder list, and nothing from staging. Page images come from
+        # Azure Blob, else the workspace copy (the source document, not pipeline output).
         return PostgresFolderRepository(
             settings.database_url,
-            data_root=None,
+            data_root=settings.resolved_data_root,
             metadata_root=None,
             db_schema=settings.db_schema,
+            disk_data=False,
         )
     logger.info(
         "repository=local data_root=%s metadata_root=%s database_url=%s",

@@ -375,8 +375,8 @@ def get_page_image(
     )
     from app.adapters.postgres.repository import PostgresFolderRepository
 
-    # Production Mode: Azure Blob only. The repository has no local workspace, so a Blob
-    # failure (sign-in, network) is a 503 naming it, never a disk copy.
+    # Production Mode: Azure Blob first; when Blob has no copy or fails (sign-in, network),
+    # the workspace copy of the page image. Page data never comes from disk.
     blob_error: str | None = None
     if isinstance(repo, PostgresFolderRepository):
         try:

@@ -143,8 +143,12 @@ class PostgresFolderRepository(FolderRepository):
         data_root: Path | None = None,
         metadata_root: Path | None = None,
         db_schema: str = "public",
+        disk_data: bool = True,
     ):
+        """``data_root`` is the chart workspace. With ``disk_data`` false (Production Mode)
+        it serves page images only: charts, page lists and results come from Postgres."""
         self.database_url = _psycopg_url(database_url)
+        self._disk_data = disk_data
         self.db_schema = (db_schema or "public").strip() or "public"
         self._local = (
             LocalFolderRepository(data_root, metadata_root=metadata_root)
@@ -160,9 +164,12 @@ class PostgresFolderRepository(FolderRepository):
         self._resolved_blobs: dict[tuple[str, int, bool], tuple[float, dict[str, str]]] = {}
         # Processed <output_path>/pages/ per chart: page file name -> (key, etag).
         self._processed_pages: dict[str, tuple[float, dict[str, tuple[str, str]]]] = {}
+        # Charts whose missing Blob image was already logged.
+        self._no_blob_logged: set[str] = set()
 
     def _optional_local(self) -> LocalFolderRepository | None:
-        return self._local
+        """The workspace as a data fallback (a chart, its page list, the folder list)."""
+        return self._local if self._disk_data else None
 
     def _connect(self):
         return db.connection(self.database_url, self.db_schema)
@@ -180,7 +187,7 @@ class PostgresFolderRepository(FolderRepository):
         result = build_folder_list(
             database_url=self.database_url,
             db_schema=self.db_schema,
-            data_root=self._local.data_root if self._local else None,
+            data_root=self._local.data_root if self._optional_local() else None,
             full_local_rows=None,
             params=FolderListParams(limit=None, offset=0, sort="updated", sort_dir="desc"),
         )
@@ -396,8 +403,10 @@ class PostgresFolderRepository(FolderRepository):
     def get_page_image_path(
         self, folder_id: str, page_number: int, *, corrected: bool = False
     ) -> Path:
-        """Local path when a workspace copy exists (fallback for the image route)."""
-        local = self._optional_local()
+        """Local path when a workspace copy exists (fallback for the image route). Page
+        images are the source document, not pipeline output: served from the workspace in
+        every mode when Blob has none."""
+        local = self._local
         if local is None:
             raise HTTPException(
                 status_code=404,
@@ -478,6 +487,7 @@ class PostgresFolderRepository(FolderRepository):
         rows = self._page_rows(folder_id)
         hit = rows.get(page_number) if rows else None
         if hit is None:
+            self._no_blob(folder_id, page_number, "no page_list row for this page")
             return None
         container, blob_path, output_path, page_name, _use_corrected, image_path, idx = hit
         if not container:
@@ -486,6 +496,7 @@ class PostgresFolderRepository(FolderRepository):
 
             container = get_settings().blob_container.strip().strip("/")
         if not container:
+            self._no_blob(folder_id, page_number, "no chart_list.blob_container and no BLOB_CONTAINER")
             return None
 
         out = (output_path or "").strip().strip("/")
@@ -512,11 +523,24 @@ class PostgresFolderRepository(FolderRepository):
             self._resolved_blobs[cache_key] = (now, out_loc)
             return out_loc
         if found is None:
+            self._no_blob(
+                folder_id, page_number,
+                f"not in {container}/{out or '(no output_path)'}/pages/{page_name} "
+                f"nor in the Raw_Input listing of {container}/{blob_path or '(no blob_path)'}",
+            )
             return None
         key, etag = found
         out_loc = {"container": container, "key": key, "filename": Path(key).name or page_name, "etag": etag}
         self._resolved_blobs[cache_key] = (now, out_loc)
         return out_loc
+
+    def _no_blob(self, folder_id: str, page_number: int, why: str) -> None:
+        """Say once per chart why its page images are not in Blob (the route then tries the
+        workspace copy)."""
+        if folder_id in self._no_blob_logged:
+            return
+        self._no_blob_logged.add(folder_id)
+        logger.warning("page image not in Blob: chart=%s page=%s — %s", folder_id, page_number, why)
 
     def _processed_page_blob(
         self, folder_id: str, container: str, output_path: str, page_name: str

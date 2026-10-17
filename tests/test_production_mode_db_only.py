@@ -11,9 +11,18 @@ def _production(tmp_path) -> Settings:
     return Settings(data_mode="production", database_url="postgresql://u:p@localhost/db", data_root=str(tmp_path))
 
 
-def test_the_production_repository_has_no_local_workspace(tmp_path):
+def test_the_production_repository_reads_no_data_from_disk(tmp_path):
     repo = build_repository(_production(tmp_path))
-    assert repo._optional_local() is None  # no disk fallback for charts, pages or images
+    assert repo._optional_local() is None  # no disk fallback for a chart or its page list
+
+
+def test_production_still_serves_a_workspace_page_image(tmp_path):
+    # Page images are the source document: Blob first, else the workspace copy.
+    settings = _production(tmp_path)
+    (tmp_path / "chart1" / "pages").mkdir()
+    (tmp_path / "chart1" / "pages" / "1.png").write_bytes(b"png")
+    repo = build_repository(settings)
+    assert repo.get_page_image_path("chart1", 1).name == "1.png"
 
 
 def test_the_extraction_pane_reads_no_staging_in_production(tmp_path):
