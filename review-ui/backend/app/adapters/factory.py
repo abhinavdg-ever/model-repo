@@ -34,10 +34,12 @@ def build_repository(settings: Settings, production: bool | None = None) -> Fold
             settings.resolved_data_root,
             settings.resolved_metadata_root,
         )
+        # Production reads Postgres and Azure Blob only: no local workspace, so no disk
+        # fallback for charts, page lists or images, and nothing from staging.
         return PostgresFolderRepository(
             settings.database_url,
-            data_root=settings.resolved_data_root,
-            metadata_root=settings.resolved_metadata_root,
+            data_root=None,
+            metadata_root=None,
             db_schema=settings.db_schema,
         )
     logger.info(

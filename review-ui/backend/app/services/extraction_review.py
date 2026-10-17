@@ -600,22 +600,3 @@ def load_extraction_review(
         fields=field_rows(page),
         section_headers=heron_headers(page),
     )
-
-
-def staged_credentials(data_root: Path, folder_id: str, page_files: list[str]) -> dict[str, str]:
-    """Provider Credentials per page as the page view shows them (the staged
-    extraction's credential rows), for the pages that have any."""
-    path = _folder_dir(data_root, folder_id) / "staging" / "extraction.json"
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    pages = payload.get("pages") if isinstance(payload, dict) else None
-    if not isinstance(pages, dict):
-        return {}
-    found: dict[str, str] = {}
-    for page_file in page_files:
-        text = credentials_text(_page_for(pages, page_file))
-        if text.strip():
-            found[page_file] = text
-    return found

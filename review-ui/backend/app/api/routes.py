@@ -162,7 +162,8 @@ def list_folders(
         limit=limit,
         offset=offset,
     )
-    data_root = settings.resolved_data_root
+    # Production lists chart_list only; Local Mode merges in the workspace folders.
+    data_root = None if settings.is_production_mode else settings.resolved_data_root
     db_url = settings.database_url
     full_local = None
     # Expensive full disk scan only when Postgres is unavailable.
@@ -171,7 +172,7 @@ def list_folders(
     result = build_folder_list(
         database_url=db_url,
         db_schema=settings.db_schema,
-        data_root=data_root if data_root.is_dir() else None,
+        data_root=data_root if data_root is not None and data_root.is_dir() else None,
         full_local_rows=full_local,
         params=params,
     )
@@ -374,8 +375,8 @@ def get_page_image(
     )
     from app.adapters.postgres.repository import PostgresFolderRepository
 
-    # DB mode (this browser's switch, or DATA_MODE): Azure Blob first. When Blob fails (sign-in,
-    # network), the local workspace copy is served instead.
+    # Production Mode: Azure Blob only. The repository has no local workspace, so a Blob
+    # failure (sign-in, network) is a 503 naming it, never a disk copy.
     blob_error: str | None = None
     if isinstance(repo, PostgresFolderRepository):
         try:
@@ -607,7 +608,11 @@ def get_folder_extraction(
     page: str = Query(..., description="Image file name of the page being reviewed."),
     settings: Settings = Depends(get_settings),
 ) -> ExtractionReviewResponse:
-    """Selected key/value extraction for one page. Processed equals extracted."""
+    """Selected key/value extraction for one page. Processed equals extracted.
+
+    It is the raw staging file on disk, so Production Mode (Postgres + Blob only) has none."""
+    if settings.is_production_mode:
+        return ExtractionReviewResponse(folder_id=folder_id, available=False)
     return load_extraction_review(settings.resolved_data_root, folder_id, page)
 
 
@@ -694,7 +699,7 @@ class _PipelineCharts:
             name for name in self._order[start + 1:] if name not in self._docs and name != pdf_id
         ][: excel_compare.database_algo.BATCH - 1]
         docs, runs = excel_compare.database_algo.fetch(
-            self._settings.database_url, self._settings.db_schema, self._data_root(), batch
+            self._settings.database_url, self._settings.db_schema, batch
         )
         for name in batch:
             self._docs[name] = docs.get(name)

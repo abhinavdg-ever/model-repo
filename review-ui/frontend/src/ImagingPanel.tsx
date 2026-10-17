@@ -1226,7 +1226,6 @@ function PageDetails({
   folderId,
   page,
   sections,
-  extraction,
   onSaved,
   groundTruthLeave,
   compact = false,
@@ -1234,7 +1233,6 @@ function PageDetails({
   folderId: string;
   page: ImagingPageResult;
   sections: ImagingSectionsProcessed;
-  extraction: ExtractionReviewResponse | null;
   onSaved: (groundTruth: PageGroundTruth) => void;
   compact?: boolean;
   groundTruthLeave?: MutableRefObject<GroundTruthLeave | null>;
@@ -1269,13 +1267,10 @@ function PageDetails({
     Boolean(sections.codeable) ||
     (page.isCodeable != null && String(page.isCodeable).trim() !== "");
   const qualityKnown = sections.quality ?? sections.hw;
-  const name = stagedField(extraction, "name");
-  const dob = stagedField(extraction, "dob");
-  const memberId = stagedField(extraction, "member_id");
-  // Every provider on the page, read off the credential rows: names and their
-  // credentials in the same order, providers separated by " | ".
-  const providerName = stagedField(extraction, "provider_name");
-  const providerCredentials = stagedField(extraction, "provider_credentials");
+  // Member and provider rows show the stages' own results (member_extraction_results /
+  // the member CSV; imaging_final / provider_signature.csv), never the key/value
+  // extractor's raw pick in staging — that stays in the extraction pane.
+  const providerCredentials = text(page.providerCredentials) || "";
   const stored = storedGroundTruth(page.groundTruth);
   const values = { ...stored, ...edits };
   const dirty =
@@ -1416,21 +1411,21 @@ function PageDetails({
         title="Member Extraction"
         toolbar={saveBar}
         rows={[
-          sameValue(name ? properName(name.value) : fmt(page.memberName && properName(page.memberName), sections.member, skip), name ? fmtConfidence(name.confidence, true) : memberConf, {
+          sameValue(fmt(page.memberName && properName(page.memberName), sections.member, skip), memberConf, {
             id: "name",
             label: "Member Name",
             truth: bits.memberName,
             presence: true,
             key: true,
           }),
-          sameValue(displayIsoDates(dob?.value ?? fmt(page.memberDob, sections.member, skip)), dob ? fmtConfidence(dob.confidence, true) : memberConf, {
+          sameValue(displayIsoDates(fmt(page.memberDob, sections.member, skip)), memberConf, {
             id: "dob",
             label: "Member DOB",
             truth: bits.memberDob,
             presence: true,
             key: true,
           }),
-          sameValue(memberId?.value ?? fmt(page.memberId, sections.member, skip), memberId ? fmtConfidence(memberId.confidence, true) : memberConf, {
+          sameValue(fmt(page.memberId, sections.member, skip), memberConf, {
             id: "member_id",
             label: "Member ID",
             presence: true,
@@ -1563,23 +1558,21 @@ function PageDetails({
         title="Provider Extraction"
         rows={[
           sameValue(
-            properName(providerName?.value || page.providerName || "") || NOT_FOUND,
-            providerName
-              ? fmtConfidence(providerName.confidence, true)
-              : fmtConfidence(page.providerSignatureConfidence, Boolean(page.providerName)),
+            properName(page.providerName || "") || NOT_FOUND,
+            fmtConfidence(page.providerSignatureConfidence, Boolean(page.providerName)),
             { id: "provider_name", label: "Provider Name" },
           ),
           {
-            // The staged extraction's credentials only, no signature CSV fallback.
+            // The credentials on the provider the signature rows name.
             ...sameValue(
-              providerCredentials?.value || NOT_FOUND,
-              fmtConfidence(providerCredentials?.confidence ?? null, Boolean(providerCredentials)),
+              providerCredentials || NOT_FOUND,
+              fmtConfidence(page.providerSignatureConfidence, Boolean(providerCredentials)),
               { id: "provider_credentials", label: "Provider Credentials", key: true },
             ),
             // Scored as the accuracy report scores it: any one credential shared
             // ('MD | NP' against 'MD, PhD') is a match.
             compare: (truth: string) => {
-              const verdict = credentialsVerdict(truth, providerCredentials?.value);
+              const verdict = credentialsVerdict(truth, providerCredentials || undefined);
               return verdict == null ? null : verdict === "no" ? "mismatch" : "match";
             },
           },
@@ -2082,7 +2075,6 @@ export default function ImagingPanel({
         folderId={document.folder_id}
         page={currentPage}
         sections={sections}
-        extraction={extraction}
         compact={compact}
         groundTruthLeave={groundTruthLeave}
         onSaved={(groundTruth) =>

@@ -107,31 +107,13 @@ def test_accuracy_report_is_reused_for_a_minute(monkeypatch):
     assert len(built) == 5
 
 
-def test_provider_credentials_come_from_blob_before_disk(tmp_path, monkeypatch):
-    from app.core.schemas import ImagingPageResult
-    from app.services import accuracy_cache, blob_store
+def test_provider_credentials_come_from_the_database_row():
+    """imaging_final.provider_name carries the name and its credentials; no staging, no CSV."""
+    from app.services import accuracy_cache
 
-    page = ImagingPageResult(pageNumber=1, fileName="1.jpg")
-    chart = tmp_path / "c1" / "imaging"
-    chart.mkdir(parents=True)
-    (chart / "c1_provider_signature.csv").write_text(
-        "chart_name,page_name,provider_name,signature_present\nc1,1.jpg,Disk Doe MD,yes\n", encoding="utf-8"
-    )
-    blob_rows = [{"chart_name": "c1", "page_name": "1.jpg", "provider_name": "Blob Roe DO", "signature_present": "yes"}]
-
-    # The Blob copy (Processed output_path) wins; the disk copy is the fallback.
-    from_blob = accuracy_cache._with_signatures([page], tmp_path, "c1", blob_rows)[0]
-    from_disk = accuracy_cache._with_signatures([page], tmp_path, "c1", [])[0]
-    assert (from_blob.providerCredentials, from_disk.providerCredentials) == ("DO", "MD")
-
-    # Downloaded from <output_path>/imaging/<chart>_provider_signature.csv.
-    asked = []
-    monkeypatch.setattr(blob_store, "resolved_blob_account_url", lambda *_a: "https://acct.blob.core.windows.net")
-    monkeypatch.setattr(
-        blob_store,
-        "download_blob_at",
-        lambda **kw: asked.append((kw["container"], kw["key"])) or (b"chart_name,provider_name\nc1,X MD\n", "text/csv"),
-    )
-    rows = accuracy_cache.blob_signature_rows({"c1": ("imaging", "Processed/R1/B1/c1"), "c2": ("imaging", "")}, ["c1", "c2"])
-    assert asked == [("imaging", "Processed/R1/B1/c1/imaging/c1_provider_signature.csv")]
-    assert rows == {"c1": [{"chart_name": "c1", "provider_name": "X MD"}]}  # c2 has no output_path
+    base = (None,) * 34
+    row = ("c1", 1, "1.jpg") + base[3:]
+    extra = (None,) * 7 + ("MD",) + ("Ramsey Luce, R.N.",)
+    page = accuracy_cache._page(row, extra)
+    assert (page.providerName, page.providerCredentials) == ("Ramsey Luce", "R.N.")
+    assert page.groundTruth.providerCredentials == "MD"

@@ -995,7 +995,9 @@ SELECT
     f.dos_from                                                AS final_dos_from,
     f.dos_to                                                  AS final_dos_to,
     -- Provider Credentials ground truth (provider_signature is Yes / No).
-    g.provider_credentials                                    AS gt_provider_credentials
+    g.provider_credentials                                    AS gt_provider_credentials,
+    -- The signature rows' provider (name and credentials), as review-ui shows it.
+    f.provider_name                                           AS final_provider_name
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name

@@ -41,6 +41,7 @@ from app.services.imaging_overlays import (
     document_label,
     empty_imaging_pages,
     page_type_fields,
+    signature_people,
 )
 
 logger = logging.getLogger("review_ui.postgres")
@@ -1049,7 +1050,9 @@ class PostgresFolderRepository(FolderRepository):
                             """
                             SELECT p.page_name, f.page_type, f.classification_category,
                                    f.dos_from, f.dos_to, to_jsonb(f) ->> 'page_subtype',
-                                   to_jsonb(f) ->> 'specialty'
+                                   to_jsonb(f) ->> 'specialty',
+                                   to_jsonb(f) ->> 'provider_name',
+                                   to_jsonb(f) ->> 'signature_present'
                             FROM imaging_final f
                             JOIN page_list p ON p.id = f.page_id
                             JOIN chart_list c ON c.id = f.chart_id
@@ -1057,8 +1060,19 @@ class PostgresFolderRepository(FolderRepository):
                             """,
                             (folder_id,),
                         )
-                        for page_name, final_type, category, final_from, final_to, final_sub, final_specialty in cur.fetchall():
+                        for (page_name, final_type, category, final_from, final_to, final_sub,
+                             final_specialty, provider, signed) in cur.fetchall():
                             fields = _ensure(str(page_name))
+                            # Provider Extraction: the signature rows the extraction stage
+                            # writes (the same as provider_signature.csv); the name cell
+                            # carries the credentials ('Ramsey Luce, R.N.').
+                            provider_name, provider_credentials = signature_people(provider or "")
+                            if provider_name:
+                                fields["providerName"] = provider_name
+                            if provider_credentials:
+                                fields["providerCredentials"] = provider_credentials
+                            if signed is not None:
+                                fields["providerSignature"] = "Yes" if signed == "true" else "No"
                             fields["finalSpecialty"] = final_specialty or None
                             fields["finalPageType"] = compose_page_type(final_type, final_sub) or None
                             fields["finalCodeable"] = codeable_display.get(category or "")

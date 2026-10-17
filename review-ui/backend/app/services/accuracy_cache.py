@@ -33,6 +33,7 @@ from app.services.imaging_overlays import (
     compose_page_type,
     display_page_type,
     inherit_duplicate_blank_junk,
+    signature_people,
 )
 
 _ready: set[tuple[str, str]] = set()
@@ -106,7 +107,9 @@ SELECT
     f.classification_category AS final_category,
     f.dos_from AS final_dos_from,
     f.dos_to AS final_dos_to,
-    g.provider_credentials AS gt_provider_credentials
+    g.provider_credentials AS gt_provider_credentials,
+    -- The signature rows' provider (name and credentials), as the page view shows it.
+    f.provider_name AS final_provider_name
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name
@@ -142,7 +145,7 @@ SELECT chart_name, page_number, source_page_id,
        ground_truth_updated_at,
        orientation_angle, rotation_known,
        final_page_type, final_page_subtype, final_category, final_dos_from, final_dos_to,
-       gt_provider_credentials
+       gt_provider_credentials, final_provider_name
   FROM v_accuracy_page
  WHERE chart_name = ANY(%s)
  ORDER BY chart_name, page_number
@@ -208,12 +211,15 @@ _RUNNING = frozenset({"IN_PROGRESS", "IMAGING_IN_PROGRESS"})
 
 
 def _eligible(settings: Settings) -> list[tuple[str, str, datetime | None]]:
+    """Charts with ground truth that are not running. Local Mode also needs the chart's
+    folder in the workspace; Production Mode takes chart_list alone."""
+    production = settings.is_production_mode
     data_root = settings.resolved_data_root
     root = data_root if isinstance(data_root, Path) else Path(data_root)
     listed = build_folder_list(
         database_url=settings.database_url,
         db_schema=settings.db_schema,
-        data_root=root,
+        data_root=None if production else root,
         full_local_rows=None,
         params=FolderListParams(sort="filename", sort_dir="asc"),
     )
@@ -221,7 +227,7 @@ def _eligible(settings: Settings) -> list[tuple[str, str, datetime | None]]:
         (folder.id, folder.name, folder.last_updated_at)
         for folder in listed.items
         if folder.ground_truth_available
-        and folder.on_disk
+        and (production or folder.on_disk)
         and folder.ocr_status not in _RUNNING
     ]
 
@@ -289,9 +295,10 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
     (
         orientation, _rotation_known,
         final_type, final_subtype, final_category, final_from, final_to,
-        gt_provider_credentials,
-    ) = (tuple(extra) + (None,) * 8)[:8]
+        gt_provider_credentials, final_provider,
+    ) = (tuple(extra) + (None,) * 9)[:9]
     final_key = _text(final_category) or ""
+    provider_name, provider_credentials = signature_people(_text(final_provider) or "")
     return ImagingPageResult(
         pageNumber=int(page_number),
         fileName=file_name,
@@ -309,6 +316,8 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
         finalCodeable=_CODEABLE.get(final_key, final_key or None) if final_key else None,
         finalDosFrom=_fmt_date(final_from),
         finalDosTo=_fmt_date(final_to),
+        providerName=provider_name or None,
+        providerCredentials=provider_credentials or None,
         groundTruth=PageGroundTruth(
             pageNumber=int(page_number),
             sourcePageId=_text(source_page_id),
@@ -331,107 +340,6 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
             providerCredentials=_text(gt_provider_credentials),
         ),
     )
-
-
-_LOCATIONS = """
-SELECT chart_name, blob_container, output_path FROM chart_list WHERE chart_name = ANY(%s)
-"""
-
-# Signature CSVs downloaded at once (Accuracy reads one per chart).
-_BLOB_WORKERS = 8
-
-
-def chart_locations(conn, chart_names: list[str]) -> dict[str, tuple[str, str]]:
-    """chart -> (blob container, Processed output_path) from chart_list. An empty
-    container is BLOB_CONTAINER, as for page images."""
-    from app.core.config import get_settings
-
-    default = get_settings().blob_container.strip().strip("/")
-    with conn.cursor() as cur:
-        cur.execute(_LOCATIONS, (chart_names,))
-        return {
-            str(chart): ((str(container or "").strip().strip("/") or default), str(out or "").strip().strip("/"))
-            for chart, container, out in cur.fetchall()
-        }
-
-
-def _blob_signature_rows(chart_name: str, location: tuple[str, str] | None) -> list[dict[str, str]]:
-    """``<output_path>/imaging/<chart>_provider_signature.csv`` from Azure Blob,
-    where the pipeline uploads it. [] when there is no blob location or file."""
-    import csv
-    import io
-
-    from app.services.blob_store import download_blob_at, resolved_blob_account_url
-
-    container, output_path = location or ("", "")
-    if not container or not output_path or not resolved_blob_account_url():
-        return []
-    key = f"{output_path}/imaging/{chart_name}_provider_signature.csv"
-    try:
-        data, _ = download_blob_at(container=container, key=key)
-    except Exception:  # noqa: BLE001 - missing or unreadable: the disk copy is tried
-        return []
-    reader = csv.DictReader(io.StringIO(data.decode("utf-8-sig", errors="replace")))
-    return [
-        {(k or "").strip(): (v or "").strip() for k, v in raw.items() if k is not None}
-        for raw in reader
-    ]
-
-
-def blob_signature_rows(
-    locations: dict[str, tuple[str, str]], chart_names: list[str]
-) -> dict[str, list[dict[str, str]]]:
-    """The signature CSV of each chart from Blob, several downloads at once."""
-    from concurrent.futures import ThreadPoolExecutor
-
-    wanted = [name for name in chart_names if locations.get(name, ("", ""))[1]]
-    if not wanted:
-        return {}
-    with ThreadPoolExecutor(max_workers=_BLOB_WORKERS) as pool:
-        rows = pool.map(lambda name: _blob_signature_rows(name, locations.get(name)), wanted)
-        return dict(zip(wanted, rows))
-
-
-def _with_signatures(
-    pages: list[ImagingPageResult],
-    data_root: Path,
-    chart_name: str,
-    blob_rows: list[dict[str, str]] | None = None,
-) -> list[ImagingPageResult]:
-    """Provider name / credentials / signature from the chart's signature CSV, so
-    the report can score provider credentials: the Azure Blob copy
-    (``blob_rows``, Processed output_path) when there is one, else the copy in
-    the local chart workspace."""
-    from app.services.imaging_overlays import (
-        collect_rows,
-        index_signature_rows,
-        overlay_fields,
-    )
-
-    rows = blob_rows or []
-    if not rows:
-        try:
-            rows = collect_rows(
-                folder_dir=data_root / chart_name,
-                data_root=data_root,
-                per_chart_name=f"{chart_name}_provider_signature.csv",
-                combined_rel=None,
-                chart_name=chart_name,
-            )
-        except OSError:
-            return pages
-    return overlay_fields(pages, index_signature_rows(rows, chart_name))
-
-
-def _with_staged_credentials(
-    pages: list[ImagingPageResult], data_root: Path, chart_name: str
-) -> list[ImagingPageResult]:
-    """Provider Credentials as the page view shows them: the staged extraction's
-    only. The signature CSV's provider name is not a fallback."""
-    from app.services.extraction_review import staged_credentials
-
-    staged = staged_credentials(data_root, chart_name, [page.fileName for page in pages if page.fileName])
-    return [page.model_copy(update={"providerCredentials": staged.get(page.fileName)}) for page in pages]
 
 
 # A built report is reused for this long, so reopening the page (or Back from
@@ -522,14 +430,10 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
         previous = verified.get(chart_name)
         if isinstance(moment, datetime) and (previous is None or moment > previous):
             verified[chart_name] = moment
-    data_root = settings.resolved_data_root
-    root = data_root if isinstance(data_root, Path) else Path(data_root)
     for chart_name, chart_pages in pages.items():
-        pages[chart_name] = inherit_duplicate_blank_junk(
-            # Credentials are the only provider field the screen scores, and they come from
-            # staging: the signature CSV is not downloaded for the report.
-            _with_staged_credentials(chart_pages, root, chart_name)
-        )
+        # Provider credentials come with the row (imaging_final.provider_name), as the page
+        # view shows them: no staging, no signature CSV.
+        pages[chart_name] = inherit_duplicate_blank_junk(chart_pages)
     charts = [
         AccuracyChartPayload(
             chartId=chart_id,

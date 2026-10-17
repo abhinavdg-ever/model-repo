@@ -12,7 +12,6 @@ Sure" codability, sequencing), so they match what the chart view shows.
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 
 from app.core.schemas import ImagingDocumentResponse, ImagingPageResult
 from app.services.db import connection
@@ -32,7 +31,8 @@ SELECT c.chart_name,
        b.blank_junk_flag, b.junk_subtype,
        pc.id IS NOT NULL, pc.page_type, pc.page_subtype, pc.classification_category,
        f.page_type, f.page_subtype, f.classification_category, f.dos_from, f.dos_to,
-       s.id IS NOT NULL, COALESCE(s.original_page_number, p.page_number), s.seq
+       s.id IS NOT NULL, COALESCE(s.original_page_number, p.page_number), s.seq,
+       f.provider_name, f.signature_present
   FROM chart_list c
   JOIN page_list p ON p.chart_id = c.id
   LEFT JOIN member_extraction_results m ON m.page_id = p.id
@@ -51,7 +51,7 @@ _LAST_RUN = "SELECT chart_name, updated_at FROM chart_list WHERE chart_name = AN
 def _page(row: tuple) -> ImagingPageResult:
     from app.adapters.postgres.repository import _blank_junk_ui, _fmt_date
     from app.services.accuracy_cache import _CODEABLE, _text
-    from app.services.imaging_overlays import compose_page_type
+    from app.services.imaging_overlays import compose_page_type, signature_people
 
     (
         _chart, page_number, page_name,
@@ -60,7 +60,10 @@ def _page(row: tuple) -> ImagingPageResult:
         classified, page_type, subtype, category,
         final_type, final_subtype, final_category, final_from, final_to,
         sequenced, current_seq, actual_seq,
+        provider, signed,
     ) = row
+    # The signature rows' provider (imaging_final), as the chart view shows it.
+    provider_name, provider_credentials = signature_people(_text(provider) or "")
     blank, duplicate, shown_type = _blank_junk_ui(_text(flag), _text(junk_subtype))
     codeable = None
     if classified:
@@ -89,15 +92,17 @@ def _page(row: tuple) -> ImagingPageResult:
         finalCodeable=_CODEABLE.get(final_key, final_key or None) if final_key else None,
         finalDosFrom=_fmt_date(final_from),
         finalDosTo=_fmt_date(final_to),
+        providerName=provider_name or None,
+        providerCredentials=provider_credentials or None,
+        providerSignature=None if signed is None else ("Yes" if signed else "No"),
     )
 
 
 def fetch(
-    database_url: str, db_schema: str, data_root: Path, chart_names: list[str]
+    database_url: str, db_schema: str, chart_names: list[str]
 ) -> tuple[dict[str, ImagingDocumentResponse], dict[str, datetime | None]]:
     """(chart -> its pages as a slim document, chart -> last run) for charts in
     chart_list. A chart with no pages there is absent from the documents."""
-    from app.services.accuracy_cache import _with_signatures, blob_signature_rows, chart_locations
     from app.services.imaging_overlays import inherit_duplicate_blank_junk
 
     pages: dict[str, list[ImagingPageResult]] = {}
@@ -109,15 +114,10 @@ def fetch(
             pages.setdefault(str(row[0]), []).append(_page(row))
         cur.execute(_LAST_RUN, (chart_names,))
         last_run = {str(name): updated for name, updated in cur.fetchall()}
-        locations = chart_locations(conn, list(pages))
-    # Provider credentials: the signature CSV in Blob (Processed), else on disk.
-    signatures = blob_signature_rows(locations, list(pages))
     documents = {
         chart: ImagingDocumentResponse.model_construct(
             folder_id=chart,
-            pages=inherit_duplicate_blank_junk(
-                _with_signatures(chart_pages, data_root, chart, signatures.get(chart))
-            ),
+            pages=inherit_duplicate_blank_junk(chart_pages),
             verifications=[],
             verification=None,
         )

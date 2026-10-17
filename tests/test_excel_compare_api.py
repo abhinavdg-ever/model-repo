@@ -130,7 +130,7 @@ def repo(client):
     fake = _Repo()
     client.app.dependency_overrides[get_repository] = lambda: fake
 
-    def fetch(_url, _schema, _root, names):
+    def fetch(_url, _schema, names):
         # The batched database read, served from the same fake charts.
         fake.asked.extend(names)
         docs = {name: fake.doc for name in names if name == "100"}
@@ -433,6 +433,7 @@ def test_batched_database_rows_map_like_the_chart_view():
             classified=False, page_type=None, subtype=None, category=None,
             final_type=None, final_subtype=None, final_category=None, final_from=None, final_to=None,
             sequenced=False, current=None, actual=None,
+            provider=None, signed=None,
         )
         base.update(cells)
         return tuple(base.values())
@@ -451,3 +452,7 @@ def test_batched_database_rows_map_like_the_chart_view():
     # A classified page with a blank category is Not Sure too; a junk page keeps its tag.
     assert _page(row(classified=True, page_type="Lab", subtype="Lab")).isCodeable == "Not Sure"
     assert _page(row(flag="junk", junk_subtype="Fax Cover")).blankOrJunk == "Yes (Junk)"
+    # Provider: imaging_final's signature row, name and credentials split.
+    signed = _page(row(provider="Kenneth Kummerfeld, MD", signed=True))
+    assert (signed.providerName, signed.providerCredentials, signed.providerSignature) == (
+        "Kenneth Kummerfeld", "MD", "Yes")
