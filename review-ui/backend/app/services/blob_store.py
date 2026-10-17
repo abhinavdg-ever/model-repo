@@ -130,6 +130,22 @@ def _credential(settings: Settings):
     return DefaultAzureCredential(exclude_interactive_browser_credential=True)
 
 
+# Requests on the API's worker threads share one client. Its default HTTP pool keeps 10
+# connections, so parallel blob reads logged "Connection pool is full, discarding connection".
+_POOL_SIZE = 64
+
+
+def _pooled_session():
+    import requests
+    from requests.adapters import HTTPAdapter
+
+    session = requests.Session()
+    adapter = HTTPAdapter(pool_connections=_POOL_SIZE, pool_maxsize=_POOL_SIZE)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
 @lru_cache
 def _blob_service_client() -> BlobServiceClient:
     settings = get_settings()
@@ -140,11 +156,13 @@ def _blob_service_client() -> BlobServiceClient:
         )
     connection_string = settings.azure_storage_connection_string.strip()
     if connection_string:
-        return BlobServiceClient.from_connection_string(connection_string)
+        return BlobServiceClient.from_connection_string(connection_string, session=_pooled_session())
     account_key = settings.azure_storage_account_key.strip()
     if account_key:
-        return BlobServiceClient(account_url=account_url, credential=account_key)
-    return BlobServiceClient(account_url=account_url, credential=_credential(settings))
+        return BlobServiceClient(account_url=account_url, credential=account_key, session=_pooled_session())
+    return BlobServiceClient(
+        account_url=account_url, credential=_credential(settings), session=_pooled_session()
+    )
 
 
 def blob_auth_label(settings: Settings) -> str:

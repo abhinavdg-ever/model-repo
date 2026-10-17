@@ -10,7 +10,7 @@ import {
   hasGroundTruth,
   type GtBit,
 } from "./groundTruth";
-import { splitPageType } from "./ImagingPanel";
+import { DEFAULT_DOS, splitPageType } from "./ImagingPanel";
 
 export type Verdict = "yes" | "maybe" | "no";
 
@@ -44,7 +44,7 @@ export const METRICS: {
   {
     id: "dos",
     label: "DOS",
-    rule: "Every page is compared. Labelled dates (From, To) match the Final DOS: Match; only the Extracted DOS: Partial; neither: No Match. A page whose DOS label is blank / NA / Not Available expects no date: the pipeline finding none is a Match, finding one is a No Match. Under Date = Yes (cases = pages the ground truth dates): Precision = of the pages the pipeline dated, the share right; Recall = of the cases, the share found",
+    rule: "Every page is compared, except one where the ground truth has no date and the pipeline shows the 2222-02-02 placeholder (not scored). Labelled dates (From, To) match the Final DOS: Match; only the Extracted DOS: Partial; neither: No Match. A page whose DOS label is blank / NA / Not Available expects no date: the pipeline finding none is a Match, finding one is a No Match. Under Date = Yes (cases = pages the ground truth dates): Precision = of the pages the pipeline dated, the share right; Recall = of the cases, the share found",
   },
   {
     id: "blankJunk",
@@ -249,6 +249,13 @@ function text(value: string | null | undefined): string {
   return (value ?? "").trim();
 }
 
+/** A pipeline DOS, "" for none. The continuity stage writes DOS_DEFAULT_DATE
+ * (2222-02-02) as the Final DOS of a page with no date: that is no date. */
+function pipelineDate(value: string | null | undefined): string {
+  const date = text(value);
+  return date.startsWith(DEFAULT_DOS) ? "" : date;
+}
+
 /** Each labelled date (From, To) must match exactly. A date that only shares
  * its year or month is wrong: the 0.5 is kept for "matches the Extracted DOS". */
 function dosVerdict(bits: { dosFrom: GtBit[]; dosTo: GtBit[] }): Verdict | null {
@@ -288,8 +295,8 @@ function pageScores(
     memberKnown: sections.member,
     orientationAngle: page.orientationAngle,
     rotationKnown: sections.rotation,
-    dosFrom: page.dosFrom,
-    dosTo: page.dosTo,
+    dosFrom: pipelineDate(page.dosFrom) || null,
+    dosTo: pipelineDate(page.dosTo) || null,
     dosKnown: sections.dos,
     blankOrJunk: page.blankOrJunk,
     junkKnown: sections.junk,
@@ -309,8 +316,10 @@ function pageScores(
   // Final stage left empty is the Extracted value, so it scores in full.
   const finalType = text(page.finalPageType) || text(page.pageType);
   const finalParts = splitPageType(finalType);
-  const finalFrom = text(page.finalDosFrom) || text(page.dosFrom);
-  const finalTo = text(page.finalDosTo) || (text(page.finalDosFrom) ? text(page.finalDosFrom) : text(page.dosTo));
+  const finalFrom = pipelineDate(page.finalDosFrom) || pipelineDate(page.dosFrom);
+  const finalTo =
+    pipelineDate(page.finalDosTo) ||
+    (pipelineDate(page.finalDosFrom) ? pipelineDate(page.finalDosFrom) : pipelineDate(page.dosTo));
   const finalBits = groundTruthBits({
     ...input,
     pageType: finalParts.family,
@@ -337,7 +346,13 @@ function pageScores(
   // DOS on every page: a ground truth with no date expects none.
   const pipelineDated = Boolean(finalFrom || finalTo);
   const gtDated = !noValue(page.groundTruth?.dosFrom) || !noValue(page.groundTruth?.dosTo);
-  const dosCall: PresenceCall | null = gtDated
+  // The pipeline's 2222-02-02 placeholder where the ground truth has no date is not scored.
+  const placeholderDos = [page.finalDosFrom, page.finalDosTo, page.dosFrom, page.dosTo].some(
+    (value) => text(value).startsWith(DEFAULT_DOS),
+  );
+  const dosCall: PresenceCall | null = !gtDated && !pipelineDated && placeholderDos
+    ? null
+    : gtDated
     ? (() => {
         const verdict = finalOrExtracted(dosVerdict(finalBits), dosVerdict(bits));
         return verdict ? { expected: true, predicted: pipelineDated, verdict } : null;

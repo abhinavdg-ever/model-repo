@@ -43,7 +43,7 @@ const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
 };
 
 /** The DOS of a page with no date (DOS_DEFAULT_DATE in dos_canon.json), at 80% confidence. */
-const DEFAULT_DOS = "2222-02-02";
+export const DEFAULT_DOS = "2222-02-02";
 const DEFAULT_DOS_CONFIDENCE = 0.8;
 
 function text(value: string | null | undefined): string | null {
