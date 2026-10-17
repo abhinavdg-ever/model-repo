@@ -177,10 +177,10 @@ def test_two_of_three_heading_checks_is_enough():
             ]
         },
     }
-    assert headings(page) == ["Office Visit Report 03/28/2024", "Plan"]
+    assert headings(page) == ["Office Visit Report", "Plan"]
     # Every candidate is still given, the rejected one marked.
     assert [(h.text, h.candidate) for h in heron_headers(page)] == [
-        ("Office Visit Report 03/28/2024", False),
+        ("Office Visit Report", False),
         ("Plan", False),
         ("Mr", True),
     ]
@@ -219,7 +219,10 @@ def test_headers_drop_a_numeric_opening_and_strip_punctuation():
             ]
         },
     }
-    assert headings(page) == ["Signed by on 03/29/24 at 9 15 AM CDT", "CC/HPI"]
+    # No dates, numbers or ids: a word with a digit is dropped, and a header with
+    # nothing left ("023466") is not shown at all.
+    assert headings(page) == ["Signed by on at AM CDT", "CC/HPI"]
+    assert [h.text for h in heron_headers(page)] == ["RUS", "Signed by on at AM CDT", "CC/HPI"]
 
 
 def test_page_file_joins_the_staged_page_by_name(tmp_path):
@@ -306,8 +309,21 @@ def test_the_ct_scheduling_form_gets_its_strong_headings():
     assert headings(page) == ["CT MRI Scheduling", "Symptoms", "Exam", "Specialty Exam"]
     candidates = {h.text: h.heading_like for h in heron_headers(page) if h.candidate}
     # Rejected, but reads like a heading: drawn heavier than a form label.
-    assert candidates["Referring Physician s Signature"] is True
-    # A colon form label and a sentence stay the lightest.
-    assert candidates["Toll Free Tel"] is False
-    assert [like for text, like in candidates.items() if text.startswith("To schedule")] == [False]
+    assert candidates == {"Referring Physician s Signature": True}
+    # Not shown at all: a sentence of more than six words, and a phone / fax label.
+    shown = [h.text for h in heron_headers(page)]
+    assert "Toll Free Tel" not in shown and not any(text.startswith("To schedule") for text in shown)
     assert not any(h.heading_like for h in heron_headers(page) if not h.candidate)
+
+
+def test_contact_lines_and_long_lines_are_not_shown_as_headers():
+    def row(text, top):
+        return {"text": text, "score": 0.8, "accepted": True, "box": [40, top, 400, top + 30]}
+
+    page = {"width": 1000, "height": 2000, "fields": {"heading_heron": [
+        row("FAX #:", 100),
+        row("Cell Phone", 140),
+        row("Please include address for these results to be sent", 180),
+        row("History of Present Illness", 220),
+    ]}}
+    assert [h.text for h in heron_headers(page)] == ["History of Present Illness"]
