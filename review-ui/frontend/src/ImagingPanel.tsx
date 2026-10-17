@@ -21,6 +21,7 @@ import {
   displayIsoDates,
   groundTruthBits,
   gtCredentials,
+  blankJunkTruth,
   gtSignature,
   hasGroundTruth,
   pageTypeVerdict,
@@ -1205,6 +1206,11 @@ function dosCompareRow(
       hasGroundTruth(page.groundTruth) &&
       noValue(page.groundTruth?.dosFrom) &&
       noValue(page.groundTruth?.dosTo),
+    // A blank / junk page (by the ground truth or the pipeline) has no DOS to score, as in
+    // the accuracy report: no tick or cross, even when the ground truth gives a date.
+    noMark:
+      (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes") ||
+      (page.groundTruth ? (blankJunkTruth(page.groundTruth) ?? "").toLowerCase().startsWith("yes") : false),
   };
 }
 

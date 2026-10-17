@@ -183,3 +183,58 @@ def test_the_model_takes_its_best_dos_at_any_score():
     from stages.lib.extraction.util import config
 
     assert config.SELECT_THRESHOLDS["dos"] == 0.0
+
+
+def test_a_print_date_is_never_a_dos():
+    from stages.lib.extraction.dos.extract import extract_page
+    from stages.lib.extraction.util.keys import find_key_hits
+
+    words = _page((500, "Print Date: 03/01/2024 Visit Date: 02/27/2024"))
+    rows = extract_page(find_key_hits(words, PAGE_W, PAGE_H), words, PAGE_H)
+    printed = [row for row in rows if row.tier == "printed"]
+    assert printed and not any(row.accepted for row in printed)
+    assert [row.value for row in rows if row.accepted] == ["02/27/2024"]
+
+
+class TestDischargeDocuments:
+    STAY = {"admit": {"iso": "2024-02-01", "keyword": "Admit Date", "confidence": 0.7},
+            "discharge": {"iso": "2024-02-05", "keyword": "Discharge Date", "confidence": 0.9}}
+    KV = [{"iso": "2024-02-03", "keyword": "Visit Date", "confidence": 0.8}]
+
+    @staticmethod
+    def dos(text, kv=None, stay=None):
+        import stages.lib.dos.stage  # noqa: F401
+        from dos_logic import detect_dos_per_page
+
+        hit = detect_dos_per_page(f"===== 1.png =====\n{text}\n", kv_dates={"1.png": kv} if kv else None,
+                                  kv_stay={"1.png": stay} if stay else None)[0]
+        return hit["dos_from_iso"], hit["dos_to_iso"], hit["page_source"], hit["confidence"]
+
+    def test_admit_and_discharge_take_priority_over_the_kv_best_date(self):
+        assert self.dos("DISCHARGE SUMMARY\nDoing well.", self.KV, self.STAY) == (
+            "2024-02-01", "2024-02-05", "admit_discharge", 0.9)
+
+    def test_edge_labels_fill_in_without_kv(self):
+        assert self.dos("Admission Date: 02/01/2024 Discharge Date: 02/05/2024") == (
+            "2024-02-01", "2024-02-05", "admit_discharge", 0.5)
+
+    def test_not_a_discharge_document_keeps_the_kv_date(self):
+        assert self.dos("Progress note body.", self.KV, {"admit": self.STAY["admit"]})[:3] == (
+            "2024-02-03", "2024-02-03", "kv")
+
+    def test_a_discharge_before_the_admit_is_ignored(self):
+        stay = {"admit": {"iso": "2024-02-05", "confidence": 0.6}, "discharge": {"iso": "2024-02-01", "confidence": 0.6}}
+        assert self.dos("Discharge summary", None, stay)[:2] == ("2024-02-05", "2024-02-05")
+
+
+def test_staged_best_by_tier():
+    from stages.lib.extraction.staging import StagedPage
+
+    rows = [
+        {"value": "2/1/24", "tier": "admit", "rule_accepted": True, "model_score": 0.2},
+        {"value": "2/3/24", "tier": "service", "rule_accepted": True, "model_score": 0.9},
+    ]
+    page = StagedPage("1.png", {"fields": {"dos": rows}})
+    assert page.best("dos")["value"] == "2/3/24"
+    assert page.best("dos", tier="admit")["value"] == "2/1/24"
+    assert page.best("dos", tier="discharge") is None

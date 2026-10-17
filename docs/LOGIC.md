@@ -594,6 +594,14 @@ Per page, two states:
 | 2 | **Edge keyword**, only when 1 has no date. A DOS label starting within the first or last `edge_words` (20) words of the page, with a date within `label_reach_chars` (40) after it and only filler words (`label_gap_words`: at, on, of, from, is, time, date, dt) between. An encounter label wins; otherwise Admission Date is **From** and Discharge Date is **To**; a discharge date alone is both. A written range after an encounter label keeps both ends. A date right after `D:`, `T:`, `DD:`, `DT:`, `TD:`, `TT:`, Dictated or Transcribed is never taken. Read on the final OCR text; on a page with no Final2 text, then on the Tesseract text (not for handwritten / low-quality pages) | 0.50 | `edge_keyword` / `edge_keyword_tesseract` / `admit_discharge_pair` |
 | — | Nothing: the page has no DOS | 0 | `no_date_found` |
 
+**Discharge documents.** After both states, on a page with a discharge date
+(key/value or edge label) or matching `discharge_document_cues`, the Admit date
+is From and the Discharge date (on or after it) is To; one alone is both.
+Key/value dates first, else edge labels. `source` `admit_discharge`.
+
+**Print dates are never a DOS.** A Printed / Print Date label keeps its date
+from other keys but the pair is rejected.
+
 There is no LLM pass and no other fallback.
 
 **Spaced dates.** A date OCR'd with spaced slashes (`05 / 20 / 2025`, `05/`
@@ -615,7 +623,7 @@ date, which edge and whether it was chosen to
 | Target | Columns |
 |---|---|
 | `dos_extraction_results` | `date_of_service_from/to` (the page's own), `*_doclevel` (own, else the default), `dates`, `confidence`, `extraction_method` (`kv` or `rules`) |
-| disk | `imaging/<chart>_dos.csv`; its `source` column names the state that gave the date (`kv`, `edge`, `edge_tesseract`, `none`) |
+| disk | `imaging/<chart>_dos.csv`; its `source` column names the state that gave the date (`kv`, `edge`, `edge_tesseract`, `admit_discharge`, `none`) |
 
 ---
 

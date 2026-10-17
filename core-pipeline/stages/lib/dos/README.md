@@ -20,6 +20,11 @@ states:
 
 Otherwise the page has no date of service.
 
+Then, on a **discharge document** (a discharge date on the page, or discharge
+wording such as "Discharge Summary" / "Hospital Course"), its Admit date is From
+and its Discharge date is To, overriding both states; `source` `admit_discharge`.
+A Printed / Print Date label's date is never a DOS.
+
 Each page keeps its own date here (the Extracted DOS). The Final DOS — the
 document's first page's on every page, or `DOS_DEFAULT_DATE` for a stand-alone
 non-visit document — is set by continuity / `imaging_final`. Full detail in
@@ -34,7 +39,7 @@ Labels, `edge_words`, the allowed filler words, the confidences and
 chart_name,page_name,page_number,dos_from,dos_to,dos_from_iso,dos_to_iso,doc_dos_from,doc_dos_to,doc_dos_from_iso,doc_dos_to_iso,match_type,final_dos,keyword,confidence,extraction_method,source
 ```
 
-`source` is `kv`, `edge`, `edge_tesseract` or `none`. `match_type` is `kv`,
+`source` is `kv`, `edge`, `edge_tesseract`, `admit_discharge` or `none`. `match_type` is `kv`,
 `edge_keyword`, `edge_keyword_tesseract`, `admit_discharge_pair` or
 `no_date_found`. `extraction_method` is `kv` for a key/value date, else `rules`.
 The `doc_dos_*` columns are the page's own date, or `DOS_DEFAULT_DATE` when it

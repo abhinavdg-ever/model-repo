@@ -444,8 +444,18 @@ def extract_page(hits: list[KeyHit], words: list[Word], page_h: float) -> list[D
         linked(extract_box(hit, tiers.get(hit.key.strip().casefold(), "weak"), blocked, words), hit)
         for hit in trusted_field_hits(hits, "dos")
     ]
+    for row in rows:
+        if row.tier == "printed" and row.accepted:
+            # 'Printed: 03/01/2024' is when the page was printed, never a DOS. The key keeps
+            # its date so no other key or the keyless rule reads it as one.
+            row.accepted, row.score, row.source = False, 0.0, "printed_not_dos"
     rows = drop_shared_values(rows + _note_label_rows(hits, words, blocked))
     if not any(row.accepted for row in rows):
-        rows.extend(extract_keyless(words, page_h, blocked))
+        rows.extend(extract_keyless(words, page_h, blocked | printed_dates(rows)))
     return mark_selected(rows)
+
+
+def printed_dates(rows: list[DosHit]) -> set[str]:
+    """Dates a print key read: never a keyless DOS either."""
+    return {canonical_date(row.dos_from) for row in rows if row.tier == "printed" and row.value}
 

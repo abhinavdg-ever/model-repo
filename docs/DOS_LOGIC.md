@@ -17,6 +17,10 @@ service, the **Extracted DOS**, from one of two states:
 | 2. Edge keyword | only when state 1 has no date | a DOS label in the first or last 20 words of the page, with its date | 0.50 | `edge` / `edge_tesseract` |
 | — | neither | no date | 0 | `none` |
 
+Then one post-processing rule: on a **discharge document**, the page's Admit
+and Discharge dates take priority over both states (§4.1, `source`
+`admit_discharge`).
+
 There is no LLM, no pattern fallback and no other backup.
 
 Later stages set the **Final DOS**: `continuity` groups pages into documents,
@@ -105,6 +109,10 @@ prefer when a page has several (rank 0 is best).
 | keyless | 5 | no label: a date in the header or footer |
 
 `DD` and `DT` are not labels: they are dictation / transcription stamps.
+
+**Print dates are never a DOS.** A `printed`-tier label (Printed, Print Date, …)
+still reads its date, so no other key and no keyless header/footer rule can take
+that date, but the pair is rejected (`source` `printed_not_dos`, not accepted).
 
 ### 3.2 What counts as a date
 
@@ -211,6 +219,25 @@ Final2 text, the Tesseract text (`source` = `edge_tesseract`).
 
 Confidence: `confidence.edge` = **0.50**.
 
+### 4.1 Post-processing: discharge documents
+
+After both states (`admit_discharge_date` in `dos_logic.py`). A page is a
+discharge document when it has a discharge date (a key/value `discharge`-tier
+date or an edge Discharge label) or its text matches `discharge_document_cues`
+in `dos_canon.json` (discharge summary / note / instructions / diagnosis / date,
+date of discharge, hospital course, admission date, date of admission).
+
+On such a page the stay's dates take priority:
+
+| Field | Value |
+|---|---|
+| From | the admit date |
+| To | the discharge date, if on or after the admit date |
+| One of them only | both From and To |
+| Where from | the key/value extractor's best `admit` / `discharge`-tier date (`StagedPage.best(..., tier=…)`), else the edge Admit / Discharge label |
+| Confidence | the highest model score of the key/value dates used, else 0.50 |
+| `source` / `match_type` | `admit_discharge` / `admit_discharge_pair` (a range) or `admit_discharge` |
+
 ---
 
 ## 5. Output row
@@ -224,8 +251,8 @@ Confidence: `confidence.edge` = **0.50**.
 | `match_type` | `kv`, `edge_keyword`, `edge_keyword_tesseract`, `admit_discharge_pair` (any From ≠ To), or `no_date_found` |
 | `keyword` | the label the date came from |
 | `confidence` | §1; 0 for no date |
-| `source` (CSV) | `kv`, `edge`, `edge_tesseract` or `none` |
-| `extraction_method` | `kv` for a key/value date, else `rules` |
+| `source` (CSV) | `kv`, `edge`, `edge_tesseract`, `admit_discharge` or `none` |
+| `extraction_method` | `kv` when a key/value date gave it (also for `admit_discharge`), else `rules` |
 
 ---
 
@@ -315,8 +342,10 @@ Every key/value candidate per page under `fields.dos`, with its rule score
   - The Final DOS falls back to the Extracted DOS when empty, and 2222-02-02
     counts as no date.
   - A page whose ground truth has no date expects none: none found is a Match,
-    a date is a No Match. A page with no ground-truth date where the pipeline
-    shows only 2222-02-02 is not scored.
+    a date is a No Match (✕ on the page). A page with no ground-truth date where
+    the pipeline shows only 2222-02-02 is not scored.
+  - A blank / junk page — by the ground truth or by the pipeline — is never
+    scored for DOS and gets no mark, even when the ground truth gives a date.
 - **Imaging panel.** The Extracted column shows the staged key/value value when
   there is one, else the stored DOS; the Final column shows `finalDosFrom/To`,
   else the Extracted value.

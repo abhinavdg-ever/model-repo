@@ -44,7 +44,7 @@ export const METRICS: {
   {
     id: "dos",
     label: "DOS",
-    rule: "Every page is compared, except one where the ground truth has no date and the pipeline shows the 2222-02-02 placeholder (not scored). Labelled dates (From, To) match the Final DOS: Match; only the Extracted DOS: Partial; neither: No Match. A page whose DOS label is blank / NA / Not Available expects no date: the pipeline finding none is a Match, finding one is a No Match. Under Date = Yes (cases = pages the ground truth dates): Precision = of the pages the pipeline dated, the share right; Recall = of the cases, the share found",
+    rule: "Every page is compared, except a blank / junk page (by the ground truth or the pipeline) and one where the ground truth has no date and the pipeline shows the 2222-02-02 placeholder (neither is scored). Labelled dates (From, To) match the Final DOS: Match; only the Extracted DOS: Partial; neither: No Match. A page whose DOS label is blank / NA / Not Available expects no date: the pipeline finding none is a Match, finding one is a No Match. Under Date = Yes (cases = pages the ground truth dates): Precision = of the pages the pipeline dated, the share right; Recall = of the cases, the share found",
   },
   {
     id: "blankJunk",
@@ -343,14 +343,19 @@ function pageScores(
     memberRight === null ? null : memberRight === 2 ? "yes" : memberRight === 1 ? "maybe" : "no";
   const blankJunkCalls = blankJunkCall(bits.blankJunk);
 
-  // DOS on every page: a ground truth with no date expects none.
+  const truth = page.groundTruth ? blankJunkTruth(page.groundTruth) : null;
+  const blankOrJunk = (truth ?? "").toLowerCase().startsWith("yes");
+  const pipelineBlankJunk = (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
+
+  // DOS on every page: a ground truth with no date expects none. A blank / junk page (by the
+  // ground truth or the pipeline) has no DOS to score, even when the ground truth gives one.
   const pipelineDated = Boolean(finalFrom || finalTo);
   const gtDated = !noValue(page.groundTruth?.dosFrom) || !noValue(page.groundTruth?.dosTo);
   // The pipeline's 2222-02-02 placeholder where the ground truth has no date is not scored.
   const placeholderDos = [page.finalDosFrom, page.finalDosTo, page.dosFrom, page.dosTo].some(
     (value) => text(value).startsWith(DEFAULT_DOS),
   );
-  const dosCall: PresenceCall | null = !gtDated && !pipelineDated && placeholderDos
+  const dosCall: PresenceCall | null = blankOrJunk || pipelineBlankJunk || (!gtDated && !pipelineDated && placeholderDos)
     ? null
     : gtDated
     ? (() => {
@@ -364,9 +369,6 @@ function pageScores(
 
   // Page type is scored on the pages the ground truth says are not blank /
   // junk. One the pipeline called blank / junk has the type Blank/Junk: a miss.
-  const truth = page.groundTruth ? blankJunkTruth(page.groundTruth) : null;
-  const blankOrJunk = (truth ?? "").toLowerCase().startsWith("yes");
-  const pipelineBlankJunk = (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
   const pageTypeLabelled = labeled(bits.pageType) || labeled(finalBits.pageType);
 
   // Codability on every labelled page; Discharge is Codable. A page the

@@ -60,7 +60,7 @@ DOS_COLS = [
     "keyword",
     "confidence",
     "extraction_method",
-    # Which state gave the page's date: kv, edge, edge_tesseract, none.
+    # Which state gave the page's date: kv, edge, edge_tesseract, admit_discharge, none.
     "source",
 ]
 
@@ -69,7 +69,7 @@ CANDIDATE_COLS = ["chart_name", "page_name", *LabelledDate.__dataclass_fields__]
 
 
 def _page_method(hit: dict[str, Any]) -> str:
-    return "kv" if hit.get("page_source") == "kv" else "rules"
+    return "kv" if hit.get("kv_backed") or hit.get("page_source") == "kv" else "rules"
 
 
 def _combined_text(
@@ -192,17 +192,30 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
 
         staged = ensure_staging(chart_id, ctx.chart_name)
         kv_dates: dict[str, list[dict[str, Any]]] = {}
+        kv_stay: dict[str, dict[str, dict[str, Any]]] = {}
         for page in ctx.pages:
             staged_page = staged.page(page["page_name"])
-            best = staged_page.best("dos") if staged_page is not None else None
+            if staged_page is None:
+                continue
+            best = staged_page.best("dos")
             found = _kv_items([best]) if best else []
             if found:
                 kv_dates[page["page_name"]] = found
+            # The best admit and discharge dates, for discharge documents.
+            stay = {}
+            for tier in ("admit", "discharge"):
+                row = staged_page.best("dos", tier=tier)
+                items = _kv_items([row]) if row else []
+                if items:
+                    stay[tier] = items[0]
+            if stay:
+                kv_stay[page["page_name"]] = stay
         hits = detect_dos_per_page(
             text,
             candidate_log=candidates,
             kv_dates=kv_dates,
             tesseract_texts=tesseract,
+            kv_stay=kv_stay,
         )
 
         by_name = {p["page_name"]: p for p in ctx.pages}
@@ -288,4 +301,5 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             "skipped": ctx.skipped,
             "kv_pages": sum(1 for r in csv_rows if r["source"] == "kv"),
             "edge_pages": sum(1 for r in csv_rows if r["source"] in ("edge", "edge_tesseract")),
+            "admit_discharge_pages": sum(1 for r in csv_rows if r["source"] == "admit_discharge"),
         }

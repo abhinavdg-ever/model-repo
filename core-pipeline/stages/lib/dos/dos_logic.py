@@ -45,6 +45,8 @@ class DosProfile:
     confidence: dict[str, float]  # edge; kv when the extractor has no score
     label_re: re.Pattern[str]
     label_class: dict[str, str]  # letters-only phrase -> class
+    # A page matching one of these is a discharge document (admit / discharge dates win).
+    discharge_cues: re.Pattern[str]
 
 
 def _letters(text: str) -> str:
@@ -78,6 +80,7 @@ def _build_profile(data: dict[str, Any]) -> DosProfile:
         confidence={k: float(v) for k, v in data["confidence"].items()},
         label_re=label_re,
         label_class=label_class,
+        discharge_cues=re.compile("|".join(f"(?:{c})" for c in data.get("discharge_document_cues") or [r"(?!)"]), re.IGNORECASE),
     )
 
 
@@ -296,8 +299,10 @@ class PageDate:
     dos_to: str
     confidence: float
     keyword: str
-    source: str  # "kv" | "edge" | "edge_tesseract"
+    source: str  # "kv" | "edge" | "edge_tesseract" | "admit_discharge"
     is_pair: bool = False
+    # A key/value date gave it (extraction_method kv).
+    kv_backed: bool = False
 
 
 def edge_page_date(
@@ -358,6 +363,46 @@ def kv_page_date(dates: list[dict[str, Any]], prof: Optional[DosProfile] = None)
     return None
 
 
+def admit_discharge_date(
+    page_text: str,
+    kv_stay: dict[str, dict[str, Any]],
+    hits: list[LabelledDate],
+    prof: Optional[DosProfile] = None,
+) -> Optional[PageDate]:
+    """Discharge documents: the stay's Admit (From) and Discharge (To) dates take priority.
+
+    A page is a discharge document when it has a discharge date (key/value or edge label)
+    or matches ``discharge_document_cues``. ``kv_stay`` holds the key/value extractor's best
+    ``admit`` / ``discharge`` date for the page; edge labels fill a side it lacks. A
+    discharge date before the admit date is ignored; one date alone is both From and To."""
+    prof = prof or profile()
+    edge_side = {cls: next((h for h in hits if h.label_class == cls), None) for cls in ("admit", "discharge")}
+    has_discharge = bool(kv_stay.get("discharge") or edge_side["discharge"])
+    if not (has_discharge or prof.discharge_cues.search(page_text or "")):
+        return None
+
+    def side(cls: str) -> tuple[str, float | None, str] | None:
+        item = kv_stay.get(cls)
+        if item and len(str(item.get("iso") or "")) == 10:
+            score = item.get("confidence")
+            return str(item["iso"]), float(score) if score is not None else prof.confidence["kv"], str(item.get("keyword") or cls)
+        hit = edge_side[cls]
+        return (hit.iso, None, hit.label) if hit else None
+
+    admit, discharge = side("admit"), side("discharge")
+    if admit and discharge and discharge[0] < admit[0]:
+        discharge = None
+    used = [s for s in (admit, discharge) if s]
+    if not used:
+        return None
+    start = (admit or discharge)[0]
+    end = (discharge or admit)[0]
+    kv_scores = [s[1] for s in used if s[1] is not None]
+    confidence = max(kv_scores) if kv_scores else prof.confidence["edge"]
+    return PageDate(start, end, confidence, "+".join(s[2] for s in used), "admit_discharge",
+                    is_pair=end != start, kv_backed=bool(kv_scores))
+
+
 # --- date formats ------------------------------------------------------------
 
 
@@ -400,7 +445,10 @@ def extract_dos_from_page_text(page_text: str) -> Optional[dict]:
 # --- the chart ----------------------------------------------------------------
 
 
-_MATCH_TYPE = {"kv": "kv", "edge": "edge_keyword", "edge_tesseract": "edge_keyword_tesseract"}
+_MATCH_TYPE = {
+    "kv": "kv", "edge": "edge_keyword", "edge_tesseract": "edge_keyword_tesseract",
+    "admit_discharge": "admit_discharge",
+}
 
 
 def _row(page: dict, page_date: Optional[PageDate], prof: DosProfile) -> dict:
@@ -432,6 +480,7 @@ def _row(page: dict, page_date: Optional[PageDate], prof: DosProfile) -> dict:
         "keyword": page_date.keyword if page_date else None,
         "confidence": round(page_date.confidence, 4) if page_date else 0.0,
         "page_source": page_date.source if page_date else "",
+        "kv_backed": bool(page_date and (page_date.source == "kv" or page_date.kv_backed)),
         "is_default": page_date is None,
     }
 
@@ -442,9 +491,12 @@ def detect_dos_per_page(
     candidate_log: Optional[list[dict]] = None,
     kv_dates: Optional[dict[str, list[dict[str, Any]]]] = None,
     tesseract_texts: Optional[dict[str, str]] = None,
+    kv_stay: Optional[dict[str, dict[str, dict[str, Any]]]] = None,
 ) -> list[dict]:
     """One row per page: the key/value date, else the edge keyword (final text, then
-    Tesseract), else nothing.
+    Tesseract), else nothing. Then, on a discharge document, its Admit / Discharge dates
+    take priority (``admit_discharge_date``; ``kv_stay`` maps a page name to the key/value
+    extractor's best ``admit`` and ``discharge`` dates).
 
     ``kv_dates`` maps a page name to the key/value extractor's best date (``iso``, optional
     ``iso_to``, ``keyword``, ``confidence`` = the model's score). ``tesseract_texts`` maps a
@@ -478,6 +530,10 @@ def detect_dos_per_page(
                 for hit in tesseract_hits:
                     hit.edge = f"tesseract_{hit.edge}"
                 hits = hits + tesseract_hits
+        # Post-processing: a discharge document is dated by its stay.
+        stay = admit_discharge_date(page_text, (kv_stay or {}).get(page_name) or {}, hits, prof)
+        if stay is not None:
+            found = stay
 
         if candidate_log is not None:
             candidate_log.extend({"page_name": page_name, **asdict(hit)} for hit in hits)
