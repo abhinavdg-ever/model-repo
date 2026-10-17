@@ -11,6 +11,8 @@
     "dictation": 0.3
   },
   "note_confidence": "kv is used only for a key/value date with no score (staging from before the model ran); a scored date carries the model's own score. edge is every edge-keyword date.",
+  "kv_accept_min_score": 0.6,
+  "note_kv_accept_min_score": "The kv_priority order is applied to the dates the key/value model scored at least this (accepted). When no date on the page reaches it, the page takes the highest-scoring date at any score. Rules-only staging (no model scores): every date counts as accepted.",
   "kv_priority": {
     "discharge": [
       ["admit", "discharge"],

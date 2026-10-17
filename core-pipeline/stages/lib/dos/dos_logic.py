@@ -55,6 +55,8 @@ class DosProfile:
     lab_cues: re.Pattern[str]
     # Page kind (discharge / lab / other) -> key groups in priority order.
     kv_priority: dict[str, list[list[str]]]
+    # The priority applies to the dates the model scored at least this (accepted).
+    kv_accept_min_score: float
 
 
 def _letters(text: str) -> str:
@@ -91,6 +93,7 @@ def _build_profile(data: dict[str, Any]) -> DosProfile:
         discharge_cues=_any_of(data.get("discharge_document_cues")),
         lab_cues=_any_of(data.get("lab_document_cues")),
         kv_priority={kind: [list(group) for group in groups] for kind, groups in (data.get("kv_priority") or {}).items()},
+        kv_accept_min_score=float(data.get("kv_accept_min_score", 0.0)),
     )
 
 
@@ -377,10 +380,12 @@ def _group(item: dict[str, Any]) -> str:
 def kv_page_date(
     candidates: list[dict[str, Any]], kind: str = "other", prof: Optional[DosProfile] = None
 ) -> Optional[PageDate]:
-    """State 1: among every key/value date the rules accepted, the first priority group of the
-    page's kind that has one (``kv_priority``), and within it the date the model scored
-    highest. A range keeps its end. Its confidence is that score (the rules' score without a
-    model, else the canon's kv)."""
+    """State 1: among the key/value dates the rules accepted and the model scored at least
+    ``kv_accept_min_score``, the first priority group of the page's kind that has one
+    (``kv_priority``), and within it the date the model scored highest. When no date reaches
+    that score, the highest-scoring one at any score. Dates without a model score (rules-only
+    staging) all count as accepted. A range keeps its end. Its confidence is that score (the
+    rules' score without a model, else the canon's kv)."""
     prof = prof or profile()
     groups = prof.kv_priority.get(kind) or prof.kv_priority.get("other") or []
     rank = {name: i for i, group in enumerate(groups) for name in group}
@@ -392,7 +397,11 @@ def kv_page_date(
         value = item.get("confidence")
         return float(value) if value is not None else prof.confidence["kv"]
 
-    item = min(dated, key=lambda it: (rank.get(_group(it), len(groups)), -score(it)))
+    accepted = [it for it in dated if not it.get("model_scored") or score(it) >= prof.kv_accept_min_score]
+    if accepted:
+        item = min(accepted, key=lambda it: (rank.get(_group(it), len(groups)), -score(it)))
+    else:
+        item = max(dated, key=score)
     iso, iso_to = str(item["iso"]), str(item.get("iso_to") or "")
     is_pair = len(iso_to) == 10 and iso_to > iso
     return PageDate(iso, iso_to if is_pair else iso, score(item),

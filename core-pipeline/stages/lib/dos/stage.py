@@ -171,6 +171,7 @@ def _kv_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "tier": row.get("tier") or "",
                 "keyword": row.get("key") or "",
                 "confidence": row.get("model_score") if row.get("model_score") is not None else row.get("score"),
+                "model_scored": row.get("model_score") is not None,
             }
         )
     return found

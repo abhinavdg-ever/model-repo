@@ -207,7 +207,7 @@ def _dos_page(text, candidates=None):
 
 
 def _kv(iso, tier, score, keyword=""):
-    return {"iso": iso, "tier": tier, "confidence": score, "keyword": keyword or tier}
+    return {"iso": iso, "tier": tier, "confidence": score, "keyword": keyword or tier, "model_scored": True}
 
 
 class TestDischargeDocuments:
@@ -232,10 +232,23 @@ class TestDischargeDocuments:
 
 
 class TestKvPriority:
-    def test_other_pages_service_beats_a_higher_scored_weak_date(self):
+    def test_other_pages_an_accepted_service_date_beats_a_higher_scored_weak_date(self):
         assert _dos_page("Office visit.", [_kv("2024-03-01", "weak", 0.95, "Date"),
-                                          _kv("2024-03-02", "service", 0.40, "Date of Service")])[:4] == (
-            "2024-03-02", "2024-03-02", "kv", 0.40)
+                                          _kv("2024-03-02", "service", 0.65, "Date of Service")])[:4] == (
+            "2024-03-02", "2024-03-02", "kv", 0.65)
+
+    def test_the_order_counts_only_above_the_acceptance_score(self):
+        # Date of Service at 0.40 is not accepted (below 0.6): the accepted Date wins.
+        assert _dos_page("Office visit.", [_kv("2024-03-01", "weak", 0.95, "Date"),
+                                          _kv("2024-03-02", "service", 0.40, "Date of Service")])[0] == "2024-03-01"
+        # Nothing accepted: the highest score, whatever its label.
+        assert _dos_page("Office visit.", [_kv("2024-03-01", "service", 0.20), _kv("2024-03-02", "weak", 0.45)])[:4] == (
+            "2024-03-02", "2024-03-02", "kv", 0.45)
+
+    def test_rules_only_dates_all_count_as_accepted(self):
+        rules = [{**_kv("2024-03-01", "weak", 0.92), "model_scored": False},
+                 {**_kv("2024-03-02", "service", 0.55), "model_scored": False}]
+        assert _dos_page("Office visit.", rules)[0] == "2024-03-02"
 
     def test_within_a_group_the_model_score_decides(self):
         assert _dos_page("Office visit.", [_kv("2024-03-01", "service", 0.3), _kv("2024-03-02", "service", 0.7)])[0] == "2024-03-02"
@@ -246,7 +259,7 @@ class TestKvPriority:
         assert _dos_page("LAB REPORT\nSpecimen: blood", lab)[0] == "2024-04-02"
         assert _dos_page("LAB REPORT", lab[:2])[0] == "2024-04-03"
         assert _dos_page("LAB REPORT", lab[:1])[0] == "2024-04-04"
-        assert _dos_page("LAB REPORT", lab + [_kv("2024-04-01", "service", 0.2)])[0] == "2024-04-01"
+        assert _dos_page("LAB REPORT", lab + [_kv("2024-04-01", "service", 0.7)])[0] == "2024-04-01"
 
     def test_other_pages_end_with_dictation_then_transcription(self):
         assert _dos_page("Note.\nT: 03/04/2024 D: 03/01/2024")[:4] == ("2024-03-01", "2024-03-01", "dictation", 0.3)
