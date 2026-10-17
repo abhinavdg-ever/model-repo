@@ -1291,6 +1291,10 @@ function PageDetails({
   const dob = stagedField(extraction, "dob");
   const memberId = stagedField(extraction, "member_id");
   const dos = stagedField(extraction, "dos");
+  // Every provider on the page, read off the credential rows: names and their
+  // credentials in the same order, providers separated by " | ".
+  const providerName = stagedField(extraction, "provider_name");
+  const providerCredentials = stagedField(extraction, "provider_credentials");
   const stored = storedGroundTruth(page.groundTruth);
   const values = { ...stored, ...edits };
   const dirty =
@@ -1584,13 +1588,20 @@ function PageDetails({
         {...sectionProps}
         title="Provider Extraction"
         rows={[
-          // Provider Name is hidden for now (the key/value model's name still carries the
-          // credential). Its data and any saved ground truth are kept.
-          sameValue(page.providerCredentials || NOT_FOUND, fmtConfidence(page.providerSignatureConfidence, Boolean(page.providerCredentials)), {
-            id: "provider_credentials",
-            label: "Provider Credentials",
-            key: true,
-          }),
+          sameValue(
+            providerName?.value || page.providerName || NOT_FOUND,
+            providerName
+              ? fmtConfidence(providerName.confidence, true)
+              : fmtConfidence(page.providerSignatureConfidence, Boolean(page.providerName)),
+            { id: "provider_name", label: "Provider Name" },
+          ),
+          sameValue(
+            providerCredentials?.value || page.providerCredentials || NOT_FOUND,
+            providerCredentials
+              ? fmtConfidence(providerCredentials.confidence, true)
+              : fmtConfidence(page.providerSignatureConfidence, Boolean(page.providerCredentials)),
+            { id: "provider_credentials", label: "Provider Credentials", key: true },
+          ),
           sameValue(
             yesNo(page.providerSignature) === "yes" ? "Yes" : yesNo(page.providerSignature) === "no" ? "No" : NOT_FOUND,
             fmtConfidence(page.providerSignatureConfidence, yesNo(page.providerSignature) != null),

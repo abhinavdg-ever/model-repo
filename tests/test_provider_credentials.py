@@ -38,3 +38,28 @@ def test_a_hyphenated_credential_is_kept():
     ]
     hits = extract_page(words)
     assert [hit.value for hit in hits if hit.selected] == ["PA-C"]
+
+
+def _line(text: str, top: float, start: int = 0) -> list[Word]:
+    return [_word(start + n, token, top) for n, token in enumerate(text.split())]
+
+
+def test_the_provider_is_the_name_before_the_credential_up_to_a_colon():
+    words = _line("CC Provider: Jacqueline M Gomez, NP", 0) + _line("Chad Kohl, M.D.", 20, start=10)
+    hits = [hit for hit in extract_page(words) if hit.selected]
+    assert [(hit.provider_name, hit.value) for hit in hits] == [
+        ("Jacqueline M Gomez", "NP"),
+        ("Chad Kohl", "MD"),
+    ]
+
+
+def test_at_most_four_words_and_the_persons_other_credentials_are_skipped():
+    words = _line("Seen today by the attending Mary Ann Jo Lee, MD, PhD", 0)
+    hits = extract_page(words)
+    assert {hit.provider_name for hit in hits} == {"Mary Ann Jo Lee"}
+
+
+def test_two_providers_with_the_same_credential_are_both_selected():
+    words = _line("Jane Smith, NP", 0) + _line("Ann Lee, NP", 20, start=10) + _line("Ann Lee, NP", 40, start=20)
+    hits = [hit for hit in extract_page(words) if hit.selected]
+    assert [(hit.provider_name, hit.value) for hit in hits] == [("Jane Smith", "NP"), ("Ann Lee", "NP")]

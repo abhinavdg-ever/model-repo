@@ -109,11 +109,26 @@ def field_rows(page: dict | None) -> list[ExtractionFieldRow]:
     if not isinstance(fields, dict):
         fields = {}
     rows: list[ExtractionFieldRow] = []
+    # Every accepted credential: staging written before every provider was selected left a
+    # second provider's credential unselected. _providers merges repeats.
+    credential_rows = [
+        row for row in fields.get("provider_credentials") or []
+        if isinstance(row, dict) and row.get("accepted")
+    ]
+    providers = _providers(credential_rows)
     for field_id, label in _FIELDS:
         chosen = _chosen(fields.get(field_id))
         if field_id == "heading_heron":
             chosen = _kept_headings(fields.get(field_id))
         extracted = _join(_hit_text(field_id, hit) for hit in chosen)
+        if field_id in ("provider_name", "provider_credentials") and providers:
+            # Both from the credential rows, one entry per provider, in the same order. A
+            # page with no credential keeps the key/value provider name.
+            chosen = credential_rows
+            if field_id == "provider_name":
+                extracted = " | ".join(name for name, _ in providers if name)
+            else:
+                extracted = " | ".join(", ".join(creds) for _, creds in providers)
         rows.append(
             ExtractionFieldRow(
                 id=field_id,
@@ -195,6 +210,59 @@ def _credential_keys() -> frozenset[str]:
 def _is_credential(token: str) -> bool:
     key = re.sub(r"[\s.]+", "", token).casefold()
     return bool(key) and key in _credential_keys()
+
+
+_PROVIDER_MAX_WORDS = 4
+
+
+def _provider_before(sentence: str, credential: str) -> str:
+    """The name in front of ``credential`` in its line: back to a colon or the line start,
+    at most four words, the person's other credentials skipped (the pipeline's
+    provider_credentials.provider_before, for staging written before it stored the name)."""
+    tokens = (sentence or "").split()
+    target = re.sub(r"[\s.]+", "", credential or "").casefold()
+    index = next(
+        (n for n, token in enumerate(tokens)
+         if re.sub(r"[\s.,;]+", "", token).casefold() == target and n > 0),
+        None,
+    )
+    if index is None:
+        return ""
+    n = index - 1
+    while n >= 0 and _is_credential(tokens[n].strip(",;")):
+        n -= 1
+    words: list[str] = []
+    while n >= 0 and len(words) < _PROVIDER_MAX_WORDS:
+        text = tokens[n]
+        if ":" in text:
+            tail = text.rsplit(":", 1)[1]
+            if tail:
+                words.append(tail)
+            break
+        words.append(text)
+        n -= 1
+    return " ".join(reversed(words)).strip(" ,;")
+
+
+def _providers(rows: list[dict]) -> list[tuple[str, list[str]]]:
+    """(provider name, credentials) per provider, in page order. A provider with two
+    credentials ('Jane Doe, MD, PhD') is one entry."""
+    out: list[tuple[str, list[str]]] = []
+    for row in rows:
+        credential = str(row.get("value") or "").strip()
+        if not credential:
+            continue
+        name = str(row.get("provider_name") or "").strip() or _provider_before(
+            str(row.get("sentence") or ""), credential
+        )
+        for known, creds in out:
+            if known.casefold() == name.casefold():
+                if credential not in creds:
+                    creds.append(credential)
+                break
+        else:
+            out.append((name, [credential]))
+    return out
 
 
 def _provider_name(value: str) -> str:

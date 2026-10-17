@@ -334,3 +334,30 @@ def test_a_date_in_the_middle_hides_the_header():
         {"text": "03/28/2024 Discharge Summary", "score": 0.8, "accepted": True, "box": [40, 200, 400, 230]},
     ]}}
     assert [h.text for h in heron_headers(page)] == ["Discharge Summary"]
+
+
+def test_every_provider_and_their_credentials_are_shown():
+    """The pasted rows: two providers on one page, names read in front of the credential."""
+    page = {"width": 1000, "height": 2000, "fields": {"provider_credentials": [
+        {"key": "Credential", "sentence": "CC Provider: Jacqueline M Gomez, NP", "value": "NP",
+         "score": 0.9, "accepted": True, "selected": True},
+        {"key": "Credential", "sentence": "Chad Kohl, M.D.", "value": "MD",
+         "score": 0.9, "accepted": True, "selected": True},
+        # Older staging: another NP left unselected, and the same person again.
+        {"key": "Credential", "sentence": "Signed: Ann Lee, NP", "value": "NP",
+         "score": 0.9, "accepted": True, "selected": False},
+        {"key": "Credential", "sentence": "Chad Kohl, MD", "value": "MD",
+         "score": 0.9, "accepted": True, "selected": False},
+    ]}}
+    rows = {row.id: row.extracted for row in field_rows(page)}
+    assert rows["provider_name"] == "Jacqueline M Gomez | Chad Kohl | Ann Lee"
+    assert rows["provider_credentials"] == "NP | MD | NP"
+
+
+def test_a_stored_provider_name_is_used_as_is():
+    page = {"fields": {"provider_credentials": [
+        {"sentence": "Jane Doe, MD, PhD", "value": "MD", "provider_name": "Jane Doe", "accepted": True},
+        {"sentence": "Jane Doe, MD, PhD", "value": "PhD", "provider_name": "Jane Doe", "accepted": True},
+    ]}}
+    rows = {row.id: row.extracted for row in field_rows(page)}
+    assert (rows["provider_name"], rows["provider_credentials"]) == ("Jane Doe", "MD, PhD")
