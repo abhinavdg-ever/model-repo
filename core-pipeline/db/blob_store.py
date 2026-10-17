@@ -173,6 +173,56 @@ class _SharedToken:
         self._inner.close()
 
 
+# Who signed in through the browser, so the next process reads the persisted token cache
+# silently instead of prompting again. Not a secret: no token is in it.
+AUTH_RECORD_PATH = Path.home() / ".advantmed" / "azure_auth_record.json"
+
+
+class _RememberedBrowser:
+    """InteractiveBrowserCredential that prompts once per machine, not once per process.
+
+    The token cache persists on disk, but the credential can only read it silently when it
+    knows which account signed in (an AuthenticationRecord). Without that, every new
+    process (each uvicorn --reload, each batch) opened the browser again. The first prompt
+    saves the record to AUTH_RECORD_PATH; later processes start from it.
+    """
+
+    def __init__(self, cache: Any) -> None:
+        from azure.identity import AuthenticationRecord, InteractiveBrowserCredential
+
+        record = None
+        try:
+            if AUTH_RECORD_PATH.is_file():
+                record = AuthenticationRecord.deserialize(AUTH_RECORD_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            logger.warning("Azure Storage: unreadable %s; signing in again", AUTH_RECORD_PATH, exc_info=True)
+        self._known = record is not None
+        self._inner = InteractiveBrowserCredential(cache_persistence_options=cache, authentication_record=record)
+
+    def _remember(self, scopes: tuple[str, ...]) -> None:
+        if self._known:
+            return
+        record = self._inner.authenticate(scopes=list(scopes) or [_BLOB_TOKEN_SCOPE])
+        try:
+            AUTH_RECORD_PATH.parent.mkdir(parents=True, exist_ok=True)
+            AUTH_RECORD_PATH.write_text(record.serialize(), encoding="utf-8")
+            logger.info("Azure Storage: browser sign-in saved to %s (no prompt next time)", AUTH_RECORD_PATH)
+        except OSError:
+            logger.warning("Azure Storage: could not save %s", AUTH_RECORD_PATH, exc_info=True)
+        self._known = True
+
+    def get_token(self, *scopes: str, **kwargs: Any):
+        self._remember(scopes)
+        return self._inner.get_token(*scopes, **kwargs)
+
+    def get_token_info(self, *scopes: str, options: Optional[dict] = None):
+        self._remember(scopes)
+        return self._inner.get_token_info(*scopes, options=options)
+
+    def close(self) -> None:
+        self._inner.close()
+
+
 def _interactive_credential():
     """Managed identity, then Azure CLI, then a browser prompt.
 
@@ -188,8 +238,9 @@ def _interactive_credential():
     tried first, so the Azure VM's managed identity answers and nobody ever sees
     a browser — the prompt is the last resort, not the first.
 
-    **The token cache persists**, so the prompt happens once rather than per
-    process, and parallel workers share one login. Same cache name V1 used.
+    **The token cache persists**, and so does who signed in (``_RememberedBrowser``),
+    so the prompt happens once per machine rather than per process, and parallel
+    workers share one token (``_SharedToken``). Same cache name V1 used.
 
     Each credential in the chain raises CredentialUnavailableError when it
     cannot help, which is what lets ChainedTokenCredential move on — chaining
@@ -207,7 +258,6 @@ def _interactive_credential():
         from azure.identity import (
             AzureCliCredential,
             ChainedTokenCredential,
-            InteractiveBrowserCredential,
             ManagedIdentityCredential,
             TokenCachePersistenceOptions,
         )
@@ -224,7 +274,7 @@ def _interactive_credential():
         _INTERACTIVE_CREDENTIAL = _SharedToken(ChainedTokenCredential(
             mi,
             AzureCliCredential(process_timeout=30),
-            InteractiveBrowserCredential(cache_persistence_options=cache),
+            _RememberedBrowser(cache),
         ))
         logger.info(
             "Azure Storage: interactive Entra auth — managed identity%s, then "

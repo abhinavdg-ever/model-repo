@@ -72,3 +72,32 @@ def test_a_failed_fetch_is_not_retried_by_every_waiting_thread():
     with pytest.raises(RuntimeError):
         shared.get_token_info(SCOPE)
     assert inner.calls == 1
+
+
+def test_the_browser_sign_in_is_remembered_across_processes(monkeypatch, tmp_path):
+    import azure.identity
+
+    from db import blob_store
+
+    record_path = tmp_path / "azure_auth_record.json"
+    monkeypatch.setattr(blob_store, "AUTH_RECORD_PATH", record_path)
+    prompts = []
+
+    class FakeBrowser:
+        def __init__(self, cache_persistence_options=None, authentication_record=None):
+            self.record = authentication_record
+
+        def authenticate(self, scopes=None):
+            prompts.append(scopes)
+            return azure.identity.AuthenticationRecord("tenant", "client", "login.microsoftonline.com", "home", "me@x")
+
+        def get_token_info(self, *scopes, options=None):
+            return SimpleNamespace(token="t", expires_on=int(time.time()) + 3600)
+
+    monkeypatch.setattr(azure.identity, "InteractiveBrowserCredential", FakeBrowser)
+    blob_store._RememberedBrowser(None).get_token_info(SCOPE)
+    assert len(prompts) == 1 and record_path.is_file()
+    # A new process: the saved record means no prompt.
+    second = blob_store._RememberedBrowser(None)
+    second.get_token_info(SCOPE)
+    assert len(prompts) == 1 and second._inner.record is not None

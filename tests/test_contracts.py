@@ -2529,7 +2529,7 @@ class TestInteractiveBlobAuth:
         order = [
             source.index("ManagedIdentityCredential("),
             source.index("AzureCliCredential("),
-            source.index("InteractiveBrowserCredential("),
+            source.index("_RememberedBrowser("),
         ]
         assert order == sorted(order), "browser must be the last resort"
 
@@ -2541,8 +2541,11 @@ class TestInteractiveBlobAuth:
         from db import blob_store
 
         source = inspect.getsource(blob_store._interactive_credential)
-        assert "cache_persistence_options" in source
+        assert "TokenCachePersistenceOptions" in source and "_RememberedBrowser(cache)" in source
         assert "_INTERACTIVE_CREDENTIAL" in source
+        # The browser credential reads the persisted cache with the saved sign-in record.
+        browser = inspect.getsource(blob_store._RememberedBrowser)
+        assert "cache_persistence_options=cache" in browser and "authentication_record=record" in browser
 
 
 class TestManagedIdentityBlobAuth:
