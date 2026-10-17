@@ -108,6 +108,8 @@ export type OcrSectionHeader = {
   height: number;
   /** A heading candidate that did not pass: shown and drawn lighter. */
   candidate?: boolean;
+  /** A candidate that still reads like a heading: heavier than a form label. */
+  heading_like?: boolean;
 };
 
 export type OcrTextResponse = {

@@ -37,6 +37,7 @@ import {
 import ImagingPanel, {
   additionalSectionHeaders,
   fillDocDosForDownload,
+  headerTier,
   type GroundTruthLeave,
   type ImagingTab,
 } from "./ImagingPanel";
@@ -1279,7 +1280,7 @@ export default function FolderViewer({
                         {overlayBoxes.map((box, i) => (
                           <div
                             key={`${box.text}-${i}`}
-                            className={`page-header-box${box.candidate ? " is-candidate" : ""}`}
+                            className={`page-header-box${headerTier(box)}`}
                             title={box.text}
                             style={{
                               left: `${box.left * 100}%`,

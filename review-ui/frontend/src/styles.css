@@ -1587,6 +1587,12 @@ input {
   background: color-mix(in srgb, var(--brand-200) 18%, transparent);
 }
 
+/* A rejected candidate that reads like a heading: solid, just short of a heading. */
+.page-header-box.is-candidate.is-heading-like {
+  border: 2px solid color-mix(in srgb, var(--brand-500) 70%, transparent);
+  background: color-mix(in srgb, var(--brand-200) 38%, transparent);
+}
+
 .ocr-quality-badge {
   display: inline-flex;
   align-items: baseline;
@@ -2592,6 +2598,12 @@ input {
   border-style: dashed;
   color: var(--muted, #6b7a83);
   font-weight: 400;
+}
+
+.header-highlight-one.is-candidate.is-heading-like {
+  border-style: solid;
+  color: var(--text, #1c2b33);
+  font-weight: 500;
 }
 
 .header-highlight-one.is-candidate[aria-pressed="true"] {

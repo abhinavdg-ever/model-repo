@@ -304,6 +304,10 @@ def test_the_ct_scheduling_form_gets_its_strong_headings():
         },
     }
     assert headings(page) == ["CT MRI Scheduling", "Symptoms", "Exam", "Specialty Exam"]
-    candidates = [h.text for h in heron_headers(page) if h.candidate]
-    assert "Toll Free Tel" in candidates and "Referring Physician s Signature" in candidates
-    assert any(text.startswith("To schedule") for text in candidates)
+    candidates = {h.text: h.heading_like for h in heron_headers(page) if h.candidate}
+    # Rejected, but reads like a heading: drawn heavier than a form label.
+    assert candidates["Referring Physician s Signature"] is True
+    # A colon form label and a sentence stay the lightest.
+    assert candidates["Toll Free Tel"] is False
+    assert [like for text, like in candidates.items() if text.startswith("To schedule")] == [False]
+    assert not any(h.heading_like for h in heron_headers(page) if not h.candidate)

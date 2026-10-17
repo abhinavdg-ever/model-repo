@@ -110,6 +110,8 @@ class OcrSectionHeader(BaseModel):
     height: float
     # A heading candidate that did not pass (drawn lighter); False for a heading.
     candidate: bool = False
+    # A candidate that still reads like a heading: drawn heavier than a form label.
+    heading_like: bool = False
 
 
 class OcrTextResponse(BaseModel):

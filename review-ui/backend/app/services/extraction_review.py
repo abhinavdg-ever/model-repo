@@ -357,6 +357,18 @@ def _is_heading(row: dict) -> bool:
     return sum(passed) >= 2 or strong
 
 
+def _heading_like(row: dict) -> bool:
+    """A rejected Heron box that still reads like a heading (drawn heavier than a form label):
+    not a colon text label, not a running header, no numeric opening, heading-shaped text."""
+    text = str(row.get("text") or "").strip()
+    return (
+        str(row.get("det_class") or "") != "text_label"
+        and str(row.get("note") or "") != "running header"
+        and not _numeric_opening(text)
+        and _looks_like_heading(text)
+    )
+
+
 def _heading_rows(rows: object) -> list[dict]:
     if not isinstance(rows, list):
         return []
@@ -372,7 +384,8 @@ def _kept_headings(rows: object) -> list[dict]:
 
 def heron_headers(page: dict | None) -> list[OcrSectionHeader]:
     """Every Heron heading candidate as the same 0–1 overlay the page image already draws.
-    Headings (_is_heading) come as they are; the rest are ``candidate`` and drawn lighter."""
+    Headings (_is_heading) come as they are; the rest are ``candidate``, ``heading_like``
+    when they read like a heading (drawn a little lighter) and plain otherwise (lightest)."""
     if not isinstance(page, dict):
         return []
     try:
@@ -406,6 +419,7 @@ def heron_headers(page: dict | None) -> list[OcrSectionHeader]:
                 width=_fraction(right - left, page_w),
                 height=_fraction(bottom - top, page_h),
                 candidate=not _is_heading(hit),
+                heading_like=not _is_heading(hit) and _heading_like(hit),
             )
         )
     headers.sort(key=lambda header: (header.top, header.left))

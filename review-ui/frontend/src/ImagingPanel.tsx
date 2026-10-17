@@ -2148,6 +2148,13 @@ function SequencingTable({
   );
 }
 
+/** Extra classes for a header chip or box: a heading has none; a rejected candidate is
+ *  heading-like (a little lighter) or plain (lightest). */
+export function headerTier(header: OcrSectionHeader | undefined): string {
+  if (!header?.candidate) return "";
+  return header.heading_like ? " is-candidate is-heading-like" : " is-candidate";
+}
+
 /** Section headers shown under Additional: every Heron candidate, the ones not accepted
  *  marked ``candidate`` (shown lighter). OCR "Show Headers" uses this list only. */
 export function additionalSectionHeaders(
@@ -2227,7 +2234,7 @@ function ExtractedList({
                     <button
                       key={`${text}-${index}`}
                       type="button"
-                      className={`header-highlight-one${boxes[index]?.candidate ? " is-candidate" : ""}`}
+                      className={`header-highlight-one${headerTier(boxes[index])}`}
                       title={boxes[index]?.candidate ? "Candidate: not accepted as a heading" : undefined}
                       aria-pressed={
                         headerHighlight === "all" || headerHighlight === index
