@@ -1584,10 +1584,8 @@ function PageDetails({
         {...sectionProps}
         title="Provider Extraction"
         rows={[
-          sameValue(page.providerName || NOT_FOUND, fmtConfidence(page.providerSignatureConfidence, Boolean(page.providerName)), {
-            id: "provider_name",
-            label: "Provider Name",
-          }),
+          // Provider Name is hidden for now (the key/value model's name still carries the
+          // credential). Its data and any saved ground truth are kept.
           sameValue(page.providerCredentials || NOT_FOUND, fmtConfidence(page.providerSignatureConfidence, Boolean(page.providerCredentials)), {
             id: "provider_credentials",
             label: "Provider Credentials",
