@@ -519,6 +519,14 @@ input {
   max-height: none;
   overflow: visible;
   padding: 0.6rem;
+}
+
+/* Accuracy → Last Run At header: the same picker in the column-filter popover. */
+.accuracy-filter-popover.run-after-popover {
+  width: 264px;
+}
+
+.run-after-form {
   display: grid;
   gap: 0.55rem;
 }

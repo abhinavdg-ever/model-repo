@@ -1,8 +1,20 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Filter, Info, Loader2, RefreshCw, Search } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarClock,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Filter,
+  Info,
+  Loader2,
+  RefreshCw,
+  Search,
+} from "lucide-react";
 import { getAccuracyReport } from "./api";
 import { saveAccuracyOrder } from "./chartSequence";
 import { useViewState } from "./viewState";
+import { formatRunAfter as fmtRunAfter, ranAfter, RunAfterForm } from "./runAfter";
 import { readGroundTruthSource } from "./groundTruthSource";
 import {
   LIVE_METRICS,
@@ -444,6 +456,89 @@ function ColumnFilter({
   );
 }
 
+/** The filter button on the Last Run At header: keep files last run at or after a date and
+ * time. Same button and popover as the score columns; the picker is History's. */
+function RunAfterColumnFilter({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (next: string | null) => void;
+}) {
+  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!anchor) return;
+    const close = (event: Event) => {
+      const target = event.target as Node;
+      if (popoverRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
+      setAnchor(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAnchor(null);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [anchor]);
+
+  function toggle() {
+    if (anchor) {
+      setAnchor(null);
+      return;
+    }
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = 264;
+    setAnchor({
+      top: rect.bottom + 6,
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+    });
+  }
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className={`accuracy-filter-btn${value ? " active" : ""}`}
+        title="Filter Last Run At"
+        aria-label="Filter Last Run At"
+        aria-expanded={anchor !== null}
+        onClick={toggle}
+      >
+        <CalendarClock size={11} aria-hidden="true" />
+      </button>
+      {anchor ? (
+        <div
+          ref={popoverRef}
+          className="accuracy-filter-popover run-after-popover"
+          style={{ top: anchor.top, left: anchor.left }}
+          role="dialog"
+          aria-label="Filter Last Run At"
+        >
+          <RunAfterForm
+            value={value}
+            onApply={(next) => {
+              onChange(next);
+              setAnchor(null);
+            }}
+          />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 /** Milliseconds for sorting; a missing date sorts last whichever way. */
 function timeOf(value: string | null | undefined): number | null {
   const t = value ? new Date(value).getTime() : NaN;
@@ -488,7 +583,7 @@ let lastRows: { source: string; rows: ChartAccuracy[] } | null = null;
 
 export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) {
   const cached = lastRows?.source === readGroundTruthSource() ? lastRows.rows : null;
-  const [rows, setRows] = useState<ChartAccuracy[]>(cached ?? []);
+  const [allRows, setRows] = useState<ChartAccuracy[]>(cached ?? []);
   // Nothing to show yet: the full Calculating panel. Cached rows on screen: a small note.
   const [loading, setLoading] = useState(cached === null);
   const [refreshing, setRefreshing] = useState(false);
@@ -502,8 +597,16 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     sortKey: SortKey;
     sortDir: SortDir;
     filters: Filters;
-  }>("accuracy", { query: "", page: 1, sortKey: "run", sortDir: "desc", filters: {} });
+    /** ISO date-time (India offset): only files last run at or after it; null = all. */
+    runAfter: string | null;
+  }>("accuracy", { query: "", page: 1, sortKey: "run", sortDir: "desc", filters: {}, runAfter: null });
   const { query, page, sortKey, sortDir, filters } = view;
+  const runAfter = view.runAfter ?? null;
+  // Run after narrows everything on the page, donuts included: the accuracy of those runs.
+  const rows = useMemo(
+    () => allRows.filter((row) => ranAfter(row.lastUpdatedAt, runAfter)),
+    [allRows, runAfter],
+  );
   const setQuery = (value: string) => setView({ query: value });
   const setPage = (value: number) => setView({ page: value });
 
@@ -528,7 +631,17 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     return sortDir === "asc" ? " ↑" : " ↓";
   }
 
-  function SortHeader({ sort, label, filter }: { sort: SortKey; label: string; filter?: ScoreColumn }) {
+  function SortHeader({
+    sort,
+    label,
+    filter,
+    runFilter = false,
+  }: {
+    sort: SortKey;
+    label: string;
+    filter?: ScoreColumn;
+    runFilter?: boolean;
+  }) {
     const rates = filter && filter !== "overall" ? ratesFor(filter) : undefined;
     return (
       <th scope="col" aria-sort={sortKey === sort ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
@@ -548,6 +661,9 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
               f1Label={rates && filter !== "overall" ? `F1 (${ratesLabelFor(filter)})` : undefined}
               onChange={(value) => setFilter(filter, value)}
             />
+          ) : null}
+          {runFilter ? (
+            <RunAfterColumnFilter value={runAfter} onChange={(next) => setView({ runAfter: next, page: 1 })} />
           ) : null}
         </span>
       </th>
@@ -710,6 +826,13 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
 
       {loading ? (
         <CalculatingPanel />
+      ) : rows.length === 0 && runAfter && allRows.length > 0 ? (
+        <p className="accuracy-status">
+          No file was last run on or after {fmtRunAfter(runAfter)}.{" "}
+          <button type="button" className="run-after-clear" onClick={() => setView({ runAfter: null, page: 1 })}>
+            Clear the Run after filter
+          </button>
+        </p>
       ) : rows.length === 0 ? (
         <p className="accuracy-status">
           No pages with ground truth to score from runs on or after {MIN_LAST_RUN_LABEL}.
@@ -719,9 +842,10 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
           <section className="accuracy-section" aria-label="Accuracy by metric">
             <h2>By metric</h2>
             <p className="accuracy-compared">
+              {runAfter ? <>Run after <strong>{fmtRunAfter(runAfter)}</strong> · </> : null}
               <strong>{rows.length}</strong> {rows.length === 1 ? "file" : "files"} compared ·{" "}
               <strong>{overall.scored}</strong> {overall.scored === 1 ? "page" : "pages"} compared{" "}
-              <InfoTip text={`Files last run on or after ${MIN_LAST_RUN_LABEL} with at least one page that has ground truth. A page is compared when it has any ground-truth label.`} />
+              <InfoTip text={`Files last run on or after ${runAfter ? fmtRunAfter(runAfter) : MIN_LAST_RUN_LABEL} with at least one page that has ground truth. A page is compared when it has any ground-truth label.`} />
             </p>
             <p className="accuracy-note">
               Match counts as 1, Partial as 0.5, and No Match as 0. <InfoTip text={SCORE_INFO} />
@@ -778,7 +902,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
               <thead>
                 <tr>
                   {SortHeader({ sort: "name", label: "Chart" })}
-                  {SortHeader({ sort: "run", label: "Last Run At" })}
+                  {SortHeader({ sort: "run", label: "Last Run At", runFilter: true })}
                   {SortHeader({ sort: "verified", label: "Last Verified At" })}
                   {SortHeader({ sort: "pages", label: "Pages" })}
                   {LIVE_METRICS.map((metric) => (
