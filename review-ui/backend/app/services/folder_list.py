@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional, Sequence
 
@@ -74,6 +74,8 @@ class FolderListParams:
     status: list[str] = field(default_factory=list)
     run: list[str] = field(default_factory=list)
     batch: list[str] = field(default_factory=list)
+    # Only charts last run at or after this moment (None = any time).
+    run_after: Optional[datetime] = None
     sort: SortKey = "updated"
     sort_dir: SortDir = "desc"
     limit: Optional[int] = None  # None / <=0 → return all matching
@@ -229,20 +231,23 @@ def _sort_key_value(f: FolderSummary, sort: SortKey):
         return (f.name or "").casefold()
     if sort == "pages":
         return f.page_count or 0
-    # updated
+    # updated. All aware, so a chart with no timestamp (oldest) sorts beside one with an offset.
     ts = f.last_updated_at
     if ts is None:
-        return datetime.min
-    if getattr(ts, "tzinfo", None) is None:
-        return ts
-    return ts
+        return datetime.min.replace(tzinfo=timezone.utc)
+    return _aware(ts)
+
+
+def _aware(ts: datetime) -> datetime:
+    """A timestamp comparable with any other: a naive one (file mtime) is local time."""
+    return ts if ts.tzinfo is not None else ts.astimezone()
 
 
 def filter_sort_page(
     rows: Sequence[FolderSummary],
     params: FolderListParams,
 ) -> FolderListResult:
-    """Apply q/status/run/batch filters, sort, then paginate.
+    """Apply q/status/run/batch/run-after filters, sort, then paginate.
 
     Run facets come from the full set. Batch facets are empty until a run is
     selected, then only batches that appear on charts in those run(s).
@@ -259,6 +264,7 @@ def filter_sort_page(
     status_set = {s for s in params.status if s}
     run_set = {s for s in params.run if s}
     batch_set = {s for s in params.batch if s}
+    run_after = _aware(params.run_after) if params.run_after else None
 
     # Batch options are locked to selected run(s).
     if run_set:
@@ -282,6 +288,8 @@ def filter_sort_page(
         if run_set and (f.run_id is None or f.run_id not in run_set):
             continue
         if batch_set and (f.batch_id is None or f.batch_id not in batch_set):
+            continue
+        if run_after and (f.last_updated_at is None or _aware(f.last_updated_at) < run_after):
             continue
         filtered.append(f)
 

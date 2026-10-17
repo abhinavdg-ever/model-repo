@@ -507,6 +507,117 @@ input {
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.22);
 }
 
+/* History → Run after: a date + time popover in the column-filter style. */
+.landing-multi.is-active .landing-multi-trigger {
+  border-color: var(--brand-500);
+  background: color-mix(in srgb, var(--brand-200) 35%, var(--card));
+  color: var(--brand-900);
+}
+
+.landing-multi-panel.run-after-panel {
+  min-width: 16.5rem;
+  max-height: none;
+  overflow: visible;
+  padding: 0.6rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.run-after-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.run-after-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.74rem;
+  padding: 0.18rem 0.6rem;
+  cursor: pointer;
+}
+
+.run-after-chip:hover {
+  border-color: var(--brand-500);
+}
+
+.run-after-chip.is-on {
+  border-color: var(--brand-500);
+  background: color-mix(in srgb, var(--brand-200) 55%, #fff);
+  color: var(--brand-900);
+}
+
+.run-after-fields {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 0.45rem;
+}
+
+.run-after-fields label {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+  color: var(--muted, #6b7a83);
+}
+
+.run-after-fields input {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.4rem;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text);
+  background: #ffffff;
+  min-width: 0;
+}
+
+.run-after-fields input:focus {
+  outline: 2px solid color-mix(in srgb, var(--brand-500) 45%, transparent);
+  border-color: var(--brand-500);
+}
+
+.run-after-hint {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--muted, #6b7a83);
+}
+
+.run-after-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.run-after-clear,
+.run-after-apply {
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.76rem;
+  padding: 0.28rem 0.75rem;
+  cursor: pointer;
+}
+
+.run-after-clear {
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--text);
+}
+
+.run-after-apply {
+  border: 1px solid var(--brand-500);
+  background: var(--brand-500);
+  color: #ffffff;
+}
+
+.run-after-clear:disabled,
+.run-after-apply:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .landing-multi-option {
   display: flex;
   align-items: center;

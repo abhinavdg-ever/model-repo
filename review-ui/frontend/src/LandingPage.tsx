@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  CalendarClock,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -41,6 +42,8 @@ type LandingFilters = {
   statusFilter: OcrRunStatus[];
   runFilter: string[];
   batchFilter: string[];
+  /** ISO date-time (India time) the chart must have last run at or after; null = any time. */
+  runAfter: string | null;
   sortKey: SortKey;
   sortDir: SortDir;
   page: number;
@@ -84,6 +87,7 @@ export function savedHistoryListParams(): FolderListParams {
     status: saved.statusFilter,
     run: saved.runFilter,
     batch: saved.batchFilter,
+    run_after: saved.runAfter,
     sort: saved.sortKey,
     sort_dir: saved.sortDir,
   };
@@ -95,6 +99,7 @@ function readLandingFilters(): LandingFilters {
     statusFilter: [],
     runFilter: [],
     batchFilter: [],
+    runAfter: null,
     // Newest run first.
     sortKey: "updated",
     sortDir: "desc",
@@ -118,6 +123,7 @@ function readLandingFilters(): LandingFilters {
       statusFilter: normalizeStatusList(parsed.statusFilter),
       runFilter: normalizeIdList(parsed.runFilter),
       batchFilter: normalizeIdList(parsed.batchFilter),
+      runAfter: typeof parsed.runAfter === "string" && parsed.runAfter ? parsed.runAfter : null,
       sortKey,
       sortDir,
       page,
@@ -245,6 +251,179 @@ function MultiCheckFilter({
                   </label>
                 ))
               )}
+            </div>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Times on this page are India time, like the Last Run At column. */
+const RUN_AFTER_OFFSET = "+05:30";
+
+/** "YYYY-MM-DD" and "HH:MM" of an ISO instant, in India time. */
+function indiaParts(iso: string | null): { date: string; time: string } {
+  const d = iso ? new Date(iso) : new Date();
+  if (Number.isNaN(d.getTime())) return { date: "", time: "00:00" };
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(d)
+      .map((part) => [part.type, part.value]),
+  );
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: iso ? `${parts.hour}:${parts.minute}` : "00:00",
+  };
+}
+
+/** The date `days` before today, India time, "YYYY-MM-DD". */
+function indiaDaysAgo(days: number): string {
+  return indiaParts(new Date(Date.now() - days * 86_400_000).toISOString()).date;
+}
+
+/** Column filter for Last Run At: charts last run on or after a date and time (12:00 AM
+ *  unless changed). Styled like the other column filters. */
+function RunAfterFilter({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (next: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState(() => indiaParts(value).date);
+  const [time, setTime] = useState(() => indiaParts(value).time);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    // Opening shows what is applied (or today at 12:00 AM).
+    const current = indiaParts(value);
+    setDate(current.date);
+    setTime(current.time);
+    const onDoc = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, value]);
+
+  function apply() {
+    if (!date) return;
+    onChange(`${date}T${time || "00:00"}:00${RUN_AFTER_OFFSET}`);
+    setOpen(false);
+  }
+
+  const quick: [string, number][] = [
+    ["Today", 0],
+    ["Yesterday", 1],
+    ["Last 7 days", 7],
+  ];
+
+  return (
+    <div
+      className={
+        open
+          ? "landing-select-wrap landing-multi-wrap is-open"
+          : "landing-select-wrap landing-multi-wrap"
+      }
+      ref={rootRef}
+    >
+      <span>Run after</span>
+      <div className={`landing-multi${value ? " is-active" : ""}`}>
+        <button
+          type="button"
+          className="landing-multi-trigger"
+          aria-label="Filter by last run date and time"
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          onClick={() => setOpen((v) => !v)}
+        >
+          <CalendarClock size={12} aria-hidden="true" />
+          <span className="landing-multi-trigger-label">
+            {value ? fmtUpdated(value) : "Any time"}
+          </span>
+          <ChevronDown size={12} aria-hidden="true" />
+        </button>
+        {open ? (
+          <>
+            <div
+              className="landing-multi-backdrop"
+              aria-hidden="true"
+              onMouseDown={() => setOpen(false)}
+            />
+            <div className="landing-multi-panel run-after-panel" role="dialog" aria-label="Run after">
+              <div className="run-after-quick">
+                {quick.map(([label, days]) => {
+                  const day = indiaDaysAgo(days);
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      className={`run-after-chip${date === day && time === "00:00" ? " is-on" : ""}`}
+                      onClick={() => {
+                        setDate(day);
+                        setTime("00:00");
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="run-after-fields">
+                <label>
+                  <span>Date</span>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && apply()}
+                  />
+                </label>
+                <label>
+                  <span>Time</span>
+                  <input
+                    type="time"
+                    value={time}
+                    onChange={(e) => setTime(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && apply()}
+                  />
+                </label>
+              </div>
+              <p className="run-after-hint">India time · charts last run at or after this</p>
+              <div className="run-after-actions">
+                <button
+                  type="button"
+                  className="run-after-clear"
+                  onClick={() => {
+                    onChange(null);
+                    setOpen(false);
+                  }}
+                  disabled={!value}
+                >
+                  Clear
+                </button>
+                <button type="button" className="run-after-apply" onClick={apply} disabled={!date}>
+                  Apply
+                </button>
+              </div>
             </div>
           </>
         ) : null}
@@ -434,6 +613,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
   const [batchFilter, setBatchFilter] = useState<string[]>(
     saved.runFilter.length > 0 ? saved.batchFilter : [],
   );
+  const [runAfter, setRunAfter] = useState<string | null>(saved.runAfter);
   const skipFilterPageReset = useRef(true);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
@@ -456,6 +636,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
         status: statusFilter,
         run: runFilter,
         batch: batchFilter,
+        run_after: runAfter,
         sort: sortKey,
         sort_dir: sortDir,
       });
@@ -487,7 +668,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
     }, query.trim() ? 200 : 0);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload on list controls
-  }, [page, query, statusFilter, runFilter, batchFilter, sortKey, sortDir]);
+  }, [page, query, statusFilter, runFilter, batchFilter, runAfter, sortKey, sortDir]);
 
   useEffect(() => {
     try {
@@ -496,6 +677,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
         statusFilter,
         runFilter,
         batchFilter,
+        runAfter,
         sortKey,
         sortDir,
         page,
@@ -504,7 +686,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
     } catch {
       /* ignore */
     }
-  }, [query, statusFilter, runFilter, batchFilter, sortKey, sortDir, page]);
+  }, [query, statusFilter, runFilter, batchFilter, runAfter, sortKey, sortDir, page]);
 
   const totals = useMemo(
     () => ({ folders: total, pages: pageCountSum, ocr: ocrSum }),
@@ -519,7 +701,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
       return;
     }
     setPage(1);
-  }, [query, sortKey, sortDir, statusFilter, runFilter, batchFilter]);
+  }, [query, sortKey, sortDir, statusFilter, runFilter, batchFilter, runAfter]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -590,6 +772,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
         status: statusFilter,
         run: runFilter,
         batch: batchFilter,
+        run_after: runAfter,
         sort: sortKey,
         sort_dir: sortDir,
       });
@@ -639,7 +822,8 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
                 statusFilter.length > 0 ||
                 query.trim() ||
                 runFilter.length > 0 ||
-                batchFilter.length > 0
+                batchFilter.length > 0 ||
+                runAfter
                   ? "Download results for charts matching current filters"
                   : "Download all imaging pipeline outputs as CSV"
               }
@@ -755,6 +939,8 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
                 lockedHint="Select a run first"
               />
 
+              <RunAfterFilter value={runAfter} onChange={setRunAfter} />
+
               <button
                 type="button"
                 className="landing-icon-btn"
@@ -831,7 +1017,8 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
                           {!query.trim() &&
                           statusFilter.length === 0 &&
                           runFilter.length === 0 &&
-                          batchFilter.length === 0
+                          batchFilter.length === 0 &&
+                          !runAfter
                             ? "No history found"
                             : "No matching charts"}
                         </h3>
@@ -839,9 +1026,10 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
                           {!query.trim() &&
                           statusFilter.length === 0 &&
                           runFilter.length === 0 &&
-                          batchFilter.length === 0
+                          batchFilter.length === 0 &&
+                          !runAfter
                             ? "Add charts under DATA_ROOT with pages/ and ocr/ outputs."
-                            : "Try a different search, status, run, or batch filter."}
+                            : "Try a different search, status, run, batch, or run-after filter."}
                         </p>
                       </div>
                     </td>

@@ -146,6 +146,9 @@ def list_folders(
     ),
     sort: str = Query("updated", pattern="^(filename|pages|updated)$"),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
+    run_after: datetime | None = Query(
+        None, description="Only charts last run at or after this ISO date-time (with offset)"
+    ),
 ) -> FolderListResponse:
     """Landing list: DB-backed summaries when DATABASE_URL is set; paginated."""
     params = FolderListParams(
@@ -153,6 +156,7 @@ def list_folders(
         status=list(status or []),
         run=list(run or []),
         batch=list(batch or []),
+        run_after=run_after,
         sort=sort,  # type: ignore[arg-type]
         sort_dir=sort_dir,  # type: ignore[arg-type]
         limit=limit,

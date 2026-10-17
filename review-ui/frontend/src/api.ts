@@ -29,6 +29,8 @@ export type FolderListParams = {
   status?: OcrRunStatus[];
   run?: string[];
   batch?: string[];
+  /** Only charts last run at or after this ISO date-time (with its offset). */
+  run_after?: string | null;
   sort?: "filename" | "pages" | "updated";
   sort_dir?: "asc" | "desc";
 };
@@ -338,6 +340,7 @@ export function listFolders(params?: FolderListParams): Promise<FolderListRespon
   for (const s of params?.status ?? []) sp.append("status", s);
   for (const s of params?.run ?? []) sp.append("run", s);
   for (const s of params?.batch ?? []) sp.append("batch", s);
+  if (params?.run_after) sp.set("run_after", params.run_after);
   if (params?.sort) sp.set("sort", params.sort);
   if (params?.sort_dir) sp.set("sort_dir", params.sort_dir);
   const qs = sp.toString();

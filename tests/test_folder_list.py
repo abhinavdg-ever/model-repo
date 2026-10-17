@@ -111,3 +111,18 @@ def test_quick_page_count(tmp_path):
     (pages / "2.png").write_bytes(b"x")
     (pages / "note.txt").write_text("no", encoding="utf-8")
     assert quick_page_count(chart) == 2
+
+
+def test_run_after_keeps_charts_last_run_at_or_after_the_moment():
+    from datetime import timedelta
+
+    ist = timezone(timedelta(hours=5, minutes=30))
+    rows = [
+        _f("before", updated=datetime(2026, 10, 16, 23, 59, tzinfo=ist)),
+        _f("at_midnight", updated=datetime(2026, 10, 17, 0, 0, tzinfo=ist)),
+        _f("utc_after", updated=datetime(2026, 10, 17, 3, 0, tzinfo=timezone.utc)),
+        _f("never_run", updated=None),
+    ]
+    params = FolderListParams(run_after=datetime(2026, 10, 17, 0, 0, tzinfo=ist), limit=None)
+    assert sorted(f.name for f in filter_sort_page(rows, params).items) == ["at_midnight", "utc_after"]
+    assert filter_sort_page(rows, FolderListParams(limit=None)).total == 4
