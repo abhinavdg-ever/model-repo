@@ -3630,6 +3630,12 @@ input {
   line-height: 1.3;
 }
 
+/* Page Type and Codability: 10% narrower. */
+.accuracy-cell.accuracy-cell-narrow {
+  min-width: 7.65rem;
+  max-width: 9.9rem;
+}
+
 .accuracy-cell > strong {
   color: var(--brand-800);
   font-size: 0.85rem;
