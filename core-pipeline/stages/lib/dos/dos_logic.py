@@ -573,6 +573,11 @@ def _slice_last_n_words(text: str, n: int) -> str:
     return text[matches[-n].start() :]
 
 
+# Calls made / failed this run (the DOS stage resets and reads it): a client built with a bad
+# key fails every call, and the run must not then claim the LLM pass ran.
+LLM_CALLS = {"made": 0, "failed": 0, "error": ""}
+
+
 def extract_dos_range_with_llm(
     page_text: str,
     page_label: str,
@@ -624,6 +629,7 @@ Text excerpt:
 {snippet}
 """
 
+    LLM_CALLS["made"] += 1
     try:
         from azure_retry import call_with_retry
         from config import (
@@ -674,5 +680,7 @@ Text excerpt:
             n_to = n_from
         return n_from, n_to
     except Exception as exc:
+        LLM_CALLS["failed"] += 1
+        LLM_CALLS["error"] = LLM_CALLS["error"] or f"{type(exc).__name__}: {exc}"[:300]
         print(f"  [warn] LLM DOS failed on {page_label}: {exc}")
         return None

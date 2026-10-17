@@ -49,6 +49,7 @@ _DOS_LIB = CORE_ROOT / "stages" / "lib" / "dos"
 if str(_DOS_LIB) not in sys.path:
     sys.path.insert(0, str(_DOS_LIB))
 
+import dos_logic  # noqa: E402
 from dos_logic import LabelledDate, detect_dos_per_page, to_iso_date  # noqa: E402
 
 DOS_COLS = [
@@ -260,6 +261,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             fallback = _kv_items(staged_page.rule_fallback("dos"))
             if fallback:
                 kv_fallback[page["page_name"]] = fallback
+        dos_logic.LLM_CALLS.update(made=0, failed=0, error="")
         hits = detect_dos_per_page(
             text,
             client,
@@ -270,6 +272,16 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             kv_fallback=kv_fallback,
             kv_pattern=kv_pattern,
         )
+        llm_calls = dict(dos_logic.LLM_CALLS)
+        if llm_calls["made"] and llm_calls["failed"] == llm_calls["made"]:
+            # Every call failed (a bad key, a missing role, a wrong deployment): the LLM
+            # pass did not run, so the pages are stamped rules.
+            logger.warning(
+                "DOS: all %d Azure OpenAI calls failed (%s); stamped extraction_method=rules",
+                llm_calls["made"],
+                llm_calls["error"],
+            )
+            method = "rules"
 
         by_name = {p["page_name"]: p for p in ctx.pages}
         csv_rows: list[dict[str, Any]] = []
@@ -355,5 +367,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             "skipped": ctx.skipped,
             "llm_enabled": client is not None,
             "llm_pages": llm_pages,
+            "llm_calls": llm_calls["made"],
+            "llm_failed": llm_calls["failed"],
+            "llm_error": llm_calls["error"],
             "extraction_method": method,
         }

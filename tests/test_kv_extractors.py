@@ -240,3 +240,22 @@ def test_the_dos_csv_names_the_rule_that_gave_the_date():
     ]
     assert [hit.get("page_source") or "none" for hit in sources] == ["kv", "kv_pattern", "edge", "none"]
 
+
+def test_a_failed_llm_call_is_counted_and_gives_no_date(monkeypatch):
+    import stages.lib.dos.stage  # noqa: F401
+    import azure_retry
+    import dos_logic
+
+    class Refused:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(**_):
+                    raise PermissionError("401 invalid subscription key")
+
+    monkeypatch.setattr(azure_retry, "call_with_retry", lambda fn, **_: fn())
+    dos_logic.LLM_CALLS.update(made=0, failed=0, error="")
+    assert dos_logic.extract_dos_range_with_llm("Office visit note", "1.png", Refused()) is None
+    assert (dos_logic.LLM_CALLS["made"], dos_logic.LLM_CALLS["failed"]) == (1, 1)
+    assert "401" in dos_logic.LLM_CALLS["error"]
+
