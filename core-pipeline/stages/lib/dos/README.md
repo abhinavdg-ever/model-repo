@@ -8,7 +8,8 @@ states:
    Admit/Discharge → Date of Service → …; lab = Date of Service → Collection →
    Received → Report Date → …; other = Date of Service → Collection →
    Admit/Discharge → Received → …), and within it the date the model scored
-   highest. Its confidence is that score. Spaced slashes (`05 / 20 / 2025`) are merged into
+   highest — among the dates the model scored at least 0.6 (`kv_accept_min_score`);
+   with none, the highest-scoring date. Its confidence is that score. Spaced slashes (`05 / 20 / 2025`) are merged into
    one OCR word first, so they count as plain dates.
 2. **Edge keyword**, only when 1 has no date. A DOS label that starts within
    the first or last 20 words of the page, with a date right after it (only

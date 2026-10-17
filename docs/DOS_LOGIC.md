@@ -13,7 +13,7 @@ service, the **Extracted DOS**, from one of two states:
 
 | State | When | Date | Confidence | `source` |
 |---|---|---|---|---|
-| 1. Key/value | the key/value extraction has a date for the page | among the dates its rules accepted, the first label group in the page kind's priority (§3.6), and within it the date the model scored highest | the model's score for that date | `kv` |
+| 1. Key/value | the key/value extraction has a date for the page | among the dates its rules accepted and the model scored ≥ 0.6, the first label group in the page kind's priority (§3.6), and within it the highest score; none ≥ 0.6: the highest score | the model's score for that date | `kv` |
 | 2. Edge keyword | only when state 1 has no date | a DOS label in the first or last 20 words of the page, with its date | 0.50 | `edge` / `edge_tesseract` |
 | — | neither | no date | 0 | `none` |
 
@@ -181,9 +181,13 @@ the **page kind** (`page_kind`) and `kv_priority` in `dos_canon.json`:
 
 Groups are the key tiers of §3.1 (Date of Service = the service tier; Date =
 the weak tier), with the Report Date key as its own group. Within a group the
-date the model scored highest wins, at any score: every candidate counts as
-accepted by the model because its cut-off is 0. On a discharge page the stay's
-admit / discharge pair then replaces the pick (§4.1).
+date the model scored highest wins. On a discharge page the stay's admit /
+discharge pair then replaces the pick (§4.1).
+
+**The order counts only among accepted dates:** those the model scored at least
+`kv_accept_min_score` (0.6). When no date on the page reaches it, the page takes
+the highest-scoring date at any score. Staging written without a model (no
+scores) counts every date as accepted.
 
 Its confidence is that row's `model_score`; without a model, its rule score;
 with neither, `confidence.kv` (0.90) in `dos_canon.json`. If the extraction
