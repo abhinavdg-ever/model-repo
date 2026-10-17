@@ -78,8 +78,6 @@
   ],
   "weak": [
     "Date",
-    "dd",
-    "dt",
     "Report Date",
     "Service",
     "Chief Complaint",
