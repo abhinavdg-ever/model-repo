@@ -10,7 +10,7 @@
     "edge": 0.95,
     "kv": 0.9,
     "llm": 0.7,
-    "kv_low": 0.5,
+    "kv_low": 0.3,
     "kv_spaces_only": 0.3,
     "kv_pattern": 0.3,
     "dictation": 0.3,
@@ -21,7 +21,7 @@
   "kv_low_min_score": 0.3,
   "note_dictation": "Last resort, only when no other rule found a date: the date after D:, DD: or Dictated, else after T:, DT:, TD:, TT: or Transcribed; source dictation, match_type dictation_date, at confidence.dictation.",
   "note_kv_low_min_score": "Rule 4 (kv_low) takes a date only when the key/value model scored it at least this; a lower or missing score is no date. The model itself picks a date at 0.6 or above (SELECT_THRESHOLDS in extraction/util/config.py).",
-  "note_kv_low": "Rule 4, last resort: when the key/value model chose no date for a page and the LLM found none, the date its rules accepted (best model score first) is used, match_type kv_low. Its confidence is the model's own probability (below the DOS threshold, so low), capped at backup_max; kv_low here is used only when that score is missing.",
+  "note_kv_low": "Rule 4, last resort before dictation dates: when the key/value model chose no date for a page and no other rule found one, the date its rules accepted (best model score first), only if the model scored it at least kv_low_min_score. Its confidence is always kv_low (0.3), match_type kv_low.",
   "labels": {
     "encounter": [
       "encounter date",

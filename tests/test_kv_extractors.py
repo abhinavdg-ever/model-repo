@@ -217,7 +217,7 @@ def test_every_dos_backup_is_flagged_low_and_the_models_pick_is_not():
     fallback = conf("no label", kv_fallback={"1.png": [{"iso": "2024-06-12", "keyword": "Date", "confidence": 0.8}]})
     assert (model["confidence"], model["page_source"]) == (0.9, "kv")
     assert (edge["confidence"], edge["page_source"]) == (0.5, "edge")
-    assert (fallback["confidence"], fallback["page_source"]) == (0.5, "kv_low")
+    assert (fallback["confidence"], fallback["page_source"]) == (0.3, "kv_low")
 
 
 def test_the_dos_csv_names_the_rule_that_gave_the_date():

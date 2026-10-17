@@ -394,10 +394,11 @@ def kv_page_date(
         iso_to = str(item.get("iso_to") or "")
         is_pair = len(iso_to) == 10 and iso_to > iso
         confidence = prof.confidence[source]
+        # kv_low: only a date the model scored kv_low_min_score or more; its confidence is
+        # the canon's kv_low, not the model's score.
         if source == "kv_low" and item.get("confidence") is not None:
             if float(item["confidence"]) < prof.kv_low_min_score:
                 continue
-            confidence = float(item["confidence"])
         # A spaces-only date ('06 12 24') is a loose pattern: capped low.
         if item.get("pattern") == "spaces_only":
             confidence = min(confidence, prof.confidence.get("kv_spaces_only", confidence))

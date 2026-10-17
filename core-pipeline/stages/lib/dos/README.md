@@ -20,7 +20,8 @@ first rule that finds a date wins:
    `match_type` `kv_pattern`.
 3. **Azure OpenAI**, when `DOS_LLM_ENABLED`, on pages matching `clinical_cues`.
 4. **Key/value, low confidence.** When the model chose no date, the date its rules
-   accepted, at the model's own (low) probability; `match_type` `kv_low`.
+   accepted, if the model scored it 0.3 or more, at confidence 0.30;
+   `match_type` `kv_low`.
 5. Otherwise the page has no date of service.
 
 Each page keeps its own date here (the Extracted DOS). The Final DOS — the
