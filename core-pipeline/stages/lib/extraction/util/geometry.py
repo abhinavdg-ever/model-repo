@@ -8,6 +8,7 @@ Priors from Data/examp/mes.csv:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 # Extended / max bands — independent tracks (do not set these equal).
@@ -93,7 +94,45 @@ def words_from_page(page: dict) -> list[Word]:
         if not content or box is None:
             continue
         words.append(Word(index=index, content=content, box=box))
-    return words
+    return merge_spaced_dates(words)
+
+
+# A date printed with spaced slashes, OCR'd as several words: '05' '/' '20' '/' '2025',
+# '05/' '20/' '2025', '05' '/20' '/2025'.
+_DATE_PARTS = re.compile(r"^[\d/]+$")
+_JOINED_DATE = re.compile(r"^\d{1,2}/\d{1,2}/(?:\d{4}|\d{2})$")
+_MAX_DATE_WORDS = 5
+
+
+def merge_spaced_dates(words: list[Word]) -> list[Word]:
+    """One word per spaced-slash date ('05 / 20 / 2025' becomes '05/20/2025', its box the
+    union), so every reader takes it as a plain date. Only consecutive words on one line,
+    close together, that join to exactly a numeric date."""
+    merged: list[Word] = []
+    i = 0
+    while i < len(words):
+        for size in range(min(_MAX_DATE_WORDS, len(words) - i), 1, -1):
+            run = words[i : i + size]
+            joined = "".join(word.content for word in run)
+            if _JOINED_DATE.match(joined) and all(_DATE_PARTS.match(word.content) for word in run) and _one_line(run):
+                merged.append(Word(index=run[0].index, content=joined, box=union_boxes([w.box for w in run])))
+                i += size
+                break
+        else:
+            merged.append(words[i])
+            i += 1
+    return merged
+
+
+def _one_line(run: list[Word]) -> bool:
+    """Left to right on one line, each gap under a line height."""
+    height = max(word.box.height() for word in run) or 1.0
+    for left, right in zip(run, run[1:]):
+        if abs(right.box.cy - left.box.cy) > 0.6 * height:
+            return False
+        if not -0.2 * height <= right.box.left - left.box.right <= height:
+            return False
+    return True
 
 
 def group_lines(words: list[Word]) -> list[list[Word]]:

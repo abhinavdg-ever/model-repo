@@ -112,11 +112,15 @@ class TestSpacedSlashDates:
             ("01/02/2024", "01/05/2024")
         ]
 
-    def test_the_model_never_sees_it_only_the_pattern_fallback_reads_it(self):
-        from stages.lib.extraction.dos.extract import SPACED_DATE_SCORE, extract_page, pattern_page
+    def test_the_ocr_words_are_merged_into_one_date(self):
+        words = _page((100, "DATE: 05 / 20 / 2025 FACILITY"), (200, "BP 120 / 80"))
+        assert [word.content for word in words] == ["DATE:", "05/20/2025", "FACILITY", "BP", "120", "/", "80"]
+
+    def test_the_model_gets_it_like_any_other_date(self):
+        from stages.lib.extraction.dos.extract import extract_page, pattern_page
         from stages.lib.extraction.util.keys import KeyHit
 
-        def page(text):
+        def rows(text):
             words = _page((100, text))
             key = words[0]
             hit = KeyHit(field="dos", key="DATE:", word_indexes=[key.index], box=key.box, weak=True,
@@ -125,22 +129,18 @@ class TestSpacedSlashDates:
             accepted = [row for row in extract_page([hit], words, PAGE_H) if row.accepted]
             return accepted, pattern_page([hit], words)
 
-        model, pattern = page("DATE: 05 / 20 / 2025")
-        assert model == []
-        [row] = pattern
-        assert (row.value, row.score, row.pattern) == ("05/20/2025", SPACED_DATE_SCORE, "spaced_slash")
-        model, pattern = page("DATE: 05/20/2025")
-        assert [row.value for row in model] == ["05/20/2025"] and pattern == []
+        (spaced,), pattern = rows("DATE: 05 / 20 / 2025")
+        (plain,), _ = rows("DATE: 05/20/2025")
+        assert pattern == []
+        assert (spaced.value, spaced.score, spaced.pattern) == ("05/20/2025", plain.score, "")
 
-    def test_the_edge_label_rule_reads_it_at_edge_spaced(self):
+    def test_the_edge_label_rule_reads_it_like_any_other_date(self):
         import stages.lib.dos.stage  # noqa: F401  — puts dos/ on sys.path
         from dos_logic import detect_dos_per_page
 
         hit = detect_dos_per_page("===== 7.png =====\nDate of Service: 05 / 20 / 2025\n", None, use_llm=False)[0]
-        assert hit["dos_from_iso"] == "2025-05-20" and hit["confidence"] == 0.5
         plain = detect_dos_per_page("===== 7.png =====\nDate of Service: 05/20/2025\n", None, use_llm=False)[0]
-        # Not the model's pick: a backup, capped at backup_max.
-        assert plain["confidence"] == 0.5
+        assert hit["dos_from_iso"] == "2025-05-20" and hit["confidence"] == plain["confidence"]
 
 
 class TestSpacesOnlyDates:
@@ -180,34 +180,29 @@ class TestSpacesOnlyDates:
         assert [row.value for row in model] == ["06/15/2024"]
         assert [row.value for row in pattern] == ["06/12/24"]
 
-    def test_spaced_slashes_before_spaces_only(self):
-        _, pattern = self.pages("DATE: 06 12 24", extra="Visit: 05 / 20 / 2025")
-        assert [row.pattern for row in pattern] == ["spaced_slash"]
-
     def test_the_general_date_finder_does_not_read_spaces_only(self):
         from stages.lib.extraction.util.dates import find_dates
 
         assert find_dates("WBC 10 12 20") == [] and find_dates("DOB 06 12 54") == []
 
-    def test_the_dos_stage_reads_the_pattern_only_when_the_model_chose_nothing(self):
+    def test_the_dos_stage_reads_the_pattern_after_the_model_and_the_edge_label(self):
         import stages.lib.dos.stage  # noqa: F401
         from dos_logic import detect_dos_per_page
 
-        page = "===== 1.png =====\nVisit Date: 03/01/2024\n"
+        edge_page = "===== 1.png =====\nVisit Date: 03/01/2024\n"
+        bare_page = "===== 1.png =====\nno label here\n"
         pattern = {"1.png": [{"iso": "2024-06-12", "keyword": "DATE:", "pattern": "spaces_only"}]}
         model = {"1.png": [{"iso": "2024-07-01", "keyword": "DOS"}]}
 
-        hit = detect_dos_per_page(page, None, use_llm=False, kv_dates=model, kv_pattern=pattern)[0]
+        hit = detect_dos_per_page(edge_page, None, use_llm=False, kv_dates=model, kv_pattern=pattern)[0]
         assert (hit["dos_from_iso"], hit["page_source"]) == ("2024-07-01", "kv")
-        # Model chose nothing: the pattern comes next, before the edge label.
-        hit = detect_dos_per_page(page, None, use_llm=False, kv_pattern=pattern)[0]
+        # No model date: the edge label comes before the pattern.
+        hit = detect_dos_per_page(edge_page, None, use_llm=False, kv_pattern=pattern)[0]
+        assert (hit["dos_from_iso"], hit["page_source"]) == ("2024-03-01", "edge")
+        # Neither: the pattern.
+        hit = detect_dos_per_page(bare_page, None, use_llm=False, kv_pattern=pattern)[0]
         assert (hit["dos_from_iso"], hit["page_source"], hit["match_type"]) == ("2024-06-12", "kv_pattern", "kv_pattern")
         assert hit["confidence"] == 0.3
-        spaced = {"1.png": [{"iso": "2025-05-20", "keyword": "DATE:", "pattern": "spaced_slash"}]}
-        assert detect_dos_per_page(page, None, use_llm=False, kv_pattern=spaced)[0]["confidence"] == 0.5
-        # No pattern either: the edge label.
-        hit = detect_dos_per_page(page, None, use_llm=False)[0]
-        assert (hit["dos_from_iso"], hit["page_source"]) == ("2024-03-01", "edge")
 
 
 def test_every_dos_backup_is_flagged_low_and_the_models_pick_is_not():
@@ -234,7 +229,7 @@ def test_the_dos_csv_names_the_rule_that_gave_the_date():
     pattern = {"1.png": [{"iso": "2024-06-12", "keyword": "DATE:", "pattern": "spaces_only"}]}
     sources = [
         detect_dos_per_page(page, None, use_llm=False, kv_dates={"1.png": [{"iso": "2024-07-01"}]})[0],
-        detect_dos_per_page(page, None, use_llm=False, kv_pattern=pattern)[0],
+        detect_dos_per_page("===== 1.png =====\nno label\n", None, use_llm=False, kv_pattern=pattern)[0],
         detect_dos_per_page(page, None, use_llm=False)[0],
         detect_dos_per_page("===== 1.png =====\nno date\n", None, use_llm=False)[0],
     ]

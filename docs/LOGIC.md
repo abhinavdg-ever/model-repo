@@ -589,25 +589,25 @@ Per page, the first rule that finds a date wins:
 
 | # | Rule | Confidence | `match_type` |
 |---|---|---|---|
-| 1 | **Key/value.** The first date the key/value extractor selected for the page (a range keeps its end). Plain dates only | 0.90 | `kv` |
-| 1b | **Key/value pattern fallback.** Only when rule 1 found nothing: after a DOS key, a date with spaced slashes (`05 / 20 / 2025`), else one with spaces only (`06 12 24`) right after the key | 0.50 spaced slashes, 0.30 spaces only | `kv_pattern` |
+| 1 | **Key/value.** The first date the key/value extractor selected for the page (a range keeps its end). Spaced slashes (`05 / 20 / 2025`) count as plain dates: the OCR words are merged into one before extraction | 0.90 | `kv` |
 | 2 | **Edge keyword.** A DOS label starting within the first or last `edge_words` (20) words of the page, with a date within `label_reach_chars` (40) after it and only filler words (`label_gap_words`: at, on, of, from, is, time, date, dt) between. An encounter label (Encounter Date, Visit Date, Date of Service, DOS, Service Date, Appointment Date, Exam Date, ...) wins; otherwise Admission Date is **From** and Discharge Date is **To**; a discharge date alone is both. A written range after an encounter label ("DOS: a - b") keeps both ends. Read on the final OCR text; on a page with no Final2 text, then on the Tesseract text (not for handwritten / low-quality pages), because Docling (Final1) can drop the top banner | 0.50 (backup) | `edge_keyword` / `edge_keyword_tesseract` / `admit_discharge_pair` |
+| 2b | **Key/value pattern fallback.** Only when rules 1 and 2 found nothing: a date with spaces only (`06 12 24`) right after a DOS key | 0.30 | `kv_pattern` |
 | 3 | **Azure OpenAI**, when `DOS_LLM_ENABLED`, on pages matching `clinical_cues` (`discharge_cues` asks for admission + discharge) | 0.50 (backup) | `llm` |
 | 4 | **Key/value, low confidence.** When the key/value model chose no date: the date its rules accepted (best model score first) | the model's own probability (else 0.50), at most 0.50 (backup) | `kv_low` |
 | 5 | Nothing: the page has no DOS | 0 | `no_date_found` |
 
 **Backups read low.** Only rule 1 is the key/value model's pick. Every other
-date (rules 1b–4) is a backup and is capped at `backup_max` (0.50), so a
+date (rules 2–4) is a backup and is capped at `backup_max` (0.50), so a
 reviewer can tell the two apart by confidence alone.
 
-**Looser date patterns are a fallback, never candidates.** The key/value
-extractor gives the model plain dates only. The patterns are read separately
-(`pattern_page`, staged as `dos_pattern`, which the model never scores) and
-used only by rule 1b, when the model chose no date for the page. A date with
-spaced slashes (`05 / 20 / 2025`) comes first, at `kv_spaced` (0.50). Only if
-no key has one, a date with spaces only (`06 12 24`): right after a DOS key on
-the same line (at most one word between), two-digit month 01–12 and day 01–31,
-at `kv_spaces_only` (0.30). The general date finder and keyless header/footer
+**Spaced dates.** A date OCR'd with spaced slashes (`05 / 20 / 2025`, `05/`
+`20/` `2025`) is merged into one word, `05/20/2025`, when the page's words are
+read (`merge_spaced_dates`), so every extractor and the model take it as a
+plain date. A date with spaces only (`06 12 24`) is never a candidate: it is
+read separately (`pattern_page`, staged as `dos_pattern`, which the model never
+scores) and used only by rule 2b, right after a DOS key on the same line (at
+most one word between), two-digit month 01–12 and day 01–31, at
+`kv_spaces_only` (0.30). The general date finder and keyless header/footer
 stamps never read spaces-only dates, so lab values such as `WBC 10 12 20` are
 not dates.
 

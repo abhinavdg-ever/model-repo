@@ -172,9 +172,6 @@ DATE_RE = re.compile(
 )
 
 
-_SPACED_SLASH = re.compile(r"\d\s/|/\s\d")
-
-
 def _two_digit_year(year: str) -> int:
     value = int(year)
     if len(year) == 2:
@@ -316,9 +313,7 @@ def edge_page_date(
         hits = edge_dates(page_text, prof)
 
     def confidence(*chosen: LabelledDate) -> float:
-        # A date read with spaced slashes ('05 / 20 / 2025') is a looser pattern: edge_spaced.
-        if any(_SPACED_SLASH.search(hit.raw) for hit in chosen):
-            return prof.confidence.get("edge_spaced", prof.confidence["edge"])
+        # A spaced-slash date ('05 / 20 / 2025') is a date like any other.
         return prof.confidence["edge"]
 
     encounter = next((h for h in hits if h.label_class == "encounter"), None)
@@ -366,10 +361,9 @@ def kv_page_date(
         confidence = prof.confidence[source]
         if source == "kv_low" and item.get("confidence") is not None:
             confidence = float(item["confidence"])
-        # A date read by a looser pattern is capped: spaced slashes, or spaces only.
-        cap = {"spaced_slash": "kv_spaced", "spaces_only": "kv_spaces_only"}.get(str(item.get("pattern") or ""))
-        if cap:
-            confidence = min(confidence, prof.confidence.get(cap, confidence))
+        # A spaces-only date ('06 12 24') is a loose pattern: capped low.
+        if item.get("pattern") == "spaces_only":
+            confidence = min(confidence, prof.confidence.get("kv_spaces_only", confidence))
         return PageDate(iso, iso_to if is_pair else iso, confidence,
                         str(item.get("keyword") or ""), source, is_pair=is_pair)
     return None
@@ -486,12 +480,12 @@ def detect_dos_per_page(
     kv_fallback: Optional[dict[str, list[dict[str, Any]]]] = None,
     kv_pattern: Optional[dict[str, list[dict[str, Any]]]] = None,
 ) -> list[dict]:
-    """One row per page: key/value, else the key/value pattern fallback, else edge
-    keyword (final text, then Tesseract), else LLM, else a key/value date only the
+    """One row per page: key/value, else edge keyword (final text, then Tesseract),
+    else the key/value pattern fallback, else LLM, else a key/value date only the
     rules accepted (low confidence), else nothing.
 
-    ``kv_pattern`` maps a page name to the pattern fallback's dates (spaced slashes,
-    else spaces only, after a DOS key), for pages where the model chose no date.
+    ``kv_pattern`` maps a page name to the pattern fallback's dates (spaces only,
+    right after a DOS key), for pages where the model chose no date.
 
     ``tesseract_texts`` maps a page name to its Tesseract text; only its
     first and last ``edge_words`` words are read.
@@ -516,9 +510,6 @@ def detect_dos_per_page(
 
         # Rule 1: the key/value date. The edge labels are still read for the candidate log.
         found = kv_page_date((kv_dates or {}).get(page_name) or [], prof)
-        if found is None:
-            # Rule 1b: the model chose no date; a looser pattern after a DOS key.
-            found = kv_page_date((kv_pattern or {}).get(page_name) or [], prof, source="kv_pattern")
         hits = edge_dates(page_text, prof)
         if found is None:
             found = edge_page_date(page_text, prof, hits)
@@ -530,6 +521,9 @@ def detect_dos_per_page(
                 for hit in tesseract_hits:
                     hit.edge = f"tesseract_{hit.edge}"
                 hits = hits + tesseract_hits
+        if found is None:
+            # Rule 2b: no model date, no edge label; a spaces-only date after a DOS key.
+            found = kv_page_date((kv_pattern or {}).get(page_name) or [], prof, source="kv_pattern")
         if found is None and use_llm and client is not None and page_allows_llm(page_text):
             pair = extract_dos_range_with_llm(
                 page_text,

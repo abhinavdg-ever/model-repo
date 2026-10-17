@@ -50,16 +50,6 @@ _YEAR_TAIL = re.compile(r"(\d{2,4})\s*$")
 _ISO_YEAR = re.compile(r"^(\d{4})-")
 
 
-_SPACED_SLASH = re.compile(r"\d\s/|/\s\d")
-
-
-def spaced_date(raw: str) -> bool:
-    """True for a date read with spaced slashes ('05 / 20 / 2025') or spaces only
-    ('06 12 24'): looser patterns, so their readers give them a lower confidence."""
-    text = (raw or "").strip()
-    return bool(_SPACED_SLASH.search(text) or _SPACES_ONLY.match(text))
-
-
 # Spaces only ('06 12 24'): two-digit month 01-12 and day 01-31. Too loose to search a page
 # with (lab values, counts); only a DOS key's fallback reads it, right after the key.
 _SPACES_ONLY_DATE = re.compile(r"\b((?:0[1-9]|1[0-2]) (?:0[1-9]|[12]\d|3[01]) (?:\d{4}|\d{2}))\b")

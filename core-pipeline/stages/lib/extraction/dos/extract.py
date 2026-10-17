@@ -1,9 +1,9 @@
 """Date of service from DOS keys, admit/discharge pairs, or header/footer dates.
 
-Only plain dates are DOS candidates for the key/value model. Looser patterns are a separate
-fallback (pattern_page, staged as ``dos_pattern``), read by the DOS stage only when the model
-chose no date for the page: spaced slashes ('05 / 20 / 2025') at SPACED_DATE_SCORE, else
-spaces only ('06 12 24') right after a DOS key at SPACES_ONLY_SCORE.
+A date printed with spaced slashes ('05 / 20 / 2025') is one plain word by now
+(geometry.merge_spaced_dates) and is read like any other. A date with spaces only ('06 12 24')
+is never a candidate for the key/value model: pattern_page reads it right after a DOS key,
+staged as ``dos_pattern``, for the DOS stage's fallback, at SPACES_ONLY_SCORE.
 
 Rules from Data/examp/dos.csv (keys and tiers live in DOS/keys.json):
   - Tiers per page: service keys > admit/discharge > received > weak keys (Date, dd, dt,
@@ -40,7 +40,6 @@ from ..util.dates import (
     find_dates,
     find_spaces_only_dates,
     normalize_date,
-    spaced_date,
 )
 from ..util.geometry import FOOTER_FRAC, HEADER_FRAC, Word, is_edge_region, median_height
 from ..util.keys import KeyHit, linked, load_key_tiers, trusted_field_hits
@@ -53,8 +52,6 @@ TIER_RANK = {
 # Tiers whose date must sit right after the key ('Received: 10/02/2024'), as weak keys.
 _NEAR_TIERS = frozenset({"weak", "received", "printed"})
 _MIN_YEAR = 2000
-# A date read with spaced slashes ('05 / 20 / 2025') is a looser pattern: it scores this.
-SPACED_DATE_SCORE = 0.5
 # Spaces only ('06 12 24'): read only right after a DOS key on its line, only when the page
 # has no other keyed date, and at a very low score.
 SPACES_ONLY_SCORE = 0.3
@@ -91,7 +88,7 @@ class DosHit:
     accepted: bool = False
     selected: bool = False
     source: str = ""
-    # How the date was read: "" (a plain date), "spaced_slash" or "spaces_only".
+    # How the date was read: "" (a plain date) or "spaces_only".
     pattern: str = ""
     key_hit: KeyHit | None = field(default=None, repr=False, compare=False)
 
@@ -103,7 +100,6 @@ class _Span:
     value: str
     dos_from: str
     dos_to: str
-    spaced: bool = False
 
 
 def _plausible(raw: str) -> bool:
@@ -111,9 +107,8 @@ def _plausible(raw: str) -> bool:
     return year is not None and _MIN_YEAR <= year <= date.today().year + 1
 
 
-def date_spans(text: str, blocked: set[str], spaced: bool = False) -> list[_Span]:
-    """Ranges first, then single dates outside them; implausible / DOB dates dropped. Plain
-    dates only, or with ``spaced`` the spaced-slash ones only (the pattern fallback)."""
+def date_spans(text: str, blocked: set[str]) -> list[_Span]:
+    """Ranges first, then single dates outside them; implausible / DOB dates dropped."""
     spans: list[_Span] = []
     for match in find_date_ranges(text):
         left, right = match.group(1), match.group(2)
@@ -122,7 +117,7 @@ def date_spans(text: str, blocked: set[str], spaced: bool = False) -> list[_Span
         if canonical_date(left) in blocked or canonical_date(right) in blocked:
             continue
         low, high = normalize_date(left), normalize_date(right)
-        spans.append(_Span(match.start(), match.end(), f"{low} - {high}", low, high, spaced_date(match.group(0))))
+        spans.append(_Span(match.start(), match.end(), f"{low} - {high}", low, high))
     for match in find_dates(text):
         if any(match.start() < span.end and match.end() > span.start for span in spans):
             continue
@@ -130,8 +125,8 @@ def date_spans(text: str, blocked: set[str], spaced: bool = False) -> list[_Span
         if not _plausible(raw) or canonical_date(raw) in blocked:
             continue
         value = normalize_date(raw)
-        spans.append(_Span(match.start(1), match.end(1), value, value, value, spaced_date(raw)))
-    return sorted((span for span in spans if span.spaced == spaced), key=lambda span: span.start)
+        spans.append(_Span(match.start(1), match.end(1), value, value, value))
+    return sorted(spans, key=lambda span: span.start)
 
 
 def _span_tokens(tokens: list[Token], span: _Span) -> list[Token]:
@@ -162,12 +157,11 @@ def _pick(
     tier: str,
     blocked: set[str],
     header_row: bool = False,
-    spaced: bool = False,
 ) -> tuple[_Span, float, str] | None:
     key_start, key_end = tokens[key_first], tokens[key_last]
     origin = _value_origin(tokens, text, key_first, key_last)
     line_h = median_height([token.word for token in tokens])
-    spans = [span for span in date_spans(text, blocked, spaced) if span.start >= origin]
+    spans = [span for span in date_spans(text, blocked) if span.start >= origin]
     for span in spans:
         covered = _span_tokens(tokens, span)
         if not covered:
@@ -267,21 +261,17 @@ def _reach(hit: KeyHit, words: list[Word]) -> list[Word]:
     return list(chosen.values())
 
 
-def extract_box(
-    hit: KeyHit, tier: str, blocked: set[str], words: list[Word] | None = None, spaced: bool = False
-) -> DosHit:
+def extract_box(hit: KeyHit, tier: str, blocked: set[str], words: list[Word] | None = None) -> DosHit:
     tokens, text = ordered_tokens(_reach(hit, words) if words else hit.value_words)
     blank = DosHit(key=hit.key, region=hit.region, sentence=text, tier=tier)
     positions = key_token_span(tokens, hit.word_indexes, hit.key)
     if positions is None:
         return blank
     header_row = tier in _NEAR_TIERS and bool(words) and _header_row(hit, words)
-    picked = _pick(tokens, text, positions[0], positions[1], tier, blocked, header_row, spaced)
+    picked = _pick(tokens, text, positions[0], positions[1], tier, blocked, header_row)
     if picked is None:
         return blank
     span, score, source = picked
-    if spaced:
-        score = SPACED_DATE_SCORE
     row = DosHit(
         key=hit.key,
         region=hit.region,
@@ -293,7 +283,6 @@ def extract_box(
         score=score,
         accepted=True,
         source=source,
-        pattern="spaced_slash" if spaced else "",
     )
     # The same date is often printed twice on a line ('(Order Date - 12/13/2023) (Collection Date - 12/13/2023)').
     row.value_at = [token.word for token in _span_tokens(tokens, span)]
@@ -501,14 +490,13 @@ def extract_page(hits: list[KeyHit], words: list[Word], page_h: float) -> list[D
 
 
 def pattern_page(hits: list[KeyHit], words: list[Word]) -> list[DosHit]:
-    """The pattern fallback, kept apart from the model's candidates: after a DOS key, a date
-    with spaced slashes ('05 / 20 / 2025'), else one with spaces only ('06 12 24'). The DOS
-    stage reads these only when the model chose no date for the page."""
+    """The pattern fallback, kept apart from the model's candidates: a date with spaces only
+    ('06 12 24') right after a DOS key. The DOS stage reads it only when neither the model nor
+    an edge label gave the page a date."""
     tiers = load_key_tiers("dos")
     blocked = _dob_values(hits)
-    keyed = [(hit, tiers.get(hit.key.strip().casefold(), "weak")) for hit in trusted_field_hits(hits, "dos")]
-    rows = [linked(extract_box(hit, tier, blocked, words, spaced=True), hit) for hit, tier in keyed]
-    rows = [row for row in drop_shared_values(rows) if row.accepted]
-    if not rows:
-        rows = [row for row in (_spaces_only_row(hit, tier, blocked, words) for hit, tier in keyed) if row]
-    return mark_selected(rows)
+    rows = [
+        _spaces_only_row(hit, tiers.get(hit.key.strip().casefold(), "weak"), blocked, words)
+        for hit in trusted_field_hits(hits, "dos")
+    ]
+    return mark_selected([row for row in rows if row is not None])
