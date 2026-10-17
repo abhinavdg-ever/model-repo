@@ -164,8 +164,9 @@ class PostgresFolderRepository(FolderRepository):
         self._resolved_blobs: dict[tuple[str, int, bool], tuple[float, dict[str, str]]] = {}
         # Processed <output_path>/pages/ per chart: page file name -> (key, etag).
         self._processed_pages: dict[str, tuple[float, dict[str, tuple[str, str]]]] = {}
-        # Charts whose missing Blob image was already logged.
+        # Charts whose missing Blob image was already logged; the last listing error per chart.
         self._no_blob_logged: set[str] = set()
+        self._blob_list_errors: dict[str, str] = {}
 
     def _optional_local(self) -> LocalFolderRepository | None:
         """The workspace as a data fallback (a chart, its page list, the folder list)."""
@@ -523,8 +524,12 @@ class PostgresFolderRepository(FolderRepository):
             self._resolved_blobs[cache_key] = (now, out_loc)
             return out_loc
         if found is None:
+            listing_error = self._blob_list_errors.pop(folder_id, None)
             self._no_blob(
                 folder_id, page_number,
+                f"could not list Blob ({listing_error}); the paths are "
+                f"{container}/{out or '(no output_path)'} and {container}/{blob_path or '(no blob_path)'}"
+                if listing_error else
                 f"not in {container}/{out or '(no output_path)'}/pages/{page_name} "
                 f"nor in the Raw_Input listing of {container}/{blob_path or '(no blob_path)'}",
             )
@@ -560,6 +565,7 @@ class PostgresFolderRepository(FolderRepository):
                 }
             except Exception as exc:
                 # Not cached: a sign-in failure must not hide the pages once Blob is back.
+                self._blob_list_errors[folder_id] = str(getattr(exc, "detail", None) or exc)
                 if getattr(exc, "status_code", None) != 503:
                     logger.warning("Processed pages list failed for %s: %s", folder_id, exc)
                 return None
@@ -606,6 +612,7 @@ class PostgresFolderRepository(FolderRepository):
                 blobs = list_image_blobs(container, prefix)
                 self._raw_blob_lists[folder_id] = (now, blobs)
             except Exception as exc:
+                self._blob_list_errors[folder_id] = str(getattr(exc, "detail", None) or exc)
                 if getattr(exc, "status_code", None) != 503:  # 503: Blob sign-in failed, reported once
                     logger.warning(
                         "Raw_Input blob list failed for %s (%s/%s): %s",

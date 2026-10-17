@@ -158,10 +158,28 @@ def resolved_blob_account_url(settings: Settings | None = None) -> str:
     return _normalize_account_url(raw)
 
 
+# The same names core-pipeline takes for AZURE_STORAGE_AUTH.
+_MANAGED_IDENTITY_MODES = {"managed_identity", "managed-identity", "mi", "msi"}
+# A client secret's ID is a GUID; its Value is not. The ID is a common paste mistake and
+# Entra rejects it: "secret should be a Microsoft Entra application's client secret".
+_GUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
 def _credential(settings: Settings):
     tenant = settings.azure_tenant_id.strip()
     client_id = settings.azure_client_id.strip()
     secret = settings.azure_client_secret.strip()
+    if settings.azure_storage_auth.strip().lower() in _MANAGED_IDENTITY_MODES:
+        # The VM's managed identity, as core-pipeline uses it (AZURE_CLIENT_ID = a
+        # user-assigned identity; blank = system-assigned). No secret involved.
+        from azure.identity import ManagedIdentityCredential
+
+        return ManagedIdentityCredential(client_id=client_id) if client_id else ManagedIdentityCredential()
+    if secret and _GUID.match(secret):
+        logger.error(
+            "AZURE_CLIENT_SECRET is a GUID: that is the secret's ID, not its Value. Put the "
+            "Value in review-ui/.env, or set AZURE_STORAGE_AUTH=managed_identity on the VM."
+        )
     if tenant and client_id and secret:
         return ClientSecretCredential(
             tenant_id=tenant,

@@ -30,3 +30,24 @@ def test_the_extraction_pane_reads_no_staging_in_production(tmp_path):
 
     result = get_folder_extraction("chart1", page="1.jpg", settings=_production(tmp_path))
     assert result.available is False and result.fields == []
+
+
+def test_review_ui_takes_the_vm_managed_identity(monkeypatch):
+    import azure.identity
+
+    from app.services import blob_store
+
+    made = []
+    monkeypatch.setattr(azure.identity, "ManagedIdentityCredential", lambda **kw: made.append(kw) or "mi")
+    settings = Settings(azure_storage_auth="managed_identity", azure_client_id="abc",
+                        azure_tenant_id="t", azure_client_secret="s")
+    assert blob_store._credential(settings) == "mi" and made == [{"client_id": "abc"}]
+
+
+def test_a_secret_id_pasted_as_the_secret_is_named(caplog):
+    from app.services import blob_store
+
+    settings = Settings(azure_tenant_id="t", azure_client_id="c",
+                        azure_client_secret="0f8e2482-e23a-4f7d-9a3b-1c2d3e4f5a6b")
+    blob_store._credential(settings)
+    assert "secret's ID, not its Value" in caplog.text
