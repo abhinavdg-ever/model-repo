@@ -371,7 +371,7 @@ type CompareRow = {
   choices?: readonly string[];
   /** Ground truth is only Yes or No: whether Final has a value. */
   presence?: boolean;
-  /** Shown as NA. The stored value is kept and used elsewhere. */
+  /** Shown as Not Found. The stored value is kept and used elsewhere. */
   fixedNa?: boolean;
   /** This row has no ground-truth cell. */
   noGroundTruth?: boolean;
@@ -402,8 +402,9 @@ function pageTypeOf(page: ImagingPageResult): string | null {
 }
 const YES_NO_CHOICES = ["Yes", "No"] as const;
 const VISIBILITY_CHOICES = ["Visible", "Not visible"] as const;
-const CLEARED_ENTRY = new Set(["", "na", "n/a"]);
-const PLACEHOLDER_ENTRY = new Set(["not found", "yet to process", "skipped", "not available"]);
+// An empty ground-truth cell reads "Not Found"; typing it (or NA) clears the cell.
+const CLEARED_ENTRY = new Set(["", "na", "n/a", "not found"]);
+const PLACEHOLDER_ENTRY = new Set(["yet to process", "skipped", "not available"]);
 
 function exactOption(value: string, options: readonly string[]): string | null {
   const folded = value.trim().toLowerCase();
@@ -497,9 +498,12 @@ function saveErrorMessage(err: unknown): string {
   return raw || "Could not save ground truth";
 }
 
+/** Ground-truth text that means "nothing here" (as the backend's clean_label). */
+const GT_EMPTY = new Set(["", "na", "n/a", "not found", "not available"]);
+
 function cleanGt(value: string | null | undefined): string | null {
   const text = (value ?? "").trim();
-  if (!text || text.toLowerCase() === "na" || text.toLowerCase() === "n/a") return null;
+  if (GT_EMPTY.has(text.toLowerCase())) return null;
   return text;
 }
 
@@ -549,11 +553,11 @@ function blankJunkStored(shown: string): Pick<PageGroundTruth, "blankPage" | "ju
   return { blankPage: text, junkPage: null, isInvoice: null };
 }
 
-/** Values already stored for this page. Empty string displays as NA. */
+/** Values already stored for this page. Empty string displays as Not Found. */
 function storedGroundTruth(gt: PageGroundTruth | null | undefined): Record<string, string> {
   // The ground-truth page type lives in the Encounter Type column (Page Type: fallback).
-  const pageType = ((gt?.encounterType ?? "").trim() || (gt?.pageType ?? "").trim());
-  return {
+  const pageType = cleanGt(gt?.encounterType) ?? cleanGt(gt?.pageType) ?? "";
+  const stored: Record<string, string> = {
     name: presenceStored(gt?.memberName),
     dob: presenceStored(gt?.memberDob),
     member_id: presenceStored(gt?.memberId),
@@ -570,6 +574,8 @@ function storedGroundTruth(gt: PageGroundTruth | null | undefined): Record<strin
     page_subtype: spellCodeable(pageType),
     codeable: spellCodeable((gt?.codeable ?? "").trim()),
   };
+  // An uploaded NA is an empty cell: it shows as Not Found and is not scored.
+  return Object.fromEntries(Object.entries(stored).map(([id, value]) => [id, cleanGt(value) ?? ""]));
 }
 
 function groundTruthBody(
@@ -820,7 +826,7 @@ function GroundTruthCell({
   if (row.fixedNa) {
     return (
       <span className="imaging-gt-slot">
-        <span className="imaging-gt-copied">NA</span>
+        <span className="imaging-gt-copied">{NOT_FOUND}</span>
       </span>
     );
   }
@@ -856,7 +862,7 @@ function GroundTruthCell({
     return (
       <span className="imaging-gt-slot">
         <span className={stored ? "imaging-gt-text" : "imaging-gt-copied"} title={stored || undefined}>
-          {stored || "—"}
+          {stored || NOT_FOUND}
         </span>
         {stored && !row.noMark ? mark : null}
       </span>
@@ -898,7 +904,7 @@ function GroundTruthCell({
     </span>
   );
   if (!editing) {
-    const shown = stored || copied || "NA";
+    const shown = stored || copied || NOT_FOUND;
     const dim = !stored && !row.key;
     return (
       <span className="imaging-gt-slot">
@@ -989,7 +995,7 @@ function ChoiceMenu({
         aria-label={`${label} ground truth`}
         aria-invalid={invalid ? true : undefined}
         value={text}
-        placeholder="NA"
+        placeholder={NOT_FOUND}
         autoFocus
         onChange={(event) => {
           setText(event.target.value);
@@ -1046,7 +1052,7 @@ function TextTruth({
         aria-label={`${label} ground truth`}
         aria-invalid={invalid ? true : undefined}
         value={draft}
-        placeholder="NA"
+        placeholder={NOT_FOUND}
         autoFocus
         onChange={(event) => {
           setDraft(event.target.value);
