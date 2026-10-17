@@ -44,7 +44,7 @@ export const METRICS: {
   {
     id: "dos",
     label: "DOS",
-    rule: "Every page is compared, except a blank / junk page (by the ground truth or the pipeline) and one where the ground truth has no date and the pipeline shows the 2222-02-02 placeholder (neither is scored). Labelled dates (From, To) match the Final DOS: Match; only the Extracted DOS: Partial; neither: No Match. A page whose DOS label is blank / NA / Not Available expects no date: the pipeline finding none is a Match, finding one is a No Match. Under Date = Yes (cases = pages the ground truth dates): Precision = of the pages the pipeline dated, the share right; Recall = of the cases, the share found",
+    rule: "Every page is compared, except a blank / junk page (by the ground truth or the pipeline) and one where the ground truth has no date and the pipeline shows the 2222-02-02 placeholder (neither is scored). Labelled dates (From, To) match the Final DOS: Match; only the Extracted DOS: Partial; neither: No Match. A page whose DOS label is blank / NA / Not Available expects no date: no Extracted DOS is a Match (a Final DOS carried from the document's first page does not count), an Extracted DOS is a No Match. Under Date = Yes (cases = pages the ground truth dates): Precision = of the pages the pipeline dated, the share right; Recall = of the cases, the share found",
   },
   {
     id: "blankJunk",
@@ -350,6 +350,9 @@ function pageScores(
   // DOS on every page: a ground truth with no date expects none. A blank / junk page (by the
   // ground truth or the pipeline) has no DOS to score, even when the ground truth gives one.
   const pipelineDated = Boolean(finalFrom || finalTo);
+  // A ground truth with no date is judged on the Extracted DOS: a continuation page's Final
+  // DOS comes from its document's first page and does not count against it.
+  const extractedDated = Boolean(pipelineDate(page.dosFrom) || pipelineDate(page.dosTo));
   const gtDated = !noValue(page.groundTruth?.dosFrom) || !noValue(page.groundTruth?.dosTo);
   // The pipeline's 2222-02-02 placeholder where the ground truth has no date is not scored.
   const placeholderDos = [page.finalDosFrom, page.finalDosTo, page.dosFrom, page.dosTo].some(
@@ -362,7 +365,7 @@ function pageScores(
         const verdict = finalOrExtracted(dosVerdict(finalBits), dosVerdict(bits));
         return verdict ? { expected: true, predicted: pipelineDated, verdict } : null;
       })()
-    : { expected: false, predicted: pipelineDated, verdict: pipelineDated ? "no" : "yes" };
+    : { expected: false, predicted: extractedDated, verdict: extractedDated ? "no" : "yes" };
   const dos = dosCall?.verdict ?? null;
 
   const single = (field: GtBit[]): Verdict | null => (labeled(field) ? grade(field) : null);

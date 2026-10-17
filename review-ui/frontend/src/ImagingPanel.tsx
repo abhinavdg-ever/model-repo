@@ -391,8 +391,8 @@ type CompareRow = {
   gtHidden?: boolean;
   /** Custom scoring of the ground truth (default: ``enteredMark`` on Extracted / Final). */
   compare?: (truth: string) => "match" | "partial" | "mismatch" | null;
-  /** A blank (or NA) label expects no value: a value from the pipeline is a cross, as in
-   * the accuracy report. Set on DOS rows of a page whose ground truth has no date. */
+  /** A blank (or NA) label expects no value: no Extracted value is a tick, one is a cross,
+   * as in the accuracy report. Set on DOS rows of a page whose ground truth has no date. */
   blankIsNone?: boolean;
 };
 
@@ -838,13 +838,16 @@ function GroundTruthCell({
         ? row.compare(stored)
         : enteredMark(row.extracted, row.processed, stored, Boolean(row.presence))
       : null;
-  // A blank label on a row that expects none (DOS): a date from the pipeline is wrong. The
-  // 2222-02-02 placeholder is not a date.
+  // A blank label on a row that expects none (DOS) is judged on the Extracted date: none is
+  // a match, one is wrong. The Final date a continuation page carries from its document
+  // does not count against it. The 2222-02-02 placeholder is not a date.
   const truthBlank = noValue(stored);
-  const blankCross =
-    truthBlank && Boolean(row.blankIsNone) && valueFound(row.processed) && !row.processed.includes("2222");
+  const blankNone = truthBlank && Boolean(row.blankIsNone);
+  const blankCross = blankNone && valueFound(row.extracted) && !row.extracted.includes("2222");
   const mark = blankCross ? (
     <span className="imaging-gt-mark gt-mismatch" aria-label="No">✕</span>
+  ) : blankNone ? (
+    <span className="imaging-gt-mark" aria-label="Yes">✓</span>
   ) : !stored ? null : effective === "accept" ||
     (effective === "enter" && (compared === "match" || (compared == null && !fromStore))) ? (
       <span className="imaging-gt-mark" aria-label="Yes">✓</span>
