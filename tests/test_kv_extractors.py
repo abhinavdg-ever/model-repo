@@ -261,6 +261,30 @@ class TestPrintedNeverDos:
                                           _kv("2025-10-30", "keyless", 0.9, "No Key Footer"),
                                           _kv("2024-06-03", "keyless", 0.5, "No Key Header")])[0] == "2024-06-03"
 
+    FOOTER = "Office visit.\nMRN: 023466 Printed: 10/30/20258:10 AMPg 5 of 17"
+
+    def test_a_print_date_glued_to_its_time_is_found_on_the_page(self):
+        from dos_logic import print_dates
+
+        assert print_dates(self.FOOTER) == {"2025-10-30"}
+        assert print_dates("Print Date - Oct 30, 2025") == {"2025-10-30"}
+        assert print_dates("Printed by J Doe on 10/30/2025") == {"2025-10-30"}
+        assert print_dates("Date of Service: 03/01/2024") == set()
+
+    def test_the_print_key_read_nothing_but_its_date_comes_back_keyless(self):
+        # 53688890: the print key read no value (the date is glued to the time), so the
+        # extractor's keyless footer date was the print date. Never a DOS, any tier.
+        for tier, key in (("keyless", "No Key Footer"), ("weak", "Date"), ("service", "Encounter")):
+            assert _dos_page(self.FOOTER, [_kv("2025-10-30", tier, 0.9, key)])[2] == "", tier
+
+    def test_a_print_date_is_never_an_edge_or_dictated_date(self):
+        assert _dos_page("Visit Date: 10/30/2025\nbody\nPrinted: 10/30/2025")[2] == ""
+        assert _dos_page("Note.\nD: 10/30/2025\nPrinted: 10/30/2025")[2] == ""
+
+    def test_the_visit_date_survives_next_to_a_print_date(self):
+        assert _dos_page(self.FOOTER, [_kv("2025-10-30", "keyless", 0.9, "No Key Footer"),
+                                       _kv("2024-03-28", "service", 0.4, "Office Visit on")])[0] == "2024-03-28"
+
 
 class TestKvPriority:
     def test_a_service_date_beats_a_higher_scored_weak_date_at_any_score(self):

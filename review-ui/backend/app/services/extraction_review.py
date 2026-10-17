@@ -55,6 +55,28 @@ def _chosen(rows: object) -> list[dict]:
     return chosen
 
 
+# A print stamp is never a date of service, whatever older staging chose.
+_PRINT_WORD = re.compile(r"(?i)(?<![a-z])print(?:ed|s)?(?![a-z])")
+
+
+def _is_print_date(hit: dict) -> bool:
+    """A print key's row, or a date written right after a print word on its line."""
+    if hit.get("tier") == "printed":
+        return True
+    sentence = str(hit.get("sentence") or "")
+    value = str(hit.get("value") or hit.get("dos_from") or "").strip()
+    at = sentence.find(value) if value else -1
+    if at < 0:
+        # Not found as written ('10/30/20258:10 AM'): a header / footer date on a print line.
+        return str(hit.get("tier")) == "keyless" and bool(_PRINT_WORD.search(sentence))
+    return bool(_PRINT_WORD.search(sentence[max(0, at - 30) : at]))
+
+
+def _not_printed(hits: list[dict]) -> list[dict]:
+    """DOS rows minus print dates: older staging still selected 'Printed On'."""
+    return [hit for hit in hits if not _is_print_date(hit)]
+
+
 def _hit_text(field_id: str, hit: dict) -> str:
     if field_id == "electronic_signature":
         name = str(hit.get("provider_name") or "").strip()
@@ -134,6 +156,8 @@ def field_rows(page: dict | None) -> list[ExtractionFieldRow]:
     providers = _providers(credential_rows)
     for field_id, label in _FIELDS:
         chosen = _chosen(fields.get(field_id))
+        if field_id == "dos":
+            chosen = _not_printed(chosen)
         if field_id == "heading_heron":
             chosen = _kept_headings(fields.get(field_id))
         extracted = _join(_hit_text(field_id, hit) for hit in chosen)

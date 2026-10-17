@@ -382,23 +382,52 @@ def _group(item: dict[str, Any], prof: DosProfile, rank: dict[str, int]) -> str:
     return tier
 
 
-def kv_dated(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+# A print stamp: 'Printed: 10/30/2025', 'Printed On 10/30/20258:10 AM' (date glued to the
+# time), 'Print Date - Oct 30, 2025', 'Printed by J Doe on 10/30/2025'. The date is read
+# within PRINT_REACH characters after the word, on its line.
+_PRINT_WORD = re.compile(r"(?i)(?<![a-z])print(?:ed|s)?(?![a-z])")
+_GLUED_DATE = re.compile(r"(?<!\d)(\d{1,2})[/-](\d{1,2})[/-](\d{4}|\d{2}(?!\d))")
+PRINT_REACH = 50
+
+
+def print_dates(*texts: Optional[str]) -> set[str]:
+    """Every date written in a print stamp in these texts (ISO). Never a DOS anywhere."""
+    found: set[str] = set()
+    for text in texts:
+        for word in _PRINT_WORD.finditer(text or ""):
+            window = text[word.end() : word.end() + PRINT_REACH].split("\n", 1)[0]
+            match = DATE_RE.search(window)
+            iso = parse_date_match(match) if match else None
+            if iso is None and (glued := _GLUED_DATE.search(window)):
+                month, day, year = glued.groups()
+                try:
+                    iso = date(_two_digit_year(year), int(month), int(day)).isoformat()
+                except ValueError:
+                    iso = None
+            if iso:
+                found.add(iso)
+    return found
+
+
+def kv_dated(candidates: list[dict[str, Any]], printed: frozenset[str] | set[str] = frozenset()) -> list[dict[str, Any]]:
     """The candidates with a date that may be a DOS.
 
-    A print key's date ('Printed On: 10/30/2025') is never one, nor is the same date read
-    without a key. Staging written before the extractor rejected print keys still has them
-    accepted, so this holds here too."""
-    printed = {str(item.get("iso")) for item in candidates or [] if item.get("tier") == "printed"}
+    Never a print date: not a print key's row (tier printed; staging written before the
+    extractor rejected print keys still has them accepted), and no row of any tier whose
+    date is one of the page's ``printed`` dates or a print key's date."""
+    printed = set(printed) | {str(item.get("iso")) for item in candidates or [] if item.get("tier") == "printed"}
     return [
         item for item in candidates or []
         if len(str(item.get("iso") or "")) == 10
         and item.get("tier") != "printed"
-        and not (item.get("tier") == "keyless" and str(item.get("iso")) in printed)
+        and str(item.get("iso")) not in printed
+        and str(item.get("iso_to") or "") not in printed
     ]
 
 
 def kv_page_date(
-    candidates: list[dict[str, Any]], kind: str = "other", prof: Optional[DosProfile] = None
+    candidates: list[dict[str, Any]], kind: str = "other", prof: Optional[DosProfile] = None,
+    printed: frozenset[str] | set[str] = frozenset(),
 ) -> Optional[PageDate]:
     """State 1: among the key/value dates (``kv_dated``), the first priority group of the
     page's kind that has one (``kv_priority``), and within it the date scored highest (then
@@ -415,7 +444,7 @@ def kv_page_date(
 
     # Only the tiers listed for the page's kind; a weak key's date needs a score above the floor.
     dated = [
-        it for it in kv_dated(candidates)
+        it for it in kv_dated(candidates, printed)
         if _group(it, prof, rank) in rank
         and (it.get("tier") != "weak" or score(it) > prof.weak_min_score)
     ]
@@ -587,6 +616,7 @@ def detect_dos_per_page(
     kv_dates: Optional[dict[str, list[dict[str, Any]]]] = None,
     tesseract_texts: Optional[dict[str, str]] = None,
     page_families: Optional[dict[str, str]] = None,
+    print_texts: Optional[dict[str, str]] = None,
 ) -> list[dict]:
     """One row per page. On a discharge page, its Admit / Discharge pair first
     (``admit_discharge_date``). Then the key/value date chosen by the page kind's priority,
@@ -599,7 +629,12 @@ def detect_dos_per_page(
     page name to its Tesseract text; only its first and last ``edge_words`` words are read.
     ``candidate_log``, when passed, gets every edge label with its date and whether it was
     chosen. ``page_families`` maps a page name to its classification L1 (the page kind);
-    a page without one is "other".
+    a page without one is "other". ``print_texts`` maps a page name to more text of the
+    page (its Tesseract text, the print keys' sentences) read only for print stamps.
+
+    A print date (``print_dates``: the final text, the Tesseract text, ``print_texts`` and
+    the print keys' dates) is never a DOS: it is dropped from the key/value dates, the edge
+    labels, the dictated date and a range's end.
     """
     prof = profile()
     rows: list[dict] = []
@@ -616,19 +651,22 @@ def detect_dos_per_page(
         # State 1: the key/value date, by the page kind's priority; a discharge page's stay
         # first. Edge labels fill a side of the stay the key/value dates lack.
         candidates = (kv_dates or {}).get(page_name) or []
-        hits = edge_dates(page_text, prof)
+        tesseract_text = (tesseract_texts or {}).get(page_name) or ""
+        printed = print_dates(page_text, tesseract_text, (print_texts or {}).get(page_name))
+        printed |= {str(item.get("iso")) for item in candidates if item.get("tier") == "printed"}
+        hits = [hit for hit in edge_dates(page_text, prof) if hit.iso not in printed]
         kind = page_kind((page_families or {}).get(page_name, ""), prof)
         found = None
         if kind == "discharge":
-            found = admit_discharge_date(_kv_stay(kv_dated(candidates)), hits, prof)
+            found = admit_discharge_date(_kv_stay(kv_dated(candidates, printed)), hits, prof)
         if found is None:
-            found = kv_page_date(candidates, kind, prof)
+            found = kv_page_date(candidates, kind, prof, printed)
         # State 2: no key/value date; the edge keyword.
         if found is None:
             found = edge_page_date(page_text, prof, hits)
-        if found is None and (tesseract_texts or {}).get(page_name):
-            tesseract_hits = edge_dates(tesseract_texts[page_name], prof)
-            found = edge_page_date(tesseract_texts[page_name], prof, tesseract_hits)
+        if found is None and tesseract_text:
+            tesseract_hits = [hit for hit in edge_dates(tesseract_text, prof) if hit.iso not in printed]
+            found = edge_page_date(tesseract_text, prof, tesseract_hits)
             if found is not None:
                 found.source = "edge_tesseract"
                 for hit in tesseract_hits:
@@ -636,6 +674,11 @@ def detect_dos_per_page(
                 hits = hits + tesseract_hits
         if found is None and kind == "other":
             found = dictation_page_date(page_text, prof)
+            if found is not None and found.dos_from in printed:
+                found = None
+        if found is not None and found.dos_to in printed:
+            # A written range never ends on a print date.
+            found.dos_to, found.is_pair = found.dos_from, False
 
         if candidate_log is not None:
             candidate_log.extend({"page_name": page_name, **asdict(hit)} for hit in hits)

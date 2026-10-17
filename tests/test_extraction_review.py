@@ -361,3 +361,18 @@ def test_a_stored_provider_name_is_used_as_is():
     ]}}
     rows = {row.id: row.extracted for row in field_rows(page)}
     assert (rows["provider_name"], rows["provider_credentials"]) == ("Jane Doe", "MD, PhD")
+
+
+def test_a_print_date_is_never_shown_as_the_date_of_service():
+    # Older staging selected 'Printed On'; a keyless footer date off the same print line too.
+    page = {"fields": {"dos": [
+        {"accepted": True, "selected": True, "tier": "printed", "key": "Printed On",
+         "value": "10/30/2025", "sentence": "MRN: 023466 Printed: 10/30/2025"},
+        {"accepted": True, "selected": True, "tier": "keyless", "key": "No Key Footer",
+         "value": "10/30/2025", "sentence": "MRN: 023466 Printed: 10/30/20258:10 AM"},
+        {"accepted": True, "selected": True, "tier": "service", "key": "Office Visit on",
+         "value": "03/28/2024", "sentence": "Office Visit on 03/28/2024 Printed: 10/30/2025"},
+    ]}}
+    dos = next(row for row in field_rows(page) if row.id == "dos")
+    assert "2025-10-30" not in (dos.extracted or "")
+    assert "2024-03-28" in (dos.extracted or "")

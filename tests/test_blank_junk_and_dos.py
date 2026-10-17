@@ -351,6 +351,7 @@ class TestDosStageWritesEachPageOnce:
         monkeypatch.setattr(dos_stage, "connect", lambda: nullcontext(None))
         monkeypatch.setattr(dos_stage, "get_blank_junk_flags", lambda *a, **k: {})
         monkeypatch.setattr(dos_stage, "get_page_classification_map", lambda *a, **k: {})
+        monkeypatch.setattr(dos_stage, "get_ocr_texts", lambda *a, **k: {})
         monkeypatch.setattr(dos_stage, "mark_skipped", lambda *a, **k: None)
         monkeypatch.setattr(dos_stage, "_combined_text", lambda *a, **k: ("", {}))
         monkeypatch.setattr(

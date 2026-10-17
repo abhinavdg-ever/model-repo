@@ -190,6 +190,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             eligible = set(ctx.todo)
             text, tesseract = _combined_text(conn, chart_id, ctx.pages, eligible)
             classification = get_page_classification_map(conn, chart_id)
+            # Every page's Tesseract text, read only for print stamps (never a DOS).
+            prelim = get_ocr_texts(conn, chart_id, "tesseract")
 
         from stages.lib.page_classify import axes
 
@@ -202,8 +204,15 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         staged = ensure_staging(chart_id, ctx.chart_name)
         # Every key/value date the rules accepted; dos_logic picks by the page's priority.
         kv_dates: dict[str, list[dict[str, Any]]] = {}
+        print_texts: dict[str, str] = {}
         for page in ctx.pages:
             staged_page = staged.page(page["page_name"])
+            # The print keys' sentences ('Printed: 10/30/20258:10 AM'), read or not.
+            print_texts[page["page_name"]] = "\n".join(
+                [unwrap_ocr_content(prelim.get(page["id"]))]
+                + [str(row.get("sentence") or "") for row in (staged_page.rows("dos") if staged_page else [])
+                   if row.get("tier") == "printed"]
+            )
             # Print-key rows go along even when rejected: dos_logic drops their dates.
             rows: list[dict[str, Any]] = []
             if staged_page is not None:
@@ -219,6 +228,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             kv_dates=kv_dates,
             tesseract_texts=tesseract,
             page_families=families,
+            print_texts=print_texts,
         )
 
         by_name = {p["page_name"]: p for p in ctx.pages}
