@@ -73,6 +73,10 @@ dos = json.load(open('stages/lib/keyword-canon/dos_canon.json')); \
 assert 'certification period' in dos['labels']['encounter'], 'dos_canon labels'; \
 print('orientation + canons ok')"
 
+# Fail the build, not the server, when a code package did not land in the checkout
+# (a working copy missing stages/lib/extraction/training crashed uvicorn on import).
+RUN python -c "import stages.lib.extraction, stages.lib.dos.dos_logic; print('packages ok')"
+
 # Engines live under stages/lib/image_preprocess/ and stages/lib/ocr/; weights are bind-mounted at runtime.
 # Weight paths match .env: relative to core-pipeline/ (this image's WORKDIR).
 ENV PYTHONPATH=/app/core-pipeline \
