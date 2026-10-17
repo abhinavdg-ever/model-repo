@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Optional
 
@@ -327,10 +328,23 @@ class BatchRequest(ChartRunOptions):
                 data = {**data, "sample": None, "only_completed": True}
         return data
 
+    min_run_date: Optional[date] = Field(
+        None,
+        description=(
+            "With skip_completed or only_completed: a chart counts as finished only "
+            "when it finished on or after this date (YYYY-MM-DD). skip_completed then "
+            "skips the charts finished since this date and re-runs the older ones; "
+            "only_completed runs just the charts finished since this date."
+        ),
+        examples=["2026-10-17"],
+    )
+
     @model_validator(mode="after")
     def _completed_flags(self) -> "BatchRequest":
         if self.only_completed and self.skip_completed:
             raise ValueError("only_completed and skip_completed cannot both be true")
+        if self.min_run_date and not (self.skip_completed or self.only_completed):
+            raise ValueError("min_run_date needs skip_completed or only_completed")
         return self
 
     def charts_cap(self) -> Optional[int]:
@@ -655,6 +669,7 @@ def _bg_batch(payload: "BatchRequest") -> None:
             chart_names=payload.chart_list,
             skip_completed=payload.skip_completed,
             only_completed=payload.only_completed,
+            min_run_date=payload.min_run_date,
         )
         logger.info(
             "Background batch finished: %s -> %d/%d completed, %d failed "
@@ -980,11 +995,11 @@ def _batch_run_impl(
                     ),
                 )
         if body.skip_completed:
-            finished = finished_chart_names([n for _s, n, _m in sources])
+            finished = finished_chart_names([n for _s, n, _m in sources], body.min_run_date)
             skipped = [n for _s, n, _m in sources if n in finished]
             sources = [x for x in sources if x[1] not in finished]
         elif body.only_completed:
-            finished = finished_chart_names([n for _s, n, _m in sources])
+            finished = finished_chart_names([n for _s, n, _m in sources], body.min_run_date)
             sources = [x for x in sources if x[1] in finished]
         queued = min(len(sources), cap) if cap else len(sources)
 
@@ -1003,6 +1018,7 @@ def _batch_run_impl(
         "chart_list": body.chart_list,
         "sample": body.sample,
         "only_completed": body.only_completed,
+        "min_run_date": body.min_run_date.isoformat() if body.min_run_date else None,
         "workers": workers,
         **_options_echo(body),
         "write": (

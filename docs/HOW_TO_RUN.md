@@ -142,6 +142,8 @@ Full API reference: [`API.md`](API.md). Stage flow: [`FLOW.md`](FLOW.md).
 | `chart_name` | required | — | One chart folder under `input_path` (= chart name) | `"52743839_44976074"` |
 | `chart_list` | — | optional | Only these chart folders (list or comma-separated string). Not found → `charts_missing` | `["52743839_44976074"]` |
 | `sample` | — | optional | Run at most N charts, unfinished ones first | `10` |
+| `only_completed` | — | optional | Only the charts whose status is already finished (the opposite of `skip_completed`) | `true` |
+| `min_run_date` | — | optional, with `skip_completed` or `only_completed` | A chart counts as finished only when it finished on or after this date (`chart_list.updated_at`). With `skip_completed`: skip those, re-run older finished charts and unfinished ones. With `only_completed`: run just those. Alone → 422 | `"2026-10-17"` |
 
 Batch-run takes the same container + input/output paths **without**
 `chart_name` (each subfolder under `input_path` is one chart). Any field not
@@ -209,7 +211,7 @@ never written back).
 | `only: ["stage", …]` | omit (whole chain) | Run **just** those stages, against what is on disk (quality still runs under `skip_ocr`). |
 | `run_through: "stage"` | omit (end of chain) | Run from the top of the chain and **stop after** that stage. (Was `through`.) |
 | `skip_ocr: true` | `false` | Reuse existing OCR instead of re-running the OCR engines — no Final2 billing. Quality/rotation and every non-OCR stage still re-run. See § skip_ocr below. |
-| `skip_completed: true` | `false` | Skip charts whose `chart_list.status` is `completed` / `needs_review` / `rejected`. Run returns **200** `{"status": "skipped"}`; batch lists them in `charts_skipped_completed`. |
+| `skip_completed: true` | `false` | Skip charts whose `chart_list.status` is `completed` / `needs_review` / `rejected`. Run returns **200** `{"status": "skipped"}`; batch lists them in `charts_skipped_completed`. Batch: add `min_run_date` to skip only the charts finished on or after that date. |
 | `skip_page_download` | **`true`** | Reuse page images already in the workspace. `false` = wipe `pages/` + `corrected-pages/` and re-fetch from `input_path`. (Replaces `redownload_pages: true`.) |
 | `--test-mode` (CLI only) | off | **Local only.** No Postgres. Workspace under `data/folders/<chart>-test` for review-ui. Env `TEST_MODE=true`. Not available on the API. |
 
@@ -538,6 +540,27 @@ curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/j
     "skip_ocr": true
   }'
 ```
+
+Only the charts that finished **on or after a date** count as done
+(`min_run_date`, batch only). Re-run everything older, skip what already ran
+with today's code:
+
+```bash
+curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/json' \
+  -d '{
+    "input_type": "blob",
+    "container_name": "imaging-pipeline",
+    "input_path": "Raw_Input/Run1/Batch1/DEID_PNGs",
+    "output_path": "Processed/Run1",
+    "skip_completed": true,
+    "min_run_date": "2026-10-17",
+    "skip_ocr": true
+  }'
+```
+
+Or the reverse — re-run **only** the charts that finished on or after that date
+(`"only_completed": true, "min_run_date": "2026-10-17"`). The response echoes
+`min_run_date`. CLI: `--resume --min-run-date 2026-10-17`.
 
 CLI equivalent with page-level resume:
 

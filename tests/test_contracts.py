@@ -617,7 +617,7 @@ class TestBatchFolderDiscovery:
         assert set(RunRequest.model_fields) - set(self.SHARED) == {"chart_name"}
         # Batch-only: which folders to run.
         assert set(BatchRequest.model_fields) - set(self.SHARED) == {
-            "chart_list", "sample", "only_completed",
+            "chart_list", "sample", "only_completed", "min_run_date",
         }
 
     def test_removed_options_are_gone_from_both(self):
@@ -828,7 +828,7 @@ class TestRunAcceptsBothModes:
         monkeypatch.setattr(main, "_bg_batch", lambda payload: None)
         monkeypatch.setattr(batch_intake, "assert_batch_workers_fit", lambda w: None)
         monkeypatch.setattr(
-            batch_intake, "finished_chart_names", lambda names: {"done_chart"}
+            batch_intake, "finished_chart_names", lambda names, since=None: {"done_chart"}
         )
         for name in ("done_chart", "new_chart"):
             (tmp_path / name).mkdir()
@@ -843,6 +843,30 @@ class TestRunAcceptsBothModes:
         assert body["charts_found"] == 2
         assert body["charts_queued"] == 1
         assert body["charts_skipped_completed"] == ["done_chart"]
+
+    def test_batch_min_run_date_narrows_what_counts_as_finished(self, monkeypatch, tmp_path):
+        client, main = self._client(monkeypatch)
+        from datetime import date
+
+        from jobs import batch_intake
+
+        monkeypatch.setattr(main, "_bg_batch", lambda payload: None)
+        monkeypatch.setattr(batch_intake, "assert_batch_workers_fit", lambda w: None)
+        # done_today finished on 2026-10-17; done_last_week before it.
+        monkeypatch.setattr(
+            batch_intake, "finished_chart_names",
+            lambda names, since=None: {"done_today"} if since == date(2026, 10, 17)
+            else {"done_today", "done_last_week"},
+        )
+        for name in ("done_today", "done_last_week", "new_chart"):
+            (tmp_path / name).mkdir()
+            (tmp_path / name / "1.jpg").write_bytes(b"x")
+        base = {"input_type": "local", "input_path": str(tmp_path), "min_run_date": "2026-10-17"}
+        body = client.post("/api/charts/batch-run", json={**base, "skip_completed": True}).json()
+        assert (body["charts_queued"], body["charts_skipped_completed"]) == (2, ["done_today"])
+        body = client.post("/api/charts/batch-run", json={**base, "only_completed": True}).json()
+        assert body["charts_queued"] == 1
+        assert client.post("/api/charts/batch-run", json=base).status_code == 422
 
     @pytest.mark.parametrize(
         "path", ["/api/charts/import-local", "/api/charts/ingest", "/api/charts/register-local"]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -167,6 +168,15 @@ def main() -> None:
             ),
         )
         parser_obj.set_defaults(force=True)
+        parser_obj.add_argument(
+            "--min-run-date",
+            type=date.fromisoformat,
+            metavar="YYYY-MM-DD",
+            help=(
+                "With --resume: skip only charts that finished on or after this date; "
+                "older finished charts are re-run"
+            ),
+        )
         add_stage_flags(parser_obj)
         parser_obj.add_argument("--no-pipeline", action="store_true", help="Intake only")
         parser_obj.add_argument(
@@ -414,6 +424,8 @@ def main() -> None:
                 parser.error("--test-mode requires --local-read-path")
             if args.blob_read_path or args.blob_write_path:
                 parser.error("--test-mode is local-only (no blob)")
+        if args.min_run_date and args.force:
+            parser.error("--min-run-date needs --resume")
         print(
             json.dumps(
                 run_batch(
@@ -435,6 +447,7 @@ def main() -> None:
                     chart_names=getattr(args, "chart_names", None),
                     # --resume has always meant "skip charts that already finished".
                     skip_completed=not args.force,
+                    min_run_date=args.min_run_date,
                     run_id=args.run_id,
                     batch_id=args.batch_id,
                     workers=args.workers,

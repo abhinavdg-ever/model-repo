@@ -20,6 +20,7 @@ import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 from pathlib import Path
 from typing import Any, Optional
 
@@ -242,8 +243,11 @@ def filter_sources_by_chart_names(
 FINISHED_CHART_STATUSES = frozenset({"completed", "needs_review", "rejected"})
 
 
-def finished_chart_names(names: list[str]) -> set[str]:
+def finished_chart_names(names: list[str], since: Optional[date] = None) -> set[str]:
     """Names whose ``chart_list.status`` is finished (see FINISHED_CHART_STATUSES).
+
+    With ``since`` (min_run_date), only charts that finished on or after that date:
+    ``chart_list.updated_at``, which the status change that finishes a chart writes last.
 
     Best-effort like the sample check: an unreachable DB means nothing is
     treated as finished, so the charts run rather than being silently dropped.
@@ -260,8 +264,9 @@ def finished_chart_names(names: list[str]) -> set[str]:
         with connect() as conn:
             rows = conn.execute(
                 "SELECT chart_name FROM chart_list "
-                "WHERE chart_name = ANY(%s) AND status = ANY(%s)",
-                (list(names), sorted(FINISHED_CHART_STATUSES)),
+                "WHERE chart_name = ANY(%s) AND status = ANY(%s) "
+                "AND (%s::date IS NULL OR updated_at >= %s::date)",
+                (list(names), sorted(FINISHED_CHART_STATUSES), since, since),
             ).fetchall()
     except Exception:
         logger.warning(
@@ -467,6 +472,7 @@ def _run_one_chart(
     redownload_pages: bool,
     skip_db_write: bool = False,
     skip_completed: bool = False,
+    min_run_date: Optional[date] = None,
     run_id: Optional[str],
     batch_id: Optional[str],
     counters: dict[str, int],
@@ -522,7 +528,11 @@ def _run_one_chart(
 
                 with connect() as conn:
                     existing = get_chart_by_name(conn, name)
-                    if existing and chart_is_pipeline_complete(conn, int(existing["id"])):
+                    # With min_run_date, a chart that finished before it is re-run.
+                    recent = min_run_date is None or (
+                        existing is not None and existing["updated_at"].date() >= min_run_date
+                    )
+                    if existing and recent and chart_is_pipeline_complete(conn, int(existing["id"])):
                         entry.update(
                             chart_id=existing["id"],
                             chart_name=existing.get("chart_name") or name,
@@ -623,6 +633,7 @@ def run_batch(
     chart_names: Optional[list[str]] = None,
     skip_completed: bool = False,
     only_completed: bool = False,
+    min_run_date: Optional[date] = None,
     run_id: Optional[str] = None,
     batch_id: Optional[str] = None,
     workers: Optional[int] = None,
@@ -638,7 +649,9 @@ def run_batch(
     actually exist under the read path (missing names are reported, not run).
     ``skip_completed`` drops charts whose chart_list.status is already finished
     (reported as ``charts_skipped_completed``). ``only_completed`` keeps only
-    those finished charts (a refresh of completed work).
+    those finished charts (a refresh of completed work). ``min_run_date`` narrows
+    both to charts that finished on or after that date: skip_completed then re-runs
+    the older ones, only_completed runs just the recent ones.
 
     Each chart goes through exactly the same call ``/api/charts/run`` makes —
     ``ingest_and_run`` — so a batch of one is indistinguishable from a single
@@ -694,6 +707,7 @@ def run_batch(
             chart_names=chart_names,
             skip_completed=skip_completed,
             only_completed=only_completed,
+            min_run_date=min_run_date,
             run_id=run_id,
             batch_id=batch_id,
             worker_count=worker_count,
@@ -724,6 +738,7 @@ def _run_batch_inner(
     chart_names: Optional[list[str]],
     skip_completed: bool,
     only_completed: bool,
+    min_run_date: Optional[date],
     run_id: Optional[str],
     batch_id: Optional[str],
     worker_count: int,
@@ -763,7 +778,7 @@ def _run_batch_inner(
 
     skipped_completed: list[str] = []
     if skip_completed and sources:
-        finished = finished_chart_names([name for _src, name, _mode in sources])
+        finished = finished_chart_names([name for _src, name, _mode in sources], min_run_date)
         if finished:
             skipped_completed = [n for _s, n, _m in sources if n in finished]
             sources = [s for s in sources if s[1] not in finished]
@@ -774,7 +789,7 @@ def _run_batch_inner(
             )
 
     if only_completed and sources:
-        finished = finished_chart_names([name for _src, name, _mode in sources])
+        finished = finished_chart_names([name for _src, name, _mode in sources], min_run_date)
         before = len(sources)
         sources = [src for src in sources if src[1] in finished]
         logger.info(
@@ -905,6 +920,7 @@ def _run_batch_inner(
                 redownload_pages=redownload_pages,
                 skip_db_write=skip_db_write,
                 skip_completed=skip_completed,
+                min_run_date=min_run_date,
                 run_id=run_id,
                 batch_id=batch_id,
                 counters=counters,
