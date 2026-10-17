@@ -534,8 +534,10 @@ class PostgresFolderRepository(FolderRepository):
                     for key, etag in list_image_blobs(container, f"{output_path}/pages")
                 }
             except Exception as exc:
-                logger.warning("Processed pages list failed for %s: %s", folder_id, exc)
-                by_name = {}
+                # Not cached: a sign-in failure must not hide the pages once Blob is back.
+                if getattr(exc, "status_code", None) != 503:
+                    logger.warning("Processed pages list failed for %s: %s", folder_id, exc)
+                return None
             self._processed_pages[folder_id] = (now, by_name)
         return by_name.get(page_name)
 
@@ -579,13 +581,14 @@ class PostgresFolderRepository(FolderRepository):
                 blobs = list_image_blobs(container, prefix)
                 self._raw_blob_lists[folder_id] = (now, blobs)
             except Exception as exc:
-                logger.warning(
-                    "Raw_Input blob list failed for %s (%s/%s): %s",
-                    folder_id,
-                    container,
-                    prefix,
-                    exc,
-                )
+                if getattr(exc, "status_code", None) != 503:  # 503: Blob sign-in failed, reported once
+                    logger.warning(
+                        "Raw_Input blob list failed for %s (%s/%s): %s",
+                        folder_id,
+                        container,
+                        prefix,
+                        exc,
+                    )
                 return None
         if page_index_1based < 1 or page_index_1based > len(blobs):
             return None

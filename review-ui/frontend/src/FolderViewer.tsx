@@ -25,6 +25,7 @@ import {
   getFolderOcr,
   OCR_TAB_LABELS,
   pageImageUrl,
+  retryPageImages,
   type ExtractionReviewResponse,
   type FolderDetail,
   type ImagingDocumentResponse,
@@ -222,6 +223,11 @@ export default function FolderViewer({
     null,
   );
   const [pageImageLoading, setPageImageLoading] = useState(true);
+  // A page image failed (Blob sign-in failed and no local copy): the rest of the folder
+  // still shows, with a bar above the images to load them again.
+  const [imagesFailed, setImagesFailed] = useState(false);
+  const [imageAttempt, setImageAttempt] = useState(0);
+  const [retryingImages, setRetryingImages] = useState(false);
   const [showCorrected, setShowCorrected] = useState(false);
   const [highlightBlankJunk, setHighlightBlankJunk] = useState(false);
   const [highlightDuplicate, setHighlightDuplicate] = useState(false);
@@ -245,7 +251,19 @@ export default function FolderViewer({
   useEffect(() => {
     setImageNaturalSize(null);
     setPageImageLoading(true);
-  }, [folderId, pageIndex, showCorrected]);
+  }, [folderId, pageIndex, showCorrected, imageAttempt]);
+
+  useEffect(() => {
+    setImagesFailed(false);
+  }, [folderId]);
+
+  async function retryImages() {
+    setRetryingImages(true);
+    await retryPageImages();
+    setImagesFailed(false);
+    setImageAttempt((n) => n + 1);
+    setRetryingImages(false);
+  }
 
   // Cached images often skip onLoad — pick up natural size when the page flips.
   useEffect(() => {
@@ -1138,6 +1156,14 @@ export default function FolderViewer({
         <div className={`review-split${outputExpanded ? " output-expanded" : ""}`}>
           {!outputExpanded && (
           <section className="pane" aria-label="Page viewer">
+            {imagesFailed ? (
+              <div className="image-retry-bar" role="status">
+                <span>Page images could not be loaded. The other details are shown without them.</span>
+                <button type="button" onClick={retryImages} disabled={retryingImages}>
+                  {retryingImages ? "Retrying…" : "Retry images"}
+                </button>
+              </div>
+            ) : null}
             <div className="pane-header">
               <h2>Page{page ? ` · ${page.filename}` : ""}</h2>
               <div className="page-toolbar">
@@ -1279,7 +1305,10 @@ export default function FolderViewer({
                           h: img.naturalHeight,
                         });
                       }}
-                      onError={() => setPageImageLoading(false)}
+                      onError={() => {
+                        setPageImageLoading(false);
+                        setImagesFailed(true);
+                      }}
                     />
                     {overlayBoxes.length > 0 && fittedImageSize ? (
                       <div className="page-header-overlay" aria-hidden="true">
@@ -1388,6 +1417,7 @@ export default function FolderViewer({
                       alt=""
                       loading="lazy"
                       decoding="async"
+                      onError={() => setImagesFailed(true)}
                     />
                   </button>
                   );

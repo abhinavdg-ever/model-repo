@@ -274,6 +274,78 @@ def get_folder_manifest(
     return detail.manifest or ImagingManifestDetails()
 
 
+def _blob_page_image(repo, folder_id: str, page_number: int, corrected: bool, thumb: bool, cache_hdr: str):
+    """The page image from Azure Blob, or None when the chart has no blob for the page."""
+    from app.services.blob_store import download_blob_at
+
+    loc = repo.resolve_page_blob(folder_id, page_number, corrected=corrected)
+    if loc:
+        name = loc.get("filename") or loc["key"]
+        etag = loc.get("etag") or ""
+        # With an ETag, a derived JPEG (thumb / TIFF conversion) is
+        # served from disk without touching the blob at all.
+        if etag and (thumb or is_tiff_name(name)):
+            stamp = f"blob|{loc['container']}|{loc['key']}|{etag}|{'thumb' if thumb else 'full'}"
+
+            def _produce() -> bytes:
+                raw, _ = download_blob_at(
+                    container=loc["container"], key=loc["key"], filename=name
+                )
+                return bytes_to_display_jpeg(raw, thumb=thumb)
+
+            try:
+                data = cached_derived_jpeg(stamp, _produce)
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.exception(
+                    "Blob image encode failed folder=%s page=%s key=%s",
+                    folder_id,
+                    page_number,
+                    loc["key"],
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Could not convert image for display: {exc}",
+                ) from exc
+            return Response(
+                content=data,
+                media_type="image/jpeg",
+                headers={"Cache-Control": cache_hdr},
+            )
+
+        data, media_type = download_blob_at(
+            container=loc["container"],
+            key=loc["key"],
+            filename=loc.get("filename"),
+        )
+        is_tiff = is_tiff_name(name) or (media_type or "").lower() in {
+            "image/tiff",
+            "image/tif",
+        }
+        if thumb or is_tiff:
+            try:
+                data = bytes_to_display_jpeg(data, thumb=thumb)
+                media_type = "image/jpeg"
+            except Exception as exc:
+                logger.exception(
+                    "Blob image encode failed folder=%s page=%s key=%s",
+                    folder_id,
+                    page_number,
+                    loc["key"],
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Could not convert image for display: {exc}",
+                ) from exc
+        return Response(
+            content=data,
+            media_type=media_type or "application/octet-stream",
+            headers={"Cache-Control": cache_hdr},
+        )
+    return None
+
+
 @router.get("/folders/{folder_id}/pages/{page_number}/image")
 def get_page_image(
     folder_id: str,
@@ -302,81 +374,35 @@ def get_page_image(
     )
     from app.adapters.postgres.repository import PostgresFolderRepository
 
-    # DB mode (this browser's switch, or DATA_MODE): Azure Blob first.
+    # DB mode (this browser's switch, or DATA_MODE): Azure Blob first. When Blob fails (sign-in,
+    # network), the local workspace copy is served instead.
+    blob_error: str | None = None
     if isinstance(repo, PostgresFolderRepository):
-        from app.services.blob_store import download_blob_at
+        try:
+            served = _blob_page_image(repo, folder_id, page_number, corrected, thumb, cache_hdr)
+        except HTTPException as exc:
+            if exc.status_code not in (502, 503):
+                raise
+            blob_error = str(exc.detail)
+            served = None
+        if served is not None:
+            return served
+        if blob_error is None:
+            from app.services.blob_store import blob_unavailable
 
-        loc = repo.resolve_page_blob(folder_id, page_number, corrected=corrected)
-        if loc:
-            name = loc.get("filename") or loc["key"]
-            etag = loc.get("etag") or ""
-            # With an ETag, a derived JPEG (thumb / TIFF conversion) is
-            # served from disk without touching the blob at all.
-            if etag and (thumb or is_tiff_name(name)):
-                stamp = f"blob|{loc['container']}|{loc['key']}|{etag}|{'thumb' if thumb else 'full'}"
-
-                def _produce() -> bytes:
-                    raw, _ = download_blob_at(
-                        container=loc["container"], key=loc["key"], filename=name
-                    )
-                    return bytes_to_display_jpeg(raw, thumb=thumb)
-
-                try:
-                    data = cached_derived_jpeg(stamp, _produce)
-                except HTTPException:
-                    raise
-                except Exception as exc:
-                    logger.exception(
-                        "Blob image encode failed folder=%s page=%s key=%s",
-                        folder_id,
-                        page_number,
-                        loc["key"],
-                    )
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Could not convert image for display: {exc}",
-                    ) from exc
-                return Response(
-                    content=data,
-                    media_type="image/jpeg",
-                    headers={"Cache-Control": cache_hdr},
-                )
-
-            data, media_type = download_blob_at(
-                container=loc["container"],
-                key=loc["key"],
-                filename=loc.get("filename"),
-            )
-            is_tiff = is_tiff_name(name) or (media_type or "").lower() in {
-                "image/tiff",
-                "image/tif",
-            }
-            if thumb or is_tiff:
-                try:
-                    data = bytes_to_display_jpeg(data, thumb=thumb)
-                    media_type = "image/jpeg"
-                except Exception as exc:
-                    logger.exception(
-                        "Blob image encode failed folder=%s page=%s key=%s",
-                        folder_id,
-                        page_number,
-                        loc["key"],
-                    )
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Could not convert image for display: {exc}",
-                    ) from exc
-            return Response(
-                content=data,
-                media_type=media_type or "application/octet-stream",
-                headers={"Cache-Control": cache_hdr},
-            )
+            blob_error = blob_unavailable()
 
     try:
         path = repo.get_page_image_path(folder_id, page_number, corrected=corrected)
-    except HTTPException:
-        raise
     except Exception as exc:
+        if blob_error:
+            # 503: the viewer offers "Retry images" (POST /api/blob/retry).
+            raise HTTPException(
+                status_code=503,
+                detail=f"Page image unavailable: {blob_error}; no local copy",
+            ) from exc
+        if isinstance(exc, HTTPException):
+            raise
         raise HTTPException(
             status_code=404,
             detail=f"Page image not found: {folder_id} #{page_number}",
@@ -406,6 +432,15 @@ def get_page_image(
         media_type=_media_type(path.suffix),
         headers={"Cache-Control": cache_hdr},
     )
+
+
+@router.post("/blob/retry")
+def retry_blob(settings: Settings = Depends(get_settings)) -> dict[str, str]:
+    """Try Azure Blob again now (after a sign-in failure), and say whether it works."""
+    from app.services.blob_store import check_blob_access, reset_blob_access
+
+    reset_blob_access()
+    return {"blob": check_blob_access(settings)}
 
 
 @router.get("/blob/{folder_id}/pages/{page_number}/image")

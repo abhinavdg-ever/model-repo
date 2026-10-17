@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
 
-from azure.core.exceptions import ResourceNotFoundError
+from azure.core.exceptions import ClientAuthenticationError, ResourceNotFoundError
 from azure.identity import ClientSecretCredential, DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient
 from fastapi import HTTPException
@@ -15,6 +16,47 @@ from fastapi import HTTPException
 from app.core.config import Settings, get_settings
 
 logger = logging.getLogger("review_ui.blob")
+# DefaultAzureCredential logs a page of attempts on every failed sign-in; blob_unavailable()
+# reports the failure once instead.
+logging.getLogger("azure.identity").setLevel(logging.ERROR)
+
+# When signing in to Blob fails (no az login, no managed identity), every image would wait
+# for the whole credential chain again. Blob is skipped for this long, the image route uses
+# the local copy, and POST /api/blob/retry ends the wait early.
+BLOB_RETRY_AFTER_SEC = 300.0
+_blob_down: dict[str, float | str] = {"until": 0.0, "reason": ""}
+_blob_down_lock = threading.Lock()
+
+
+def blob_unavailable() -> str | None:
+    """Why Blob is being skipped right now, or None."""
+    with _blob_down_lock:
+        if time.monotonic() < float(_blob_down["until"]):
+            return str(_blob_down["reason"])
+    return None
+
+
+def mark_blob_unavailable(exc: BaseException) -> str:
+    reason = f"Azure Blob sign-in failed ({type(exc).__name__}); set AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_CLIENT_SECRET, or run az login"
+    with _blob_down_lock:
+        first = time.monotonic() >= float(_blob_down["until"])
+        _blob_down.update(until=time.monotonic() + BLOB_RETRY_AFTER_SEC, reason=reason)
+    if first:
+        logger.warning("%s. Skipping Blob for %d s; images come from the local copy.", reason, BLOB_RETRY_AFTER_SEC)
+    return reason
+
+
+def reset_blob_access() -> None:
+    """Try Blob again on the next request (a fresh client and credential)."""
+    with _blob_down_lock:
+        _blob_down.update(until=0.0, reason="")
+    clear_blob_client_cache()
+
+
+def _skip_if_unavailable() -> None:
+    reason = blob_unavailable()
+    if reason:
+        raise HTTPException(status_code=503, detail=reason)
 
 _FILENAME_PARTS = re.compile(r"(\d+)")
 _IMAGE_SUFFIXES = {
@@ -204,11 +246,14 @@ def list_image_blobs(container: str, blob_path: str) -> list[tuple[str, str]]:
     prefix = normalize_blob_prefix(blob_path)
     if not container or not prefix:
         return []
+    _skip_if_unavailable()
     client = _blob_service_client()
     out: list[tuple[str, str]] = []
-    for blob in client.get_container_client(container).list_blobs(
-        name_starts_with=prefix
-    ):
+    try:
+        blobs = list(client.get_container_client(container).list_blobs(name_starts_with=prefix))
+    except ClientAuthenticationError as exc:
+        raise HTTPException(status_code=503, detail=mark_blob_unavailable(exc)) from exc
+    for blob in blobs:
         filename = Path(blob.name).name
         if Path(filename).suffix.lower() not in _IMAGE_SUFFIXES:
             continue
@@ -241,6 +286,7 @@ def download_blob_at(
             detail="BLOB_ACCOUNT_URL (or AZURE_STORAGE_ACCOUNT_NAME) must be set",
         )
     display_name = filename or Path(key).name
+    _skip_if_unavailable()
 
     try:
         client = _blob_service_client()
@@ -259,7 +305,7 @@ def download_blob_at(
         for attempt in range(1, 4):
             try:
                 return _download()
-            except ResourceNotFoundError:
+            except (ResourceNotFoundError, ClientAuthenticationError):
                 raise
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
@@ -275,6 +321,8 @@ def download_blob_at(
             status_code=404,
             detail=f"Blob not found: {container}/{key}",
         ) from exc
+    except ClientAuthenticationError as exc:
+        raise HTTPException(status_code=503, detail=mark_blob_unavailable(exc)) from exc
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001

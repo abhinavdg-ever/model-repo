@@ -4904,3 +4904,34 @@ input {
 .excel-compare-columns-note {
   color: var(--muted);
 }
+
+/* Page images failed (Blob sign-in, no local copy): the details still show. */
+.image-retry-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.5rem 0.75rem 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: var(--status-warning-bg);
+  color: var(--status-warning-fg);
+  font-size: 0.82rem;
+}
+
+.image-retry-bar button {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-weight: 500;
+  font-size: 0.8rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.image-retry-bar button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

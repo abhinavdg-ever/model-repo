@@ -428,6 +428,10 @@ export function imagingExportCsvUrl(opts?: {
   return qs ? `/api/imaging/export.csv?${qs}` : "/api/imaging/export.csv";
 }
 
+// Bumped by retryPageImages so every page image URL changes and the browser asks again
+// instead of reusing the failed response.
+let imageAttempt = 0;
+
 export function pageImageUrl(
   folderId: string,
   pageNumber: number,
@@ -437,8 +441,20 @@ export function pageImageUrl(
   const params = new URLSearchParams();
   if (opts?.thumb) params.set("thumb", "1");
   if (opts?.corrected) params.set("corrected", "1");
+  if (imageAttempt > 0) params.set("attempt", String(imageAttempt));
   const qs = params.toString();
   return qs ? `${base}?${qs}` : base;
+}
+
+/** Ask the backend to try Azure Blob again, then load every page image afresh. */
+export async function retryPageImages(): Promise<string> {
+  imageAttempt += 1;
+  try {
+    const res = await api<{ blob: string }>("/api/blob/retry", { method: "POST" });
+    return res.blob;
+  } catch {
+    return "";
+  }
 }
 
 export function blobPageImageUrl(folderId: string, pageNumber: number): string {
