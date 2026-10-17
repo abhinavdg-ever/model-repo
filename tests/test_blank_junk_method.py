@@ -83,8 +83,18 @@ class TestRules:
         verdict = run("This page intentionally left blank")
         assert (verdict.code, verdict.rule) == (classify.CODE_OTHERS, "R2")
 
-    def test_r3_provider_signature_keeps_a_junk_looking_page(self):
-        verdict = run(JUNK_TEXT, signed=True, bert=bert(0.99))
+    def test_r3_is_skipped_on_jj(self):
+        # DistilBERT 0.99 and the invoice wording (keywords JUNK): the signature does not save
+        # it; the vote decides.
+        verdict = run(INVOICE_TEXT, signed=True, bert=bert(0.99))
+        assert verdict.rule == "R9" and verdict.code != classify.CODE_MAIN
+        assert verdict.votes["r3_skipped"] == "JJ"
+        # JJ with a weak keyword ballot: still the vote (row 1, one strong -> Junk).
+        verdict = run(FAX_TEXT, signed=True, bert=bert(0.99))
+        assert verdict.rule == "R9" and verdict.code != classify.CODE_MAIN
+
+    def test_r3_holds_when_only_one_voter_says_junk(self):
+        verdict = run(CLINICAL_WEAK, signed=True, bert=bert(0.99))  # keywords KEEP
         assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R3")
 
     def test_r3_waits_for_pass_2(self):

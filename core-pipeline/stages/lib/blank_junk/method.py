@@ -10,7 +10,8 @@ The ladder, first rule that fires decides (R4, R5 and R3's KV half need pass 2):
                     < 30 characters -> Blank; else < 15 characters -> Junk / Cover Page
                     when a Cover Page term is there, Junk / Others otherwise
   R2 placeholder    "intentionally left blank" on a page of <= 25 words -> Junk / Others
-  R3 signature      Provider Signature = Yes, or a canon signature phrase -> Main
+  R3 signature      Provider Signature = Yes, or a canon signature phrase -> Main, unless
+                    both voters say JUNK (JJ): then the vote (R9) decides
   R4 DistilBERT     p(junk) > 0.85 -> Junk, DistilBERT's subtype, unless the canon finds
                     clinical (C) or demographic (D) evidence: then the vote decides
   R5 short page     content ends in the top 15% of the page height -> Junk / Others
@@ -627,8 +628,14 @@ def decide(inputs: PageInputs) -> Verdict:
     # R2 placeholder
     if scores.group("junk", "placeholder") > 0 and words <= PLACEHOLDER_MAX_WORDS:
         return ruled(CODE_OTHERS, "R2", "R2 placeholder ('intentionally left blank') -> Junk / Others")
-    # R3 signature (Provider Signature from KV extraction exists only from pass 2)
+    # R3 signature (Provider Signature from KV extraction exists only from pass 2). Not when
+    # both voters say JUNK (JJ): a signed ROI / transmittal letter is still junk. The vote then
+    # decides, with its clinical / demographic / handwritten vetoes.
     if pass2 and (inputs.signed or scores.signature_phrase):
+        if all(b.vote == JUNK for b in ballots.values()):
+            votes["r3_skipped"] = "JJ"
+            votes["rule"] = "R9"
+            return _vote(inputs, scores, ballots, votes)
         why = "Provider Signature = Yes" if inputs.signed else "signature phrase"
         return ruled(CODE_MAIN, "R3", f"R3 signature ({why}) -> Main")
     # R4 DistilBERT force. A face sheet or a clinical page DistilBERT is sure about is
