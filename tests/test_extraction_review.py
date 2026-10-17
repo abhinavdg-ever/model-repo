@@ -177,9 +177,10 @@ def test_two_of_three_heading_checks_is_enough():
             ]
         },
     }
-    assert headings(page) == ["Plan"]  # a header with a date is not shown at all
+    assert headings(page) == ["Office Visit Report", "Plan"]  # the trailing date is dropped
     # Every candidate is still given, the rejected one marked.
     assert [(h.text, h.candidate) for h in heron_headers(page)] == [
+        ("Office Visit Report", False),
         ("Plan", False),
         ("Mr", True),
     ]
@@ -218,8 +219,9 @@ def test_headers_drop_a_numeric_opening_and_strip_punctuation():
             ]
         },
     }
-    # A header holding a date, a number or an id is not shown at all.
-    assert [h.text for h in heron_headers(page)] == ["CC/HPI"]
+    # One date at the start or end is dropped ("8/14/2019: RUS:" -> "RUS"); a header that
+    # is only a number, or holds several, is not shown.
+    assert [h.text for h in heron_headers(page)] == ["RUS", "CC/HPI"]
 
 
 def test_page_file_joins_the_staged_page_by_name(tmp_path):
@@ -324,3 +326,11 @@ def test_contact_lines_and_long_lines_are_not_shown_as_headers():
         row("History of Present Illness", 220),
     ]}}
     assert [h.text for h in heron_headers(page)] == ["History of Present Illness"]
+
+
+def test_a_date_in_the_middle_hides_the_header():
+    page = {"width": 1000, "height": 2000, "fields": {"heading_heron": [
+        {"text": "Visit 03/28/2024 Summary", "score": 0.8, "accepted": True, "box": [40, 100, 400, 130]},
+        {"text": "03/28/2024 Discharge Summary", "score": 0.8, "accepted": True, "box": [40, 200, 400, 230]},
+    ]}}
+    assert [h.text for h in heron_headers(page)] == ["Discharge Summary"]

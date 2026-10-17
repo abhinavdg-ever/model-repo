@@ -295,13 +295,20 @@ _CONTACT_WORDS = frozenset({
 
 
 def _display_header(text: str) -> str:
-    """The label a reviewer sees: proper case, with punctuation removed. No header ('') when
-    it holds a digit anywhere (a date, a number, an id like 'A12B'), when it is more than
-    _SHOWN_MAX_WORDS words (a sentence), or when it names a phone, fax or other contact
-    detail ('Toll Free Tel', 'Fax #')."""
-    if any(char.isdigit() for char in text):
+    """The label a reviewer sees: proper case, with punctuation removed.
+
+    One date or number at the start or the end is dropped and the rest shown
+    ('OFFICE VISIT REPORT 03/28/2024' -> 'Office Visit Report'). No header ('') when one
+    sits in the middle or there are several ('Signed by on 03/29/24 at 9:15 AM'), when it
+    is more than _SHOWN_MAX_WORDS words (a sentence), or when it names a phone, fax or
+    other contact detail ('Toll Free Tel', 'Fax #')."""
+    words = text.split()
+    numbered = [n for n, word in enumerate(words) if any(char.isdigit() for char in word)]
+    if len(numbered) > 1 or (numbered and numbered[0] not in (0, len(words) - 1)):
         return ""
-    kept = re.sub(r"[^A-Za-z/]+", " ", text).split()
+    if numbered:
+        del words[numbered[0]]
+    kept = re.sub(r"[^A-Za-z/]+", " ", " ".join(words)).split()
     if not kept or len(kept) > _SHOWN_MAX_WORDS:
         return ""
     if any(piece.casefold() in _CONTACT_WORDS for word in kept for piece in word.split("/")):
