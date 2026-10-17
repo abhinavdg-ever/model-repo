@@ -139,6 +139,10 @@ def _fraction(value: float, span: float) -> float:
 # Ranker: the stored accepted flag, which v002 sets from its probability (cutoff 0.30).
 _HERON_MIN = 0.5
 _COMMON_MIN = 0.7
+# Or Heron alone, this sure, on text that reads like a heading (STRONG_SCORE and
+# looks_like_heading in heading/extract.py).
+_HERON_STRONG = 0.7
+_HEADING_MAX_WORDS = 6
 _FUZZY_MIN_CHARS = 6
 _FILLER = frozenset({"and", "of", "the", "for", "to"})
 
@@ -324,32 +328,51 @@ def _heron_score(hit: dict) -> float:
         return 0.0
 
 
-def _kept_headings(rows: object) -> list[dict]:
-    """A heading stays when two of Heron, the common list, and the ranker pass."""
+def _looks_like_heading(text: str) -> bool:
+    """A title, not a sentence or a form line: at most six words, no digits, letters in it,
+    no sentence punctuation at the end."""
+    text = text.strip()
+    if not text or len(text.split()) > _HEADING_MAX_WORDS:
+        return False
+    if any(char.isdigit() for char in text) or not any(char.isalpha() for char in text):
+        return False
+    return not text.endswith((".", ",", ";", "?", "!"))
+
+
+def _is_heading(row: dict) -> bool:
+    """Two of Heron, the common list and the ranker pass; or Heron alone at _HERON_STRONG
+    on a box no rule rejected, whose text looks like a heading. Never a running header."""
+    if str(row.get("det_class") or "") == "text_label":
+        return False
+    text = str(row.get("text") or "").strip()
+    note = str(row.get("note") or "")
+    if not text or _numeric_opening(text) or note == "running header":
+        return False
+    passed = (
+        _heron_score(row) >= _HERON_MIN,
+        common_heading_score(text) >= _COMMON_MIN,
+        bool(row.get("accepted")),
+    )
+    strong = _heron_score(row) >= _HERON_STRONG and not note and _looks_like_heading(text)
+    return sum(passed) >= 2 or strong
+
+
+def _heading_rows(rows: object) -> list[dict]:
     if not isinstance(rows, list):
         return []
-    kept: list[dict] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        if str(row.get("det_class") or "") == "text_label":
-            continue
-        text = str(row.get("text") or "").strip()
-        if not text or _numeric_opening(text):
-            continue
-        passed = (
-            _heron_score(row) >= _HERON_MIN,
-            common_heading_score(text) >= _COMMON_MIN,
-            bool(row.get("accepted")),
-        )
-        if sum(passed) >= 2:
-            kept.append(row)
-    kept.sort(key=_box_top_left)
-    return kept
+    found = [row for row in rows if isinstance(row, dict) and str(row.get("text") or "").strip()]
+    found.sort(key=_box_top_left)
+    return found
+
+
+def _kept_headings(rows: object) -> list[dict]:
+    """The headings (_is_heading), in reading order."""
+    return [row for row in _heading_rows(rows) if _is_heading(row)]
 
 
 def heron_headers(page: dict | None) -> list[OcrSectionHeader]:
-    """Heron heading boxes as the same 0–1 overlay the page image already draws."""
+    """Every Heron heading candidate as the same 0–1 overlay the page image already draws.
+    Headings (_is_heading) come as they are; the rest are ``candidate`` and drawn lighter."""
     if not isinstance(page, dict):
         return []
     try:
@@ -362,7 +385,7 @@ def heron_headers(page: dict | None) -> list[OcrSectionHeader]:
     fields = page.get("fields")
     rows = fields.get("heading_heron") if isinstance(fields, dict) else None
     headers: list[OcrSectionHeader] = []
-    for hit in _kept_headings(rows):
+    for hit in _heading_rows(rows):
         text = _display_header(str(hit.get("text") or ""))
         box = hit.get("box")
         if not text or not isinstance(box, (list, tuple)) or len(box) < 4:
@@ -382,6 +405,7 @@ def heron_headers(page: dict | None) -> list[OcrSectionHeader]:
                 top=_fraction(top, page_h),
                 width=_fraction(right - left, page_w),
                 height=_fraction(bottom - top, page_h),
+                candidate=not _is_heading(hit),
             )
         )
     headers.sort(key=lambda header: (header.top, header.left))

@@ -295,7 +295,7 @@ class PageDate:
     dos_to: str
     confidence: float
     keyword: str
-    source: str  # "edge" | "edge_tesseract" | "kv" | "llm"
+    source: str  # "edge" | "edge_tesseract" | "kv" | "llm" | "kv_low"
     is_pair: bool = False
 
 
@@ -337,8 +337,14 @@ def edge_page_date(
 # --- 2. key/value -------------------------------------------------------------
 
 
-def kv_page_date(dates: list[dict[str, Any]], prof: Optional[DosProfile] = None) -> Optional[PageDate]:
-    """Rule 2: the first date the key/value extractor selected; a range keeps its end."""
+def kv_page_date(
+    dates: list[dict[str, Any]], prof: Optional[DosProfile] = None, *, source: str = "kv"
+) -> Optional[PageDate]:
+    """Rule 2: the first date the key/value extractor selected; a range keeps its end.
+
+    With ``source="kv_low"`` (rule 4) the dates are the ones the rules accepted but the
+    model did not: the confidence is the model's own probability, else the canon's kv_low.
+    """
     prof = prof or profile()
     for item in dates or []:
         iso = str(item.get("iso") or "")
@@ -346,8 +352,11 @@ def kv_page_date(dates: list[dict[str, Any]], prof: Optional[DosProfile] = None)
             continue
         iso_to = str(item.get("iso_to") or "")
         is_pair = len(iso_to) == 10 and iso_to > iso
-        return PageDate(iso, iso_to if is_pair else iso, prof.confidence["kv"],
-                        str(item.get("keyword") or ""), "kv", is_pair=is_pair)
+        confidence = prof.confidence[source]
+        if source == "kv_low" and item.get("confidence") is not None:
+            confidence = float(item["confidence"])
+        return PageDate(iso, iso_to if is_pair else iso, confidence,
+                        str(item.get("keyword") or ""), source, is_pair=is_pair)
     return None
 
 
@@ -413,6 +422,7 @@ def is_discharge_like(page_text: str) -> bool:
 
 _MATCH_TYPE = {
     "edge": "edge_keyword", "edge_tesseract": "edge_keyword_tesseract", "kv": "kv", "llm": "llm",
+    "kv_low": "kv_low",
 }
 
 
@@ -457,15 +467,19 @@ def detect_dos_per_page(
     candidate_log: Optional[list[dict]] = None,
     kv_dates: Optional[dict[str, list[dict[str, Any]]]] = None,
     tesseract_texts: Optional[dict[str, str]] = None,
+    kv_fallback: Optional[dict[str, list[dict[str, Any]]]] = None,
 ) -> list[dict]:
     """One row per page: edge keyword (final text, then Tesseract), else
-    key/value, else LLM, else nothing.
+    key/value, else LLM, else a key/value date only the rules accepted (low
+    confidence), else nothing.
 
     ``tesseract_texts`` maps a page name to its Tesseract text; only its
     first and last ``edge_words`` words are read.
 
     ``kv_dates`` maps a page name to the dates the key/value extractor chose
-    (``iso``, optional ``iso_to``, ``keyword``). ``candidate_log``, when
+    (``iso``, optional ``iso_to``, ``keyword``). ``kv_fallback`` is the same
+    shape for pages where the model chose no date: the dates the rules accepted,
+    best model score first, each with the model's ``confidence``. ``candidate_log``, when
     passed, gets every edge label with its date and whether it was chosen.
     """
     prof = profile()
@@ -503,6 +517,8 @@ def detect_dos_per_page(
                 d_from, d_to = (to_iso_date(v) for v in pair)
                 if d_from:
                     found = PageDate(d_from, d_to or d_from, prof.confidence["llm"], "", "llm")
+        if found is None:
+            found = kv_page_date((kv_fallback or {}).get(page_name) or [], prof, source="kv_low")
 
         if candidate_log is not None:
             candidate_log.extend({"page_name": page_name, **asdict(hit)} for hit in hits)

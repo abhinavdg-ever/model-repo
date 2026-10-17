@@ -1,5 +1,5 @@
 {
-  "note": "Date of service, per page: (1) a label below that starts within the first or last edge_words words of the page, with a date right after it (within label_reach_chars, only label_gap_words words between, so 'Visit Date: | DOB: 01/02/1960' is not a DOS) \u2014 an encounter label wins, else admit is From and discharge To; (2) else the key/value extractor's date; (3) else Azure OpenAI when enabled, on pages matching clinical_cues; (4) else no date. Each page keeps its own date and the Final DOS is the same. Edit labels here, not in dos_logic.py. Reloads on change.",
+  "note": "Date of service, per page: (1) a label below that starts within the first or last edge_words words of the page, with a date right after it (within label_reach_chars, only label_gap_words words between, so 'Visit Date: | DOB: 01/02/1960' is not a DOS) \u2014 an encounter label wins, else admit is From and discharge To; (2) else the key/value extractor's date; (3) else Azure OpenAI when enabled, on pages matching clinical_cues; (4) else a key/value date only its rules accepted, at low confidence (kv_low); (5) else no date. Each page keeps its own date and the Final DOS is the same. Edit labels here, not in dos_logic.py. Reloads on change.",
   "DOS_DEFAULT_DATE": "2222-02-02",
   "note_default": "DOS_DEFAULT_DATE is shown for a page with no date of its own (doc-level columns, review-ui downloads). It is never a page's Extracted DOS; it is the Final DOS of a stand-alone non-visit document (continuity_canon.json default_final_dos).",
   "edge_words": 20,
@@ -9,8 +9,10 @@
   "confidence": {
     "edge": 0.95,
     "kv": 0.9,
-    "llm": 0.7
+    "llm": 0.7,
+    "kv_low": 0.5
   },
+  "note_kv_low": "Rule 4, last resort: when the key/value model chose no date for a page and the LLM found none, the date its rules accepted (best model score first) is used, match_type kv_low. Its confidence is the model's own probability (below the DOS threshold, so low); kv_low here is used only when that score is missing.",
   "labels": {
     "encounter": [
       "encounter date",

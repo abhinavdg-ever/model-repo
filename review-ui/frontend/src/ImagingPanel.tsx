@@ -2148,7 +2148,8 @@ function SequencingTable({
   );
 }
 
-/** Section headers shown under Additional. OCR "Show Headers" uses this list only. */
+/** Section headers shown under Additional: every Heron candidate, the ones not accepted
+ *  marked ``candidate`` (shown lighter). OCR "Show Headers" uses this list only. */
 export function additionalSectionHeaders(
   extraction: ExtractionReviewResponse | null | undefined,
 ): { names: string[]; boxes: OcrSectionHeader[] } {
@@ -2226,7 +2227,8 @@ function ExtractedList({
                     <button
                       key={`${text}-${index}`}
                       type="button"
-                      className="header-highlight-one"
+                      className={`header-highlight-one${boxes[index]?.candidate ? " is-candidate" : ""}`}
+                      title={boxes[index]?.candidate ? "Candidate: not accepted as a heading" : undefined}
                       aria-pressed={
                         headerHighlight === "all" || headerHighlight === index
                       }

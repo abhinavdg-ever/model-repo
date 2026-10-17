@@ -106,6 +106,8 @@ export type OcrSectionHeader = {
   top: number;
   width: number;
   height: number;
+  /** A heading candidate that did not pass: shown and drawn lighter. */
+  candidate?: boolean;
 };
 
 export type OcrTextResponse = {

@@ -16,10 +16,16 @@ that produces a date wins:
    after it. This rule reads the final OCR text first, then the Tesseract text.
 2. The date that the key/value extractor (`kv_extract`) selected.
 3. Azure OpenAI, when it is enabled and the page looks clinical.
-4. No date.
+4. A date the key/value **rules** accepted but its model did not, when the
+   model chose no date for the page (best model score first; `match_type`
+   `kv_low`, stored as method `kv`).
+5. No date.
 
-Each rule has a fixed confidence: 0.95, 0.90 and 0.70 for rules 1–3, and 0 for
-rule 4. The stage writes one `dos_extraction_results` row per eligible page and
+Rules 1–3 have a fixed confidence: 0.95, 0.90 and 0.70, and 0 for rule 5.
+Rule 4's confidence is the model's own probability for that date (below its
+DOS threshold of 0.85, so it reads low), or `kv_low` (0.50) in `dos_canon.json`
+when the staging has no score (written before `model_score` was staged: then
+a row the rules scored, not `*_shared`, counts as rule-accepted). The stage writes one `dos_extraction_results` row per eligible page and
 `imaging/<chart>_dos.csv`. Later stages set the **Final DOS**:
 
 - `continuity` groups pages into documents, and the Extracted DOS is the main
@@ -192,6 +198,15 @@ How the extractor chooses its date, in brief
 See §4. The result has confidence 0.70, keyword `""` and source `llm`
 (`dos_logic.py:495-505`).
 
+### 3.5a Rule 4 — key/value low-confidence fallback
+
+`StagedPage.rule_fallback("dos")` (`extraction/staging.py`) returns the DOS
+rows the rules accepted (`rule_accepted`) when no row is selected, ordered by
+`model_score`. `dos/stage.py` passes them as `kv_fallback`;
+`kv_page_date(..., source="kv_low")` takes the first. The extraction pipeline
+stages `rule_accepted` and `model_score` on every row the trained model
+re-decides (`pipeline.apply_model_selection`).
+
 ### 3.6 Output row and `match_type`
 
 `_row` (`core-pipeline/stages/lib/dos/dos_logic.py:419-449`) builds one row per
@@ -202,7 +217,7 @@ page:
 | `dos_from` / `dos_to` | `MM-DD-YYYY` (`iso_to_mdy`, `:357-359`), or `""` |
 | `dos_from_iso` / `dos_to_iso` | ISO date, or `""` |
 | `doc_dos_*` | The page's own date, or `DOS_DEFAULT_DATE` when there is none. **Nothing is carried over from other pages here.** |
-| `match_type` | `no_date_found`. Otherwise `admit_discharge_pair` whenever `is_pair` (an admit+discharge pair, **and also** an encounter range or a kv range). Otherwise `edge_keyword` / `edge_keyword_tesseract` / `kv` / `llm` (`:414-416`, `:426-431`). |
+| `match_type` | `no_date_found`. Otherwise `admit_discharge_pair` whenever `is_pair` (an admit+discharge pair, **and also** an encounter range or a kv range). Otherwise `edge_keyword` / `edge_keyword_tesseract` / `kv` / `llm` / `kv_low` (`:414-416`, `:426-431`). |
 | `final_dos` | `dos_from` ISO, or `""` |
 | `confidence` | The rule's confidence, or `0.0` when there is no date |
 

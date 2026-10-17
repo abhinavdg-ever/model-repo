@@ -83,7 +83,8 @@ def test_heron_boxes_become_overlay_fractions():
         },
     }
     headers = heron_headers(page)
-    assert len(headers) == 1
+    assert [(h.text, h.candidate) for h in headers] == [("Patient", True), ("History of Present Illness", False)]
+    headers = [h for h in headers if not h.candidate]
     assert headers[0].text == "History of Present Illness"
     assert headers[0].level == 1
     assert headers[0].left == 0.1
@@ -92,7 +93,11 @@ def test_heron_boxes_become_overlay_fractions():
     assert headers[0].height == 0.03
 
 
-def test_section_headers_keep_a_common_match_and_read_left_to_right():
+def headings(page):
+    return [header.text for header in heron_headers(page) if not header.candidate]
+
+
+def test_a_strong_box_that_looks_like_a_heading_is_a_heading_and_read_left_to_right():
     page = {
         "width": 1000,
         "height": 2000,
@@ -116,8 +121,10 @@ def test_section_headers_keep_a_common_match_and_read_left_to_right():
             ]
         },
     }
+    # "Invoice Total": Heron 0.9, two words, no digits -> a heading on its own.
     headers = heron_headers(page)
-    assert [header.text for header in headers] == ["History of Present Illness"]
+    assert [header.text for header in headers] == ["History of Present Illness", "Invoice Total"]
+    assert not any(header.candidate for header in headers)
     assert headers[0].left < 0.1
 
 
@@ -170,9 +177,12 @@ def test_two_of_three_heading_checks_is_enough():
             ]
         },
     }
-    assert [header.text for header in heron_headers(page)] == [
-        "Office Visit Report 03/28/2024",
-        "Plan",
+    assert headings(page) == ["Office Visit Report 03/28/2024", "Plan"]
+    # Every candidate is still given, the rejected one marked.
+    assert [(h.text, h.candidate) for h in heron_headers(page)] == [
+        ("Office Visit Report 03/28/2024", False),
+        ("Plan", False),
+        ("Mr", True),
     ]
 
 
@@ -209,10 +219,7 @@ def test_headers_drop_a_numeric_opening_and_strip_punctuation():
             ]
         },
     }
-    assert [header.text for header in heron_headers(page)] == [
-        "Signed by on 03/29/24 at 9 15 AM CDT",
-        "CC/HPI",
-    ]
+    assert headings(page) == ["Signed by on 03/29/24 at 9 15 AM CDT", "CC/HPI"]
 
 
 def test_page_file_joins_the_staged_page_by_name(tmp_path):
@@ -272,3 +279,31 @@ def test_signature_csv_shows_only_the_first_person():
     assert rows["6.jpg"]["providerSignature"] == "No"
     assert rows["4.jpg"]["providerSignature"] == "No"
     assert "providerName" not in rows["4.jpg"]
+
+
+def test_the_ct_scheduling_form_gets_its_strong_headings():
+    """Chart 67992303_56072120 page 4: the ranker accepted only EXAM."""
+    def row(text, score, accepted=False, note="", det_class="section_header", top=100):
+        return {"text": text, "score": score, "accepted": accepted, "note": note,
+                "det_class": det_class, "box": [100, top, 400, top + 30]}
+
+    page = {
+        "width": 1850,
+        "height": 2374,
+        "fields": {
+            "heading_heron": [
+                row("CT & MRI SCHEDULING", 0.7603, top=51),
+                row("To schedule an appointment, please call (520) 733-7226 or fax to (520) 290-8377.",
+                    0.8385, top=323),
+                row("Toll Free Tel:", 0.0, note="text label", det_class="text_label", top=208),
+                row("EXAM", 0.6886, accepted=True, top=901),
+                row("SYMPTOMS", 0.7703, top=900),
+                row("SPECIALTY EXAM", 0.715, top=1010),
+                row("Referring Physician's Signature:", 0.4857, note="low score", top=2171),
+            ]
+        },
+    }
+    assert headings(page) == ["CT MRI Scheduling", "Symptoms", "Exam", "Specialty Exam"]
+    candidates = [h.text for h in heron_headers(page) if h.candidate]
+    assert "Toll Free Tel" in candidates and "Referring Physician s Signature" in candidates
+    assert any(text.startswith("To schedule") for text in candidates)

@@ -14,7 +14,9 @@ One JSON file per chart at ``<chart>/staging/extraction.json``::
 
 A hit is the extractor's own row (key, region, sentence, value, score, accepted, selected,
 source, …) with boxes as ``[left, top, right, bottom]``. ``selected`` is the value the
-extraction chose; ``accepted`` is every candidate it stands behind.
+extraction chose; ``accepted`` is every candidate it stands behind. When the trained model
+re-decided a row, ``rule_accepted`` is what the rules said and ``model_score`` the model's
+probability.
 """
 from __future__ import annotations
 
@@ -55,13 +57,22 @@ def _plain(value: Any) -> Any:
     return value
 
 
+# Set on a row when a trained version re-decided it (pipeline.apply_model_selection): what
+# the rules decided and the ranker's probability.
+_MODEL_ATTRS = ("rule_accepted", "model_score")
+
+
 def hit_record(hit: Any) -> dict[str, Any]:
     """One extractor row as plain JSON."""
-    return {
+    record = {
         field.name: _plain(getattr(hit, field.name))
         for field in dataclasses.fields(hit)
         if field.name not in _NOT_DATA
     }
+    for name in _MODEL_ATTRS:
+        if hasattr(hit, name):
+            record[name] = _plain(getattr(hit, name))
+    return record
 
 
 def build(chart_name: str, result: "DocumentResult", model_version: str) -> dict[str, Any]:
@@ -144,6 +155,23 @@ class StagedPage:
         heading counts.
         """
         return [row for row in self.accepted(field_id) if row.get("selected", True)]
+
+    def rule_fallback(self, field_id: str) -> list[dict[str, Any]]:
+        """Candidates the rules accepted but the model did not, best model score first. Only
+        when the model chose nothing for the field: a low-confidence fallback."""
+        if self.selected(field_id):
+            return []
+        rows = [row for row in self.rows(field_id) if _rule_accepted(row) and row.get("value")]
+        return sorted(rows, key=lambda row: -float(row.get("model_score") or 0))
+
+
+def _rule_accepted(row: dict[str, Any]) -> bool:
+    """What the rules decided. Staging written before ``rule_accepted`` existed: the rules
+    scored the row (they score only what they accept), and did not hand its value to
+    another key (source ``*_shared``)."""
+    if "rule_accepted" in row:
+        return bool(row["rule_accepted"])
+    return float(row.get("score") or 0) > 0 and not str(row.get("source") or "").endswith("_shared")
 
 
 class Staged:

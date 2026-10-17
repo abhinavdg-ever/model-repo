@@ -145,3 +145,61 @@ def test_an_unlabelled_or_reversed_range_is_not_a_dos_range():
 def test_admit_and_discharge_still_pair_in_date_order():
     assert _page_dates("Admission Date: 03/01/2024\nDischarge Date: 03/05/2024") == (
         "2024-03-01", "2024-03-05")
+
+
+def _dos(text, **kw):
+    return detect_dos_per_page(f"===== 4.png =====\n{text}\n", None, use_llm=False, **kw)[0]
+
+
+FALLBACK = {"4.png": [{"iso": "2025-05-20", "raw": "5/20/25", "tier": "weak", "keyword": "Date",
+                       "confidence": 0.62}]}
+
+
+def test_a_date_only_the_rules_accepted_is_the_last_resort_at_the_models_confidence():
+    hit = _dos("CT & MRI scheduling form, nothing dated at the edges.", kv_fallback=FALLBACK)
+    assert hit["dos_from_iso"] == "2025-05-20"
+    assert (hit["page_source"], hit["match_type"]) == ("kv_low", "kv_low")
+    assert hit["confidence"] == 0.62
+
+
+def test_the_fallback_without_a_model_score_uses_the_canon_kv_low():
+    fallback = {"4.png": [{**FALLBACK["4.png"][0], "confidence": None}]}
+    assert _dos("No edge date here.", kv_fallback=fallback)["confidence"] == 0.5
+
+
+def test_a_selected_key_value_date_beats_the_fallback():
+    kv = {"4.png": [{"iso": "2024-03-15", "raw": "03/15/2024", "tier": "service", "keyword": "DOS"}]}
+    hit = _dos("No edge date here.", kv_dates=kv, kv_fallback=FALLBACK)
+    assert (hit["dos_from_iso"], hit["page_source"]) == ("2024-03-15", "kv")
+
+
+def test_the_dos_stage_writes_the_fallback_as_method_kv():
+    from stages.lib.dos.stage import _page_method
+
+    assert _page_method({"page_source": "kv_low"}, "rules") == "kv"
+
+
+def test_rule_fallback_only_when_the_model_chose_nothing():
+    rows = [
+        {"key": "Received", "value": "", "score": 0.0, "accepted": False, "selected": False},
+        {"key": "Date", "value": "5/20/25", "dos_from": "5/20/25", "score": 0.8,
+         "accepted": False, "selected": False, "rule_accepted": True, "model_score": 0.41},
+        {"key": "Date", "value": "5/8/23", "score": 0.7, "accepted": False, "selected": False,
+         "rule_accepted": True, "model_score": 0.55},
+    ]
+    page = StagedPage("4.png", {"fields": {"dos": rows}})
+    assert [row["value"] for row in page.rule_fallback("dos")] == ["5/8/23", "5/20/25"]
+    chosen = {**rows[1], "accepted": True, "selected": True}
+    assert StagedPage("4.png", {"fields": {"dos": [chosen, rows[2]]}}).rule_fallback("dos") == []
+
+
+def test_rule_fallback_reads_staging_written_before_rule_accepted():
+    """The pasted 67992303_56072120 p4 row: the rules scored 5/20/25 (0.8), the model said no."""
+    rows = [
+        {"key": "Date", "value": "", "score": 0.0, "accepted": False, "source": ""},
+        {"key": "Date", "value": "5/20/25", "dos_from": "5/20/25", "dos_to": "5/20/25",
+         "score": 0.8, "accepted": False, "selected": False, "source": "same_line"},
+        {"key": "Visit", "value": "5/20/25", "score": 0.8, "accepted": False, "source": "same_line_shared"},
+    ]
+    page = StagedPage("4.png", {"fields": {"dos": rows}})
+    assert [row["source"] for row in page.rule_fallback("dos")] == ["same_line"]

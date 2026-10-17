@@ -78,7 +78,7 @@ def _page_method(hit: dict[str, Any], method: str) -> str:
     source = hit.get("page_source")
     if source == "llm":
         return "llm"
-    if source == "kv":
+    if source in ("kv", "kv_low"):
         return "kv"
     return method
 
@@ -193,6 +193,31 @@ def _date_rows(hit: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def _kv_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Staged DOS rows as the dates dos_logic reads; ``confidence`` is the model's score."""
+    from stages.lib.extraction.util.dates import canonical_date
+
+    found: list[dict[str, Any]] = []
+    for row in rows:
+        raw = str(row.get("dos_from") or row.get("value") or "")
+        iso = canonical_date(raw)
+        if len(iso) != 10:
+            continue
+        # A range ("Date of Service: a - b") keeps its end date.
+        iso_to = canonical_date(str(row.get("dos_to") or ""))
+        found.append(
+            {
+                "iso": iso,
+                "iso_to": iso_to if len(iso_to) == 10 and iso_to > iso else "",
+                "raw": raw,
+                "tier": row.get("tier") or "",
+                "keyword": row.get("key") or "",
+                "confidence": row.get("model_score"),
+            }
+        )
+    return found
+
+
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
     client = _llm_client()
     method = "rules+llm" if client is not None else "rules"
@@ -210,33 +235,22 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
 
         candidates: Optional[list[dict[str, Any]]] = [] if DOS_DEBUG else None
         from stages.lib.extraction.stage import ensure_staging
-        from stages.lib.extraction.util.dates import canonical_date
 
         staged = ensure_staging(chart_id, ctx.chart_name)
         kv_dates: dict[str, list[dict[str, Any]]] = {}
+        kv_fallback: dict[str, list[dict[str, Any]]] = {}
         for page in ctx.pages:
             staged_page = staged.page(page["page_name"])
             if staged_page is None:
                 continue
-            found: list[dict[str, Any]] = []
-            for row in staged_page.selected("dos"):
-                raw = str(row.get("dos_from") or row.get("value") or "")
-                iso = canonical_date(raw)
-                if len(iso) != 10:
-                    continue
-                # A range ("Date of Service: a - b") keeps its end date.
-                iso_to = canonical_date(str(row.get("dos_to") or ""))
-                found.append(
-                    {
-                        "iso": iso,
-                        "iso_to": iso_to if len(iso_to) == 10 and iso_to > iso else "",
-                        "raw": raw,
-                        "tier": row.get("tier") or "",
-                        "keyword": row.get("key") or "",
-                    }
-                )
+            found = _kv_items(staged_page.selected("dos"))
             if found:
                 kv_dates[page["page_name"]] = found
+            # The model chose no date: the dates only the rules accepted, for a
+            # low-confidence last resort (match_type kv_low).
+            fallback = _kv_items(staged_page.rule_fallback("dos"))
+            if fallback:
+                kv_fallback[page["page_name"]] = fallback
         hits = detect_dos_per_page(
             text,
             client,
@@ -244,6 +258,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             candidate_log=candidates,
             kv_dates=kv_dates,
             tesseract_texts=tesseract,
+            kv_fallback=kv_fallback,
         )
 
         by_name = {p["page_name"]: p for p in ctx.pages}

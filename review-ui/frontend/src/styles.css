@@ -1581,6 +1581,12 @@ input {
   border-radius: 2px;
 }
 
+/* A heading candidate that did not pass: same colour, much lighter. */
+.page-header-box.is-candidate {
+  border: 1px dashed color-mix(in srgb, var(--brand-500) 55%, transparent);
+  background: color-mix(in srgb, var(--brand-200) 18%, transparent);
+}
+
 .ocr-quality-badge {
   display: inline-flex;
   align-items: baseline;
@@ -2579,6 +2585,17 @@ input {
 .header-highlight-one[aria-pressed="true"] {
   border-color: var(--brand-500);
   background: color-mix(in srgb, var(--brand-200) 55%, #fff);
+  color: var(--brand-900);
+}
+
+.header-highlight-one.is-candidate {
+  border-style: dashed;
+  color: var(--muted, #6b7a83);
+  font-weight: 400;
+}
+
+.header-highlight-one.is-candidate[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--brand-200) 22%, #fff);
   color: var(--brand-900);
 }
 

@@ -108,6 +108,8 @@ class OcrSectionHeader(BaseModel):
     top: float
     width: float
     height: float
+    # A heading candidate that did not pass (drawn lighter); False for a heading.
+    candidate: bool = False
 
 
 class OcrTextResponse(BaseModel):

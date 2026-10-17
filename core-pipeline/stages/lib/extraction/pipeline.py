@@ -28,7 +28,7 @@ from .dos import output as dos_output
 from .dos.extract import extract_page as dos_page
 from .electronic_signature import output as esig_output
 from .electronic_signature.extract import extract_page as esig_page
-from .heading.extract import ACCEPT_SCORE, common_heading
+from .heading.extract import ACCEPT_SCORE, common_heading, strong_heading
 from .heading.extract import extract_page as heading_page
 from .heading.extract import heading_fields
 from .member_dob import output as dob_output
@@ -196,18 +196,28 @@ def apply_model_selection(result: DocumentResult, log: pd.DataFrame) -> None:
             hits = page.rows.get(field_id) or []
             if len(hits) != len(part):
                 raise RuntimeError(f"{result.record_id} p{number} {field_id}: {len(hits)} rows vs {len(part)} logged")
-            columns = (part[name].astype(str) for name in ("model_accepted", "model_selected", "model_level"))
-            for hit, accepted, chosen, level in zip(hits, *columns):
+            columns = (
+                part[name].astype(str)
+                for name in ("model_accepted", "model_selected", "model_level", "model_score")
+            )
+            for hit, accepted, chosen, level, score in zip(hits, *columns):
                 if field_id in headings:
                     # Two of the three is enough: Heron, the common-heading list, the ranker.
+                    # A strong Heron box that reads like a heading is enough alone. A running
+                    # header (_mark_running_headers) stays rejected.
                     heron_ok = float(getattr(hit, "score", 0) or 0) >= ACCEPT_SCORE
                     on_list = common_heading(str(getattr(hit, "text", "") or "")) > 0
                     ranker_ok = chosen == "1"
-                    hit.accepted = sum((heron_ok, on_list, ranker_ok)) >= 2
+                    hit.accepted = hit.note != "running header" and (
+                        sum((heron_ok, on_list, ranker_ok)) >= 2 or strong_heading(hit)
+                    )
                     if level:
                         hit.level = level
                     continue
                 if not chosen:
                     continue
+                # Kept for a low-confidence fallback (DOS reads them when the model chose nothing).
+                hit.rule_accepted = bool(hit.accepted)
+                hit.model_score = float(score) if score else None
                 hit.selected = chosen == "1"
                 hit.accepted = accepted == "1" or hit.selected

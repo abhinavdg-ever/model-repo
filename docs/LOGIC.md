@@ -592,7 +592,8 @@ Per page, the first rule that finds a date wins:
 | 1 | **Edge keyword.** A DOS label starting within the first or last `edge_words` (20) words of the page, with a date within `label_reach_chars` (40) after it and only filler words (`label_gap_words`: at, on, of, from, is, time, date, dt) between. An encounter label (Encounter Date, Visit Date, Date of Service, DOS, Service Date, Appointment Date, Exam Date, ...) wins; otherwise Admission Date is **From** and Discharge Date is **To**; a discharge date alone is both. A written range after an encounter label ("DOS: a - b") keeps both ends. Read on the final OCR text; on a page with no Final2 text, then on the Tesseract text (not for handwritten / low-quality pages), because Docling (Final1) can drop the top banner | 0.95 | `edge_keyword` / `edge_keyword_tesseract` / `admit_discharge_pair` |
 | 2 | **Key/value.** The first date the key/value extractor selected for the page (a range keeps its end) | 0.90 | `kv` |
 | 3 | **Azure OpenAI**, when `DOS_LLM_ENABLED`, on pages matching `clinical_cues` (`discharge_cues` asks for admission + discharge) | 0.70 | `llm` |
-| 4 | Nothing: the page has no DOS | 0 | `no_date_found` |
+| 4 | **Key/value, low confidence.** When the key/value model chose no date: the date its rules accepted (best model score first) | the model's own probability (else 0.50) | `kv_low` |
+| 5 | Nothing: the page has no DOS | 0 | `no_date_found` |
 
 A word is a whitespace-separated token with a letter or digit, so table pipes
 do not count. Labels are matched overlapping, so "Office Visit  Date of

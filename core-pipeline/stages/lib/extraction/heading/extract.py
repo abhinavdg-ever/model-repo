@@ -22,6 +22,10 @@ Rules on top of the detector (v0, until a trained classifier replaces them):
              on the page; it only verifies boxes the detector already found. Text labels are
              not accepted this way (specialty lists like 'CARDIOLOGY:' match it too); for
              them, as for every candidate, the match is a feature a trained version learns from.
+  strong     with a trained version, a heading needs two of Heron, the common list and the
+             ranker — or Heron alone at STRONG_SCORE (0.7) on a box no rule rejected whose
+             text looks like a heading (≤ 6 words, no digits, not a sentence): strong_heading.
+             Every candidate stays in staging; the review UI draws the rest lighter.
 """
 
 from __future__ import annotations
@@ -45,6 +49,10 @@ LEVELS = ("Heading", "Subheading")
 
 ACCEPT_SCORE = 0.5
 FLOOR_SCORE = 0.3
+# A detector box at or above this, whose text reads like a heading, is a heading on its own,
+# whatever the common list and the ranker say (strong_heading).
+STRONG_SCORE = 0.7
+_HEADING_MAX_WORDS = 6
 
 
 @dataclass(frozen=True)
@@ -129,6 +137,28 @@ def common_heading(text: str) -> float:
         default=0.0,
     )
     return round(best, 3) if best >= _FUZZY_RATIO else 0.0
+
+
+def looks_like_heading(text: str) -> bool:
+    """A title, not a sentence or a form line: at most six words, no digits (phone numbers,
+    dates), letters in it, and no sentence punctuation at the end."""
+    text = text.strip()
+    if not text or len(text.split()) > _HEADING_MAX_WORDS:
+        return False
+    if any(ch.isdigit() for ch in text) or not any(ch.isalpha() for ch in text):
+        return False
+    return not text.endswith((".", ",", ";", "?", "!"))
+
+
+def strong_heading(row: "HeadingRow") -> bool:
+    """A detector box with no rule against it (KV key, page-header noise, running header), at
+    or above STRONG_SCORE, whose text looks like a heading."""
+    return (
+        row.kind != "label"
+        and not row.note
+        and float(row.score or 0) >= STRONG_SCORE
+        and looks_like_heading(row.text)
+    )
 
 
 @dataclass

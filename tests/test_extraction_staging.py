@@ -343,3 +343,42 @@ def test_kv_debug_writes_the_raw_payload_only_when_asked(tmp_path, monkeypatch):
     assert path == tmp_path / "chart1" / "debug" / "chart1_kv.json"
     saved = json.loads(path.read_text(encoding="utf-8"))
     assert saved["pages"]["1.jpg"]["fields"]["dos"][0]["value"] == "03/15/2024"
+
+
+class TestModelDecisionIsStaged:
+    def test_rule_decision_and_model_score_are_written_when_set(self):
+        from stages.lib.extraction.dos.extract import DosHit
+
+        hit = DosHit(key="Date", region="footer", sentence="Date: 5/20/25", tier="weak",
+                     value="5/20/25", score=0.8, accepted=False)
+        assert "model_score" not in staging.hit_record(hit)
+        hit.rule_accepted, hit.model_score = True, 0.412345
+        record = staging.hit_record(hit)
+        assert (record["rule_accepted"], record["model_score"]) == (True, 0.4123)
+
+
+class TestStrongHeading:
+    @staticmethod
+    def row(text, score, note="", kind="section"):
+        from stages.lib.extraction.heading.extract import HeadingRow
+        from stages.lib.extraction.util.geometry import Box
+
+        return HeadingRow(text=text, words=[], box=Box(0, 0, 1, 1), det_class="section_header",
+                          kind=kind, score=score, level="Heading", accepted=False, note=note)
+
+    def test_a_strong_box_that_reads_like_a_heading(self):
+        from stages.lib.extraction.heading.extract import strong_heading
+
+        assert strong_heading(self.row("CT & MRI SCHEDULING", 0.76))
+        assert strong_heading(self.row("SPECIALTY EXAM", 0.715))
+
+    def test_not_a_sentence_a_phone_number_a_weak_box_or_a_rejected_box(self):
+        from stages.lib.extraction.heading.extract import strong_heading
+
+        assert not strong_heading(self.row(
+            "To schedule an appointment, please call (520) 733-7226 or fax to (520) 290-8377.", 0.84))
+        assert not strong_heading(self.row("Radiology Ltd. Diagnostic Imaging Services", 0.49))
+        assert not strong_heading(self.row("BODY PART", 0.69))
+        assert not strong_heading(self.row("Patient Name", 0.9, note="KV key"))
+        assert not strong_heading(self.row("Fax Cover", 0.9, note="running header"))
+        assert not strong_heading(self.row("HOME PHONE:", 0.9, kind="label"))
