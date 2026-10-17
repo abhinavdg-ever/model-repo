@@ -26,6 +26,7 @@ import {
   type GtBit,
 } from "./groundTruth";
 import { PAGE_SUBTYPE_CHOICES, PAGE_TYPE_CHOICES } from "./reviewChoices";
+import { properName } from "./properName";
 
 const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
   member: false,
@@ -1394,7 +1395,7 @@ function PageDetails({
         title="Member Extraction"
         toolbar={saveBar}
         rows={[
-          sameValue(name?.value ?? fmt(page.memberName, sections.member, skip), name ? fmtConfidence(name.confidence, true) : memberConf, {
+          sameValue(name ? properName(name.value) : fmt(page.memberName && properName(page.memberName), sections.member, skip), name ? fmtConfidence(name.confidence, true) : memberConf, {
             id: "name",
             label: "Member Name",
             truth: bits.memberName,
@@ -1541,7 +1542,7 @@ function PageDetails({
         title="Provider Extraction"
         rows={[
           sameValue(
-            providerName?.value || page.providerName || NOT_FOUND,
+            properName(providerName?.value || page.providerName || "") || NOT_FOUND,
             providerName
               ? fmtConfidence(providerName.confidence, true)
               : fmtConfidence(page.providerSignatureConfidence, Boolean(page.providerName)),
@@ -1818,7 +1819,7 @@ function DocSummary({
                 <td>{p.pageNumber}</td>
                 <td className="imaging-mono">{p.fileName}</td>
                 <td>
-                  <GtCell text={fmt(p.memberName, sections.member, skip)} bits={bits.memberName} />
+                  <GtCell text={fmt(p.memberName && properName(p.memberName), sections.member, skip)} bits={bits.memberName} />
                 </td>
                 <td>
                   <GtCell text={displayIsoDates(fmt(p.memberDob, sections.member, skip))} bits={bits.memberDob} />
