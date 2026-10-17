@@ -284,10 +284,30 @@ def edge_dates(page_text: str, prof: Optional[DosProfile] = None) -> list[Labell
 
 
 # A date right after one of these is when the note was dictated or transcribed ('D: 03/01/2024
-# T: 03/04/2024', 'DT: ...', 'Dictated: ...'): never a DOS, never one end of a range.
+# T: 03/04/2024', 'DT: ...', 'Dictated: ...'): never an edge DOS, never one end of a range.
+# Only the last resort (dictation_page_date) reads them.
 _DICTATION_BEFORE = re.compile(
     r"(?:(?<![A-Za-z])(?:D|T|DD|DT|TD|TT)\s*:|(?i:\b(?:dictated|transcribed)(?:\s+(?:on|date))?\s*:?))\s*$"
 )
+# The last resort's markers, in order: dictated (D:, DD:, Dictated) before transcribed
+# (T:, DT:, TD:, TT:, Transcribed).
+_DICTATION_MARKERS = (
+    ("dictated", re.compile(r"(?:(?<![A-Za-z])(?:D|DD)\s*:|(?i:\bdictated(?:\s+(?:on|date))?\s*:?))\s*")),
+    ("transcribed", re.compile(r"(?:(?<![A-Za-z])(?:T|DT|TD|TT)\s*:|(?i:\btranscribed(?:\s+(?:on|date))?\s*:?))\s*")),
+)
+
+
+def dictation_page_date(page_text: str, prof: Optional["DosProfile"] = None) -> Optional["PageDate"]:
+    """Last resort, when the page has no other date: the dictated date, else the
+    transcribed one ('D: 03/01/2024 T: 03/04/2024' gives 03/01/2024)."""
+    prof = prof or profile()
+    for label, marker in _DICTATION_MARKERS:
+        for found in marker.finditer(page_text):
+            match = DATE_RE.match(page_text, found.end())
+            iso = parse_date_match(match) if match else None
+            if iso:
+                return PageDate(iso, iso, prof.confidence["dictation"], label, "dictation")
+    return None
 
 
 # "03/01/2024 - 03/05/2024", "... to ...", "... thru / through ...".
@@ -312,7 +332,7 @@ class PageDate:
     dos_to: str
     confidence: float
     keyword: str
-    source: str  # "edge" | "edge_tesseract" | "kv" | "kv_pattern" | "llm" | "kv_low"
+    source: str  # "edge" | "edge_tesseract" | "kv" | "kv_pattern" | "llm" | "kv_low" | "dictation"
     is_pair: bool = False
 
 
@@ -450,6 +470,7 @@ _MATCH_TYPE = {
     "edge": "edge_keyword", "edge_tesseract": "edge_keyword_tesseract", "kv": "kv", "llm": "llm",
     "kv_pattern": "kv_pattern",
     "kv_low": "kv_low",
+    "dictation": "dictation_date",
 }
 
 
@@ -554,6 +575,9 @@ def detect_dos_per_page(
                     found = PageDate(d_from, d_to or d_from, prof.confidence["llm"], "", "llm")
         if found is None:
             found = kv_page_date((kv_fallback or {}).get(page_name) or [], prof, source="kv_low")
+        if found is None:
+            # Last resort: no real date anywhere; when it was dictated, else transcribed.
+            found = dictation_page_date(page_text, prof)
 
         if candidate_log is not None:
             candidate_log.extend({"page_name": page_name, **asdict(hit)} for hit in hits)

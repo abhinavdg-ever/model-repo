@@ -69,7 +69,8 @@ DOS_COLS = [
     "keyword",
     "confidence",
     "extraction_method",
-    # Which rule gave the page's date: kv, kv_pattern, edge, edge_tesseract, llm, kv_low, none.
+    # Which rule gave the page's date: kv, edge, edge_tesseract, kv_pattern, llm, kv_low,
+    # dictation, none.
     "source",
 ]
 

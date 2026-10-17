@@ -1568,6 +1568,7 @@ class TestCapabilityReporting:
             "blank/junk model",
             "page-family model",
             "page-axes model",
+            "KV extraction",
             "final1 Docling",
             "final2 OCR",
             "DOS LLM",

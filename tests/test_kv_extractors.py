@@ -256,7 +256,7 @@ def test_a_failed_llm_call_is_counted_and_gives_no_date(monkeypatch):
 
 
 
-def test_dictation_and_transcription_dates_are_never_a_dos_or_a_range():
+def test_dictation_and_transcription_dates_are_never_an_edge_dos_or_a_range():
     import stages.lib.dos.stage  # noqa: F401
     from dos_logic import detect_dos_per_page
 
@@ -264,10 +264,14 @@ def test_dictation_and_transcription_dates_are_never_a_dos_or_a_range():
         hit = detect_dos_per_page(f"===== 1.png =====\nNote.\n{text}\n", None, use_llm=False)[0]
         return hit["dos_from_iso"], hit["dos_to_iso"]
 
+    def source(text):
+        return detect_dos_per_page(f"===== 1.png =====\nNote.\n{text}\n", None, use_llm=False)[0]["page_source"]
+
     assert dos("DOS: 03/01/2024\nD: 03/01/2024 T: 03/04/2024") == ("2024-03-01", "2024-03-01")
     assert dos("Date of Service: 03/01/2024 - T: 03/04/2024") == ("2024-03-01", "2024-03-01")
-    assert dos("Visit Date DT: 03/04/2024") == ("", "")
-    assert dos("Visit Date: Dictated: 03/04/2024") == ("", "")
+    # Not the edge label's date: only the last resort takes it.
+    assert source("Visit Date DT: 03/04/2024") == "dictation"
+    assert source("Visit Date: Dictated: 03/04/2024") == "dictation"
     # Real ranges are unchanged.
     assert dos("Date of Service: 03/01/2024 - 03/04/2024") == ("2024-03-01", "2024-03-04")
     assert dos("Admission Date: 03/01/2024 Discharge Date: 03/04/2024") == ("2024-03-01", "2024-03-04")
@@ -286,3 +290,20 @@ def test_kv_low_needs_a_model_score_of_at_least_0_3_and_the_model_picks_at_0_6()
     assert kv_low(0.29)["match_type"] == "no_date_found"
     assert (kv_low(0.3)["match_type"], kv_low(0.3)["confidence"]) == ("kv_low", 0.3)
     assert config.SELECT_THRESHOLDS["dos"] == 0.6
+
+
+def test_dictation_dates_are_the_last_resort_dictated_before_transcribed():
+    import stages.lib.dos.stage  # noqa: F401
+    from dos_logic import detect_dos_per_page
+
+    def dos(text, **kw):
+        hit = detect_dos_per_page(f"===== 1.png =====\nNote.\n{text}\n", None, use_llm=False, **kw)[0]
+        return hit["dos_from_iso"], hit["dos_to_iso"], hit["page_source"], hit["confidence"]
+
+    assert dos("D: 03/01/2024 T: 03/04/2024") == ("2024-03-01", "2024-03-01", "dictation", 0.3)
+    assert dos("T: 03/04/2024 D: 03/01/2024")[0] == "2024-03-01"
+    assert dos("Transcribed: 03/04/2024")[:3] == ("2024-03-04", "2024-03-04", "dictation")
+    # A real date wins over it.
+    assert dos("Visit Date: 02/27/2024\nD: 03/01/2024 T: 03/04/2024")[:3] == ("2024-02-27", "2024-02-27", "edge")
+    fallback = {"1.png": [{"iso": "2024-02-20", "keyword": "Date", "confidence": 0.4}]}
+    assert dos("D: 03/01/2024", kv_fallback=fallback)[2] == "kv_low"

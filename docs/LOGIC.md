@@ -594,12 +594,14 @@ Per page, the first rule that finds a date wins:
 | 2b | **Key/value pattern fallback.** Only when rules 1 and 2 found nothing: a date with spaces only (`06 12 24`) right after a DOS key | 0.30 | `kv_pattern` |
 | 3 | **Azure OpenAI**, when `DOS_LLM_ENABLED`, on pages matching `clinical_cues` (`discharge_cues` asks for admission + discharge) | 0.50 (backup) | `llm` |
 | 4 | **Key/value, low confidence.** When the key/value model chose no date: the date its rules accepted (best model score first), only if the model scored it at least `kv_low_min_score` (0.30) | the model's own probability (else 0.50), at most 0.50 (backup) | `kv_low` |
+| 4b | **Dictation date, last resort.** No other rule found a date: the date after `D:`, `DD:` or `Dictated`, else after `T:`, `DT:`, `TD:`, `TT:` or `Transcribed` | 0.30 | `dictation_date` |
 | 5 | Nothing: the page has no DOS | 0 | `no_date_found` |
 
 **Dictation and transcription dates.** A date right after `D:`, `T:`, `DD:`,
 `DT:`, `TD:`, `TT:`, `Dictated` or `Transcribed` is when the note was dictated
 or typed, not the visit: the edge keyword rule never takes it, and never makes
-it the end of a range.
+it the end of a range. Rule 4b uses it only when the page has no other date,
+the dictated date before the transcribed one.
 
 **Backups read low.** Only rule 1 is the key/value model's pick. Every other
 date (rules 2–4) is a backup and is capped at `backup_max` (0.50), so a
@@ -636,7 +638,7 @@ date, which edge and whether it was chosen to
 | Target | Columns |
 |---|---|
 | `dos_extraction_results` | `date_of_service_from/to` (the page's own), `*_doclevel` (own, else the default), `dates`, `confidence`, `extraction_method` |
-| disk | `imaging/<chart>_dos.csv`; its `source` column names the rule that gave the date (`kv`, `kv_pattern`, `edge`, `edge_tesseract`, `llm`, `kv_low`, `none`) |
+| disk | `imaging/<chart>_dos.csv`; its `source` column names the rule that gave the date (`kv`, `edge`, `edge_tesseract`, `kv_pattern`, `llm`, `kv_low`, `dictation`, `none`) |
 
 The Azure OpenAI client is keyless-capable: see
 [`AZURE_OPENAI_AUTH`](API.md#azure-openai-key-or-no-key).
