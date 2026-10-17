@@ -40,10 +40,8 @@ TIER_RANK = {
 # Tiers whose date must sit right after the key ('Received: 10/02/2024'), as weak keys.
 _NEAR_TIERS = frozenset({"weak", "received", "printed"})
 _MIN_YEAR = 2000
-# A date read with spaced slashes ('05 / 20 / 2025') is a looser pattern: its score drops by
-# this much, never below _SPACED_MIN_SCORE.
-SPACED_DATE_PENALTY = 0.15
-_SPACED_MIN_SCORE = 0.5
+# A date read with spaced slashes ('05 / 20 / 2025') is a looser pattern: it scores this.
+SPACED_DATE_SCORE = 0.5
 _MAX_GAP_WORDS = 6
 _WEAK_GAP_WORDS = 1
 _BELOW_LINES = 4.0
@@ -91,7 +89,7 @@ class _Span:
 
 
 def _spaced_score(span: _Span, score: float) -> float:
-    return round(max(_SPACED_MIN_SCORE, score - SPACED_DATE_PENALTY), 4) if span.spaced else score
+    return SPACED_DATE_SCORE if span.spaced else score
 
 
 def _plausible(raw: str) -> bool:

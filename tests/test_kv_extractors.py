@@ -113,7 +113,7 @@ class TestSpacedSlashDates:
         ]
 
     def test_the_kv_dos_row_reads_it_at_a_lower_score(self):
-        from stages.lib.extraction.dos.extract import SPACED_DATE_PENALTY, extract_page
+        from stages.lib.extraction.dos.extract import SPACED_DATE_SCORE, extract_page
         from stages.lib.extraction.util.keys import KeyHit
 
         def dos_row(text):
@@ -126,13 +126,13 @@ class TestSpacedSlashDates:
 
         spaced, plain = dos_row("DATE: 05 / 20 / 2025"), dos_row("DATE: 05/20/2025")
         assert (spaced.value, spaced.accepted) == ("05/20/2025", True)
-        assert spaced.score == round(plain.score - SPACED_DATE_PENALTY, 4)
+        assert spaced.score == SPACED_DATE_SCORE == 0.5 and plain.score > 0.5
 
     def test_the_edge_label_rule_reads_it_at_edge_spaced(self):
         import stages.lib.dos.stage  # noqa: F401  — puts dos/ on sys.path
         from dos_logic import detect_dos_per_page
 
         hit = detect_dos_per_page("===== 7.png =====\nDate of Service: 05 / 20 / 2025\n", None, use_llm=False)[0]
-        assert hit["dos_from_iso"] == "2025-05-20" and hit["confidence"] == 0.8
+        assert hit["dos_from_iso"] == "2025-05-20" and hit["confidence"] == 0.5
         plain = detect_dos_per_page("===== 7.png =====\nDate of Service: 05/20/2025\n", None, use_llm=False)[0]
         assert plain["confidence"] == 0.95
