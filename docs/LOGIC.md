@@ -589,11 +589,23 @@ Per page, the first rule that finds a date wins:
 
 | # | Rule | Confidence | `match_type` |
 |---|---|---|---|
-| 1 | **Key/value.** The first date the key/value extractor selected for the page (a range keeps its end) | 0.90 | `kv` |
-| 2 | **Edge keyword.** A DOS label starting within the first or last `edge_words` (20) words of the page, with a date within `label_reach_chars` (40) after it and only filler words (`label_gap_words`: at, on, of, from, is, time, date, dt) between. An encounter label (Encounter Date, Visit Date, Date of Service, DOS, Service Date, Appointment Date, Exam Date, ...) wins; otherwise Admission Date is **From** and Discharge Date is **To**; a discharge date alone is both. A written range after an encounter label ("DOS: a - b") keeps both ends. Read on the final OCR text; on a page with no Final2 text, then on the Tesseract text (not for handwritten / low-quality pages), because Docling (Final1) can drop the top banner | 0.95 | `edge_keyword` / `edge_keyword_tesseract` / `admit_discharge_pair` |
-| 3 | **Azure OpenAI**, when `DOS_LLM_ENABLED`, on pages matching `clinical_cues` (`discharge_cues` asks for admission + discharge) | 0.70 | `llm` |
-| 4 | **Key/value, low confidence.** When the key/value model chose no date: the date its rules accepted (best model score first) | the model's own probability (else 0.50) | `kv_low` |
+| 1 | **Key/value.** The first date the key/value extractor selected for the page (a range keeps its end) | 0.90 (spaced slashes 0.50, spaces only 0.30) | `kv` |
+| 2 | **Edge keyword.** A DOS label starting within the first or last `edge_words` (20) words of the page, with a date within `label_reach_chars` (40) after it and only filler words (`label_gap_words`: at, on, of, from, is, time, date, dt) between. An encounter label (Encounter Date, Visit Date, Date of Service, DOS, Service Date, Appointment Date, Exam Date, ...) wins; otherwise Admission Date is **From** and Discharge Date is **To**; a discharge date alone is both. A written range after an encounter label ("DOS: a - b") keeps both ends. Read on the final OCR text; on a page with no Final2 text, then on the Tesseract text (not for handwritten / low-quality pages), because Docling (Final1) can drop the top banner | 0.50 (backup) | `edge_keyword` / `edge_keyword_tesseract` / `admit_discharge_pair` |
+| 3 | **Azure OpenAI**, when `DOS_LLM_ENABLED`, on pages matching `clinical_cues` (`discharge_cues` asks for admission + discharge) | 0.50 (backup) | `llm` |
+| 4 | **Key/value, low confidence.** When the key/value model chose no date: the date its rules accepted (best model score first) | the model's own probability (else 0.50), at most 0.50 (backup) | `kv_low` |
 | 5 | Nothing: the page has no DOS | 0 | `no_date_found` |
+
+**Backups read low.** Only rule 1 is the key/value model's pick. Every other
+date (rules 2–4) is a backup and is capped at `backup_max` (0.50), so a
+reviewer can tell the two apart by confidence alone.
+
+**Looser date patterns.** A key/value date read with spaced slashes
+(`05 / 20 / 2025`) is capped at `kv_spaced` (0.50). A date with spaces only
+(`06 12 24`) is read only as a fallback: right after a DOS key on the same
+line (at most one word between), only when no key on the page has another
+date, with a two-digit month 01–12 and day 01–31, capped at `kv_spaces_only`
+(0.30). The general date finder and keyless header/footer stamps never read
+spaces-only dates, so lab values such as `WBC 10 12 20` are not dates.
 
 A word is a whitespace-separated token with a letter or digit, so table pipes
 do not count. Labels are matched overlapping, so "Office Visit  Date of
