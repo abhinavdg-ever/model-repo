@@ -68,6 +68,8 @@ DOS_COLS = [
     "keyword",
     "confidence",
     "extraction_method",
+    # Which rule gave the page's date: kv, kv_pattern, edge, edge_tesseract, llm, kv_low, none.
+    "source",
 ]
 
 
@@ -313,6 +315,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "keyword": hit.get("keyword") or "",
                         "confidence": hit.get("confidence"),
                         "extraction_method": _page_method(hit, method),
+                        "source": hit.get("page_source") or "none",
                     }
                 )
 

@@ -631,7 +631,7 @@ date, which edge and whether it was chosen to
 | Target | Columns |
 |---|---|
 | `dos_extraction_results` | `date_of_service_from/to` (the page's own), `*_doclevel` (own, else the default), `dates`, `confidence`, `extraction_method` |
-| disk | `imaging/<chart>_dos.csv` |
+| disk | `imaging/<chart>_dos.csv`; its `source` column names the rule that gave the date (`kv`, `kv_pattern`, `edge`, `edge_tesseract`, `llm`, `kv_low`, `none`) |
 
 The Azure OpenAI client is keyless-capable: see
 [`AZURE_OPENAI_AUTH`](API.md#azure-openai-key-or-no-key).

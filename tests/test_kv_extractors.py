@@ -223,3 +223,20 @@ def test_every_dos_backup_is_flagged_low_and_the_models_pick_is_not():
     assert (model["confidence"], model["page_source"]) == (0.9, "kv")
     assert (edge["confidence"], edge["page_source"]) == (0.5, "edge")
     assert (fallback["confidence"], fallback["page_source"]) == (0.5, "kv_low")
+
+
+def test_the_dos_csv_names_the_rule_that_gave_the_date():
+    import stages.lib.dos.stage as stage
+    from dos_logic import detect_dos_per_page
+
+    assert stage.DOS_COLS[-1] == "source"
+    page = "===== 1.png =====\nVisit Date: 03/01/2024\n"
+    pattern = {"1.png": [{"iso": "2024-06-12", "keyword": "DATE:", "pattern": "spaces_only"}]}
+    sources = [
+        detect_dos_per_page(page, None, use_llm=False, kv_dates={"1.png": [{"iso": "2024-07-01"}]})[0],
+        detect_dos_per_page(page, None, use_llm=False, kv_pattern=pattern)[0],
+        detect_dos_per_page(page, None, use_llm=False)[0],
+        detect_dos_per_page("===== 1.png =====\nno date\n", None, use_llm=False)[0],
+    ]
+    assert [hit.get("page_source") or "none" for hit in sources] == ["kv", "kv_pattern", "edge", "none"]
+
