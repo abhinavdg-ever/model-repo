@@ -350,6 +350,7 @@ class TestDosStageWritesEachPageOnce:
         monkeypatch.setattr(dos_stage, "stage_run", fake_stage_run)
         monkeypatch.setattr(dos_stage, "connect", lambda: nullcontext(None))
         monkeypatch.setattr(dos_stage, "get_blank_junk_flags", lambda *a, **k: {})
+        monkeypatch.setattr(dos_stage, "get_page_classification_map", lambda *a, **k: {})
         monkeypatch.setattr(dos_stage, "mark_skipped", lambda *a, **k: None)
         monkeypatch.setattr(dos_stage, "_combined_text", lambda *a, **k: ("", {}))
         monkeypatch.setattr(
@@ -521,7 +522,7 @@ class TestDosDriver:
         assert (hit["dos_from_iso"], hit["page_source"]) == ("2024-03-14", "edge")
 
     def test_the_key_value_date_comes_before_tesseract(self):
-        kv = {"1.jpg": [{"iso": "2024-06-01", "keyword": "Date"}]}
+        kv = {"1.jpg": [{"iso": "2024-06-01", "tier": "weak", "keyword": "Date"}]}
         hit = _pages("no label here", kv_dates=kv,
                      tesseract_texts={"1.jpg": "Encounter Date: 03/15/2024"})[0]
         assert (hit["dos_from_iso"], hit["page_source"]) == ("2024-06-01", "kv")

@@ -3,14 +3,20 @@
 One row per page, in the DB and in `imaging/<chart>_dos.csv`. Per page, two
 states:
 
-1. **Key/value.** Among the dates its rules accepted, the first label group in
-   the page kind's priority (`kv_priority` in `dos_canon.json`: discharge =
-   Admit/Discharge → Date of Service → …; lab = Date of Service → Collection →
-   Received → Report Date → …; other = Date of Service → Collection →
-   Admit/Discharge → Received → …), and within it the date the model scored
-   highest — among the dates the model scored at least 0.6 (`kv_accept_min_score`);
-   with none, the highest-scoring date. Its confidence is that score. Spaced slashes (`05 / 20 / 2025`) are merged into
-   one OCR word first, so they count as plain dates.
+1. **Key/value.** Among the dates the extractor accepted, grouped by the tier it
+   gave them (`staging/extraction.json`), the first group in the page kind's
+   order (`kv_priority` in `dos_canon.json`). The kind is the page
+   classification L1 (`page_kinds`):
+   - **discharge** (Discharge Summary): Admit + Discharge pair → service → weak
+     → dt/dd → header/footer
+   - **lab** (Lab Report/Result): collected → received → Report Date → service →
+     weak → dt/dd → header/footer → Admit + Discharge pair
+   - **other**: service → weak → dt/dd → header/footer → Admit + Discharge pair
+
+   Within a group the highest score (model, else rules). Only weak keys have a
+   floor: score above 0.3 (`weak_min_score`). Its confidence is that score.
+   Spaced slashes (`05 / 20 / 2025`) are merged into one OCR word first, so they
+   count as plain dates.
 2. **Edge keyword**, only when 1 has no date. A DOS label that starts within
    the first or last 20 words of the page, with a date right after it (only
    filler words such as `at`, `on`, `time` in between). An encounter label
@@ -25,9 +31,9 @@ states:
 On an "other" page with neither: the dictated date (`D:`, `DD:`, Dictated),
 else the transcribed one, at 0.30. Otherwise the page has no date of service.
 
-Then, on a **discharge document** (a discharge date on the page, or discharge
-wording such as "Discharge Summary" / "Hospital Course"), its Admit date is From
-and its Discharge date is To, overriding both states; `source` `admit_discharge`.
+The Admit + Discharge pair: From = admit, To = the discharge on or after it,
+one alone is both; on a discharge page an edge label fills a missing side;
+`source` `admit_discharge`.
 A Printed / Print Date label's date is never a DOS.
 
 Each page keeps its own date here (the Extracted DOS). The Final DOS — the

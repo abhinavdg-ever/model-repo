@@ -9,40 +9,48 @@ unless they start with `review-ui/`, `schema/` or `docs/`.
 ## 1. Summary: the date hierarchy
 
 Each page that is not blank, junk or a duplicate gets **its own** date of
-service, the **Extracted DOS**. The first step that gives a date wins, except
-step 0, which overrides the others on a discharge document.
+service, the **Extracted DOS**. The first step that gives a date wins.
 
 | Step | Applies to | Date | Confidence | `source` |
 |---|---|---|---|---|
-| 0. Admit / Discharge | discharge pages | Admit = From, Discharge (on or after it) = To; one alone is both. Key/value dates first, else edge labels (§4.1) | highest model score used, else 0.50 | `admit_discharge` |
-| 1. Key/value | every page | the label priority below, among the dates the model accepts (§3.6) | the model's score for that date | `kv` |
-| 2. Edge keyword | only when step 1 has no date | a DOS label in the first or last 20 words of the page (§4) | 0.50 | `edge` / `edge_tesseract` |
-| 3. Dictated, then Transcribed | "other" pages only, when steps 1–2 have no date | the date after `D:` / `DD:` / Dictated, else after `T:` / `DT:` / `TD:` / `TT:` / Transcribed | 0.30 | `dictation` |
+| 0. Admit / Discharge | discharge pages | Admit = From, Discharge (on or after it) = To; one alone is both. Key/value dates first, an edge label fills a missing side (§4.1) | highest score of the dates used, else 0.50 | `admit_discharge` |
+| 1. Key/value | every page | the tier order below (§3.6) | that date's score | `kv` (`admit_discharge` for the pair) |
+| 2. Edge keyword | only when steps 0–1 have no date | a DOS label in the first or last 20 words of the page (§4) | 0.50 | `edge` / `edge_tesseract` |
+| 3. Dictated, then Transcribed | "other" pages only, when steps 0–2 have no date | the date after `D:` / `DD:` / Dictated, else after `T:` / `DT:` / `TD:` / `TT:` / Transcribed | 0.30 | `dictation` |
 | — | nothing found | no date | 0 | `none` |
 
-**Page kind** (`page_kind` in `dos_logic.py`):
+**Page kind** = the page classification **L1** (`page_subtype` stage, seq 75,
+runs before DOS; `page_kinds` in `dos_canon.json`). Text on the page does not
+decide it.
 
-| Kind | When |
+| Kind | L1 |
 |---|---|
-| discharge | a discharge date (key/value or edge label), or discharge wording (`discharge_document_cues`: discharge summary / note / instructions / diagnosis / date, date of discharge, hospital course, admission date) |
-| lab | lab wording (`lab_document_cues`: lab report / results, specimen, reference range, collection date) or a Collection / Received date |
-| other | everything else |
+| discharge | Discharge Summary |
+| lab | Lab Report/Result (pre-v24 page type: Laboratory Data) |
+| other | anything else, or no classification |
 
-**Step 1 label priority** (`kv_priority` in `dos_canon.json`) — the first group
-that has an accepted date wins; within a group, the highest model score:
+**Step 1 tier order** (`kv_priority` in `dos_canon.json`). Candidates are the
+DOS dates the extractor accepted, grouped by the **tier the extractor gave
+them** in `staging/extraction.json`. The first group with a date wins; within
+it, the highest score (the model's, else the rules'), then page order. A tier
+not listed for the page's kind is not a candidate.
 
-| Kind | 1st | 2nd | 3rd | 4th | 5th | 6th | 7th |
-|---|---|---|---|---|---|---|---|
-| discharge | Admit / Discharge | Date of Service | Collection | Received | Report Date | Date | header / footer |
-| lab | Date of Service | Collection | Received | Report Date | Admit / Discharge | Date | header / footer |
-| other | Date of Service | Collection | Admit / Discharge | Received | Report Date | Date | header / footer |
+| Kind | Order |
+|---|---|
+| discharge | Admit + Discharge pair (step 0) → service → weak → dt / dd → header / footer |
+| lab | collected → received → Report Date → service → weak → dt / dd → header / footer → Admit + Discharge pair |
+| other | service → weak → dt / dd → header / footer → Admit + Discharge pair |
 
-- **Accepted** = the model scored the date at least `kv_accept_min_score` (0.6).
-  If no date on the page reaches it, the page takes the highest-scoring date at
-  any score. Staging without a model counts every date as accepted.
-- **Date of Service** = the service tier of §3.1 (DOS, Visit Date, Encounter
-  Date, Order Date, …); **Date** = the weak tier (Date, Service, Chief
-  Complaint, …); **Report Date** is its own group.
+- **service** = DOS, Visit Date, Encounter Date, Order Date, … (§3.1);
+  **weak** = Date, Service, Chief Complaint, … (Report Date is weak too, except
+  on lab pages where it is its own group); **dt / dd** = the weak keys in
+  `weak_last_keys`; **header / footer** = the `keyless` tier: a date in the
+  header or footer band with no label before it.
+- **Score floor:** only weak keys (Report Date and dt / dd included) need a
+  score above `weak_min_score` (**0.3**). Every other tier counts at any score.
+- **The Admit + Discharge pair at the end** of lab and other pages keeps a stay
+  on a page the classifier did not call a discharge summary. Once the page type
+  is corrected, a re-run of `dos_extract` puts it first.
 
 **Never a DOS:** print dates (Printed, Print Date, …), a date right after
 `D:` / `T:` / `DD:` / `DT:` / `TD:` / `TT:` / Dictated / Transcribed except in
@@ -57,8 +65,8 @@ the placeholder `2222-02-02` for a stand-alone non-visit document (§6).
 OCR words ──► merge spaced dates ──► KV extraction (rules + model) ──► staging/extraction.json
                                                                               │
 page text ─────────────────────────────────────────────► DOS stage ◄─────────┘
-                                                          0. admit/discharge (discharge pages)
-                                                          1. KV date by label priority (model score)
+                                                          0. admit/discharge (discharge pages, by L1)
+                                                          1. KV date by tier order for the page kind
                                                           2. edge keyword (0.50)
                                                           3. dictated / transcribed (other pages, 0.30)
                                                               │
@@ -198,24 +206,24 @@ score: `SELECT_THRESHOLDS = {"dos": 0.0}` in `extraction/util/config.py`,
 which overrides the trained version's `thresholds.json`.
 
 The DOS stage passes every row with a value that the rules accepted
-(`StagedPage.candidates`) to `kv_page_date` in `dos_logic.py`, which picks by
-the **page kind** (`page_kind`) and `kv_priority` in `dos_canon.json`:
+(`StagedPage.candidates`), plus the print-key rows, to `kv_page_date` in
+`dos_logic.py`. It picks by the **page kind** (the classification L1, §1) and
+`kv_priority` in `dos_canon.json`:
 
-| Page kind | When | Priority, first group present wins |
+| Page kind | L1 | Order, first group present wins |
 |---|---|---|
-| discharge | a discharge date (key/value or edge label) or `discharge_document_cues` | Admit / Discharge → Date of Service → Collection → Received → Report Date → Date → header/footer |
-| lab | `lab_document_cues` (lab report, specimen, reference range, collection date) or a Collection / Received date | Date of Service → Collection → Received → Report Date → Admit / Discharge → Date → header/footer |
-| other | otherwise | Date of Service → Collection → Admit / Discharge → Received → Report Date → Date → header/footer; then (after the edge keyword) Dictated → Transcribed |
+| discharge | Discharge Summary | Admit / Discharge pair (§4.1) → service → weak → dt / dd → header/footer |
+| lab | Lab Report/Result, Laboratory Data | collected → received → Report Date → service → weak → dt / dd → header/footer → Admit / Discharge pair |
+| other | anything else | service → weak → dt / dd → header/footer → Admit / Discharge pair; then (after the edge keyword) Dictated → Transcribed |
 
-Groups are the key tiers of §3.1 (Date of Service = the service tier; Date =
-the weak tier), with the Report Date key as its own group. Within a group the
-date the model scored highest wins. On a discharge page the stay's admit /
-discharge pair then replaces the pick (§4.1).
+Groups are the tiers the extractor wrote on each row, so the order works with
+whatever `keys.json` produced the staging. Within a group the highest score
+wins, then page order. A weak key's date (Report Date, dt and dd included)
+needs a score above `weak_min_score` (0.3); no other tier has a floor. When the
+Admit / Discharge group is the one chosen, the page takes the pair (§4.1).
 
-**The order counts only among accepted dates:** those the model scored at least
-`kv_accept_min_score` (0.6). When no date on the page reaches it, the page takes
-the highest-scoring date at any score. Staging written without a model (no
-scores) counts every date as accepted.
+Print-key dates are dropped here even when older staging still has them
+accepted, and so is a header/footer date equal to a print date.
 
 Its confidence is that row's `model_score`; without a model, its rule score;
 with neither, `confidence.kv` (0.90) in `dos_canon.json`. If the extraction
@@ -260,11 +268,9 @@ Confidence: `confidence.edge` = **0.50**.
 
 ### 4.1 Step 0 — discharge documents
 
-After both states (`admit_discharge_date` in `dos_logic.py`). A page is a
-discharge document when it has a discharge date (a key/value `discharge`-tier
-date or an edge Discharge label) or its text matches `discharge_document_cues`
-in `dos_canon.json` (discharge summary / note / instructions / diagnosis / date,
-date of discharge, hospital course, admission date, date of admission).
+`admit_discharge_date` in `dos_logic.py`, **before** the key/value order, on a
+page whose classification L1 is Discharge Summary. Lab and other pages use the
+same pair as their last key/value group (§3.6).
 
 On such a page the stay's dates take priority:
 
@@ -273,7 +279,7 @@ On such a page the stay's dates take priority:
 | From | the admit date |
 | To | the discharge date, if on or after the admit date |
 | One of them only | both From and To |
-| Where from | the key/value extractor's best `admit` / `discharge`-tier date (`StagedPage.best(..., tier=…)`), else the edge Admit / Discharge label |
+| Where from | the highest-scoring `admit` / `discharge`-tier key/value date, else the edge Admit / Discharge label (discharge pages only) |
 | Confidence | the highest model score of the key/value dates used, else 0.50 |
 | `source` / `match_type` | `admit_discharge` / `admit_discharge_pair` (a range) or `admit_discharge` |
 
@@ -396,9 +402,10 @@ Every key/value candidate per page under `fields.dos`, with its rule score
 | Setting | Value | File |
 |---|---|---|
 | Model's own pick in staging | at any score (0.0) | `extraction/util/config.py` (`SELECT_THRESHOLDS`) |
-| A key/value date is accepted | model score ≥ 0.6 | `dos_canon.json` (`kv_accept_min_score`) |
-| Label priority per page kind | §1 | `dos_canon.json` (`kv_priority`) |
-| Discharge / lab page wording | §1 | `dos_canon.json` (`discharge_document_cues`, `lab_document_cues`) |
+| A weak key's date is a candidate | score > 0.3 (no floor for other tiers) | `dos_canon.json` (`weak_min_score`) |
+| Tier order per page kind | §1 | `dos_canon.json` (`kv_priority`) |
+| Weak keys ranked last among weak | dt, dd | `dos_canon.json` (`weak_last_keys`) |
+| Page kind from the classification L1 | §1 | `dos_canon.json` (`page_kinds`) |
 | Confidence of a dictated / transcribed date | 0.30 | `dos_canon.json` (`confidence.dictation`) |
 | Confidence of a key/value date | its model score (rule score without a model; 0.90 with neither) | `keyword-canon/dos_canon.json` (`confidence.kv`) |
 | Confidence of an edge date | 0.50 | `dos_canon.json` (`confidence.edge`) |
@@ -431,11 +438,11 @@ paying for OCR again):
 | Page text | Result | Why |
 |---|---|---|
 | `DOB: 01/02/1960  Date of Service: 03/14/2024` | 2024-03-14, `kv`, model score (e.g. 0.97) | Service label, same line; the DOB date is eliminated. |
-| `Date: 06/12/2024` (model scores 0.18), nothing else | 2024-06-12, `kv`, 0.18 | No date reaches 0.6, so the highest score is taken; the low confidence shows it. |
-| `Date: 03/01/2024` (0.95) and `Date of Service: 03/02/2024` (0.65) | 2024-03-02, `kv`, 0.65 | Both accepted; Date of Service ranks above Date. |
-| `Date: 03/01/2024` (0.95) and `Date of Service: 03/02/2024` (0.40) | 2024-03-01, `kv`, 0.95 | Date of Service is not accepted (below 0.6). |
-| Lab report: `Collected: 04/02/2024`, `Received: 04/03/2024`, `Report Date: 04/04/2024` | 2024-04-02, `kv` | Lab order: Collection before Received and Report Date. |
-| Discharge summary: `Visit Date: 02/03/2024`, `Admit Date: 02/01/2024`, `Discharge Date: 02/05/2024` | 2024-02-01 → 2024-02-05, `admit_discharge` | Step 0: the stay's dates win. |
+| `Date: 06/12/2024` (model scores 0.18), nothing else | no key/value date; edge keyword next | A weak date needs a score above 0.3. |
+| `Date: 03/01/2024` (0.95) and `Date of Service: 03/02/2024` (0.20) | 2024-03-02, `kv`, 0.20 | Service ranks above weak at any score. |
+| L1 Lab Report/Result: `Collected: 04/02/2024`, `Received: 04/03/2024`, `Report Date: 04/04/2024` | 2024-04-02, `kv` | Lab order: Collected → Received → Report Date. |
+| L1 Discharge Summary: `Visit Date: 02/03/2024`, `Admit Date: 02/01/2024`, `Discharge Date: 02/05/2024` | 2024-02-01 → 2024-02-05, `admit_discharge` | Step 0: the stay's dates win. |
+| L1 Progress Note: `Admit Date: 02/01/2024`, `Discharge Date: 02/05/2024`, nothing else | 2024-02-01 → 2024-02-05, `admit_discharge` | The pair is the last key/value group on other pages (a misclassified discharge page). |
 | `Print Date: 03/01/2024  Visit Date: 02/27/2024` | 2024-02-27, `kv` | A print date is never a DOS. |
 | `DATE: 05 / 20 / 2025` | 2025-05-20, `kv` | Merged to `05/20/2025` before extraction. |
 | `Date: 06 12 24` and nothing else | no DOS | Spaces-only dates are never read. |

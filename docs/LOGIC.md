@@ -258,7 +258,7 @@ when the body has a junk word too.
 | R1 | No ink (HW stage `blank_page` / `faint_marks_only`); or, not Visual, 0 characters or the word "blank" in < 30 characters | `blank` | 1, 2 |
 | R1 | Not Visual, < 15 characters otherwise | junk / Cover Page when a Cover Page term (`cover_page`, `cover_stamps`) is there, else junk / Others | 1, 2 |
 | R2 | "Intentionally left blank" on ≤ 25 words | junk / Others | 1, 2 |
-| R3 | Provider Signature = Yes (KV extraction), or a canon signature phrase | Main | 2 |
+| R3 | Provider Signature = Yes (KV extraction), or a canon signature phrase — unless DistilBERT and the keywords both say JUNK (JJ): then the vote (R9) decides, `votes.r3_skipped` | Main | 2 |
 | R4 | DistilBERT p(junk) > 0.85 — **not** when C or D (then the vote decides) | junk / DistilBERT's subtype | 2 |
 | R5 | Content ends in the top 15% of the page (running header / footer lines ignored) and no ink from 17% to 94% of the height — whatever the page says | junk / Others | 2 |
 | R6 | record_request + roi_vendors ≥ 7 and not C⁺ | junk / Record Request | 1, 2 |
@@ -590,14 +590,13 @@ Per page, two states:
 
 | # | State | Confidence | `match_type` |
 |---|---|---|---|
-| 1 | **Key/value.** Among the dates its rules accepted, the first label group in the page kind's priority (`kv_priority`: discharge = Admit/Discharge → Date of Service → …; lab = Date of Service → Collection → Received → Report Date → …; other = Date of Service → Collection → Admit/Discharge → Received → …), and within it the date the model scored highest — applied to the dates scored at least `kv_accept_min_score` (0.6); with none, the highest-scoring date at any score. A range keeps its end | the model's score (rule score without a model) | `kv` |
+| 1 | **Key/value.** Among the dates the extractor accepted, by the tier it gave them, the first group in the page kind's order (`kv_priority`; kind = the classification L1): **discharge** (Discharge Summary) = Admit + Discharge pair → service → weak → dt/dd → header/footer; **lab** (Lab Report/Result) = collected → received → Report Date → service → weak → dt/dd → header/footer → Admit + Discharge pair; **other** = service → weak → dt/dd → header/footer → Admit + Discharge pair. Within a group the highest score. Only weak keys have a floor: score > `weak_min_score` (0.3). Print-key dates never. A range keeps its end | the date's score (model, else rules) | `kv` / `admit_discharge_pair` |
 | 2 | **Edge keyword**, only when 1 has no date. A DOS label starting within the first or last `edge_words` (20) words of the page, with a date within `label_reach_chars` (40) after it and only filler words (`label_gap_words`: at, on, of, from, is, time, date, dt) between. An encounter label wins; otherwise Admission Date is **From** and Discharge Date is **To**; a discharge date alone is both. A written range after an encounter label keeps both ends. A date right after `D:`, `T:`, `DD:`, `DT:`, `TD:`, `TT:`, Dictated or Transcribed is never taken. Read on the final OCR text; on a page with no Final2 text, then on the Tesseract text (not for handwritten / low-quality pages) | 0.50 | `edge_keyword` / `edge_keyword_tesseract` / `admit_discharge_pair` |
 | — | Nothing: the page has no DOS | 0 | `no_date_found` |
 
-**Discharge documents.** After both states, on a page with a discharge date
-(key/value or edge label) or matching `discharge_document_cues`, the Admit date
-is From and the Discharge date (on or after it) is To; one alone is both.
-Key/value dates first, else edge labels. `source` `admit_discharge`.
+**Discharge pages** (L1 Discharge Summary) take the Admit date as From and the
+Discharge date (on or after it) as To before anything else; one alone is both.
+Key/value dates first, an edge label fills a missing side. `source` `admit_discharge`.
 
 **Dictation dates.** On an "other" page with no key/value or edge date: the dictated date (`D:`, `DD:`, Dictated), else the transcribed one, at 0.30 (`dictation`).
 

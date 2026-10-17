@@ -1,51 +1,107 @@
 {
-  "note": "Date of service, per page, two states: (1) the key/value extractor's best date: the pair its rules accepted that the model scored highest, at any score; its confidence is that score; (2) only when key/value has no date, a label below that starts within the first or last edge_words words of the page, with a date right after it (within label_reach_chars, only label_gap_words words between, so 'Visit Date: | DOB: 01/02/1960' is not a DOS; never a date after D:, T:, DD:, DT:, TD:, TT:, Dictated or Transcribed) \u2014 an encounter label wins, else admit is From and discharge To. Otherwise no date. Edit labels here, not in dos_logic.py. Reloads on change.",
+  "note": "Date of service, per page. (1) Key/value: the DOS dates the extractor accepted (staging/extraction.json), never a print key's, grouped by their tier; the page takes the first group in kv_priority for its kind (page classification L1, page_kinds) and within it the highest score; weak dates need a score above weak_min_score; a discharge page pairs Admit (From) with Discharge (To). (2) Only when key/value has no date, a label below that starts within the first or last edge_words words of the page, with a date right after it (within label_reach_chars, only label_gap_words words between, so 'Visit Date: | DOB: 01/02/1960' is not a DOS; never a date after D:, T:, DD:, DT:, TD:, TT:, Dictated or Transcribed) — an encounter label wins, else admit is From and discharge To. (3) Other pages only: the dictated date, else the transcribed one. Otherwise no date. Edit labels here, not in dos_logic.py. Reloads on change.",
   "DOS_DEFAULT_DATE": "2222-02-02",
   "note_default": "DOS_DEFAULT_DATE is shown for a page with no date of its own (doc-level columns, review-ui downloads). It is never a page's Extracted DOS; it is the Final DOS of a stand-alone non-visit document (continuity_canon.json default_final_dos).",
   "edge_words": 20,
   "label_reach_chars": 40,
-  "label_gap_words": ["at", "on", "of", "from", "is", "time", "date", "dt"],
+  "label_gap_words": [
+    "at",
+    "on",
+    "of",
+    "from",
+    "is",
+    "time",
+    "date",
+    "dt"
+  ],
   "confidence": {
     "kv": 0.9,
     "edge": 0.5,
     "dictation": 0.3
   },
   "note_confidence": "kv is used only for a key/value date with no score (staging from before the model ran); a scored date carries the model's own score. edge is every edge-keyword date.",
-  "kv_accept_min_score": 0.6,
-  "note_kv_accept_min_score": "The kv_priority order is applied to the dates the key/value model scored at least this (accepted). When no date on the page reaches it, the page takes the highest-scoring date at any score. Rules-only staging (no model scores): every date counts as accepted.",
-  "kv_priority": {
+  "weak_min_score": 0.3,
+  "note_weak_min_score": "A weak key's date (weak, weak_last: Date, Report Date, Service, dt, dd, ...) is a candidate only when its score (the model's, else the rules') is above this. No other tier has a floor: any score counts, and the score only orders dates within a group.",
+  "page_kinds": {
     "discharge": [
-      ["admit", "discharge"],
-      ["service"],
-      ["collected"],
-      ["received"],
-      ["report"],
-      ["weak"],
-      ["keyless"]
+      "Discharge Summary"
     ],
     "lab": [
-      ["service"],
-      ["collected"],
-      ["received"],
-      ["report"],
-      ["admit", "discharge"],
-      ["weak"],
-      ["keyless"]
-    ],
-    "other": [
-      ["service"],
-      ["collected"],
-      ["admit", "discharge"],
-      ["received"],
-      ["report"],
-      ["weak"],
-      ["keyless"]
+      "Lab Report/Result",
+      "Laboratory Data"
     ]
   },
-  "note_kv_priority": "Which key/value date a page takes: every date the rules accepted is a candidate; the page takes the first group in this order that has one (the page's kind: discharge = a discharge date or discharge_document_cues; lab = lab_document_cues or a collected / received date; else other), and within the group the date the model scored highest. Groups are the key tiers of extraction/dos/keys.json, with 'report' = the Report Date key. Its confidence is that model score.",
-  "discharge_document_cues": ["discharge\\s+(summary|note|instructions?|diagnos[ie]s|date)", "date\\s+of\\s+discharge", "hospital\\s+course", "admission\\s+date", "date\\s+of\\s+admission"],
-  "lab_document_cues": ["lab(oratory)?\\s+(report|results?)", "\\bspecimen\\b", "reference\\s+(range|interval)", "collection\\s+date", "date\\s+collected"],
-  "note_discharge": "Discharge documents, after both states: when the page has a discharge date (key/value or edge label) or matches discharge_document_cues, its Admit and Discharge dates take priority: From = the admit date, To = the discharge date on or after it (one alone is both). Key/value dates first, else edge labels. source admit_discharge; confidence = the key/value model's score for those dates, else confidence.edge.",
+  "note_page_kinds": "A page's kind is its page classification L1 (page_subtype stage, before DOS; a row without v24 axes gives its page_type): these names make it discharge or lab; any other, or no classification, is other. Laboratory Data is the pre-v24 page type for Lab Report/Result.",
+  "kv_priority": {
+    "discharge": [
+      [
+        "admit",
+        "discharge"
+      ],
+      [
+        "service"
+      ],
+      [
+        "weak"
+      ],
+      [
+        "weak_last"
+      ],
+      [
+        "keyless"
+      ]
+    ],
+    "lab": [
+      [
+        "collected"
+      ],
+      [
+        "received"
+      ],
+      [
+        "report"
+      ],
+      [
+        "service"
+      ],
+      [
+        "weak"
+      ],
+      [
+        "weak_last"
+      ],
+      [
+        "keyless"
+      ],
+      [
+        "admit",
+        "discharge"
+      ]
+    ],
+    "other": [
+      [
+        "service"
+      ],
+      [
+        "weak"
+      ],
+      [
+        "weak_last"
+      ],
+      [
+        "keyless"
+      ],
+      [
+        "admit",
+        "discharge"
+      ]
+    ]
+  },
+  "weak_last_keys": [
+    "dt",
+    "dd"
+  ],
+  "note_kv_priority": "Which key/value date a page takes. Candidates are the DOS dates the extractor accepted (staging/extraction.json), grouped by the tier it gave them; a print key's date (tier printed) is never one, and a tier not listed for the page's kind is not one either. Discharge: the Admit / Discharge pair (From = admit, To = the discharge on or after it, one alone is both; an edge label fills a missing side), then Date of Service, then weak keys. Lab: Collected, then Received, then Report Date (report), then Date of Service, then weak. Other: Date of Service, then weak. Lab and other pages end with the Admit / Discharge pair, so a discharge page the classifier missed keeps its stay. weak_last = a weak key in weak_last_keys (dt, dd), after every other weak key; keyless = a date in the header / footer band with no key in front of it. Within a group the highest score wins (the model's, else the rules', then page order); a weak key's date (Report Date too) needs a score above weak_min_score. Only when no group has a date: the edge keyword, then (other pages) the dictated date.",
   "labels": {
     "encounter": [
       "encounter date",
@@ -68,7 +124,21 @@
       "certification period",
       "cert period"
     ],
-    "admit": ["admit date", "admission date", "date of admission", "date of admit", "admitted on", "admitted", "dos from"],
-    "discharge": ["discharge date", "date of discharge", "discharged on", "discharged", "dos to"]
+    "admit": [
+      "admit date",
+      "admission date",
+      "date of admission",
+      "date of admit",
+      "admitted on",
+      "admitted",
+      "dos from"
+    ],
+    "discharge": [
+      "discharge date",
+      "date of discharge",
+      "discharged on",
+      "discharged",
+      "dos to"
+    ]
   }
 }

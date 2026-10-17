@@ -2,8 +2,15 @@
 
 Per page, two states:
 
-  1. Key/value — the key/value extractor's best date for the page: the pair its rules
-     accepted that the model scored highest, at any score. The confidence is that score.
+  1. Key/value — among the DOS dates the extractor accepted (never a print key's), the
+     first tier group in the order for the page's kind, which is its page classification
+     L1. Discharge (Discharge Summary): the Admit (From) / Discharge (To) pair, then Date of
+     Service. Lab (Lab Report/Result): Collected, then Received, then Date of Service.
+     Other: Date of Service. Then weak keys, dt / dd last among them, then keyless
+     header / footer dates. Lab pages rank Report Date after Received; lab and other
+     pages end with the Admit / Discharge pair (a misclassified discharge page). A tier not listed
+     for the kind is not a candidate.
+     Within a group the model's highest score wins; the confidence is that score.
   2. Edge keyword, only when key/value has no date — a DOS label (Encounter Date, Visit
      Date, Date of Service, Admission Date, Discharge Date, ...) that starts within the
      first or last ``edge_words`` (20) words of the page, with a date right after it. An
@@ -35,10 +42,6 @@ from stages.lib.canon_store import CANON_DIR, CanonFile
 LABEL_CLASSES = ("encounter", "admit", "discharge")
 
 
-def _any_of(patterns: Optional[list[str]]) -> re.Pattern[str]:
-    return re.compile("|".join(f"(?:{p})" for p in patterns or [r"(?!)"]), re.IGNORECASE)
-
-
 @dataclass(frozen=True)
 class DosProfile:
     default_date: str  # ISO
@@ -49,14 +52,14 @@ class DosProfile:
     confidence: dict[str, float]  # edge; kv when the extractor has no score
     label_re: re.Pattern[str]
     label_class: dict[str, str]  # letters-only phrase -> class
-    # A page matching one of these is a discharge document (admit / discharge dates win).
-    discharge_cues: re.Pattern[str]
-    # A page matching one of these is a lab report.
-    lab_cues: re.Pattern[str]
+    # Page classification L1 (casefolded) -> page kind (discharge / lab); else other.
+    page_kinds: dict[str, str]
     # Page kind (discharge / lab / other) -> key groups in priority order.
     kv_priority: dict[str, list[list[str]]]
-    # The priority applies to the dates the model scored at least this (accepted).
-    kv_accept_min_score: float
+    # Weak keys ranked after every other weak key (group weak_last).
+    weak_last_keys: frozenset[str]
+    # A weak key's date is a candidate only when scored above this; no other tier has a floor.
+    weak_min_score: float
 
 
 def _letters(text: str) -> str:
@@ -90,10 +93,10 @@ def _build_profile(data: dict[str, Any]) -> DosProfile:
         confidence={k: float(v) for k, v in data["confidence"].items()},
         label_re=label_re,
         label_class=label_class,
-        discharge_cues=_any_of(data.get("discharge_document_cues")),
-        lab_cues=_any_of(data.get("lab_document_cues")),
+        page_kinds={l1.casefold(): kind for kind, l1s in (data.get("page_kinds") or {}).items() for l1 in l1s},
         kv_priority={kind: [list(group) for group in groups] for kind, groups in (data.get("kv_priority") or {}).items()},
-        kv_accept_min_score=float(data.get("kv_accept_min_score", 0.0)),
+        weak_last_keys=frozenset(k.casefold() for k in data.get("weak_last_keys") or []),
+        weak_min_score=float(data.get("weak_min_score", 0.0)),
     )
 
 
@@ -359,58 +362,69 @@ def edge_page_date(
 # --- 1. key/value -------------------------------------------------------------
 
 
-def page_kind(page_text: str, candidates: list[dict[str, Any]], hits: list[LabelledDate], prof: DosProfile) -> str:
-    """discharge (a discharge date, or discharge wording), lab (lab wording, or a collected /
-    received date), else other."""
-    tiers = {item.get("tier") for item in candidates}
-    if "discharge" in tiers or any(h.label_class == "discharge" for h in hits) or prof.discharge_cues.search(page_text):
-        return "discharge"
-    if tiers & {"collected", "received"} or prof.lab_cues.search(page_text):
-        return "lab"
-    return "other"
+def page_kind(family: str, prof: DosProfile) -> str:
+    """The page's kind from its classification L1: discharge, lab, else other."""
+    return prof.page_kinds.get((family or "").strip().casefold(), "other")
 
 
-def _group(item: dict[str, Any]) -> str:
-    """A candidate's priority group: its key tier, with the Report Date key on its own."""
-    if str(item.get("keyword") or "").strip().casefold() == "report date":
+def _group(item: dict[str, Any], prof: DosProfile, rank: dict[str, int]) -> str:
+    """A candidate's priority group: the tier the extractor gave it. A weak key is weak_last
+    when it is in ``weak_last_keys`` (dt, dd), and report when it is Report Date and the
+    page kind ranks report on its own (lab); otherwise weak."""
+    tier = str(item.get("tier") or "")
+    if tier != "weak":
+        return tier
+    key = str(item.get("keyword") or "").strip().casefold()
+    if key in prof.weak_last_keys:
+        return "weak_last"
+    if key == "report date" and "report" in rank:
         return "report"
-    return str(item.get("tier") or "")
+    return tier
 
 
-def kv_page_date(
-    candidates: list[dict[str, Any]], kind: str = "other", prof: Optional[DosProfile] = None
-) -> Optional[PageDate]:
-    """State 1: among the key/value dates the rules accepted and the model scored at least
-    ``kv_accept_min_score``, the first priority group of the page's kind that has one
-    (``kv_priority``), and within it the date the model scored highest. When no date reaches
-    that score, the highest-scoring one at any score. Dates without a model score (rules-only
-    staging) all count as accepted. A range keeps its end. Its confidence is that score (the
-    rules' score without a model, else the canon's kv)."""
-    prof = prof or profile()
-    groups = prof.kv_priority.get(kind) or prof.kv_priority.get("other") or []
-    rank = {name: i for i, group in enumerate(groups) for name in group}
-    # A print key's date ('Printed On: 10/30/2025') is never a DOS, nor is the same date read
-    # without a key. Staging written before the extractor rejected print keys still has them
-    # accepted, so this holds here too.
+def kv_dated(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The candidates with a date that may be a DOS.
+
+    A print key's date ('Printed On: 10/30/2025') is never one, nor is the same date read
+    without a key. Staging written before the extractor rejected print keys still has them
+    accepted, so this holds here too."""
     printed = {str(item.get("iso")) for item in candidates or [] if item.get("tier") == "printed"}
-    dated = [
+    return [
         item for item in candidates or []
         if len(str(item.get("iso") or "")) == 10
         and item.get("tier") != "printed"
         and not (item.get("tier") == "keyless" and str(item.get("iso")) in printed)
     ]
-    if not dated:
-        return None
+
+
+def kv_page_date(
+    candidates: list[dict[str, Any]], kind: str = "other", prof: Optional[DosProfile] = None
+) -> Optional[PageDate]:
+    """State 1: among the key/value dates (``kv_dated``), the first priority group of the
+    page's kind that has one (``kv_priority``), and within it the date scored highest (then
+    page order). No score floor, except that a weak key's date (weak, weak_last) must score
+    above ``weak_min_score``. The score is the model's, else the rules'. A range keeps its
+    end. Its confidence is that score (the canon's kv when there is none)."""
+    prof = prof or profile()
+    groups = prof.kv_priority.get(kind) or prof.kv_priority.get("other") or []
+    rank = {name: i for i, group in enumerate(groups) for name in group}
 
     def score(item: dict[str, Any]) -> float:
         value = item.get("confidence")
         return float(value) if value is not None else prof.confidence["kv"]
 
-    accepted = [it for it in dated if not it.get("model_scored") or score(it) >= prof.kv_accept_min_score]
-    if accepted:
-        item = min(accepted, key=lambda it: (rank.get(_group(it), len(groups)), -score(it)))
-    else:
-        item = max(dated, key=score)
+    # Only the tiers listed for the page's kind; a weak key's date needs a score above the floor.
+    dated = [
+        it for it in kv_dated(candidates)
+        if _group(it, prof, rank) in rank
+        and (it.get("tier") != "weak" or score(it) > prof.weak_min_score)
+    ]
+    if not dated:
+        return None
+    item = min(dated, key=lambda it: (rank[_group(it, prof, rank)], -score(it)))
+    if item.get("tier") in ("admit", "discharge"):
+        # The admit / discharge backup (a misclassified discharge page) keeps the pair.
+        return admit_discharge_date(_kv_stay(dated), [], prof)
     iso, iso_to = str(item["iso"]), str(item.get("iso_to") or "")
     is_pair = len(iso_to) == 10 and iso_to > iso
     return PageDate(iso, iso_to if is_pair else iso, score(item),
@@ -450,22 +464,17 @@ def dictation_page_date(page_text: str, prof: Optional[DosProfile] = None) -> Op
 
 
 def admit_discharge_date(
-    page_text: str,
     kv_stay: dict[str, dict[str, Any]],
     hits: list[LabelledDate],
     prof: Optional[DosProfile] = None,
 ) -> Optional[PageDate]:
-    """Discharge documents: the stay's Admit (From) and Discharge (To) dates take priority.
+    """Discharge pages: the stay's Admit (From) and Discharge (To) dates, ahead of every other.
 
-    A page is a discharge document when it has a discharge date (key/value or edge label)
-    or matches ``discharge_document_cues``. ``kv_stay`` holds the key/value extractor's best
-    ``admit`` / ``discharge`` date for the page; edge labels fill a side it lacks. A
-    discharge date before the admit date is ignored; one date alone is both From and To."""
+    ``kv_stay`` holds the key/value extractor's best ``admit`` / ``discharge`` date for the
+    page; edge labels fill a side it lacks. A discharge date before the admit date is
+    ignored; one date alone is both From and To."""
     prof = prof or profile()
     edge_side = {cls: next((h for h in hits if h.label_class == cls), None) for cls in ("admit", "discharge")}
-    has_discharge = bool(kv_stay.get("discharge") or edge_side["discharge"])
-    if not (has_discharge or prof.discharge_cues.search(page_text or "")):
-        return None
 
     def side(cls: str) -> tuple[str, float | None, str] | None:
         item = kv_stay.get(cls)
@@ -577,18 +586,20 @@ def detect_dos_per_page(
     candidate_log: Optional[list[dict]] = None,
     kv_dates: Optional[dict[str, list[dict[str, Any]]]] = None,
     tesseract_texts: Optional[dict[str, str]] = None,
+    page_families: Optional[dict[str, str]] = None,
 ) -> list[dict]:
-    """One row per page: the key/value date chosen by the page kind's priority, else the edge
-    keyword (final text, then Tesseract), else — on an "other" page — the dictated date,
-    else the transcribed one, else nothing. Then, on a discharge document, its Admit /
-    Discharge dates take priority (``admit_discharge_date``).
+    """One row per page. On a discharge page, its Admit / Discharge pair first
+    (``admit_discharge_date``). Then the key/value date chosen by the page kind's priority,
+    else the edge keyword (final text, then Tesseract), else — on an "other" page — the
+    dictated date, else the transcribed one, else nothing.
 
     ``kv_dates`` maps a page name to every key/value date the rules accepted (``iso``,
     optional ``iso_to``, ``tier``, ``keyword``, ``confidence`` = the model's score).
     ``tesseract_texts`` maps a
     page name to its Tesseract text; only its first and last ``edge_words`` words are read.
     ``candidate_log``, when passed, gets every edge label with its date and whether it was
-    chosen.
+    chosen. ``page_families`` maps a page name to its classification L1 (the page kind);
+    a page without one is "other".
     """
     prof = profile()
     rows: list[dict] = []
@@ -602,12 +613,16 @@ def detect_dos_per_page(
             break
         page_name = page.get("page_name") or ""
 
-        # State 1: the key/value date, by the page kind's priority. The edge labels are read
-        # first: they also tell a discharge page apart.
+        # State 1: the key/value date, by the page kind's priority; a discharge page's stay
+        # first. Edge labels fill a side of the stay the key/value dates lack.
         candidates = (kv_dates or {}).get(page_name) or []
         hits = edge_dates(page_text, prof)
-        kind = page_kind(page_text, candidates, hits, prof)
-        found = kv_page_date(candidates, kind, prof)
+        kind = page_kind((page_families or {}).get(page_name, ""), prof)
+        found = None
+        if kind == "discharge":
+            found = admit_discharge_date(_kv_stay(kv_dated(candidates)), hits, prof)
+        if found is None:
+            found = kv_page_date(candidates, kind, prof)
         # State 2: no key/value date; the edge keyword.
         if found is None:
             found = edge_page_date(page_text, prof, hits)
@@ -621,10 +636,6 @@ def detect_dos_per_page(
                 hits = hits + tesseract_hits
         if found is None and kind == "other":
             found = dictation_page_date(page_text, prof)
-        # Post-processing: a discharge document is dated by its stay.
-        stay = admit_discharge_date(page_text, _kv_stay(candidates), hits, prof)
-        if stay is not None:
-            found = stay
 
         if candidate_log is not None:
             candidate_log.extend({"page_name": page_name, **asdict(hit)} for hit in hits)

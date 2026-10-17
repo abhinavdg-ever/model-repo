@@ -16,7 +16,7 @@ def test_an_extracted_date_is_the_page_date_when_the_edges_have_none():
                 {
                     "iso": "2024-03-15",
                     "raw": "03/15/2024",
-                    "tier": "encounter",
+                    "tier": "service",
                     "keyword": "Date of Service",
                 }
             ]
@@ -35,7 +35,7 @@ def test_the_key_value_date_comes_before_an_edge_label():
                 {
                     "iso": "2024-03-15",
                     "raw": "03/15/2024",
-                    "tier": "encounter",
+                    "tier": "service",
                     "keyword": "Visit Date",
                 }
             ]
@@ -63,7 +63,7 @@ def test_a_key_value_date_beats_a_date_in_the_middle_of_the_page():
                 {
                     "iso": "2024-06-01",
                     "raw": "06/01/2024",
-                    "tier": "encounter",
+                    "tier": "service",
                     "keyword": "Visit Date",
                 }
             ]

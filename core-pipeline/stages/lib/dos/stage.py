@@ -20,6 +20,7 @@ from db import (
     connect,
     get_blank_junk_flags,
     get_ocr_texts,
+    get_page_classification_map,
     get_quality_map,
     upsert_dos,
 )
@@ -188,6 +189,12 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             mark_skipped(conn, ctx, drop, "blank_junk")
             eligible = set(ctx.todo)
             text, tesseract = _combined_text(conn, chart_id, ctx.pages, eligible)
+            classification = get_page_classification_map(conn, chart_id)
+
+        from stages.lib.page_classify import axes
+
+        # The page kind (discharge / lab / other) is its classification L1.
+        families = {page["page_name"]: axes.family_of(classification.get(page["id"]) or {}) for page in ctx.pages}
 
         candidates: Optional[list[dict[str, Any]]] = [] if DOS_DEBUG else None
         from stages.lib.extraction.stage import ensure_staging
@@ -211,6 +218,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             candidate_log=candidates,
             kv_dates=kv_dates,
             tesseract_texts=tesseract,
+            page_families=families,
         )
 
         by_name = {p["page_name"]: p for p in ctx.pages}
