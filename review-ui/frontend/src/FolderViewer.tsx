@@ -393,7 +393,13 @@ export default function FolderViewer({
     [displayImagingDoc, page],
   );
   const canShowCorrected = pageNeedsCorrection(imagingPage);
-  const useCorrected = showCorrected && canShowCorrected;
+  // Header boxes are measured on the image the OCR read, which is the corrected page when
+  // stage 1 turned or straightened it. While they are drawn, show that image, or a tilted
+  // original puts every box a little off its text.
+  const headerBoxesOn =
+    (outputMode === "imaging" && imagingTab === "additional" && headerHighlight != null) ||
+    (outputMode === "ocr" && showSectionHeaders && (ocrTab === "final1" || ocrTab === "final2"));
+  const useCorrected = (showCorrected || headerBoxesOn) && canShowCorrected;
 
   useEffect(() => {
     if (!viewMenuOpen) return;
