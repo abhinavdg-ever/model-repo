@@ -4,6 +4,10 @@ One row per page, in the DB and in `imaging/<chart>_dos.csv`. Per page, the
 first rule that finds a date wins:
 
 1. **Key/value.** The date the key/value extractor selected for the page.
+   Plain dates only.
+1b. **Key/value pattern fallback.** Only when 1 found nothing: after a DOS key,
+   a date with spaced slashes (`05 / 20 / 2025`, 0.50), else spaces only
+   (`06 12 24`, right after the key, 0.30); `match_type` `kv_pattern`.
 2. **Edge keyword.** A DOS label that starts within the first or last 20 words
    of the page, with a date right after it (only filler words such as `at`,
    `on`, `time` in between). An encounter label (Encounter Date, Visit Date,

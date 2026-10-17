@@ -300,7 +300,7 @@ class PageDate:
     dos_to: str
     confidence: float
     keyword: str
-    source: str  # "edge" | "edge_tesseract" | "kv" | "llm" | "kv_low"
+    source: str  # "edge" | "edge_tesseract" | "kv" | "kv_pattern" | "llm" | "kv_low"
     is_pair: bool = False
 
 
@@ -437,6 +437,7 @@ def is_discharge_like(page_text: str) -> bool:
 
 _MATCH_TYPE = {
     "edge": "edge_keyword", "edge_tesseract": "edge_keyword_tesseract", "kv": "kv", "llm": "llm",
+    "kv_pattern": "kv_pattern",
     "kv_low": "kv_low",
 }
 
@@ -483,10 +484,14 @@ def detect_dos_per_page(
     kv_dates: Optional[dict[str, list[dict[str, Any]]]] = None,
     tesseract_texts: Optional[dict[str, str]] = None,
     kv_fallback: Optional[dict[str, list[dict[str, Any]]]] = None,
+    kv_pattern: Optional[dict[str, list[dict[str, Any]]]] = None,
 ) -> list[dict]:
-    """One row per page: key/value, else edge keyword (final text, then
-    Tesseract), else LLM, else a key/value date only the rules accepted (low
-    confidence), else nothing.
+    """One row per page: key/value, else the key/value pattern fallback, else edge
+    keyword (final text, then Tesseract), else LLM, else a key/value date only the
+    rules accepted (low confidence), else nothing.
+
+    ``kv_pattern`` maps a page name to the pattern fallback's dates (spaced slashes,
+    else spaces only, after a DOS key), for pages where the model chose no date.
 
     ``tesseract_texts`` maps a page name to its Tesseract text; only its
     first and last ``edge_words`` words are read.
@@ -511,6 +516,9 @@ def detect_dos_per_page(
 
         # Rule 1: the key/value date. The edge labels are still read for the candidate log.
         found = kv_page_date((kv_dates or {}).get(page_name) or [], prof)
+        if found is None:
+            # Rule 1b: the model chose no date; a looser pattern after a DOS key.
+            found = kv_page_date((kv_pattern or {}).get(page_name) or [], prof, source="kv_pattern")
         hits = edge_dates(page_text, prof)
         if found is None:
             found = edge_page_date(page_text, prof, hits)

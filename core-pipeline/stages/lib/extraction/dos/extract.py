@@ -1,8 +1,9 @@
 """Date of service from DOS keys, admit/discharge pairs, or header/footer dates.
 
-A date printed with spaced slashes ('05 / 20 / 2025') scores SPACED_DATE_SCORE; one with
-spaces only ('06 12 24') is read only right after a DOS key, only when no key on the page
-has another date, at SPACES_ONLY_SCORE.
+Only plain dates are DOS candidates for the key/value model. Looser patterns are a separate
+fallback (pattern_page, staged as ``dos_pattern``), read by the DOS stage only when the model
+chose no date for the page: spaced slashes ('05 / 20 / 2025') at SPACED_DATE_SCORE, else
+spaces only ('06 12 24') right after a DOS key at SPACES_ONLY_SCORE.
 
 Rules from Data/examp/dos.csv (keys and tiers live in DOS/keys.json):
   - Tiers per page: service keys > admit/discharge > received > weak keys (Date, dd, dt,
@@ -105,17 +106,14 @@ class _Span:
     spaced: bool = False
 
 
-def _spaced_score(span: _Span, score: float) -> float:
-    return SPACED_DATE_SCORE if span.spaced else score
-
-
 def _plausible(raw: str) -> bool:
     year = date_year(raw)
     return year is not None and _MIN_YEAR <= year <= date.today().year + 1
 
 
-def date_spans(text: str, blocked: set[str]) -> list[_Span]:
-    """Ranges first, then single dates outside them; implausible / DOB dates dropped."""
+def date_spans(text: str, blocked: set[str], spaced: bool = False) -> list[_Span]:
+    """Ranges first, then single dates outside them; implausible / DOB dates dropped. Plain
+    dates only, or with ``spaced`` the spaced-slash ones only (the pattern fallback)."""
     spans: list[_Span] = []
     for match in find_date_ranges(text):
         left, right = match.group(1), match.group(2)
@@ -133,7 +131,7 @@ def date_spans(text: str, blocked: set[str]) -> list[_Span]:
             continue
         value = normalize_date(raw)
         spans.append(_Span(match.start(1), match.end(1), value, value, value, spaced_date(raw)))
-    return sorted(spans, key=lambda span: span.start)
+    return sorted((span for span in spans if span.spaced == spaced), key=lambda span: span.start)
 
 
 def _span_tokens(tokens: list[Token], span: _Span) -> list[Token]:
@@ -164,11 +162,12 @@ def _pick(
     tier: str,
     blocked: set[str],
     header_row: bool = False,
+    spaced: bool = False,
 ) -> tuple[_Span, float, str] | None:
     key_start, key_end = tokens[key_first], tokens[key_last]
     origin = _value_origin(tokens, text, key_first, key_last)
     line_h = median_height([token.word for token in tokens])
-    spans = [span for span in date_spans(text, blocked) if span.start >= origin]
+    spans = [span for span in date_spans(text, blocked, spaced) if span.start >= origin]
     for span in spans:
         covered = _span_tokens(tokens, span)
         if not covered:
@@ -268,18 +267,21 @@ def _reach(hit: KeyHit, words: list[Word]) -> list[Word]:
     return list(chosen.values())
 
 
-def extract_box(hit: KeyHit, tier: str, blocked: set[str], words: list[Word] | None = None) -> DosHit:
+def extract_box(
+    hit: KeyHit, tier: str, blocked: set[str], words: list[Word] | None = None, spaced: bool = False
+) -> DosHit:
     tokens, text = ordered_tokens(_reach(hit, words) if words else hit.value_words)
     blank = DosHit(key=hit.key, region=hit.region, sentence=text, tier=tier)
     positions = key_token_span(tokens, hit.word_indexes, hit.key)
     if positions is None:
         return blank
     header_row = tier in _NEAR_TIERS and bool(words) and _header_row(hit, words)
-    picked = _pick(tokens, text, positions[0], positions[1], tier, blocked, header_row)
+    picked = _pick(tokens, text, positions[0], positions[1], tier, blocked, header_row, spaced)
     if picked is None:
         return blank
     span, score, source = picked
-    score = _spaced_score(span, score)
+    if spaced:
+        score = SPACED_DATE_SCORE
     row = DosHit(
         key=hit.key,
         region=hit.region,
@@ -291,7 +293,7 @@ def extract_box(hit: KeyHit, tier: str, blocked: set[str], words: list[Word] | N
         score=score,
         accepted=True,
         source=source,
-        pattern="spaced_slash" if span.spaced else "",
+        pattern="spaced_slash" if spaced else "",
     )
     # The same date is often printed twice on a line ('(Order Date - 12/13/2023) (Collection Date - 12/13/2023)').
     row.value_at = [token.word for token in _span_tokens(tokens, span)]
@@ -338,8 +340,7 @@ def extract_keyless(words: list[Word], page_h: float, blocked: set[str]) -> list
             if len(run) > (24 if _MONTH_NAME.search(segment) else _KEYLESS_MAX_TOKENS):
                 continue
             for span in date_spans(segment, blocked):
-                # A keyless stamp must be a plain date; a spaced one ('06 12 24') is too loose.
-                if span.spaced or _TIME_AFTER.match(segment[span.end :]):
+                if _TIME_AFTER.match(segment[span.end :]):
                     continue
                 window = segment[max(0, span.start - 14) : span.end + 14]
                 if _PAGE_LABEL.search(window):
@@ -495,12 +496,19 @@ def extract_page(hits: list[KeyHit], words: list[Word], page_h: float) -> list[D
     ]
     rows = drop_shared_values(rows + _note_label_rows(hits, words, blocked))
     if not any(row.accepted for row in rows):
-        # Fallback: a spaces-only date right after a DOS key ('Date: 06 12 24').
-        spaced = [
-            _spaces_only_row(hit, tiers.get(hit.key.strip().casefold(), "weak"), blocked, words)
-            for hit in trusted_field_hits(hits, "dos")
-        ]
-        rows.extend(row for row in spaced if row is not None)
-    if not any(row.accepted for row in rows):
         rows.extend(extract_keyless(words, page_h, blocked))
+    return mark_selected(rows)
+
+
+def pattern_page(hits: list[KeyHit], words: list[Word]) -> list[DosHit]:
+    """The pattern fallback, kept apart from the model's candidates: after a DOS key, a date
+    with spaced slashes ('05 / 20 / 2025'), else one with spaces only ('06 12 24'). The DOS
+    stage reads these only when the model chose no date for the page."""
+    tiers = load_key_tiers("dos")
+    blocked = _dob_values(hits)
+    keyed = [(hit, tiers.get(hit.key.strip().casefold(), "weak")) for hit in trusted_field_hits(hits, "dos")]
+    rows = [linked(extract_box(hit, tier, blocked, words, spaced=True), hit) for hit, tier in keyed]
+    rows = [row for row in drop_shared_values(rows) if row.accepted]
+    if not rows:
+        rows = [row for row in (_spaces_only_row(hit, tier, blocked, words) for hit, tier in keyed) if row]
     return mark_selected(rows)

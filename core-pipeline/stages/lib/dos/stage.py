@@ -78,7 +78,7 @@ def _page_method(hit: dict[str, Any], method: str) -> str:
     source = hit.get("page_source")
     if source == "llm":
         return "llm"
-    if source in ("kv", "kv_low"):
+    if source in ("kv", "kv_pattern", "kv_low"):
         return "kv"
     return method
 
@@ -240,6 +240,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         staged = ensure_staging(chart_id, ctx.chart_name)
         kv_dates: dict[str, list[dict[str, Any]]] = {}
         kv_fallback: dict[str, list[dict[str, Any]]] = {}
+        kv_pattern: dict[str, list[dict[str, Any]]] = {}
         for page in ctx.pages:
             staged_page = staged.page(page["page_name"])
             if staged_page is None:
@@ -247,6 +248,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             found = _kv_items(staged_page.selected("dos"))
             if found:
                 kv_dates[page["page_name"]] = found
+            else:
+                # The model chose no date: the pattern fallback ('05 / 20 / 2025', '06 12 24').
+                pattern = _kv_items(staged_page.selected("dos_pattern"))
+                if pattern:
+                    kv_pattern[page["page_name"]] = pattern
             # The model chose no date: the dates only the rules accepted, for a
             # low-confidence last resort (match_type kv_low).
             fallback = _kv_items(staged_page.rule_fallback("dos"))
@@ -260,6 +266,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             kv_dates=kv_dates,
             tesseract_texts=tesseract,
             kv_fallback=kv_fallback,
+            kv_pattern=kv_pattern,
         )
 
         by_name = {p["page_name"]: p for p in ctx.pages}
