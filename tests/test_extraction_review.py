@@ -177,10 +177,9 @@ def test_two_of_three_heading_checks_is_enough():
             ]
         },
     }
-    assert headings(page) == ["Office Visit Report", "Plan"]
+    assert headings(page) == ["Plan"]  # a header with a date is not shown at all
     # Every candidate is still given, the rejected one marked.
     assert [(h.text, h.candidate) for h in heron_headers(page)] == [
-        ("Office Visit Report", False),
         ("Plan", False),
         ("Mr", True),
     ]
@@ -219,10 +218,8 @@ def test_headers_drop_a_numeric_opening_and_strip_punctuation():
             ]
         },
     }
-    # No dates, numbers or ids: a word with a digit is dropped, and a header with
-    # nothing left ("023466") is not shown at all.
-    assert headings(page) == ["Signed by on at AM CDT", "CC/HPI"]
-    assert [h.text for h in heron_headers(page)] == ["RUS", "Signed by on at AM CDT", "CC/HPI"]
+    # A header holding a date, a number or an id is not shown at all.
+    assert [h.text for h in heron_headers(page)] == ["CC/HPI"]
 
 
 def test_page_file_joins_the_staged_page_by_name(tmp_path):
