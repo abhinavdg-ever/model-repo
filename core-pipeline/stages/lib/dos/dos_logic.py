@@ -50,6 +50,8 @@ class DosProfile:
     label_reach_chars: int
     label_gap_words: frozenset[str]
     confidence: dict[str, float]  # edge / kv / llm
+    # Rule 4 (kv_low) takes a date only when the model scored it at least this.
+    kv_low_min_score: float
     label_re: re.Pattern[str]
     label_class: dict[str, str]  # letters-only phrase -> class
     # Gate for the Azure OpenAI fallback.
@@ -87,6 +89,7 @@ def _build_profile(data: dict[str, Any]) -> DosProfile:
         label_reach_chars=int(data["label_reach_chars"]),
         label_gap_words=frozenset(w.casefold() for w in data["label_gap_words"]),
         confidence={k: float(v) for k, v in data["confidence"].items()},
+        kv_low_min_score=float(data.get("kv_low_min_score", 0.0)),
         label_re=label_re,
         label_class=label_class,
         clinical_cues=_any_of(data["clinical_cues"]),
@@ -261,6 +264,9 @@ def edge_dates(page_text: str, prof: Optional[DosProfile] = None) -> list[Labell
             gap = reach[: match.start()]
             if any(w.casefold() not in prof.label_gap_words for w in re.findall(r"[A-Za-z]+", gap)):
                 continue
+            if _DICTATION_BEFORE.search(page_text, 0, label.end() + match.start()):
+                # 'D: 03/01/2024 T: 03/04/2024': dictated / transcribed, not a visit date.
+                continue
             iso = parse_date_match(match)
             if iso is None:
                 continue
@@ -277,6 +283,13 @@ def edge_dates(page_text: str, prof: Optional[DosProfile] = None) -> list[Labell
     return found
 
 
+# A date right after one of these is when the note was dictated or transcribed ('D: 03/01/2024
+# T: 03/04/2024', 'DT: ...', 'Dictated: ...'): never a DOS, never one end of a range.
+_DICTATION_BEFORE = re.compile(
+    r"(?:(?<![A-Za-z])(?:D|T|DD|DT|TD|TT)\s*:|(?i:\b(?:dictated|transcribed)(?:\s+(?:on|date))?\s*:?))\s*$"
+)
+
+
 # "03/01/2024 - 03/05/2024", "... to ...", "... thru / through ...".
 _RANGE_TAIL_RE = re.compile(r"^\s*(?:-|–|—|to|thru|through)\s*", re.IGNORECASE)
 
@@ -288,6 +301,8 @@ def _range_end(page_text: str, hit: LabelledDate) -> str:
         return ""
     match = DATE_RE.match(page_text, hit.end + tail.end())
     iso = parse_date_match(match) if match else None
+    if iso and _DICTATION_BEFORE.search(page_text, 0, hit.end + tail.end()):
+        return ""
     return iso if iso and iso >= hit.iso else ""
 
 
@@ -360,6 +375,8 @@ def kv_page_date(
         is_pair = len(iso_to) == 10 and iso_to > iso
         confidence = prof.confidence[source]
         if source == "kv_low" and item.get("confidence") is not None:
+            if float(item["confidence"]) < prof.kv_low_min_score:
+                continue
             confidence = float(item["confidence"])
         # A spaces-only date ('06 12 24') is a loose pattern: capped low.
         if item.get("pattern") == "spaces_only":

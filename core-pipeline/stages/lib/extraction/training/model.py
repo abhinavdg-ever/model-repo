@@ -223,7 +223,7 @@ class Version:
                 vocab = folder / f"vocab_{field}.json"
                 self.fields[field] = FieldModel(
                     booster=lgb.Booster(model_file=str(path)),
-                    threshold=float(threshold),
+                    threshold=float(config.SELECT_THRESHOLDS.get(field, threshold)),
                     categories=features["categories"][field],
                     level=lgb.Booster(model_file=str(level)) if level.is_file() else None,
                     vocab={

@@ -38,6 +38,10 @@ Models_Root = EXTRACTION_MODELS_ROOT
 #   single (v002): the version's files directly in {Model_Registry}, or {Model_Registry}/vNNN/.
 # Trained locally from reviews, so they are copied with the models folder, never downloaded.
 Model_Registry = Models_Root / "kv-extraction"
+
+# Selection cut-offs that override a trained version's thresholds.json, whichever version
+# runs: the model takes a field's best candidate only at this probability or above.
+SELECT_THRESHOLDS = {"dos": 0.6}
 # Folder prefixes of the split layout: the key-value model and the heading model.
 SPLIT_PREFIXES = ("KV", "Heading")
 

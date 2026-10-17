@@ -254,3 +254,35 @@ def test_a_failed_llm_call_is_counted_and_gives_no_date(monkeypatch):
     assert (dos_logic.LLM_CALLS["made"], dos_logic.LLM_CALLS["failed"]) == (1, 1)
     assert "401" in dos_logic.LLM_CALLS["error"]
 
+
+
+def test_dictation_and_transcription_dates_are_never_a_dos_or_a_range():
+    import stages.lib.dos.stage  # noqa: F401
+    from dos_logic import detect_dos_per_page
+
+    def dos(text):
+        hit = detect_dos_per_page(f"===== 1.png =====\nNote.\n{text}\n", None, use_llm=False)[0]
+        return hit["dos_from_iso"], hit["dos_to_iso"]
+
+    assert dos("DOS: 03/01/2024\nD: 03/01/2024 T: 03/04/2024") == ("2024-03-01", "2024-03-01")
+    assert dos("Date of Service: 03/01/2024 - T: 03/04/2024") == ("2024-03-01", "2024-03-01")
+    assert dos("Visit Date DT: 03/04/2024") == ("", "")
+    assert dos("Visit Date: Dictated: 03/04/2024") == ("", "")
+    # Real ranges are unchanged.
+    assert dos("Date of Service: 03/01/2024 - 03/04/2024") == ("2024-03-01", "2024-03-04")
+    assert dos("Admission Date: 03/01/2024 Discharge Date: 03/04/2024") == ("2024-03-01", "2024-03-04")
+
+
+def test_kv_low_needs_a_model_score_of_at_least_0_3_and_the_model_picks_at_0_6():
+    import stages.lib.dos.stage  # noqa: F401
+    from dos_logic import detect_dos_per_page
+
+    from stages.lib.extraction.util import config
+
+    def kv_low(score):
+        fallback = {"1.png": [{"iso": "2024-06-12", "keyword": "Date", "confidence": score}]}
+        return detect_dos_per_page("===== 1.png =====\nno label\n", None, use_llm=False, kv_fallback=fallback)[0]
+
+    assert kv_low(0.29)["match_type"] == "no_date_found"
+    assert (kv_low(0.3)["match_type"], kv_low(0.3)["confidence"]) == ("kv_low", 0.3)
+    assert config.SELECT_THRESHOLDS["dos"] == 0.6

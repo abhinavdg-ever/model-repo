@@ -589,12 +589,17 @@ Per page, the first rule that finds a date wins:
 
 | # | Rule | Confidence | `match_type` |
 |---|---|---|---|
-| 1 | **Key/value.** The first date the key/value extractor selected for the page (a range keeps its end). Spaced slashes (`05 / 20 / 2025`) count as plain dates: the OCR words are merged into one before extraction | 0.90 | `kv` |
+| 1 | **Key/value.** The first date the key/value extractor selected for the page (a range keeps its end). The model selects a DOS at probability 0.60 or above (`SELECT_THRESHOLDS` in `extraction/util/config.py`, overriding the trained version's `thresholds.json`). Spaced slashes (`05 / 20 / 2025`) count as plain dates: the OCR words are merged into one before extraction | 0.90 | `kv` |
 | 2 | **Edge keyword.** A DOS label starting within the first or last `edge_words` (20) words of the page, with a date within `label_reach_chars` (40) after it and only filler words (`label_gap_words`: at, on, of, from, is, time, date, dt) between. An encounter label (Encounter Date, Visit Date, Date of Service, DOS, Service Date, Appointment Date, Exam Date, ...) wins; otherwise Admission Date is **From** and Discharge Date is **To**; a discharge date alone is both. A written range after an encounter label ("DOS: a - b") keeps both ends. Read on the final OCR text; on a page with no Final2 text, then on the Tesseract text (not for handwritten / low-quality pages), because Docling (Final1) can drop the top banner | 0.50 (backup) | `edge_keyword` / `edge_keyword_tesseract` / `admit_discharge_pair` |
 | 2b | **Key/value pattern fallback.** Only when rules 1 and 2 found nothing: a date with spaces only (`06 12 24`) right after a DOS key | 0.30 | `kv_pattern` |
 | 3 | **Azure OpenAI**, when `DOS_LLM_ENABLED`, on pages matching `clinical_cues` (`discharge_cues` asks for admission + discharge) | 0.50 (backup) | `llm` |
-| 4 | **Key/value, low confidence.** When the key/value model chose no date: the date its rules accepted (best model score first) | the model's own probability (else 0.50), at most 0.50 (backup) | `kv_low` |
+| 4 | **Key/value, low confidence.** When the key/value model chose no date: the date its rules accepted (best model score first), only if the model scored it at least `kv_low_min_score` (0.30) | the model's own probability (else 0.50), at most 0.50 (backup) | `kv_low` |
 | 5 | Nothing: the page has no DOS | 0 | `no_date_found` |
+
+**Dictation and transcription dates.** A date right after `D:`, `T:`, `DD:`,
+`DT:`, `TD:`, `TT:`, `Dictated` or `Transcribed` is when the note was dictated
+or typed, not the visit: the edge keyword rule never takes it, and never makes
+it the end of a range.
 
 **Backups read low.** Only rule 1 is the key/value model's pick. Every other
 date (rules 2–4) is a backup and is capped at `backup_max` (0.50), so a
