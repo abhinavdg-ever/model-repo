@@ -67,7 +67,7 @@ export const METRICS: {
     id: "credentials",
     label: "Provider Credentials",
     binary: true,
-    rule: "Every page is compared. Credentials match (MD, DO, NP…; punctuation and order ignored); some shared also counts as a Match. A page whose label is blank / NA / Not Available / None expects none: the pipeline extracting none is a Match, some is a No Match. Match or No Match, no Partial. Under Credentials = Yes (cases = pages the ground truth gives credentials): Precision = of the pages the pipeline gave credentials, the share right; Recall = of the cases, the share found",
+    rule: "Only pages where the ground truth or the pipeline gives credentials are compared. Any one credential shared is a Match (MD, DO, NP…; punctuation, order and separators ignored: 'MD | NP' against 'MD' matches). A page whose label is blank / NA / Not Available / None but where the pipeline extracted some is a No Match. Match or No Match, no Partial. Under Credentials = Yes (cases = pages the ground truth gives credentials): Precision = of the pages the pipeline gave credentials, the share right; Recall = of the cases, the share found",
   },
   {
     id: "orientation",
@@ -453,20 +453,21 @@ function addPresenceRates(rates: ClassRates, call: PresenceCall | null): void {
   else rates.tn += 1;
 }
 
-/** Credentials on every page. Old rows with only a Yes / No signature label
+/** Credentials where either side gives some. Old rows with only a Yes / No signature label
  * say nothing about credentials and are left out. */
 function credentialsCall(page: ImagingPageResult): PresenceCall | null {
   const gt = page.groundTruth;
   const label = gtCredentials(gt);
   if (!label && yesNo(gt?.providerSignature) === "yes") return null;
   const predicted = credentialTokens(page.providerCredentials).size > 0;
-  if (noValue(label)) return { expected: false, predicted, verdict: predicted ? "no" : "yes" };
+  // Only pages where the ground truth or the pipeline gives credentials are scored.
+  if (noValue(label)) return predicted ? { expected: false, predicted, verdict: "no" } : null;
   const verdict = credentialsVerdict(label, page.providerCredentials);
   if (!verdict) return null;
   return { expected: true, predicted, verdict: verdict === "maybe" ? "yes" : verdict };
 }
 
-function credentialsVerdict(
+export function credentialsVerdict(
   expected: string | null | undefined,
   actual: string | null | undefined,
 ): Verdict | null {

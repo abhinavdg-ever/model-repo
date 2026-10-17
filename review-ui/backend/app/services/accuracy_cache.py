@@ -423,6 +423,17 @@ def _with_signatures(
     return overlay_fields(pages, index_signature_rows(rows, chart_name))
 
 
+def _with_staged_credentials(
+    pages: list[ImagingPageResult], data_root: Path, chart_name: str
+) -> list[ImagingPageResult]:
+    """Provider Credentials as the page view shows them: the staged extraction's
+    only. The signature CSV's provider name is not a fallback."""
+    from app.services.extraction_review import staged_credentials
+
+    staged = staged_credentials(data_root, chart_name, [page.fileName for page in pages if page.fileName])
+    return [page.model_copy(update={"providerCredentials": staged.get(page.fileName)}) for page in pages]
+
+
 # A built report is reused for this long, so reopening the page (or Back from
 # a chart) does not re-query Postgres. A ground-truth save here clears it at
 # once; a pipeline run elsewhere shows up within the window, or on Refresh.
@@ -502,7 +513,11 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
     root = data_root if isinstance(data_root, Path) else Path(data_root)
     for chart_name, chart_pages in pages.items():
         pages[chart_name] = inherit_duplicate_blank_junk(
-            _with_signatures(chart_pages, root, chart_name, signatures.get(chart_name))
+            _with_staged_credentials(
+                _with_signatures(chart_pages, root, chart_name, signatures.get(chart_name)),
+                root,
+                chart_name,
+            )
         )
     charts = [
         AccuracyChartPayload(

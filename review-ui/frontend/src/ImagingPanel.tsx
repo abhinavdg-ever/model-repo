@@ -11,6 +11,7 @@ import {
   type OcrSectionHeader,
   type PageGroundTruth,
 } from "./api";
+import { credentialsVerdict } from "./accuracy";
 import {
   duplicateDisplayConfidence,
   formatDuplicateLabel,
@@ -1548,13 +1549,20 @@ function PageDetails({
               : fmtConfidence(page.providerSignatureConfidence, Boolean(page.providerName)),
             { id: "provider_name", label: "Provider Name" },
           ),
-          sameValue(
-            providerCredentials?.value || page.providerCredentials || NOT_FOUND,
-            providerCredentials
-              ? fmtConfidence(providerCredentials.confidence, true)
-              : fmtConfidence(page.providerSignatureConfidence, Boolean(page.providerCredentials)),
-            { id: "provider_credentials", label: "Provider Credentials", key: true },
-          ),
+          {
+            // The staged extraction's credentials only, no signature CSV fallback.
+            ...sameValue(
+              providerCredentials?.value || NOT_FOUND,
+              fmtConfidence(providerCredentials?.confidence ?? null, Boolean(providerCredentials)),
+              { id: "provider_credentials", label: "Provider Credentials", key: true },
+            ),
+            // Scored as the accuracy report scores it: any one credential shared
+            // ('MD | NP' against 'MD, PhD') is a match.
+            compare: (truth: string) => {
+              const verdict = credentialsVerdict(truth, providerCredentials?.value);
+              return verdict == null ? null : verdict === "no" ? "mismatch" : "match";
+            },
+          },
           sameValue(
             yesNo(page.providerSignature) === "yes" ? "Yes" : yesNo(page.providerSignature) === "no" ? "No" : NOT_FOUND,
             fmtConfidence(page.providerSignatureConfidence, yesNo(page.providerSignature) != null),
