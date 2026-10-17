@@ -454,16 +454,31 @@ def load_report(
     """The report, from the cache when it is under REPORT_TTL_SEC old and
     ``fresh`` is not asked for."""
     key = (settings.database_url, settings.db_schema, source)
-    now = time.monotonic()
+    asked = time.monotonic()
     if not fresh:
         with _reports_lock:
             cached = _reports.get(key)
-        if cached and now - cached[0] < REPORT_TTL_SEC:
+        if cached and asked - cached[0] < REPORT_TTL_SEC:
             return cached[1]
-    report = _build_report(settings, source)
+    # One build at a time per key: a second request (React StrictMode fires the
+    # screen's fetch twice in dev) waits and takes the report built meanwhile.
+    with _build_lock(key):
+        with _reports_lock:
+            cached = _reports.get(key)
+        if cached and cached[0] >= asked:
+            return cached[1]
+        report = _build_report(settings, source)
+        with _reports_lock:
+            _reports[key] = (time.monotonic(), report)
+        return report
+
+
+_build_locks: dict[tuple[str, str, str], threading.Lock] = {}
+
+
+def _build_lock(key: tuple[str, str, str]) -> threading.Lock:
     with _reports_lock:
-        _reports[key] = (time.monotonic(), report)
-    return report
+        return _build_locks.setdefault(key, threading.Lock())
 
 
 def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyReportResponse:
@@ -484,8 +499,6 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
             rows = _with_bulk_labels(
                 rows, latest_bulk_labels(conn, settings.database_url, names, settings.db_schema)
             )
-        locations = chart_locations(conn, names)
-    signatures = blob_signature_rows(locations, names)
     pages: dict[str, list[ImagingPageResult]] = {}
     sections: dict[str, ImagingSectionsProcessed] = {}
     manifests: dict[str, str | None] = {}
@@ -513,11 +526,9 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
     root = data_root if isinstance(data_root, Path) else Path(data_root)
     for chart_name, chart_pages in pages.items():
         pages[chart_name] = inherit_duplicate_blank_junk(
-            _with_staged_credentials(
-                _with_signatures(chart_pages, root, chart_name, signatures.get(chart_name)),
-                root,
-                chart_name,
-            )
+            # Credentials are the only provider field the screen scores, and they come from
+            # staging: the signature CSV is not downloaded for the report.
+            _with_staged_credentials(chart_pages, root, chart_name)
         )
     charts = [
         AccuracyChartPayload(

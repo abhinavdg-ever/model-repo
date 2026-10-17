@@ -104,17 +104,33 @@ def _confidence(hits: list[dict]) -> float | None:
     return max(scores) if scores else None
 
 
-def field_rows(page: dict | None) -> list[ExtractionFieldRow]:
+def _page_fields(page: dict | None) -> dict:
     fields = (page or {}).get("fields") if isinstance(page, dict) else None
-    if not isinstance(fields, dict):
-        fields = {}
-    rows: list[ExtractionFieldRow] = []
+    return fields if isinstance(fields, dict) else {}
+
+
+def _credential_rows(fields: dict) -> list[dict]:
     # Every accepted credential: staging written before every provider was selected left a
     # second provider's credential unselected. _providers merges repeats.
-    credential_rows = [
+    return [
         row for row in fields.get("provider_credentials") or []
         if isinstance(row, dict) and row.get("accepted")
     ]
+
+
+def credentials_text(page: dict | None) -> str:
+    """The Provider Credentials cell of field_rows alone: one entry per provider."""
+    fields = _page_fields(page)
+    providers = _providers(_credential_rows(fields))
+    if providers:
+        return " | ".join(", ".join(creds) for _, creds in providers)
+    return _join(_hit_text("provider_credentials", hit) for hit in _chosen(fields.get("provider_credentials")))
+
+
+def field_rows(page: dict | None) -> list[ExtractionFieldRow]:
+    fields = _page_fields(page)
+    rows: list[ExtractionFieldRow] = []
+    credential_rows = _credential_rows(fields)
     providers = _providers(credential_rows)
     for field_id, label in _FIELDS:
         chosen = _chosen(fields.get(field_id))
@@ -575,7 +591,7 @@ def staged_credentials(data_root: Path, folder_id: str, page_files: list[str]) -
         return {}
     found: dict[str, str] = {}
     for page_file in page_files:
-        row = next((r for r in field_rows(_page_for(pages, page_file)) if r.id == "provider_credentials"), None)
-        if row and row.extracted.strip():
-            found[page_file] = row.extracted
+        text = credentials_text(_page_for(pages, page_file))
+        if text.strip():
+            found[page_file] = text
     return found
