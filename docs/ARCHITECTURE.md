@@ -294,7 +294,7 @@ One folder per pipeline concern; only `canon_store.py` sits at the top level.
 |---|---|
 | `image_preprocess/` | Stage 1: rotation / tilt / mirror, handwriting classifier, quality score |
 | `ocr/` | Docling final1 engine + section-header matching (stage 6) |
-| `blank_junk/` | Blank / junk rules, TF-IDF model bridge, bundled model code (`model/`) |
+| `blank_junk/` | Blank / junk rules, DistilBERT model bridge, bundled model code (`model/`) |
 | `page_classify/` | Page family from the model; subtype from keyword rules |
 | `encounter/` | Encounter type per visit (tiered evidence: page type → explicit setting text → hints) |
 | `dos/` | Date-of-service driver + LLM pass |
@@ -340,9 +340,9 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/junk-classification/`.
 | File | Role |
 |---|---|
 | `classify.py` | The entry point: `classify_text()` tries each detector in priority order and returns a code; also the code constants, labels, `text_similarity()` / `fingerprint()` helpers and confidences. |
-| `method.py` | The blank/junk decision: rules R1–R8 and the three-voter vote; uncertain calls keep their verdict with confidence ≤ 0.60; ballots staged in `staging/blank_junk.json`. |
-| `model_bridge.py` | `model_scores()`: DistilBERT's and TF-IDF's raw probabilities for `method.py`. `classify_page()` (no longer called by the stage): wired like b_jnk v3 `scripts/infer.py` — BERT decides keep / blank / junk, TF-IDF is a junk safety net (p_junk ≥ 0.80 on a BERT keep → junk with review); Final OCR 1 pages go in through `extract_docling_page()`, plain text through `clean_ocr_text()`. TF-IDF alone when BERT is unavailable; regex fallback stamped `regex_fallback:<why>`. |
-| `model/src/` | Bundled model code the pickled checkpoint (`models/blank-junk/tfidf_flat.joblib`) unpickles against. |
+| `method.py` | The blank/junk decision: rules R1–R8 and the two-voter vote (DistilBERT, keywords); confidence is the evidence for the verdict (DistilBERT, keywords, the rule); ballots staged in `staging/blank_junk.json`. |
+| `model_bridge.py` | `model_scores()`: DistilBERT's raw probabilities for `method.py`; Final OCR 1 pages go in through `extract_docling_page()`, plain text through `clean_ocr_text()`. No BERT folder or torch: `None`, the voter abstains. TF-IDF is not read. |
+| `model/src/` | Bundled model code: the DistilBERT loader and the OCR-text cleaners. |
 | `kw.py` | Compiles `keyword-canon/junk_keywords_canon.json`; reloads on edit. |
 | `classify_junk.py` | The fuller CLI-era classifier retained from the V1 prototype. |
 | `blank.py` | Blank detection: empty OCR, declared-blank phrasing, near-empty image. |

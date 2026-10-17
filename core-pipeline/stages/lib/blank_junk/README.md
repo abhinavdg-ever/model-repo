@@ -1,7 +1,7 @@
 # Blank / junk / duplicate
 
 **The pipeline decides with `method.py`** (stage 3 and 7, `stage.py`): rules R1–R8, then
-DistilBERT, TF-IDF and the keyword canon vote (R9). Words, weights, thresholds and the
+DistilBERT and the keyword canon vote (R9). Words, weights, thresholds and the
 short-page geometry live in `../keyword-canon/blank_junk_context_canon.json`. The method, with
 worked examples, is `docs/BLANK_JUNK_PROPOSAL.md`; the summary is `docs/LOGIC.md` §3.
 

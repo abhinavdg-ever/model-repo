@@ -11,9 +11,10 @@ Two passes, as the pipeline spec requires:
           is not judged again.
 
 The verdict is ``method.decide`` (docs/BLANK_JUNK_PROPOSAL.md): rules R1-R8, then
-DistilBERT, TF-IDF and the keyword canon vote (R9). Pass 1 only removes what it
-is sure of; every other page stays Main and gets final OCR. An uncertain call
-keeps its verdict with a confidence of at most 0.60. Every ballot and the
+DistilBERT and the keyword canon vote (R9). Pass 1 only removes what it
+is sure of; every other page stays Main and gets final OCR. The confidence is
+the evidence for the verdict (DistilBERT, keywords, the rule), so a contested
+call comes out low. Every ballot and the
 deciding rule go to ``<chart>/staging/blank_junk.json`` beside the key/value
 extraction's ``extraction.json`` (not the database).
 
@@ -267,7 +268,6 @@ def _classify(
         page_inputs.text = text
         scores = model_scores(text, docling=(docling_pages or {}).get(page_id)) if text.strip() else {}
         page_inputs.bert = scores.get("bert")
-        page_inputs.tfidf = scores.get("tfidf")
         verdict = method.decide(page_inputs)
         by_id[page_id] = _row_for(
             page, code=verdict.code, reason=verdict.reason, confidence=verdict.confidence,

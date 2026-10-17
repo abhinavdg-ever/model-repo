@@ -211,7 +211,7 @@ class TestClinicalNotJunk:
 
 
 class TestModelBridge:
-    """The blank/junk model decides the flag and the junk subtype."""
+    """DistilBERT's probabilities feed the vote; TF-IDF is not read."""
 
     @staticmethod
     def _bridge():
@@ -232,87 +232,32 @@ class TestModelBridge:
         bridge = self._bridge()
         monkeypatch.setattr(config, "BLANK_JUNK_MODEL_DIR", tmp_path)
         status = bridge.model_status()
-        assert status["path"] == str(tmp_path / "tfidf_flat.joblib")
-        assert status["ready"] is False
-        assert "model file missing" in status["reason"]
+        assert status["path"] == str(tmp_path / "bert")
+        assert (status["ready"], status["engine"]) == (False, "keywords")
+        assert "BERT folder missing" in status["reason"]
 
-    def test_model_keep_is_not_rewritten_by_a_blank_phrase(self):
-        from classify import CODE_BLANK, CODE_MAIN
-
-        code, reason, conf = self._bridge().classify_page(
-            "This page intentionally left blank"
-        )
-        assert code in {CODE_BLANK, CODE_MAIN}
-        assert reason.startswith("model:")
-        assert "regex_fallback" not in reason
-        assert conf is not None
-
-    def test_clinical_note_is_main(self):
-        from classify import CODE_MAIN
-
-        text = (
-            "Progress Note\n"
-            "History of Present Illness: Patient presents with SOB.\n"
-            "Assessment: Hypertension.\n"
-            "Current Medications: Amlodipine.\n"
-        )
-        code, reason, conf = self._bridge().classify_page(text)
-        assert code == CODE_MAIN
-        assert reason.startswith("model:")
-        assert conf is not None and conf >= 0.7
-
-    def test_model_junk_subtype_comes_from_the_model_label(self):
-        from classify import JUNK_CODES, CODE_BLANK
-
-        text = (
-            "MEDICAL RECORDS REQUEST\n"
-            "Request for medical records\n"
-            "Please send the following records for the patient listed.\n"
-            "Records retrieval vendor: Copy service\n"
-            "Fulfillment due within 10 business days"
-        )
-        code, reason, conf = self._bridge().classify_page(text)
-        assert reason.startswith("model:")
-        if code in JUNK_CODES - {CODE_BLANK}:
-            assert "subtype:model:" in reason
-        assert "subtype:regex:" not in reason
-        assert "regex_fallback" not in reason
-        assert conf is not None
-
-    def test_junk_subtype_is_the_model_label(self):
-        from classify import CODE_LETTER_FAX, CODE_OTHERS
-
+    def test_scores_are_distilbert_only(self, monkeypatch):
         bridge = self._bridge()
-        code, why = bridge._junk_subtype("JUNK_FAX_TRANSMISSION")
-        assert (code, why) == (CODE_LETTER_FAX, "subtype:model:JUNK_FAX_TRANSMISSION")
-        code, why = bridge._junk_subtype("JUNK")
-        assert (code, why) == (CODE_OTHERS, "subtype:model:JUNK")
-
-    def test_missing_model_is_stamped_as_a_fallback(self, monkeypatch):
-        bridge = self._bridge()
-        monkeypatch.setattr(bridge, "_load_service", lambda: None)
-        _code, reason, conf = bridge.classify_page("Invoice Number 123 Amount Due")
-        assert reason.startswith("regex_fallback:model_unavailable")
-        assert conf is None
+        monkeypatch.setattr(bridge, "_load_model", lambda: None)
+        assert bridge.model_scores("Invoice Number 123 Amount Due") == {"bert": None}
 
     def test_vendored_src_package_does_not_stay_on_sys_path(self):
         import sys
 
         bridge = self._bridge()
-        assert bridge._load_service() is not None
+        bridge._load_model()
         assert str(bridge._VENDOR) not in sys.path
 
     def test_health_reports_the_model_without_loading_it(self):
         status = self._bridge().model_status()
-        assert status["ready"] is True
         assert status["model_version"]
-        # BERT is primary; without its folder or torch/transformers the TF-IDF
-        # fallback is reported, never silent.
+        # Without the BERT folder or torch/transformers the vote runs on keywords
+        # alone, and /health says so.
         if status["engine"] == "bert":
-            assert status["reason"] is None
+            assert status["ready"] is True and status["reason"] is None
         else:
-            assert status["engine"] == "tfidf"
-            assert "TF-IDF fallback" in status["reason"]
+            assert status["engine"] == "keywords" and status["ready"] is False
+            assert "keywords alone" in status["reason"]
 
 
 class TestSubtypeMapping:

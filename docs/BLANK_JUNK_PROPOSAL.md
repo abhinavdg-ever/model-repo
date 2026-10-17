@@ -1,7 +1,8 @@
 # Blank / Junk — Methodology
 
 Status: **IMPLEMENTED (2026-10-15)** in `core-pipeline/stages/lib/blank_junk/method.py`, called by
-the blank/junk stage in both passes. Written 2026-10-14; R4 narrowed on 2026-10-15 (§6).
+the blank/junk stage in both passes. Written 2026-10-14; R4 narrowed on 2026-10-15 (§6); TF-IDF removed and confidence
+rebuilt from the evidence on 2026-10-17 (§8, §10).
 Canon: `core-pipeline/stages/lib/keyword-canon/blank_junk_context_canon.json`.
 
 ---
@@ -13,7 +14,8 @@ downstream. A junk page that is kept only costs a reviewer a few seconds.
 So:
 
 - Every tie, abstention and missing signal resolves to **KEEP**.
-- JUNK needs **agreement**: at least two independent methods saying JUNK and
+- JUNK needs **evidence**: DistilBERT and the keywords agreeing, DistilBERT alone
+  with the keywords silent, or the keywords alone at a strong score (§8), and
   no veto.
 - A small set of deterministic rules decide before any vote, so obvious pages
   never depend on a model.
@@ -46,7 +48,6 @@ written.
 | Page type | `ocr_quality_results.document_type`: printed / handwritten / form / **visual** / blank / uncertain, and `handwritten_area_pct`, page-tag model (`convnext_page_tags`) | yes | yes |
 | Signature | KV extraction (`kv_extract`, seq 56): Provider Signature = Yes. Runs after final OCR and **before** pass 2 (seq 60) | no | yes |
 | DistilBERT | 8-label page model (KEEP, BLANK, 6 × JUNK_*) | yes | yes |
-| TF-IDF | `tfidf_flat.joblib`, p(junk) | yes | yes |
 | Keyword context | `blank_junk_context_canon.json` | yes | yes |
 
 **Visual.** Read from one place only: `ocr_quality_results.document_type = 'visual'`
@@ -171,11 +172,13 @@ is J but never J⁺.
   the bottom 8%. Junk words there count only if the body also has a junk hit.
   A fax banner across the top of a lab report does not make it junk.
 
-## 5. The three voters
+## 5. The two voters
 
 Each voter returns **JUNK**, **KEEP** or **ABSTAIN**, a strength
 (**strong** / **weak**) and, for JUNK, a subtype. The voters are independent:
-none reads another's output.
+neither reads the other's output. TF-IDF was a third voter until 2026-10-17; it
+was removed because it was not accurate enough (on chart 53688890 it decided
+no verdict and only added split votes).
 
 ### 5.1 DistilBERT (semantic)
 
@@ -199,19 +202,6 @@ top_junk_label = argmax over JUNK_* (BLANK → Others)
 
 Subtype: `top_junk_label`.
 
-### 5.2 TF-IDF (lexical statistics)
-
-| Condition | Vote | Strength |
-|---|---|---|
-| p_junk ≥ 0.85 | JUNK | strong |
-| 0.60 ≤ p_junk < 0.85 | JUNK | weak |
-| p_junk ≤ 0.15 | KEEP | strong |
-| 0.15 < p_junk ≤ 0.40 | KEEP | weak |
-| 0.40 < p_junk < 0.60 | ABSTAIN | — |
-
-Subtype: none of its own. It agrees or disagrees on JUNK, and the subtype comes
-from the others (§8).
-
 ### 5.3 Keyword context (canon)
 
 | J | C | D | Vote | Strength | Subtype |
@@ -224,12 +214,11 @@ from the others (§8).
 | — | — | D | KEEP | weak | — |
 | — | — | — | ABSTAIN | — | — |
 
-"—" means below threshold. When J and C both hit, the keyword voter says KEEP
-and the call is uncertain (§10). The best junk group is the group with
+"—" means below threshold. When J and C both hit, the keyword voter says KEEP. The best junk group is the group with
 the highest score; a tie goes to the group with the higher weight.
 
 The keyword voter **abstains** when it has no evidence; it does not vote KEEP.
-A page with no hits is decided by the two models.
+A page with no hits is decided by DistilBERT.
 
 ---
 
@@ -314,65 +303,86 @@ Pass 2 only, because it needs line coordinates and Provider Signature from KV ex
 
 ---
 
-## 8. How the three voters agree (R9)
+## 8. How the two voters decide (R9)
 
 ### 8.1 Counting
 
-Each voter casts one ballot: J (JUNK), K (KEEP) or A (ABSTAIN). Strong and
-weak are kept on every ballot. With three voters there are ten possible
-ballot sets.
+Each voter casts one ballot: J (JUNK), K (KEEP) or A (ABSTAIN), written
+DistilBERT first: `JA` = DistilBERT junk, keywords abstain. Strong and weak are
+kept on every ballot.
 
 ### 8.2 Decision table
 
-`s` = strong, `w` = weak. "C" = the keyword clinical score is at or above 4.
+| # | Ballots | Verdict | Notes |
+|---|---|---|---|
+| 1 | J J | **JUNK** if at least one J is strong; else **KEEP** | Two leanings are not agreement |
+| 2 | J A | **JUNK**, DistilBERT's subtype | DistilBERT alone, keywords have no evidence either way |
+| 3 | A J | **JUNK** when the keyword junk score ≥ 7 (`voters.keyword.junk_alone_min`); else **KEEP** | Keywords alone, only at a strong score. DistilBERT abstains under 8 words, when not loaded, or between its thresholds |
+| 4 | J K, K J | **KEEP** | The voters disagree |
+| 5 | K K | **KEEP** | |
+| 6 | K A, A K | **KEEP** | |
+| 7 | A A | **KEEP** | Nothing could judge the page |
 
-| # | Ballots | Verdict | Uncertain (confidence ≤ 0.60) | Notes |
-|---|---|---|---|---|
-| 1 | J J J | **JUNK** | no; yes if any J is weak or C | Unanimous |
-| 2 | J J K | **JUNK** only if both J are strong **and** the K is weak; else **KEEP** | yes | One dissent. A strong KEEP blocks |
-| 3 | J J A | **JUNK** if at least one J is strong; else **KEEP** | yes if any J is weak | Two agree, one silent |
-| 4 | J K K | **KEEP** | yes if the J is strong | Majority keep |
-| 5 | J K A | **KEEP** | yes | Split, no majority |
-| 6 | J A A | **KEEP** | yes if the J is strong | One voice is not agreement |
-| 7 | K K K | **KEEP** | no | |
-| 8 | K K A | **KEEP** | no | |
-| 9 | K A A | **KEEP** | no | |
-| 10 | A A A | **KEEP** | yes | Nothing could judge the page |
+In pass 2 a DistilBERT p(junk) above 0.85 has already been decided by R4 unless
+the page is clinical or demographic, and then the keywords vote KEEP. So row 2
+in pass 2 is in practice DistilBERT at 0.60–0.85.
 
 ### 8.3 Vetoes applied to a JUNK result from the table
 
-Applied in order to rows 1–3. Any veto turns the result into **KEEP, uncertain**.
+Applied in order to rows 1–3. Any veto turns the result into **KEEP**; the
+confidence then comes out low by itself (§8.5).
 
 | Veto | Condition | Effect |
 |---|---|---|
-| **Clinical veto** | C (clinical ≥ 4) | KEEP, uncertain. Even 3 strong JUNK ballots are blocked |
-| **Demographic veto** | D and the junk score does not come from record_request / roi_vendors / invoice | KEEP, uncertain (face sheets, registration) |
-| **Handwritten veto** | `handwritten_area_pct` **> 30%** (page-tag model) | KEEP, uncertain. A page that is mostly handwriting is clinical far more often than admin, and OCR on it is weak. A printed form with a few handwritten fields (≤ 30%) is not protected |
+| **Clinical veto** | C (clinical ≥ 4) | KEEP |
+| **Demographic veto** | D and the junk score does not come from record_request / roi_vendors / invoice | KEEP (face sheets, registration) |
+| **Handwritten veto** | `handwritten_area_pct` **> 30%** (page-tag model) | KEEP. A page that is mostly handwriting is clinical far more often than admin, and OCR on it is weak. A printed form with a few handwritten fields (≤ 30%) is not protected |
 
 C⁺ never reaches R9 (R7 kept it). So the clinical veto here covers the
 moderate band, score 4–7.
 
-### 8.4 Why two-of-three, and why strength matters
+### 8.4 Why this table
 
-- **Independence.** DistilBERT reads meaning, TF-IDF reads word statistics, and
-  the canon reads curated phrases. They fail differently: BERT is fooled by
-  long letters, TF-IDF by vocabulary overlap, and keywords by OCR noise.
-  Agreement between two of them is much rarer by chance than either alone.
-- **A strong KEEP is a veto in all but name** (row 2). If any method is
-  confident the page is clinical, two other methods saying junk is not enough.
-- **Two weak JUNKs are not agreement** (row 3 with both weak, and row 2). Weak
-  means "leaning". Two leanings plus a silent third stays KEEP, with low confidence.
-- **Abstention is not a KEEP vote.** It removes the voter. That is why row 6
-  (one J, two silent) keeps the page: the only evidence is one voter.
+- **A KEEP against a JUNK always keeps** (row 4). If either method sees a
+  clinical or demographic page, the other saying junk is not enough.
+- **Two weak JUNKs are not agreement** (row 1, both weak).
+- **One voter may junk when the other is silent** (rows 2 and 3): abstention is
+  not a KEEP vote. The keywords alone need a strong score, because a junk word
+  or two appears on clinical pages too.
 
 ### 8.5 Confidence written to the row
 
+The confidence is the evidence for the verdict, not a fixed number. Each
+signal is a probability that the verdict is right:
+
+| Signal | Junk verdict | Main verdict | Used when |
+|---|---|---|---|
+| DistilBERT | p(junk) | p(keep) | it scored the page (loaded, ≥ 8 words; R4 always) |
+| Keywords | junk score / 10 | max(clinical, demographic) / 10 | the keyword ballot is J or K; pointing the other way it counts as 1 − that |
+| Rule | R5 0.95 · R6 0.97 · R7 0.95 · R8 0.90 | same | R5–R8 |
+
 ```
-JUNK:  confidence = mean(p_junk of the voters that voted JUNK)
-       (keyword p = min(1, junk_score / 10))
-KEEP:  confidence = mean(1 − p_junk of the voters that voted KEEP), or 0.50 if none did
-Rules R1–R8: fixed values — R1 1.00, R2 0.99, R3 0.95, R5 0.95, R6 0.97, R7 0.95, R8 0.90; R4 = DistilBERT's p(junk)
+all signals agree      confidence = 1 − Π(1 − p)      two agreeing signals reinforce
+any disagreement       confidence = mean(p)           a contested call comes out low
+no signal              confidence = 0.50
+R1 1.00 · R2 0.99 · R3 0.95                            observations, fixed
 ```
+
+A signal agrees when its probability is ≥ 0.5; the keywords agree when their
+ballot points the verdict's way. The signals are staged as `confidence_from`.
+
+| Page | DistilBERT | Keywords | Verdict | Confidence |
+|---|---|---|---|---|
+| Fax cover, both junk | 0.80 | 0.60 | Junk | 1 − 0.2 × 0.4 = 0.92 |
+| JA, weak DistilBERT | 0.70 | — | Junk | 0.70 |
+| AJ, invoice score 9 | — | 0.90 | Junk | 0.90 |
+| JK, clinical 4 | p(keep) 0.20 | 0.40 | Main | mean = 0.30 |
+| Handwritten veto on JA | p(keep) 0.30 | — | Main | 0.30 |
+| Note, both keep | 0.98 | 0.60 | Main | 0.99 |
+
+The numbers are uncalibrated: DistilBERT's softmax is overconfident. Once
+reviewed pages are available, fit a temperature on them so 0.80 means right
+about 80% of the time.
 
 ---
 
@@ -384,9 +394,6 @@ When the verdict is JUNK (R9), the subtype is chosen in this order:
 2. Else DistilBERT's `top_junk_label`, if BERT voted JUNK.
 3. Else Others.
 
-The call is uncertain when keyword and BERT both voted JUNK with **different**
-subtypes and both were strong.
-
 Mapping: fax_cover → Letter/Fax · cover_page → Cover Page · record_request,
 roi_vendors → Record Request/Transmittal · invoice → Invoice · placeholder →
 Others · cover_stamps → Cover Page. There is no instructions word list, so
@@ -394,23 +401,13 @@ Instructions comes only from DistilBERT's label.
 
 ---
 
-## 10. Uncertain calls: lower confidence, never "no verdict"
+## 10. Low confidence, never "no verdict"
 
 This is client-facing, so every page gets one verdict: blank, junk (with a
-subtype), duplicate or Main. There is no separate review flag. When the call is
-uncertain, the verdict stands and its **confidence is capped at 0.60**
-(`uncertain_confidence_cap` in the canon). Filter on confidence ≤ 0.60 to see
-the pages worth a second look.
-
-A call is uncertain when:
-
-- the table in §8.2 marks it,
-- any veto in §8.3 fired,
-- J and C both hit,
-- subtypes disagree (§9),
-- a voter was unavailable (§12).
-
-Rules R1–R8 are not uncertain: they keep their fixed confidence.
+subtype), duplicate or Main. There is no separate review flag and no cap. A
+contested call — a veto, a split vote, a weak single voter, a missing model —
+gets a low confidence from §8.5 by itself. Filter on low confidence to see the
+pages worth a second look.
 
 ---
 
@@ -421,7 +418,7 @@ Rules R1–R8 are not uncertain: they keep their fixed confidence.
 | Pages | All pages. Visual is **decided here** (R8). Handwritten and uncertain pages are deferred | Everything pass 1 deferred; **Visual pages skipped** |
 | Rules | R1, R2, R6, R7, R8 | R1–R9 in full (R8 never reached: Visual is already decided) |
 | DistilBERT > 0.85 | Not forced (no Provider Signature yet); counts as a strong JUNK ballot | **Forced JUNK** (R4) unless signed |
-| Vote | Only **row 1 with all three strong** and no veto is final | Full table |
+| Vote | Only **row 1 with both strong** and no veto is final; J A and A J wait for pass 2 | Full table |
 | Everything else | Deferred: stays Main, gets final OCR, decided in pass 2 | Final |
 
 Pass 1 only removes pages it is certain about, which saves the stage-5 bill. A
@@ -436,8 +433,7 @@ pass 2.
 
 | Missing | Behaviour | Recorded |
 |---|---|---|
-| DistilBERT | Its ballot is A. Two voters remain, so JUNK needs both, and both strong | `"note": "unavailable"` on the DistilBERT ballot; confidence ≤ 0.60 |
-| TF-IDF | Same | `"note": "unavailable"` on the TF-IDF ballot; confidence ≤ 0.60 |
+| DistilBERT | Its ballot is A. Only row 3 (keywords ≥ 7) can junk in the vote | `"note": "unavailable"` on the DistilBERT ballot; `/health` → `engine: keywords`; no DistilBERT signal in `confidence_from` |
 | Canon fails to load | Last good version (canon_store); first load raises | — |
 | Page-tag model | No page is Visual; R8 never fires | `visual_source = "none"` |
 | KV extraction (Provider Signature) | R3 uses the canon `signature` group only | `signature_source = "canon_only"` |
@@ -458,8 +454,8 @@ and the comparison only runs when the two lengths are within 10% of each other.
 ## 14. Recording
 
 The database row is unchanged: `blank_junk_flag`, `junk_subtype`,
-`confidence` (≤ 0.60 when uncertain) and `reason` (the deciding rule, e.g.
-`R9 vote JKK row 4 -> Main (veto: clinical)`). No schema change.
+`confidence` (§8.5) and `reason` (the deciding rule, e.g.
+`R9 vote JK (DistilBERT, keywords) row 4 -> Main`). No schema change.
 
 Every ballot is staged on disk beside the key/value extraction's
 `extraction.json`, at `<chart>/staging/blank_junk.json`. Each pass replaces its
@@ -471,18 +467,17 @@ own entries and keeps the other pass's:
    "pass": 2, "rule": "R9",
    "bert":  {"vote": "JUNK", "strength": "strong", "p_junk": 0.98, "subtype": "Record Request/Transmittal",
              "label": "JUNK_RECORD_REQUEST"},
-   "tfidf": {"vote": "KEEP", "strength": "strong", "p_junk": 0.0},
    "kw":    {"vote": "KEEP", "strength": "weak", "p_junk": 0.0, "clinical": 5, "junk": 0,
              "demographic": 1, "junk_group": null, "hits": {"clinical.section_headings": ["PLAN"]}},
-   "ballots": "JKK", "by_voter": {"bert": "J", "tfidf": "K", "kw": "K"},
-   "row": 4, "r4_skipped": "clinical", "uncertain": true,
+   "ballots": "JK", "by_voter": {"bert": "J", "kw": "K"},
+   "row": 4, "r4_skipped": "clinical",
+   "confidence_from": {"bert": 0.02, "keywords": 0.5, "combined": "disagree"},
    "visual_source": "none", "signature_source": "kv_extract", "hw_area": "none",
    "short_page": {"content_bottom": 0.415},
-   "verdict": "Main", "confidence": 0.6, "reason": "R9 vote JKK (DistilBERT, TF-IDF, keywords) row 4 -> Main"}}}}
+   "verdict": "Main", "confidence": 0.26, "reason": "R9 vote JK (DistilBERT, keywords) row 4 -> Main"}}}}
 ```
 
-`ballots` is one letter per voter, always in the order DistilBERT, TF-IDF,
-keywords (K = Keep, J = Junk, A = Abstain), so it says who cast which ballot.
+`ballots` is one letter per voter, always in the order DistilBERT, keywords (K = Keep, J = Junk, A = Abstain), so it says who cast which ballot.
 
 `visual_source` is `none` when the page-tag model did not tag the page,
 `signature_source` is `canon_only` when the KV signature output was missing,

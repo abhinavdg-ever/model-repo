@@ -61,7 +61,7 @@ Compare these keys. Each should say `"ready": true` on both machines, with the s
 | Key | If not ready on the VM |
 |---|---|
 | `hw_model` | handwriting check uses the RandomForest backup |
-| `blank_junk_model` | blank/junk uses TF-IDF (or regex) instead of BERT |
+| `blank_junk_model` | blank/junk vote runs on keywords alone (`engine: keywords`) |
 | `page_family_model` | page type falls back to keywords |
 | `rapidocr_models` | no Final OCR 1 |
 | `docling_final1` | no Final OCR 1 |

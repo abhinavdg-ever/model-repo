@@ -328,7 +328,7 @@ def page_axes_model_status() -> dict[str, Any]:
 
 
 def blank_junk_model_status() -> dict[str, Any]:
-    """TF-IDF blank/junk model. Never raises; never loads the model."""
+    """DistilBERT blank/junk model. Never raises; never loads the model."""
     try:
         import sys
 

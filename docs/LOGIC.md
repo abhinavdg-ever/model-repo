@@ -266,19 +266,35 @@ when the body has a junk word too.
 | R8 | `document_type = 'visual'` → Main, unless invoice / retrieval wording ≥ 7 | Main or junk | 1 (pass 2 skips these pages) |
 | R9 | The vote, below | | 1, 2 |
 
-**The vote (R9).** DistilBERT (raw 8-label softmax), TF-IDF (p(junk)) and the
-keyword canon each cast JUNK / KEEP / ABSTAIN, strong or weak. JUNK needs two
-JUNK ballots with at least one strong and no strong KEEP against them; every
-other combination is Main. Then the vetoes turn a JUNK into Main + review:
-clinical (C), demographic (D without retrieval / invoice wording), handwritten
-area > 30%. Pass 1 only takes a unanimous all-strong JUNK; everything else stays
-Main and is judged again in pass 2 on final OCR. A model that is not loaded
-abstains.
+**The vote (R9).** Two voters: DistilBERT (raw 8-label softmax) and the keyword
+canon each cast JUNK / KEEP / ABSTAIN, strong or weak. Ballots are written
+DistilBERT first (`JA` = DistilBERT junk, keywords abstain):
+
+| Ballots | Verdict |
+|---|---|
+| J J | Junk if at least one is strong, else Main |
+| J A | Junk (DistilBERT alone) |
+| A J | Junk when the keyword junk score ≥ 7 (`voters.keyword.junk_alone_min`), else Main |
+| J K, K J | Main |
+| K K, K A, A K, A A | Main |
+
+Then the vetoes turn a Junk into Main: clinical (C), demographic (D without
+retrieval / invoice wording), handwritten area > 30%. Pass 1 only takes J J with
+both strong; everything else stays Main and is judged again in pass 2 on final
+OCR. A model that is not loaded abstains (`/health` → `engine: keywords`).
+TF-IDF is no longer a voter.
 
 Subtype: the canon's best junk group, else DistilBERT's label, else Others.
-Every page gets one verdict (client-facing). An uncertain call — a split vote, a
-veto, clinical and junk evidence together, a missing model — keeps its verdict
-with **confidence capped at 0.60**; filter on that to review. Patient-education
+
+**Confidence** is the evidence for the verdict, not a fixed number. Signals:
+DistilBERT's probability for the verdict (when it scored the page, ≥ 8 words),
+the keywords (junk score / 10, or clinical-or-demographic / 10; when they point
+the other way, 1 − that), and for R5–R8 the rule's own value (R5 0.95, R6 0.97,
+R7 0.95, R8 0.90). Signals that agree combine as 1 − ∏(1 − p); a disagreement
+is averaged; no signal is 0.50. R1–R3 are observations and stay fixed (1.00 /
+0.99 / 0.95). A contested call — a veto, a split vote — therefore comes out low
+on its own; filter on low confidence to review. The signals are staged as
+`confidence_from`. Patient-education
 handouts score as clinical (`patient_education` canon group), so DistilBERT
 cannot force them to junk. Every ballot and the deciding rule are staged in
 `<chart>/staging/blank_junk.json` (beside `extraction.json`), not the database.

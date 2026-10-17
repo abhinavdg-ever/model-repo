@@ -1,7 +1,7 @@
-"""Blank / junk decision: rules R1-R8, then three voters (docs/BLANK_JUNK_PROPOSAL.md).
+"""Blank / junk decision: rules R1-R8, then two voters (docs/BLANK_JUNK_PROPOSAL.md).
 
 Inputs per page (``PageInputs``): the OCR text, its word boxes when the pass has them,
-DistilBERT's and TF-IDF's raw probabilities (model_bridge.model_scores), the page type and
+DistilBERT's raw probabilities (model_bridge.model_scores), the page type and
 handwritten share from the page-tag model, and Provider Signature from KV extraction.
 
 The ladder, first rule that fires decides (R4, R5 and R3's KV half need pass 2):
@@ -17,14 +17,15 @@ The ladder, first rule that fires decides (R4, R5 and R3's KV half need pass 2):
   R6 retrieval      record_request + roi_vendors >= 7 and not C+ -> Junk / Record Request
   R7 strong clinical  C+ -> Main
   R8 Visual         document_type 'visual' -> Main, unless retrieval / invoice wording >= 7
-  R9 vote           DistilBERT, TF-IDF and the keyword canon (§8 of the method)
+  R9 vote           DistilBERT and the keyword canon (§8 of the method)
 
-Pass 1 only lets R1, R2, R6, R8 and a unanimous strong vote decide; every other page stays
+Pass 1 only lets R1, R2, R6, R8 and two strong JUNK ballots decide; every other page stays
 Main and is judged again in pass 2 on the final OCR.
 
-Every page gets one verdict. When the call is uncertain (a split vote, a veto, clinical and
-junk evidence together, a model that did not load) its confidence is capped at the canon's
-``uncertain_confidence_cap`` (0.60), so those pages can be filtered for a second look.
+Every page gets one verdict. Its confidence is the evidence for that verdict (§8.5):
+DistilBERT's probability, the keyword score and, for R5-R8, the rule's own value. Signals
+that agree reinforce each other; signals that disagree are averaged, so a contested call
+comes out low on its own. R1-R3 are observations and keep a fixed confidence.
 
 The words, weights, thresholds and geometry live in
 ``keyword-canon/blank_junk_context_canon.json`` (reloads on change).
@@ -59,7 +60,7 @@ SUBTYPE_CODE = {
     "Letter/Fax": CODE_LETTER_FAX,
     "Others": CODE_OTHERS,
 }
-# DistilBERT / TF-IDF labels -> subtype.
+# DistilBERT labels -> subtype.
 MODEL_SUBTYPE = {
     "JUNK_INVOICE": "Invoice",
     "JUNK_INSURANCE_ID": "Invoice",
@@ -74,11 +75,14 @@ MODEL_SUBTYPE = {
 RETRIEVAL_GROUPS = ("record_request", "roi_vendors")
 HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice")
 
-# The three voters, in the order their letters are written in the vote
-# ("R9 vote JAK (DistilBERT, TF-IDF, keywords)"): K = Keep, J = Junk, A = Abstain.
-VOTER_NAMES = {"bert": "DistilBERT", "tfidf": "TF-IDF", "kw": "keywords"}
+# The two voters, in the order their letters are written in the vote
+# ("R9 vote JA (DistilBERT, keywords)"): K = Keep, J = Junk, A = Abstain.
+VOTER_NAMES = {"bert": "DistilBERT", "kw": "keywords"}
 
-RULE_CONFIDENCE = {"R1": 1.0, "R2": 0.99, "R3": 0.95, "R5": 0.95, "R6": 0.97, "R7": 0.95, "R8": 0.90}
+# R1-R3 are observations: their confidence is fixed. R5-R8 are judgements: their value is
+# one signal, combined with DistilBERT and the keywords (_confidence).
+FIXED_CONFIDENCE = {"R1": 1.0, "R2": 0.99, "R3": 0.95}
+RULE_PRIOR = {"R5": 0.95, "R6": 0.97, "R7": 0.95, "R8": 0.90}
 MIN_TEXT_CHARS = 15
 BLANK_WORD_MAX_CHARS = 30
 BLANK_WORD = re.compile(r"\bblank\b", re.IGNORECASE)
@@ -399,22 +403,6 @@ def bert_ballot(model: Optional[dict[str, Any]], words: int) -> Ballot:
     return Ballot(ABSTAIN, p_junk=p_junk)
 
 
-def tfidf_ballot(model: Optional[dict[str, Any]]) -> Ballot:
-    if not model:
-        return Ballot(ABSTAIN, note="unavailable")
-    cfg = canon().raw["voters"]["tfidf"]
-    p_junk = float(model["p_junk"])
-    if p_junk >= float(cfg["junk_strong"]):
-        return Ballot(JUNK, STRONG, p_junk)
-    if p_junk >= float(cfg["junk_weak"]):
-        return Ballot(JUNK, WEAK, p_junk)
-    if p_junk <= float(cfg["keep_strong"]):
-        return Ballot(KEEP, STRONG, p_junk)
-    if p_junk <= float(cfg["keep_weak"]):
-        return Ballot(KEEP, WEAK, p_junk)
-    return Ballot(ABSTAIN, p_junk=p_junk)
-
-
 def keyword_ballot(scores: Scores) -> Ballot:
     """Method §5.3. Abstains when the canon finds nothing."""
     t = canon().thresholds
@@ -446,7 +434,6 @@ class PageInputs:
     pass_no: int
     lines: Optional[list[Line]] = None  # pass 2 word boxes, as lines
     bert: Optional[dict[str, Any]] = None  # {"p_keep", "p_junk", "top_junk_label"}
-    tfidf: Optional[dict[str, Any]] = None  # {"p_junk"}
     document_type: str = ""  # page-tag model: printed / handwritten / form / visual / ...
     page_tags: bool = False  # the page-tag model wrote document_type
     hw_area_pct: Optional[float] = None
@@ -462,7 +449,6 @@ class Verdict:
     confidence: float
     rule: str
     reason: str
-    uncertain: bool = False
     votes: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -478,46 +464,86 @@ def _junk_code(subtype: str) -> int:
     return SUBTYPE_CODE.get(subtype, CODE_OTHERS)
 
 
+def _signals(junk: bool, inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], rule: str) -> dict[str, float]:
+    """Each signal's probability that the verdict (junk or not) is right (method §8.5)."""
+    out: dict[str, float] = {}
+    if rule in RULE_PRIOR:
+        out["rule"] = RULE_PRIOR[rule]
+    # DistilBERT counts when it scored the page. Under min_words it is not trusted, except
+    # by R4, which is DistilBERT's own call.
+    if inputs.bert and (rule == "R4" or ballots["bert"].note == ""):
+        out["bert"] = float(inputs.bert["p_junk"] if junk else inputs.bert["p_keep"])
+    kw = ballots["kw"]
+    if kw.vote == JUNK:
+        strength = min(1.0, scores.junk / 10.0)
+    elif kw.vote == KEEP:
+        strength = min(1.0, max(scores.clinical, scores.demographic) / 10.0)
+    else:
+        return out
+    out["keywords"] = strength if (kw.vote == JUNK) == junk else 1.0 - strength
+    return out
+
+
+def _confidence(
+    junk: bool, inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes: dict[str, Any], rule: str,
+) -> float:
+    """Agreeing signals reinforce (1 - product of their doubts); a disagreement is averaged.
+
+    The keywords agree when their ballot points the verdict's way; the others when their
+    probability is at least 0.5. No signal at all is 0.5.
+    """
+    signals = _signals(junk, inputs, scores, ballots, rule)
+    kw = ballots["kw"]
+    agree = all(
+        (kw.vote == (JUNK if junk else KEEP)) if name == "keywords" else p >= 0.5
+        for name, p in signals.items()
+    )
+    if not signals:
+        confidence = 0.5
+    elif agree:
+        doubt = 1.0
+        for p in signals.values():
+            doubt *= 1.0 - p
+        confidence = 1.0 - doubt
+    else:
+        confidence = sum(signals.values()) / len(signals)
+    votes["confidence_from"] = {
+        **{name: round(p, 4) for name, p in signals.items()},
+        "combined": "agree" if agree else "disagree",
+    }
+    return round(confidence, 4)
+
+
 def _vote(inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes: dict[str, Any]) -> Verdict:
-    """R9: the ballot table (method §8.2), then the vetoes (§8.3)."""
+    """R9: the two-voter table (method §8.2), then the vetoes (§8.3)."""
     t = canon().thresholds
-    # One letter per voter, always in VOTER_NAMES order (DistilBERT, TF-IDF,
-    # keywords), so "JAK" says who cast which ballot.
+    # One letter per voter, always in VOTER_NAMES order (DistilBERT, keywords),
+    # so "JA" says who cast which ballot.
     letters = "".join(ballots[name].letter() for name in VOTER_NAMES)
     who = ", ".join(VOTER_NAMES.values())
-    junk = [b for b in ballots.values() if b.vote == JUNK]
-    keep = [b for b in ballots.values() if b.vote == KEEP]
-    strong_j = [b for b in junk if b.strength == STRONG]
-    weak_j = [b for b in junk if b.strength == WEAK]
+    bert, kw = ballots["bert"], ballots["kw"]
     c_hit = scores.clinical >= t["clinical"]
-    n_j, n_k = len(junk), len(keep)
+    alone_min = float(canon().raw["voters"]["keyword"]["junk_alone_min"])
 
-    if n_j == 3:
-        row, verdict, uncertain = 1, JUNK, bool(weak_j) or c_hit
-    elif n_j == 2 and n_k == 1:
-        ok = len(strong_j) == 2 and keep[0].strength == WEAK
-        row, verdict, uncertain = 2, JUNK if ok else KEEP, True
-    elif n_j == 2:
-        row, verdict, uncertain = 3, JUNK if strong_j else KEEP, bool(weak_j)
-    elif n_j == 1 and n_k == 2:
-        row, verdict, uncertain = 4, KEEP, bool(strong_j)
-    elif n_j == 1 and n_k == 1:
-        row, verdict, uncertain = 5, KEEP, True
-    elif n_j == 1:
-        row, verdict, uncertain = 6, KEEP, bool(strong_j)
-    elif n_k == 3:
-        row, verdict, uncertain = 7, KEEP, False
-    elif n_k == 2:
-        row, verdict, uncertain = 8, KEEP, False
-    elif n_k == 1:
-        row, verdict, uncertain = 9, KEEP, False
+    if bert.vote == JUNK and kw.vote == JUNK:
+        row, verdict = 1, JUNK if STRONG in (bert.strength, kw.strength) else KEEP
+    elif bert.vote == JUNK and kw.vote == ABSTAIN:
+        row, verdict = 2, JUNK
+    elif bert.vote == ABSTAIN and kw.vote == JUNK:
+        row, verdict = 3, JUNK if scores.junk >= alone_min else KEEP
+    elif JUNK in (bert.vote, kw.vote):
+        row, verdict = 4, KEEP
+    elif bert.vote == KEEP and kw.vote == KEEP:
+        row, verdict = 5, KEEP
+    elif KEEP in (bert.vote, kw.vote):
+        row, verdict = 6, KEEP
     else:
-        row, verdict, uncertain = 10, KEEP, True
+        row, verdict = 7, KEEP
 
     if inputs.pass_no == 1:
-        # Pass 1 only takes a unanimous, all-strong JUNK; anything else waits for final OCR.
-        if not (n_j == 3 and len(strong_j) == 3):
-            verdict, uncertain = KEEP, False
+        # Pass 1 only takes two strong JUNK ballots; anything else waits for final OCR.
+        if not (row == 1 and bert.strength == kw.strength == STRONG):
+            verdict = KEEP
     votes.update(ballots=letters, row=row, by_voter={name: b.letter() for name, b in ballots.items()})
 
     veto = ""
@@ -531,34 +557,24 @@ def _vote(inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes:
         elif inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit:
             veto = "handwritten"
         if veto:
-            verdict, uncertain = KEEP, True
+            verdict = KEEP
             votes["veto"] = veto
 
-    if c_hit and scores.junk >= t["junk"]:
-        uncertain = True
-    if any(b.note == "unavailable" for b in ballots.values()):
-        uncertain = True
-
     if verdict == KEEP:
-        ps = [1.0 - b.p_junk for b in keep if b.p_junk is not None]
-        confidence = sum(ps) / len(ps) if ps else 0.5
+        confidence = _confidence(False, inputs, scores, ballots, votes, "R9")
         reason = f"R9 vote {letters} ({who}) row {row} -> Main" + (f" (veto: {veto})" if veto else "")
-        if inputs.pass_no == 1 and n_j:
+        if inputs.pass_no == 1 and JUNK in (bert.vote, kw.vote):
             reason += " (pass 1: deferred to final OCR)"
-        return Verdict(CODE_MAIN, confidence, "R9", reason, uncertain, votes)
+        return Verdict(CODE_MAIN, confidence, "R9", reason, votes)
 
-    kw, bert = ballots["kw"], ballots["bert"]
     if kw.vote == JUNK:
         subtype = kw.subtype
     elif bert.vote == JUNK:
         subtype = bert.subtype
     else:
         subtype = "Others"
-    if kw.vote == JUNK and bert.vote == JUNK and kw.strength == bert.strength == STRONG and kw.subtype != bert.subtype:
-        uncertain = True
-    ps = [b.p_junk for b in junk if b.p_junk is not None]
-    confidence = sum(ps) / len(ps) if ps else 0.5
-    return Verdict(_junk_code(subtype), confidence, "R9", f"R9 vote {letters} ({who}) row {row} -> Junk / {subtype}", uncertain, votes)
+    confidence = _confidence(True, inputs, scores, ballots, votes, "R9")
+    return Verdict(_junk_code(subtype), confidence, "R9", f"R9 vote {letters} ({who}) row {row} -> Junk / {subtype}", votes)
 
 
 def decide(inputs: PageInputs) -> Verdict:
@@ -573,13 +589,11 @@ def decide(inputs: PageInputs) -> Verdict:
     visual = inputs.document_type == "visual"
     ballots = {
         "bert": bert_ballot(inputs.bert, words),
-        "tfidf": tfidf_ballot(inputs.tfidf),
         "kw": keyword_ballot(scores),
     }
     votes: dict[str, Any] = {
         "pass": inputs.pass_no,
         "bert": ballots["bert"].to_dict(),
-        "tfidf": ballots["tfidf"].to_dict(),
         "kw": {**ballots["kw"].to_dict(), **scores.to_dict()},
         "visual_source": "page_tags" if inputs.page_tags else "none",
         "signature_source": (
@@ -590,9 +604,13 @@ def decide(inputs: PageInputs) -> Verdict:
     if inputs.bert:
         votes["bert"]["label"] = inputs.bert.get("top_junk_label") or ""
 
-    def ruled(code: int, rule: str, reason: str, *, confidence: Optional[float] = None) -> Verdict:
+    def ruled(code: int, rule: str, reason: str) -> Verdict:
         votes["rule"] = rule
-        return Verdict(code, RULE_CONFIDENCE.get(rule, 0.9) if confidence is None else confidence, rule, reason, False, votes)
+        if rule in FIXED_CONFIDENCE:
+            confidence = FIXED_CONFIDENCE[rule]
+        else:
+            confidence = _confidence(code != CODE_MAIN, inputs, scores, ballots, votes, rule)
+        return Verdict(code, confidence, rule, reason, votes)
 
     # R1 blank, or a tiny page that is junk
     chars = len(re.sub(r"\s", "", text))
@@ -623,7 +641,6 @@ def decide(inputs: PageInputs) -> Verdict:
         subtype = ballots["bert"].subtype or MODEL_SUBTYPE.get(inputs.bert.get("top_junk_label") or "", "Others")
         return ruled(
             _junk_code(subtype), "R4", f"R4 DistilBERT p(junk) {float(inputs.bert['p_junk']):.3f} > {force} -> Junk / {subtype}",
-            confidence=float(inputs.bert["p_junk"]),
         )
     # R5 short page
     if pass2:
@@ -653,8 +670,4 @@ def decide(inputs: PageInputs) -> Verdict:
             return ruled(_junk_code(subtype), "R8", f"R8 Visual with retrieval / invoice wording -> Junk / {subtype}")
         return ruled(CODE_MAIN, "R8", "R8 Visual -> Main")
     votes["rule"] = "R9"
-    verdict = _vote(inputs, scores, ballots, votes)
-    if verdict.uncertain:
-        verdict.confidence = min(verdict.confidence, float(prof.raw["uncertain_confidence_cap"]))
-        votes["uncertain"] = True
-    return verdict
+    return _vote(inputs, scores, ballots, votes)

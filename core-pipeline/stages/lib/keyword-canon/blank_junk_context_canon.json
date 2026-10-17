@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "status": "PROPOSED (2026-10-14). Read by nothing yet. Method: docs/BLANK_JUNK_PROPOSAL.md.",
   "notes": [
     "Matching: case-insensitive, on word boundaries, after whitespace is collapsed. 'terms' are literal phrases; 'patterns' are regexes (Python syntax).",
@@ -665,20 +665,15 @@
       "force_junk_above": 0.85,
       "note": "Pass 2: p(junk) = sum of JUNK_* + BLANK above force_junk_above -> JUNK forced (method R4), overruled only by blank, placeholder and Provider Signature = Yes, and not applied when the canon finds clinical (>= thresholds.clinical) or demographic (>= thresholds.demographic) evidence: then the vote decides. Pass 1: not forced, counts as a strong JUNK ballot."
     },
-    "tfidf": {
-      "junk_strong": 0.85,
-      "junk_weak": 0.6,
-      "keep_strong": 0.15,
-      "keep_weak": 0.4
-    },
     "keyword": {
-      "note": "Votes from the J/C/D table in method §5.3. Strength: JUNK is strong at junk >= junk_strong, KEEP is strong at clinical >= clinical_strong."
+      "note": "Votes from the J/C/D table in method §5.3. Strength: JUNK is strong at junk >= junk_strong, KEEP is strong at clinical >= clinical_strong.",
+      "junk_alone_min": 7,
+      "note_junk_alone": "Vote row 3 (DistilBERT abstains, keywords vote JUNK): Junk only when the keyword junk score is at least this; below it the page stays Main."
     }
   },
   "handwritten_veto": {
     "note": "Section 8.3: a JUNK vote is turned into KEEP + review only when the handwritten share of the page is above this. Needs the page-tag model (handwritten_area_pct); without it the veto does not apply and votes.hw_area = 'none'.",
     "min_handwritten_area_pct": 30
   },
-  "uncertain_confidence_cap": 0.6,
-  "note_uncertain": "Every page gets one verdict. When the call is uncertain (a split vote, a veto, clinical and junk evidence together, a model not loaded) its confidence is capped at uncertain_confidence_cap, so low-confidence pages can be filtered for review."
+  "note_confidence": "Confidence is the evidence for the verdict (method §8.5), not a fixed number: DistilBERT's probability (when it scored the page), the keyword score (junk / 10, or clinical-or-demographic / 10) and, for R5-R8, the rule's own value. Signals that agree combine as 1 - product(1 - p); a disagreement is averaged. R1-R3 keep fixed values. There is no cap: a contested call comes out low by itself, so filter on low confidence to review."
 }

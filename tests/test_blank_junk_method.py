@@ -11,15 +11,14 @@ from method import Line, PageInputs, decide, score_text  # noqa: E402
 
 FILLER = "the quick brown fox jumps over a lazy dog near the river bank today"
 JUNK_TEXT = "Invoice number 4411 amount due now. Fax cover sheet, number of pages 3, intended recipient only. " + FILLER
+FAX_TEXT = "Fax cover sheet, number of pages 3. " + FILLER  # keywords: weak JUNK, score 4
+INVOICE_TEXT = "Invoice number 4411, amount due, remit to, balance due " + FILLER  # strong JUNK, score 9
+CLINICAL_WEAK = "Assessment:\nstable\nPlan:\nrest " + FILLER  # keywords: weak KEEP, clinical 4
 CLINICAL_TEXT = "HPI:\nchest pain\nAssessment:\nangina\nPlan:\nstress test, metformin 500 mg daily\n" + FILLER
 
 
 def bert(p_junk: float, label: str = "JUNK_INVOICE") -> dict:
     return {"p_keep": round(1.0 - p_junk, 4), "p_junk": p_junk, "top_junk_label": label}
-
-
-def tfidf(p_junk: float) -> dict:
-    return {"p_junk": p_junk}
 
 
 def run(text: str = FILLER, pass_no: int = 2, **kw) -> method.Verdict:
@@ -85,27 +84,27 @@ class TestRules:
         assert (verdict.code, verdict.rule) == (classify.CODE_OTHERS, "R2")
 
     def test_r3_provider_signature_keeps_a_junk_looking_page(self):
-        verdict = run(JUNK_TEXT, signed=True, bert=bert(0.99), tfidf=tfidf(0.99))
+        verdict = run(JUNK_TEXT, signed=True, bert=bert(0.99))
         assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R3")
 
     def test_r3_waits_for_pass_2(self):
-        verdict = run(JUNK_TEXT, pass_no=1, signed=True, bert=bert(0.99), tfidf=tfidf(0.99))
+        verdict = run(JUNK_TEXT, pass_no=1, signed=True, bert=bert(0.99))
         assert verdict.rule != "R3"
 
     def test_r4_distilbert_above_85_forces_junk(self):
-        verdict = run(FILLER, bert=bert(0.90, "JUNK_LETTER_FAX"), tfidf=tfidf(0.1))
+        verdict = run(FILLER, bert=bert(0.90, "JUNK_LETTER_FAX"))
         assert (verdict.code, verdict.rule) == (classify.CODE_LETTER_FAX, "R4")
         assert verdict.confidence == pytest.approx(0.90)
 
     def test_r4_leaves_a_clinical_page_to_the_vote(self):
         text = "Assessment:\nstable\nPlan:\nrest " + FILLER  # clinical 4
-        verdict = run(text, bert=bert(0.99), tfidf=tfidf(0.1))
+        verdict = run(text, bert=bert(0.99))
         assert verdict.rule == "R9" and verdict.code == classify.CODE_MAIN
         assert verdict.votes["r4_skipped"] == "clinical"
 
     def test_r4_leaves_a_face_sheet_to_the_vote(self):
         text = "Patient Demographics face sheet guarantor emergency contact date of birth " + FILLER
-        verdict = run(text, bert=bert(1.0), tfidf=tfidf(0.1))
+        verdict = run(text, bert=bert(1.0))
         assert verdict.code == classify.CODE_MAIN and verdict.votes["r4_skipped"] == "demographic"
 
     def test_r4_needs_more_than_85(self):
@@ -141,11 +140,11 @@ class TestRules:
         assert (verdict.code, verdict.rule) == (classify.CODE_RECORD_REQUEST, "R6")
 
     def test_r7_strong_clinical_keeps(self):
-        verdict = run(CLINICAL_TEXT + "\nChief Complaint:\nchest pain", bert=bert(0.7), tfidf=tfidf(0.9))
+        verdict = run(CLINICAL_TEXT + "\nChief Complaint:\nchest pain", bert=bert(0.7))
         assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R7")
 
     def test_r8_visual_is_kept(self):
-        verdict = run(FILLER, document_type="visual", bert=bert(0.8), tfidf=tfidf(0.9))
+        verdict = run(FILLER, document_type="visual", bert=bert(0.8))
         assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R8")
 
     def test_r8_visual_with_invoice_wording_is_junk(self):
@@ -155,74 +154,124 @@ class TestRules:
 
 
 class TestVote:
-    def test_three_strong_junk_ballots(self):
-        verdict = run(JUNK_TEXT, bert=bert(0.84), tfidf=tfidf(0.95))
-        # bert 0.84 is weak, so uncertain; kw is J+ (invoice + fax cover)
-        assert verdict.code == classify.CODE_INVOICE and verdict.votes["row"] == 1 and verdict.uncertain
-        assert verdict.confidence <= 0.60
+    """Two voters, DistilBERT then keywords (method §8.2)."""
 
-    def test_two_strong_junk_and_a_weak_keep_is_junk(self):
-        verdict = run(FILLER, pass_no=1, bert=bert(0.95), tfidf=tfidf(0.95))
-        # One letter per voter, in DistilBERT, TF-IDF, keywords order.
+    def test_jj_with_a_strong_ballot_is_junk(self):
+        verdict = run(JUNK_TEXT, bert=bert(0.84))  # DistilBERT weak, keywords strong (12)
+        assert (verdict.votes["ballots"], verdict.votes["row"], verdict.code) == ("JJ", 1, classify.CODE_INVOICE)
+        # both agree: 1 - (1 - 0.84) * (1 - 1.0)
+        assert verdict.confidence == pytest.approx(1.0)
+
+    def test_jj_both_weak_stays_main(self):
+        verdict = run(FAX_TEXT, bert=bert(0.70))
+        assert (verdict.votes["ballots"], verdict.code) == ("JJ", classify.CODE_MAIN)
+
+    def test_ja_distilbert_alone_is_junk(self):
+        verdict = run(FILLER, bert=bert(0.70, "JUNK_LETTER_FAX"))
+        assert (verdict.votes["ballots"], verdict.votes["row"], verdict.code) == ("JA", 2, classify.CODE_LETTER_FAX)
+        assert verdict.confidence == pytest.approx(0.70)
+
+    def test_ja_handwritten_veto_keeps_with_distilberts_low_keep(self):
+        verdict = run(FILLER, bert=bert(0.70), hw_area_pct=45.0)
+        assert (verdict.code, verdict.votes["veto"]) == (classify.CODE_MAIN, "handwritten")
+        assert verdict.confidence == pytest.approx(0.30)
+
+    def test_aj_at_the_threshold_is_junk(self):
+        verdict = run(INVOICE_TEXT)  # no DistilBERT: abstains
+        assert (verdict.votes["ballots"], verdict.votes["row"], verdict.code) == ("AJ", 3, classify.CODE_INVOICE)
+        assert verdict.confidence == pytest.approx(0.90)
+
+    def test_aj_below_the_threshold_stays_main(self):
+        verdict = run(FAX_TEXT)
+        assert (verdict.votes["ballots"], verdict.code) == ("AJ", classify.CODE_MAIN)
+        assert verdict.confidence == pytest.approx(0.60)  # 1 - 4/10: the keywords lean junk
+
+    def test_aj_under_8_words_counts_distilbert_as_abstaining(self):
+        verdict = run("Invoice amount due, remit to, balance due", bert=bert(0.10))  # 7 words
+        assert (verdict.votes["ballots"], verdict.code) == ("AJ", classify.CODE_INVOICE)
+        assert "bert" not in verdict.votes["confidence_from"]
+
+    def test_jk_disagreement_is_main_with_low_confidence(self):
+        verdict = run(CLINICAL_WEAK, bert=bert(0.80))
+        assert (verdict.votes["ballots"], verdict.votes["row"], verdict.code) == ("JK", 4, classify.CODE_MAIN)
+        # disagree: mean(DistilBERT p(keep) 0.20, keywords 0.40)
+        assert verdict.confidence == pytest.approx(0.30)
+        assert verdict.votes["confidence_from"]["combined"] == "disagree"
+
+    def test_kk_agreement_reinforces(self):
+        verdict = run(CLINICAL_WEAK, bert=bert(0.02))
+        assert (verdict.votes["row"], verdict.code) == (5, classify.CODE_MAIN)
+        assert verdict.confidence == pytest.approx(1 - 0.02 * 0.6)
+
+    def test_a_clear_keep_keeps_distilberts_confidence(self):
+        verdict = run(FILLER, bert=bert(0.02))
+        assert (verdict.votes["ballots"], verdict.code) == ("KA", classify.CODE_MAIN)
+        assert verdict.confidence == pytest.approx(0.98)
+
+    def test_nothing_to_judge_is_main(self):
+        verdict = run(FILLER, bert=bert(0.55))  # DistilBERT in its abstain band
+        assert (verdict.votes["ballots"], verdict.votes["row"], verdict.code) == ("AA", 7, classify.CODE_MAIN)
+        assert verdict.confidence == pytest.approx(0.45)
+
+    def test_a_missing_model_abstains_and_gives_no_signal(self):
+        verdict = run(FILLER)
+        assert verdict.votes["bert"]["note"] == "unavailable"
+        assert verdict.confidence == pytest.approx(0.5)
+
+    def test_ballot_letters_are_distilbert_then_keywords(self):
+        verdict = run(FILLER, bert=bert(0.70))
         by = verdict.votes["by_voter"]
-        assert verdict.votes["ballots"] == by["bert"] + by["tfidf"] + by["kw"]
-        assert sorted(verdict.votes["ballots"]) == ["A", "J", "J"] and verdict.votes["row"] == 3
-        assert f"vote {verdict.votes['ballots']} (DistilBERT, TF-IDF, keywords)" in verdict.reason
-
-    def test_a_strong_keep_blocks_two_junk_votes(self):
-        # kw abstains on filler; give it clinical-weak text so it votes KEEP
-        text = "Assessment:\nstable\nPlan:\nrest " + FILLER
-        verdict = run(text, bert=bert(0.80), tfidf=tfidf(0.70))
-        assert verdict.votes["row"] == 2 and verdict.code == classify.CODE_MAIN
-
-    def test_two_weak_junk_and_a_silent_third_stays_main(self):
-        verdict = run(FILLER, bert=bert(0.70), tfidf=tfidf(0.70))
-        assert (verdict.votes["row"], verdict.code, verdict.uncertain) == (3, classify.CODE_MAIN, True)
-
-    def test_two_junk_one_strong_and_a_silent_third_is_junk(self):
-        verdict = run(FILLER, bert=bert(0.70), tfidf=tfidf(0.90))
-        assert (verdict.votes["row"], verdict.code) == (3, classify.CODE_INVOICE)  # DistilBERT voted JUNK: its label
-        # mean p(junk) 0.80, capped at 0.60: one of the two junk votes is weak
-        assert verdict.confidence == pytest.approx(0.60) and verdict.uncertain
-
-    def test_nothing_to_judge_is_main_with_low_confidence(self):
-        verdict = run(FILLER, bert=bert(0.55), tfidf=tfidf(0.5))
-        assert (verdict.votes["row"], verdict.code, verdict.uncertain) == (10, classify.CODE_MAIN, True)
-        assert verdict.confidence <= 0.60
-
-    def test_a_missing_model_abstains_and_lowers_the_confidence(self):
-        verdict = run(FILLER, tfidf=tfidf(0.1))
-        assert verdict.votes["bert"]["note"] == "unavailable" and verdict.uncertain
+        assert set(by) == {"bert", "kw"}
+        assert verdict.votes["ballots"] == by["bert"] + by["kw"]
+        assert f"vote {verdict.votes['ballots']} (DistilBERT, keywords)" in verdict.reason
 
     def test_clinical_veto(self):
         text = JUNK_TEXT + "\nAssessment:\nstable\nPlan:\nrest"
-        verdict = run(text, bert=bert(0.84), tfidf=tfidf(0.95))
+        verdict = run(text, bert=bert(0.84))
         assert verdict.code == classify.CODE_MAIN
         assert verdict.votes.get("veto") in (None, "clinical")  # kw votes KEEP on C, or the veto fires
 
-    def test_a_clear_call_keeps_its_confidence(self):
-        verdict = run(FILLER, bert=bert(0.02), tfidf=tfidf(0.02))
-        assert verdict.code == classify.CODE_MAIN and not verdict.uncertain
-        assert verdict.confidence == pytest.approx(0.98)
-
     def test_handwritten_veto_above_30_percent(self):
-        verdict = run(JUNK_TEXT, bert=bert(0.84), tfidf=tfidf(0.95), hw_area_pct=45.0)
+        verdict = run(JUNK_TEXT, bert=bert(0.84), hw_area_pct=45.0)
         assert (verdict.code, verdict.votes.get("veto")) == (classify.CODE_MAIN, "handwritten")
 
     def test_no_handwritten_veto_at_30_percent_or_less(self):
-        verdict = run(JUNK_TEXT, bert=bert(0.84), tfidf=tfidf(0.95), hw_area_pct=30.0)
+        verdict = run(JUNK_TEXT, bert=bert(0.84), hw_area_pct=30.0)
         assert verdict.code == classify.CODE_INVOICE
 
-    def test_pass_1_only_takes_a_unanimous_strong_junk(self):
-        weak = run(JUNK_TEXT, pass_no=1, bert=bert(0.84), tfidf=tfidf(0.95))
+    def test_pass_1_only_takes_two_strong_junk_ballots(self):
+        weak = run(JUNK_TEXT, pass_no=1, bert=bert(0.84))
         assert weak.code == classify.CODE_MAIN and "deferred" in weak.reason
-        strong = run(JUNK_TEXT, pass_no=1, bert=bert(0.95), tfidf=tfidf(0.95))
+        strong = run(JUNK_TEXT, pass_no=1, bert=bert(0.95))
         assert strong.code == classify.CODE_INVOICE
 
+    def test_pass_1_defers_ja_and_aj(self):
+        assert "deferred" in run(FILLER, pass_no=1, bert=bert(0.95)).reason
+        assert "deferred" in run(INVOICE_TEXT, pass_no=1).reason
+
     def test_every_verdict_records_its_ballots(self):
-        verdict = run(JUNK_TEXT, bert=bert(0.84), tfidf=tfidf(0.95))
-        assert {"bert", "tfidf", "kw", "rule", "ballots", "row"} <= set(verdict.votes)
+        verdict = run(JUNK_TEXT, bert=bert(0.84))
+        assert {"bert", "kw", "rule", "ballots", "row", "confidence_from"} <= set(verdict.votes)
+        assert "tfidf" not in verdict.votes
         assert verdict.votes["kw"]["junk_group"] == "invoice"
+
+
+class TestConfidence:
+    def test_observation_rules_are_fixed(self):
+        assert run("   ").confidence == 1.0
+        assert run("This page intentionally left blank").confidence == 0.99
+
+    def test_r7_combines_the_rule_with_a_disagreeing_distilbert(self):
+        verdict = run(CLINICAL_TEXT + "\nChief Complaint:\nchest pain", bert=bert(0.7))
+        assert verdict.rule == "R7"
+        signals = verdict.votes["confidence_from"]
+        assert signals["rule"] == 0.95 and signals["bert"] == pytest.approx(0.30)
+        assert signals["combined"] == "disagree"
+        assert verdict.confidence == pytest.approx((0.95 + 0.30 + signals["keywords"]) / 3, abs=1e-4)
+
+    def test_r7_with_agreement_is_at_least_the_rule(self):
+        verdict = run(CLINICAL_TEXT + "\nChief Complaint:\nchest pain", bert=bert(0.05))
+        assert verdict.rule == "R7" and verdict.confidence >= 0.95
 
 
 class TestPatientEducation:
@@ -233,7 +282,7 @@ class TestPatientEducation:
     )
 
     def test_a_handout_is_clinical_so_distilbert_cannot_force_it(self):
-        verdict = run(self.HANDOUT, bert=bert(0.99, "JUNK_RECORD_REQUEST"), tfidf=tfidf(0.0))
+        verdict = run(self.HANDOUT, bert=bert(0.99, "JUNK_RECORD_REQUEST"))
         assert verdict.code == classify.CODE_MAIN
         assert verdict.votes["r4_skipped"] == "clinical"
 
