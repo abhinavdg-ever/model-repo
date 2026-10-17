@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
-import { Check, CircleMinus, Pencil, Save, X } from "lucide-react";
+import { CircleMinus, Pencil, Save } from "lucide-react";
 import {
   savePageGroundTruth,
   type ExtractionReviewResponse,
@@ -621,12 +621,6 @@ const PERSISTED_GT = new Set([
   "electronic_signature",
 ]);
 
-function confirmedValue(processed: string): string {
-  const text = processed.trim();
-  if (!text || text === YET_TO_PROCESS || text === SKIPPED || text === NOT_FOUND) return "";
-  return text;
-}
-
 const UNCOMPARED = new Set(["", "na", "n/a", "not found", "not available", "yet to process", "skipped"]);
 
 function presenceStored(value: string | null | undefined): string {
@@ -681,7 +675,6 @@ function CompareSection({
   editingId,
   values,
   onCommit,
-  onAccept,
   onCancel,
   onDraft,
   onStartEdit,
@@ -696,7 +689,6 @@ function CompareSection({
   editingId: string | null;
   values: Record<string, string>;
   onCommit: (id: string, value: string) => void;
-  onAccept: (id: string, value: string) => void;
   onCancel: () => void;
   onDraft: (value: string) => void;
   onStartEdit: (id: string) => void;
@@ -781,7 +773,6 @@ function CompareSection({
                   saving={saving}
                   verdict={verdicts[row.id]}
                   onCommit={(next) => onCommit(row.id, next)}
-                  onAccept={(next) => onAccept(row.id, next)}
                   onCancel={onCancel}
                   onDraft={onDraft}
                   onStartEdit={() => onStartEdit(row.id)}
@@ -804,7 +795,6 @@ function GroundTruthCell({
   saving,
   verdict,
   onCommit,
-  onAccept,
   onCancel,
   onDraft,
   onStartEdit,
@@ -817,7 +807,6 @@ function GroundTruthCell({
   saving: boolean;
   verdict?: "accept" | "enter";
   onCommit: (value: string) => void;
-  onAccept: (value: string) => void;
   onCancel: () => void;
   onDraft: (value: string) => void;
   onStartEdit: () => void;
@@ -831,25 +820,18 @@ function GroundTruthCell({
     );
   }
 
+  // The column shows only the ground truth: an empty cell (blank, NA, Not Found) reads
+  // Not Found and is not compared; nothing is copied in from the pipeline's value.
   const stored = row.presence ? presenceStored(value) : value.trim();
-  // A Yes / No Final ("Provider Signature: No") is copied as itself, not as "a value was found".
-  const processedSide = yesNo(row.processed);
-  const copied = row.presence
-    ? (processedSide ? processedSide === "yes" : valueFound(row.processed)) ? "Yes" : "No"
-    : confirmedValue(row.processed);
-  const accepted = stored || copied;
-  // Ground truth already stored (imported or saved earlier) is scored straight
-  // away, as if just entered: ✓ / ! / ✕ and the pencil, no Accept / Change.
   const fromStore = !verdict && Boolean(stored);
   const effective = verdict ?? (fromStore ? "enter" : undefined);
   const compared =
-    effective === "enter"
+    stored && effective === "enter"
       ? row.compare
         ? row.compare(stored)
         : enteredMark(row.extracted, row.processed, stored, Boolean(row.presence))
       : null;
-  const mark =
-    effective === "accept" ||
+  const mark = !stored ? null : effective === "accept" ||
     (effective === "enter" && (compared === "match" || (compared == null && !fromStore))) ? (
       <span className="imaging-gt-mark" aria-label="Yes">✓</span>
     ) : compared === "partial" ? (
@@ -868,7 +850,7 @@ function GroundTruthCell({
       </span>
     );
   }
-  const actions = effective ? (
+  const actions = (
     <button
       type="button"
       className="imaging-gt-pen"
@@ -879,32 +861,9 @@ function GroundTruthCell({
     >
       <Pencil size={11} strokeWidth={2.4} aria-hidden="true" />
     </button>
-  ) : (
-    <span className="imaging-gt-actions">
-      <button
-        type="button"
-        className="imaging-gt-icon"
-        aria-label={`Accept ${row.label} ground truth`}
-        title="Accept"
-        disabled={saving || !accepted}
-        onClick={() => onAccept(accepted)}
-      >
-        <Check size={12} strokeWidth={2.6} aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        className="imaging-gt-icon imaging-gt-cancel"
-        aria-label={`Change ${row.label} ground truth`}
-        title="Change"
-        disabled={saving}
-        onClick={onStartEdit}
-      >
-        <X size={12} strokeWidth={2.6} aria-hidden="true" />
-      </button>
-    </span>
   );
   if (!editing) {
-    const shown = stored || copied || NOT_FOUND;
+    const shown = stored || NOT_FOUND;
     const dim = !stored && !row.key;
     return (
       <span className="imaging-gt-slot">
@@ -932,7 +891,7 @@ function GroundTruthCell({
       </span>
     );
   }
-  const draft = stored || copied;
+  const draft = stored;
   return (
     <span className="imaging-gt-slot is-editing">
       <TextTruth
@@ -1379,13 +1338,6 @@ function PageDetails({
     editingId,
     saving,
     verdicts,
-    onAccept: (id: string, next: string) => {
-      setEditingId(null);
-      setDraft(null);
-      setSaveError(null);
-      setVerdicts((current) => ({ ...current, [id]: "accept" }));
-      setEdits((current) => ({ ...current, [id]: next }));
-    },
     onCommit: (id: string, next: string) => {
       setEditingId(null);
       setDraft(null);
