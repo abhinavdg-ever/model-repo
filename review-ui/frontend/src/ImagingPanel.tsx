@@ -146,16 +146,14 @@ function isContinuation(page: ImagingPageResult): boolean {
   );
 }
 
-/** The date found on this page. A legacy span row copied the encounter date in. */
+/** The Extracted DOS: the DOS stage's own date for this page (``<chart>_dos.csv``), never
+ * the key/value extractor's pick in staging. A legacy span row copied the encounter date in. */
 function extractedDos(
   page: ImagingPageResult,
-  staged: string | null | undefined,
   stored: string | null | undefined,
   processed: boolean,
   skipped: boolean,
 ): string {
-  const stagedDate = (staged || "").trim();
-  if (stagedDate) return displayIsoDates(stagedDate);
   const trustStored = !isContinuation(page) || Boolean((page.finalDos || "").trim());
   if (!trustStored) return fmt("", processed, { skipped });
   return displayIsoDates(fmt(stored, processed, { skipped }));
@@ -1178,18 +1176,15 @@ function sameValue(
 
 function dosCompareRow(
   page: ImagingPageResult,
-  dos: { value: string; confidence: number | null } | null,
   side: "from" | "to",
   processed: boolean,
   skipped: boolean,
   truth: GtBit[] | undefined,
 ): CompareRow {
-  const parts = (dos?.value || "").split(" – ");
-  const staged = dos ? (side === "from" ? parts[0] : (parts[1] ?? parts[0])) : null;
   const stored = side === "from" ? page.dosFrom : page.dosTo;
-  const extracted = extractedDos(page, staged, stored, processed, skipped);
+  const extracted = extractedDos(page, stored, processed, skipped);
   const confidence = fmtConfidence(
-    dos?.confidence ?? page.dosConfidence,
+    page.dosConfidence,
     processed,
     skipped ? { skipped: true } : undefined,
   );
@@ -1277,7 +1272,6 @@ function PageDetails({
   const name = stagedField(extraction, "name");
   const dob = stagedField(extraction, "dob");
   const memberId = stagedField(extraction, "member_id");
-  const dos = stagedField(extraction, "dos");
   // Every provider on the page, read off the credential rows: names and their
   // credentials in the same order, providers separated by " | ".
   const providerName = stagedField(extraction, "provider_name");
@@ -1492,8 +1486,8 @@ function PageDetails({
             label: "Encounter Type",
             fixedNa: true,
           }),
-          dosCompareRow(page, dos, "from", sections.dos, skipped, bits.dosFrom),
-          dosCompareRow(page, dos, "to", sections.dos, skipped, bits.dosTo),
+          dosCompareRow(page, "from", sections.dos, skipped, bits.dosFrom),
+          dosCompareRow(page, "to", sections.dos, skipped, bits.dosTo),
         ]}
       />
       <CompareSection
