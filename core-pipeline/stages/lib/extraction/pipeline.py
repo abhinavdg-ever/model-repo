@@ -26,7 +26,6 @@ import pandas as pd
 
 from .dos import output as dos_output
 from .dos.extract import extract_page as dos_page
-from .dos.extract import pattern_page as dos_pattern_page
 from .electronic_signature import output as esig_output
 from .electronic_signature.extract import extract_page as esig_page
 from .heading.extract import ACCEPT_SCORE, common_heading, strong_heading
@@ -99,8 +98,6 @@ def extract_page_all(page: dict) -> PageResult:
         "provider_credentials": credential_page(words),
         "electronic_signature": esig_page(hits),
         "dos": dos_page(hits, words, page_h),
-        # Not a model field: the DOS stage's fallback when the model chose no date.
-        "dos_pattern": dos_pattern_page(hits, words),
         "page_no": page_no_page(words, page_h),
     }
     for name in REPEAT_FIELDS:

@@ -583,46 +583,23 @@ confidence — it reported detection source per field, which is what the UI show
 ## 6. Date of service
 
 **Engine:** `stages/lib/dos/dos_logic.py` · **Stage:** `stages/lib/dos/stage.py` ·
-**Profile:** `keyword-canon/dos_canon.json` (labels, settings — reloads on change)
+**Profile:** `keyword-canon/dos_canon.json` (labels, settings — reloads on change) ·
+**Full detail:** [`DOS_LOGIC.md`](DOS_LOGIC.md)
 
-Per page, the first rule that finds a date wins:
+Per page, two states:
 
-| # | Rule | Confidence | `match_type` |
+| # | State | Confidence | `match_type` |
 |---|---|---|---|
-| 1 | **Key/value.** The first date the key/value extractor selected for the page (a range keeps its end). The model selects a DOS at probability 0.60 or above (`SELECT_THRESHOLDS` in `extraction/util/config.py`, overriding the trained version's `thresholds.json`). Spaced slashes (`05 / 20 / 2025`) count as plain dates: the OCR words are merged into one before extraction | 0.90 | `kv` |
-| 2 | **Edge keyword.** A DOS label starting within the first or last `edge_words` (20) words of the page, with a date within `label_reach_chars` (40) after it and only filler words (`label_gap_words`: at, on, of, from, is, time, date, dt) between. An encounter label (Encounter Date, Visit Date, Date of Service, DOS, Service Date, Appointment Date, Exam Date, ...) wins; otherwise Admission Date is **From** and Discharge Date is **To**; a discharge date alone is both. A written range after an encounter label ("DOS: a - b") keeps both ends. Read on the final OCR text; on a page with no Final2 text, then on the Tesseract text (not for handwritten / low-quality pages), because Docling (Final1) can drop the top banner | 0.50 (backup) | `edge_keyword` / `edge_keyword_tesseract` / `admit_discharge_pair` |
-| 2b | **Key/value pattern fallback.** Only when rules 1 and 2 found nothing: a date with spaces only (`06 12 24`) right after a DOS key | 0.30 | `kv_pattern` |
-| 3 | **Azure OpenAI**, when `DOS_LLM_ENABLED`, on pages matching `clinical_cues` (`discharge_cues` asks for admission + discharge) | 0.50 (backup) | `llm` |
-| 4 | **Key/value, low confidence.** When the key/value model chose no date: the date its rules accepted (best model score first), only if the model scored it at least `kv_low_min_score` (0.30) | 0.30 | `kv_low` |
-| 4b | **Dictation date, last resort.** No other rule found a date: the date after `D:`, `DD:` or `Dictated`, else after `T:`, `DT:`, `TD:`, `TT:` or `Transcribed` | 0.30 | `dictation_date` |
-| 5 | Nothing: the page has no DOS | 0 | `no_date_found` |
+| 1 | **Key/value.** The key/value extraction's best date for the page: the pair its rules accepted that its model scored highest, at **any** score (`SELECT_THRESHOLDS = {"dos": 0.0}` in `extraction/util/config.py`). A range keeps its end | the model's score (rule score without a model) | `kv` |
+| 2 | **Edge keyword**, only when 1 has no date. A DOS label starting within the first or last `edge_words` (20) words of the page, with a date within `label_reach_chars` (40) after it and only filler words (`label_gap_words`: at, on, of, from, is, time, date, dt) between. An encounter label wins; otherwise Admission Date is **From** and Discharge Date is **To**; a discharge date alone is both. A written range after an encounter label keeps both ends. A date right after `D:`, `T:`, `DD:`, `DT:`, `TD:`, `TT:`, Dictated or Transcribed is never taken. Read on the final OCR text; on a page with no Final2 text, then on the Tesseract text (not for handwritten / low-quality pages) | 0.50 | `edge_keyword` / `edge_keyword_tesseract` / `admit_discharge_pair` |
+| — | Nothing: the page has no DOS | 0 | `no_date_found` |
 
-**Dictation and transcription dates.** A date right after `D:`, `T:`, `DD:`,
-`DT:`, `TD:`, `TT:`, `Dictated` or `Transcribed` is when the note was dictated
-or typed, not the visit: the edge keyword rule never takes it, and never makes
-it the end of a range. Rule 4b uses it only when the page has no other date,
-the dictated date before the transcribed one.
-
-**Backups read low.** Only rule 1 is the key/value model's pick. Every other
-date (rules 2–4) is a backup and is capped at `backup_max` (0.50), so a
-reviewer can tell the two apart by confidence alone.
+There is no LLM pass and no other fallback.
 
 **Spaced dates.** A date OCR'd with spaced slashes (`05 / 20 / 2025`, `05/`
 `20/` `2025`) is merged into one word, `05/20/2025`, when the page's words are
 read (`merge_spaced_dates`), so every extractor and the model take it as a
-plain date. A date with spaces only (`06 12 24`) is never a candidate: it is
-read separately (`pattern_page`, staged as `dos_pattern`, which the model never
-scores) and used only by rule 2b, right after a DOS key on the same line (at
-most one word between), two-digit month 01–12 and day 01–31, at
-`kv_spaces_only` (0.30). The general date finder and keyless header/footer
-stamps never read spaces-only dates, so lab values such as `WBC 10 12 20` are
-not dates.
-
-A word is a whitespace-separated token with a letter or digit, so table pipes
-do not count. Labels are matched overlapping, so "Office Visit  Date of
-Service: 03/14/2024" finds "Date of Service" even though "Visit Date" matches
-first. A label never takes the next field's date ("Visit Date: | DOB:
-01/02/1960" is no DOS).
+plain date. A date with spaces only (`06 12 24`) is never read.
 
 **Extracted vs Final.** This stage writes each page's own date (Extracted).
 The Final DOS is the document's first page's, on every page of it, set by
@@ -637,11 +614,8 @@ date, which edge and whether it was chosen to
 
 | Target | Columns |
 |---|---|
-| `dos_extraction_results` | `date_of_service_from/to` (the page's own), `*_doclevel` (own, else the default), `dates`, `confidence`, `extraction_method` |
-| disk | `imaging/<chart>_dos.csv`; its `source` column names the rule that gave the date (`kv`, `edge`, `edge_tesseract`, `kv_pattern`, `llm`, `kv_low`, `dictation`, `none`) |
-
-The Azure OpenAI client is keyless-capable: see
-[`AZURE_OPENAI_AUTH`](API.md#azure-openai-key-or-no-key).
+| `dos_extraction_results` | `date_of_service_from/to` (the page's own), `*_doclevel` (own, else the default), `dates`, `confidence`, `extraction_method` (`kv` or `rules`) |
+| disk | `imaging/<chart>_dos.csv`; its `source` column names the state that gave the date (`kv`, `edge`, `edge_tesseract`, `none`) |
 
 ---
 

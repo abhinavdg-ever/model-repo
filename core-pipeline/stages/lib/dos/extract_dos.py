@@ -5,14 +5,11 @@ DOS extraction for imaging folders → CSV.
 For each chart folder under DATA_ROOT:
   1. Prefer ocr/<folder>_final1.txt
   2. Else fall back to ocr/<folder>_prelim.txt
-  3. Extract DOS per page (regex; optional Azure OpenAI if --llm)
-
-LLM is OFF by default. Enable with --llm or DOS_USE_LLM=true.
+  3. Extract DOS per page (edge keyword; no key/value staging here)
 
 Usage:
   cd 02-imaging-pipeline/dos-extraction
   python extract_dos.py
-  python extract_dos.py --llm
   python extract_dos.py --out ./output/dos_extraction.csv
 """
 
@@ -59,13 +56,6 @@ def _load_env_file(path: Path) -> None:
         value = value.strip().strip("'").strip('"')
         if key and key not in os.environ:
             os.environ[key] = value
-
-
-def _env_flag(name: str, default: bool = False) -> bool:
-    raw = (os.environ.get(name) or "").strip().lower()
-    if not raw:
-        return default
-    return raw in ("1", "true", "yes", "on")
 
 
 def bootstrap_env() -> Path | None:
@@ -175,11 +165,6 @@ def main() -> None:
         help="Also write imaging/<chart>_dos.csv under each folder",
     )
     parser.add_argument(
-        "--llm",
-        action="store_true",
-        help="Enable Azure OpenAI fallback (OFF by default)",
-    )
-    parser.add_argument(
         "--limit",
         type=int,
         default=0,
@@ -187,32 +172,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    from azure_llm import get_azure_openai_client
     from dos_logic import detect_dos_per_page
 
     data_root = args.data_root.resolve()
     if not data_root.is_dir():
         print(f"DATA_ROOT not found: {data_root}", file=sys.stderr)
         sys.exit(1)
-
-    use_llm = bool(args.llm) or _env_flag("DOS_USE_LLM", False)
-    client = None
-    if use_llm:
-        client = get_azure_openai_client()
-        if client is None:
-            print(
-                "LLM requested but Azure OpenAI is not configured "
-                "(AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT). Using regex only.",
-                file=sys.stderr,
-            )
-            use_llm = False
-        else:
-            print(
-                f"LLM: ENABLED (Azure OpenAI deployment="
-                f"{os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4o-mini')})"
-            )
-    else:
-        print("LLM: DISABLED (regex only). Pass --llm to enable Azure OpenAI.")
 
     folders = sorted(
         p for p in data_root.iterdir() if p.is_dir() and not p.name.startswith(".")
@@ -233,7 +198,7 @@ def main() -> None:
             continue
 
         text = ocr_path.read_text(encoding="utf-8", errors="replace")
-        hits = detect_dos_per_page(text, client, use_llm=use_llm and client is not None)
+        hits = detect_dos_per_page(text)
         rows = [hit_to_row(folder.name, hit) for hit in hits]
         all_rows.extend(rows)
 

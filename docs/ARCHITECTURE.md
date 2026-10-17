@@ -29,7 +29,6 @@ flowchart TB
   subgraph EXT["External"]
     BLOB[("Azure Blob")]
     ADI[("Azure Document<br/>Intelligence")]
-    AOAI[("Azure OpenAI")]
   end
 
   subgraph CP["core-pipeline · port 8001 · own compose"]
@@ -59,7 +58,6 @@ flowchart TB
 
   BLOB --> ST
   ADI --> ST
-  AOAI --> ST
   DB <--> PG
   ST --> VOL
   ADPT --> PG
@@ -220,10 +218,10 @@ still renders.
 
 | File | Role |
 |---|---|
-| `capabilities.py` | What each optional feature can actually do right now — blob, Azure DI, the DOS LLM, GLiNER — and the one precondition each is missing. Read by both the startup banner and `GET /health`, so they cannot disagree. Configuration only; opens no sockets, except `probe_blob()` which startup calls once, bounded. |
+| `capabilities.py` | What each optional feature can actually do right now — blob, Azure DI, GLiNER, the key/value extraction — and the one precondition each is missing. Read by both the startup banner and `GET /health`, so they cannot disagree. Configuration only; opens no sockets, except `probe_blob()` which startup calls once, bounded. |
 | `stages/lib/image_preprocess/osd.py` | Coarse page orientation from Tesseract OSD — the clockwise rotation to apply, with a confidence floor, declining rather than guessing on a sparse page. Replaces the geometric detector's coarse step, which recovered 0 of 6 sideways pages at confidence 1.000. |
 | `stages/lib/image_preprocess/stage.py` | **Stage 1**, moved ahead of OCR so every pass reads an upright page. Always measures orientation/tilt/mirror; writes `corrected-pages/<n>.jpg` only when `ROTATION_CORRECTION_ENABLED` and only for pages that change. `rotation_applied` means a corrected file exists, not that the page looked crooked. |
-| `config.py` | Every environment-driven setting in one place: database URL, data roots, Azure credentials, feature flags (`MEMBER_NER_ENABLED`, `DOS_LLM_ENABLED`), `STAGE_WORKERS`, and the `chart_dir` / `pages_dir` / `ocr_dir` / `imaging_dir` path helpers. |
+| `config.py` | Every environment-driven setting in one place: database URL, data roots, Azure credentials, feature flags (`MEMBER_NER_ENABLED`, `SKIP_OCR`), `STAGE_WORKERS`, and the `chart_dir` / `pages_dir` / `ocr_dir` / `imaging_dir` path helpers. |
 | `cli.py` | Command-line entry: `serve`, `run`, `batch`, `write`, `rerun`, `stages`, `status`, `manifest`. Mirrors the API one-for-one, without the HTTP hop. |
 | `requirements-basic.txt` | API, database, and OCR fallback. |
 | `requirements-models.txt` | Docling, MiniLM, GLiNER, and the key/value ranker. Weights stay under `models/`. |
@@ -279,7 +277,7 @@ Shared plumbing stays in `core-pipeline/stages/` (`_support.py`) and `stages/uti
 | `lib/extraction/stage.py` | **After stage 6.** Key/value extraction from Final2 word boxes (member, DOB, ID, DOS, provider, e-signature, printed page number, headings). Stages `staging/extraction.json` and writes `imaging/<chart>_provider_signature.csv` and `imaging/<chart>_additional_page_details.csv`. The matching tables are in `schema/v2.sql`. Later stages add member, DOS and page number to their own rules. |
 | `utilities/gate_delta.py` | Adaptive skip_ocr: compare quality/rotation gate signatures and reopen only affected `page_stage_status` rows. |
 | `lib/member/stage.py` | **Stage 8.** Plumbing around the ported engine: picks the manifest row, chooses eligible pages, assembles the best text per page, runs `verify_record`, persists page rows and the summary, writes three CSVs including the V1-shaped comparison file. |
-| `lib/dos/stage.py` | **Stage 9.** Builds the marker-delimited text, calls the ported driver `detect_dos_per_page` (regex → LLM → carry-forward), persists the primary pair plus every date, writes the DOS CSV. |
+| `lib/dos/stage.py` | **Stage 9.** Builds the marker-delimited text, takes each page's best key/value date from staging, calls `detect_dos_per_page` (key/value date, else edge keyword), persists the page's date, writes the DOS CSV. See `docs/DOS_LOGIC.md`. |
 | `lib/ocr/reuse.py` | skip_ocr: reuse on-disk OCR artifacts instead of re-running OCR stages. |
 | `lib/page_classify/stage.py` | Page family (model) and subtype (keywords). |
 | `lib/encounter/stage.py` | Encounter type (`encounter_type`). |
@@ -297,7 +295,7 @@ One folder per pipeline concern; only `canon_store.py` sits at the top level.
 | `blank_junk/` | Blank / junk rules, DistilBERT model bridge, bundled model code (`model/`) |
 | `page_classify/` | Page family from the model; subtype from keyword rules |
 | `encounter/` | Encounter type per visit (tiered evidence: page type → explicit setting text → hints) |
-| `dos/` | Date-of-service driver + LLM pass |
+| `dos/` | Date-of-service driver: key/value date, else edge keyword |
 | `member/` | Member extraction + verification engine |
 | `sequencing/` | Page sequencing |
 | `keyword-canon/` | Every editable keyword JSON, reloaded on change (see `canon_store.py`) |
@@ -397,10 +395,8 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/`.
 
 | File | Role |
 |---|---|
-| `dos_logic.py` | The whole DOS engine: page splitting, the regex passes (admit/discharge labels, keyword-anchored dates), confidence tiers, the LLM prompt and call, ISO normalisation, and `detect_dos_per_page` — the driver the stage calls, which owns the document-level carry-forward. |
-| `azure_llm.py` | Azure OpenAI client construction from env, by API key or by Entra ID with no key at all (`AZURE_OPENAI_AUTH=key\|entra\|auto`, default `auto`); `resolved_auth()` is the one place that decides which. Returns `None` when unconfigured so the caller degrades to regex-only. |
-| `extract_dos.py` | The reference's standalone CLI, kept for running the engine outside the pipeline and for comparison. |
-| `requirements.txt` | Dependency list inherited from the V1 prototype (`openai`). |
+| `dos_logic.py` | The DOS engine: page splitting, the date parser, the edge-keyword rule (labels, admit/discharge pairing, ranges, the dictation guard), ISO normalisation, and `detect_dos_per_page` — the driver the stage calls: key/value date, else edge keyword. |
+| `extract_dos.py` | Standalone CLI running the edge-keyword rule outside the pipeline, for comparison. |
 | `__init__.py` | Package marker. |
 
 ### `review-ui/backend/app/`
@@ -474,8 +470,8 @@ which is exactly what blank/junk does. `page_stage_status` keyed
 default that re-ran everything would make re-running expensive enough to avoid,
 which is the wrong incentive when charts fail part-way.
 
-**Degradation is recorded, never silent.** No Azure OpenAI ⇒
-`extraction_method='rules'`. No NER ⇒ `ner_enabled=false` on every row and
+**Degradation is recorded, never silent.** No key/value extraction weights ⇒
+every DOS comes from the edge keyword, `extraction_method='rules'`. No NER ⇒ `ner_enabled=false` on every row and
 `|ner_disabled` on the summary reason. Both appear in `GET /health`. A missing
 capability must be visible in the data, not inferable only from a log line.
 

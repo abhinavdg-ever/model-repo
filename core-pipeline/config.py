@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-from importlib.util import find_spec
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -85,7 +84,7 @@ AZURE_POLL_TIMEOUT_SECONDS = int(os.environ.get("AZURE_POLL_TIMEOUT_SECONDS") or
 AZURE_DI_FEATURES = (
     os.environ.get("AZURE_DI_FEATURES") or "languages,barcodes"
 ).strip()
-# Application-level retries around DI / Blob / OpenAI calls (on top of the SDK).
+# Application-level retries around DI / Blob calls (on top of the SDK).
 AZURE_RETRY_ATTEMPTS = int(os.environ.get("AZURE_RETRY_ATTEMPTS") or "5")
 AZURE_RETRY_BASE_DELAY = float(os.environ.get("AZURE_RETRY_BASE_DELAY") or "1.0")
 AZURE_RETRY_MAX_DELAY = float(os.environ.get("AZURE_RETRY_MAX_DELAY") or "30.0")
@@ -93,24 +92,6 @@ AZURE_RETRY_MAX_DELAY = float(os.environ.get("AZURE_RETRY_MAX_DELAY") or "30.0")
 # in-flight charts. Independent of BATCH_WORKERS — stage 5 is billed and
 # rate-limited per resource, not per chart.
 AZURE_DI_MAX_CONCURRENT = int(os.environ.get("AZURE_DI_MAX_CONCURRENT") or "4")
-
-# --- Azure OpenAI (DOS range extraction — the reference's LLM pass) ---------
-# dos_logic.extract_dos_range_with_llm needs these. Without them the DOS stage
-# runs rules-only and stamps extraction_method='rules' so the difference is
-# visible in the data rather than silent.
-AZURE_OPENAI_API_KEY = (os.environ.get("AZURE_OPENAI_API_KEY") or "").strip()
-AZURE_OPENAI_ENDPOINT = (os.environ.get("AZURE_OPENAI_ENDPOINT") or "").strip()
-AZURE_OPENAI_API_VERSION = (
-    os.environ.get("AZURE_OPENAI_API_VERSION") or "2024-08-01-preview"
-).strip()
-AZURE_OPENAI_DEPLOYMENT = (
-    os.environ.get("AZURE_OPENAI_DEPLOYMENT") or "gpt-4o-mini"
-).strip()
-# key | entra | auto. `auto` means "key if there is one, else Entra ID" — so a
-# VM with a managed identity and no key still gets the LLM pass, and a laptop
-# with a key is unaffected. See stages/lib/dos/azure_llm.py.
-AZURE_OPENAI_AUTH = (os.environ.get("AZURE_OPENAI_AUTH") or "auto").strip().casefold()
-
 
 # --- Rotation correction ----------------------------------------------------
 # Stage 1 measures orientation, tilt and mirror, and writes a corrected image
@@ -169,26 +150,6 @@ SKIP_OCR = _flag("SKIP_OCR", False)
 # Override with LARGE_CHART_MIN_PAGES.
 LARGE_CHART_MIN_PAGES = int(os.environ.get("LARGE_CHART_MIN_PAGES") or "500")
 
-
-def _azure_openai_auth_usable() -> bool:
-    """Can we authenticate at all — by key, or by Entra ID with no key?
-
-    `find_spec` only asks whether azure-identity is installed; whether the VM's
-    managed identity actually holds the role is answered by the first call, and
-    a failure there degrades the stage to regex with a warning.
-    """
-    if AZURE_OPENAI_AUTH == "key":
-        return bool(AZURE_OPENAI_API_KEY)
-    if AZURE_OPENAI_AUTH == "entra":
-        return find_spec("azure.identity") is not None
-    return bool(AZURE_OPENAI_API_KEY) or find_spec("azure.identity") is not None
-
-
-DOS_LLM_ENABLED = (
-    _flag("DOS_LLM_ENABLED", True)
-    and bool(AZURE_OPENAI_ENDPOINT)
-    and _azure_openai_auth_usable()
-)
 
 # Writes every DOS candidate with its features and score to
 # <chart>/debug/<chart>_dos_candidates.csv. debug/ is never exported.

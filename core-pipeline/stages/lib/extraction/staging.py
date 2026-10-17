@@ -156,13 +156,18 @@ class StagedPage:
         """
         return [row for row in self.accepted(field_id) if row.get("selected", True)]
 
-    def rule_fallback(self, field_id: str) -> list[dict[str, Any]]:
-        """Candidates the rules accepted but the model did not, best model score first. Only
-        when the model chose nothing for the field: a low-confidence fallback."""
-        if self.selected(field_id):
-            return []
-        rows = [row for row in self.rows(field_id) if _rule_accepted(row) and row.get("value")]
-        return sorted(rows, key=lambda row: -float(row.get("model_score") or 0))
+    def best(self, field_id: str) -> Optional[dict[str, Any]]:
+        """The candidate with a value that the rules accepted and the model scored highest,
+        at any score. Without model scores (rules only): the rules' own pick, else their
+        highest score."""
+        rows = [row for row in self.rows(field_id) if row.get("value") and (_rule_accepted(row) or row.get("selected"))]
+        if not rows:
+            return None
+        scored = [row for row in rows if row.get("model_score") is not None]
+        if scored:
+            return max(scored, key=lambda row: float(row["model_score"]))
+        picked = [row for row in rows if row.get("selected")]
+        return picked[0] if picked else max(rows, key=lambda row: float(row.get("score") or 0))
 
 
 def _rule_accepted(row: dict[str, Any]) -> bool:

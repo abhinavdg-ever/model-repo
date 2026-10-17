@@ -67,7 +67,7 @@ flowchart TD
     S6["7 · blank_junk pass 2<br/>handwritten + survivors"]
     S7["8 · member_verify<br/>rules → NER → what-if"]
     S8["9 · page_subtype<br/>BERT + keywords + ladder (Extracted)"]
-    S9["10 · dos_extract<br/>key/value date → regex ≥ 0.75 → LLM"]
+    S9["10 · dos_extract<br/>key/value best date → edge keyword"]
     S9b["11 · continuity<br/>documents · Final page type + DOS"]
     S10["12 · encounter_type<br/>F2F / Tele / IP / Home per DOS"]
     S11["13 · page_sequencing<br/>markers → streams → suggested order"]

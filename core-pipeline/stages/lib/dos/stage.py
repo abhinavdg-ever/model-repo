@@ -1,12 +1,10 @@
 """Stage: date-of-service extraction.
 
 Runs ``dos_logic.detect_dos_per_page`` over the chart's combined OCR text with
-the key/value extractor's dates, and writes one DB row and one CSV row per
-page. Per page: a DOS label in the first or last 20 words, else the key/value
-date, else (when enabled) Azure OpenAI — see the dos_logic docstring.
-
-When Azure OpenAI is not configured every row records
-``extraction_method='rules'`` (or ``kv``), so a degraded run is visible in the data.
+the key/value extractor's best date per page, and writes one DB row and one CSV
+row per page. Per page: the key/value date (its confidence is the model's score),
+else a DOS label in the first or last 20 words — see the dos_logic docstring.
+``extraction_method`` is ``kv`` for a key/value date, else ``rules``.
 
 With DOS_DEBUG on, every DOS label found at a page's edges, its date and
 whether it was chosen go to ``<chart>/debug/<chart>_dos_candidates.csv``.
@@ -17,13 +15,7 @@ import logging
 import sys
 from typing import Any, Optional
 
-from config import (
-    AZURE_OPENAI_DEPLOYMENT,
-    CORE_ROOT,
-    DOS_DEBUG,
-    DOS_LLM_ENABLED,
-    chart_dir,
-)
+from config import CORE_ROOT, DOS_DEBUG, chart_dir
 from db import (
     connect,
     get_blank_junk_flags,
@@ -49,7 +41,6 @@ _DOS_LIB = CORE_ROOT / "stages" / "lib" / "dos"
 if str(_DOS_LIB) not in sys.path:
     sys.path.insert(0, str(_DOS_LIB))
 
-import dos_logic  # noqa: E402
 from dos_logic import LabelledDate, detect_dos_per_page, to_iso_date  # noqa: E402
 
 DOS_COLS = [
@@ -69,8 +60,7 @@ DOS_COLS = [
     "keyword",
     "confidence",
     "extraction_method",
-    # Which rule gave the page's date: kv, edge, edge_tesseract, kv_pattern, llm, kv_low,
-    # dictation, none.
+    # Which state gave the page's date: kv, edge, edge_tesseract, none.
     "source",
 ]
 
@@ -78,46 +68,8 @@ DOS_COLS = [
 CANDIDATE_COLS = ["chart_name", "page_name", *LabelledDate.__dataclass_fields__]
 
 
-def _page_method(hit: dict[str, Any], method: str) -> str:
-    source = hit.get("page_source")
-    if source == "llm":
-        return "llm"
-    if source in ("kv", "kv_pattern", "kv_low"):
-        return "kv"
-    return method
-
-
-def _llm_client() -> Optional[Any]:
-    """Azure OpenAI client, or None when the LLM pass is off/unconfigured."""
-    if not DOS_LLM_ENABLED:
-        logger.info("DOS: LLM pass disabled — regex only")
-        return None
-    try:
-        from azure_llm import get_azure_openai_client
-
-        client = get_azure_openai_client()
-    except Exception as exc:
-        logger.warning("DOS: Azure OpenAI client unavailable (%s); regex only", exc)
-        return None
-    if client is None:
-        logger.warning(
-            "DOS: no usable Azure OpenAI credentials; regex only. Set "
-            "AZURE_OPENAI_ENDPOINT plus either AZURE_OPENAI_API_KEY or, for "
-            "keyless auth, AZURE_OPENAI_AUTH=entra with azure-identity installed"
-        )
-        return None
-    try:
-        from azure_llm import resolved_auth
-
-        auth = resolved_auth() or "unknown"
-    except Exception:
-        auth = "unknown"
-    logger.info(
-        "DOS: LLM pass enabled (deployment=%s, auth=%s)",
-        AZURE_OPENAI_DEPLOYMENT,
-        auth,
-    )
-    return client
+def _page_method(hit: dict[str, Any]) -> str:
+    return "kv" if hit.get("page_source") == "kv" else "rules"
 
 
 def _combined_text(
@@ -198,7 +150,8 @@ def _date_rows(hit: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _kv_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Staged DOS rows as the dates dos_logic reads; ``confidence`` is the model's score."""
+    """Staged DOS rows as the dates dos_logic reads; ``confidence`` is the model's score, or
+    the rules' score when no model ran."""
     from stages.lib.extraction.util.dates import canonical_date
 
     found: list[dict[str, Any]] = []
@@ -216,17 +169,13 @@ def _kv_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "raw": raw,
                 "tier": row.get("tier") or "",
                 "keyword": row.get("key") or "",
-                "confidence": row.get("model_score"),
-                "pattern": row.get("pattern") or "",
+                "confidence": row.get("model_score") if row.get("model_score") is not None else row.get("score"),
             }
         )
     return found
 
 
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
-    client = _llm_client()
-    method = "rules+llm" if client is not None else "rules"
-
     with stage_run(chart_id, STAGE, force=force) as ctx:
         with connect() as conn:
             bj = get_blank_junk_flags(conn, chart_id, final_only=True)
@@ -243,46 +192,18 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
 
         staged = ensure_staging(chart_id, ctx.chart_name)
         kv_dates: dict[str, list[dict[str, Any]]] = {}
-        kv_fallback: dict[str, list[dict[str, Any]]] = {}
-        kv_pattern: dict[str, list[dict[str, Any]]] = {}
         for page in ctx.pages:
             staged_page = staged.page(page["page_name"])
-            if staged_page is None:
-                continue
-            found = _kv_items(staged_page.selected("dos"))
+            best = staged_page.best("dos") if staged_page is not None else None
+            found = _kv_items([best]) if best else []
             if found:
                 kv_dates[page["page_name"]] = found
-            else:
-                # The model chose no date: the pattern fallback ('05 / 20 / 2025', '06 12 24').
-                pattern = _kv_items(staged_page.selected("dos_pattern"))
-                if pattern:
-                    kv_pattern[page["page_name"]] = pattern
-            # The model chose no date: the dates only the rules accepted, for a
-            # low-confidence last resort (match_type kv_low).
-            fallback = _kv_items(staged_page.rule_fallback("dos"))
-            if fallback:
-                kv_fallback[page["page_name"]] = fallback
-        dos_logic.LLM_CALLS.update(made=0, failed=0, error="")
         hits = detect_dos_per_page(
             text,
-            client,
-            use_llm=client is not None,
             candidate_log=candidates,
             kv_dates=kv_dates,
             tesseract_texts=tesseract,
-            kv_fallback=kv_fallback,
-            kv_pattern=kv_pattern,
         )
-        llm_calls = dict(dos_logic.LLM_CALLS)
-        if llm_calls["made"] and llm_calls["failed"] == llm_calls["made"]:
-            # Every call failed (a bad key, a missing role, a wrong deployment): the LLM
-            # pass did not run, so the pages are stamped rules.
-            logger.warning(
-                "DOS: all %d Azure OpenAI calls failed (%s); stamped extraction_method=rules",
-                llm_calls["made"],
-                llm_calls["error"],
-            )
-            method = "rules"
 
         by_name = {p["page_name"]: p for p in ctx.pages}
         csv_rows: list[dict[str, Any]] = []
@@ -306,7 +227,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     date_of_service_to_doclevel=hit.get("doc_dos_to_iso") or None,
                     confidence=hit.get("confidence"),
                     all_dates=date_rows,
-                    extraction_method=_page_method(hit, method),
+                    extraction_method=_page_method(hit),
                 )
                 mark_completed(conn, ctx, page_id)
 
@@ -327,7 +248,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "final_dos": hit.get("final_dos") or "",
                         "keyword": hit.get("keyword") or "",
                         "confidence": hit.get("confidence"),
-                        "extraction_method": _page_method(hit, method),
+                        "extraction_method": _page_method(hit),
                         "source": hit.get("page_source") or "none",
                     }
                 )
@@ -347,7 +268,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     date_of_service_to_doclevel=None,
                     confidence=None,
                     all_dates=[],
-                    extraction_method=method,
+                    extraction_method="rules",
                 )
                 mark_completed(conn, ctx, page_id)
 
@@ -360,16 +281,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 ({"chart_name": ctx.chart_name, **row} for row in candidates),
             )
 
-        llm_pages = sum(1 for r in csv_rows if r["extraction_method"] == "llm")
         return {
             "chart_id": chart_id,
             "dos_csv": str(path),
             "pages_done": ctx.done,
             "skipped": ctx.skipped,
-            "llm_enabled": client is not None,
-            "llm_pages": llm_pages,
-            "llm_calls": llm_calls["made"],
-            "llm_failed": llm_calls["failed"],
-            "llm_error": llm_calls["error"],
-            "extraction_method": method,
+            "kv_pages": sum(1 for r in csv_rows if r["source"] == "kv"),
+            "edge_pages": sum(1 for r in csv_rows if r["source"] in ("edge", "edge_tesseract")),
         }

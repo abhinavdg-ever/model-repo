@@ -68,7 +68,6 @@ Compare these keys. Each should say `"ready": true` on both machines, with the s
 | `member_ner` | no wrong-member check, so nothing can be Rejected |
 | `extraction` | no key/value extraction (reason names the missing folder) |
 | `azure_document_intelligence` | no Final OCR 2; handwritten pages get no pass-2 verdict |
-| `dos_llm` | DOS is rules-only (compose turns it on by default) |
 
 Then list the model folders on both machines:
 
@@ -149,8 +148,8 @@ docker compose exec api env | sort | grep -E 'ENABLED|_MODEL|MODEL_|_PATH|_DIR|S
 Get-Content .env | Select-String -Pattern 'ENABLED|_MODEL|MODEL_|_PATH|_DIR|SKIP_OCR|WORKERS|OMP_|DI_FEATURES|DEPLOYMENT'
 ```
 
-Look for a switch that differs: `DOS_LLM_ENABLED`, `MEMBER_NER_ENABLED`, `MEMBER_NER_MODEL_ID`,
-`SKIP_OCR`, `AZURE_DI_FEATURES`, `AZURE_OPENAI_DEPLOYMENT`, or a model path pointing somewhere else.
+Look for a switch that differs: `MEMBER_NER_ENABLED`, `MEMBER_NER_MODEL_ID`,
+`SKIP_OCR`, `AZURE_DI_FEATURES`, or a model path pointing somewhere else.
 
 ### A6. Same ground truth, same run?
 
@@ -179,7 +178,7 @@ chart on both machines and look at which column differs first:
 | Blank / Junk | Tesseract (A4), or `blank_junk_model` |
 | OCR text | Docling version (A3), `rapidocr_models` |
 | Page type | `page_family_model` |
-| Member / DOS / signature | `member_ner`, `dos_llm`, `extraction` |
+| Member / DOS / signature | `member_ner`, `extraction` |
 
 ---
 

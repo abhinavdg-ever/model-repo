@@ -1536,7 +1536,6 @@ class TestCapabilityReporting:
             AZURE_STORAGE_CONNECTION_STRING=None,
             AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=None,
             AZURE_DOCUMENT_INTELLIGENCE_KEY=None,
-            AZURE_OPENAI_ENDPOINT=None,
         )
         for name, status in caps.all_capabilities().items():
             if not status.get("ready"):
@@ -1571,7 +1570,6 @@ class TestCapabilityReporting:
             "KV extraction",
             "final1 Docling",
             "final2 OCR",
-            "DOS LLM",
             "member NER",
             "skip OCR",
         ]

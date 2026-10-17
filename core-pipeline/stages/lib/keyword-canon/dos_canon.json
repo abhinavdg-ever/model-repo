@@ -1,27 +1,15 @@
 {
-  "note": "Date of service, per page: (1) the key/value extractor's date; (2) else a label below that starts within the first or last edge_words words of the page, with a date right after it (within label_reach_chars, only label_gap_words words between, so 'Visit Date: | DOB: 01/02/1960' is not a DOS) \u2014 an encounter label wins, else admit is From and discharge To; (3) else Azure OpenAI when enabled, on pages matching clinical_cues; (4) else a key/value date only its rules accepted, at low confidence (kv_low); (5) else no date. Each page keeps its own date and the Final DOS is the same. Edit labels here, not in dos_logic.py. Reloads on change.",
+  "note": "Date of service, per page, two states: (1) the key/value extractor's best date: the pair its rules accepted that the model scored highest, at any score; its confidence is that score; (2) only when key/value has no date, a label below that starts within the first or last edge_words words of the page, with a date right after it (within label_reach_chars, only label_gap_words words between, so 'Visit Date: | DOB: 01/02/1960' is not a DOS; never a date after D:, T:, DD:, DT:, TD:, TT:, Dictated or Transcribed) \u2014 an encounter label wins, else admit is From and discharge To. Otherwise no date. Edit labels here, not in dos_logic.py. Reloads on change.",
   "DOS_DEFAULT_DATE": "2222-02-02",
   "note_default": "DOS_DEFAULT_DATE is shown for a page with no date of its own (doc-level columns, review-ui downloads). It is never a page's Extracted DOS; it is the Final DOS of a stand-alone non-visit document (continuity_canon.json default_final_dos).",
   "edge_words": 20,
   "label_reach_chars": 40,
   "label_gap_words": ["at", "on", "of", "from", "is", "time", "date", "dt"],
-  "llm_words": 60,
   "confidence": {
-    "edge": 0.95,
     "kv": 0.9,
-    "llm": 0.7,
-    "kv_low": 0.3,
-    "kv_spaces_only": 0.3,
-    "kv_pattern": 0.3,
-    "dictation": 0.3,
-    "backup_max": 0.5
+    "edge": 0.5
   },
-  "note_backup_max": "backup_max caps every DOS that is not the key/value model's pick (edge label, LLM, the rules-only kv_low fallback), so a backup date always reads as low confidence. The model's pick keeps kv (capped only for spaced patterns).",
-  "note_kv_patterns": "Rule 2b, kv_pattern: only when neither the key/value model nor an edge label gave the page a date, a date with spaces only ('06 12 24') right after a DOS key, at kv_spaces_only. Never a candidate for the model. A spaced-slash date ('05 / 20 / 2025') is merged into one OCR word before extraction and read like any other date.",
-  "kv_low_min_score": 0.3,
-  "note_dictation": "Last resort, only when no other rule found a date: the date after D:, DD: or Dictated, else after T:, DT:, TD:, TT: or Transcribed; source dictation, match_type dictation_date, at confidence.dictation.",
-  "note_kv_low_min_score": "Rule 4 (kv_low) takes a date only when the key/value model scored it at least this; a lower or missing score is no date. The model itself picks a date at 0.6 or above (SELECT_THRESHOLDS in extraction/util/config.py).",
-  "note_kv_low": "Rule 4, last resort before dictation dates: when the key/value model chose no date for a page and no other rule found one, the date its rules accepted (best model score first), only if the model scored it at least kv_low_min_score. Its confidence is always kv_low (0.3), match_type kv_low.",
+  "note_confidence": "kv is used only for a key/value date with no score (staging from before the model ran); a scored date carries the model's own score. edge is every edge-keyword date.",
   "labels": {
     "encounter": [
       "encounter date",
@@ -60,27 +48,5 @@
       "discharged",
       "dos to"
     ]
-  },
-  "clinical_cues": [
-    "chief\\s+complaint",
-    "history\\s+of\\s+present\\s+illness|\\bhpi\\b",
-    "discharge\\s+(summary|note|diagnos|instruction)",
-    "reason\\s+for\\s+(consult|visit|admission)",
-    "principal\\s+diagnosis",
-    "admission\\s+(date|note|diagnos)",
-    "hospital\\s+course",
-    "progress\\s+note",
-    "operative\\s+(note|report)",
-    "consult(?:ation)?\\s+note",
-    "emergency\\s+(department|room)\\s+note",
-    "\\bed\\s+note\\b"
-  ],
-  "discharge_cues": [
-    "discharge\\s+(summary|note|diagnos|date|instruction)",
-    "admission\\s+date",
-    "hospital\\s+course",
-    "date\\s+of\\s+admission",
-    "date\\s+of\\s+discharge"
-  ],
-  "note_cues": "Regex patterns. clinical_cues gates the Azure OpenAI fallback; discharge_cues makes it ask for admission and discharge dates."
+  }
 }

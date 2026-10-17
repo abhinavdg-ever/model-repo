@@ -9,7 +9,7 @@ question *before* a chart is submitted.
 
 One source, two readers: the startup log and `GET /health`. They disagreed
 before this existed — the log named the database and the worker count, /health
-named NER and the DOS LLM, and neither mentioned blob at all.
+named NER, and neither mentioned blob at all.
 
 **Configuration, not reachability.** Everything here is local: environment
 variables and `find_spec`. Nothing opens a socket, so /health stays fast and
@@ -28,15 +28,12 @@ from config import (
     AZURE_DI_FEATURES,
     AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT,
     AZURE_DOCUMENT_INTELLIGENCE_KEY,
-    AZURE_OPENAI_DEPLOYMENT,
-    AZURE_OPENAI_ENDPOINT,
     AZURE_PRINCIPAL_ID,
     AZURE_STORAGE_ACCOUNT_KEY,
     AZURE_STORAGE_ACCOUNT_NAME,
     AZURE_STORAGE_AUTH,
     AZURE_STORAGE_CONNECTION_STRING,
     AZURE_STORAGE_CONTAINER,
-    DOS_LLM_ENABLED,
     MEMBER_NER_ENABLED,
     SKIP_OCR,
 )
@@ -221,37 +218,6 @@ def azure_di_status() -> dict[str, Any]:
     return status
 
 
-def dos_llm_status() -> dict[str, Any]:
-    """The DOS LLM pass, and which credential it resolved to."""
-    status: dict[str, Any] = {
-        "enabled": DOS_LLM_ENABLED,
-        "endpoint": AZURE_OPENAI_ENDPOINT or None,
-        "deployment": AZURE_OPENAI_DEPLOYMENT,
-        "ready": DOS_LLM_ENABLED,
-    }
-    try:
-        import sys
-        from pathlib import Path
-
-        lib = str(Path(__file__).resolve().parent / "stages" / "lib" / "dos")
-        if lib not in sys.path:
-            sys.path.insert(0, lib)
-        from azure_llm import resolved_auth
-
-        status["auth"] = resolved_auth()
-    except Exception:
-        status["auth"] = None
-
-    if not DOS_LLM_ENABLED:
-        if not AZURE_OPENAI_ENDPOINT:
-            status["reason"] = "not set: AZURE_OPENAI_ENDPOINT"
-        elif status["auth"] is None:
-            status["reason"] = "no usable credential (set AZURE_OPENAI_API_KEY, or AZURE_OPENAI_AUTH=entra)"
-        else:
-            status["reason"] = "DOS_LLM_ENABLED=false"
-    return status
-
-
 def ner_status() -> dict[str, Any]:
     """The GLiNER layer. Never raises — an optional feature's probe must not 500."""
     try:
@@ -383,7 +349,6 @@ def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
     return {
         "blob": probe_blob() if probe else blob_status(),
         "azure_document_intelligence": azure_di_status(),
-        "dos_llm": dos_llm_status(),
         "member_ner": ner_status(),
         "docling_final1": docling_status(),
         "hw_model": hw_model_status(),
@@ -422,7 +387,6 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     """(label, value) pairs for the startup banner — OK / off, no paths."""
     blob = caps["blob"]
     di = caps["azure_document_intelligence"]
-    llm = caps["dos_llm"]
     ner = caps["member_ner"]
     docling = caps.get("docling_final1") or {}
     skip_ocr = caps.get("skip_ocr") or {}
@@ -444,7 +408,6 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     if di.get("features"):
         di_on += f" — features={','.join(di['features'])}"
 
-    llm_on = f"OK — {llm.get('auth') or 'configured'}"
     ner_on = f"OK — {ner.get('model_id') or 'ready'}"
     docling_on = "OK"
     hw_on = f"OK — {hw.get('engine') or 'ready'}"
@@ -479,7 +442,6 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
         ("KV extraction", _one_line(kv, kv_on)),
         ("final1 Docling", _one_line(docling, docling_on)),
         ("final2 OCR", _one_line(di, di_on)),
-        ("DOS LLM", _one_line(llm, llm_on)),
         ("member NER", _one_line(ner, ner_on)),
         ("skip OCR", skip_line),
     ]

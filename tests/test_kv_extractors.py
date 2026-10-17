@@ -116,8 +116,8 @@ class TestSpacedSlashDates:
         words = _page((100, "DATE: 05 / 20 / 2025 FACILITY"), (200, "BP 120 / 80"))
         assert [word.content for word in words] == ["DATE:", "05/20/2025", "FACILITY", "BP", "120", "/", "80"]
 
-    def test_the_model_gets_it_like_any_other_date(self):
-        from stages.lib.extraction.dos.extract import extract_page, pattern_page
+    def test_the_kv_rules_read_it_like_any_other_date(self):
+        from stages.lib.extraction.dos.extract import extract_page
         from stages.lib.extraction.util.keys import KeyHit
 
         def rows(text):
@@ -126,184 +126,60 @@ class TestSpacedSlashDates:
             hit = KeyHit(field="dos", key="DATE:", word_indexes=[key.index], box=key.box, weak=True,
                          region="header", trusted=True, value_words=words[1:],
                          value_text=" ".join(word.content for word in words[1:]))
-            accepted = [row for row in extract_page([hit], words, PAGE_H) if row.accepted]
-            return accepted, pattern_page([hit], words)
+            return [row for row in extract_page([hit], words, PAGE_H) if row.accepted]
 
-        (spaced,), pattern = rows("DATE: 05 / 20 / 2025")
-        (plain,), _ = rows("DATE: 05/20/2025")
-        assert pattern == []
-        assert (spaced.value, spaced.score, spaced.pattern) == ("05/20/2025", plain.score, "")
+        (spaced,), (plain,) = rows("DATE: 05 / 20 / 2025"), rows("DATE: 05/20/2025")
+        assert (spaced.value, spaced.score) == ("05/20/2025", plain.score)
 
     def test_the_edge_label_rule_reads_it_like_any_other_date(self):
         import stages.lib.dos.stage  # noqa: F401  — puts dos/ on sys.path
         from dos_logic import detect_dos_per_page
 
-        hit = detect_dos_per_page("===== 7.png =====\nDate of Service: 05 / 20 / 2025\n", None, use_llm=False)[0]
-        plain = detect_dos_per_page("===== 7.png =====\nDate of Service: 05/20/2025\n", None, use_llm=False)[0]
+        hit = detect_dos_per_page("===== 7.png =====\nDate of Service: 05 / 20 / 2025\n")[0]
+        plain = detect_dos_per_page("===== 7.png =====\nDate of Service: 05/20/2025\n")[0]
         assert hit["dos_from_iso"] == "2025-05-20" and hit["confidence"] == plain["confidence"]
 
 
-class TestSpacesOnlyDates:
-    """'Date: 06 12 24': the pattern fallback only, right after a DOS key, at a very low score."""
+def test_a_spaces_only_date_is_never_read():
+    from stages.lib.extraction.util.dates import find_dates
 
-    @staticmethod
-    def pages(text, extra=None):
-        from stages.lib.extraction.dos.extract import extract_page, pattern_page
-        from stages.lib.extraction.util.keys import KeyHit
-
-        lines = [(100, text)] + ([(300, extra)] if extra else [])
-        words = _page(*lines)
-        hits = []
-        for y, line in lines:
-            line_words = [word for word in words if abs(word.box.top - y) < 1]
-            key = line_words[0]
-            hits.append(KeyHit(field="dos", key=key.content, word_indexes=[key.index], box=key.box, weak=True,
-                               region="header", trusted=True, value_words=line_words[1:],
-                               value_text=" ".join(word.content for word in line_words[1:])))
-        model = [row for row in extract_page(hits, words, PAGE_H) if row.accepted]
-        return model, pattern_page(hits, words)
-
-    def test_right_after_the_key_at_a_very_low_score(self):
-        from stages.lib.extraction.dos.extract import SPACES_ONLY_SCORE
-
-        model, [row] = self.pages("DATE: 06 12 24")
-        assert model == []
-        assert (row.value, row.score, row.pattern) == ("06/12/24", SPACES_ONLY_SCORE, "spaces_only")
-        assert SPACES_ONLY_SCORE <= 0.3
-
-    def test_not_after_another_word_and_not_an_impossible_month(self):
-        assert self.pages("DATE: WBC 10 12 20")[1] == []
-        assert self.pages("DATE: 13 12 24")[1] == []
-
-    def test_a_plain_date_goes_to_the_model_the_pattern_waits(self):
-        model, pattern = self.pages("DATE: 06 12 24", extra="Visit: 06/15/2024")
-        assert [row.value for row in model] == ["06/15/2024"]
-        assert [row.value for row in pattern] == ["06/12/24"]
-
-    def test_the_general_date_finder_does_not_read_spaces_only(self):
-        from stages.lib.extraction.util.dates import find_dates
-
-        assert find_dates("WBC 10 12 20") == [] and find_dates("DOB 06 12 54") == []
-
-    def test_the_dos_stage_reads_the_pattern_after_the_model_and_the_edge_label(self):
-        import stages.lib.dos.stage  # noqa: F401
-        from dos_logic import detect_dos_per_page
-
-        edge_page = "===== 1.png =====\nVisit Date: 03/01/2024\n"
-        bare_page = "===== 1.png =====\nno label here\n"
-        pattern = {"1.png": [{"iso": "2024-06-12", "keyword": "DATE:", "pattern": "spaces_only"}]}
-        model = {"1.png": [{"iso": "2024-07-01", "keyword": "DOS"}]}
-
-        hit = detect_dos_per_page(edge_page, None, use_llm=False, kv_dates=model, kv_pattern=pattern)[0]
-        assert (hit["dos_from_iso"], hit["page_source"]) == ("2024-07-01", "kv")
-        # No model date: the edge label comes before the pattern.
-        hit = detect_dos_per_page(edge_page, None, use_llm=False, kv_pattern=pattern)[0]
-        assert (hit["dos_from_iso"], hit["page_source"]) == ("2024-03-01", "edge")
-        # Neither: the pattern.
-        hit = detect_dos_per_page(bare_page, None, use_llm=False, kv_pattern=pattern)[0]
-        assert (hit["dos_from_iso"], hit["page_source"], hit["match_type"]) == ("2024-06-12", "kv_pattern", "kv_pattern")
-        assert hit["confidence"] == 0.3
+    assert find_dates("Date: 06 12 24") == [] and find_dates("WBC 10 12 20") == []
 
 
-def test_every_dos_backup_is_flagged_low_and_the_models_pick_is_not():
-    import stages.lib.dos.stage  # noqa: F401
-    from dos_logic import detect_dos_per_page
-
-    def conf(text, **kw):
-        return detect_dos_per_page(f"===== 1.png =====\n{text}\n", None, use_llm=False, **kw)[0]
-
-    model = conf("no label", kv_dates={"1.png": [{"iso": "2024-06-12", "keyword": "DOS"}]})
-    edge = conf("Visit Date: 06/12/2024")
-    fallback = conf("no label", kv_fallback={"1.png": [{"iso": "2024-06-12", "keyword": "Date", "confidence": 0.8}]})
-    assert (model["confidence"], model["page_source"]) == (0.9, "kv")
-    assert (edge["confidence"], edge["page_source"]) == (0.5, "edge")
-    assert (fallback["confidence"], fallback["page_source"]) == (0.3, "kv_low")
-
-
-def test_the_dos_csv_names_the_rule_that_gave_the_date():
+def test_dos_has_two_states_kv_then_edge():
     import stages.lib.dos.stage as stage
     from dos_logic import detect_dos_per_page
 
     assert stage.DOS_COLS[-1] == "source"
-    page = "===== 1.png =====\nVisit Date: 03/01/2024\n"
-    pattern = {"1.png": [{"iso": "2024-06-12", "keyword": "DATE:", "pattern": "spaces_only"}]}
+    edge_page = "===== 1.png =====\nVisit Date: 03/01/2024\n"
+    kv = {"1.png": [{"iso": "2024-07-01", "keyword": "DOS", "confidence": 0.31}]}
     sources = [
-        detect_dos_per_page(page, None, use_llm=False, kv_dates={"1.png": [{"iso": "2024-07-01"}]})[0],
-        detect_dos_per_page("===== 1.png =====\nno label\n", None, use_llm=False, kv_pattern=pattern)[0],
-        detect_dos_per_page(page, None, use_llm=False)[0],
-        detect_dos_per_page("===== 1.png =====\nno date\n", None, use_llm=False)[0],
+        detect_dos_per_page(edge_page, kv_dates=kv)[0],
+        detect_dos_per_page(edge_page)[0],
+        detect_dos_per_page("===== 1.png =====\nno date\n")[0],
     ]
-    assert [hit.get("page_source") or "none" for hit in sources] == ["kv", "kv_pattern", "edge", "none"]
+    assert [(h.get("page_source") or "none", h["confidence"]) for h in sources] == [
+        ("kv", 0.31), ("edge", 0.5), ("none", 0.0)]
 
 
-def test_a_failed_llm_call_is_counted_and_gives_no_date(monkeypatch):
-    import stages.lib.dos.stage  # noqa: F401
-    import azure_retry
-    import dos_logic
-
-    class Refused:
-        class chat:
-            class completions:
-                @staticmethod
-                def create(**_):
-                    raise PermissionError("401 invalid subscription key")
-
-    monkeypatch.setattr(azure_retry, "call_with_retry", lambda fn, **_: fn())
-    dos_logic.LLM_CALLS.update(made=0, failed=0, error="")
-    assert dos_logic.extract_dos_range_with_llm("Office visit note", "1.png", Refused()) is None
-    assert (dos_logic.LLM_CALLS["made"], dos_logic.LLM_CALLS["failed"]) == (1, 1)
-    assert "401" in dos_logic.LLM_CALLS["error"]
-
-
-
-def test_dictation_and_transcription_dates_are_never_an_edge_dos_or_a_range():
+def test_dictation_and_transcription_dates_are_never_a_dos_or_a_range():
     import stages.lib.dos.stage  # noqa: F401
     from dos_logic import detect_dos_per_page
 
     def dos(text):
-        hit = detect_dos_per_page(f"===== 1.png =====\nNote.\n{text}\n", None, use_llm=False)[0]
+        hit = detect_dos_per_page(f"===== 1.png =====\nNote.\n{text}\n")[0]
         return hit["dos_from_iso"], hit["dos_to_iso"]
-
-    def source(text):
-        return detect_dos_per_page(f"===== 1.png =====\nNote.\n{text}\n", None, use_llm=False)[0]["page_source"]
 
     assert dos("DOS: 03/01/2024\nD: 03/01/2024 T: 03/04/2024") == ("2024-03-01", "2024-03-01")
     assert dos("Date of Service: 03/01/2024 - T: 03/04/2024") == ("2024-03-01", "2024-03-01")
-    # Not the edge label's date: only the last resort takes it.
-    assert source("Visit Date DT: 03/04/2024") == "dictation"
-    assert source("Visit Date: Dictated: 03/04/2024") == "dictation"
+    assert dos("Visit Date DT: 03/04/2024") == ("", "")
+    assert dos("D: 03/01/2024 T: 03/04/2024") == ("", "")
     # Real ranges are unchanged.
     assert dos("Date of Service: 03/01/2024 - 03/04/2024") == ("2024-03-01", "2024-03-04")
     assert dos("Admission Date: 03/01/2024 Discharge Date: 03/04/2024") == ("2024-03-01", "2024-03-04")
 
 
-def test_kv_low_needs_a_model_score_of_at_least_0_3_and_the_model_picks_at_0_6():
-    import stages.lib.dos.stage  # noqa: F401
-    from dos_logic import detect_dos_per_page
-
+def test_the_model_takes_its_best_dos_at_any_score():
     from stages.lib.extraction.util import config
 
-    def kv_low(score):
-        fallback = {"1.png": [{"iso": "2024-06-12", "keyword": "Date", "confidence": score}]}
-        return detect_dos_per_page("===== 1.png =====\nno label\n", None, use_llm=False, kv_fallback=fallback)[0]
-
-    assert kv_low(0.29)["match_type"] == "no_date_found"
-    assert (kv_low(0.3)["match_type"], kv_low(0.3)["confidence"]) == ("kv_low", 0.3)
-    assert config.SELECT_THRESHOLDS["dos"] == 0.6
-
-
-def test_dictation_dates_are_the_last_resort_dictated_before_transcribed():
-    import stages.lib.dos.stage  # noqa: F401
-    from dos_logic import detect_dos_per_page
-
-    def dos(text, **kw):
-        hit = detect_dos_per_page(f"===== 1.png =====\nNote.\n{text}\n", None, use_llm=False, **kw)[0]
-        return hit["dos_from_iso"], hit["dos_to_iso"], hit["page_source"], hit["confidence"]
-
-    assert dos("D: 03/01/2024 T: 03/04/2024") == ("2024-03-01", "2024-03-01", "dictation", 0.3)
-    assert dos("T: 03/04/2024 D: 03/01/2024")[0] == "2024-03-01"
-    assert dos("Transcribed: 03/04/2024")[:3] == ("2024-03-04", "2024-03-04", "dictation")
-    # A real date wins over it.
-    assert dos("Visit Date: 02/27/2024\nD: 03/01/2024 T: 03/04/2024")[:3] == ("2024-02-27", "2024-02-27", "edge")
-    fallback = {"1.png": [{"iso": "2024-02-20", "keyword": "Date", "confidence": 0.4}]}
-    assert dos("D: 03/01/2024", kv_fallback=fallback)[2] == "kv_low"
+    assert config.SELECT_THRESHOLDS["dos"] == 0.0

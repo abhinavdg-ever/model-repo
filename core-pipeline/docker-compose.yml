@@ -61,15 +61,6 @@ services:
       AZURE_DI_FEATURES: ${AZURE_DI_FEATURES:-languages,barcodes}
       AZURE_DI_CONNECTION_POOL_SIZE: ${AZURE_DI_CONNECTION_POOL_SIZE:-32}
 
-      # --- Azure OpenAI: the DOS stage's LLM pass ---
-      # Unset => DOS runs rules-only and stamps extraction_method='rules'.
-      DOS_LLM_ENABLED: ${DOS_LLM_ENABLED:-true}
-      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
-      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
-      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-08-01-preview}
-      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-4o-mini}
-      AZURE_OPENAI_AUTH: ${AZURE_OPENAI_AUTH:-auto}
-
       # Page sequencing (optional ONNX cross-encoder; default = markers/headers).
       SEQUENCING_CROSS_ENCODER: ${SEQUENCING_CROSS_ENCODER:-false}
 

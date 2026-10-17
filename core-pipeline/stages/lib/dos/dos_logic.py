@@ -1,18 +1,18 @@
 """Date of service: the key/value date, else a labelled date at the top or bottom of the page.
 
-Per page, in order:
+Per page, two states:
 
-  1. Key/value — the date the key/value extractor selected for the page.
-  2. Edge keyword — a DOS label (Encounter Date, Visit Date, Date of Service,
-     Admission Date, Discharge Date, ...) that starts within the first or last
-     ``edge_words`` (20) words of the page, with a date right after it. An
-     encounter label wins; otherwise an admission date is From and a
-     discharge date To; a discharge date alone is both. Read on the final
-     OCR text first, then on the Tesseract text the stage passes for pages
-     without Final2: Docling can drop a page's top banner (a page header).
-  3. Azure OpenAI — only when enabled, on clinical pages.
-  4. Key/value, low confidence — a date only the extractor's rules accepted.
-  5. Nothing — the page has no date of service.
+  1. Key/value — the key/value extractor's best date for the page: the pair its rules
+     accepted that the model scored highest, at any score. The confidence is that score.
+  2. Edge keyword, only when key/value has no date — a DOS label (Encounter Date, Visit
+     Date, Date of Service, Admission Date, Discharge Date, ...) that starts within the
+     first or last ``edge_words`` (20) words of the page, with a date right after it. An
+     encounter label wins; otherwise an admission date is From and a discharge date To;
+     a discharge date alone is both. Read on the final OCR text first, then on the
+     Tesseract text the stage passes for pages without Final2: Docling can drop a page's
+     top banner (a page header).
+
+Otherwise the page has no date of service.
 
 Each page keeps its own date here: this is the Extracted DOS. The Final DOS
 (the document's first page's, on every page) is ``continuity.engine.document_finals``.
@@ -21,21 +21,15 @@ Labels and settings live in ``keyword-canon/dos_canon.json`` (reloads on change)
 """
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from typing import Any, Optional
 
-from azure_llm import azure_deployment
 from stages.lib.canon_store import CANON_DIR, CanonFile
 
 
 # --- editable config ---------------------------------------------------------
-
-
-def _any_of(patterns: list[str]) -> re.Pattern[str]:
-    return re.compile(r"(" + "|".join(patterns) + r")", re.IGNORECASE)
 
 
 LABEL_CLASSES = ("encounter", "admit", "discharge")
@@ -45,18 +39,12 @@ LABEL_CLASSES = ("encounter", "admit", "discharge")
 class DosProfile:
     default_date: str  # ISO
     edge_words: int
-    llm_words: int
     # How far after a label its date may start, and the only words allowed between.
     label_reach_chars: int
     label_gap_words: frozenset[str]
-    confidence: dict[str, float]  # edge / kv / llm
-    # Rule 4 (kv_low) takes a date only when the model scored it at least this.
-    kv_low_min_score: float
+    confidence: dict[str, float]  # edge; kv when the extractor has no score
     label_re: re.Pattern[str]
     label_class: dict[str, str]  # letters-only phrase -> class
-    # Gate for the Azure OpenAI fallback.
-    clinical_cues: re.Pattern[str]
-    discharge_cues: re.Pattern[str]
 
 
 def _letters(text: str) -> str:
@@ -85,15 +73,11 @@ def _build_profile(data: dict[str, Any]) -> DosProfile:
     return DosProfile(
         default_date=data["DOS_DEFAULT_DATE"],
         edge_words=int(data["edge_words"]),
-        llm_words=int(data["llm_words"]),
         label_reach_chars=int(data["label_reach_chars"]),
         label_gap_words=frozenset(w.casefold() for w in data["label_gap_words"]),
         confidence={k: float(v) for k, v in data["confidence"].items()},
-        kv_low_min_score=float(data.get("kv_low_min_score", 0.0)),
         label_re=label_re,
         label_class=label_class,
-        clinical_cues=_any_of(data["clinical_cues"]),
-        discharge_cues=_any_of(data["discharge_cues"]),
     )
 
 
@@ -285,29 +269,9 @@ def edge_dates(page_text: str, prof: Optional[DosProfile] = None) -> list[Labell
 
 # A date right after one of these is when the note was dictated or transcribed ('D: 03/01/2024
 # T: 03/04/2024', 'DT: ...', 'Dictated: ...'): never an edge DOS, never one end of a range.
-# Only the last resort (dictation_page_date) reads them.
 _DICTATION_BEFORE = re.compile(
     r"(?:(?<![A-Za-z])(?:D|T|DD|DT|TD|TT)\s*:|(?i:\b(?:dictated|transcribed)(?:\s+(?:on|date))?\s*:?))\s*$"
 )
-# The last resort's markers, in order: dictated (D:, DD:, Dictated) before transcribed
-# (T:, DT:, TD:, TT:, Transcribed).
-_DICTATION_MARKERS = (
-    ("dictated", re.compile(r"(?:(?<![A-Za-z])(?:D|DD)\s*:|(?i:\bdictated(?:\s+(?:on|date))?\s*:?))\s*")),
-    ("transcribed", re.compile(r"(?:(?<![A-Za-z])(?:T|DT|TD|TT)\s*:|(?i:\btranscribed(?:\s+(?:on|date))?\s*:?))\s*")),
-)
-
-
-def dictation_page_date(page_text: str, prof: Optional["DosProfile"] = None) -> Optional["PageDate"]:
-    """Last resort, when the page has no other date: the dictated date, else the
-    transcribed one ('D: 03/01/2024 T: 03/04/2024' gives 03/01/2024)."""
-    prof = prof or profile()
-    for label, marker in _DICTATION_MARKERS:
-        for found in marker.finditer(page_text):
-            match = DATE_RE.match(page_text, found.end())
-            iso = parse_date_match(match) if match else None
-            if iso:
-                return PageDate(iso, iso, prof.confidence["dictation"], label, "dictation")
-    return None
 
 
 # "03/01/2024 - 03/05/2024", "... to ...", "... thru / through ...".
@@ -332,7 +296,7 @@ class PageDate:
     dos_to: str
     confidence: float
     keyword: str
-    source: str  # "edge" | "edge_tesseract" | "kv" | "kv_pattern" | "llm" | "kv_low" | "dictation"
+    source: str  # "kv" | "edge" | "edge_tesseract"
     is_pair: bool = False
 
 
@@ -341,14 +305,13 @@ def edge_page_date(
     prof: Optional[DosProfile] = None,
     hits: Optional[list[LabelledDate]] = None,
 ) -> Optional[PageDate]:
-    """Rule 2: an encounter label first; else admission (From) + discharge (To).
+    """State 2: an encounter label first; else admission (From) + discharge (To).
     The chosen ``hits`` are marked ``chosen``."""
     prof = prof or profile()
     if hits is None:
         hits = edge_dates(page_text, prof)
 
     def confidence(*chosen: LabelledDate) -> float:
-        # A spaced-slash date ('05 / 20 / 2025') is a date like any other.
         return prof.confidence["edge"]
 
     encounter = next((h for h in hits if h.label_class == "encounter"), None)
@@ -378,14 +341,9 @@ def edge_page_date(
 # --- 1. key/value -------------------------------------------------------------
 
 
-def kv_page_date(
-    dates: list[dict[str, Any]], prof: Optional[DosProfile] = None, *, source: str = "kv"
-) -> Optional[PageDate]:
-    """Rule 1: the first date the key/value extractor selected; a range keeps its end.
-
-    With ``source="kv_low"`` (rule 4) the dates are the ones the rules accepted but the
-    model did not: the confidence is the model's own probability, else the canon's kv_low.
-    """
+def kv_page_date(dates: list[dict[str, Any]], prof: Optional[DosProfile] = None) -> Optional[PageDate]:
+    """State 1: the key/value extractor's best date; a range keeps its end. Its confidence is
+    the model's score for it (the rules' score without a model, else the canon's kv)."""
     prof = prof or profile()
     for item in dates or []:
         iso = str(item.get("iso") or "")
@@ -393,17 +351,10 @@ def kv_page_date(
             continue
         iso_to = str(item.get("iso_to") or "")
         is_pair = len(iso_to) == 10 and iso_to > iso
-        confidence = prof.confidence[source]
-        # kv_low: only a date the model scored kv_low_min_score or more; its confidence is
-        # the canon's kv_low, not the model's score.
-        if source == "kv_low" and item.get("confidence") is not None:
-            if float(item["confidence"]) < prof.kv_low_min_score:
-                continue
-        # A spaces-only date ('06 12 24') is a loose pattern: capped low.
-        if item.get("pattern") == "spaces_only":
-            confidence = min(confidence, prof.confidence.get("kv_spaces_only", confidence))
+        score = item.get("confidence")
+        confidence = float(score) if score is not None else prof.confidence["kv"]
         return PageDate(iso, iso_to if is_pair else iso, confidence,
-                        str(item.get("keyword") or ""), source, is_pair=is_pair)
+                        str(item.get("keyword") or ""), "kv", is_pair=is_pair)
     return None
 
 
@@ -413,15 +364,6 @@ def kv_page_date(
 def iso_to_mdy(iso: str) -> str:
     y, m, d = iso.split("-")
     return f"{m}-{d}-{y}"
-
-
-def normalize_date(date_str: str) -> str:
-    """Any supported shape → MM-DD-YYYY, or "unknown". Used for LLM replies."""
-    match = DATE_RE.search((date_str or "").strip())
-    if not match:
-        return "unknown"
-    iso = parse_date_match(match)
-    return iso_to_mdy(iso) if iso else "unknown"
 
 
 def to_iso_date(mm_dd_yyyy: str) -> Optional[str]:
@@ -442,7 +384,7 @@ def to_iso_date(mm_dd_yyyy: str) -> Optional[str]:
 
 
 def extract_dos_from_page_text(page_text: str) -> Optional[dict]:
-    """Rule 2 (edge keyword) alone on one page (no key/value, no LLM)."""
+    """State 2 (edge keyword) alone on one page (no key/value)."""
     best = edge_page_date(page_text)
     if best is None:
         return None
@@ -458,21 +400,7 @@ def extract_dos_from_page_text(page_text: str) -> Optional[dict]:
 # --- the chart ----------------------------------------------------------------
 
 
-def page_allows_llm(page_text: str) -> bool:
-    """True when page looks like a clinical note section LLM may help with."""
-    return bool(profile().clinical_cues.search(page_text or ""))
-
-
-def is_discharge_like(page_text: str) -> bool:
-    return bool(profile().discharge_cues.search(page_text or ""))
-
-
-_MATCH_TYPE = {
-    "edge": "edge_keyword", "edge_tesseract": "edge_keyword_tesseract", "kv": "kv", "llm": "llm",
-    "kv_pattern": "kv_pattern",
-    "kv_low": "kv_low",
-    "dictation": "dictation_date",
-}
+_MATCH_TYPE = {"kv": "kv", "edge": "edge_keyword", "edge_tesseract": "edge_keyword_tesseract"}
 
 
 def _row(page: dict, page_date: Optional[PageDate], prof: DosProfile) -> dict:
@@ -510,30 +438,19 @@ def _row(page: dict, page_date: Optional[PageDate], prof: DosProfile) -> dict:
 
 def detect_dos_per_page(
     text: str,
-    client: Any | None,
     *,
-    use_llm: bool = True,
     candidate_log: Optional[list[dict]] = None,
     kv_dates: Optional[dict[str, list[dict[str, Any]]]] = None,
     tesseract_texts: Optional[dict[str, str]] = None,
-    kv_fallback: Optional[dict[str, list[dict[str, Any]]]] = None,
-    kv_pattern: Optional[dict[str, list[dict[str, Any]]]] = None,
 ) -> list[dict]:
-    """One row per page: key/value, else edge keyword (final text, then Tesseract),
-    else the key/value pattern fallback, else LLM, else a key/value date only the
-    rules accepted (low confidence), else nothing.
+    """One row per page: the key/value date, else the edge keyword (final text, then
+    Tesseract), else nothing.
 
-    ``kv_pattern`` maps a page name to the pattern fallback's dates (spaces only,
-    right after a DOS key), for pages where the model chose no date.
-
-    ``tesseract_texts`` maps a page name to its Tesseract text; only its
-    first and last ``edge_words`` words are read.
-
-    ``kv_dates`` maps a page name to the dates the key/value extractor chose
-    (``iso``, optional ``iso_to``, ``keyword``). ``kv_fallback`` is the same
-    shape for pages where the model chose no date: the dates the rules accepted,
-    best model score first, each with the model's ``confidence``. ``candidate_log``, when
-    passed, gets every edge label with its date and whether it was chosen.
+    ``kv_dates`` maps a page name to the key/value extractor's best date (``iso``, optional
+    ``iso_to``, ``keyword``, ``confidence`` = the model's score). ``tesseract_texts`` maps a
+    page name to its Tesseract text; only its first and last ``edge_words`` words are read.
+    ``candidate_log``, when passed, gets every edge label with its date and whether it was
+    chosen.
     """
     prof = profile()
     rows: list[dict] = []
@@ -547,9 +464,10 @@ def detect_dos_per_page(
             break
         page_name = page.get("page_name") or ""
 
-        # Rule 1: the key/value date. The edge labels are still read for the candidate log.
+        # State 1: the key/value date. The edge labels are still read for the candidate log.
         found = kv_page_date((kv_dates or {}).get(page_name) or [], prof)
         hits = edge_dates(page_text, prof)
+        # State 2: no key/value date; the edge keyword.
         if found is None:
             found = edge_page_date(page_text, prof, hits)
         if found is None and (tesseract_texts or {}).get(page_name):
@@ -560,163 +478,8 @@ def detect_dos_per_page(
                 for hit in tesseract_hits:
                     hit.edge = f"tesseract_{hit.edge}"
                 hits = hits + tesseract_hits
-        if found is None:
-            # Rule 2b: no model date, no edge label; a spaces-only date after a DOS key.
-            found = kv_page_date((kv_pattern or {}).get(page_name) or [], prof, source="kv_pattern")
-        if found is None and use_llm and client is not None and page_allows_llm(page_text):
-            pair = extract_dos_range_with_llm(
-                page_text,
-                str(page_name or page.get("page")),
-                client,
-                discharge_like=is_discharge_like(page_text),
-            )
-            if pair:
-                d_from, d_to = (to_iso_date(v) for v in pair)
-                if d_from:
-                    found = PageDate(d_from, d_to or d_from, prof.confidence["llm"], "", "llm")
-        if found is None:
-            found = kv_page_date((kv_fallback or {}).get(page_name) or [], prof, source="kv_low")
-        if found is None:
-            # Last resort: no real date anywhere; when it was dictated, else transcribed.
-            found = dictation_page_date(page_text, prof)
 
         if candidate_log is not None:
             candidate_log.extend({"page_name": page_name, **asdict(hit)} for hit in hits)
-        if found is not None and found.source != "kv":
-            # Not the key/value model's pick (edge label, LLM, rules-only fallback): a backup,
-            # flagged with a low confidence.
-            found.confidence = min(found.confidence, prof.confidence.get("backup_max", found.confidence))
         rows.append(_row(page, found, prof))
     return rows
-
-
-# --- LLM fallback ------------------------------------------------------------
-
-
-def _slice_first_n_words(text: str, n: int) -> str:
-    count = 0
-    for m in re.finditer(r"\b\w+\b", text):
-        count += 1
-        if count >= n:
-            return text[: m.end()]
-    return text
-
-
-def _slice_last_n_words(text: str, n: int) -> str:
-    matches = list(re.finditer(r"\b\w+\b", text))
-    if len(matches) <= n:
-        return text
-    return text[matches[-n].start() :]
-
-
-# Calls made / failed this run (the DOS stage resets and reads it): a client built with a bad
-# key fails every call, and the run must not then claim the LLM pass ran.
-LLM_CALLS = {"made": 0, "failed": 0, "error": ""}
-
-
-def extract_dos_range_with_llm(
-    page_text: str,
-    page_label: str,
-    client: Any,
-    *,
-    discharge_like: bool = False,
-) -> Optional[tuple[str, str]]:
-    """
-    LLM DOS extract. Returns (dos_from, dos_to) in MM-DD-YYYY, or None.
-    For discharge-like notes, asks for admission/from and discharge/to.
-    """
-    if client is None or not page_text.strip():
-        return None
-
-    words = profile().llm_words
-    top = _slice_first_n_words(page_text, words)
-    bottom = _slice_last_n_words(page_text, words)
-    if top.strip() == bottom.strip():
-        snippet = top
-    else:
-        snippet = f"[TOP]\n{top}\n\n[BOTTOM]\n{bottom}"
-    today_str = datetime.now().strftime("%m-%d-%Y")
-    mode = (
-        "This looks like a discharge / inpatient note. Extract BOTH "
-        "admission (DOS From) and discharge (DOS To) when present. "
-        "If only one visit date exists, set dos_to = dos_from."
-        if discharge_like
-        else "Extract the visit Date of Service. For a single-day visit, "
-        "set dos_to = dos_from. If a date range is explicit, use both ends."
-    )
-
-    prompt = f"""You are a STRICT medical document parser. Extract Date of Service From/To.
-
-{mode}
-
-CRITICAL RULES:
-1. Extract only explicit visit / admission / discharge / DOS labels — not labs, procedures, follow-ups, or narrative history.
-2. When in doubt, return NO_VISIT_DATE_FOUND.
-3. Dates must be MM-DD-YYYY (zero-padded).
-
-Respond with ONLY JSON (no markdown):
-{{"dos_from":"MM-DD-YYYY","dos_to":"MM-DD-YYYY"}}
-or
-{{"dos_from":null,"dos_to":null}}
-
-Today's date (year reference): {today_str}
-
-Text excerpt:
-{snippet}
-"""
-
-    LLM_CALLS["made"] += 1
-    try:
-        from azure_retry import call_with_retry
-        from config import (
-            AZURE_RETRY_ATTEMPTS,
-            AZURE_RETRY_BASE_DELAY,
-            AZURE_RETRY_MAX_DELAY,
-        )
-
-        response = call_with_retry(
-            lambda: client.chat.completions.create(
-                model=azure_deployment(),
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "Extract clinical DOS from/to as JSON only. "
-                            "Prefer explicit labels. For discharge notes return both ends."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.0,
-                max_tokens=80,
-                timeout=30,
-            ),
-            attempts=AZURE_RETRY_ATTEMPTS,
-            base_delay=AZURE_RETRY_BASE_DELAY,
-            max_delay=AZURE_RETRY_MAX_DELAY,
-            label="azure.openai.dos",
-        )
-        raw = (response.choices[0].message.content or "").strip()
-        raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        if "NO_VISIT_DATE_FOUND" in raw.upper() and "{" not in raw:
-            return None
-        data = json.loads(raw)
-        d_from = data.get("dos_from")
-        d_to = data.get("dos_to")
-        if not d_from:
-            return None
-        n_from = normalize_date(str(d_from))
-        if n_from == "unknown":
-            return None
-        if d_to:
-            n_to = normalize_date(str(d_to))
-            if n_to == "unknown":
-                n_to = n_from
-        else:
-            n_to = n_from
-        return n_from, n_to
-    except Exception as exc:
-        LLM_CALLS["failed"] += 1
-        LLM_CALLS["error"] = LLM_CALLS["error"] or f"{type(exc).__name__}: {exc}"[:300]
-        print(f"  [warn] LLM DOS failed on {page_label}: {exc}")
-        return None

@@ -1,12 +1,10 @@
 """Date of service from DOS keys, admit/discharge pairs, or header/footer dates.
 
 A date printed with spaced slashes ('05 / 20 / 2025') is one plain word by now
-(geometry.merge_spaced_dates) and is read like any other. A date with spaces only ('06 12 24')
-is never a candidate for the key/value model: pattern_page reads it right after a DOS key,
-staged as ``dos_pattern``, for the DOS stage's fallback, at SPACES_ONLY_SCORE.
+(geometry.merge_spaced_dates) and is read like any other.
 
 Rules from Data/examp/dos.csv (keys and tiers live in DOS/keys.json):
-  - Tiers per page: service keys > admit/discharge > received > weak keys (Date, dd, dt,
+  - Tiers per page: service keys > admit/discharge > received > weak keys (Date,
     Report Date, ...) > printed. The best tier with a valid date wins; weak keys are only a
     fallback. A lab's Collection date ranks with the service keys and wins among them, so a
     lab page is Collected > Received > Printed.
@@ -38,7 +36,6 @@ from ..util.dates import (
     date_year,
     find_date_ranges,
     find_dates,
-    find_spaces_only_dates,
     normalize_date,
 )
 from ..util.geometry import FOOTER_FRAC, HEADER_FRAC, Word, is_edge_region, median_height
@@ -52,9 +49,6 @@ TIER_RANK = {
 # Tiers whose date must sit right after the key ('Received: 10/02/2024'), as weak keys.
 _NEAR_TIERS = frozenset({"weak", "received", "printed"})
 _MIN_YEAR = 2000
-# Spaces only ('06 12 24'): read only right after a DOS key on its line, only when the page
-# has no other keyed date, and at a very low score.
-SPACES_ONLY_SCORE = 0.3
 _MAX_GAP_WORDS = 6
 _WEAK_GAP_WORDS = 1
 _BELOW_LINES = 4.0
@@ -88,8 +82,6 @@ class DosHit:
     accepted: bool = False
     selected: bool = False
     source: str = ""
-    # How the date was read: "" (a plain date) or "spaces_only".
-    pattern: str = ""
     key_hit: KeyHit | None = field(default=None, repr=False, compare=False)
 
 
@@ -444,37 +436,6 @@ def drop_shared_values(rows: list[DosHit]) -> list[DosHit]:
     return rows
 
 
-def _spaces_only_row(hit: KeyHit, tier: str, blocked: set[str], words: list[Word]) -> DosHit | None:
-    """A spaces-only date ('06 12 24') right after the key on its line (at most one word
-    between), at SPACES_ONLY_SCORE."""
-    tokens, text = ordered_tokens(_reach(hit, words))
-    positions = key_token_span(tokens, hit.word_indexes, hit.key)
-    if positions is None:
-        return None
-    key_end = tokens[positions[1]]
-    line_h = median_height([token.word for token in tokens])
-    for match in find_spaces_only_dates(text):
-        if match.start(1) < key_end.end:
-            continue
-        raw = match.group(1)
-        if not _plausible(raw) or canonical_date(raw) in blocked:
-            continue
-        covered = [token for token in tokens if token.start < match.end(1) and token.end > match.start(1)]
-        if not covered or abs(covered[0].word.box.cy - key_end.word.box.cy) > 0.6 * line_h:
-            break
-        if len(text[key_end.end : match.start(1)].split()) > _WEAK_GAP_WORDS:
-            break
-        value = normalize_date(raw)
-        row = DosHit(
-            key=hit.key, region=hit.region, sentence=text, tier=tier, value=value,
-            dos_from=value, dos_to=value, score=SPACES_ONLY_SCORE, accepted=True,
-            source="same_line_spaces", pattern="spaces_only",
-        )
-        row.value_at = [token.word for token in covered]
-        return linked(row, hit)
-    return None
-
-
 def extract_page(hits: list[KeyHit], words: list[Word], page_h: float) -> list[DosHit]:
     """Keyed DOS rows (all tiers), keyless header/footer dates only if none accepted."""
     tiers = load_key_tiers("dos")
@@ -488,15 +449,3 @@ def extract_page(hits: list[KeyHit], words: list[Word], page_h: float) -> list[D
         rows.extend(extract_keyless(words, page_h, blocked))
     return mark_selected(rows)
 
-
-def pattern_page(hits: list[KeyHit], words: list[Word]) -> list[DosHit]:
-    """The pattern fallback, kept apart from the model's candidates: a date with spaces only
-    ('06 12 24') right after a DOS key. The DOS stage reads it only when neither the model nor
-    an edge label gave the page a date."""
-    tiers = load_key_tiers("dos")
-    blocked = _dob_values(hits)
-    rows = [
-        _spaces_only_row(hit, tiers.get(hit.key.strip().casefold(), "weak"), blocked, words)
-        for hit in trusted_field_hits(hits, "dos")
-    ]
-    return mark_selected([row for row in rows if row is not None])

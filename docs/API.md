@@ -44,9 +44,9 @@ psql "$DATABASE_URL" -c "SELECT stage_name, pass_no, seq FROM pipeline_stage ORD
 
 Expect 15 phase-1 rows (ocr_quality … imaging_final). An empty `pipeline_stage` makes `/ready` return 503.
 
-### Azure OpenAI: key or no key
+### Optional Azure services
 
-Azure Blob, Document Intelligence, and OpenAI are optional. Leave them unset and the matching stage records that it ran without them (`GET /health` names the gap). `AZURE_OPENAI_AUTH` is `auto` (key if `AZURE_OPENAI_API_KEY` is set, otherwise Entra), `key`, or `entra`.
+Azure Blob and Document Intelligence are optional. Leave them unset and the matching stage records that it ran without them (`GET /health` names the gap). The DOS stage uses no LLM.
 
 ---
 

@@ -347,7 +347,6 @@ class TestDosStageWritesEachPageOnce:
             completed.append(page_id)
             _ctx.done += 1
 
-        monkeypatch.setattr(dos_stage, "_llm_client", lambda: None)
         monkeypatch.setattr(dos_stage, "stage_run", fake_stage_run)
         monkeypatch.setattr(dos_stage, "connect", lambda: nullcontext(None))
         monkeypatch.setattr(dos_stage, "get_blank_junk_flags", lambda *a, **k: {})
@@ -377,7 +376,7 @@ def _pages(*bodies, **kwargs):
     from dos_logic import detect_dos_per_page
 
     text = "".join(f"===== {i}.jpg =====\n{body}\n" for i, body in enumerate(bodies, 1))
-    return detect_dos_per_page(text, None, use_llm=False, **kwargs)
+    return detect_dos_per_page(text, **kwargs)
 
 
 FILLER = " ".join(f"word{i}" for i in range(40))
@@ -506,27 +505,6 @@ class TestDosDriver:
         assert hit["doc_dos_from_iso"] == "2024-03-14"
         assert hit["match_type"] == "edge_keyword"
         assert hit["page_source"] == "edge"
-
-    def test_llm_is_the_fallback_on_clinical_pages_only(self, monkeypatch):
-        import dos_logic
-
-        calls = []
-
-        def fake_llm(page_text, *_a, **_k):
-            calls.append(page_text)
-            return ("05-06-2024", "05-06-2024")
-
-        monkeypatch.setattr(dos_logic, "extract_dos_range_with_llm", fake_llm)
-        text = (
-            "===== 1.jpg =====\nDate of Service: 03/14/2024\nChief Complaint: cough\n"
-            "===== 2.jpg =====\nChief Complaint: knee pain, no date here.\n"
-            "===== 3.jpg =====\nPlain page without a date or cue.\n"
-        )
-        hits = dos_logic.detect_dos_per_page(text, object(), use_llm=True)
-        assert len(calls) == 1  # page 1 had a date; page 3 has no cue
-        assert hits[1]["dos_from_iso"] == "2024-05-06"
-        assert hits[1]["page_source"] == "llm"
-        assert hits[0]["page_source"] == "edge"
 
     def test_tesseract_top_and_bottom_fill_in_when_the_final_text_dropped_the_banner(self):
         """Docling can drop the page-header banner; Tesseract keeps it."""

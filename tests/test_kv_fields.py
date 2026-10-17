@@ -11,8 +11,6 @@ def test_an_extracted_date_is_the_page_date_when_the_edges_have_none():
     text = "===== 1.jpg =====\nOffice visit. No calendar day is printed on this page.\n"
     hits = detect_dos_per_page(
         text,
-        None,
-        use_llm=False,
         kv_dates={
             "1.jpg": [
                 {
@@ -32,8 +30,6 @@ def test_the_key_value_date_comes_before_an_edge_label():
     text = "===== 1.jpg =====\nDate of Service: 01/02/2024\n"
     hits = detect_dos_per_page(
         text,
-        None,
-        use_llm=False,
         kv_dates={
             "1.jpg": [
                 {
@@ -51,7 +47,7 @@ def test_the_key_value_date_comes_before_an_edge_label():
 
 def test_an_edge_label_is_used_when_there_is_no_key_value_date():
     hits = detect_dos_per_page(
-        "===== 1.jpg =====\nDate of Service: 01/02/2024\n", None, use_llm=False, kv_dates={}
+        "===== 1.jpg =====\nDate of Service: 01/02/2024\n", kv_dates={}
     )
     assert hits[0]["dos_from_iso"] == "2024-01-02"
     assert hits[0]["page_source"] == "edge"
@@ -62,8 +58,6 @@ def test_a_key_value_date_beats_a_date_in_the_middle_of_the_page():
     text = f"===== 1.jpg =====\n{filler}\nDate of Service: 03/15/2024\n{filler}\n"
     hits = detect_dos_per_page(
         text,
-        None,
-        use_llm=False,
         kv_dates={
             "1.jpg": [
                 {
@@ -81,7 +75,7 @@ def test_a_key_value_date_beats_a_date_in_the_middle_of_the_page():
 
 def test_an_unlabelled_text_date_is_not_the_page_date():
     text = "===== 1.jpg =====\n03/14/2024\nChief Complaint: cough\n"
-    hits = detect_dos_per_page(text, None, use_llm=False)
+    hits = detect_dos_per_page(text)
     assert hits[0]["dos_from_iso"] == ""
     assert hits[0]["page_source"] == ""
 
@@ -124,7 +118,7 @@ def test_staged_member_fields_fill_what_the_rules_missed():
 
 def _page_dates(body, kv=None):
     hit = detect_dos_per_page(
-        f"===== 1.jpg =====\n{body}\n", None, use_llm=False, kv_dates={"1.jpg": kv} if kv else None
+        f"===== 1.jpg =====\n{body}\n", kv_dates={"1.jpg": kv} if kv else None
     )[0]
     return hit["dos_from_iso"], hit["dos_to_iso"]
 
@@ -156,59 +150,53 @@ def test_admit_and_discharge_still_pair_in_date_order():
 
 
 def _dos(text, **kw):
-    return detect_dos_per_page(f"===== 4.png =====\n{text}\n", None, use_llm=False, **kw)[0]
+    return detect_dos_per_page(f"===== 4.png =====\n{text}\n", **kw)[0]
 
 
-FALLBACK = {"4.png": [{"iso": "2025-05-20", "raw": "5/20/25", "tier": "weak", "keyword": "Date",
-                       "confidence": 0.62}]}
 
 
-def test_a_date_only_the_rules_accepted_is_the_last_resort_capped_as_a_backup():
-    hit = _dos("CT & MRI scheduling form, nothing dated at the edges.", kv_fallback=FALLBACK)
-    assert hit["dos_from_iso"] == "2025-05-20"
-    assert (hit["page_source"], hit["match_type"]) == ("kv_low", "kv_low")
-    # Always the canon's kv_low (0.3), whatever the model scored.
-    assert hit["confidence"] == 0.3
+def test_a_key_value_date_carries_the_models_score_as_its_confidence():
+    kv = {"4.png": [{"iso": "2024-03-15", "raw": "03/15/2024", "tier": "service", "keyword": "DOS",
+                     "confidence": 0.42}]}
+    hit = _dos("Date of Service: 01/02/2024", kv_dates=kv)
+    assert (hit["dos_from_iso"], hit["page_source"], hit["confidence"]) == ("2024-03-15", "kv", 0.42)
 
 
-def test_the_fallback_without_a_model_score_uses_the_canon_kv_low():
-    fallback = {"4.png": [{**FALLBACK["4.png"][0], "confidence": None}]}
-    assert _dos("No edge date here.", kv_fallback=fallback)["confidence"] == 0.3
+def test_the_edge_label_is_used_only_without_a_key_value_date():
+    hit = _dos("Date of Service: 01/02/2024")
+    assert (hit["dos_from_iso"], hit["page_source"], hit["confidence"]) == ("2024-01-02", "edge", 0.5)
+    assert _dos("No date anywhere.")["page_source"] == ""
 
 
-def test_a_selected_key_value_date_beats_the_fallback():
-    kv = {"4.png": [{"iso": "2024-03-15", "raw": "03/15/2024", "tier": "service", "keyword": "DOS"}]}
-    hit = _dos("No edge date here.", kv_dates=kv, kv_fallback=FALLBACK)
-    assert (hit["dos_from_iso"], hit["page_source"]) == ("2024-03-15", "kv")
-
-
-def test_the_dos_stage_writes_the_fallback_as_method_kv():
+def test_the_dos_stage_writes_kv_or_rules():
     from stages.lib.dos.stage import _page_method
 
-    assert _page_method({"page_source": "kv_low"}, "rules") == "kv"
+    assert [_page_method({"page_source": s}) for s in ("kv", "edge", "edge_tesseract", "")] == [
+        "kv", "rules", "rules", "rules"]
 
 
-def test_rule_fallback_only_when_the_model_chose_nothing():
+def test_the_best_date_is_the_highest_model_score_at_any_score():
     rows = [
         {"key": "Received", "value": "", "score": 0.0, "accepted": False, "selected": False},
         {"key": "Date", "value": "5/20/25", "dos_from": "5/20/25", "score": 0.8,
          "accepted": False, "selected": False, "rule_accepted": True, "model_score": 0.41},
         {"key": "Date", "value": "5/8/23", "score": 0.7, "accepted": False, "selected": False,
-         "rule_accepted": True, "model_score": 0.55},
+         "rule_accepted": True, "model_score": 0.15},
+        {"key": "Visit", "value": "4/1/23", "score": 0.0, "accepted": False, "selected": False,
+         "rule_accepted": False, "model_score": 0.9},
     ]
     page = StagedPage("4.png", {"fields": {"dos": rows}})
-    assert [row["value"] for row in page.rule_fallback("dos")] == ["5/8/23", "5/20/25"]
-    chosen = {**rows[1], "accepted": True, "selected": True}
-    assert StagedPage("4.png", {"fields": {"dos": [chosen, rows[2]]}}).rule_fallback("dos") == []
+    # Highest score among what the rules accepted, however low; never a rule-rejected row.
+    assert page.best("dos")["value"] == "5/20/25"
+    assert StagedPage("4.png", {"fields": {"dos": rows[:1]}}).best("dos") is None
 
 
-def test_rule_fallback_reads_staging_written_before_rule_accepted():
-    """The pasted 67992303_56072120 p4 row: the rules scored 5/20/25 (0.8), the model said no."""
+def test_the_best_date_without_a_model_is_the_rules_pick():
+    """Staging from before the model ran: no model scores, no rule_accepted."""
     rows = [
         {"key": "Date", "value": "", "score": 0.0, "accepted": False, "source": ""},
         {"key": "Date", "value": "5/20/25", "dos_from": "5/20/25", "dos_to": "5/20/25",
-         "score": 0.8, "accepted": False, "selected": False, "source": "same_line"},
+         "score": 0.8, "accepted": True, "selected": True, "source": "same_line"},
         {"key": "Visit", "value": "5/20/25", "score": 0.8, "accepted": False, "source": "same_line_shared"},
     ]
-    page = StagedPage("4.png", {"fields": {"dos": rows}})
-    assert [row["source"] for row in page.rule_fallback("dos")] == ["same_line"]
+    assert StagedPage("4.png", {"fields": {"dos": rows}}).best("dos")["source"] == "same_line"

@@ -35,7 +35,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from config import (
     API_HOST,
     API_PORT,
-    DOS_LLM_ENABLED,
     MEMBER_NER_ENABLED,
     STAGE_WORKERS,
 )
@@ -744,7 +743,6 @@ def health() -> dict[str, Any]:
         # page can be marked wrong_member, so no document can be Rejected.
         # blob.ready=false means run/batch-run work locally but not from blob.
         **caps,
-        "dos_llm_enabled": DOS_LLM_ENABLED,
         "stage_workers": STAGE_WORKERS,
     }
 

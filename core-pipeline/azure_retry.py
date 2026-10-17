@@ -1,6 +1,6 @@
-"""Retry transient Azure / OpenAI failures with exponential backoff.
+"""Retry transient Azure failures with exponential backoff.
 
-The Azure and OpenAI SDKs already retry some transport errors. This wrapper
+The Azure SDKs already retry some transport errors. This wrapper
 covers the gaps that still fail charts in practice: 429 rate limits with
 Retry-After, brief 5xx windows, and dropped connections that the SDK gave up
 on. Permanent failures (401, 403, 404) are not retried.
@@ -76,19 +76,6 @@ def is_transient_azure_error(exc: BaseException) -> bool:
             if name in {"ServiceRequestError", "ServiceResponseError"}:
                 return True
             return "timeout" in str(exc).lower() or "timed out" in str(exc).lower()
-        return code in _RETRY_HTTP
-
-    # openai
-    if name in {
-        "RateLimitError",
-        "APIConnectionError",
-        "APITimeoutError",
-        "InternalServerError",
-        "APIStatusError",
-    } or module.startswith("openai"):
-        code = _status_code(exc)
-        if code is None:
-            return name != "AuthenticationError"
         return code in _RETRY_HTTP
 
     message = str(exc).lower()

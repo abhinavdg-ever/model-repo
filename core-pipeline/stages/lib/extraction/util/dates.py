@@ -10,7 +10,6 @@ import re
 from datetime import date, datetime
 
 _CLEAN = re.compile(r"\s+")
-_SPACES_ONLY = re.compile(r"^\d{2} \d{2} (?:\d{4}|\d{2})$")
 
 _MONTH = (
     r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
@@ -50,15 +49,6 @@ _YEAR_TAIL = re.compile(r"(\d{2,4})\s*$")
 _ISO_YEAR = re.compile(r"^(\d{4})-")
 
 
-# Spaces only ('06 12 24'): two-digit month 01-12 and day 01-31. Too loose to search a page
-# with (lab values, counts); only a DOS key's fallback reads it, right after the key.
-_SPACES_ONLY_DATE = re.compile(r"\b((?:0[1-9]|1[0-2]) (?:0[1-9]|[12]\d|3[01]) (?:\d{4}|\d{2}))\b")
-
-
-def find_spaces_only_dates(text: str) -> list[re.Match[str]]:
-    return list(_SPACES_ONLY_DATE.finditer(text or ""))
-
-
 def find_dates(text: str) -> list[re.Match[str]]:
     return list(_DATE.finditer(text or ""))
 
@@ -69,10 +59,8 @@ def find_date_ranges(text: str) -> list[re.Match[str]]:
 
 def normalize_date(raw: str) -> str:
     text = _CLEAN.sub(" ", (raw or "").strip()).rstrip(".,;")
-    # '05 / 20 / 2025' -> '05/20/2025'; '06 12 24' -> '06/12/24'
+    # '05 / 20 / 2025' -> '05/20/2025'
     text = re.sub(r"(?<=\d) ?/ ?(?=\d)", "/", text)
-    if _SPACES_ONLY.match(text):
-        text = text.replace(" ", "/")
     if not text:
         return ""
     iso = re.match(

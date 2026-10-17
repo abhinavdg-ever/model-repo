@@ -40,8 +40,9 @@ Models_Root = EXTRACTION_MODELS_ROOT
 Model_Registry = Models_Root / "kv-extraction"
 
 # Selection cut-offs that override a trained version's thresholds.json, whichever version
-# runs: the model takes a field's best candidate only at this probability or above.
-SELECT_THRESHOLDS = {"dos": 0.6}
+# runs: the model takes a field's best candidate only at this probability or above. DOS takes
+# its best pair at any score; the DOS stage writes that score as the page's confidence.
+SELECT_THRESHOLDS = {"dos": 0.0}
 # Folder prefixes of the split layout: the key-value model and the heading model.
 SPLIT_PREFIXES = ("KV", "Heading")
 
