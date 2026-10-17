@@ -91,3 +91,16 @@ python -m jobs.manifest_sweeper --local ../review-ui/data/metadata/
 curl -X POST localhost:8001/api/manifest/sweep -H 'Content-Type: application/json' \
   -d '{"local_path":"/path/to/metadata"}'
 ```
+
+## Harvest extraction keys and date labels
+
+`harvest_keys.py` scans `review-ui/data/folders/*` (standard library only, no venv):
+
+```bash
+python utilities/harvest_keys.py                 # DOS keys -> utilities/output/keys/
+python utilities/harvest_keys.py --field all     # every staged field
+```
+
+- `keys_rows.csv` — every staged key/value pair, with `status`: `accepted`, `no_value` (key found, no value read — a failed pair), `rejected`, `printed`.
+- `keys_summary.csv` — per key and tier: found / accepted / failed counts and examples.
+- `date_labels.csv` — from the OCR text: the words before every date, counted; `known_tier` is blank when no key in `extraction/dos/keys.json` covers the label.
