@@ -431,6 +431,7 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     bj = caps.get("blank_junk_model") or {}
     family = caps.get("page_family_model") or {}
     page_axes = caps.get("page_axes_model") or {}
+    kv = caps.get("extraction") or {}
 
     blob_on = f"OK — {blob.get('auth')}"
     if blob.get("account"):
@@ -457,6 +458,9 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
         f"OK — {page_axes.get('taxonomy_version')}, {page_axes.get('l1_classes')} L1 classes, "
         f"{page_axes.get('specialties')} specialties"
     )
+    kv_on = f"OK — {kv.get('model_version')}"
+    if kv.get("fallback"):
+        kv_on += f" (fallback: {kv.get('pinned_version')} is not on disk)"
     skip_on = "ON"
 
     skip_line = (
@@ -472,6 +476,7 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
         ("blank/junk model", _one_line(bj, bj_on)),
         ("page-family model", _one_line(family, family_on)),
         ("page-axes model", _one_line(page_axes, axes_on)),
+        ("KV extraction", _one_line(kv, kv_on)),
         ("final1 Docling", _one_line(docling, docling_on)),
         ("final2 OCR", _one_line(di, di_on)),
         ("DOS LLM", _one_line(llm, llm_on)),
