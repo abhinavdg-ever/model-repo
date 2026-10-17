@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import time
 from pathlib import Path
 from typing import Any, BinaryIO, Optional, Union
 
@@ -109,6 +110,69 @@ def _managed_identity_credential():
         return _MI_CREDENTIAL
 
 
+class _SharedToken:
+    """One token for every worker thread.
+
+    The SDK asks its credential for a token on each request, from every worker
+    at once. When the token runs out mid-batch, an interactive chain then opens
+    one browser prompt per thread, and the ones nobody answers time out after
+    300 s ("InteractiveBrowserCredential.get_token_info failed: Timed out").
+    Here one thread fetches while the others wait for it, and everyone reuses
+    the token until five minutes before it expires. A failed fetch is not
+    retried for a minute: the waiting threads get the same error instead of a
+    prompt each.
+    """
+
+    _REFRESH_MARGIN = 300  # seconds before expiry
+    _RETRY_AFTER = 60  # seconds after a failure
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+        self._lock = threading.Lock()
+        self._tokens: dict[tuple, Any] = {}
+        self._failure: Optional[tuple[float, Exception]] = None
+
+    def _shared(self, key: tuple, fetch):
+        token = self._tokens.get(key)
+        if token is not None and token.expires_on - time.time() > self._REFRESH_MARGIN:
+            return token
+        with self._lock:
+            token = self._tokens.get(key)
+            if token is not None and token.expires_on - time.time() > self._REFRESH_MARGIN:
+                return token
+            if self._failure is not None and time.time() - self._failure[0] < self._RETRY_AFTER:
+                raise self._failure[1]
+            try:
+                token = fetch()
+            except Exception as exc:
+                self._failure = (time.time(), exc)
+                raise
+            self._failure = None
+            self._tokens[key] = token
+            return token
+
+    def get_token(self, *scopes: str, claims: Optional[str] = None, tenant_id: Optional[str] = None,
+                  enable_cae: bool = False, **kwargs: Any):
+        if claims:  # a claims challenge needs a fresh token
+            with self._lock:
+                return self._inner.get_token(*scopes, claims=claims, tenant_id=tenant_id,
+                                             enable_cae=enable_cae, **kwargs)
+        return self._shared(
+            ("token", scopes, tenant_id, enable_cae),
+            lambda: self._inner.get_token(*scopes, tenant_id=tenant_id, enable_cae=enable_cae, **kwargs),
+        )
+
+    def get_token_info(self, *scopes: str, options: Optional[dict] = None):
+        if options and options.get("claims"):
+            with self._lock:
+                return self._inner.get_token_info(*scopes, options=options)
+        key = ("info", scopes, tuple(sorted((options or {}).items())))
+        return self._shared(key, lambda: self._inner.get_token_info(*scopes, options=options))
+
+    def close(self) -> None:
+        self._inner.close()
+
+
 def _interactive_credential():
     """Managed identity, then Azure CLI, then a browser prompt.
 
@@ -157,11 +221,11 @@ def _interactive_credential():
             if client_id
             else ManagedIdentityCredential()
         )
-        _INTERACTIVE_CREDENTIAL = ChainedTokenCredential(
+        _INTERACTIVE_CREDENTIAL = _SharedToken(ChainedTokenCredential(
             mi,
             AzureCliCredential(process_timeout=30),
             InteractiveBrowserCredential(cache_persistence_options=cache),
-        )
+        ))
         logger.info(
             "Azure Storage: interactive Entra auth — managed identity%s, then "
             "az CLI, then a browser prompt if neither answers",
