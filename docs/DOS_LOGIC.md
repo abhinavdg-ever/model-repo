@@ -6,22 +6,48 @@ unless they start with `review-ui/`, `schema/` or `docs/`.
 
 ---
 
-## 1. Summary
+## 1. Summary: the date hierarchy
 
 Each page that is not blank, junk or a duplicate gets **its own** date of
-service, the **Extracted DOS**, from one of two states:
+service, the **Extracted DOS**. The first step that gives a date wins, except
+step 0, which overrides the others on a discharge document.
 
-| State | When | Date | Confidence | `source` |
+| Step | Applies to | Date | Confidence | `source` |
 |---|---|---|---|---|
-| 1. Key/value | the key/value extraction has a date for the page | among the dates its rules accepted and the model scored ≥ 0.6, the first label group in the page kind's priority (§3.6), and within it the highest score; none ≥ 0.6: the highest score | the model's score for that date | `kv` |
-| 2. Edge keyword | only when state 1 has no date | a DOS label in the first or last 20 words of the page, with its date | 0.50 | `edge` / `edge_tesseract` |
-| — | neither | no date | 0 | `none` |
+| 0. Admit / Discharge | discharge pages | Admit = From, Discharge (on or after it) = To; one alone is both. Key/value dates first, else edge labels (§4.1) | highest model score used, else 0.50 | `admit_discharge` |
+| 1. Key/value | every page | the label priority below, among the dates the model accepts (§3.6) | the model's score for that date | `kv` |
+| 2. Edge keyword | only when step 1 has no date | a DOS label in the first or last 20 words of the page (§4) | 0.50 | `edge` / `edge_tesseract` |
+| 3. Dictated, then Transcribed | "other" pages only, when steps 1–2 have no date | the date after `D:` / `DD:` / Dictated, else after `T:` / `DT:` / `TD:` / `TT:` / Transcribed | 0.30 | `dictation` |
+| — | nothing found | no date | 0 | `none` |
 
-Then one post-processing rule: on a **discharge document**, the page's Admit
-and Discharge dates take priority over both states (§4.1, `source`
-`admit_discharge`).
+**Page kind** (`page_kind` in `dos_logic.py`):
 
-On an "other" page with neither, the dictated date (`D:`, `DD:`, Dictated), else the transcribed one (`T:`, `DT:`, `TD:`, `TT:`, Transcribed), at 0.30 (`source` `dictation`). There is no LLM and no other backup.
+| Kind | When |
+|---|---|
+| discharge | a discharge date (key/value or edge label), or discharge wording (`discharge_document_cues`: discharge summary / note / instructions / diagnosis / date, date of discharge, hospital course, admission date) |
+| lab | lab wording (`lab_document_cues`: lab report / results, specimen, reference range, collection date) or a Collection / Received date |
+| other | everything else |
+
+**Step 1 label priority** (`kv_priority` in `dos_canon.json`) — the first group
+that has an accepted date wins; within a group, the highest model score:
+
+| Kind | 1st | 2nd | 3rd | 4th | 5th | 6th | 7th |
+|---|---|---|---|---|---|---|---|
+| discharge | Admit / Discharge | Date of Service | Collection | Received | Report Date | Date | header / footer |
+| lab | Date of Service | Collection | Received | Report Date | Admit / Discharge | Date | header / footer |
+| other | Date of Service | Collection | Admit / Discharge | Received | Report Date | Date | header / footer |
+
+- **Accepted** = the model scored the date at least `kv_accept_min_score` (0.6).
+  If no date on the page reaches it, the page takes the highest-scoring date at
+  any score. Staging without a model counts every date as accepted.
+- **Date of Service** = the service tier of §3.1 (DOS, Visit Date, Encounter
+  Date, Order Date, …); **Date** = the weak tier (Date, Service, Chief
+  Complaint, …); **Report Date** is its own group.
+
+**Never a DOS:** print dates (Printed, Print Date, …), a date right after
+`D:` / `T:` / `DD:` / `DT:` / `TD:` / `TT:` / Dictated / Transcribed except in
+step 3, the member's DOB, years before 2000 or after next year, and
+spaces-only dates (`06 12 24`). There is no LLM.
 
 Later stages set the **Final DOS**: `continuity` groups pages into documents,
 and `imaging_final` gives every page of a document its first page's DOS, or
@@ -31,8 +57,10 @@ the placeholder `2222-02-02` for a stand-alone non-visit document (§6).
 OCR words ──► merge spaced dates ──► KV extraction (rules + model) ──► staging/extraction.json
                                                                               │
 page text ─────────────────────────────────────────────► DOS stage ◄─────────┘
-                                                          state 1: KV best date (model score)
-                                                          state 2: edge keyword (0.50)
+                                                          0. admit/discharge (discharge pages)
+                                                          1. KV date by label priority (model score)
+                                                          2. edge keyword (0.50)
+                                                          3. dictated / transcribed (other pages, 0.30)
                                                               │
                                                               ▼
                                   dos_extraction_results + imaging/<chart>_dos.csv  (Extracted)
@@ -86,7 +114,7 @@ cannot be told apart from lab values, counts or phone numbers.
 
 ---
 
-## 3. State 1 — key/value extraction
+## 3. Step 1 — key/value extraction
 
 Runs once per chart in the `kv_extract` stage and saves every candidate to
 `<chart>/staging/extraction.json`. Code: `stages/lib/extraction/dos/extract.py`.
@@ -195,7 +223,7 @@ weights are not installed, staging is empty and every page goes to state 2.
 
 ---
 
-## 4. State 2 — edge keyword
+## 4. Step 2 — edge keyword
 
 Only for a page with no key/value date. Code: `stages/lib/dos/dos_logic.py`
 (`edge_dates`, `edge_page_date`). Settings: `keyword-canon/dos_canon.json`.
@@ -230,7 +258,7 @@ Final2 text, the Tesseract text (`source` = `edge_tesseract`).
 
 Confidence: `confidence.edge` = **0.50**.
 
-### 4.1 Post-processing: discharge documents
+### 4.1 Step 0 — discharge documents
 
 After both states (`admit_discharge_date` in `dos_logic.py`). A page is a
 discharge document when it has a discharge date (a key/value `discharge`-tier
@@ -259,10 +287,10 @@ On such a page the stay's dates take priority:
 |---|---|
 | `dos_from` / `dos_to` (+ `_iso`) | the page's own date, or empty |
 | `doc_dos_from` / `doc_dos_to` (+ `_iso`) | the page's own date, else `DOS_DEFAULT_DATE` (2222-02-02). Not a document-wide value despite the name. |
-| `match_type` | `kv`, `edge_keyword`, `edge_keyword_tesseract`, `admit_discharge_pair` (any From ≠ To), or `no_date_found` |
+| `match_type` | `kv`, `edge_keyword`, `edge_keyword_tesseract`, `admit_discharge`, `dictation_date`, `admit_discharge_pair` (any From ≠ To), or `no_date_found` |
 | `keyword` | the label the date came from |
 | `confidence` | §1; 0 for no date |
-| `source` (CSV) | `kv`, `edge`, `edge_tesseract`, `admit_discharge` or `none` |
+| `source` (CSV) | `kv`, `edge`, `edge_tesseract`, `admit_discharge`, `dictation` or `none` |
 | `extraction_method` | `kv` when a key/value date gave it (also for `admit_discharge`), else `rules` |
 
 ---
@@ -367,7 +395,11 @@ Every key/value candidate per page under `fields.dos`, with its rule score
 
 | Setting | Value | File |
 |---|---|---|
-| Model takes its best DOS pair | at any score (0.0) | `extraction/util/config.py` (`SELECT_THRESHOLDS`) |
+| Model's own pick in staging | at any score (0.0) | `extraction/util/config.py` (`SELECT_THRESHOLDS`) |
+| A key/value date is accepted | model score ≥ 0.6 | `dos_canon.json` (`kv_accept_min_score`) |
+| Label priority per page kind | §1 | `dos_canon.json` (`kv_priority`) |
+| Discharge / lab page wording | §1 | `dos_canon.json` (`discharge_document_cues`, `lab_document_cues`) |
+| Confidence of a dictated / transcribed date | 0.30 | `dos_canon.json` (`confidence.dictation`) |
 | Confidence of a key/value date | its model score (rule score without a model; 0.90 with neither) | `keyword-canon/dos_canon.json` (`confidence.kv`) |
 | Confidence of an edge date | 0.50 | `dos_canon.json` (`confidence.edge`) |
 | Edge window | 20 words | `dos_canon.json` (`edge_words`) |
@@ -399,10 +431,16 @@ paying for OCR again):
 | Page text | Result | Why |
 |---|---|---|
 | `DOB: 01/02/1960  Date of Service: 03/14/2024` | 2024-03-14, `kv`, model score (e.g. 0.97) | Service label, same line; the DOB date is eliminated. |
-| `Date: 06/12/2024` (model scores 0.18) | 2024-06-12, `kv`, 0.18 | The best pair is taken at any score; the low confidence shows it. |
+| `Date: 06/12/2024` (model scores 0.18), nothing else | 2024-06-12, `kv`, 0.18 | No date reaches 0.6, so the highest score is taken; the low confidence shows it. |
+| `Date: 03/01/2024` (0.95) and `Date of Service: 03/02/2024` (0.65) | 2024-03-02, `kv`, 0.65 | Both accepted; Date of Service ranks above Date. |
+| `Date: 03/01/2024` (0.95) and `Date of Service: 03/02/2024` (0.40) | 2024-03-01, `kv`, 0.95 | Date of Service is not accepted (below 0.6). |
+| Lab report: `Collected: 04/02/2024`, `Received: 04/03/2024`, `Report Date: 04/04/2024` | 2024-04-02, `kv` | Lab order: Collection before Received and Report Date. |
+| Discharge summary: `Visit Date: 02/03/2024`, `Admit Date: 02/01/2024`, `Discharge Date: 02/05/2024` | 2024-02-01 → 2024-02-05, `admit_discharge` | Step 0: the stay's dates win. |
+| `Print Date: 03/01/2024  Visit Date: 02/27/2024` | 2024-02-27, `kv` | A print date is never a DOS. |
 | `DATE: 05 / 20 / 2025` | 2025-05-20, `kv` | Merged to `05/20/2025` before extraction. |
 | `Date: 06 12 24` and nothing else | no DOS | Spaces-only dates are never read. |
-| `Admission Date: 02/01/2024 … Discharge Date: 02/05/2024`, no KV date | 2024-02-01 → 2024-02-05, `edge`, 0.50, `admit_discharge_pair` | Admit is From, discharge is To. |
+| `Admission Date: 02/01/2024 … Discharge Date: 02/05/2024`, no KV date | 2024-02-01 → 2024-02-05, `admit_discharge`, 0.50 | A discharge page; edge labels give the stay. |
 | Last line `Visit Date: 03/01/2024`, no KV date | 2024-03-01, `edge`, 0.50 | Encounter label in the last 20 words. |
-| `D: 03/01/2024 T: 03/04/2024` only | no DOS | Dictation stamps are never a DOS. |
+| `D: 03/01/2024 T: 03/04/2024`, nothing else, an ordinary note | 2024-03-01, `dictation`, 0.30 | Step 3: dictated before transcribed. |
+| The same on a lab report | no DOS | Step 3 is for "other" pages only. |
 | Narrative, no label, no KV date | no DOS | Nothing else is tried. |
