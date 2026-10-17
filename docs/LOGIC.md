@@ -590,7 +590,7 @@ Per page, two states:
 
 | # | State | Confidence | `match_type` |
 |---|---|---|---|
-| 1 | **Key/value.** The key/value extraction's best date for the page: the pair its rules accepted that its model scored highest, at **any** score (`SELECT_THRESHOLDS = {"dos": 0.0}` in `extraction/util/config.py`). A range keeps its end | the model's score (rule score without a model) | `kv` |
+| 1 | **Key/value.** Among the dates its rules accepted, the first label group in the page kind's priority (`kv_priority`: discharge = Admit/Discharge → Date of Service → …; lab = Date of Service → Collection → Received → Report Date → …; other = Date of Service → Collection → Admit/Discharge → Received → …), and within it the date the model scored highest, at any score. A range keeps its end | the model's score (rule score without a model) | `kv` |
 | 2 | **Edge keyword**, only when 1 has no date. A DOS label starting within the first or last `edge_words` (20) words of the page, with a date within `label_reach_chars` (40) after it and only filler words (`label_gap_words`: at, on, of, from, is, time, date, dt) between. An encounter label wins; otherwise Admission Date is **From** and Discharge Date is **To**; a discharge date alone is both. A written range after an encounter label keeps both ends. A date right after `D:`, `T:`, `DD:`, `DT:`, `TD:`, `TT:`, Dictated or Transcribed is never taken. Read on the final OCR text; on a page with no Final2 text, then on the Tesseract text (not for handwritten / low-quality pages) | 0.50 | `edge_keyword` / `edge_keyword_tesseract` / `admit_discharge_pair` |
 | — | Nothing: the page has no DOS | 0 | `no_date_found` |
 
@@ -598,6 +598,8 @@ Per page, two states:
 (key/value or edge label) or matching `discharge_document_cues`, the Admit date
 is From and the Discharge date (on or after it) is To; one alone is both.
 Key/value dates first, else edge labels. `source` `admit_discharge`.
+
+**Dictation dates.** On an "other" page with no key/value or edge date: the dictated date (`D:`, `DD:`, Dictated), else the transcribed one, at 0.30 (`dictation`).
 
 **Print dates are never a DOS.** A Printed / Print Date label keeps its date
 from other keys but the pair is rejected.

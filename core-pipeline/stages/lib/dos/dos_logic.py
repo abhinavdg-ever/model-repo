@@ -35,6 +35,10 @@ from stages.lib.canon_store import CANON_DIR, CanonFile
 LABEL_CLASSES = ("encounter", "admit", "discharge")
 
 
+def _any_of(patterns: Optional[list[str]]) -> re.Pattern[str]:
+    return re.compile("|".join(f"(?:{p})" for p in patterns or [r"(?!)"]), re.IGNORECASE)
+
+
 @dataclass(frozen=True)
 class DosProfile:
     default_date: str  # ISO
@@ -47,6 +51,10 @@ class DosProfile:
     label_class: dict[str, str]  # letters-only phrase -> class
     # A page matching one of these is a discharge document (admit / discharge dates win).
     discharge_cues: re.Pattern[str]
+    # A page matching one of these is a lab report.
+    lab_cues: re.Pattern[str]
+    # Page kind (discharge / lab / other) -> key groups in priority order.
+    kv_priority: dict[str, list[list[str]]]
 
 
 def _letters(text: str) -> str:
@@ -80,7 +88,9 @@ def _build_profile(data: dict[str, Any]) -> DosProfile:
         confidence={k: float(v) for k, v in data["confidence"].items()},
         label_re=label_re,
         label_class=label_class,
-        discharge_cues=re.compile("|".join(f"(?:{c})" for c in data.get("discharge_document_cues") or [r"(?!)"]), re.IGNORECASE),
+        discharge_cues=_any_of(data.get("discharge_document_cues")),
+        lab_cues=_any_of(data.get("lab_document_cues")),
+        kv_priority={kind: [list(group) for group in groups] for kind, groups in (data.get("kv_priority") or {}).items()},
     )
 
 
@@ -299,7 +309,7 @@ class PageDate:
     dos_to: str
     confidence: float
     keyword: str
-    source: str  # "kv" | "edge" | "edge_tesseract" | "admit_discharge"
+    source: str  # "kv" | "edge" | "edge_tesseract" | "admit_discharge" | "dictation"
     is_pair: bool = False
     # A key/value date gave it (extraction_method kv).
     kv_backed: bool = False
@@ -346,20 +356,78 @@ def edge_page_date(
 # --- 1. key/value -------------------------------------------------------------
 
 
-def kv_page_date(dates: list[dict[str, Any]], prof: Optional[DosProfile] = None) -> Optional[PageDate]:
-    """State 1: the key/value extractor's best date; a range keeps its end. Its confidence is
-    the model's score for it (the rules' score without a model, else the canon's kv)."""
+def page_kind(page_text: str, candidates: list[dict[str, Any]], hits: list[LabelledDate], prof: DosProfile) -> str:
+    """discharge (a discharge date, or discharge wording), lab (lab wording, or a collected /
+    received date), else other."""
+    tiers = {item.get("tier") for item in candidates}
+    if "discharge" in tiers or any(h.label_class == "discharge" for h in hits) or prof.discharge_cues.search(page_text):
+        return "discharge"
+    if tiers & {"collected", "received"} or prof.lab_cues.search(page_text):
+        return "lab"
+    return "other"
+
+
+def _group(item: dict[str, Any]) -> str:
+    """A candidate's priority group: its key tier, with the Report Date key on its own."""
+    if str(item.get("keyword") or "").strip().casefold() == "report date":
+        return "report"
+    return str(item.get("tier") or "")
+
+
+def kv_page_date(
+    candidates: list[dict[str, Any]], kind: str = "other", prof: Optional[DosProfile] = None
+) -> Optional[PageDate]:
+    """State 1: among every key/value date the rules accepted, the first priority group of the
+    page's kind that has one (``kv_priority``), and within it the date the model scored
+    highest. A range keeps its end. Its confidence is that score (the rules' score without a
+    model, else the canon's kv)."""
     prof = prof or profile()
-    for item in dates or []:
-        iso = str(item.get("iso") or "")
-        if len(iso) != 10:
-            continue
-        iso_to = str(item.get("iso_to") or "")
-        is_pair = len(iso_to) == 10 and iso_to > iso
-        score = item.get("confidence")
-        confidence = float(score) if score is not None else prof.confidence["kv"]
-        return PageDate(iso, iso_to if is_pair else iso, confidence,
-                        str(item.get("keyword") or ""), "kv", is_pair=is_pair)
+    groups = prof.kv_priority.get(kind) or prof.kv_priority.get("other") or []
+    rank = {name: i for i, group in enumerate(groups) for name in group}
+    dated = [item for item in candidates or [] if len(str(item.get("iso") or "")) == 10]
+    if not dated:
+        return None
+
+    def score(item: dict[str, Any]) -> float:
+        value = item.get("confidence")
+        return float(value) if value is not None else prof.confidence["kv"]
+
+    item = min(dated, key=lambda it: (rank.get(_group(it), len(groups)), -score(it)))
+    iso, iso_to = str(item["iso"]), str(item.get("iso_to") or "")
+    is_pair = len(iso_to) == 10 and iso_to > iso
+    return PageDate(iso, iso_to if is_pair else iso, score(item),
+                    str(item.get("keyword") or ""), "kv", is_pair=is_pair)
+
+
+def _kv_stay(candidates: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """The highest-scoring admit and discharge dates among the candidates."""
+    stay: dict[str, dict[str, Any]] = {}
+    for item in candidates:
+        tier = item.get("tier")
+        if tier in ("admit", "discharge") and len(str(item.get("iso") or "")) == 10:
+            best = stay.get(tier)
+            if best is None or float(item.get("confidence") or 0) > float(best.get("confidence") or 0):
+                stay[tier] = item
+    return stay
+
+
+# Dictated (D:, DD:, Dictated) before transcribed (T:, DT:, TD:, TT:, Transcribed).
+_DICTATION_MARKERS = (
+    ("dictated", re.compile(r"(?:(?<![A-Za-z])(?:D|DD)\s*:|(?i:\bdictated(?:\s+(?:on|date))?\s*:?))\s*")),
+    ("transcribed", re.compile(r"(?:(?<![A-Za-z])(?:T|DT|TD|TT)\s*:|(?i:\btranscribed(?:\s+(?:on|date))?\s*:?))\s*")),
+)
+
+
+def dictation_page_date(page_text: str, prof: Optional[DosProfile] = None) -> Optional[PageDate]:
+    """Other pages, last: the dictated date, else the transcribed one ('D: 03/01/2024
+    T: 03/04/2024' gives 03/01/2024)."""
+    prof = prof or profile()
+    for label, marker in _DICTATION_MARKERS:
+        for found in marker.finditer(page_text):
+            match = DATE_RE.match(page_text, found.end())
+            iso = parse_date_match(match) if match else None
+            if iso:
+                return PageDate(iso, iso, prof.confidence["dictation"], label, "dictation")
     return None
 
 
@@ -447,7 +515,7 @@ def extract_dos_from_page_text(page_text: str) -> Optional[dict]:
 
 _MATCH_TYPE = {
     "kv": "kv", "edge": "edge_keyword", "edge_tesseract": "edge_keyword_tesseract",
-    "admit_discharge": "admit_discharge",
+    "admit_discharge": "admit_discharge", "dictation": "dictation_date",
 }
 
 
@@ -491,15 +559,15 @@ def detect_dos_per_page(
     candidate_log: Optional[list[dict]] = None,
     kv_dates: Optional[dict[str, list[dict[str, Any]]]] = None,
     tesseract_texts: Optional[dict[str, str]] = None,
-    kv_stay: Optional[dict[str, dict[str, dict[str, Any]]]] = None,
 ) -> list[dict]:
-    """One row per page: the key/value date, else the edge keyword (final text, then
-    Tesseract), else nothing. Then, on a discharge document, its Admit / Discharge dates
-    take priority (``admit_discharge_date``; ``kv_stay`` maps a page name to the key/value
-    extractor's best ``admit`` and ``discharge`` dates).
+    """One row per page: the key/value date chosen by the page kind's priority, else the edge
+    keyword (final text, then Tesseract), else — on an "other" page — the dictated date,
+    else the transcribed one, else nothing. Then, on a discharge document, its Admit /
+    Discharge dates take priority (``admit_discharge_date``).
 
-    ``kv_dates`` maps a page name to the key/value extractor's best date (``iso``, optional
-    ``iso_to``, ``keyword``, ``confidence`` = the model's score). ``tesseract_texts`` maps a
+    ``kv_dates`` maps a page name to every key/value date the rules accepted (``iso``,
+    optional ``iso_to``, ``tier``, ``keyword``, ``confidence`` = the model's score).
+    ``tesseract_texts`` maps a
     page name to its Tesseract text; only its first and last ``edge_words`` words are read.
     ``candidate_log``, when passed, gets every edge label with its date and whether it was
     chosen.
@@ -516,9 +584,12 @@ def detect_dos_per_page(
             break
         page_name = page.get("page_name") or ""
 
-        # State 1: the key/value date. The edge labels are still read for the candidate log.
-        found = kv_page_date((kv_dates or {}).get(page_name) or [], prof)
+        # State 1: the key/value date, by the page kind's priority. The edge labels are read
+        # first: they also tell a discharge page apart.
+        candidates = (kv_dates or {}).get(page_name) or []
         hits = edge_dates(page_text, prof)
+        kind = page_kind(page_text, candidates, hits, prof)
+        found = kv_page_date(candidates, kind, prof)
         # State 2: no key/value date; the edge keyword.
         if found is None:
             found = edge_page_date(page_text, prof, hits)
@@ -530,8 +601,10 @@ def detect_dos_per_page(
                 for hit in tesseract_hits:
                     hit.edge = f"tesseract_{hit.edge}"
                 hits = hits + tesseract_hits
+        if found is None and kind == "other":
+            found = dictation_page_date(page_text, prof)
         # Post-processing: a discharge document is dated by its stay.
-        stay = admit_discharge_date(page_text, (kv_stay or {}).get(page_name) or {}, hits, prof)
+        stay = admit_discharge_date(page_text, _kv_stay(candidates), hits, prof)
         if stay is not None:
             found = stay
 

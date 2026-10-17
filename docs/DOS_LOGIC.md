@@ -13,7 +13,7 @@ service, the **Extracted DOS**, from one of two states:
 
 | State | When | Date | Confidence | `source` |
 |---|---|---|---|---|
-| 1. Key/value | the key/value extraction has a date for the page | the pair its rules accepted that its model scored highest, **at any score** | the model's score for that pair | `kv` |
+| 1. Key/value | the key/value extraction has a date for the page | among the dates its rules accepted, the first label group in the page kind's priority (§3.6), and within it the date the model scored highest | the model's score for that date | `kv` |
 | 2. Edge keyword | only when state 1 has no date | a DOS label in the first or last 20 words of the page, with its date | 0.50 | `edge` / `edge_tesseract` |
 | — | neither | no date | 0 | `none` |
 
@@ -21,7 +21,7 @@ Then one post-processing rule: on a **discharge document**, the page's Admit
 and Discharge dates take priority over both states (§4.1, `source`
 `admit_discharge`).
 
-There is no LLM, no pattern fallback and no other backup.
+On an "other" page with neither, the dictated date (`D:`, `DD:`, Dictated), else the transcribed one (`T:`, `DT:`, `TD:`, `TT:`, Transcribed), at 0.30 (`source` `dictation`). There is no LLM and no other backup.
 
 Later stages set the **Final DOS**: `continuity` groups pages into documents,
 and `imaging_final` gives every page of a document its first page's DOS, or
@@ -169,14 +169,21 @@ every candidate pair with a probability. It takes its best pair at **any**
 score: `SELECT_THRESHOLDS = {"dos": 0.0}` in `extraction/util/config.py`,
 which overrides the trained version's `thresholds.json`.
 
-The DOS stage then reads the page's best date from staging
-(`extraction/staging.py`, `StagedPage.best`):
+The DOS stage passes every row with a value that the rules accepted
+(`StagedPage.candidates`) to `kv_page_date` in `dos_logic.py`, which picks by
+the **page kind** (`page_kind`) and `kv_priority` in `dos_canon.json`:
 
-1. Only rows with a value that the rules accepted (`rule_accepted`, or the
-   rules' pick in older staging).
-2. The one with the highest `model_score`, however low.
-3. Staging written without a model (rules only): the rules' pick, else their
-   highest rule score.
+| Page kind | When | Priority, first group present wins |
+|---|---|---|
+| discharge | a discharge date (key/value or edge label) or `discharge_document_cues` | Admit / Discharge → Date of Service → Collection → Received → Report Date → Date → header/footer |
+| lab | `lab_document_cues` (lab report, specimen, reference range, collection date) or a Collection / Received date | Date of Service → Collection → Received → Report Date → Admit / Discharge → Date → header/footer |
+| other | otherwise | Date of Service → Collection → Admit / Discharge → Received → Report Date → Date → header/footer; then (after the edge keyword) Dictated → Transcribed |
+
+Groups are the key tiers of §3.1 (Date of Service = the service tier; Date =
+the weak tier), with the Report Date key as its own group. Within a group the
+date the model scored highest wins, at any score: every candidate counts as
+accepted by the model because its cut-off is 0. On a discharge page the stay's
+admit / discharge pair then replaces the pick (§4.1).
 
 Its confidence is that row's `model_score`; without a model, its rule score;
 with neither, `confidence.kv` (0.90) in `dos_canon.json`. If the extraction

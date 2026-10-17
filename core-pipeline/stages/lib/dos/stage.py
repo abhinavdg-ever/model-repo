@@ -60,7 +60,8 @@ DOS_COLS = [
     "keyword",
     "confidence",
     "extraction_method",
-    # Which state gave the page's date: kv, edge, edge_tesseract, admit_discharge, none.
+    # Which state gave the page's date: kv, edge, edge_tesseract, admit_discharge, dictation,
+    # none.
     "source",
 ]
 
@@ -191,31 +192,18 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         from stages.lib.extraction.stage import ensure_staging
 
         staged = ensure_staging(chart_id, ctx.chart_name)
+        # Every key/value date the rules accepted; dos_logic picks by the page's priority.
         kv_dates: dict[str, list[dict[str, Any]]] = {}
-        kv_stay: dict[str, dict[str, dict[str, Any]]] = {}
         for page in ctx.pages:
             staged_page = staged.page(page["page_name"])
-            if staged_page is None:
-                continue
-            best = staged_page.best("dos")
-            found = _kv_items([best]) if best else []
+            found = _kv_items(staged_page.candidates("dos")) if staged_page is not None else []
             if found:
                 kv_dates[page["page_name"]] = found
-            # The best admit and discharge dates, for discharge documents.
-            stay = {}
-            for tier in ("admit", "discharge"):
-                row = staged_page.best("dos", tier=tier)
-                items = _kv_items([row]) if row else []
-                if items:
-                    stay[tier] = items[0]
-            if stay:
-                kv_stay[page["page_name"]] = stay
         hits = detect_dos_per_page(
             text,
             candidate_log=candidates,
             kv_dates=kv_dates,
             tesseract_texts=tesseract,
-            kv_stay=kv_stay,
         )
 
         by_name = {p["page_name"]: p for p in ctx.pages}

@@ -156,11 +156,15 @@ class StagedPage:
         """
         return [row for row in self.accepted(field_id) if row.get("selected", True)]
 
+    def candidates(self, field_id: str) -> list[dict[str, Any]]:
+        """Every row with a value that the rules accepted (or the rules' pick in older staging)."""
+        return [row for row in self.rows(field_id) if row.get("value") and (_rule_accepted(row) or row.get("selected"))]
+
     def best(self, field_id: str, *, tier: str | None = None) -> Optional[dict[str, Any]]:
-        """The candidate with a value that the rules accepted and the model scored highest,
-        at any score (only rows of ``tier`` when given). Without model scores (rules only):
-        the rules' own pick, else their highest score."""
-        rows = [row for row in self.rows(field_id) if row.get("value") and (_rule_accepted(row) or row.get("selected"))]
+        """The candidate the model scored highest, at any score (only rows of ``tier`` when
+        given). Without model scores (rules only): the rules' own pick, else their highest
+        score."""
+        rows = self.candidates(field_id)
         if tier is not None:
             rows = [row for row in rows if row.get("tier") == tier]
         if not rows:

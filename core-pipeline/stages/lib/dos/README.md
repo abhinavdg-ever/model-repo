@@ -3,9 +3,12 @@
 One row per page, in the DB and in `imaging/<chart>_dos.csv`. Per page, two
 states:
 
-1. **Key/value.** The key/value extraction's best date for the page: the pair
-   its rules accepted that its model scored highest, at any score. Its
-   confidence is that score. Spaced slashes (`05 / 20 / 2025`) are merged into
+1. **Key/value.** Among the dates its rules accepted, the first label group in
+   the page kind's priority (`kv_priority` in `dos_canon.json`: discharge =
+   Admit/Discharge → Date of Service → …; lab = Date of Service → Collection →
+   Received → Report Date → …; other = Date of Service → Collection →
+   Admit/Discharge → Received → …), and within it the date the model scored
+   highest. Its confidence is that score. Spaced slashes (`05 / 20 / 2025`) are merged into
    one OCR word first, so they count as plain dates.
 2. **Edge keyword**, only when 1 has no date. A DOS label that starts within
    the first or last 20 words of the page, with a date right after it (only
@@ -18,7 +21,8 @@ states:
    with no Final2 text, then on the Tesseract text (not for handwritten /
    low-quality pages), because Docling can drop the top banner. Confidence 0.50.
 
-Otherwise the page has no date of service.
+On an "other" page with neither: the dictated date (`D:`, `DD:`, Dictated),
+else the transcribed one, at 0.30. Otherwise the page has no date of service.
 
 Then, on a **discharge document** (a discharge date on the page, or discharge
 wording such as "Discharge Summary" / "Hospital Course"), its Admit date is From
@@ -39,7 +43,7 @@ Labels, `edge_words`, the allowed filler words, the confidences and
 chart_name,page_name,page_number,dos_from,dos_to,dos_from_iso,dos_to_iso,doc_dos_from,doc_dos_to,doc_dos_from_iso,doc_dos_to_iso,match_type,final_dos,keyword,confidence,extraction_method,source
 ```
 
-`source` is `kv`, `edge`, `edge_tesseract`, `admit_discharge` or `none`. `match_type` is `kv`,
+`source` is `kv`, `edge`, `edge_tesseract`, `admit_discharge`, `dictation` or `none`. `match_type` is `kv`,
 `edge_keyword`, `edge_keyword_tesseract`, `admit_discharge_pair` or
 `no_date_found`. `extraction_method` is `kv` for a key/value date, else `rules`.
 The `doc_dos_*` columns are the page's own date, or `DOS_DEFAULT_DATE` when it

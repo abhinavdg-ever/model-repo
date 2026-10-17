@@ -7,16 +7,42 @@
   "label_gap_words": ["at", "on", "of", "from", "is", "time", "date", "dt"],
   "confidence": {
     "kv": 0.9,
-    "edge": 0.5
+    "edge": 0.5,
+    "dictation": 0.3
   },
   "note_confidence": "kv is used only for a key/value date with no score (staging from before the model ran); a scored date carries the model's own score. edge is every edge-keyword date.",
-  "discharge_document_cues": [
-    "discharge\\s+(summary|note|instructions?|diagnos[ie]s|date)",
-    "date\\s+of\\s+discharge",
-    "hospital\\s+course",
-    "admission\\s+date",
-    "date\\s+of\\s+admission"
-  ],
+  "kv_priority": {
+    "discharge": [
+      ["admit", "discharge"],
+      ["service"],
+      ["collected"],
+      ["received"],
+      ["report"],
+      ["weak"],
+      ["keyless"]
+    ],
+    "lab": [
+      ["service"],
+      ["collected"],
+      ["received"],
+      ["report"],
+      ["admit", "discharge"],
+      ["weak"],
+      ["keyless"]
+    ],
+    "other": [
+      ["service"],
+      ["collected"],
+      ["admit", "discharge"],
+      ["received"],
+      ["report"],
+      ["weak"],
+      ["keyless"]
+    ]
+  },
+  "note_kv_priority": "Which key/value date a page takes: every date the rules accepted is a candidate; the page takes the first group in this order that has one (the page's kind: discharge = a discharge date or discharge_document_cues; lab = lab_document_cues or a collected / received date; else other), and within the group the date the model scored highest. Groups are the key tiers of extraction/dos/keys.json, with 'report' = the Report Date key. Its confidence is that model score.",
+  "discharge_document_cues": ["discharge\\s+(summary|note|instructions?|diagnos[ie]s|date)", "date\\s+of\\s+discharge", "hospital\\s+course", "admission\\s+date", "date\\s+of\\s+admission"],
+  "lab_document_cues": ["lab(oratory)?\\s+(report|results?)", "\\bspecimen\\b", "reference\\s+(range|interval)", "collection\\s+date", "date\\s+collected"],
   "note_discharge": "Discharge documents, after both states: when the page has a discharge date (key/value or edge label) or matches discharge_document_cues, its Admit and Discharge dates take priority: From = the admit date, To = the discharge date on or after it (one alone is both). Key/value dates first, else edge labels. source admit_discharge; confidence = the key/value model's score for those dates, else confidence.edge.",
   "labels": {
     "encounter": [
@@ -40,21 +66,7 @@
       "certification period",
       "cert period"
     ],
-    "admit": [
-      "admit date",
-      "admission date",
-      "date of admission",
-      "date of admit",
-      "admitted on",
-      "admitted",
-      "dos from"
-    ],
-    "discharge": [
-      "discharge date",
-      "date of discharge",
-      "discharged on",
-      "discharged",
-      "dos to"
-    ]
+    "admit": ["admit date", "admission date", "date of admission", "date of admit", "admitted on", "admitted", "dos from"],
+    "discharge": ["discharge date", "date of discharge", "discharged on", "discharged", "dos to"]
   }
 }
