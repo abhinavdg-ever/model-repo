@@ -141,7 +141,7 @@ function RatesGrid({ rates }: { rates: ClassRates }) {
   );
 }
 
-/** Table columns drawn 10% narrower than the rest. */
+/** Table columns drawn narrower than the rest (styles.css .accuracy-cell-narrow). */
 const NARROW_METRICS = new Set(["pageType", "codeable"]);
 
 /** One table cell: the donut card's numbers, compact. */
