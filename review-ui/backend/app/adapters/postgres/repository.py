@@ -907,8 +907,8 @@ class PostgresFolderRepository(FolderRepository):
                         if conf is not None:
                             fields["memberConfidence"] = float(conf)
 
-                    # DOS. There is one schema (schema/schema.sql), so there
-                    # is one set of column names — no runtime sniffing.
+                    # DOS (Extracted): the DOS stage's own row per page, the same values it
+                    # writes to <chart>_dos.csv. schema/v1.sql is the only schema.
                     cur.execute(
                         """
                         SELECT p.page_name,
