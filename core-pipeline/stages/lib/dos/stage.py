@@ -197,7 +197,13 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         kv_dates: dict[str, list[dict[str, Any]]] = {}
         for page in ctx.pages:
             staged_page = staged.page(page["page_name"])
-            found = _kv_items(staged_page.candidates("dos")) if staged_page is not None else []
+            # Print-key rows go along even when rejected: dos_logic drops their dates.
+            rows: list[dict[str, Any]] = []
+            if staged_page is not None:
+                rows = staged_page.candidates("dos")
+                rows += [row for row in staged_page.rows("dos")
+                         if row.get("tier") == "printed" and row.get("value") and row not in rows]
+            found = _kv_items(rows)
             if found:
                 kv_dates[page["page_name"]] = found
         hits = detect_dos_per_page(

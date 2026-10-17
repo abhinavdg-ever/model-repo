@@ -389,7 +389,16 @@ def kv_page_date(
     prof = prof or profile()
     groups = prof.kv_priority.get(kind) or prof.kv_priority.get("other") or []
     rank = {name: i for i, group in enumerate(groups) for name in group}
-    dated = [item for item in candidates or [] if len(str(item.get("iso") or "")) == 10]
+    # A print key's date ('Printed On: 10/30/2025') is never a DOS, nor is the same date read
+    # without a key. Staging written before the extractor rejected print keys still has them
+    # accepted, so this holds here too.
+    printed = {str(item.get("iso")) for item in candidates or [] if item.get("tier") == "printed"}
+    dated = [
+        item for item in candidates or []
+        if len(str(item.get("iso") or "")) == 10
+        and item.get("tier") != "printed"
+        and not (item.get("tier") == "keyless" and str(item.get("iso")) in printed)
+    ]
     if not dated:
         return None
 

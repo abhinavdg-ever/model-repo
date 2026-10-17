@@ -231,6 +231,21 @@ class TestDischargeDocuments:
         assert _dos_page("Discharge summary", stay)[:2] == ("2024-02-05", "2024-02-05")
 
 
+class TestPrintedNeverDos:
+    def test_an_accepted_print_date_from_old_staging_is_dropped(self):
+        # Staging from before the extractor rejected print keys: 'Printed On' accepted, alone.
+        assert _dos_page("Office visit.", [_kv("2025-10-30", "printed", 0.9, "Printed On")])[2] == ""
+
+    def test_the_visit_date_wins_over_a_higher_scored_print_date(self):
+        assert _dos_page("Office visit.", [_kv("2025-10-30", "printed", 0.95, "Printed On"),
+                                          _kv("2024-03-28", "service", 0.4, "Office Visit on")])[0] == "2024-03-28"
+
+    def test_a_keyless_date_equal_to_the_print_date_is_dropped(self):
+        assert _dos_page("Office visit.", [_kv("2025-10-30", "printed", 0.0, "Printed On"),
+                                          _kv("2025-10-30", "keyless", 0.9, "No Key Footer"),
+                                          _kv("2024-06-03", "keyless", 0.5, "No Key Header")])[0] == "2024-06-03"
+
+
 class TestKvPriority:
     def test_other_pages_an_accepted_service_date_beats_a_higher_scored_weak_date(self):
         assert _dos_page("Office visit.", [_kv("2024-03-01", "weak", 0.95, "Date"),
