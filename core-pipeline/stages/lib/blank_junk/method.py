@@ -18,7 +18,7 @@ The ladder, first rule that fires decides (R4, R5 and R3's KV half need pass 2):
                     (22%-94%) -> Junk / Others
   R6 retrieval      record_request + roi_vendors >= 7 and not C+ -> Junk / Record Request
   R7 strong clinical  C+ -> Main
-  R8 Visual         document_type 'visual' with < 50 words -> Main, unless retrieval /
+  R8 Visual         document_type 'visual' with < 20 words -> Main, unless retrieval /
                     invoice wording >= 7 (a visual page with more text is not Visual)
   R9 vote           DistilBERT and the keyword canon (BLANK_JUNK_LOGIC §5)
 
@@ -481,12 +481,12 @@ def _word_count(text: str) -> int:
 
 
 def visual_max_words() -> int:
-    return int(canon().raw["visual"].get("max_words", 50))
+    return int(canon().raw["visual"].get("max_words", 20))
 
 
 def is_visual(document_type: str, words: int) -> bool:
     """Visual = the page-tag model says visual AND the page has fewer than ``max_words``
-    words (canon ``visual.max_words``, 50). A visual page with more text is judged like
+    words (canon ``visual.max_words``, 20). A visual page with more text is judged like
     any other page."""
     return document_type == "visual" and words < visual_max_words()
 
