@@ -152,8 +152,9 @@ function RatesGrid({ rates }: { rates: ClassRates }) {
   );
 }
 
-/** Table columns drawn narrower than the rest (styles.css .accuracy-cell-narrow). */
+/** Table columns drawn narrower / wider than the rest (styles.css .accuracy-cell-narrow / -wide). */
 const NARROW_METRICS = new Set(["pageType", "codeable"]);
+const WIDE_METRICS = new Set(["signature"]);
 
 /** One table cell: the donut card's numbers, compact. */
 function CompactScore({
@@ -161,15 +162,17 @@ function CompactScore({
   binary = false,
   rates,
   narrow = false,
+  wide = false,
 }: {
   tally: Tally;
   binary?: boolean;
   rates?: ClassRates;
   narrow?: boolean;
+  wide?: boolean;
 }) {
   if (tally.scored === 0) return <>—</>;
   return (
-    <div className={narrow ? "accuracy-cell accuracy-cell-narrow" : "accuracy-cell"}>
+    <div className={narrow ? "accuracy-cell accuracy-cell-narrow" : wide ? "accuracy-cell accuracy-cell-wide" : "accuracy-cell"}>
       <strong>{percentLabel(tally)}</strong>
       <p className="accuracy-distribution">
         <Distribution tally={tally} binary={binary} />
@@ -1019,6 +1022,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                           binary={metric.binary}
                           rates={rowRatesFor(row, metric.id)}
                           narrow={NARROW_METRICS.has(metric.id)}
+                          wide={WIDE_METRICS.has(metric.id)}
                         />
                       </td>
                     ))}
