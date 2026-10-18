@@ -1046,7 +1046,9 @@ SELECT
     f.provider_name                                           AS final_provider_name,
     to_jsonb(f) ->> 'provider_credentials'                    AS final_provider_credentials,
     to_jsonb(f) -> 'signers'                                  AS final_signers,
-    to_jsonb(f) ->> 'provider_version'                        AS final_provider_version
+    to_jsonb(f) ->> 'provider_version'                        AS final_provider_version,
+    -- Provider Signature accuracy: did the pipeline find a signature.
+    f.signature_present                                       AS final_signature_present
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name

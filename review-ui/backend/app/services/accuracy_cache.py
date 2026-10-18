@@ -112,7 +112,9 @@ SELECT
     f.provider_name AS final_provider_name,
     to_jsonb(f) ->> 'provider_credentials' AS final_provider_credentials,
     to_jsonb(f) -> 'signers' AS final_signers,
-    to_jsonb(f) ->> 'provider_version' AS final_provider_version
+    to_jsonb(f) ->> 'provider_version' AS final_provider_version,
+    -- Provider Signature accuracy: did the pipeline find a signature.
+    f.signature_present AS final_signature_present
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name
@@ -149,7 +151,7 @@ SELECT chart_name, page_number, source_page_id,
        orientation_angle, rotation_known,
        final_page_type, final_page_subtype, final_category, final_dos_from, final_dos_to,
        gt_provider_credentials, final_provider_name, final_provider_credentials, final_signers,
-       final_provider_version
+       final_provider_version, final_signature_present
   FROM v_accuracy_page
  WHERE chart_name = ANY(%s)
  ORDER BY chart_name, page_number
@@ -300,7 +302,8 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
         orientation, _rotation_known,
         final_type, final_subtype, final_category, final_from, final_to,
         gt_provider_credentials, final_provider, final_credentials, final_signers, final_version,
-    ) = (tuple(extra) + (None,) * 12)[:12]
+        final_signed,
+    ) = (tuple(extra) + (None,) * 13)[:13]
     final_key = _text(final_category) or ""
     people = signer_fields(final_signers, _text(final_provider), final_credentials, final_version)
     provider_name, provider_credentials = people.get("providerName"), people.get("providerCredentials")
@@ -323,6 +326,7 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
         finalDosTo=_fmt_date(final_to),
         providerName=provider_name or None,
         providerCredentials=provider_credentials or None,
+        providerSignature=None if final_signed is None else ("Yes" if final_signed else "No"),
         groundTruth=PageGroundTruth(
             pageNumber=int(page_number),
             sourcePageId=_text(source_page_id),

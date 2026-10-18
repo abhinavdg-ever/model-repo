@@ -64,7 +64,8 @@ ALTER TABLE imaging_final
     ADD COLUMN IF NOT EXISTS provider_confidence NUMERIC(5,4);
 
 -- 3. v_accuracy_page (review-ui's accuracy view) gains final_provider_credentials,
---    final_signers and final_provider_version. review-ui re-creates the view itself
+--    final_signers, final_provider_version and final_signature_present (Provider
+--    Signature accuracy). review-ui re-creates the view itself
 --    the first time the accuracy report loads; nothing to run here.
 
 -- 4. Continuity: the weighted revamp (docs/CONTINUITY_LOGIC.md). decided_by gains
