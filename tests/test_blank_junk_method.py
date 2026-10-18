@@ -366,3 +366,17 @@ def test_r5_short_page_reaches_20_percent():
     assert run("Optum release of information Patient DOB MRN", lines=short, body_ink=False).rule == "R5"
     longer = [Line("header", 0.03, 0.05), Line("more text", 0.20, 0.21)]
     assert run("header more text here", lines=longer, body_ink=False).rule != "R5"
+
+
+def test_a_no_ink_page_is_judged_in_pass_1_and_is_blank():
+    # The HW stage's blank_page / faint_marks_only pages are not "non-printed": pass 1
+    # judges them (R1 Blank) and final OCR skips them. A handwritten page still waits.
+    from db.memory_store import MemoryStore
+
+    store = MemoryStore()
+    for page_id, kind, hw in ((1, "uncertain", "blank_page"), (2, "uncertain", "faint_marks_only"),
+                              (3, "handwritten", "convnext_page_tags")):
+        store.upsert_quality(chart_id=7, page_id=page_id, printed_or_handwritten=kind, hw_method=hw)
+    assert store.non_printed_page_ids(7) == {3}
+    verdict = run("", pass_no=1, no_ink=True)
+    assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")

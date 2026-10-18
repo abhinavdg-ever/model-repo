@@ -713,12 +713,13 @@ class MemoryStore:
         }
 
     def non_printed_page_ids(self, chart_id: int) -> set[int]:
-        from db import is_printed_type, page_type
+        from db import NO_INK_HW_METHODS, is_printed_type, page_type
 
         return {
             pid
             for pid, row in self.get_quality_map(chart_id).items()
             if page_type(row) and not is_printed_type(page_type(row))
+            and str(row.get("hw_method") or "").lower() not in NO_INK_HW_METHODS
         }
 
     def low_quality_page_ids(self, chart_id: int) -> set[int]:

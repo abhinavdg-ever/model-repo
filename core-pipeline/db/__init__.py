@@ -817,6 +817,9 @@ def get_quality_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
 # the Tesseract blank/junk pass and is judged on final OCR.
 PRINTED_TYPES = frozenset({"printed", "visual"})
 # A row written before document_type existed falls back to the old label.
+# HW stage methods for a page with no ink: an empty sheet, or faint marks only.
+NO_INK_HW_METHODS = frozenset({"blank_page", "faint_marks_only"})
+
 _PAGE_TYPE_SQL = """lower(coalesce(
     document_type,
     CASE lower(printed_or_handwritten) WHEN 'mixed' THEN 'form'
@@ -853,14 +856,20 @@ def handwritten_page_ids(conn: Any, chart_id: int) -> set[int]:
 
 @_dispatch
 def non_printed_page_ids(conn: Any, chart_id: int) -> set[int]:
-    """Handwritten / form / blank / uncertain — prelim blank/junk pass 1 is skipped."""
+    """Handwritten / form / uncertain — prelim blank/junk pass 1 is skipped, and they go to
+    final OCR whatever pass 1 says.
+
+    Not a page the HW stage found no ink on (``NO_INK_HW_METHODS``): pass 1 judges it (R1:
+    Blank) and final OCR then skips it. Before, such a page was skipped by pass 1, sent to
+    final OCR (billed), and skipped again by pass 2 for having no text: never Blank."""
     rows = conn.execute(
         f"""
         SELECT page_id FROM ocr_quality_results
          WHERE chart_id = %s
            AND {_PAGE_TYPE_SQL} NOT IN ('', 'printed', 'visual')
+           AND lower(coalesce(hw_method, '')) <> ALL(%s)
         """,
-        (chart_id,),
+        (chart_id, sorted(NO_INK_HW_METHODS)),
     ).fetchall()
     return {r["page_id"] for r in rows}
 

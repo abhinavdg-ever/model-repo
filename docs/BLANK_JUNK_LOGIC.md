@@ -33,7 +33,10 @@ It runs **twice**:
 | May junk via | R1, R2, R6, R8, and the vote only when **JJ with both strong** | every rule |
 | Otherwise | Main, "deferred to final OCR" | final verdict |
 
-A Visual page is decided in pass 1 (R8) and skipped in pass 2. Only pass 1's
+A Visual page is decided in pass 1 (R8) and skipped in pass 2. A page the HW stage found **no ink**
+on (`blank_page` / `faint_marks_only`) counts as printed for this: pass 1 judges it (R1:
+Blank) and final OCR skips it. (Before 2026-10-18 it was skipped by pass 1 as
+"handwritten", sent to final OCR, then skipped by pass 2 for having no text: never Blank.) Only pass 1's
 survivors (and the handwritten pages) are sent to Final OCR, so pass 1 is cautious.
 
 ---

@@ -46,6 +46,7 @@ from typing import Any, Optional
 
 from config import CORE_ROOT, page_image_path, staging_dir
 from db import (
+    NO_INK_HW_METHODS,
     connect,
     delete_blank_junk,
     get_blank_junk_flags,
@@ -411,7 +412,7 @@ def _rewrite_csv(conn: Any, chart_id: int, chart_name: str) -> Path:
 
 
 # HW-stage methods that mean "no ink on the page" (image_preprocess/hw_printed.py).
-NO_INK_METHODS = frozenset({"blank_page", "faint_marks_only"})
+NO_INK_METHODS = NO_INK_HW_METHODS
 PAGE_TAG_METHOD = "convnext_page_tags"
 
 
