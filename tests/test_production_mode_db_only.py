@@ -59,7 +59,7 @@ def test_provider_rows_are_read_by_the_rule_that_wrote_them():
     # Version 1 (or no version): the name carries the credentials; a provider_credentials
     # value beside it is not read.
     assert signer_fields(None, "Ramsey Luce, R.N.", "XX", None) == {
-        "providerName": "Ramsey Luce", "providerCredentials": "R.N."}
+        "providerName": "Ramsey Luce", "providerCredentials": "RN"}
     # Version 2: every accepted signer, the selected one first; credentials all of theirs.
     people = signer_fields(
         '[{"name": "WILLIAM J WALL III", "credentials": "MD", "signature_date": "2026-01-12"},'
@@ -71,3 +71,18 @@ def test_provider_rows_are_read_by_the_rule_that_wrote_them():
     # Version 2 with no list: the bare name and its own column; credentials never left in the name.
     assert signer_fields(None, "Meghan Newman, DNP", "DNP", 2) == {
         "providerName": "Meghan Newman", "providerCredentials": "DNP"}
+
+
+def test_credentials_are_shown_without_dots():
+    from app.services.imaging_overlays import signer_fields, undotted
+
+    assert undotted("M.D.") == "MD"
+    assert undotted("Ph.D.") == "PhD"
+    assert undotted("M.D., Ph.D.") == "MD, PhD"
+    assert undotted("MD | D.O.") == "MD | DO"
+    assert undotted("F.N.P.-B.C.") == "FNP-BC"
+    assert undotted("APRN.CNP") == "APRN CNP"
+    assert undotted("PA-C") == "PA-C"
+    people = signer_fields([{"name": "Weidong Huang", "credentials": "M.D."}], None, None, 2)
+    assert people["providerCredentials"] == "MD"
+    assert people["providerSigners"][0]["credentials"] == "MD"

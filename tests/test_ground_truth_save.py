@@ -115,5 +115,5 @@ def test_provider_credentials_come_from_the_database_row():
     row = ("c1", 1, "1.jpg") + base[3:]
     extra = (None,) * 7 + ("MD",) + ("Ramsey Luce, R.N.",)
     page = accuracy_cache._page(row, extra)
-    assert (page.providerName, page.providerCredentials) == ("Ramsey Luce", "R.N.")
+    assert (page.providerName, page.providerCredentials) == ("Ramsey Luce", "RN")
     assert page.groundTruth.providerCredentials == "MD"

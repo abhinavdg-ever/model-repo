@@ -231,7 +231,10 @@ is set.
 | **2**, no `signers` | `provider_name` | `provider_credentials` |
 | **1** / NULL | `provider_name` with the credentials split off | the credentials split off `provider_name` (`provider_credentials` is not read) |
 
-The name is always shown without credentials.
+The name is always shown without credentials, and the credentials without dots
+(`undotted`): `M.D.` → `MD`, `Ph.D.` → `PhD`, `F.N.P.-B.C.` → `FNP-BC`; a dot between two
+longer credentials separates them (`APRN.CNP` → `APRN CNP`). The CSV and the database keep
+the credentials as read; the accuracy match ignores dots either way.
 
 ### 3.3 What the page view shows (Page Details → Provider Extraction)
 

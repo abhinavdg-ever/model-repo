@@ -428,13 +428,20 @@ def _split_person(person: str, is_credential) -> tuple[str, list[str]]:
     return " ".join(name_bits), creds
 
 
+def undotted(credentials: str) -> str:
+    """Credentials shown without dots: 'M.D.' -> 'MD', 'Ph.D.' -> 'PhD', 'R.N.' -> 'RN'. A dot
+    between two longer credentials separates them: 'APRN.CNP' -> 'APRN CNP'."""
+    text = re.sub(r"(?<=[A-Za-z]{2})\.(?=[A-Za-z]{2})", " ", credentials)
+    return re.sub(r"[ \t]{2,}", " ", text.replace(".", "")).strip()
+
+
 def provider_fields(name: str | None, credentials: str | None) -> tuple[str, str]:
     """A provider's name and credentials as the pipeline stored them. Rows written since the
     provider-signature rule (2026-10-18) carry ``provider_credentials`` beside a bare name;
     an older row (``credentials`` None: no such column) keeps them inside the name."""
     bare_name, credentials_in_name = signature_people(name or "")
     if credentials is None:
-        return bare_name, credentials_in_name
+        return bare_name, undotted(credentials_in_name)
     # The name is shown without credentials even if some slipped into it: the known ones,
     # and the row's own (DNP, APRN.CNP) wherever they sit.
     own = {re.sub(r"[\s.]+", "", c).casefold() for c in re.split(r"[,|/]", credentials) if c.strip()}
@@ -444,7 +451,7 @@ def provider_fields(name: str | None, credentials: str | None) -> tuple[str, str
             if re.sub(r"[\s.,]+", "", token).casefold() not in own
         ]
         bare_name = re.sub(r"\s*,\s*$", "", re.sub(r"\s+", " ", "".join(kept))).strip(" ,")
-    return bare_name, credentials.strip()
+    return bare_name, undotted(credentials)
 
 
 def provider_version(value: Any) -> int:
