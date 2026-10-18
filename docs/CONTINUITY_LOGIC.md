@@ -1,29 +1,31 @@
 # Document continuity — logic as implemented
 
-Which document each page belongs to, and the values a document's pages share. What
-the code does today.
+Which document each page belongs to, and the values a document's pages share. What the
+code does today (the weighted revamp, 2026-10-18). The design, the measurement behind
+the weights and the encounter-type half still to build:
+[`CONTINUITY_ENCOUNTER_REVAMP.md`](CONTINUITY_ENCOUNTER_REVAMP.md).
 
 | | |
 |---|---|
-| Engine | `core-pipeline/stages/lib/continuity/engine.py` (`assign`, `document_ended`, `document_finals`) |
-| Stage | `continuity`, pass 1, seq 87 — after `page_subtype` and `dos_extract`, before `imaging_final` |
-| Settings | `stages/lib/keyword-canon/continuity_canon.json` (reloads on change) |
-| Writes | `page_continuity_results`, `imaging/<chart>_continuity.csv` |
+| Engine | `core-pipeline/stages/lib/continuity/engine.py` (`assign`, `_gate`, `_weighted`, `document_finals`) |
+| Signals | `core-pipeline/stages/lib/continuity/signals.py` |
+| Stage | `continuity`, seq 87 — after `page_subtype` and `dos_extract`, before `imaging_final` |
+| Settings | `stages/lib/keyword-canon/continuity_canon.json` (version 3, reloads on change) |
+| Writes | `page_continuity_results` (incl. `score`, `review_required`), `imaging/<chart>_continuity.csv` |
 | Final values | written by `imaging_final` (seq 100) into `imaging_final` / `<chart>_final.csv` |
+| Database changes | [`schema/changes_2026-10-18.sql`](../schema/changes_2026-10-18.sql) §4 (`decided_by` gains `weighted`) |
 
 ---
 
 ## 1. The question
 
-For every page: **does it continue the previous page's document, or start a new one?**
-The pages of one document then share the first page's **Final** page type and **Final**
-DOS. Each page keeps its own Extracted values.
+For every page: **does it continue the previous page's document, start a new one, or is
+it unclear?** The pages of one document then share the first page's **Final** page type
+and **Final** DOS. Each page keeps its own Extracted values.
 
-| | Extracted (own) | Final (document) |
-|---|---|---|
-| Page 1 of a visit | Progress Note, 2024-03-28 | Progress Note, 2024-03-28 |
-| Page 2, no title, no date | Progress Note, — | Progress Note, 2024-03-28 |
-| Page 3, a lab table inside the visit | Laboratory Data, 2024-03-28 | Progress Note, 2024-03-28 |
+Getting it wrong is asymmetric: merging two encounters is a clinical error that reaches
+coding; splitting one is a nuisance a reviewer catches. Unclear pages are therefore
+**flagged**, not guessed.
 
 ---
 
@@ -31,128 +33,203 @@ DOS. Each page keeps its own Extracted values.
 
 | Input | From |
 |---|---|
-| Own DOS (From, To) | `dos_extraction_results` — the page's Extracted DOS |
-| Page type (compared as its family, the L1) and the classifier's confidence | `page_classification` (axes) |
-| Title on the page (a title term for its page type) | page classification (`axes.title_of`, else `keyword_title_hit`) |
-| Printed page number "N of M" | key/value staging (`page_no`), else read from the header / footer bands |
-| Signed | `provider_signature.csv` `signature_present = y`, or a signature block in the text ("Electronically signed", "Signed by", "Provider signature", "Signature:" …) |
+| Text | the page's OCR text (Final 2 → Final 1 → Tesseract) |
 | Line positions | Final 2 JSON line polygons, else Final 1 words grouped into lines, else plain text lines |
+| Section headers | the OCR JSON (`section_headers`, matched to `section_header_canon.json`) |
+| Own DOS (From, To) | `dos_extraction_results` — the Extracted DOS |
+| Page type (L1), sub-type, full path, confidence | `page_classification` (axes) |
+| Title on the page | page classification (`axes.title_of`, else `keyword_title_hit`) |
+| Printed page number "N of M" | `additional_page_details` (key/value stage), else read from the header / footer bands |
+| Signed | `provider_signature.csv` `signature_present = y`, or a signature block in the text |
+| Signed in tail | a signature block in the page's **last third** of lines |
 | Skipped | blank / junk / duplicate (final verdict) |
 
-Bands (`bands`): header = a line whose top is above **10%** of the page height;
-footer = a line whose bottom is below **92%**. Without positions: the first 4 and last 3
-lines, and a quarter of the lines each way for page numbers.
+Bands: header = a line whose top is above **10%** of the page height; footer = a line
+whose bottom is below **92%**. Without positions: the first 4 and last 3 lines.
 
 ---
 
-## 3. The decision — first match wins
+## 3. The decision
 
-**Skipped pages** (blank, junk, duplicate) belong to no document. A **blank or junk**
-page also **ends** the open document; a duplicate does not.
+### 3.1 Skipped pages
 
-| # | Check | Result | `decided_by` |
+Blank, junk and duplicate pages belong to no document. A **blank or junk** page also
+**ends** the open document (a physical separator); a **duplicate** does not (a scanning
+artefact) and takes its original's document and values.
+
+### 3.2 Gates — the first that applies decides
+
+| # | Gate | Result | `decided_by` |
 |---|---|---|---|
 | 1 | First page of the chart | new | `first_page` |
 | 2 | A blank or junk page came just before | new | `blank_junk` |
-| 3 | The page has its own DOS **equal to the open document's** (From and To) | **continue** | `same_dos` |
-| 4 | The page has its own DOS, **a different one** | **new** | `new_dos` |
-| | *From here on the page has no DOS of its own* | | |
-| 5 | **Printed page numbers follow on** (previous "page 3 of 5", this "page 4 of 5", same total) | **continue** — overrides 6–10 | `pagination` |
-| 6 | The **previous page was signed** | new | `signature` |
-| 7 | The previous page was printed **"page N of N"** (its last) | new | `page_number_end` |
-| 8 | This page **looks like a first page**: a title for a page type other than the previous page's | new | `first_page_marker` |
-| 9 | **The page type changes and the classifier is sure** (§3.1) | new | `page_type` |
-| 10 | **The previous page's text stops early**: its last line (above the footer) ends above **60%** of the page height | new | `page_end` |
-| 11 | None of the above | **continue** | `continue_page` |
+| 3 | Own DOS **equal** to the open document's (From and To) | **continue** | `same_dos` |
+| 4 | Own DOS, **different** | **new** | `new_dos` |
+| 5 | Printed page numbers follow on: "3 of 5" → "4 of 5" | **continue** | `pagination` |
+| 6 | The previous page was printed "page N of N" | new | `page_number_end` |
 
-### 3.1 Page type change (check 9)
+**DOS outranks pagination**: a different date is a different encounter, whatever the
+footer says. **Pagination never starts a document**: it confirms a continue (5) or closes
+one (6) — a misread digit must not split a document.
 
-*Same-type probability* = the classifier's confidence in this page's type when it is
-the previous page's type (family), else 1 − that confidence. A new document starts
-when it is **≤ 10%** (`max_same_type_probability`) **and** the classifier is **> 70%**
-sure of the new type (`min_new_type_confidence`).
+### 3.3 Weighted evidence — an undated page no gate decided
 
-| Previous | This page | Confidence | Same-type probability | Result |
-|---|---|---|---|---|
-| Progress Note | Lab | 90% | 10% | new document |
-| Progress Note | Lab | 60% | 40% | continue |
-| Progress Note | Progress Note | 95% | 95% | continue |
+```
+score = Σ weight × value        every value in [0, 1]
 
-### 3.2 Text stops early (check 10)
+score >= +4     continue         confidence medium   decided_by weighted
+score <= -4     new document     confidence medium   decided_by weighted
+otherwise       unknown          confidence low      review_required, stays in the open document
+```
 
-The bottom of the previous page's last line that starts above the footer (92%), as a
-share of the page height. Above **60%** (`page_end_max`), that document ended there.
-Needs line positions (Final 2 / Final 1); a text-only page gives no signal.
+| Signal | Weight | Value | Status |
+|---|---|---|---|
+| `section_forward` | **+10.0** | the next page's sections follow the previous page's in note order (§4.3), 0..1 | fitted |
+| `page_type_change` | **−7.0** | (1 − same-type probability) × confidence in the new type (§4.4) | estimated |
+| `cur_has_title` | **−6.0** | the page carries a title for its page type | estimated |
+| `same_visit_number` | +5.4 | both pages print the same visit / encounter / FIN / CSN number | fitted |
+| `page_fill` | +5.1 | how far down the previous page's body text reaches (§4.2) | fitted |
+| `header_line_repeats` | +4.7 | a header line (≥ 12 characters) printed on both pages | fitted |
+| `prev_signed` | −4.4 | the previous page is signed anywhere | fitted |
+| `body_cosine_char` | +3.7 | character tf-idf similarity of the previous page's tail and this page's head (§4.1) | fitted |
+| `full_path_same` | +3.0 | the same page type at every level (L1 / L2 / L3) | estimated |
+| `footer_line_repeats` | +2.8 | a footer line printed on both pages | fitted |
+| `body_cosine_word` | +1.0 | word tf-idf similarity of the same blocks | fitted |
+| `cur_opens_note` | +0.5 | the page opens on Chief Complaint / HPI | fitted |
+| `prev_signed_in_tail` | −0.4 | the previous page's signature is in its tail | fitted |
 
-### 3.3 Printed page numbers
+`fitted` = measured on 170 labelled pairs from 15 charts (balanced accuracy 0.79 ± 0.19,
+split by chart); `estimated` = specified after the measurement, to fit before trusting.
+The `measurement` block in the canon carries the provenance.
 
-"Page 4 of 5", "Pg 4/5", a bare "4 of 5" (total ≤ 20, `max_total`). They **never split**
-a document: they only confirm a continue page (check 5) or close a document (check 7).
-"Page 1" on a document's first page marks its start as confirmed.
+### 3.4 The abstain band
+
+A page scoring between −4 and +4 is **unknown**: it stays in the open document (leaving a
+page in place is the recoverable error; starting a spurious document fragments an
+encounter) and is flagged `review_required`. Never widen the band to lower the abstain
+rate — those are the pages most likely to be wrong.
+
+### 3.5 Signature terminator
+
+A previous page with a **signature block in its tail** closes its document even when the
+score kept it open (`decided_by signature`). Gates 3 and 5 (same DOS, page numbers) still
+win, because they decide first.
 
 ---
 
-## 4. What a document shares — the Final values
+## 4. The signals in detail
 
-`document_finals`, carried into `imaging_final` by its stage:
+### 4.1 Text running from one page into the next
 
-| Final value | Rule |
+1. **Strip the furniture**: lines of ≥ 12 characters printed on both pages (patient
+   banner, footer template) are removed — they appear on every page of the chart and
+   would swamp the body. (They are what `header_line_repeats` / `footer_line_repeats`
+   score.)
+2. **Tail and head blocks**: the previous page's last body lines, walking back in groups
+   of three lines until 20 words; the next page's first body lines, forward, likewise.
+3. **TF-IDF cosine** on those blocks — character 3–5 grams within words, and word 1–2
+   grams; `min_df` 2, sublinear tf; fitted on **every block of the chart** (never per
+   pair). Normalised: `min(1, cosine / 0.25)` for characters, `/ 0.15` for words.
+
+### 4.2 Page fill
+
+Where the previous page's body ends: the bottom of its last line **starting above the
+footer band**, divided by the footer top (0.92), clipped to 1.
+
+| Fill | Value |
 |---|---|
-| **Page type** | the first page's (each page keeps its own sub-type) |
-| **DOS** | the first page's, on every page |
-| **DOS of a stand-alone non-visit document** | when **every** page is a `default_final_dos` type — Patient Demographics, Patient Information, Patient Registration, Growth chart, Problem List, Immunizations / Immunization list — the Final DOS is **2222-02-02** (`DOS_DEFAULT_DATE`). One such page inside a visit's document takes the visit's DOS |
-| **Encounter type** | the first page's |
-| Member, provider, quality, orientation, blank / junk | each page's own |
+| ≤ 0.60 | 0 — the document probably ended there |
+| 0.60 – 0.92 | graded: (fill − 0.60) / 0.32 |
+| ≥ 0.92 | 1 — the text runs on |
 
-**Duplicates** take the page they duplicate's document, page type, DOS, encounter type,
-member and provider (`page_type_source` / `dos_source` = `duplicate`), and keep their
-own quality, orientation and blank / junk flag.
+Without line positions: 1 when the page has ≥ 28 lines or ≥ 1,800 characters, else 0;
+when that text proxy swings a weighted decision, the page is flagged for review.
+
+### 4.3 Section order
+
+Note order (`section_order` in the canon, each step mapped to `section_header_canon.json`
+names): chief complaint → HPI → review of systems → past history → social → family →
+medications → allergies → vitals → physical exam → labs → imaging → problem list →
+assessment / diagnosis → plan → patient instructions → follow-up.
+
+`section_forward = clip((first section of this page − last section of the previous) / steps × 4, 0, 1)`.
+Moving backwards counts 0 (no evidence either way).
+
+### 4.4 Page type change
+
+| Previous | This page | Confidence | Same-type probability | Value | × −7 |
+|---|---|---|---|---|---|
+| Progress Note | Lab | 90% | 10% | 0.81 | −5.7 |
+| Progress Note | Lab | 60% | 40% | 0.36 | −2.5 |
+| Progress Note | Progress Note | 95% | 95% | 0.05 | −0.3 |
 
 ---
 
-## 5. What is recorded per page
+## 5. Review flags (`review_required`)
+
+| Flag | When |
+|---|---|
+| Unknown | the score fell inside the band (§3.4) |
+| Long run without page numbers | a document of more than **25** pages where no page prints a page number (a footer template may be binding unrelated documents) — every page of it |
+| Text-proxy fill | page fill came from the text proxy (no line positions) and decided |
+
+---
+
+## 6. Links and position
 
 | Field | Meaning |
 |---|---|
-| `document_seq` | document number in the chart |
-| `seq` | page number within the document |
-| `position` | `single` / `first` / `continue` / `last` (review-ui: "Continue (Doc 3)") |
-| `relation` | `new_document` / `continue` |
-| `decided_by` | the check in §3 that decided |
-| `confidence_level` | `high` (first page, blank/junk, DOS, page numbers, signature, page N of N) / `medium` (title, page type, page end, continue page) |
-| `link` | `strong` — a continue by same DOS or page numbers; `weak` — any other continue |
+| `link` | `strong` — joined by same DOS or page numbers; `weak` — by the weighted score; `unknown` — kept across the abstain band |
 | `link_strength` | `strong` while every link back to the first page is strong, else `weak` |
-| `start_confirmed` | the first page has a title, or says "page 1" |
-| `page_no`, `page_total` | the printed page number used |
-| `evidence` | e.g. "same DOS 2024-03-28", "no DOS of its own; page 3->4 of 5", "the previous page was signed", "page type changes (Progress Note -> Lab, 10% it is still Progress Note)" |
+| `position` | `single` / `first` / `continue` / `last` (review-ui: "Continue (Doc 3)") |
+| `start_confirmed` | the first page has a title, or prints "page 1" |
+| `score` | the weighted score (weighted / signature decisions only) |
+| `evidence` | e.g. "same DOS 2024-03-14", "no DOS of its own; page 3->4 of 5", "score +10.4 (page_fill +5.1, full_path_same +3.0, footer_line_repeats +2.8, page_type_change -1.1)", "score +0.3 between -4 and +4: kept in the document, for review (…)" |
 
 ---
 
-## 6. Worked example
+## 7. What a document shares — the Final values
 
-| Page | Own DOS | Other signals | Decision | Doc |
-|---|---|---|---|---|
-| 1 | 2024-03-28 | Progress Note title | first page | 1 |
-| 2 | — | "page 2 of 3" after "page 1 of 3" | continue (pagination) | 1 |
-| 3 | — | page 3 of 3, signed | continue (pagination) | 1 |
-| 4 | — | previous page was "3 of 3" and signed | new (signature) | 2 |
-| 5 | 2024-06-03 | — | new (new DOS) | 3 |
-| 6 | blank | no ink | skipped; ends Doc 3 | — |
-| 7 | — | Face Sheet | new (blank_junk) | 4 — stand-alone non-visit: Final DOS 2222-02-02 |
+Unchanged by the revamp (`document_finals`):
 
-Final DOS: pages 1–3 = 2024-03-28; page 4 = its own first page's DOS (none);
-page 5 = 2024-06-03; page 7 = 2222-02-02.
-
----
-
-## 7. Every setting (`continuity_canon.json`)
-
-| Setting | Value |
+| Final value | Rule |
 |---|---|
-| `bands.head_top` / `foot_bottom` | 0.10 / 0.92 |
-| `bands.head_lines` / `foot_lines` / `text_band_fraction` | 4 / 3 / 0.25 |
-| `pagination.patterns`, `bare_pattern`, `max_total` | "page N of M", "pg N/M", bare "N of M"; total ≤ 20 |
-| `document_end.page_end_max` | 0.6 |
-| `document_end.max_same_type_probability` | 0.1 |
-| `document_end.min_new_type_confidence` | 0.7 |
-| `default_final_dos` | the non-visit page types in §4 |
+| Page type | the first page's (each page keeps its own sub-type) |
+| DOS | the first page's, on every page |
+| DOS of a stand-alone non-visit document | every page a `default_final_dos` type (Patient Demographics, Patient Information, Patient Registration, Growth chart, Problem List, Immunizations) → **2222-02-02**; such a page inside a visit takes the visit's DOS |
+| Encounter type | the first page's |
+
+---
+
+## 8. Settings (`continuity_canon.json`, version 3)
+
+| Block | Holds |
+|---|---|
+| `pagination`, `bands`, `default_final_dos` | as before |
+| `weights` | each signal's `w`, measured `lift`, `coverage`, `status` (fitted / estimated) |
+| `decision` | `continue_at` 4.0, `new_at` −4.0 |
+| `semantic` | furniture 12 chars, 20-word blocks, char 3–5 / word 1–2 grams, `min_df` 2, divisors 0.25 / 0.15 |
+| `page_fill` | `ended_at` 0.60, `continues_at` 0.92, graded, text proxy 28 lines / 1,800 chars |
+| `section_order` | the steps and the section names that count as each; `opens_note` |
+| `signature_terminator` | on; tail = the last 33% of lines |
+| `review_triggers` | unknown, long run 25, text-proxy fill |
+| `measurement` | provenance of the weights |
+| `document_end` | kept for reference; the ladder that read it is gone |
+
+The loader refuses a file whose `weights` name a signal the engine does not produce, or
+whose band is inverted (`new_at ≥ continue_at`).
+
+---
+
+## 9. Worked example
+
+| Page | Own DOS | Evidence | Decision | Doc |
+|---|---|---|---|---|
+| 1 | 2024-03-28 | — | first page | 1 |
+| 2 | — | "page 2 of 3" after "page 1 of 3" | continue (`pagination`) | 1 |
+| 3 | — | banner + footer repeat, text to the bottom, sections HPI → Plan | continue (`weighted`, +27.6) | 1 |
+| 4 | — | previous page ends "Electronically signed by …" | new (`signature`) | 2 |
+| 5 | — | Lab after Progress Note at 90%, a Lab title, text ended at 40% | new (`weighted`, −11.7) | 3 |
+| 6 | — | text to the bottom (+5.1), but Lab after Lab at 60% with a title | unknown, flagged (`weighted`, −0.9) | 3 |
+| 7 | 2024-06-03 | — | new (`new_dos`) | 4 |
+| 8 | blank | no ink | skipped; ends Doc 4 | — |

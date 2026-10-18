@@ -671,23 +671,30 @@ Non-Codable. A page on a weak link (an undated continue page) is flagged.
 is not blank, junk or duplicate. **Decides:** which document each page belongs
 to. Settings live in `keyword-canon/continuity_canon.json` and reload on change.
 
+Full logic: [CONTINUITY_LOGIC.md](CONTINUITY_LOGIC.md) (the weighted revamp, 2026-10-18).
+
+**Gates** — the first that applies decides:
+
 | Page | Result | `decided_by` |
 |---|---|---|
-| First page of the chart, or after a blank/junk page | new document | `first_page` / `blank_junk` |
-| Has a DOS, the same From and To as the open document's | continue (always, even after a signature) | `same_dos` |
-| Has a DOS, a different one | new document | `new_dos` |
-| No DOS, previous page signed | new document | `signature` |
-| No DOS, printed page number follows the previous page's (N → N+1 of the same M) | continue, confirmed — overrides the checks below | `pagination` |
-| No DOS, the previous page's printed number says it was the last ("page N of N") | new document | `page_number_end` |
-| No DOS, looks like a first page: the keyword model's title for a page type other than the previous page's | new document | `first_page_marker` |
-| No DOS, page type changes and the classifier is sure: the chance it is still the previous page's type (its confidence when the types agree, one minus it when they differ) is at most `document_end.max_same_type_probability` (10%) and its confidence in the new type is above `min_new_type_confidence` (70%) | new document | `page_type` |
-| No DOS, the previous page's text stops above `document_end.page_end_max` (60%) of the page height (footer band excluded; needs Final2/Final1 line positions) | new document | `page_end` |
-| No DOS, none of the above | continue | `continue_page` |
+| First page of the chart, or after a blank / junk page | new document | `first_page` / `blank_junk` |
+| Own DOS, the same From and To as the open document's | continue | `same_dos` |
+| Own DOS, a different one | new document | `new_dos` |
+| Printed page number follows on (N → N+1 of the same M) | continue | `pagination` |
+| The previous page printed "page N of N" | new document | `page_number_end` |
 
-A duplicate page in between does not break a document. Printed `Page N of M`
-is recorded (`page_no` / `page_total`) and confirms a document's first page;
-on an undated page, consecutive numbers confirm a continue page and "page N of
-N" ends the document (above). Page numbers never split a document.
+**Weighted evidence** — an undated page no gate decided: `score = Σ weight × value`
+over 13 signals (section order moving forward +10, page type change −7, a title −6, same
+visit number +5.4, page fill +5.1, header line repeats +4.7, previous page signed −4.4,
+body text similarity +3.7 / +1.0, same full page-type path +3, footer repeats +2.8,
+opens on CC/HPI +0.5, signed in tail −0.4). `≥ +4` continue, `≤ −4` new document,
+between **unknown**: kept in the open document and flagged `review_required`. A previous
+page with a signature in its tail closes its document (`signature`). Also flagged: a
+document of more than 25 pages with no page numbers, and a decision swung by the text
+proxy for page fill.
+
+A duplicate page in between does not break a document. Page numbers never split a
+document.
 
 **Final values** (the `imaging_final` stage): Final page type = the document's
 first page's (sub-type can differ, §7). Final DOS and Final encounter type =
@@ -700,9 +707,9 @@ page's.
 
 | Target | Columns |
 |---|---|
-| `page_continuity_results` | `document_seq`, `seq` (page within the document), `position`, `relation`, `decided_by`, `confidence_level`, `link_strength` (strong only when every link from the start is a shared DOS), `start_confirmed`, `evidence`; `score` and `review_required` are no longer used, `in_progress_note` is always false |
+| `page_continuity_results` | `document_seq`, `seq` (page within the document), `position`, `relation`, `decided_by`, `confidence_level`, `link_strength` (strong only while every link from the start is a shared DOS or page numbers), `start_confirmed`, `evidence`, `score` (the weighted score), `review_required` (unknown, long unpaginated run, text-proxy fill); `in_progress_note` is always false |
 | `imaging_final` (the `imaging_final` stage) | one row per page: the Final value of every reviewer field; page type agreed across the document (`page_type_source`), DOS and encounter type the first page's (`dos_source = document`); a duplicate page copies the page it duplicates (`duplicate`, `duplicate_of_page_id`); `specialty` is the page's own page-axes specialty, `Unknown` when it has none (no ground truth). See [CONTINUITY_LOGIC.md](CONTINUITY_LOGIC.md) |
-| disk | `imaging/<chart>_continuity.csv`: the same per page, plus the printed `page_no` / `page_total`, the `section_headers`, the page's own `page_type`, `dos_from`, `dos_to`, and `layout_source` (final2 / final1 / text) |
+| disk | `imaging/<chart>_continuity.csv`: the same per page, plus the printed `page_no` / `page_total`, the `section_headers`, the page's own `page_type`, `dos_from`, `dos_to`, `layout_source` (final2 / final1 / text), `score` and `review_required` |
 
 ---
 

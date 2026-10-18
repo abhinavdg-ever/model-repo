@@ -83,41 +83,61 @@ class TestSameDos:
 
 
 class TestContinuePages:
-    def test_an_undated_page_continues_the_open_document(self):
+    """An undated page no gate decides: the weighted evidence (signals.py, weights in
+    continuity_canon.json). The test page repeats its banner (+4.7) and footer (+2.8) and
+    its body runs to 85% of the page (page fill +5.1)."""
+
+    def test_an_undated_page_with_continue_evidence_continues(self):
         rows = assign([page(1, dos="2024-03-14"), page(2), page(3)])
         assert docs(rows) == [1, 1, 1]
-        assert rows[1]["decided_by"] == "continue_page"
-        assert rows[2]["link_strength"] == "weak"
+        assert rows[1]["decided_by"] == "weighted" and rows[1]["score"] >= RULES.continue_at
+        assert (rows[1]["link"], rows[2]["link_strength"], rows[1]["review_required"]) == ("weak", "weak", False)
 
-    def test_a_signature_on_the_previous_page_ends_the_document(self):
+    def test_a_signature_somewhere_on_the_previous_page_only_weighs_against(self):
         rows = assign([page(1, dos="2024-03-14", signed=True), page(2)])
+        assert docs(rows) == [1, 1]  # 12.6 - 4.4 still continues
+
+    def test_a_signature_in_the_previous_pages_tail_closes_its_document(self):
+        first = page(1, dos="2024-03-14", signed=True)
+        first.signed_in_tail = True
+        rows = assign([first, page(2)])
         assert docs(rows) == [1, 2]
         assert rows[1]["decided_by"] == "signature"
 
-    def test_a_sure_page_type_change_ends_the_document(self):
-        rows = assign([page(1, dos="2024-03-14", page_type="Progress Note"),
-                       page(2, page_type="Laboratory Data", confidence=0.9)])
+    def test_a_sure_type_change_and_a_title_start_a_new_document(self):
+        rows = assign([bare(1, dos="2024-03-14", page_type="Progress Note", ends=0.45),
+                       bare(2, page_type="Laboratory Data", confidence=0.9, title_hit=True)])
+        # page type change -(0.9 x 0.9) x 7 = -5.7, title -6: well under -4.
         assert docs(rows) == [1, 2]
-        assert rows[1]["decided_by"] == "page_type"
+        assert rows[1]["decided_by"] == "weighted" and rows[1]["score"] <= RULES.new_at
 
-    def test_an_unsure_page_type_change_continues(self):
-        rows = assign([page(1, dos="2024-03-14", page_type="Progress Note"),
-                       page(2, page_type="Laboratory Data", confidence=0.6)])
+    def test_balanced_evidence_is_unknown_kept_in_the_document_and_flagged(self):
+        rows = assign([bare(1, "assessment stable", dos="2024-03-14", page_type="Progress Note"),
+                       bare(2, "hemoglobin 13.2", page_type="Laboratory Data", confidence=0.9)])
+        # page fill +5.1, page type change -5.7: inside the band.
         assert docs(rows) == [1, 1]
+        assert (rows[1]["relation"], rows[1]["link"], rows[1]["review_required"]) == ("unknown", "unknown", True)
+        assert rows[1]["link_strength"] == "weak"
 
-    def test_exactly_10_percent_is_sure_enough(self):
-        rows = assign([page(1, dos="2024-03-14", page_type="Progress Note"),
-                       page(2, page_type="Laboratory Data", confidence=0.90)])
-        assert rows[1]["decided_by"] == "page_type"
+    def test_an_unsure_type_change_weighs_less(self):
+        sure = assign([bare(1, dos="2024-03-14", page_type="PN"), bare(2, page_type="Lab", confidence=0.9)])
+        unsure = assign([bare(1, dos="2024-03-14", page_type="PN"), bare(2, page_type="Lab", confidence=0.6)])
+        assert unsure[1]["score"] > sure[1]["score"]
 
-    def test_a_type_change_also_needs_70_percent_on_the_new_type(self):
-        """Same type at 5% confidence: 5% it is the same, but the classifier is not sure."""
-        from dataclasses import replace
+    def test_sections_moving_forward_continue(self):
+        def headed(n, *names, **kw):
+            p = bare(n, " ".join(names), ends=0.45, **kw)
+            p.section_headers = [{"text": h, "matched_canonical": h, "top": 0.2} for h in names]
+            return p
 
-        rules = replace(RULES, max_same_type_probability=0.5)
-        rows = assign([page(1, dos="2024-03-14", page_type="Lab"),
-                       page(2, page_type="Lab", confidence=0.4)], rules)
-        assert rows[1]["decided_by"] == "continue_page"
+        rows = assign([headed(1, "History of Present Illness", dos="2024-03-14"), headed(2, "Plan")])
+        assert rows[1]["relation"] == "continue" and "section_forward" in rows[1]["evidence"]
+        backwards = assign([headed(1, "Plan", dos="2024-03-14"), headed(2, "History of Present Illness")])
+        assert backwards[1]["relation"] == "unknown"
+
+    def test_the_same_visit_number_on_both_pages_continues(self):
+        rows = assign([bare(1, "visit #: 4455667", dos="2024-03-14", ends=0.45), bare(2, "visit #: 4455667")])
+        assert rows[1]["relation"] == "continue" and "same_visit_number" in rows[1]["evidence"]
 
     def test_printed_page_numbers_never_split(self):
         rows = assign([page(1, dos="2024-03-14", printed=(2, 3)), page(2, printed=(1, 2))])
@@ -132,10 +152,10 @@ class TestContinuePages:
         rows = assign([page(1, dos="2024-03-14", printed=(1, 1)), page(2, dos="2024-03-14")])
         assert docs(rows) == [1, 1]
 
-    def test_consecutive_page_numbers_confirm_a_continue_page(self):
-        """N -> N+1 of M continues even past a signature or a sure type change."""
-        rows = assign([page(1, dos="2024-03-14", printed=(1, 2), signed=True, page_type="Progress Note"),
-                       page(2, printed=(2, 2), page_type="Laboratory Data", confidence=0.95)])
+    def test_consecutive_page_numbers_continue_past_any_evidence(self):
+        first = page(1, dos="2024-03-14", printed=(1, 2), signed=True, page_type="Progress Note")
+        first.signed_in_tail = True
+        rows = assign([first, page(2, printed=(2, 2), page_type="Laboratory Data", confidence=0.95, title_hit=True)])
         assert docs(rows) == [1, 1]
         assert (rows[1]["decided_by"], rows[1]["link_strength"]) == ("pagination", "strong")
 
@@ -144,34 +164,43 @@ class TestContinuePages:
                        page(2, dos="2024-06-03", printed=(2, 2))])
         assert docs(rows) == [1, 2]
 
-    def test_a_title_for_another_page_type_starts_a_new_document(self):
-        rows = assign([page(1, dos="2024-03-14", page_type="Progress Note"),
-                       page(2, page_type="Operative Report", title_hit=True)])
-        assert rows[1]["decided_by"] == "first_page_marker"
-
-    def test_a_title_for_the_same_page_type_continues(self):
-        rows = assign([page(1, dos="2024-03-14", page_type="Progress Note"),
-                       page(2, page_type="Progress Note", title_hit=True)])
-        assert docs(rows) == [1, 1]
-
     def test_same_type_probability(self):
         a = page(1, page_type="Progress Note")
         assert same_type_probability(a, page(2, page_type="Progress Note", confidence=0.7)) == 0.7
         assert round(same_type_probability(a, page(2, page_type="Lab", confidence=0.7)), 2) == 0.3
         assert same_type_probability(a, page(2, page_type="Lab")) is None
 
-    def test_text_ending_mid_page_ends_the_document(self):
-        rows = assign([page(1, dos="2024-03-14", ends=0.45), page(2)])
-        assert docs(rows) == [1, 2]
-        assert rows[1]["decided_by"] == "page_end"
-
     def test_the_footer_does_not_count_as_text(self):
         p = page(1, ends=0.45)
         assert body_end(p, RULES) == 0.45
 
-    def test_without_line_positions_there_is_no_page_end_signal(self):
+    def test_without_line_positions_there_is_no_body_end(self):
         p = PageInput(page_id=1, lines=text_lines("short\ntext"))
         assert body_end(p, RULES) is None
+
+    def test_page_fill_from_the_text_proxy_is_flagged_when_it_decides(self):
+        long_text = "\n".join(f"line {i} of the note" for i in range(30))
+        rows = assign([PageInput(page_id=1, lines=text_lines(long_text), text=long_text, dos_from="2024-03-14"),
+                       PageInput(page_id=2, lines=text_lines("more"), text="more")])
+        assert rows[1]["relation"] == "continue" and rows[1]["review_required"] is True
+
+    def test_a_long_run_without_page_numbers_is_flagged(self):
+        rows = assign([page(1, dos="2024-03-14")] + [page(n) for n in range(2, 28)])
+        assert len(set(docs(rows))) == 1
+        assert all(r["review_required"] for r in rows)
+
+    def test_the_settings_refuse_unknown_signals_and_an_inverted_band(self):
+        import json
+
+        import pytest
+
+        from stages.lib.continuity.engine import _build
+
+        data = json.loads((CORE / "stages/lib/keyword-canon/continuity_canon.json").read_text(encoding="utf-8"))
+        with pytest.raises(ValueError, match="not produce"):
+            _build({**data, "weights": {**data["weights"], "made_up": {"w": 1.0}}})
+        with pytest.raises(ValueError, match="inverted"):
+            _build({**data, "decision": {"continue_at": -4.0, "new_at": 4.0}})
 
 
 class TestFinalValues:

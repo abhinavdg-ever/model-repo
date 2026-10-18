@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "note": "Groups pages into documents. A page with its own date of service (the DOS stage's Extracted DOS) joins the open document when its From and To are the same, and starts a new one when they differ. A page without a date continues the open document unless the document ended on the previous page: a signature on it, a page that looks like a first page, a page-type change the classifier is sure of (document_end.max_same_type_probability / min_new_type_confidence), or its text stopping in the middle of the page (document_end.page_end_max). A blank or junk page in between always ends the document. Every page of a document takes the first page's DOS as its Final DOS (DOS_DEFAULT_DATE for a stand-alone document of default_final_dos page types). Reloads on change.",
   "pagination": {
     "comment": "Printed 'Page N of M', read from the header and footer bands (or the key/value page number). Never splits a document: an undated page after 'page N of N' (the last page) starts a new one, and an undated page whose number follows the previous page's (N -> N+1, same M) is a confirmed continue page. Page 1 also confirms a document's first page. max_total is page_arbitration.json's max_document_pages.",
@@ -38,5 +38,284 @@
       "Immunization",
       "Immunization Record"
     ]
+  },
+  "measurement": {
+    "comment": "Provenance for the weights (CONTINUITY_ENCOUNTER_REVAMP). Measured with standalone reimplementations of the extractors, not the pipeline's own outputs: re-measure against real DOS, signature flags, line polygons and page-type confidences before trusting the exact weights. The ranking of the top signals should survive; the weights will move.",
+    "n_pairs": 985,
+    "n_labelled": 170,
+    "n_continue": 129,
+    "n_new": 41,
+    "n_charts": 15,
+    "ground_truth": "explicit pagination on both pages",
+    "cv_balanced_accuracy": 0.79,
+    "cv_std": 0.186,
+    "cv_split": "GroupKFold by chart_id",
+    "fitted": "2026-10-18",
+    "known_bias": "documents printing pagination are longer and more template-driven; furniture signals may be overstated and prose signals understated"
+  },
+  "semantic": {
+    "comment": "Text running from one page into the next: furniture (lines >= furniture_min_chars printed on both pages) removed, the previous page's last block and the next page's first block of >= tail_nth_word words, tf-idf cosine fitted on all blocks of the chart, normalised by norm_divisor and clipped to 1.",
+    "furniture_min_chars": 12,
+    "tail_nth_word": 20,
+    "char": {
+      "analyzer": "char_wb",
+      "ngram": [
+        3,
+        5
+      ],
+      "min_df": 2,
+      "norm_divisor": 0.25
+    },
+    "word": {
+      "analyzer": "word",
+      "ngram": [
+        1,
+        2
+      ],
+      "min_df": 2,
+      "norm_divisor": 0.15
+    }
+  },
+  "page_fill": {
+    "comment": "Where the previous page's body text ends (lines starting in the footer band excluded), as a share of the footer top. Graded: <= ended_at 0 (the document ended), >= continues_at 1, linear between. Without line positions: 1 when the page has >= text_proxy_lines lines or >= text_proxy_chars characters, else 0, and the page is flagged for review when this decided.",
+    "ended_at": 0.6,
+    "continues_at": 0.92,
+    "graded": true,
+    "text_proxy_lines": 28,
+    "text_proxy_chars": 1800
+  },
+  "section_order": {
+    "comment": "A clinical note's conventional section order; a page whose sections move forward from the previous page's continues it. Each step lists the section_header_canon.json names that count as it.",
+    "steps": [
+      [
+        "chief_complaint",
+        [
+          "Chief Complaint",
+          "CC",
+          "Reason for Visit",
+          "Reason for Consult",
+          "Reason for Admission"
+        ]
+      ],
+      [
+        "history_of_present_illness",
+        [
+          "History of Present Illness",
+          "HPI"
+        ]
+      ],
+      [
+        "review_of_systems",
+        [
+          "Review of Systems",
+          "ROS"
+        ]
+      ],
+      [
+        "past_medical_history",
+        [
+          "Past Medical History",
+          "PMH",
+          "Past Surgical History",
+          "PSH"
+        ]
+      ],
+      [
+        "social_history",
+        [
+          "Social History"
+        ]
+      ],
+      [
+        "family_history",
+        [
+          "Family History"
+        ]
+      ],
+      [
+        "medications",
+        [
+          "Medications",
+          "Current Medications",
+          "Medication List"
+        ]
+      ],
+      [
+        "allergies",
+        [
+          "Allergies",
+          "Allergy List"
+        ]
+      ],
+      [
+        "vitals",
+        [
+          "Vital Signs",
+          "Vitals"
+        ]
+      ],
+      [
+        "physical_exam",
+        [
+          "Physical Examination",
+          "Physical Exam"
+        ]
+      ],
+      [
+        "lab_results",
+        [
+          "Lab Results",
+          "Laboratory"
+        ]
+      ],
+      [
+        "imaging_results",
+        [
+          "Imaging",
+          "Radiology"
+        ]
+      ],
+      [
+        "problem_list",
+        [
+          "Problem List",
+          "Active Problems"
+        ]
+      ],
+      [
+        "visit_diagnosis",
+        [
+          "Assessment",
+          "Diagnosis",
+          "Diagnoses",
+          "Impression",
+          "Clinical Diagnoses",
+          "Principal Diagnosis"
+        ]
+      ],
+      [
+        "plan",
+        [
+          "Plan",
+          "Assessment and Plan",
+          "A/P",
+          "Plan of Care",
+          "Treatment Plan"
+        ]
+      ],
+      [
+        "patient_instructions",
+        [
+          "Discharge Instructions",
+          "After Visit Summary"
+        ]
+      ],
+      [
+        "follow_up",
+        [
+          "Follow Up"
+        ]
+      ]
+    ],
+    "opens_note": [
+      "chief_complaint",
+      "history_of_present_illness"
+    ]
+  },
+  "weights": {
+    "comment": "Reached only when no gate decided (an undated page without decisive pagination). score = sum(w x value), values in [0,1]. status estimated = specified after the measurement run; fit before trusting.",
+    "section_forward": {
+      "w": 10.0,
+      "lift": 0.27,
+      "coverage": 0.31,
+      "status": "fitted"
+    },
+    "page_type_change": {
+      "w": -7.0,
+      "lift": null,
+      "coverage": null,
+      "status": "estimated"
+    },
+    "cur_has_title": {
+      "w": -6.0,
+      "lift": null,
+      "coverage": null,
+      "status": "estimated"
+    },
+    "same_visit_number": {
+      "w": 5.4,
+      "lift": 0.08,
+      "coverage": null,
+      "status": "fitted"
+    },
+    "page_fill": {
+      "w": 5.1,
+      "lift": 0.34,
+      "coverage": 0.99,
+      "status": "fitted"
+    },
+    "header_line_repeats": {
+      "w": 4.7,
+      "lift": 0.31,
+      "coverage": 1.0,
+      "status": "fitted"
+    },
+    "prev_signed": {
+      "w": -4.4,
+      "lift": -0.26,
+      "coverage": 1.0,
+      "status": "fitted"
+    },
+    "body_cosine_char": {
+      "w": 3.7,
+      "lift": 0.27,
+      "coverage": 0.99,
+      "status": "fitted"
+    },
+    "full_path_same": {
+      "w": 3.0,
+      "lift": null,
+      "coverage": null,
+      "status": "estimated"
+    },
+    "footer_line_repeats": {
+      "w": 2.8,
+      "lift": 0.08,
+      "coverage": 1.0,
+      "status": "fitted"
+    },
+    "body_cosine_word": {
+      "w": 1.0,
+      "lift": 0.28,
+      "coverage": 0.99,
+      "status": "fitted"
+    },
+    "cur_opens_note": {
+      "w": 0.5,
+      "lift": -0.09,
+      "coverage": 0.31,
+      "status": "fitted"
+    },
+    "prev_signed_in_tail": {
+      "w": -0.4,
+      "lift": -0.21,
+      "coverage": 1.0,
+      "status": "fitted"
+    }
+  },
+  "decision": {
+    "continue_at": 4.0,
+    "new_at": -4.0,
+    "comment": "score >= continue_at: continue; <= new_at: new document; between: unknown — the page stays in the open document and is flagged for review. Never widen the band to reduce the abstain rate: the abstained pairs are the ones most likely to be decided wrongly."
+  },
+  "signature_terminator": {
+    "enabled": true,
+    "tail_fraction": 0.33,
+    "comment": "A previous page with a signature block in its last tail_fraction of lines closes its document even when the weighted score kept it open (same DOS and pagination, as gates, already decided before)."
+  },
+  "review_triggers": {
+    "unknown_relation": true,
+    "long_run_without_pagination": 25,
+    "page_fill_from_text_proxy": true
   }
 }

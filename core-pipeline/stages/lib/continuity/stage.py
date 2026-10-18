@@ -29,7 +29,7 @@ from db import (
 )
 from db.paths import imaging_csv, write_csv
 from stages._support import BJ_EXCLUDE, best_page_text, mark_completed, mark_skipped, stage_run
-from stages.lib.continuity.engine import PageInput, assign, text_lines
+from stages.lib.continuity.engine import PageInput, assign, load_rules, text_lines
 from stages.lib.continuity.layout import load_pages, page_layout
 from stages.lib.page_classify import axes
 from stages.lib.continuity.signature import has_signature_section, signed_page_names
@@ -59,7 +59,18 @@ CONTINUITY_COLS = [
     "section_headers",
     "layout_source",
     "evidence",
+    # The weighted evidence (an undated page no gate decided), and the review flag.
+    "score",
+    "review_required",
 ]
+
+
+def _tail_text(lines: list[Any], fraction: float) -> str:
+    """The page's last ``fraction`` of lines: where a closing signature sits."""
+    if not lines:
+        return ""
+    keep = max(1, int(round(len(lines) * fraction)))
+    return "\n".join(line.text for line in lines[-keep:])
 
 
 def _iso(value: Any) -> str:
@@ -98,6 +109,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         json2 = load_pages(ctx.chart_name, "final2")
         json1 = load_pages(ctx.chart_name, "final1")
 
+        rules = load_rules()
         # Continuity is chart-global: every page is an input even on a resume.
         inputs: list[PageInput] = []
         sources: dict[Any, str] = {}
@@ -136,13 +148,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     dos_from=_iso(page_dos.get("date_of_service_from")),
                     dos_to=_iso(page_dos.get("date_of_service_to")),
                     signed=name in signed_names or has_signature_section(text),
+                    signed_in_tail=has_signature_section(_tail_text(lines or text_lines(text), rules.signature_tail_fraction)),
                     printed=_printed(details.get(page_id)),
                     skipped=skipped,
                     breaks=flag in ("blank", "junk"),
                 )
             )
 
-        rows = assign(inputs)
+        rows = assign(inputs, rules)
 
         csv_rows: list[dict[str, Any]] = []
         documents = 0
@@ -179,6 +192,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         ),
                         "layout_source": sources.get(page_id, ""),
                         "evidence": row["evidence"],
+                        "score": "" if row.get("score") is None else row["score"],
+                        "review_required": "y" if row.get("review_required") else ("n" if row["relation"] else ""),
                     }
                 )
 

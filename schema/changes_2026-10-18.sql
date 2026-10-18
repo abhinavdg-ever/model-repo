@@ -66,3 +66,14 @@ ALTER TABLE imaging_final
 -- 3. v_accuracy_page (review-ui's accuracy view) gains final_provider_credentials,
 --    final_signers and final_provider_version. review-ui re-creates the view itself
 --    the first time the accuracy report loads; nothing to run here.
+
+-- 4. Continuity: the weighted revamp (docs/CONTINUITY_LOGIC.md). decided_by gains
+--    'weighted'; the old ladder's values stay allowed for rows written before.
+--    score and review_required (already there) are written again.
+ALTER TABLE page_continuity_results DROP CONSTRAINT IF EXISTS page_continuity_results_decided_by_check;
+ALTER TABLE page_continuity_results ADD CONSTRAINT page_continuity_results_decided_by_check
+    CHECK (decided_by IN (
+        'first_page','blank_junk','same_dos','new_dos','pagination',
+        'signature','page_number_end','weighted',
+        'first_page_marker','page_type','page_end','continue_page','progress_note'
+    )) NOT VALID;  -- checks new rows; rows from older engines are left as they are
