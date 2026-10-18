@@ -1421,6 +1421,7 @@ IMAGING_FINAL_COLUMNS = (
     "provider_credentials",
     "signers",
     "provider_version",
+    "provider_confidence",
 )
 
 

@@ -166,6 +166,11 @@ def _best(rows: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
 # its credentials, one provider. 2 (2026-10-18): bare name, provider_credentials and every
 # accepted signer in signers. review-ui reads a row by its version.
 PROVIDER_VERSION = 2
+# Confidence = the signature's score, lowered when the name or credentials came from
+# outside the signature (the page's provider_name / provider_credentials rows), and when
+# the page has several signatures.
+OUTSIDE_FACTOR = 0.75
+SEVERAL_FACTOR = 0.9
 
 
 def credentials_in_sentence(sentence: Optional[str]) -> Optional[str]:
@@ -221,6 +226,10 @@ def signature_fields(
 
     ``signers`` lists them, the selected one first, then by score; the same person once.
     ``provider_name`` / ``provider_credentials`` are the first signer's.
+
+    Confidence is the signature's score: x0.75 when the name or credentials came from
+    outside it (OUTSIDE_FACTOR), x0.9 each when there are several signatures
+    (SEVERAL_FACTOR). Each signer carries its own; the page's is their average.
     """
     rows = [row for row in _as_hits(hit) if row.get("accepted", True)]
     empty = {
@@ -235,10 +244,12 @@ def signature_fields(
     primary = _best([row for row in rows if row.get("selected")]) or _best(rows)
     ordered = [primary, *sorted((row for row in rows if row is not primary), key=lambda row: -(_score(row) or 0.0))]
 
+    several = len(ordered) > 1
     signers: list[dict[str, Any]] = []
     for row in ordered:
         name, creds = _signer(row)
-        if len(ordered) == 1:
+        outside = False
+        if not several:
             if not name:
                 best = _best([
                     item for item in _as_hits(provider_hits)
@@ -247,6 +258,7 @@ def signature_fields(
                 if best is not None:
                     name, from_name = split_name_credentials(_text(best, "value"))
                     creds = creds or from_name
+                    outside = True
             if not creds:
                 accepted = [
                     item for item in _as_hits(credential_hits)
@@ -258,7 +270,9 @@ def signature_fields(
                     and _text(item, "provider_name").casefold() in name.casefold()
                 ]
                 chosen = (same or accepted)[:1]
-                creds = _text(chosen[0], "value") if chosen else None
+                if chosen:
+                    creds = _text(chosen[0], "value")
+                    outside = True
         elif not (name and creds):
             continue  # several signatures: one without a name and credentials is removed
         if not name and not creds:
@@ -267,9 +281,18 @@ def signature_fields(
         if twin is not None:
             twin["credentials"] = twin["credentials"] or creds
             continue
-        signers.append({"name": name, "credentials": creds, "signature_date": _iso_date(_text(row, "signature_date"))})
+        score = _score(row)
+        if score is not None:
+            score = round(score * (OUTSIDE_FACTOR if outside else 1.0) * (SEVERAL_FACTOR if several else 1.0), 4)
+        signers.append({
+            "name": name, "credentials": creds,
+            "signature_date": _iso_date(_text(row, "signature_date")), "confidence": score,
+        })
 
-    lead = signers[0] if signers else {"name": None, "credentials": None, "signature_date": None}
+    lead = signers[0] if signers else {"name": None, "credentials": None, "signature_date": None, "confidence": None}
+    # One signer: its confidence. Several: the average over the listed signers.
+    scores = [s["confidence"] for s in signers if s["confidence"] is not None]
+    page_confidence = round(sum(scores) / len(scores), 4) if scores else None
     return {
         **empty,
         "signature_key": _text(primary, "key"),
@@ -280,7 +303,7 @@ def signature_fields(
         "provider_name": lead["name"],
         "provider_credentials": lead["credentials"],
         "signature_date": lead["signature_date"],
-        "confidence": _score(primary),
+        "confidence": page_confidence,
         "source": _text(primary, "source"),
         "signers": signers,
     }

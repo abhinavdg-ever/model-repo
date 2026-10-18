@@ -134,31 +134,6 @@ def _clear_for_rerun(
     return {"db": db_rows, "files": files, "kept_ocr": keep_ocr}
 
 
-def clear_before_batch(
-    chart_id: int,
-    chart_name: str,
-    *,
-    force: bool,
-    only: Optional[list[str]],
-    through: Optional[str],
-    skip_ocr: Optional[bool],
-) -> Optional[dict[str, Any]]:
-    """The clear run_pipeline_for_chart does for a full run, done for every
-    chart of a batch when the batch starts, so a chart still waiting in the
-    queue does not show its previous results. A skip_ocr run also keeps
-    quality here (the chart's own start snapshots it, then clears it). A
-    partial run (only / run_through) clears nothing, as for one chart."""
-    from config import SKIP_OCR
-
-    if only or through:
-        return None
-    if (SKIP_OCR if skip_ocr is None else bool(skip_ocr)) and not force:
-        return _clear_for_rerun(chart_id, chart_name, keep_ocr=True, keep_quality=True)
-    if force:
-        return _clear_for_rerun(chart_id, chart_name, keep_ocr=False)
-    return None
-
-
 def run_pipeline_for_chart(
     chart_id: int,
     *,

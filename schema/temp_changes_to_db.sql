@@ -470,3 +470,4 @@ ALTER TABLE provider_signature_results
     ADD COLUMN IF NOT EXISTS signers JSONB,
     ADD COLUMN IF NOT EXISTS provider_version SMALLINT;
 ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS provider_version SMALLINT;
+ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS provider_confidence NUMERIC(5,4);

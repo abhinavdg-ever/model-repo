@@ -70,7 +70,7 @@ COPIED_FROM_REFERENCE = (
     "continuation_rule", "needs_review",
     "dos_from", "dos_to",
     "encounter_type", "provider_name", "provider_credentials", "signers", "provider_version",
-    "signature_present",
+    "provider_confidence", "signature_present",
 )
 
 
@@ -101,6 +101,7 @@ def _signatures(rows: dict[int, dict[str, Any]]) -> dict[int, dict[str, Any]]:
             "provider_credentials": row.get("provider_credentials") or None,
             "signers": signers or None,
             "provider_version": row.get("provider_version"),
+            "provider_confidence": row.get("confidence"),
         }
     return out
 
@@ -237,6 +238,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "provider_credentials": signature.get("provider_credentials"),
                 "signers": signature.get("signers") or None,
                 "provider_version": signature.get("provider_version"),
+                "provider_confidence": _number(signature.get("provider_confidence")),
                 "signature_present": signature.get("signature_present") if signature else None,
                 "seq": (sequencing.get(page_id) or {}).get("seq"),
                 "duplicate_of_page_id": None,

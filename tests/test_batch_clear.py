@@ -1,33 +1,16 @@
-"""A batch clears every chart's previous results when it starts
-(orchestrator.runner.clear_before_batch), with the same rules as one chart."""
+"""A batch does not clear every chart up front: each chart's previous results stay until
+its own run starts (run_pipeline_for_chart clears them then)."""
 from __future__ import annotations
 
-import pytest
-
-from orchestrator import runner
+import inspect
 
 
-@pytest.fixture
-def calls(monkeypatch):
-    seen: list[dict] = []
-    monkeypatch.setattr(runner, "_clear_for_rerun", lambda cid, name, **kw: seen.append({"id": cid, **kw}) or kw)
-    return seen
+def test_a_batch_does_not_clear_its_charts_before_they_run():
+    from jobs import batch_intake
+    from orchestrator import runner
 
-
-def test_full_forced_run_clears_everything(calls):
-    runner.clear_before_batch(1, "c1", force=True, only=None, through=None, skip_ocr=False)
-    assert calls == [{"id": 1, "keep_ocr": False}]
-
-
-def test_skip_ocr_keeps_ocr_and_quality(calls):
-    runner.clear_before_batch(1, "c1", force=False, only=None, through=None, skip_ocr=True)
-    assert calls == [{"id": 1, "keep_ocr": True, "keep_quality": True}]
-
-
-@pytest.mark.parametrize("only, through", [(["dos_extract"], None), (None, "ocr_final2")])
-def test_partial_run_clears_nothing(calls, only, through):
-    assert runner.clear_before_batch(1, "c1", force=True, only=only, through=through, skip_ocr=False) is None
-    assert calls == []
+    assert not hasattr(runner, "clear_before_batch")
+    assert "_clear_for_rerun" not in inspect.getsource(batch_intake)
 
 
 def test_quality_kept_by_memory_store():

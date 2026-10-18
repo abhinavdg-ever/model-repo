@@ -803,6 +803,8 @@ CREATE TABLE imaging_final (
     signers                  JSONB,
     -- 2 = the provider-signature rule of 2026-10-18; 1 / NULL = older rows.
     provider_version         SMALLINT,
+    -- The provider signature's confidence (provider_signature_results.confidence).
+    provider_confidence      NUMERIC(5,4),
     signature_present        BOOLEAN,
     seq                      INT,
     duplicate_of_page_id     BIGINT REFERENCES page_list(id) ON DELETE SET NULL,

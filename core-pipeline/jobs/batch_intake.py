@@ -864,23 +864,9 @@ def _run_batch_inner(
         local_write_path=local_write_path,
     )
 
-    # Clear every chart's previous results now, not when its worker reaches
-    # it: otherwise a chart waiting in the queue keeps showing the old run.
-    if run_pipeline and not skip_db_write and registered:
-        from orchestrator.runner import clear_before_batch
-
-        cleared = 0
-        for entry in registered:
-            try:
-                if clear_before_batch(
-                    entry["chart_id"], entry["chart_name"],
-                    force=force, only=only, through=through, skip_ocr=skip_ocr,
-                ) is not None:
-                    cleared += 1
-            except Exception:  # noqa: BLE001 — the chart's own run clears again
-                logger.warning("Batch: clearing %s up front failed", entry["chart_name"], exc_info=True)
-        if cleared:
-            logger.info("Batch: cleared previous results of %d chart(s) before starting", cleared)
+    # No clearing up front: each chart's previous results stay until its own run starts
+    # (run_pipeline_for_chart clears them then), so the charts still waiting in the queue
+    # keep showing their last run instead of going blank all at once.
 
     counters = {"started": 0, "finished": 0}
     counter_lock = threading.Lock()

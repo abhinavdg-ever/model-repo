@@ -73,9 +73,9 @@ def test_every_accepted_signer_is_listed_the_selected_one_first():
         {"key": "Signed", "sentence": "Signed", "score": 0.5, "accepted": True, "selected": False},  # no name: left out
         {"key": "Cosigned by", "provider_name": "Jane Roe", "score": 0.4, "accepted": True},  # the same person
     ])
-    assert fields["signers"] == [
-        {"name": "WILLIAM J WALL III", "credentials": "MD", "signature_date": "2026-01-12"},
-        {"name": "Jane Roe", "credentials": "DNP", "signature_date": None},
+    assert [(s["name"], s["credentials"], s["signature_date"]) for s in fields["signers"]] == [
+        ("WILLIAM J WALL III", "MD", "2026-01-12"),
+        ("Jane Roe", "DNP", None),
     ]
     assert (fields["provider_name"], fields["provider_credentials"]) == ("WILLIAM J WALL III", "MD")
     row = signature_csv_row("c", "1.jpg", 1, fields)
@@ -308,3 +308,19 @@ def test_credentials_must_be_in_capitals():
     assert caps_credentials_only(None) is None
     fields = signature_fields({"provider_name": "Jane Doe Rd", "score": 0.9})
     assert fields["provider_name"] == "Jane Doe"
+
+
+def test_confidence_is_the_score_lowered_for_outside_values_and_several_signatures():
+    own = signature_fields([{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "score": 0.8, "accepted": True}])
+    assert own["confidence"] == 0.8
+    outside = signature_fields(
+        [{"key": "Signed", "sentence": "Electronically Signed", "score": 0.8, "accepted": True}],
+        [{"value": "Daniel J Hamilton, MD", "score": 0.9, "accepted": True}],
+    )
+    assert outside["confidence"] == 0.6  # 0.8 x 0.75
+    several = signature_fields([
+        {"key": SIGNED_BY, "provider_name": "A. Patel, MD", "score": 0.8, "accepted": True, "selected": True},
+        {"key": "Cosigned by", "provider_name": "Jane Roe, DNP", "score": 0.5, "accepted": True},
+    ])
+    assert [s["confidence"] for s in several["signers"]] == [0.72, 0.45]  # each x 0.9
+    assert several["confidence"] == 0.585  # their average

@@ -34,6 +34,17 @@ For each accepted signature:
 
 The same person signing twice is listed once.
 
+**Confidence** — the signature's `score`:
+
+| Case | Confidence |
+|---|---|
+| One signature, name and credentials from its own row (steps 1–2) | its score |
+| One signature, name or credentials from outside it (step 3b) | score × **0.75** |
+| Several signatures | each signer: its score × **0.9**; the page: **their average** |
+
+Each signer carries its own (`signers[].confidence`); the page's is `confidence` in
+`provider_signature_results` and the CSV, and `provider_confidence` in `imaging_final`.
+
 Examples:
 
 | Signature rows | Signers |
@@ -124,8 +135,9 @@ downstream reads them, never the staging**:
 | `signature_present` | an accepted signature (`y` / `n` in the CSV) |
 | `provider_name` | the first signer's name, **without** credentials |
 | `provider_credentials` | the first signer's credentials |
-| `signers` | every signer: `[{"name", "credentials", "signature_date"}]` (JSON) |
+| `signers` | every signer: `[{"name", "credentials", "signature_date", "confidence"}]` (JSON) |
 | `provider_version` | **2** — this rule |
+| `confidence` (`provider_confidence` in `imaging_final`) | the page's confidence (above) |
 | `signature_key`, `sentence`, `region`, `scale`, `ner_text`, `source`, `signature_date`, `confidence` | the first signature's |
 
 ### Versions — old and new rows side by side
@@ -136,6 +148,10 @@ downstream reads them, never the staging**:
 | **1** or none | before 2026-10-18 | `provider_name` alone, credentials split off it (`provider_credentials` ignored) |
 
 No column is removed; a chart switches to v2 when `kv_extract` and `imaging_final` re-run.
+
+**Database changes:** [`schema/changes_2026-10-18.sql`](../schema/changes_2026-10-18.sql) —
+additive, safe to re-run (`psql "$DATABASE_URL" -f schema/changes_2026-10-18.sql`). A new
+database gets the same from `schema/v1.sql`.
 The writers write only the columns a table has, so a database without the new columns
 (`schema/temp_changes_to_db.sql` not applied) keeps working.
 
@@ -155,8 +171,6 @@ The writers write only the columns a table has, so a database without the new co
 
 ## 7. Known gaps
 
-- **Confidence is not in `imaging_final`.** It is in `provider_signature_results` and
-  the CSV; Production Mode shows NA as the provider confidence.
 - **No keyless provider.** A name without a key ("— John Smith, MD" alone at the
   bottom) is found only through the signature extractor or not at all.
 - **Keys that often fail** (from `utilities/harvest_keys.py --field provider` on the

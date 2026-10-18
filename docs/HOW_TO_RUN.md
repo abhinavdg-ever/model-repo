@@ -215,6 +215,9 @@ never written back).
 | `skip_page_download` | **`true`** | Reuse page images already in the workspace. `false` = wipe `pages/` + `corrected-pages/` and re-fetch from `input_path`. (Replaces `redownload_pages: true`.) |
 | `--test-mode` (CLI only) | off | **Local only.** No Postgres. Workspace under `data/folders/<chart>-test` for review-ui. Env `TEST_MODE=true`. Not available on the API. |
 
+A batch clears a chart's previous results only when that chart's own run starts; the
+charts still waiting in the queue keep showing their last run.
+
 Re-running a chart with the same `input_path` + `chart_name` resumes it:
 workspace pages are reused and every stage reprocesses. There is no `chart_id`
 resume on the API.
