@@ -87,11 +87,25 @@ def _shutdown() -> None:
     close_pools()
 
 
+def _database_target() -> str:
+    """host:port/database (schema) of DATABASE_URL, never the user or password, so two
+    instances can be checked against the same database."""
+    from urllib.parse import urlparse
+
+    raw = (settings.database_url or "").strip()
+    if not raw:
+        return "none"
+    url = urlparse(raw.replace("postgresql+psycopg://", "postgresql://", 1))
+    port = f":{url.port}" if url.port else ""
+    return f"{url.hostname}{port}{url.path or ''} (schema {settings.db_schema})"
+
+
 @app.get("/")
 def root() -> dict[str, str]:
     return {
         "service": "advantmed-imaging-ui",
         "data_mode": settings.data_mode,
         "mode_label": settings.mode_label,
+        "database": _database_target(),
         "docs": "/docs",
     }
