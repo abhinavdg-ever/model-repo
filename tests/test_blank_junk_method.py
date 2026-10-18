@@ -243,11 +243,17 @@ class TestVote:
         assert verdict.votes["ballots"] == by["bert"] + by["kw"]
         assert f"vote {verdict.votes['ballots']} (DistilBERT, keywords)" in verdict.reason
 
-    def test_clinical_veto(self):
+    def test_clinical_content_keeps_the_page_without_a_veto(self):
+        # C >= 4: the keywords vote KEEP, so the vote is JK -> Main; no veto is needed.
         text = JUNK_TEXT + "\nAssessment:\nstable\nPlan:\nrest"
         verdict = run(text, bert=bert(0.84))
-        assert verdict.code == classify.CODE_MAIN
-        assert verdict.votes.get("veto") in (None, "clinical")  # kw votes KEEP on C, or the veto fires
+        assert (verdict.code, verdict.votes["ballots"], verdict.votes.get("veto")) == (classify.CODE_MAIN, "JK", None)
+
+    def test_a_face_sheet_with_soft_junk_wording_is_kept_by_the_keywords(self):
+        # D >= 3 with fax wording (not a hard group): the keywords vote KEEP.
+        text = "Patient Name DOB MRN Sex face sheet guarantor. Fax cover sheet, number of pages 3. " + FILLER
+        verdict = run(text, bert=bert(0.84))
+        assert (verdict.code, verdict.votes["by_voter"]["kw"], verdict.votes.get("veto")) == (classify.CODE_MAIN, "K", None)
 
     def test_handwritten_veto_above_30_percent(self):
         verdict = run(JUNK_TEXT, bert=bert(0.84), hw_area_pct=45.0)

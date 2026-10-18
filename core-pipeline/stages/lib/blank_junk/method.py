@@ -534,14 +534,12 @@ def _confidence(
 
 
 def _vote(inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes: dict[str, Any]) -> Verdict:
-    """R9: the two-voter table (method §8.2), then the vetoes (§8.3)."""
-    t = canon().thresholds
+    """R9: the two-voter table (method §8.2), then the handwritten veto (§8.3)."""
     # One letter per voter, always in VOTER_NAMES order (DistilBERT, keywords),
     # so "JA" says who cast which ballot.
     letters = "".join(ballots[name].letter() for name in VOTER_NAMES)
     who = ", ".join(VOTER_NAMES.values())
     bert, kw = ballots["bert"], ballots["kw"]
-    c_hit = scores.clinical >= t["clinical"]
     alone_min = float(canon().raw["voters"]["keyword"]["junk_alone_min"])
 
     if bert.vote == JUNK and kw.vote == JUNK:
@@ -566,15 +564,13 @@ def _vote(inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes:
             verdict = KEEP
     votes.update(ballots=letters, row=row, by_voter={name: b.letter() for name, b in ballots.items()})
 
+    # The one veto: a mostly handwritten page. Clinical (C) and demographic (D without hard
+    # junk wording) need none: the keyword ballot is KEEP on them, and a vote with a K in it
+    # is never Junk.
     veto = ""
     if verdict == JUNK:
-        best = scores.best_junk_group() or ""
         hw_limit = float(canon().raw["handwritten_veto"]["min_handwritten_area_pct"])
-        if c_hit:
-            veto = "clinical"
-        elif scores.demographic >= t["demographic"] and best not in HARD_JUNK_GROUPS:
-            veto = "demographic"
-        elif inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit:
+        if inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit:
             veto = "handwritten"
         if veto:
             verdict = KEEP
@@ -649,7 +645,7 @@ def decide(inputs: PageInputs) -> Verdict:
         return ruled(CODE_OTHERS, "R2", "R2 placeholder ('intentionally left blank') -> Junk / Others")
     # R3 signature (Provider Signature from KV extraction exists only from pass 2). Not when
     # both voters say JUNK (JJ): a signed ROI / transmittal letter is still junk. The vote then
-    # decides, with its clinical / demographic / handwritten vetoes.
+    # decides, with its handwritten veto.
     if pass2 and (inputs.signed or scores.signature_phrase):
         if all(b.vote == JUNK for b in ballots.values()):
             votes["r3_skipped"] = "JJ"
@@ -658,7 +654,7 @@ def decide(inputs: PageInputs) -> Verdict:
         why = "Provider Signature = Yes" if inputs.signed else "signature phrase"
         return ruled(CODE_MAIN, "R3", f"R3 signature ({why}) -> Main")
     # R4 DistilBERT force. A face sheet or a clinical page DistilBERT is sure about is
-    # left to the vote, where the clinical and demographic vetoes apply.
+    # left to the vote, where the keyword ballot is KEEP on them.
     force = float(prof.raw["voters"]["bert"]["force_junk_above"])
     protected = scores.clinical >= t["clinical"] or scores.demographic >= t["demographic"]
     if pass2 and inputs.bert and float(inputs.bert["p_junk"]) > force and protected:

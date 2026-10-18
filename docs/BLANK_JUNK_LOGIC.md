@@ -215,13 +215,15 @@ Ballots are written DistilBERT first (`JA` = DistilBERT junk, keywords abstain).
 **Pass 1** acts only on row 1 with **both ballots strong**; every other page stays Main
 with "(pass 1: deferred to final OCR)".
 
-### 5.3 The vetoes — a Junk from the vote turns back to Main
+### 5.3 The veto — a Junk from the vote turns back to Main
 
 | Veto | Condition | `votes.veto` |
 |---|---|---|
-| Clinical | C ≥ 4 | `clinical` |
-| Demographic | D ≥ 3 and the best junk group is **not** hard | `demographic` |
 | Handwritten | handwritten area **> 30%** of the page | `handwritten` |
+
+There is no clinical or demographic veto: the keyword ballot already covers them. With
+C ≥ 4, or D ≥ 3 without hard junk wording, the keywords vote **K**, and a vote with a K
+in it (rows 4–6) is never Junk. (Removed 2026-10-18: they could never fire.)
 
 ### 5.4 The subtype
 
@@ -283,8 +285,9 @@ UI shows Yes at 100%, May Be below; May Be confidence = 1 + (similarity − 1) �
 | 1 | DistilBERT J weak, keywords J weak (Optum = 4) → JJ, not both strong | Main, deferred |
 | 2 | R5: short (14.5% ≤ 20%), ink 0.23% < 0.5% | **Junk / Others (R5)**, confidence ≈ 0.99 (R5 0.95, DistilBERT 0.71, keywords 0.4, all agree) |
 
-Without R5 it would still be junk: keywords J weak (Optum from Tesseract), DistilBERT
-J weak → JJ → Junk; no veto (C 0; D 3 but roi_vendors is hard; handwriting 3.6%).
+Without R5 it would still be junk: keywords J weak (Optum from Tesseract; D 3 does not
+make them K because roi_vendors is hard), DistilBERT J weak → JJ → Junk; handwriting
+3.6%, so no veto.
 
 **A signed ROI letter (67992141 p7)** — Provider Signature = Yes, vendor wording,
 DistilBERT junk: the ballots are JJ, so R3 is skipped and the vote makes it Junk /
@@ -328,3 +331,5 @@ Main.
 - **Pass 2 keywords also count the junk terms only Tesseract read** (`tesseract_only`).
 - **R5 records its ink** (`ink`, `ink_fraction`, `ink_limit`).
 - **R5 ink limit 0.01% → 0.5%**; **short page 15% → 20%**, ink band 17% → 22% start.
+- **The clinical and demographic vetoes are gone** (the keyword ballot covers them);
+  the handwritten veto stays.

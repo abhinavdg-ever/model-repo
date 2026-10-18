@@ -285,8 +285,9 @@ alone.
 | J K, K J | Main |
 | K K, K A, A K, A A | Main |
 
-Then the vetoes turn a Junk into Main: clinical (C), demographic (D without
-retrieval / invoice wording), handwritten area > 30%. Pass 1 only takes J J with
+Then one veto turns a Junk into Main: handwritten area > 30%. (Clinical C and
+demographic D without retrieval / invoice wording need none: the keywords vote KEEP on
+them, and a vote with a KEEP is never Junk.) Pass 1 only takes J J with
 both strong; everything else stays Main and is judged again in pass 2 on final
 OCR. A model that is not loaded abstains (`/health` → `engine: keywords`).
 TF-IDF is no longer a voter.
