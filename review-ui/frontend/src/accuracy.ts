@@ -20,7 +20,7 @@ export type MetricId =
   | "blankJunk"
   | "pageType"
   | "codeable"
-  | "credentials"
+  | "signature"
   | "orientation";
 
 /** ``inOverall: false`` = scored, but not part of the page's overall match.
@@ -65,10 +65,10 @@ export const METRICS: {
     rule: "Every labelled page. Codable label matches the Final codability: Match. Matches only the Extracted one: Partial. Neither: No Match. Discharge counts as Codable on both sides; a page the pipeline called blank / junk is Non-Codable",
   },
   {
-    id: "credentials",
-    label: "Provider Credentials",
+    id: "signature",
+    label: "Provider Signature",
     binary: true,
-    rule: "Only pages where the ground truth or the pipeline gives credentials are compared. Any one credential shared is a Match (MD, DO, NP…; punctuation, order and separators ignored: 'MD | NP' against 'MD' matches). A page whose label is blank / NA / Not Available / None but where the pipeline extracted some is a No Match. Match or No Match, no Partial. Under Credentials = Yes (cases = pages the ground truth gives credentials): Precision = of the pages the pipeline gave credentials, the share right; Recall = of the cases, the share found",
+    rule: "Every labelled page, Match or No Match: the ground truth is Yes when it gives the provider's credentials (NA / None / blank is No), and that equals whether the pipeline found an electronic signature. Under Signature = Yes (cases = pages the ground truth gives credentials): Precision = of the pages the pipeline called signed, the share signed; Recall = of the cases, the share found; Cred. Match = of the cases, the share whose credentials match the ground truth's (any one credential shared: MD, DO, NP…; punctuation, order and separators ignored)",
   },
   {
     id: "orientation",
@@ -89,7 +89,14 @@ const OVERALL_METRICS = METRICS.filter((metric) => metric.inOverall !== false);
 export type Tally = { yes: number; no: number; maybe: number; scored: number; na: number };
 
 /** Counts for Class 1 (the "Yes" class): true / false positives and negatives. */
-export type ClassRates = { tp: number; fp: number; fn: number; tn: number };
+export type ClassRates = {
+  tp: number;
+  fp: number;
+  fn: number;
+  tn: number;
+  /** Provider Signature only: Class 1 pages whose credentials match the ground truth's. */
+  credMatch?: number;
+};
 
 /** Charts whose last run is before this date are left out of the report. */
 export const MIN_LAST_RUN = "2026-10-12";
@@ -114,8 +121,8 @@ export type ChartAccuracy = {
   orientationRates: ClassRates;
   /** Class 1 = both the member's Name and DOB are on the page. */
   memberRates: ClassRates;
-  /** Class 1 = the ground truth gives the provider's credentials. */
-  credentialsRates: ClassRates;
+  /** Class 1 = the ground truth says the page is signed; credMatch counts its credentials. */
+  signatureRates: ClassRates;
   /** Class 1 = the ground truth dates the page. */
   dosRates: ClassRates;
 };
@@ -280,7 +287,7 @@ function pageScores(
   applicable: typeof METRICS;
   member: ReturnType<typeof memberCall>;
   dos: PresenceCall;
-  credentials: PresenceCall;
+  signature: SignatureCall;
 } {
   const parts = splitPageType(page.pageType);
   const input = {
@@ -378,7 +385,7 @@ function pageScores(
         single(codeableBits(page.isCodeable)),
       );
 
-  const credentialsCalled = credentialsCall(page);
+  const signatureCalled = signatureCall(page);
 
   return {
     scores: {
@@ -397,7 +404,7 @@ function pageScores(
             ? "no"
             : finalOrExtracted(single(finalBits.pageType), single(bits.pageType)),
       codeable,
-      credentials: credentialsCalled?.verdict ?? null,
+      signature: signatureCalled.expected === signatureCalled.predicted ? "yes" : "no",
       // Every page: a ground truth of NA (or none) is upright (0°), as is a page the rotation
       // stage left alone. Equal angles = Match, else No Match.
       orientation: orientationTurns(page).expected === orientationTurns(page).actual ? "yes" : "no",
@@ -409,7 +416,7 @@ function pageScores(
       : OVERALL_METRICS,
     member: memberCalls,
     dos: dosCall,
-    credentials: credentialsCalled,
+    signature: signatureCalled,
   };
 }
 
@@ -468,15 +475,17 @@ function addPresenceRates(rates: ClassRates, call: PresenceCall | null): void {
   else rates.tn += 1;
 }
 
-/** Credentials on every page. A label of NA / blank / None (or only a Yes / No signature
- * label) is Not Found: it matches no credentials extracted, and is a No Match when the
- * pipeline extracted some. Any one credential shared is a Match. */
-function credentialsCall(page: ImagingPageResult): PresenceCall {
-  const label = gtCredentials(page.groundTruth);
-  const predicted = credentialTokens(page.providerCredentials).size > 0;
-  const verdict = credentialsVerdict(label, page.providerCredentials);
-  if (!verdict) return { expected: false, predicted, verdict: predicted ? "no" : "yes" };
-  return { expected: true, predicted, verdict: verdict === "maybe" ? "yes" : verdict };
+/** Provider Signature on every labelled page. The ground truth's Yes = it gives the
+ * provider's credentials (NA / None / blank, or only a Yes / No label, is No); the
+ * pipeline's is whether it found a signature. On a Yes page, ``credMatch`` = the
+ * credentials extracted share one with the ground truth's. */
+type SignatureCall = { expected: boolean; predicted: boolean; credMatch: boolean };
+
+function signatureCall(page: ImagingPageResult): SignatureCall {
+  const verdict = credentialsVerdict(gtCredentials(page.groundTruth), page.providerCredentials);
+  const expected = verdict != null;
+  const predicted = yesNo(page.providerSignature) === "yes";
+  return { expected, predicted, credMatch: verdict === "yes" || verdict === "maybe" };
 }
 
 export function credentialsVerdict(
@@ -516,14 +525,15 @@ export function scoreChart(
   const blankJunkRates = emptyRates();
   const orientationRates = emptyRates();
   const memberRates = emptyRates();
-  const credentialsRates = emptyRates();
+  const signatureRates: ClassRates = { ...emptyRates(), credMatch: 0 };
   const dosRates = emptyRates();
   const overall = emptyTally();
   for (const page of doc.pages) {
     if (!hasGroundTruth(page.groundTruth)) continue;
     const scored = pageScores(page, sections);
     for (const metric of METRICS) add(metrics[metric.id], scored.scores[metric.id]);
-    addPresenceRates(credentialsRates, scored.credentials);
+    addRates(signatureRates, scored.signature.expected, scored.signature.predicted);
+    if (scored.signature.credMatch) signatureRates.credMatch = (signatureRates.credMatch ?? 0) + 1;
     addPresenceRates(dosRates, scored.dos);
 
     add(overall, overallVerdict(scored.scores, scored.applicable));
@@ -546,7 +556,7 @@ export function scoreChart(
     blankJunkRates,
     orientationRates,
     memberRates,
-    credentialsRates,
+    signatureRates,
     dosRates,
   };
 }
@@ -558,6 +568,7 @@ export function sumRates(rows: ClassRates[]): ClassRates {
     total.fp += row.fp;
     total.fn += row.fn;
     total.tn += row.tn;
+    if (row.credMatch != null) total.credMatch = (total.credMatch ?? 0) + row.credMatch;
   }
   return total;
 }
@@ -578,6 +589,17 @@ export function formatRecall(rates: ClassRates): string {
 /** F1 = 2 × Precision × Recall / (Precision + Recall) = 2TP / (2TP + FP + FN). */
 export function formatF1(rates: ClassRates): string {
   return ratePercent(2 * rates.tp, 2 * rates.tp + rates.fp + rates.fn);
+}
+
+/** Cred. Match = the Recall of Signature = Yes on credentials: of the pages the ground
+ * truth calls signed, the share whose credentials match. */
+export function formatCredMatch(rates: ClassRates): string {
+  return ratePercent(rates.credMatch ?? 0, rates.tp + rates.fn);
+}
+
+export function credMatchPercent(rates: ClassRates): number | null {
+  const total = rates.tp + rates.fn;
+  return rates.credMatch == null || total === 0 ? null : Math.round((100 * rates.credMatch) / total);
 }
 
 /** Precision as a whole percent; null when the pipeline called no page Yes. */

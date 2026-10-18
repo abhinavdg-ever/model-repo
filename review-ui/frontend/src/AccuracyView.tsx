@@ -22,9 +22,11 @@ import {
   MIN_LAST_RUN,
   MIN_LAST_RUN_LABEL,
   accuracyPercent,
+  credMatchPercent,
   f1Percent,
   precisionPercent,
   recallPercent,
+  formatCredMatch,
   formatDistribution,
   formatF1,
   formatPrecision,
@@ -125,14 +127,19 @@ function classCases(rates: ClassRates): number {
   return rates.tp + rates.fn;
 }
 
-/** Precision / Recall / F1 for Class 1, label above value. */
+/** Provider Signature carries credMatch: its third figure is Cred. Match, not F1. */
+function hasCredMatch(rates: ClassRates): boolean {
+  return rates.credMatch != null;
+}
+
+/** Precision / Recall / F1 (Cred. Match for Provider Signature) for Class 1, label above value. */
 function RatesGrid({ rates }: { rates: ClassRates }) {
   return (
     <dl className="accuracy-class-grid">
       {[
         ["Precision", formatPrecision(rates)],
         ["Recall", formatRecall(rates)],
-        ["F1", formatF1(rates)],
+        hasCredMatch(rates) ? ["Cred. Match", formatCredMatch(rates)] : ["F1", formatF1(rates)],
       ].map(([name, value]) => (
         <div key={name}>
           <dt>{name}</dt>
@@ -177,6 +184,7 @@ const RATES_INFO =
   "Precision = TP / (TP + FP): share of the pipeline's Class 1 calls that were right. " +
   "Recall = TP / (TP + FN): share of the real Class 1 pages the pipeline caught. " +
   "F1 = 2 × Precision × Recall / (Precision + Recall). " +
+  "Provider Signature shows Cred. Match instead of F1: of the Signature = Yes cases (pages the ground truth gives credentials), the share whose credentials match the ground truth's. " +
   "These matter because Class 1 pages are rare: the overall accuracy can be high while they are missed.";
 
 function Donut({
@@ -225,7 +233,7 @@ function Donut({
   });
   return (
     <figure className="accuracy-donut-card">
-      <svg className="accuracy-donut" viewBox="0 0 100 100" role="img" aria-label={rates ? `${label} ${percentLabel(tally)}. ${formatDistribution(tally, binary)}. Precision ${formatPrecision(rates)}. Recall ${formatRecall(rates)}. F1 ${formatF1(rates)}` : `${label} ${percentLabel(tally)}. ${formatDistribution(tally, binary)}`}>
+      <svg className="accuracy-donut" viewBox="0 0 100 100" role="img" aria-label={rates ? `${label} ${percentLabel(tally)}. ${formatDistribution(tally, binary)}. Precision ${formatPrecision(rates)}. Recall ${formatRecall(rates)}. ${hasCredMatch(rates) ? `Cred. Match ${formatCredMatch(rates)}` : `F1 ${formatF1(rates)}`}` : `${label} ${percentLabel(tally)}. ${formatDistribution(tally, binary)}`}>
         <circle className="accuracy-donut-track" cx="50" cy="50" r={radius} />
         {arcs}
         <text className="accuracy-donut-pct" x="50" y={tally.scored > 0 ? 51 : 54}>
@@ -291,14 +299,23 @@ type ScoreColumn = MetricId | "overall";
 /** Inclusive percent range; a row with no score is hidden while a range is set. */
 type Range = { min: number; max: number };
 
-/** What a column can be filtered on: its Accuracy, and Precision / Recall / F1 of Class Yes. */
-type Measure = "accuracy" | "precision" | "recall" | "f1";
+/** What a column can be filtered on: its Accuracy, and Precision / Recall / F1 of Class Yes
+ * (Cred. Match in place of F1 for Provider Signature). */
+type Measure = "accuracy" | "precision" | "recall" | "f1" | "credMatch";
 type ColumnRanges = Partial<Record<Measure, Range>>;
 const RATE_MEASURES = [
   { key: "precision", label: "Precision", percent: precisionPercent },
   { key: "recall", label: "Recall", percent: recallPercent },
   { key: "f1", label: "F1", percent: f1Percent },
+  { key: "credMatch", label: "Cred. Match", percent: credMatchPercent },
 ] as const;
+
+/** The rate measures a column offers: F1, or Cred. Match on Provider Signature. */
+function measuresFor(column: ScoreColumn) {
+  return RATE_MEASURES.filter((measure) =>
+    column === "signature" ? measure.key !== "f1" : measure.key !== "credMatch",
+  );
+}
 
 /** Filters keyed by column, then by measure. */
 type Filters = Partial<Record<ScoreColumn, ColumnRanges>>;
@@ -388,9 +405,11 @@ function ColumnFilter({
   label,
   value,
   classLabel,
+  column,
   onChange,
 }: {
   label: string;
+  column: ScoreColumn;
   value: ColumnRanges | undefined;
   /** Set on a column with a Class Yes block ("Member & DOB = Yes"): also filter on its
    * Precision, Recall and F1. */
@@ -468,7 +487,7 @@ function ColumnFilter({
         >
           <RangeSliders label="Accuracy" range={value?.accuracy ?? FULL_RANGE} onChange={(r) => set("accuracy", r)} />
           {classLabel
-            ? RATE_MEASURES.map((measure) => (
+            ? measuresFor(column).map((measure) => (
                 <RangeSliders
                   key={measure.key}
                   label={`${measure.label} (${classLabel})`}
@@ -580,7 +599,7 @@ function rowRatesFor(row: ChartAccuracy, id: MetricId): ClassRates | undefined {
   if (id === "blankJunk") return row.blankJunkRates;
   if (id === "member") return row.memberRates;
   if (id === "orientation") return row.orientationRates;
-  if (id === "credentials") return row.credentialsRates;
+  if (id === "signature") return row.signatureRates;
   if (id === "dos") return row.dosRates;
   return undefined;
 }
@@ -687,6 +706,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
           {filter ? (
             <ColumnFilter
               label={label}
+              column={filter}
               value={filters[filter]}
               classLabel={rates && filter !== "overall" ? ratesLabelFor(filter) : undefined}
               onChange={(value) => setFilter(filter, value)}
@@ -785,8 +805,8 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     [rows],
   );
   const memberRates = useMemo(() => sumRates(rows.map((row) => row.memberRates)), [rows]);
-  const credentialsRates = useMemo(
-    () => sumRates(rows.map((row) => row.credentialsRates)),
+  const signatureRates = useMemo(
+    () => sumRates(rows.map((row) => row.signatureRates)),
     [rows],
   );
   const dosRates = useMemo(() => sumRates(rows.map((row) => row.dosRates)), [rows]);
@@ -802,8 +822,8 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
         ? memberRates
         : id === "orientation"
           ? orientationRates
-          : id === "credentials"
-            ? credentialsRates
+          : id === "signature"
+            ? signatureRates
             : id === "dos"
               ? dosRates
               : undefined;
@@ -812,8 +832,8 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
       ? "Member & DOB = Yes"
       : id === "orientation"
         ? "Rotated (not 0°) = Yes"
-        : id === "credentials"
-          ? "Credentials = Yes"
+        : id === "signature"
+          ? "Signature = Yes"
           : id === "dos"
             ? "Date = Yes"
             : "Blank/Junk = Yes";
