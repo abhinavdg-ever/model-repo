@@ -44,6 +44,7 @@ export const METRICS: {
   {
     id: "dos",
     label: "DOS",
+    binary: true,
     rule: "Every page is compared, except a blank / junk page (by the ground truth or the pipeline) and one where the ground truth has no date and the pipeline shows the 2222-02-02 placeholder (neither is scored). Labelled dates (From, To) match the Final DOS: Match; only the Extracted DOS: Partial; neither: No Match. A page whose DOS label is blank / NA / Not Available expects no date: no Extracted DOS is a Match (a Final DOS carried from the document's first page does not count), an Extracted DOS is a No Match. Under Date = Yes (cases = pages the ground truth dates): Precision = of the pages the pipeline dated, the share right; Recall = of the cases, the share found",
   },
   {
@@ -73,7 +74,7 @@ export const METRICS: {
     id: "orientation",
     label: "Orientation",
     binary: true,
-    rule: "Accuracy = of every page with an orientation label, the share where the stored text orientation equals the ground truth (0 / 90 / 180 / 270, degrees the text sits counter-clockwise); an upright page left upright is a match. Under Rotated (not 0°) = Yes (cases = pages the ground truth calls rotated): Precision = of the pages the pipeline turned, the share at the right angle (an upright page turned by mistake counts against it); Recall = of the rotated pages, the share found at the right angle. A label that is not a quarter turn (12°) is not scored. Not part of the overall page match",
+    rule: "Every page with ground truth, Match or No Match: the stored text orientation equals the ground truth (0 / 90 / 180 / 270, degrees the text sits counter-clockwise). A label of NA / blank is Not Found, read as upright (0°), and so is a page with no stored angle. Under Rotated (not 0°) = Yes (pages the ground truth or the pipeline calls rotated): Precision = of the pages the pipeline turned, the share at the right angle; Recall = of the rotated pages, the share found at the right angle. Not part of the overall page match",
     inOverall: false,
   },
 ];
@@ -154,19 +155,22 @@ function quarterTurn(value: string | number | null | undefined): number | null {
   return ((Math.round(n) % 360) + 360) % 360;
 }
 
+/** The ground truth's and the pipeline's text orientation, in degrees. A ground truth of
+ * NA / blank (Not Found) is upright, 0°; so is a page with no stored angle. */
+function orientationTurns(page: ImagingPageResult): { expected: number; actual: number } {
+  const label = page.groundTruth?.rotation;
+  return {
+    expected: noValue(label) ? 0 : quarterTurn(label) ?? 0,
+    actual: quarterTurn(page.orientationAngle) ?? 0,
+  };
+}
+
 /** Class 1 = a rotated page (not 0°). Rotated in the ground truth and found at
  * the same angle = TP; reported upright = FN; another angle = FP + FN (a wrong
  * call that also misses the page). Upright in the ground truth but turned = FP.
  * Upright on both sides = TN. */
-function addOrientationRates(
-  rates: ClassRates,
-  bits: GtBit[],
-  angle: number | null | undefined,
-): void {
-  if (!labeled(bits) || bits[0].mark === "unknown") return;
-  const expectedTurn = quarterTurn(bits[0].label);
-  const actualTurn = quarterTurn(angle);
-  if (expectedTurn === null || actualTurn === null) return;
+function addOrientationRates(rates: ClassRates, page: ImagingPageResult): void {
+  const { expected: expectedTurn, actual: actualTurn } = orientationTurns(page);
   if (expectedTurn === 0) {
     if (actualTurn === 0) rates.tn += 1;
     else rates.fp += 1;
@@ -190,28 +194,20 @@ function blankJunkCall(bits: GtBit[]): { expected: boolean; predicted: boolean }
   return { expected, predicted: right ? expected : !expected };
 }
 
-/** Name and DOB presence: what the ground truth says and what the pipeline
- * found, for each. Null unless both are labelled Yes / No and the member stage ran. */
-/** Ground-truth labels that mean "not available" rather than Yes / No. */
-const NOT_AVAILABLE = new Set(["", "na", "n/a", "not available"]);
+/** A pipeline value that says "nothing found". */
+const NOT_FOUND_VALUES = new Set(["", "na", "n/a", "not found", "not available", "none"]);
 
-function memberCall(
-  name: [string | null | undefined, GtBit[]],
-  dob: [string | null | undefined, GtBit[]],
-): { expected: [boolean, boolean]; predicted: [boolean, boolean] } | null {
-  const sides = [name, dob].map(([label, bits]) => {
-    // NA / Not Available (or no label) is not a Yes / No: the page is Not Available.
-    if (NOT_AVAILABLE.has((label ?? "").trim().toLowerCase())) return null;
-    const expected = yesNo(label);
-    if (expected === null || !labeled(bits) || bits[0].mark === "unknown") return null;
-    // "match" = the pipeline found it exactly when the ground truth says Yes.
-    const found = (expected === "yes") === (bits[0].mark === "match");
-    return { expected: expected === "yes", found };
-  });
-  if (sides[0] === null || sides[1] === null) return null;
+function found(value: string | null | undefined): boolean {
+  return !NOT_FOUND_VALUES.has(text(value).toLowerCase());
+}
+
+/** Name and DOB on every page: [Name, DOB] as the ground truth has them (Yes is Yes; No,
+ * NA, blank or anything else is No) and as the pipeline found them (extracted or not). */
+function memberCall(page: ImagingPageResult): { expected: [boolean, boolean]; predicted: [boolean, boolean] } {
+  const gt = page.groundTruth;
   return {
-    expected: [sides[0].expected, sides[1].expected],
-    predicted: [sides[0].found, sides[1].found],
+    expected: [yesNo(gt?.memberName) === "yes", yesNo(gt?.memberDob) === "yes"],
+    predicted: [found(page.memberName), found(page.memberDob)],
   };
 }
 
@@ -283,8 +279,8 @@ function pageScores(
   /** The metrics a page is held to: all six, or five on a blank / junk page. */
   applicable: typeof METRICS;
   member: ReturnType<typeof memberCall>;
-  dos: PresenceCall | null;
-  credentials: PresenceCall | null;
+  dos: PresenceCall;
+  credentials: PresenceCall;
 } {
   const parts = splitPageType(page.pageType);
   const input = {
@@ -330,43 +326,34 @@ function pageScores(
     dosTo: finalTo || null,
   });
 
-  // Name and DOB presence: both right = Match, one = Partial, neither = No
-  // Match. Member ID has no ground truth.
-  const memberCalls = memberCall(
-    [page.groundTruth?.memberName, bits.memberName],
-    [page.groundTruth?.memberDob, bits.memberDob],
-  );
-  const memberRight = memberCalls
-    ? memberCalls.expected.filter((value, index) => value === memberCalls.predicted[index]).length
-    : null;
-  const member: Verdict | null =
-    memberRight === null ? null : memberRight === 2 ? "yes" : memberRight === 1 ? "maybe" : "no";
+  // Name and DOB on every page: the ground truth's Yes is Yes, anything else (No, NA,
+  // blank) is No; the pipeline's is whether it extracted one. Both right = Match, one =
+  // Partial, neither = No Match. Member ID has no ground truth.
+  const memberCalls = memberCall(page);
+  const memberRight = memberCalls.expected.filter((value, index) => value === memberCalls.predicted[index]).length;
+  const member: Verdict = memberRight === 2 ? "yes" : memberRight === 1 ? "maybe" : "no";
   const blankJunkCalls = blankJunkCall(bits.blankJunk);
 
   const truth = page.groundTruth ? blankJunkTruth(page.groundTruth) : null;
   const blankOrJunk = (truth ?? "").toLowerCase().startsWith("yes");
   const pipelineBlankJunk = (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
 
-  // DOS on every page: a ground truth with no date expects none. A blank / junk page (by the
-  // ground truth or the pipeline) has no DOS to score, even when the ground truth gives one.
+  // DOS on every page, Match or No Match. A page the ground truth calls blank / junk has no
+  // date (Not Found). A labelled date matches when the Final or the Extracted DOS equals it
+  // (From and To). No date in the ground truth matches no Extracted DOS: a continuation
+  // page's Final DOS comes from its document's first page and does not count against it.
+  // The 2222-02-02 placeholder is no date.
   const pipelineDated = Boolean(finalFrom || finalTo);
-  // A ground truth with no date is judged on the Extracted DOS: a continuation page's Final
-  // DOS comes from its document's first page and does not count against it.
   const extractedDated = Boolean(pipelineDate(page.dosFrom) || pipelineDate(page.dosTo));
-  const gtDated = !noValue(page.groundTruth?.dosFrom) || !noValue(page.groundTruth?.dosTo);
-  // The pipeline's 2222-02-02 placeholder where the ground truth has no date is not scored.
-  const placeholderDos = [page.finalDosFrom, page.finalDosTo, page.dosFrom, page.dosTo].some(
-    (value) => text(value).startsWith(DEFAULT_DOS),
-  );
-  const dosCall: PresenceCall | null = blankOrJunk || pipelineBlankJunk || (!gtDated && !pipelineDated && placeholderDos)
-    ? null
-    : gtDated
-    ? (() => {
-        const verdict = finalOrExtracted(dosVerdict(finalBits), dosVerdict(bits));
-        return verdict ? { expected: true, predicted: pipelineDated, verdict } : null;
-      })()
+  const gtDated = !blankOrJunk && (!noValue(page.groundTruth?.dosFrom) || !noValue(page.groundTruth?.dosTo));
+  const dosCall: PresenceCall = gtDated
+    ? {
+        expected: true,
+        predicted: pipelineDated || extractedDated,
+        verdict: dosVerdict(finalBits) === "yes" || dosVerdict(bits) === "yes" ? "yes" : "no",
+      }
     : { expected: false, predicted: extractedDated, verdict: extractedDated ? "no" : "yes" };
-  const dos = dosCall?.verdict ?? null;
+  const dos = dosCall.verdict;
 
   const single = (field: GtBit[]): Verdict | null => (labeled(field) ? grade(field) : null);
 
@@ -382,10 +369,14 @@ function pageScores(
       isCodeable: pipelineBlankJunk && !text(value) ? "Non-Codable" : value,
       codeableKnown: input.codeableKnown || pipelineBlankJunk,
     }).codeable;
-  const codeable = finalOrExtracted(
-    single(codeableBits(text(page.finalCodeable) || page.isCodeable)),
-    single(codeableBits(page.isCodeable)),
-  );
+  // A ground-truth Discharge page type is a Match for now.
+  const gtDischarge = /discharge/i.test(text(page.groundTruth?.pageType)) || /discharge/i.test(text(page.groundTruth?.codeable));
+  const codeable = gtDischarge
+    ? "yes"
+    : finalOrExtracted(
+        single(codeableBits(text(page.finalCodeable) || page.isCodeable)),
+        single(codeableBits(page.isCodeable)),
+      );
 
   const credentialsCalled = credentialsCall(page);
 
@@ -403,9 +394,9 @@ function pageScores(
           : finalOrExtracted(single(finalBits.pageType), single(bits.pageType)),
       codeable,
       credentials: credentialsCalled?.verdict ?? null,
-      // An angle that is not a quarter turn, or a page the rotation stage did not run on, is
-      // not scored (it is not a miss).
-      orientation: bits.rotation[0]?.mark === "unknown" ? null : single(bits.rotation),
+      // Every page: a ground truth of NA (or none) is upright (0°), as is a page the rotation
+      // stage left alone. Equal angles = Match, else No Match.
+      orientation: orientationTurns(page).expected === orientationTurns(page).actual ? "yes" : "no",
     },
     blankJunk: blankJunkCalls,
     rotation: bits.rotation,
@@ -473,17 +464,14 @@ function addPresenceRates(rates: ClassRates, call: PresenceCall | null): void {
   else rates.tn += 1;
 }
 
-/** Credentials where either side gives some. Old rows with only a Yes / No signature label
- * say nothing about credentials and are left out. */
-function credentialsCall(page: ImagingPageResult): PresenceCall | null {
-  const gt = page.groundTruth;
-  const label = gtCredentials(gt);
-  if (!label && yesNo(gt?.providerSignature) === "yes") return null;
+/** Credentials on every page. A label of NA / blank / None (or only a Yes / No signature
+ * label) is Not Found: it matches no credentials extracted, and is a No Match when the
+ * pipeline extracted some. Any one credential shared is a Match. */
+function credentialsCall(page: ImagingPageResult): PresenceCall {
+  const label = gtCredentials(page.groundTruth);
   const predicted = credentialTokens(page.providerCredentials).size > 0;
-  // Only pages where the ground truth or the pipeline gives credentials are scored.
-  if (noValue(label)) return predicted ? { expected: false, predicted, verdict: "no" } : null;
   const verdict = credentialsVerdict(label, page.providerCredentials);
-  if (!verdict) return null;
+  if (!verdict) return { expected: false, predicted, verdict: predicted ? "no" : "yes" };
   return { expected: true, predicted, verdict: verdict === "maybe" ? "yes" : verdict };
 }
 
@@ -531,8 +519,6 @@ export function scoreChart(
     if (!hasGroundTruth(page.groundTruth)) continue;
     const scored = pageScores(page, sections);
     for (const metric of METRICS) add(metrics[metric.id], scored.scores[metric.id]);
-    // A page with ground truth that Member cannot score is Not Available.
-    if (!scored.scores.member) metrics.member.na += 1;
     addPresenceRates(credentialsRates, scored.credentials);
     addPresenceRates(dosRates, scored.dos);
 
@@ -540,15 +526,13 @@ export function scoreChart(
     if (scored.blankJunk) {
       addRates(blankJunkRates, scored.blankJunk.expected, scored.blankJunk.predicted);
     }
-    addOrientationRates(orientationRates, scored.rotation, page.orientationAngle);
-    if (scored.member) {
-      // Class 1: both Name and DOB on the page.
-      addRates(
-        memberRates,
-        scored.member.expected.every(Boolean),
-        scored.member.predicted.every(Boolean),
-      );
-    }
+    addOrientationRates(orientationRates, page);
+    // Class 1: both Name and DOB on the page (by the ground truth or the pipeline).
+    addRates(
+      memberRates,
+      scored.member.expected.every(Boolean),
+      scored.member.predicted.every(Boolean),
+    );
   }
   return {
     chartId,
@@ -590,6 +574,18 @@ export function formatRecall(rates: ClassRates): string {
 /** F1 = 2 × Precision × Recall / (Precision + Recall) = 2TP / (2TP + FP + FN). */
 export function formatF1(rates: ClassRates): string {
   return ratePercent(2 * rates.tp, 2 * rates.tp + rates.fp + rates.fn);
+}
+
+/** Precision as a whole percent; null when the pipeline called no page Yes. */
+export function precisionPercent(rates: ClassRates): number | null {
+  const total = rates.tp + rates.fp;
+  return total === 0 ? null : Math.round((100 * rates.tp) / total);
+}
+
+/** Recall as a whole percent; null when the ground truth has no Yes page. */
+export function recallPercent(rates: ClassRates): number | null {
+  const total = rates.tp + rates.fn;
+  return total === 0 ? null : Math.round((100 * rates.tp) / total);
 }
 
 /** F1 as a whole percent; null when there is nothing to score. */

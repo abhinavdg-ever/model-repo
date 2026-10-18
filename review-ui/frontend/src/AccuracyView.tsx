@@ -23,6 +23,8 @@ import {
   MIN_LAST_RUN_LABEL,
   accuracyPercent,
   f1Percent,
+  precisionPercent,
+  recallPercent,
   formatDistribution,
   formatF1,
   formatPrecision,
@@ -289,8 +291,17 @@ type ScoreColumn = MetricId | "overall";
 /** Inclusive percent range; a row with no score is hidden while a range is set. */
 type Range = { min: number; max: number };
 
-/** Filters keyed by column, then by what is filtered: Accuracy, or F1 of Class Yes. */
-type Filters = Partial<Record<ScoreColumn, { accuracy?: Range; f1?: Range }>>;
+/** What a column can be filtered on: its Accuracy, and Precision / Recall / F1 of Class Yes. */
+type Measure = "accuracy" | "precision" | "recall" | "f1";
+type ColumnRanges = Partial<Record<Measure, Range>>;
+const RATE_MEASURES = [
+  { key: "precision", label: "Precision", percent: precisionPercent },
+  { key: "recall", label: "Recall", percent: recallPercent },
+  { key: "f1", label: "F1", percent: f1Percent },
+] as const;
+
+/** Filters keyed by column, then by measure. */
+type Filters = Partial<Record<ScoreColumn, ColumnRanges>>;
 
 function columnTally(row: ChartAccuracy, column: ScoreColumn): Tally {
   return column === "overall" ? row.overall : row.metrics[column];
@@ -305,9 +316,9 @@ function passesFilters(row: ChartAccuracy, filters: Filters): boolean {
   for (const [column, f] of Object.entries(filters) as [ScoreColumn, Filters[ScoreColumn]][]) {
     if (!f) continue;
     if (!inRange(accuracyPercent(columnTally(row, column)), f.accuracy)) return false;
-    if (f.f1) {
-      const rates = column === "overall" ? undefined : rowRatesFor(row, column);
-      if (!inRange(rates ? f1Percent(rates) : null, f.f1)) return false;
+    const rates = column === "overall" ? undefined : rowRatesFor(row, column);
+    for (const measure of RATE_MEASURES) {
+      if (f[measure.key] && !inRange(rates ? measure.percent(rates) : null, f[measure.key])) return false;
     }
   }
   return true;
@@ -370,19 +381,20 @@ const FULL_RANGE: Range = { min: 0, max: 100 };
 function ColumnFilter({
   label,
   value,
-  f1Label,
+  classLabel,
   onChange,
 }: {
   label: string;
-  value: { accuracy?: Range; f1?: Range } | undefined;
-  /** Set on a column with a Class Yes block: also filter on its F1. */
-  f1Label?: string;
-  onChange: (value: { accuracy?: Range; f1?: Range } | undefined) => void;
+  value: ColumnRanges | undefined;
+  /** Set on a column with a Class Yes block ("Member & DOB = Yes"): also filter on its
+   * Precision, Recall and F1. */
+  classLabel?: string;
+  onChange: (value: ColumnRanges | undefined) => void;
 }) {
   const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
-  const active = Boolean(value?.accuracy || value?.f1);
+  const active = Boolean(value && Object.values(value).some(Boolean));
 
   useEffect(() => {
     if (!anchor) return;
@@ -421,10 +433,10 @@ function ColumnFilter({
     });
   }
 
-  function set(part: "accuracy" | "f1", range: Range) {
+  function set(part: Measure, range: Range) {
     const full = range.min === 0 && range.max === 100;
-    const next = { ...value, [part]: full ? undefined : range };
-    onChange(next.accuracy || next.f1 ? next : undefined);
+    const next: ColumnRanges = { ...value, [part]: full ? undefined : range };
+    onChange(Object.values(next).some(Boolean) ? next : undefined);
   }
 
   return (
@@ -449,9 +461,16 @@ function ColumnFilter({
           aria-label={`Filter ${label}`}
         >
           <RangeSliders label="Accuracy" range={value?.accuracy ?? FULL_RANGE} onChange={(r) => set("accuracy", r)} />
-          {f1Label ? (
-            <RangeSliders label={f1Label} range={value?.f1 ?? FULL_RANGE} onChange={(r) => set("f1", r)} />
-          ) : null}
+          {classLabel
+            ? RATE_MEASURES.map((measure) => (
+                <RangeSliders
+                  key={measure.key}
+                  label={`${measure.label} (${classLabel})`}
+                  range={value?.[measure.key] ?? FULL_RANGE}
+                  onChange={(r) => set(measure.key, r)}
+                />
+              ))
+            : null}
           <button type="button" className="accuracy-filter-clear" disabled={!active} onClick={() => onChange(undefined)}>
             Clear
           </button>
@@ -663,7 +682,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
             <ColumnFilter
               label={label}
               value={filters[filter]}
-              f1Label={rates && filter !== "overall" ? `F1 (${ratesLabelFor(filter)})` : undefined}
+              classLabel={rates && filter !== "overall" ? ratesLabelFor(filter) : undefined}
               onChange={(value) => setFilter(filter, value)}
             />
           ) : null}
