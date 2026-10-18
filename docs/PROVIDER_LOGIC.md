@@ -11,7 +11,7 @@ signed, where each value is stored, and what uses it.
 | Keys | `provider_name/keys.json` (46), `electronic_signature/keys.json` (30), `provider_name/roles.json`, `provider_name/suffixes.txt` (227 credentials) |
 | Staging | `<chart>/staging/extraction.json` — every candidate, per field |
 | Outputs | DB `provider_signature_results` + `imaging/<chart>_provider_signature.csv` (kv_extract); DB `imaging_final` + `imaging/<chart>_final.csv` (imaging_final) — §2 |
-| review-ui | Production: `imaging_final`; Local: `imaging_final` and the CSV, or the CSV alone — §3 |
+| review-ui | Production: the database (`imaging_final`); Local: the CSVs only — §3 |
 | Database changes | [`schema/changes_2026-10-18.sql`](../schema/changes_2026-10-18.sql) |
 
 ---
@@ -111,7 +111,7 @@ Written by `kv_extract`, one row per page, the same values in both.
 | `chart_id`, `page_id` | the page | yes | — |
 | `chart_name`, `page_name`, `page_number` | the page | — | yes |
 | `signature_present` | an accepted electronic signature | `true` / `false` | `y` / `n` |
-| `provider_name` | the first signer's name, **without** credentials | yes | yes |
+| `provider_name` | the first signer's name, **without** credentials (= `signers[0].name`; kept for v1 rows and single-name readers until the switch to v2 only) | yes | yes |
 | `provider_credentials` | the first signer's credentials | yes | yes |
 | `signers` | every signer, in order: `[{"name", "credentials", "signature_date", "confidence"}]` | JSONB | JSON text |
 | `provider_version` | **2** (this rule) | yes | yes |
@@ -159,10 +159,11 @@ database gets the same from `schema/v1.sql`.
 | Mode (`DATA_MODE` in `review-ui/.env`) | Provider fields come from |
 |---|---|
 | **Production** | **`imaging_final`** (DB) only |
-| **Local, with a database** | `imaging_final` (DB), then `<chart>_provider_signature.csv` from the workspace on top |
-| **Local, no database** | `<chart>_provider_signature.csv` only |
+| **Local** | `<chart>_provider_signature.csv` in the workspace **only** — never the database, with or without one set |
 
-The accuracy report always reads the database view `v_accuracy_page` (which takes
+In Local Mode every page result (provider, DOS, page type, …) comes from the chart's CSVs;
+only reviewer input — ground truth, the member manifest, Run / Batch — is read from the
+database when one is set. The accuracy report always reads the database view `v_accuracy_page` (which takes
 `imaging_final`'s provider columns). Excel Compare reads `imaging_final` when a database
 is set.
 

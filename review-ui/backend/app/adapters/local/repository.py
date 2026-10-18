@@ -1383,24 +1383,8 @@ class LocalFolderRepository(FolderRepository):
         return summaries
 
     def get_folder(self, folder_id: str) -> FolderDetail:
-        """Prefer Postgres page_list when DATABASE_URL works — disk walks are slow."""
-        if self.database_url:
-            try:
-                from app.adapters.postgres.repository import PostgresFolderRepository
-                from app.services.chart_run_batch import database_url_usable
-
-                if database_url_usable(self.database_url):
-                    db_detail = PostgresFolderRepository(
-                        self.database_url,
-                        data_root=self.data_root,
-                        metadata_root=self.metadata_root,
-                        db_schema=self.db_schema,
-                    )._folder_from_db(folder_id)
-                    if db_detail is not None and db_detail.pages:
-                        return db_detail
-            except Exception:
-                pass
-
+        """The chart's pages from the workspace. Local Mode reads files only; Production
+        Mode (PostgresFolderRepository) reads page_list."""
         folder_dir = self._folder_dir(folder_id)
         pages = self._page_files(folder_dir)
         has_prelim = self._has_ocr(folder_dir, "preliminary")
@@ -1627,65 +1611,11 @@ class LocalFolderRepository(FolderRepository):
             ]
         return _index_hw_rows(rows, chart)
 
-    def _with_dos_decision(
-        self, document: ImagingDocumentResponse, folder_id: str
-    ) -> ImagingDocumentResponse:
-        """Database dates stay as stored. The continuation mark comes from the CSV."""
-        from app.services.imaging_overlays import (
-            collect_rows,
-            index_dos_rows,
-            index_signature_rows,
-            overlay_dos_decision,
-            overlay_fields,
-        )
-
-        folder_dir = self._folder_dir(folder_id)
-        chart = folder_dir.name
-        dos_rows = collect_rows(
-            folder_dir=folder_dir,
-            data_root=self.data_root,
-            per_chart_name=f"{chart}_dos.csv",
-            combined_rel=(
-                "02-imaging-pipeline",
-                "dos-extraction",
-                "output",
-                "dos_extraction.csv",
-            ),
-            chart_name=chart,
-        )
-        pages = overlay_dos_decision(document.pages, index_dos_rows(dos_rows, chart))
-        signature_rows = collect_rows(
-            folder_dir=folder_dir,
-            data_root=self.data_root,
-            per_chart_name=f"{chart}_provider_signature.csv",
-            combined_rel=None,
-            chart_name=chart,
-        )
-        pages = overlay_fields(pages, index_signature_rows(signature_rows, chart))
-        return document.model_copy(update={"pages": pages})
-
     def get_imaging(self, folder_id: str) -> ImagingDocumentResponse:
-        """Build imaging rows from Postgres when available, else pipeline CSVs.
-
-        Combined pack CSVs can be tens of MB; scanning them for every chart open
-        was the main reason Imaging Output felt stuck on Local Mode with a DB.
+        """The chart's pipeline results from its CSVs only (Local Mode). Production Mode
+        reads the database (PostgresFolderRepository). Ground truth, which is reviewer
+        input and not pipeline output, comes from page_ground_truth when a database is set.
         """
-        if self.database_url:
-            try:
-                from app.adapters.postgres.repository import PostgresFolderRepository
-                from app.services.chart_run_batch import database_url_usable
-
-                if database_url_usable(self.database_url):
-                    document = PostgresFolderRepository(
-                        self.database_url,
-                        data_root=self.data_root,
-                        metadata_root=self.metadata_root,
-                        db_schema=self.db_schema,
-                    ).get_imaging(folder_id)
-                    return self._with_dos_decision(document, folder_id)
-            except Exception:
-                # Fall through to CSV overlays — DB may be down or chart absent.
-                pass
 
         from app.services.imaging_overlays import (
             collect_rows,
@@ -1907,6 +1837,11 @@ class LocalFolderRepository(FolderRepository):
             sequencing=bool(sequencing_rows),
             verification=bool(ver_rows),
         )
+
+        if self.database_url:
+            from app.services.ground_truth import attach_ground_truth
+
+            imaging_pages = attach_ground_truth(imaging_pages, folder_id, self.database_url, self.db_schema)
 
         return ImagingDocumentResponse(
             folder_id=folder_id,
