@@ -454,3 +454,7 @@ ALTER TABLE page_classification ADD COLUMN IF NOT EXISTS axes JSONB;
 -- 2026-10-16: Final specialty, the page's own from the page axes; the pipeline
 -- writes 'Unknown' on a classified page without one. No ground truth exists.
 ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS specialty VARCHAR(100);
+
+-- 2026-10-18: the signer's credentials beside the provider name (the provider
+-- signature rule, docs/PROVIDER_LOGIC.md). imaging_final fails on insert without it.
+ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS provider_credentials TEXT;

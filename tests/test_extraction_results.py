@@ -49,46 +49,63 @@ def test_a_written_month_converts_and_an_unreadable_date_is_empty():
     assert junk["signature_present"] is True
 
 
-def test_only_the_highest_scoring_provider_is_named():
+SIGNED_BY = "Electronically signed by"
+
+
+def test_signature_present_only_with_a_selected_signature():
+    # A provider name or credentials alone do not make a signature, nor name the page.
     fields = signature_fields(
-        [
-            {
-                "key": "Electronically signed by",
-                "provider_name": "Daniel J Hamilton, MD",
-                "signature_date": "08/27/2025",
-                "ner_text": "Daniel J Hamilton",
-                "score": 0.9,
-                "source": "ner",
-            }
-        ],
-        [
-            {"value": "Liane Kirchberger, PA"},
-            {"value": "Daniel J Hamilton, MD"},
-            {"value": "Liane Kirchberger, PA"},
-        ],
+        [{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "selected": False}],
+        [{"value": "Liane Kirchberger, PA", "score": 0.95}],
+        [{"value": "PA", "accepted": True}],
     )
-    assert fields["signature_present"] is True
-    # The signature's name (0.9) beats unscored provider-name hits.
-    assert fields["provider_name"] == "Daniel J Hamilton, MD"
-    assert fields["signature_date"] == "2025-08-27"
+    assert (fields["signature_present"], fields["provider_name"], fields["provider_credentials"]) == (False, None, None)
 
 
-def test_a_provider_without_a_signature_is_named_and_not_present():
+def test_the_signature_names_the_provider_and_its_designation_the_credentials():
+    # 66949125 p?: 'AND ELECTRONICALLY SIGNED BY: WILLIAM J WALL III, MD on ...'
     fields = signature_fields(
-        None,
-        [{"value": "Liane Kirchberger, PA"}, {"value": "Robert Erickson"}],
+        [{"key": SIGNED_BY, "provider_name": "WILLIAM J WALL III, MD", "designation": "MD",
+          "signature_date": "01/12/2026", "score": 0.92, "selected": True}],
+        [{"value": "Someone Else, DO", "score": 0.99}],
+        [{"value": "DO", "accepted": True}],
     )
-    assert fields["signature_present"] is False
-    # No scores: the first one read.
-    assert fields["provider_name"] == "Liane Kirchberger, PA"
+    assert (fields["provider_name"], fields["provider_credentials"]) == ("WILLIAM J WALL III", "MD")
+    assert fields["signature_date"] == "2026-01-12"
 
 
-def test_a_higher_scoring_provider_hit_beats_the_signature_name():
+def test_credentials_missing_from_the_fields_are_read_from_the_sentence():
+    # The signature row has the name but no designation; its sentence has ', DNP'.
     fields = signature_fields(
-        [{"provider_name": "Daniel J Hamilton, MD", "signature_date": "08/27/2025", "score": 0.6}],
-        [{"value": "Liane Kirchberger, PA", "score": 0.95}, {"value": "Robert Erickson", "score": 0.4}],
+        [{"key": SIGNED_BY, "provider_name": "Meghan Newman", "designation": "",
+          "sentence": "Electronically signed by Meghan Newman , DNP on 05/19/2025 at 09:09 AM MDT",
+          "score": 0.96, "selected": True}],
+        [{"value": "Meghan Newman, FNP", "score": 0.92}],
+        [{"value": "FNP", "provider_name": "Meghan Newman", "accepted": True}],
     )
-    assert fields["provider_name"] == "Liane Kirchberger, PA"
+    assert (fields["provider_name"], fields["provider_credentials"]) == ("Meghan Newman", "DNP")
+
+
+def test_then_the_page_credentials_then_the_page_provider_name():
+    no_creds = [{"key": SIGNED_BY, "provider_name": "Meghan Newman", "sentence": SIGNED_BY + " Meghan Newman",
+                 "score": 0.9, "selected": True}]
+    fields = signature_fields(no_creds, [], [{"value": "NP", "provider_name": "Other Person", "accepted": True},
+                                              {"value": "FNP", "provider_name": "Meghan Newman", "accepted": True}])
+    assert fields["provider_credentials"] == "FNP"  # the same provider's first
+    nameless = [{"key": "Signed", "sentence": "Electronically Signed", "score": 0.7, "selected": True}]
+    fields = signature_fields(nameless, [{"value": "Daniel J Hamilton, MD", "score": 0.8}], [])
+    assert (fields["provider_name"], fields["provider_credentials"]) == ("Daniel J Hamilton", "MD")
+
+
+def test_split_name_and_credentials():
+    from stages.lib.extraction.results import name_from_sentence, split_name_credentials
+
+    assert split_name_credentials("LAUBERT CNP, MATTHEW") == ("LAUBERT, MATTHEW", "CNP")
+    assert split_name_credentials("Agati, Alicia, APRN.CNP") == ("Agati, Alicia", "APRN.CNP")
+    assert split_name_credentials("Ramsey Luce, R.N.") == ("Ramsey Luce", "R.N.")
+    assert split_name_credentials("Doe, Ed") == ("Doe, Ed", None)
+    assert name_from_sentence("AND ELECTRONICALLY SIGNED BY: WILLIAM J WALL III, MD on at 03:36 PM", SIGNED_BY) == (
+        "WILLIAM J WALL III", "MD")
 
 
 def test_empty_signature_is_not_present():

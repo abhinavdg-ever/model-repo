@@ -33,7 +33,7 @@ from app.services.imaging_overlays import (
     compose_page_type,
     display_page_type,
     inherit_duplicate_blank_junk,
-    signature_people,
+    provider_fields,
 )
 
 _ready: set[tuple[str, str]] = set()
@@ -108,8 +108,9 @@ SELECT
     f.dos_from AS final_dos_from,
     f.dos_to AS final_dos_to,
     g.provider_credentials AS gt_provider_credentials,
-    -- The signature rows' provider (name and credentials), as the page view shows it.
-    f.provider_name AS final_provider_name
+    -- The signature rows' provider and credentials, as the page view shows them.
+    f.provider_name AS final_provider_name,
+    to_jsonb(f) ->> 'provider_credentials' AS final_provider_credentials
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name
@@ -145,7 +146,7 @@ SELECT chart_name, page_number, source_page_id,
        ground_truth_updated_at,
        orientation_angle, rotation_known,
        final_page_type, final_page_subtype, final_category, final_dos_from, final_dos_to,
-       gt_provider_credentials, final_provider_name
+       gt_provider_credentials, final_provider_name, final_provider_credentials
   FROM v_accuracy_page
  WHERE chart_name = ANY(%s)
  ORDER BY chart_name, page_number
@@ -295,10 +296,10 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
     (
         orientation, _rotation_known,
         final_type, final_subtype, final_category, final_from, final_to,
-        gt_provider_credentials, final_provider,
-    ) = (tuple(extra) + (None,) * 9)[:9]
+        gt_provider_credentials, final_provider, final_credentials,
+    ) = (tuple(extra) + (None,) * 10)[:10]
     final_key = _text(final_category) or ""
-    provider_name, provider_credentials = signature_people(_text(final_provider) or "")
+    provider_name, provider_credentials = provider_fields(_text(final_provider), final_credentials)
     return ImagingPageResult(
         pageNumber=int(page_number),
         fileName=file_name,

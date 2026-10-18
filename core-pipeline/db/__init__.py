@@ -1355,20 +1355,45 @@ IMAGING_FINAL_COLUMNS = (
     "duplicate_of_page_id",
     # Appended so the Final CSV's columns above keep their places.
     "specialty",
+    "provider_credentials",
 )
+
+
+_IMAGING_FINAL_PRESENT: Optional[tuple[str, ...]] = None
+
+
+def _imaging_final_columns(conn: Any) -> tuple[str, ...]:
+    """IMAGING_FINAL_COLUMNS the table has. A database from before a column was added
+    (schema/temp_changes_to_db.sql not run yet) keeps working without it. Read once."""
+    global _IMAGING_FINAL_PRESENT
+    if _IMAGING_FINAL_PRESENT is None:
+        rows = conn.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'imaging_final' AND table_schema = current_schema()"
+        ).fetchall()
+        present = {str(r["column_name"]) for r in rows}
+        missing = [c for c in IMAGING_FINAL_COLUMNS if c not in present]
+        if missing:
+            logger.warning(
+                "imaging_final lacks %s: not written until schema/temp_changes_to_db.sql is applied",
+                ", ".join(missing),
+            )
+        _IMAGING_FINAL_PRESENT = tuple(c for c in IMAGING_FINAL_COLUMNS if c in present) if present else IMAGING_FINAL_COLUMNS
+    return _IMAGING_FINAL_PRESENT
 
 
 @_dispatch
 def upsert_imaging_final(conn: Any, *, chart_id: int, page_id: int, row: dict[str, Any]) -> None:
-    """One page's Final values (``stages.lib.imaging_final``)."""
-    values = [row.get(column) for column in IMAGING_FINAL_COLUMNS]
+    """One page's Final values (``stages.lib.imaging_final``), in the columns the table has."""
+    columns = _imaging_final_columns(conn)
+    values = [row.get(column) for column in columns]
     conn.execute(
         f"""
         INSERT INTO imaging_final (
-            chart_id, page_id, {", ".join(IMAGING_FINAL_COLUMNS)}
-        ) VALUES (%s, %s, {", ".join(["%s"] * len(IMAGING_FINAL_COLUMNS))})
+            chart_id, page_id, {", ".join(columns)}
+        ) VALUES (%s, %s, {", ".join(["%s"] * len(columns))})
         ON CONFLICT (page_id) DO UPDATE SET
-            {", ".join(f"{c} = EXCLUDED.{c}" for c in IMAGING_FINAL_COLUMNS)},
+            {", ".join(f"{c} = EXCLUDED.{c}" for c in columns)},
             updated_at = now()
         """,
         (chart_id, page_id, *values),

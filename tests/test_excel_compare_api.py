@@ -433,7 +433,7 @@ def test_batched_database_rows_map_like_the_chart_view():
             classified=False, page_type=None, subtype=None, category=None,
             final_type=None, final_subtype=None, final_category=None, final_from=None, final_to=None,
             sequenced=False, current=None, actual=None,
-            provider=None, signed=None,
+            provider=None, signed=None, credentials=None,
         )
         base.update(cells)
         return tuple(base.values())

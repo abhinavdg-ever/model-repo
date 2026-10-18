@@ -101,48 +101,163 @@ def caps_credentials_only(name: Optional[str]) -> Optional[str]:
     return ", ".join(" ".join(tokens) for tokens in kept if tokens) or None
 
 
+def _credential_catalog() -> set[str]:
+    """Normalized credentials: provider_name/suffixes.txt and provider_credentials_canon.json."""
+    from .provider_credentials.extract import load_credentials
+    from .provider_name.extract import load_suffixes
+
+    return set(load_suffixes()) | set(load_credentials())
+
+
+def _is_credential(token: str, catalog: set[str]) -> bool:
+    """A credential token as printed: in the catalog, and in capitals (or its usual mixed
+    case, 'PhD'), so 'Md' (a state) and 'Rd' (a road) are not."""
+    from .provider_name.extract import _norm_suffix
+
+    bare = token.strip(",.;:()[]")
+    norm = _norm_suffix(bare)
+    if norm and norm in catalog and _printed_as_credential(bare, norm):
+        return True
+    # Combined credentials: 'APRN.CNP', 'MD/PhD'.
+    parts = [part for part in re.split(r"[./]", bare) if part]
+    return len(parts) > 1 and all(
+        _norm_suffix(part) in catalog and _printed_as_credential(part, _norm_suffix(part)) for part in parts
+    )
+
+
+def split_name_credentials(text: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """'WILLIAM J WALL III, MD' -> ('WILLIAM J WALL III', 'MD'); 'Meghan Newman , DNP' ->
+    ('Meghan Newman', 'DNP'); 'LAUBERT CNP, MATTHEW' -> ('LAUBERT, MATTHEW', 'CNP'). The
+    credentials are every credential token, in order, joined with ', '."""
+    if not text or not text.strip():
+        return None, None
+    catalog = _credential_catalog()
+    name_parts: list[str] = []
+    creds: list[str] = []
+    for piece in text.split(","):
+        kept = []
+        for token in piece.split():
+            if kept or name_parts:
+                if _is_credential(token, catalog):
+                    bare = token.strip(",;:()[]")
+                    # 'M.D.' keeps its dots; a sentence's full stop after 'MD.' does not stay.
+                    if "." not in bare.rstrip("."):
+                        bare = bare.rstrip(".")
+                    if bare not in creds:
+                        creds.append(bare)
+                    continue
+            kept.append(token)
+        if kept:
+            name_parts.append(" ".join(kept))
+    name = ", ".join(name_parts).strip(" ,") or None
+    return name, ", ".join(creds) or None
+
+
+# Where a signer's name stops in the sentence: ' on ', ' at ', a date, a time, '|', '(', ';'.
+_NAME_STOP = re.compile(
+    r"(?i)\s(?:on|at)\s|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}:\d{2}|[|(;]|\s-\s|\bsign\s*off\b"
+)
+_NAME_TOKEN = re.compile(r"^(?:[A-Z][A-Za-z'\-]*\.?|[A-Z]\.?|[A-Z][A-Za-z.\-]*),?$")
+_MAX_NAME_TOKENS = 7
+
+
+def name_from_sentence(sentence: Optional[str], key: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """The signer's name and credentials read from the signature's sentence: the words right
+    after the key ('Electronically signed by Meghan Newman , DNP on 05/19/2025' ->
+    ('Meghan Newman', 'DNP')), up to ' on ', ' at ', a date or time. (None, None) when no
+    two-word name follows."""
+    text = (sentence or "").strip()
+    if not text:
+        return None, None
+    words = (key or "").split()
+    if words:
+        found = re.search(r"\s*".join(re.escape(w) for w in words), text, re.IGNORECASE)
+        if found:
+            text = text[found.end():]
+    text = text.lstrip(" :-–|")
+    stop = _NAME_STOP.search(text)
+    if stop:
+        text = text[: stop.start()]
+    tokens: list[str] = []
+    for token in re.sub(r"\s*,\s*", ", ", text).split():
+        if token == ",":
+            continue
+        if not _NAME_TOKEN.match(token) or len(tokens) >= _MAX_NAME_TOKENS:
+            break
+        tokens.append(token)
+    name, creds = split_name_credentials(" ".join(tokens))
+    if not name or len(name.replace(",", " ").split()) < 2:
+        return None, creds
+    return name, creds
+
+
+def _best(rows: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """The highest-scoring row; a tie (or no score) goes to the earliest."""
+    best = None
+    for row in rows:
+        if best is None or (_score(row) or -1.0) > (_score(best) or -1.0):
+            best = row
+    return best
+
+
 def signature_fields(
     hit: Any = None,
     provider_hits: Optional[list[dict[str, Any]]] = None,
+    credential_hits: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
-    """The page's signature and its one provider name: the highest-scoring.
+    """The page's provider signature (docs/PROVIDER_LOGIC.md).
 
-    ``hit`` is one signature or the page's selected signatures. Candidates are
-    the provider names from those signatures, then the selected provider-name
-    hits; the one with the highest ``score`` wins, ties (and unscored
-    candidates) going to the earliest, so a signature's name beats a
-    provider-name hit of equal score. ``signature_present`` stays false when
-    the only names are provider hits and no signature was accepted.
+    ``hit`` is the page's **selected** electronic-signature rows. Signature present = any is
+    selected. Without one, there is no provider name and no credentials either.
+
+    With one (the highest-scoring), the provider and credentials, first found wins:
+
+    1. the row's own fields: its ``provider_name`` without the credentials, its
+       ``designation`` as the credentials (else the credentials in the name);
+    2. the row's ``sentence``: the name right after the key;
+    3. credentials only: the page's accepted ``provider_credentials`` (``credential_hits``),
+       the one for the same provider first;
+    4. name only: the page's ``provider_name`` rows (``provider_hits``), best score first.
     """
-    hits = _as_hits(hit)
-    primary = hits[0] if hits else None
-    candidates = [
-        (name, _score(item))
-        for item, name in (
-            [(item, _text(item, "provider_name")) for item in hits]
-            + [(item, _text(item, "value")) for item in _as_hits(provider_hits)]
-        )
-        if name
-    ]
-    best = None
-    for name, score in candidates:
-        if best is None or (score if score is not None else -1.0) > best[1]:
-            best = (name, score if score is not None else -1.0)
-    printed_date = _text(primary, "signature_date")
-    ner_text = _text(primary, "ner_text")
-    present = any(
-        _text(item, "provider_name") or _text(item, "signature_date") or _text(item, "ner_text")
-        for item in hits
-    )
+    signatures = [row for row in _as_hits(hit) if row.get("selected", True)]
+    primary = _best(signatures)
+    if primary is None:
+        return {
+            "signature_present": False,
+            "signature_key": None, "region": None, "scale": None, "sentence": None,
+            "ner_text": None, "provider_name": None, "provider_credentials": None,
+            "signature_date": None, "confidence": None, "source": None,
+        }
+
+    # A mis-cased credential ('Rd', a road; 'Md', a state) is not one: dropped first.
+    name, creds = split_name_credentials(caps_credentials_only(_text(primary, "provider_name")))
+    creds = _text(primary, "designation") or creds
+    if not name or not creds:
+        said_name, said_creds = name_from_sentence(_text(primary, "sentence"), _text(primary, "key"))
+        name = name or said_name
+        creds = creds or said_creds
+    if not creds:
+        accepted = [row for row in _as_hits(credential_hits) if row.get("accepted", True) and _text(row, "value")]
+        same = [row for row in accepted if name and _text(row, "provider_name")
+                and _text(row, "provider_name").casefold() in name.casefold()]
+        chosen = (same or accepted)[:1]
+        creds = _text(chosen[0], "value") if chosen else None
+    if not name:
+        best = _best([row for row in _as_hits(provider_hits) if _text(row, "value")])
+        if best is not None:
+            name, from_name = split_name_credentials(_text(best, "value"))
+            creds = creds or from_name
+
     return {
-        "signature_present": present,
+        "signature_present": True,
         "signature_key": _text(primary, "key"),
         "region": _text(primary, "region"),
         "scale": _text(primary, "scale"),
         "sentence": _text(primary, "sentence"),
-        "ner_text": ner_text,
-        "provider_name": caps_credentials_only(best[0]) if best else None,
-        "signature_date": _iso_date(printed_date),
+        "ner_text": _text(primary, "ner_text"),
+        "provider_name": name,
+        "provider_credentials": creds,
+        "signature_date": _iso_date(_text(primary, "signature_date")),
         "confidence": _score(primary),
         "source": _text(primary, "source"),
     }
@@ -204,6 +319,7 @@ SIGNATURE_CSV_COLS = [
     "sentence",
     "ner_text",
     "provider_name",
+    "provider_credentials",
     "signature_date",
     "confidence",
     "source",

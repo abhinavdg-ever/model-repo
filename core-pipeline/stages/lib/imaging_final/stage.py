@@ -67,7 +67,7 @@ COPIED_FROM_REFERENCE = (
     "page_type", "page_subtype", "specialty", "model_type", "codability", "classification_category",
     "continuation_rule", "needs_review",
     "dos_from", "dos_to",
-    "encounter_type", "provider_name", "signature_present",
+    "encounter_type", "provider_name", "provider_credentials", "signature_present",
 )
 
 
@@ -84,16 +84,10 @@ def _number(value: Any) -> Optional[float]:
 def _signatures(chart_id: int, chart_name: str) -> dict[str, dict[str, Any]]:
     """Provider name and signature per page name, from the extraction staging —
     the same rows the extraction stage writes to its signature CSV."""
-    from stages.lib.extraction.results import signature_fields
-    from stages.lib.extraction.stage import _provider_rows, _selected, ensure_staging
+    from stages.lib.extraction.stage import ensure_staging, page_signature
 
     staged = ensure_staging(chart_id, chart_name)
-    out: dict[str, dict[str, Any]] = {}
-    for staged_page in staged:
-        out[staged_page.name] = signature_fields(
-            _selected(staged_page, "electronic_signature"), _provider_rows(staged_page)
-        )
-    return out
+    return {staged_page.name: page_signature(staged_page) for staged_page in staged}
 
 
 def _documents(
@@ -224,6 +218,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "dos_source": dos_origin if dates["dos_from"] else None,
                 "encounter_type": (document or own[page_id])["encounter_type"],
                 "provider_name": signature.get("provider_name"),
+                "provider_credentials": signature.get("provider_credentials"),
                 "signature_present": signature.get("signature_present") if signature else None,
                 "seq": (sequencing.get(page_id) or {}).get("seq"),
                 "duplicate_of_page_id": None,

@@ -275,11 +275,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             _store_headings(conn, chart_id, page_ids, headers_by_page)
             for page in ctx.pages:
                 staged_page = staged.page(page["page_name"]) if staged else None
-                signature = _selected(staged_page, "electronic_signature")
-                providers = _provider_rows(staged_page)
                 page_no = _chosen(staged_page, "page_no")
                 headers = headers_by_page.get(page["page_name"]) or []
-                sig = signature_fields(signature, providers)
+                sig = page_signature(staged_page)
                 extra = additional_fields(page_no, headers)
                 upsert_additional_page_details(
                     conn, chart_id=chart_id, page_id=page["id"], fields=extra
@@ -344,6 +342,20 @@ def _selected(staged_page: Optional[staging.StagedPage], field_id: str) -> list[
     if staged_page is None:
         return []
     return staged_page.selected(field_id)
+
+
+def page_signature(staged_page: Optional[staging.StagedPage]) -> dict[str, Any]:
+    """The page's provider signature row (results.signature_fields): its selected
+    electronic signatures, then for a missing name its provider names (selected, else every
+    kept one), for missing credentials its accepted credentials."""
+    if staged_page is None:
+        return signature_fields(None)
+    providers = staged_page.selected("provider_name") or _provider_rows(staged_page)
+    return signature_fields(
+        _selected(staged_page, "electronic_signature"),
+        providers,
+        staged_page.accepted("provider_credentials"),
+    )
 
 
 def _provider_rows(staged_page: Optional[staging.StagedPage]) -> list[dict[str, Any]]:

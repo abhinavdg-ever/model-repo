@@ -41,7 +41,7 @@ from app.services.imaging_overlays import (
     document_label,
     empty_imaging_pages,
     page_type_fields,
-    signature_people,
+    provider_fields,
 )
 
 logger = logging.getLogger("review_ui.postgres")
@@ -1083,7 +1083,8 @@ class PostgresFolderRepository(FolderRepository):
                                    f.dos_from, f.dos_to, to_jsonb(f) ->> 'page_subtype',
                                    to_jsonb(f) ->> 'specialty',
                                    to_jsonb(f) ->> 'provider_name',
-                                   to_jsonb(f) ->> 'signature_present'
+                                   to_jsonb(f) ->> 'signature_present',
+                                   to_jsonb(f) ->> 'provider_credentials'
                             FROM imaging_final f
                             JOIN page_list p ON p.id = f.page_id
                             JOIN chart_list c ON c.id = f.chart_id
@@ -1092,12 +1093,12 @@ class PostgresFolderRepository(FolderRepository):
                             (folder_id,),
                         )
                         for (page_name, final_type, category, final_from, final_to, final_sub,
-                             final_specialty, provider, signed) in cur.fetchall():
+                             final_specialty, provider, signed, credentials) in cur.fetchall():
                             fields = _ensure(str(page_name))
                             # Provider Extraction: the signature rows the extraction stage
                             # writes (the same as provider_signature.csv); the name cell
                             # carries the credentials ('Ramsey Luce, R.N.').
-                            provider_name, provider_credentials = signature_people(provider or "")
+                            provider_name, provider_credentials = provider_fields(provider, credentials)
                             if provider_name:
                                 fields["providerName"] = provider_name
                             if provider_credentials:

@@ -760,6 +760,9 @@ CREATE TABLE imaging_final (
                                                 dos_source IN ('page','document','duplicate')),
     encounter_type           VARCHAR(30),
     provider_name            TEXT,
+    -- The signer's credentials (MD, DNP): the signature's designation, else read from
+    -- its sentence, else the page's accepted credentials (docs/PROVIDER_LOGIC.md).
+    provider_credentials     TEXT,
     signature_present        BOOLEAN,
     seq                      INT,
     duplicate_of_page_id     BIGINT REFERENCES page_list(id) ON DELETE SET NULL,
@@ -996,8 +999,9 @@ SELECT
     f.dos_to                                                  AS final_dos_to,
     -- Provider Credentials ground truth (provider_signature is Yes / No).
     g.provider_credentials                                    AS gt_provider_credentials,
-    -- The signature rows' provider (name and credentials), as review-ui shows it.
-    f.provider_name                                           AS final_provider_name
+    -- The signature rows' provider and credentials, as review-ui shows them.
+    f.provider_name                                           AS final_provider_name,
+    to_jsonb(f) ->> 'provider_credentials'                    AS final_provider_credentials
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name

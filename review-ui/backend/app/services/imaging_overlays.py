@@ -427,6 +427,17 @@ def _split_person(person: str, is_credential) -> tuple[str, list[str]]:
     return " ".join(name_bits), creds
 
 
+def provider_fields(name: str | None, credentials: str | None) -> tuple[str, str]:
+    """A provider's name and credentials as the pipeline stored them. Rows written since the
+    provider-signature rule (2026-10-18) carry ``provider_credentials`` beside a bare name;
+    an older row (``credentials`` None: no such column) keeps them inside the name."""
+    bare_name, credentials_in_name = signature_people(name or "")
+    if credentials is None:
+        return bare_name, credentials_in_name
+    # The name is shown without credentials even if some slipped into it.
+    return bare_name, credentials.strip()
+
+
 def index_signature_rows(
     rows: list[dict[str, str]], chart_name: str
 ) -> dict[str, dict[str, Any]]:
@@ -437,8 +448,9 @@ def index_signature_rows(
         if cname and not _chart_row_matches(cname, chart_name):
             continue
         present = (row.get("signature_present") or "").strip().lower() in {"y", "yes", "true", "1"}
-        name = (row.get("provider_name") or "").strip()
-        provider_name, provider_credentials = signature_people(name)
+        provider_name, provider_credentials = provider_fields(
+            row.get("provider_name"), row.get("provider_credentials")
+        )
         fields: dict[str, Any] = {"providerSignature": "Yes" if present else "No"}
         if provider_name:
             fields["providerName"] = provider_name
