@@ -29,7 +29,8 @@
       0.17,
       0.94
     ],
-    "body_ink_max_fraction": 0.0001,
+    "body_ink_max_fraction": 0.005,
+    "note_body_ink": "Ink below the short band = the share of the 17%-94% band (body_ink_band) that is dark ink strokes (hw_printed.page_marks strong_fraction). At or above body_ink_max_fraction (0.5%, 2026-10-18; was 0.01%) the page has content below and R5 does not junk it; a stamp, logo or fax line (~0.2%) no longer blocks it. votes.short_page records ink, ink_fraction and ink_limit.",
     "ignore_line_patterns": [
       "\\b(?:page|pg|pge)\\.?\\s*#?\\s*\\d+\\s*(?:of|/)\\s*\\d+\\b",
       "^\\s*\\d{1,4}\\s*$",

@@ -351,4 +351,4 @@ def test_r5_records_the_ink_it_measured():
     lines = [Line("Optum ROI request", 0.03, 0.05)]
     verdict = run("Optum ROI request for records", lines=lines, body_ink=True, body_ink_fraction=0.0042)
     assert verdict.votes["short_page"]["ink"] is True
-    assert (verdict.votes["short_page"]["ink_fraction"], verdict.votes["short_page"]["ink_limit"]) == (0.0042, 0.0001)
+    assert (verdict.votes["short_page"]["ink_fraction"], verdict.votes["short_page"]["ink_limit"]) == (0.0042, 0.005)
