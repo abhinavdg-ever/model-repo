@@ -55,7 +55,9 @@ For each counted signature:
 | 1. The signature row's fields | its `provider_name`, credentials stripped | its `designation`; else the credentials written in `provider_name` |
 | 2. Still missing — the same row | its `ner_text` | searched in its `sentence` with the credentials canon (`provider_credentials_canon.json`) |
 | 3a. **Several counted signatures** | stop here: a signer still missing its name **or** its credentials is removed | |
-| 3b. **One counted signature** | first a counted `provider_credentials` row that names its provider (its `provider_name`, with its credential); else the page's counted `provider_name` rows (the best-scoring), credentials stripped | the page's counted `provider_credentials` rows (the same provider's first, else the first) |
+| 3b. **One counted signature** | first a counted `provider_credentials` row that names its provider: name = its `provider_name`, credentials = its `value` (the credential, as `designation` is on a signature) unless the signature already gave some; else the page's counted `provider_name` rows (the best-scoring), credentials stripped | the page's counted `provider_credentials` rows' `value` (the same `provider_name` first, else the first) |
+
+A `provider_credentials` row: `{"key": "Credential", "value": "FNP", "provider_name": "Meghan Newman", "score": 0.9, "accepted": true}` — `value` is the credential, `provider_name` the person.
 
 The same person signing twice is listed once.
 
