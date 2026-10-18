@@ -135,12 +135,47 @@ every other Final field of the page.
 
 A duplicate page takes these from the page it duplicates.
 
-### 2.3 Old and new rows side by side
+### 2.3 Old (v1) and new (v2) rows — which columns are filled
 
-| `provider_version` | Rows written | `provider_name` holds | `provider_credentials`, `signers` |
+✅ = filled · ❌ = NULL
+
+**`provider_signature_results`** — every row is v2: nothing wrote this table before
+2026-10-18, so there are no v1 rows in it. A chart gets rows when `kv_extract` re-runs.
+
+| Column | v2, signature **Yes** | v2, signature **No** |
+|---|---|---|
+| `chart_id`, `page_id` | ✅ | ✅ |
+| `signature_present` | ✅ `true` | ✅ `false` |
+| `provider_name` | ✅ the first signer's bare name (NULL only if no name was found anywhere) | ❌ |
+| `provider_credentials` | ✅ the first signer's credentials (NULL if none were found) | ❌ |
+| `signers` | ✅ `[{"name", "credentials", "signature_date", "confidence"}, …]` | ✅ `[]` |
+| `provider_version` | ✅ `2` | ✅ `2` |
+| `confidence` | ✅ (§1) | ❌ |
+| `signature_date` | ✅ the first signer's (NULL if none printed) | ❌ |
+| `signature_key`, `region`, `scale`, `sentence`, `ner_text`, `source` | ✅ the first (selected) signature's | ❌ |
+| `created_at`, `updated_at` | ✅ | ✅ |
+
+**`imaging_final`** — the provider columns (every other column is the same in v1 and v2):
+
+| Column | **v1** row (written before 2026-10-18) | **v2**, signature Yes | **v2**, signature No |
 |---|---|---|---|
-| **2** | from 2026-10-18 | the bare name | filled |
-| **1** or NULL | before | the name **with** its credentials ("Ramsey Luce, R.N.") | empty (or no such column) |
+| `signature_present` | ✅ | ✅ `true` | ✅ `false` |
+| `provider_name` | ✅ the name **with** its credentials ("Ramsey Luce, R.N."); could be filled with **no** signature (the old rule named a provider anyway) | ✅ bare name | ❌ |
+| `provider_credentials` | ❌ (new column) | ✅ | ❌ |
+| `signers` | ❌ | ✅ the list | ❌ (an empty list is stored as NULL here) |
+| `provider_version` | ❌ — review-ui reads NULL as **1** | ✅ `2` | ✅ `2` |
+| `provider_confidence` | ❌ | ✅ | ❌ |
+
+**The CSVs** — `<chart>_provider_signature.csv` has the same columns and values as
+`provider_signature_results` (`signature_present` as `y` / `n`, `signers` as JSON text,
+`[]` with no signature); a CSV from before 2026-10-18 has no `provider_credentials`,
+`signers` or `provider_version` columns and is read as v1. `<chart>_final.csv` mirrors
+`imaging_final`.
+
+**In short:** v1 = old `imaging_final` rows with only `provider_name` (credentials inside)
+and `signature_present`; v2 = everything after a re-run, all provider columns filled when
+the page is signed, and with no signature only `signature_present = false`,
+`provider_version = 2` and an empty `signers`.
 
 No column is removed. A chart becomes v2 when `kv_extract` and `imaging_final` re-run.
 The writers write only the columns a table has, so a database without the new columns
