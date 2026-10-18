@@ -10,7 +10,6 @@ holds it. Paths are relative to `core-pipeline/`.
 | Settings | `stages/lib/keyword-canon/blank_junk_context_canon.json` (reloads on change) |
 | Debug | `<chart>/staging/blank_junk.json`: every page's ballots, scores, rule and reason, both passes |
 | Output | `blank_junk_classification` (DB), `imaging/<chart>_junk.csv` |
-| Design history | [`BLANK_JUNK_PROPOSAL.md`](BLANK_JUNK_PROPOSAL.md) |
 
 ---
 

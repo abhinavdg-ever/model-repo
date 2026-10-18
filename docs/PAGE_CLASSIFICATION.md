@@ -237,10 +237,11 @@ the end).
 
 ## 5. Across pages: the continue decision (`continuity` stage)
 
-Groups pages into documents from their own values only (see
-[CONTINUITY.md](CONTINUITY.md)): printed pagination first, then repeated
-banner/footer and IDs, then title and signature; progress notes stay open
-until their signature or the next encounter.
+Groups pages into documents from their own values (see
+[CONTINUITY_LOGIC.md](CONTINUITY_LOGIC.md)): the same DOS continues and a
+different DOS starts a new document; an undated page continues unless the
+printed page numbers, a signature, a first-page title, a sure page-type change or
+an early text end say the previous document ended.
 
 Two things continuity records for the classifier:
 

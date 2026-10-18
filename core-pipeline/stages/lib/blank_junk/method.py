@@ -1,4 +1,4 @@
-"""Blank / junk decision: rules R1-R8, then two voters (docs/BLANK_JUNK_PROPOSAL.md).
+"""Blank / junk decision: rules R1-R8, then two voters (docs/BLANK_JUNK_LOGIC.md).
 
 Inputs per page (``PageInputs``): the OCR text, its word boxes when the pass has them,
 DistilBERT's raw probabilities (model_bridge.model_scores), the page type and
@@ -19,12 +19,12 @@ The ladder, first rule that fires decides (R4, R5 and R3's KV half need pass 2):
   R6 retrieval      record_request + roi_vendors >= 7 and not C+ -> Junk / Record Request
   R7 strong clinical  C+ -> Main
   R8 Visual         document_type 'visual' -> Main, unless retrieval / invoice wording >= 7
-  R9 vote           DistilBERT and the keyword canon (§8 of the method)
+  R9 vote           DistilBERT and the keyword canon (BLANK_JUNK_LOGIC §5)
 
 Pass 1 only lets R1, R2, R6, R8 and two strong JUNK ballots decide; every other page stays
 Main and is judged again in pass 2 on the final OCR.
 
-Every page gets one verdict. Its confidence is the evidence for that verdict (§8.5):
+Every page gets one verdict. Its confidence is the evidence for that verdict (BLANK_JUNK_LOGIC §6):
 DistilBERT's probability, the keyword score and, for R5-R8, the rule's own value. Signals
 that agree reinforce each other; signals that disagree are averaged, so a contested call
 comes out low on its own. R1-R3 are observations and keep a fixed confidence.
@@ -305,7 +305,7 @@ def _longest_first(spans: list[tuple[int, int, str, str]]) -> list[tuple[int, in
 
 
 def score_text(text: str, lines: Optional[list[Line]] = None, also_junk: Optional[str] = None) -> Scores:
-    """Weight x unique hits per group, capped; summed per context (method §4.1).
+    """Weight x unique hits per group, capped; summed per context (BLANK_JUNK_LOGIC §2.1).
 
     With ``lines`` (pass 2), a junk term in the header or footer band counts only when the
     body has a junk hit too.
@@ -420,7 +420,7 @@ def bert_ballot(model: Optional[dict[str, Any]], words: int) -> Ballot:
 
 
 def keyword_ballot(scores: Scores) -> Ballot:
-    """Method §5.3. Abstains when the canon finds nothing."""
+    """BLANK_JUNK_LOGIC §5.1. Abstains when the canon finds nothing."""
     t = canon().thresholds
     c_hit, c_strong = scores.clinical >= t["clinical"], scores.clinical >= t["clinical_strong"]
     j_hit, j_strong = scores.junk >= t["junk"], scores.junk >= t["junk_strong"]
@@ -484,7 +484,7 @@ def _junk_code(subtype: str) -> int:
 
 
 def _signals(junk: bool, inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], rule: str) -> dict[str, float]:
-    """Each signal's probability that the verdict (junk or not) is right (method §8.5)."""
+    """Each signal's probability that the verdict (junk or not) is right (BLANK_JUNK_LOGIC §6)."""
     out: dict[str, float] = {}
     if rule in RULE_PRIOR:
         out["rule"] = RULE_PRIOR[rule]
@@ -534,7 +534,7 @@ def _confidence(
 
 
 def _vote(inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes: dict[str, Any]) -> Verdict:
-    """R9: the two-voter table (method §8.2), then the handwritten veto (§8.3)."""
+    """R9: the two-voter table (BLANK_JUNK_LOGIC §5.2), then the handwritten veto (§5.3)."""
     # One letter per voter, always in VOTER_NAMES order (DistilBERT, keywords),
     # so "JA" says who cast which ballot.
     letters = "".join(ballots[name].letter() for name in VOTER_NAMES)

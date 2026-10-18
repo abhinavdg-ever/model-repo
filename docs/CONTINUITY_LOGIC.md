@@ -1,7 +1,7 @@
 # Document continuity — logic as implemented
 
 Which document each page belongs to, and the values a document's pages share. What
-the code does today; [`CONTINUITY.md`](CONTINUITY.md) is the design history.
+the code does today.
 
 | | |
 |---|---|

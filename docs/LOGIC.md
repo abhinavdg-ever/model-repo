@@ -29,7 +29,7 @@ the V1 prototypes. Where the port differs from them, it says so and why.
 
 > Reads `corrected-pages/<n>.jpg` when stage 1 wrote one, else `pages/<n>.jpg`.
 > A 270°-rotated page OCRs at ~0.01 text similarity to the same page upright;
-> corrected it is ~1.0. See [SCALING.md](SCALING.md) for worker pool shape.
+> corrected it is ~1.0.
 
 Tesseract over every page. Deliberately cheap and deliberately first: its only
 job is to give the blank/junk classifier something to read, so pages can be
@@ -240,7 +240,7 @@ flowchart TD
 
 ### The decision (`blank_junk/method.py`)
 
-Full method, with reasoning and worked examples: [`BLANK_JUNK_PROPOSAL.md`](BLANK_JUNK_PROPOSAL.md).
+Full logic, every number and worked examples: [`BLANK_JUNK_LOGIC.md`](BLANK_JUNK_LOGIC.md).
 Words, weights, thresholds and geometry: `keyword-canon/blank_junk_context_canon.json`
 (reloads on change).
 
@@ -701,7 +701,7 @@ page's.
 | Target | Columns |
 |---|---|
 | `page_continuity_results` | `document_seq`, `seq` (page within the document), `position`, `relation`, `decided_by`, `confidence_level`, `link_strength` (strong only when every link from the start is a shared DOS), `start_confirmed`, `evidence`; `score` and `review_required` are no longer used, `in_progress_note` is always false |
-| `imaging_final` (the `imaging_final` stage) | one row per page: the Final value of every reviewer field; page type agreed across the document (`page_type_source`), DOS and encounter type the first page's (`dos_source = document`); a duplicate page copies the page it duplicates (`duplicate`, `duplicate_of_page_id`); `specialty` is the page's own page-axes specialty, `Unknown` when it has none (no ground truth). See [CONTINUITY.md](CONTINUITY.md) |
+| `imaging_final` (the `imaging_final` stage) | one row per page: the Final value of every reviewer field; page type agreed across the document (`page_type_source`), DOS and encounter type the first page's (`dos_source = document`); a duplicate page copies the page it duplicates (`duplicate`, `duplicate_of_page_id`); `specialty` is the page's own page-axes specialty, `Unknown` when it has none (no ground truth). See [CONTINUITY_LOGIC.md](CONTINUITY_LOGIC.md) |
 | disk | `imaging/<chart>_continuity.csv`: the same per page, plus the printed `page_no` / `page_total`, the `section_headers`, the page's own `page_type`, `dos_from`, `dos_to`, and `layout_source` (final2 / final1 / text) |
 
 ---

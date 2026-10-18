@@ -3,7 +3,7 @@
 **The pipeline decides with `method.py`** (stage 3 and 7, `stage.py`): rules R1–R8, then
 DistilBERT and the keyword canon vote (R9). Words, weights, thresholds and the
 short-page geometry live in `../keyword-canon/blank_junk_context_canon.json`. The method, with
-worked examples, is `docs/BLANK_JUNK_PROPOSAL.md`; the summary is `docs/LOGIC.md` §3.
+worked examples, is `docs/BLANK_JUNK_LOGIC.md`; the summary is `docs/LOGIC.md` §3.
 
 Duplicates: Main pages only, ≥ 98% similar OCR text (SequenceMatcher, only when the lengths
 are within 10%) to a Main neighbour within ±5 pages, or text wholly contained in it; pages

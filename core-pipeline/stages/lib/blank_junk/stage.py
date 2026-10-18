@@ -10,7 +10,7 @@ Two passes, as the pipeline spec requires:
           page pass 1 did not already rule out. A Visual page pass 1 judged
           is not judged again.
 
-The verdict is ``method.decide`` (docs/BLANK_JUNK_PROPOSAL.md): rules R1-R8, then
+The verdict is ``method.decide`` (docs/BLANK_JUNK_LOGIC.md): rules R1-R8, then
 DistilBERT and the keyword canon vote (R9). Pass 1 only removes what it
 is sure of; every other page stays Main and gets final OCR. The confidence is
 the evidence for the verdict (DistilBERT, keywords, the rule), so a contested

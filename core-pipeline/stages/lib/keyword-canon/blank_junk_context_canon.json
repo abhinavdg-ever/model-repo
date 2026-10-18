@@ -1,9 +1,9 @@
 {
   "version": 2,
-  "status": "PROPOSED (2026-10-14). Read by nothing yet. Method: docs/BLANK_JUNK_PROPOSAL.md.",
+  "status": "ACTIVE: read by stages/lib/blank_junk/method.py. Logic: docs/BLANK_JUNK_LOGIC.md.",
   "notes": [
     "Matching: case-insensitive, on word boundaries, after whitespace is collapsed. 'terms' are literal phrases; 'patterns' are regexes (Python syntax).",
-    "Score: UNIQUE hits. Each distinct term or pattern of a group counts once, however often it appears. group score = weight x (number of distinct terms/patterns that hit), then capped at the group's 'cap'. Overlapping phrases: the longest wins. context score = sum of its group scores. See method §4.1.",
+    "Score: UNIQUE hits. Each distinct term or pattern of a group counts once, however often it appears. group score = weight x (number of distinct terms/patterns that hit), then capped at the group's 'cap'. Overlapping phrases: the longest wins. context score = sum of its group scores. See docs/BLANK_JUNK_LOGIC.md",
     "weight = how much one hit is worth (1 = common, ambiguous; 2 = typical; 3-4 = nearly decisive). cap = the most one group can add, so one repeated word cannot reach a threshold alone.",
     "line_start: true means the term counts only at the start of a line (alone, or followed by ':' or '-'). Used for section headings, so 'plan' inside a sentence does not count.",
     "zone: 'any' | 'header' | 'body' | 'footer'. Header is the top 'header_band' of the page height, footer the bottom 'footer_band'. Pass 1 has no coordinates, so every zone is read as 'any' there. A junk term in the header or footer only counts when the body has at least one junk hit too.",
@@ -22,7 +22,7 @@
     "footer_band": 0.08
   },
   "short_page": {
-    "note": "Short page rule (precedence step R5). Content that ends within the top 'top_fraction' (20%; 15% before 2026-10-18) of the page height -> JUNK / Others, even when it carries a clinical heading and whatever the neighbouring pages are. Only exemption: Provider Signature = Yes (see method §6).",
+    "note": "Short page rule (precedence step R5). Content that ends within the top 'top_fraction' (20%; 15% before 2026-10-18) of the page height -> JUNK / Others, even when it carries a clinical heading and whatever the neighbouring pages are. Only exemption: Provider Signature = Yes (docs/BLANK_JUNK_LOGIC.md).",
     "top_fraction": 0.2,
     "ignore_footer_band": 0.06,
     "body_ink_band": [0.22, 0.94],
@@ -664,7 +664,7 @@
       "note": "Pass 2: p(junk) = sum of JUNK_* + BLANK above force_junk_above -> JUNK forced (method R4), overruled only by blank, placeholder and Provider Signature = Yes, and not applied when the canon finds clinical (>= thresholds.clinical) or demographic (>= thresholds.demographic) evidence: then the vote decides. Pass 1: not forced, counts as a strong JUNK ballot."
     },
     "keyword": {
-      "note": "Votes from the J/C/D table in method §5.3. Strength: JUNK is strong at junk >= junk_strong, KEEP is strong at clinical >= clinical_strong.",
+      "note": "Votes from the J/C/D table docs/BLANK_JUNK_LOGIC.md Strength: JUNK is strong at junk >= junk_strong, KEEP is strong at clinical >= clinical_strong.",
       "junk_alone_min": 7,
       "note_junk_alone": "Vote row 3 (DistilBERT abstains, keywords vote JUNK): Junk only when the keyword junk score is at least this; below it the page stays Main."
     }
@@ -673,5 +673,5 @@
     "note": "Section 8.3: a JUNK vote is turned into KEEP + review only when the handwritten share of the page is above this. Needs the page-tag model (handwritten_area_pct); without it the veto does not apply and votes.hw_area = 'none'.",
     "min_handwritten_area_pct": 30
   },
-  "note_confidence": "Confidence is the evidence for the verdict (method §8.5), not a fixed number: DistilBERT's probability (when it scored the page), the keyword score (junk / 10, or clinical-or-demographic / 10) and, for R5-R8, the rule's own value. Signals that agree combine as 1 - product(1 - p); a disagreement is averaged. R1-R3 keep fixed values. There is no cap: a contested call comes out low by itself, so filter on low confidence to review."
+  "note_confidence": "Confidence is the evidence for the verdict (docs/BLANK_JUNK_LOGIC.md), not a fixed number: DistilBERT's probability (when it scored the page), the keyword score (junk / 10, or clinical-or-demographic / 10) and, for R5-R8, the rule's own value. Signals that agree combine as 1 - product(1 - p); a disagreement is averaged. R1-R3 keep fixed values. There is no cap: a contested call comes out low by itself, so filter on low confidence to review."
 }
