@@ -228,8 +228,9 @@ function blankJunkMark(
   if (!known || missing(pipeline)) return bit(expected, "unknown");
   const left = fold(expected);
   const right = fold(pipeline);
-  if (left === right) return bit(expected, "match");
-  if (left.startsWith("yes") && right.startsWith("yes")) return bit(expected, "partial");
+  // Blank against Junk (or one junk subtype against another) is still a match: both say
+  // Yes, and the page is out of the record either way.
+  if (left === right || (left.startsWith("yes") && right.startsWith("yes"))) return bit(expected, "match");
   return bit(expected, "mismatch");
 }
 

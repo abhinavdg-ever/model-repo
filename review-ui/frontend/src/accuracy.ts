@@ -189,8 +189,8 @@ function addOrientationRates(rates: ClassRates, page: ImagingPageResult): void {
 function blankJunkCall(bits: GtBit[]): { expected: boolean; predicted: boolean } | null {
   if (!labeled(bits) || bits[0].mark === "unknown") return null;
   const expected = bits[0].label.trim().toLowerCase().startsWith("yes");
-  // "partial" = both sides say Yes, as the other of blank / junk.
-  const right = bits[0].mark === "match" || bits[0].mark === "partial";
+  // Blank against Junk is a match (both Yes).
+  const right = bits[0].mark === "match";
   return { expected, predicted: right ? expected : !expected };
 }
 
