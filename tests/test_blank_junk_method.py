@@ -311,3 +311,36 @@ class TestGeometry:
         lines = method.lines_from_words(words, 1000)
         assert [l.text for l in lines] == ["Page Header", "Body"]
         assert lines[1].bottom == pytest.approx(0.52)
+
+
+class TestPass2ReadsTesseractJunkTerms:
+    """Chart 66945468 p25: 'Optum' was in the Tesseract text only; the final OCR dropped it."""
+
+    FINAL = "Patient Name DOB MRN Sex " + " ".join(f"field{i}" for i in range(30))
+    PRELIM = FINAL + " Optum"
+
+    def test_a_junk_term_only_tesseract_read_counts_in_pass_2(self):
+        scores = score_text(self.FINAL, also_junk=self.PRELIM)
+        assert scores.junk == score_text(self.PRELIM).junk > 0
+        assert scores.tesseract_only == {"junk.roi_vendors": ["optum"]}
+        assert scores.to_dict()["tesseract_only"] == {"junk.roi_vendors": ["optum"]}
+
+    def test_clinical_and_demographic_read_the_final_text_only(self):
+        alone = score_text("Patient Name only")
+        scores = score_text("Patient Name only", also_junk="Assessment: Plan: DOB MRN Sex")
+        assert (scores.clinical, scores.demographic) == (alone.clinical, alone.demographic)
+
+    def test_the_keyword_ballot_votes_junk_with_it(self):
+        verdict = run(self.FINAL, prelim_text=self.PRELIM, bert=bert(0.71, "JUNK_OTHERS"))
+        assert verdict.votes["kw"]["vote"] == "JUNK" and verdict.votes["ballots"] == "JJ"
+
+    def test_pass_1_does_not_use_it(self):
+        verdict = run(self.FINAL, pass_no=1, prelim_text="Optum")
+        assert "tesseract_only" not in verdict.votes["kw"]
+
+
+def test_r5_records_the_ink_it_measured():
+    lines = [Line("Optum ROI request", 0.03, 0.05)]
+    verdict = run("Optum ROI request for records", lines=lines, body_ink=True, body_ink_fraction=0.0042)
+    assert verdict.votes["short_page"]["ink"] is True
+    assert (verdict.votes["short_page"]["ink_fraction"], verdict.votes["short_page"]["ink_limit"]) == (0.0042, 0.0001)

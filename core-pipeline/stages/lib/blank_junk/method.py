@@ -250,6 +250,8 @@ class Scores:
     groups: dict[str, float] = field(default_factory=dict)  # "junk.invoice" -> score
     hits: dict[str, list[str]] = field(default_factory=dict)  # "junk.invoice" -> terms
     signature_phrase: bool = False
+    # Junk terms only the Tesseract text had (pass 2), counted in ``hits`` too.
+    tesseract_only: dict[str, list[str]] = field(default_factory=dict)
 
     def group(self, context: str, name: str) -> float:
         return self.groups.get(f"{context}.{name}", 0.0)
@@ -271,6 +273,7 @@ class Scores:
             "demographic": self.demographic,
             "junk_group": self.best_junk_group(),
             "hits": self.hits,
+            **({"tesseract_only": self.tesseract_only} if self.tesseract_only else {}),
         }
 
 
@@ -300,11 +303,15 @@ def _longest_first(spans: list[tuple[int, int, str, str]]) -> list[tuple[int, in
     return kept
 
 
-def score_text(text: str, lines: Optional[list[Line]] = None) -> Scores:
+def score_text(text: str, lines: Optional[list[Line]] = None, also_junk: Optional[str] = None) -> Scores:
     """Weight x unique hits per group, capped; summed per context (method §4.1).
 
     With ``lines`` (pass 2), a junk term in the header or footer band counts only when the
     body has a junk hit too.
+
+    ``also_junk`` (pass 2: the page's Tesseract text) adds the junk terms the final OCR
+    missed, such as a vendor name in a logo or banner ('Optum'), as body hits. Clinical
+    and demographic scores read ``text`` alone.
     """
     prof = canon()
     out = Scores()
@@ -329,6 +336,13 @@ def score_text(text: str, lines: Optional[list[Line]] = None) -> Scores:
             unique = {}
             for _s, _e, name, term in _longest_first(_spans(context, text)):
                 unique.setdefault(name, set()).add(term)
+        if context == "junk" and also_junk:
+            for _s, _e, name, term in _longest_first(_spans(context, also_junk)):
+                if term not in unique.get(name, set()):
+                    unique.setdefault(name, set()).add(term)
+                    out.tesseract_only.setdefault(f"junk.{name}", []).append(term)
+            for key in out.tesseract_only:
+                out.tesseract_only[key] = sorted(set(out.tesseract_only[key]))
         total = 0.0
         for name, terms in unique.items():
             group = prof.groups[(context, name)]
@@ -442,6 +456,9 @@ class PageInputs:
     signature_known: bool = False  # the KV signature output was there to read
     no_ink: bool = False  # the HW stage found no ink (blank_page / faint_marks_only)
     body_ink: Optional[bool] = None  # ink below the short-page band; None = not measured
+    body_ink_fraction: Optional[float] = None  # the share of that band that is ink
+    # Pass 2: the page's Tesseract text, read for junk terms only (score_text also_junk).
+    prelim_text: str = ""
 
 
 @dataclass
@@ -586,7 +603,7 @@ def decide(inputs: PageInputs) -> Verdict:
     words = _word_count(text)
     pass2 = inputs.pass_no == 2
     lines = inputs.lines if pass2 else None
-    scores = score_text(text, lines)
+    scores = score_text(text, lines, inputs.prelim_text if pass2 else None)
     visual = inputs.document_type == "visual"
     ballots = {
         "bert": bert_ballot(inputs.bert, words),
@@ -657,6 +674,13 @@ def decide(inputs: PageInputs) -> Verdict:
         else:
             bottom = content_bottom(lines)
             votes["short_page"] = {"content_bottom": round(bottom, 3) if bottom is not None else None}
+            if inputs.body_ink is not None:
+                # Why R5 did or did not fire: the ink found below the band, against the limit.
+                votes["short_page"].update(
+                    ink=inputs.body_ink,
+                    ink_fraction=inputs.body_ink_fraction,
+                    ink_limit=float(short["body_ink_max_fraction"]),
+                )
             if inputs.body_ink is None:
                 votes["short_page"]["ink"] = "not_measured"
             elif bottom is not None and bottom <= float(short["top_fraction"]) and inputs.body_ink is False:

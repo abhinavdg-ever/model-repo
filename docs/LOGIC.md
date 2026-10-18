@@ -260,7 +260,7 @@ when the body has a junk word too.
 | R2 | "Intentionally left blank" on ≤ 25 words | junk / Others | 1, 2 |
 | R3 | Provider Signature = Yes (KV extraction), or a canon signature phrase — unless DistilBERT and the keywords both say JUNK (JJ): then the vote (R9) decides, `votes.r3_skipped` | Main | 2 |
 | R4 | DistilBERT p(junk) > 0.85 — **not** when C or D (then the vote decides) | junk / DistilBERT's subtype | 2 |
-| R5 | Content ends in the top 15% of the page (running header / footer lines ignored) and no ink from 17% to 94% of the height — whatever the page says | junk / Others | 2 |
+| R5 | Content ends in the top 15% of the page (running header / footer lines ignored) and no ink from 17% to 94% of the height (ink = at least `body_ink_max_fraction` of that band; `votes.short_page` records `ink`, `ink_fraction`, `ink_limit`) — whatever the page says | junk / Others | 2 |
 | R6 | record_request + roi_vendors ≥ 7 and not C⁺ | junk / Record Request | 1, 2 |
 | R7 | C⁺ | Main | 1, 2 |
 | R8 | `document_type = 'visual'` → Main, unless invoice / retrieval wording ≥ 7 | Main or junk | 1 (pass 2 skips these pages) |
@@ -268,7 +268,14 @@ when the body has a junk word too.
 
 **The vote (R9).** Two voters: DistilBERT (raw 8-label softmax) and the keyword
 canon each cast JUNK / KEEP / ABSTAIN, strong or weak. Ballots are written
-DistilBERT first (`JA` = DistilBERT junk, keywords abstain):
+DistilBERT first (`JA` = DistilBERT junk, keywords abstain).
+
+In pass 2 the keywords read the final OCR, plus the **junk** terms only the
+Tesseract text had (a vendor name in a logo or banner the final OCR dropped, such
+as "Optum"), on printed, non-low-quality pages. Those are listed in
+`votes.kw.tesseract_only`. Clinical and demographic scores read the final OCR
+alone.
+
 
 | Ballots | Verdict |
 |---|---|

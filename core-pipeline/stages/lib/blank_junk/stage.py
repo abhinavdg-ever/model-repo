@@ -54,6 +54,7 @@ from db import (
     low_quality_page_ids,
     non_printed_page_ids,
     mark_blank_junk_final,
+    page_blocks_prelim,
     page_type,
     upsert_blank_junk,
 )
@@ -441,9 +442,9 @@ def _page_lines(
     return method.lines_from_words(found["words"], float(found["height"])) or None
 
 
-def _body_ink(chart_name: str, page_name: str) -> Optional[bool]:
-    """Ink below the short-page band (a picture, handwriting or stamp OCR did not read).
-    None when the image cannot be read."""
+def _body_ink(chart_name: str, page_name: str) -> tuple[Optional[bool], Optional[float]]:
+    """(ink below the short-page band, the share of that band that is ink): a picture,
+    handwriting or stamp OCR did not read. (None, None) when the image cannot be read."""
     try:
         from PIL import Image
 
@@ -455,10 +456,11 @@ def _body_ink(chart_name: str, page_name: str) -> Optional[bool]:
             width, height = image.size
             band = image.convert("RGB").crop((0, int(top * height), width, int(bottom * height)))
         marks = page_marks(_image_bgr(band))
-        return float(marks["strong_fraction"]) >= float(short["body_ink_max_fraction"])
+        fraction = float(marks["strong_fraction"])
+        return fraction >= float(short["body_ink_max_fraction"]), round(fraction, 6)
     except Exception as exc:  # noqa: BLE001 - a missing image only switches the rule off
         logger.warning("short-page ink check failed for %s/%s: %s", chart_name, page_name, exc)
-        return None
+        return None, None
 
 
 def _page_inputs(
@@ -468,6 +470,7 @@ def _page_inputs(
     *,
     final2: Optional[dict[int, str]] = None,
     final1: Optional[dict[int, str]] = None,
+    prelim: Optional[dict[int, str]] = None,
 ) -> dict[int, "method.PageInputs"]:
     """Everything method.decide needs per page except the text and the model scores."""
     signed: set[str] = set()
@@ -502,7 +505,11 @@ def _page_inputs(
             )
             bottom = method.content_bottom(inputs.lines) if inputs.lines else None
             if bottom is not None and bottom <= top:
-                inputs.body_ink = _body_ink(ctx.chart_name, page["page_name"])
+                inputs.body_ink, inputs.body_ink_fraction = _body_ink(ctx.chart_name, page["page_name"])
+            # Tesseract's text for the junk terms the final OCR missed; only where prelim is
+            # trusted (printed, not low quality).
+            if not page_blocks_prelim(q):
+                inputs.prelim_text = unwrap_ocr_content((prelim or {}).get(pid))
         out[pid] = inputs
     return out
 
@@ -597,6 +604,8 @@ def _run_pass(
                 # Prefer final2; if Azure was skipped or failed, use final1.
                 final2 = get_ocr_texts(conn, chart_id, "azuredocintel")
                 final1 = get_ocr_texts(conn, chart_id, "docling")
+                # Read for junk terms only (method.score_text also_junk).
+                prelim_texts = get_ocr_texts(conn, chart_id, "tesseract")
                 texts = {}
                 sources = {}
                 for page in ctx.pages:
@@ -647,7 +656,10 @@ def _run_pass(
             prior_mains = _prior_main_ids(conn, chart_id)
 
         if pass_no == 2:
-            inputs = _page_inputs(ctx, pass_no, quality, final2=final2, final1=final1)
+            inputs = _page_inputs(
+                ctx, pass_no, quality, final2=final2, final1=final1,
+                prelim=prelim_texts,
+            )
         else:
             inputs = _page_inputs(ctx, pass_no, quality)
         classified = _classify(
