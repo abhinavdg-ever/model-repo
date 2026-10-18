@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowLeft,
   CalendarClock,
@@ -81,25 +82,148 @@ export function DateLines({ iso }: { iso: string | null | undefined }) {
 }
 
 /** An ⓘ that shows what a number means: on hover, and on click / tap. */
-function InfoTip({ text, className }: { text: string; className?: string }) {
-  const [open, setOpen] = useState(false);
+/** One titled block of an info popover; each line is drawn on its own. */
+type InfoSection = { title?: string; lines: string[] };
+
+/** "A. B. C." -> ["A.", "B.", "C."]: one sentence per line. */
+function sentences(text: string): string[] {
+  return text
+    .split(/(?<=\.)\s+(?=[A-Z("'])/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/** Split on "; " outside brackets: "A (x; y); B" -> ["A (x; y)", "B"]. */
+function measures(text: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "(") depth += 1;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+    else if (ch === ";" && depth === 0) {
+      out.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  out.push(text.slice(start));
+  return out.map((line) => line.trim().replace(/\.$/, "")).filter(Boolean);
+}
+
+/** A metric's rule as sections: how it is scored, then its "Under X = Yes (…): A; B; C"
+ * block with one measure per line. */
+function ruleSections(title: string, rule: string): InfoSection[] {
+  const at = rule.search(/\bUnder [^:]+:/);
+  const head = at >= 0 ? rule.slice(0, at) : rule;
+  const out: InfoSection[] = [{ title, lines: sentences(head) }];
+  if (at >= 0) {
+    const under = rule.slice(at);
+    const colon = under.indexOf(":");
+    out.push({
+      title: under.slice(0, colon).trim(),
+      lines: measures(under.slice(colon + 1)),
+    });
+  }
+  return out;
+}
+
+const POP_WIDTH = 360;
+const POP_MARGIN = 8;
+
+/** ⓘ with a popover kept inside the window: fixed-position from the button, clamped
+ * left and right, opening upwards when there is more room above, scrolling when long.
+ * Rendered into document.body: .workspace's backdrop-filter would otherwise make
+ * "fixed" relative to it, not to the window. */
+function InfoTip({ text, className }: { text: string | InfoSection[]; className?: string }) {
+  const [place, setPlace] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const blocks: InfoSection[] = typeof text === "string" ? [{ lines: sentences(text) }] : text;
+
+  useEffect(() => {
+    if (!place) return;
+    const inside = (target: EventTarget | null) =>
+      target instanceof Node && (popRef.current?.contains(target) || buttonRef.current?.contains(target));
+    const close = (event: Event) => {
+      if (!inside(event.target)) setPlace(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPlace(null);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", close);
+    // Scrolling the page leaves the popover behind its button; scrolling inside it does not.
+    window.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [place]);
+
+  function toggle() {
+    if (place) {
+      setPlace(null);
+      return;
+    }
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = Math.min(POP_WIDTH, window.innerWidth - 2 * POP_MARGIN);
+    const centre = rect.left + rect.width / 2;
+    const left = Math.max(POP_MARGIN, Math.min(centre - width / 2, window.innerWidth - width - POP_MARGIN));
+    const below = window.innerHeight - rect.bottom - POP_MARGIN - 6;
+    const above = rect.top - POP_MARGIN - 6;
+    setPlace(
+      below >= 240 || below >= above
+        ? { top: rect.bottom + 6, left, width, maxHeight: below }
+        : { bottom: window.innerHeight - rect.top + 6, left, width, maxHeight: above },
+    );
+  }
+
   return (
     <span className={className ? `accuracy-info ${className}` : "accuracy-info"}>
       <button
+        ref={buttonRef}
         type="button"
         className="accuracy-info-btn"
-        aria-label={text}
-        aria-expanded={open}
-        title={text}
-        onClick={() => setOpen((v) => !v)}
-        onBlur={() => setOpen(false)}
+        aria-label="How this is calculated"
+        aria-expanded={place !== null}
+        onClick={toggle}
       >
         <Info size={13} aria-hidden="true" />
       </button>
-      {open ? (
-        <span className="accuracy-info-pop" role="tooltip">
-          {text}
-        </span>
+      {place ? createPortal(
+        <div
+          ref={popRef}
+          className="accuracy-info-pop"
+          role="tooltip"
+          style={{
+            top: place.top,
+            bottom: place.bottom,
+            left: place.left,
+            width: place.width,
+            maxHeight: place.maxHeight,
+          }}
+        >
+          {blocks.map((block, index) => (
+            <section key={index} className="accuracy-info-section">
+              {block.title ? <h4>{block.title}</h4> : null}
+              {block.lines.length > 1 ? (
+                <ul>
+                  {block.lines.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p>{block.lines[0]}</p>
+              )}
+            </section>
+          ))}
+        </div>,
+        document.body,
       ) : null}
     </span>
   );
@@ -253,9 +377,11 @@ function Donut({
       </svg>
       <InfoTip
         className="accuracy-info-corner"
-        text={[detail, SCORE_INFO, rates ? RATES_INFO : ""]
-          .filter(Boolean)
-          .join(" ")}
+        text={[
+          ...ruleSections(label, detail),
+          { title: "Accuracy score", lines: sentences(SCORE_INFO) },
+          ...(rates ? [{ title: "Precision, Recall, F1", lines: sentences(RATES_INFO) }] : []),
+        ]}
       />
       <figcaption>{label}</figcaption>
       <p className="accuracy-distribution">
