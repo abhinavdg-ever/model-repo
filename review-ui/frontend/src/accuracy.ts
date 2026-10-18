@@ -69,7 +69,7 @@ export const METRICS: {
     id: "signature",
     label: "Provider Signature",
     binary: true,
-    rule: "Every labelled page, Match or No Match: the ground truth's Provider Signature (Yes / No; credentials in the label mean Yes; NA / blank is No) equals whether the pipeline found an electronic signature. Under Signature = Yes (cases = pages the ground truth calls signed): Precision = of the pages the pipeline called signed, the share signed; Recall = of the cases, the share found; Cred. Match = of the pages the ground truth gives credentials, the share whose credentials match the ground truth's (any one credential shared: MD, DO, NP…; punctuation, order and separators ignored)",
+    rule: "Every labelled page, Match or No Match: the ground truth's Provider Signature (Yes / No; credentials in the label mean Yes; NA / blank is No) equals whether the pipeline found an electronic signature. Under Signature = Yes (cases = pages the ground truth or the pipeline calls signed): Precision = of the pages the pipeline called signed, the share signed; Recall = of the pages the ground truth calls signed, the share found; Cred. Match = of the pages the ground truth gives credentials, the share whose credentials match the ground truth's (any one credential shared: MD, DO, NP…; punctuation, order and separators ignored)",
   },
   {
     id: "orientation",

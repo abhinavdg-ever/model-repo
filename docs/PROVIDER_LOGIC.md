@@ -248,7 +248,7 @@ labels (`page_ground_truth`).
 
 | | Uses |
 |---|---|
-| **Accuracy — Provider Signature** | Every labelled page, Match / No Match: the ground truth's Provider Signature (Yes / No; credentials in the label mean Yes; NA / blank is No) against `signature_present`. Under **Signature = Yes** (cases = pages the ground truth calls signed): Precision, Recall and **Cred. Match** (in place of F1) — Recall on credentials: of the pages the ground truth gives credentials for, the share where the credentials of **every** signer (v2) joined "MD \| DNP", else those split off `provider_name` (v1), share any one credential with the ground truth's |
+| **Accuracy — Provider Signature** | Every labelled page, Match / No Match: the ground truth's Provider Signature (Yes / No; credentials in the label mean Yes; NA / blank is No) against `signature_present`. Under **Signature = Yes** (cases = pages the ground truth or the pipeline calls signed): Precision, Recall and **Cred. Match** (in place of F1) — Recall on credentials: of the pages the ground truth gives credentials for, the share where the credentials of **every** signer (v2) joined "MD \| DNP", else those split off `provider_name` (v1), share any one credential with the ground truth's |
 | **Excel Compare** | the same provider name and credentials, from `imaging_final` |
 
 ---

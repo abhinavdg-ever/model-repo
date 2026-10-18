@@ -124,6 +124,8 @@ function Distribution({ tally, binary = false }: { tally: Tally; binary?: boolea
 /** Class 1 pages in the ground truth: each is a TP or an FN (a rotated page
  * found at the wrong angle is an FN too). */
 function classCases(rates: ClassRates): number {
+  // Provider Signature: every page either side calls signed.
+  if (hasCredMatch(rates)) return rates.tp + rates.fp + rates.fn;
   return rates.tp + rates.fn;
 }
 
