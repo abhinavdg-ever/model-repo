@@ -354,15 +354,13 @@ def _selected(staged_page: Optional[staging.StagedPage], field_id: str) -> list[
 
 def page_signature(staged_page: Optional[staging.StagedPage]) -> dict[str, Any]:
     """The page's provider signature row (results.signature_fields): its accepted
-    electronic signatures (the selected one is the main signer, the rest cosigners), then
-    for a missing name its provider names (selected, else every kept one), for missing
-    credentials its accepted credentials."""
+    electronic signatures; with a single one, its accepted provider_name and
+    provider_credentials rows for what that signature lacks."""
     if staged_page is None:
         return signature_fields(None)
-    providers = staged_page.selected("provider_name") or _provider_rows(staged_page)
     return signature_fields(
         staged_page.accepted("electronic_signature"),
-        providers,
+        staged_page.accepted("provider_name"),
         staged_page.accepted("provider_credentials"),
     )
 

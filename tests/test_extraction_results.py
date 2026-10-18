@@ -106,26 +106,50 @@ def test_credentials_missing_from_the_fields_are_read_from_the_sentence():
     assert (fields["provider_name"], fields["provider_credentials"]) == ("Meghan Newman", "DNP")
 
 
-def test_then_the_page_credentials_then_the_page_provider_name():
-    no_creds = [{"key": SIGNED_BY, "provider_name": "Meghan Newman", "sentence": SIGNED_BY + " Meghan Newman",
-                 "score": 0.9, "selected": True}]
+def test_a_missing_name_comes_from_ner_text_and_credentials_from_the_sentence():
+    fields = signature_fields([{"key": SIGNED_BY, "provider_name": "", "ner_text": "WILLIAM J WALL III",
+                                "sentence": "AND ELECTRONICALLY SIGNED BY: WILLIAM J WALL III, MD on at 03:36 PM",
+                                "score": 0.92, "accepted": True, "selected": True}])
+    assert (fields["provider_name"], fields["provider_credentials"]) == ("WILLIAM J WALL III", "MD")
+
+
+def test_one_signature_falls_back_to_the_page_provider_and_credentials():
+    nameless = [{"key": "Signed", "sentence": "Electronically Signed", "score": 0.7, "accepted": True}]
+    fields = signature_fields(
+        nameless,
+        [{"value": "Not Accepted, DO", "score": 0.99, "accepted": False},
+         {"value": "Daniel J Hamilton, MD", "score": 0.8, "accepted": True}],
+        [],
+    )
+    assert (fields["provider_name"], fields["provider_credentials"]) == ("Daniel J Hamilton", "MD")
+    no_creds = [{"key": SIGNED_BY, "provider_name": "Meghan Newman", "sentence": "Signed by Meghan Newman",
+                 "score": 0.9, "accepted": True}]
     fields = signature_fields(no_creds, [], [{"value": "NP", "provider_name": "Other Person", "accepted": True},
                                               {"value": "FNP", "provider_name": "Meghan Newman", "accepted": True}])
     assert fields["provider_credentials"] == "FNP"  # the same provider's first
-    nameless = [{"key": "Signed", "sentence": "Electronically Signed", "score": 0.7, "selected": True}]
-    fields = signature_fields(nameless, [{"value": "Daniel J Hamilton, MD", "score": 0.8}], [])
-    assert (fields["provider_name"], fields["provider_credentials"]) == ("Daniel J Hamilton", "MD")
+
+
+def test_several_signatures_stop_at_their_own_fields_and_drop_incomplete_ones():
+    fields = signature_fields(
+        [{"key": SIGNED_BY, "provider_name": "WILLIAM J WALL III, MD", "designation": "MD",
+          "score": 0.9, "accepted": True, "selected": True},
+         {"key": "Cosigned by", "provider_name": "Jane Roe", "sentence": "Cosigned by Jane Roe",
+          "score": 0.8, "accepted": True}],  # no credentials anywhere: removed
+        [{"value": "Jane Roe, DNP", "score": 0.9, "accepted": True}],
+        [{"value": "DNP", "provider_name": "Jane Roe", "accepted": True}],
+    )
+    assert [s["name"] for s in fields["signers"]] == ["WILLIAM J WALL III"]
 
 
 def test_split_name_and_credentials():
-    from stages.lib.extraction.results import name_from_sentence, split_name_credentials
+    from stages.lib.extraction.results import credentials_in_sentence, split_name_credentials
 
     assert split_name_credentials("LAUBERT CNP, MATTHEW") == ("LAUBERT, MATTHEW", "CNP")
     assert split_name_credentials("Agati, Alicia, APRN.CNP") == ("Agati, Alicia", "APRN.CNP")
     assert split_name_credentials("Ramsey Luce, R.N.") == ("Ramsey Luce", "R.N.")
     assert split_name_credentials("Doe, Ed") == ("Doe, Ed", None)
-    assert name_from_sentence("AND ELECTRONICALLY SIGNED BY: WILLIAM J WALL III, MD on at 03:36 PM", SIGNED_BY) == (
-        "WILLIAM J WALL III", "MD")
+    assert credentials_in_sentence("AND ELECTRONICALLY SIGNED BY: WILLIAM J WALL III, MD on at 03:36 PM") == "MD"
+    assert credentials_in_sentence("Signed by Jane Doe Rd 12 on Md Ave") is None  # mis-cased: not credentials
 
 
 def test_empty_signature_is_not_present():

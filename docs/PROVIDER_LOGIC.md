@@ -19,29 +19,30 @@ signed, where each value is stored, and what uses it.
 1. **Provider Signature = Yes** when the page has an `electronic_signature` row with
    **`accepted = true`**; otherwise **No**.
 2. **No** ⇒ no provider name, no credentials.
-3. **Yes** ⇒ **every accepted signature is a signer**, listed in order: the **selected**
+3. **Yes** ⇒ every accepted signature is a candidate signer, in order: the **selected**
    one first (the highest-scoring when several are selected, else the highest-scoring
-   accepted one), then the others by score. A signer with no name is left out; the same
-   person twice is one signer. No roles: review-ui numbers them 1. 2. 3.
+   accepted one), then the others by score. No roles: review-ui numbers them 1. 2. 3.
 
-Each signer's name and credentials, first found wins:
+For each accepted signature:
 
-| Step | Name | Credentials | For |
-|---|---|---|---|
-| 1. The signature row's fields | its `provider_name`, credentials stripped | its `designation`; else the credentials that were in the name | every signer |
-| 2. The signature row's `sentence` | the words right after the key, up to " on ", " at ", a date or a time (two words at least) | the credentials among them | every signer |
-| 3. The page's accepted `provider_credentials` | — | the one for the same provider | every signer |
-| 3b. | — | else the first accepted | the first signer only |
-| 4. The page's `provider_name` rows | the best-scoring (selected first), credentials stripped | its credentials, if still none | the first signer only |
+| Step | Name | Credentials |
+|---|---|---|
+| 1. The signature row's fields | its `provider_name`, credentials stripped | its `designation`; else the credentials written in `provider_name` |
+| 2. Still missing — the same row | its `ner_text` | searched in its `sentence` with the credentials canon (`provider_credentials_canon.json`) |
+| 3a. **Several accepted signatures** | stop here: a signer still missing its name **or** its credentials is removed | |
+| 3b. **One accepted signature** | the page's `provider_name` rows with `accepted = true` (the best-scoring), credentials stripped | the page's `provider_credentials` rows with `accepted = true` (the same provider's first, else the first) |
+
+The same person signing twice is listed once.
 
 Examples:
 
 | Signature rows | Signers |
 |---|---|
-| "WILLIAM J WALL III, MD", designation MD (selected) | 1. WILLIAM J WALL III · MD |
-| "Meghan Newman", no designation, sentence "Electronically signed by Meghan Newman , DNP on 05/19/2025 …" | 1. Meghan Newman · DNP (step 2) |
-| "Jane Roe, DNP" (accepted, score 0.95) + "WILLIAM J WALL III, MD" (selected, 0.90) | 1. WILLIAM J WALL III · MD  2. Jane Roe · DNP |
-| key "Signed", sentence "Electronically Signed", no name; page provider "Daniel J Hamilton, MD" | 1. Daniel J Hamilton · MD (step 4) |
+| "WILLIAM J WALL III, MD", designation MD | 1. WILLIAM J WALL III · MD (step 1) |
+| `provider_name` empty, `ner_text` "WILLIAM J WALL III", sentence "…SIGNED BY: WILLIAM J WALL III, MD on…" | 1. WILLIAM J WALL III · MD (step 2) |
+| "Meghan Newman", no designation, sentence "… Meghan Newman , DNP on 05/19/2025 …" | 1. Meghan Newman · DNP (step 2) |
+| "WILLIAM J WALL III, MD" (selected) + "Jane Roe", no credentials anywhere in its row | 1. WILLIAM J WALL III · MD — Jane Roe removed (step 3a) |
+| one signature, key "Signed", no name; page `provider_name` "Daniel J Hamilton, MD" (accepted) | 1. Daniel J Hamilton · MD (step 3b) |
 | none accepted | Signature No; no name, no credentials |
 
 A credential is a token in `provider_name/suffixes.txt` or `provider_credentials_canon.json`,
