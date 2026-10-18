@@ -119,57 +119,127 @@ Two places, used differently:
 | **On the chosen provider** | the credential tokens at the end of the provider name (`signature_people` splits "Ramsey Luce, R.N." into "Ramsey Luce" + "R.N.") | **review-ui** (page view, accuracy, Excel compare) |
 | `provider_credentials` field (staging only) | every credential in `provider_credentials_canon.json` (38: MD, DO, DMD, DDS, DPM, OD, DC, PhD, PsyD, PharmD, DNP, NP, PA, PA-C, RN, LPN, APRN, FNP, CRNA, CNP …; not LVN or MA) after a name on the same line; MD / PA / MA / DC dropped when followed by a ZIP code (a state, not a credential); the provider = up to 4 words before it, back to a colon | the extraction pane only |
 
-## 5. Where it is stored — one row per page
+## 5. What it writes
 
-`kv_extract` turns the staging (`staging/extraction.json`) into these, and **everything
-downstream reads them, never the staging**:
+```
+staging/extraction.json            (the extractors' candidates — read ONLY by kv_extract)
+        │  kv_extract (seq 56): the rule in §1, one row per page
+        ├──► DB  provider_signature_results          (one row per page)
+        └──► CSV imaging/<chart>_provider_signature.csv   (same values)
+                 │
+                 │  imaging_final (seq 100): copies the provider into the Final row
+                 ├──► DB  imaging_final              (one row per page, every Final field)
+                 └──► CSV imaging/<chart>_final.csv  (same values)
+```
 
-| Store | Read by |
+Nothing after `kv_extract` reads `extraction.json`.
+
+### 5.1 `provider_signature_results` (DB) and `<chart>_provider_signature.csv`
+
+Written by `kv_extract`, one row per page, the same values in both.
+
+| Column | Value | In DB | In CSV |
+|---|---|---|---|
+| `chart_id`, `page_id` | the page | yes | — |
+| `chart_name`, `page_name`, `page_number` | the page | — | yes |
+| `signature_present` | an accepted electronic signature | `true` / `false` | `y` / `n` |
+| `provider_name` | the first signer's name, **without** credentials | yes | yes |
+| `provider_credentials` | the first signer's credentials | yes | yes |
+| `signers` | every signer, in order: `[{"name", "credentials", "signature_date", "confidence"}]` | JSONB | JSON text |
+| `provider_version` | **2** (this rule) | yes | yes |
+| `confidence` | the page's confidence (§1) | yes | yes |
+| `signature_date` | the first signer's date (ISO) | yes | yes |
+| `signature_key`, `sentence`, `region`, `scale`, `ner_text`, `source` | the first (selected) signature's | yes | yes |
+
+### 5.2 `imaging_final` (DB) and `<chart>_final.csv`
+
+Written by `imaging_final` from `provider_signature_results` (never the staging), next to
+every other Final field of the page.
+
+| Column | From `provider_signature_results` |
 |---|---|
-| **`provider_signature_results`** (DB, v1.sql) | `imaging_final` |
-| `imaging/<chart>_provider_signature.csv` (same values) | blank/junk R3 and continuity (`signature_present = y`); review-ui Local Mode |
-| `imaging_final` (DB) / `<chart>_final.csv` — copied by `imaging_final` | review-ui Production Mode, accuracy, Excel Compare |
+| `provider_name` | `provider_name` |
+| `provider_credentials` | `provider_credentials` |
+| `signers` | `signers` |
+| `provider_version` | `provider_version` |
+| `provider_confidence` | `confidence` |
+| `signature_present` | `signature_present` |
 
-| Column | Value |
-|---|---|
-| `signature_present` | an accepted signature (`y` / `n` in the CSV) |
-| `provider_name` | the first signer's name, **without** credentials |
-| `provider_credentials` | the first signer's credentials |
-| `signers` | every signer: `[{"name", "credentials", "signature_date", "confidence"}]` (JSON) |
-| `provider_version` | **2** — this rule |
-| `confidence` (`provider_confidence` in `imaging_final`) | the page's confidence (above) |
-| `signature_key`, `sentence`, `region`, `scale`, `ner_text`, `source`, `signature_date`, `confidence` | the first signature's |
+A duplicate page takes these from the page it duplicates.
 
-### Versions — old and new rows side by side
+### 5.3 Old and new rows side by side
 
-| `provider_version` | Written by | review-ui reads |
-|---|---|---|
-| **2** | this rule | `signers` (numbered 1. 2. 3.), else `provider_name` + `provider_credentials`; credentials for accuracy = all signers' |
-| **1** or none | before 2026-10-18 | `provider_name` alone, credentials split off it (`provider_credentials` ignored) |
+| `provider_version` | Rows written | `provider_name` holds | `provider_credentials`, `signers` |
+|---|---|---|---|
+| **2** | from 2026-10-18 | the bare name | filled |
+| **1** or NULL | before | the name **with** its credentials ("Ramsey Luce, R.N.") | empty (or no such column) |
 
-No column is removed; a chart switches to v2 when `kv_extract` and `imaging_final` re-run.
+No column is removed. A chart becomes v2 when `kv_extract` and `imaging_final` re-run.
+The writers write only the columns a table has, so a database without the new columns
+keeps working.
 
 **Database changes:** [`schema/changes_2026-10-18.sql`](../schema/changes_2026-10-18.sql) —
 additive, safe to re-run (`psql "$DATABASE_URL" -f schema/changes_2026-10-18.sql`). A new
 database gets the same from `schema/v1.sql`.
-The writers write only the columns a table has, so a database without the new columns
-(`schema/temp_changes_to_db.sql` not applied) keeps working.
 
 ---
 
-## 6. What uses it
+## 6. How review-ui is powered
 
-| Where | Uses | Effect |
+### 6.1 Where each mode reads from
+
+| Mode (`DATA_MODE` in `review-ui/.env`) | Provider fields come from |
+|---|---|
+| **Production** | **`imaging_final`** (DB) only |
+| **Local, with a database** | `imaging_final` (DB), then `<chart>_provider_signature.csv` from the workspace on top |
+| **Local, no database** | `<chart>_provider_signature.csv` only |
+
+The accuracy report always reads the database view `v_accuracy_page` (which takes
+`imaging_final`'s provider columns). Excel Compare reads `imaging_final` when a database
+is set.
+
+### 6.2 How a row is read — by `provider_version`
+
+`signer_fields` in `review-ui/backend/app/services/imaging_overlays.py`:
+
+| `provider_version` | Provider Name | Provider Credentials |
 |---|---|---|
-| **Blank / junk R3** (pass 2) | `signature_present = y`, or a signature phrase in the text | **Main** — except when DistilBERT and the keywords both say junk (JJ): the vote decides ([`BLANK_JUNK_LOGIC.md`](BLANK_JUNK_LOGIC.md)) |
-| **Continuity** check 6 | `signature_present = y`, or a signature block in the text | a signed page ends its document; an undated next page starts a new one ([`CONTINUITY_LOGIC.md`](CONTINUITY_LOGIC.md)) |
-| **imaging_final** | `provider_signature_results` | the Final provider, credentials, signers, version (each page's own; a duplicate takes its original's) |
-| **review-ui page view** | Production: `imaging_final`. Local: `provider_signature.csv` | Provider Name and Provider Credentials — numbered 1. 2. 3. with several signers (by `provider_version`, §5) — and Provider Signature Yes / No |
-| **Accuracy — Provider Credentials** | every signer's credentials from `imaging_final` (v2), else split from `provider_name` (v1) | every page: any one credential shared = Match; a ground truth of NA / blank / None is Not Found — none extracted = Match, some = No Match |
+| **2**, `signers` has entries | every signer's name, in order | every signer's credentials, in the same order |
+| **2**, no `signers` | `provider_name` | `provider_credentials` |
+| **1** / NULL | `provider_name` with the credentials split off | the credentials split off `provider_name` (`provider_credentials` is not read) |
+
+The name is always shown without credentials.
+
+### 6.3 What the page view shows (Page Details → Provider Extraction)
+
+| Row | Extracted / Final | Confidence |
+|---|---|---|
+| **Provider Name** | one signer: the name. Several: `1. WILLIAM J WALL III   2. Jane Roe` | the page's provider confidence (`provider_confidence` / CSV `confidence`) |
+| **Provider Credentials** | one signer: `MD`. Several: `1. MD   2. DNP` | the same |
+| **Provider Signature** | `Yes` / `No` from `signature_present` | the same |
+
+Ground truth for these rows is the page's `provider_credentials` / `provider_signature`
+labels (`page_ground_truth`).
+
+### 6.4 Accuracy and Excel Compare
+
+| | Uses |
+|---|---|
+| **Accuracy — Provider Credentials** | the credentials of **every** signer (v2) joined "MD \| DNP", else those split off `provider_name` (v1). Every page: any one credential shared with the ground truth = Match; a ground truth of NA / blank / None is Not Found — none extracted = Match, some = No Match |
+| **Excel Compare** | the same provider name and credentials, from `imaging_final` |
 
 ---
 
-## 7. Known gaps
+## 7. What else in the pipeline uses it
+
+| Where | Reads | Effect |
+|---|---|---|
+| **Blank / junk R3** (pass 2) | `<chart>_provider_signature.csv` `signature_present = y`, or a signature phrase in the text | **Main** — except when DistilBERT and the keywords both say junk (JJ): the vote decides ([`BLANK_JUNK_LOGIC.md`](BLANK_JUNK_LOGIC.md)) |
+| **Continuity** check 6 | the same CSV `signature_present = y`, or a signature block in the text | a signed page ends its document; an undated next page starts a new one ([`CONTINUITY_LOGIC.md`](CONTINUITY_LOGIC.md)) |
+
+---
+
+## 8. Known gaps
 
 - **No keyless provider.** A name without a key ("— John Smith, MD" alone at the
   bottom) is found only through the signature extractor or not at all.
