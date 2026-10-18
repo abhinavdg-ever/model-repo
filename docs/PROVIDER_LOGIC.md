@@ -192,8 +192,9 @@ A duplicate page takes these from the page it duplicates.
 
 **In short:** v1 = old `imaging_final` rows with only `provider_name` (credentials inside)
 and `signature_present`; v2 = everything after a re-run, all provider columns filled when
-the page is signed, and with no signature only `signature_present = false`,
-`provider_version = 2` and an empty `signers`.
+the page is signed; with no signature `signature_present = false`, `provider_version = 2`,
+an empty `signers`, and the page's provider in `provider_name` / `provider_credentials` /
+confidence when a counted provider or credentials row names one (§1 rule 4).
 
 No column is removed. A chart becomes v2 when `kv_extract` and `imaging_final` re-run.
 The writers write only the columns a table has, so a database without the new columns
