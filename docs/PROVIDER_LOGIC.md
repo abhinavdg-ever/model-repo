@@ -10,7 +10,9 @@ signed, where each value is stored, and what uses it.
 | Stage | `kv_extract` (seq 56), key/value extraction — before blank/junk pass 2 |
 | Keys | `provider_name/keys.json` (46), `electronic_signature/keys.json` (30), `provider_name/roles.json`, `provider_name/suffixes.txt` (227 credentials) |
 | Staging | `<chart>/staging/extraction.json` — every candidate, per field |
-| Outputs | `imaging/<chart>_provider_signature.csv`; `imaging_final.provider_name`, `signature_present` |
+| Outputs | DB `provider_signature_results` + `imaging/<chart>_provider_signature.csv` (kv_extract); DB `imaging_final` + `imaging/<chart>_final.csv` (imaging_final) — §5 |
+| review-ui | Production: `imaging_final`; Local: `imaging_final` and the CSV, or the CSV alone — §6 |
+| Database changes | [`schema/changes_2026-10-18.sql`](../schema/changes_2026-10-18.sql) |
 
 ---
 
@@ -112,12 +114,28 @@ From the key's box (words in raw OCR order):
 
 ## 4. Credentials
 
-Two places, used differently:
-
-| | How | Used by |
+| Where credentials come from | How | Used for |
 |---|---|---|
-| **On the chosen provider** | the credential tokens at the end of the provider name (`signature_people` splits "Ramsey Luce, R.N." into "Ramsey Luce" + "R.N.") | **review-ui** (page view, accuracy, Excel compare) |
-| `provider_credentials` field (staging only) | every credential in `provider_credentials_canon.json` (38: MD, DO, DMD, DDS, DPM, OD, DC, PhD, PsyD, PharmD, DNP, NP, PA, PA-C, RN, LPN, APRN, FNP, CRNA, CNP …; not LVN or MA) after a name on the same line; MD / PA / MA / DC dropped when followed by a ZIP code (a state, not a credential); the provider = up to 4 words before it, back to a colon | the extraction pane only |
+| A signature's `designation` | as the extractor read it ("MD", "APRN.CNP") | step 1 (§1) |
+| A signature's `provider_name` | the credential tokens in it ("WILLIAM J WALL III, MD" → MD) | step 1, when `designation` is empty |
+| A signature's `sentence` | every credential of `provider_credentials_canon.json` in it, in order | step 2 |
+| The page's `provider_credentials` rows (`accepted = true`) | the credentials extractor: a credential after a name on the same line; MD / PA / MA / DC dropped when followed by a ZIP code (a state); the provider = up to 4 words before it | step 3b, one signature only |
+
+**The lists:**
+
+- `keyword-canon/provider_credentials_canon.json` — **38**, the ones searched for: MD, DO,
+  MBBS, DM, DMD, DDS, DPM, OD, DC, PhD, PsyD, PharmD, DNP, NP, APRN, ARNP, CRNP, CNP, FNP,
+  FNP-C, FNP-BC, AGACNP, PMHNP, PMHNP-BC, CNS, CNM, CRNA, PA, PA-C, RN, LPN, LCSW, LPC,
+  LMFT, PT, DPT, OT, SLP. Not LVN or MA.
+- `extraction/provider_name/suffixes.txt` — **227**, used to strip credentials off a name.
+- `keyword-canon/provider_credentials_reference.json` — the client's **codable (66)** and
+  **non-codable (143)** credentials with descriptions. Not read by the pipeline yet.
+
+A token is a credential when it is in a list and printed in capitals (or its usual case:
+PhD, PharmD): "Rd" (a road) and "Md" (a state) are not. Combined credentials count
+("APRN.CNP", "MD/PhD"); "M.D." keeps its dots.
+
+---
 
 ## 5. What it writes
 
