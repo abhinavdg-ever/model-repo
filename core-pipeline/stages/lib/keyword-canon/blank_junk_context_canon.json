@@ -22,15 +22,12 @@
     "footer_band": 0.08
   },
   "short_page": {
-    "note": "Short page rule (precedence step R5). Content that ends within the top 'top_fraction' (15%) of the page height -> JUNK / Others, even when it carries a clinical heading and whatever the neighbouring pages are. Only exemption: Provider Signature = Yes (see method §6).",
-    "top_fraction": 0.15,
+    "note": "Short page rule (precedence step R5). Content that ends within the top 'top_fraction' (20%; 15% before 2026-10-18) of the page height -> JUNK / Others, even when it carries a clinical heading and whatever the neighbouring pages are. Only exemption: Provider Signature = Yes (see method §6).",
+    "top_fraction": 0.2,
     "ignore_footer_band": 0.06,
-    "body_ink_band": [
-      0.17,
-      0.94
-    ],
+    "body_ink_band": [0.22, 0.94],
     "body_ink_max_fraction": 0.005,
-    "note_body_ink": "Ink below the short band = the share of the 17%-94% band (body_ink_band) that is dark ink strokes (hw_printed.page_marks strong_fraction). At or above body_ink_max_fraction (0.5%, 2026-10-18; was 0.01%) the page has content below and R5 does not junk it; a stamp, logo or fax line (~0.2%) no longer blocks it. votes.short_page records ink, ink_fraction and ink_limit.",
+    "note_body_ink": "Ink below the short band = the share of the 22%-94% band (body_ink_band; it starts 2% below top_fraction) that is dark ink strokes (hw_printed.page_marks strong_fraction). At or above body_ink_max_fraction (0.5%, 2026-10-18; was 0.01%) the page has content below and R5 does not junk it; a stamp, logo or fax line (~0.2%) no longer blocks it. votes.short_page records ink, ink_fraction and ink_limit.",
     "ignore_line_patterns": [
       "\\b(?:page|pg|pge)\\.?\\s*#?\\s*\\d+\\s*(?:of|/)\\s*\\d+\\b",
       "^\\s*\\d{1,4}\\s*$",

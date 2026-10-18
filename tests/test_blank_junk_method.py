@@ -352,3 +352,11 @@ def test_r5_records_the_ink_it_measured():
     verdict = run("Optum ROI request for records", lines=lines, body_ink=True, body_ink_fraction=0.0042)
     assert verdict.votes["short_page"]["ink"] is True
     assert (verdict.votes["short_page"]["ink_fraction"], verdict.votes["short_page"]["ink_limit"]) == (0.0042, 0.005)
+
+
+def test_r5_short_page_reaches_20_percent():
+    # Content ending at 18% is short now (15% before); past 20% it is not.
+    short = [Line("Optum release of information", 0.03, 0.05), Line("Patient DOB MRN", 0.16, 0.18)]
+    assert run("Optum release of information Patient DOB MRN", lines=short, body_ink=False).rule == "R5"
+    longer = [Line("header", 0.03, 0.05), Line("more text", 0.20, 0.21)]
+    assert run("header more text here", lines=longer, body_ink=False).rule != "R5"

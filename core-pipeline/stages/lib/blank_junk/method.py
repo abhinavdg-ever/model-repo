@@ -14,7 +14,8 @@ The ladder, first rule that fires decides (R4, R5 and R3's KV half need pass 2):
                     both voters say JUNK (JJ): then the vote (R9) decides
   R4 DistilBERT     p(junk) > 0.85 -> Junk, DistilBERT's subtype, unless the canon finds
                     clinical (C) or demographic (D) evidence: then the vote decides
-  R5 short page     content ends in the top 15% of the page height -> Junk / Others
+  R5 short page     content ends in the top 20% of the page height, under 0.5% ink below
+                    (22%-94%) -> Junk / Others
   R6 retrieval      record_request + roi_vendors >= 7 and not C+ -> Junk / Record Request
   R7 strong clinical  C+ -> Main
   R8 Visual         document_type 'visual' -> Main, unless retrieval / invoice wording >= 7
