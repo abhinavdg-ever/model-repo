@@ -315,7 +315,7 @@ kept on every ballot.
 
 | # | Ballots | Verdict | Notes |
 |---|---|---|---|
-| 1 | J J | **JUNK** if at least one J is strong; else **KEEP** | Two leanings are not agreement |
+| 1 | J J | **JUNK**, whatever the strength (changed 2026-10-18; pass 1 still needs two strong) | Both voters agree |
 | 2 | J A | **JUNK**, DistilBERT's subtype | DistilBERT alone, keywords have no evidence either way |
 | 3 | A J | **JUNK** when the keyword junk score ≥ 7 (`voters.keyword.junk_alone_min`); else **KEEP** | Keywords alone, only at a strong score. DistilBERT abstains under 8 words, when not loaded, or between its thresholds |
 | 4 | J K, K J | **KEEP** | The voters disagree |

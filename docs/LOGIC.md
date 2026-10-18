@@ -279,7 +279,7 @@ alone.
 
 | Ballots | Verdict |
 |---|---|
-| J J | Junk if at least one is strong, else Main |
+| J J | Junk, whatever the strength (pass 1: only when both are strong) |
 | J A | Junk (DistilBERT alone) |
 | A J | Junk when the keyword junk score ≥ 7 (`voters.keyword.junk_alone_min`), else Main |
 | J K, K J | Main |

@@ -544,7 +544,8 @@ def _vote(inputs: PageInputs, scores: Scores, ballots: dict[str, Ballot], votes:
     alone_min = float(canon().raw["voters"]["keyword"]["junk_alone_min"])
 
     if bert.vote == JUNK and kw.vote == JUNK:
-        row, verdict = 1, JUNK if STRONG in (bert.strength, kw.strength) else KEEP
+        # Both say junk: Junk, whatever the strength (pass 1 still waits for two strong).
+        row, verdict = 1, JUNK
     elif bert.vote == JUNK and kw.vote == ABSTAIN:
         row, verdict = 2, JUNK
     elif bert.vote == ABSTAIN and kw.vote == JUNK:

@@ -172,9 +172,17 @@ class TestVote:
         # both agree: 1 - (1 - 0.84) * (1 - 1.0)
         assert verdict.confidence == pytest.approx(1.0)
 
-    def test_jj_both_weak_stays_main(self):
+    def test_jj_both_weak_is_junk_too(self):
         verdict = run(FAX_TEXT, bert=bert(0.70))
-        assert (verdict.votes["ballots"], verdict.code) == ("JJ", classify.CODE_MAIN)
+        assert verdict.votes["ballots"] == "JJ" and verdict.code != classify.CODE_MAIN
+
+    def test_jj_both_weak_waits_in_pass_1(self):
+        verdict = run(FAX_TEXT, pass_no=1, bert=bert(0.70))
+        assert verdict.code == classify.CODE_MAIN and "deferred" in verdict.reason
+
+    def test_jj_still_yields_to_the_handwritten_veto(self):
+        verdict = run(FAX_TEXT, bert=bert(0.70), hw_area_pct=45.0)
+        assert (verdict.code, verdict.votes.get("veto")) == (classify.CODE_MAIN, "handwritten")
 
     def test_ja_distilbert_alone_is_junk(self):
         verdict = run(FILLER, bert=bert(0.70, "JUNK_LETTER_FAX"))
