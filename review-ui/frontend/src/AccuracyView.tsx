@@ -338,7 +338,13 @@ function RangeSliders({
   return (
     <fieldset className="accuracy-filter-range">
       <legend>
-        {label}: <strong>{range.min}%–{range.max}%</strong>
+        {/* The range only once it is narrowed: an untouched slider reads just its name. */}
+        {label}
+        {range.min > 0 || range.max < 100 ? (
+          <>
+            : <strong>{range.min}%–{range.max}%</strong>
+          </>
+        ) : null}
       </legend>
       <div className="accuracy-range">
         <div className="accuracy-range-track" aria-hidden="true">
