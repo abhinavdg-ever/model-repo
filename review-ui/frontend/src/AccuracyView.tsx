@@ -135,13 +135,14 @@ function hasCredMatch(rates: ClassRates): boolean {
 }
 
 /** Precision / Recall / F1 (Cred. Match for Provider Signature) for Class 1, label above value. */
-function RatesGrid({ rates }: { rates: ClassRates }) {
+function RatesGrid({ rates, compact = false }: { rates: ClassRates; compact?: boolean }) {
   return (
     <dl className="accuracy-class-grid">
       {[
         ["Precision", formatPrecision(rates)],
         ["Recall", formatRecall(rates)],
-        hasCredMatch(rates) ? ["Cred. Match", formatCredMatch(rates)] : ["F1", formatF1(rates)],
+        // The table's narrow cells say "Cred M%"; the donut card spells it out.
+        hasCredMatch(rates) ? [compact ? "Cred M%" : "Cred. Match", formatCredMatch(rates)] : ["F1", formatF1(rates)],
       ].map(([name, value]) => (
         <div key={name}>
           <dt>{name}</dt>
@@ -177,7 +178,7 @@ function CompactScore({
       <p className="accuracy-distribution">
         <Distribution tally={tally} binary={binary} />
       </p>
-      {rates ? <RatesGrid rates={rates} /> : null}
+      {rates ? <RatesGrid rates={rates} compact /> : null}
     </div>
   );
 }
