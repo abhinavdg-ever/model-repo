@@ -357,8 +357,8 @@ function pageScores(
 
   const single = (field: GtBit[]): Verdict | null => (labeled(field) ? grade(field) : null);
 
-  // Page type is scored on the pages the ground truth says are not blank /
-  // junk. One the pipeline called blank / junk has the type Blank/Junk: a miss.
+  // Page type on every labelled page. Blank / junk is a type of its own (Blank/Junk) on
+  // both sides.
   const pageTypeLabelled = labeled(bits.pageType) || labeled(finalBits.pageType);
 
   // Codability on every labelled page; Discharge is Codable. A page the
@@ -387,11 +387,15 @@ function pageScores(
       blankJunk: blankJunkCalls
         ? blankJunkCalls.expected === blankJunkCalls.predicted ? "yes" : "no"
         : null,
-      pageType: blankOrJunk || !pageTypeLabelled
-        ? null
-        : pipelineBlankJunk
-          ? "no"
-          : finalOrExtracted(single(finalBits.pageType), single(bits.pageType)),
+      // A page the ground truth calls blank / junk has the type Blank/Junk: the pipeline
+      // calling it blank / junk too is a Match, anything else a No Match.
+      pageType: blankOrJunk
+        ? pipelineBlankJunk ? "yes" : "no"
+        : !pageTypeLabelled
+          ? null
+          : pipelineBlankJunk
+            ? "no"
+            : finalOrExtracted(single(finalBits.pageType), single(bits.pageType)),
       codeable,
       credentials: credentialsCalled?.verdict ?? null,
       // Every page: a ground truth of NA (or none) is upright (0°), as is a page the rotation
