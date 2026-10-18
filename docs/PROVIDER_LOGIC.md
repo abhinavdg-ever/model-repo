@@ -43,10 +43,15 @@ the electronic-signature, provider-name and credentials rows alike.
    highest-scoring), then the others by score.
 2. Each candidate's name and credentials are found by the steps below.
 3. **Provider Signature = Yes** only when at least one signer is found (a name or
-   credentials). **No** when there is no counted signature — **even if the page has
-   provider credentials or a provider name** — and when a signature yields neither a name
-   nor credentials anywhere. No ⇒ no provider name, no credentials.
-4. review-ui lists several signers numbered, **one per line** (1. … / 2. …).
+   credentials). **No** when there is no counted signature — even if the page has
+   provider credentials or a provider name — and when a signature yields neither a name
+   nor credentials anywhere.
+4. **No counted signature ⇒ Signature No, but the page's provider is still named**
+   (`source = page_provider`, `signers` empty): the best counted `provider_credentials`
+   row that has a `provider_name` (name = its `provider_name`, credentials = its
+   `value`); else the best counted `provider_name` row (its `value`, credentials split
+   off). Confidence = that row's score × 0.75. Nothing counted ⇒ no name, no credentials.
+5. review-ui lists several signers numbered, **one per line** (1. … / 2. …).
 
 For each counted signature:
 
@@ -84,7 +89,9 @@ Examples:
 | one signature, key "Signed", no name; no credentials row with a name; page `provider_name` "Daniel J Hamilton, MD" (accepted) | 1. Daniel J Hamilton · MD (step 3b) |
 | a signature scored 0.75, not accepted | counts (> 0.7) |
 | one signature, nothing found in it or on the page | **Signature No**; no name, no credentials |
-| no counted signature, but the page has "Meghan Newman, FNP" as provider / credentials | **Signature No**; no name, no credentials |
+| no electronic signature; credentials row "MD" naming "Weidong Huang" (0.9); provider_name "Finkelstein Tom I, MD" (0.77) | **Signature No**; Weidong Huang · MD (the credentials row first), confidence 0.675 |
+| no electronic signature; only provider_name "Finkelstein Tom I, MD" (0.77, accepted) | **Signature No**; Finkelstein Tom I · MD, confidence 0.58 |
+| no electronic signature, no counted provider or credentials row | **Signature No**; no name, no credentials |
 
 A credential is a token in `provider_name/suffixes.txt` or `provider_credentials_canon.json`,
 printed in capitals (or its usual case: PhD, PharmD); combined ones count ("APRN.CNP",
@@ -157,11 +164,11 @@ A duplicate page takes these from the page it duplicates.
 |---|---|---|
 | `chart_id`, `page_id` | ✅ | ✅ |
 | `signature_present` | ✅ `true` | ✅ `false` |
-| `provider_name` | ✅ the first signer's bare name (NULL only if no name was found anywhere) | ❌ |
-| `provider_credentials` | ✅ the first signer's credentials (NULL if none were found) | ❌ |
+| `provider_name` | ✅ the first signer's bare name (NULL only if no name was found anywhere) | ✅ the page's provider (§1 rule 4), else NULL |
+| `provider_credentials` | ✅ the first signer's credentials (NULL if none were found) | ✅ the page's provider's, else NULL |
 | `signers` | ✅ `[{"name", "credentials", "signature_date", "confidence"}, …]` | ✅ `[]` |
 | `provider_version` | ✅ `2` | ✅ `2` |
-| `confidence` | ✅ (§1) | ❌ |
+| `confidence` | ✅ (§1) | ✅ the page provider row's score × 0.75, else NULL |
 | `signature_date` | ✅ the first signer's (NULL if none printed) | ❌ |
 | `signature_key`, `region`, `scale`, `sentence`, `ner_text`, `source` | ✅ the first (selected) signature's | ❌ |
 | `created_at`, `updated_at` | ✅ | ✅ |
@@ -171,11 +178,11 @@ A duplicate page takes these from the page it duplicates.
 | Column | **v1** row (written before 2026-10-18) | **v2**, signature Yes | **v2**, signature No |
 |---|---|---|---|
 | `signature_present` | ✅ | ✅ `true` | ✅ `false` |
-| `provider_name` | ✅ the name **with** its credentials ("Ramsey Luce, R.N."); could be filled with **no** signature (the old rule named a provider anyway) | ✅ bare name | ❌ |
-| `provider_credentials` | ❌ (new column) | ✅ | ❌ |
+| `provider_name` | ✅ the name **with** its credentials ("Ramsey Luce, R.N."); could be filled with **no** signature (the old rule named a provider anyway) | ✅ bare name | ✅ the page's provider, else NULL |
+| `provider_credentials` | ❌ (new column) | ✅ | ✅ the page's provider's, else NULL |
 | `signers` | ❌ | ✅ the list | ❌ (an empty list is stored as NULL here) |
 | `provider_version` | ❌ — review-ui reads NULL as **1** | ✅ `2` | ✅ `2` |
-| `provider_confidence` | ❌ | ✅ | ❌ |
+| `provider_confidence` | ❌ | ✅ | ✅ when the page's provider is named, else NULL |
 
 **The CSVs** — `<chart>_provider_signature.csv` has the same columns and values as
 `provider_signature_results` (`signature_present` as `y` / `n`, `signers` as JSON text,

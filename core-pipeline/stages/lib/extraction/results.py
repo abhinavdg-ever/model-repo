@@ -212,6 +212,27 @@ def _signer(row: dict[str, Any]) -> tuple[Optional[str], Optional[str]]:
     return name, creds
 
 
+def _page_provider(
+    provider_hits: Optional[list[dict[str, Any]]],
+    credential_hits: Optional[list[dict[str, Any]]],
+) -> tuple[Optional[str], Optional[str], Optional[float]]:
+    """The page's provider without a signature: the best counted ``provider_credentials``
+    row that names its provider (name = its ``provider_name``, credentials = its
+    ``value``), else the best counted ``provider_name`` row (its ``value``, credentials
+    split off). (name, credentials, that row's score); (None, None, None) when neither."""
+    named = _best([
+        item for item in _as_hits(credential_hits)
+        if _counts(item) and _text(item, "value") and _text(item, "provider_name")
+    ])
+    if named is not None:
+        return split_name_credentials(_text(named, "provider_name"))[0], _text(named, "value"), _score(named)
+    best = _best([item for item in _as_hits(provider_hits) if _counts(item) and _text(item, "value")])
+    if best is not None:
+        name, creds = split_name_credentials(caps_credentials_only(_text(best, "value")))
+        return name, creds, _score(best)
+    return None, None, None
+
+
 def signature_fields(
     hit: Any = None,
     provider_hits: Optional[list[dict[str, Any]]] = None,
@@ -221,8 +242,9 @@ def signature_fields(
 
     ``hit`` is the page's electronic-signature rows; one counts when accepted or scored
     above COUNTS_ABOVE (0.7). Signature present = at least one signer was found (a name or
-    credentials); a signature with neither is No. Without one, no provider name, no
-    credentials.
+    credentials); a signature with neither is No. With **no counted signature**: Signature
+    No, and the page's provider from ``_page_provider`` (a counted credentials row naming
+    its provider, else a counted provider_name row), confidence x0.75.
 
     Each accepted signature: name = its ``provider_name`` without credentials, credentials =
     its ``designation``; a missing name from its ``ner_text``, missing credentials from its
@@ -251,7 +273,18 @@ def signature_fields(
         "provider_version": PROVIDER_VERSION,
     }
     if not rows:
-        return empty
+        # No signature: Signature No, but the page's provider from its counted
+        # provider_credentials (a row naming its provider) or provider_name rows.
+        name, creds, score = _page_provider(provider_hits, credential_hits)
+        if not name:
+            return empty
+        return {
+            **empty,
+            "provider_name": name,
+            "provider_credentials": creds,
+            "confidence": round(score * OUTSIDE_FACTOR, 4) if score is not None else None,
+            "source": "page_provider",
+        }
     primary = _best([row for row in rows if row.get("selected")]) or _best(rows)
     ordered = [primary, *sorted((row for row in rows if row is not primary), key=lambda row: -(_score(row) or 0.0))]
 
