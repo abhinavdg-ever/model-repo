@@ -199,4 +199,9 @@ Azure OpenAI and NER paths and skip themselves when those are not configured.
 | [`docs/API.md`](docs/API.md) | Environment, model downloads, and starting uvicorn |
 | [`docs/FLOW.md`](docs/FLOW.md) | What runs when — end-to-end diagrams, skip rules, resume behaviour |
 | [`docs/LOGIC.md`](docs/LOGIC.md) | How each decision is made, and exactly what it writes |
+| [`docs/DOS_LOGIC.md`](docs/DOS_LOGIC.md) | Date of service: the date hierarchy, every rule and setting |
+| [`docs/BLANK_JUNK_LOGIC.md`](docs/BLANK_JUNK_LOGIC.md) | Blank / junk: rules R1–R9, the vote, the short page, every setting |
+| [`docs/CONTINUITY_LOGIC.md`](docs/CONTINUITY_LOGIC.md) | Which pages form a document, and the Final values they share |
+| [`docs/PROVIDER_LOGIC.md`](docs/PROVIDER_LOGIC.md) | Provider name, credentials and signature, and what uses them |
+| [`docs/PAGE_CLASSIFICATION.md`](docs/PAGE_CLASSIFICATION.md) | Page type / sub-type: the page axes model, canon and Final rules |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System shape, data model, the role of every file |
