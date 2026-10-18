@@ -113,8 +113,9 @@ SELECT
     to_jsonb(f) ->> 'provider_credentials' AS final_provider_credentials,
     to_jsonb(f) -> 'signers' AS final_signers,
     to_jsonb(f) ->> 'provider_version' AS final_provider_version,
-    -- Provider Signature accuracy: did the pipeline find a signature.
-    f.signature_present AS final_signature_present
+    -- Provider Signature accuracy: did the pipeline find a signature ('true' / 'false';
+    -- NULL on a database whose imaging_final has no such column).
+    to_jsonb(f) ->> 'signature_present' AS final_signature_present
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name
@@ -271,6 +272,20 @@ def _page_type_semantic(gt_page_type: str | None, encounter_type: str | None,
     return semantic.best_similarity(expected, actual)
 
 
+def _signed(value: object) -> str | None:
+    """imaging_final.signature_present as Yes / No; None when the database has no value."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    folded = str(value).strip().lower()
+    if folded in ("true", "t", "1", "yes"):
+        return "Yes"
+    if folded in ("false", "f", "0", "no"):
+        return "No"
+    return None
+
+
 def _float(value: object) -> float | None:
     try:
         return None if value is None else float(value)
@@ -326,7 +341,7 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
         finalDosTo=_fmt_date(final_to),
         providerName=provider_name or None,
         providerCredentials=provider_credentials or None,
-        providerSignature=None if final_signed is None else ("Yes" if final_signed else "No"),
+        providerSignature=_signed(final_signed),
         groundTruth=PageGroundTruth(
             pageNumber=int(page_number),
             sourcePageId=_text(source_page_id),
