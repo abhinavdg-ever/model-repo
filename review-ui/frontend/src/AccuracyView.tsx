@@ -184,7 +184,7 @@ const RATES_INFO =
   "Precision = TP / (TP + FP): share of the pipeline's Class 1 calls that were right. " +
   "Recall = TP / (TP + FN): share of the real Class 1 pages the pipeline caught. " +
   "F1 = 2 × Precision × Recall / (Precision + Recall). " +
-  "Provider Signature shows Cred. Match instead of F1: of the Signature = Yes cases (pages the ground truth gives credentials), the share whose credentials match the ground truth's. " +
+  "Provider Signature shows Cred. Match instead of F1: of the pages the ground truth gives credentials for, the share whose credentials match the ground truth's. " +
   "These matter because Class 1 pages are rare: the overall accuracy can be high while they are missed.";
 
 function Donut({
