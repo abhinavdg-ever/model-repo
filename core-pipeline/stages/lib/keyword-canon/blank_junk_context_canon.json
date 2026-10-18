@@ -38,8 +38,9 @@
     "note_patterns": "A line matching any of these (anywhere in the line) is a running header / footer stamp, not content: 'Page 3 of 7', 'MRN: 023466 Printed: 10/30/2025 8:10 AM Pg 14 of 17', a bare page number, a fax transmission line."
   },
   "visual": {
-    "note": "Visual = ocr_quality_results.document_type == 'visual' (CSV column document_type). Decided in pass 1 (R8): kept, or junk on very strong retrieval / invoice wording. Pass 2 is skipped for these pages. No confidence cut-off, no proxy.",
+    "note": "Visual = ocr_quality_results.document_type == 'visual' (CSV column document_type) AND fewer than max_words words of text. A visual page with more text is judged like any other page. Decided in pass 1 (R8): kept, or junk on very strong retrieval / invoice wording. Pass 2 is skipped for these pages. No confidence cut-off, no proxy.",
     "document_type": "visual",
+    "max_words": 50,
     "veto_junk_groups": [
       "record_request",
       "roi_vendors",

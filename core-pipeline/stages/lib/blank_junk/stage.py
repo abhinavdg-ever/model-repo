@@ -638,10 +638,13 @@ def _run_pass(
                     and pass1.get(pid, "not_blank_junk") in BJ_EXCLUDE
                 ]
                 mark_skipped(conn, ctx, not_eligible, "blank_junk_pass1")
-                # A Visual page is decided in pass 1 (R8); pass 2 does not judge it again.
+                # A Visual page (visual, < 50 words in the text pass 1 read) is decided in
+                # pass 1 (R8); pass 2 does not judge it again. A visual page with more text
+                # was judged like any other and goes on to pass 2.
                 visual_done = [
                     pid for pid in ctx.todo
-                    if pid in pass1 and page_type(quality.get(pid)) == "visual"
+                    if pid in pass1
+                    and method.text_is_visual(page_type(quality.get(pid)), prelim_texts.get(pid))
                 ]
                 mark_skipped(conn, ctx, visual_done, "visual_pass1")
                 no_text = [

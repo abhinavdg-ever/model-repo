@@ -18,7 +18,8 @@ The ladder, first rule that fires decides (R4, R5 and R3's KV half need pass 2):
                     (22%-94%) -> Junk / Others
   R6 retrieval      record_request + roi_vendors >= 7 and not C+ -> Junk / Record Request
   R7 strong clinical  C+ -> Main
-  R8 Visual         document_type 'visual' -> Main, unless retrieval / invoice wording >= 7
+  R8 Visual         document_type 'visual' with < 50 words -> Main, unless retrieval /
+                    invoice wording >= 7 (a visual page with more text is not Visual)
   R9 vote           DistilBERT and the keyword canon (BLANK_JUNK_LOGIC §5)
 
 Pass 1 only lets R1, R2, R6, R8 and two strong JUNK ballots decide; every other page stays
@@ -479,6 +480,21 @@ def _word_count(text: str) -> int:
     return len(re.findall(r"[A-Za-z0-9]+", text or ""))
 
 
+def visual_max_words() -> int:
+    return int(canon().raw["visual"].get("max_words", 50))
+
+
+def is_visual(document_type: str, words: int) -> bool:
+    """Visual = the page-tag model says visual AND the page has fewer than ``max_words``
+    words (canon ``visual.max_words``, 50). A visual page with more text is judged like
+    any other page."""
+    return document_type == "visual" and words < visual_max_words()
+
+
+def text_is_visual(document_type: str, text: Optional[str]) -> bool:
+    return is_visual(document_type, _word_count(text or ""))
+
+
 def _junk_code(subtype: str) -> int:
     return SUBTYPE_CODE.get(subtype, CODE_OTHERS)
 
@@ -602,7 +618,11 @@ def decide(inputs: PageInputs) -> Verdict:
     pass2 = inputs.pass_no == 2
     lines = inputs.lines if pass2 else None
     scores = score_text(text, lines, inputs.prelim_text if pass2 else None)
-    visual = inputs.document_type == "visual"
+    visual = is_visual(inputs.document_type, words)
+    if inputs.document_type == "visual" and not visual:
+        votes_visual_note = f"document_type visual, but {words} words >= {visual_max_words()}: not Visual"
+    else:
+        votes_visual_note = None
     ballots = {
         "bert": bert_ballot(inputs.bert, words),
         "kw": keyword_ballot(scores),
@@ -617,6 +637,8 @@ def decide(inputs: PageInputs) -> Verdict:
         ) if pass2 else "not_in_pass_1",
         "hw_area": inputs.hw_area_pct if inputs.hw_area_pct is not None else "none",
     }
+    if votes_visual_note:
+        votes["visual"] = votes_visual_note
     if inputs.bert:
         votes["bert"]["label"] = inputs.bert.get("top_junk_label") or ""
 

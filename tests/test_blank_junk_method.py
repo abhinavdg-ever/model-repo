@@ -162,6 +162,14 @@ class TestRules:
         verdict = run(text, document_type="visual")
         assert (verdict.code, verdict.rule) == (classify.CODE_INVOICE, "R8")
 
+    def test_r8_visual_needs_fewer_than_50_words(self):
+        # 49 words: still Visual. 50 words: judged like any other page (the vote here).
+        assert run(" ".join(["word"] * 49), document_type="visual", bert=bert(0.8)).rule == "R8"
+        verdict = run(" ".join(["word"] * 50), document_type="visual", bert=bert(0.8))
+        assert verdict.rule != "R8"
+        assert "not Visual" in verdict.votes["visual"]
+        assert method.text_is_visual("visual", "a b c") and not method.text_is_visual("printed", "a")
+
 
 class TestVote:
     """Two voters, DistilBERT then keywords (method §8.2)."""

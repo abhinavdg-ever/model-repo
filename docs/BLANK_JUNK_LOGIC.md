@@ -32,6 +32,8 @@ It runs **twice**:
 | May junk via | R1, R2, R6, R8, and the vote only when **JJ with both strong** | every rule |
 | Otherwise | Main, "deferred to final OCR" | final verdict |
 
+**Visual** = the page-tag model says `visual` **and** the page has fewer than **50** words
+(canon `visual.max_words`); a visual page with more text is judged like any other page.
 A Visual page is decided in pass 1 (R8) and skipped in pass 2. A page the HW stage found **no ink**
 on (`blank_page` / `faint_marks_only`) counts as printed for this: pass 1 judges it (R1:
 Blank) and final OCR skips it. (Before 2026-10-18 it was skipped by pass 1 as
@@ -107,7 +109,7 @@ and `/health` shows `engine: keywords`.
 | Input | From | Used by |
 |---|---|---|
 | No ink | HW stage (`hw_method` blank_page / faint_marks_only) | R1 |
-| Document type `visual` | page-tag model (`ocr_quality_results.document_type`) | R1, R8 |
+| Document type `visual` | page-tag model (`ocr_quality_results.document_type`); Visual only with < 50 words | R1, R8 |
 | Handwritten area % | page-tag model | handwritten veto (> 30%) |
 | Provider Signature = Yes | KV extraction (`provider_signature.csv`), pass 2 | R3 |
 | Word positions (lines) | Final OCR JSON, pass 2 | R5, header / footer rule |
@@ -127,7 +129,7 @@ and `/health` shows `engine: keywords`.
 | **R5** | Short page (§4) | Junk / Others | 2 | evidence |
 | **R6** | record_request + roi_vendors ≥ **7** and not C⁺ | Junk / Record Request/Transmittal | 1, 2 | evidence |
 | **R7** | C⁺ (clinical ≥ 8) | Main | 1, 2 | evidence |
-| **R8** | Visual page → Main, unless record_request + roi_vendors + invoice ≥ **7** → Junk / that group's subtype | Main or Junk | 1 | evidence |
+| **R8** | Visual page (`visual`, < **50** words) → Main, unless record_request + roi_vendors + invoice ≥ **7** → Junk / that group's subtype | Main or Junk | 1 | evidence |
 | **R9** | The vote (§5) | | 1, 2 | evidence |
 
 ---
@@ -318,6 +320,7 @@ Main.
 | R5 ink limit | 0.5% | canon `short_page.body_ink_max_fraction` |
 | R5 footer ignored | bottom 6% | canon `short_page.ignore_footer_band` |
 | R8 visual veto | hard groups ≥ 7 | canon `visual` |
+| Visual word limit | < 50 words | canon `visual.max_words` |
 | Handwritten veto | > 30% | canon `handwritten_veto` |
 | R1 tiny / "blank" | < 15 / < 30 characters | `method.py` |
 | R2 placeholder | ≤ 25 words | `method.py` |
