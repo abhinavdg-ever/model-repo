@@ -1271,9 +1271,10 @@ function PageDetails({
   // the member CSV; imaging_final / provider_signature.csv), never the key/value
   // extractor's raw pick in staging — that stays in the extraction pane.
   const providerCredentials = text(page.providerCredentials) || "";
-  // Several signers: "1. Name  2. Name", credentials in the same order; one: as before.
+  // Several signers: one per line, "1. Name" / "2. Name", credentials in the same order;
+  // one signer: as before.
   const signers = (page.providerSigners ?? []).filter((signer) => text(signer.name));
-  const numbered = (values: string[]) => values.map((value, index) => `${index + 1}. ${value}`).join("   ");
+  const numbered = (values: string[]) => values.map((value, index) => `${index + 1}. ${value}`).join("\n");
   const providerNameShown =
     signers.length > 1
       ? numbered(signers.map((signer) => properName(signer.name || "")))

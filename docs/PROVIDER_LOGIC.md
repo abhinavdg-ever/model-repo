@@ -35,21 +35,27 @@ Order of work: the **extractors** (Appendix) read the page and write candidate r
 
 ## 1. The rule (2026-10-18, provider_version 2)
 
-1. **Provider Signature = Yes** when the page has an `electronic_signature` row with
-   **`accepted = true`**; otherwise **No**.
-2. **No** ⇒ no provider name, no credentials.
-3. **Yes** ⇒ every accepted signature is a candidate signer, in order: the **selected**
-   one first (the highest-scoring when several are selected, else the highest-scoring
-   accepted one), then the others by score. No roles: review-ui numbers them 1. 2. 3.
+A row **counts** when it is `accepted = true` **or** its `score` is above **0.7** — for
+the electronic-signature, provider-name and credentials rows alike.
 
-For each accepted signature:
+1. **Candidate signers** = the page's counted `electronic_signature` rows, in order: the
+   **selected** one first (the highest-scoring when several are selected, else the
+   highest-scoring), then the others by score.
+2. Each candidate's name and credentials are found by the steps below.
+3. **Provider Signature = Yes** only when at least one signer is found (a name or
+   credentials). **No** when there is no counted signature — **even if the page has
+   provider credentials or a provider name** — and when a signature yields neither a name
+   nor credentials anywhere. No ⇒ no provider name, no credentials.
+4. review-ui lists several signers numbered, **one per line** (1. … / 2. …).
+
+For each counted signature:
 
 | Step | Name | Credentials |
 |---|---|---|
 | 1. The signature row's fields | its `provider_name`, credentials stripped | its `designation`; else the credentials written in `provider_name` |
 | 2. Still missing — the same row | its `ner_text` | searched in its `sentence` with the credentials canon (`provider_credentials_canon.json`) |
-| 3a. **Several accepted signatures** | stop here: a signer still missing its name **or** its credentials is removed | |
-| 3b. **One accepted signature** | the page's `provider_name` rows with `accepted = true` (the best-scoring), credentials stripped | the page's `provider_credentials` rows with `accepted = true` (the same provider's first, else the first) |
+| 3a. **Several counted signatures** | stop here: a signer still missing its name **or** its credentials is removed | |
+| 3b. **One counted signature** | first a counted `provider_credentials` row that names its provider (its `provider_name`, with its credential); else the page's counted `provider_name` rows (the best-scoring), credentials stripped | the page's counted `provider_credentials` rows (the same provider's first, else the first) |
 
 The same person signing twice is listed once.
 
@@ -72,8 +78,11 @@ Examples:
 | `provider_name` empty, `ner_text` "WILLIAM J WALL III", sentence "…SIGNED BY: WILLIAM J WALL III, MD on…" | 1. WILLIAM J WALL III · MD (step 2) |
 | "Meghan Newman", no designation, sentence "… Meghan Newman , DNP on 05/19/2025 …" | 1. Meghan Newman · DNP (step 2) |
 | "WILLIAM J WALL III, MD" (selected) + "Jane Roe", no credentials anywhere in its row | 1. WILLIAM J WALL III · MD — Jane Roe removed (step 3a) |
-| one signature, key "Signed", no name; page `provider_name` "Daniel J Hamilton, MD" (accepted) | 1. Daniel J Hamilton · MD (step 3b) |
-| none accepted | Signature No; no name, no credentials |
+| one signature, key "Signed", no name; a credentials row "FNP" naming "Meghan Newman" (score 0.9) | 1. Meghan Newman · FNP (step 3b) |
+| one signature, key "Signed", no name; no credentials row with a name; page `provider_name` "Daniel J Hamilton, MD" (accepted) | 1. Daniel J Hamilton · MD (step 3b) |
+| a signature scored 0.75, not accepted | counts (> 0.7) |
+| one signature, nothing found in it or on the page | **Signature No**; no name, no credentials |
+| no counted signature, but the page has "Meghan Newman, FNP" as provider / credentials | **Signature No**; no name, no credentials |
 
 A credential is a token in `provider_name/suffixes.txt` or `provider_credentials_canon.json`,
 printed in capitals (or its usual case: PhD, PharmD); combined ones count ("APRN.CNP",
@@ -82,8 +91,8 @@ printed in capitals (or its usual case: PhD, PharmD); combined ones count ("APRN
 The rows it picks from (the electronic-signature, provider-name and credentials
 candidates) are made by the extractors: see the Appendix.
 
-Code: `signature_fields`, `split_name_credentials`, `name_from_sentence` in
-`extraction/results.py`; `page_signature` in `extraction/stage.py`.
+Code: `signature_fields`, `split_name_credentials`, `credentials_in_sentence` in
+`extraction/results.py` (`COUNTS_ABOVE` = 0.7, `OUTSIDE_FACTOR`, `SEVERAL_FACTOR`); `page_signature` in `extraction/stage.py`.
 
 ---
 
@@ -110,7 +119,7 @@ Written by `kv_extract`, one row per page, the same values in both.
 |---|---|---|---|
 | `chart_id`, `page_id` | the page | yes | — |
 | `chart_name`, `page_name`, `page_number` | the page | — | yes |
-| `signature_present` | an accepted electronic signature | `true` / `false` | `y` / `n` |
+| `signature_present` | at least one signer found from a counted electronic signature (§1) | `true` / `false` | `y` / `n` |
 | `provider_name` | the first signer's name, **without** credentials (= `signers[0].name`; kept for v1 rows and single-name readers until the switch to v2 only) | yes | yes |
 | `provider_credentials` | the first signer's credentials | yes | yes |
 | `signers` | every signer, in order: `[{"name", "credentials", "signature_date", "confidence"}]` | JSONB | JSON text |
@@ -218,8 +227,8 @@ The name is always shown without credentials.
 
 | Row | Extracted / Final | Confidence |
 |---|---|---|
-| **Provider Name** | one signer: the name. Several: `1. WILLIAM J WALL III   2. Jane Roe` | the page's provider confidence (`provider_confidence` / CSV `confidence`) |
-| **Provider Credentials** | one signer: `MD`. Several: `1. MD   2. DNP` | the same |
+| **Provider Name** | one signer: the name. Several: one per line — `1. WILLIAM J WALL III` / `2. Jane Roe` | the page's provider confidence (`provider_confidence` / CSV `confidence`) |
+| **Provider Credentials** | one signer: `MD`. Several: one per line — `1. MD` / `2. DNP` | the same |
 | **Provider Signature** | `Yes` / `No` from `signature_present` | the same |
 
 Ground truth for these rows is the page's `provider_credentials` / `provider_signature`

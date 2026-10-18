@@ -117,7 +117,7 @@ def test_one_signature_falls_back_to_the_page_provider_and_credentials():
     nameless = [{"key": "Signed", "sentence": "Electronically Signed", "score": 0.7, "accepted": True}]
     fields = signature_fields(
         nameless,
-        [{"value": "Not Accepted, DO", "score": 0.99, "accepted": False},
+        [{"value": "Not Accepted, DO", "score": 0.6, "accepted": False},  # neither accepted nor > 0.7
          {"value": "Daniel J Hamilton, MD", "score": 0.8, "accepted": True}],
         [],
     )
@@ -324,3 +324,25 @@ def test_confidence_is_the_score_lowered_for_outside_values_and_several_signatur
     ])
     assert [s["confidence"] for s in several["signers"]] == [0.72, 0.45]  # each x 0.9
     assert several["confidence"] == 0.585  # their average
+
+
+def test_a_row_counts_when_accepted_or_scored_above_0_7():
+    high = signature_fields([{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "score": 0.75, "accepted": False}])
+    assert (high["signature_present"], high["provider_name"]) == (True, "A. Patel")
+    low = signature_fields([{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "score": 0.7, "accepted": False}])
+    assert low["signature_present"] is False
+
+
+def test_a_missing_name_comes_from_a_credential_row_that_names_its_provider():
+    fields = signature_fields(
+        [{"key": "Signed", "sentence": "Electronically Signed", "score": 0.8, "accepted": True}],
+        [{"value": "Other Doctor, DO", "score": 0.95, "accepted": True}],
+        [{"value": "FNP", "provider_name": "Meghan Newman", "score": 0.9, "accepted": False}],  # counts: > 0.7
+    )
+    assert (fields["provider_name"], fields["provider_credentials"]) == ("Meghan Newman", "FNP")
+    assert fields["confidence"] == 0.6  # from outside the signature: 0.8 x 0.75
+
+
+def test_a_signature_with_no_name_and_no_credentials_anywhere_is_no():
+    fields = signature_fields([{"key": "Signed", "sentence": "Electronically Signed", "score": 0.8, "accepted": True}])
+    assert (fields["signature_present"], fields["provider_name"], fields["signers"]) == (False, None, [])

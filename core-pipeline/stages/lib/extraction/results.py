@@ -171,6 +171,14 @@ PROVIDER_VERSION = 2
 # the page has several signatures.
 OUTSIDE_FACTOR = 0.75
 SEVERAL_FACTOR = 0.9
+# A row counts (electronic signature, provider name, credentials) when the rules accepted
+# it, or its score is above this.
+COUNTS_ABOVE = 0.7
+
+
+def _counts(row: dict[str, Any]) -> bool:
+    """Accepted, or scored above COUNTS_ABOVE."""
+    return bool(row.get("accepted", True)) or (_score(row) or 0.0) > COUNTS_ABOVE
 
 
 def credentials_in_sentence(sentence: Optional[str]) -> Optional[str]:
@@ -211,8 +219,10 @@ def signature_fields(
 ) -> dict[str, Any]:
     """The page's provider signature (docs/PROVIDER_LOGIC.md).
 
-    ``hit`` is the page's electronic-signature rows; only **accepted** ones count.
-    Signature present = any is accepted. Without one, no provider name, no credentials.
+    ``hit`` is the page's electronic-signature rows; one counts when accepted or scored
+    above COUNTS_ABOVE (0.7). Signature present = at least one signer was found (a name or
+    credentials); a signature with neither is No. Without one, no provider name, no
+    credentials.
 
     Each accepted signature: name = its ``provider_name`` without credentials, credentials =
     its ``designation``; a missing name from its ``ner_text``, missing credentials from its
@@ -220,9 +230,10 @@ def signature_fields(
 
     - **Several accepted:** that is all. A signer still missing its name or its
       credentials is removed.
-    - **One accepted:** a missing name from the page's accepted ``provider_name`` rows
-      (``provider_hits``, the best-scoring), missing credentials from its accepted
-      ``provider_credentials`` (``credential_hits``, the same provider's first).
+    - **One counted:** a missing name from a counted ``provider_credentials`` row that
+      names its provider (``credential_hits``), else the page's counted ``provider_name``
+      rows (``provider_hits``, the best-scoring); missing credentials from the counted
+      ``provider_credentials`` (the same provider's first).
 
     ``signers`` lists them, the selected one first, then by score; the same person once.
     ``provider_name`` / ``provider_credentials`` are the first signer's.
@@ -231,9 +242,9 @@ def signature_fields(
     outside it (OUTSIDE_FACTOR), x0.9 each when there are several signatures
     (SEVERAL_FACTOR). Each signer carries its own; the page's is their average.
     """
-    rows = [row for row in _as_hits(hit) if row.get("accepted", True)]
+    rows = [row for row in _as_hits(hit) if _counts(row)]
     empty = {
-        "signature_present": bool(rows),
+        "signature_present": False,
         "signature_key": None, "region": None, "scale": None, "sentence": None,
         "ner_text": None, "provider_name": None, "provider_credentials": None,
         "signature_date": None, "confidence": None, "source": None, "signers": [],
@@ -250,20 +261,23 @@ def signature_fields(
         name, creds = _signer(row)
         outside = False
         if not several:
+            counted_creds = [item for item in _as_hits(credential_hits) if _counts(item) and _text(item, "value")]
             if not name:
-                best = _best([
-                    item for item in _as_hits(provider_hits)
-                    if item.get("accepted", True) and _text(item, "value")
-                ])
+                # A credential row that names its provider ('Meghan Newman' + 'FNP'), then the
+                # page's provider_name rows.
+                named = _best([item for item in counted_creds if _text(item, "provider_name")])
+                if named is not None:
+                    name = split_name_credentials(_text(named, "provider_name"))[0]
+                    creds = creds or _text(named, "value")
+                    outside = True
+            if not name:
+                best = _best([item for item in _as_hits(provider_hits) if _counts(item) and _text(item, "value")])
                 if best is not None:
                     name, from_name = split_name_credentials(_text(best, "value"))
                     creds = creds or from_name
                     outside = True
             if not creds:
-                accepted = [
-                    item for item in _as_hits(credential_hits)
-                    if item.get("accepted", True) and _text(item, "value")
-                ]
+                accepted = counted_creds
                 same = [
                     item for item in accepted
                     if name and _text(item, "provider_name")
@@ -289,12 +303,16 @@ def signature_fields(
             "signature_date": _iso_date(_text(row, "signature_date")), "confidence": score,
         })
 
-    lead = signers[0] if signers else {"name": None, "credentials": None, "signature_date": None, "confidence": None}
+    if not signers:
+        # A signature with no name and no credentials anywhere is not a provider signature.
+        return {**empty, "signature_present": False}
+    lead = signers[0]
     # One signer: its confidence. Several: the average over the listed signers.
     scores = [s["confidence"] for s in signers if s["confidence"] is not None]
     page_confidence = round(sum(scores) / len(scores), 4) if scores else None
     return {
         **empty,
+        "signature_present": True,
         "signature_key": _text(primary, "key"),
         "region": _text(primary, "region"),
         "scale": _text(primary, "scale"),

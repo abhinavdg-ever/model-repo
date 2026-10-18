@@ -358,10 +358,11 @@ def page_signature(staged_page: Optional[staging.StagedPage]) -> dict[str, Any]:
     provider_credentials rows for what that signature lacks."""
     if staged_page is None:
         return signature_fields(None)
+    # Every row: signature_fields counts the accepted ones and those scored above 0.7.
     return signature_fields(
-        staged_page.accepted("electronic_signature"),
-        staged_page.accepted("provider_name"),
-        staged_page.accepted("provider_credentials"),
+        staged_page.rows("electronic_signature"),
+        staged_page.rows("provider_name"),
+        staged_page.rows("provider_credentials"),
     )
 
 
