@@ -25,6 +25,7 @@ names that page.
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date
 from typing import Any, Optional
@@ -38,6 +39,7 @@ from db import (
     get_encounter_map,
     get_member_extraction_map,
     get_page_classification_map,
+    get_provider_signature_map,
     get_quality_map,
     get_sequencing_map,
     upsert_imaging_final,
@@ -67,7 +69,8 @@ COPIED_FROM_REFERENCE = (
     "page_type", "page_subtype", "specialty", "model_type", "codability", "classification_category",
     "continuation_rule", "needs_review",
     "dos_from", "dos_to",
-    "encounter_type", "provider_name", "provider_credentials", "signature_present",
+    "encounter_type", "provider_name", "provider_credentials", "signers", "provider_version",
+    "signature_present",
 )
 
 
@@ -81,13 +84,25 @@ def _number(value: Any) -> Optional[float]:
     return None if value is None else float(value)
 
 
-def _signatures(chart_id: int, chart_name: str) -> dict[str, dict[str, Any]]:
-    """Provider name and signature per page name, from the extraction staging —
-    the same rows the extraction stage writes to its signature CSV."""
-    from stages.lib.extraction.stage import ensure_staging, page_signature
-
-    staged = ensure_staging(chart_id, chart_name)
-    return {staged_page.name: page_signature(staged_page) for staged_page in staged}
+def _signatures(rows: dict[int, dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    """Provider name, credentials, signers, signature and rule version per page_id, from
+    provider_signature_results (written by kv_extract; never the staging)."""
+    out: dict[int, dict[str, Any]] = {}
+    for page_id, row in rows.items():
+        signers = row.get("signers")
+        if isinstance(signers, str):
+            try:
+                signers = json.loads(signers)
+            except ValueError:
+                signers = None
+        out[page_id] = {
+            "signature_present": bool(row.get("signature_present")),
+            "provider_name": row.get("provider_name") or None,
+            "provider_credentials": row.get("provider_credentials") or None,
+            "signers": signers or None,
+            "provider_version": row.get("provider_version"),
+        }
+    return out
 
 
 def _documents(
@@ -126,6 +141,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
     with stage_run(chart_id, STAGE, force=force) as ctx:
         with connect() as conn:
             quality = get_quality_map(conn, chart_id)
+            provider_rows = get_provider_signature_map(conn, chart_id)
             blank_junk = get_blank_junk_final(conn, chart_id)
             classification = get_page_classification_map(conn, chart_id)
             dos = get_dos_map(conn, chart_id)
@@ -133,7 +149,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             encounters = get_encounter_map(conn, chart_id)
             sequencing = get_sequencing_map(conn, chart_id)
             continuity = get_continuity_map(conn, chart_id)
-        signatures = _signatures(chart_id, ctx.chart_name)
+        signatures = _signatures(provider_rows)
 
         # Each page's own DOS, Extracted page type and encounter type come
         # first; continuity grouped the pages from them; then every page of a
@@ -177,7 +193,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             flag = (blank_junk.get(page_id) or {}).get("blank_junk_flag")
             kind = classification.get(page_id) or {}
             member = members.get(page_id) or {}
-            signature = signatures.get(page["page_name"]) or {}
+            signature = signatures.get(page_id) or {}
             # The page type is agreed across the document; the sub-type stays the page's.
             verdict = decide_final(
                 final_pages[page_id],
@@ -219,6 +235,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "encounter_type": (document or own[page_id])["encounter_type"],
                 "provider_name": signature.get("provider_name"),
                 "provider_credentials": signature.get("provider_credentials"),
+                "signers": signature.get("signers") or None,
+                "provider_version": signature.get("provider_version"),
                 "signature_present": signature.get("signature_present") if signature else None,
                 "seq": (sequencing.get(page_id) or {}).get("seq"),
                 "duplicate_of_page_id": None,
@@ -254,7 +272,10 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "chart_name": ctx.chart_name,
                         "page_name": page["page_name"],
                         "page_number": page.get("page_number"),
-                        **{k: "" if v is None else v for k, v in row.items()},
+                        **{
+                            k: "" if v is None else json.dumps(v, ensure_ascii=False) if isinstance(v, list) else v
+                            for k, v in row.items()
+                        },
                     }
                 )
 

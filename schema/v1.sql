@@ -649,6 +649,41 @@ CREATE TRIGGER trg_page_sequencing_results_updated_at
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 
+-- The page's provider signature, one row per page (stage kv_extract, the same values as
+-- imaging/<chart>_provider_signature.csv; docs/PROVIDER_LOGIC.md). signature_present = an
+-- accepted electronic signature. provider_name is the first signer's name without
+-- credentials, provider_credentials theirs, signers every accepted signer (the selected one
+-- first: [{"name", "credentials", "signature_date"}]). provider_version: 2 = this rule;
+-- 1 / NULL = a row from before it (name with credentials, one provider).
+CREATE TABLE provider_signature_results (
+    id                    BIGSERIAL PRIMARY KEY,
+    chart_id              BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
+    page_id               BIGINT NOT NULL REFERENCES page_list(id) ON DELETE CASCADE,
+    signature_present     BOOLEAN NOT NULL DEFAULT FALSE,
+    signature_key         VARCHAR(200),
+    region                VARCHAR(50),
+    scale                 VARCHAR(50),
+    sentence              TEXT,
+    ner_text              TEXT,
+    provider_name         TEXT,
+    provider_credentials  TEXT,
+    signers               JSONB,
+    provider_version      SMALLINT,
+    signature_date        DATE,
+    confidence            NUMERIC(5,4),
+    source                VARCHAR(20),
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (page_id)
+);
+CREATE INDEX idx_provider_signature_results_chart_id ON provider_signature_results(chart_id);
+CREATE INDEX idx_provider_signature_results_page_id ON provider_signature_results(page_id);
+
+CREATE TRIGGER trg_provider_signature_results_updated_at
+    BEFORE UPDATE ON provider_signature_results
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
 -- Printed page number plus the page's section headers. The headers are the
 -- same JSON array stored on the OCR page (text, level, bbox, norm).
 CREATE TABLE additional_page_details (
@@ -763,6 +798,11 @@ CREATE TABLE imaging_final (
     -- The signer's credentials (MD, DNP): the signature's designation, else read from
     -- its sentence, else the page's accepted credentials (docs/PROVIDER_LOGIC.md).
     provider_credentials     TEXT,
+    -- Every accepted signer, the selected one first:
+    --   [{"name", "credentials", "signature_date"}]
+    signers                  JSONB,
+    -- 2 = the provider-signature rule of 2026-10-18; 1 / NULL = older rows.
+    provider_version         SMALLINT,
     signature_present        BOOLEAN,
     seq                      INT,
     duplicate_of_page_id     BIGINT REFERENCES page_list(id) ON DELETE SET NULL,
@@ -1001,7 +1041,9 @@ SELECT
     g.provider_credentials                                    AS gt_provider_credentials,
     -- The signature rows' provider and credentials, as review-ui shows them.
     f.provider_name                                           AS final_provider_name,
-    to_jsonb(f) ->> 'provider_credentials'                    AS final_provider_credentials
+    to_jsonb(f) ->> 'provider_credentials'                    AS final_provider_credentials,
+    to_jsonb(f) -> 'signers'                                  AS final_signers,
+    to_jsonb(f) ->> 'provider_version'                        AS final_provider_version
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name

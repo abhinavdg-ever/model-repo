@@ -458,3 +458,15 @@ ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS specialty VARCHAR(100);
 -- 2026-10-18: the signer's credentials beside the provider name (the provider
 -- signature rule, docs/PROVIDER_LOGIC.md). imaging_final fails on insert without it.
 ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS provider_credentials TEXT;
+
+-- 2026-10-18: every accepted signer, the selected one first (docs/PROVIDER_LOGIC.md).
+ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS signers JSONB;
+
+-- 2026-10-18: provider_signature_results is written by kv_extract and read by
+-- imaging_final (it moved from v2.sql to v1.sql). The new rule's columns, here and on
+-- imaging_final.
+ALTER TABLE provider_signature_results
+    ADD COLUMN IF NOT EXISTS provider_credentials TEXT,
+    ADD COLUMN IF NOT EXISTS signers JSONB,
+    ADD COLUMN IF NOT EXISTS provider_version SMALLINT;
+ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS provider_version SMALLINT;

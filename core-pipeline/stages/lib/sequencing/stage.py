@@ -15,6 +15,7 @@ from typing import Any, Optional
 from config import SEQUENCING_CROSS_ENCODER
 from db import (
     connect,
+    get_additional_page_details_map,
     get_blank_junk_flags,
     get_ocr_texts,
     get_quality_map,
@@ -63,27 +64,26 @@ def _ocr_source_label(
     return ""
 
 
-def _staged_marker(staged_page: Any) -> Optional[Any]:
-    """The printed page number the extraction chose, as a sequencing marker."""
-    if staged_page is None:
+def _printed_marker(details: Optional[dict[str, Any]]) -> Optional[Any]:
+    """The printed page number the key/value stage stored (additional_page_details), as a
+    sequencing marker."""
+    if not details:
         return None
     from stages.lib.sequencing.engine.types import ExplicitMarker
 
-    for row in staged_page.selected("page_no"):
-        try:
-            number = int(row.get("page_no") or 0)
-            total = int(row["page_total"]) if row.get("page_total") else None
-        except (TypeError, ValueError):
-            continue
-        if number < 1 or (total is not None and (total < 1 or number > total)):
-            continue
-        return ExplicitMarker(
-            page_num=number,
-            total_pages=total,
-            pattern="page_x_of_y" if total else "page_x",
-            confidence=1.0 if total else 0.85,
-        )
-    return None
+    try:
+        number = int(details.get("printed_page_no") or 0)
+        total = int(details["printed_page_total"]) if details.get("printed_page_total") else None
+    except (TypeError, ValueError):
+        return None
+    if number < 1 or (total is not None and (total < 1 or number > total)):
+        return None
+    return ExplicitMarker(
+        page_num=number,
+        total_pages=total,
+        pattern="page_x_of_y" if total else "page_x",
+        confidence=1.0 if total else 0.85,
+    )
 
 
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
@@ -102,10 +102,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             final1 = get_ocr_texts(conn, chart_id, "docling")
             final2 = get_ocr_texts(conn, chart_id, "azuredocintel")
             quality = get_quality_map(conn, chart_id)
-
-        from stages.lib.extraction.stage import ensure_staging
-
-        staged = ensure_staging(chart_id, ctx.chart_name)
+            details = get_additional_page_details_map(conn, chart_id)
 
         # Sequencing needs the full main-page set (order is chart-global).
         seq_inputs: list[dict[str, Any]] = []
@@ -133,7 +130,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     "page_number": int(page.get("page_number") or 0),
                     "text": text,
                     "is_classified": is_bj,
-                    "page_marker": _staged_marker(staged.page(page["page_name"])),
+                    "page_marker": _printed_marker(details.get(page_id)),
                 }
             )
 

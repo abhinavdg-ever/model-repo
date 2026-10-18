@@ -52,14 +52,34 @@ def test_a_written_month_converts_and_an_unreadable_date_is_empty():
 SIGNED_BY = "Electronically signed by"
 
 
-def test_signature_present_only_with_a_selected_signature():
+def test_signature_present_only_with_an_accepted_signature():
     # A provider name or credentials alone do not make a signature, nor name the page.
     fields = signature_fields(
-        [{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "selected": False}],
+        [{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "accepted": False}],
         [{"value": "Liane Kirchberger, PA", "score": 0.95}],
         [{"value": "PA", "accepted": True}],
     )
-    assert (fields["signature_present"], fields["provider_name"], fields["provider_credentials"]) == (False, None, None)
+    assert (fields["signature_present"], fields["provider_name"], fields["signers"]) == (False, None, [])
+    # Accepted but not selected still counts.
+    fields = signature_fields([{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "accepted": True, "selected": False}])
+    assert (fields["signature_present"], fields["provider_name"], fields["provider_credentials"]) == (True, "A. Patel", "MD")
+
+
+def test_every_accepted_signer_is_listed_the_selected_one_first():
+    fields = signature_fields([
+        {"key": "Cosigned by", "provider_name": "Jane Roe, DNP", "score": 0.95, "accepted": True, "selected": False},
+        {"key": SIGNED_BY, "provider_name": "WILLIAM J WALL III, MD", "designation": "MD", "score": 0.9,
+         "accepted": True, "selected": True, "signature_date": "01/12/2026"},
+        {"key": "Signed", "sentence": "Signed", "score": 0.5, "accepted": True, "selected": False},  # no name: left out
+        {"key": "Cosigned by", "provider_name": "Jane Roe", "score": 0.4, "accepted": True},  # the same person
+    ])
+    assert fields["signers"] == [
+        {"name": "WILLIAM J WALL III", "credentials": "MD", "signature_date": "2026-01-12"},
+        {"name": "Jane Roe", "credentials": "DNP", "signature_date": None},
+    ]
+    assert (fields["provider_name"], fields["provider_credentials"]) == ("WILLIAM J WALL III", "MD")
+    row = signature_csv_row("c", "1.jpg", 1, fields)
+    assert json.loads(row["signers"])[1]["name"] == "Jane Roe"
 
 
 def test_the_signature_names_the_provider_and_its_designation_the_credentials():

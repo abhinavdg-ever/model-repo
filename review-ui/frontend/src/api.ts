@@ -195,6 +195,8 @@ export type ImagingPageResult = {
   providerCredentials?: string | null;
   providerSignature?: string | null;
   providerSignatureConfidence?: number | null;
+  /** Every accepted signer, the selected one first. None on rows from before 2026-10-18. */
+  providerSigners?: { name?: string | null; credentials?: string | null; signatureDate?: string | null }[] | null;
   groundTruth?: PageGroundTruth | null;
 };
 

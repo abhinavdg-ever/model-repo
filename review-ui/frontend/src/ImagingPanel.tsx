@@ -1271,6 +1271,17 @@ function PageDetails({
   // the member CSV; imaging_final / provider_signature.csv), never the key/value
   // extractor's raw pick in staging — that stays in the extraction pane.
   const providerCredentials = text(page.providerCredentials) || "";
+  // Several signers: "1. Name  2. Name", credentials in the same order; one: as before.
+  const signers = (page.providerSigners ?? []).filter((signer) => text(signer.name));
+  const numbered = (values: string[]) => values.map((value, index) => `${index + 1}. ${value}`).join("   ");
+  const providerNameShown =
+    signers.length > 1
+      ? numbered(signers.map((signer) => properName(signer.name || "")))
+      : properName(page.providerName || "") || NOT_FOUND;
+  const credentialsShown =
+    signers.length > 1
+      ? numbered(signers.map((signer) => text(signer.credentials) || NOT_FOUND))
+      : providerCredentials || NOT_FOUND;
   const stored = storedGroundTruth(page.groundTruth);
   const values = { ...stored, ...edits };
   const dirty =
@@ -1558,14 +1569,14 @@ function PageDetails({
         title="Provider Extraction"
         rows={[
           sameValue(
-            properName(page.providerName || "") || NOT_FOUND,
+            providerNameShown,
             fmtConfidence(page.providerSignatureConfidence, Boolean(page.providerName)),
             { id: "provider_name", label: "Provider Name" },
           ),
           {
             // The credentials on the provider the signature rows name.
             ...sameValue(
-              providerCredentials || NOT_FOUND,
+              credentialsShown,
               fmtConfidence(page.providerSignatureConfidence, Boolean(providerCredentials)),
               { id: "provider_credentials", label: "Provider Credentials", key: true },
             ),

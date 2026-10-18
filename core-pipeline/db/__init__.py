@@ -1283,6 +1283,69 @@ def get_page_types(conn: Any, chart_id: int) -> dict[int, str]:
     return {int(row["page_id"]): row["page_subtype"] or "" for row in rows}
 
 
+PROVIDER_SIGNATURE_COLUMNS = (
+    "signature_present", "signature_key", "region", "scale", "sentence", "ner_text",
+    "provider_name", "provider_credentials", "signers", "provider_version",
+    "signature_date", "confidence", "source",
+)
+_PROVIDER_SIGNATURE_PRESENT: Optional[tuple[str, ...]] = None
+
+
+def _table_columns(conn: Any, table: str) -> set[str]:
+    rows = conn.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name = %s AND table_schema = current_schema()",
+        (table,),
+    ).fetchall()
+    return {str(r["column_name"]) for r in rows}
+
+
+@_dispatch
+def upsert_provider_signature(conn: Any, *, chart_id: int, page_id: int, fields: dict[str, Any]) -> None:
+    """One page's provider signature (stage kv_extract; results.signature_fields), the
+    same values as <chart>_provider_signature.csv. Writes the columns the table has, so a
+    database without the 2026-10-18 columns keeps working."""
+    global _PROVIDER_SIGNATURE_PRESENT
+    if _PROVIDER_SIGNATURE_PRESENT is None:
+        present = _table_columns(conn, "provider_signature_results")
+        _PROVIDER_SIGNATURE_PRESENT = tuple(c for c in PROVIDER_SIGNATURE_COLUMNS if c in present)
+        missing = [c for c in PROVIDER_SIGNATURE_COLUMNS if c not in present]
+        if missing:
+            logger.warning(
+                "provider_signature_results lacks %s: apply schema/temp_changes_to_db.sql",
+                ", ".join(missing),
+            )
+    columns = _PROVIDER_SIGNATURE_PRESENT
+    row = {**fields, "signature_present": bool(fields.get("signature_present"))}
+    values = [
+        json.dumps(row.get(c) or [], default=str) if c == "signers" else row.get(c)
+        for c in columns
+    ]
+    conn.execute(
+        f"""
+        INSERT INTO provider_signature_results (chart_id, page_id, {", ".join(columns)})
+        VALUES (%s, %s, {", ".join(["%s"] * len(columns))})
+        ON CONFLICT (page_id) DO UPDATE SET
+            {", ".join(f"{c} = EXCLUDED.{c}" for c in columns)},
+            updated_at = now()
+        """,
+        (chart_id, page_id, *values),
+    )
+
+
+@_dispatch
+def get_provider_signature_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
+    """provider_signature_results by page_id."""
+    return _by_page(conn, "SELECT * FROM provider_signature_results WHERE chart_id = %s", chart_id)
+
+
+@_dispatch
+def get_additional_page_details_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
+    """``additional_page_details`` by page_id: the printed page number and section headers
+    the key/value stage stored."""
+    return _by_page(conn, "SELECT * FROM additional_page_details WHERE chart_id = %s", chart_id)
+
+
 @_dispatch
 def upsert_additional_page_details(
     conn: Any, *, chart_id: int, page_id: int, fields: dict[str, Any]
@@ -1356,6 +1419,8 @@ IMAGING_FINAL_COLUMNS = (
     # Appended so the Final CSV's columns above keep their places.
     "specialty",
     "provider_credentials",
+    "signers",
+    "provider_version",
 )
 
 
@@ -1386,7 +1451,11 @@ def _imaging_final_columns(conn: Any) -> tuple[str, ...]:
 def upsert_imaging_final(conn: Any, *, chart_id: int, page_id: int, row: dict[str, Any]) -> None:
     """One page's Final values (``stages.lib.imaging_final``), in the columns the table has."""
     columns = _imaging_final_columns(conn)
-    values = [row.get(column) for column in columns]
+    values = [
+        json.dumps(row[column], default=str) if column == "signers" and row.get(column) is not None
+        else row.get(column)
+        for column in columns
+    ]
     conn.execute(
         f"""
         INSERT INTO imaging_final (
@@ -1661,6 +1730,7 @@ CHART_RESULT_TABLES = (
     "imaging_final",
     "page_continuity_results",
     "additional_page_details",
+    "provider_signature_results",
     "blank_junk_classification",
     "ocr_quality_results",
     "ocr_results",

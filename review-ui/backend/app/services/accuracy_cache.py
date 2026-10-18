@@ -33,7 +33,7 @@ from app.services.imaging_overlays import (
     compose_page_type,
     display_page_type,
     inherit_duplicate_blank_junk,
-    provider_fields,
+    signer_fields,
 )
 
 _ready: set[tuple[str, str]] = set()
@@ -110,7 +110,9 @@ SELECT
     g.provider_credentials AS gt_provider_credentials,
     -- The signature rows' provider and credentials, as the page view shows them.
     f.provider_name AS final_provider_name,
-    to_jsonb(f) ->> 'provider_credentials' AS final_provider_credentials
+    to_jsonb(f) ->> 'provider_credentials' AS final_provider_credentials,
+    to_jsonb(f) -> 'signers' AS final_signers,
+    to_jsonb(f) ->> 'provider_version' AS final_provider_version
 FROM page_ground_truth g
 LEFT JOIN chart_list c
        ON c.chart_name = g.chart_name
@@ -146,7 +148,8 @@ SELECT chart_name, page_number, source_page_id,
        ground_truth_updated_at,
        orientation_angle, rotation_known,
        final_page_type, final_page_subtype, final_category, final_dos_from, final_dos_to,
-       gt_provider_credentials, final_provider_name, final_provider_credentials
+       gt_provider_credentials, final_provider_name, final_provider_credentials, final_signers,
+       final_provider_version
   FROM v_accuracy_page
  WHERE chart_name = ANY(%s)
  ORDER BY chart_name, page_number
@@ -296,10 +299,11 @@ def _page(row: tuple, extra: tuple = ()) -> ImagingPageResult:
     (
         orientation, _rotation_known,
         final_type, final_subtype, final_category, final_from, final_to,
-        gt_provider_credentials, final_provider, final_credentials,
-    ) = (tuple(extra) + (None,) * 10)[:10]
+        gt_provider_credentials, final_provider, final_credentials, final_signers, final_version,
+    ) = (tuple(extra) + (None,) * 12)[:12]
     final_key = _text(final_category) or ""
-    provider_name, provider_credentials = provider_fields(_text(final_provider), final_credentials)
+    people = signer_fields(final_signers, _text(final_provider), final_credentials, final_version)
+    provider_name, provider_credentials = people.get("providerName"), people.get("providerCredentials")
     return ImagingPageResult(
         pageNumber=int(page_number),
         fileName=file_name,

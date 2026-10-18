@@ -19,6 +19,7 @@ from typing import Any, Optional
 
 from db import (
     connect,
+    get_additional_page_details_map,
     get_blank_junk_flags,
     get_dos_map,
     get_ocr_texts,
@@ -67,19 +68,16 @@ def _iso(value: Any) -> str:
     return str(value or "")
 
 
-def _printed(staged_page: Any) -> Optional[tuple[int, int]]:
-    """The printed ``page N of M`` the key/value extraction chose."""
-    if staged_page is None:
+def _printed(details: Optional[dict[str, Any]]) -> Optional[tuple[int, int]]:
+    """The printed ``page N of M`` the key/value stage stored (additional_page_details)."""
+    if not details:
         return None
-    for row in staged_page.selected("page_no"):
-        try:
-            number = int(row.get("page_no") or 0)
-            total = int(row.get("page_total") or 0)
-        except (TypeError, ValueError):
-            continue
-        if 1 <= number <= total:
-            return number, total
-    return None
+    try:
+        number = int(details.get("printed_page_no") or 0)
+        total = int(details.get("printed_page_total") or 0)
+    except (TypeError, ValueError):
+        return None
+    return (number, total) if 1 <= number <= total else None
 
 
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
@@ -94,9 +92,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             quality = get_quality_map(conn, chart_id)
             classification = get_page_classification_map(conn, chart_id)
             dos = get_dos_map(conn, chart_id)
+            details = get_additional_page_details_map(conn, chart_id)
 
-        from stages.lib.extraction.stage import ensure_staging
-        staged = ensure_staging(chart_id, ctx.chart_name)
         signed_names = signed_page_names(ctx.chart_name)
         json2 = load_pages(ctx.chart_name, "final2")
         json1 = load_pages(ctx.chart_name, "final1")
@@ -139,7 +136,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     dos_from=_iso(page_dos.get("date_of_service_from")),
                     dos_to=_iso(page_dos.get("date_of_service_to")),
                     signed=name in signed_names or has_signature_section(text),
-                    printed=_printed(staged.page(name)),
+                    printed=_printed(details.get(page_id)),
                     skipped=skipped,
                     breaks=flag in ("blank", "junk"),
                 )

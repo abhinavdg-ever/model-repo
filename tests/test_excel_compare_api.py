@@ -433,7 +433,7 @@ def test_batched_database_rows_map_like_the_chart_view():
             classified=False, page_type=None, subtype=None, category=None,
             final_type=None, final_subtype=None, final_category=None, final_from=None, final_to=None,
             sequenced=False, current=None, actual=None,
-            provider=None, signed=None, credentials=None,
+            provider=None, signed=None, credentials=None, signers=None, version=None,
         )
         base.update(cells)
         return tuple(base.values())
@@ -453,6 +453,6 @@ def test_batched_database_rows_map_like_the_chart_view():
     assert _page(row(classified=True, page_type="Lab", subtype="Lab")).isCodeable == "Not Sure"
     assert _page(row(flag="junk", junk_subtype="Fax Cover")).blankOrJunk == "Yes (Junk)"
     # Provider: imaging_final's signature row, name and credentials split.
-    signed = _page(row(provider="Kenneth Kummerfeld, MD", signed=True))
+    signed = _page(row(provider="Kenneth Kummerfeld, MD", signed=True))  # version 1: split
     assert (signed.providerName, signed.providerCredentials, signed.providerSignature) == (
         "Kenneth Kummerfeld", "MD", "Yes")

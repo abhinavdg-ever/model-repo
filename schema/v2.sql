@@ -19,7 +19,6 @@
 --   users                        reviewer identity (V2 tables FK to it)
 --   chunk_results                OCR text chunking
 --   rejection_results            reviewer accept/reject/flag
---   provider_signature_results   selected electronic signature
 --   invoice_matching_results     invoice reconciliation
 --   ground_truth_csv             labelled data import
 --   model_registry               model versions + storage
@@ -68,6 +67,11 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * provider_signature_results moved to v1.sql (2026-10-18): kv_extract writes it
+--    and imaging_final reads it, with provider_credentials, signers (every
+--    accepted signer) and provider_version. imaging_final gains
+--    provider_credentials, signers and provider_version. Existing databases:
+--    schema/temp_changes_to_db.sql.
 --  * imaging_final.specialty (v1.sql): the page's own specialty from the page
 --    axes. Existing databases:
 --      ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS specialty VARCHAR(100);
@@ -234,33 +238,6 @@ CREATE TRIGGER trg_rejection_results_updated_at
 CREATE INDEX idx_rejection_results_chart_id ON rejection_results(chart_id);
 
 
--- Selected electronic signature. Columns follow the extractor row
--- (Key, Region, Scale, Sentence, Ner_Text, ProviderName, SignatureDate,
--- Score, Source). The printed date (03/15/2024) is stored converted.
-CREATE TABLE provider_signature_results (
-    id                  BIGSERIAL PRIMARY KEY,
-    chart_id            BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
-    page_id             BIGINT NOT NULL REFERENCES page_list(id) ON DELETE CASCADE,
-    signature_present   BOOLEAN NOT NULL DEFAULT FALSE,
-    signature_key       VARCHAR(200),
-    region              VARCHAR(50),
-    scale               VARCHAR(50),
-    sentence            TEXT,
-    ner_text            TEXT,
-    provider_name       TEXT,
-    signature_date      DATE,
-    confidence          NUMERIC(5,4),
-    source              VARCHAR(20),
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (page_id)
-);
-CREATE INDEX idx_provider_signature_results_chart_id ON provider_signature_results(chart_id);
-CREATE INDEX idx_provider_signature_results_page_id ON provider_signature_results(page_id);
-
-CREATE TRIGGER trg_provider_signature_results_updated_at
-    BEFORE UPDATE ON provider_signature_results
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 
 CREATE TABLE invoice_matching_results (

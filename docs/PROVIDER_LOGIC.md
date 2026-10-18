@@ -14,36 +14,42 @@ signed, where each value is stored, and what uses it.
 
 ---
 
-## 1. Summary — the rule (2026-10-18)
+## 1. Summary — the rule (2026-10-18, provider_version 2)
 
 1. **Provider Signature = Yes** when the page has an `electronic_signature` row with
-   `selected = true`; otherwise **No**.
-2. **No** ⇒ Provider Name and Provider Credentials are empty too.
-3. **Yes** ⇒ from the selected signature (the highest-scoring when several), first found wins:
+   **`accepted = true`**; otherwise **No**.
+2. **No** ⇒ no provider name, no credentials.
+3. **Yes** ⇒ **every accepted signature is a signer**, listed in order: the **selected**
+   one first (the highest-scoring when several are selected, else the highest-scoring
+   accepted one), then the others by score. A signer with no name is left out; the same
+   person twice is one signer. No roles: review-ui numbers them 1. 2. 3.
 
-| Step | Provider name | Credentials |
-|---|---|---|
-| 1. The signature row's own fields | its `provider_name`, credentials stripped | its `designation`; else the credentials that were in `provider_name` |
-| 2. The signature row's `sentence` | the words right after the key, up to " on ", " at ", a date or a time (two words at least) | the credentials among those words |
-| 3. The page's accepted `provider_credentials` | — | the one for the same provider first, else the first |
-| 4. The page's `provider_name` rows | the best-scoring (selected first), credentials stripped | its credentials, if still none |
+Each signer's name and credentials, first found wins:
+
+| Step | Name | Credentials | For |
+|---|---|---|---|
+| 1. The signature row's fields | its `provider_name`, credentials stripped | its `designation`; else the credentials that were in the name | every signer |
+| 2. The signature row's `sentence` | the words right after the key, up to " on ", " at ", a date or a time (two words at least) | the credentials among them | every signer |
+| 3. The page's accepted `provider_credentials` | — | the one for the same provider | every signer |
+| 3b. | — | else the first accepted | the first signer only |
+| 4. The page's `provider_name` rows | the best-scoring (selected first), credentials stripped | its credentials, if still none | the first signer only |
 
 Examples:
 
-| Signature row | Result |
+| Signature rows | Signers |
 |---|---|
-| `provider_name` "WILLIAM J WALL III, MD", `designation` "MD" | WILLIAM J WALL III · MD (step 1) |
-| `provider_name` "Meghan Newman", `designation` "", sentence "Electronically signed by Meghan Newman , DNP on 05/19/2025 …" | Meghan Newman (step 1) · DNP (step 2) |
-| key "Signed", sentence "Electronically Signed", no name; page provider "Daniel J Hamilton, MD" | Daniel J Hamilton (step 4) · MD (step 4) |
-| no selected signature | No · — · — |
+| "WILLIAM J WALL III, MD", designation MD (selected) | 1. WILLIAM J WALL III · MD |
+| "Meghan Newman", no designation, sentence "Electronically signed by Meghan Newman , DNP on 05/19/2025 …" | 1. Meghan Newman · DNP (step 2) |
+| "Jane Roe, DNP" (accepted, score 0.95) + "WILLIAM J WALL III, MD" (selected, 0.90) | 1. WILLIAM J WALL III · MD  2. Jane Roe · DNP |
+| key "Signed", sentence "Electronically Signed", no name; page provider "Daniel J Hamilton, MD" | 1. Daniel J Hamilton · MD (step 4) |
+| none accepted | Signature No; no name, no credentials |
 
 A credential is a token in `provider_name/suffixes.txt` or `provider_credentials_canon.json`,
 printed in capitals (or its usual case: PhD, PharmD); combined ones count ("APRN.CNP",
 "MD/PhD"); "M.D." keeps its dots. A mis-cased one ("Rd", "Md") is dropped from the name.
 
 Code: `signature_fields`, `split_name_credentials`, `name_from_sentence` in
-`extraction/results.py`; `page_signature` in `extraction/stage.py` (used by both the
-key/value stage and `imaging_final`).
+`extraction/results.py`; `page_signature` in `extraction/stage.py`.
 
 ---
 
@@ -101,36 +107,36 @@ Two places, used differently:
 | **On the chosen provider** | the credential tokens at the end of the provider name (`signature_people` splits "Ramsey Luce, R.N." into "Ramsey Luce" + "R.N.") | **review-ui** (page view, accuracy, Excel compare) |
 | `provider_credentials` field (staging only) | every credential in `provider_credentials_canon.json` (38: MD, DO, DMD, DDS, DPM, OD, DC, PhD, PsyD, PharmD, DNP, NP, PA, PA-C, RN, LPN, APRN, FNP, CRNA, CNP …; not LVN or MA) after a name on the same line; MD / PA / MA / DC dropped when followed by a ZIP code (a state, not a credential); the provider = up to 4 words before it, back to a colon | the extraction pane only |
 
-## 5. One row per page — `<chart>_provider_signature.csv` / `imaging_final`
+## 5. Where it is stored — one row per page
+
+`kv_extract` turns the staging (`staging/extraction.json`) into these, and **everything
+downstream reads them, never the staging**:
+
+| Store | Read by |
+|---|---|
+| **`provider_signature_results`** (DB, v1.sql) | `imaging_final` |
+| `imaging/<chart>_provider_signature.csv` (same values) | blank/junk R3 and continuity (`signature_present = y`); review-ui Local Mode |
+| `imaging_final` (DB) / `<chart>_final.csv` — copied by `imaging_final` | review-ui Production Mode, accuracy, Excel Compare |
 
 | Column | Value |
 |---|---|
-| `signature_present` | `y` / `n` (CSV); `true` / `false` (`imaging_final`) — §1 rule 1 |
-| `provider_name` | the name, **without** credentials (§1) |
-| `provider_credentials` | the credentials (§1) — **new column**, beside the old ones |
-| `signature_key`, `sentence`, `region`, `scale`, `ner_text`, `source` | the selected signature's |
-| `signature_date` | its date, as ISO |
-| `confidence` | its score (CSV only) |
+| `signature_present` | an accepted signature (`y` / `n` in the CSV) |
+| `provider_name` | the first signer's name, **without** credentials |
+| `provider_credentials` | the first signer's credentials |
+| `signers` | every signer: `[{"name", "credentials", "signature_date"}]` (JSON) |
+| `provider_version` | **2** — this rule |
+| `signature_key`, `sentence`, `region`, `scale`, `ner_text`, `source`, `signature_date`, `confidence` | the first signature's |
 
-The `imaging_final` stage reads the same rows (`page_signature`), so the CSV and the
-table hold the same values.
+### Versions — old and new rows side by side
 
-**Backward compatible.** No column is removed. review-ui reads `provider_credentials`
-when the column exists, else splits the credentials off `provider_name` (rows written
-before 2026-10-18), and always shows the name without credentials (`provider_fields`).
-A database without the column (`schema/temp_changes_to_db.sql` not run yet) still takes
-`imaging_final` rows: the insert writes only the columns the table has.
+| `provider_version` | Written by | review-ui reads |
+|---|---|---|
+| **2** | this rule | `signers` (numbered 1. 2. 3.), else `provider_name` + `provider_credentials`; credentials for accuracy = all signers' |
+| **1** or none | before 2026-10-18 | `provider_name` alone, credentials split off it (`provider_credentials` ignored) |
 
----|---|
-| `provider_name` | among the signature names and the kept provider names, the one with the **highest score**; a tie goes to the earliest, so a signer beats a provider-name hit of equal score. Credentials kept in capitals |
-| `signature_present` | **y** when an accepted signature has a name, a date or a model hit; **n** otherwise (provider-name hits alone never make it **y**) |
-| `signature_key`, `sentence`, `region`, `ner_text`, `source` | from the first signature |
-| `signature_date` | the signature's date, as ISO |
-| `confidence` | the signature's score |
-
-Written to `imaging/<chart>_provider_signature.csv`. The `imaging_final` stage reads
-the same rows into `imaging_final.provider_name` and `signature_present` — the CSV and
-the table hold the same values.
+No column is removed; a chart switches to v2 when `kv_extract` and `imaging_final` re-run.
+The writers write only the columns a table has, so a database without the new columns
+(`schema/temp_changes_to_db.sql` not applied) keeps working.
 
 ---
 
@@ -140,16 +146,16 @@ the table hold the same values.
 |---|---|---|
 | **Blank / junk R3** (pass 2) | `signature_present = y`, or a signature phrase in the text | **Main** — except when DistilBERT and the keywords both say junk (JJ): the vote decides ([`BLANK_JUNK_LOGIC.md`](BLANK_JUNK_LOGIC.md)) |
 | **Continuity** check 6 | `signature_present = y`, or a signature block in the text | a signed page ends its document; an undated next page starts a new one ([`CONTINUITY_LOGIC.md`](CONTINUITY_LOGIC.md)) |
-| **imaging_final** | `provider_name`, `signature_present` | the Final provider (each page's own; a duplicate takes its original's) |
-| **review-ui page view** | Production: `imaging_final`. Local: `provider_signature.csv` | Provider Name, Provider Credentials (`provider_credentials`, else split from the name), Provider Signature Yes / No |
-| **Accuracy — Provider Credentials** | `imaging_final.provider_credentials` (else split from `provider_name`) | every page: any one credential shared = Match; a ground truth of NA / blank / None is Not Found — none extracted = Match, some = No Match |
+| **imaging_final** | `provider_signature_results` | the Final provider, credentials, signers, version (each page's own; a duplicate takes its original's) |
+| **review-ui page view** | Production: `imaging_final`. Local: `provider_signature.csv` | Provider Name and Provider Credentials — numbered 1. 2. 3. with several signers (by `provider_version`, §5) — and Provider Signature Yes / No |
+| **Accuracy — Provider Credentials** | every signer's credentials from `imaging_final` (v2), else split from `provider_name` (v1) | every page: any one credential shared = Match; a ground truth of NA / blank / None is Not Found — none extracted = Match, some = No Match |
 
 ---
 
 ## 7. Known gaps
 
-- **Confidence and signature date are CSV-only.** `imaging_final` has no columns for
-  them, so Production Mode shows NA as the provider confidence.
+- **Confidence is not in `imaging_final`.** It is in `provider_signature_results` and
+  the CSV; Production Mode shows NA as the provider confidence.
 - **No keyless provider.** A name without a key ("— John Smith, MD" alone at the
   bottom) is found only through the signature extractor or not at all.
 - **Keys that often fail** (from `utilities/harvest_keys.py --field provider` on the

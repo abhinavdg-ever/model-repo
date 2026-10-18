@@ -32,7 +32,8 @@ SELECT c.chart_name,
        pc.id IS NOT NULL, pc.page_type, pc.page_subtype, pc.classification_category,
        f.page_type, f.page_subtype, f.classification_category, f.dos_from, f.dos_to,
        s.id IS NOT NULL, COALESCE(s.original_page_number, p.page_number), s.seq,
-       f.provider_name, f.signature_present, to_jsonb(f) ->> 'provider_credentials'
+       f.provider_name, f.signature_present, to_jsonb(f) ->> 'provider_credentials',
+       to_jsonb(f) -> 'signers', to_jsonb(f) ->> 'provider_version'
   FROM chart_list c
   JOIN page_list p ON p.chart_id = c.id
   LEFT JOIN member_extraction_results m ON m.page_id = p.id
@@ -51,7 +52,7 @@ _LAST_RUN = "SELECT chart_name, updated_at FROM chart_list WHERE chart_name = AN
 def _page(row: tuple) -> ImagingPageResult:
     from app.adapters.postgres.repository import _blank_junk_ui, _fmt_date
     from app.services.accuracy_cache import _CODEABLE, _text
-    from app.services.imaging_overlays import compose_page_type, provider_fields
+    from app.services.imaging_overlays import compose_page_type, signer_fields
 
     (
         _chart, page_number, page_name,
@@ -60,10 +61,11 @@ def _page(row: tuple) -> ImagingPageResult:
         classified, page_type, subtype, category,
         final_type, final_subtype, final_category, final_from, final_to,
         sequenced, current_seq, actual_seq,
-        provider, signed, credentials,
+        provider, signed, credentials, signers, version,
     ) = row
-    # The signature rows' provider (imaging_final), as the chart view shows it.
-    provider_name, provider_credentials = provider_fields(_text(provider), credentials)
+    # The signature rows' provider(s) (imaging_final), as the chart view shows them.
+    people = signer_fields(signers, _text(provider), credentials, version)
+    provider_name, provider_credentials = people.get("providerName"), people.get("providerCredentials")
     blank, duplicate, shown_type = _blank_junk_ui(_text(flag), _text(junk_subtype))
     codeable = None
     if classified:

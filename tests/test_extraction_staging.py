@@ -139,11 +139,11 @@ BODY = "Office visit note for the patient. Assessment and plan follow. " * 8
 
 
 class TestSequencingMarker:
-    def marker(self, **row):
-        from stages.lib.sequencing.stage import _staged_marker
+    def marker(self, page_no, page_total):
+        # The printed page number as the key/value stage stored it (additional_page_details).
+        from stages.lib.sequencing.stage import _printed_marker
 
-        base = {"accepted": True, "selected": True}
-        return _staged_marker(StagedPage("1.jpg", {"fields": {"page_no": [{**base, **row}]}}))
+        return _printed_marker({"printed_page_no": page_no, "printed_page_total": page_total})
 
     def test_page_x_of_y(self):
         m = self.marker(page_no="2", page_total="45")
@@ -158,9 +158,9 @@ class TestSequencingMarker:
         assert self.marker(page_no="0", page_total="3") is None
 
     def test_unread_page_has_none(self):
-        from stages.lib.sequencing.stage import _staged_marker
+        from stages.lib.sequencing.stage import _printed_marker
 
-        assert _staged_marker(None) is None
+        assert _printed_marker(None) is None
 
     def test_an_extracted_marker_is_used_and_text_still_runs_when_there_is_none(self):
         from stages.lib.sequencing import compute_sequence_assignments

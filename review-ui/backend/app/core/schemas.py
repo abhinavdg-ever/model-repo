@@ -224,6 +224,11 @@ class ImagingPageResult(BaseModel):
     providerCredentials: str | None = None
     providerSignature: str | None = None
     providerSignatureConfidence: float | None = None
+    # Every accepted signer, the selected one first: [{"name", "credentials", "signatureDate"}].
+    # Rows from before the list (2026-10-18) have none; providerName / Credentials then hold
+    # the one provider. With a list, providerName is the first signer and
+    # providerCredentials every signer's credentials (" | ").
+    providerSigners: list[dict[str, str | None]] | None = None
     groundTruth: PageGroundTruth | None = None
 
     @model_validator(mode="before")

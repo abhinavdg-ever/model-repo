@@ -10,6 +10,7 @@ Sources (first hit wins):
 from __future__ import annotations
 
 import csv
+import json
 import re
 from datetime import date
 from pathlib import Path
@@ -434,8 +435,58 @@ def provider_fields(name: str | None, credentials: str | None) -> tuple[str, str
     bare_name, credentials_in_name = signature_people(name or "")
     if credentials is None:
         return bare_name, credentials_in_name
-    # The name is shown without credentials even if some slipped into it.
+    # The name is shown without credentials even if some slipped into it: the known ones,
+    # and the row's own (DNP, APRN.CNP) wherever they sit.
+    own = {re.sub(r"[\s.]+", "", c).casefold() for c in re.split(r"[,|/]", credentials) if c.strip()}
+    if own:
+        kept = [
+            token for token in re.split(r"(\s+|,)", bare_name)
+            if re.sub(r"[\s.,]+", "", token).casefold() not in own
+        ]
+        bare_name = re.sub(r"\s*,\s*$", "", re.sub(r"\s+", " ", "".join(kept))).strip(" ,")
     return bare_name, credentials.strip()
+
+
+def provider_version(value: Any) -> int:
+    """The provider-signature rule a row was written by: 2 (2026-10-18) or 1 (older; also
+    a row with no version at all)."""
+    try:
+        return int(str(value).strip()) if value not in (None, "") else 1
+    except ValueError:
+        return 1
+
+
+def signer_fields(signers: Any, name: str | None, credentials: str | None, version: Any = None) -> dict[str, Any]:
+    """providerName / providerCredentials / providerSigners from a signature row, read by
+    the rule that wrote it (``provider_version``).
+
+    Version 2: every signer in ``signers`` (a JSON list, or its text) is listed,
+    providerName is the first and providerCredentials all of their credentials; the
+    ``provider_credentials`` column beside a bare name otherwise. Version 1 (or none): the
+    one provider, its credentials split off the name.
+    """
+    if provider_version(version) < 2:
+        who, creds = provider_fields(name, None)
+        return {"providerName": who or None, "providerCredentials": creds or None}
+    if isinstance(signers, str):
+        try:
+            signers = json.loads(signers) if signers.strip() else None
+        except ValueError:
+            signers = None
+    people: list[dict[str, str | None]] = []
+    for item in signers if isinstance(signers, list) else []:
+        if not isinstance(item, dict):
+            continue
+        who, creds = provider_fields(item.get("name"), item.get("credentials") or "")
+        if who:
+            people.append({"name": who, "credentials": creds or None,
+                           "signatureDate": item.get("signature_date") or None})
+    if people:
+        joined = " | ".join(p["credentials"] for p in people if p["credentials"])
+        return {"providerName": people[0]["name"], "providerCredentials": joined or None,
+                "providerSigners": people}
+    who, creds = provider_fields(name, credentials or "")
+    return {"providerName": who or None, "providerCredentials": creds or None}
 
 
 def index_signature_rows(
@@ -448,14 +499,11 @@ def index_signature_rows(
         if cname and not _chart_row_matches(cname, chart_name):
             continue
         present = (row.get("signature_present") or "").strip().lower() in {"y", "yes", "true", "1"}
-        provider_name, provider_credentials = provider_fields(
-            row.get("provider_name"), row.get("provider_credentials")
-        )
         fields: dict[str, Any] = {"providerSignature": "Yes" if present else "No"}
-        if provider_name:
-            fields["providerName"] = provider_name
-        if provider_credentials:
-            fields["providerCredentials"] = provider_credentials
+        people = signer_fields(
+            row.get("signers"), row.get("provider_name"), row.get("provider_credentials"), row.get("provider_version")
+        )
+        fields.update({key: value for key, value in people.items() if value})
         confidence = _parse_confidence(row.get("confidence"))
         if confidence is not None:
             fields["providerSignatureConfidence"] = confidence

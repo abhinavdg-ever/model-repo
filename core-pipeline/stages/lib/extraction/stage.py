@@ -24,7 +24,13 @@ from pathlib import Path
 from typing import Any, Optional
 
 from config import KV_DEBUG, chart_dir, page_image_path
-from db import connect, get_ocr_texts, upsert_additional_page_details, upsert_ocr_result
+from db import (
+    connect,
+    get_ocr_texts,
+    upsert_additional_page_details,
+    upsert_ocr_result,
+    upsert_provider_signature,
+)
 from db.paths import imaging_csv, ocr_dir, write_csv, write_final1_json, write_final2_json
 from stages._support import (
     mark_completed,
@@ -282,6 +288,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 upsert_additional_page_details(
                     conn, chart_id=chart_id, page_id=page["id"], fields=extra
                 )
+                # The same row as the signature CSV; imaging_final reads it from here.
+                upsert_provider_signature(conn, chart_id=chart_id, page_id=page["id"], fields=sig)
                 signature_rows.append(
                     signature_csv_row(
                         ctx.chart_name, page["page_name"], page.get("page_number"), sig
@@ -345,14 +353,15 @@ def _selected(staged_page: Optional[staging.StagedPage], field_id: str) -> list[
 
 
 def page_signature(staged_page: Optional[staging.StagedPage]) -> dict[str, Any]:
-    """The page's provider signature row (results.signature_fields): its selected
-    electronic signatures, then for a missing name its provider names (selected, else every
-    kept one), for missing credentials its accepted credentials."""
+    """The page's provider signature row (results.signature_fields): its accepted
+    electronic signatures (the selected one is the main signer, the rest cosigners), then
+    for a missing name its provider names (selected, else every kept one), for missing
+    credentials its accepted credentials."""
     if staged_page is None:
         return signature_fields(None)
     providers = staged_page.selected("provider_name") or _provider_rows(staged_page)
     return signature_fields(
-        _selected(staged_page, "electronic_signature"),
+        staged_page.accepted("electronic_signature"),
         providers,
         staged_page.accepted("provider_credentials"),
     )

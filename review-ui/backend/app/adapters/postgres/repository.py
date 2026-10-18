@@ -41,7 +41,7 @@ from app.services.imaging_overlays import (
     document_label,
     empty_imaging_pages,
     page_type_fields,
-    provider_fields,
+    signer_fields,
 )
 
 logger = logging.getLogger("review_ui.postgres")
@@ -1084,7 +1084,9 @@ class PostgresFolderRepository(FolderRepository):
                                    to_jsonb(f) ->> 'specialty',
                                    to_jsonb(f) ->> 'provider_name',
                                    to_jsonb(f) ->> 'signature_present',
-                                   to_jsonb(f) ->> 'provider_credentials'
+                                   to_jsonb(f) ->> 'provider_credentials',
+                                   to_jsonb(f) -> 'signers',
+                                   to_jsonb(f) ->> 'provider_version'
                             FROM imaging_final f
                             JOIN page_list p ON p.id = f.page_id
                             JOIN chart_list c ON c.id = f.chart_id
@@ -1093,16 +1095,13 @@ class PostgresFolderRepository(FolderRepository):
                             (folder_id,),
                         )
                         for (page_name, final_type, category, final_from, final_to, final_sub,
-                             final_specialty, provider, signed, credentials) in cur.fetchall():
+                             final_specialty, provider, signed, credentials, signers, version) in cur.fetchall():
                             fields = _ensure(str(page_name))
                             # Provider Extraction: the signature rows the extraction stage
                             # writes (the same as provider_signature.csv); the name cell
                             # carries the credentials ('Ramsey Luce, R.N.').
-                            provider_name, provider_credentials = provider_fields(provider, credentials)
-                            if provider_name:
-                                fields["providerName"] = provider_name
-                            if provider_credentials:
-                                fields["providerCredentials"] = provider_credentials
+                            people = signer_fields(signers, provider, credentials, version)
+                            fields.update({key: value for key, value in people.items() if value})
                             if signed is not None:
                                 fields["providerSignature"] = "Yes" if signed == "true" else "No"
                             fields["finalSpecialty"] = final_specialty or None

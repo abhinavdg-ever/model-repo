@@ -171,6 +171,7 @@ class MemoryStore:
         self.continuity: dict[int, dict[str, Any]] = {}
         self.additional_details: dict[int, dict[str, Any]] = {}
         self.imaging_final: dict[int, dict[str, Any]] = {}
+        self.provider_signatures: dict[int, dict[str, Any]] = {}
         self.member_extractions: dict[int, dict[str, Any]] = {}
         self.member_summaries: dict[int, dict[str, Any]] = {}
         self.manifest_members: dict[int, dict[str, Any]] = {}
@@ -1094,6 +1095,16 @@ class MemoryStore:
                 "updated_at": _now(),
             }
 
+    def upsert_provider_signature(self, *, chart_id: int, page_id: int, fields: dict[str, Any]) -> None:
+        with self._lock:
+            self.provider_signatures[page_id] = {**fields, "chart_id": chart_id, "page_id": page_id, "updated_at": _now()}
+
+    def get_provider_signature_map(self, chart_id: int) -> dict[int, dict[str, Any]]:
+        return self._chart_rows(self.provider_signatures, chart_id)
+
+    def get_additional_page_details_map(self, chart_id: int) -> dict[int, dict[str, Any]]:
+        return self._chart_rows(self.additional_details, chart_id)
+
     def _chart_rows(self, table: dict[int, dict[str, Any]], chart_id: int) -> dict[int, dict[str, Any]]:
         with self._lock:
             return {pid: dict(row) for pid, row in table.items() if row["chart_id"] == chart_id}
@@ -1303,6 +1314,7 @@ class MemoryStore:
             _purge(self.sequencing, "page_sequencing_results")
             _purge(self.continuity, "page_continuity_results")
             _purge(self.additional_details, "additional_page_details")
+            _purge(self.provider_signatures, "provider_signature_results")
             _purge(self.imaging_final, "imaging_final")
             bj_keys = [k for k, r in self.blank_junk.items() if r["chart_id"] == chart_id]
             if bj_keys:
@@ -1359,6 +1371,7 @@ class MemoryStore:
             _purge(self.sequencing, "page_sequencing_results")
             _purge(self.continuity, "page_continuity_results")
             _purge(self.additional_details, "additional_page_details")
+            _purge(self.provider_signatures, "provider_signature_results")
             _purge(self.imaging_final, "imaging_final")
             _purge(self.blank_junk, "blank_junk_classification")
             if not keep_quality:

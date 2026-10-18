@@ -200,6 +200,25 @@ def _best(rows: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
     return best
 
 
+# The provider-signature rule a row was written by. 1 (or none): the provider name carries
+# its credentials, one provider. 2 (2026-10-18): bare name, provider_credentials and every
+# accepted signer in signers. review-ui reads a row by its version.
+PROVIDER_VERSION = 2
+
+
+def _signer(row: dict[str, Any]) -> tuple[Optional[str], Optional[str]]:
+    """One signature row's name and credentials: its own fields (``provider_name``
+    without credentials, ``designation``), else read from its ``sentence``."""
+    # A mis-cased credential ('Rd', a road; 'Md', a state) is not one: dropped first.
+    name, creds = split_name_credentials(caps_credentials_only(_text(row, "provider_name")))
+    creds = _text(row, "designation") or creds
+    if not name or not creds:
+        said_name, said_creds = name_from_sentence(_text(row, "sentence"), _text(row, "key"))
+        name = name or said_name
+        creds = creds or said_creds
+    return name, creds
+
+
 def signature_fields(
     hit: Any = None,
     provider_hits: Optional[list[dict[str, Any]]] = None,
@@ -207,47 +226,65 @@ def signature_fields(
 ) -> dict[str, Any]:
     """The page's provider signature (docs/PROVIDER_LOGIC.md).
 
-    ``hit`` is the page's **selected** electronic-signature rows. Signature present = any is
-    selected. Without one, there is no provider name and no credentials either.
+    ``hit`` is the page's **accepted** electronic-signature rows. Signature present = any
+    is accepted. Without one, there is no provider name and no credentials either.
 
-    With one (the highest-scoring), the provider and credentials, first found wins:
-
-    1. the row's own fields: its ``provider_name`` without the credentials, its
-       ``designation`` as the credentials (else the credentials in the name);
-    2. the row's ``sentence``: the name right after the key;
-    3. credentials only: the page's accepted ``provider_credentials`` (``credential_hits``),
-       the one for the same provider first;
-    4. name only: the page's ``provider_name`` rows (``provider_hits``), best score first.
+    Every accepted signer is listed (``signers``), the selected one first (the
+    highest-scoring when several are selected, else the highest-scoring accepted one), then
+    the rest by score; one without a name is left out. Each signer's name and credentials:
+    the row's own fields, else its sentence. The first signer also falls back to the page's accepted ``provider_credentials``
+    (``credential_hits``, the same provider's first) and, for a missing name, to the page's
+    ``provider_name`` rows (``provider_hits``); the others only to a credential row of the
+    same provider. ``provider_name`` / ``provider_credentials`` are the first signer's.
     """
-    signatures = [row for row in _as_hits(hit) if row.get("selected", True)]
-    primary = _best(signatures)
-    if primary is None:
+    rows = [row for row in _as_hits(hit) if row.get("accepted", True)]
+    if not rows:
         return {
             "signature_present": False,
             "signature_key": None, "region": None, "scale": None, "sentence": None,
             "ner_text": None, "provider_name": None, "provider_credentials": None,
-            "signature_date": None, "confidence": None, "source": None,
+            "signature_date": None, "confidence": None, "source": None, "signers": [],
+            "provider_version": PROVIDER_VERSION,
         }
+    primary = _best([row for row in rows if row.get("selected")]) or _best(rows)
+    others = sorted((row for row in rows if row is not primary), key=lambda row: -(_score(row) or 0.0))
+    accepted_creds = [row for row in _as_hits(credential_hits) if row.get("accepted", True) and _text(row, "value")]
 
-    # A mis-cased credential ('Rd', a road; 'Md', a state) is not one: dropped first.
-    name, creds = split_name_credentials(caps_credentials_only(_text(primary, "provider_name")))
-    creds = _text(primary, "designation") or creds
-    if not name or not creds:
-        said_name, said_creds = name_from_sentence(_text(primary, "sentence"), _text(primary, "key"))
-        name = name or said_name
-        creds = creds or said_creds
-    if not creds:
-        accepted = [row for row in _as_hits(credential_hits) if row.get("accepted", True) and _text(row, "value")]
-        same = [row for row in accepted if name and _text(row, "provider_name")
-                and _text(row, "provider_name").casefold() in name.casefold()]
-        chosen = (same or accepted)[:1]
-        creds = _text(chosen[0], "value") if chosen else None
-    if not name:
-        best = _best([row for row in _as_hits(provider_hits) if _text(row, "value")])
-        if best is not None:
-            name, from_name = split_name_credentials(_text(best, "value"))
-            creds = creds or from_name
+    def same_provider_credentials(name: Optional[str]) -> Optional[str]:
+        if not name:
+            return None
+        for row in accepted_creds:
+            who = _text(row, "provider_name")
+            if who and who.casefold() in name.casefold():
+                return _text(row, "value")
+        return None
 
+    signers: list[dict[str, Any]] = []
+    for index, row in enumerate([primary, *others]):
+        name, creds = _signer(row)
+        main = index == 0
+        creds = creds or same_provider_credentials(name)
+        if main and not creds and accepted_creds:
+            creds = _text(accepted_creds[0], "value")
+        if main and not name:
+            best = _best([item for item in _as_hits(provider_hits) if _text(item, "value")])
+            if best is not None:
+                name, from_name = split_name_credentials(_text(best, "value"))
+                creds = creds or from_name
+        if not main and not name:
+            continue
+        # The same person signing twice is one signer.
+        twin = next((s for s in signers if name and s["name"] and s["name"].casefold() == name.casefold()), None)
+        if twin is not None:
+            twin["credentials"] = twin["credentials"] or creds
+            continue
+        signers.append({
+            "name": name,
+            "credentials": creds,
+            "signature_date": _iso_date(_text(row, "signature_date")),
+        })
+
+    lead = signers[0]
     return {
         "signature_present": True,
         "signature_key": _text(primary, "key"),
@@ -255,11 +292,13 @@ def signature_fields(
         "scale": _text(primary, "scale"),
         "sentence": _text(primary, "sentence"),
         "ner_text": _text(primary, "ner_text"),
-        "provider_name": name,
-        "provider_credentials": creds,
-        "signature_date": _iso_date(_text(primary, "signature_date")),
+        "provider_name": lead["name"],
+        "provider_credentials": lead["credentials"],
+        "signature_date": lead["signature_date"],
         "confidence": _score(primary),
         "source": _text(primary, "source"),
+        "signers": signers,
+        "provider_version": PROVIDER_VERSION,
     }
 
 
@@ -290,6 +329,8 @@ def signature_csv_row(chart_name: str, page_name: str, page_number: Any, fields:
     for key, value in fields.items():
         if key == "signature_present":
             row[key] = "y" if value else "n"
+        elif isinstance(value, (list, dict)):
+            row[key] = json.dumps(value, ensure_ascii=False)
         else:
             row[key] = "" if value is None else value
     return row
@@ -324,6 +365,9 @@ SIGNATURE_CSV_COLS = [
     "confidence",
     "source",
     "signature_present",
+    # Every accepted signer, the selected one first: [{"name", "credentials", "signature_date"}] (JSON).
+    "signers",
+    "provider_version",
 ]
 
 ADDITIONAL_CSV_COLS = [

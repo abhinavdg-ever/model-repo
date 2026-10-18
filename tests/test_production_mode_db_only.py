@@ -51,3 +51,23 @@ def test_a_secret_id_pasted_as_the_secret_is_named(caplog):
                         azure_client_secret="0f8e2482-e23a-4f7d-9a3b-1c2d3e4f5a6b")
     blob_store._credential(settings)
     assert "secret's ID, not its Value" in caplog.text
+
+
+def test_provider_rows_are_read_by_the_rule_that_wrote_them():
+    from app.services.imaging_overlays import signer_fields
+
+    # Version 1 (or no version): the name carries the credentials; a provider_credentials
+    # value beside it is not read.
+    assert signer_fields(None, "Ramsey Luce, R.N.", "XX", None) == {
+        "providerName": "Ramsey Luce", "providerCredentials": "R.N."}
+    # Version 2: every accepted signer, the selected one first; credentials all of theirs.
+    people = signer_fields(
+        '[{"name": "WILLIAM J WALL III", "credentials": "MD", "signature_date": "2026-01-12"},'
+        ' {"name": "Jane Roe", "credentials": "DNP", "signature_date": null}]',
+        "WILLIAM J WALL III", "MD", "2",
+    )
+    assert people["providerName"] == "WILLIAM J WALL III" and people["providerCredentials"] == "MD | DNP"
+    assert [p["name"] for p in people["providerSigners"]] == ["WILLIAM J WALL III", "Jane Roe"]
+    # Version 2 with no list: the bare name and its own column; credentials never left in the name.
+    assert signer_fields(None, "Meghan Newman, DNP", "DNP", 2) == {
+        "providerName": "Meghan Newman", "providerCredentials": "DNP"}
