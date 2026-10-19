@@ -28,6 +28,10 @@ class FolderSummary(BaseModel):
     ground_truth_available: bool = False
     # True when the chart folder exists under the review-ui data root.
     on_disk: bool = False
+    # Chart metadata (manifest_member_list / metadata CSV): Source, Measure, Retrieval.
+    source_name: str | None = None
+    measure: str | None = None
+    rr_method: str | None = None
 
 
 class FileViewerFolder(BaseModel):
@@ -51,8 +55,15 @@ class FolderListResponse(BaseModel):
     total: int = 0
     page_count_sum: int = 0
     ocr_processed_sum: int = 0
+    # Imaging Completed charts among the matches, their pages, and those with ground truth.
+    imaging_completed_charts: int = 0
+    imaging_completed_pages: int = 0
+    ground_truth_charts: int = 0
     run_options: list[str] = Field(default_factory=list)
     batch_options: list[str] = Field(default_factory=list)
+    source_options: list[str] = Field(default_factory=list)
+    measure_options: list[str] = Field(default_factory=list)
+    retrieval_options: list[str] = Field(default_factory=list)
     limit: int | None = None
     offset: int = 0
 
@@ -339,6 +350,12 @@ class AccuracyChartPayload(BaseModel):
     chartName: str
     lastUpdatedAt: datetime | None = None
     lastVerifiedAt: datetime | None = None
+    # Run / Batch and chart metadata, for the Accuracy View filters.
+    runId: str | None = None
+    batchId: str | None = None
+    sourceName: str | None = None
+    measure: str | None = None
+    rrMethod: str | None = None
     metrics: dict[str, AccuracyTally] | None = None
     overall: AccuracyTally | None = None
     document: ImagingDocumentResponse | None = None

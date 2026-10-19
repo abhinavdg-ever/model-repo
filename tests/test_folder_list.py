@@ -126,3 +126,31 @@ def test_run_after_keeps_charts_last_run_at_or_after_the_moment():
     params = FolderListParams(run_after=datetime(2026, 10, 17, 0, 0, tzinfo=ist), limit=None)
     assert sorted(f.name for f in filter_sort_page(rows, params).items) == ["at_midnight", "utc_after"]
     assert filter_sort_page(rows, FolderListParams(limit=None)).total == 4
+
+
+def test_source_measure_retrieval_filter_and_offer_every_value():
+    rows = [
+        _f("a").model_copy(update={"source_name": "Clinic A", "measure": "CBP", "rr_method": "Fax"}),
+        _f("b").model_copy(update={"source_name": "Clinic B", "measure": "CBP", "rr_method": "Onsite"}),
+        _f("c"),  # no metadata: dropped by any of the three filters
+    ]
+    result = filter_sort_page(rows, FolderListParams(measure=["CBP"], retrieval=["Fax"]))
+    assert [f.id for f in result.items] == ["a"]
+    assert result.source_options == ["Clinic A", "Clinic B"]
+    assert result.measure_options == ["CBP"]
+    assert result.retrieval_options == ["Fax", "Onsite"]
+    assert filter_sort_page(rows, FolderListParams()).total == 3
+
+
+def test_chart_metadata_from_the_csvs(tmp_path):
+    from app.services.chart_metadata import chart_metadata_map
+    from app.services.metadata_csv import clear_metadata_cache
+
+    (tmp_path / "metadata_R1_B1.csv").write_text(
+        "recordId,DummyFirstName,SourceName,Measure,RR Method\n"
+        "c1,Ann,Clinic A,CBP,Fax\nc2,Bob,,,\n",
+        encoding="utf-8",
+    )
+    clear_metadata_cache()
+    found = chart_metadata_map(None, metadata_dir=tmp_path)
+    assert found == {"c1": {"source_name": "Clinic A", "measure": "CBP", "rr_method": "Fax"}}

@@ -15,12 +15,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional, Sequence
 
+# Every stage after Final OCR 2 is an imaging stage (the postgres adapter's set).
+from app.adapters.postgres.repository import IMAGING_STAGES as _IMAGING_STAGES
 from app.core.schemas import FolderSummary, OcrRunStatus
 from app.services.chart_run_batch import (
     db_lookup_enabled,
     database_url_usable,
     with_run_batch_default,
 )
+from app.services.chart_metadata import chart_metadata_map
 from app.services.ground_truth import charts_with_ground_truth
 from app.services.db import connection
 
@@ -57,7 +60,6 @@ _CHART_STATUS_TO_OCR: dict[str, str] = {
     "encounter_type": "IMAGING_IN_PROGRESS",
     "page_sequencing": "IMAGING_IN_PROGRESS",
 }
-_IMAGING_STAGES = frozenset({"blank_junk", "member_verify", "dos_extract"})
 
 
 def ocr_status_for(status: str | None, current_stage: str | None) -> OcrRunStatus:
@@ -74,6 +76,9 @@ class FolderListParams:
     status: list[str] = field(default_factory=list)
     run: list[str] = field(default_factory=list)
     batch: list[str] = field(default_factory=list)
+    source: list[str] = field(default_factory=list)
+    measure: list[str] = field(default_factory=list)
+    retrieval: list[str] = field(default_factory=list)
     # Only charts last run at or after this moment (None = any time).
     run_after: Optional[datetime] = None
     sort: SortKey = "updated"
@@ -88,8 +93,16 @@ class FolderListResult:
     total: int
     page_count_sum: int
     ocr_processed_sum: int
+    # Of the filtered charts, the Imaging Completed ones: how many, their pages, and how
+    # many of those have ground truth (the landing summary).
+    imaging_completed_charts: int
+    imaging_completed_pages: int
+    ground_truth_charts: int
     run_options: list[str]
     batch_options: list[str]
+    source_options: list[str]
+    measure_options: list[str]
+    retrieval_options: list[str]
     limit: Optional[int]
     offset: int
 
@@ -264,6 +277,16 @@ def filter_sort_page(
     status_set = {s for s in params.status if s}
     run_set = {s for s in params.run if s}
     batch_set = {s for s in params.batch if s}
+    # Source / Measure / Retrieval: options from every listed chart, not locked to another filter.
+    metadata_filters = [
+        ("source_name", {s for s in params.source if s}),
+        ("measure", {s for s in params.measure if s}),
+        ("rr_method", {s for s in params.retrieval if s}),
+    ]
+    metadata_options = {
+        attr: sorted({getattr(f, attr) for f in active if getattr(f, attr)}, key=lambda s: s.casefold())
+        for attr, _ in metadata_filters
+    }
     run_after = _aware(params.run_after) if params.run_after else None
 
     # Batch options are locked to selected run(s).
@@ -291,6 +314,8 @@ def filter_sort_page(
             continue
         if run_after and (f.last_updated_at is None or _aware(f.last_updated_at) < run_after):
             continue
+        if any(wanted and getattr(f, attr) not in wanted for attr, wanted in metadata_filters):
+            continue
         filtered.append(f)
 
     reverse = params.sort_dir == "desc"
@@ -302,6 +327,7 @@ def filter_sort_page(
     total = len(filtered)
     page_count_sum = sum(f.page_count or 0 for f in filtered)
     ocr_processed_sum = sum(f.ocr_processed or 0 for f in filtered)
+    done = [f for f in filtered if f.ocr_status == "IMAGING_COMPLETED"]
 
     offset = max(0, int(params.offset or 0))
     limit = params.limit
@@ -318,8 +344,14 @@ def filter_sort_page(
         total=total,
         page_count_sum=page_count_sum,
         ocr_processed_sum=ocr_processed_sum,
+        imaging_completed_charts=len(done),
+        imaging_completed_pages=sum(f.page_count or 0 for f in done),
+        ground_truth_charts=sum(1 for f in done if f.ground_truth_available),
         run_options=run_options,
         batch_options=batch_options,
+        source_options=metadata_options["source_name"],
+        measure_options=metadata_options["measure"],
+        retrieval_options=metadata_options["rr_method"],
         limit=eff_limit,
         offset=offset,
     )
@@ -332,9 +364,21 @@ def build_folder_list(
     data_root: Path | None,
     full_local_rows: Sequence[FolderSummary] | None,
     params: FolderListParams,
+    metadata_dir: Path | None = None,
 ) -> FolderListResult:
     """Compose landing list: DB summaries preferred; light disk or full local fallback."""
-    if database_url and database_url_usable(database_url):
+    usable = bool(database_url and database_url_usable(database_url))
+    metadata = chart_metadata_map(
+        database_url if usable else None, db_schema=db_schema, metadata_dir=metadata_dir
+    )
+
+    def with_metadata(rows: Sequence[FolderSummary]) -> list[FolderSummary]:
+        return [
+            row.model_copy(update=metadata[row.name]) if row.name in metadata else row
+            for row in rows
+        ]
+
+    if usable:
         db_rows = fetch_chart_summaries_from_db(database_url, db_schema=db_schema)
         disk_rows: list[FolderSummary] = []
         if data_root is not None:
@@ -349,10 +393,10 @@ def build_folder_list(
             })
             for row in merged
         ]
-        return filter_sort_page(merged, params)
+        return filter_sort_page(with_metadata(merged), params)
 
     # No DB — use caller-provided full local scan (existing behaviour).
     rows = list(full_local_rows or [])
     if not rows and data_root is not None:
         rows = list_disk_folder_names_light(data_root)
-    return filter_sort_page(rows, params)
+    return filter_sort_page(with_metadata(rows), params)

@@ -18,6 +18,7 @@ from app.core.config import Settings
 from app.core.schemas import (
     AccuracyChartPayload,
     AccuracyReportResponse,
+    FolderSummary,
     ImagingDocumentResponse,
     ImagingManifestDetails,
     ImagingPageResult,
@@ -217,9 +218,10 @@ def _ensure(conn, database_url: str, db_schema: str) -> None:
 _RUNNING = frozenset({"IN_PROGRESS", "IMAGING_IN_PROGRESS"})
 
 
-def _eligible(settings: Settings) -> list[tuple[str, str, datetime | None]]:
+def _eligible(settings: Settings) -> list[FolderSummary]:
     """Charts with ground truth that are not running. Local Mode also needs the chart's
-    folder in the workspace; Production Mode takes chart_list alone."""
+    folder in the workspace; Production Mode takes chart_list alone. Each carries its run,
+    batch and chart metadata (Source / Measure / Retrieval) for the filters."""
     production = settings.is_production_mode
     data_root = settings.resolved_data_root
     root = data_root if isinstance(data_root, Path) else Path(data_root)
@@ -229,9 +231,10 @@ def _eligible(settings: Settings) -> list[tuple[str, str, datetime | None]]:
         data_root=None if production else root,
         full_local_rows=None,
         params=FolderListParams(sort="filename", sort_dir="asc"),
+        metadata_dir=None if production else settings.resolved_metadata_root,
     )
     return [
-        (folder.id, folder.name, folder.last_updated_at)
+        folder
         for folder in listed.items
         if folder.ground_truth_available
         and (production or folder.on_disk)
@@ -419,7 +422,7 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
     eligible = _eligible(settings)
     if not eligible:
         return AccuracyReportResponse(charts=[])
-    names = [chart_id for chart_id, _name, _updated in eligible]
+    names = [folder.id for folder in eligible]
     with connection(settings.database_url, settings.db_schema) as conn:
         _ensure(conn, settings.database_url, settings.db_schema)
         with conn.cursor() as cur:
@@ -460,17 +463,22 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
         pages[chart_name] = inherit_duplicate_blank_junk(chart_pages)
     charts = [
         AccuracyChartPayload(
-            chartId=chart_id,
-            chartName=chart_name,
-            lastUpdatedAt=updated,
-            lastVerifiedAt=verified.get(chart_id),
+            chartId=folder.id,
+            chartName=folder.name,
+            lastUpdatedAt=folder.last_updated_at,
+            lastVerifiedAt=verified.get(folder.id),
+            runId=folder.run_id,
+            batchId=folder.batch_id,
+            sourceName=folder.source_name,
+            measure=folder.measure,
+            rrMethod=folder.rr_method,
             document=ImagingDocumentResponse(
-                folder_id=chart_id,
-                manifest=ImagingManifestDetails(memberId=manifests.get(chart_id)),
-                pages=pages.get(chart_id, []),
-                sectionsProcessed=sections.get(chart_id, ImagingSectionsProcessed()),
+                folder_id=folder.id,
+                manifest=ImagingManifestDetails(memberId=manifests.get(folder.id)),
+                pages=pages.get(folder.id, []),
+                sectionsProcessed=sections.get(folder.id, ImagingSectionsProcessed()),
             ),
         )
-        for chart_id, chart_name, updated in eligible
+        for folder in eligible
     ]
     return AccuracyReportResponse(charts=charts)

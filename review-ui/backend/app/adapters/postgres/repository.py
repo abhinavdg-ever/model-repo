@@ -88,8 +88,10 @@ IMAGING_STAGES = frozenset(
         "member_verify",
         "dos_extract",
         "page_subtype",
+        "continuity",
         "encounter_type",
         "page_sequencing",
+        "imaging_final",
     }
 )
 

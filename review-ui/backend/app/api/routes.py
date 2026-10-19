@@ -144,6 +144,9 @@ def list_folders(
     batch: list[str] | None = Query(
         None, description="Repeatable batch_id filter (B4, …)"
     ),
+    source: list[str] | None = Query(None, description="Repeatable Source (source_name) filter"),
+    measure: list[str] | None = Query(None, description="Repeatable Measure filter"),
+    retrieval: list[str] | None = Query(None, description="Repeatable Retrieval (RR Method) filter"),
     sort: str = Query("updated", pattern="^(filename|pages|updated)$"),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     run_after: datetime | None = Query(
@@ -156,6 +159,9 @@ def list_folders(
         status=list(status or []),
         run=list(run or []),
         batch=list(batch or []),
+        source=list(source or []),
+        measure=list(measure or []),
+        retrieval=list(retrieval or []),
         run_after=run_after,
         sort=sort,  # type: ignore[arg-type]
         sort_dir=sort_dir,  # type: ignore[arg-type]
@@ -175,6 +181,7 @@ def list_folders(
         data_root=data_root if data_root is not None and data_root.is_dir() else None,
         full_local_rows=full_local,
         params=params,
+        metadata_dir=None if settings.is_production_mode else settings.resolved_metadata_root,
     )
     logger.info(
         "list_folders total=%d returned=%d limit=%s offset=%d",
@@ -188,8 +195,14 @@ def list_folders(
         total=result.total,
         page_count_sum=result.page_count_sum,
         ocr_processed_sum=result.ocr_processed_sum,
+        imaging_completed_charts=result.imaging_completed_charts,
+        imaging_completed_pages=result.imaging_completed_pages,
+        ground_truth_charts=result.ground_truth_charts,
         run_options=result.run_options,
         batch_options=result.batch_options,
+        source_options=result.source_options,
+        measure_options=result.measure_options,
+        retrieval_options=result.retrieval_options,
         limit=result.limit,
         offset=result.offset,
     )
