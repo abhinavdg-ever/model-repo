@@ -7,11 +7,6 @@ import AccuracyView from "./AccuracyView";
 import ManualReviewView from "./ManualReviewView";
 import LoginPage from "./LoginPage";
 import UserProfileMenu from "./UserProfileMenu";
-import {
-  readGroundTruthSource,
-  writeGroundTruthSource,
-  type GroundTruthSource,
-} from "./groundTruthSource";
 import { getAppConfig, type AppConfig, type OutputMode } from "./api";
 
 const AUTH_KEY = "advantmed_imaging_auth";
@@ -97,25 +92,12 @@ export default function App() {
     parsePath(window.location.pathname, window.location.search),
   );
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
-  const [gtSource, setGtSource] = useState<GroundTruthSource>(readGroundTruthSource);
   const leaveGuard = useRef<((run: () => void) => void) | null>(null);
 
   function guardedNavigate(next: Route) {
     const go = () => navigate(next);
     if (leaveGuard.current) leaveGuard.current(go);
     else go();
-  }
-
-  // The open view remounts (key below) and refetches with the new choice, so
-  // unsaved edits get the same prompt as leaving the page.
-  function toggleManualGroundTruth() {
-    const next: GroundTruthSource = gtSource === "bulk_upload" ? "latest" : "bulk_upload";
-    const apply = () => {
-      writeGroundTruthSource(next);
-      setGtSource(next);
-    };
-    if (leaveGuard.current) leaveGuard.current(apply);
-    else apply();
   }
 
   useEffect(() => {
@@ -213,22 +195,12 @@ export default function App() {
           >
             {modeLabel}
           </span>
-          {gtSource === "bulk_upload" ? (
-            <span
-              className="mode-pill gt-source-pill"
-              title="Ground truth shows each page's latest bulk upload; manual edits are hidden. Change it from the user menu."
-            >
-              Bulk upload ground truth
-            </span>
-          ) : null}
           <UserProfileMenu
             displayName="imaging-user"
             initials="IU"
             currentView={route.view}
             onOpenFileViewer={() => guardedNavigate({ view: "file-viewer" })}
             onOpenHistory={() => guardedNavigate({ view: "landing" })}
-            hideManualGroundTruth={gtSource === "bulk_upload"}
-            onToggleManualGroundTruth={toggleManualGroundTruth}
             onLogout={handleLogout}
           />
         </div>
@@ -239,7 +211,6 @@ export default function App() {
             onView={(folderId, mode = "ocr") =>
               navigate({ view: "folder", folderId, mode })
             }
-            onOpenFileViewer={() => navigate({ view: "file-viewer" })}
             onOpenAccuracy={() => navigate({ view: "accuracy" })}
             onOpenManualReview={() => navigate({ view: "manual-review" })}
           />
@@ -255,7 +226,6 @@ export default function App() {
           />
         ) : route.view === "accuracy" ? (
           <AccuracyView
-            key={gtSource}
             onBack={() => navigate({ view: "landing" })}
             onOpenChart={(folderId) =>
               navigate({ view: "folder", folderId, mode: "imaging", from: "accuracy" })
@@ -271,7 +241,7 @@ export default function App() {
           />
         ) : (
           <FolderViewer
-            key={`${route.folderId}:${gtSource}`}
+            key={route.folderId}
             folderId={route.folderId}
             initialMode={route.mode}
             onBack={() =>

@@ -12,9 +12,19 @@ import {
   RefreshCw,
   Search,
 } from "lucide-react";
-import { getAccuracyReport } from "./api";
+import { formatBatchLabel, formatRunLabel, getAccuracyReport } from "./api";
 import { saveAccuracyOrder } from "./chartSequence";
 import { useViewState } from "./viewState";
+import {
+  ClearAllFilters,
+  ColumnFilterButton,
+  META_FILTERS,
+  MetaFilterBar,
+  TopCheckFilter,
+  metaFilterCount,
+  type MetaFilterKey,
+  type MetaFilters,
+} from "./columnFilter";
 import { formatRunAfter as fmtRunAfter, ranAfter, RunAfterForm } from "./runAfter";
 import { readGroundTruthSource } from "./groundTruthSource";
 import {
@@ -277,9 +287,11 @@ function RatesGrid({ rates, compact = false }: { rates: ClassRates; compact?: bo
   );
 }
 
-/** Table columns drawn narrower / wider than the rest (styles.css .accuracy-cell-narrow / -wide). */
+/** Table columns drawn narrower / wider than the rest (styles.css .accuracy-cell-narrow /
+ * -wide / -member). */
 const NARROW_METRICS = new Set(["pageType", "codeable"]);
 const WIDE_METRICS = new Set(["signature"]);
+const MEMBER_METRICS = new Set(["member"]);
 
 /** One table cell: the donut card's numbers, compact. */
 function CompactScore({
@@ -288,16 +300,20 @@ function CompactScore({
   rates,
   narrow = false,
   wide = false,
+  member = false,
 }: {
   tally: Tally;
   binary?: boolean;
   rates?: ClassRates;
   narrow?: boolean;
   wide?: boolean;
+  /** Member Verification: the widest column. */
+  member?: boolean;
 }) {
   if (tally.scored === 0) return <>—</>;
+  const size = narrow ? " accuracy-cell-narrow" : wide ? " accuracy-cell-wide" : member ? " accuracy-cell-member" : "";
   return (
-    <div className={narrow ? "accuracy-cell accuracy-cell-narrow" : wide ? "accuracy-cell accuracy-cell-wide" : "accuracy-cell"}>
+    <div className={`accuracy-cell${size}`}>
       <strong>{percentLabel(tally)}</strong>
       <p className="accuracy-distribution">
         <Distribution tally={tally} binary={binary} />
@@ -475,6 +491,52 @@ function passesFilters(row: ChartAccuracy, filters: Filters): boolean {
 
 /** One 0–100 bar with a Min and a Max handle: two range inputs stacked on one
  * track, where only the handles take the pointer. */
+/** A typed percent for one end of a range: applied on Enter or leaving the box, clamped to
+ * 0-100; Escape or a non-number puts the current value back. */
+function PercentBox({
+  label,
+  value,
+  onCommit,
+}: {
+  label: string;
+  value: number;
+  onCommit: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  function commit() {
+    const typed = Number(draft.trim().replace(/%$/, ""));
+    if (draft.trim() === "" || Number.isNaN(typed)) {
+      setDraft(String(value));
+      return;
+    }
+    const next = Math.round(Math.min(100, Math.max(0, typed)));
+    setDraft(String(next));
+    if (next !== value) onCommit(next);
+  }
+  return (
+    <label className="accuracy-range-box">
+      <input
+        type="text"
+        inputMode="numeric"
+        value={draft}
+        aria-label={label}
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") {
+            e.stopPropagation();
+            setDraft(String(value));
+          }
+        }}
+      />
+      %
+    </label>
+  );
+}
+
 function RangeSliders({
   label,
   range,
@@ -521,9 +583,18 @@ function RangeSliders({
           onChange={(e) => onChange({ min: range.min, max: Math.max(Number(e.target.value), range.min) })}
         />
       </div>
-      <div className="accuracy-range-scale" aria-hidden="true">
-        <span>0</span>
-        <span>100</span>
+      {/* Or click and type: each box takes 0-100 and keeps Min at or under Max. */}
+      <div className="accuracy-range-scale">
+        <PercentBox
+          label={`${label} minimum`}
+          value={range.min}
+          onCommit={(value) => onChange({ min: Math.min(value, range.max), max: range.max })}
+        />
+        <PercentBox
+          label={`${label} maximum`}
+          value={range.max}
+          onCommit={(value) => onChange({ min: range.min, max: Math.max(value, range.min) })}
+        />
       </div>
     </fieldset>
   );
@@ -531,8 +602,7 @@ function RangeSliders({
 
 const FULL_RANGE: Range = { min: 0, max: 100 };
 
-/** The filter button at the right of a score column's header, and its slider popover.
- * The popover is fixed-position so the table's scroll box does not clip it. */
+/** The filter button at the right of a score column's header, and its slider popover. */
 function ColumnFilter({
   label,
   value,
@@ -548,47 +618,7 @@ function ColumnFilter({
   classLabel?: string;
   onChange: (value: ColumnRanges | undefined) => void;
 }) {
-  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const active = Boolean(value && Object.values(value).some(Boolean));
-
-  useEffect(() => {
-    if (!anchor) return;
-    const close = (event: Event) => {
-      const target = event.target as Node;
-      if (popoverRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
-      setAnchor(null);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setAnchor(null);
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("resize", close);
-    // Scrolling the table or page would leave the popover behind its column.
-    window.addEventListener("scroll", close, true);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", close);
-      window.removeEventListener("scroll", close, true);
-    };
-  }, [anchor]);
-
-  function toggle() {
-    if (anchor) {
-      setAnchor(null);
-      return;
-    }
-    const rect = buttonRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const width = 220;
-    setAnchor({
-      top: rect.bottom + 6,
-      left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
-    });
-  }
+  const active = isActive(value);
 
   function set(part: Measure, range: Range) {
     const full = range.min === 0 && range.max === 100;
@@ -597,26 +627,9 @@ function ColumnFilter({
   }
 
   return (
-    <>
-      <button
-        ref={buttonRef}
-        type="button"
-        className={`accuracy-filter-btn${active ? " active" : ""}`}
-        title={`Filter ${label}`}
-        aria-label={`Filter ${label}`}
-        aria-expanded={anchor !== null}
-        onClick={toggle}
-      >
-        <Filter size={11} aria-hidden="true" />
-      </button>
-      {anchor ? (
-        <div
-          ref={popoverRef}
-          className="accuracy-filter-popover"
-          style={{ top: anchor.top, left: anchor.left }}
-          role="dialog"
-          aria-label={`Filter ${label}`}
-        >
+    <ColumnFilterButton label={label} active={active} icon={<Filter size={11} aria-hidden="true" />}>
+      {() => (
+        <>
           <RangeSliders label="Accuracy" range={value?.accuracy ?? FULL_RANGE} onChange={(r) => set("accuracy", r)} />
           {classLabel
             ? measuresFor(column).map((measure) => (
@@ -628,13 +641,17 @@ function ColumnFilter({
                 />
               ))
             : null}
-          <button type="button" className="accuracy-filter-clear" disabled={!active} onClick={() => onChange(undefined)}>
+          <button type="button" className="column-filter-clear" disabled={!active} onClick={() => onChange(undefined)}>
             Clear
           </button>
-        </div>
-      ) : null}
-    </>
+        </>
+      )}
+    </ColumnFilterButton>
   );
+}
+
+function isActive(value: ColumnRanges | undefined): boolean {
+  return Boolean(value && Object.values(value).some(Boolean));
 }
 
 /** The filter button on the Last Run At header: keep files last run at or after a date and
@@ -646,78 +663,40 @@ function RunAfterColumnFilter({
   value: string | null;
   onChange: (next: string | null) => void;
 }) {
-  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!anchor) return;
-    const close = (event: Event) => {
-      const target = event.target as Node;
-      if (popoverRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
-      setAnchor(null);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setAnchor(null);
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, true);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", close);
-      window.removeEventListener("scroll", close, true);
-    };
-  }, [anchor]);
-
-  function toggle() {
-    if (anchor) {
-      setAnchor(null);
-      return;
-    }
-    const rect = buttonRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const width = 264;
-    setAnchor({
-      top: rect.bottom + 6,
-      left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
-    });
-  }
-
   return (
-    <>
-      <button
-        ref={buttonRef}
-        type="button"
-        className={`accuracy-filter-btn${value ? " active" : ""}`}
-        title="Filter Last Run At"
-        aria-label="Filter Last Run At"
-        aria-expanded={anchor !== null}
-        onClick={toggle}
-      >
-        <CalendarClock size={11} aria-hidden="true" />
-      </button>
-      {anchor ? (
-        <div
-          ref={popoverRef}
-          className="accuracy-filter-popover run-after-popover"
-          style={{ top: anchor.top, left: anchor.left }}
-          role="dialog"
-          aria-label="Filter Last Run At"
-        >
-          <RunAfterForm
-            value={value}
-            onApply={(next) => {
-              onChange(next);
-              setAnchor(null);
-            }}
-          />
-        </div>
-      ) : null}
-    </>
+    <ColumnFilterButton
+      label="Last Run At"
+      active={Boolean(value)}
+      icon={<CalendarClock size={11} aria-hidden="true" />}
+      width={264}
+      align="start"
+      popoverClassName="run-after-popover"
+    >
+      {(close) => (
+        <RunAfterForm
+          value={value}
+          onApply={(next) => {
+            onChange(next);
+            close();
+          }}
+        />
+      )}
+    </ColumnFilterButton>
   );
+}
+
+/** A chart's value for one metadata filter. */
+function metaValue(row: ChartAccuracy, key: MetaFilterKey): string | null | undefined {
+  return key === "source" ? row.sourceName : key === "measure" ? row.measure : row.rrMethod;
+}
+
+function passesMeta(row: ChartAccuracy, filters: MetaFilters): boolean {
+  return META_FILTERS.every(({ key }) => {
+    const wanted = filters[key];
+    if (!wanted?.length) return true;
+    const value = metaValue(row, key);
+    return value != null && wanted.includes(value);
+  });
 }
 
 /** Milliseconds for sorting; a missing date sorts last whichever way. */
@@ -780,14 +759,60 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     filters: Filters;
     /** ISO date-time (India offset): only files last run at or after it; null = all. */
     runAfter: string | null;
-  }>("accuracy", { query: "", page: 1, sortKey: "run", sortDir: "desc", filters: {}, runAfter: null });
+    /** Source / Measure / Retrieval. */
+    meta: MetaFilters;
+    runs: string[];
+    batches: string[];
+  }>("accuracy", {
+    query: "", page: 1, sortKey: "run", sortDir: "desc", filters: {}, runAfter: null, meta: {}, runs: [], batches: [],
+  });
   const { query, page, sortKey, sortDir, filters } = view;
   const runAfter = view.runAfter ?? null;
-  // Run after narrows everything on the page, donuts included: the accuracy of those runs.
+  const meta = useMemo(() => view.meta ?? {}, [view.meta]);
+  const runs = useMemo(() => view.runs ?? [], [view.runs]);
+  const batches = useMemo(() => view.batches ?? [], [view.batches]);
+  // The chart-level filters (Run after, Run, Batch, Source, Measure, Retrieval).
   const rows = useMemo(
-    () => allRows.filter((row) => ranAfter(row.lastUpdatedAt, runAfter)),
-    [allRows, runAfter],
+    () =>
+      allRows.filter(
+        (row) =>
+          ranAfter(row.lastUpdatedAt, runAfter) &&
+          passesMeta(row, meta) &&
+          (!runs.length || (row.runId != null && runs.includes(row.runId))) &&
+          (!batches.length || (row.batchId != null && batches.includes(row.batchId))),
+      ),
+    [allRows, runAfter, meta, runs, batches],
   );
+  const byNumber = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+  const runOptions = useMemo(
+    () => [...new Set(allRows.map((row) => row.runId).filter((v): v is string => Boolean(v)))].sort(byNumber),
+    [allRows],
+  );
+  // Batches of the chosen run(s), or every batch when no run is chosen.
+  const batchOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          allRows
+            .filter((row) => !runs.length || (row.runId != null && runs.includes(row.runId)))
+            .map((row) => row.batchId)
+            .filter((v): v is string => Boolean(v)),
+        ),
+      ].sort(byNumber),
+    [allRows, runs],
+  );
+  const metaOptions = useMemo(() => {
+    const out = {} as Record<MetaFilterKey, string[]>;
+    for (const { key } of META_FILTERS) {
+      const values = new Set<string>();
+      for (const row of allRows) {
+        const value = metaValue(row, key);
+        if (value) values.add(value);
+      }
+      out[key] = [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    }
+    return out;
+  }, [allRows]);
   const setQuery = (value: string) => setView({ query: value });
   const setPage = (value: number) => setView({ page: value });
 
@@ -824,9 +849,14 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     runFilter?: boolean;
   }) {
     const rates = filter && filter !== "overall" ? ratesFor(filter) : undefined;
+    const filtered = (filter ? isActive(filters[filter]) : false) || (runFilter && Boolean(runAfter));
     return (
-      <th scope="col" aria-sort={sortKey === sort ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
-        <span className="accuracy-th">
+      <th
+        scope="col"
+        className={filtered ? "is-filtered" : undefined}
+        aria-sort={sortKey === sort ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+      >
+        <span className="column-th">
           <button
             type="button"
             className={`th-sort${sortKey === sort ? " active" : ""}`}
@@ -869,6 +899,11 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
           const row = scoreChart(chart.chartId, chart.chartName, chart.document);
           row.lastUpdatedAt = chart.lastUpdatedAt ?? null;
           row.lastVerifiedAt = chart.lastVerifiedAt ?? null;
+          row.runId = chart.runId ?? null;
+          row.batchId = chart.batchId ?? null;
+          row.sourceName = chart.sourceName ?? null;
+          row.measure = chart.measure ?? null;
+          row.rrMethod = chart.rrMethod ?? null;
           // Runs before MIN_LAST_RUN used older rules; leave them out.
           const ranAt = row.lastUpdatedAt ? new Date(row.lastUpdatedAt) : null;
           const recent = ranAt != null && !Number.isNaN(ranAt.getTime()) && ranAt >= new Date(`${MIN_LAST_RUN}T00:00:00+05:30`);
@@ -893,19 +928,12 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     };
   }, [reloads]);
 
-  const overallByMetric = useMemo(() => {
-    const out = {} as Record<MetricId, Tally>;
-    for (const metric of METRICS) {
-      out[metric.id] = sumTallies(rows.map((row) => row.metrics[metric.id]));
-    }
-    return out;
-  }, [rows]);
-
-  const overall = useMemo(() => sumTallies(rows.map((row) => row.overall)), [rows]);
-
   // "By chart": search by file / chart name and the column filters, 10 per page. The
   // donuts stay on all files.
   const filterCount = Object.keys(filters).length;
+  const allFilterCount =
+    filterCount + (runAfter ? 1 : 0) + metaFilterCount(meta) + (runs.length ? 1 : 0) + (batches.length ? 1 : 0);
+  const clearAll = () => setView({ filters: {}, runAfter: null, meta: {}, runs: [], batches: [], page: 1 });
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const matched = rows.filter(
@@ -913,6 +941,17 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     );
     return matched.sort((a, b) => compareRows(a, b, sortKey, sortDir));
   }, [rows, query, filters, sortKey, sortDir]);
+  // The donuts score the charts the table lists: every filter and the search apply.
+  const overallByMetric = useMemo(() => {
+    const out = {} as Record<MetricId, Tally>;
+    for (const metric of METRICS) {
+      out[metric.id] = sumTallies(filtered.map((row) => row.metrics[metric.id]));
+    }
+    return out;
+  }, [filtered]);
+
+  const overall = useMemo(() => sumTallies(filtered.map((row) => row.overall)), [filtered]);
+
   const totalPages = Math.max(1, Math.ceil(filtered.length / CHARTS_PER_PAGE));
   const currentPage = Math.min(page, totalPages);
   const pageRows = filtered.slice(
@@ -933,18 +972,18 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
   }, [currentPage, totalPages]);
 
   const blankJunkRates = useMemo(
-    () => sumRates(rows.map((row) => row.blankJunkRates)),
-    [rows],
+    () => sumRates(filtered.map((row) => row.blankJunkRates)),
+    [filtered],
   );
-  const memberRates = useMemo(() => sumRates(rows.map((row) => row.memberRates)), [rows]);
+  const memberRates = useMemo(() => sumRates(filtered.map((row) => row.memberRates)), [filtered]);
   const signatureRates = useMemo(
-    () => sumRates(rows.map((row) => row.signatureRates)),
-    [rows],
+    () => sumRates(filtered.map((row) => row.signatureRates)),
+    [filtered],
   );
-  const dosRates = useMemo(() => sumRates(rows.map((row) => row.dosRates)), [rows]);
+  const dosRates = useMemo(() => sumRates(filtered.map((row) => row.dosRates)), [filtered]);
   const orientationRates = useMemo(
-    () => sumRates(rows.map((row) => row.orientationRates)),
-    [rows],
+    () => sumRates(filtered.map((row) => row.orientationRates)),
+    [filtered],
   );
   /** Class 1 counts across all files. */
   const ratesFor = (id: MetricId) =>
@@ -1006,16 +1045,10 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
 
       {error ? <div className="error-banner">{error}</div> : null}
 
+
       {loading ? (
         <CalculatingPanel />
-      ) : rows.length === 0 && runAfter && allRows.length > 0 ? (
-        <p className="accuracy-status">
-          No file was last run on or after {fmtRunAfter(runAfter)}.{" "}
-          <button type="button" className="run-after-clear" onClick={() => setView({ runAfter: null, page: 1 })}>
-            Clear the Run after filter
-          </button>
-        </p>
-      ) : rows.length === 0 ? (
+      ) : allRows.length === 0 ? (
         <p className="accuracy-status">
           No pages with ground truth to score from runs on or after {MIN_LAST_RUN_LABEL}.
         </p>
@@ -1025,13 +1058,11 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
             <h2>By metric</h2>
             <p className="accuracy-compared">
               {runAfter ? <>Run after <strong>{fmtRunAfter(runAfter)}</strong> · </> : null}
-              <strong>{rows.length}</strong> {rows.length === 1 ? "file" : "files"} compared ·{" "}
-              <strong>{overall.scored}</strong> {overall.scored === 1 ? "page" : "pages"} compared{" "}
-              <InfoTip text={`Files last run on or after ${runAfter ? fmtRunAfter(runAfter) : MIN_LAST_RUN_LABEL} with at least one page that has ground truth. A page is compared when it has any ground-truth label.`} />
+              {allFilterCount || query.trim() ? <>Filtered · </> : null}
+              Comparison: <strong>{filtered.length}</strong> {filtered.length === 1 ? "Chart" : "Charts"},{" "}
+              <strong>{overall.scored}</strong> {overall.scored === 1 ? "Page" : "Pages"}
             </p>
-            <p className="accuracy-note">
-              Match counts as 1, Partial as 0.5, and No Match as 0. <InfoTip text={SCORE_INFO} />
-            </p>
+            <p className="accuracy-note">Match counts as 1, Partial as 0.5, and No Match as 0.</p>
             <div className="accuracy-donuts">
               <Donut
                 label="Overall"
@@ -1064,20 +1095,50 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
 
           <section className="accuracy-section" aria-label="Accuracy by chart">
             <div className="accuracy-chart-head">
-              <h2>By chart</h2>
-              <label className="landing-search accuracy-search">
-                <Search size={14} aria-hidden="true" />
-                <input
-                  type="search"
-                  value={query}
-                  onChange={(e) => {
-                    setQuery(e.target.value);
-                    setPage(1);
-                  }}
-                  placeholder="Search file / chart…"
-                  aria-label="Search files"
+              {/* The count of charts the filters and search leave, as History shows its total. */}
+              <div className="landing-history-title">
+                <h2>By chart</h2>
+                <span
+                  className="landing-history-count"
+                  title={allFilterCount || query.trim() ? `Charts matching the filters, of ${allRows.length}` : "Charts"}
+                >
+                  {filtered.length}
+                </span>
+              </div>
+              {/* Search, then Run, Batch, Source, Measure, Retrieval beside it: they narrow
+                  the table and the donuts above it. */}
+              <div className="top-filter-bar accuracy-chart-filters" aria-label="Chart filters">
+                <label className="landing-search accuracy-search">
+                  <Search size={14} aria-hidden="true" />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    placeholder="Search file / chart…"
+                    aria-label="Search files"
+                  />
+                </label>
+
+                <TopCheckFilter
+                  label="Run"
+                  options={runOptions}
+                  selected={runs}
+                  formatOption={formatRunLabel}
+                  onChange={(next) => setView({ runs: next, batches: next.length ? batches : [], page: 1 })}
                 />
-              </label>
+                <TopCheckFilter
+                  label="Batch"
+                  options={batchOptions}
+                  selected={batches}
+                  formatOption={formatBatchLabel}
+                  onChange={(next) => setView({ batches: next, page: 1 })}
+                />
+                <MetaFilterBar options={metaOptions} filters={meta} onChange={(next) => setView({ meta: next, page: 1 })} />
+                <ClearAllFilters count={allFilterCount} onClear={clearAll} />
+              </div>
             </div>
             <div className="accuracy-table-scroll">
             <table className="landing-history-table accuracy-table">
@@ -1141,7 +1202,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                     <td className="landing-col-updated accuracy-col-date">
                       <DateLines iso={row.lastVerifiedAt} />
                     </td>
-                    <td>{row.overall.scored}</td>
+                    <td className="landing-col-num">{row.overall.scored}</td>
                     {LIVE_METRICS.map((metric) => (
                       <td key={metric.id}>
                         <CompactScore
@@ -1150,6 +1211,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
                           rates={rowRatesFor(row, metric.id)}
                           narrow={NARROW_METRICS.has(metric.id)}
                           wide={WIDE_METRICS.has(metric.id)}
+                          member={MEMBER_METRICS.has(metric.id)}
                         />
                       </td>
                     ))}

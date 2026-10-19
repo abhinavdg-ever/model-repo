@@ -116,6 +116,12 @@ export type ChartAccuracy = {
   chartName: string;
   lastUpdatedAt?: string | null;
   lastVerifiedAt?: string | null;
+  /** Run / Batch and chart metadata, for the filters above the By chart table. */
+  runId?: string | null;
+  batchId?: string | null;
+  sourceName?: string | null;
+  measure?: string | null;
+  rrMethod?: string | null;
   metrics: Record<MetricId, Tally>;
   overall: Tally;
   /** Class 1 = a blank or junk page. */

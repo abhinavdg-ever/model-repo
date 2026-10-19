@@ -54,6 +54,7 @@ import { ocrTextForFilename } from "./ocrPages";
 import { prepareOcrLines } from "./ocrFormat";
 import FullscreenPageChrome from "./FullscreenPageChrome";
 import PageJump from "./PageJump";
+import { blankJunkTruth } from "./groundTruth";
 import { useImagePan } from "./useImagePan";
 import { usePageViewerHotkeys } from "./usePageViewerHotkeys";
 import type { ChartRef } from "./chartSequence";
@@ -107,6 +108,16 @@ function findImagingPage(
 }
 
 /** A corrected file exists only when orientation or tilt was actually applied. */
+/** How stage 1 corrected the page: turned (orientation) wins over straightened (tilt). */
+function correctionKind(page: ImagingPageResult | null | undefined): "orientation" | "tilt" | null {
+  if (!page) return null;
+  const orient = Number(page.orientationAngle);
+  const tilt = Number(page.tiltAngle);
+  if (Number.isFinite(orient) && Math.abs(orient) >= 0.5) return "orientation";
+  if (Number.isFinite(tilt) && Math.abs(tilt) >= 0.05) return "tilt";
+  return null;
+}
+
 function pageNeedsCorrection(page: ImagingPageResult | null | undefined): boolean {
   if (!page) return false;
   const orient = Number(page.orientationAngle);
@@ -123,6 +134,12 @@ const FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE = "Skipped for Blank/Junk";
 function isBlankOrJunkYes(page: ImagingPageResult | null): boolean {
   const v = (page?.blankOrJunk || "").trim().toLowerCase();
   return v.startsWith("yes");
+}
+
+/** The ground truth calls the page blank or junk (Yes (Blank) / Yes (Junk)). */
+function isBlankOrJunkTruth(page: ImagingPageResult | null): boolean {
+  if (!page?.groundTruth) return false;
+  return (blankJunkTruth(page.groundTruth) ?? "").toLowerCase().startsWith("yes");
 }
 
 function isBlankPage(page: ImagingPageResult): boolean {
@@ -430,8 +447,19 @@ export default function FolderViewer({
 
   function pageMarkClass(imaging: ImagingPageResult | null): string {
     const marks: string[] = [];
-    if (highlightBlankJunk && isBlankOrJunkYes(imaging)) marks.push("mark-blank-junk");
+    if (highlightBlankJunk) {
+      // Both the pipeline and the ground truth: green. The pipeline only: amber. The
+      // ground truth only (a blank / junk page the pipeline missed): red.
+      const ours = isBlankOrJunkYes(imaging);
+      const truth = isBlankOrJunkTruth(imaging);
+      if (ours && truth) marks.push("mark-blank-junk");
+      else if (ours) marks.push("mark-blank-junk mark-bj-ours");
+      else if (truth) marks.push("mark-blank-junk mark-bj-truth");
+    }
     if (highlightDuplicate && imaging?.isDuplicate === true) marks.push("mark-duplicate");
+    // Show Corrected Images: the pages stage 1 corrected, an orientation fix darker than a tilt.
+    const corrected = showCorrected ? correctionKind(imaging) : null;
+    if (corrected) marks.push(corrected === "orientation" ? "mark-corrected mark-orient" : "mark-corrected mark-tilt");
     return marks.join(" ");
   }
 
@@ -1248,6 +1276,12 @@ export default function FolderViewer({
                         />
                         Show Corrected Images
                       </label>
+                      {showCorrected ? (
+                        <div className="viewer-menu-key" aria-label="Corrected page marks">
+                          <span><i className="key-swatch key-orient" /> Orientation corrected</span>
+                          <span><i className="key-swatch key-tilt" /> Tilt corrected</span>
+                        </div>
+                      ) : null}
                       <label>
                         <input
                           type="checkbox"
@@ -1256,6 +1290,13 @@ export default function FolderViewer({
                         />
                         Highlight Blank/Junk
                       </label>
+                      {highlightBlankJunk ? (
+                        <div className="viewer-menu-key" aria-label="Blank/Junk highlight colours">
+                          <span><i className="key-swatch key-bj-both" /> Pipeline + ground truth</span>
+                          <span><i className="key-swatch key-bj-ours" /> Pipeline only</span>
+                          <span><i className="key-swatch key-bj-truth" /> Ground truth only</span>
+                        </div>
+                      ) : null}
                       <label>
                         <input
                           type="checkbox"

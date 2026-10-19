@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
-import { CircleMinus, Pencil, Save } from "lucide-react";
+import { Check, CircleMinus, Pencil, Save, X } from "lucide-react";
 import {
   savePageGroundTruth,
   type ExtractionReviewResponse,
@@ -395,6 +395,25 @@ type CompareRow = {
 };
 
 const BLANK_JUNK_CHOICES = ["Yes (Blank)", "Yes (Junk)", "No"] as const;
+
+/** Blank / Junk on the page view, as the accuracy report scores it: any Yes against any
+ * Yes is a tick (Yes (Junk) against Yes (Blank) included), No against No a tick; Final
+ * wrong but Extracted right is "!"; otherwise a cross. */
+function blankJunkCompare(extracted: string, final: string) {
+  const side = (value: string): "yes" | "no" | null => {
+    const text = value.trim().toLowerCase();
+    if (text.startsWith("yes")) return "yes";
+    if (text.startsWith("no")) return "no";
+    return null;
+  };
+  return (truth: string): "match" | "partial" | "mismatch" | null => {
+    const expected = side(truth);
+    if (!expected) return null;
+    const got = side(final);
+    if (got === expected) return "match";
+    return side(extracted) === expected ? "partial" : "mismatch";
+  };
+}
 /** The merged Page Type / Page Subtype ground truth takes either kind of name. */
 const PAGE_TYPE_AND_SUBTYPE_CHOICES = [...new Set([...PAGE_TYPE_CHOICES, ...PAGE_SUBTYPE_CHOICES])];
 const DUPLICATE_CHOICES = ["Yes", "Partial", "No"] as const;
@@ -628,6 +647,13 @@ const PERSISTED_GT = new Set([
 
 const UNCOMPARED = new Set(["", "na", "n/a", "not found", "not available", "yet to process", "skipped"]);
 
+/** The pipeline's value offered as the ground truth on a page nobody has labelled. */
+function confirmedValue(processed: string): string {
+  const text = processed.trim();
+  if (!text || text === YET_TO_PROCESS || text === SKIPPED || text === NOT_FOUND) return "";
+  return text;
+}
+
 function presenceStored(value: string | null | undefined): string {
   const side = yesNo(value);
   if (side === "yes") return "Yes";
@@ -680,6 +706,7 @@ function CompareSection({
   editingId,
   values,
   onCommit,
+  onAccept,
   onCancel,
   onDraft,
   onStartEdit,
@@ -694,6 +721,7 @@ function CompareSection({
   editingId: string | null;
   values: Record<string, string>;
   onCommit: (id: string, value: string) => void;
+  onAccept: (id: string, value: string) => void;
   onCancel: () => void;
   onDraft: (value: string) => void;
   onStartEdit: (id: string) => void;
@@ -777,7 +805,9 @@ function CompareSection({
                   value={values[row.id] ?? ""}
                   saving={saving}
                   verdict={verdicts[row.id]}
+                  suggest={!withTruth}
                   onCommit={(next) => onCommit(row.id, next)}
+                  onAccept={(next) => onAccept(row.id, next)}
                   onCancel={onCancel}
                   onDraft={onDraft}
                   onStartEdit={() => onStartEdit(row.id)}
@@ -799,7 +829,9 @@ function GroundTruthCell({
   value,
   saving,
   verdict,
+  suggest = false,
   onCommit,
+  onAccept,
   onCancel,
   onDraft,
   onStartEdit,
@@ -811,7 +843,10 @@ function GroundTruthCell({
   value: string;
   saving: boolean;
   verdict?: "accept" | "enter";
+  /** The page has no ground truth yet: offer the pipeline's value with ✓ Accept / ✕ Change. */
+  suggest?: boolean;
   onCommit: (value: string) => void;
+  onAccept: (value: string) => void;
   onCancel: () => void;
   onDraft: (value: string) => void;
   onStartEdit: () => void;
@@ -828,6 +863,15 @@ function GroundTruthCell({
   // The column shows only the ground truth: an empty cell (blank, NA, Not Found) reads
   // Not Found and is not compared; nothing is copied in from the pipeline's value.
   const stored = row.presence ? presenceStored(value) : value.trim();
+  // A page nobody has labelled offers the pipeline's value; a Yes / No Final ("Provider
+  // Signature: No") is offered as itself, not as "a value was found".
+  const processedSide = yesNo(row.processed);
+  const copied = !suggest
+    ? ""
+    : row.presence
+      ? (processedSide ? processedSide === "yes" : valueFound(row.processed)) ? "Yes" : "No"
+      : confirmedValue(row.processed);
+  const offer = suggest && !stored && !verdict;
   const fromStore = !verdict && Boolean(stored);
   const effective = verdict ?? (fromStore ? "enter" : undefined);
   const compared =
@@ -846,7 +890,7 @@ function GroundTruthCell({
     <span className="imaging-gt-mark gt-mismatch" aria-label="No">✕</span>
   ) : blankNone ? (
     <span className="imaging-gt-mark" aria-label="Yes">✓</span>
-  ) : !stored ? null : effective === "accept" ||
+  ) : !stored && effective !== "accept" ? null : effective === "accept" ||
     (effective === "enter" && (compared === "match" || (compared == null && !fromStore))) ? (
       <span className="imaging-gt-mark" aria-label="Yes">✓</span>
     ) : compared === "partial" ? (
@@ -865,7 +909,30 @@ function GroundTruthCell({
       </span>
     );
   }
-  const actions = (
+  const actions = offer ? (
+    <span className="imaging-gt-actions">
+      <button
+        type="button"
+        className="imaging-gt-icon"
+        aria-label={`Accept ${row.label} ground truth`}
+        title="Accept"
+        disabled={saving || !copied}
+        onClick={() => onAccept(copied)}
+      >
+        <Check size={12} strokeWidth={2.6} aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        className="imaging-gt-icon imaging-gt-cancel"
+        aria-label={`Change ${row.label} ground truth`}
+        title="Change"
+        disabled={saving}
+        onClick={onStartEdit}
+      >
+        <X size={12} strokeWidth={2.6} aria-hidden="true" />
+      </button>
+    </span>
+  ) : (
     <button
       type="button"
       className="imaging-gt-pen"
@@ -878,7 +945,7 @@ function GroundTruthCell({
     </button>
   );
   if (!editing) {
-    const shown = stored || NOT_FOUND;
+    const shown = stored || (offer ? copied : "") || NOT_FOUND;
     const dim = !stored && !row.key;
     return (
       <span className="imaging-gt-slot">
@@ -906,7 +973,7 @@ function GroundTruthCell({
       </span>
     );
   }
-  const draft = stored;
+  const draft = stored || (offer ? copied : "");
   return (
     <span className="imaging-gt-slot is-editing">
       <TextTruth
@@ -1367,6 +1434,13 @@ function PageDetails({
     editingId,
     saving,
     verdicts,
+    onAccept: (id: string, next: string) => {
+      setEditingId(null);
+      setDraft(null);
+      setSaveError(null);
+      setVerdicts((current) => ({ ...current, [id]: "accept" }));
+      setEdits((current) => ({ ...current, [id]: next }));
+    },
     onCommit: (id: string, next: string) => {
       setEditingId(null);
       setDraft(null);
@@ -1501,13 +1575,16 @@ function PageDetails({
         {...sectionProps}
         title="Page Classification"
         rows={[
-          sameValue(fmtBlankOrJunk(page.blankOrJunk, sections.junk), fmtConfidence(page.pageTypeConfidence, sections.junk), {
-            id: "blank_junk",
-            label: "Is Blank or Junk?",
-            truth: bits.blankJunk,
-            choices: BLANK_JUNK_CHOICES,
-            key: true,
-          }),
+          (() => {
+            const row = sameValue(fmtBlankOrJunk(page.blankOrJunk, sections.junk), fmtConfidence(page.pageTypeConfidence, sections.junk), {
+              id: "blank_junk",
+              label: "Is Blank or Junk?",
+              truth: bits.blankJunk,
+              choices: BLANK_JUNK_CHOICES,
+              key: true,
+            });
+            return { ...row, compare: blankJunkCompare(row.extracted, row.processed) };
+          })(),
           sameValue(fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk, page.duplicateOf), fmtConfidence(duplicateDisplayConfidence(page.isDuplicate, page.pageTypeConfidence), sections.junk), {
             id: "duplicate",
             label: "Is Duplicate",

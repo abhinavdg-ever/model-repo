@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarClock,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
   FileText,
-  FolderOpen,
+  Filter,
   FileSpreadsheet,
   Gauge,
   Inbox,
@@ -30,9 +29,19 @@ import {
 } from "./api";
 import { formatDuplicateDownload } from "./duplicateLabel";
 import { RunAfterForm } from "./runAfter";
+import {
+  CheckListFilter,
+  ClearAllFilters,
+  ColumnFilterButton,
+  META_FILTERS,
+  MetaFilterBar,
+  metaFilterCount,
+  type MetaFilters,
+} from "./columnFilter";
 import { fillDocDosForDownload } from "./ImagingPanel";
 
 const PAGE_SIZE = 15;
+const filterIcon = <Filter size={11} aria-hidden="true" />;
 const LANDING_FILTERS_KEY = "advantmed_imaging_landing_filters";
 
 type SortKey = "filename" | "pages" | "updated";
@@ -43,6 +52,8 @@ type LandingFilters = {
   statusFilter: OcrRunStatus[];
   runFilter: string[];
   batchFilter: string[];
+  /** Source / Measure / Retrieval. */
+  metaFilter: MetaFilters;
   /** ISO date-time (India time) the chart must have last run at or after; null = any time. */
   runAfter: string | null;
   sortKey: SortKey;
@@ -88,6 +99,7 @@ export function savedHistoryListParams(): FolderListParams {
     status: saved.statusFilter,
     run: saved.runFilter,
     batch: saved.batchFilter,
+    ...saved.metaFilter,
     run_after: saved.runAfter,
     sort: saved.sortKey,
     sort_dir: saved.sortDir,
@@ -100,6 +112,7 @@ function readLandingFilters(): LandingFilters {
     statusFilter: [],
     runFilter: [],
     batchFilter: [],
+    metaFilter: {},
     runAfter: null,
     // Newest run first.
     sortKey: "updated",
@@ -124,6 +137,9 @@ function readLandingFilters(): LandingFilters {
       statusFilter: normalizeStatusList(parsed.statusFilter),
       runFilter: normalizeIdList(parsed.runFilter),
       batchFilter: normalizeIdList(parsed.batchFilter),
+      metaFilter: Object.fromEntries(
+        META_FILTERS.map(({ key }) => [key, normalizeIdList(parsed.metaFilter?.[key])]),
+      ),
       runAfter: typeof parsed.runAfter === "string" && parsed.runAfter ? parsed.runAfter : null,
       sortKey,
       sortDir,
@@ -134,211 +150,8 @@ function readLandingFilters(): LandingFilters {
   }
 }
 
-function toggleId(list: string[], value: string): string[] {
-  return list.includes(value)
-    ? list.filter((v) => v !== value)
-    : [...list, value].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-}
-
-function MultiCheckFilter({
-  label,
-  ariaLabel,
-  options,
-  selected,
-  onChange,
-  formatOption,
-  emptyLabel,
-  disabled = false,
-  lockedHint,
-}: {
-  label: string;
-  ariaLabel: string;
-  options: string[];
-  selected: string[];
-  onChange: (next: string[]) => void;
-  formatOption: (value: string) => string;
-  emptyLabel: string;
-  disabled?: boolean;
-  lockedHint?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open || disabled) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open, disabled]);
-
-  useEffect(() => {
-    if (disabled) setOpen(false);
-  }, [disabled]);
-
-  const allSelected = selected.length === 0;
-  const summary = disabled
-    ? lockedHint || "Select a run first"
-    : allSelected
-      ? emptyLabel
-      : selected.length === 1
-        ? formatOption(selected[0])
-        : `${selected.length} selected`;
-
-  return (
-    <div
-      className={
-        open
-          ? "landing-select-wrap landing-multi-wrap is-open"
-          : "landing-select-wrap landing-multi-wrap"
-      }
-      ref={rootRef}
-    >
-      <span>{label}</span>
-      <div className={`landing-multi${disabled ? " is-disabled" : ""}`}>
-        <button
-          type="button"
-          className="landing-multi-trigger"
-          aria-label={ariaLabel}
-          aria-expanded={open}
-          aria-haspopup="listbox"
-          aria-disabled={disabled}
-          disabled={disabled}
-          title={disabled ? lockedHint || "Select a run first" : undefined}
-          onClick={() => {
-            if (!disabled) setOpen((v) => !v);
-          }}
-        >
-          <span className="landing-multi-trigger-label">{summary}</span>
-          <ChevronDown size={12} aria-hidden="true" />
-        </button>
-        {open && !disabled ? (
-          <>
-            <div
-              className="landing-multi-backdrop"
-              aria-hidden="true"
-              onMouseDown={() => setOpen(false)}
-            />
-            <div className="landing-multi-panel" role="listbox" aria-multiselectable="true">
-              <label className="landing-multi-option landing-multi-select-all">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={() => {
-                    if (!allSelected) onChange([]);
-                  }}
-                />
-                <span>Select all</span>
-              </label>
-              {options.length === 0 ? (
-                <div className="landing-multi-empty">No values yet</div>
-              ) : (
-                options.map((value) => (
-                  <label key={value} className="landing-multi-option">
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(value)}
-                      onChange={() => onChange(toggleId(selected, value))}
-                    />
-                    <span>{formatOption(value)}</span>
-                  </label>
-                ))
-              )}
-            </div>
-          </>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-/** Column filter for Last Run At: charts last run on or after a date and time (12:00 AM
- *  unless changed). Styled like the other column filters. */
-function RunAfterFilter({
-  value,
-  onChange,
-}: {
-  value: string | null;
-  onChange: (next: string | null) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  return (
-    <div
-      className={
-        open
-          ? "landing-select-wrap landing-multi-wrap is-open"
-          : "landing-select-wrap landing-multi-wrap"
-      }
-      ref={rootRef}
-    >
-      <span>Run after</span>
-      <div className={`landing-multi${value ? " is-active" : ""}`}>
-        <button
-          type="button"
-          className="landing-multi-trigger"
-          aria-label="Filter by last run date and time"
-          aria-expanded={open}
-          aria-haspopup="dialog"
-          onClick={() => setOpen((v) => !v)}
-        >
-          <CalendarClock size={12} aria-hidden="true" />
-          <span className="landing-multi-trigger-label">
-            {value ? fmtUpdated(value) : "Any time"}
-          </span>
-          <ChevronDown size={12} aria-hidden="true" />
-        </button>
-        {open ? (
-          <>
-            <div
-              className="landing-multi-backdrop"
-              aria-hidden="true"
-              onMouseDown={() => setOpen(false)}
-            />
-            <div className="landing-multi-panel run-after-panel" role="dialog" aria-label="Run after">
-              <RunAfterForm
-                value={value}
-                onApply={(next) => {
-                  onChange(next);
-                  setOpen(false);
-                }}
-              />
-            </div>
-          </>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 type Props = {
   onView: (folderId: string, mode?: "ocr" | "imaging") => void;
-  onOpenFileViewer?: () => void;
   onOpenAccuracy?: () => void;
   onOpenManualReview?: () => void;
 };
@@ -496,12 +309,11 @@ function downloadTextFile(filename: string, text: string, mime: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, onOpenManualReview }: Props) {
+export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview }: Props) {
   const saved = useMemo(() => readLandingFilters(), []);
   const [folders, setFolders] = useState<FolderSummary[]>([]);
   const [total, setTotal] = useState(0);
-  const [pageCountSum, setPageCountSum] = useState(0);
-  const [ocrSum, setOcrSum] = useState(0);
+  const [summary, setSummary] = useState({ charts: 0, pages: 0, truth: 0 });
   const [runOptions, setRunOptions] = useState<string[]>([]);
   const [batchOptions, setBatchOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -518,6 +330,8 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
     saved.runFilter.length > 0 ? saved.batchFilter : [],
   );
   const [runAfter, setRunAfter] = useState<string | null>(saved.runAfter);
+  const [metaFilter, setMetaFilter] = useState<MetaFilters>(saved.metaFilter);
+  const [metaOptions, setMetaOptions] = useState<Record<string, string[]>>({});
   const skipFilterPageReset = useRef(true);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
@@ -540,6 +354,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
         status: statusFilter,
         run: runFilter,
         batch: batchFilter,
+        ...metaFilter,
         run_after: runAfter,
         sort: sortKey,
         sort_dir: sortDir,
@@ -547,10 +362,18 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
       if (seq !== loadSeq.current) return;
       setFolders(data.items);
       setTotal(data.total);
-      setPageCountSum(data.page_count_sum);
-      setOcrSum(data.ocr_processed_sum);
+      setSummary({
+        charts: data.imaging_completed_charts ?? 0,
+        pages: data.imaging_completed_pages ?? 0,
+        truth: data.ground_truth_charts ?? 0,
+      });
       setRunOptions(data.run_options);
       setBatchOptions(data.batch_options);
+      setMetaOptions({
+        source: data.source_options ?? [],
+        measure: data.measure_options ?? [],
+        retrieval: data.retrieval_options ?? [],
+      });
       // Drop batch picks that are no longer valid for the selected run(s).
       setBatchFilter((prev) => {
         if (runFilter.length === 0) return prev.length === 0 ? prev : [];
@@ -572,7 +395,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
     }, query.trim() ? 200 : 0);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload on list controls
-  }, [page, query, statusFilter, runFilter, batchFilter, runAfter, sortKey, sortDir]);
+  }, [page, query, statusFilter, runFilter, batchFilter, metaFilter, runAfter, sortKey, sortDir]);
 
   useEffect(() => {
     try {
@@ -581,6 +404,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
         statusFilter,
         runFilter,
         batchFilter,
+        metaFilter,
         runAfter,
         sortKey,
         sortDir,
@@ -590,12 +414,8 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
     } catch {
       /* ignore */
     }
-  }, [query, statusFilter, runFilter, batchFilter, runAfter, sortKey, sortDir, page]);
+  }, [query, statusFilter, runFilter, batchFilter, metaFilter, runAfter, sortKey, sortDir, page]);
 
-  const totals = useMemo(
-    () => ({ folders: total, pages: pageCountSum, ocr: ocrSum }),
-    [total, pageCountSum, ocrSum],
-  );
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -605,7 +425,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
       return;
     }
     setPage(1);
-  }, [query, sortKey, sortDir, statusFilter, runFilter, batchFilter, runAfter]);
+  }, [query, sortKey, sortDir, statusFilter, runFilter, batchFilter, metaFilter, runAfter]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -628,6 +448,18 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
     }
     return [...pages].sort((a, b) => a - b);
   }, [page, totalPages]);
+
+  const filterCount =
+    (statusFilter.length ? 1 : 0) + (runFilter.length ? 1 : 0) + (batchFilter.length ? 1 : 0) + (runAfter ? 1 : 0) +
+    metaFilterCount(metaFilter);
+
+  function clearFilters() {
+    setStatusFilter([]);
+    setRunFilter([]);
+    setBatchFilter([]);
+    setMetaFilter({});
+    setRunAfter(null);
+  }
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -676,6 +508,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
         status: statusFilter,
         run: runFilter,
         batch: batchFilter,
+        ...metaFilter,
         run_after: runAfter,
         sort: sortKey,
         sort_dir: sortDir,
@@ -727,6 +560,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
                 query.trim() ||
                 runFilter.length > 0 ||
                 batchFilter.length > 0 ||
+                metaFilterCount(metaFilter) > 0 ||
                 runAfter
                   ? "Download results for charts matching current filters"
                   : "Download all imaging pipeline outputs as CSV"
@@ -735,16 +569,6 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
               <Download size={15} aria-hidden="true" />
               Download Results
             </button>
-            {onOpenFileViewer ? (
-              <button
-                type="button"
-                className="landing-file-viewer-btn"
-                onClick={onOpenFileViewer}
-              >
-                <FolderOpen size={15} aria-hidden="true" />
-                File Viewer
-              </button>
-            ) : null}
             {onOpenAccuracy ? (
               <button
                 type="button"
@@ -768,22 +592,35 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
           </div>
         </div>
 
+        {!loading && total === 0 && filterCount > 0 ? (
+          // A filter that leaves nothing says so at the top, not only in the empty table.
+          <div className="filter-empty-banner" role="status">
+            No chart matches the filters.
+            <ClearAllFilters count={filterCount} onClear={clearFilters} />
+          </div>
+        ) : null}
+
         {total > 0 && (
-          <div className="landing-stats" aria-label="Summary">
+          <div
+            className="landing-stats"
+            aria-label="Summary"
+            title="Imaging Completed charts among those listed (every stage finished)"
+          >
             <div className="landing-stat">
-              <span className="landing-stat-value">{totals.folders}</span>
+              <span className="landing-stat-value">{summary.charts}</span>
               <span className="landing-stat-label">charts</span>
             </div>
             <div className="landing-stat-divider" />
             <div className="landing-stat">
-              <span className="landing-stat-value">{totals.pages}</span>
+              <span className="landing-stat-value">{summary.pages}</span>
               <span className="landing-stat-label">pages</span>
             </div>
             <div className="landing-stat-divider" />
             <div className="landing-stat">
-              <span className="landing-stat-value">{totals.ocr}</span>
-              <span className="landing-stat-label">OCR processed</span>
+              <span className="landing-stat-value">{summary.truth}</span>
+              <span className="landing-stat-label">with ground truth available</span>
             </div>
+            <span className="landing-stat-note">Imaging Completed only</span>
           </div>
         )}
 
@@ -808,42 +645,9 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
                 />
               </label>
 
-              <MultiCheckFilter
-                label="Status"
-                ariaLabel="Filter by status"
-                options={STATUS_OPTIONS}
-                selected={statusFilter}
-                onChange={(next) => setStatusFilter(next as OcrRunStatus[])}
-                formatOption={(v) => OCR_STATUS_LABELS[v as OcrRunStatus] ?? v}
-                emptyLabel="All statuses"
-              />
+              <MetaFilterBar options={metaOptions} filters={metaFilter} onChange={setMetaFilter} />
 
-              <MultiCheckFilter
-                label="Run"
-                ariaLabel="Filter by run"
-                options={runOptions}
-                selected={runFilter}
-                onChange={(next) => {
-                  setRunFilter(next);
-                  if (next.length === 0) setBatchFilter([]);
-                }}
-                formatOption={formatRunLabel}
-                emptyLabel="All runs"
-              />
-
-              <MultiCheckFilter
-                label="Batch"
-                ariaLabel="Filter by batch"
-                options={batchOptions}
-                selected={batchFilter}
-                onChange={setBatchFilter}
-                formatOption={formatBatchLabel}
-                emptyLabel="All batches"
-                disabled={runFilter.length === 0}
-                lockedHint="Select a run first"
-              />
-
-              <RunAfterFilter value={runAfter} onChange={setRunAfter} />
+              <ClearAllFilters count={filterCount} onClear={clearFilters} />
 
               <button
                 type="button"
@@ -871,8 +675,40 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
                       Chart{sortIndicator("filename")}
                     </button>
                   </th>
-                  <th>Run</th>
-                  <th>Batch</th>
+                  <th className={runFilter.length ? "is-filtered" : undefined}>
+                    <span className="column-th">
+                      <span className="column-th-label">Run</span>
+                      <ColumnFilterButton label="Run" active={runFilter.length > 0} icon={filterIcon}>
+                        {() => (
+                          <CheckListFilter
+                            options={runOptions}
+                            selected={runFilter}
+                            onChange={(next) => {
+                              setRunFilter(next);
+                              if (next.length === 0) setBatchFilter([]);
+                            }}
+                            formatOption={formatRunLabel}
+                          />
+                        )}
+                      </ColumnFilterButton>
+                    </span>
+                  </th>
+                  <th className={batchFilter.length ? "is-filtered" : undefined}>
+                    <span className="column-th">
+                      <span className="column-th-label">Batch</span>
+                      <ColumnFilterButton label="Batch" active={batchFilter.length > 0} icon={filterIcon}>
+                        {() => (
+                          <CheckListFilter
+                            options={batchOptions}
+                            selected={batchFilter}
+                            onChange={setBatchFilter}
+                            formatOption={formatBatchLabel}
+                            lockedHint={runFilter.length === 0 ? "Select a run first (Run column)." : undefined}
+                          />
+                        )}
+                      </ColumnFilterButton>
+                    </span>
+                  </th>
                   <th>
                     <button
                       type="button"
@@ -882,18 +718,49 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
                       Pages{sortIndicator("pages")}
                     </button>
                   </th>
-                  <th>OCR</th>
-                  <th>Imaging</th>
-                  <th>Status</th>
+                  <th className={statusFilter.length ? "is-filtered" : undefined}>
+                    <span className="column-th">
+                      <span className="column-th-label">Status</span>
+                      <ColumnFilterButton label="Status" active={statusFilter.length > 0} icon={filterIcon}>
+                        {() => (
+                          <CheckListFilter
+                            options={STATUS_OPTIONS}
+                            selected={statusFilter}
+                            onChange={(next) => setStatusFilter(next as OcrRunStatus[])}
+                            formatOption={(v) => OCR_STATUS_LABELS[v as OcrRunStatus] ?? v}
+                          />
+                        )}
+                      </ColumnFilterButton>
+                    </span>
+                  </th>
                   <th title="Client page labels loaded for this chart">Ground Truth</th>
-                  <th>
-                    <button
-                      type="button"
-                      className={`th-sort${sortKey === "updated" ? " active" : ""}`}
-                      onClick={() => toggleSort("updated")}
-                    >
-                      Last Run At{sortIndicator("updated")}
-                    </button>
+                  <th className={runAfter ? "is-filtered" : undefined}>
+                    <span className="column-th">
+                      <button
+                        type="button"
+                        className={`th-sort${sortKey === "updated" ? " active" : ""}`}
+                        onClick={() => toggleSort("updated")}
+                      >
+                        Last Run At{sortIndicator("updated")}
+                      </button>
+                      <ColumnFilterButton
+                        label="Last Run At"
+                        active={Boolean(runAfter)}
+                        icon={<CalendarClock size={11} aria-hidden="true" />}
+                        width={264}
+                        popoverClassName="run-after-popover"
+                      >
+                        {(close) => (
+                          <RunAfterForm
+                            value={runAfter}
+                            onApply={(next) => {
+                              setRunAfter(next);
+                              close();
+                            }}
+                          />
+                        )}
+                      </ColumnFilterButton>
+                    </span>
                   </th>
                   <th>Actions</th>
                 </tr>
@@ -901,7 +768,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
               <tbody>
                 {loading && folders.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="landing-history-empty">
+                    <td colSpan={8} className="landing-history-empty">
                       <div className="landing-empty-state">
                         <div className="landing-empty-icon">
                           <RefreshCw size={18} />
@@ -912,7 +779,7 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
                   </tr>
                 ) : total === 0 ? (
                   <tr>
-                    <td colSpan={10} className="landing-history-empty">
+                    <td colSpan={8} className="landing-history-empty">
                       <div className="landing-empty-state">
                         <div className="landing-empty-icon">
                           <Inbox size={18} />
@@ -947,8 +814,6 @@ export default function LandingPage({ onView, onOpenFileViewer, onOpenAccuracy, 
                       <td className="landing-col-num">{formatRunLabel(folder.run_id)}</td>
                       <td className="landing-col-num">{formatBatchLabel(folder.batch_id)}</td>
                       <td className="landing-col-num">{folder.page_count}</td>
-                      <td className="landing-col-num">{folder.ocr_processed}</td>
-                      <td className="landing-col-num">{folder.imaging_processed}</td>
                       <td>
                         <span className={statusClass(folder.ocr_status)}>
                           {OCR_STATUS_LABELS[folder.ocr_status]}

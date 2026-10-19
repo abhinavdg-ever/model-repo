@@ -20,6 +20,10 @@ export type FolderSummary = {
   batch_id?: string | null;
   ground_truth_available?: boolean;
   on_disk?: boolean;
+  /** Chart metadata (manifest / metadata CSV). */
+  source_name?: string | null;
+  measure?: string | null;
+  rr_method?: string | null;
 };
 
 export type FolderListParams = {
@@ -29,6 +33,10 @@ export type FolderListParams = {
   status?: OcrRunStatus[];
   run?: string[];
   batch?: string[];
+  source?: string[];
+  measure?: string[];
+  /** RR Method. */
+  retrieval?: string[];
   /** Only charts last run at or after this ISO date-time (with its offset). */
   run_after?: string | null;
   sort?: "filename" | "pages" | "updated";
@@ -56,8 +64,15 @@ export type FolderListResponse = {
   total: number;
   page_count_sum: number;
   ocr_processed_sum: number;
+  /** Imaging Completed charts among the matches, their pages, and those with ground truth. */
+  imaging_completed_charts?: number;
+  imaging_completed_pages?: number;
+  ground_truth_charts?: number;
   run_options: string[];
   batch_options: string[];
+  source_options?: string[];
+  measure_options?: string[];
+  retrieval_options?: string[];
   limit: number | null;
   offset: number;
 };
@@ -342,6 +357,9 @@ export function listFolders(params?: FolderListParams): Promise<FolderListRespon
   for (const s of params?.status ?? []) sp.append("status", s);
   for (const s of params?.run ?? []) sp.append("run", s);
   for (const s of params?.batch ?? []) sp.append("batch", s);
+  for (const s of params?.source ?? []) sp.append("source", s);
+  for (const s of params?.measure ?? []) sp.append("measure", s);
+  for (const s of params?.retrieval ?? []) sp.append("retrieval", s);
   if (params?.run_after) sp.set("run_after", params.run_after);
   if (params?.sort) sp.set("sort", params.sort);
   if (params?.sort_dir) sp.set("sort_dir", params.sort_dir);
@@ -384,6 +402,11 @@ export type AccuracyChartPayload = {
   chartName: string;
   lastUpdatedAt?: string | null;
   lastVerifiedAt?: string | null;
+  runId?: string | null;
+  batchId?: string | null;
+  sourceName?: string | null;
+  measure?: string | null;
+  rrMethod?: string | null;
   metrics?: Record<string, { correct: number; wrong: number; scored: number }> | null;
   overall?: { correct: number; wrong: number; scored: number } | null;
   document?: ImagingDocumentResponse | null;
