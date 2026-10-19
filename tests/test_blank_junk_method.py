@@ -433,3 +433,15 @@ def test_a_visual_card_with_card_wording_is_junk():
 def test_a_drivers_licence_is_junk_evidence():
     assert score_text("Driver License DL # D1234567 class C organ donor", document_type="visual").best_junk_group() == "id_card"
 
+
+
+def test_a_heading_line_counts_its_heading_word_anywhere():
+    hits = score_text("Allergies and Adverse Reactions\nThis patient has no known allergies.").hits
+    assert hits["clinical.section_headings"] == ["allergies"]
+    # A long sentence is not a heading: the word inside it does not count.
+    long = score_text("The patient was counselled about allergies and adverse reactions to the new drug today.")
+    assert "clinical.section_headings" not in long.hits
+    # A long line that starts with the heading and a colon still counts (the old rule).
+    assert score_text("Allergies: penicillin, sulfa, codeine, latex, shellfish and peanuts").hits[
+        "clinical.section_headings"
+    ] == ["allergies"]

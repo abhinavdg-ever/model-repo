@@ -118,6 +118,10 @@ class Canon:
     # line-start terms, and the regex patterns. Matched text -> (group, term).
     term_re: dict[str, Optional[re.Pattern[str]]]
     line_re: dict[str, Optional[re.Pattern[str]]]
+    # The line-start terms found anywhere in a heading line (a line of at most
+    # heading_words[context] words): 'Allergies and Adverse Reactions' counts 'allergies'.
+    heading_re: dict[str, Optional[re.Pattern[str]]]
+    heading_words: dict[str, int]
     term_of: dict[str, dict[str, tuple[str, str]]]
     patterns: dict[str, list[tuple[str, re.Pattern[str]]]]
     signature_terms: frozenset[str]
@@ -147,6 +151,8 @@ def _build(data: dict[str, Any]) -> Canon:
     term_of: dict[str, dict[str, tuple[str, str]]] = {}
     term_re: dict[str, Optional[re.Pattern[str]]] = {}
     line_re: dict[str, Optional[re.Pattern[str]]] = {}
+    heading_re: dict[str, Optional[re.Pattern[str]]] = {}
+    heading_words: dict[str, int] = {}
     patterns: dict[str, list[tuple[str, re.Pattern[str]]]] = {}
     for context, by_name in data["contexts"].items():
         plain: list[str] = []
@@ -166,16 +172,23 @@ def _build(data: dict[str, Any]) -> Canon:
             for term in spec.get("terms") or []:
                 term_of[context][_norm(term)] = (name, term)
                 (starts if spec.get("line_start") else plain).append(term)
+            if spec.get("line_start"):
+                heading_words[context] = max(
+                    heading_words.get(context, 0), int(spec.get("heading_line_max_words") or 0)
+                )
             for pattern in spec.get("patterns") or []:
                 patterns[context].append((name, re.compile(pattern, re.IGNORECASE | re.MULTILINE)))
         term_re[context] = _alternation(plain, line_start=False)
         line_re[context] = _alternation(starts, line_start=True)
+        heading_re[context] = _alternation(starts, line_start=False) if heading_words.get(context) else None
     signature = data["contexts"].get("clinical", {}).get("signature", {})
     return Canon(
         raw=data,
         groups=groups,
         term_re=term_re,
         line_re=line_re,
+        heading_re=heading_re,
+        heading_words=heading_words,
         term_of=term_of,
         patterns=patterns,
         signature_terms=frozenset(_norm(t) for t in signature.get("terms") or []),
@@ -296,6 +309,17 @@ def _spans(context: str, text: str) -> list[tuple[int, int, str, str]]:
             entry = prof.term_of[context].get(_norm(match.group(1)))
             if entry:
                 found.append((match.start(1), match.end(1), entry[0], entry[1]))
+    # Heading lines: a short line containing a line-start term anywhere counts it.
+    heading, max_words = prof.heading_re.get(context), prof.heading_words.get(context, 0)
+    if heading is not None and max_words:
+        offset = 0
+        for line in text.split("\n"):
+            if 0 < len(line.split()) <= max_words:
+                for match in heading.finditer(line):
+                    entry = prof.term_of[context].get(_norm(match.group(1)))
+                    if entry:
+                        found.append((offset + match.start(1), offset + match.end(1), entry[0], entry[1]))
+            offset += len(line) + 1
     for name, pattern in prof.patterns[context]:
         for match in pattern.finditer(text):
             found.append((match.start(), match.end(), name, f"/{pattern.pattern}/"))

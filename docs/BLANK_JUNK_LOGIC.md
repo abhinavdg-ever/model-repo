@@ -62,7 +62,7 @@ Three scores from the canon: **C** clinical, **J** junk, **D** demographic.
 
 | Context | Group | Weight | Cap | Junk subtype | Examples |
 |---|---|---|---|---|---|
-| clinical | section_headings | 2 | 8 | | chief complaint, reason for visit, HPI, assessment, plan |
+| clinical | section_headings | 2 | 8 | | chief complaint, reason for visit, HPI, assessment, plan, allergies, immunizations — counted when the line starts with one followed by `:` / `-` / the line end, **or anywhere in a heading line of ≤ 6 words** ("Allergies and Adverse Reactions"; `heading_line_max_words`) |
 | clinical | assessment_language | 2 | 6 | | patient presents with, complains of, denies |
 | clinical | vitals | 1 | 3 | | blood pressure, heart rate, pulse ox |
 | clinical | exam_findings | 1 | 3 | | HEENT, lungs clear, RRR |
@@ -350,6 +350,8 @@ Main.
 - **R5 records its ink** (`ink`, `ink_fraction`, `ink_limit`).
 - **R5 ink limit 0.01% → 0.5%**; **short page 15% → 20%**, ink band 17% → 22% start.
 - **KK with a strong DistilBERT KEEP undoes a short page** (`short_page.skipped`); one KEEP does not.
+- **A heading line (≤ 6 words) containing a section-heading word counts it** —
+  "Allergies and Adverse Reactions" scores `allergies`; a long sentence does not.
 - **New hard junk group `id_card`** (insurance / ID cards, driver's licences), counted on
   visual pages only, also in the Visual (R8) veto.
 - **Short page back to 15%** (ink band from 17%), 2026-10-19.
