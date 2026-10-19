@@ -260,7 +260,7 @@ when the body has a junk word too.
 | R2 | "Intentionally left blank" on ≤ 25 words | junk / Others | 1, 2 |
 | R3 | Provider Signature = Yes (KV extraction), or a canon signature phrase — unless DistilBERT and the keywords both say JUNK (JJ): then the vote (R9) decides, `votes.r3_skipped` | Main | 2 |
 | R4 | DistilBERT p(junk) > 0.85 — **not** when C or D (then the vote decides) | junk / DistilBERT's subtype | 2 |
-| R5 | Content ends in the top 20% of the page (running header / footer lines ignored) and no ink from 22% to 94% of the height (ink = at least `body_ink_max_fraction`, 0.5%, of that band; `votes.short_page` records `ink`, `ink_fraction`, `ink_limit`) — whatever the page says | junk / Others | 2 |
+| R5 | Content ends in the top 20% of the page (running header / footer lines ignored) and no ink from 22% to 94% of the height (ink = at least `body_ink_max_fraction`, 0.5%, of that band; `votes.short_page` records `ink`, `ink_fraction`, `ink_limit`) — only when DistilBERT or the keywords is not KEEP (both KEEP: skipped) | junk / Others | 2 |
 | R6 | record_request + roi_vendors ≥ 7 and not C⁺ | junk / Record Request | 1, 2 |
 | R7 | C⁺ | Main | 1, 2 |
 | R8 | `document_type = 'visual'` and < 20 words → Main, unless invoice / retrieval wording ≥ 7 | Main or junk | 1 (pass 2 skips these pages) |

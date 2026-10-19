@@ -15,7 +15,8 @@ The ladder, first rule that fires decides (R4, R5 and R3's KV half need pass 2):
   R4 DistilBERT     p(junk) > 0.85 -> Junk, DistilBERT's subtype, unless the canon finds
                     clinical (C) or demographic (D) evidence: then the vote decides
   R5 short page     content ends in the top 20% of the page height, under 0.5% ink below
-                    (22%-94%) -> Junk / Others
+                    (22%-94%) -> Junk / Others; only when a voter is not KEEP (both
+                    KEEP: R5 is skipped)
   R6 retrieval      record_request + roi_vendors >= 7 and not C+ -> Junk / Record Request
   R7 strong clinical  C+ -> Main
   R8 Visual         document_type 'visual' with < 20 words -> Main, unless retrieval /
@@ -704,7 +705,11 @@ def decide(inputs: PageInputs) -> Verdict:
             if inputs.body_ink is None:
                 votes["short_page"]["ink"] = "not_measured"
             elif bottom is not None and bottom <= float(short["top_fraction"]) and inputs.body_ink is False:
-                return ruled(CODE_OTHERS, "R5", f"R5 short page: content ends at {bottom:.0%} of the height -> Junk / Others")
+                # Only when DistilBERT or the keywords is not KEEP: both KEEP outranks the layout.
+                if all(b.vote == KEEP for b in ballots.values()):
+                    votes["short_page"]["skipped"] = "KK"
+                else:
+                    return ruled(CODE_OTHERS, "R5", f"R5 short page: content ends at {bottom:.0%} of the height -> Junk / Others")
     # R6 retrieval counter-veto
     retrieval = sum(scores.group("junk", g) for g in RETRIEVAL_GROUPS)
     if retrieval >= t["junk_strong"] and scores.clinical < t["clinical_strong"]:

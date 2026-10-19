@@ -388,3 +388,13 @@ def test_a_no_ink_page_is_judged_in_pass_1_and_is_blank():
     assert store.non_printed_page_ids(7) == {3}
     verdict = run("", pass_no=1, no_ink=True)
     assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")
+
+
+def test_r5_is_skipped_when_both_voters_keep():
+    lines = [Line("Assessment:", 0.03, 0.05), Line("Plan: rest", 0.08, 0.10)]
+    kept = run(CLINICAL_WEAK, lines=lines, body_ink=False, bert=bert(0.1))
+    assert (kept.votes["bert"]["vote"], kept.votes["kw"]["vote"]) == ("KEEP", "KEEP")
+    assert kept.rule != "R5" and kept.votes["short_page"]["skipped"] == "KK"
+    # One voter not KEEP: the short page is junk.
+    junk = run(CLINICAL_WEAK, lines=lines, body_ink=False, bert=bert(0.7))
+    assert junk.votes["bert"]["vote"] != "KEEP" and junk.rule == "R5"

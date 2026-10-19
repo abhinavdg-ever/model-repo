@@ -126,7 +126,7 @@ and `/health` shows `engine: keywords`.
 | **R2** | "Intentionally left blank" (placeholder group) on ≤ **25** words | Junk / Others | 1, 2 | 0.99 |
 | **R3** | Provider Signature = Yes, or a signature phrase — **skipped when the ballots are JJ** (the vote decides; `votes.r3_skipped = "JJ"`) | Main | 2 | 0.95 |
 | **R4** | DistilBERT p(junk) **> 0.85** — not when C ≥ 4 or D ≥ 3 (then the vote decides; `votes.r4_skipped`) | Junk / DistilBERT's subtype | 2 | evidence |
-| **R5** | Short page (§4) | Junk / Others | 2 | evidence |
+| **R5** | Short page (§4), only when a voter is not KEEP (both KEEP → skipped) | Junk / Others | 2 | evidence |
 | **R6** | record_request + roi_vendors ≥ **7** and not C⁺ | Junk / Record Request/Transmittal | 1, 2 | evidence |
 | **R7** | C⁺ (clinical ≥ 8) | Main | 1, 2 | evidence |
 | **R8** | Visual page (`visual`, < **20** words) → Main, unless record_request + roi_vendors + invoice ≥ **7** → Junk / that group's subtype | Main or Junk | 1 | evidence |
@@ -171,6 +171,10 @@ For scale: a page of body text is 5–15% ink; a signature or stamp is roughly
 `"ink": "not_measured"` = the image could not be read (R5 then does not fire).
 
 A Provider Signature (R3) is checked before R5: a signed short page is kept, unless JJ.
+
+**R5 needs a voter that is not KEEP.** When DistilBERT and the keywords both vote KEEP
+(KK), a short page is not ruled junk by its layout: R5 is skipped
+(`votes.short_page.skipped = "KK"`) and the later rules / the vote decide.
 
 ---
 
@@ -336,5 +340,6 @@ Main.
 - **Pass 2 keywords also count the junk terms only Tesseract read** (`tesseract_only`).
 - **R5 records its ink** (`ink`, `ink_fraction`, `ink_limit`).
 - **R5 ink limit 0.01% → 0.5%**; **short page 15% → 20%**, ink band 17% → 22% start.
+- **R5 only when a voter is not KEEP** (both KEEP: skipped, `short_page.skipped = "KK"`).
 - **The clinical and demographic vetoes are gone** (the keyword ballot covers them);
   the handwritten veto stays.
