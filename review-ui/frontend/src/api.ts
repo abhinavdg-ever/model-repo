@@ -1,4 +1,5 @@
 import { groundTruthQuery, readGroundTruthSource } from "./groundTruthSource";
+import { readSession, type Session } from "./session";
 
 export type OcrRunStatus =
   | "QUEUED"
@@ -327,10 +328,13 @@ export function formatBatchLabel(raw: string | null | undefined): string {
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  // Every request carries the signed-in user, so a ground-truth save records who made it.
+  const token = readSession()?.token;
   const res = await fetch(path, {
     ...init,
     headers: {
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },
   });
@@ -339,6 +343,25 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(detail || `${res.status} ${res.statusText}`);
   }
   return res.json() as Promise<T>;
+}
+
+/** Sign in; throws with the server's message ("Invalid username or password.") on failure. */
+export async function login(username: string, password: string): Promise<Session> {
+  const res = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      detail = ((await res.json()) as { detail?: string }).detail ?? "";
+    } catch {
+      /* not JSON */
+    }
+    throw new Error(detail || (res.status === 401 ? "Invalid username or password." : "Sign-in failed."));
+  }
+  return (await res.json()) as Session;
 }
 
 export function getAppConfig(): Promise<AppConfig> {

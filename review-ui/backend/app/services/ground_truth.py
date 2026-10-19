@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS page_ground_truth_entry (
 );
 CREATE INDEX IF NOT EXISTS idx_page_ground_truth_entry_page_ground_truth_id_entry_mode
     ON page_ground_truth_entry(page_ground_truth_id, entry_mode);
+-- Who saved it (2026-10-19). schema/changes_2026-10-19.sql adds these with their
+-- users(id) reference; a database without it still saves, with the id unreferenced.
+ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS user_id BIGINT;
+ALTER TABLE page_ground_truth_entry ADD COLUMN IF NOT EXISTS user_id BIGINT;
 """
 
 # A page written before the entry table existed gets one entry holding its
@@ -59,7 +63,7 @@ INSERT INTO page_ground_truth_entry
 SELECT g.id,
        CASE WHEN g.source_path IS NOT NULL THEN 'bulk_upload' ELSE 'manual_entry' END,
        to_jsonb(g) - 'id' - 'chart_name' - 'page_number' - 'source_page_id'
-                   - 'source_path' - 'created_at' - 'updated_at',
+                   - 'source_path' - 'created_at' - 'updated_at' - 'user_id',
        g.source_path, g.updated_at, g.updated_at
   FROM page_ground_truth g
  WHERE NOT EXISTS (
@@ -249,14 +253,16 @@ INSERT INTO page_ground_truth (
     encounter_type, page_type, codeable,
     blank_page, junk_page, is_invoice,
     rotation, is_visible,
-    rendering_provider, provider_signature, provider_credentials
+    rendering_provider, provider_signature, provider_credentials,
+    user_id
 ) VALUES (
     %s, %s, %s,
     %s, %s, %s, %s, %s,
     %s, %s, %s,
     %s, %s, %s,
     %s, %s,
-    %s, %s, %s
+    %s, %s, %s,
+    %s
 )
 ON CONFLICT (chart_name, page_number) DO UPDATE SET
     source_page_id = COALESCE(EXCLUDED.source_page_id, page_ground_truth.source_page_id),
@@ -276,6 +282,7 @@ ON CONFLICT (chart_name, page_number) DO UPDATE SET
     rendering_provider = EXCLUDED.rendering_provider,
     provider_signature = EXCLUDED.provider_signature,
     provider_credentials = EXCLUDED.provider_credentials,
+    user_id = EXCLUDED.user_id,
     updated_at = now()
 RETURNING
     id, page_number, source_page_id,
@@ -285,8 +292,8 @@ RETURNING
     is_visible, rendering_provider, provider_signature,
     member_id, provider_credentials
 ), e AS (
-INSERT INTO page_ground_truth_entry (page_ground_truth_id, entry_mode, labels)
-SELECT id, 'manual_entry', %s::jsonb FROM g
+INSERT INTO page_ground_truth_entry (page_ground_truth_id, entry_mode, labels, user_id)
+SELECT id, 'manual_entry', %s::jsonb, %s FROM g
 )
 SELECT
     page_number, source_page_id,
@@ -313,13 +320,16 @@ def upsert_page_ground_truth(
     folder_id: str,
     body: PageGroundTruth,
     db_schema: str = "public",
+    *,
+    user_id: int | None = None,
 ) -> PageGroundTruth:
     """Insert or update the ground-truth row for one chart page.
 
     A later manual save of the same page hits the same
     ``(chart_name, page_number)`` key. Columns this screen does not edit
     (page sequence, specialty, deleted level, source path) are left as they are.
-    The save is also appended to page_ground_truth_entry as a manual_entry.
+    The save is also appended to page_ground_truth_entry as a manual_entry. ``user_id``
+    (the signed-in user) is stored on both.
     """
     chart = _chart_name(folder_id)
     if body.pageNumber < 1:
@@ -349,7 +359,7 @@ def upsert_page_ground_truth(
     with connection(database_url, db_schema) as conn:
         ensure_entries(conn, database_url, db_schema)
         with conn.cursor() as cur:
-            cur.execute(_UPSERT, (*params, labels))
+            cur.execute(_UPSERT, (*params, user_id, labels, user_id))
             row = cur.fetchone()
     if row is None:
         raise RuntimeError("ground truth upsert returned no row")

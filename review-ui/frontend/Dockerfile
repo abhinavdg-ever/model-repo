@@ -13,13 +13,6 @@ COPY src ./src
 RUN grep -q 'imaging-sequencing-table' src/styles.css \
  && grep -q 'width: 25%' src/styles.css
 
-# Demo gate, inlined into the bundle by Vite. Placeholders unless compose
-# passes real values through from review-ui/.env. This is NOT authentication —
-# anyone who loads the page can read them.
-ARG VITE_LOGIN_USERNAME=demo
-ARG VITE_LOGIN_PASSWORD=demo
-ENV VITE_LOGIN_USERNAME=$VITE_LOGIN_USERNAME
-ENV VITE_LOGIN_PASSWORD=$VITE_LOGIN_PASSWORD
 
 RUN npm run build
 

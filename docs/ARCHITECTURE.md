@@ -430,7 +430,7 @@ Ported from `advantmed-imaging-ui/02-imaging-pipeline/dos-extraction/`.
 | `ImagingPanel.tsx` | Renders the imaging results for the current page: blank/junk, page type, rotation, handwriting, member, DOS. |
 | `FullscreenPageChrome.tsx` | Fullscreen page-viewing controls. |
 | `PageJump.tsx` | Jump-to-page control. |
-| `LoginPage.tsx` | Login screen. Shared POC pair **`imaging-user` / `aipocpw2026`**, overridable at build time with `VITE_LOGIN_USERNAME` / `VITE_LOGIN_PASSWORD`. **Credentials are inlined into the JS bundle and the backend has no auth**, so this gate protects nothing — see [Known limits](#6-known-limits). |
+| `LoginPage.tsx` | Sign-in against the `users` table (`POST /api/auth/login`, `app/services/auth.py`): PBKDF2 password hashes, a signed session token, `last_login_at` / `_ip` / `_user_agent` / `login_count` and a `user_login` row per sign-in. Users are added with `utilities/create_user.py`. Ground-truth saves need a signed-in user and record its `user_id`; other routes do not check the token yet — see [Known limits](#6-known-limits). |
 | `UserProfileMenu.tsx` | Profile/sign-out menu. |
 | `BlobAuthModal.tsx` | Collects a SAS token for direct blob viewing. |
 | `api.ts` | Typed client for the backend endpoints. |

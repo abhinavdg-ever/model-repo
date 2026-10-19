@@ -1,26 +1,13 @@
 import { FormEvent, useState } from "react";
 import { Eye, EyeOff, Lock, User } from "lucide-react";
+import { login } from "./api";
+import type { Session } from "./session";
 
-// Shared POC gate, NOT authentication. Vite inlines these into the JS bundle
-// at build time, so anyone who loads the page can read them — and they are in
-// this repository for the same reason, deliberately: the pair is shared with
-// everyone who uses the POC and protects nothing. It keeps a casual visitor
-// off the page; it does not keep anyone out.
-//
-// The backend has no auth on any route, so the data behind this screen is
-// reachable without ever seeing it. Real auth is still to be built — see the
-// "no authentication" note in README.md and docs/ARCHITECTURE.md § Known
-// limits. Before any deployment carrying real member data, this pair stops
-// being adequate and the gap is the backend, not this file.
-//
-// Override per deployment at BUILD time (Vite inlines at build, so a rebuild
-// is required — `docker compose up -d --build`):
-//   VITE_LOGIN_USERNAME / VITE_LOGIN_PASSWORD
-const VALID_USERNAME = import.meta.env.VITE_LOGIN_USERNAME ?? "imaging-user";
-const VALID_PASSWORD = import.meta.env.VITE_LOGIN_PASSWORD ?? "aipocpw2026";
+// Signs in against review-ui's users table (POST /api/auth/login). The server checks the
+// password hash and records the sign-in; this screen never holds a password list.
 
 type Props = {
-  onSuccess: () => void;
+  onSuccess: (session: Session) => void;
 };
 
 export default function LoginPage({ onSuccess }: Props) {
@@ -30,22 +17,16 @@ export default function LoginPage({ onSuccess }: Props) {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
     setSubmitting(true);
-
-    const ok =
-      username.trim() === VALID_USERNAME && password === VALID_PASSWORD;
-
-    window.setTimeout(() => {
-      if (!ok) {
-        setError("Invalid username or password.");
-        setSubmitting(false);
-        return;
-      }
-      onSuccess();
-    }, 180);
+    try {
+      onSuccess(await login(username.trim(), password));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign-in failed.");
+      setSubmitting(false);
+    }
   }
 
   return (

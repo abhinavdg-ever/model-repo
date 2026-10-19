@@ -365,6 +365,23 @@ class AccuracyReportResponse(BaseModel):
     charts: list[AccuracyChartPayload] = Field(default_factory=list)
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class SignedInUserResponse(BaseModel):
+    id: int | None = None
+    username: str
+    name: str
+    role: str = "reviewer"
+
+
+class LoginResponse(BaseModel):
+    token: str
+    user: SignedInUserResponse
+
+
 class HealthResponse(BaseModel):
     status: str
     data_mode: str

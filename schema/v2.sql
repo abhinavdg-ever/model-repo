@@ -67,6 +67,10 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * users moved to v1.sql (review-ui sign-in: username, password_hash, last_login_*,
+--    login_count; email optional), with user_login (every sign-in).
+--    page_ground_truth and page_ground_truth_entry gain user_id (who saved it).
+--    Existing databases: schema/changes_2026-10-19.sql.
 --  * manifest_member_list (v1.sql) gains client_id, source_name, rr_method,
 --    measure and service_note (TEXT): the client's chart metadata. Existing
 --    databases: schema/changes_2026-10-19.sql (which also holds the 2026-10-18 changes).
@@ -175,22 +179,7 @@ ALTER TABLE dos_extraction_results
     CHECK (extraction_method IS NULL OR extraction_method IN
            ('rules','llm','rules+llm','kv'));
 
-CREATE TABLE users (
-    id          BIGSERIAL PRIMARY KEY,
-    name        VARCHAR(150) NOT NULL,
-    email       VARCHAR(255) NOT NULL UNIQUE,
-    role        VARCHAR(20) NOT NULL DEFAULT 'reviewer' CHECK (role IN ('reviewer','admin','viewer')),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TRIGGER trg_users_updated_at
-    BEFORE UPDATE ON users
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-INSERT INTO users (name, email, role)
-VALUES ('imaging_user', 'imaging_user@advantmed.local', 'admin')
-ON CONFLICT (email) DO NOTHING;
+-- users moved to v1.sql (2026-10-19): review-ui signs in against it.
 
 -- ---------------------------------------------------------------------
 -- PAGE-LEVEL RESULT TABLES

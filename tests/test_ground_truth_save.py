@@ -52,7 +52,8 @@ def test_a_manual_save_records_exactly_the_columns_it_sets():
 
     insert = re.search(r"INSERT INTO page_ground_truth \((.*?)\)", _UPSERT, re.S)
     columns = [c.strip() for c in insert.group(1).split(",")]
-    assert tuple(columns[3:]) == _MANUAL_COLUMNS
+    # ... then who saved it, which is not a label.
+    assert tuple(columns[3:-1]) == _MANUAL_COLUMNS and columns[-1] == "user_id"
     assert "'manual_entry'" in _UPSERT
 
 

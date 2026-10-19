@@ -12,6 +12,9 @@ from app.adapters.base import FolderRepository
 from app.adapters.factory import get_repository, request_is_production
 from app.core.config import ROOT_DIR, Settings, get_settings
 from app.core.schemas import (
+    LoginRequest,
+    LoginResponse,
+    SignedInUserResponse,
     AnnotationListResponse,
     AnnotationRow,
     AnnotationSaveRequest,
@@ -36,6 +39,7 @@ from app.services.extraction_review import load_extraction_review
 from app.services.imaging_csv import filter_folder, iter_csv_lines
 from app.services.chart_run_batch import database_url_usable
 from app.services.accuracy_cache import clear_report_cache, load_report
+from app.services.auth import SignedInUser, authenticate, issue_token, read_token
 from app.services import excel_compare
 from app.services.ground_truth import (
     GroundTruthSource,
@@ -56,6 +60,48 @@ from app.services.page_images import (
 
 logger = logging.getLogger("review_ui.api")
 router = APIRouter()
+
+
+def current_user(request: Request, settings: Settings = Depends(get_settings)) -> SignedInUser | None:
+    """The user of the request's ``Authorization: Bearer`` token, or None."""
+    header = request.headers.get("authorization") or ""
+    token = header[7:].strip() if header.lower().startswith("bearer ") else ""
+    return read_token(settings, token)
+
+
+def _client_ip(request: Request) -> str | None:
+    # Behind a proxy the browser's address is the first X-Forwarded-For entry.
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    return (forwarded or (request.client.host if request.client else None) or None)
+
+
+@router.post("/auth/login", response_model=LoginResponse)
+def login(body: LoginRequest, request: Request, settings: Settings = Depends(get_settings)) -> LoginResponse:
+    """Sign in against the users table; records when and from where."""
+    try:
+        user = authenticate(
+            settings,
+            body.username,
+            body.password,
+            ip_address=_client_ip(request),
+            user_agent=(request.headers.get("user-agent") or "")[:500] or None,
+        )
+    except Exception as exc:
+        logger.warning("sign-in failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Sign-in is unavailable right now") from exc
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+    return LoginResponse(
+        token=issue_token(settings, user),
+        user=SignedInUserResponse(id=user.id, username=user.username, name=user.name, role=user.role),
+    )
+
+
+@router.get("/auth/me", response_model=SignedInUserResponse)
+def me(user: SignedInUser | None = Depends(current_user)) -> SignedInUserResponse:
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    return SignedInUserResponse(id=user.id, username=user.username, name=user.name, role=user.role)
 
 
 def _build_blob_url(
@@ -634,16 +680,21 @@ def save_folder_ground_truth(
     folder_id: str,
     body: PageGroundTruth,
     settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
 ) -> PageGroundTruth:
-    """Upsert one page of ground truth. A later save of the same page updates that row."""
+    """Upsert one page of ground truth. A later save of the same page updates that row.
+    The signed-in user is recorded on the row and its manual_entry (user_id)."""
     if not database_url_usable(settings.database_url):
         raise HTTPException(status_code=503, detail="Database is not configured")
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in again to save ground truth")
     try:
         saved = upsert_page_ground_truth(
             settings.database_url,
             folder_id,
             body,
             settings.db_schema,
+            user_id=user.id,
         )
         clear_report_cache()  # the accuracy report reads ground truth
         return saved

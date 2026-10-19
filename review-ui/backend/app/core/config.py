@@ -72,6 +72,15 @@ class Settings(BaseSettings):
     # Path inside container. Tokens: {folder} {filename} {page}
     blob_path_template: str = "{folder}/pages/{filename}"
 
+    # Sign-in (app/services/auth.py). AUTH_SECRET signs the session token; set it in
+    # review-ui/.env so sign-ins survive a restart (empty = a new random secret each start).
+    # Users live in the users table. With no database, one account from LOGIN_USERNAME /
+    # LOGIN_PASSWORD signs in instead; both empty (the default) = no such account.
+    auth_secret: str = ""
+    auth_session_hours: float = 12.0
+    login_username: str = ""
+    login_password: str = ""
+
     # Entra app registration (optional if using Managed Identity / az login)
     azure_tenant_id: str = ""
     azure_client_id: str = ""

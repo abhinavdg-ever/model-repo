@@ -132,6 +132,44 @@ INSERT INTO pipeline_stage (stage_name, pass_no, seq, label, is_phase1) VALUES
 -- MASTER + REFERENCE TABLES
 -- ---------------------------------------------------------------------
 
+-- review-ui sign-in (2026-10-19). Passwords are stored only as a salted PBKDF2-SHA256
+-- hash ("pbkdf2_sha256$<iterations>$<salt>$<hash>"); utilities/create_user.py writes them.
+-- last_login_* is the latest sign-in; user_login keeps every one.
+CREATE TABLE users (
+    id                    BIGSERIAL PRIMARY KEY,
+    username              VARCHAR(100) NOT NULL UNIQUE,
+    name                  VARCHAR(150) NOT NULL,
+    email                 VARCHAR(255) UNIQUE,
+    role                  VARCHAR(20) NOT NULL DEFAULT 'reviewer' CHECK (role IN ('reviewer','admin','viewer')),
+    password_hash         TEXT NOT NULL,
+    is_active             BOOLEAN NOT NULL DEFAULT TRUE,
+    last_login_at         TIMESTAMPTZ,
+    last_login_ip         VARCHAR(64),
+    last_login_user_agent TEXT,
+    login_count           INT NOT NULL DEFAULT 0,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- One row per successful review-ui sign-in: who, from where, when (created_at).
+CREATE TABLE user_login (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ip_address  VARCHAR(64),
+    user_agent  TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_user_login_user_id ON user_login(user_id);
+
+CREATE TRIGGER trg_user_login_updated_at
+    BEFORE UPDATE ON user_login
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 CREATE TABLE chart_list (
     id                  BIGSERIAL PRIMARY KEY,
     chart_name          VARCHAR(150) NOT NULL,
@@ -344,6 +382,8 @@ CREATE TABLE page_ground_truth (
     provider_signature      TEXT,
     deleted_level           TEXT,
     source_path             TEXT,
+    -- Who saved the latest values in review-ui; NULL for a spreadsheet load.
+    user_id                 BIGINT REFERENCES users(id) ON DELETE SET NULL,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_page_ground_truth_chart_page UNIQUE (chart_name, page_number)
@@ -368,6 +408,8 @@ CREATE TABLE page_ground_truth_entry (
                             CHECK (entry_mode IN ('bulk_upload', 'manual_entry')),
     labels                  JSONB NOT NULL DEFAULT '{}'::jsonb,
     source_path             TEXT,
+    -- The signed-in review-ui user of a manual_entry; NULL for a bulk_upload.
+    user_id                 BIGINT REFERENCES users(id) ON DELETE SET NULL,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );

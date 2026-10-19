@@ -8,8 +8,8 @@ import ManualReviewView from "./ManualReviewView";
 import LoginPage from "./LoginPage";
 import UserProfileMenu from "./UserProfileMenu";
 import { getAppConfig, type AppConfig, type OutputMode } from "./api";
+import { clearSession, initialsOf, readSession, writeSession, type Session } from "./session";
 
-const AUTH_KEY = "advantmed_imaging_auth";
 
 type Route =
   | { view: "landing" }
@@ -72,13 +72,6 @@ function pathFor(route: Route): string {
   return "/";
 }
 
-function readAuth(): boolean {
-  try {
-    return sessionStorage.getItem(AUTH_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
 
 function modePillClass(label: string): string {
   return label.toLowerCase().includes("production")
@@ -87,7 +80,8 @@ function modePillClass(label: string): string {
 }
 
 export default function App() {
-  const [authed, setAuthed] = useState(readAuth);
+  const [session, setSession] = useState<Session | null>(readSession);
+  const authed = session !== null;
   const [route, setRoute] = useState<Route>(() =>
     parsePath(window.location.pathname, window.location.search),
   );
@@ -129,22 +123,14 @@ export default function App() {
     setRoute(next);
   }
 
-  function handleLoginSuccess() {
-    try {
-      sessionStorage.setItem(AUTH_KEY, "1");
-    } catch {
-      /* ignore */
-    }
-    setAuthed(true);
+  function handleLoginSuccess(next: Session) {
+    writeSession(next);
+    setSession(next);
   }
 
   function handleLogout() {
-    try {
-      sessionStorage.removeItem(AUTH_KEY);
-    } catch {
-      /* ignore */
-    }
-    setAuthed(false);
+    clearSession();
+    setSession(null);
     guardedNavigate({ view: "landing" });
   }
 
@@ -196,8 +182,8 @@ export default function App() {
             {modeLabel}
           </span>
           <UserProfileMenu
-            displayName="imaging-user"
-            initials="IU"
+            displayName={session?.user.name || session?.user.username || "Signed in"}
+            initials={session ? initialsOf(session.user) : "U"}
             currentView={route.view}
             onOpenFileViewer={() => guardedNavigate({ view: "file-viewer" })}
             onOpenHistory={() => guardedNavigate({ view: "landing" })}
