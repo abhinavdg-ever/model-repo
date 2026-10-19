@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, Filter, X } from "lucide-react";
+import { ChevronDown, Filter, Search, X } from "lucide-react";
 
 /** A table column's filter: an icon button at the right of the header title and a popover
  * under it. The popover is fixed-position so the table's scroll box does not clip it.
@@ -101,7 +101,59 @@ export function ColumnFilterButton({
   );
 }
 
-/** A filter popover's tick list: "Select all" (no filter) and one box per value. */
+/** Edits to turn ``a`` into ``b``, stopping once it passes ``limit``. */
+function editDistance(a: string, b: string, limit: number): number {
+  if (Math.abs(a.length - b.length) > limit) return limit + 1;
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost);
+      best = Math.min(best, current[j]);
+    }
+    if (best > limit) return limit + 1;
+    previous = current;
+  }
+  return previous[b.length];
+}
+
+/** How well ``text`` answers a typed search, 0 = not at all. Starts of the text or of a
+ * word rank first, then anywhere in it, then every typed word somewhere in it, then the
+ * letters in order ("athint" finds "Athena Integration"), then a word one or two typos off
+ * ("athina"). */
+export function fuzzyScore(query: string, text: string): number {
+  const q = query.trim().toLowerCase();
+  if (!q) return 1;
+  const t = text.toLowerCase();
+  if (t.startsWith(q)) return 6;
+  const words = t.split(/[^a-z0-9]+/).filter(Boolean);
+  if (words.some((w) => w.startsWith(q))) return 5;
+  if (t.includes(q)) return 4;
+  const parts = q.split(/\s+/).filter(Boolean);
+  if (parts.length > 1 && parts.every((part) => t.includes(part))) return 3;
+  let at = 0;
+  for (const ch of q.replace(/\s+/g, "")) {
+    at = t.indexOf(ch, at);
+    if (at < 0) break;
+    at += 1;
+  }
+  if (at > 0 && q.replace(/\s+/g, "").length >= 2) return 2;
+  const typos = (part: string) => (part.length >= 7 ? 2 : part.length >= 4 ? 1 : 0);
+  if (
+    parts.every((part) => {
+      const limit = typos(part);
+      return limit > 0 && words.some((w) => editDistance(part, w.slice(0, part.length + limit), limit) <= limit);
+    })
+  ) {
+    return 1;
+  }
+  return 0;
+}
+
+/** A filter popover's tick list: a search box (fuzzy, like Excel's), "Select all" (no
+ * filter) or, while searching, "Select all shown", and one box per value. */
 export function CheckListFilter({
   options,
   selected,
@@ -116,31 +168,68 @@ export function CheckListFilter({
   /** Set when the list cannot be used yet ("Select a run first"). */
   lockedHint?: string;
 }) {
+  const [query, setQuery] = useState("");
   if (lockedHint) return <p className="column-filter-hint">{lockedHint}</p>;
+  const byNumber = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
   const toggle = (value: string) =>
-    onChange(
-      selected.includes(value)
-        ? selected.filter((v) => v !== value)
-        : [...selected, value].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
-    );
+    onChange(selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value].sort(byNumber));
+  const searching = query.trim() !== "";
+  const shown = searching
+    ? options
+        .map((value, index) => ({ value, index, score: fuzzyScore(query, formatOption(value)) }))
+        .filter((row) => row.score > 0)
+        .sort((a, b) => b.score - a.score || a.index - b.index)
+        .map((row) => row.value)
+    : options;
+  const allShownPicked = shown.length > 0 && shown.every((value) => selected.includes(value));
+  function pickShown() {
+    if (allShownPicked) onChange(selected.filter((value) => !shown.includes(value)));
+    else onChange([...new Set([...selected, ...shown])].sort(byNumber));
+  }
   return (
     <>
-      <div className="column-filter-list" role="listbox" aria-multiselectable="true">
-        <label className="landing-multi-option landing-multi-select-all">
+      {options.length > 0 ? (
+        <label className="column-filter-search">
+          <Search size={12} aria-hidden="true" />
           <input
-            type="checkbox"
-            checked={selected.length === 0}
-            onChange={() => {
-              if (selected.length > 0) onChange([]);
+            type="search"
+            value={query}
+            placeholder="Search…"
+            aria-label="Search the values"
+            autoFocus
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter ticks every value the search shows, as Excel's does.
+              if (e.key === "Enter" && searching && shown.length && !allShownPicked) pickShown();
             }}
           />
-          <span>Select all</span>
         </label>
+      ) : null}
+      <div className="column-filter-list" role="listbox" aria-multiselectable="true">
+        {searching ? (
+          <label className="landing-multi-option landing-multi-select-all">
+            <input type="checkbox" checked={allShownPicked} disabled={!shown.length} onChange={pickShown} />
+            <span>Select all shown ({shown.length})</span>
+          </label>
+        ) : (
+          <label className="landing-multi-option landing-multi-select-all">
+            <input
+              type="checkbox"
+              checked={selected.length === 0}
+              onChange={() => {
+                if (selected.length > 0) onChange([]);
+              }}
+            />
+            <span>Select all</span>
+          </label>
+        )}
         {options.length === 0 ? (
           <div className="landing-multi-empty">No values yet</div>
+        ) : shown.length === 0 ? (
+          <div className="landing-multi-empty">No value matches “{query.trim()}”</div>
         ) : (
-          options.map((value) => (
-            <label key={value} className="landing-multi-option">
+          shown.map((value) => (
+            <label key={value} className="landing-multi-option" title={formatOption(value)}>
               <input type="checkbox" checked={selected.includes(value)} onChange={() => toggle(value)} />
               <span>{formatOption(value)}</span>
             </label>
@@ -153,7 +242,7 @@ export function CheckListFilter({
         disabled={selected.length === 0}
         onClick={() => onChange([])}
       >
-        Clear
+        Clear{selected.length ? ` (${selected.length})` : ""}
       </button>
     </>
   );
@@ -200,8 +289,15 @@ export function TopCheckFilter({
   onChange: (next: string[]) => void;
   formatOption?: (value: string) => string;
 }) {
+  // A count badge, not the value: a long source name made the button wrap.
   const summary =
-    selected.length === 0 ? "All" : selected.length === 1 ? formatOption(selected[0]) : `${selected.length} selected`;
+    selected.length === 0 ? (
+      "All"
+    ) : (
+      <span className="top-filter-count" aria-label={`${selected.length} selected`}>
+        {selected.length}
+      </span>
+    );
   return (
     <ColumnFilterButton
       label={title ?? label}
@@ -210,7 +306,10 @@ export function TopCheckFilter({
       align="start"
       width={240}
       text={
-        <span className="top-filter-text">
+        <span
+          className="top-filter-text"
+          title={selected.length ? `${label}: ${selected.map(formatOption).join(", ")}` : undefined}
+        >
           <span className="top-filter-label">{label}:</span>
           <span className="top-filter-value">{summary}</span>
           <ChevronDown size={12} aria-hidden="true" />

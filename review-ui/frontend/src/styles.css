@@ -3841,7 +3841,7 @@ input {
   align-items: center;
   gap: 0.35rem;
   flex: none;
-  max-width: 15rem;
+  white-space: nowrap;
   padding: 0.35rem 0.55rem;
   border: 1px solid var(--border);
   border-radius: 7px;
@@ -3874,6 +3874,7 @@ input {
 
 .top-filter-label {
   color: var(--neutral-600);
+  white-space: nowrap;
 }
 
 .top-filter-btn.active .top-filter-label,
@@ -5263,4 +5264,80 @@ input {
 .key-tilt {
   border-color: rgba(61, 111, 154, 0.45);
   background: rgba(61, 111, 154, 0.25);
+}
+
+/* Search box at the top of a filter's tick list (CheckListFilter). */
+.column-filter-search {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.35rem;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--neutral-500);
+}
+
+.column-filter-search:focus-within {
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 2px var(--brand-100);
+}
+
+.column-filter-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text);
+}
+
+/* A toolbar filter's selected count: a small number in a circle. */
+.top-filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--brand-600);
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* The search and the filters stay on one line: the search shrinks first, and a window
+   too narrow even then scrolls the row sideways instead of wrapping it. */
+.landing-toolbar,
+.accuracy-chart-filters {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.landing-toolbar > *,
+.accuracy-chart-filters > * {
+  flex-shrink: 0;
+}
+
+.landing-toolbar .landing-search,
+.accuracy-chart-filters .landing-search {
+  flex: 1 1 10rem;
+  min-width: 8rem;
+  flex-shrink: 1;
+}
+
+.landing-history-header,
+.accuracy-chart-head {
+  flex-wrap: nowrap;
+}
+
+.top-filter-btn,
+.clear-all-filters {
+  white-space: nowrap;
 }
