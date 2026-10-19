@@ -133,7 +133,7 @@ and `/health` shows `engine: keywords`.
 | **R3** | Provider Signature = Yes, or a signature phrase — **skipped when the ballots are JJ** (the vote decides; `votes.r3_skipped = "JJ"`) | Main | 2 | 0.95 |
 | **R4** | DistilBERT p(junk) **> 0.85** — not when C ≥ 4 or D ≥ 3 (then the vote decides; `votes.r4_skipped`) | Junk / DistilBERT's subtype | 2 | evidence |
 | **R5** | Short page (§4), unless **both** voters say KEEP (KK) **and** DistilBERT's KEEP is **strong** (p(keep) ≥ 0.85) | Junk / Others | 2 | evidence |
-| **R6** | record_request + roi_vendors ≥ **7** and not C⁺ | Junk / Record Request/Transmittal | 1, 2 | evidence |
+| **R6** | record_request + roi_vendors ≥ **7** and not C⁺, unless both voters say KEEP (KK) | Junk / Record Request/Transmittal | 1, 2 | evidence |
 | **R7** | C⁺ (clinical ≥ 8) | Main | 1, 2 | evidence |
 | **R8** | Visual page (`visual`, < **20** words) → Main, unless record_request + roi_vendors + invoice + id_card ≥ **7** → Junk / that group's subtype | Main or Junk | 1 | evidence |
 | **R9** | The vote (§5) | | 1, 2 | evidence |
@@ -350,6 +350,8 @@ Main.
 - **R5 records its ink** (`ink`, `ink_fraction`, `ink_limit`).
 - **R5 ink limit 0.01% → 0.5%**; **short page 15% → 20%**, ink band 17% → 22% start.
 - **KK with a strong DistilBERT KEEP undoes a short page** (`short_page.skipped`); one KEEP does not.
+- **Both KEEPs (KK) overrule R6** (`votes.r6_skipped = "KK"`): retrieval wording no longer
+  junks a page both voters keep.
 - **A heading line (≤ 6 words) containing a section-heading word counts it** —
   "Allergies and Adverse Reactions" scores `allergies`; a long sentence does not.
 - **New hard junk group `id_card`** (insurance / ID cards, driver's licences), counted on

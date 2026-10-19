@@ -17,7 +17,8 @@ The ladder, first rule that fires decides (R4, R5 and R3's KV half need pass 2):
   R5 short page     content ends in the top 15% of the page height, under 0.5% ink below
                     (17%-94%) -> Junk / Others, unless both voters say KEEP (KK) and
                     DistilBERT's KEEP is strong (p(keep) >= keep_strong, 0.85)
-  R6 retrieval      record_request + roi_vendors >= 7 and not C+ -> Junk / Record Request
+  R6 retrieval      record_request + roi_vendors >= 7 and not C+ -> Junk / Record Request,
+                    unless both voters say KEEP (KK)
   R7 strong clinical  C+ -> Main
   R8 Visual         document_type 'visual' with < 20 words -> Main, unless retrieval /
                     invoice / ID-card wording >= 7 (a visual page with more text is not Visual)
@@ -752,7 +753,12 @@ def decide(inputs: PageInputs) -> Verdict:
                     return ruled(CODE_OTHERS, "R5", f"R5 short page: content ends at {bottom:.0%} of the height -> Junk / Others")
     # R6 retrieval counter-veto
     retrieval = sum(scores.group("junk", g) for g in RETRIEVAL_GROUPS)
-    if retrieval >= t["junk_strong"] and scores.clinical < t["clinical_strong"]:
+    if retrieval >= t["junk_strong"] and scores.clinical < t["clinical_strong"] and all(
+        b.vote == KEEP for b in ballots.values()
+    ):
+        # Both voters KEEP (KK) overrule the retrieval wording: the vote decides.
+        votes["r6_skipped"] = "KK"
+    elif retrieval >= t["junk_strong"] and scores.clinical < t["clinical_strong"]:
         return ruled(CODE_RECORD_REQUEST, "R6", f"R6 retrieval wording {retrieval:g} -> Junk / Record Request/Transmittal")
     # R7 strong clinical
     if scores.clinical >= t["clinical_strong"]:

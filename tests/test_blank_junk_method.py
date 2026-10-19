@@ -445,3 +445,16 @@ def test_a_heading_line_counts_its_heading_word_anywhere():
     assert score_text("Allergies: penicillin, sulfa, codeine, latex, shellfish and peanuts").hits[
         "clinical.section_headings"
     ] == ["allergies"]
+
+
+def test_r6_is_overruled_when_both_voters_keep():
+    # Insurer 'Optum' in the header + 'Hedis' footer = retrieval 7; clinical 7 (< 8).
+    page = (
+        "Chart Summary\nPCP: Amy E Dallman DO\nIns: Optum HMO ASRS\nImmunizations\n"
+        "Allergies and Adverse Reactions\nReport run by Hedis Review"
+    )
+    kept = run(page, pass_no=1, bert=bert(0.0023))
+    assert (kept.votes["bert"]["vote"], kept.votes["kw"]["vote"]) == ("KEEP", "KEEP")
+    assert kept.rule != "R6" and kept.votes["r6_skipped"] == "KK" and kept.code == classify.CODE_MAIN
+    # DistilBERT not KEEP: R6 stands.
+    assert run(page, pass_no=1, bert=bert(0.7)).rule == "R6"
