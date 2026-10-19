@@ -368,12 +368,12 @@ def test_r5_records_the_ink_it_measured():
     assert (verdict.votes["short_page"]["ink_fraction"], verdict.votes["short_page"]["ink_limit"]) == (0.0042, 0.005)
 
 
-def test_r5_short_page_reaches_20_percent():
-    # Content ending at 18% is short now (15% before); past 20% it is not.
-    short = [Line("Optum release of information", 0.03, 0.05), Line("Patient DOB MRN", 0.16, 0.18)]
+def test_r5_short_page_is_15_percent():
+    # Content ending at 14% is short; at 18% it is not (20% between 2026-10-18 and -19).
+    short = [Line("Optum release of information", 0.03, 0.05), Line("Patient DOB MRN", 0.12, 0.14)]
     assert run("Optum release of information Patient DOB MRN", lines=short, body_ink=False).rule == "R5"
-    longer = [Line("header", 0.03, 0.05), Line("more text", 0.20, 0.21)]
-    assert run("header more text here", lines=longer, body_ink=False).rule != "R5"
+    longer = [Line("Optum release of information", 0.03, 0.05), Line("Patient DOB MRN", 0.16, 0.18)]
+    assert run("Optum release of information Patient DOB MRN", lines=longer, body_ink=False).rule != "R5"
 
 
 def test_a_no_ink_page_is_judged_in_pass_1_and_is_blank():
@@ -390,11 +390,12 @@ def test_a_no_ink_page_is_judged_in_pass_1_and_is_blank():
     assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")
 
 
-def test_r5_is_skipped_when_both_voters_keep():
+def test_r5_is_undone_only_by_both_keeps():
     lines = [Line("Assessment:", 0.03, 0.05), Line("Plan: rest", 0.08, 0.10)]
+    # DistilBERT KEEP and keywords KEEP (KK): the short page is undone.
     kept = run(CLINICAL_WEAK, lines=lines, body_ink=False, bert=bert(0.1))
     assert (kept.votes["bert"]["vote"], kept.votes["kw"]["vote"]) == ("KEEP", "KEEP")
     assert kept.rule != "R5" and kept.votes["short_page"]["skipped"] == "KK"
-    # One voter not KEEP: the short page is junk.
-    junk = run(CLINICAL_WEAK, lines=lines, body_ink=False, bert=bert(0.7))
-    assert junk.votes["bert"]["vote"] != "KEEP" and junk.rule == "R5"
+    # One KEEP only (DistilBERT JUNK, keywords KEEP): R5 stands.
+    one = run(CLINICAL_WEAK, lines=lines, body_ink=False, bert=bert(0.7))
+    assert one.votes["bert"]["vote"] == "JUNK" and one.rule == "R5"

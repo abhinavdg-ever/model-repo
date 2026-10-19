@@ -14,9 +14,8 @@ The ladder, first rule that fires decides (R4, R5 and R3's KV half need pass 2):
                     both voters say JUNK (JJ): then the vote (R9) decides
   R4 DistilBERT     p(junk) > 0.85 -> Junk, DistilBERT's subtype, unless the canon finds
                     clinical (C) or demographic (D) evidence: then the vote decides
-  R5 short page     content ends in the top 20% of the page height, under 0.5% ink below
-                    (22%-94%) -> Junk / Others; only when a voter is not KEEP (both
-                    KEEP: R5 is skipped)
+  R5 short page     content ends in the top 15% of the page height, under 0.5% ink below
+                    (17%-94%) -> Junk / Others, unless both voters say KEEP (KK)
   R6 retrieval      record_request + roi_vendors >= 7 and not C+ -> Junk / Record Request
   R7 strong clinical  C+ -> Main
   R8 Visual         document_type 'visual' with < 20 words -> Main, unless retrieval /
@@ -705,7 +704,7 @@ def decide(inputs: PageInputs) -> Verdict:
             if inputs.body_ink is None:
                 votes["short_page"]["ink"] = "not_measured"
             elif bottom is not None and bottom <= float(short["top_fraction"]) and inputs.body_ink is False:
-                # Only when DistilBERT or the keywords is not KEEP: both KEEP outranks the layout.
+                # Both voters KEEP (KK) undo the short page; one KEEP does not.
                 if all(b.vote == KEEP for b in ballots.values()):
                     votes["short_page"]["skipped"] = "KK"
                 else:

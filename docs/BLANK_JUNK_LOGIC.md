@@ -126,7 +126,7 @@ and `/health` shows `engine: keywords`.
 | **R2** | "Intentionally left blank" (placeholder group) on ≤ **25** words | Junk / Others | 1, 2 | 0.99 |
 | **R3** | Provider Signature = Yes, or a signature phrase — **skipped when the ballots are JJ** (the vote decides; `votes.r3_skipped = "JJ"`) | Main | 2 | 0.95 |
 | **R4** | DistilBERT p(junk) **> 0.85** — not when C ≥ 4 or D ≥ 3 (then the vote decides; `votes.r4_skipped`) | Junk / DistilBERT's subtype | 2 | evidence |
-| **R5** | Short page (§4), only when a voter is not KEEP (both KEEP → skipped) | Junk / Others | 2 | evidence |
+| **R5** | Short page (§4), unless **both** voters say KEEP (KK) | Junk / Others | 2 | evidence |
 | **R6** | record_request + roi_vendors ≥ **7** and not C⁺ | Junk / Record Request/Transmittal | 1, 2 | evidence |
 | **R7** | C⁺ (clinical ≥ 8) | Main | 1, 2 | evidence |
 | **R8** | Visual page (`visual`, < **20** words) → Main, unless record_request + roi_vendors + invoice ≥ **7** → Junk / that group's subtype | Main or Junk | 1 | evidence |
@@ -148,11 +148,11 @@ Take the OCR lines, ignoring:
 The lowest remaining line's bottom edge, as a share of the page height, is where the
 content ends.
 
-**Step 2 — is it short?** Content ends at or above **20%** of the height
+**Step 2 — is it short?** Content ends at or above **15%** of the height
 (`top_fraction`).
 
 **Step 3 — is there anything below that OCR did not read?** A picture, handwriting, a
-signature or a stamp is not text, so the image is measured: in the band from **22% to
+signature or a stamp is not text, so the image is measured: in the band from **17% to
 94%** of the height (`body_ink_band`), the share of pixels that are dark ink strokes
 (paper texture and faint pencil do not count) = `ink_fraction`.
 
@@ -172,9 +172,10 @@ For scale: a page of body text is 5–15% ink; a signature or stamp is roughly
 
 A Provider Signature (R3) is checked before R5: a signed short page is kept, unless JJ.
 
-**R5 needs a voter that is not KEEP.** When DistilBERT and the keywords both vote KEEP
-(KK), a short page is not ruled junk by its layout: R5 is skipped
-(`votes.short_page.skipped = "KK"`) and the later rules / the vote decide.
+**Both KEEPs undo a short page.** When DistilBERT and the keywords both vote KEEP (KK,
+any strength), R5 is skipped (`votes.short_page.skipped = "KK"`) and the later rules / the
+vote decide. One KEEP is not enough: a split, an abstention or JJ leaves R5 to rule the
+short page Junk / Others.
 
 ---
 
@@ -291,7 +292,7 @@ UI shows Yes at 100%, May Be below; May Be confidence = 1 + (similarity − 1) �
 | Pass | What happens | Verdict |
 |---|---|---|
 | 1 | DistilBERT J weak, keywords J weak (Optum = 4) → JJ, not both strong | Main, deferred |
-| 2 | R5: short (14.5% ≤ 20%), ink 0.23% < 0.5% | **Junk / Others (R5)**, confidence ≈ 0.99 (R5 0.95, DistilBERT 0.71, keywords 0.4, all agree) |
+| 2 | R5: short (14.5% ≤ 15%), ink 0.23% < 0.5%, not KK | **Junk / Others (R5)**, confidence ≈ 0.99 (R5 0.95, DistilBERT 0.71, keywords 0.4, all agree) |
 
 Without R5 it would still be junk: keywords J weak (Optum from Tesseract; D 3 does not
 make them K because roi_vendors is hard), DistilBERT J weak → JJ → Junk; handwriting
@@ -319,8 +320,8 @@ Main.
 | DistilBERT minimum words | 8 | canon `voters.bert.min_words` |
 | R4 force | p(junk) > 0.85 | canon `voters.bert.force_junk_above` |
 | A J needs | J ≥ 7 | canon `voters.keyword.junk_alone_min` |
-| R5 short page | content ends ≤ 20% | canon `short_page.top_fraction` |
-| R5 ink band | 22%–94% of the height | canon `short_page.body_ink_band` |
+| R5 short page | content ends ≤ 15% | canon `short_page.top_fraction` |
+| R5 ink band | 17%–94% of the height | canon `short_page.body_ink_band` |
 | R5 ink limit | 0.5% | canon `short_page.body_ink_max_fraction` |
 | R5 footer ignored | bottom 6% | canon `short_page.ignore_footer_band` |
 | R8 visual veto | hard groups ≥ 7 | canon `visual` |
@@ -340,6 +341,7 @@ Main.
 - **Pass 2 keywords also count the junk terms only Tesseract read** (`tesseract_only`).
 - **R5 records its ink** (`ink`, `ink_fraction`, `ink_limit`).
 - **R5 ink limit 0.01% → 0.5%**; **short page 15% → 20%**, ink band 17% → 22% start.
-- **R5 only when a voter is not KEEP** (both KEEP: skipped, `short_page.skipped = "KK"`).
+- **Both KEEPs (KK) undo a short page** (`short_page.skipped = "KK"`); one KEEP does not.
+- **Short page back to 15%** (ink band from 17%), 2026-10-19.
 - **The clinical and demographic vetoes are gone** (the keyword ballot covers them);
   the handwritten veto stays.
