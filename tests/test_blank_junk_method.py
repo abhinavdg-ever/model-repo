@@ -131,18 +131,18 @@ class TestRules:
         verdict = run(text, pass_no=1, bert=bert(0.04))
         assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R5.2")
 
-    def test_r5_keep_cannot_be_reversed(self):
-        # A placeholder, a visual card and a short page would all be junk; DistilBERT wins.
-        assert run("This page intentionally left blank", bert=bert(0.01)).rule == "R5.2"
-        card = "Member ID card, RxBIN 610014, Group number 0042, Datavant " + FILLER
-        assert run(card, document_type="visual", bert=bert(0.01)).code == classify.CODE_MAIN
+    def test_r5_keep_cannot_be_reversed_by_later_rules(self):
+        # A short page would be junk (R6); DistilBERT wins.
         short = [Line("Fax from Datavant records", 0.02, 0.05)]
         verdict = run("Fax from Datavant records " + FILLER, lines=short, body_ink=False, bert=bert(0.01))
         assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R5.2")
 
-    def test_r5_keep_does_not_override_r1(self):
+    def test_r5_keep_runs_after_r1_to_r4(self):
+        # The rules run in number order: R1-R3 (and R4) come before R5.2.
         assert run("   ", bert=bert(0.01)).code == classify.CODE_BLANK
         assert run(CLINICAL_TEXT, no_ink=True, bert=bert(0.01)).rule == "R1"
+        assert run("This page intentionally left blank", bert=bert(0.01)).rule == "R2"
+        assert run(CLINICAL_TEXT, signed=True, bert=bert(0.01)).rule == "R4"
 
     def test_r5_keep_needs_less_than_5(self):
         assert run(INVOICE_TEXT, bert=bert(0.05)).rule != "R5.2"
