@@ -174,9 +174,9 @@ export function ClearAllFilters({ count, onClear }: { count: number; onClear: ()
 export type MetaFilterKey = "source" | "measure" | "retrieval";
 export type MetaFilters = Partial<Record<MetaFilterKey, string[]>>;
 export const META_FILTERS: { key: MetaFilterKey; label: string; title: string }[] = [
-  { key: "source", label: "Source", title: "Source name" },
   { key: "measure", label: "Measure", title: "Measure" },
-  { key: "retrieval", label: "Retrieval", title: "Retrieval (RR Method)" },
+  { key: "source", label: "Source Name", title: "Source Name" },
+  { key: "retrieval", label: "Retrieval Method", title: "Retrieval Method (RR Method)" },
 ];
 
 /** How many of the metadata filters are on. */
