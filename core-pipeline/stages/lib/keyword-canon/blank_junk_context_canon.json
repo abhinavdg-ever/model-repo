@@ -22,7 +22,7 @@
     "footer_band": 0.08
   },
   "short_page": {
-    "note": "Short page rule (precedence step R5). Content that ends within the top 'top_fraction' (15%; 20% 2026-10-18 to 2026-10-19) of the page height -> JUNK / Others, even when it carries a clinical heading and whatever the neighbouring pages are. Not when Provider Signature = Yes, or when both voters say KEEP (KK) and DistilBERT's KEEP is strong (voters.bert.keep_strong) (docs/BLANK_JUNK_LOGIC.md).",
+    "note": "Short page rule (precedence step R6). Content that ends within the top 'top_fraction' (15%; 20% 2026-10-18 to 2026-10-19) of the page height -> JUNK / Others, even when it carries a clinical heading and whatever the neighbouring pages are. Not when Provider Signature = Yes, or when both voters say KEEP (KK) and DistilBERT's KEEP is strong (voters.bert.keep_strong) (docs/BLANK_JUNK_LOGIC.md).",
     "top_fraction": 0.15,
     "ignore_footer_band": 0.06,
     "body_ink_band": [
@@ -30,7 +30,7 @@
       0.94
     ],
     "body_ink_max_fraction": 0.005,
-    "note_body_ink": "Ink below the short band = the share of the 17%-94% band (body_ink_band; it starts 2% below top_fraction) that is dark ink strokes (hw_printed.page_marks strong_fraction). At or above body_ink_max_fraction (0.5%, 2026-10-18; was 0.01%) the page has content below and R5 does not junk it; a stamp, logo or fax line (~0.2%) no longer blocks it. votes.short_page records ink, ink_fraction and ink_limit.",
+    "note_body_ink": "Ink below the short band = the share of the 17%-94% band (body_ink_band; it starts 2% below top_fraction) that is dark ink strokes (hw_printed.page_marks strong_fraction). At or above body_ink_max_fraction (0.5%, 2026-10-18; was 0.01%) the page has content below and R6 does not junk it; a stamp, logo or fax line (~0.2%) no longer blocks it. votes.short_page records ink, ink_fraction and ink_limit.",
     "ignore_line_patterns": [
       "\\b(?:page|pg|pge)\\.?\\s*#?\\s*\\d+\\s*(?:of|/)\\s*\\d+\\b",
       "^\\s*\\d{1,4}\\s*$",
@@ -41,16 +41,18 @@
     "note_patterns": "A line matching any of these (anywhere in the line) is a running header / footer stamp, not content: 'Page 3 of 7', 'MRN: 023466 Printed: 10/30/2025 8:10 AM Pg 14 of 17', a bare page number, a fax transmission line."
   },
   "visual": {
-    "note": "Visual = ocr_quality_results.document_type == 'visual' (CSV column document_type) AND fewer than max_words words of text. A visual page with more text is judged like any other page. Decided in pass 1 (R8): kept, or junk on very strong retrieval / invoice / ID-card wording. Pass 2 is skipped for these pages. No confidence cut-off, no proxy.",
+    "note": "Visual = ocr_quality_results.document_type == 'visual' (CSV column document_type). Rule R3, before signature, DistilBERT, short page, retrieval and clinical: on every visual page, card evidence (card_group, id_card: a card term or card-number pattern) is required; with it, card + vendor + insurer + retrieval + invoice wording (veto_junk_groups) >= veto_min_score -> Junk / Others, whatever the word count. Vendors and insurers only add weight: without a card term they never fire R3. Else fewer than max_words words -> Main. Else (a visual page with more text) the rest of the ladder and the vote decide. Pass 2 skips visual pages under max_words (decided in pass 1). Changed 2026-10-19: was R8, after R7, veto at 7.",
     "document_type": "visual",
     "max_words": 20,
     "veto_junk_groups": [
-      "record_request",
+      "id_card",
       "roi_vendors",
-      "invoice",
-      "id_card"
+      "insurers",
+      "record_request",
+      "invoice"
     ],
-    "veto_min_score": 7
+    "veto_min_score": 4,
+    "card_group": "id_card"
   },
   "contexts": {
     "clinical": {
@@ -371,7 +373,7 @@
       "patient_education": {
         "weight": 2,
         "cap": 6,
-        "note": "Patient education and instruction handouts are part of the record (Non-Codable page type 'Patient Education' / 'Discharge Instructions' in page classification, which runs after blank/junk). Two hits make the page clinical (C), so DistilBERT cannot force it to junk (R4) and the vote keeps it.",
+        "note": "Patient education and instruction handouts are part of the record (Non-Codable page type 'Patient Education' / 'Discharge Instructions' in page classification, which runs after blank/junk). Two hits make the page clinical (C), so DistilBERT cannot force it to junk (R5) and the vote keeps it.",
         "terms": [
           "patient education",
           "patient instructions",
@@ -568,7 +570,7 @@
         ]
       },
       "id_card": {
-        "note": "Insurance / ID cards and driver's licences (scanned card images). Counted only on pages the page-tag model calls visual (document_type), with or without the Visual word limit; on other pages it adds nothing. A junk indicator, not demographic: demographic terms keep a page, and a card's name / DOB would otherwise rescue it. Hard junk (method HARD_JUNK_GROUPS): it beats the demographic KEEP and counts toward the Visual (R8) veto. Two terms (8) = a strong JUNK ballot. Added 2026-10-19.",
+        "note": "Insurance / ID cards and driver's licences (scanned card images). Counted only on pages the page-tag model calls visual (document_type), with or without the Visual word limit; on other pages it adds nothing. A junk indicator, not demographic: demographic terms keep a page, and a card's name / DOB would otherwise rescue it. Hard junk (method HARD_JUNK_GROUPS): it beats the demographic KEEP and counts toward the Visual card check (R3). Two terms (8) = a strong JUNK ballot. Added 2026-10-19. 2026-10-19: insurance-card wording and card-number patterns (Member ID / BIN / PCN / Group / copay) added; insurance words stay neutral on non-visual pages. Its hits are the card evidence R3 requires.",
         "document_type": "visual",
         "weight": 4,
         "cap": 8,
@@ -620,11 +622,71 @@
           "for pharmacist",
           "for pharmacists",
           "rx claims",
-          "pharmacy claims"
+          "pharmacy claims",
+          "member services",
+          "customer service",
+          "payer id",
+          "subscriber id",
+          "subscriber name",
+          "member id",
+          "member name",
+          "group number",
+          "group no",
+          "plan code",
+          "pcp copay",
+          "specialist copay",
+          "er copay",
+          "urgent care copay",
+          "office visit copay",
+          "copay",
+          "deductible",
+          "issuer",
+          "effective date"
         ],
         "patterns": [
           "\\bcard\\s*(?:#|no\\.?|number)\\s*:?\\s*[a-z0-9]",
-          "\\b(?:dl|lic(?:ense|ence)?)\\s*(?:#|no\\.?)\\s*:?\\s*[a-z0-9]"
+          "\\b(?:dl|lic(?:ense|ence)?)\\s*(?:#|no\\.?)\\s*:?\\s*[a-z0-9]",
+          "\\b(?:rx\\s*)?bin\\s*[:#]?\\s*\\d{6}\\b",
+          "\\b(?:rx\\s*)?pcn\\s*[:#]?\\s*[a-z0-9]{2,10}\\b",
+          "\\b(?:rx\\s*)?gr(?:ou)?p\\s*(?:#|no\\.?|number|id)?\\s*[:#]?\\s*[a-z0-9-]*\\d[a-z0-9-]{2,}",
+          "\\b(?:member|subscriber|policy|identification)\\s*(?:id|#|no\\.?|number)\\s*[:#]?\\s*[a-z]{0,4}\\d{6,}",
+          "\\b(?:pcp|spec(?:ialist)?|er|uc|urgent\\s+care|office\\s+visit|ov)\\s*(?:copay)?\\s*[:\\-]?\\s*\\$\\s*\\d+",
+          "\\b(?:exp(?:ires)?|iss(?:ued)?)\\s*[:.]?\\s*\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}"
+        ]
+      },
+      "insurers": {
+        "note": "Health-plan names on a visual page (an insurance card's logo). Counted only on visual pages. Not card evidence: they add weight to the R3 card check and to the keyword ballot, but never fire R3 alone. Weight 2: one insurer is not a JUNK ballot. Added 2026-10-19.",
+        "document_type": "visual",
+        "weight": 2,
+        "cap": 4,
+        "subtype": "Others",
+        "terms": [
+          "unitedhealthcare",
+          "united healthcare",
+          "uhc",
+          "aetna",
+          "humana",
+          "cigna",
+          "anthem",
+          "elevance",
+          "blue cross",
+          "blue shield",
+          "bcbs",
+          "highmark",
+          "kaiser permanente",
+          "molina",
+          "wellcare",
+          "centene",
+          "ambetter",
+          "amerigroup",
+          "caresource",
+          "health net",
+          "devoted health",
+          "clover health",
+          "alignment health",
+          "scan health plan",
+          "oscar health",
+          "tricare"
         ]
       },
       "placeholder": {
@@ -728,7 +790,7 @@
       "keep_weak": 0.5,
       "min_words": 8,
       "force_junk_above": 0.85,
-      "note": "Pass 2: p(junk) = sum of JUNK_* + BLANK above force_junk_above -> JUNK forced (method R4), overruled only by blank, placeholder and Provider Signature = Yes, and not applied when the canon finds clinical (>= thresholds.clinical) or demographic (>= thresholds.demographic) evidence: then the vote decides. Pass 1: not forced, counts as a strong JUNK ballot."
+      "note": "Pass 2: p(junk) = sum of JUNK_* + BLANK above force_junk_above -> JUNK forced (method R5), overruled only by blank, placeholder and Provider Signature = Yes, and not applied when the canon finds clinical (>= thresholds.clinical) or demographic (>= thresholds.demographic) evidence: then the vote decides. Pass 1: not forced, counts as a strong JUNK ballot."
     },
     "keyword": {
       "note": "Votes from the J/C/D table docs/BLANK_JUNK_LOGIC.md Strength: JUNK is strong at junk >= junk_strong, KEEP is strong at clinical >= clinical_strong.",
@@ -740,5 +802,5 @@
     "note": "Section 8.3: a JUNK vote is turned into KEEP + review only when the handwritten share of the page is above this. Needs the page-tag model (handwritten_area_pct); without it the veto does not apply and votes.hw_area = 'none'.",
     "min_handwritten_area_pct": 30
   },
-  "note_confidence": "Confidence is the evidence for the verdict (docs/BLANK_JUNK_LOGIC.md), not a fixed number: DistilBERT's probability (when it scored the page), the keyword score (junk / 10, or clinical-or-demographic / 10) and, for R5-R8, the rule's own value. Signals that agree combine as 1 - product(1 - p); a disagreement is averaged. R1-R3 keep fixed values. There is no cap: a contested call comes out low by itself, so filter on low confidence to review."
+  "note_confidence": "Confidence is the evidence for the verdict (docs/BLANK_JUNK_LOGIC.md), not a fixed number: DistilBERT's probability (when it scored the page), the keyword score (junk / 10, or clinical-or-demographic / 10) and, for R3 and R6-R8, the rule's own value. Signals that agree combine as 1 - product(1 - p); a disagreement is averaged. R1, R2 and R4 (signature) keep fixed values. There is no cap: a contested call comes out low by itself, so filter on low confidence to review."
 }

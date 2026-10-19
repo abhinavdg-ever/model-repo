@@ -258,12 +258,12 @@ when the body has a junk word too.
 | R1 | No ink (HW stage `blank_page` / `faint_marks_only`); or, not Visual, 0 characters or the word "blank" in < 30 characters | `blank` | 1, 2 |
 | R1 | Not Visual, < 15 characters otherwise | junk / Cover Page when a Cover Page term (`cover_page`, `cover_stamps`) is there, else junk / Others | 1, 2 |
 | R2 | "Intentionally left blank" on ≤ 25 words | junk / Others | 1, 2 |
-| R3 | Provider Signature = Yes (KV extraction), or a canon signature phrase — unless DistilBERT and the keywords both say JUNK (JJ): then the vote (R9) decides, `votes.r3_skipped` | Main | 2 |
-| R4 | DistilBERT p(junk) > 0.85 — **not** when C or D (then the vote decides) | junk / DistilBERT's subtype | 2 |
-| R5 | Content ends in the top 15% of the page (running header / footer lines ignored) and no ink from 17% to 94% of the height (ink = at least `body_ink_max_fraction`, 0.5%, of that band; `votes.short_page` records `ink`, `ink_fraction`, `ink_limit`) — unless both voters say KEEP (KK) and DistilBERT's KEEP is strong (≥ 0.85) | junk / Others | 2 |
-| R6 | record_request + roi_vendors ≥ 7 and not C⁺, unless both voters say KEEP (KK) | junk / Record Request | 1, 2 |
-| R7 | C⁺ | Main | 1, 2 |
-| R8 | `document_type = 'visual'` and < 20 words → Main, unless invoice / retrieval / ID-card wording ≥ 7 | Main or junk | 1 (pass 2 skips these pages) |
+| R3 | `document_type = 'visual'`, any length: **first** card evidence is required (an id_card term or card-number pattern such as BIN / PCN / Member ID / copay); with it, card + vendor + insurer + retrieval + invoice wording ≥ 4 → junk / Others. Vendors and insurers alone only add weight. Else < 20 words → Main. Else on to R4–R9 | junk / Others, Main, or on | 1, 2 (pass 2 skips visual pages under 20 words) |
+| R4 | Provider Signature = Yes (KV extraction), or a canon signature phrase — unless DistilBERT and the keywords both say JUNK (JJ): then the vote (R9) decides, `votes.r4_skipped` | Main | 2 |
+| R5 | DistilBERT p(junk) > 0.85 — **not** when C or D (then the vote decides) | junk / DistilBERT's subtype | 2 |
+| R6 | Content ends in the top 15% of the page (running header / footer lines ignored) and no ink from 17% to 94% of the height (ink = at least `body_ink_max_fraction`, 0.5%, of that band; `votes.short_page` records `ink`, `ink_fraction`, `ink_limit`) — unless both voters say KEEP (KK) and DistilBERT's KEEP is strong (≥ 0.85) | junk / Others | 2 |
+| R7 | record_request + roi_vendors ≥ 7 and not C⁺, unless both voters say KEEP (KK) | junk / Record Request | 1, 2 |
+| R8 | C⁺ | Main | 1, 2 |
 | R9 | The vote, below | | 1, 2 |
 
 **The vote (R9).** Two voters: DistilBERT (raw 8-label softmax) and the keyword
@@ -297,9 +297,9 @@ Subtype: the canon's best junk group, else DistilBERT's label, else Others.
 **Confidence** is the evidence for the verdict, not a fixed number. Signals:
 DistilBERT's probability for the verdict (when it scored the page, ≥ 8 words),
 the keywords (junk score / 10, or clinical-or-demographic / 10; when they point
-the other way, 1 − that), and for R5–R8 the rule's own value (R5 0.95, R6 0.97,
-R7 0.95, R8 0.90). Signals that agree combine as 1 − ∏(1 − p); a disagreement
-is averaged; no signal is 0.50. R1–R3 are observations and stay fixed (1.00 /
+the other way, 1 − that), and for R3 and R6–R8 the rule's own value (R3 0.90, R6 0.95,
+R7 0.97, R8 0.95). Signals that agree combine as 1 − ∏(1 − p); a disagreement
+is averaged; no signal is 0.50. R1, R2 and R4 are observations and stay fixed (1.00 /
 0.99 / 0.95). A contested call — a veto, a split vote — therefore comes out low
 on its own; filter on low confidence to review. The signals are staged as
 `confidence_from`. Patient-education

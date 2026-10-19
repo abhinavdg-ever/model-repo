@@ -4,33 +4,34 @@ Inputs per page (``PageInputs``): the OCR text, its word boxes when the pass has
 DistilBERT's raw probabilities (model_bridge.model_scores), the page type and
 handwritten share from the page-tag model, and Provider Signature from KV extraction.
 
-The ladder, first rule that fires decides (R4, R5 and R3's KV half need pass 2):
+The ladder, first rule that fires decides (R5, R6 and R4's KV half need pass 2):
 
   R1 blank / tiny   no ink -> Blank. Not Visual: 0 characters, or the word "blank" in
                     < 30 characters -> Blank; else < 15 characters -> Junk / Cover Page
                     when a Cover Page term is there, Junk / Others otherwise
   R2 placeholder    "intentionally left blank" on a page of <= 25 words -> Junk / Others
-  R3 signature      Provider Signature = Yes, or a canon signature phrase -> Main, unless
+  R3 Visual         document_type 'visual': first card evidence (an id_card term or pattern;
+                    vendor / insurer / retrieval / invoice wording adds weight, total >= 4)
+                    -> Junk / Others; else < 20 words -> Main; else the rules below and the vote
+  R4 signature      Provider Signature = Yes, or a canon signature phrase -> Main, unless
                     both voters say JUNK (JJ): then the vote (R9) decides
-  R4 DistilBERT     p(junk) > 0.85 -> Junk, DistilBERT's subtype, unless the canon finds
+  R5 DistilBERT     p(junk) > 0.85 -> Junk, DistilBERT's subtype, unless the canon finds
                     clinical (C) or demographic (D) evidence: then the vote decides
-  R5 short page     content ends in the top 15% of the page height, under 0.5% ink below
+  R6 short page     content ends in the top 15% of the page height, under 0.5% ink below
                     (17%-94%) -> Junk / Others, unless both voters say KEEP (KK) and
                     DistilBERT's KEEP is strong (p(keep) >= keep_strong, 0.85)
-  R6 retrieval      record_request + roi_vendors >= 7 and not C+ -> Junk / Record Request,
+  R7 retrieval      record_request + roi_vendors >= 7 and not C+ -> Junk / Record Request,
                     unless both voters say KEEP (KK)
-  R7 strong clinical  C+ -> Main
-  R8 Visual         document_type 'visual' with < 20 words -> Main, unless retrieval /
-                    invoice / ID-card wording >= 7 (a visual page with more text is not Visual)
+  R8 strong clinical  C+ -> Main
   R9 vote           DistilBERT and the keyword canon (BLANK_JUNK_LOGIC §5)
 
-Pass 1 only lets R1, R2, R6, R8 and two strong JUNK ballots decide; every other page stays
+Pass 1 only lets R1, R2, R3, R7, R8 and two strong JUNK ballots decide; every other page stays
 Main and is judged again in pass 2 on the final OCR.
 
 Every page gets one verdict. Its confidence is the evidence for that verdict (BLANK_JUNK_LOGIC §6):
-DistilBERT's probability, the keyword score and, for R5-R8, the rule's own value. Signals
-that agree reinforce each other; signals that disagree are averaged, so a contested call
-comes out low on its own. R1-R3 are observations and keep a fixed confidence.
+DistilBERT's probability, the keyword score and, for R3 and R6-R8, the rule's own value.
+Signals that agree reinforce each other; signals that disagree are averaged, so a contested
+call comes out low on its own. R1, R2 and R4 are observations and keep a fixed confidence.
 
 The words, weights, thresholds and geometry live in
 ``keyword-canon/blank_junk_context_canon.json`` (reloads on change).
@@ -79,17 +80,17 @@ MODEL_SUBTYPE = {
 # Junk evidence that is retrieval or billing paperwork, not something a face sheet carries.
 RETRIEVAL_GROUPS = ("record_request", "roi_vendors")
 # id_card (visual pages only): an insurance / ID card or driver's licence prints a name
-# and DOB, which must not rescue it as a face sheet.
+# and DOB, which must not rescue it as a face sheet. These groups are also the R3 card check.
 HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice", "id_card")
 
 # The two voters, in the order their letters are written in the vote
 # ("R9 vote JA (DistilBERT, keywords)"): K = Keep, J = Junk, A = Abstain.
 VOTER_NAMES = {"bert": "DistilBERT", "kw": "keywords"}
 
-# R1-R3 are observations: their confidence is fixed. R5-R8 are judgements: their value is
-# one signal, combined with DistilBERT and the keywords (_confidence).
-FIXED_CONFIDENCE = {"R1": 1.0, "R2": 0.99, "R3": 0.95}
-RULE_PRIOR = {"R5": 0.95, "R6": 0.97, "R7": 0.95, "R8": 0.90}
+# R1, R2 and R4 are observations: their confidence is fixed. R3 and R6-R8 are judgements:
+# their value is one signal, combined with DistilBERT and the keywords (_confidence).
+FIXED_CONFIDENCE = {"R1": 1.0, "R2": 0.99, "R4": 0.95}
+RULE_PRIOR = {"R3": 0.90, "R6": 0.95, "R7": 0.97, "R8": 0.95}
 MIN_TEXT_CHARS = 15
 BLANK_WORD_MAX_CHARS = 30
 BLANK_WORD = re.compile(r"\bblank\b", re.IGNORECASE)
@@ -546,8 +547,8 @@ def _signals(junk: bool, inputs: PageInputs, scores: Scores, ballots: dict[str, 
     if rule in RULE_PRIOR:
         out["rule"] = RULE_PRIOR[rule]
     # DistilBERT counts when it scored the page. Under min_words it is not trusted, except
-    # by R4, which is DistilBERT's own call.
-    if inputs.bert and (rule == "R4" or ballots["bert"].note == ""):
+    # by R5, which is DistilBERT's own call.
+    if inputs.bert and (rule == "R5" or ballots["bert"].note == ""):
         out["bert"] = float(inputs.bert["p_junk"] if junk else inputs.bert["p_keep"])
     kw = ballots["kw"]
     if kw.vote == JUNK:
@@ -706,28 +707,40 @@ def decide(inputs: PageInputs) -> Verdict:
     # R2 placeholder
     if scores.group("junk", "placeholder") > 0 and words <= PLACEHOLDER_MAX_WORDS:
         return ruled(CODE_OTHERS, "R2", "R2 placeholder ('intentionally left blank') -> Junk / Others")
-    # R3 signature (Provider Signature from KV extraction exists only from pass 2). Not when
+    # R3 Visual. A visual page with card evidence (an insurance card, a driver's licence) is
+    # junk, whatever its length; vendor, insurer, retrieval and invoice wording only add to
+    # the card's weight. Without a card, a Visual page (< 20 words) is kept; a visual page
+    # with more text goes on through the ladder and the vote like any other.
+    if inputs.document_type == prof.raw["visual"]["document_type"]:
+        cfg = prof.raw["visual"]
+        card = scores.group("junk", cfg["card_group"])
+        weight = sum(scores.group("junk", g) for g in cfg["veto_junk_groups"])
+        if card > 0 and weight >= float(cfg["veto_min_score"]):
+            return ruled(CODE_OTHERS, "R3", f"R3 visual with card wording ({weight:g}) -> Junk / Others")
+        if visual:
+            return ruled(CODE_MAIN, "R3", "R3 Visual -> Main")
+    # R4 signature (Provider Signature from KV extraction exists only from pass 2). Not when
     # both voters say JUNK (JJ): a signed ROI / transmittal letter is still junk. The vote then
     # decides, with its handwritten veto.
     if pass2 and (inputs.signed or scores.signature_phrase):
         if all(b.vote == JUNK for b in ballots.values()):
-            votes["r3_skipped"] = "JJ"
+            votes["r4_skipped"] = "JJ"
             votes["rule"] = "R9"
             return _vote(inputs, scores, ballots, votes)
         why = "Provider Signature = Yes" if inputs.signed else "signature phrase"
-        return ruled(CODE_MAIN, "R3", f"R3 signature ({why}) -> Main")
-    # R4 DistilBERT force. A face sheet or a clinical page DistilBERT is sure about is
+        return ruled(CODE_MAIN, "R4", f"R4 signature ({why}) -> Main")
+    # R5 DistilBERT force. A face sheet or a clinical page DistilBERT is sure about is
     # left to the vote, where the keyword ballot is KEEP on them.
     force = float(prof.raw["voters"]["bert"]["force_junk_above"])
     protected = scores.clinical >= t["clinical"] or scores.demographic >= t["demographic"]
     if pass2 and inputs.bert and float(inputs.bert["p_junk"]) > force and protected:
-        votes["r4_skipped"] = "clinical" if scores.clinical >= t["clinical"] else "demographic"
+        votes["r5_skipped"] = "clinical" if scores.clinical >= t["clinical"] else "demographic"
     elif pass2 and inputs.bert and float(inputs.bert["p_junk"]) > force:
         subtype = ballots["bert"].subtype or MODEL_SUBTYPE.get(inputs.bert.get("top_junk_label") or "", "Others")
         return ruled(
-            _junk_code(subtype), "R4", f"R4 DistilBERT p(junk) {float(inputs.bert['p_junk']):.3f} > {force} -> Junk / {subtype}",
+            _junk_code(subtype), "R5", f"R5 DistilBERT p(junk) {float(inputs.bert['p_junk']):.3f} > {force} -> Junk / {subtype}",
         )
-    # R5 short page
+    # R6 short page
     if pass2:
         short = prof.raw["short_page"]
         if not lines:
@@ -750,26 +763,18 @@ def decide(inputs: PageInputs) -> Verdict:
                 if all(b.vote == KEEP for b in ballots.values()) and ballots["bert"].strength == STRONG:
                     votes["short_page"]["skipped"] = "KK, DistilBERT strong KEEP"
                 else:
-                    return ruled(CODE_OTHERS, "R5", f"R5 short page: content ends at {bottom:.0%} of the height -> Junk / Others")
-    # R6 retrieval counter-veto
+                    return ruled(CODE_OTHERS, "R6", f"R6 short page: content ends at {bottom:.0%} of the height -> Junk / Others")
+    # R7 retrieval counter-veto
     retrieval = sum(scores.group("junk", g) for g in RETRIEVAL_GROUPS)
     if retrieval >= t["junk_strong"] and scores.clinical < t["clinical_strong"] and all(
         b.vote == KEEP for b in ballots.values()
     ):
         # Both voters KEEP (KK) overrule the retrieval wording: the vote decides.
-        votes["r6_skipped"] = "KK"
+        votes["r7_skipped"] = "KK"
     elif retrieval >= t["junk_strong"] and scores.clinical < t["clinical_strong"]:
-        return ruled(CODE_RECORD_REQUEST, "R6", f"R6 retrieval wording {retrieval:g} -> Junk / Record Request/Transmittal")
-    # R7 strong clinical
+        return ruled(CODE_RECORD_REQUEST, "R7", f"R7 retrieval wording {retrieval:g} -> Junk / Record Request/Transmittal")
+    # R8 strong clinical
     if scores.clinical >= t["clinical_strong"]:
-        return ruled(CODE_MAIN, "R7", f"R7 strong clinical ({scores.clinical:g}) -> Main")
-    # R8 Visual
-    if visual:
-        hard = {g: scores.group("junk", g) for g in HARD_JUNK_GROUPS}
-        best = max(hard, key=hard.get)
-        if sum(hard.values()) >= float(prof.raw["visual"]["veto_min_score"]):
-            subtype = prof.groups[("junk", best)].subtype
-            return ruled(_junk_code(subtype), "R8", f"R8 Visual with retrieval / invoice wording -> Junk / {subtype}")
-        return ruled(CODE_MAIN, "R8", "R8 Visual -> Main")
+        return ruled(CODE_MAIN, "R8", f"R8 strong clinical ({scores.clinical:g}) -> Main")
     votes["rule"] = "R9"
     return _vote(inputs, scores, ballots, votes)

@@ -28,13 +28,14 @@ It runs **twice**:
 |---|---|---|
 | Text | Tesseract (preliminary OCR) | Final OCR: Azure (Final 2), else Docling (Final 1); **plus the junk words only Tesseract read** |
 | Pages | Printed, not low quality | Every page pass 1 did not junk, plus handwritten / mixed / low-quality pages (never judged in pass 1) |
-| Word positions | none | yes (for R5 and the header / footer rule) |
-| May junk via | R1, R2, R6, R8, and the vote only when **JJ with both strong** | every rule |
+| Word positions | none | yes (for R6 and the header / footer rule) |
+| May junk via | R1, R2, R3, R7, and the vote only when **JJ with both strong** | every rule |
 | Otherwise | Main, "deferred to final OCR" | final verdict |
 
-**Visual** = the page-tag model says `visual` **and** the page has fewer than **20** words
-(canon `visual.max_words`); a visual page with more text is judged like any other page.
-A Visual page is decided in pass 1 (R8) and skipped in pass 2. A page the HW stage found **no ink**
+**Visual (R3)** — every page the page-tag model calls `visual` is first checked for **card**
+wording (Junk / Others if found, whatever its length; vendor / insurer wording only adds weight). Without it, a page under
+**20** words (canon `visual.max_words`) is kept; a visual page with more text goes on through
+R4–R9 like any other page. A visual page under 20 words is decided in pass 1 and skipped in pass 2. A page the HW stage found **no ink**
 on (`blank_page` / `faint_marks_only`) counts as printed for this: pass 1 judges it (R1:
 Blank) and final OCR skips it. (Before 2026-10-18 it was skipped by pass 1 as
 "handwritten", sent to final OCR, then skipped by pass 2 for having no text: never Blank.) Only pass 1's
@@ -90,8 +91,13 @@ never carries. They matter for the demographic rules below: a card prints a name
 DOB, and those must not rescue it as a face sheet. That is why card wording is a **junk**
 group and not part of demographic (demographic is KEEP evidence). Two card terms (8) make
 a strong JUNK ballot. **id_card counts only on pages the page-tag model calls `visual`**
-(canon `document_type`), under the Visual word limit (R8 veto) or over it (the rules and the
-vote); on any other page card wording adds nothing.
+(canon `document_type`), under the Visual word limit or over it — in the R3 card check and
+in the vote; on any other page card wording adds nothing. It also carries insurance-card
+wording (member ID, group number, copay, member services…) and card-number patterns:
+`BIN 610014`, `PCN …`, `Group # …`, `Member ID: W123456789`, `PCP $25`,
+`EXP 01/31/2027`, `Card # …`, `DL # …`. Those insurance words stay neutral on every other page.
+A second visual-only group, **insurers** (Aetna, Humana, UnitedHealthcare, BCBS…; weight 2,
+cap 4, not hard), is **not** card evidence: it adds weight to R3 and the keyword ballot only.
 
 | Threshold (`thresholds`) | Value | Name used below |
 |---|---|---|
@@ -115,11 +121,11 @@ and `/health` shows `engine: keywords`.
 | Input | From | Used by |
 |---|---|---|
 | No ink | HW stage (`hw_method` blank_page / faint_marks_only) | R1 |
-| Document type `visual` | page-tag model (`ocr_quality_results.document_type`); Visual only with < 20 words | R1, R8 |
+| Document type `visual` | page-tag model (`ocr_quality_results.document_type`); Visual only with < 20 words | R1, R3 |
 | Handwritten area % | page-tag model | handwritten veto (> 30%) |
-| Provider Signature = Yes | KV extraction (`provider_signature.csv`), pass 2 | R3 |
-| Word positions (lines) | Final OCR JSON, pass 2 | R5, header / footer rule |
-| Ink below the short band | the page image, pass 2, short pages only | R5 |
+| Provider Signature = Yes | KV extraction (`provider_signature.csv`), pass 2 | R4 |
+| Word positions (lines) | Final OCR JSON, pass 2 | R6, header / footer rule |
+| Ink below the short band | the page image, pass 2, short pages only | R6 |
 
 ---
 
@@ -130,17 +136,17 @@ and `/health` shows `engine: keywords`.
 | **R1** | No ink; or (not Visual) 0 characters; or the word "blank" in < **30** characters | Blank | 1, 2 | 1.0 |
 | **R1** | Not Visual, < **15** characters | Junk / Cover Page when a cover term is there, else Junk / Others | 1, 2 | 1.0 |
 | **R2** | "Intentionally left blank" (placeholder group) on ≤ **25** words | Junk / Others | 1, 2 | 0.99 |
-| **R3** | Provider Signature = Yes, or a signature phrase — **skipped when the ballots are JJ** (the vote decides; `votes.r3_skipped = "JJ"`) | Main | 2 | 0.95 |
-| **R4** | DistilBERT p(junk) **> 0.85** — not when C ≥ 4 or D ≥ 3 (then the vote decides; `votes.r4_skipped`) | Junk / DistilBERT's subtype | 2 | evidence |
-| **R5** | Short page (§4), unless **both** voters say KEEP (KK) **and** DistilBERT's KEEP is **strong** (p(keep) ≥ 0.85) | Junk / Others | 2 | evidence |
-| **R6** | record_request + roi_vendors ≥ **7** and not C⁺, unless both voters say KEEP (KK) | Junk / Record Request/Transmittal | 1, 2 | evidence |
-| **R7** | C⁺ (clinical ≥ 8) | Main | 1, 2 | evidence |
-| **R8** | Visual page (`visual`, < **20** words) → Main, unless record_request + roi_vendors + invoice + id_card ≥ **7** → Junk / that group's subtype | Main or Junk | 1 | evidence |
+| **R3** | Visual page (`document_type = visual`, any length): **first**, card evidence (an id_card term or card-number pattern) is required; with it, card + roi_vendors + insurers + record_request + invoice ≥ **4** → **Junk / Others**. Vendors and insurers alone never fire it. Else < **20** words → Main. Else the rules below and the vote | Junk / Others, Main, or on | 1, 2 | evidence |
+| **R4** | Provider Signature = Yes, or a signature phrase — **skipped when the ballots are JJ** (the vote decides; `votes.r4_skipped = "JJ"`) | Main | 2 | 0.95 |
+| **R5** | DistilBERT p(junk) **> 0.85** — not when C ≥ 4 or D ≥ 3 (then the vote decides; `votes.r5_skipped`) | Junk / DistilBERT's subtype | 2 | evidence |
+| **R6** | Short page (§4), unless **both** voters say KEEP (KK) **and** DistilBERT's KEEP is **strong** (p(keep) ≥ 0.85) | Junk / Others | 2 | evidence |
+| **R7** | record_request + roi_vendors ≥ **7** and not C⁺, unless both voters say KEEP (KK) | Junk / Record Request/Transmittal | 1, 2 | evidence |
+| **R8** | C⁺ (clinical ≥ 8) | Main | 1, 2 | evidence |
 | **R9** | The vote (§5) | | 1, 2 | evidence |
 
 ---
 
-## 4. R5 — the short page
+## 4. R6 — the short page
 
 For a page whose only content is a header, stamp line or vendor banner at the top.
 Pass 2 only (needs word positions). Settings: `short_page` in the canon.
@@ -164,7 +170,7 @@ signature or a stamp is not text, so the image is measured: in the band from **1
 
 **Step 4 — decide.**
 
-| `ink_fraction` | Meaning | R5 |
+| `ink_fraction` | Meaning | R6 |
 |---|---|---|
 | < **0.5%** (`body_ink_max_fraction`) | nothing real below | **Junk / Others** |
 | ≥ 0.5% | content below | does not fire; the next rules decide |
@@ -174,15 +180,15 @@ For scale: a page of body text is 5–15% ink; a signature or stamp is roughly
 
 `votes.short_page` records `content_bottom`, and for a short page `ink`,
 `ink_fraction` and `ink_limit`. `"no_geometry"` = no word positions;
-`"ink": "not_measured"` = the image could not be read (R5 then does not fire).
+`"ink": "not_measured"` = the image could not be read (R6 then does not fire).
 
-A Provider Signature (R3) is checked before R5: a signed short page is kept, unless JJ.
+A Provider Signature (R4) is checked before R6: a signed short page is kept, unless JJ.
 
 **Both KEEPs, with DistilBERT sure, undo a short page.** When DistilBERT and the keywords
 both vote KEEP (KK) and DistilBERT's KEEP is **strong** (p(keep) ≥ `voters.bert.keep_strong`,
-0.85), R5 is skipped (`votes.short_page.skipped = "KK, DistilBERT strong KEEP"`) and the
+0.85), R6 is skipped (`votes.short_page.skipped = "KK, DistilBERT strong KEEP"`) and the
 later rules / the vote decide. One KEEP, or KK with a weak DistilBERT KEEP, is not enough:
-R5 rules the short page Junk / Others.
+R6 rules the short page Junk / Others.
 
 ---
 
@@ -262,11 +268,11 @@ The keywords' best junk group's subtype when they voted J, else DistilBERT's, el
 
 The evidence for the verdict, never a fixed cap (`_confidence`).
 
-- **R1 = 1.0, R2 = 0.99, R3 = 0.95** (observations).
+- **R1 = 1.0, R2 = 0.99, R4 = 0.95** (observations).
 - Otherwise, from these signals, each a probability that the verdict is right:
-  - the rule's own value: R5 0.95, R6 0.97, R7 0.95, R8 0.90;
+  - the rule's own value: R3 0.90, R6 0.95, R7 0.97, R8 0.95;
   - DistilBERT: p(junk) for a Junk verdict, p(keep) for Main (left out under 8 words,
-    except in R4);
+    except in R5);
   - keywords: J ÷ 10 when they voted J; max(C, D) ÷ 10 when they voted K; flipped
     (1 − that) when their vote is against the verdict.
 - **All agree** (each ≥ 0.5, keywords on the verdict's side): 1 − ∏(1 − p).
@@ -299,15 +305,15 @@ UI shows Yes at 100%, May Be below; May Be confidence = 1 + (similarity − 1) �
 | Pass | What happens | Verdict |
 |---|---|---|
 | 1 | DistilBERT J weak, keywords J weak (Optum = 4) → JJ, not both strong | Main, deferred |
-| 2 | R5: short (14.5% ≤ 15%), ink 0.23% < 0.5%, not KK | **Junk / Others (R5)**, confidence ≈ 0.99 (R5 0.95, DistilBERT 0.71, keywords 0.4, all agree) |
+| 2 | R6: short (14.5% ≤ 15%), ink 0.23% < 0.5%, not KK | **Junk / Others (R6)**, confidence ≈ 0.99 (R6 0.95, DistilBERT 0.71, keywords 0.4, all agree) |
 
-Without R5 it would still be junk: keywords J weak (Optum from Tesseract; D 3 does not
+Without R6 it would still be junk: keywords J weak (Optum from Tesseract; D 3 does not
 make them K because roi_vendors is hard), DistilBERT J weak → JJ → Junk; handwriting
 3.6%, so no veto.
 
 **A signed ROI letter (67992141 p7)** — Provider Signature = Yes, vendor wording,
-DistilBERT junk: the ballots are JJ, so R3 is skipped and the vote makes it Junk /
-Record Request (before, R3 kept it Main).
+DistilBERT junk: the ballots are JJ, so R4 is skipped and the vote makes it Junk /
+Record Request (before, R4 kept it Main).
 
 **A progress note with a fax banner** — "Fax cover / pages including cover" in the top
 12% only: those junk terms do not count (no junk in the body); C ≥ 4 → keywords K →
@@ -325,19 +331,19 @@ Main.
 | Header / footer band (junk terms) | 12% / 8% | canon `zones` |
 | DistilBERT J strong / weak, K strong / weak | 0.85 / 0.60, 0.85 / 0.50 | canon `voters.bert` |
 | DistilBERT minimum words | 8 | canon `voters.bert.min_words` |
-| R4 force | p(junk) > 0.85 | canon `voters.bert.force_junk_above` |
+| R5 force | p(junk) > 0.85 | canon `voters.bert.force_junk_above` |
 | A J needs | J ≥ 7 | canon `voters.keyword.junk_alone_min` |
-| R5 short page | content ends ≤ 15% | canon `short_page.top_fraction` |
-| R5 ink band | 17%–94% of the height | canon `short_page.body_ink_band` |
-| R5 ink limit | 0.5% | canon `short_page.body_ink_max_fraction` |
-| R5 footer ignored | bottom 6% | canon `short_page.ignore_footer_band` |
-| R8 visual veto | hard groups ≥ 7 | canon `visual` |
+| R6 short page | content ends ≤ 15% | canon `short_page.top_fraction` |
+| R6 ink band | 17%–94% of the height | canon `short_page.body_ink_band` |
+| R6 ink limit | 0.5% | canon `short_page.body_ink_max_fraction` |
+| R6 footer ignored | bottom 6% | canon `short_page.ignore_footer_band` |
+| R3 card check | an id_card hit, and id_card + roi_vendors + insurers + record_request + invoice ≥ 4 | canon `visual` (`card_group`, `veto_junk_groups`, `veto_min_score`) |
 | Visual word limit | < 20 words | canon `visual.max_words` |
 | Handwritten veto | > 30% | canon `handwritten_veto` |
 | R1 tiny / "blank" | < 15 / < 30 characters | `method.py` |
 | R2 placeholder | ≤ 25 words | `method.py` |
 | Hard junk groups | record_request, roi_vendors, invoice, id_card | `method.py` `HARD_JUNK_GROUPS` |
-| R5 undo | KK with DistilBERT's KEEP strong (p(keep) ≥ 0.85) | canon `voters.bert.keep_strong` |
+| R6 undo | KK with DistilBERT's KEEP strong (p(keep) ≥ 0.85) | canon `voters.bert.keep_strong` |
 | Duplicates | ≥ 98%, ±5 pages, ≥ 300 characters | `classify.py` |
 
 ## 10. Changes, 2026-10-17 / 18
@@ -359,3 +365,16 @@ Main.
 - **Short page back to 15%** (ink band from 17%), 2026-10-19.
 - **The clinical and demographic vetoes are gone** (the keyword ballot covers them);
   the handwritten veto stays.
+
+## 11. Changes, 2026-10-19 — Visual moves to R3
+
+- **The Visual rule is R3** (was R8, after strong clinical). Old R3–R7 are now R4–R8:
+  R4 signature, R5 DistilBERT, R6 short page, R7 retrieval, R8 C⁺. Skip keys follow
+  (`r4_skipped` = JJ on a signature, `r5_skipped` = C / D on DistilBERT, `r7_skipped` = KK
+  on retrieval). Entries in §10 use the old numbers.
+- **Card check first, on every visual page** whatever its length: a card term or pattern
+  is required; vendor / insurer / retrieval / invoice wording adds weight (total ≥ **4**; was
+  ≥ 7, any hard group, only under 20 words) → **Junk / Others**. It comes before the
+  signature, DistilBERT, short page and C⁺ rules.
+- **id_card** gains insurance-card wording and card-number patterns; new visual-only
+  **insurers** group (weight 2), not card evidence.
