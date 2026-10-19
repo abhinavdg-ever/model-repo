@@ -1158,7 +1158,7 @@ def manifest_sweep(
 @app.post("/api/manifest/metadata-extra", tags=["manifest"])
 def manifest_metadata_extra(body: MetadataExtraRequest) -> dict[str, Any]:
     """Match metadata_extra.csv to the batch metadata CSVs by recordId, add the extra
-    columns (MemberID, ClientID, SourceName, RR Method, Measure, ServiceNote) to them,
+    columns (MemberID, ClientID, ProjectID, SourceName, RR Method, Measure, ServiceNote) to them,
     and with ``load`` write them to manifest_member_list. Returns what changed."""
     from config import METADATA_ROOT
     from jobs.metadata_expand import run as expand_metadata

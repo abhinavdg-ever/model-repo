@@ -89,6 +89,7 @@ ALTER TABLE page_continuity_results ADD CONSTRAINT page_continuity_results_decid
 --    Retrieval (rr_method). service_note is long text.
 ALTER TABLE manifest_member_list
     ADD COLUMN IF NOT EXISTS client_id VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS project_id VARCHAR(100),
     ADD COLUMN IF NOT EXISTS source_name VARCHAR(255),
     ADD COLUMN IF NOT EXISTS rr_method VARCHAR(100),
     ADD COLUMN IF NOT EXISTS measure VARCHAR(255),

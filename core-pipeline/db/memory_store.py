@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
 # Same as db.MANIFEST_EXTRA_COLUMNS (db imports this module, so it is not imported back).
-MANIFEST_EXTRA_COLUMNS = ("client_id", "source_name", "rr_method", "measure", "service_note")
+MANIFEST_EXTRA_COLUMNS = ("client_id", "project_id", "source_name", "rr_method", "measure", "service_note")
 
 TEST_CHART_SUFFIX = "-test"
 
@@ -1209,7 +1209,7 @@ class MemoryStore:
     ) -> dict[str, Any]:
         """Upsert by (record_id, external_member_id) or name+dob; return {id, action}.
 
-        ``extra``: client_id, source_name, rr_method, measure, service_note."""
+        ``extra``: client_id, project_id, source_name, rr_method, measure, service_note."""
         extra = {k: (v or None) for k, v in extra.items()}
         ext = (external_member_id or "").strip() or None
         with self._lock:

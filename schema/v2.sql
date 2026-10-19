@@ -71,7 +71,7 @@
 --    login_count; email optional), with user_login (every sign-in).
 --    page_ground_truth and page_ground_truth_entry gain user_id (who saved it).
 --    Existing databases: schema/changes_2026-10-19.sql.
---  * manifest_member_list (v1.sql) gains client_id, source_name, rr_method,
+--  * manifest_member_list (v1.sql) gains client_id, project_id, source_name, rr_method,
 --    measure and service_note (TEXT): the client's chart metadata. Existing
 --    databases: schema/changes_2026-10-19.sql (which also holds the 2026-10-18 changes).
 --  * provider_signature_results moved to v1.sql (2026-10-18): kv_extract writes it

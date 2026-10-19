@@ -150,6 +150,7 @@ def _dob(row: dict[str, str]) -> Optional[str]:
 # matched without case, spaces or underscores ("RR Method" = "RRMethod" = "rr_method").
 EXTRA_HEADERS: dict[str, tuple[str, ...]] = {
     "client_id": ("ClientID",),
+    "project_id": ("ProjectID",),
     "source_name": ("SourceName",),
     "rr_method": ("RRMethod", "RetrievalMethod"),
     "measure": ("Measure", "MeasureName"),

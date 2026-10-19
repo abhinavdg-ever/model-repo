@@ -23,11 +23,11 @@ filename (`metadata_R1_B1.csv` → `R1` / `B1`).
 
 The client sends one dump across all charts. Save it as `metadata_extra.csv` in the
 metadata folder, beside the batch files (`metadata_R1_B1.csv` …). It carries `MemberID`,
-`ClientID`, `SourceName`, `RR Method`, `Measure` and `ServiceNote` (long text).
+`ClientID`, `ProjectID`, `SourceName`, `RR Method`, `Measure` and `ServiceNote` (long text).
 `fill_metadata_extra.py` matches every batch row to the dump by `recordId` and adds those
 columns to the batch file. A blank in the dump keeps the file's value, and names and DOB
 are never touched. With `--load` it then upserts the batch files into
-`manifest_member_list` (`client_id`, `source_name`, `rr_method`, `measure`,
+`manifest_member_list` (`client_id`, `project_id`, `source_name`, `rr_method`, `measure`,
 `service_note`). The dump itself is never loaded as a batch. An existing database first
 needs `schema/changes_2026-10-19.sql`.
 
