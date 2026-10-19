@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import LandingPage, { savedHistoryListParams } from "./LandingPage";
+import LandingPage, { clearLandingFilters, savedHistoryListParams } from "./LandingPage";
 import { nextChart, type ChartSource } from "./chartSequence";
 import FolderViewer from "./FolderViewer";
 import FileViewer from "./FileViewer";
@@ -95,7 +95,12 @@ export default function App() {
   }
 
   useEffect(() => {
-    const onPop = () => setRoute(parsePath(window.location.pathname, window.location.search));
+    const onPop = () =>
+      setRoute((previous) => {
+        const next = parsePath(window.location.pathname, window.location.search);
+        if (previous.view === "accuracy" && next.view === "landing") clearLandingFilters();
+        return next;
+      });
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
@@ -115,6 +120,8 @@ export default function App() {
   }, []);
 
   function navigate(next: Route) {
+    // Accuracy View -> History: History starts unfiltered, not with filters it saved earlier.
+    if (route.view === "accuracy" && next.view === "landing") clearLandingFilters();
     const path = pathFor(next);
     const current = `${window.location.pathname}${window.location.search}`;
     if (path !== current) {

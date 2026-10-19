@@ -106,6 +106,27 @@ export function savedHistoryListParams(): FolderListParams {
   };
 }
 
+/** History starts unfiltered (search and filters cleared, sort kept): arriving from
+ * Accuracy View must not look as if its filters came along. */
+export function clearLandingFilters(): void {
+  try {
+    const saved = readLandingFilters();
+    const cleared: LandingFilters = {
+      ...saved,
+      query: "",
+      statusFilter: [],
+      runFilter: [],
+      batchFilter: [],
+      metaFilter: {},
+      runAfter: null,
+      page: 1,
+    };
+    sessionStorage.setItem(LANDING_FILTERS_KEY, JSON.stringify(cleared));
+  } catch {
+    // Blocked storage: nothing saved, so History starts unfiltered anyway.
+  }
+}
+
 function readLandingFilters(): LandingFilters {
   const defaults: LandingFilters = {
     query: "",
