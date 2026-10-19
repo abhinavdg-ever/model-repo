@@ -82,5 +82,13 @@
   "Primary Insurance ID",
   "SS No",
   "PM Pt ID",
-  "Account Num"
+  "Account Num",
+  "Policy Number",
+  "Policy No",
+  "Policy No.",
+  "Plan Number",
+  "Plan No",
+  "Plan No.",
+  "Plan #",
+  "Plan#"
 ]

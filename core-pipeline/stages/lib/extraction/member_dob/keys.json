@@ -16,5 +16,11 @@
   "DOB/AGE/SEX",
   "Patient DOB",
   "PATIENT DOB",
-  "Birthday"
+  "Birthday",
+  "DOB/Sex",
+  "DOB / Sex",
+  "DOB-Sex",
+  "DOB/Gender",
+  "Date of Birth/Sex",
+  "DOB/Age"
 ]
