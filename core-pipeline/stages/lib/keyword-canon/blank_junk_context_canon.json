@@ -776,6 +776,8 @@
       "keep_weak": 0.5,
       "min_words": 8,
       "force_junk_above": 0.85,
+      "force_keep_below": 0.05,
+      "note_force_keep": "Both passes: p(junk) below force_keep_below -> Main (method R5). Checked right after R1 (no ink / no or tiny text) and before every other rule, so nothing can reverse it.",
       "note": "Pass 2: p(junk) = sum of JUNK_* + BLANK above force_junk_above -> JUNK forced (method R5), overruled only by blank, placeholder and Provider Signature = Yes, and not applied when the canon finds clinical (>= thresholds.clinical) or demographic (>= thresholds.demographic) evidence: then the vote decides. Pass 1: not forced, counts as a strong JUNK ballot."
     },
     "keyword": {

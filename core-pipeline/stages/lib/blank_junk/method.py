@@ -15,8 +15,10 @@ The ladder, first rule that fires decides (R5, R6 and R4's KV half need pass 2):
                     -> Junk / Others; else < 20 words -> Main; else the rules below and the vote
   R4 signature      Provider Signature = Yes, or a canon signature phrase -> Main, unless
                     both voters say JUNK (JJ): then the vote (R9) decides
-  R5 DistilBERT     p(junk) > 0.85 -> Junk, DistilBERT's subtype, unless the canon finds
-                    clinical (C) or demographic (D) evidence: then the vote decides
+  R5 DistilBERT     p(junk) < 0.05 -> Main, in both passes, checked right after R1 so
+                    nothing after it can reverse it. p(junk) > 0.85 -> Junk,
+                    DistilBERT's subtype, unless the canon finds clinical (C) or
+                    demographic (D) evidence: then the vote decides
   R6 short page     content ends in the top 15% of the page height, under 0.5% ink below
                     (17%-94%) -> Junk / Others, unless both voters say KEEP (KK) and
                     DistilBERT's KEEP is strong (p(keep) >= keep_strong, 0.85)
@@ -25,7 +27,7 @@ The ladder, first rule that fires decides (R5, R6 and R4's KV half need pass 2):
   R8 strong clinical  C+ -> Main
   R9 vote           DistilBERT and the keyword canon (BLANK_JUNK_LOGIC §5)
 
-Pass 1 only lets R1, R2, R3, R7, R8 and two strong JUNK ballots decide; every other page stays
+Pass 1 only lets R1, R2, R3, R5's keep, R7, R8 and two strong JUNK ballots decide; every other page stays
 Main and is judged again in pass 2 on the final OCR.
 
 Every page gets one verdict. Its confidence is the evidence for that verdict (BLANK_JUNK_LOGIC §6):
@@ -704,6 +706,12 @@ def decide(inputs: PageInputs) -> Verdict:
         cover = sum(scores.group("junk", g.name) for g in prof.groups.values() if g.context == "junk" and g.subtype == "Cover Page")
         subtype = "Cover Page" if cover > 0 else "Others"
         return ruled(_junk_code(subtype), "R1", f"R1 tiny page: < {MIN_TEXT_CHARS} characters -> Junk / {subtype}")
+    # R5 DistilBERT keep, in both passes and ahead of R2-R4: DistilBERT sure the page is not
+    # junk keeps it, and no later rule can reverse that. Only R1 comes first: on a page with
+    # no ink or almost no text the model has nothing to read.
+    keep_below = float(prof.raw["voters"]["bert"]["force_keep_below"])
+    if inputs.bert and float(inputs.bert["p_junk"]) < keep_below:
+        return ruled(CODE_MAIN, "R5", f"R5 DistilBERT p(junk) {float(inputs.bert['p_junk']):.3f} < {keep_below} -> Main")
     # R2 placeholder
     if scores.group("junk", "placeholder") > 0 and words <= PLACEHOLDER_MAX_WORDS:
         return ruled(CODE_OTHERS, "R2", "R2 placeholder ('intentionally left blank') -> Junk / Others")
@@ -729,8 +737,8 @@ def decide(inputs: PageInputs) -> Verdict:
             return _vote(inputs, scores, ballots, votes)
         why = "Provider Signature = Yes" if inputs.signed else "signature phrase"
         return ruled(CODE_MAIN, "R4", f"R4 signature ({why}) -> Main")
-    # R5 DistilBERT force. A face sheet or a clinical page DistilBERT is sure about is
-    # left to the vote, where the keyword ballot is KEEP on them.
+    # R5 DistilBERT force. Sure it is junk: Junk, but a face sheet or a clinical page is left
+    # to the vote, where the keyword ballot is KEEP on them. (Sure it is not junk: above.)
     force = float(prof.raw["voters"]["bert"]["force_junk_above"])
     protected = scores.clinical >= t["clinical"] or scores.demographic >= t["demographic"]
     if pass2 and inputs.bert and float(inputs.bert["p_junk"]) > force and protected:

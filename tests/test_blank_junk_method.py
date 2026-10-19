@@ -120,7 +120,34 @@ class TestRules:
     def test_r5_needs_more_than_85(self):
         assert run(CLINICAL_TEXT, bert=bert(0.85)).rule != "R5"
 
-    def test_r5_is_not_used_in_pass_1(self):
+    def test_r5_distilbert_below_5_keeps(self):
+        # Invoice wording (keywords strong JUNK) does not matter: DistilBERT is sure it is not junk.
+        verdict = run(INVOICE_TEXT, bert=bert(0.03))
+        assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R5")
+
+    def test_r5_keep_comes_before_retrieval_in_pass_1(self):
+        text = "Medical records request, release of information, Datavant, Ciox. " + FILLER
+        assert run(text, pass_no=1, bert=bert(0.40)).rule == "R7"
+        verdict = run(text, pass_no=1, bert=bert(0.04))
+        assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R5")
+
+    def test_r5_keep_cannot_be_reversed(self):
+        # A placeholder, a visual card and a short page would all be junk; DistilBERT wins.
+        assert run("This page intentionally left blank", bert=bert(0.01)).rule == "R5"
+        card = "Member ID card, RxBIN 610014, Group number 0042, Datavant " + FILLER
+        assert run(card, document_type="visual", bert=bert(0.01)).code == classify.CODE_MAIN
+        short = [Line("Fax from Datavant records", 0.02, 0.05)]
+        verdict = run("Fax from Datavant records " + FILLER, lines=short, body_ink=False, bert=bert(0.01))
+        assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R5")
+
+    def test_r5_keep_does_not_override_r1(self):
+        assert run("   ", bert=bert(0.01)).code == classify.CODE_BLANK
+        assert run(CLINICAL_TEXT, no_ink=True, bert=bert(0.01)).rule == "R1"
+
+    def test_r5_keep_needs_less_than_5(self):
+        assert run(INVOICE_TEXT, bert=bert(0.05)).rule != "R5"
+
+    def test_r5_force_junk_is_not_used_in_pass_1(self):
         assert run(CLINICAL_TEXT, pass_no=1, bert=bert(0.95)).rule != "R5"
 
     def test_r6_short_page_is_junk_even_with_a_clinical_heading(self):
@@ -227,14 +254,14 @@ class TestVote:
         assert verdict.votes["confidence_from"]["combined"] == "disagree"
 
     def test_kk_agreement_reinforces(self):
-        verdict = run(CLINICAL_WEAK, bert=bert(0.02))
+        verdict = run(CLINICAL_WEAK, bert=bert(0.10))
         assert (verdict.votes["row"], verdict.code) == (5, classify.CODE_MAIN)
-        assert verdict.confidence == pytest.approx(1 - 0.02 * 0.6)
+        assert verdict.confidence == pytest.approx(1 - 0.10 * 0.6)
 
     def test_a_clear_keep_keeps_distilberts_confidence(self):
-        verdict = run(FILLER, bert=bert(0.02))
+        verdict = run(FILLER, bert=bert(0.10))
         assert (verdict.votes["ballots"], verdict.code) == ("KA", classify.CODE_MAIN)
-        assert verdict.confidence == pytest.approx(0.98)
+        assert verdict.confidence == pytest.approx(0.90)
 
     def test_nothing_to_judge_is_main(self):
         verdict = run(FILLER, bert=bert(0.55))  # DistilBERT in its abstain band
@@ -455,9 +482,11 @@ def test_r7_is_overruled_when_both_voters_keep():
         "Chart Summary\nPCP: Amy E Dallman DO\nIns: Optum HMO ASRS\nImmunizations\n"
         "Allergies and Adverse Reactions\nReport run by Hedis Review"
     )
-    kept = run(page, pass_no=1, bert=bert(0.0023))
+    kept = run(page, pass_no=1, bert=bert(0.10))
     assert (kept.votes["bert"]["vote"], kept.votes["kw"]["vote"]) == ("KEEP", "KEEP")
     assert kept.rule != "R7" and kept.votes["r7_skipped"] == "KK" and kept.code == classify.CODE_MAIN
+    # DistilBERT sure it is not junk (< 0.05): R5 keeps it before R7 is looked at.
+    assert run(page, pass_no=1, bert=bert(0.0023)).rule == "R5"
     # DistilBERT not KEEP: R7 stands.
     assert run(page, pass_no=1, bert=bert(0.7)).rule == "R7"
 

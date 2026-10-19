@@ -257,10 +257,11 @@ when the body has a junk word too.
 |---|---|---|---|
 | R1 | No ink (HW stage `blank_page` / `faint_marks_only`); or, not Visual, 0 characters or the word "blank" in < 30 characters | `blank` | 1, 2 |
 | R1 | Not Visual, < 15 characters otherwise | junk / Cover Page when a Cover Page term (`cover_page`, `cover_stamps`) is there, else junk / Others | 1, 2 |
+| R5 keep | DistilBERT p(junk) < 0.05, checked right after R1: no later rule can reverse it | Main | 1, 2 |
 | R2 | "Intentionally left blank" on ≤ 25 words | junk / Others | 1, 2 |
 | R3 | `document_type = 'visual'`, any length: **first** card evidence is required (an id_card term or card-number pattern such as Group # / Member ID / copay / EXP date; pharmacy wording does not count); with it, card + vendor + insurer + retrieval + invoice wording ≥ 4 → junk / Others. Vendors and insurers alone only add weight. Else < 20 words → Main. Else on to R4–R9 | junk / Others, Main, or on | 1, 2 (pass 2 skips visual pages under 20 words) |
 | R4 | Provider Signature = Yes (KV extraction), or a canon signature phrase — unless DistilBERT and the keywords both say JUNK (JJ): then the vote (R9) decides, `votes.r4_skipped` | Main | 2 |
-| R5 | DistilBERT p(junk) > 0.85 — **not** when C or D (then the vote decides) | junk / DistilBERT's subtype | 2 |
+| R5 junk | DistilBERT p(junk) > 0.85 — **not** when C or D (then the vote decides) | junk / DistilBERT's subtype | 2 |
 | R6 | Content ends in the top 15% of the page (running header / footer lines ignored) and no ink from 17% to 94% of the height (ink = at least `body_ink_max_fraction`, 0.5%, of that band; `votes.short_page` records `ink`, `ink_fraction`, `ink_limit`) — unless both voters say KEEP (KK) and DistilBERT's KEEP is strong (≥ 0.85) | junk / Others | 2 |
 | R7 | record_request + roi_vendors ≥ 7 and not C⁺, unless both voters say KEEP (KK) | junk / Record Request | 1, 2 |
 | R8 | C⁺ | Main | 1, 2 |
@@ -671,7 +672,14 @@ Non-Codable. A page on a weak link (an undated continue page) is flagged.
 is not blank, junk or duplicate. **Decides:** which document each page belongs
 to. Settings live in `keyword-canon/continuity_canon.json` and reload on change.
 
-Full logic: [CONTINUITY_LOGIC.md](CONTINUITY_LOGIC.md) (the weighted revamp, 2026-10-18).
+Full logic: [CONTINUITY_LOGIC.md](CONTINUITY_LOGIC.md).
+
+> **Redesign agreed 2026-10-19, not yet built:** every page gets a **Break Before** and a
+> **Break After** score (positive = break), the tag **New / Continue / Last / Standalone** is
+> worked out from the two, junk pages form their own segments (`Junk Jn`), blank pages are
+> compared across, and the scores are recomputed at four checkpoints (blank_junk pass 1 and 2,
+> page_subtype, continuity), with only the last one final. The gates and weighted ladder below
+> are what the code runs until then.
 
 **Gates** — the first that applies decides:
 
@@ -725,8 +733,16 @@ can never outweigh one discharge summary.
 
 ### Visits
 
-A visit is a run of **consecutive** pages sharing a date: the page's
-document-level DOS, else its page-level DOS. The DOS default
+A visit is one **continuity document** (`page_continuity_results.document_seq`):
+every page of the document gets one answer. Only when continuity has not run is a
+visit a run of **consecutive** pages sharing a date: the page's
+document-level DOS, else its page-level DOS.
+
+> **With the break-score redesign** ([CONTINUITY_LOGIC.md §9](CONTINUITY_LOGIC.md#9-encounter-type-and-the-label)):
+> a visit is a **Main** segment; junk segments never get an encounter type
+> (`reason = junk`); a blank page inside a document takes the document's answer; an
+> unclear gap inside a document whose two sides would answer different settings sets
+> `conflict = y` and `reason = unclear_break`. The DOS default
 (`DOS_DEFAULT_DATE`) is the absence of a date. A page without a usable date is
 a visit of its own and stays unresolved (`no_date` / `default_date`). The same
 date forty pages later is a second visit.

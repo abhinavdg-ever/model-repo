@@ -17,7 +17,8 @@ holds it. Paths are relative to `core-pipeline/`.
 
 Every page gets one verdict: **Main**, **Blank**, or **Junk / subtype**.
 
-1. **Rules R1–R8** run in order; the first that fires decides.
+1. **Rules R1–R8** run in order; the first that fires decides. R5's keep half
+   (DistilBERT p(junk) < 0.05 → Main) is checked right after R1, so nothing can reverse it.
 2. If none fires, **R9 — the vote** of two voters (DistilBERT and the keyword canon)
    decides, and then the **vetoes** may turn a Junk back into Main.
 3. After the verdict, **duplicates** are found among the Main pages.
@@ -135,10 +136,11 @@ and `/health` shows `engine: keywords`.
 |---|---|---|---|---|
 | **R1** | No ink; or (not Visual) 0 characters; or the word "blank" in < **30** characters | Blank | 1, 2 | 1.0 |
 | **R1** | Not Visual, < **15** characters | Junk / Cover Page when a cover term is there, else Junk / Others | 1, 2 | 1.0 |
+| **R5 keep** | DistilBERT p(junk) **< 0.05**, checked right after R1, so **no later rule can reverse it** (not R2, R3, R4, R6, R7, R8 or the vote) | Main | 1, 2 | evidence |
 | **R2** | "Intentionally left blank" (placeholder group) on ≤ **25** words | Junk / Others | 1, 2 | 0.99 |
 | **R3** | Visual page (`document_type = visual`, any length): **first**, card evidence (an id_card term or card-number pattern) is required; with it, card + roi_vendors + insurers + record_request + invoice ≥ **4** → **Junk / Others**. Vendors and insurers alone never fire it. Else < **20** words → Main. Else the rules below and the vote | Junk / Others, Main, or on | 1, 2 | evidence |
 | **R4** | Provider Signature = Yes, or a signature phrase — **skipped when the ballots are JJ** (the vote decides; `votes.r4_skipped = "JJ"`) | Main | 2 | 0.95 |
-| **R5** | DistilBERT p(junk) **> 0.85** — not when C ≥ 4 or D ≥ 3 (then the vote decides; `votes.r5_skipped`) | Junk / DistilBERT's subtype | 2 | evidence |
+| **R5 junk** | DistilBERT p(junk) **> 0.85** — not when C ≥ 4 or D ≥ 3 (then the vote decides; `votes.r5_skipped`) | Junk / DistilBERT's subtype | 2 | evidence |
 | **R6** | Short page (§4), unless **both** voters say KEEP (KK) **and** DistilBERT's KEEP is **strong** (p(keep) ≥ 0.85) | Junk / Others | 2 | evidence |
 | **R7** | record_request + roi_vendors ≥ **7** and not C⁺, unless both voters say KEEP (KK) | Junk / Record Request/Transmittal | 1, 2 | evidence |
 | **R8** | C⁺ (clinical ≥ 8) | Main | 1, 2 | evidence |
@@ -332,6 +334,7 @@ Main.
 | DistilBERT J strong / weak, K strong / weak | 0.85 / 0.60, 0.85 / 0.50 | canon `voters.bert` |
 | DistilBERT minimum words | 8 | canon `voters.bert.min_words` |
 | R5 force | p(junk) > 0.85 | canon `voters.bert.force_junk_above` |
+| R5 keep | p(junk) < 0.05 | canon `voters.bert.force_keep_below` |
 | A J needs | J ≥ 7 | canon `voters.keyword.junk_alone_min` |
 | R6 short page | content ends ≤ 15% | canon `short_page.top_fraction` |
 | R6 ink band | 17%–94% of the height | canon `short_page.body_ink_band` |
@@ -379,3 +382,13 @@ Main.
 - **id_card** gains insurance-card wording and card-number patterns; pharmacy wording
   (RxBIN / PCN / RxGRP, for pharmacist, rx claims) is removed — not card evidence; new visual-only
   **insurers** group (weight 2), not card evidence.
+
+## 12. Changes, 2026-10-19 — DistilBERT sure it is not junk keeps the page
+
+- **R5 keep: p(junk) < 0.05 → Main** (`voters.bert.force_keep_below`), in **both passes**.
+  The user trusts the model here: it is checked right after R1 and before R2–R4 and R6–R9,
+  so no other rule can reverse it: not the placeholder, the Visual card check, the short
+  page, retrieval wording or the vote. R1 still comes first: with no ink or almost no text
+  the model has nothing to read.
+- Its confidence is the usual evidence (§6): DistilBERT's p(keep), reinforced or averaged
+  with the keyword ballot.
