@@ -35,15 +35,28 @@ Scans ``review-ui/data/folders/*`` and writes these CSVs:
     ends with, blank when none covers it. Written when the fields include a
     provider field.
 
+``member_labels.csv``
+    Read from the OCR text, driven by the manifest as the member stage is: for each chart
+    with a row in the metadata CSVs (``--metadata``, review-ui/data/metadata), every place
+    the expected member's name (first / last), DOB (any printed date format) or Member ID
+    appears, and the words in front of it on its line ('Patient Name:', 'DOB:', 'MRN'),
+    counted per field (the staging ids: name, dob, member_id). ``(no label)`` = the value
+    with nothing before it (keyless, e.g. a running header). ``known_key`` says whether the
+    label ends with a key in that field's keys.json (extraction/member_name, member_dob,
+    member_id); blank = a key the extractor cannot see yet. Written when the fields include
+    a member field.
+
 Text preference per page is Final2, then Final1, then Tesseract.
 
 ``--field`` takes one field, a comma list, ``provider`` (provider_name,
-provider_credentials, electronic_signature) or ``all``.
+provider_credentials, electronic_signature), ``member`` (the staging fields name, dob,
+member_id) or ``all``.
 
 Standard library only; no venv needed::
 
     python utilities/harvest_keys.py
     python utilities/harvest_keys.py --field provider
+    python utilities/harvest_keys.py --field member
     python utilities/harvest_keys.py --field dos --out /tmp/keys
     python utilities/harvest_keys.py --folders review-ui/data/folders --label-words 4
 """
@@ -65,11 +78,22 @@ PROVIDER_KEYS = {
     "electronic_signature": EXTRACTION / "electronic_signature" / "keys.json",
 }
 CREDENTIALS = EXTRACTION / "provider_name" / "suffixes.txt"
+DEFAULT_METADATA = REPO / "review-ui" / "data" / "metadata"
+# Staging field id (staging/extraction.json: name / dob / member_id) -> its key list.
+MEMBER_KEYS = {
+    "name": EXTRACTION / "member_name" / "keys.json",
+    "dob": EXTRACTION / "member_dob" / "keys.json",
+    "member_id": EXTRACTION / "member_id" / "keys.json",
+}
 
 # Field lists that are not key/value pairs.
 NOT_KEYED = {"heading_heron"}
-PRESETS = {"provider": ("provider_name", "provider_credentials", "electronic_signature")}
+PRESETS = {
+    "provider": ("provider_name", "provider_credentials", "electronic_signature"),
+    "member": ("name", "dob", "member_id"),
+}
 PROVIDER_FIELDS = frozenset(PRESETS["provider"])
+MEMBER_FIELDS = frozenset(PRESETS["member"])
 BASE_COLUMNS = (
     "chart", "extracted_at", "page", "field", "key", "tier", "region", "source", "value",
     "score", "model_score", "accepted", "selected", "status",
@@ -387,6 +411,138 @@ def harvest_provider_labels(folders: list[Path], n_words: int, examples: int) ->
     )
 
 
+# --- member labels (manifest driven) ---------------------------------------------
+
+# Batch metadata files (metadata_R1_B1.csv, metadata_demotest.csv); never metadata_extra.csv.
+_METADATA_FILE = re.compile(r"^metadata_(?:R\d+_B\d+|demotest)\.csv$", re.IGNORECASE)
+_MONTHS = {m: i for i, m in enumerate(
+    ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), start=1)}
+
+
+def _pick(row: dict, *names: str) -> str:
+    by_key = {_letters(k): (v or "").strip() for k, v in row.items() if k}
+    return next((by_key[_letters(n)] for n in names if by_key.get(_letters(n))), "")
+
+
+def load_members(metadata_dir: Path) -> dict[str, dict]:
+    """recordId -> {first, last, dob (y, m, d) or None, member_id}, the first row per chart."""
+    members: dict[str, dict] = {}
+    if not metadata_dir.is_dir():
+        return members
+    for path in sorted(metadata_dir.iterdir()):
+        if not _METADATA_FILE.match(path.name):
+            continue
+        with path.open(encoding="utf-8-sig", newline="") as handle:
+            for row in csv.DictReader(handle):
+                rid = _pick(row, "recordId", "record_id", "chart_name")
+                if not rid or rid in members:
+                    continue
+                members[rid] = {
+                    "first": _pick(row, "DummyFirstName", "FirstName", "first_name"),
+                    "last": _pick(row, "DummyLastName", "LastName", "last_name"),
+                    "dob": parse_date(_pick(row, "DummyDOB", "DOB", "member_dob", "DateOfBirth")),
+                    "member_id": _pick(row, "MemberID", "member_id", "external_member_id"),
+                }
+    return members
+
+
+def parse_date(text: str) -> tuple[int, int, int] | None:
+    """(year, month, day) of a printed date: 4/15/1978, 04-15-78, 1978-04-15, Apr 15, 1978."""
+    t = (text or "").strip().lower().replace(" ", "")
+    m = re.fullmatch(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", t)
+    if m:
+        return int(m[1]), int(m[2]), int(m[3])
+    m = re.fullmatch(r"(\d{1,2})[-/](\d{1,2})[-/](\d{2}|\d{4})", t)
+    if m:
+        year = int(m[3])
+        if year < 100:
+            year += 1900 if year > 30 else 2000
+        return year, int(m[1]), int(m[2])
+    m = re.fullmatch(r"([a-z]{3})[a-z]*\.?(\d{1,2})(?:st|nd|rd|th)?,?(\d{4})", t) or None
+    if m and m[1] in _MONTHS:
+        return int(m[3]), _MONTHS[m[1]], int(m[2])
+    m = re.fullmatch(r"(\d{1,2})(?:st|nd|rd|th)?([a-z]{3})[a-z]*\.?,?(\d{4})", t)
+    if m and m[2] in _MONTHS:
+        return int(m[3]), _MONTHS[m[2]], int(m[1])
+    return None
+
+
+def _label_before(line: str, start: int, n_words: int) -> str:
+    """The words before ``start`` on the line, since the previous table cell."""
+    before = re.split(r"\|", line[:start])[-1]
+    return " ".join(WORD_RE.findall(before)[-n_words:])
+
+
+def member_hits(text: str, member: dict, n_words: int) -> list[tuple[str, str, str]]:
+    """(field, label, line) for every printed occurrence of the expected member's values."""
+    found: list[tuple[str, str, str]] = []
+    names = [n for n in (member["first"], member["last"]) if len(n) >= 2]
+    name_re = (
+        re.compile(r"(?<![A-Za-z])(?:" + "|".join(re.escape(n) for n in names) + r")(?![A-Za-z])", re.IGNORECASE)
+        if names else None
+    )
+    mid = member["member_id"]
+    mid_re = re.compile(r"(?<![A-Za-z0-9])" + re.escape(mid) + r"(?![A-Za-z0-9])", re.IGNORECASE) if len(mid) >= 4 else None
+    for line in text.splitlines():
+        flat = " ".join(line.split())
+        if name_re:
+            matches = list(name_re.finditer(line))
+            # Last name required: a first name alone is too common to count.
+            if any(m.group(0).lower() == member["last"].lower() for m in matches):
+                found.append(("name", _label_before(line, matches[0].start(), n_words), flat))
+        if member["dob"]:
+            for match in DATE_RE.finditer(line):
+                if parse_date(match.group(0)) == member["dob"]:
+                    found.append(("dob", _label_before(line, match.start(), n_words), flat))
+        if mid_re:
+            for match in mid_re.finditer(line):
+                found.append(("member_id", _label_before(line, match.start(), n_words), flat))
+    return found
+
+
+def load_member_keys() -> dict[str, set[str]]:
+    """field -> its keys, letters only."""
+    out: dict[str, set[str]] = {}
+    for field, path in MEMBER_KEYS.items():
+        keys = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
+        out[field] = {_letters(k) for k in keys if _letters(k)}
+    return out
+
+
+def harvest_member_labels(folders: list[Path], metadata_dir: Path, n_words: int, examples: int) -> list[dict]:
+    members = load_members(metadata_dir)
+    keys = load_member_keys()
+    counts: dict[tuple[str, str], dict] = {}
+    with_manifest = 0
+    for folder in folders:
+        member = members.get(folder.name)
+        if not member:
+            continue
+        with_manifest += 1
+        for page, (source, text) in page_texts(folder).items():
+            for field, label, line in member_hits(text, member, n_words):
+                norm = " ".join(label.lower().rstrip(":.#,").split()) or "(no label)"
+                letters = _letters(norm)
+                known = any(letters.endswith(k) for k in keys.get(field, ()))
+                entry = counts.setdefault((field, norm), {
+                    "field": field, "label": norm, "count": 0, "charts": set(), "pages": set(),
+                    "known_key": "yes" if known else "", "examples": [],
+                })
+                entry["count"] += 1
+                entry["charts"].add(folder.name)
+                entry["pages"].add(f"{folder.name}/{page}")
+                if len(entry["examples"]) < examples:
+                    entry["examples"].append(f"{folder.name}/{page} [{source}]: {line[:160]}")
+    print(f"  member labels: {with_manifest} of {len(folders)} charts have a manifest row in {metadata_dir}")
+    return sorted(
+        (
+            {**e, "charts": len(e["charts"]), "pages": len(e["pages"]), "examples": " || ".join(e["examples"])}
+            for e in counts.values()
+        ),
+        key=lambda r: (r["field"], -r["count"], r["label"]),
+    )
+
+
 # --- main ----------------------------------------------------------------------
 
 
@@ -409,8 +565,12 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path(__file__).resolve().parent / "output" / "keys")
     parser.add_argument("--field", default="dos",
                         help="staging field(s) to harvest: dos, provider_name, ... (comma list), "
-                             "'provider' (provider_name, provider_credentials, electronic_signature) or 'all'")
-    parser.add_argument("--label-words", type=int, default=4, help="words kept before a date (date_labels.csv)")
+                             "'provider' (provider_name, provider_credentials, electronic_signature), "
+                             "'member' (name, dob, member_id: staging/extraction.json) or 'all'")
+    parser.add_argument("--metadata", type=Path, default=DEFAULT_METADATA,
+                        help="batch metadata CSVs: the expected member per chart (member_labels.csv)")
+    parser.add_argument("--label-words", type=int, default=4,
+                        help="words kept before a date, provider or member value (the *_labels.csv)")
     parser.add_argument("--examples", type=int, default=3, help="example sentences per row")
     args = parser.parse_args()
 
@@ -426,6 +586,9 @@ def main() -> None:
         write(args.out / "date_labels.csv", harvest_labels(folders, args.label_words, args.examples))
     if fields is None or fields & PROVIDER_FIELDS:
         write(args.out / "provider_labels.csv", harvest_provider_labels(folders, args.label_words, args.examples))
+    if fields is None or fields & MEMBER_FIELDS:
+        write(args.out / "member_labels.csv",
+              harvest_member_labels(folders, args.metadata, args.label_words, args.examples))
 
 
 if __name__ == "__main__":

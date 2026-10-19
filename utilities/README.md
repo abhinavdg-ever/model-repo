@@ -124,6 +124,7 @@ curl -X POST localhost:8001/api/manifest/sweep -H 'Content-Type: application/jso
 ```bash
 python utilities/harvest_keys.py                 # DOS keys -> utilities/output/keys/
 python utilities/harvest_keys.py --field provider  # provider_name, provider_credentials, electronic_signature
+python utilities/harvest_keys.py --field member    # staging name, dob, member_id (+ member_labels.csv)
 python utilities/harvest_keys.py --field all     # every staged field
 ```
 
@@ -131,5 +132,6 @@ python utilities/harvest_keys.py --field all     # every staged field
 - `keys_summary.csv` — per key and tier: found / accepted / failed counts and examples.
 - `date_labels.csv` — from the OCR text: the words before every date, counted; `known_tier` is blank when no key in `extraction/dos/keys.json` covers the label.
 - `provider_labels.csv` (provider fields) — from the OCR text: the label in front of every credentialed name (`Entered By:`, `Filed by`, `Ordering provider:`), counted; `known_key` is blank when neither `provider_name` nor `electronic_signature` keys.json covers it.
+- `member_labels.csv` (member fields) — from the OCR text, driven by the manifest like the member stage: where the chart's expected name (last name required), DOB (any printed format) or Member ID appears, the words in front of it (`Patient Name:`, `DOB:`, `MRN`), counted per field; `(no label)` = keyless; `known_key` is blank when that field's keys.json does not cover it. Expected members come from `--metadata` (default `review-ui/data/metadata`, `metadata_R*_B*.csv`).
 
 `keys_rows.csv` columns follow the field: DOS rows carry `dos_from` / `dos_to`, provider rows `profile` / `member_hint`, e-signature rows `provider_name` / `designation` / `signature_date` (its value is the name, else the date).
