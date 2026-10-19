@@ -55,6 +55,10 @@ from db import (
 logger = logging.getLogger(__name__)
 
 MANIFEST_SUFFIXES = (".csv", ".xlsx", ".xls")
+# The client's extra-columns dump across all charts (jobs.metadata_expand reads it into the
+# batch files). It sits beside them but is not itself a batch manifest: never loaded.
+EXTRA_FILE_NAME = "metadata_extra.csv"
+EXTRA_FILE_RE = re.compile(r"^metadata[_-]?extra", re.IGNORECASE)
 # metadata_R1_B1.csv → run_id=R1, batch_id=B1
 FILENAME_RUN_BATCH_RE = re.compile(
     r"metadata[_-]?(?P<run>R\d+)[_-]?(?P<batch>B\d+)",
@@ -142,6 +146,35 @@ def _dob(row: dict[str, str]) -> Optional[str]:
     return None
 
 
+# Chart metadata from the client's sheet -> manifest_member_list column. Headers are
+# matched without case, spaces or underscores ("RR Method" = "RRMethod" = "rr_method").
+EXTRA_HEADERS: dict[str, tuple[str, ...]] = {
+    "client_id": ("ClientID",),
+    "source_name": ("SourceName",),
+    "rr_method": ("RRMethod", "RetrievalMethod"),
+    "measure": ("Measure", "MeasureName"),
+    "service_note": ("ServiceNote", "ServiceNotes"),
+}
+
+
+def header_key(header: str) -> str:
+    return re.sub(r"[\s_\-]", "", (header or "")).casefold()
+
+
+def _extra_fields(row: dict[str, str]) -> dict[str, Optional[str]]:
+    """client_id, source_name, rr_method, measure, service_note from a manifest row."""
+    by_key = {header_key(k): v for k, v in row.items() if k}
+    out: dict[str, Optional[str]] = {}
+    for column, headers in EXTRA_HEADERS.items():
+        value = ""
+        for header in (column, *headers):
+            value = str(by_key.get(header_key(header)) or "").strip()
+            if value:
+                break
+        out[column] = value or None
+    return out
+
+
 def parse_run_batch_from_name(name: str) -> tuple[Optional[str], Optional[str]]:
     filename = Path(name).name
     match = FILENAME_RUN_BATCH_RE.search(filename)
@@ -208,6 +241,7 @@ def _row_to_member(row: dict[str, str], *, source_file: str, source_path: str) -
         "batch_id": batch_id,
         "source_file": source_file,
         "source_path": source_path,
+        **_extra_fields(row),
     }
 
 
@@ -279,7 +313,11 @@ def lookup_manifest_members_on_disk(
 
 
 def _is_manifest_file(path: Path) -> bool:
-    return path.is_file() and path.suffix.casefold() in MANIFEST_SUFFIXES
+    return (
+        path.is_file()
+        and path.suffix.casefold() in MANIFEST_SUFFIXES
+        and not EXTRA_FILE_RE.match(path.name)
+    )
 
 
 def collect_local_files(local_path: Path) -> list[Path]:
@@ -336,6 +374,7 @@ def _ingest_rows(
                 "batch_id": batch_id,
                 "source_file": source_file,
                 "source_path": source_path,
+                **_extra_fields(row),
             }
         )
 

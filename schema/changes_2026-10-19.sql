@@ -1,16 +1,19 @@
--- Database changes of 2026-10-18 for a database that already has schema/v1.sql
--- applied (a new database gets all of this from v1.sql itself). Additive only:
--- nothing is dropped or rewritten, existing rows keep their values. Safe to run
--- more than once.
+-- Database changes of 2026-10-18 and 2026-10-19 for a database that already has
+-- schema/v1.sql applied (a new database gets all of this from v1.sql itself). Additive
+-- only: nothing is dropped or rewritten, existing rows keep their values. Safe to run
+-- more than once, so a database that already ran the 2026-10-18 file can run this too.
+-- (Replaces schema/changes_2026-10-18.sql, which held sections 1-4.)
 --
---   psql "$DATABASE_URL" -f schema/changes_2026-10-18.sql          (macOS / Linux / VM)
---   psql $env:DATABASE_URL -f schema/changes_2026-10-18.sql        (Windows PowerShell)
+--   psql "$DATABASE_URL" -f schema/changes_2026-10-19.sql          (macOS / Linux / VM)
+--   psql $env:DATABASE_URL -f schema/changes_2026-10-19.sql        (Windows PowerShell)
 --
--- What it is for: docs/PROVIDER_LOGIC.md — the provider signature rule v2
--- (every accepted signer, credentials in their own column, a confidence), stored
--- in provider_signature_results by kv_extract and carried into imaging_final.
--- review-ui reads each row by provider_version (2 = this rule; 1 / NULL = older
--- rows, read the old way), so old and new rows live side by side.
+-- Sections 1-3 (2026-10-18), docs/PROVIDER_LOGIC.md: the provider signature rule v2
+-- (every accepted signer, credentials in their own column, a confidence), stored in
+-- provider_signature_results by kv_extract and carried into imaging_final. review-ui
+-- reads each row by provider_version (2 = this rule; 1 / NULL = older rows, read the old
+-- way), so old and new rows live side by side.
+-- Section 4 (2026-10-18): continuity's weighted decision.
+-- Section 5 (2026-10-19): the client's chart metadata on the manifest.
 
 -- 1. provider_signature_results: written by kv_extract, read by imaging_final.
 --    (It used to be defined in v2.sql only, and nothing wrote it.)
@@ -78,3 +81,14 @@ ALTER TABLE page_continuity_results ADD CONSTRAINT page_continuity_results_decid
         'signature','page_number_end','weighted',
         'first_page_marker','page_type','page_end','continue_page','progress_note'
     )) NOT VALID;  -- checks new rows; rows from older engines are left as they are
+
+-- 5. manifest_member_list: the client's chart metadata (2026-10-19). Filled from the
+--    extra-columns dump metadata_extra.csv by utilities/fill_metadata_extra.py /
+--    POST /api/manifest/metadata-extra; review-ui filters on Source, Measure and
+--    Retrieval (rr_method). service_note is long text.
+ALTER TABLE manifest_member_list
+    ADD COLUMN IF NOT EXISTS client_id VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS source_name VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS rr_method VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS measure VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS service_note TEXT;

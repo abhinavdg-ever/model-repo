@@ -376,7 +376,7 @@ def run_pipeline_for_chart(
                         logger.info("done — quality refreshed (OCR will re-run)")
                     gate_delta_applied = True
                     with connect() as conn:
-                        progress = refresh_chart_status(conn, chart_id)
+                        progress = refresh_chart_status(conn, chart_id, running=(name, pass_no))
                     results["progress"] = progress
                     continue
 
@@ -419,7 +419,7 @@ def run_pipeline_for_chart(
                         )
                         results["stages"][key] = fn(chart_id, force=False)
                         with connect() as conn:
-                            progress = refresh_chart_status(conn, chart_id)
+                            progress = refresh_chart_status(conn, chart_id, running=(name, pass_no))
                         results["progress"] = progress
                         logger.info(
                             "done — status=%s, next=%s",
@@ -450,7 +450,7 @@ def run_pipeline_for_chart(
                 results["stages"][key] = fn(chart_id, force=stage_force)
 
                 with connect() as conn:
-                    progress = refresh_chart_status(conn, chart_id)
+                    progress = refresh_chart_status(conn, chart_id, running=(name, pass_no))
                 results["progress"] = progress
                 logger.info(
                     "done — status=%s, next=%s",

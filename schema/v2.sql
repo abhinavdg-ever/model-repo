@@ -67,6 +67,9 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * manifest_member_list (v1.sql) gains client_id, source_name, rr_method,
+--    measure and service_note (TEXT): the client's chart metadata. Existing
+--    databases: schema/changes_2026-10-19.sql (which also holds the 2026-10-18 changes).
 --  * provider_signature_results moved to v1.sql (2026-10-18): kv_extract writes it
 --    and imaging_final reads it, with provider_credentials, signers (every
 --    accepted signer) and provider_version. imaging_final gains

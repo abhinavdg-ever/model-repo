@@ -197,3 +197,17 @@ class TestProgressShape:
         assert first["completed"] + first["pending"] == 5
         assert first["total"] == 5
         assert first["complete"] is False
+
+
+def test_a_run_in_progress_is_never_completed_by_old_stage_rows():
+    from db.chart_status import _hold_while_running
+
+    progress = {"status": "completed", "current_stage": None, "current_pass": None}
+    _hold_while_running(progress, ("ocr_quality", 1))
+    assert (progress["status"], progress["current_stage"], progress["current_pass"]) == ("processing", "ocr_quality", 1)
+    finished = {"status": "completed", "current_stage": None, "current_pass": None}
+    _hold_while_running(finished, None)
+    assert finished["status"] == "completed"
+    failed = {"status": "failed", "current_stage": "dos_extract", "current_pass": 1}
+    _hold_while_running(failed, ("dos_extract", 1))
+    assert failed["status"] == "failed"

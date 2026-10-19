@@ -19,6 +19,31 @@ Reads every `metadata_Rn_Bn.csv` / `.xlsx` under a folder (or one file) and
 upserts into `manifest_member_list`. Run/batch ids are parsed from the
 filename (`metadata_R1_B1.csv` → `R1` / `B1`).
 
+## Extra metadata columns (metadata_extra.csv) → batch CSVs → Postgres
+
+The client sends one dump across all charts. Save it as `metadata_extra.csv` in the
+metadata folder, beside the batch files (`metadata_R1_B1.csv` …). It carries `MemberID`,
+`ClientID`, `SourceName`, `RR Method`, `Measure` and `ServiceNote` (long text).
+`fill_metadata_extra.py` matches every batch row to the dump by `recordId` and adds those
+columns to the batch file. A blank in the dump keeps the file's value, and names and DOB
+are never touched. With `--load` it then upserts the batch files into
+`manifest_member_list` (`client_id`, `source_name`, `rr_method`, `measure`,
+`service_note`). The dump itself is never loaded as a batch. An existing database first
+needs `schema/changes_2026-10-19.sql`.
+
+```bash
+cd core-pipeline && source .venv/bin/activate
+python ../utilities/fill_metadata_extra.py --dry-run                    # report only
+python ../utilities/fill_metadata_extra.py --load                       # CSVs, then the DB
+python ../utilities/fill_metadata_extra.py /path/to/metadata --load     # another folder
+python ../utilities/fill_metadata_extra.py --source dump.xlsx --load    # another dump
+python ../utilities/fill_metadata_extra.py --new-file metadata_R2_B1.csv   # dump records no batch file has
+
+# the same over HTTP (core-pipeline API): metadata_dir, source, new_file, load (default true), dry_run
+curl -X POST localhost:8001/api/manifest/metadata-extra -H 'Content-Type: application/json' \
+  -d '{"metadata_dir": "/path/to/metadata", "load": true}'
+```
+
 ## Find chart folders under a blob prefix
 
 Two inputs: the blob location (`container/prefix`) and a local Excel file of

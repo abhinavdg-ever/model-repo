@@ -1896,7 +1896,10 @@ def upsert_manifest_member(
 
 MANIFEST_UPSERT_BATCH = 100
 
-_MANIFEST_VALUE = "(%s, %s, %s, %s, %s, %s::date, %s, %s, %s, %s, %s)"
+_MANIFEST_VALUE = "(%s, %s, %s, %s, %s, %s::date, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+
+# Chart metadata columns carried from the client's sheet; a blank value keeps what is stored.
+MANIFEST_EXTRA_COLUMNS = ("client_id", "source_name", "rr_method", "measure", "service_note")
 
 _MANIFEST_UPDATE = """
             member_name      = EXCLUDED.member_name,
@@ -1908,6 +1911,11 @@ _MANIFEST_UPDATE = """
             batch_id         = COALESCE(EXCLUDED.batch_id, manifest_member_list.batch_id),
             source_file      = COALESCE(EXCLUDED.source_file, manifest_member_list.source_file),
             source_path      = COALESCE(EXCLUDED.source_path, manifest_member_list.source_path),
+            client_id        = COALESCE(EXCLUDED.client_id, manifest_member_list.client_id),
+            source_name      = COALESCE(EXCLUDED.source_name, manifest_member_list.source_name),
+            rr_method        = COALESCE(EXCLUDED.rr_method, manifest_member_list.rr_method),
+            measure          = COALESCE(EXCLUDED.measure, manifest_member_list.measure),
+            service_note     = COALESCE(EXCLUDED.service_note, manifest_member_list.service_note),
             updated_at       = now()
 """
 
@@ -1938,6 +1946,7 @@ def _manifest_row_params(m: dict[str, Any], *, has_id: bool) -> tuple[Any, ...]:
         m.get("batch_id"),
         m.get("source_file"),
         m.get("source_path"),
+        *((m.get(col) or None) for col in MANIFEST_EXTRA_COLUMNS),
     )
 
 
@@ -1993,7 +2002,8 @@ def upsert_manifest_members(
                 INSERT INTO manifest_member_list (
                     record_id, member_name, first_name, middle_name, last_name,
                     member_dob, external_member_id, run_id, batch_id,
-                    source_file, source_path
+                    source_file, source_path,
+                    client_id, source_name, rr_method, measure, service_note
                 ) VALUES {values_sql}
                 ON CONFLICT {conflict} DO UPDATE SET
                 {_MANIFEST_UPDATE}

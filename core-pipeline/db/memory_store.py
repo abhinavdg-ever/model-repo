@@ -14,6 +14,9 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
+# Same as db.MANIFEST_EXTRA_COLUMNS (db imports this module, so it is not imported back).
+MANIFEST_EXTRA_COLUMNS = ("client_id", "source_name", "rr_method", "measure", "service_note")
+
 TEST_CHART_SUFFIX = "-test"
 
 
@@ -1202,8 +1205,12 @@ class MemoryStore:
         batch_id: Optional[str] = None,
         source_file: Optional[str] = None,
         source_path: Optional[str] = None,
+        **extra: Optional[str],
     ) -> dict[str, Any]:
-        """Upsert by (record_id, external_member_id) or name+dob; return {id, action}."""
+        """Upsert by (record_id, external_member_id) or name+dob; return {id, action}.
+
+        ``extra``: client_id, source_name, rr_method, measure, service_note."""
+        extra = {k: (v or None) for k, v in extra.items()}
         ext = (external_member_id or "").strip() or None
         with self._lock:
             existing_id = None
@@ -1241,6 +1248,9 @@ class MemoryStore:
                     row["source_file"] = source_file
                 if source_path is not None:
                     row["source_path"] = source_path
+                for key, value in extra.items():
+                    if value is not None:
+                        row[key] = value
                 row["updated_at"] = _now()
                 return {"id": existing_id, "action": "updated"}
             mid = self._alloc()
@@ -1257,6 +1267,7 @@ class MemoryStore:
                 "batch_id": batch_id,
                 "source_file": source_file,
                 "source_path": source_path,
+                **extra,
                 "created_at": _now(),
                 "updated_at": _now(),
             }
@@ -1287,6 +1298,7 @@ class MemoryStore:
                 batch_id=m.get("batch_id"),
                 source_file=m.get("source_file"),
                 source_path=m.get("source_path"),
+                **{col: m.get(col) for col in MANIFEST_EXTRA_COLUMNS},
             )
             if result["action"] == "updated":
                 updated += 1

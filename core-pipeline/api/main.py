@@ -429,6 +429,27 @@ class ManifestSweepRequest(BaseModel):
         return normalize_blob_path(value) if value is not None else value
 
 
+class MetadataExtraRequest(BaseModel):
+    """Fill the batch metadata CSVs from the client's extra-columns dump, then the DB."""
+
+    metadata_dir: Optional[str] = Field(
+        None, description="Folder of batch metadata CSVs (default review-ui/data/metadata)"
+    )
+    source: Optional[str] = Field(
+        None, description="The dump (.csv / .xlsx); default <metadata_dir>/metadata_extra.csv"
+    )
+    new_file: Optional[str] = Field(
+        None, description="Write dump records no batch file has to this CSV in the folder"
+    )
+    load: bool = Field(True, description="Then upsert the batch files into manifest_member_list")
+    dry_run: bool = Field(False, description="Report what would change; write nothing")
+
+    @field_validator("metadata_dir", "source", mode="before")
+    @classmethod
+    def _norm_paths(cls, value: Any) -> Any:
+        return normalize_fs_path(value) if value is not None else value
+
+
 class GroundTruthLoadRequest(BaseModel):
     """Load the client page spreadsheet into page_ground_truth (upsert)."""
 
@@ -1132,6 +1153,33 @@ def manifest_sweep(
         "run_id": body.run_id,
         "batch_id": body.batch_id,
     }
+
+
+@app.post("/api/manifest/metadata-extra", tags=["manifest"])
+def manifest_metadata_extra(body: MetadataExtraRequest) -> dict[str, Any]:
+    """Match metadata_extra.csv to the batch metadata CSVs by recordId, add the extra
+    columns (MemberID, ClientID, SourceName, RR Method, Measure, ServiceNote) to them,
+    and with ``load`` write them to manifest_member_list. Returns what changed."""
+    from config import METADATA_ROOT
+    from jobs.metadata_expand import run as expand_metadata
+
+    if body.load and not body.dry_run:
+        _require_db()
+    folder = Path(body.metadata_dir) if body.metadata_dir else METADATA_ROOT
+    if not folder.is_dir():
+        raise HTTPException(status_code=400, detail=f"metadata_dir does not exist: {folder}")
+    try:
+        return expand_metadata(
+            Path(body.source) if body.source else None,
+            metadata_dir=folder,
+            new_file=body.new_file,
+            load=body.load,
+            dry_run=body.dry_run,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/ground-truth/load", tags=["ground-truth"])

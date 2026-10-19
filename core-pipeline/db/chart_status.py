@@ -188,8 +188,22 @@ def chart_is_pipeline_complete(conn: Any, chart_id: int) -> bool:
     }
 
 
-def refresh_chart_status(conn: Any, chart_id: int) -> dict[str, Any]:
-    """Recompute and persist chart_list.status / current_stage / current_pass."""
+def _hold_while_running(progress: dict[str, Any], running: Optional[tuple[str, int]]) -> None:
+    """A run still in its chain is never finished. Stage rows left by an earlier run
+    (skip_ocr, ``only``, resume) can make every stage look done after the run's first
+    stage; the chart then read Imaging Completed while later stages were still to run."""
+    if running and progress["status"] in {"completed", "needs_review"}:
+        progress["status"] = "processing"
+        progress["current_stage"], progress["current_pass"] = running
+
+
+def refresh_chart_status(
+    conn: Any, chart_id: int, *, running: Optional[tuple[str, int]] = None
+) -> dict[str, Any]:
+    """Recompute and persist chart_list.status / current_stage / current_pass.
+
+    ``running``: the (stage, pass) a run in progress has just finished; the chart stays
+    processing until the run's final refresh, which passes none."""
     if isinstance(conn, MemoryStore):
         chart = conn.get_chart(chart_id)
         if not chart:
@@ -203,6 +217,7 @@ def refresh_chart_status(conn: Any, chart_id: int) -> dict[str, Any]:
             member_final_status=(summary or {}).get("final_status"),
             member_document_decision=(summary or {}).get("document_decision"),
         )
+        _hold_while_running(progress, running)
         status = progress["status"]
         if status not in CHART_STATUS_VALUES:
             status = "processing"
@@ -241,6 +256,7 @@ def refresh_chart_status(conn: Any, chart_id: int) -> dict[str, Any]:
         member_final_status=(summary or {}).get("final_status"),
         member_document_decision=(summary or {}).get("document_decision"),
     )
+    _hold_while_running(progress, running)
 
     status = progress["status"]
     if status not in CHART_STATUS_VALUES:
