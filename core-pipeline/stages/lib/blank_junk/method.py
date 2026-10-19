@@ -16,7 +16,7 @@ The ladder, first rule that fires decides (R4, R5 and R3's KV half need pass 2):
                     clinical (C) or demographic (D) evidence: then the vote decides
   R5 short page     content ends in the top 15% of the page height, under 0.5% ink below
                     (17%-94%) -> Junk / Others, unless both voters say KEEP (KK) and
-                    DistilBERT's p(keep) > 0.8
+                    DistilBERT's KEEP is strong (p(keep) >= keep_strong, 0.85)
   R6 retrieval      record_request + roi_vendors >= 7 and not C+ -> Junk / Record Request
   R7 strong clinical  C+ -> Main
   R8 Visual         document_type 'visual' with < 20 words -> Main, unless retrieval /
@@ -77,8 +77,8 @@ MODEL_SUBTYPE = {
 }
 # Junk evidence that is retrieval or billing paperwork, not something a face sheet carries.
 RETRIEVAL_GROUPS = ("record_request", "roi_vendors")
-# id_card: an insurance / ID card or driver's licence prints a name and DOB, which must
-# not rescue it as a face sheet.
+# id_card (visual pages only): an insurance / ID card or driver's licence prints a name
+# and DOB, which must not rescue it as a face sheet.
 HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice", "id_card")
 
 # The two voters, in the order their letters are written in the vote
@@ -106,6 +106,8 @@ class Group:
     cap: float
     subtype: str
     zone: str
+    # Counted only on pages of this page-tag type ("visual"); "" = every page.
+    document_type: str = ""
 
 
 @dataclass(frozen=True)
@@ -159,6 +161,7 @@ def _build(data: dict[str, Any]) -> Canon:
                 cap=float(spec.get("cap", spec["weight"])),
                 subtype=str(spec.get("subtype") or "Others"),
                 zone=str(spec.get("zone") or "any"),
+                document_type=str(spec.get("document_type") or ""),
             )
             for term in spec.get("terms") or []:
                 term_of[context][_norm(term)] = (name, term)
@@ -308,7 +311,12 @@ def _longest_first(spans: list[tuple[int, int, str, str]]) -> list[tuple[int, in
     return kept
 
 
-def score_text(text: str, lines: Optional[list[Line]] = None, also_junk: Optional[str] = None) -> Scores:
+def score_text(
+    text: str,
+    lines: Optional[list[Line]] = None,
+    also_junk: Optional[str] = None,
+    document_type: str = "",
+) -> Scores:
     """Weight x unique hits per group, capped; summed per context (BLANK_JUNK_LOGIC §2.1).
 
     With ``lines`` (pass 2), a junk term in the header or footer band counts only when the
@@ -317,6 +325,9 @@ def score_text(text: str, lines: Optional[list[Line]] = None, also_junk: Optiona
     ``also_junk`` (pass 2: the page's Tesseract text) adds the junk terms the final OCR
     missed, such as a vendor name in a logo or banner ('Optum'), as body hits. Clinical
     and demographic scores read ``text`` alone.
+
+    A group with a ``document_type`` (id_card: "visual") counts only on pages of that
+    page-tag type.
     """
     prof = canon()
     out = Scores()
@@ -351,6 +362,8 @@ def score_text(text: str, lines: Optional[list[Line]] = None, also_junk: Optiona
         total = 0.0
         for name, terms in unique.items():
             group = prof.groups[(context, name)]
+            if group.document_type and group.document_type != document_type:
+                continue
             score = min(group.weight * len(terms), group.cap)
             out.groups[f"{context}.{name}"] = score
             out.hits[f"{context}.{name}"] = sorted(terms)
@@ -620,7 +633,7 @@ def decide(inputs: PageInputs) -> Verdict:
     words = _word_count(text)
     pass2 = inputs.pass_no == 2
     lines = inputs.lines if pass2 else None
-    scores = score_text(text, lines, inputs.prelim_text if pass2 else None)
+    scores = score_text(text, lines, inputs.prelim_text if pass2 else None, inputs.document_type)
     visual = is_visual(inputs.document_type, words)
     if inputs.document_type == "visual" and not visual:
         votes_visual_note = f"document_type visual, but {words} words >= {visual_max_words()}: not Visual"
@@ -707,12 +720,10 @@ def decide(inputs: PageInputs) -> Verdict:
             if inputs.body_ink is None:
                 votes["short_page"]["ink"] = "not_measured"
             elif bottom is not None and bottom <= float(short["top_fraction"]) and inputs.body_ink is False:
-                # Both voters KEEP (KK) with DistilBERT sure of it undo the short page;
-                # one KEEP, or a hesitant DistilBERT, does not.
-                undo_above = float(short.get("undo_bert_keep_above", 0.8))
-                p_keep = float(inputs.bert["p_keep"]) if inputs.bert else 0.0
-                if all(b.vote == KEEP for b in ballots.values()) and p_keep > undo_above:
-                    votes["short_page"]["skipped"] = f"KK, DistilBERT p(keep) {p_keep:.2f} > {undo_above}"
+                # Both voters KEEP (KK) with DistilBERT's KEEP strong undo the short page;
+                # one KEEP, or a weak DistilBERT KEEP, does not.
+                if all(b.vote == KEEP for b in ballots.values()) and ballots["bert"].strength == STRONG:
+                    votes["short_page"]["skipped"] = "KK, DistilBERT strong KEEP"
                 else:
                     return ruled(CODE_OTHERS, "R5", f"R5 short page: content ends at {bottom:.0%} of the height -> Junk / Others")
     # R6 retrieval counter-veto

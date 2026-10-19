@@ -390,13 +390,13 @@ def test_a_no_ink_page_is_judged_in_pass_1_and_is_blank():
     assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")
 
 
-def test_r5_is_undone_only_by_both_keeps_with_distilbert_above_80():
+def test_r5_is_undone_only_by_both_keeps_with_distilbert_strong():
     lines = [Line("Assessment:", 0.03, 0.05), Line("Plan: rest", 0.08, 0.10)]
-    # KK with DistilBERT p(keep) 0.9 > 0.8: the short page is undone.
+    # KK with DistilBERT p(keep) 0.9 (a strong KEEP, >= 0.85): the short page is undone.
     kept = run(CLINICAL_WEAK, lines=lines, body_ink=False, bert=bert(0.1))
     assert (kept.votes["bert"]["vote"], kept.votes["kw"]["vote"]) == ("KEEP", "KEEP")
     assert kept.rule != "R5" and kept.votes["short_page"]["skipped"].startswith("KK")
-    # KK but DistilBERT p(keep) 0.75: R5 stands.
+    # KK but DistilBERT p(keep) 0.75 (a weak KEEP): R5 stands.
     hesitant = run(CLINICAL_WEAK, lines=lines, body_ink=False, bert=bert(0.25))
     assert (hesitant.votes["bert"]["vote"], hesitant.votes["kw"]["vote"]) == ("KEEP", "KEEP")
     assert hesitant.rule == "R5"
@@ -412,12 +412,17 @@ CARD_TEXT = (
 )
 
 
-def test_an_insurance_card_is_junk_evidence():
-    scores = score_text(CARD_TEXT)
+def test_card_wording_counts_on_visual_pages_only():
+    scores = score_text(CARD_TEXT, document_type="visual")
     assert scores.best_junk_group() == "id_card" and scores.junk >= 7
-    # A name and DOB on the card do not rescue it as a face sheet (id_card is hard junk).
-    verdict = run("Patient name Roberts Victor DOB 03/16/1961 " + CARD_TEXT)
-    assert verdict.votes["kw"]["vote"] == "JUNK"
+    # On a page that is not visual it adds nothing.
+    assert score_text(CARD_TEXT, document_type="printed").group("junk", "id_card") == 0
+    assert score_text(CARD_TEXT).group("junk", "id_card") == 0
+    # A visual page over the word limit: judged by the vote, and a name and DOB on the
+    # card do not rescue it as a face sheet (id_card is hard junk).
+    verdict = run("Patient name Roberts Victor DOB 03/16/1961 " + CARD_TEXT, document_type="visual")
+    assert verdict.rule != "R8" and verdict.votes["kw"]["vote"] == "JUNK"
+    assert "junk.id_card" not in run("Patient name Roberts Victor DOB 03/16/1961 " + CARD_TEXT).votes["kw"]["hits"]
 
 
 def test_a_visual_card_with_card_wording_is_junk():
@@ -426,5 +431,5 @@ def test_a_visual_card_with_card_wording_is_junk():
 
 
 def test_a_drivers_licence_is_junk_evidence():
-    assert score_text("Driver License DL # D1234567 class C organ donor").best_junk_group() == "id_card"
+    assert score_text("Driver License DL # D1234567 class C organ donor", document_type="visual").best_junk_group() == "id_card"
 

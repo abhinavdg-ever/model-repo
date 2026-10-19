@@ -22,7 +22,7 @@
     "footer_band": 0.08
   },
   "short_page": {
-    "note": "Short page rule (precedence step R5). Content that ends within the top 'top_fraction' (15%; 20% 2026-10-18 to 2026-10-19) of the page height -> JUNK / Others, even when it carries a clinical heading and whatever the neighbouring pages are. Not when Provider Signature = Yes, or when both voters say KEEP (KK) and DistilBERT's p(keep) > undo_bert_keep_above (0.8) (docs/BLANK_JUNK_LOGIC.md).",
+    "note": "Short page rule (precedence step R5). Content that ends within the top 'top_fraction' (15%; 20% 2026-10-18 to 2026-10-19) of the page height -> JUNK / Others, even when it carries a clinical heading and whatever the neighbouring pages are. Not when Provider Signature = Yes, or when both voters say KEEP (KK) and DistilBERT's KEEP is strong (voters.bert.keep_strong) (docs/BLANK_JUNK_LOGIC.md).",
     "top_fraction": 0.15,
     "ignore_footer_band": 0.06,
     "body_ink_band": [
@@ -38,8 +38,7 @@
       "^\\s*(?:fax|from|to)\\b.*\\d{3}.*\\d{4}",
       "^\\s*confidential"
     ],
-    "note_patterns": "A line matching any of these (anywhere in the line) is a running header / footer stamp, not content: 'Page 3 of 7', 'MRN: 023466 Printed: 10/30/2025 8:10 AM Pg 14 of 17', a bare page number, a fax transmission line.",
-    "undo_bert_keep_above": 0.8
+    "note_patterns": "A line matching any of these (anywhere in the line) is a running header / footer stamp, not content: 'Page 3 of 7', 'MRN: 023466 Printed: 10/30/2025 8:10 AM Pg 14 of 17', a bare page number, a fax transmission line."
   },
   "visual": {
     "note": "Visual = ocr_quality_results.document_type == 'visual' (CSV column document_type) AND fewer than max_words words of text. A visual page with more text is judged like any other page. Decided in pass 1 (R8): kept, or junk on very strong retrieval / invoice / ID-card wording. Pass 2 is skipped for these pages. No confidence cut-off, no proxy.",
@@ -567,7 +566,8 @@
         ]
       },
       "id_card": {
-        "note": "Insurance / ID cards and driver's licences (scanned card images). A junk indicator, not demographic: demographic terms keep a page, and a card's name / DOB would otherwise rescue it. Hard junk (method HARD_JUNK_GROUPS): it beats the demographic KEEP and counts toward the Visual (R8) veto. Added 2026-10-19.",
+        "note": "Insurance / ID cards and driver's licences (scanned card images). Counted only on pages the page-tag model calls visual (document_type), with or without the Visual word limit; on other pages it adds nothing. A junk indicator, not demographic: demographic terms keep a page, and a card's name / DOB would otherwise rescue it. Hard junk (method HARD_JUNK_GROUPS): it beats the demographic KEEP and counts toward the Visual (R8) veto. Two terms (8) = a strong JUNK ballot. Added 2026-10-19.",
+        "document_type": "visual",
         "weight": 4,
         "cap": 8,
         "subtype": "Others",
