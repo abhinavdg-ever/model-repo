@@ -80,7 +80,7 @@ Three scores from the canon: **C** clinical, **J** junk, **D** demographic.
 | junk | **record_request** | 3 | 9 | Record Request/Transmittal | request for records, release of information |
 | junk | **roi_vendors** | 4 | 8 | Record Request/Transmittal | Optum, Datavant, Ciox |
 | junk | **invoice** | 3 | 9 | Invoice | invoice number, bill to, amount due |
-| junk | **id_card** (visual pages only) | 4 | 8 | Others | card #, UCard, RxBIN / RxPCN / RxGRP, for pharmacist, rx claims, insurance card, driver's license, DL # |
+| junk | **id_card** (visual pages only) | 4 | 8 | Others | card #, UCard, member ID, group number, copay, insurance card, driver's license, DL # (no pharmacy wording) |
 | junk | placeholder | 6 | 6 | Others | intentionally left blank |
 | demographic | identity | 1 | 3 | | patient name, DOB, sex, MRN |
 | demographic | registration | 2 | 6 | | face sheet, registration, guarantor |
@@ -94,7 +94,7 @@ a strong JUNK ballot. **id_card counts only on pages the page-tag model calls `v
 (canon `document_type`), under the Visual word limit or over it — in the R3 card check and
 in the vote; on any other page card wording adds nothing. It also carries insurance-card
 wording (member ID, group number, copay, member services…) and card-number patterns:
-`BIN 610014`, `PCN …`, `Group # …`, `Member ID: W123456789`, `PCP $25`,
+`Group # …`, `Member ID: W123456789`, `PCP $25`,
 `EXP 01/31/2027`, `Card # …`, `DL # …`. Those insurance words stay neutral on every other page.
 A second visual-only group, **insurers** (Aetna, Humana, UnitedHealthcare, BCBS…; weight 2,
 cap 4, not hard), is **not** card evidence: it adds weight to R3 and the keyword ballot only.
@@ -376,5 +376,6 @@ Main.
   is required; vendor / insurer / retrieval / invoice wording adds weight (total ≥ **4**; was
   ≥ 7, any hard group, only under 20 words) → **Junk / Others**. It comes before the
   signature, DistilBERT, short page and C⁺ rules.
-- **id_card** gains insurance-card wording and card-number patterns; new visual-only
+- **id_card** gains insurance-card wording and card-number patterns; pharmacy wording
+  (RxBIN / PCN / RxGRP, for pharmacist, rx claims) is removed — not card evidence; new visual-only
   **insurers** group (weight 2), not card evidence.

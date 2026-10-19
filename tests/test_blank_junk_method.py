@@ -477,7 +477,7 @@ class TestVisualR3:
         assert "(10)" in verdict.reason
 
     def test_card_numbers_count(self):
-        for text in ("BIN: 610014", "PCN ADV", "Member ID: W123456789", "PCP $25", "EXP 01/31/2027"):
+        for text in ("Group # 12345", "Member ID: W123456789", "PCP $25", "EXP 01/31/2027", "Card # 8101"):
             assert run(text, document_type="visual").rule == "R3", text
             assert run(text, document_type="visual").code == classify.CODE_OTHERS, text
 
@@ -500,3 +500,9 @@ class TestVisualR3:
 
     def test_card_wording_on_a_printed_page_is_not_r3(self):
         assert run("Aetna member card BIN: 610014 " + FILLER, document_type="printed").rule != "R3"
+
+
+def test_pharmacy_wording_is_not_card_evidence():
+    for text in ("RxBIN 610097 RxPCN 9999 RxGRP COS", "BIN: 610014", "For Pharmacist: 1-877-889-6510 Rx Claims"):
+        verdict = run(text, document_type="visual")
+        assert (verdict.rule, verdict.code) == ("R3", classify.CODE_MAIN), text
