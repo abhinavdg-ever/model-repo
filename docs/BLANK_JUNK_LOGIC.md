@@ -17,7 +17,7 @@ holds it. Paths are relative to `core-pipeline/`.
 
 Every page gets one verdict: **Main**, **Blank**, or **Junk / subtype**.
 
-1. **Rules R1–R8** run in order; the first that fires decides. R5's keep half
+1. **Rules R1–R8** run in order; the first that fires decides. R5.2
    (DistilBERT p(junk) < 0.05 → Main) is checked right after R1, so nothing can reverse it.
 2. If none fires, **R9 — the vote** of two voters (DistilBERT and the keyword canon)
    decides, and then the **vetoes** may turn a Junk back into Main.
@@ -136,11 +136,11 @@ and `/health` shows `engine: keywords`.
 |---|---|---|---|---|
 | **R1** | No ink; or (not Visual) 0 characters; or the word "blank" in < **30** characters | Blank | 1, 2 | 1.0 |
 | **R1** | Not Visual, < **15** characters | Junk / Cover Page when a cover term is there, else Junk / Others | 1, 2 | 1.0 |
-| **R5 keep** | DistilBERT p(junk) **< 0.05**, checked right after R1, so **no later rule can reverse it** (not R2, R3, R4, R6, R7, R8 or the vote) | Main | 1, 2 | evidence |
+| **R5.2** | DistilBERT p(junk) **< 0.05**, checked right after R1, so **no later rule can reverse it** (not R2, R3, R4, R6, R7, R8 or the vote) | Main | 1, 2 | evidence |
 | **R2** | "Intentionally left blank" (placeholder group) on ≤ **25** words | Junk / Others | 1, 2 | 0.99 |
 | **R3** | Visual page (`document_type = visual`, any length): **first**, card evidence (an id_card term or card-number pattern) is required; with it, card + roi_vendors + insurers + record_request + invoice ≥ **4** → **Junk / Others**. Vendors and insurers alone never fire it. Else < **20** words → Main. Else the rules below and the vote | Junk / Others, Main, or on | 1, 2 | evidence |
 | **R4** | Provider Signature = Yes, or a signature phrase — **skipped when the ballots are JJ** (the vote decides; `votes.r4_skipped = "JJ"`) | Main | 2 | 0.95 |
-| **R5 junk** | DistilBERT p(junk) **> 0.85** — not when C ≥ 4 or D ≥ 3 (then the vote decides; `votes.r5_skipped`) | Junk / DistilBERT's subtype | 2 | evidence |
+| **R5.1** | DistilBERT p(junk) **> 0.85** — not when C ≥ 4 or D ≥ 3 (then the vote decides; `votes.r5_skipped`) | Junk / DistilBERT's subtype | 2 | evidence |
 | **R6** | Short page (§4), unless **both** voters say KEEP (KK) **and** DistilBERT's KEEP is **strong** (p(keep) ≥ 0.85) | Junk / Others | 2 | evidence |
 | **R7** | record_request + roi_vendors ≥ **7** and not C⁺, unless both voters say KEEP (KK) | Junk / Record Request/Transmittal | 1, 2 | evidence |
 | **R8** | C⁺ (clinical ≥ 8) | Main | 1, 2 | evidence |
@@ -274,7 +274,7 @@ The evidence for the verdict, never a fixed cap (`_confidence`).
 - Otherwise, from these signals, each a probability that the verdict is right:
   - the rule's own value: R3 0.90, R6 0.95, R7 0.97, R8 0.95;
   - DistilBERT: p(junk) for a Junk verdict, p(keep) for Main (left out under 8 words,
-    except in R5);
+    except in R5.1 / R5.2);
   - keywords: J ÷ 10 when they voted J; max(C, D) ÷ 10 when they voted K; flipped
     (1 − that) when their vote is against the verdict.
 - **All agree** (each ≥ 0.5, keywords on the verdict's side): 1 − ∏(1 − p).
@@ -333,8 +333,8 @@ Main.
 | Header / footer band (junk terms) | 12% / 8% | canon `zones` |
 | DistilBERT J strong / weak, K strong / weak | 0.85 / 0.60, 0.85 / 0.50 | canon `voters.bert` |
 | DistilBERT minimum words | 8 | canon `voters.bert.min_words` |
-| R5 force | p(junk) > 0.85 | canon `voters.bert.force_junk_above` |
-| R5 keep | p(junk) < 0.05 | canon `voters.bert.force_keep_below` |
+| R5.1 force junk | p(junk) > 0.85 | canon `voters.bert.force_junk_above` |
+| R5.2 force keep | p(junk) < 0.05 | canon `voters.bert.force_keep_below` |
 | A J needs | J ≥ 7 | canon `voters.keyword.junk_alone_min` |
 | R6 short page | content ends ≤ 15% | canon `short_page.top_fraction` |
 | R6 ink band | 17%–94% of the height | canon `short_page.body_ink_band` |
@@ -385,7 +385,10 @@ Main.
 
 ## 12. Changes, 2026-10-19 — DistilBERT sure it is not junk keeps the page
 
-- **R5 keep: p(junk) < 0.05 → Main** (`voters.bert.force_keep_below`), in **both passes**.
+- **R5 is split in two: R5.1** = the junk force (p(junk) > 0.85, as before), **R5.2** = the
+  keep force below. `votes.rule` and the reason say `R5.1` / `R5.2`.
+
+- **R5.2: p(junk) < 0.05 → Main** (`voters.bert.force_keep_below`), in **both passes**.
   The user trusts the model here: it is checked right after R1 and before R2–R4 and R6–R9,
   so no other rule can reverse it: not the placeholder, the Visual card check, the short
   page, retrieval wording or the vote. R1 still comes first: with no ink or almost no text

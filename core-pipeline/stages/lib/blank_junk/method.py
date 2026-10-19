@@ -4,7 +4,7 @@ Inputs per page (``PageInputs``): the OCR text, its word boxes when the pass has
 DistilBERT's raw probabilities (model_bridge.model_scores), the page type and
 handwritten share from the page-tag model, and Provider Signature from KV extraction.
 
-The ladder, first rule that fires decides (R5, R6 and R4's KV half need pass 2):
+The ladder, first rule that fires decides (R5.1, R6 and R4's KV half need pass 2):
 
   R1 blank / tiny   no ink -> Blank. Not Visual: 0 characters, or the word "blank" in
                     < 30 characters -> Blank; else < 15 characters -> Junk / Cover Page
@@ -15,10 +15,10 @@ The ladder, first rule that fires decides (R5, R6 and R4's KV half need pass 2):
                     -> Junk / Others; else < 20 words -> Main; else the rules below and the vote
   R4 signature      Provider Signature = Yes, or a canon signature phrase -> Main, unless
                     both voters say JUNK (JJ): then the vote (R9) decides
-  R5 DistilBERT     p(junk) < 0.05 -> Main, in both passes, checked right after R1 so
-                    nothing after it can reverse it. p(junk) > 0.85 -> Junk,
-                    DistilBERT's subtype, unless the canon finds clinical (C) or
-                    demographic (D) evidence: then the vote decides
+  R5 DistilBERT     R5.1 p(junk) > 0.85 -> Junk, DistilBERT's subtype, unless the canon
+                    finds clinical (C) or demographic (D) evidence: then the vote decides.
+                    R5.2 p(junk) < 0.05 -> Main, in both passes, checked right after R1 so
+                    nothing after it can reverse it
   R6 short page     content ends in the top 15% of the page height, under 0.5% ink below
                     (17%-94%) -> Junk / Others, unless both voters say KEEP (KK) and
                     DistilBERT's KEEP is strong (p(keep) >= keep_strong, 0.85)
@@ -27,7 +27,7 @@ The ladder, first rule that fires decides (R5, R6 and R4's KV half need pass 2):
   R8 strong clinical  C+ -> Main
   R9 vote           DistilBERT and the keyword canon (BLANK_JUNK_LOGIC §5)
 
-Pass 1 only lets R1, R2, R3, R5's keep, R7, R8 and two strong JUNK ballots decide; every other page stays
+Pass 1 only lets R1, R5.2, R2, R3, R7, R8 and two strong JUNK ballots decide; every other page stays
 Main and is judged again in pass 2 on the final OCR.
 
 Every page gets one verdict. Its confidence is the evidence for that verdict (BLANK_JUNK_LOGIC §6):
@@ -549,8 +549,8 @@ def _signals(junk: bool, inputs: PageInputs, scores: Scores, ballots: dict[str, 
     if rule in RULE_PRIOR:
         out["rule"] = RULE_PRIOR[rule]
     # DistilBERT counts when it scored the page. Under min_words it is not trusted, except
-    # by R5, which is DistilBERT's own call.
-    if inputs.bert and (rule == "R5" or ballots["bert"].note == ""):
+    # by R5.1 / R5.2, which are DistilBERT's own call.
+    if inputs.bert and (rule in ("R5.1", "R5.2") or ballots["bert"].note == ""):
         out["bert"] = float(inputs.bert["p_junk"] if junk else inputs.bert["p_keep"])
     kw = ballots["kw"]
     if kw.vote == JUNK:
@@ -706,12 +706,12 @@ def decide(inputs: PageInputs) -> Verdict:
         cover = sum(scores.group("junk", g.name) for g in prof.groups.values() if g.context == "junk" and g.subtype == "Cover Page")
         subtype = "Cover Page" if cover > 0 else "Others"
         return ruled(_junk_code(subtype), "R1", f"R1 tiny page: < {MIN_TEXT_CHARS} characters -> Junk / {subtype}")
-    # R5 DistilBERT keep, in both passes and ahead of R2-R4: DistilBERT sure the page is not
+    # R5.2 DistilBERT keep, in both passes and ahead of R2-R4: DistilBERT sure the page is not
     # junk keeps it, and no later rule can reverse that. Only R1 comes first: on a page with
     # no ink or almost no text the model has nothing to read.
     keep_below = float(prof.raw["voters"]["bert"]["force_keep_below"])
     if inputs.bert and float(inputs.bert["p_junk"]) < keep_below:
-        return ruled(CODE_MAIN, "R5", f"R5 DistilBERT p(junk) {float(inputs.bert['p_junk']):.3f} < {keep_below} -> Main")
+        return ruled(CODE_MAIN, "R5.2", f"R5.2 DistilBERT p(junk) {float(inputs.bert['p_junk']):.3f} < {keep_below} -> Main")
     # R2 placeholder
     if scores.group("junk", "placeholder") > 0 and words <= PLACEHOLDER_MAX_WORDS:
         return ruled(CODE_OTHERS, "R2", "R2 placeholder ('intentionally left blank') -> Junk / Others")
@@ -737,8 +737,8 @@ def decide(inputs: PageInputs) -> Verdict:
             return _vote(inputs, scores, ballots, votes)
         why = "Provider Signature = Yes" if inputs.signed else "signature phrase"
         return ruled(CODE_MAIN, "R4", f"R4 signature ({why}) -> Main")
-    # R5 DistilBERT force. Sure it is junk: Junk, but a face sheet or a clinical page is left
-    # to the vote, where the keyword ballot is KEEP on them. (Sure it is not junk: above.)
+    # R5.1 DistilBERT force. Sure it is junk: Junk, but a face sheet or a clinical page is left
+    # to the vote, where the keyword ballot is KEEP on them. (Sure it is not junk: R5.2, above.)
     force = float(prof.raw["voters"]["bert"]["force_junk_above"])
     protected = scores.clinical >= t["clinical"] or scores.demographic >= t["demographic"]
     if pass2 and inputs.bert and float(inputs.bert["p_junk"]) > force and protected:
@@ -746,7 +746,7 @@ def decide(inputs: PageInputs) -> Verdict:
     elif pass2 and inputs.bert and float(inputs.bert["p_junk"]) > force:
         subtype = ballots["bert"].subtype or MODEL_SUBTYPE.get(inputs.bert.get("top_junk_label") or "", "Others")
         return ruled(
-            _junk_code(subtype), "R5", f"R5 DistilBERT p(junk) {float(inputs.bert['p_junk']):.3f} > {force} -> Junk / {subtype}",
+            _junk_code(subtype), "R5.1", f"R5.1 DistilBERT p(junk) {float(inputs.bert['p_junk']):.3f} > {force} -> Junk / {subtype}",
         )
     # R6 short page
     if pass2:
@@ -757,7 +757,7 @@ def decide(inputs: PageInputs) -> Verdict:
             bottom = content_bottom(lines)
             votes["short_page"] = {"content_bottom": round(bottom, 3) if bottom is not None else None}
             if inputs.body_ink is not None:
-                # Why R5 did or did not fire: the ink found below the band, against the limit.
+                # Why R6 did or did not fire: the ink found below the band, against the limit.
                 votes["short_page"].update(
                     ink=inputs.body_ink,
                     ink_fraction=inputs.body_ink_fraction,
