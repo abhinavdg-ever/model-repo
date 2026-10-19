@@ -79,13 +79,17 @@ Three scores from the canon: **C** clinical, **J** junk, **D** demographic.
 | junk | **record_request** | 3 | 9 | Record Request/Transmittal | request for records, release of information |
 | junk | **roi_vendors** | 4 | 8 | Record Request/Transmittal | Optum, Datavant, Ciox |
 | junk | **invoice** | 3 | 9 | Invoice | invoice number, bill to, amount due |
+| junk | **id_card** | 4 | 8 | Others | card #, UCard, RxBIN / RxPCN / RxGRP, for pharmacist, rx claims, insurance card, driver's license, DL # |
 | junk | placeholder | 6 | 6 | Others | intentionally left blank |
 | demographic | identity | 1 | 3 | | patient name, DOB, sex, MRN |
 | demographic | registration | 2 | 6 | | face sheet, registration, guarantor |
 
-**Hard junk groups** (in bold): record_request, roi_vendors, invoice — retrieval and
-billing paperwork that a face sheet never carries. They matter for the demographic
-rules below.
+**Hard junk groups** (in bold): record_request, roi_vendors, invoice, id_card — retrieval
+and billing paperwork, and insurance / ID cards and driver's licences, that a face sheet
+never carries. They matter for the demographic rules below: a card prints a name and a
+DOB, and those must not rescue it as a face sheet. That is why card wording is a **junk**
+group and not part of demographic (demographic is KEEP evidence). Two card terms (8) make
+a strong JUNK ballot.
 
 | Threshold (`thresholds`) | Value | Name used below |
 |---|---|---|
@@ -126,10 +130,10 @@ and `/health` shows `engine: keywords`.
 | **R2** | "Intentionally left blank" (placeholder group) on ≤ **25** words | Junk / Others | 1, 2 | 0.99 |
 | **R3** | Provider Signature = Yes, or a signature phrase — **skipped when the ballots are JJ** (the vote decides; `votes.r3_skipped = "JJ"`) | Main | 2 | 0.95 |
 | **R4** | DistilBERT p(junk) **> 0.85** — not when C ≥ 4 or D ≥ 3 (then the vote decides; `votes.r4_skipped`) | Junk / DistilBERT's subtype | 2 | evidence |
-| **R5** | Short page (§4), unless **both** voters say KEEP (KK) | Junk / Others | 2 | evidence |
+| **R5** | Short page (§4), unless **both** voters say KEEP (KK) **and** DistilBERT's p(keep) > **0.8** | Junk / Others | 2 | evidence |
 | **R6** | record_request + roi_vendors ≥ **7** and not C⁺ | Junk / Record Request/Transmittal | 1, 2 | evidence |
 | **R7** | C⁺ (clinical ≥ 8) | Main | 1, 2 | evidence |
-| **R8** | Visual page (`visual`, < **20** words) → Main, unless record_request + roi_vendors + invoice ≥ **7** → Junk / that group's subtype | Main or Junk | 1 | evidence |
+| **R8** | Visual page (`visual`, < **20** words) → Main, unless record_request + roi_vendors + invoice + id_card ≥ **7** → Junk / that group's subtype | Main or Junk | 1 | evidence |
 | **R9** | The vote (§5) | | 1, 2 | evidence |
 
 ---
@@ -172,10 +176,11 @@ For scale: a page of body text is 5–15% ink; a signature or stamp is roughly
 
 A Provider Signature (R3) is checked before R5: a signed short page is kept, unless JJ.
 
-**Both KEEPs undo a short page.** When DistilBERT and the keywords both vote KEEP (KK,
-any strength), R5 is skipped (`votes.short_page.skipped = "KK"`) and the later rules / the
-vote decide. One KEEP is not enough: a split, an abstention or JJ leaves R5 to rule the
-short page Junk / Others.
+**Both KEEPs, with DistilBERT sure, undo a short page.** When DistilBERT and the keywords
+both vote KEEP (KK) and DistilBERT's p(keep) is above **0.8**
+(`short_page.undo_bert_keep_above`), R5 is skipped (`votes.short_page.skipped = "KK,
+DistilBERT p(keep) 0.91 > 0.8"`) and the later rules / the vote decide. One KEEP, or KK
+with DistilBERT at 0.8 or below, is not enough: R5 rules the short page Junk / Others.
 
 ---
 
@@ -329,7 +334,8 @@ Main.
 | Handwritten veto | > 30% | canon `handwritten_veto` |
 | R1 tiny / "blank" | < 15 / < 30 characters | `method.py` |
 | R2 placeholder | ≤ 25 words | `method.py` |
-| Hard junk groups | record_request, roi_vendors, invoice | `method.py` `HARD_JUNK_GROUPS` |
+| Hard junk groups | record_request, roi_vendors, invoice, id_card | `method.py` `HARD_JUNK_GROUPS` |
+| R5 undo | KK and DistilBERT p(keep) > 0.8 | canon `short_page.undo_bert_keep_above` |
 | Duplicates | ≥ 98%, ±5 pages, ≥ 300 characters | `classify.py` |
 
 ## 10. Changes, 2026-10-17 / 18
@@ -341,7 +347,9 @@ Main.
 - **Pass 2 keywords also count the junk terms only Tesseract read** (`tesseract_only`).
 - **R5 records its ink** (`ink`, `ink_fraction`, `ink_limit`).
 - **R5 ink limit 0.01% → 0.5%**; **short page 15% → 20%**, ink band 17% → 22% start.
-- **Both KEEPs (KK) undo a short page** (`short_page.skipped = "KK"`); one KEEP does not.
+- **KK with DistilBERT p(keep) > 0.8 undoes a short page** (`short_page.skipped`); one KEEP does not.
+- **New hard junk group `id_card`** (insurance / ID cards, driver's licences), also in the
+  Visual (R8) veto.
 - **Short page back to 15%** (ink band from 17%), 2026-10-19.
 - **The clinical and demographic vetoes are gone** (the keyword ballot covers them);
   the handwritten veto stays.

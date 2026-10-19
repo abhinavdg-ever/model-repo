@@ -390,12 +390,41 @@ def test_a_no_ink_page_is_judged_in_pass_1_and_is_blank():
     assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")
 
 
-def test_r5_is_undone_only_by_both_keeps():
+def test_r5_is_undone_only_by_both_keeps_with_distilbert_above_80():
     lines = [Line("Assessment:", 0.03, 0.05), Line("Plan: rest", 0.08, 0.10)]
-    # DistilBERT KEEP and keywords KEEP (KK): the short page is undone.
+    # KK with DistilBERT p(keep) 0.9 > 0.8: the short page is undone.
     kept = run(CLINICAL_WEAK, lines=lines, body_ink=False, bert=bert(0.1))
     assert (kept.votes["bert"]["vote"], kept.votes["kw"]["vote"]) == ("KEEP", "KEEP")
-    assert kept.rule != "R5" and kept.votes["short_page"]["skipped"] == "KK"
+    assert kept.rule != "R5" and kept.votes["short_page"]["skipped"].startswith("KK")
+    # KK but DistilBERT p(keep) 0.75: R5 stands.
+    hesitant = run(CLINICAL_WEAK, lines=lines, body_ink=False, bert=bert(0.25))
+    assert (hesitant.votes["bert"]["vote"], hesitant.votes["kw"]["vote"]) == ("KEEP", "KEEP")
+    assert hesitant.rule == "R5"
     # One KEEP only (DistilBERT JUNK, keywords KEEP): R5 stands.
     one = run(CLINICAL_WEAK, lines=lines, body_ink=False, bert=bert(0.7))
     assert one.votes["bert"]["vote"] == "JUNK" and one.rule == "R5"
+
+
+CARD_TEXT = (
+    "Benefit Award Card # 8101 3360 3004 6207 For Pharmacist: 1-877-889-6510 "
+    "Rx Claims: OptumRx UnitedHealthcare UCard Member ID 903710875-00 "
+    "RxBIN 610097 RxPCN 9999 RxGRP COS Optum Health Networks"
+)
+
+
+def test_an_insurance_card_is_junk_evidence():
+    scores = score_text(CARD_TEXT)
+    assert scores.best_junk_group() == "id_card" and scores.junk >= 7
+    # A name and DOB on the card do not rescue it as a face sheet (id_card is hard junk).
+    verdict = run("Patient name Roberts Victor DOB 03/16/1961 " + CARD_TEXT)
+    assert verdict.votes["kw"]["vote"] == "JUNK"
+
+
+def test_a_visual_card_with_card_wording_is_junk():
+    verdict = run("UCard RxBIN 610097 RxPCN 9999 Card # 8101", document_type="visual")
+    assert verdict.rule == "R8" and verdict.code != classify.CODE_MAIN
+
+
+def test_a_drivers_licence_is_junk_evidence():
+    assert score_text("Driver License DL # D1234567 class C organ donor").best_junk_group() == "id_card"
+

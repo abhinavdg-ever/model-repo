@@ -15,11 +15,12 @@ The ladder, first rule that fires decides (R4, R5 and R3's KV half need pass 2):
   R4 DistilBERT     p(junk) > 0.85 -> Junk, DistilBERT's subtype, unless the canon finds
                     clinical (C) or demographic (D) evidence: then the vote decides
   R5 short page     content ends in the top 15% of the page height, under 0.5% ink below
-                    (17%-94%) -> Junk / Others, unless both voters say KEEP (KK)
+                    (17%-94%) -> Junk / Others, unless both voters say KEEP (KK) and
+                    DistilBERT's p(keep) > 0.8
   R6 retrieval      record_request + roi_vendors >= 7 and not C+ -> Junk / Record Request
   R7 strong clinical  C+ -> Main
   R8 Visual         document_type 'visual' with < 20 words -> Main, unless retrieval /
-                    invoice wording >= 7 (a visual page with more text is not Visual)
+                    invoice / ID-card wording >= 7 (a visual page with more text is not Visual)
   R9 vote           DistilBERT and the keyword canon (BLANK_JUNK_LOGIC §5)
 
 Pass 1 only lets R1, R2, R6, R8 and two strong JUNK ballots decide; every other page stays
@@ -76,7 +77,9 @@ MODEL_SUBTYPE = {
 }
 # Junk evidence that is retrieval or billing paperwork, not something a face sheet carries.
 RETRIEVAL_GROUPS = ("record_request", "roi_vendors")
-HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice")
+# id_card: an insurance / ID card or driver's licence prints a name and DOB, which must
+# not rescue it as a face sheet.
+HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice", "id_card")
 
 # The two voters, in the order their letters are written in the vote
 # ("R9 vote JA (DistilBERT, keywords)"): K = Keep, J = Junk, A = Abstain.
@@ -704,9 +707,12 @@ def decide(inputs: PageInputs) -> Verdict:
             if inputs.body_ink is None:
                 votes["short_page"]["ink"] = "not_measured"
             elif bottom is not None and bottom <= float(short["top_fraction"]) and inputs.body_ink is False:
-                # Both voters KEEP (KK) undo the short page; one KEEP does not.
-                if all(b.vote == KEEP for b in ballots.values()):
-                    votes["short_page"]["skipped"] = "KK"
+                # Both voters KEEP (KK) with DistilBERT sure of it undo the short page;
+                # one KEEP, or a hesitant DistilBERT, does not.
+                undo_above = float(short.get("undo_bert_keep_above", 0.8))
+                p_keep = float(inputs.bert["p_keep"]) if inputs.bert else 0.0
+                if all(b.vote == KEEP for b in ballots.values()) and p_keep > undo_above:
+                    votes["short_page"]["skipped"] = f"KK, DistilBERT p(keep) {p_keep:.2f} > {undo_above}"
                 else:
                     return ruled(CODE_OTHERS, "R5", f"R5 short page: content ends at {bottom:.0%} of the height -> Junk / Others")
     # R6 retrieval counter-veto

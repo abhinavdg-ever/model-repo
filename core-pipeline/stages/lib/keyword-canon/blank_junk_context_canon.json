@@ -22,10 +22,13 @@
     "footer_band": 0.08
   },
   "short_page": {
-    "note": "Short page rule (precedence step R5). Content that ends within the top 'top_fraction' (15%; 20% 2026-10-18 to 2026-10-19) of the page height -> JUNK / Others, even when it carries a clinical heading and whatever the neighbouring pages are. Not when Provider Signature = Yes, or when both voters say KEEP (KK) (docs/BLANK_JUNK_LOGIC.md).",
+    "note": "Short page rule (precedence step R5). Content that ends within the top 'top_fraction' (15%; 20% 2026-10-18 to 2026-10-19) of the page height -> JUNK / Others, even when it carries a clinical heading and whatever the neighbouring pages are. Not when Provider Signature = Yes, or when both voters say KEEP (KK) and DistilBERT's p(keep) > undo_bert_keep_above (0.8) (docs/BLANK_JUNK_LOGIC.md).",
     "top_fraction": 0.15,
     "ignore_footer_band": 0.06,
-    "body_ink_band": [0.17, 0.94],
+    "body_ink_band": [
+      0.17,
+      0.94
+    ],
     "body_ink_max_fraction": 0.005,
     "note_body_ink": "Ink below the short band = the share of the 17%-94% band (body_ink_band; it starts 2% below top_fraction) that is dark ink strokes (hw_printed.page_marks strong_fraction). At or above body_ink_max_fraction (0.5%, 2026-10-18; was 0.01%) the page has content below and R5 does not junk it; a stamp, logo or fax line (~0.2%) no longer blocks it. votes.short_page records ink, ink_fraction and ink_limit.",
     "ignore_line_patterns": [
@@ -35,16 +38,18 @@
       "^\\s*(?:fax|from|to)\\b.*\\d{3}.*\\d{4}",
       "^\\s*confidential"
     ],
-    "note_patterns": "A line matching any of these (anywhere in the line) is a running header / footer stamp, not content: 'Page 3 of 7', 'MRN: 023466 Printed: 10/30/2025 8:10 AM Pg 14 of 17', a bare page number, a fax transmission line."
+    "note_patterns": "A line matching any of these (anywhere in the line) is a running header / footer stamp, not content: 'Page 3 of 7', 'MRN: 023466 Printed: 10/30/2025 8:10 AM Pg 14 of 17', a bare page number, a fax transmission line.",
+    "undo_bert_keep_above": 0.8
   },
   "visual": {
-    "note": "Visual = ocr_quality_results.document_type == 'visual' (CSV column document_type) AND fewer than max_words words of text. A visual page with more text is judged like any other page. Decided in pass 1 (R8): kept, or junk on very strong retrieval / invoice wording. Pass 2 is skipped for these pages. No confidence cut-off, no proxy.",
+    "note": "Visual = ocr_quality_results.document_type == 'visual' (CSV column document_type) AND fewer than max_words words of text. A visual page with more text is judged like any other page. Decided in pass 1 (R8): kept, or junk on very strong retrieval / invoice / ID-card wording. Pass 2 is skipped for these pages. No confidence cut-off, no proxy.",
     "document_type": "visual",
     "max_words": 20,
     "veto_junk_groups": [
       "record_request",
       "roi_vendors",
-      "invoice"
+      "invoice",
+      "id_card"
     ],
     "veto_min_score": 7
   },
@@ -559,6 +564,65 @@
         ],
         "patterns": [
           "\\$\\s*\\d+[\\d,]*\\.\\d{2}"
+        ]
+      },
+      "id_card": {
+        "note": "Insurance / ID cards and driver's licences (scanned card images). A junk indicator, not demographic: demographic terms keep a page, and a card's name / DOB would otherwise rescue it. Hard junk (method HARD_JUNK_GROUPS): it beats the demographic KEEP and counts toward the Visual (R8) veto. Added 2026-10-19.",
+        "weight": 4,
+        "cap": 8,
+        "subtype": "Others",
+        "terms": [
+          "card #",
+          "card no",
+          "card number",
+          "id card",
+          "member id card",
+          "insurance card",
+          "health insurance card",
+          "member card",
+          "card holder",
+          "cardholder",
+          "card issued",
+          "front of card",
+          "back of card",
+          "carry this card",
+          "present this card",
+          "this card does not guarantee",
+          "not a guarantee of coverage",
+          "rx bin",
+          "rxbin",
+          "rx pcn",
+          "rxpcn",
+          "rx grp",
+          "rxgrp",
+          "rx group",
+          "bin #",
+          "driver license",
+          "driver's license",
+          "drivers license",
+          "driving license",
+          "driver licence",
+          "driving licence",
+          "dl #",
+          "dl no",
+          "license #",
+          "licence #",
+          "organ donor",
+          "endorsements",
+          "restrictions none",
+          "identification card",
+          "state id",
+          "ucard",
+          "benefit card",
+          "award card",
+          "for pharmacist",
+          "for pharmacists",
+          "rx claims",
+          "pharmacy claims"
+        ],
+        "patterns": [
+          "\\bcard\\s*(?:#|no\\.?|number)\\s*:?\\s*[a-z0-9]",
+          "\\b(?:dl|lic(?:ense|ence)?)\\s*(?:#|no\\.?)\\s*:?\\s*[a-z0-9]"
         ]
       },
       "placeholder": {
