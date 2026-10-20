@@ -395,10 +395,13 @@ def _pre_register(
                 write_path=write,
                 read_path=source if mode == "blob" else (str(source) if source else None),
             )
+            # A new chart is 'received'; one already in chart_list keeps its status (and
+            # its results stay readable) until its own run starts and clears them, so a
+            # queued re-run does not drop finished charts off History.
             chart = upsert_chart(
                 conn,
                 chart_name=name,
-                status="received",
+                status=None,
                 source=mode,
                 blob_container=blob_container if mode == "blob" else None,
                 blob_path=source if mode == "blob" else None,
