@@ -5342,14 +5342,29 @@ input {
   white-space: nowrap;
 }
 
-/* History: an admin's Delete, beside OCR / Imaging; red so it is not clicked by habit. */
-.action-icon-btn.action-delete-btn {
-  background: var(--card);
-  color: var(--status-error-fg);
-  border: 1px solid var(--status-error-fg);
-  padding-inline: 0.45rem;
+/* A short "done" note (History: a chart deleted); goes after a few seconds. */
+.success-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--status-success-fg);
+  border-radius: 8px;
+  background: var(--status-success-bg);
+  color: var(--status-success-fg);
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
-.action-icon-btn.action-delete-btn:hover:not(:disabled) {
-  background: var(--status-error-bg);
+.success-banner span {
+  flex: 1;
+}
+
+.success-banner-close {
+  display: inline-flex;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0.1rem;
 }

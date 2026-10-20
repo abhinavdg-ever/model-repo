@@ -13,6 +13,7 @@ import {
   ScanSearch,
   Search,
   Trash2,
+  CheckCircle2,
   X,
 } from "lucide-react";
 import { readSession } from "./session";
@@ -359,6 +360,15 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   const skipFilterPageReset = useRef(true);
   const isAdmin = readSession()?.user.role === "admin";
   const [deleting, setDeleting] = useState<string | null>(null);
+  // The in-app "are you sure" for an admin's Delete, and the note after it.
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; pages: number } | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const t = window.setTimeout(() => setNotice(null), 6000);
+    return () => window.clearTimeout(t);
+  }, [notice]);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
   const [downloadWithTruth, setDownloadWithTruth] = useState(false);
@@ -488,20 +498,23 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   }
 
   /** Admin: delete the chart's pipeline results after a confirmation naming it. */
-  async function removeChart(id: string, name: string, pages: number) {
-    const ok = window.confirm(
-      `Delete chart ${name} (${pages} pages)?\n\n` +
-        "Every pipeline result for it is removed from the database. Its ground truth, " +
-        "manifest row and files on disk are kept, so a re-run rebuilds it. This cannot be undone here.",
-    );
-    if (!ok) return;
+  function askDelete(id: string, name: string, pages: number) {
+    setDeleteError(null);
+    setDeleteTarget({ id, name, pages });
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const { id, name } = deleteTarget;
     setDeleting(id);
-    setError(null);
+    setDeleteError(null);
     try {
       await deleteFolder(id);
+      setDeleteTarget(null);
+      setNotice(`Chart ${name} deleted. Its ground truth, manifest and files on disk are kept.`);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? `Could not delete ${name}: ${err.message}` : `Could not delete ${name}`);
+      setDeleteError(err instanceof Error ? err.message : "Could not delete the chart");
     } finally {
       setDeleting(null);
     }
@@ -671,6 +684,15 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
         )}
 
         {error && <div className="error-banner">{error}</div>}
+        {notice ? (
+          <div className="success-banner" role="status">
+            <CheckCircle2 size={15} aria-hidden="true" />
+            <span>{notice}</span>
+            <button type="button" className="success-banner-close" onClick={() => setNotice(null)} aria-label="Dismiss">
+              <X size={14} />
+            </button>
+          </div>
+        ) : null}
 
         <section className="landing-history" aria-label="History">
           <div className="landing-history-header">
@@ -898,11 +920,12 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                               type="button"
                               className="action-icon-btn action-delete-btn"
                               disabled={deleting === folder.id}
-                              onClick={() => void removeChart(folder.id, folder.name, folder.page_count)}
+                              onClick={() => askDelete(folder.id, folder.name, folder.page_count)}
                               title="Delete this chart's pipeline results (admin)"
                               aria-label={`Delete ${folder.name}`}
                             >
-                              <Trash2 size={15} aria-hidden="true" />
+                              <Trash2 size={16} aria-hidden="true" />
+                              Delete
                             </button>
                           ) : null}
                         </div>
@@ -961,6 +984,70 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
           )}
         </section>
       </div>
+
+      {deleteTarget ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            if (!deleting) setDeleteTarget(null);
+          }}
+        >
+          <div
+            className="modal-card"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-chart-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-card-header">
+              <div className="blob-auth-title-row">
+                <Trash2 size={18} aria-hidden="true" />
+                <h2 id="delete-chart-title">Delete chart?</h2>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setDeleteTarget(null)}
+                disabled={Boolean(deleting)}
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="blob-auth-copy">
+              <strong>{deleteTarget.name}</strong> ({deleteTarget.pages} page{deleteTarget.pages === 1 ? "" : "s"}):
+              every pipeline result for it is removed from the database. Its ground truth, manifest
+              row and files on disk are kept, so a re-run rebuilds it. This cannot be undone here.
+            </p>
+            {deleteError ? (
+              <div className="error-banner" style={{ marginTop: "0.75rem" }}>
+                Could not delete: {deleteError}
+              </div>
+            ) : null}
+            <div className="download-results-actions">
+              <button
+                type="button"
+                className="landing-file-viewer-btn"
+                onClick={() => setDeleteTarget(null)}
+                disabled={Boolean(deleting)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="landing-file-viewer-btn landing-file-viewer-btn-primary"
+                onClick={() => void confirmDelete()}
+                disabled={Boolean(deleting)}
+                autoFocus
+              >
+                <Trash2 size={15} aria-hidden="true" />
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {downloadOpen ? (
         <div
