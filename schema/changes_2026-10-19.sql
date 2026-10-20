@@ -16,6 +16,7 @@
 -- Section 5 (2026-10-19): the client's chart metadata on the manifest.
 -- Section 6 (2026-10-19): review-ui users and sign-in; who saved each ground truth.
 -- Section 7 (2026-10-20): chart_deletion, the record of charts an admin deleted.
+-- Section 8 (2026-10-20): page_continuity_results for the gap scorer (document splitting).
 
 -- 1. provider_signature_results: written by kv_extract, read by imaging_final.
 --    (It used to be defined in v2.sql only, and nothing wrote it.)
@@ -173,3 +174,16 @@ BEGIN
             FOR EACH ROW EXECUTE FUNCTION set_updated_at();
     END IF;
 END $$;
+
+-- 8. page_continuity_results for the gap scorer (2026-10-20, docs/CONTINUITY_LOGIC.md): no
+--    new columns (every score is in <chart>/staging/continuity.json); decided_by gains the
+--    scorer's reasons.
+ALTER TABLE page_continuity_results DROP CONSTRAINT IF EXISTS page_continuity_results_decided_by_check;
+ALTER TABLE page_continuity_results ADD CONSTRAINT page_continuity_results_decided_by_check
+    CHECK (decided_by IN (
+        'chart_start','decisive','decisive_conflict','sum','tie',
+        'conflict_a','conflict_b','final_pass','attached',
+        'first_page','blank_junk','same_dos','new_dos','pagination',
+        'signature','page_number_end','weighted',
+        'first_page_marker','page_type','page_end','continue_page','progress_note'
+    )) NOT VALID;

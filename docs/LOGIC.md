@@ -625,41 +625,42 @@ Non-Codable. A page on a weak link (an undated continue page) is flagged.
 
 ## 7b. Document continuity
 
-**Runs:** after page type and DOS (`continuity`, seq 87), on every page that
-is not blank, junk or duplicate. **Decides:** which document each page belongs
-to. Settings live in `keyword-canon/continuity_canon.json` and reload on change.
+**Runs:** after page type and DOS (`continuity`, seq 87), on every page. **Decides:**
+where one document ends and the next begins. Settings live in
+`keyword-canon/continuity_canon.json` (version 4) and reload on change.
 
-Full logic: [CONTINUITY_LOGIC.md](CONTINUITY_LOGIC.md).
+Full logic, every point value and a worked example: [CONTINUITY_LOGIC.md](CONTINUITY_LOGIC.md)
+(2026-10-20, from Document_Splitting.md).
 
-> **Redesign agreed 2026-10-19, not yet built:** every page gets a **Break Before** and a
-> **Break After** score (positive = break), the tag **New / Continue / Last / Standalone** is
-> worked out from the two, junk pages form their own segments (`Junk Jn`), blank pages are
-> compared across, and the scores are recomputed at four checkpoints (blank_junk pass 1 and 2,
-> page_subtype, continuity), with only the last one final. The gates and weighted ladder below
-> are what the code runs until then.
+**Gaps, not pages.** Every gap between two consecutive pages gets a break score: a plain
+sum of points (1 weak, 2 moderate, 3 strong, 5 decisive; + toward a break, − toward
+joined). A page's Break After and the next page's Break Before are that one number.
+`> 0` breaks, `< 0` joins, `0` joins and is flagged.
 
-**Gates** — the first that applies decides:
+| Points | Signals |
+|---|---|
+| ±5 decisive | a different / the same date of service (5 when read from a label, 3 from an edge keyword, 2 keyless: `staging/extraction.json`'s DOS tier); page numbers running on −5 |
+| ±3 | signed in the closing lines +3, "page N of N" +3, a title +3, page type change +3 scaled, a junk run +3 / +5, "continued" −3, sections in note order −3, the same visit number −3 |
+| ±2 | where the text ends (−2 full … +2 in the 50–65% band … 0 nearly empty), signed anywhere +2, the same header line −2, wording across the gap −2, the same junk kind −2 |
+| ±1 | a blank page between +1, the same footer line −1, loose wording −1, the same page type −1 |
 
-| Page | Result | `decided_by` |
-|---|---|---|
-| First page of the chart, or after a blank / junk page | new document | `first_page` / `blank_junk` |
-| Own DOS, the same From and To as the open document's | continue | `same_dos` |
-| Own DOS, a different one | new document | `new_dos` |
-| Printed page number follows on (N → N+1 of the same M) | continue | `pagination` |
-| The previous page printed "page N of N" | new document | `page_number_end` |
+A 5-point signal settles the gap unless another 5 opposes it; then a different date beats
+page numbers (medium confidence, flagged). Header / footer lines match exactly after
+digits and dates become placeholders; wording is compared only after repeated furniture
+is removed. **`extraction.json` comes first** for the DOS tier, the printed page number,
+signatures (a footer e-signature = signed in the closing lines), visit numbers
+(encounter-type IDs) and section headings.
 
-**Weighted evidence** — an undated page no gate decided: `score = Σ weight × value`
-over 13 signals (section order moving forward +10, page type change −7, a title −6, same
-visit number +5.4, page fill +5.1, header line repeats +4.7, previous page signed −4.4,
-body text similarity +3.7 / +1.0, same full page-type path +3, footer repeats +2.8,
-opens on CC/HPI +0.5, signed in tail −0.4). `≥ +4` continue, `≤ −4` new document,
-between **unknown**: kept in the open document and flagged `review_required`. A previous
-page with a signature in its tail closes its document (`signature`). Also flagged: a
-document of more than 25 pages with no page numbers, and a decision swung by the text
-proxy for page fill.
-
-A duplicate page in between does not break a document. Page numbers never split a
-document.
+**Blank pages, single junk pages and duplicates are transparent** (the gap is scored
+across them; a blank adds +1). A run of two or more junk pages is its own segment,
+`Junk 4` (one numbering with the documents; its DOS reads Skipped). **The final pass**
+splits a document holding two labelled dates, merges neighbours across a weak break (same
+date, "continued", same type without a title, an orphan page, junk of one kind), and lets a
+document that opens on a **Progress Note run on** until a new labelled date, a signature,
+a decisive break or a junk group. Every page gets a tag — `New / Continue / Last /
+Standalone (Doc n)`, `?` when a side is low-confidence — and a confidence (low / medium /
+high, and 0–1). Recorded, not yet acting: where the next page's text begins, and the
+two sub-score conflict patterns.
 
 **Final values** (the `imaging_final` stage): Final page type = the document's
 first page's (sub-type can differ, §7). Final DOS and Final encounter type =
@@ -672,9 +673,10 @@ page's.
 
 | Target | Columns |
 |---|---|
-| `page_continuity_results` | `document_seq`, `seq` (page within the document), `position`, `relation`, `decided_by`, `confidence_level`, `link_strength` (strong only while every link from the start is a shared DOS or page numbers), `start_confirmed`, `evidence`, `score` (the weighted score), `review_required` (unknown, long unpaginated run, text-proxy fill); `in_progress_note` is always false |
+| `page_continuity_results` | the original columns, one row per content or junk page: `document_seq` (documents and junk groups share the numbering), `seq`, `position` (first = New, single = Standalone), `relation`, `score` (the Break Before), `decided_by`, `confidence_level`, `evidence`, `link_strength`, `start_confirmed`, `review_required` |
+| `<chart>/staging/continuity.json` | every score of every gap: per page both scores, the label, confidence, the facts read (DOS trust, page number, signature, visit numbers) and both gaps' ending / opening / pair points, sub-scores, flags and final pass; per document its pages, DOS and page type |
 | `imaging_final` (the `imaging_final` stage) | one row per page: the Final value of every reviewer field; page type agreed across the document (`page_type_source`), DOS and encounter type the first page's (`dos_source = document`); a duplicate page copies the page it duplicates (`duplicate`, `duplicate_of_page_id`); `specialty` is the page's own page-axes specialty, `Unknown` when it has none (no ground truth). See [CONTINUITY_LOGIC.md](CONTINUITY_LOGIC.md) |
-| disk | `imaging/<chart>_continuity.csv`: the same per page, plus the printed `page_no` / `page_total`, the `section_headers`, the page's own `page_type`, `dos_from`, `dos_to`, `layout_source` (final2 / final1 / text), `score` and `review_required` |
+| disk | `imaging/<chart>_continuity.csv`: every page (blank and duplicate too), the same fields plus `kind`, `segment`, `dos_trust`, the printed `page_no` / `page_total`, `section_headers` and `layout_source` |
 
 ---
 
@@ -695,14 +697,10 @@ every page of the document gets one answer. Only when continuity has not run is 
 visit a run of **consecutive** pages sharing a date: the page's
 document-level DOS, else its page-level DOS.
 
-> **With the break-score redesign** ([CONTINUITY_LOGIC.md §9](CONTINUITY_LOGIC.md#9-encounter-type-and-the-label)):
-> a visit is a **Main** segment; junk segments never get an encounter type
-> (`reason = junk`); a blank page inside a document takes the document's answer; an
-> unclear gap inside a document whose two sides would answer different settings sets
-> `conflict = y` and `reason = unclear_break`. The DOS default
-(`DOS_DEFAULT_DATE`) is the absence of a date. A page without a usable date is
-a visit of its own and stays unresolved (`no_date` / `default_date`). The same
-date forty pages later is a second visit.
+> **Since the gap scorer (2026-10-20):** a visit is a document. Junk pages share the
+> document numbering but the encounter stage never reads them, so a junk group is never a
+> visit (its encounter type and DOS read Skipped in review-ui). A low-confidence gap inside a document is flagged by continuity, not
+> by the encounter stage.
 
 ### Evidence
 

@@ -323,8 +323,10 @@ export function splitPageType(value: string | null | undefined): {
   return { family, subtype };
 }
 
-/** "First (Doc 3)" — the label only, no reason; Not Found outside a document. */
+/** "New (Doc 3)", "Last (Junk J1)" — the label only, no reason; Not Found outside a
+ * document. A junk page has a label but no document number. */
 function fmtDocument(page: ImagingPageResult): string {
+  if (page.documentLabel) return page.documentLabel;
   if (page.documentSeq == null) return NOT_FOUND;
   const position = page.documentPosition ? page.documentPosition[0].toUpperCase() + page.documentPosition.slice(1) : "";
   return page.documentLabel || `${position} (Doc ${page.documentSeq})`;
@@ -1735,6 +1737,8 @@ type DocumentRow = {
   encounterType: string | null;
   dosFrom: string | null;
   dosTo: string | null;
+  /** Every page is junk: a junk group (shares the document numbering), no visit. */
+  junk: boolean;
 };
 
 /** One row per document (continuity stage), in page order. Its type and DOS are the
@@ -1760,6 +1764,7 @@ function documentRows(pages: ImagingPageResult[]): DocumentRow[] {
       encounterType: members.map((page) => text(page.encounterType)).find(Boolean) ?? null,
       dosFrom: text(first.finalDosFrom),
       dosTo: text(first.finalDosTo),
+      junk: members.every((page) => (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes (junk)")),
     });
   }
   return rows.sort((a, b) => a.startPage - b.startPage);
@@ -1806,13 +1811,14 @@ function DocumentsTable({
       <tbody>
         {rows.map((row) => (
           <tr key={row.seq}>
-            <td>{row.seq}</td>
+            <td>{row.junk ? `Junk ${row.seq}` : row.seq}</td>
             <td>{row.startPage}</td>
             <td>{row.endPage}</td>
-            <td>{fmtPageType(row.pageType, typeKnown)}</td>
-            <td>{fmt(row.encounterType, encounterKnown)}</td>
+            <td>{row.junk ? "Junk" : fmtPageType(row.pageType, typeKnown)}</td>
+            {/* A junk group is no visit: no encounter type and no DOS to find. */}
+            <td>{row.junk ? SKIPPED : fmt(row.encounterType, encounterKnown)}</td>
             <td className="imaging-mono">
-              {sections.dos ? fmtDocumentDos(row.dosFrom, row.dosTo) : YET_TO_PROCESS}
+              {row.junk ? SKIPPED : sections.dos ? fmtDocumentDos(row.dosFrom, row.dosTo) : YET_TO_PROCESS}
             </td>
           </tr>
         ))}

@@ -211,3 +211,30 @@ def test_a_run_in_progress_is_never_completed_by_old_stage_rows():
     failed = {"status": "failed", "current_stage": "dos_extract", "current_pass": 1}
     _hold_while_running(failed, ("dos_extract", 1))
     assert failed["status"] == "failed"
+
+
+def test_re_registering_an_unchanged_chart_keeps_its_last_run_at():
+    """A queued bulk run re-registers every chart; one that changes nothing keeps its
+    updated_at (review-ui's Last Run At) and its status."""
+    import time
+
+    from db.memory_store import MemoryStore
+
+    store = MemoryStore()
+    first = store.upsert_chart(chart_name="c1", status="completed", run_id="R1", batch_id="B1")
+    time.sleep(0.01)
+    again = store.upsert_chart(chart_name="c1", status=None, run_id="R1", batch_id="B1")
+    assert again["updated_at"] == first["updated_at"] and again["status"] == "completed"
+    moved = store.upsert_chart(chart_name="c1", status=None, run_id="R2", batch_id="B1")
+    assert moved["updated_at"] != first["updated_at"]
+
+
+def test_the_postgres_upsert_only_writes_a_changed_chart():
+    """The Postgres upsert carries a WHERE ... IS DISTINCT FROM guard and reads the row back
+    when nothing was written."""
+    import inspect
+
+    import db
+
+    source = inspect.getsource(db.upsert_chart.__wrapped__ if hasattr(db.upsert_chart, "__wrapped__") else db.upsert_chart)
+    assert "IS DISTINCT FROM" in source and "SELECT * FROM chart_list WHERE chart_name" in source

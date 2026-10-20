@@ -67,6 +67,8 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * page_continuity_results (v1.sql, 2026-10-20): decided_by gains the gap scorer's reasons;
+--    its scores go to <chart>/staging/continuity.json.
 --  * chart_deletion (v1.sql, 2026-10-20): charts an admin deleted in review-ui.
 --  * users moved to v1.sql (review-ui sign-in: username, password_hash, last_login_*,
 --    login_count; email optional), with user_login (every sign-in).

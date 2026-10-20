@@ -221,42 +221,57 @@ def upsert_chart(
 
     `source` never downgrades: a chart first seen by the manifest sweeper and
     later actually ingested becomes 'blob'/'local' and stays there.
+
+    A call that changes nothing (a bulk run re-registering a chart it already has)
+    does not write the row, so updated_at, which review-ui shows as Last Run At,
+    keeps the chart's last real change instead of the time the batch was queued.
     """
-    return conn.execute(
-        """
+    new = {
+        "page_count": "COALESCE(EXCLUDED.page_count, chart_list.page_count)",
+        "status": "COALESCE(%(status)s, chart_list.status)",
+        "current_stage": "COALESCE(EXCLUDED.current_stage, chart_list.current_stage)",
+        "current_pass": "COALESCE(EXCLUDED.current_pass, chart_list.current_pass)",
+        "source": """CASE
+                        WHEN chart_list.source = 'manifest' AND EXCLUDED.source <> 'manifest'
+                        THEN EXCLUDED.source
+                        WHEN chart_list.source = 'manifest' THEN chart_list.source
+                        ELSE COALESCE(%(source)s, chart_list.source)
+                     END""",
+        "blob_container": "COALESCE(EXCLUDED.blob_container, chart_list.blob_container)",
+        "blob_path": "COALESCE(EXCLUDED.blob_path, chart_list.blob_path)",
+        "output_path": "COALESCE(EXCLUDED.output_path, chart_list.output_path)",
+        "run_id": "COALESCE(EXCLUDED.run_id, chart_list.run_id)",
+        "batch_id": "COALESCE(EXCLUDED.batch_id, chart_list.batch_id)",
+    }
+    columns = ", ".join(f"chart_list.{c}" for c in new)
+    row = conn.execute(
+        f"""
         INSERT INTO chart_list (
             chart_name, page_count, status, current_stage, current_pass,
             source, blob_container, blob_path, output_path, run_id, batch_id
         ) VALUES (
-            %s, %s, COALESCE(%s, 'received'), %s, %s,
-            COALESCE(%s, 'blob'), %s, %s, %s, %s, %s
+            %(chart_name)s, %(page_count)s, COALESCE(%(status)s, 'received'), %(current_stage)s,
+            %(current_pass)s, COALESCE(%(source)s, 'blob'), %(blob_container)s, %(blob_path)s,
+            %(output_path)s, %(run_id)s, %(batch_id)s
         )
         ON CONFLICT (chart_name) DO UPDATE SET
-            page_count          = COALESCE(EXCLUDED.page_count, chart_list.page_count),
-            status              = COALESCE(%s, chart_list.status),
-            current_stage       = COALESCE(EXCLUDED.current_stage, chart_list.current_stage),
-            current_pass        = COALESCE(EXCLUDED.current_pass, chart_list.current_pass),
-            source              = CASE
-                                    WHEN chart_list.source = 'manifest'
-                                     AND EXCLUDED.source <> 'manifest'
-                                    THEN EXCLUDED.source
-                                    WHEN chart_list.source = 'manifest'
-                                    THEN chart_list.source
-                                    ELSE COALESCE(%s, chart_list.source)
-                                  END,
-            blob_container      = COALESCE(EXCLUDED.blob_container, chart_list.blob_container),
-            blob_path           = COALESCE(EXCLUDED.blob_path, chart_list.blob_path),
-            output_path         = COALESCE(EXCLUDED.output_path, chart_list.output_path),
-            run_id              = COALESCE(EXCLUDED.run_id, chart_list.run_id),
-            batch_id            = COALESCE(EXCLUDED.batch_id, chart_list.batch_id)
+            {", ".join(f"{c} = {e}" for c, e in new.items())}
+        WHERE ({columns}) IS DISTINCT FROM ({", ".join(new.values())})
         RETURNING *
         """,
-        (
-            chart_name, page_count, status, current_stage, current_pass,
-            source, blob_container, blob_path, output_path, run_id, batch_id,
-            status, source,
-        ),
+        {
+            "chart_name": chart_name, "page_count": page_count, "status": status,
+            "current_stage": current_stage, "current_pass": current_pass, "source": source,
+            "blob_container": blob_container, "blob_path": blob_path, "output_path": output_path,
+            "run_id": run_id, "batch_id": batch_id,
+        },
     ).fetchone()
+    if row is None:
+        # Nothing changed, so nothing was written: return the row as it is.
+        row = conn.execute(
+            "SELECT * FROM chart_list WHERE chart_name = %s", (chart_name,)
+        ).fetchone()
+    return row
 
 
 @_dispatch

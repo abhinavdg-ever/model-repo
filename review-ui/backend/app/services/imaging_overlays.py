@@ -1053,7 +1053,10 @@ def index_continuity_rows(
         if cname and not _chart_row_matches(cname, chart_name):
             continue
         document = _parse_int(row.get("document"))
-        if document is None:
+        # A junk page ('Last (Junk J1)') has no document number, only its label; Doc Summary
+        # groups on the number, so it must stay empty.
+        label = (row.get("continuation") or "").strip()
+        if document is None and not label:
             continue
         _put_page_keys(
             by_key,
@@ -1069,6 +1072,18 @@ def index_continuity_rows(
             },
         )
     return by_key
+
+
+_TAG = {"first": "New", "single": "Standalone", "continue": "Continue", "last": "Last"}
+
+
+def continuity_label(position: str | None, document: int | None, confidence_level: str | None) -> str | None:
+    """'New (Doc 3)', 'Continue? (Doc 3)' from page_continuity_results' position: the gap
+    scorer's tags (first = New, single = Standalone); '?' when the gap before was low."""
+    if not position or document is None:
+        return None
+    unsure = "?" if (confidence_level or "") == "low" else ""
+    return f"{_TAG.get(position, position.capitalize())}{unsure} (Doc {document})"
 
 
 def document_label(position: str | None, document: int | None) -> str | None:

@@ -1,44 +1,32 @@
-"""The weighted continue / new-document signals for one pair of pages.
+"""The measurements behind the gap signals (docs/CONTINUITY_LOGIC.md §3, §5).
 
-docs/CONTINUITY_LOGIC.md §4–§7. Every value is in [0, 1]; the engine multiplies each by
-its weight (``continuity_canon.json`` ``weights``) and sums. A signal that cannot speak
-(no section headers, no visit number) is 0 and so adds nothing either way.
-
-Text similarity is a small TF-IDF written here (no new dependency): character 3–5 grams
-inside words and word 1–2 grams, ``min_df`` 2, sublinear tf, fitted on every tail / head
-block of the chart (never per pair: idf needs the corpus to down-weight ubiquitous
-clinical vocabulary).
+Pure functions on page lines and text. The engine turns each into points
+(``continuity_canon.json`` ``points``). Text similarity is a small TF-IDF written here (no
+new dependency): character 3–5 grams inside words and word 1–2 grams, ``min_df`` 2,
+sublinear tf, fitted on every tail / head block of the chart (never per pair: idf needs
+the corpus to discount the vocabulary every page shares).
 """
 from __future__ import annotations
 
 import math
 import re
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Optional, Sequence
-
-# The signals the engine knows; the canon's weights may name only these.
-SIGNALS = (
-    "section_forward",
-    "page_type_change",
-    "cur_has_title",
-    "same_visit_number",
-    "page_fill",
-    "header_line_repeats",
-    "prev_signed",
-    "body_cosine_char",
-    "full_path_same",
-    "footer_line_repeats",
-    "body_cosine_word",
-    "cur_opens_note",
-    "prev_signed_in_tail",
-)
 
 # 'Visit #: 12345', 'Encounter No 9988-1', 'FIN 100234', 'CSN: 4455667'.
 _VISIT_NUMBER = re.compile(
     r"(?i)\b(?:visit|encounter|enc|fin|csn|account|acct)\s*(?:#|no\.?|number|num|id)?\s*[:#]?\s*"
     r"([a-z0-9][a-z0-9-]{4,})\b"
 )
+# 'continued', "cont'd", '(over)', 'see next page', 'continued on next page'.
+_CONTINUED = re.compile(r"(?i)\b(?:continued|cont'?d\.?|see\s+next\s+page|\(\s*over\s*\)|over\s*>>)\s*\W*$")
+_DATE = re.compile(
+    r"(?i)\b(?:\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}"
+    r"|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{2,4})\b"
+)
+_DIGITS = re.compile(r"\d+")
+_TERMINAL = re.compile(r"[.!?:;)\]\"']\s*$")
 
 
 @dataclass(frozen=True)
@@ -52,54 +40,48 @@ class Semantic:
     word_divisor: float = 0.15
 
 
-@dataclass
-class PairText:
-    """Furniture removed: what is left of the previous page's tail and the next page's head."""
-
-    tail: str
-    head: str
-    furniture: set[str] = field(default_factory=set)
-
-
-def strip_furniture(prev: Sequence[str], cur: Sequence[str], min_chars: int) -> tuple[list[str], list[str], set[str]]:
-    """Lines printed on both pages (banner, footer template) are furniture, not body."""
-    repeated = {l for l in prev if len(l) >= min_chars} & {l for l in cur if len(l) >= min_chars}
-    return [l for l in prev if l not in repeated], [l for l in cur if l not in repeated], repeated
+def normalized_line(text: str) -> str:
+    """A header / footer line with its dates and numbers as placeholders, so a page number
+    or a print time cannot make two otherwise identical lines differ:
+    'smith, john | mrn 004812 | printed 03/28/24 | page 3 of 7' ->
+    'smith, john | mrn # | printed <date> | page # of #'."""
+    return _DIGITS.sub("#", _DATE.sub("<date>", (text or "").lower())).strip()
 
 
-def _paragraphs(lines: Sequence[str]) -> list[str]:
-    """Blank-line blocks are rare in OCR: consecutive lines in threes."""
-    return [" ".join(lines[i : i + 3]) for i in range(0, len(lines), 3)]
+def furniture(prev: Sequence[str], cur: Sequence[str], min_chars: int) -> set[str]:
+    """Normalised lines of ``min_chars`` or more printed on both pages: banner, letterhead,
+    footer template."""
+    a = {normalized_line(l) for l in prev if len(l) >= min_chars}
+    b = {normalized_line(l) for l in cur if len(l) >= min_chars}
+    return a & b
+
+
+def repeated_line(prev: Sequence[str], cur: Sequence[str], min_chars: int) -> bool:
+    """An identical line (normalised, exact) in the same band of both pages."""
+    return bool(furniture(prev, cur, min_chars))
+
+
+def _collect(lines: Sequence[str], n_words: int, *, backwards: bool) -> str:
+    """Two lines, then more until ``n_words`` words are gathered."""
+    picked: list[str] = []
+    count = 0
+    for line in (reversed(lines) if backwards else lines):
+        picked.append(line)
+        count += len(line.split())
+        if len(picked) >= 2 and count >= n_words:
+            break
+    return " ".join(reversed(picked) if backwards else picked)
 
 
 def tail_block(lines: Sequence[str], nth_word: int) -> str:
-    """The last paragraph, walking back until ``nth_word`` words are gathered."""
-    paras = _paragraphs(lines)
-    out: list[str] = []
-    count = 0
-    for para in reversed(paras):
-        out.insert(0, para)
-        count += len(para.split())
-        if count >= nth_word:
-            break
-    return " ".join(out)
+    """The last two body lines (by position on the page), extended back to ``nth_word``
+    words."""
+    return _collect(lines, nth_word, backwards=True)
 
 
 def head_block(lines: Sequence[str], nth_word: int) -> str:
-    """The first paragraph, walking forward until ``nth_word`` words are gathered."""
-    out: list[str] = []
-    count = 0
-    for para in _paragraphs(lines):
-        out.append(para)
-        count += len(para.split())
-        if count >= nth_word:
-            break
-    return " ".join(out)
-
-
-def pair_text(prev_lines: Sequence[str], cur_lines: Sequence[str], semantic: Semantic) -> PairText:
-    prev_body, cur_body, furniture = strip_furniture(prev_lines, cur_lines, semantic.furniture_min_chars)
-    return PairText(tail_block(prev_body, semantic.tail_nth_word), head_block(cur_body, semantic.tail_nth_word), furniture)
+    """The first two body lines, extended forward to ``nth_word`` words."""
+    return _collect(lines, nth_word, backwards=False)
 
 
 # --- TF-IDF ----------------------------------------------------------------------------
@@ -161,28 +143,75 @@ def fit_corpus(blocks: Sequence[str], semantic: Semantic) -> Corpus:
     )
 
 
-# --- the other signals ------------------------------------------------------------------
+# --- the other measurements ---------------------------------------------------------------
 
 
 def visit_numbers(text: str) -> set[str]:
     return {m.group(1).casefold() for m in _VISIT_NUMBER.finditer(text or "") if re.search(r"\d", m.group(1))}
 
 
-def graded_fill(fill: Optional[float], ended_at: float, continues_at: float) -> float:
-    """0 at or below ``ended_at`` (the document ended there), 1 at or above ``continues_at``."""
-    if fill is None:
-        return 0.0
-    if fill <= ended_at:
-        return 0.0
-    if fill >= continues_at:
+def says_continued(last_lines: Sequence[str]) -> bool:
+    """The page's closing lines say it carries on."""
+    return any(_CONTINUED.search(line) for line in last_lines)
+
+
+def cut_mid_sentence(last_line: str) -> bool:
+    text = (last_line or "").strip()
+    return bool(text) and not _TERMINAL.search(text)
+
+
+def starts_mid_thought(first_line: str) -> bool:
+    text = (first_line or "").strip()
+    return bool(text) and text[0].islower()
+
+
+def ramp(x: float, x0: float, y0: float, x1: float, y1: float) -> float:
+    """Straight line from (x0, y0) to (x1, y1)."""
+    if x1 == x0:
+        return y1
+    return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+
+
+def fill_value(end: float, cfg: dict[str, float]) -> float:
+    """Where the text ends (fraction of the page height) -> -1 (full, continues) .. +1 (the
+    ending band) .. 0 (nearly empty). docs §5.1."""
+    full, taper, high, low, empty = (cfg["full_at"], cfg["taper_at"], cfg["band_high"], cfg["band_low"], cfg["empty_at"])
+    if end >= full:
+        return -1.0
+    if end >= taper:
+        return ramp(end, taper, 0.0, full, -1.0)
+    if end >= high:
+        return ramp(end, high, 1.0, taper, 0.0)
+    if end >= low:
         return 1.0
-    return (fill - ended_at) / (continues_at - ended_at)
+    if end >= empty:
+        return ramp(end, empty, 0.0, low, 1.0)
+    return 0.0
 
 
-def section_ranks(headers: Sequence[dict[str, Any]], rank_of: dict[str, int]) -> list[int]:
+def start_value(gap: float, cfg: dict[str, float]) -> float:
+    """Space between the header furniture and the first body line -> -0.5 (straight on) ..
+    +1 (air above a title block). docs §5.4."""
+    straight, near, air = cfg["straight_at"], cfg["near_at"], cfg["air_at"]
+    if gap <= straight:
+        return -0.5
+    if gap <= near:
+        return ramp(gap, straight, -0.5, near, 0.0)
+    if gap <= air:
+        return ramp(gap, near, 0.0, air, 1.0)
+    return 1.0
+
+
+def section_ranks(headers: Sequence[Any], rank_of: dict[str, int]) -> list[int]:
+    """Note-order ranks of the page's section headings (dicts with matched_canonical / text,
+    or plain heading texts)."""
     ranks = []
     for header in headers or []:
-        name = str(header.get("matched_canonical") or header.get("text") or "").strip().casefold()
+        if isinstance(header, dict):
+            name = str(header.get("matched_canonical") or header.get("text") or "")
+        else:
+            name = str(header)
+        name = name.strip().rstrip(":").strip().casefold()
         if name in rank_of:
             ranks.append(rank_of[name])
     return ranks

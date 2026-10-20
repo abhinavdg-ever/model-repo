@@ -788,14 +788,19 @@ CREATE TABLE page_continuity_results (
     id                   BIGSERIAL PRIMARY KEY,
     chart_id             BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
     page_id              BIGINT NOT NULL REFERENCES page_list(id) ON DELETE CASCADE,
+    -- Documents and junk groups share one numbering (the gap scorer, 2026-10-20). Every
+    -- score and signal is in <chart>/staging/continuity.json; score is the Break Before.
     document_seq         INT NOT NULL,
     seq                  INT NOT NULL,
     position             VARCHAR(10) NOT NULL CHECK (position IN ('single','first','continue','last')),
     relation             VARCHAR(20) NOT NULL CHECK (relation IN ('new_document','continue','unknown')),
     decided_by           VARCHAR(20) NOT NULL CHECK (decided_by IN (
+                             -- the gap scorer (2026-10-20, docs/CONTINUITY_LOGIC.md)
+                             'chart_start','decisive','decisive_conflict','sum','tie',
+                             'conflict_a','conflict_b','final_pass','attached',
+                             -- earlier engines; old rows
                              'first_page','blank_junk','same_dos','new_dos','pagination',
                              'signature','page_number_end','weighted',
-                             -- the ladder before the weighted revamp (2026-10-18); old rows
                              'first_page_marker','page_type','page_end','continue_page','progress_note'
                          )),
     confidence_level     VARCHAR(10) CHECK (confidence_level IS NULL OR confidence_level IN (

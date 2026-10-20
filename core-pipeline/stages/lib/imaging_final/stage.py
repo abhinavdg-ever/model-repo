@@ -107,12 +107,17 @@ def _signatures(rows: dict[int, dict[str, Any]]) -> dict[int, dict[str, Any]]:
 
 
 def _documents(
-    pages: list[dict[str, Any]], continuity: dict[int, dict[str, Any]]
+    pages: list[dict[str, Any]],
+    continuity: dict[int, dict[str, Any]],
+    junk: frozenset[int] = frozenset(),
 ) -> dict[int, list[int]]:
-    """Document number → its page ids in order."""
+    """Document number → its content page ids in order. Junk pages share the numbering
+    (junk groups, and a single junk page inside a document) but keep their own values."""
     documents: dict[int, list[tuple[int, int]]] = {}
     for page in pages:
         row = continuity.get(page["id"])
+        if page["id"] in junk:
+            continue
         if row and row.get("document_seq") is not None:
             documents.setdefault(int(row["document_seq"]), []).append(
                 (int(row.get("seq") or 0), page["id"])
@@ -170,7 +175,10 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "names": axes.names_of(kind),
                 "encounter_type": (encounters.get(page["id"]) or {}).get("encounter_type"),
             }
-        documents = _documents(ctx.pages, continuity)
+        junk_pages = frozenset(
+            pid for pid, row in blank_junk.items() if (row or {}).get("blank_junk_flag") in ("blank", "junk", "duplicate")
+        )
+        documents = _documents(ctx.pages, continuity, junk_pages)
         carried: dict[int, dict[str, Any]] = {}
         document_of: dict[int, list[int]] = {}
         for document_pages in documents.values():

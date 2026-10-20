@@ -1,412 +1,510 @@
-# Document continuity — break scores
+# Document continuity — where one document ends and the next begins
 
-Which document each page belongs to, and the values a document's pages share.
-
-> **Status (2026-10-19): design agreed, engine not yet rebuilt.** This file describes the
-> break-score method the user asked for on 2026-10-19. The code still runs the
-> gate + weighted ladder of 2026-10-18 (summarised in §13 so it can be compared). The
-> weights below keep the fitted values of that revamp, sign-flipped so that **positive
-> means break**; signals marked *new* are estimated and must be fitted before trusting.
-> Background and measurement: [`CONTINUITY_ENCOUNTER_REVAMP.md`](CONTINUITY_ENCOUNTER_REVAMP.md).
+What the code does, with every number and the file that holds it. The method and its
+reasoning come from *How we decide where one document ends and the next begins*
+(Document_Splitting.md, 2026-10-20); this file describes it as built. Paths are relative
+to `core-pipeline/`.
 
 | | |
 |---|---|
-| Engine | `core-pipeline/stages/lib/continuity/engine.py` |
-| Signals | `core-pipeline/stages/lib/continuity/signals.py`, `layout.py`, `signature.py` |
-| Runs | at four checkpoints (§6): blank_junk pass 1 (seq 30), blank_junk pass 2 (60), page_subtype (75), `continuity` (87, final) |
-| Settings | `stages/lib/keyword-canon/continuity_canon.json` (reloads on change) |
-| Writes | `page_break_scores` (every checkpoint), `page_continuity_results` (final), `imaging/<chart>_continuity.csv` |
-| Final values | written by `imaging_final` (seq 100) |
-| Shown | review-ui: Break Before / Break After, the tag, and the basis of each score |
+| Engine | `stages/lib/continuity/engine.py` (`assign`, `score_gap`, `_final_pass`) |
+| Measurements | `stages/lib/continuity/signals.py` (furniture, tail / head blocks, TF-IDF, the curves) |
+| Stage | `stages/lib/continuity/stage.py` — `continuity`, seq 87, after `page_subtype` and `dos_extract`, before `imaging_final` |
+| Settings | `stages/lib/keyword-canon/continuity_canon.json`, version 4 (reloads on change) |
+| Inputs | `staging/extraction.json` first (§3), then the DB (DOS, page type, blank / junk) and the OCR JSON |
+| Writes | `page_continuity_results` (the original columns, one row per content or junk page), `<chart>/staging/continuity.json` (every score of every gap), `imaging/<chart>_continuity.csv` (every page) |
+| Database | no new columns; `schema/changes_2026-10-19.sql` §8 widens `decided_by` on an existing database |
 
 ---
 
-## 1. The idea
+## 1. Why it matters
 
-Every page gets two scores:
+The pages of a chart arrive in order with nothing saying where one document stops.
+Four later decisions depend on the grouping:
 
-- **Break Before:** how strongly the evidence says a new document starts *at* this page.
-- **Break After:** how strongly the evidence says the document *ends* after this page.
+- **Date of service.** A labelled date is on about 18% of pages; the rest inherit their
+  document's.
+- **Page type.** A lab table inside a progress note is part of the note.
+- **Codability.** The same questionnaire is codeable inside a note and not on its own.
+- **Encounter type.** Decided once per document (`encounter` stage, seq 90).
 
-The tag (**New / Continue / Last / Standalone**) is worked out from the two scores. It is
-never stored as a fact on its own. Break After of page *i* and Break Before of page *i+1*
-describe the same gap, so they are the **same number**, shown from both pages. Change the
-evidence on one gap and the tags on both sides follow; they cannot disagree.
-
-Nothing is final until the last checkpoint. Each checkpoint **recomputes** every score
-from all the evidence available at that moment (never adjusting the previous result), so a
-re-run gives the same answer and a later stage can undo an earlier break.
-
-Getting it wrong is asymmetric: merging two encounters is a clinical error that reaches
-coding; splitting one is a nuisance a reviewer catches. Unclear gaps are **flagged**, not
-guessed.
+**The two mistakes are not equal.** Joining two documents merges two visits, and
+nothing downstream can see it. Splitting one leaves a fragment a reviewer notices. So
+**when the evidence is balanced, the gap joins**, and a later pass can still split.
 
 ---
 
-## 2. The gap score
+## 2. Gaps, not pages
 
-```
-break(i → i+1) = Σ weight × value        every value in [0, 1]; positive = break
+Between any two consecutive pages there is a **gap**, and the gap is what is decided.
+It gets one **break score**: a plain sum of points, positive toward a break, negative
+toward joined.
 
-  ending evidence   read on page i alone      (how page i ends)
-+ opening evidence  read on page i+1 alone    (how page i+1 starts)
-+ pair evidence     comparing the two pages   (do they belong together)
-```
+- **Break Before** of a page = the score of the gap before it.
+- **Break After** of a page = the score of the gap after it.
+- Break After of page 4 and Break Before of page 5 are **the same number**, so the two
+  pages can never disagree.
+- The first page of the chart always starts a document; the last always ends one.
 
-| Gap score | Gap state |
-|---|---|
-| ≥ **+4** | **break** |
-| ≤ **−4** | **joined** |
-| between | **unclear**: treated as joined (the page stays in the open document, the recoverable error) and flagged `review_required` |
+Every gap draws on three kinds of evidence, kept as separate **sub-scores**:
 
-Never widen the band to lower the unclear rate: those are the gaps most likely to be
-decided wrongly.
-
-Two fixed ends: the chart's first page has Break Before = **break** and its last page has
-Break After = **break**. Nothing else is hard: DOS and printed page numbers are heavy
-weights, not gates, because OCR misreads "2 of 3" and DOS extraction makes mistakes.
-
-### 2.1 Ending evidence (page i, part of its Break After)
-
-| Signal | Weight | Value | Status |
-|---|---|---|---|
-| `page_fill` | −5.1 | how far down the body text reaches (§4.2); a full page pulls toward joined, an empty bottom adds nothing | fitted |
-| `bottom_ink` | −3.0 | C1 only, before line positions: the same measure from the image's last ink row (§4.2) | *new* |
-| `prev_signed` | +4.4 | the page is signed anywhere | fitted |
-| `signed_in_tail` | +8.0 | a signature block in the last third of the lines (replaces the old "signature terminator" override) | *new* |
-| `page_n_of_n` | +8.0 | prints "page N of N": the last page | *new* |
-| `continued_marker` | −6.0 | ends with "continued", "cont'd", "(over)", "see next page" | *new* |
-| `cut_mid_sentence` | −2.0 | the last body line ends without terminal punctuation, mid-word, or in a hyphen | *new* |
-
-### 2.2 Opening evidence (page i+1, part of its Break Before)
-
-| Signal | Weight | Value | Status |
-|---|---|---|---|
-| `cur_has_title` | +6.0 | the page carries a title for its page type | estimated |
-| `page_one` | +6.0 | prints "page 1 of M" | *new* |
-| `cur_opens_note` | −0.5 | opens on Chief Complaint / HPI (fitted small and joining; kept as measured) | fitted |
-| `starts_mid_sentence` | −2.0 | the first body line starts in lowercase or mid-list | *new* |
-
-### 2.3 Pair evidence
-
-| Signal | Weight | Value | Status |
-|---|---|---|---|
-| `different_dos` | **+15.0** | both pages carry their own DOS and From or To differs | *new* (was gate 4) |
-| `same_dos` | **−10.0** | this page's own DOS equals the open document's | *new* (was gate 3) |
-| `pagination_follows` | **−10.0** | "3 of 5" → "4 of 5" | *new* (was gate 5) |
-| `section_forward` | −10.0 | sections move forward in note order (§4.3) | fitted |
-| `page_type_change` | +7.0 | (1 − same-type probability) × confidence in the new type (§4.4) | estimated |
-| `same_visit_number` | −5.4 | the same visit / encounter / FIN / CSN number on both | fitted |
-| `header_line_repeats` | −4.7 | a header line (≥ 12 characters) printed on both | fitted |
-| `body_cosine_char` | −3.7 | character tf-idf similarity, tail → head (§4.1) | fitted |
-| `full_path_same` | −3.0 | the same page type at every level | estimated |
-| `footer_line_repeats` | −2.8 | a footer line printed on both | fitted |
-| `body_cosine_word` | −1.0 | word tf-idf similarity | fitted |
-| `kind_change` | +8.0 | one page is Main and the other Junk; value = the junk verdict's confidence (§3) | *new* |
-| `same_junk_group` | −4.0 | both Junk with the same junk group (invoice → invoice) | *new* |
-| `blank_between` | +1.0 | one or more blank pages sit in the gap (§3.2) | *new* |
-
-`different_dos` (+15) outweighs `pagination_follows` (−10) as before: a different date is
-a different encounter whatever the footer says (+5 → break). Same DOS plus page numbers
-following on is −20, a very strong join.
-
-`fitted` = measured on 170 labelled pairs from 15 charts (balanced accuracy 0.79 ± 0.19,
-split by chart); the `measurement` block in the canon carries the provenance.
-
-### 2.4 The basis
-
-Every score is stored with its parts, so a reviewer sees *why*:
-
-```
-Break Before  +11.7   break    page_type_change +5.7, cur_has_title +6.0, page_fill(prev) −0.0
-Break After    −0.9   unclear  page_fill −5.1, page_type_change +4.2  → review
-```
-
-The top four contributions by size go into `evidence`; all of them are in the JSON.
-
----
-
-## 3. Main, junk and blank pages
-
-### 3.1 Junk pages form their own segments
-
-Junk pages are no longer dropped from continuity. They are scored with the same method and
-grouped into **junk segments** that get the same four tags: a three-page records request is
-`New (Junk J1)`, `Continue (Junk J1)`, `Last (Junk J1)`.
-
-- The step between Main and Junk is `kind_change` (+8 × junk confidence): a confident junk
-  page after a note breaks, but a weakly called one does not cut a note in half.
-- If blank_junk pass 2 reverses a junk call, the next checkpoint re-scores the gap and the
-  note joins up again.
-- DOS signals are not used between junk pages.
-
-### 3.2 Blank pages are compared across
-
-Duplex scans put blank backs inside documents. A blank page is **transparent**: the gap is
-scored between the page before it and the page after it, plus `blank_between` (+1.0).
-
-- The blank page has no Break Before / After of its own and no tag.
-- It is shown **inside** the document when the gap across it is joined ("Blank, in Doc 3"),
-  and **between** documents when it is a break.
-
-### 3.3 Duplicates
-
-As before: a duplicate takes its original's document, tag and values, and adds no gap.
-
----
-
-## 4. The signals in detail
-
-### 4.1 Text running from one page into the next
-
-1. **Strip the furniture**: lines of ≥ 12 characters printed on both pages (patient
-   banner, footer template) are removed; they are what `header_line_repeats` /
-   `footer_line_repeats` score.
-2. **Tail and head blocks**: the previous page's last body lines, walking back in groups of
-   three lines until 20 words; the next page's first body lines, forward, likewise.
-3. **TF-IDF cosine** on those blocks: character 3–5 grams within words, word 1–2 grams;
-   `min_df` 2, sublinear tf; fitted on every block of the chart. Normalised
-   `min(1, cosine / 0.25)` for characters, `/ 0.15` for words.
-
-### 4.2 Page ending: fill and bottom space
-
-Where the body ends: the bottom of the last line **starting above the footer band**,
-divided by the footer top (0.92), clipped to 1. Bottom space = 1 − fill.
-
-| Fill | Value |
-|---|---|
-| ≤ 0.60 | 0: the text stopped early, no pull toward joined |
-| 0.60 – 0.92 | graded: (fill − 0.60) / 0.32 |
-| ≥ 0.92 | 1: the text runs on |
-
-Sources, best first:
-
-| Checkpoint | Source |
-|---|---|
-| C2+ | Final 2 line polygons, else Final 1 words grouped into lines |
-| C1 | `bottom_ink`: the corrected page image's last row with ink above the footer band (works on handwriting, needs no OCR boxes) |
-| none | text proxy: 1 when ≥ 28 lines or ≥ 1,800 characters, else 0; flagged when it swings a gap |
-
-Bottom space only counts together with how the next page opens: an empty bottom followed
-by a titled page is a break; an empty bottom followed by a page continuing the same
-sections (the short last page of a long note is the common case) stays joined.
-
-### 4.3 Section order
-
-Note order (`section_order` in the canon): chief complaint → HPI → review of systems →
-past history → social → family → medications → allergies → vitals → physical exam → labs →
-imaging → problem list → assessment / diagnosis → plan → patient instructions → follow-up.
-
-`section_forward = clip((first section of this page − last section of the previous) / steps × 4, 0, 1)`.
-Moving backwards counts 0.
-
-### 4.4 Page type change
-
-| Previous | This page | Confidence | Same-type probability | Value | × +7 |
-|---|---|---|---|---|---|
-| Progress Note | Lab | 90% | 10% | 0.81 | +5.7 |
-| Progress Note | Lab | 60% | 40% | 0.36 | +2.5 |
-| Progress Note | Progress Note | 95% | 95% | 0.05 | +0.3 |
-
----
-
-## 5. The tag
-
-Each side of a page is **break** or **not** (joined or unclear):
-
-| Break Before | Break After | Tag |
+| Kind | Read from | Example |
 |---|---|---|
-| break | not | **New** |
-| not | not | **Continue** |
-| not | break | **Last** |
-| break | break | **Standalone** |
-
-Shown as `New (Doc 3)`, `Continue (Junk J1)`, and so on. A page with an unclear side carries
-`review_required` and a "?" in review-ui (`Continue? (Doc 3)`).
-
-Documents are numbered in page order: `Doc n` for Main segments, `Junk Jn` for junk
-segments.
-
-| Field | Meaning |
-|---|---|
-| `start_confirmed` | the New page has a title or prints "page 1" |
-| `link_strength` | `strong` while every gap back to the New page is ≤ −10, else `weak` |
+| **ending** | the earlier page alone | it finishes with a signature |
+| **opening** | the later page alone | it carries a title |
+| **pair** | the two compared | the same header line on both |
 
 ---
 
-## 6. Checkpoints: nothing is final early
+## 3. Where each fact comes from: `extraction.json` first
 
-| # | Runs at | Evidence it adds | Writes |
+The key/value extraction runs once after OCR and stages what it found per page in
+`<chart>/staging/extraction.json`. Continuity reads it first (`stage.py`):
+
+| Fact | From the staging | Fallback |
+|---|---|---|
+| **How the date was found** (DOS trust) | the tier of the staged `dos` row that read the page's Extracted DOS (best tier wins) | `dos_trust.default` (3) |
+| **Printed page number** | the selected `page_no` row (`page_no`, `page_total`) | `additional_page_details`, then "page N of M" in the header / footer bands |
+| **Signed anywhere** | any accepted `electronic_signature` row | `provider_signature.csv` `signature_present = y`, or a signature phrase in the text |
+| **Signed in the closing lines** | an accepted `electronic_signature` row in the `footer` region | a signature phrase in the page's last third of lines |
+| **Visit number** | accepted `member_id` rows whose key is an encounter-type ID (FIN, CSN, account, visit — `member_id/id_types.json`) | `Visit / Encounter / FIN / CSN / Account #` in the text |
+| **Section headings** | accepted `heading_heron` rows of kind `section` | the OCR JSON's matched `section_headers` (both are used) |
+
+The rest comes from the database and the OCR files:
+
+| Fact | From |
+|---|---|
+| Date of service | `dos_extraction_results` (the DOS stage's Extracted DOS) |
+| Page type, full path, confidence, title | `page_classification` (axes: family = L1, names = the full path; `axes.title_of`) |
+| Blank / junk / duplicate, junk subtype and confidence | `v_page_blank_junk_final` |
+| Line positions | Final 2 JSON line polygons, else Final 1 words grouped into lines, else text lines |
+
+Header band: a line whose top is above **10%** of the page; footer band: bottom below
+**92%** (`bands`).
+
+---
+
+## 4. Every signal and its points
+
+Points are **1, 2, 3 or 5** only (`points` in the canon): 5 decisive, 3 strong,
+2 moderate, 1 weak. + pushes toward break, − toward joined.
+
+### 4.1 Decisive — 5
+
+| Signal | Points | When |
+|---|---|---|
+| `different_dos` | **+5 / +3 / +2** | the page's date differs from the open document's date |
+| `same_dos` | **−5 / −3 / −2** | the page's date equals the open document's |
+| `pagination_follows` | **−5** | "page 3 of 5" followed by "page 4 of 5" |
+
+**Date points depend on how the date was found** (`dos_trust`); the lower of the two
+dates' trust counts:
+
+| DOS tier | Points |
+|---|---|
+| `service`, `admit`, `discharge` (a proper label) | **5**, decisive |
+| `weak`, `received`, `printed`, `collected` (a keyword near the edge; lab collection dates kept off the decisive tier) | 3 |
+| `keyless` | 2 |
+| not explained by the staging | 3 |
+
+The open document's date is its first dated content page. A junk segment owns no
+date, so the last document's date stays open across it.
+
+**Page numbers only ever join.** "Page 1 of 6" is not used to split: OCR misreads a 7
+as a 1, and a wrongly split document is very hard to find later.
+
+### 4.2 Strong — 3
+
+| Signal | Side | Points | Measured |
 |---|---|---|---|
-| **C1** | blank_junk pass 1 (seq 30) | Tesseract text: titles, "N of M", header/footer repeats, signature phrases, cosines; `bottom_ink`; pass-1 verdicts (Main / Junk / Blank) | `page_break_scores` |
-| **C2** | blank_junk pass 2 (60) | Final 1 / Final 2 line positions (exact `page_fill`, cut / mid-sentence), section headers, KV page numbers, pass-2 verdicts | `page_break_scores` |
-| **C3** | page_subtype (75) | page type, confidence, full path, canon title | `page_break_scores` |
-| **Final** | `continuity` (87) | Extracted DOS, signature flags; tags fixed, Final values carried | `page_break_scores` + `page_continuity_results` |
+| `signed_in_tail` | ending | +3 | difference 21 |
+| `signed_anywhere` | ending | +2 | difference 26 (fires with the above: a signed closing page totals +5) |
+| `last_numbered_page` | ending | +3 | "page N of N" |
+| `has_title` | opening | +3 | **assumed — check first**: section headings taken for titles |
+| `page_type_change` | pair | +3 × (1 − same-type probability) × confidence | assumed (§5.2) |
+| `junk_run` | pair | +3 (a run of 2) / +5 (3 or more) × junk confidence | assumed (§6) |
+| `says_continued` | ending | −3 | "continued", "cont'd", "(over)", "see next page" at the end |
+| `sections_forward` | pair | −3 × how far forward | difference 27, no false positives |
+| `same_visit_number` | pair | −3 | difference 8, no false positives |
 
-- **Every checkpoint recomputes** from scratch with the signals present; a missing signal
-  is left out, not counted as 0 (`evidence` records which were available).
-- **Each checkpoint keeps its own row**, so review-ui can show how a page's scores moved
-  (C1 −2.1 → C2 +6.3 → Final +6.3: "the line positions showed the text stopped at 40%").
-- Only the Final checkpoint feeds Final values and `imaging_final`. Earlier checkpoints are
-  provisional; no stage reads them as decisions today.
+### 4.3 Moderate — 2
+
+| Signal | Side | Points | Measured |
+|---|---|---|---|
+| `page_fill` | ending | −2 .. +2, the curve in §5.1 | join side difference 34, the strongest measured |
+| `text_start` | opening | −1 .. +2, §5.4 | **unmeasured: recorded only** |
+| `same_header_line` | pair | −2 | difference 31 (normalised matching should beat it) |
+| `wording_char` | pair | −2 × similarity | difference 27, after removing furniture (§5.3) |
+| `same_junk_kind` | pair | −2 | both junk, the same subtype |
+
+### 4.4 Weak — 1
+
+| Signal | Side | Points | Note |
+|---|---|---|---|
+| `blank_between` | pair | +1 | a blank page in the gap |
+| `same_footer_line` | pair | −1 | difference 8: one footer template is printed across unrelated documents |
+| `wording_word` | pair | −1 × similarity | not independent of `wording_char`, so it carries less |
+| `cut_mid_sentence` | ending | −1 | only when `wording_char` fires: worthless alone (difference 3) |
+| `starts_mid_thought` | opening | −1 | only when `wording_char` fires (difference 5 alone) |
+| `same_page_type` | pair | −1 | the full type path, not just "both Progress Notes" |
 
 ---
 
-## 7. Review flags (`review_required`)
+## 5. The scaled signals
 
-| Flag | When |
+### 5.1 Where the text ends (`page_fill`)
+
+From the bottom of the earlier page's last body line (lines starting in the footer band
+do not count), as a fraction of the page height:
+
+| Text ends at | Value | Reading |
+|---|---|---|
+| ≥ 92% | **−2** | the page ran out of room: continues |
+| 80% – 92% | −2 .. 0 | tapering off |
+| 65% – 80% | 0 .. +2 | rising into the band |
+| 50% – 65% | **+2** | finished, with room for a signature |
+| 35% – 50% | +2 .. 0 | falling away |
+| < 35% | **0** | too little on the page to judge (a spillover tail or a failed print) |
+
+The peak is worth only +2, so a form page ending in the band can be outvoted. With a
+signature in the closing lines it adds up to near-decisive, which is right.
+
+**Without line positions** a rough proxy is used: −2 when the page has ≥ 28 lines or
+≥ 1,800 characters, else nothing. The positive band cannot be read this way. When the
+proxy decides a gap, the gap is flagged.
+
+### 5.2 How much the page type changed (`page_type_change`)
+
+`(1 − same-type probability) × the classifier's confidence × 3`. The same-type
+probability is the confidence when the two families agree, one minus it when they
+differ. Below 0.05 it is not counted.
+
+| Previous | This page | Confidence | Points |
+|---|---|---|---|
+| Progress Note | Lab | 90% | +2.4 |
+| Progress Note | Lab | 60% | +1.1 |
+| Progress Note | Progress Note | 95% | +0.1 |
+
+### 5.3 Wording across the gap (`wording_char`, `wording_word`)
+
+1. **Remove the furniture.** Any line of ≥ 12 characters printed on both pages
+   (compared normalised, §7) is stripped: banner, letterhead, footer template. Without
+   this the signal measures nothing (difference 1). The removed lines are what
+   `same_header_line` and `same_footer_line` score instead.
+2. **Take the ends by line.** The earlier page's **last two body lines** by position,
+   extended back until 20 words; the later page's first two, forward.
+3. **Compare.** Character 3–5 grams (survives OCR damage) and word 1–2 grams, TF-IDF
+   fitted on every block of the chart, so words every page shares are discounted.
+   Similarity = cosine / 0.25 (characters) or / 0.15 (words), clipped to 1; below 0.05
+   it is not counted.
+
+### 5.4 Where the next page's text begins (`text_start`)
+
+How far below the header band's lines the later page's first body line starts:
+≤ 3% → −1, 3–12% → −1 .. 0, 12–25% → 0 .. +2, > 25% → +2. **Unmeasured, so it is
+computed and stored (`recorded.text_start`) but not added to the score**, until
+`text_start.apply` is set after a run has measured it.
+
+---
+
+## 6. Blank pages, junk and duplicates
+
+| Kind | Treatment |
 |---|---|
-| Unclear | Break Before or Break After fell in the band (§2) |
-| Long run without page numbers | a document of more than **25** pages where no page prints a number — every page of it |
-| Text-proxy fill | page fill came from the text proxy and moved the gap across a threshold |
-| Flip at Final | the Final tag differs from C3's and the deciding signal is weak (\|contribution\| < 4) |
+| **Blank** | Transparent. The gap is scored between the page before and the page after, plus `blank_between` +1. The blank page has no scores of its own and is shown as **"Blank (in Doc 3)"** when that gap joined, **"Blank"** between documents. |
+| **Single junk page** | Transparent and adds nothing: the gap is scored between the content pages either side. It belongs to the document before it (an invoice stapled to the back of a note), keeps its own junk page type, and gets no document number for Final values. |
+| **Run of two or more junk pages** | Scored like content and broken off at both ends by `junk_run`: +3 for two pages, +5 for three or more, × the run's mean junk confidence. Three or more with a scaled value ≥ **4.5** is decisive. The run becomes its own **junk group**, numbered with the documents: **"New (Junk 4)" … "Last (Junk 4)"**. Inside it, `same_junk_kind` −2 holds it together. Blanks and duplicates between junk pages do not break a run. A junk group is no visit: its **DOS and encounter type read "Skipped"**. |
+| **Duplicate** | Takes its original's document and adds no gap. |
 
 ---
 
-## 8. What a document shares: the Final values
+## 7. Header and footer lines are matched normalised
 
-Unchanged (`document_finals`), applied to Main documents only:
+Every run of digits and every date is replaced by a placeholder before an **exact**
+comparison, so a page number or a print time cannot make an identical banner differ:
+
+```
+raw         Smith, John | MRN 004812 | Printed 03/28/24 | Page 3 of 7
+normalised  smith, john | mrn # | printed <date> | page # of #
+```
+
+Fuzzy matching was measured and is noise (difference −4 for headers, 4 for footers), so
+the match stays exact.
+
+---
+
+## 8. The decision
+
+### 8.1 Every gap is decided
+
+| Score | Decision |
+|---|---|
+| > 0 | **break** |
+| < 0 | **joined** |
+| = 0 | **joined, flagged** (`decided_by tie`) |
+
+There is no "don't know": every page needs a document to inherit its date, type and
+encounter from.
+
+### 8.2 Decisive signals
+
+- **A 5-point signal settles the gap** when no other 5 opposes it: the gap takes its
+  sign whatever the rest says (`decided_by decisive`, confidence high). The other
+  signals are still computed and stored.
+- **Two decisive signals disagree** (page numbers run on, but the dates differ):
+  **the different date wins** and the gap breaks, at medium confidence, flagged
+  (`decisive_conflict`). A date is a fact about the care; a page number is a fact about
+  the printing.
+
+### 8.3 Confidence
+
+| Field | How |
+|---|---|
+| `confidence_level` | `|score|` ≥ 5 high, 2–4 medium, 0–1 low; decisive high; decisive conflict medium |
+| `confidence` (0–1) | `P(break) = 1 / (1 + exp(−(score − b) / a))`, confidence = `|2P − 1|`; × **0.6** when the three sub-scores point opposite ways; at least 0.9 for a decisive gap. **a = 2, b = 0 until fitted** on the labelled gaps |
+
+A low-confidence side of a page adds a **"?"** to its label: `Continue? (Doc 3)`.
+
+### 8.4 When the sub-scores disagree sharply
+
+Two patterns, at ±4 (`conflict_rules.at`):
+
+| Pattern | Sub-scores | Usual cause | Right answer |
+|---|---|---|---|
+| **A** finished, but still matching | ending ≥ +4 and pair ≤ −4 | a signed note followed by an addendum from the same visit | break |
+| **B** new-looking page, continuing content | opening ≥ +4 and pair ≤ −4 | a section heading taken for a title | join; record it as a title misfire |
+
+Either one **drops the confidence one level and flags the gap**. The answer itself is
+changed only when `conflict_rules.apply` is true. It is **false** for now, because the
+document says to count how often each pattern appears on a run before wiring them in.
+The pattern is stored as `recorded.conflict`.
+
+### 8.5 What is flagged (`review_required`)
+
+- low confidence (`confidence < 0.25`, or level low);
+- a score of exactly 0;
+- two decisive signals disagreeing;
+- conflict pattern A or B;
+- the page-fill proxy decided the gap;
+- a final-pass split;
+- every page of a document longer than **25** pages with no printed page number
+  anywhere (a footer template binding unrelated documents).
+
+---
+
+## 9. The final pass: whole documents
+
+After every gap is decided, one more pass looks at whole documents (`_final_pass`).
+
+**Split first.** A document holding two or more **different dates read from a label**
+(trust 5) splits at each date change (`final_pass: split: two dates in one document`,
+flagged). This catches a document that spans two visits while every single gap looked
+like a join.
+
+**Then merge** neighbours, but only across a **weak** break: confidence low or score
+≤ 2, never a decisive break, and never between two documents with different dates.
+These run up to **3** times, because one merge can reveal another:
+
+| Rule | Merge two neighbouring documents when |
+|---|---|
+| `same_date` | both are dated and the dates are equal |
+| `continued_across` | the first one's last page ends "continued" |
+| `same_type_untitled` | both have the same page type (full path) and neither starts with a title |
+| `orphan_page` | a one-page undated document sits between two documents of the same type, both breaks weak: it joins the one after |
+| `junk_rejoin` | two junk groups of the same subtype |
+
+**Last, a Progress Note runs on** (`progress_note_runs_on`). A document whose first page is
+a Progress Note (`final_pass.progress_note_families`) keeps taking the documents after it
+until one of these ends it:
+
+- a **new date read from a label** (trust 5) on the next document's first page;
+- a **signature** on the note's last page (anywhere on it, or in its closing lines);
+- a **decisive break** (a different labelled date, a run of three or more junk pages);
+- a **junk group**.
+
+So a lab table, a questionnaire or an untitled page after a note stays in the note. Unlike
+the merges above, this one also crosses a strong break such as a title.
+
+A merged gap keeps its score; it records `final_pass: merged: <rule>` and the page's
+`decided_by` becomes `final_pass`. Each rule can be switched off in `final_pass.rules`.
+
+---
+
+## 10. What comes out
+
+### 10.1 Tags and labels
+
+| Break Before | Break After | Tag | Label |
+|---|---|---|---|
+| break | not | **new** | `New (Doc 3)` |
+| not | not | **continue** | `Continue (Doc 3)` |
+| not | break | **last** | `Last (Doc 3)` |
+| break | break | **standalone** | `Standalone (Doc 3)` |
+
+Junk groups read `New (Junk 4)` and so on: documents and junk groups share **one
+numbering**, so `document_seq` carries both. A blank page reads `Blank (in Doc 3)` or
+`Blank`. The tag is derived from
+the document's pages after the final pass, never stored on its own. The legacy
+`position` column is still written (new → first, standalone → single).
+
+### 10.2 `page_continuity_results`: the original columns
+
+No new columns. One row per content or junk page:
+
+| Column | Holds |
+|---|---|
+| `document_seq` | the document or junk group (one numbering) |
+| `seq` | page within it |
+| `position` | the tag: `first` = New, `continue`, `last`, `single` = Standalone |
+| `relation` | `new_document` for its first page, else `continue` |
+| `score` | the **Break Before** |
+| `decided_by` | the gap before: `chart_start`, `decisive`, `decisive_conflict`, `sum`, `tie`, `conflict_a`, `conflict_b`, `final_pass`; a transparent page `attached` |
+| `confidence_level` | the gap before's (high / medium / low) |
+| `evidence` | the gap before in words, e.g. `+8 break, high (signed_in_tail +3, last_numbered_page +3, has_title +3, signed_anywhere +2)` |
+| `link_strength` | strong while every link back to the first page is a 5-point join (page numbers or the same labelled date) |
+| `start_confirmed` | the first page has a title or prints "page 1" |
+| `review_required` | §8.5 |
+
+Blank and duplicate pages have no row. `imaging_final` gives a document's Final values to
+its **content** pages only: junk pages keep their own, whatever their `document_seq`.
+
+### 10.3 `<chart>/staging/continuity.json`: every score
+
+Written beside `extraction.json` and `blank_junk.json` on every run, and kept after the chart
+finishes:
+
+```json
+{"version": 1, "chart_name": "…", "written_at": "…", "canon_version": 4,
+ "documents": [{"document": 1, "kind": "main", "pages": ["1.jpg", "2.jpg"],
+                "dos_from": "2024-03-28", "dos_to": "2024-03-28", "page_type": "Progress Note"},
+               {"document": 2, "kind": "junk", "pages": ["6.jpg", "7.jpg"],
+                "dos_from": "Skipped", "dos_to": "Skipped"}],
+ "pages": [{"page_name": "2.jpg", "kind": "main", "document": 1, "label": "Continue (Doc 1)",
+            "tag": "continue", "break_before": -8, "break_after": -8,
+            "decided_by": "decisive", "confidence": 0.96, "confidence_level": "high",
+            "review_required": false, "dos_from": "", "dos_trust": null, "printed": [2, 3],
+            "signed": false, "signed_in_tail": false, "title": false, "page_type": "…",
+            "visit_ids": [],
+            "gap_before": {"score": -8, "decision": "joined", "decided_by": "decisive",
+                           "confidence": 0.96, "level": "high",
+                           "ending": {}, "opening": {}, "pair": {"pagination_follows": -5, "…": 0},
+                           "sub_scores": {"ending": 0, "opening": 0, "pair": -8},
+                           "recorded": {"text_start": -1}, "flags": [], "final_pass": null},
+            "gap_after": {"…": "…"}}]}
+```
+
+The CSV (`<chart>_continuity.csv`) lists every page (blank and duplicate too) with the
+label, both scores, the confidence, `kind`, `segment`, `dos_trust` and `layout_source`; a
+junk group's DOS reads `Skipped`.
+
+### 10.4 What a document shares
+
+Unchanged (`document_finals`, applied by `imaging_final`):
 
 | Final value | Rule |
 |---|---|
-| Page type | the New page's (each page keeps its own sub-type) |
-| DOS | the New page's, on every page |
-| DOS of a stand-alone non-visit document | every page a `default_final_dos` type → **2222-02-02**; such a page inside a visit takes the visit's DOS |
-| Encounter type | the New page's |
+| Page type | the document's first page's (each page keeps its own sub-type) |
+| Date of service | the first page's, on every page |
+| A stand-alone non-visit document | every page a `default_final_dos` type (demographics, registration, growth chart, problem list, immunizations): **2222-02-02** |
+| Encounter type | one per document (the encounter stage reads `document_seq`) |
 
-Junk segments carry no Final values; each junk page keeps its own junk subtype.
+Junk pages keep their own values; a junk group's DOS and encounter type read **Skipped** in
+review-ui's Doc Summary.
 
 ---
 
-## 9. Encounter type and the label
+## 11. Worked example
 
-### 9.1 Visits come from the Final segments
+An eight-page chart, as the engine scores it (the same pages are easy to rebuild in a
+test). Pages 1–3 are a progress note dated 2024-03-28 from a label and printed "page N of
+3", with one banner and footer; page 3 is signed in its closing lines and stops 60% down.
+Page 4 is a lab report with a title, stopping 40% down. Page 5 is blank. Pages 6–7 are a
+records request (junk, 96% sure). Page 8 is a note dated 2024-06-03.
 
-The encounter stage (seq 90) runs after the Final checkpoint and reads only
-`page_continuity_results`, never an earlier checkpoint.
-
-| Segment | Encounter type |
-|---|---|
-| **Main document** (`Doc n`) | one visit: the tier evidence (LOGIC.md §8) is gathered over every page from its New page to its Last page, and the answer is stamped on all of them |
-| **Junk segment** (`Junk Jn`) | none: junk is never a visit; `encounter_type` stays empty, `reason = junk` |
-| **Blank page in a document** | takes its document's answer in `imaging_final` (it is not read for evidence) |
-| **Blank page between documents** | none |
-| **Duplicate** | its original's, as before |
-
-The tiers, negatives and confidences are unchanged. The only change is the unit: a visit
-is a Main segment as the break scores drew it, and a junk page can no longer be pulled into
-a visit or start one.
-
-### 9.2 When the document itself is unsure
-
-Encounter type inherits the document's doubt instead of hiding it:
-
-| Situation | Effect |
-|---|---|
-| A gap inside the document is **unclear** (§2) and the pages on each side of it would answer **different settings** on their own | `conflict = y`, `review_required`, `reason = unclear_break`; the visit's answer is kept (the joined reading) and the alternative is in the evidence |
-| The document's `link_strength` is `weak` and the answer came from tier 3 tie-breaking only | confidence drops one bucket (0.70 → 0.60) |
-| `continue_applied = y` on a page whose Break Before is unclear | the page is listed in the visit's evidence as "joined across an unclear break" |
-
-So a reviewer who sees `Continue? (Doc 3)` also sees whether that doubt would change the
-encounter type.
-
-### 9.3 The label
-
-One label vocabulary from the tag, used by `page_continuity_results`, the CSVs, `imaging_final`
-and review-ui:
-
-| Tag | Main | Junk | Unclear side |
+| Gap | Signals | Score | Decision |
 |---|---|---|---|
-| new | `New (Doc 3)` | `New (Junk J1)` | `New? (Doc 3)` |
-| continue | `Continue (Doc 3)` | `Continue (Junk J1)` | `Continue? (Doc 3)` |
-| last | `Last (Doc 3)` | `Last (Junk J1)` | `Last? (Doc 3)` |
-| standalone | `Standalone (Doc 3)` | `Standalone (Junk J1)` | `Standalone? (Doc 3)` |
-| blank | `Blank (in Doc 3)` / `Blank` | — | — |
+| 1 → 2 | page numbers run on −5, same header −2, same footer −1, wording −0.6 / −0.9, cut mid-sentence −1, starts mid-thought −1 | **−11.5** | joined, decisive |
+| 2 → 3 | page numbers run on −5, same header −2, same footer −1 | **−8** | joined, decisive |
+| 3 → 4 | signed in the closing lines +3, signed +2, "page 3 of 3" +3, text ends in the band +2, page 4 has a title +3 | **+13** | break, high |
+| 4 → 6 (blank 5 between) | a junk run of two starts +2.9 (3 × 0.96), blank between +1, page 4's text ends at 40% +0.7 | **+4.6** | break, medium: page 6 opens Junk 3 |
+| 6 → 7 | same junk kind −2, same header −2, wording −2 / −1, cut −1, mid-thought −1 | **−9** | joined, high |
+| 7 → 8 | the junk run ends +2.9 | **+2.9** | break, medium |
 
-Replaces `First / Continue / Last / Single (Doc n)` (`position_label` in `engine.py`).
-
-`encounter_label` stays what it is, the setting's display name from `encounter_canon.json`
-(`Outpatient (F2F)`, `Outpatient (Tele)`, `Inpatient`, `Home`). review-ui shows the two side by
-side: `New (Doc 3) · Outpatient (F2F)`. Junk pages show only their segment label.
-
----
-
-## 10. Storage
-
-New table (add, never drop):
-
-```sql
-CREATE TABLE page_break_scores (
-    id               BIGSERIAL PRIMARY KEY,
-    chart_id         BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
-    page_id          BIGINT NOT NULL REFERENCES page_list(id) ON DELETE CASCADE,
-    stage_name       VARCHAR(50) NOT NULL,      -- the checkpoint
-    pass_no          SMALLINT    NOT NULL,
-    break_before     NUMERIC(6,2),               -- NULL on blank / duplicate pages
-    break_after      NUMERIC(6,2),
-    tag              VARCHAR(12) CHECK (tag IS NULL OR tag IN ('new','continue','last','standalone')),
-    segment_kind     VARCHAR(10) CHECK (segment_kind IS NULL OR segment_kind IN ('main','junk')),
-    segment_seq      INT,                        -- Doc n / Junk Jn
-    seq              INT,                        -- position within the segment
-    review_required  BOOLEAN NOT NULL DEFAULT FALSE,
-    evidence         JSONB NOT NULL DEFAULT '{}'::jsonb,  -- {"before": {signal: contribution}, "after": {...}, "available": [...]}
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (page_id, stage_name, pass_no)
-);
+```
+New (Doc 1)  Continue (Doc 1)  Last (Doc 1)     pages 1-3, 2024-03-28
+Standalone (Doc 2)                              page 4, lab report
+Blank                                           page 5, between documents
+New (Junk 3)  Last (Junk 3)                     pages 6-7, records request
+Standalone (Doc 4)                              page 8, 2024-06-03
 ```
 
-`page_continuity_results` gains `break_before`, `break_after`, `tag` and `segment_kind`. The
-existing `position` / `relation` / `decided_by` columns stay and are still written
-(`position`: new → first, standalone → single; `decided_by` = the largest contribution).
-Readers use the new columns when present.
+Page 8's date is not compared with anything: the document open before the junk run is
+Doc 2, which has no date. Had Doc 2 been dated 2024-03-28, the gap would add
+`different_dos` +5 (decisive). The final pass changes nothing here: every break is above
+the weak line (score ≤ 2 or low confidence).
 
 ---
 
-## 11. Settings (`continuity_canon.json`)
+## 12. Settings (`continuity_canon.json`, version 4)
 
 | Block | Holds |
 |---|---|
-| `weights` | every signal in §2.1–2.3 with `side` (ending / opening / pair), `w`, `lift`, `coverage`, `status` |
-| `decision` | `break_at` +4.0, `join_at` −4.0, `strong_join` −10.0 |
-| `pagination`, `bands`, `semantic`, `page_fill`, `section_order`, `default_final_dos` | as before |
-| `bottom_ink` | the ink threshold and footer exclusion for C1 |
-| `markers` | `continued_marker` and closing phrases |
-| `review_triggers` | unclear, long run 25, text-proxy fill, flip at Final |
-| `measurement` | provenance of the weights |
+| `points` | every signal: `side`, `points`, `scaled`, `decisive`, `status` (measured / assumed) |
+| `dos_trust` | DOS tier → points (service / admit / discharge 5, weak / received / printed / collected 3, keyless 2, default 3) |
+| `junk_run` | `decisive_at` 4.5 |
+| `page_fill` | the curve (92 / 80 / 65 / 50 / 35%) and the text proxy (28 lines / 1,800 characters) |
+| `text_start` | the curve (3 / 12 / 25%), `apply` false |
+| `semantic` | furniture 12 characters, 20-word blocks, n-grams, `min_df` 2, divisors 0.25 / 0.15 |
+| `section_order` | note order (chief complaint → … → follow-up) and the section names in each step |
+| `decision` | high ≥ 5, medium ≥ 2, the curve's `a` 2 and `b` 0 (to fit), disagreement × 0.6, review below 0.25 |
+| `conflict_rules` | ±4, `apply` false |
+| `final_pass` | weak = score ≤ 2 or low confidence, 3 passes, each rule on / off, `progress_note_families` |
+| `review_triggers` | long run 25 pages |
+| `pagination`, `bands`, `default_final_dos`, `measurement` | as before |
 
-The loader refuses a file whose `weights` name a signal the engine does not produce, or
-whose band is inverted (`join_at ≥ break_at`).
-
----
-
-## 12. Worked example
-
-| Page | Kind | Evidence | Break Before | Break After | Tag |
-|---|---|---|---|---|---|
-| 1 | Main | DOS 2024-03-28, title | (chart start) | −10.0 page 1 → 2 of 3 | New (Doc 1) |
-| 2 | Main | "page 2 of 3" | −10.0 | −22.6 banner + footer repeat, full page, HPI → Plan | Continue (Doc 1) |
-| 3 | Main | ends "Electronically signed by …" | −22.6 | **+12.4** signed in tail, signed | Last (Doc 1) |
-| 4 | Main | Lab title, text stops at 40% | +12.4 | **+11.7** title on 5, page type change | Standalone (Doc 2) |
-| 5 | Main | Lab after Lab, full page | +11.7 | −0.9 unclear | Continue? (Doc 3), review |
-| — | Blank | no ink | — | — | Blank, in Doc 3 |
-| 6 | Main | across the blank: same sections, +1 blank | −0.9 | +8.8 (Junk next, 0.96) | Last (Doc 3) |
-| 7 | Junk | record request, conf 0.96 | +8.8 | −4.7 same junk group, footer repeat | New (Junk J1) |
-| 8 | Junk | record request | −4.7 | +15.0 DOS 2024-06-03 on 9, kind change | Last (Junk J1) |
-| 9 | Main | DOS 2024-06-03 | +15.0 | (chart end) | Standalone (Doc 4) |
+The loader refuses a file whose `points` name a signal the engine does not produce, or
+that leaves one out.
 
 ---
 
-## 13. What it replaces (the 2026-10-18 ladder)
+## 13. What is proven, what is assumed, and what waits
 
-| Then | Now |
-|---|---|
-| Gates decided in order (first page, blank/junk, same DOS, different DOS, pagination, page N of N) | the same facts as heavy weights; only the chart's first and last page are fixed |
-| Score positive = continue | positive = break; same fitted weights, sign flipped |
-| One score per page (the gap before it) | Break Before and Break After per page; the tag comes from both |
-| Signature terminator override | `signed_in_tail` +8 |
-| A blank or junk page always ended the document; junk had no row | blank is transparent; junk forms segments; `kind_change` weighs the junk confidence |
-| Ran once at seq 87 | recomputed at four checkpoints, each kept |
-| `single / first / continue / last` | `standalone / new / continue / last` (old column still written) |
-| Encounter visit = a continuity document; blank / junk pages had none | visit = a Main segment; junk segments never get one; a blank page inside a document takes its answer; an unclear gap with different settings either side flags the visit (§9) |
-| Label `First / Continue / Last / Single (Doc n)` | `New / Continue / Last / Standalone (Doc n)`, `(Junk Jn)`, `?` on an unclear side (§9.3) |
+**Measured** (170 labelled gaps from 15 charts, both pages printing page numbers):
+text reaching the bottom (34), same header line (31), wording with furniture removed (28,
+27), sections in order (27, no false positives), signed (26) and signed at the bottom
+(21), same footer (8), same visit number (8, no false positives).
+
+**Assumed, to measure first:** title (+3), page-type change, junk runs, "continued",
+same junk kind, the three decisive signals individually, the ending band, normalised
+header / footer matching.
+
+**Three things are measured and stored but do not change any answer yet.** Each is one
+switch in `continuity_canon.json`:
+
+1. **How far down the next page's text starts** (`text_start`, §5.4). The value is in
+   `continuity.json` under `recorded`; it is not added to the score (`text_start.apply`).
+2. **The two disagreement patterns** (§8.4). When they fire, the gap is flagged and its
+   confidence drops one level, but the break / join answer stays the sum's
+   (`conflict_rules.apply`).
+3. **The 0–1 confidence number** (§8.3) uses two constants, `a` = 2 and `b` = 0, picked
+   by hand. Fitting them on labelled gaps makes the number a better ranking; the
+   decision itself does not use them.
+
+**Built for the final run only.** The method allows re-scoring at earlier stages (after
+blank / junk, after page type) for audit; only the final score feeds anything, and that
+is the one the stage computes. Ink reaching the bottom of the image (an early-stage
+signal) is not used: by the final run the line positions are there.
+
+---
+
+## 14. How to check it is working
+
+- **Count the documents.** 623 pages making 9 documents was once a numbering bug.
+- **Look at the longest document.** A long run with no page numbers is usually a footer
+  template merging unrelated documents (the 25-page flag).
+- **Plot document lengths.** A spike at one page means fragmenting; a long tail means
+  merging.
+- **Targets:** wrongly merged under 2% (the expensive error), low-confidence share under
+  30%, accuracy over 95% on the gaps whose answer is known.
+- **Split validation by chart, never by page**, or the weights will look better than they
+  are.

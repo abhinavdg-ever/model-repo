@@ -239,6 +239,7 @@ class MemoryStore:
                 return self._copy(row)  # type: ignore[return-value]
 
             row = self.charts[existing_id]
+            before = dict(row)
             if page_count is not None:
                 row["page_count"] = page_count
             if status is not None:
@@ -262,7 +263,9 @@ class MemoryStore:
                 row["run_id"] = run_id
             if batch_id is not None:
                 row["batch_id"] = batch_id
-            row["updated_at"] = _now()
+            # As in Postgres: a call that changes nothing leaves updated_at (Last Run At) alone.
+            if row != before:
+                row["updated_at"] = _now()
             return self._copy(row)  # type: ignore[return-value]
 
     def set_chart_output_path(self, chart_id: int, output_path: str) -> None:

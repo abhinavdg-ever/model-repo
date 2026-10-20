@@ -38,7 +38,7 @@ from app.services.ground_truth import attach_ground_truth
 from app.services.imaging_overlays import (
     inherit_duplicate_blank_junk,
     compose_page_type,
-    document_label,
+    continuity_label,
     empty_imaging_pages,
     page_type_fields,
     signer_fields,
@@ -1056,10 +1056,11 @@ class PostgresFolderRepository(FolderRepository):
                     # these tables yet skips them, not the page.
                     cur.execute("SELECT to_regclass('page_continuity_results')")
                     if (cur.fetchone() or [None])[0]:
+                        # The gap scorer's columns (2026-10-20) may not exist yet: read the
+                        # row as JSON so an older database still shows its documents.
                         cur.execute(
                             """
-                            SELECT p.page_name, k.document_seq, k.position, k.relation,
-                                   k.decided_by, k.evidence
+                            SELECT p.page_name, to_jsonb(k)
                             FROM page_continuity_results k
                             JOIN page_list p ON p.id = k.page_id
                             JOIN chart_list c ON c.id = k.chart_id
@@ -1067,15 +1068,31 @@ class PostgresFolderRepository(FolderRepository):
                             """,
                             (folder_id,),
                         )
-                        for (page_name, document, position, relation, decided_by,
-                             evidence) in cur.fetchall():
+                        members: dict[int, list[dict[str, Any]]] = {}
+                        for page_name, k in cur.fetchall():
+                            k = k or {}
+                            document = k.get("document_seq")
+                            position = k.get("position")
                             fields = _ensure(str(page_name))
-                            fields["documentSeq"] = int(document)
+                            fields["documentSeq"] = int(document) if document is not None else None
                             fields["documentPosition"] = position
-                            fields["documentLabel"] = document_label(position, int(document))
-                            fields["continuityRelation"] = relation
-                            fields["continuityDecidedBy"] = decided_by
-                            fields["continuityEvidence"] = evidence
+                            fields["documentLabel"] = continuity_label(
+                                position, int(document) if document is not None else None,
+                                k.get("confidence_level"),
+                            )
+                            fields["continuityRelation"] = k.get("relation")
+                            fields["continuityDecidedBy"] = k.get("decided_by")
+                            fields["continuityEvidence"] = k.get("evidence")
+                            if document is not None:
+                                members.setdefault(int(document), []).append(fields)
+                        # Documents and junk groups share the numbering: a group whose every
+                        # page is junk reads 'New (Junk 4)'.
+                        for document, group in members.items():
+                            if all(str(f.get("blankOrJunk") or "").lower().startswith("yes (junk)") for f in group):
+                                for f in group:
+                                    f["documentLabel"] = (f.get("documentLabel") or "").replace(
+                                        f"(Doc {document})", f"(Junk {document})"
+                                    )
 
                     cur.execute("SELECT to_regclass('imaging_final')")
                     if (cur.fetchone() or [None])[0]:
