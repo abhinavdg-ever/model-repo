@@ -15,6 +15,7 @@
 -- Section 4 (2026-10-18): continuity's weighted decision.
 -- Section 5 (2026-10-19): the client's chart metadata on the manifest.
 -- Section 6 (2026-10-19): review-ui users and sign-in; who saved each ground truth.
+-- Section 7 (2026-10-20): chart_deletion, the record of charts an admin deleted.
 
 -- 1. provider_signature_results: written by kv_extract, read by imaging_final.
 --    (It used to be defined in v2.sql only, and nothing wrote it.)
@@ -150,3 +151,25 @@ ALTER TABLE page_ground_truth
     ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE page_ground_truth_entry
     ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES users(id) ON DELETE SET NULL;
+
+-- 7. chart_deletion (2026-10-20): an admin's Delete in review-ui removes the chart_list row
+--    (its results go with it, ON DELETE CASCADE) and records it here.
+CREATE TABLE IF NOT EXISTS chart_deletion (
+    id           BIGSERIAL PRIMARY KEY,
+    chart_name   VARCHAR(150) NOT NULL,
+    page_count   INT,
+    run_id       VARCHAR(50),
+    batch_id     VARCHAR(50),
+    user_id      BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_chart_deletion_chart_name ON chart_deletion(chart_name);
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_chart_deletion_updated_at') THEN
+        CREATE TRIGGER trg_chart_deletion_updated_at
+            BEFORE UPDATE ON chart_deletion
+            FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+    END IF;
+END $$;

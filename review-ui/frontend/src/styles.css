@@ -5341,3 +5341,15 @@ input {
 .clear-all-filters {
   white-space: nowrap;
 }
+
+/* History: an admin's Delete, beside OCR / Imaging; red so it is not clicked by habit. */
+.action-icon-btn.action-delete-btn {
+  background: var(--card);
+  color: var(--status-error-fg);
+  border: 1px solid var(--status-error-fg);
+  padding-inline: 0.45rem;
+}
+
+.action-icon-btn.action-delete-btn:hover:not(:disabled) {
+  background: var(--status-error-bg);
+}

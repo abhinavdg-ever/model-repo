@@ -170,6 +170,24 @@ CREATE TRIGGER trg_user_login_updated_at
     BEFORE UPDATE ON user_login
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+-- Every chart an admin deleted in review-ui (DELETE /api/folders/{id}): which chart, who,
+-- when (created_at). The chart_list row and its results are gone; this row is kept.
+CREATE TABLE chart_deletion (
+    id           BIGSERIAL PRIMARY KEY,
+    chart_name   VARCHAR(150) NOT NULL,
+    page_count   INT,
+    run_id       VARCHAR(50),
+    batch_id     VARCHAR(50),
+    user_id      BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_chart_deletion_chart_name ON chart_deletion(chart_name);
+
+CREATE TRIGGER trg_chart_deletion_updated_at
+    BEFORE UPDATE ON chart_deletion
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 CREATE TABLE chart_list (
     id                  BIGSERIAL PRIMARY KEY,
     chart_name          VARCHAR(150) NOT NULL,

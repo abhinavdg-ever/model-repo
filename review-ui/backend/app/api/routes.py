@@ -40,6 +40,7 @@ from app.services.imaging_csv import filter_folder, iter_csv_lines
 from app.services.chart_run_batch import database_url_usable
 from app.services.accuracy_cache import clear_report_cache, load_report
 from app.services.auth import SignedInUser, authenticate, issue_token, read_token
+from app.services.chart_delete import ChartNotFound, delete_chart
 from app.services import excel_compare
 from app.services.ground_truth import (
     GroundTruthSource,
@@ -673,6 +674,32 @@ def get_folder_extraction(
     if settings.is_production_mode:
         return ExtractionReviewResponse(folder_id=folder_id, available=False)
     return load_extraction_review(settings.resolved_data_root, folder_id, page)
+
+
+@router.delete("/folders/{folder_id}")
+def delete_folder(
+    folder_id: str,
+    settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
+) -> dict:
+    """Admins only: delete the chart and every pipeline result for it. Its ground truth,
+    manifest row and files on disk are kept, so a re-run rebuilds it."""
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in again to delete a chart")
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only an admin can delete a chart")
+    if not database_url_usable(settings.database_url):
+        raise HTTPException(status_code=503, detail="Database is not configured")
+    try:
+        result = delete_chart(settings.database_url, folder_id, db_schema=settings.db_schema, user_id=user.id)
+    except ChartNotFound as exc:
+        raise HTTPException(status_code=404, detail=f"No chart named {folder_id}") from exc
+    except Exception as exc:
+        logger.warning("chart delete failed for %s: %s", folder_id, exc)
+        raise HTTPException(status_code=502, detail="Could not delete the chart") from exc
+    clear_report_cache()  # the accuracy report lists charts
+    logger.info("chart %s deleted by %s", folder_id, user.username)
+    return result
 
 
 @router.post("/folders/{folder_id}/ground-truth", response_model=PageGroundTruth)

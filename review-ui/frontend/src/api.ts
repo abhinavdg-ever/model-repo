@@ -345,6 +345,12 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Admins only: delete a chart and its pipeline results (ground truth, manifest and files
+ * on disk are kept). */
+export function deleteFolder(folderId: string): Promise<{ chart_name: string; page_count: number | null }> {
+  return api(`/api/folders/${encodeURIComponent(folderId)}`, { method: "DELETE" });
+}
+
 /** Sign in; throws with the server's message ("Invalid username or password.") on failure. */
 export async function login(username: string, password: string): Promise<Session> {
   const res = await fetch("/api/auth/login", {

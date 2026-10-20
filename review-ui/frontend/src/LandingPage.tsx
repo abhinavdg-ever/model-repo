@@ -12,9 +12,12 @@ import {
   RefreshCw,
   ScanSearch,
   Search,
+  Trash2,
   X,
 } from "lucide-react";
+import { readSession } from "./session";
 import {
+  deleteFolder,
   formatBatchLabel,
   formatRunLabel,
   getFolderImaging,
@@ -354,6 +357,8 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   const [metaFilter, setMetaFilter] = useState<MetaFilters>(saved.metaFilter);
   const [metaOptions, setMetaOptions] = useState<Record<string, string[]>>({});
   const skipFilterPageReset = useRef(true);
+  const isAdmin = readSession()?.user.role === "admin";
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
   const [downloadWithTruth, setDownloadWithTruth] = useState(false);
@@ -480,6 +485,26 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
     setBatchFilter([]);
     setMetaFilter({});
     setRunAfter(null);
+  }
+
+  /** Admin: delete the chart's pipeline results after a confirmation naming it. */
+  async function removeChart(id: string, name: string, pages: number) {
+    const ok = window.confirm(
+      `Delete chart ${name} (${pages} pages)?\n\n` +
+        "Every pipeline result for it is removed from the database. Its ground truth, " +
+        "manifest row and files on disk are kept, so a re-run rebuilds it. This cannot be undone here.",
+    );
+    if (!ok) return;
+    setDeleting(id);
+    setError(null);
+    try {
+      await deleteFolder(id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? `Could not delete ${name}: ${err.message}` : `Could not delete ${name}`);
+    } finally {
+      setDeleting(null);
+    }
   }
 
   function toggleSort(key: SortKey) {
@@ -868,6 +893,18 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                             <ScanSearch size={16} aria-hidden="true" />
                             Imaging
                           </button>
+                          {isAdmin ? (
+                            <button
+                              type="button"
+                              className="action-icon-btn action-delete-btn"
+                              disabled={deleting === folder.id}
+                              onClick={() => void removeChart(folder.id, folder.name, folder.page_count)}
+                              title="Delete this chart's pipeline results (admin)"
+                              aria-label={`Delete ${folder.name}`}
+                            >
+                              <Trash2 size={15} aria-hidden="true" />
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>

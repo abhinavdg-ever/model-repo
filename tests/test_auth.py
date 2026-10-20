@@ -81,3 +81,37 @@ def test_saving_ground_truth_needs_a_signed_in_user(monkeypatch) -> None:
         assert ok.status_code == 200 and saved["user_id"] == 42
     finally:
         app.dependency_overrides.clear()
+
+
+def test_only_an_admin_can_delete_a_chart(monkeypatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from app.api import routes
+    from app.core.config import get_settings
+    from app.main import app
+
+    s = Settings(database_url="postgresql://u:p@db.example:5432/x", auth_secret="test-secret")
+    app.dependency_overrides[get_settings] = lambda: s
+    deleted: dict = {}
+
+    def fake_delete(database_url, chart_name, *, db_schema="public", user_id=None):
+        deleted.update(chart=chart_name, user_id=user_id)
+        return {"chart_name": chart_name, "page_count": 3}
+
+    monkeypatch.setattr(routes, "delete_chart", fake_delete)
+    monkeypatch.setattr(routes, "database_url_usable", lambda url: True)
+    monkeypatch.setattr(routes, "clear_report_cache", lambda: None)
+
+    def bearer(role: str) -> dict:
+        token = auth.issue_token(s, auth.SignedInUser(id=9, username="u", name="U", role=role))
+        return {"Authorization": f"Bearer {token}"}
+
+    try:
+        client = TestClient(app)
+        assert client.delete("/api/folders/c1").status_code == 401
+        assert client.delete("/api/folders/c1", headers=bearer("reviewer")).status_code == 403
+        assert not deleted
+        ok = client.delete("/api/folders/c1", headers=bearer("admin"))
+        assert ok.status_code == 200 and deleted == {"chart": "c1", "user_id": 9}
+    finally:
+        app.dependency_overrides.clear()
