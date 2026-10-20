@@ -376,3 +376,23 @@ def test_a_print_date_is_never_shown_as_the_date_of_service():
     dos = next(row for row in field_rows(page) if row.id == "dos")
     assert "2025-10-30" not in (dos.extracted or "")
     assert "2024-03-28" in (dos.extracted or "")
+
+
+def test_staged_encounters_are_read_from_continuity_json(tmp_path):
+    from app.services.staged_continuity import load_staged_encounters
+
+    staging = tmp_path / "chart_a" / "staging"
+    staging.mkdir(parents=True)
+    (staging / "continuity.json").write_text(json.dumps({
+        "pages": [],
+        "encounters": [{"seq": 1, "document": 2, "page_family": "Lab Report/Result",
+                        "pages": ["3.jpg"], "encounter_type": "not_applicable",
+                        "encounter_label": "Not Applicable", "confidence": 1.0,
+                        "decided_by": "not_applicable", "conflict": False, "contenders": []}],
+    }), encoding="utf-8")
+    (only,) = load_staged_encounters(tmp_path, "chart_a")
+    assert (only.document, only.encounter_label) == (2, "Not Applicable")
+    # No staged encounters (older run, no workspace): [] so Doc Summary derives them.
+    assert load_staged_encounters(tmp_path, "chart_b") == []
+    assert load_staged_encounters(None, "chart_a") == []
+    assert load_staged_encounters(tmp_path, "../chart_a") == []

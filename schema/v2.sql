@@ -67,6 +67,10 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * encounter_type_results (v1.sql, 2026-10-20): encounter_type allows 'not_applicable'
+--    (encounters that are not Progress Note / Discharge Summary; section 10).
+--  * page_continuity_results.confidence (v1.sql, 2026-10-20): the 0-1 confidence of each
+--    page's Break Before decision, beside score (changes_2026-10-19.sql section 9).
 --  * page_continuity_results (v1.sql, 2026-10-20): decided_by gains the gap scorer's reasons;
 --    its scores go to <chart>/staging/continuity.json.
 --  * chart_deletion (v1.sql, 2026-10-20): charts an admin deleted in review-ui.

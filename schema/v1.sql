@@ -678,7 +678,9 @@ CREATE TABLE encounter_type_results (
                           'outpatient_f2f',
                           'outpatient_tele',
                           'inpatient',
-                          'home'
+                          'home',
+                          -- not a Progress Note / Discharge Summary encounter (2026-10-20)
+                          'not_applicable'
                       )),
     confidence        NUMERIC(5,4),
     matched_keyword   VARCHAR(200),
@@ -807,6 +809,9 @@ CREATE TABLE page_continuity_results (
                              'high','medium','low'
                          )),
     score                NUMERIC(6,2),
+    -- How sure the scorer is of this page's Break Before decision, 0-1 (|2p - 1| on the
+    -- logistic curve; 1 on the chart's first page; NULL on attached blank/duplicate pages).
+    confidence           NUMERIC(5,4) CHECK (confidence IS NULL OR confidence BETWEEN 0 AND 1),
     review_required      BOOLEAN NOT NULL DEFAULT FALSE,
     link_strength        VARCHAR(10) CHECK (link_strength IS NULL OR link_strength IN ('strong','weak')),
     start_confirmed      BOOLEAN NOT NULL DEFAULT FALSE,

@@ -10,6 +10,7 @@ import {
   type ImagingVerificationDetails,
   type OcrSectionHeader,
   type PageGroundTruth,
+  type StagedEncounter,
 } from "./api";
 import { credentialsVerdict, noValue } from "./accuracy";
 import {
@@ -178,7 +179,7 @@ function finalDosValue(
   processed: boolean,
   skipped: boolean,
 ): string {
-  // imaging_final's Final DOS: the document's first page's date.
+  // imaging_final's Final DOS: the document's first dated page's date.
   const carried = side === "from" ? page.finalDosFrom : page.finalDosTo ?? page.finalDosFrom;
   if (carried) return displayIsoDates(carried);
   if (page.documentSeq != null) return extracted;
@@ -1742,8 +1743,14 @@ type DocumentRow = {
 };
 
 /** One row per document (continuity stage), in page order. Its type and DOS are the
- * document's Final values; the encounter type is the first one its pages carry. */
-function documentRows(pages: ImagingPageResult[]): DocumentRow[] {
+ * document's Final values. Its encounter type is the staged encounter's
+ * (continuity.json → encounters) when the chart has them, else the first one its
+ * pages carry. */
+function documentRows(pages: ImagingPageResult[], encounters: StagedEncounter[] = []): DocumentRow[] {
+  const staged = new Map<number, StagedEncounter>();
+  for (const encounter of encounters) {
+    if (encounter.document != null && !staged.has(encounter.document)) staged.set(encounter.document, encounter);
+  }
   const byDocument = new Map<number, ImagingPageResult[]>();
   for (const page of pages) {
     if (page.documentSeq == null) continue;
@@ -1761,7 +1768,10 @@ function documentRows(pages: ImagingPageResult[]): DocumentRow[] {
       startPage: first.pageNumber,
       endPage: members[members.length - 1].pageNumber,
       pageType: text(first.finalPageType) ?? text(first.pageType),
-      encounterType: members.map((page) => text(page.encounterType)).find(Boolean) ?? null,
+      encounterType:
+        text(staged.get(seq)?.encounter_label)
+        ?? members.map((page) => text(page.encounterType)).find(Boolean)
+        ?? null,
       dosFrom: text(first.finalDosFrom),
       dosTo: text(first.finalDosTo),
       junk: members.every((page) => (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes (junk)")),
@@ -1780,11 +1790,13 @@ function fmtDocumentDos(from: string | null, to: string | null): string {
 function DocumentsTable({
   pages,
   sections,
+  encounters,
 }: {
   pages: ImagingPageResult[];
   sections: ImagingSectionsProcessed;
+  encounters: StagedEncounter[];
 }) {
-  const rows = useMemo(() => documentRows(pages), [pages]);
+  const rows = useMemo(() => documentRows(pages, encounters), [pages, encounters]);
   if (rows.length === 0) {
     return (
       <div className="ocr-empty">
@@ -1831,10 +1843,12 @@ function DocSummary({
   pages,
   verifications,
   sections,
+  encounters,
 }: {
   pages: ImagingPageResult[];
   verifications: ImagingVerificationDetails[];
   sections: ImagingSectionsProcessed;
+  encounters: StagedEncounter[];
 }) {
   const [view, setView] = useState<DocView>("documents");
   // Each page's own DOS, else the default 2222-02-02; never the previous page's.
@@ -1883,7 +1897,7 @@ function DocSummary({
       </div>
 
       {view === "documents" ? (
-        <DocumentsTable pages={pages} sections={sections} />
+        <DocumentsTable pages={pages} sections={sections} encounters={encounters} />
       ) : view === "rejection" ? (
         <RejectionRulesTable
           rows={verifications}
@@ -2145,6 +2159,7 @@ export default function ImagingPanel({
           pages={document.pages}
           verifications={verifications}
           sections={sections}
+          encounters={document.encounters ?? []}
         />
       </div>
     );

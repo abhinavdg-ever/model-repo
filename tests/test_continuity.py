@@ -311,6 +311,25 @@ class TestFinalValues:
                                    "dos_from": "2024-01-01"}])
         assert finals["dos_from"] == "2222-02-02" and finals["dos_default"]
 
+    def test_dos_is_the_first_dated_pages(self):
+        from stages.lib.continuity.engine import document_finals
+
+        finals = document_finals([
+            {"page_type": "Progress Note", "dos_from": ""},
+            {"page_type": "Progress Note", "dos_from": "2024-03-05", "dos_to": "2024-03-06"},
+            {"page_type": "Progress Note", "dos_from": "2024-04-01"},
+        ])
+        assert (finals["dos_from"], finals["dos_to"]) == ("2024-03-05", "2024-03-06")
+
+    def test_dos_is_the_first_pages_when_it_is_dated(self):
+        from stages.lib.continuity.engine import document_finals
+
+        finals = document_finals([
+            {"page_type": "Progress Note", "dos_from": "2024-01-01"},
+            {"page_type": "Progress Note", "dos_from": "2024-03-05"},
+        ])
+        assert (finals["dos_from"], finals["dos_to"]) == ("2024-01-01", "2024-01-01")
+
     def test_encounter_type_is_the_first_pages(self):
         from stages.lib.continuity.engine import document_finals
 
@@ -364,6 +383,7 @@ class TestStage:
             upsert_pages,
         )
         from stages.lib.continuity import stage as continuity_stage
+        from stages.lib.encounter import stage as encounter_stage
         from stages.lib.extraction import stage as extraction_stage
         from stages.lib.extraction import staging
         from stages.lib.imaging_final import stage as final_stage
@@ -374,6 +394,7 @@ class TestStage:
         # Another test may have imported the stage while db.connect was faked.
         monkeypatch.setattr(continuity_stage, "connect", db.connect)
         monkeypatch.setattr(final_stage, "connect", db.connect)
+        monkeypatch.setattr(encounter_stage, "connect", db.connect)
         monkeypatch.setattr(
             extraction_stage, "ensure_staging",
             lambda *_: staging.Staged({"version": staging.SCHEMA_VERSION, "pages": {}}),
@@ -437,11 +458,25 @@ class TestStage:
             assert grouping[second]["decided_by"] == "decisive"
             assert grouping[second]["tag"] == "last" and grouping[first]["tag"] == "new"
             assert grouping[second]["break_before"] <= -5
+            # The 0-1 confidence goes to page_continuity_results beside score.
+            assert grouping[first]["confidence"] == 1.0
+            assert 0.9 <= grouping[second]["confidence"] <= 1.0
             with open(result["continuity_csv"], newline="", encoding="utf-8") as handle:
                 written = list(csv.DictReader(handle))
             assert written[1]["dos_from"] == ""
             assert written[1]["layout_source"] == "final2"
             assert "final_dos_from" not in written[1]
+
+            # The encounter grouping is staged at the end of continuity.json: one
+            # encounter (the document), one decision for both pages.
+            encounter = encounter_stage.run(cid, force=True)
+            assert encounter["encounters_json"] == result["continuity_json"]
+            staged = json.loads(Path(result["continuity_json"]).read_text(encoding="utf-8"))
+            assert staged["pages"] and staged["documents"]
+            (only,) = staged["encounters"]
+            assert only["pages"] == ["1.jpg", "2.jpg"] and only["document"] == 1
+            assert only["page_family"] == "Discharge Summary"
+            assert only["encounter_type"] == "inpatient" and only["decided_by"] == "tier1"
 
             final = final_stage.run(cid, force=True)
             rows = {r["page_id"]: r for r in store.imaging_final.values()}

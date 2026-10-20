@@ -283,6 +283,23 @@ class ImagingSectionsProcessed(BaseModel):
     verification: bool = False
 
 
+class StagedEncounter(BaseModel):
+    """One encounter from ``staging/continuity.json`` (the encounter_type stage)."""
+
+    seq: int
+    document: int | None = None
+    page_family: str | None = None
+    pages: list[str] = Field(default_factory=list)
+    dos_from: str | None = None
+    dos_to: str | None = None
+    encounter_type: str | None = None
+    encounter_label: str | None = None
+    confidence: float | None = None
+    decided_by: str | None = None
+    reason: str | None = None
+    matched_keyword: str | None = None
+
+
 class ImagingDocumentResponse(BaseModel):
     folder_id: str
     manifest: ImagingManifestDetails = Field(default_factory=ImagingManifestDetails)
@@ -292,6 +309,8 @@ class ImagingDocumentResponse(BaseModel):
     sectionsProcessed: ImagingSectionsProcessed = Field(
         default_factory=ImagingSectionsProcessed
     )
+    # Staged encounter grouping; empty = derive it from the pages' document_seq.
+    encounters: list[StagedEncounter] = Field(default_factory=list)
 
 
 class ExtractionFieldRow(BaseModel):

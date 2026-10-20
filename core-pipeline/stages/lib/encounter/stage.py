@@ -11,7 +11,9 @@ from ``page_classification``, its most specific v24 name the encounter canon
 lists (canon page type, L3, L2, L1), else its family (L1).
 
 Runs after ``continuity``. Writes ``encounter_type_results`` for resolved
-pages (and removes rows for pages that are now unresolved), and
+pages, including visits with no evidence or no date, which default to
+Outpatient (F2F) at confidence 0.3 (canon ``default``); it removes rows for
+pages left unresolved (only when that default is emptied), and
 ``imaging/<chart>_encounter.csv`` for every page. With ENCOUNTER_DEBUG on, one
 evidence record per visit goes to ``<chart>/debug/<chart>_encounter_evidence.csv``.
 """
@@ -40,6 +42,7 @@ from stages._support import (
     mark_skipped,
     stage_run,
 )
+from stages.lib.continuity.stage import scores_path as continuity_scores_path
 from stages.lib.encounter.encounter_classify import classify_pages, visit_date
 from stages.lib.encounter.encounter_classify import load_canon as load_encounter_canon
 from stages.lib.page_classify import axes
@@ -68,11 +71,16 @@ ENCOUNTER_COLS = [
 
 EVIDENCE_COLS = [
     "chart_name",
+    "seq",
+    "document",
+    "page_family",
     "first_page",
     "pages",
     "dos_from",
     "dos_to",
     "encounter_type",
+    "encounter_label",
+    "matched_keyword",
     "decided_by",
     "confidence",
     "conflict",
@@ -104,6 +112,27 @@ def _ocr_source_label(
     if prelim and str(prelim).strip():
         return "prelim"
     return ""
+
+
+def _stage_encounters(chart_name: str, visit_log: list[dict[str, Any]]) -> str:
+    """The encounter grouping, at the end of ``staging/continuity.json``: one entry per
+    encounter (its pages, page family, date and the one decision every page carries)."""
+    path = continuity_scores_path(chart_name)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, ValueError):
+        payload = {}
+    payload["encounters"] = [
+        {k: record.get(k) for k in (
+            "seq", "document", "page_family", "pages", "dos_from", "dos_to",
+            "encounter_type", "encounter_label", "confidence", "decided_by", "reason",
+            "matched_keyword", "conflict", "contenders",
+        )}
+        for record in visit_log
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    return str(path)
 
 
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
@@ -172,10 +201,14 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             names = axes.names_of(kind)
             page_input["page_type_id"] = next((n for n in names if n in tier1), axes.family_of(kind))
             page_input["page_type_name"] = page_input["page_type_id"]
+            # Encounter type applies only to some families (canon applies_to).
+            page_input["page_family"] = axes.family_of(kind)
             # The continuity stage's document: one visit, one encounter type.
             page_input["document"] = (continuity.get(page_input["page_id"]) or {}).get("document_seq")
 
-        visit_log: Optional[list[dict[str, Any]]] = [] if ENCOUNTER_DEBUG else None
+        # One record per encounter: always staged in continuity.json; the debug CSV too
+        # with ENCOUNTER_DEBUG.
+        visit_log: list[dict[str, Any]] = []
         classified = classify_pages(page_inputs, visit_log=visit_log)
 
         csv_rows: list[dict[str, Any]] = []
@@ -220,7 +253,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         path = write_csv(
             imaging_csv(ctx.chart_name, "encounter"), ENCOUNTER_COLS, csv_rows
         )
-        if visit_log is not None:
+        encounters_json = _stage_encounters(ctx.chart_name, visit_log)
+        if ENCOUNTER_DEBUG:
             write_csv(
                 chart_dir(ctx.chart_name) / "debug" / f"{ctx.chart_name}_encounter_evidence.csv",
                 EVIDENCE_COLS,
@@ -246,6 +280,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         return {
             "chart_id": chart_id,
             "encounter_csv": str(path),
+            "encounters_json": encounters_json,
             "pages_done": ctx.done,
             "skipped": ctx.skipped,
             "tagged": tagged,

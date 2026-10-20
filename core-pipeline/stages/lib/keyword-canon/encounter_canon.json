@@ -24,6 +24,23 @@
     "tier2": 0.8,
     "tier2_conflict": 0.6
   },
+  "default": {
+    "setting": "outpatient_f2f",
+    "confidence": 0.3,
+    "note": "2026-10-20 (user): a visit with no setting evidence, or no usable date, is Outpatient (F2F) at this low confidence; decided_by 'default', and reason keeps why (no_setting_evidence / no_date / default_date). Empty setting = leave it unresolved."
+  },
+  "applies_to": {
+    "families": [
+      "Progress Note",
+      "Discharge Summary"
+    ],
+    "not_applicable": {
+      "setting": "not_applicable",
+      "label": "Not Applicable",
+      "confidence": 1.0
+    },
+    "note": "2026-10-20 (user): encounter type is valid only for an encounter whose page type (L1 family of its first classified page, the document's Final page type) is listed here; every other encounter (lab, orders, forms...) is Not Applicable on every page. Empty families = every encounter applies."
+  },
   "tier1_page_types": {
     "Discharge Summary": "inpatient",
     "ICU Note": "inpatient",

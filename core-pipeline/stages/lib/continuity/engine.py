@@ -894,7 +894,10 @@ def _rows(
             "break_before": before.total if before is not None else None,
             "break_after": after.total if after is not None else None,
             "score": before.total if before is not None else None,
-            "confidence": before.confidence if before is not None else None,
+            "confidence": (
+                before.confidence if before is not None
+                else 1.0 if s is not None and not transparent else None
+            ),
             "confidence_level": before.level if before is not None else ("high" if s is not None and not transparent else ""),
             "review_required": bool((before and before.flags) or (after and after.flags)),
             "evidence": (
@@ -994,8 +997,9 @@ def document_finals(members: Sequence[dict[str, Any]]) -> dict[str, Any]:
 
     Each member has ``page_type``, ``dos_from``, ``dos_to`` and, optionally,
     ``page_subtype``, ``names`` (its v24 names), ``classification_category``
-    and ``encounter_type``. Every page takes the first page's page type, category, DOS and
-    encounter type (a continue page has no DOS of its own, or the same one). A stand-alone
+    and ``encounter_type``. Every page takes the first page's page type, category and
+    encounter type, and the DOS of the first page that has one (the first page's when it
+    is dated; a later page's when the document opens undated). A stand-alone
     non-visit document — every page a ``default_final_dos`` type — takes DOS_DEFAULT_DATE
     instead (``dos_default``); such a page inside a visit's document takes the visit's DOS.
     """
@@ -1012,10 +1016,11 @@ def document_finals(members: Sequence[dict[str, Any]]) -> dict[str, Any]:
         for m in members
     ):
         return {**finals, "dos_from": default_date, "dos_to": default_date, "dos_default": True}
+    dated = next((m for m in members if m.get("dos_from")), opener)
     return {
         **finals,
-        "dos_from": opener.get("dos_from") or None,
-        "dos_to": (opener.get("dos_to") or opener.get("dos_from")) or None,
+        "dos_from": dated.get("dos_from") or None,
+        "dos_to": (dated.get("dos_to") or dated.get("dos_from")) or None,
     }
 
 

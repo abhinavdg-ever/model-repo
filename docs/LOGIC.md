@@ -577,7 +577,8 @@ read (`merge_spaced_dates`), so every extractor and the model take it as a
 plain date. A date with spaces only (`06 12 24`) is never read.
 
 **Extracted vs Final.** This stage writes each page's own date (Extracted).
-The Final DOS is the document's first page's, on every page of it, set by
+The Final DOS is the document's first dated page's (its first page's when that
+is dated), on every page of it, set by
 `imaging_final` from the continuity documents (§7b). The `doc_dos_*` columns
 are the page's own date, or `DOS_DEFAULT_DATE` (2222-02-02) when it has none.
 
@@ -663,19 +664,18 @@ high, and 0–1). Recorded, not yet acting: where the next page's text begins, a
 two sub-score conflict patterns.
 
 **Final values** (the `imaging_final` stage): Final page type = the document's
-first page's (sub-type can differ, §7). Final DOS and Final encounter type =
-the **first page's**, on every page; a stand-alone document whose every page is
+first page's (sub-type can differ, §7). Final DOS = the **first dated
+page's** (the first page's when dated), Final encounter type = the **first page's**, on every page; a stand-alone document whose every page is
 a `default_final_dos` type (demographics, registration, growth chart, problem
-list, immunizations) takes 2222-02-02. A document's DOS in review-ui's Doc Summary is its first
-page's.
+list, immunizations) takes 2222-02-02. A document's DOS in review-ui's Doc Summary is that Final DOS.
 
 **Writes**
 
 | Target | Columns |
 |---|---|
-| `page_continuity_results` | the original columns, one row per content or junk page: `document_seq` (documents and junk groups share the numbering), `seq`, `position` (first = New, single = Standalone), `relation`, `score` (the Break Before), `decided_by`, `confidence_level`, `evidence`, `link_strength`, `start_confirmed`, `review_required` |
+| `page_continuity_results` | the original columns, one row per content or junk page: `document_seq` (documents and junk groups share the numbering), `seq`, `position` (first = New, single = Standalone), `relation`, `score` (the Break Before), `confidence` (0–1, that decision's), `decided_by`, `confidence_level`, `evidence`, `link_strength`, `start_confirmed`, `review_required` |
 | `<chart>/staging/continuity.json` | every score of every gap: per page both scores, the label, confidence, the facts read (DOS trust, page number, signature, visit numbers) and both gaps' ending / opening / pair points, sub-scores, flags and final pass; per document its pages, DOS and page type |
-| `imaging_final` (the `imaging_final` stage) | one row per page: the Final value of every reviewer field; page type agreed across the document (`page_type_source`), DOS and encounter type the first page's (`dos_source = document`); a duplicate page copies the page it duplicates (`duplicate`, `duplicate_of_page_id`); `specialty` is the page's own page-axes specialty, `Unknown` when it has none (no ground truth). See [CONTINUITY_LOGIC.md](CONTINUITY_LOGIC.md) |
+| `imaging_final` (the `imaging_final` stage) | one row per page: the Final value of every reviewer field; page type agreed across the document (`page_type_source`), DOS the first dated page's and encounter type the first page's (`dos_source = document`); a duplicate page copies the page it duplicates (`duplicate`, `duplicate_of_page_id`); `specialty` is the page's own page-axes specialty, `Unknown` when it has none (no ground truth). See [CONTINUITY_LOGIC.md](CONTINUITY_LOGIC.md) |
 | disk | `imaging/<chart>_continuity.csv`: every page (blank and duplicate too), the same fields plus `kind`, `segment`, `dos_trust`, the printed `page_no` / `page_total`, `section_headers` and `layout_source` |
 
 ---
@@ -727,9 +727,10 @@ tier 1.
 | Tier 1, two settings | more tier 3 hints, then setting priority (Home 10, Tele 20, F2F 30, Inpatient 40); `conflict=y` | 0.70 |
 | Tier 1 empty, tier 2 one setting | that setting | 0.80 |
 | Tier 2, two settings | as above; `conflict=y` | 0.60 |
-| Nothing in tiers 1–2 | empty, `reason=no_setting_evidence` | 0 |
+| The encounter's page family (its first classified page's L1) is not in `applies_to` (Progress Note, Discharge Summary) | **Not Applicable** (`not_applicable`), `decided_by=not_applicable`, `matched_keyword` = the family; lab, orders, forms… | 1.0 |
+| Nothing in tiers 1–2, or no usable date | **Outpatient (F2F)**, `decided_by=default`, `reason` = `no_setting_evidence` / `no_date` (canon `default`; empty setting there = leave unresolved) | 0.3 |
 
-An unresolved visit never inherits from a neighbouring page. The buckets live
+An encounter with no classified page type at all is still classified. A defaulted visit never inherits from a neighbouring page. The buckets live
 in the catalog; calibrate them against a labelled sample.
 
 The **loader refuses** a catalog where a setting is unknown, a tier 1 id is not
@@ -740,8 +741,9 @@ phrase also scores, or a negative cancels a phrase that does not exist.
 
 | Target | Columns |
 |---|---|
-| `encounter_type_results` | resolved pages only: `encounter_type`, `confidence`, `matched_keyword`. Rows for pages that are now unresolved are deleted |
-| disk | `imaging/<chart>_encounter.csv`, every page: `encounter_type`, `encounter_label`, `confidence`, `matched_keyword` (page type for tier 1, phrase for tier 2), `continue_applied` (the page alone would answer differently or not at all), `decided_by` (`tier1`/`tier2`/`unresolved`), `reason`, `conflict` |
+| `encounter_type_results` | every non-blank/junk page (defaulted ones at 0.3): `encounter_type`, `confidence`, `matched_keyword`. Rows for unresolved pages (only if the canon default is emptied) are deleted |
+| staging | `<chart>/staging/continuity.json` → `encounters`: one entry per encounter (pages, page family, DOS, the decision); review-ui's Doc Summary reads it first |
+| disk | `imaging/<chart>_encounter.csv`, every page: `encounter_type`, `encounter_label`, `confidence`, `matched_keyword` (page type for tier 1, phrase for tier 2), `continue_applied` (the page alone would answer differently or not at all), `decided_by` (`tier1`/`tier2`/`not_applicable`/`default`/`unresolved`), `reason`, `conflict` |
 
 `ENCOUNTER_DEBUG=true` writes one evidence record per visit to
 `<chart>/debug/<chart>_encounter_evidence.csv`: every finding with its tier,

@@ -12,8 +12,8 @@ to `core-pipeline/`.
 | Stage | `stages/lib/continuity/stage.py` — `continuity`, seq 87, after `page_subtype` and `dos_extract`, before `imaging_final` |
 | Settings | `stages/lib/keyword-canon/continuity_canon.json`, version 4 (reloads on change) |
 | Inputs | `staging/extraction.json` first (§3), then the DB (DOS, page type, blank / junk) and the OCR JSON |
-| Writes | `page_continuity_results` (the original columns, one row per content or junk page), `<chart>/staging/continuity.json` (every score of every gap), `imaging/<chart>_continuity.csv` (every page) |
-| Database | no new columns; `schema/changes_2026-10-19.sql` §8 widens `decided_by` on an existing database |
+| Writes | `page_continuity_results` (the original columns plus `confidence`, one row per content or junk page), `<chart>/staging/continuity.json` (every score of every gap), `imaging/<chart>_continuity.csv` (every page) |
+| Database | one new column, `confidence` (0–1); on an existing database `schema/changes_2026-10-19.sql` §8 widens `decided_by` and §9 adds `confidence` |
 
 ---
 
@@ -359,6 +359,7 @@ No new columns. One row per content or junk page:
 | `relation` | `new_document` for its first page, else `continue` |
 | `score` | the **Break Before** |
 | `decided_by` | the gap before: `chart_start`, `decisive`, `decisive_conflict`, `sum`, `tie`, `conflict_a`, `conflict_b`, `final_pass`; a transparent page `attached` |
+| `confidence` | the gap before's confidence, 0–1 (`|2p − 1|` on the curve, §8); 1 on the chart's first page; added 2026-10-20 beside `score` |
 | `confidence_level` | the gap before's (high / medium / low) |
 | `evidence` | the gap before in words, e.g. `+8 break, high (signed_in_tail +3, last_numbered_page +3, has_title +3, signed_anywhere +2)` |
 | `link_strength` | strong while every link back to the first page is a 5-point join (page numbers or the same labelled date) |
@@ -390,8 +391,18 @@ finishes:
                            "ending": {}, "opening": {}, "pair": {"pagination_follows": -5, "…": 0},
                            "sub_scores": {"ending": 0, "opening": 0, "pair": -8},
                            "recorded": {"text_start": -1}, "flags": [], "final_pass": null},
-            "gap_after": {"…": "…"}}]}
+            "gap_after": {"…": "…"}}],
+ "encounters": [{"seq": 1, "document": 1, "page_family": "Progress Note",
+                 "pages": ["1.jpg", "2.jpg"], "dos_from": "2024-03-28", "dos_to": "2024-03-28",
+                 "encounter_type": "outpatient_f2f", "encounter_label": "Outpatient (F2F)",
+                 "confidence": 0.8, "decided_by": "tier2", "reason": "",
+                 "matched_keyword": "office visit", "conflict": false, "contenders": []}]}
 ```
+
+`encounters` is added at the end by the `encounter_type` stage (it runs after continuity):
+one entry per encounter (a continuity document), with the one decision every page of it
+carries. Review-ui's Doc Summary builds from it, and derives the encounters from
+`document_seq` as before when a chart has no staged `encounters`.
 
 The CSV (`<chart>_continuity.csv`) lists every page (blank and duplicate too) with the
 label, both scores, the confidence, `kind`, `segment`, `dos_trust` and `layout_source`; a
@@ -404,7 +415,7 @@ Unchanged (`document_finals`, applied by `imaging_final`):
 | Final value | Rule |
 |---|---|
 | Page type | the document's first page's (each page keeps its own sub-type) |
-| Date of service | the first page's, on every page |
+| Date of service | the first dated page's (the first page's when it is dated), on every page |
 | A stand-alone non-visit document | every page a `default_final_dos` type (demographics, registration, growth chart, problem list, immunizations): **2222-02-02** |
 | Encounter type | one per document (the encounter stage reads `document_seq`) |
 

@@ -1026,6 +1026,7 @@ class PostgresFolderRepository(FolderRepository):
                         "outpatient_tele": "Outpatient (Tele)",
                         "inpatient": "Inpatient",
                         "home": "Home",
+                        "not_applicable": "Not Applicable",
                     }
                     for page_name, et, conf in cur.fetchall():
                         fields = _ensure(str(page_name))
@@ -1083,6 +1084,9 @@ class PostgresFolderRepository(FolderRepository):
                             fields["continuityRelation"] = k.get("relation")
                             fields["continuityDecidedBy"] = k.get("decided_by")
                             fields["continuityEvidence"] = k.get("evidence")
+                            fields["continuityConfidence"] = (
+                                float(k["confidence"]) if k.get("confidence") is not None else None
+                            )
                             if document is not None:
                                 members.setdefault(int(document), []).append(fields)
                         # Documents and junk groups share the numbering: a group whose every

@@ -17,6 +17,8 @@
 -- Section 6 (2026-10-19): review-ui users and sign-in; who saved each ground truth.
 -- Section 7 (2026-10-20): chart_deletion, the record of charts an admin deleted.
 -- Section 8 (2026-10-20): page_continuity_results for the gap scorer (document splitting).
+-- Section 9 (2026-10-20): page_continuity_results.confidence, the decision's 0-1 confidence.
+-- Section 10 (2026-10-20): encounter_type_results allows 'not_applicable'.
 
 -- 1. provider_signature_results: written by kv_extract, read by imaging_final.
 --    (It used to be defined in v2.sql only, and nothing wrote it.)
@@ -187,3 +189,18 @@ ALTER TABLE page_continuity_results ADD CONSTRAINT page_continuity_results_decid
         'signature','page_number_end','weighted',
         'first_page_marker','page_type','page_end','continue_page','progress_note'
     )) NOT VALID;
+
+-- 9. page_continuity_results.confidence (2026-10-20): the gap scorer's 0-1 confidence in
+--    each page's Break Before decision, beside score (the points, kept). Old rows: NULL
+--    until continuity runs again.
+ALTER TABLE page_continuity_results ADD COLUMN IF NOT EXISTS confidence NUMERIC(5,4)
+    CHECK (confidence IS NULL OR confidence BETWEEN 0 AND 1);
+
+-- 10. encounter_type_results (2026-10-20): encounter type is valid only for Progress Note
+--     and Discharge Summary encounters (encounter_canon.json applies_to); every other
+--     encounter's pages are written as 'not_applicable'.
+ALTER TABLE encounter_type_results DROP CONSTRAINT IF EXISTS encounter_type_results_encounter_type_check;
+ALTER TABLE encounter_type_results ADD CONSTRAINT encounter_type_results_encounter_type_check
+    CHECK (encounter_type IN (
+        'outpatient_f2f','outpatient_tele','inpatient','home','not_applicable'
+    ));

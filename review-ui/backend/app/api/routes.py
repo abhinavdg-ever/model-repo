@@ -36,6 +36,7 @@ from app.services.blob_store import download_blob_bytes
 from app.services.folder_list import FolderListParams, build_folder_list
 from app.services.annotations import annotation_file, load_annotations, save_annotation
 from app.services.extraction_review import load_extraction_review
+from app.services.staged_continuity import load_staged_encounters
 from app.services.imaging_csv import filter_folder, iter_csv_lines
 from app.services.chart_run_batch import database_url_usable
 from app.services.accuracy_cache import clear_report_cache, load_report
@@ -1087,10 +1088,16 @@ def get_folder_imaging(
                 )
             }
         )
+    # The staged encounter grouping, when the chart workspace has one.
+    if not settings.is_production_mode and not doc.encounters:
+        encounters = load_staged_encounters(settings.resolved_data_root, folder_id)
+        if encounters:
+            doc = doc.model_copy(update={"encounters": encounters})
     logger.info(
-        "get_imaging id=%s pages=%d",
+        "get_imaging id=%s pages=%d encounters=%d",
         folder_id,
         len(doc.pages),
+        len(doc.encounters),
     )
     return doc
 

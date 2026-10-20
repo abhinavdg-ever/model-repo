@@ -13,8 +13,8 @@ Most Finals are the page's own value. Three are decided across a document:
   type differs keeps it as the sub-type (Progress Note / Laboratory Data).
   ``page_type_source`` is page / continuation / embedded, and
   ``continuation_rule`` names the rule.
-* **Date of service** and **encounter type**: the document's first page's
-  (``continuity.engine.document_finals``; ``dos_source`` = document). A
+* **Date of service**: the document's first dated page's; **encounter type**:
+  its first page's (``continuity.engine.document_finals``; ``dos_source`` = document). A
   stand-alone document of non-visit page types takes DOS_DEFAULT_DATE.
 
 Blank and junk pages belong to no document and keep their own values. A
@@ -208,7 +208,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 final_pages[page_id],
                 [final_pages[pid] for pid in document_of.get(page_id, [])] or None,
             )
-            # DOS and encounter type: the document's (its first page's) when
+            # DOS and encounter type: the document's (first dated page / first page) when
             # the page belongs to one, else its own.
             document = carried.get(page_id)
             dates = document or own[page_id]

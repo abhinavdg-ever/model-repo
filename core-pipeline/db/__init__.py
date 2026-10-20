@@ -1539,9 +1539,9 @@ def upsert_continuity(conn: Any, *, chart_id: int, page_id: int, row: dict[str, 
         """
         INSERT INTO page_continuity_results (
             chart_id, page_id, document_seq, seq, position, relation, decided_by,
-            confidence_level, score, review_required, link_strength,
+            confidence_level, score, confidence, review_required, link_strength,
             start_confirmed, in_progress_note, evidence
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (page_id) DO UPDATE SET
             document_seq       = EXCLUDED.document_seq,
             seq                = EXCLUDED.seq,
@@ -1550,6 +1550,7 @@ def upsert_continuity(conn: Any, *, chart_id: int, page_id: int, row: dict[str, 
             decided_by         = EXCLUDED.decided_by,
             confidence_level   = EXCLUDED.confidence_level,
             score              = EXCLUDED.score,
+            confidence         = EXCLUDED.confidence,
             review_required    = EXCLUDED.review_required,
             link_strength      = EXCLUDED.link_strength,
             start_confirmed    = EXCLUDED.start_confirmed,
@@ -1567,6 +1568,7 @@ def upsert_continuity(conn: Any, *, chart_id: int, page_id: int, row: dict[str, 
             row.get("decided_by"),
             row.get("confidence_level") or None,
             row.get("score"),
+            row.get("confidence"),
             bool(row.get("review_required")),
             row.get("link_strength"),
             bool(row.get("start_confirmed")),

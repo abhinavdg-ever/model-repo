@@ -77,6 +77,13 @@ class Canon:
     tier1: dict[str, str]  # page type id → setting
     phrases: tuple[Phrase, ...]
     negatives: tuple[Negative, ...]
+    # When nothing is found: this setting at this (low) confidence; "" leaves it unresolved.
+    default_setting: str = ""
+    default_confidence: float = 0.0
+    # Encounter type is valid only for these page families (L1); others are Not Applicable.
+    applies_to: frozenset[str] = frozenset()
+    not_applicable: str = "not_applicable"
+    not_applicable_confidence: float = 1.0
 
 
 class CanonError(ValueError):
@@ -116,6 +123,10 @@ def _validate(raw: dict[str, Any], page_type_ids: Optional[set[str]]) -> None:
         key = normalize_text(phrase)
         if key in owner:
             errors.append(f"context phrase {phrase!r} also scores in {owner[key]}")
+
+    default = (raw.get("default") or {}).get("setting")
+    if default and default not in settings:
+        errors.append(f"default.setting: unknown setting {default!r}")
 
     for neg in raw.get("negatives") or []:
         for cancelled in neg.get("cancels") or []:
@@ -159,13 +170,25 @@ def _parse_canon(raw: dict[str, Any], *, check_page_types: bool = True) -> Canon
         )
         for n in raw.get("negatives") or []
     )
+    na = (raw.get("applies_to") or {}).get("not_applicable") or {}
+    na_setting = str(na.get("setting") or "not_applicable")
     return Canon(
-        labels={k: str(v["label"]) for k, v in settings.items()},
+        labels={
+            **{k: str(v["label"]) for k, v in settings.items()},
+            na_setting: str(na.get("label") or "Not Applicable"),
+        },
         priority={k: int(v["priority"]) for k, v in settings.items()},
         confidence={k: float(v) for k, v in raw["confidence"].items()},
         tier1=dict(raw["tier1_page_types"]),
         phrases=tuple(phrases),
         negatives=negatives,
+        default_setting=str((raw.get("default") or {}).get("setting") or ""),
+        default_confidence=float((raw.get("default") or {}).get("confidence") or 0.0),
+        applies_to=frozenset(
+            str(f).strip().casefold() for f in (raw.get("applies_to") or {}).get("families") or []
+        ),
+        not_applicable=na_setting,
+        not_applicable_confidence=float(na.get("confidence", 1.0)),
     )
 
 
@@ -312,7 +335,7 @@ def gather(pages: list[dict[str, Any]], canon: Canon) -> Evidence:
 @dataclass(frozen=True)
 class Decision:
     setting: str  # empty when unresolved
-    decided_by: str  # "tier1" | "tier2" | "unresolved"
+    decided_by: str  # "tier1" | "tier2" | "default" | "not_applicable" | "unresolved"
     confidence: float
     conflict: bool
     matched_keyword: str
@@ -351,6 +374,16 @@ def decide(evidence: Evidence, canon: Canon) -> Decision:
 # --- step 4: classify and stamp ---------------------------------------------
 
 
+def encounter_family(visit: list[dict[str, Any]]) -> str:
+    """The encounter's page type: its first page's L1 family (the document's Final
+    page type), else the first page that has one."""
+    for page in visit:
+        family = str(page.get("page_family") or "").strip()
+        if family and family.casefold() != "unknown":
+            return family
+    return ""
+
+
 def classify_pages(
     pages: Iterable[dict[str, Any]],
     *,
@@ -369,7 +402,16 @@ def classify_pages(
 
     for visit in group_visits(list(pages)):
         first = visit[0]
-        if not any((page.get("dos_from") or "").strip() for page in visit):
+        family = encounter_family(visit)
+        if canon.applies_to and family and family.casefold() not in canon.applies_to:
+            # Not a visit note (lab, orders, forms...): no encounter type, on every page.
+            # An encounter with no classified page type at all is still classified.
+            decision = Decision(
+                canon.not_applicable, "not_applicable", canon.not_applicable_confidence, False,
+                family, reason=f"page_type:{family}",
+            )
+            evidence = Evidence()
+        elif not any((page.get("dos_from") or "").strip() for page in visit):
             decision = Decision(
                 "", "unresolved", 0.0, False, "", reason=first.get("reason") or "no_date"
             )
@@ -377,9 +419,18 @@ def classify_pages(
         else:
             evidence = gather(visit, canon)
             decision = decide(evidence, canon)
+        if not decision.setting and canon.default_setting:
+            # Nothing found: the default setting, low confidence; the reason says why.
+            decision = Decision(
+                canon.default_setting, "default", canon.default_confidence, False, "",
+                reason=decision.reason,
+            )
 
         for page in visit:
-            own = decide(gather([page], canon), canon).setting if decision.setting else ""
+            own = (
+                decide(gather([page], canon), canon).setting
+                if decision.setting and decision.decided_by in ("tier1", "tier2") else decision.setting
+            )
             rows.append(
                 {
                     "page_id": page.get("page_id"),
@@ -403,11 +454,16 @@ def classify_pages(
         if visit_log is not None:
             visit_log.append(
                 {
+                    "seq": len(visit_log) + 1,
+                    "document": first.get("document"),
+                    "page_family": family,
                     "first_page": first.get("page_name"),
                     "pages": [p.get("page_name") for p in visit],
                     "dos_from": first.get("dos_from") or "",
                     "dos_to": first.get("dos_to") or "",
                     "encounter_type": decision.setting,
+                    "encounter_label": canon.labels.get(decision.setting, ""),
+                    "matched_keyword": decision.matched_keyword,
                     "decided_by": decision.decided_by,
                     "confidence": decision.confidence,
                     "conflict": decision.conflict,

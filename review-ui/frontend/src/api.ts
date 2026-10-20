@@ -268,6 +268,22 @@ export type ImagingSectionsProcessed = {
   verification: boolean;
 };
 
+/** One encounter staged by the pipeline (staging/continuity.json → encounters). */
+export type StagedEncounter = {
+  seq: number;
+  document?: number | null;
+  page_family?: string | null;
+  pages: string[];
+  dos_from?: string | null;
+  dos_to?: string | null;
+  encounter_type?: string | null;
+  encounter_label?: string | null;
+  confidence?: number | null;
+  decided_by?: string | null;
+  reason?: string | null;
+  matched_keyword?: string | null;
+};
+
 export type ImagingDocumentResponse = {
   folder_id: string;
   manifest: ImagingManifestDetails;
@@ -275,6 +291,8 @@ export type ImagingDocumentResponse = {
   verifications?: ImagingVerificationDetails[];
   pages: ImagingPageResult[];
   sectionsProcessed?: ImagingSectionsProcessed;
+  /** Staged encounter grouping; empty or absent = derive it from documentSeq. */
+  encounters?: StagedEncounter[];
 };
 
 export type BlobAuthMode = "entra" | "sas";
