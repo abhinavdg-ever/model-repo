@@ -302,3 +302,10 @@ def test_the_first_classified_page_sets_the_family(canon):
     rows = classify_pages(pages, entries=canon)
     assert rows[0]["encounter_type"] == "outpatient_tele"
 
+
+def test_follow_up_visits_are_outpatient_f2f(canon):
+    for text in ("Follow up visit for hypertension.", "Follow-up appointment, established patient.",
+                 "Return visit: knee pain."):
+        d = one(canon, page(1, text))
+        assert (d.setting, d.decided_by) == ("outpatient_f2f", "tier2"), text
+

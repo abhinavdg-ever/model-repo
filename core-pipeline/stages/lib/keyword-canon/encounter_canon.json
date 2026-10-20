@@ -1,5 +1,5 @@
 {
-  "note": "Encounter setting per visit. Evidence is ranked, not added up: the highest non-empty tier decides alone. tier1 = the page's own matched page type that exists in one setting only, keyed on page_taxonomy.json sub-type names, else page type names. tier2 = text that names the setting. tier3 = hints that also occur in other settings; they only break a tie inside the deciding tier. context phrases are logged and never score. A negative removes the tier 2/3 finding it names (cancels) or every tier 2/3 finding of a setting (cancels_setting). A phrase is recorded once per visit however often it appears. Lower priority wins a tie. Reloads on change.",
+  "note": "Encounter setting per visit. Evidence is ranked, not added up: the highest non-empty tier decides alone. tier1 = the page's own matched page type that exists in one setting only, keyed on page_taxonomy.json sub-type names, else page type names. tier2 = text that names the setting. tier3 = hints that also occur in other settings; they only break a tie inside the deciding tier. context phrases are logged and never score. A negative removes the tier 2/3 finding it names (cancels) or every tier 2/3 finding of a setting (cancels_setting). A phrase is recorded once per visit however often it appears. Lower priority wins a tie. Reloads on change. 2026-10-20 (user): follow-up / return / established / new-patient / wellness visits are tier 2 Outpatient (F2F); more tele, inpatient and home phrases.",
   "settings": {
     "home": {
       "label": "Home",
@@ -70,7 +70,18 @@
       "phone visit",
       "remote visit",
       "audio only visit",
-      "audiovisual visit"
+      "audiovisual visit",
+      "telehealth visit",
+      "telemedicine visit",
+      "telephonic visit",
+      "telephone encounter",
+      "via telephone",
+      "via video",
+      "audio-video visit",
+      "audio and video",
+      "virtual care",
+      "e-visit",
+      "evisit"
     ],
     "inpatient": [
       "hospital course",
@@ -89,7 +100,16 @@
       "emergency department note",
       "emergency note",
       "ed note",
-      "er note"
+      "er note",
+      "admission note",
+      "admit note",
+      "inpatient progress note",
+      "hospitalist progress note",
+      "date of discharge",
+      "discharge date",
+      "length of stay",
+      "observation status",
+      "icu progress note"
     ],
     "home": [
       "skilled nurse visit",
@@ -97,7 +117,12 @@
       "home visit",
       "home health visit",
       "housecalls visit",
-      "house call visit"
+      "house call visit",
+      "in-home visit",
+      "in home visit",
+      "in-home assessment",
+      "home based primary care",
+      "home-based primary care"
     ],
     "outpatient_f2f": [
       "office visit",
@@ -111,7 +136,40 @@
       "f2f",
       "place of service",
       "appointment facility",
-      "reason for appointment"
+      "reason for appointment",
+      "follow up visit",
+      "follow-up visit",
+      "followup visit",
+      "follow up appointment",
+      "follow-up appointment",
+      "follow up office visit",
+      "return visit",
+      "return office visit",
+      "established patient visit",
+      "new patient visit",
+      "established patient",
+      "new patient",
+      "annual wellness visit",
+      "wellness visit",
+      "annual physical",
+      "preventive visit",
+      "well child visit",
+      "routine visit",
+      "routine follow up",
+      "routine follow-up",
+      "in-person visit",
+      "in person visit",
+      "seen in clinic",
+      "seen in the office",
+      "seen in office",
+      "outpatient visit",
+      "outpatient clinic",
+      "clinic follow up",
+      "office follow up",
+      "pcp visit",
+      "primary care visit",
+      "urgent care visit",
+      "walk-in visit"
     ]
   },
   "tier3": {
@@ -132,7 +190,6 @@
       "cheddar",
       "follow up",
       "follow-up",
-      "return visit",
       "reason for visit",
       "reason for consult",
       "outpatient",

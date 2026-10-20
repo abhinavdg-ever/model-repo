@@ -277,7 +277,7 @@ Duplicates are checked **after** the model's verdict, and only between pages the
 model kept as Main — a blank or junk page is never compared. A Main page is a
 duplicate when its normalized OCR text is **≥ 98% similar**
 (`difflib.SequenceMatcher`, run only when the two lengths are within 10% of each
-other) to a Main neighbor **within ±5 pages** in chart order, or when its text is
+other) to a Main neighbor **within ±10 pages** in chart order, or when its text is
 **wholly contained** in that neighbor's.
 
 | Rule | Behaviour |

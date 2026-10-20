@@ -1597,6 +1597,15 @@ export default function FolderViewer({
                   <button
                     type="button"
                     role="tab"
+                    aria-selected={imagingTab === "encounter"}
+                    className={imagingTab === "encounter" ? "active" : ""}
+                    onClick={() => openImagingTab("encounter")}
+                  >
+                    Encounter
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
                     aria-selected={imagingTab === "doc"}
                     className={imagingTab === "doc" ? "active" : ""}
                     onClick={() => openImagingTab("doc")}

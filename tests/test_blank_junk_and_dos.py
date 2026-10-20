@@ -1,6 +1,6 @@
 """Blank/junk duplicate scoping and DOS date handling.
 
-Duplicate detection runs after the model, among Main pages only: ±2 neighbor
+Duplicate detection runs after the model, among Main pages only: ±10 neighbor
 similarity (≥98%) or one page's text wholly contained in the other's.
 Blank / junk / short pages are excluded from comparison; on a match the higher
 character-count page stays the original (earlier page on a tie).
@@ -73,16 +73,25 @@ class TestDuplicateScope:
         assert by_id[1]["flag"] == "duplicate"
         assert by_id[1]["duplicate_of"] == 2
 
-    def test_pages_more_than_five_apart_are_not_compared(self):
-        pages = [page(i, i) for i in range(1, 8)]
+    def test_pages_more_than_ten_apart_are_not_compared(self):
+        pages = [page(i, i) for i in range(1, 13)]
         body = _body()
-        # page 1 and page 7 are identical but 6 steps apart (> ±5)
-        texts = {i: f"Unrelated progress note number {i} with its own findings. " * 6 for i in range(2, 7)}
-        texts[1] = texts[7] = body
-        rows = _classify(pages, texts, set(range(1, 8)))
+        # page 1 and page 12 are identical but 11 steps apart (> ±10)
+        texts = {i: f"Unrelated progress note number {i} with its own findings. " * 6 for i in range(2, 12)}
+        texts[1] = texts[12] = body
+        rows = _classify(pages, texts, set(range(1, 13)))
         flags = {r["page_id"]: r["flag"] for r in rows}
         assert flags[1] == "not_blank_junk"
-        assert flags[7] == "not_blank_junk"
+        assert flags[12] == "not_blank_junk"
+
+    def test_pages_ten_apart_are_compared(self):
+        pages = [page(i, i) for i in range(1, 12)]
+        body = _body()
+        texts = {i: f"Unrelated progress note number {i} with its own findings. " * 6 for i in range(2, 11)}
+        texts[1] = texts[11] = body
+        rows = _classify(pages, texts, set(range(1, 12)))
+        flags = {r["page_id"]: r["flag"] for r in rows}
+        assert "duplicate" in (flags[1], flags[11])
 
     def test_pages_five_apart_are_compared(self):
         pages = [page(i, i) for i in range(1, 7)]

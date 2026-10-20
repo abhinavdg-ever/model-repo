@@ -2824,7 +2824,7 @@ input {
   table-layout: auto;
 }
 
-/* Doc Summary → Documents: six columns, fits the panel. */
+/* Encounter tab: six columns, fits the panel. */
 .imaging-documents-table {
   min-width: 0;
   width: 100%;

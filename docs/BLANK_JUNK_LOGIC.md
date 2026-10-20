@@ -406,7 +406,7 @@ Main.
 | R2 placeholder | ≤ 25 words | `method.py` |
 | Hard junk groups | record_request, roi_vendors, invoice, id_card | `method.py` `HARD_JUNK_GROUPS` |
 | R6 undo | KK with DistilBERT's KEEP strong (p(keep) ≥ 0.85) | canon `voters.bert.keep_strong` |
-| Duplicates | ≥ 98%, ±5 pages, ≥ 300 characters | `classify.py` |
+| Duplicates | ≥ 98%, ±10 pages, ≥ 300 characters | `classify.py` |
 
 ### Old §10. Changes, 2026-10-17 / 18
 

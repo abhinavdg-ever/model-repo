@@ -92,8 +92,8 @@ export function fillDocDosForDownload(pages: ImagingPageResult[]): ImagingPageRe
     });
 }
 
-type ImagingTab = "page" | "sequencing" | "doc" | "additional";
-type DocView = "documents" | "values" | "confidence" | "rejection";
+type ImagingTab = "page" | "sequencing" | "encounter" | "doc" | "additional";
+type DocView = "values" | "confidence" | "rejection";
 
 type Props = {
   tab: ImagingTab;
@@ -1801,8 +1801,8 @@ function DocumentsTable({
     return (
       <div className="ocr-empty">
         {pages.some((page) => page.documentPosition != null)
-          ? "No documents in this chart: every page is blank, junk or a duplicate."
-          : "Documents appear once the continuity stage has run on this chart."}
+          ? "No encounters in this chart: every page is blank, junk or a duplicate."
+          : "Encounters appear once the continuity stage has run on this chart."}
       </div>
     );
   }
@@ -1812,10 +1812,10 @@ function DocumentsTable({
     <table className="imaging-summary-table imaging-documents-table">
       <thead>
         <tr>
-          <th scope="col">Doc</th>
+          <th scope="col">Encounter #</th>
           <th scope="col">Start Page</th>
           <th scope="col">End Page</th>
-          <th scope="col">Type</th>
+          <th scope="col">Page Type</th>
           <th scope="col">Encounter Type</th>
           <th scope="col">DOS</th>
         </tr>
@@ -1843,14 +1843,12 @@ function DocSummary({
   pages,
   verifications,
   sections,
-  encounters,
 }: {
   pages: ImagingPageResult[];
   verifications: ImagingVerificationDetails[];
   sections: ImagingSectionsProcessed;
-  encounters: StagedEncounter[];
 }) {
-  const [view, setView] = useState<DocView>("documents");
+  const [view, setView] = useState<DocView>("values");
   // Each page's own DOS, else the default 2222-02-02; never the previous page's.
   const rows = useMemo(() => withPageDos(pages, sections.dos), [pages, sections.dos]);
   const showConfidence = view === "confidence";
@@ -1858,15 +1856,6 @@ function DocSummary({
   return (
     <div className="imaging-doc-summary">
       <div className="output-tabs imaging-doc-tabs" role="tablist" aria-label="Doc summary view">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "documents"}
-          className={view === "documents" ? "active" : ""}
-          onClick={() => setView("documents")}
-        >
-          Documents
-        </button>
         <button
           type="button"
           role="tab"
@@ -1896,9 +1885,7 @@ function DocSummary({
         </button>
       </div>
 
-      {view === "documents" ? (
-        <DocumentsTable pages={pages} sections={sections} encounters={encounters} />
-      ) : view === "rejection" ? (
+      {view === "rejection" ? (
         <RejectionRulesTable
           rows={verifications}
           verificationProcessed={sections.verification}
@@ -2151,6 +2138,16 @@ export default function ImagingPanel({
     );
   }
 
+  if (tab === "encounter") {
+    // One row per encounter (continuity document); staged encounters first.
+    return (
+      <div className="imaging-panel-stack">
+        <ManifestDetails manifest={manifest} />
+        <DocumentsTable pages={document.pages} sections={sections} encounters={document.encounters ?? []} />
+      </div>
+    );
+  }
+
   if (tab === "doc") {
     return (
       <div className="imaging-panel-stack">
@@ -2159,7 +2156,6 @@ export default function ImagingPanel({
           pages={document.pages}
           verifications={verifications}
           sections={sections}
-          encounters={document.encounters ?? []}
         />
       </div>
     );
