@@ -768,7 +768,15 @@
       "copay"
     ]
   },
+  "distilbert": {
+    "note": "2026-10-20: DistilBERT alone decides after R1-R4 (method.py). Pass 1: p(keep) above pass1_final_keep_above -> Main, final, pass 2 skipped; every other page waits for pass 2. Pass 2: R4 (signature) is overruled when p(junk) is above signature_overruled_above; R5: p(junk) >= junk_at -> Junk, review_junk_at..junk_at -> Junk for review, below review_junk_at -> Main. p(junk) = every JUNK_* label plus BLANK.",
+    "pass1_final_keep_above": 0.95,
+    "junk_at": 0.85,
+    "review_junk_at": 0.5,
+    "signature_overruled_above": 0.95
+  },
   "voters": {
+    "retired": "2026-10-20: the keyword / DistilBERT vote is gone; see distilbert. Kept for reference only.",
     "bert": {
       "junk_strong": 0.85,
       "junk_weak": 0.6,

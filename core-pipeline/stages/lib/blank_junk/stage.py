@@ -10,13 +10,12 @@ Two passes, as the pipeline spec requires:
           page pass 1 did not already rule out. A Visual page pass 1 judged
           is not judged again.
 
-The verdict is ``method.decide`` (docs/BLANK_JUNK_LOGIC.md): rules R1-R8, then
-DistilBERT and the keyword canon vote (R9). Pass 1 only removes what it
-is sure of; every other page stays Main and gets final OCR. The confidence is
-the evidence for the verdict (DistilBERT, keywords, the rule), so a contested
-call comes out low. Every ballot and the
-deciding rule go to ``<chart>/staging/blank_junk.json`` beside the key/value
-extraction's ``extraction.json`` (not the database).
+The verdict is ``method.decide`` (docs/BLANK_JUNK_LOGIC.md): rules R1-R4, then DistilBERT
+alone (no keyword vote). Pass 1 removes only blank pages and R1-R3 junk, and settles the
+pages DistilBERT is sure to keep (p(keep) > 0.95: pass 2 skips them); every other page
+stays Main, gets final OCR, and DistilBERT decides it in pass 2. DistilBERT's
+probabilities and the deciding rule go to ``<chart>/staging/blank_junk.json`` beside the
+key/value extraction's ``extraction.json`` (not the database).
 
 Duplicate detection (after the verdict, among Main pages only):
 
@@ -50,6 +49,7 @@ from db import (
     connect,
     delete_blank_junk,
     get_blank_junk_flags,
+    get_blank_junk_reasons,
     get_ocr_texts,
     get_quality_map,
     low_quality_page_ids,
@@ -647,6 +647,11 @@ def _run_pass(
                     and method.text_is_visual(page_type(quality.get(pid)), prelim_texts.get(pid))
                 ]
                 mark_skipped(conn, ctx, visual_done, "visual_pass1")
+                # DistilBERT was sure in pass 1 that the page is a keep (R5 keep, final):
+                # pass 2 does not judge it again.
+                reasons = get_blank_junk_reasons(conn, chart_id, pass_no=1)
+                kept = [pid for pid in ctx.todo if method.is_final_keep(reasons.get(pid))]
+                mark_skipped(conn, ctx, kept, "final_keep_pass1")
                 no_text = [
                     pid for pid in ctx.todo if not (texts.get(pid) or "").strip()
                 ]

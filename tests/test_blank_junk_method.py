@@ -79,85 +79,6 @@ class TestRules:
         verdict = run("COVER SHEET")
         assert (verdict.code, verdict.rule) == (classify.CODE_COVER_PAGE, "R1")
 
-    def test_r2_placeholder(self):
-        verdict = run("This page intentionally left blank")
-        assert (verdict.code, verdict.rule) == (classify.CODE_OTHERS, "R2")
-
-    def test_r4_is_skipped_on_jj(self):
-        # DistilBERT 0.99 and the invoice wording (keywords JUNK): the signature does not save
-        # it; the vote decides.
-        verdict = run(INVOICE_TEXT, signed=True, bert=bert(0.99))
-        assert verdict.rule == "R9" and verdict.code != classify.CODE_MAIN
-        assert verdict.votes["r4_skipped"] == "JJ"
-        # JJ with a weak keyword ballot: still the vote (row 1, one strong -> Junk).
-        verdict = run(FAX_TEXT, signed=True, bert=bert(0.99))
-        assert verdict.rule == "R9" and verdict.code != classify.CODE_MAIN
-
-    def test_r4_holds_when_only_one_voter_says_junk(self):
-        verdict = run(CLINICAL_WEAK, signed=True, bert=bert(0.99))  # keywords KEEP
-        assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R4")
-
-    def test_r4_waits_for_pass_2(self):
-        verdict = run(JUNK_TEXT, pass_no=1, signed=True, bert=bert(0.99))
-        assert verdict.rule != "R4"
-
-    def test_r5_distilbert_above_85_forces_junk(self):
-        verdict = run(FILLER, bert=bert(0.90, "JUNK_LETTER_FAX"))
-        assert (verdict.code, verdict.rule) == (classify.CODE_LETTER_FAX, "R5.1")
-        assert verdict.confidence == pytest.approx(0.90)
-
-    def test_r5_leaves_a_clinical_page_to_the_vote(self):
-        text = "Assessment:\nstable\nPlan:\nrest " + FILLER  # clinical 4
-        verdict = run(text, bert=bert(0.99))
-        assert verdict.rule == "R9" and verdict.code == classify.CODE_MAIN
-        assert verdict.votes["r5_skipped"] == "clinical"
-
-    def test_r5_leaves_a_face_sheet_to_the_vote(self):
-        text = "Patient Demographics face sheet guarantor emergency contact date of birth " + FILLER
-        verdict = run(text, bert=bert(1.0))
-        assert verdict.code == classify.CODE_MAIN and verdict.votes["r5_skipped"] == "demographic"
-
-    def test_r5_needs_more_than_85(self):
-        assert run(CLINICAL_TEXT, bert=bert(0.85)).rule != "R5.1"
-
-    def test_r5_distilbert_below_5_keeps(self):
-        # Invoice wording (keywords strong JUNK) does not matter: DistilBERT is sure it is not junk.
-        verdict = run(INVOICE_TEXT, bert=bert(0.03))
-        assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R5.2")
-
-    def test_r5_keep_comes_before_retrieval_in_pass_1(self):
-        text = "Medical records request, release of information, Datavant, Ciox. " + FILLER
-        assert run(text, pass_no=1, bert=bert(0.40)).rule == "R7"
-        verdict = run(text, pass_no=1, bert=bert(0.04))
-        assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R5.2")
-
-    def test_r5_keep_cannot_be_reversed_by_later_rules(self):
-        # A short page would be junk (R6); DistilBERT wins.
-        short = [Line("Fax from Datavant records", 0.02, 0.05)]
-        verdict = run("Fax from Datavant records " + FILLER, lines=short, body_ink=False, bert=bert(0.01))
-        assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R5.2")
-
-    def test_r5_keep_runs_after_r1_to_r4(self):
-        # The rules run in number order: R1-R3 (and R4) come before R5.2.
-        assert run("   ", bert=bert(0.01)).code == classify.CODE_BLANK
-        assert run(CLINICAL_TEXT, no_ink=True, bert=bert(0.01)).rule == "R1"
-        assert run("This page intentionally left blank", bert=bert(0.01)).rule == "R2"
-        assert run(CLINICAL_TEXT, signed=True, bert=bert(0.01)).rule == "R4"
-
-    def test_r5_keep_needs_less_than_5(self):
-        assert run(INVOICE_TEXT, bert=bert(0.05)).rule != "R5.2"
-
-    def test_r5_force_junk_is_not_used_in_pass_1(self):
-        assert run(CLINICAL_TEXT, pass_no=1, bert=bert(0.95)).rule != "R5.1"
-
-    def test_r6_short_page_is_junk_even_with_a_clinical_heading(self):
-        lines = [Line("PROGRESS NOTE", 0.03, 0.05), Line("Assessment and Plan:", 0.08, 0.10)]
-        verdict = run("PROGRESS NOTE\nAssessment and Plan:", lines=lines, body_ink=False)
-        assert (verdict.code, verdict.rule) == (classify.CODE_OTHERS, "R6")
-
-    def test_r6_ignores_a_page_number_footer(self):
-        lines = [Line("Patient: J Doe DOB 01/02/1950 visit", 0.03, 0.06), Line("Page 3 of 7", 0.96, 0.98)]
-        assert run("Patient: J Doe DOB 01/02/1950 visit\nPage 3 of 7", lines=lines, body_ink=False).rule == "R6"
 
     def test_r6_does_not_fire_with_ink_below_or_unmeasured(self):
         lines = [Line("Wound care photo", 0.03, 0.05)]
@@ -172,13 +93,6 @@ class TestRules:
         lines = [Line("Electronically signed by A. Smith, MD", 0.03, 0.05)]
         assert run("Electronically signed by A. Smith, MD 03/14/24", lines=lines, body_ink=False).rule == "R4"
 
-    def test_r7_retrieval_wording(self):
-        verdict = run("Request for medical records from Datavant for the dates of service requested. " + FILLER)
-        assert (verdict.code, verdict.rule) == (classify.CODE_RECORD_REQUEST, "R7")
-
-    def test_r8_strong_clinical_keeps(self):
-        verdict = run(CLINICAL_TEXT + "\nChief Complaint:\nchest pain", bert=bert(0.7))
-        assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R8")
 
     def test_r3_visual_is_kept(self):
         verdict = run(FILLER, document_type="visual", bert=bert(0.8))
@@ -200,158 +114,6 @@ class TestRules:
         assert method.text_is_visual("visual", "a b c") and not method.text_is_visual("printed", "a")
 
 
-class TestVote:
-    """Two voters, DistilBERT then keywords (method §8.2)."""
-
-    def test_jj_with_a_strong_ballot_is_junk(self):
-        verdict = run(JUNK_TEXT, bert=bert(0.84))  # DistilBERT weak, keywords strong (12)
-        assert (verdict.votes["ballots"], verdict.votes["row"], verdict.code) == ("JJ", 1, classify.CODE_INVOICE)
-        # both agree: 1 - (1 - 0.84) * (1 - 1.0)
-        assert verdict.confidence == pytest.approx(1.0)
-
-    def test_jj_both_weak_is_junk_too(self):
-        verdict = run(FAX_TEXT, bert=bert(0.70))
-        assert verdict.votes["ballots"] == "JJ" and verdict.code != classify.CODE_MAIN
-
-    def test_jj_both_weak_waits_in_pass_1(self):
-        verdict = run(FAX_TEXT, pass_no=1, bert=bert(0.70))
-        assert verdict.code == classify.CODE_MAIN and "deferred" in verdict.reason
-
-    def test_jj_still_yields_to_the_handwritten_veto(self):
-        verdict = run(FAX_TEXT, bert=bert(0.70), hw_area_pct=45.0)
-        assert (verdict.code, verdict.votes.get("veto")) == (classify.CODE_MAIN, "handwritten")
-
-    def test_ja_distilbert_alone_is_junk(self):
-        verdict = run(FILLER, bert=bert(0.70, "JUNK_LETTER_FAX"))
-        assert (verdict.votes["ballots"], verdict.votes["row"], verdict.code) == ("JA", 2, classify.CODE_LETTER_FAX)
-        assert verdict.confidence == pytest.approx(0.70)
-
-    def test_ja_handwritten_veto_keeps_with_distilberts_low_keep(self):
-        verdict = run(FILLER, bert=bert(0.70), hw_area_pct=45.0)
-        assert (verdict.code, verdict.votes["veto"]) == (classify.CODE_MAIN, "handwritten")
-        assert verdict.confidence == pytest.approx(0.30)
-
-    def test_aj_at_the_threshold_is_junk(self):
-        verdict = run(INVOICE_TEXT)  # no DistilBERT: abstains
-        assert (verdict.votes["ballots"], verdict.votes["row"], verdict.code) == ("AJ", 3, classify.CODE_INVOICE)
-        assert verdict.confidence == pytest.approx(0.90)
-
-    def test_aj_below_the_threshold_stays_main(self):
-        verdict = run(FAX_TEXT)
-        assert (verdict.votes["ballots"], verdict.code) == ("AJ", classify.CODE_MAIN)
-        assert verdict.confidence == pytest.approx(0.60)  # 1 - 4/10: the keywords lean junk
-
-    def test_aj_under_8_words_counts_distilbert_as_abstaining(self):
-        verdict = run("Invoice amount due, remit to, balance due", bert=bert(0.10))  # 7 words
-        assert (verdict.votes["ballots"], verdict.code) == ("AJ", classify.CODE_INVOICE)
-        assert "bert" not in verdict.votes["confidence_from"]
-
-    def test_jk_disagreement_is_main_with_low_confidence(self):
-        verdict = run(CLINICAL_WEAK, bert=bert(0.80))
-        assert (verdict.votes["ballots"], verdict.votes["row"], verdict.code) == ("JK", 4, classify.CODE_MAIN)
-        # disagree: mean(DistilBERT p(keep) 0.20, keywords 0.40)
-        assert verdict.confidence == pytest.approx(0.30)
-        assert verdict.votes["confidence_from"]["combined"] == "disagree"
-
-    def test_kk_agreement_reinforces(self):
-        verdict = run(CLINICAL_WEAK, bert=bert(0.10))
-        assert (verdict.votes["row"], verdict.code) == (5, classify.CODE_MAIN)
-        assert verdict.confidence == pytest.approx(1 - 0.10 * 0.6)
-
-    def test_a_clear_keep_keeps_distilberts_confidence(self):
-        verdict = run(FILLER, bert=bert(0.10))
-        assert (verdict.votes["ballots"], verdict.code) == ("KA", classify.CODE_MAIN)
-        assert verdict.confidence == pytest.approx(0.90)
-
-    def test_nothing_to_judge_is_main(self):
-        verdict = run(FILLER, bert=bert(0.55))  # DistilBERT in its abstain band
-        assert (verdict.votes["ballots"], verdict.votes["row"], verdict.code) == ("AA", 7, classify.CODE_MAIN)
-        assert verdict.confidence == pytest.approx(0.45)
-
-    def test_a_missing_model_abstains_and_gives_no_signal(self):
-        verdict = run(FILLER)
-        assert verdict.votes["bert"]["note"] == "unavailable"
-        assert verdict.confidence == pytest.approx(0.5)
-
-    def test_ballot_letters_are_distilbert_then_keywords(self):
-        verdict = run(FILLER, bert=bert(0.70))
-        by = verdict.votes["by_voter"]
-        assert set(by) == {"bert", "kw"}
-        assert verdict.votes["ballots"] == by["bert"] + by["kw"]
-        assert f"vote {verdict.votes['ballots']} (DistilBERT, keywords)" in verdict.reason
-
-    def test_clinical_content_keeps_the_page_without_a_veto(self):
-        # C >= 4: the keywords vote KEEP, so the vote is JK -> Main; no veto is needed.
-        text = JUNK_TEXT + "\nAssessment:\nstable\nPlan:\nrest"
-        verdict = run(text, bert=bert(0.84))
-        assert (verdict.code, verdict.votes["ballots"], verdict.votes.get("veto")) == (classify.CODE_MAIN, "JK", None)
-
-    def test_a_face_sheet_with_soft_junk_wording_is_kept_by_the_keywords(self):
-        # D >= 3 with fax wording (not a hard group): the keywords vote KEEP.
-        text = "Patient Name DOB MRN Sex face sheet guarantor. Fax cover sheet, number of pages 3. " + FILLER
-        verdict = run(text, bert=bert(0.84))
-        assert (verdict.code, verdict.votes["by_voter"]["kw"], verdict.votes.get("veto")) == (classify.CODE_MAIN, "K", None)
-
-    def test_handwritten_veto_above_30_percent(self):
-        verdict = run(JUNK_TEXT, bert=bert(0.84), hw_area_pct=45.0)
-        assert (verdict.code, verdict.votes.get("veto")) == (classify.CODE_MAIN, "handwritten")
-
-    def test_no_handwritten_veto_at_30_percent_or_less(self):
-        verdict = run(JUNK_TEXT, bert=bert(0.84), hw_area_pct=30.0)
-        assert verdict.code == classify.CODE_INVOICE
-
-    def test_pass_1_only_takes_two_strong_junk_ballots(self):
-        weak = run(JUNK_TEXT, pass_no=1, bert=bert(0.84))
-        assert weak.code == classify.CODE_MAIN and "deferred" in weak.reason
-        strong = run(JUNK_TEXT, pass_no=1, bert=bert(0.95))
-        assert strong.code == classify.CODE_INVOICE
-
-    def test_pass_1_defers_ja_and_aj(self):
-        assert "deferred" in run(FILLER, pass_no=1, bert=bert(0.95)).reason
-        assert "deferred" in run(INVOICE_TEXT, pass_no=1).reason
-
-    def test_every_verdict_records_its_ballots(self):
-        verdict = run(JUNK_TEXT, bert=bert(0.84))
-        assert {"bert", "kw", "rule", "ballots", "row", "confidence_from"} <= set(verdict.votes)
-        assert "tfidf" not in verdict.votes
-        assert verdict.votes["kw"]["junk_group"] == "invoice"
-
-
-class TestConfidence:
-    def test_observation_rules_are_fixed(self):
-        assert run("   ").confidence == 1.0
-        assert run("This page intentionally left blank").confidence == 0.99
-
-    def test_r8_combines_the_rule_with_a_disagreeing_distilbert(self):
-        verdict = run(CLINICAL_TEXT + "\nChief Complaint:\nchest pain", bert=bert(0.7))
-        assert verdict.rule == "R8"
-        signals = verdict.votes["confidence_from"]
-        assert signals["rule"] == 0.95 and signals["bert"] == pytest.approx(0.30)
-        assert signals["combined"] == "disagree"
-        assert verdict.confidence == pytest.approx((0.95 + 0.30 + signals["keywords"]) / 3, abs=1e-4)
-
-    def test_r8_with_agreement_is_at_least_the_rule(self):
-        verdict = run(CLINICAL_TEXT + "\nChief Complaint:\nchest pain", bert=bert(0.05))
-        assert verdict.rule == "R8" and verdict.confidence >= 0.95
-
-
-class TestPatientEducation:
-    HANDOUT = (
-        "Dim lighting Loose rug Clutter. This picture shows some of the things that can cause a fall in "
-        "your home. Consumer Information Use and Disclaimer. This generalized information is a limited "
-        "summary of diagnosis, treatment, and/or medication information."
-    )
-
-    def test_a_handout_is_clinical_so_distilbert_cannot_force_it(self):
-        verdict = run(self.HANDOUT, bert=bert(0.99, "JUNK_RECORD_REQUEST"))
-        assert verdict.code == classify.CODE_MAIN
-        assert verdict.votes["r5_skipped"] == "clinical"
-
-    def test_after_visit_summary_wording_counts(self):
-        scores = score_text("After Visit Summary. Discharge instructions: call your doctor if the fever returns.")
-        assert scores.group("clinical", "patient_education") >= 4
-
-
 class TestGeometry:
     def test_words_group_into_lines(self):
         words = [
@@ -362,47 +124,6 @@ class TestGeometry:
         lines = method.lines_from_words(words, 1000)
         assert [l.text for l in lines] == ["Page Header", "Body"]
         assert lines[1].bottom == pytest.approx(0.52)
-
-
-class TestPass2ReadsTesseractJunkTerms:
-    """Chart 66945468 p25: 'Optum' was in the Tesseract text only; the final OCR dropped it."""
-
-    FINAL = "Patient Name DOB MRN Sex " + " ".join(f"field{i}" for i in range(30))
-    PRELIM = FINAL + " Optum"
-
-    def test_a_junk_term_only_tesseract_read_counts_in_pass_2(self):
-        scores = score_text(self.FINAL, also_junk=self.PRELIM)
-        assert scores.junk == score_text(self.PRELIM).junk > 0
-        assert scores.tesseract_only == {"junk.roi_vendors": ["optum"]}
-        assert scores.to_dict()["tesseract_only"] == {"junk.roi_vendors": ["optum"]}
-
-    def test_clinical_and_demographic_read_the_final_text_only(self):
-        alone = score_text("Patient Name only")
-        scores = score_text("Patient Name only", also_junk="Assessment: Plan: DOB MRN Sex")
-        assert (scores.clinical, scores.demographic) == (alone.clinical, alone.demographic)
-
-    def test_the_keyword_ballot_votes_junk_with_it(self):
-        verdict = run(self.FINAL, prelim_text=self.PRELIM, bert=bert(0.71, "JUNK_OTHERS"))
-        assert verdict.votes["kw"]["vote"] == "JUNK" and verdict.votes["ballots"] == "JJ"
-
-    def test_pass_1_does_not_use_it(self):
-        verdict = run(self.FINAL, pass_no=1, prelim_text="Optum")
-        assert "tesseract_only" not in verdict.votes["kw"]
-
-
-def test_r6_records_the_ink_it_measured():
-    lines = [Line("Optum ROI request", 0.03, 0.05)]
-    verdict = run("Optum ROI request for records", lines=lines, body_ink=True, body_ink_fraction=0.0042)
-    assert verdict.votes["short_page"]["ink"] is True
-    assert (verdict.votes["short_page"]["ink_fraction"], verdict.votes["short_page"]["ink_limit"]) == (0.0042, 0.005)
-
-
-def test_r6_short_page_is_15_percent():
-    # Content ending at 14% is short; at 18% it is not (20% between 2026-10-18 and -19).
-    short = [Line("Optum release of information", 0.03, 0.05), Line("Patient DOB MRN", 0.12, 0.14)]
-    assert run("Optum release of information Patient DOB MRN", lines=short, body_ink=False).rule == "R6"
-    longer = [Line("Optum release of information", 0.03, 0.05), Line("Patient DOB MRN", 0.16, 0.18)]
-    assert run("Optum release of information Patient DOB MRN", lines=longer, body_ink=False).rule != "R6"
 
 
 def test_a_no_ink_page_is_judged_in_pass_1_and_is_blank():
@@ -419,39 +140,11 @@ def test_a_no_ink_page_is_judged_in_pass_1_and_is_blank():
     assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")
 
 
-def test_r6_is_undone_only_by_both_keeps_with_distilbert_strong():
-    lines = [Line("Assessment:", 0.03, 0.05), Line("Plan: rest", 0.08, 0.10)]
-    # KK with DistilBERT p(keep) 0.9 (a strong KEEP, >= 0.85): the short page is undone.
-    kept = run(CLINICAL_WEAK, lines=lines, body_ink=False, bert=bert(0.1))
-    assert (kept.votes["bert"]["vote"], kept.votes["kw"]["vote"]) == ("KEEP", "KEEP")
-    assert kept.rule != "R6" and kept.votes["short_page"]["skipped"].startswith("KK")
-    # KK but DistilBERT p(keep) 0.75 (a weak KEEP): R6 stands.
-    hesitant = run(CLINICAL_WEAK, lines=lines, body_ink=False, bert=bert(0.25))
-    assert (hesitant.votes["bert"]["vote"], hesitant.votes["kw"]["vote"]) == ("KEEP", "KEEP")
-    assert hesitant.rule == "R6"
-    # One KEEP only (DistilBERT JUNK, keywords KEEP): R6 stands.
-    one = run(CLINICAL_WEAK, lines=lines, body_ink=False, bert=bert(0.7))
-    assert one.votes["bert"]["vote"] == "JUNK" and one.rule == "R6"
-
-
 CARD_TEXT = (
     "Benefit Award Card # 8101 3360 3004 6207 For Pharmacist: 1-877-889-6510 "
     "Rx Claims: OptumRx UnitedHealthcare UCard Member ID 903710875-00 "
     "RxBIN 610097 RxPCN 9999 RxGRP COS Optum Health Networks"
 )
-
-
-def test_card_wording_counts_on_visual_pages_only():
-    scores = score_text(CARD_TEXT, document_type="visual")
-    assert scores.best_junk_group() == "id_card" and scores.junk >= 7
-    # On a page that is not visual it adds nothing.
-    assert score_text(CARD_TEXT, document_type="printed").group("junk", "id_card") == 0
-    assert score_text(CARD_TEXT).group("junk", "id_card") == 0
-    # A visual page over the word limit: the R3 card check still junks it, and a name and
-    # DOB on the card do not rescue it as a face sheet (id_card is hard junk).
-    verdict = run("Patient name Roberts Victor DOB 03/16/1961 " + CARD_TEXT, document_type="visual")
-    assert (verdict.rule, verdict.code) == ("R3", classify.CODE_OTHERS) and verdict.votes["kw"]["vote"] == "JUNK"
-    assert "junk.id_card" not in run("Patient name Roberts Victor DOB 03/16/1961 " + CARD_TEXT).votes["kw"]["hits"]
 
 
 def test_a_visual_card_with_card_wording_is_junk():
@@ -461,7 +154,6 @@ def test_a_visual_card_with_card_wording_is_junk():
 
 def test_a_drivers_licence_is_junk_evidence():
     assert score_text("Driver License DL # D1234567 class C organ donor", document_type="visual").best_junk_group() == "id_card"
-
 
 
 def test_a_heading_line_counts_its_heading_word_anywhere():
@@ -474,21 +166,6 @@ def test_a_heading_line_counts_its_heading_word_anywhere():
     assert score_text("Allergies: penicillin, sulfa, codeine, latex, shellfish and peanuts").hits[
         "clinical.section_headings"
     ] == ["allergies"]
-
-
-def test_r7_is_overruled_when_both_voters_keep():
-    # Insurer 'Optum' in the header + 'Hedis' footer = retrieval 7; clinical 7 (< 8).
-    page = (
-        "Chart Summary\nPCP: Amy E Dallman DO\nIns: Optum HMO ASRS\nImmunizations\n"
-        "Allergies and Adverse Reactions\nReport run by Hedis Review"
-    )
-    kept = run(page, pass_no=1, bert=bert(0.10))
-    assert (kept.votes["bert"]["vote"], kept.votes["kw"]["vote"]) == ("KEEP", "KEEP")
-    assert kept.rule != "R7" and kept.votes["r7_skipped"] == "KK" and kept.code == classify.CODE_MAIN
-    # DistilBERT sure it is not junk (< 0.05): R5.2 keeps it before R7 is looked at.
-    assert run(page, pass_no=1, bert=bert(0.0023)).rule == "R5.2"
-    # DistilBERT not KEEP: R7 stands.
-    assert run(page, pass_no=1, bert=bert(0.7)).rule == "R7"
 
 
 class TestVisualR3:
@@ -523,9 +200,6 @@ class TestVisualR3:
         verdict = run("ECG tracing lead II", document_type="visual", bert=bert(0.99))
         assert (verdict.rule, verdict.code) == ("R3", classify.CODE_MAIN)
 
-    def test_no_card_with_20_words_goes_on_down_the_ladder(self):
-        verdict = run(CLINICAL_TEXT + "\nChief Complaint:\nchest pain", document_type="visual")
-        assert verdict.rule == "R8"
 
     def test_card_wording_on_a_printed_page_is_not_r3(self):
         assert run("Aetna member card BIN: 610014 " + FILLER, document_type="printed").rule != "R3"
@@ -535,3 +209,54 @@ def test_pharmacy_wording_is_not_card_evidence():
     for text in ("RxBIN 610097 RxPCN 9999 RxGRP COS", "BIN: 610014", "For Pharmacist: 1-877-889-6510 Rx Claims"):
         verdict = run(text, document_type="visual")
         assert (verdict.rule, verdict.code) == ("R3", classify.CODE_MAIN), text
+
+
+class TestDistilBertLadder:
+    """2026-10-20: R1-R4, then DistilBERT alone; junk only in pass 2 except R1-R3."""
+
+    def test_r2_placeholder_is_blank_not_junk(self):
+        verdict = run("This page intentionally left blank", bert=bert(0.99))
+        assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R2")
+
+    def test_pass_1_keeps_a_sure_page_for_good(self):
+        verdict = run(FILLER, pass_no=1, bert=bert(0.02))
+        assert (verdict.code, verdict.rule) == (classify.CODE_MAIN, "R5")
+        assert method.is_final_keep(verdict.reason)
+        assert verdict.confidence == pytest.approx(0.98)
+
+    def test_pass_1_never_junks_on_distilbert(self):
+        for p in (0.99, 0.60, 0.10):
+            verdict = run(INVOICE_TEXT, pass_no=1, bert=bert(p))
+            assert verdict.code == classify.CODE_MAIN and verdict.rule == "P1"
+            assert not method.is_final_keep(verdict.reason) and verdict.votes["deferred"]
+
+    def test_pass_1_still_takes_r1_and_r3_junk(self):
+        assert run("Page 3 of 7", pass_no=1, bert=bert(0.0)).rule == "R1"
+        card = "Member ID card, Group number 0042, Datavant " + FILLER
+        assert run(card, pass_no=1, document_type="visual", bert=bert(0.0)).rule == "R3"
+
+    def test_pass_2_junk_cut_offs(self):
+        sure = run(FILLER, bert=bert(0.90, "JUNK_LETTER_FAX"))
+        assert (sure.code, sure.rule) == (classify.CODE_LETTER_FAX, "R5") and "review" not in sure.reason
+        unsure = run(FILLER, bert=bert(0.60))
+        assert unsure.code == classify.CODE_INVOICE and unsure.votes["review_required"]
+        assert run(FILLER, bert=bert(0.49)).code == classify.CODE_MAIN
+
+    def test_keywords_no_longer_decide(self):
+        # Invoice wording, DistilBERT keeps: Main. Clinical wording, DistilBERT junks: Junk.
+        assert run(INVOICE_TEXT, bert=bert(0.10)).code == classify.CODE_MAIN
+        assert run(CLINICAL_TEXT, bert=bert(0.95)).code != classify.CODE_MAIN
+
+    def test_a_signature_keeps_the_page_unless_distilbert_is_over_95(self):
+        held = run(FILLER, signed=True, bert=bert(0.94))
+        assert (held.code, held.rule) == (classify.CODE_MAIN, "R4")
+        over = run(FILLER, signed=True, bert=bert(0.97))
+        assert over.rule == "R5" and over.code != classify.CODE_MAIN and "r4_overruled" in over.votes
+
+    def test_a_handwritten_page_is_not_junked_by_the_model(self):
+        verdict = run(FILLER, bert=bert(0.95), hw_area_pct=45)
+        assert verdict.code == classify.CODE_MAIN and verdict.votes["veto"] == "handwritten"
+
+    def test_no_model_keeps_the_page_for_review(self):
+        verdict = run(FILLER)
+        assert verdict.code == classify.CODE_MAIN and verdict.votes["review_required"]

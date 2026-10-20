@@ -241,71 +241,28 @@ flowchart TD
 ### The decision (`blank_junk/method.py`)
 
 Full logic, every number and worked examples: [`BLANK_JUNK_LOGIC.md`](BLANK_JUNK_LOGIC.md).
-Words, weights, thresholds and geometry: `keyword-canon/blank_junk_context_canon.json`
-(reloads on change).
+Thresholds: `keyword-canon/blank_junk_context_canon.json` → `distilbert` (reloads on change).
 
-**Keyword canon.** Three contexts — clinical, junk (one group per subtype),
-demographic — plus a neutral list that never scores (fax, phone, insurance…).
-Group score = weight × **unique** hits, capped per group; context score = sum of
-its groups. C = clinical ≥ 4, C⁺ ≥ 8, J = junk ≥ 4, J⁺ ≥ 7, D = demographic ≥ 3.
-In pass 2 a junk word in the header (top 12%) or footer (bottom 8%) counts only
-when the body has a junk word too.
+**Since 2026-10-20 DistilBERT alone decides** after rules R1–R4: no keyword scoring and
+no vote. Keywords survive only as the fixed phrases R1 (cover term), R2, R3 and R4 look
+for. Junk is decided in pass 2 on the Final OCR, except the certain R1–R3 calls.
 
 **Rules, first that fires decides:**
 
 | # | Rule | Verdict | Pass |
 |---|---|---|---|
 | R1 | No ink (HW stage `blank_page` / `faint_marks_only`); or, not Visual, 0 characters or the word "blank" in < 30 characters | `blank` | 1, 2 |
-| R1 | Not Visual, < 15 characters otherwise | junk / Cover Page when a Cover Page term (`cover_page`, `cover_stamps`) is there, else junk / Others | 1, 2 |
-| R2 | "Intentionally left blank" on ≤ 25 words | junk / Others | 1, 2 |
-| R3 | `document_type = 'visual'`, any length: **first** card evidence is required (an id_card term or card-number pattern such as Group # / Member ID / copay / EXP date; pharmacy wording does not count); with it, card + vendor + insurer + retrieval + invoice wording ≥ 4 → junk / Others. Vendors and insurers alone only add weight. Else < 20 words → Main. Else on to R4–R9 | junk / Others, Main, or on | 1, 2 (pass 2 skips visual pages under 20 words) |
-| R4 | Provider Signature = Yes (KV extraction), or a canon signature phrase — unless DistilBERT and the keywords both say JUNK (JJ): then the vote (R9) decides, `votes.r4_skipped` | Main | 2 |
-| R5.1 | DistilBERT p(junk) > 0.85 — **not** when C or D (then the vote decides) | junk / DistilBERT's subtype | 2 |
-| R5.2 | DistilBERT p(junk) < 0.05: no later rule can reverse it | Main | 1, 2 |
-| R6 | Content ends in the top 15% of the page (running header / footer lines ignored) and no ink from 17% to 94% of the height (ink = at least `body_ink_max_fraction`, 0.5%, of that band; `votes.short_page` records `ink`, `ink_fraction`, `ink_limit`) — unless both voters say KEEP (KK) and DistilBERT's KEEP is strong (≥ 0.85) | junk / Others | 2 |
-| R7 | record_request + roi_vendors ≥ 7 and not C⁺, unless both voters say KEEP (KK) | junk / Record Request | 1, 2 |
-| R8 | C⁺ | Main | 1, 2 |
-| R9 | The vote, below | | 1, 2 |
+| R1 | Not Visual, < 15 characters otherwise | junk / Cover Page when a Cover Page term is there, else junk / Others | 1, 2 |
+| R2 | "Intentionally left blank" on ≤ 25 words | **`blank`** | 1, 2 |
+| R3 | `document_type = 'visual'`: card evidence and card + vendor + insurer + retrieval + invoice wording ≥ 4 → junk / Others; else < 20 words → Main; else on | junk / Others, Main, or on | 1, 2 |
+| R5 keep | DistilBERT p(keep) > 0.95 → Main, **final**: pass 2 skips the page | Main | 1 |
+| — | Anything else in pass 1 | Main for now, judged in pass 2 | 1 |
+| R4 | Provider Signature = Yes, or a signature phrase — unless DistilBERT p(junk) > 0.95 | Main | 2 |
+| R5 | p(junk) ≥ 0.85 → junk / DistilBERT's subtype; 0.50–0.85 → junk for review; below → Main. A page > 30% handwritten is never junked here (Main, for review) | | 2 |
 
-**The vote (R9).** Two voters: DistilBERT (raw 8-label softmax) and the keyword
-canon each cast JUNK / KEEP / ABSTAIN, strong or weak. Ballots are written
-DistilBERT first (`JA` = DistilBERT junk, keywords abstain).
-
-In pass 2 the keywords read the final OCR, plus the **junk** terms only the
-Tesseract text had (a vendor name in a logo or banner the final OCR dropped, such
-as "Optum"), on printed, non-low-quality pages. Those are listed in
-`votes.kw.tesseract_only`. Clinical and demographic scores read the final OCR
-alone.
-
-
-| Ballots | Verdict |
-|---|---|
-| J J | Junk, whatever the strength (pass 1: only when both are strong) |
-| J A | Junk (DistilBERT alone) |
-| A J | Junk when the keyword junk score ≥ 7 (`voters.keyword.junk_alone_min`), else Main |
-| J K, K J | Main |
-| K K, K A, A K, A A | Main |
-
-Then one veto turns a Junk into Main: handwritten area > 30%. (Clinical C and
-demographic D without retrieval / invoice wording need none: the keywords vote KEEP on
-them, and a vote with a KEEP is never Junk.) Pass 1 only takes J J with
-both strong; everything else stays Main and is judged again in pass 2 on final
-OCR. A model that is not loaded abstains (`/health` → `engine: keywords`).
-TF-IDF is no longer a voter.
-
-Subtype: the canon's best junk group, else DistilBERT's label, else Others.
-
-**Confidence** is the evidence for the verdict, not a fixed number. Signals:
-DistilBERT's probability for the verdict (when it scored the page, ≥ 8 words),
-the keywords (junk score / 10, or clinical-or-demographic / 10; when they point
-the other way, 1 − that), and for R3 and R6–R8 the rule's own value (R3 0.90, R6 0.95,
-R7 0.97, R8 0.95). Signals that agree combine as 1 − ∏(1 − p); a disagreement
-is averaged; no signal is 0.50. R1, R2 and R4 are observations and stay fixed (1.00 /
-0.99 / 0.95). A contested call — a veto, a split vote — therefore comes out low
-on its own; filter on low confidence to review. The signals are staged as
-`confidence_from`. Patient-education
-handouts score as clinical (`patient_education` canon group), so DistilBERT
-cannot force them to junk. Every ballot and the deciding rule are staged in
+**Confidence:** R1 1.00, R2 0.99, R3 0.90, R4 0.95; R5 (and the pass-1 keep) take
+DistilBERT's probability for the verdict. No model loaded: pass 2 keeps the page Main
+with `review_required`. DistilBERT's probabilities and the deciding rule are staged in
 `<chart>/staging/blank_junk.json` (beside `extraction.json`), not the database.
 
 `junk_subtype` is constrained by a `CHECK` to the six labels the review UI

@@ -852,6 +852,14 @@ class MemoryStore:
                 key = (int(row["pass_no"]), row["updated_at"] or _now(), int(row["id"]))
                 row["is_final"] = best.get(pid) == key
 
+    def get_blank_junk_reasons(self, chart_id: int, *, pass_no: int) -> dict[int, str]:
+        with self._lock:
+            return {
+                row["page_id"]: row.get("reason") or ""
+                for row in self.blank_junk.values()
+                if row["chart_id"] == chart_id and row["pass_no"] == pass_no
+            }
+
     def get_blank_junk_flags(
         self,
         chart_id: int,

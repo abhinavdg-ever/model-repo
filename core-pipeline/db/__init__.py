@@ -1012,6 +1012,19 @@ def mark_blank_junk_final(conn: Any, chart_id: int) -> None:
 
 
 @_dispatch
+def get_blank_junk_reasons(conn: Any, chart_id: int, *, pass_no: int) -> dict[int, str]:
+    """page_id -> one pass's verdict reason (blank_junk_classification.reason)."""
+    rows = conn.execute(
+        """
+        SELECT page_id, reason FROM blank_junk_classification
+         WHERE chart_id = %s AND pass_no = %s
+        """,
+        (chart_id, pass_no),
+    ).fetchall()
+    return {r["page_id"]: r["reason"] or "" for r in rows}
+
+
+@_dispatch
 def get_blank_junk_flags(
     conn: Any,
     chart_id: int,

@@ -1,52 +1,126 @@
 # Blank / Junk — logic as implemented
 
-What the code does today, step by step, with every number and the file that
-holds it. Paths are relative to `core-pipeline/`.
+What the code does today, with every number and the file that holds it. Paths are
+relative to `core-pipeline/`.
 
 | | |
 |---|---|
 | Engine | `stages/lib/blank_junk/method.py` (`decide`) |
 | Stage | `stages/lib/blank_junk/stage.py` (pass 1 and pass 2) |
-| Settings | `stages/lib/keyword-canon/blank_junk_context_canon.json` (reloads on change) |
-| Debug | `<chart>/staging/blank_junk.json`: every page's ballots, scores, rule and reason, both passes |
+| Settings | `stages/lib/keyword-canon/blank_junk_context_canon.json` → `distilbert` (reloads on change) |
+| Debug | `<chart>/staging/blank_junk.json`: every page's DistilBERT probabilities, rule and reason, both passes |
 | Output | `blank_junk_classification` (DB), `imaging/<chart>_junk.csv` |
 
 ---
 
-## 1. Summary
+## 1. Summary (2026-10-20: DistilBERT alone)
 
 Every page gets one verdict: **Main**, **Blank**, or **Junk / subtype**.
 
-1. **Rules R1–R8** run in number order; the first that fires decides. R5 has two
-   halves: R5.1 (p(junk) > 0.85 → Junk) and R5.2 (p(junk) < 0.05 → Main).
-2. If none fires, **R9 — the vote** of two voters (DistilBERT and the keyword canon)
-   decides, and then the **vetoes** may turn a Junk back into Main.
-3. After the verdict, **duplicates** are found among the Main pages.
+1. **Rules R1–R4** run in number order; the first that fires decides.
+2. Then **DistilBERT alone** decides (R5). There is no keyword scoring or vote any more:
+   keywords survive only as the fixed phrases R2 (placeholder), R3 (card wording) and R4
+   (signature phrase) look for.
+3. After the verdict, **duplicates** are found among the Main pages (§4).
 
-It runs **twice**:
+**Junk is decided in pass 2**, on the Final OCR text, except the certain R1–R3 calls, which
+pass 1 makes on the Tesseract text (they save the page's Final OCR).
 
 | | Pass 1 (stage 3) | Pass 2 (stage 7) |
 |---|---|---|
-| Text | Tesseract (preliminary OCR) | Final OCR: Azure (Final 2), else Docling (Final 1); **plus the junk words only Tesseract read** |
-| Pages | Printed, not low quality | Every page pass 1 did not junk, plus handwritten / mixed / low-quality pages (never judged in pass 1) |
-| Word positions | none | yes (for R6 and the header / footer rule) |
-| May junk via | R1, R2, R3, R7, and the vote only when **JJ with both strong** | every rule |
-| Otherwise | Main, "deferred to final OCR" | final verdict |
+| Text | Tesseract (preliminary OCR) | Final OCR: Azure (Final 2), else Docling (Final 1) |
+| Pages | Printed, not low quality | Every page pass 1 did not settle, plus handwritten / mixed / low-quality pages |
+| Decides | R1 Blank / tiny junk, R2 Blank, R3 card junk / Visual keep, and **R5 keep** (p(keep) > 0.95, final) | R1–R4, R5 |
+| Otherwise | Main for now, "judged in pass 2" | final verdict |
 
-**Visual (R3)** — every page the page-tag model calls `visual` is first checked for **card**
-wording (Junk / Others if found, whatever its length; vendor / insurer wording only adds weight). Without it, a page under
-**20** words (canon `visual.max_words`) is kept; a visual page with more text goes on through
-R4–R9 like any other page. A visual page under 20 words is decided in pass 1 and skipped in pass 2. A page the HW stage found **no ink**
-on (`blank_page` / `faint_marks_only`) counts as printed for this: pass 1 judges it (R1:
-Blank) and final OCR skips it. (Before 2026-10-18 it was skipped by pass 1 as
-"handwritten", sent to final OCR, then skipped by pass 2 for having no text: never Blank.) Only pass 1's
-survivors (and the handwritten pages) are sent to Final OCR, so pass 1 is cautious.
+A page pass 1 settled (Blank, Junk, a Visual keep, or an R5 keep) is **not judged again in
+pass 2**: the R5 keep's reason starts `R5 keep (final)`, and pass 2 skips it
+(`final_keep_pass1`).
 
 ---
 
-## 2. The evidence
+## 2. The ladder — first rule that fires decides
 
-### 2.1 Keyword scores (C, J, D)
+| Rule | Condition | Verdict | Pass | Confidence |
+|---|---|---|---|---|
+| **R1** | No ink; or (not Visual) 0 characters; or the word "blank" in < **30** characters | Blank | 1, 2 | 1.0 |
+| **R1** | Not Visual, < **15** characters | Junk / Cover Page when a cover term is there, else Junk / Others | 1, 2 | 1.0 |
+| **R2** | "Intentionally left blank" (placeholder group) on ≤ **25** words | **Blank** (not junk) | 1, 2 | 0.99 |
+| **R3** | Visual page (`document_type = visual`): card evidence (an id_card term or card-number pattern) and card + vendor + insurer + retrieval + invoice wording ≥ **4** → Junk / Others. No card and < **20** words → Main. Otherwise on | Junk / Others, Main, or on | 1, 2 | 0.90 |
+| **R5 keep** | Pass 1 only: DistilBERT p(keep) > **0.95** | **Main, final** (pass 2 skips it) | 1 | p(keep) |
+| — | Pass 1, anything else | Main for now; judged in pass 2 | 1 | p(keep) |
+| **R4** | Provider Signature = Yes, or a signature phrase — **unless DistilBERT p(junk) > 0.95** (a signed records-request letter is still junk; `votes.r4_overruled`) | Main | 2 | 0.95 |
+| **R5** | p(junk) ≥ **0.85** | Junk / DistilBERT's subtype | 2 | p(junk) |
+| **R5** | 0.50 ≤ p(junk) < 0.85 | Junk / DistilBERT's subtype, **for review** (`votes.review_required`) | 2 | p(junk) |
+| **R5** | p(junk) < 0.50 | Main | 2 | p(keep) |
+| **Veto** | An R5 junk on a page more than **30%** handwritten (`handwritten_veto`) | Main, for review | 2 | p(keep) |
+
+- **p(junk)** = every `JUNK_*` label plus `BLANK`; **p(keep)** = the `KEEP` labels. The
+  subtype is DistilBERT's top junk label (Invoice, Cover Page, Record Request/Transmittal,
+  Instructions, Letter/Fax, else Others).
+- **No DistilBERT** (weights not installed): pass 1 settles nothing past R3; pass 2 keeps the
+  page Main with `review_required`, and `votes.bert = {"note": "unavailable"}`.
+- **Blank against Junk** (either way, prediction vs ground truth) still scores as a match in
+  review-ui: both say "out of the record".
+
+---
+
+## 3. Settings (`blank_junk_context_canon.json`)
+
+| Setting | Value | Key |
+|---|---|---|
+| Pass-1 final keep | p(keep) > 0.95 | `distilbert.pass1_final_keep_above` |
+| Junk | p(junk) ≥ 0.85 | `distilbert.junk_at` |
+| Junk for review | p(junk) ≥ 0.50 | `distilbert.review_junk_at` |
+| Signature overruled | p(junk) > 0.95 | `distilbert.signature_overruled_above` |
+| Handwritten veto | > 30% | `handwritten_veto.min_handwritten_area_pct` |
+| Visual | < 20 words; card weight ≥ 4 | `visual` |
+| Tiny / blank word / placeholder | 15 chars / 30 chars / 25 words | `method.py` constants |
+
+The keyword groups in the canon are now read only for R1's cover term, R2's placeholder,
+R3's card wording and R4's signature phrase. The `voters` block is kept for reference only.
+
+---
+
+## 4. Duplicates
+
+After the verdicts, among **Main** pages only (never blank / junk), each page against
+its neighbours within **±5** pages, pages of **≥ 300** characters (whitespace stripped):
+
+- **SequenceMatcher ≥ 98%** on lower-cased OCR text (only when the lengths are within
+  10%), or
+- one page's text **wholly contained** in the other's (confidence 1.0).
+
+The longer page (or the earlier one) is kept; the other is Duplicate (code 4). Review
+UI shows Yes at 100%, May Be below; May Be confidence = 1 + (similarity − 1) × 10
+(98% → 80%, 99% → 90%).
+
+---
+
+---
+
+## 5. Changes, 2026-10-20 — DistilBERT alone
+
+- **Keyword scoring and the vote are gone** (R6 short page, R7 retrieval, R8 strong
+  clinical, R9 the vote, and R5.1's clinical / demographic protection). The user: the
+  keywords were "screwing up things".
+- **R2 placeholder is Blank**, not Junk.
+- **Pass 1 junks only by R1–R3**; DistilBERT's junk calls wait for the Final OCR (pass 2).
+  More pages go to Final OCR (Azure is billed per page).
+- **Pass 1 keeps for good** a page with p(keep) > 0.95; pass 2 skips it.
+- **R4 signature** is overruled when p(junk) > 0.95 (was: when both voters said junk).
+- **Pass 2**: p(junk) ≥ 0.85 Junk; 0.50–0.85 Junk for review; below Main. The handwritten
+  veto stays.
+
+---
+
+## Retired: the keyword method (until 2026-10-19)
+
+Kept for reference; nothing below runs any more.
+
+### Old §2. The evidence
+
+#### 2.1 Keyword scores (C, J, D)
 
 Three scores from the canon: **C** clinical, **J** junk, **D** demographic.
 
@@ -108,7 +182,7 @@ cap 4, not hard), is **not** card evidence: it adds weight to R3 and the keyword
 | junk_strong | 7 | J⁺ |
 | demographic | 3 | D |
 
-### 2.2 DistilBERT
+#### 2.2 DistilBERT
 
 An 8-label page model; `p(junk)` = the sum of its JUNK_* labels and BLANK,
 `p(keep)` = the rest. Its top junk label gives the subtype (JUNK_INVOICE → Invoice,
@@ -117,7 +191,7 @@ Request/Transmittal, JUNK_INSTRUCTIONS → Instructions, JUNK_LETTER_FAX /
 JUNK_FAX_TRANSMISSION → Letter/Fax, anything else → Others). Not loaded ⇒ it abstains
 and `/health` shows `engine: keywords`.
 
-### 2.3 Other inputs
+#### 2.3 Other inputs
 
 | Input | From | Used by |
 |---|---|---|
@@ -130,7 +204,7 @@ and `/health` shows `engine: keywords`.
 
 ---
 
-## 3. The ladder — first rule that fires decides
+### Old §3. The ladder — first rule that fires decides
 
 | Rule | Condition | Verdict | Pass | Confidence |
 |---|---|---|---|---|
@@ -148,7 +222,7 @@ and `/health` shows `engine: keywords`.
 
 ---
 
-## 4. R6 — the short page
+### Old §4. R6 — the short page
 
 For a page whose only content is a header, stamp line or vendor banner at the top.
 Pass 2 only (needs word positions). Settings: `short_page` in the canon.
@@ -194,9 +268,9 @@ R6 rules the short page Junk / Others.
 
 ---
 
-## 5. R9 — the vote
+### Old §5. R9 — the vote
 
-### 5.1 The two ballots
+#### 5.1 The two ballots
 
 Each voter casts **J** (junk), **K** (keep) or **A** (abstain), strong or weak.
 
@@ -222,7 +296,7 @@ Each voter casts **J** (junk), **K** (keep) or **A** (abstain), strong or weak.
 | D ≥ 3 | K weak |
 | otherwise | A |
 
-### 5.2 The table
+#### 5.2 The table
 
 Ballots are written DistilBERT first (`JA` = DistilBERT junk, keywords abstain).
 
@@ -239,7 +313,7 @@ Ballots are written DistilBERT first (`JA` = DistilBERT junk, keywords abstain).
 **Pass 1** acts only on row 1 with **both ballots strong**; every other page stays Main
 with "(pass 1: deferred to final OCR)".
 
-### 5.3 The veto — a Junk from the vote turns back to Main
+#### 5.3 The veto — a Junk from the vote turns back to Main
 
 | Veto | Condition | `votes.veto` |
 |---|---|---|
@@ -249,7 +323,7 @@ There is no clinical or demographic veto: the keyword ballot already covers them
 C ≥ 4, or D ≥ 3 without hard junk wording, the keywords vote **K**, and a vote with a K
 in it (rows 4–6) is never Junk. (Removed 2026-10-18: they could never fire.)
 
-### 5.4 The subtype
+#### 5.4 The subtype
 
 The keywords' best junk group's subtype when they voted J, else DistilBERT's, else Others.
 
@@ -266,7 +340,7 @@ The keywords' best junk group's subtype when they voted J, else DistilBERT's, el
 
 ---
 
-## 6. Confidence
+### Old §6. Confidence
 
 The evidence for the verdict, never a fixed cap (`_confidence`).
 
@@ -284,22 +358,7 @@ The evidence for the verdict, never a fixed cap (`_confidence`).
 
 ---
 
-## 7. Duplicates
-
-After the verdicts, among **Main** pages only (never blank / junk), each page against
-its neighbours within **±5** pages, pages of **≥ 300** characters (whitespace stripped):
-
-- **SequenceMatcher ≥ 98%** on lower-cased OCR text (only when the lengths are within
-  10%), or
-- one page's text **wholly contained** in the other's (confidence 1.0).
-
-The longer page (or the earlier one) is kept; the other is Duplicate (code 4). Review
-UI shows Yes at 100%, May Be below; May Be confidence = 1 + (similarity − 1) × 10
-(98% → 80%, 99% → 90%).
-
----
-
-## 8. Worked examples
+### Old §8. Worked examples
 
 **66945468_55331450 p25** — an Optum ROI page: content ends at 14.5%, ink below 0.23%,
 "Optum" only in the Tesseract text, DOB / MRN / Sex on the page, DistilBERT 0.71.
@@ -323,7 +382,7 @@ Main.
 
 ---
 
-## 9. Every setting
+### Old §9. Every setting
 
 | Setting | Value | Where |
 |---|---|---|
@@ -349,7 +408,7 @@ Main.
 | R6 undo | KK with DistilBERT's KEEP strong (p(keep) ≥ 0.85) | canon `voters.bert.keep_strong` |
 | Duplicates | ≥ 98%, ±5 pages, ≥ 300 characters | `classify.py` |
 
-## 10. Changes, 2026-10-17 / 18
+### Old §10. Changes, 2026-10-17 / 18
 
 - TF-IDF removed; two voters (DistilBERT, keywords).
 - **R3 is skipped when the ballots are JJ** (a signed ROI / transmittal letter is junk).
@@ -369,7 +428,7 @@ Main.
 - **The clinical and demographic vetoes are gone** (the keyword ballot covers them);
   the handwritten veto stays.
 
-## 11. Changes, 2026-10-19 — Visual moves to R3
+### Old §11. Changes, 2026-10-19 — Visual moves to R3
 
 - **The Visual rule is R3** (was R8, after strong clinical). Old R3–R7 are now R4–R8:
   R4 signature, R5 DistilBERT, R6 short page, R7 retrieval, R8 C⁺. Skip keys follow
@@ -383,7 +442,7 @@ Main.
   (RxBIN / PCN / RxGRP, for pharmacist, rx claims) is removed — not card evidence; new visual-only
   **insurers** group (weight 2), not card evidence.
 
-## 12. Changes, 2026-10-19 — DistilBERT sure it is not junk keeps the page
+### Old §12. Changes, 2026-10-19 — DistilBERT sure it is not junk keeps the page
 
 - **R5 is split in two: R5.1** = the junk force (p(junk) > 0.85, as before), **R5.2** = the
   keep force below. `votes.rule` and the reason say `R5.1` / `R5.2`.
