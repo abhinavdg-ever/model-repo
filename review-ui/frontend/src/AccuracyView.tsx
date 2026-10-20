@@ -668,7 +668,7 @@ function RunAfterColumnFilter({
       label="Last Run At"
       active={Boolean(value)}
       icon={<CalendarClock size={11} aria-hidden="true" />}
-      width={264}
+      width={288}
       align="start"
       popoverClassName="run-after-popover"
     >

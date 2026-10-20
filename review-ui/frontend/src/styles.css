@@ -526,7 +526,7 @@ input {
 
 /* Accuracy → Last Run At header: the same picker in the column-filter popover. */
 .column-filter-popover.run-after-popover {
-  width: 264px;
+  width: 288px;
 }
 
 .run-after-form {
@@ -561,13 +561,14 @@ input {
   color: var(--brand-900);
 }
 
+/* Date on one line, time (hour : minute, AM / PM) on the next. */
 .run-after-fields {
   display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 0.45rem;
+  gap: 0.5rem;
 }
 
-.run-after-fields label {
+.run-after-fields label,
+.run-after-field {
   display: grid;
   gap: 0.2rem;
   font-size: 0.7rem;
@@ -5367,4 +5368,71 @@ input {
   color: inherit;
   cursor: pointer;
   padding: 0.1rem;
+}
+
+/* Run after time: hour and minute lists and an AM / PM switch, in the app's style. */
+.run-after-time {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.run-after-select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 3.4rem;
+  padding: 0.3rem 1.5rem 0.3rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background:
+    #ffffff
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236f6c63' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+    no-repeat right 0.45rem center;
+  font: inherit;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.run-after-select:hover {
+  border-color: var(--brand-400);
+}
+
+.run-after-select:focus {
+  outline: 2px solid color-mix(in srgb, var(--brand-500) 45%, transparent);
+  border-color: var(--brand-500);
+}
+
+.run-after-colon {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.run-after-ampm {
+  display: inline-flex;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.run-after-ampm button {
+  border: 0;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+}
+
+.run-after-ampm button + button {
+  border-left: 1px solid var(--border);
+}
+
+.run-after-ampm button.is-on {
+  background: var(--brand-600);
+  color: #ffffff;
 }

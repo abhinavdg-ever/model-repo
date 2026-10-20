@@ -815,7 +815,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                         label="Last Run At"
                         active={Boolean(runAfter)}
                         icon={<CalendarClock size={11} aria-hidden="true" />}
-                        width={264}
+                        width={288}
                         popoverClassName="run-after-popover"
                       >
                         {(close) => (

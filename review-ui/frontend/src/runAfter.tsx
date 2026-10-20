@@ -59,6 +59,69 @@ const QUICK: [string, number][] = [
   ["Last 7 days", 7],
 ];
 
+/** "HH:MM" (24 h) <-> the hour (1-12), minute and AM / PM the picker shows. */
+function toParts(time: string): { hour: number; minute: number; pm: boolean } {
+  const [h, m] = (time || "00:00").split(":").map((n) => Number(n) || 0);
+  return { hour: h % 12 === 0 ? 12 : h % 12, minute: m, pm: h >= 12 };
+}
+
+function fromParts(hour: number, minute: number, pm: boolean): string {
+  const h = (hour % 12) + (pm ? 12 : 0);
+  return `${String(h).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
+const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5);
+
+/** Hour, minute and AM / PM, in the app's own style rather than the browser's time box. */
+function TimePicker({ value, onChange }: { value: string; onChange: (next: string) => void }) {
+  const { hour, minute, pm } = toParts(value);
+  // A saved time off the 5-minute steps (10:07) still shows as itself.
+  const minutes = MINUTES.includes(minute) ? MINUTES : [...MINUTES, minute].sort((a, b) => a - b);
+  return (
+    <div className="run-after-time" role="group" aria-label="Time">
+      <select
+        className="run-after-select"
+        value={hour}
+        aria-label="Hour"
+        onChange={(e) => onChange(fromParts(Number(e.target.value), minute, pm))}
+      >
+        {HOURS.map((h) => (
+          <option key={h} value={h}>
+            {h}
+          </option>
+        ))}
+      </select>
+      <span className="run-after-colon" aria-hidden="true">:</span>
+      <select
+        className="run-after-select"
+        value={minute}
+        aria-label="Minute"
+        onChange={(e) => onChange(fromParts(hour, Number(e.target.value), pm))}
+      >
+        {minutes.map((m) => (
+          <option key={m} value={m}>
+            {String(m).padStart(2, "0")}
+          </option>
+        ))}
+      </select>
+      <div className="run-after-ampm">
+        {(["AM", "PM"] as const).map((label) => (
+          <button
+            key={label}
+            type="button"
+            className={(label === "PM") === pm ? "is-on" : undefined}
+            aria-pressed={(label === "PM") === pm}
+            onClick={() => onChange(fromParts(hour, minute, label === "PM"))}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** The Run after picker: Today / Yesterday / Last 7 days, a date and a time (12:00 AM unless
  *  changed), Clear and Apply. Mount it when the popover opens; it starts from ``value``. */
 export function RunAfterForm({
@@ -106,15 +169,10 @@ export function RunAfterForm({
             onKeyDown={(e) => e.key === "Enter" && apply()}
           />
         </label>
-        <label>
+        <div className="run-after-field">
           <span>Time</span>
-          <input
-            type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && apply()}
-          />
-        </label>
+          <TimePicker value={time} onChange={setTime} />
+        </div>
       </div>
       <p className="run-after-hint">India time · charts last run at or after this</p>
       <div className="run-after-actions">
