@@ -49,12 +49,12 @@ ALTER TABLE ocr_quality_results
    Check: the `information_schema.columns` query for those five names on `ocr_quality_results` returns 5 rows.
 2. **Rebuild and restart both services** (`docker compose up -d --build` in `core-pipeline/` and `review-ui/`). The core-pipeline API has no reload; a stopped (`Ctrl+Z`) uvicorn still holds port 8001, so `fg` then `Ctrl+C` before starting it again.
 3. **New page-tag model (optional, whenever it arrives).** Copy it over `models/hw/handwritten_printed_convnext_tiny.pth` — same name. It is recognised by `task: "page_tags"` in the checkpoint. Until then the current model runs: Type is printed / handwritten / uncertain / blank, and Visibility and Handwritten % stay empty ("Not Available" in review-ui). No error either way.
-4. **`.env` (optional).** `MAX_TILT_TO_APPLY=5` — a measured tilt above this many degrees is stored but not applied. The default is 5 without the line.
+4. `.env` **(optional).** `MAX_TILT_TO_APPLY=5` — a measured tilt above this many degrees is stored but not applied. The default is 5 without the line.
 5. **Re-run stage 1** on charts you want the new values for: `"only": ["ocr_quality"]`, or the full chain with `skip_ocr: true`. Until a chart is re-run its new columns are NULL and decisions fall back to the old printed/handwritten label.
 
 What changed, so the results are not a surprise:
 
-- **Decisions read Type (`document_type`), not `printed_or_handwritten`.** Printed and visual pages run blank/junk pass 1 and, at high quality, skip Final2. Handwritten, form, blank and uncertain pages skip pass 1 and go to final OCR — so **every form now goes to Azure Final2**, including lightly filled ones. Only handwritten pages get the High → Medium quality cap.
+- **Decisions read Type (**`document_type`**), not** `printed_or_handwritten`**.** Printed and visual pages run blank/junk pass 1 and, at high quality, skip Final2. Handwritten, form, blank and uncertain pages skip pass 1 and go to final OCR — so **every form now goes to Azure Final2**, including lightly filled ones. Only handwritten pages get the High → Medium quality cap.
 - **Orientation:** Tesseract OSD's turn is checked by reading the page; a wrong 180° is undone before tilt and mirror are measured. **Tilt** is measured on the turned page (the old value was measured on the detector's own guess and could tilt a level page). **Mirror** is decided by whether the flipped page reads as English (`english_words.txt.gz`), and is applied to the corrected page only when Mirrored is Yes.
 - **review-ui:** the page panel and summary table show Type (Printed/HW), Handwritten %, Visibility, Quality, Orientation Angle (Page), Tilt (Text), Mirrored (Text). The **Corrected** toggle is enabled only on pages with an orientation or tilt correction, and opens on `pages/` by default.
 
@@ -65,7 +65,7 @@ Weights are never baked into the Docker image. Compose mounts
 is relative to `core-pipeline/`. The Python packages that load them come from
 `requirements-models.txt`, which the image installs.
 
-**Arrive with `git pull`** (small, committed — nothing to copy):
+**Arrive with** `git pull` (small, committed — nothing to copy):
 
 | Folder / file | Used by | If missing |
 |---|---|---|
@@ -78,15 +78,15 @@ is relative to `core-pipeline/`. The Python packages that load them come from
 
 **Copy or download** (large, gitignored):
 
-| Folder | Files | Size here | Used by | How to get it | If missing |
-|---|---|---|---|---|---|
-| `hw/` | `handwritten_printed_convnext_tiny.pth` (optional `_backup.pth` beside it) | ~110 MB each | Stage 1 Type, Handwritten %, Visibility. The page-tag model goes in under the same name | Copy from the training machine | RandomForest backup above |
-| `rapidocr/` | `PP-OCRv6_det_small.pth`, `PP-OCRv6_rec_small.pth`, `ch_ptocr_mobile_v2.0_cls_mobile.pth`, `ppocrv6_dict.txt` | 34 MB | Final OCR 1 (Docling + RapidOCR) | Copy | Final1 falls back to `rapidocr-onnxruntime`'s built-in models; `/health` → `docling_final1.ready=false` |
-| `docling/` | `docling-project--docling-layout-heron/`, `…-layout-heron-onnx/`, `…-docling-models/` | 756 MB | Final1 layout + tables | Downloaded on the first Final1 page when the machine has internet; otherwise copy the folder | Docling tries the Hugging Face cache; if that is empty too, Final1 uses the ONNX fallback for that page |
-| `semantic-model/` | MiniLM (`config.json`, `modules.json`, `model.safetensors`, tokenizer files, `1_Pooling/`) | ~90 MB used (the full Hub snapshot is ~1 GB with ONNX/OpenVINO/TF copies that are not loaded) | Stage 6 section-header filtering | `python -m stages.lib.ocr.section_header_match --download` | Pulled from the Hub by id if online; else lexical match only |
-| `ner/<folder for MEMBER_NER_MODEL_ID>/` | `gliner_config.json` and `pytorch_model.bin` or `model.safetensors` | ~1.5 GB for `gliner_medium` | Member verification and key/value extraction (same checkpoint) | `python -m stages.lib.member.extractors.ner_based.model_downloader` | `kv_extract` skipped; member check is rules-only |
-| `layout_heron/` | `config.json`, `model.safetensors`, `preprocessor_config.json` | 183 MB | Key/value extraction headings | Same `model_setup` command | `kv_extract` skipped |
-| `ner/gliner_medium-v2.1/` | GLiNER checkpoint | ~1.5 GB | Member verification wrong-member check — **only when `MEMBER_NER_ENABLED=true`** | `python -m stages.lib.member.extractors.ner_based.model_downloader` (fetches the model named by `MEMBER_NER_MODEL_ID`, default `gliner_medium`; `--all` for every one) | Rules-only member check: no page can be `wrong_member`, so no chart is Rejected |
+| Folder                                  | Files                                                                                                         | Size here                                                                                     | Used by                                                                                 | How to get it                                                                                                                                                          | If missing                                                                                              |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `hw/`                                   | `handwritten_printed_convnext_tiny.pth` (optional `_backup.pth` beside it)                                    | ~110 MB each                                                                                  | Stage 1 Type, Handwritten %, Visibility. The page-tag model goes in under the same name | Copy from the training machine                                                                                                                                         | RandomForest backup above                                                                               |
+| `rapidocr/`                             | `PP-OCRv6_det_small.pth`, `PP-OCRv6_rec_small.pth`, `ch_ptocr_mobile_v2.0_cls_mobile.pth`, `ppocrv6_dict.txt` | 34 MB                                                                                         | Final OCR 1 (Docling + RapidOCR)                                                        | Copy                                                                                                                                                                   | Final1 falls back to `rapidocr-onnxruntime`'s built-in models; `/health` → `docling_final1.ready=false` |
+| `docling/`                              | `docling-project--docling-layout-heron/`, `…-layout-heron-onnx/`, `…-docling-models/`                         | 756 MB                                                                                        | Final1 layout + tables                                                                  | Downloaded on the first Final1 page when the machine has internet; otherwise copy the folder                                                                           | Docling tries the Hugging Face cache; if that is empty too, Final1 uses the ONNX fallback for that page |
+| `semantic-model/`                       | MiniLM (`config.json`, `modules.json`, `model.safetensors`, tokenizer files, `1_Pooling/`)                    | ~90 MB used (the full Hub snapshot is ~1 GB with ONNX/OpenVINO/TF copies that are not loaded) | Stage 6 section-header filtering                                                        | `python -m stages.lib.ocr.section_header_match --download`                                                                                                             | Pulled from the Hub by id if online; else lexical match only                                            |
+| `ner/<folder for MEMBER_NER_MODEL_ID>/` | `gliner_config.json` and `pytorch_model.bin` or `model.safetensors`                                           | ~1.5 GB for `gliner_medium`                                                                   | Member verification and key/value extraction (same checkpoint)                          | `python -m stages.lib.member.extractors.ner_based.model_downloader`                                                                                                    | `kv_extract` skipped; member check is rules-only                                                        |
+| `layout_heron/`                         | `config.json`, `model.safetensors`, `preprocessor_config.json`                                                | 183 MB                                                                                        | Key/value extraction headings                                                           | Same `model_setup` command                                                                                                                                             | `kv_extract` skipped                                                                                    |
+| `ner/gliner_medium-v2.1/`               | GLiNER checkpoint                                                                                             | ~1.5 GB                                                                                       | Member verification wrong-member check — **only when** `MEMBER_NER_ENABLED=true`        | `python -m stages.lib.member.extractors.ner_based.model_downloader` (fetches the model named by `MEMBER_NER_MODEL_ID`, default `gliner_medium`; `--all` for every one) | Rules-only member check: no page can be `wrong_member`, so no chart is Rejected                         |
 
 Not models, but needed: the `tesseract` binary (stage 1 orientation and
 preliminary OCR; set `TESSERACT_CMD` if it is not on `PATH`). Optional and off
@@ -206,14 +206,14 @@ that avoids re-running OCR (and re-billing Final2). Outputs always replace
 what is at `output_path` (no `overwrite` / `write_mode`; original pages are
 never written back).
 
-| Field | Default | Use when |
-|---|---|---|
-| `only: ["stage", …]` | omit (whole chain) | Run **just** those stages, against what is on disk (quality still runs under `skip_ocr`). |
-| `run_through: "stage"` | omit (end of chain) | Run from the top of the chain and **stop after** that stage. (Was `through`.) |
-| `skip_ocr: true` | `false` | Reuse existing OCR instead of re-running the OCR engines — no Final2 billing. Quality/rotation and every non-OCR stage still re-run. See § skip_ocr below. |
-| `skip_completed: true` | `false` | Skip charts whose `chart_list.status` is `completed` / `needs_review` / `rejected`. Run returns **200** `{"status": "skipped"}`; batch lists them in `charts_skipped_completed`. Batch: add `min_run_date` to skip only the charts finished on or after that date. |
-| `skip_page_download` | **`true`** | Reuse page images already in the workspace. `false` = wipe `pages/` + `corrected-pages/` and re-fetch from `input_path`. (Replaces `redownload_pages: true`.) |
-| `--test-mode` (CLI only) | off | **Local only.** No Postgres. Workspace under `data/folders/<chart>-test` for review-ui. Env `TEST_MODE=true`. Not available on the API. |
+| Field                    | Default             | Use when                                                                                                                                                                                                                                                           |
+| ------------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `only: ["stage", …]`     | omit (whole chain)  | Run **just** those stages, against what is on disk (quality still runs under `skip_ocr`).                                                                                                                                                                          |
+| `run_through: "stage"`   | omit (end of chain) | Run from the top of the chain and **stop after** that stage. (Was `through`.)                                                                                                                                                                                      |
+| `skip_ocr: true`         | `false`             | Reuse existing OCR instead of re-running the OCR engines — no Final2 billing. Quality/rotation and every non-OCR stage still re-run. See § skip_ocr below.                                                                                                         |
+| `skip_completed: true`   | `false`             | Skip charts whose `chart_list.status` is `completed` / `needs_review` / `rejected`. Run returns **200** `{"status": "skipped"}`; batch lists them in `charts_skipped_completed`. Batch: add `min_run_date` to skip only the charts finished on or after that date. |
+| `skip_page_download`     | `true`              | Reuse page images already in the workspace. `false` = wipe `pages/` + `corrected-pages/` and re-fetch from `input_path`. (Replaces `redownload_pages: true`.)                                                                                                      |
+| `--test-mode` (CLI only) | off                 | **Local only.** No Postgres. Workspace under `data/folders/<chart>-test` for review-ui. Env `TEST_MODE=true`. Not available on the API.                                                                                                                            |
 
 A batch clears a chart's previous results only when that chart's own run starts; the
 charts still waiting in the queue keep showing their last run.
@@ -242,8 +242,8 @@ python cli.py run \
 - Rejects blob sources and `--chart-id` / `--chart-name` resume
 - review-ui Local Mode: open the `…-test` folder to inspect
 - Member verify: if MemoryStore has no manifesto row, loads matching
-  `recordId` from on-disk CSVs under `review-ui/data/metadata/` or
-  `review-ui/data/folders/manifest/` (strips the `-test` suffix for the lookup)
+`recordId` from on-disk CSVs under `review-ui/data/metadata/` or
+`review-ui/data/folders/manifest/` (strips the `-test` suffix for the lookup)
 
 `--skip-db-write` is a deprecated alias for the same behaviour.
 
@@ -251,8 +251,8 @@ python cli.py run \
 
 Looks under `data/folders/<chart>/` (review-ui workspace):
 
-1. **`pages/` present** → use it. **Missing** → download from **Raw_Input** (`input_path`).
-2. **`ocr/` present** → use it. **Missing** → pull from **Processed** (`output_path`). **Still missing** → materialize from Postgres `ocr_results`. **Still missing** → **re-run OCR engines**.
+1. `pages/` **present** → use it. **Missing** → download from **Raw_Input** (`input_path`).
+2. `ocr/` **present** → use it. **Missing** → pull from **Processed** (`output_path`). **Still missing** → materialize from Postgres `ocr_results`. **Still missing** → **re-run OCR engines**.
 3. **Quality + rotation always re-run** → rewrite `corrected-pages/`.
 4. **Every non-OCR stage force-re-runs** — blank/junk (both passes), section headers, member, DOS, codeable, encounter, sequencing. Gate-delta may still reopen OCR engines for a page whose HW/quality/rotation path flipped or whose reused OCR is missing. A page whose earlier Final2 says `high_quality_printed`, and whose Final1 has no `words`, is read again by Final1 in the current format. Final2 is not called for that page.
 5. **Write** (if `output_path` is set) **replaces** destination `ocr/`, `corrected-pages/`, `imaging/` (original `pages/` are never written).
@@ -267,8 +267,8 @@ curl -X POST localhost:8001/api/charts/run -H 'Content-Type: application/json' \
 
 Rule of thumb for a large blob batch that already finished OCR:
 
-- Want new classifiers only → **`only`** (workspace pages reused by default), optional `output_path` to sync CSVs out.
-- Want “reuse OCR, re-run everything else” → **`skip_ocr: true`** (§4 / §6B).
+- Want new classifiers only → `only` (workspace pages reused by default), optional `output_path` to sync CSVs out.
+- Want “reuse OCR, re-run everything else” → `skip_ocr: true` (§4 / §6B).
 - Never run a full chain (no `only`, no `skip_ocr`) unless you intend to pay for Final2 again — every API run reprocesses.
 
 ---
@@ -393,12 +393,15 @@ curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/j
 
 What this does:
 
-1. **`skip_ocr: true`** — reuse workspace / Processed / DB OCR.
+1. `skip_ocr: true` — reuse workspace / Processed / DB OCR.
 2. **Quality always re-runs** (even if you omit `ocr_quality` from `only` when
+
    `skip_ocr` is on) → new HW/quality model writes fresh tags + `corrected-pages/`.
 3. **Gate-delta** — OCR engines re-open **only** for pages whose
+
    printed/HW/quality/rotation path flipped; everyone else keeps existing OCR.
 4. Then codeable / encounter / sequencing run on the refreshed quality +
+
    existing text.
 
 If encounter needs fresh DOS first, add `"dos_extract"` to `only` (still no
@@ -529,7 +532,7 @@ python cli.py run --chart-id 123 --resume \
   --blob-write-path Processed/Run1/Batch1
 ```
 
-Batch after a timeout — **same `input_path`**. Over the API, skip charts that
+Batch after a timeout — **same** `input_path`. Over the API, skip charts that
 already finished and reuse OCR for the rest:
 
 ```bash
@@ -631,4 +634,5 @@ curl -X POST localhost:8001/api/charts/batch-run -H 'Content-Type: application/j
 ```
 
 4. Review-ui → Codable / Encounter Type / Actual Sequence populate from the
+
    new CSVs (or DB in production mode)
