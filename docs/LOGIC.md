@@ -261,7 +261,7 @@ Full logic, every number and worked examples: [`BLANK_JUNK_LOGIC.md`](BLANK_JUNK
 Thresholds: `keyword-canon/blank_junk_context_canon.json` → `distilbert` (reloads on change).
 
 **Since 2026-10-20 DistilBERT alone decides** after rules R1–R4: no keyword scoring and
-no vote. Keywords survive only as the fixed phrases R1 (cover term), R2, R3 and R4 look
+no vote. Keywords survive only as the fixed phrases R1 (cover term), R2 and R3 look
 for. Junk is decided in pass 2 on the Final OCR, except the certain R1–R3 calls.
 
 **Rules, first that fires decides:**
@@ -274,7 +274,7 @@ for. Junk is decided in pass 2 on the Final OCR, except the certain R1–R3 call
 | R3 | `document_type = 'visual'`: card evidence and card + vendor + insurer + retrieval + invoice wording ≥ 4 → junk / Others; else < 20 words → Main; else on | junk / Others, Main, or on | 1, 2 |
 | R5 keep | DistilBERT p(keep) > 0.95 → Main, **final**: pass 2 skips the page | Main | 1 |
 | — | Anything else in pass 1 | Main for now, judged in pass 2 | 1 |
-| R4 | Provider Signature = Yes, or a signature phrase — unless DistilBERT p(junk) > 0.95 | Main | 2 |
+| R4 | Electronic Signature found by kv_extract (no phrases, 2026-10-21) — unless DistilBERT p(junk) > 0.95 | Main | 2 |
 | R6 | Short page: content ends in the top 15%, < 0.5% ink below, and DistilBERT p(keep) ≤ 0.90 (restored 2026-10-21) | junk / Others | 2 |
 | R5 | p(junk) ≥ 0.85 → junk / DistilBERT's subtype; 0.50–0.85 → junk for review; below → Main. A page > 30% handwritten is never junked here (Main, for review) | | 2 |
 

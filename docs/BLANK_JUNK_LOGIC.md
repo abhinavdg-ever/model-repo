@@ -20,8 +20,8 @@ Every page gets one verdict: **Main**, **Blank**, or **Junk / subtype**.
 1. **Rules R1–R4** run in number order; the first that fires decides.
 2. In pass 2, **R6 short page** comes next (restored 2026-10-21; §2.1).
 3. Then **DistilBERT alone** decides (R5). There is no keyword scoring or vote any more:
-   keywords survive only as the fixed phrases R2 (placeholder), R3 (card wording) and R4
-   (signature phrase) look for.
+   keywords survive only as the fixed phrases R1 (cover term), R2 (placeholder) and R3
+   (card wording) look for. R4 reads only kv_extract's Electronic Signature (2026-10-21).
 4. After the verdict, **duplicates** are found among the Main pages (§4).
 
 **Junk is decided in pass 2**, on the Final OCR text, except the certain R1–R3 calls, which
@@ -50,7 +50,7 @@ pass 2**: the R5 keep's reason starts `R5 keep (final)`, and pass 2 skips it
 | **R3** | Visual page (`document_type = visual`): card evidence (an id_card term or card-number pattern) and card + vendor + insurer + retrieval + invoice wording ≥ **4** → Junk / Others. No card and < **20** words → Main. Otherwise on | Junk / Others, Main, or on | 1, 2 | 0.90 |
 | **R5 keep** | Pass 1 only: DistilBERT p(keep) > **0.95** | **Main, final** (pass 2 skips it) | 1 | p(keep) |
 | — | Pass 1, anything else | Main for now; judged in pass 2 | 1 | p(keep) |
-| **R4** | Provider Signature = Yes, or a signature phrase — **unless DistilBERT p(junk) > 0.95** (a signed records-request letter is still junk; `votes.r4_overruled`) | Main | 2 | 0.95 |
+| **R4** | Electronic Signature found by kv_extract (`provider_signature.csv` `signature_present = Y`; no phrases) — **unless DistilBERT p(junk) > 0.95** (a signed records-request letter is still junk; `votes.r4_overruled`) | Main | 2 | 0.95 |
 | **R6** | Short page: content ends in the top **15%** and the band below has < **0.5%** ink — **unless DistilBERT p(keep) > 0.90** (§2.1) | Junk / Others | 2 | 0.95 |
 | **R5** | p(junk) ≥ **0.85** | Junk / DistilBERT's subtype | 2 | p(junk) |
 | **R5** | 0.50 ≤ p(junk) < 0.85 | Junk / DistilBERT's subtype, **for review** (`votes.review_required`) | 2 | p(junk) |
@@ -103,7 +103,7 @@ Otherwise the page is **Junk / Others**, confidence 0.95. A signed page never re
 | Tiny / blank word / placeholder | 15 chars / 30 chars / 25 words | `method.py` constants |
 
 The keyword groups in the canon are now read only for R1's cover term, R2's placeholder,
-R3's card wording and R4's signature phrase. The `voters` block is kept for reference only.
+R3's card wording (the signature phrase group was removed 2026-10-21). The `voters` block is kept for reference only.
 
 ---
 
@@ -125,6 +125,12 @@ UI shows Yes at 100%, May Be below; May Be confidence = 1 + (similarity − 1) �
 ---
 
 ## 5. Changes
+
+### 2026-10-21 — R4 on the Electronic Signature only
+
+- **R4** fires only on kv_extract's Electronic Signature. The signature phrases ("signed
+  by", "attestation", "dictated by" …) are gone from the canon and from R4. Without the
+  kv_extract output (`votes.signature_source = "kv_extract_missing"`) R4 never fires.
 
 ### 2026-10-21 — R6 short page restored
 

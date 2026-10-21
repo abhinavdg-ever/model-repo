@@ -5,7 +5,8 @@ DistilBERT's probabilities (model_bridge.model_scores), the page type and handwr
 share from the page-tag model, and Provider Signature from KV extraction.
 
 No keyword scoring or voting (removed 2026-10-20): keywords survive only as the fixed
-phrases R2, R3 and R4 look for. The ladder, first rule that fires decides:
+phrases R1 (cover term), R2 and R3 look for. R4 reads only kv_extract's Electronic
+Signature (no signature phrases since 2026-10-21). The ladder, first rule that fires decides:
 
   R1 blank / tiny   no ink -> Blank. Not Visual: 0 characters, or the word "blank" in
                     < 30 characters -> Blank; else < 15 characters -> Junk / Cover Page
@@ -18,7 +19,7 @@ phrases R2, R3 and R4 look for. The ladder, first rule that fires decides:
     R5 keep         DistilBERT p(keep) > 0.95 -> Main, final: pass 2 does not judge it again
     otherwise       Main for now; Final OCR, then pass 2 decides
   pass 2 (Final OCR text):
-    R4 signature    Provider Signature = Yes, or a signature phrase -> Main, unless DistilBERT's
+    R4 signature    Electronic Signature found by kv_extract -> Main, unless DistilBERT's
                     p(junk) > 0.95 (a signed records-request letter is still junk)
     R6 short page   the content ends in the top 15% and the band below has < 0.5% ink ->
                     Junk / Others, unless DistilBERT p(keep) > 0.90
@@ -115,7 +116,6 @@ class Canon:
     heading_words: dict[str, int]
     term_of: dict[str, dict[str, tuple[str, str]]]
     patterns: dict[str, list[tuple[str, re.Pattern[str]]]]
-    signature_terms: frozenset[str]
     thresholds: dict[str, float]
     ignore_lines: tuple[re.Pattern[str], ...]
 
@@ -172,7 +172,6 @@ def _build(data: dict[str, Any]) -> Canon:
         term_re[context] = _alternation(plain, line_start=False)
         line_re[context] = _alternation(starts, line_start=True)
         heading_re[context] = _alternation(starts, line_start=False) if heading_words.get(context) else None
-    signature = data["contexts"].get("clinical", {}).get("signature", {})
     return Canon(
         raw=data,
         groups=groups,
@@ -182,7 +181,6 @@ def _build(data: dict[str, Any]) -> Canon:
         heading_words=heading_words,
         term_of=term_of,
         patterns=patterns,
-        signature_terms=frozenset(_norm(t) for t in signature.get("terms") or []),
         thresholds={k: float(v) for k, v in data["thresholds"].items()},
         ignore_lines=tuple(
             re.compile(p, re.IGNORECASE) for p in data["short_page"].get("ignore_line_patterns") or []
@@ -261,7 +259,6 @@ class Scores:
     demographic: float = 0.0
     groups: dict[str, float] = field(default_factory=dict)  # "junk.invoice" -> score
     hits: dict[str, list[str]] = field(default_factory=dict)  # "junk.invoice" -> terms
-    signature_phrase: bool = False
     # Junk terms only the Tesseract text had (pass 2), counted in ``hits`` too.
     tesseract_only: dict[str, list[str]] = field(default_factory=dict)
 
@@ -384,9 +381,6 @@ def score_text(
             out.hits[f"{context}.{name}"] = sorted(terms)
             total += score
         setattr(out, context, total)
-    out.signature_phrase = any(
-        _norm(term) in prof.signature_terms for term in out.hits.get("clinical.signature", [])
-    )
     return out
 
 
@@ -421,7 +415,7 @@ class PageInputs:
     document_type: str = ""  # page-tag model: printed / handwritten / form / visual / ...
     page_tags: bool = False  # the page-tag model wrote document_type
     hw_area_pct: Optional[float] = None
-    signed: bool = False  # Provider Signature = Yes (KV extraction)
+    signed: bool = False  # Electronic Signature present (kv_extract, provider_signature.csv)
     signature_known: bool = False  # the KV signature output was there to read
     no_ink: bool = False  # the HW stage found no ink (blank_page / faint_marks_only)
     body_ink: Optional[bool] = None  # ink below the short-page band; None = not measured
@@ -520,7 +514,7 @@ def decide(inputs: PageInputs) -> Verdict:
     words = _word_count(text)
     pass2 = inputs.pass_no == 2
     lines = inputs.lines if pass2 else None
-    # Read only for R3's card wording and R4's signature phrase; nothing is scored or voted.
+    # Read only for R1's cover term, R2's placeholder and R3's card wording; nothing is voted.
     scores = score_text(text, lines, inputs.prelim_text if pass2 else None, inputs.document_type)
     visual = is_visual(inputs.document_type, words)
     bert = inputs.bert
@@ -534,7 +528,7 @@ def decide(inputs: PageInputs) -> Verdict:
             if bert else {"note": "unavailable"}
         ),
         "visual_source": "page_tags" if inputs.page_tags else "none",
-        "signature_source": ("kv_extract" if inputs.signature_known else "canon_only") if pass2 else "not_in_pass_1",
+        "signature_source": ("kv_extract" if inputs.signature_known else "kv_extract_missing") if pass2 else "not_in_pass_1",
         "hw_area": inputs.hw_area_pct if inputs.hw_area_pct is not None else "none",
     }
     if inputs.document_type == "visual" and not visual:
@@ -587,9 +581,9 @@ def decide(inputs: PageInputs) -> Verdict:
         return ruled(CODE_MAIN, "P1", f"pass 1: {why} -> Main for now, judged in pass 2 on the final OCR",
                      p_keep if p_keep is not None else 0.5)
 
-    # R4 signature (Provider Signature from KV extraction, or a signature phrase).
-    if inputs.signed or scores.signature_phrase:
-        why = "Provider Signature = Yes" if inputs.signed else "signature phrase"
+    # R4 signature: kv_extract's Electronic Signature only.
+    if inputs.signed:
+        why = "Electronic Signature"
         over = t["signature_overruled_above"]
         if p_junk is not None and p_junk > over:
             votes["r4_overruled"] = f"{why}, but DistilBERT p(junk) {p_junk:.3f} > {over}"

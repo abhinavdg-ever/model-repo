@@ -90,8 +90,12 @@ class TestRules:
         assert run("header more text here", lines=lines, body_ink=False).rule != "R6"
 
     def test_r4_signature_beats_r5(self):
-        lines = [Line("Electronically signed by A. Smith, MD", 0.03, 0.05)]
-        assert run("Electronically signed by A. Smith, MD 03/14/24", lines=lines, body_ink=False).rule == "R4"
+        assert run(FILLER, signed=True, signature_known=True, bert=bert(0.9)).rule == "R4"
+
+    def test_r4_ignores_signature_phrases(self):
+        # Only kv_extract's Electronic Signature counts; the words alone do not.
+        verdict = run("Electronically signed by A. Smith, MD 03/14/24. " + FILLER, bert=bert(0.9))
+        assert verdict.rule == "R5" and verdict.code != classify.CODE_MAIN
 
 
     def test_r3_visual_is_kept(self):
