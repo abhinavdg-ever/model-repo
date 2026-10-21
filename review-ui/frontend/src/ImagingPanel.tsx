@@ -2494,13 +2494,11 @@ function SequencingTable({
       ) : null}
       {marks.length > 0 ? (
         <p className="sequence-break-summary">
-          Accuracy:{" "}
+          Accuracy ={" "}
           <span className={wrong ? "cmp-mismatch" : "cmp-match"}>
             {(100 * (1 - wrong / marks.length)).toFixed(1)}%
           </span>{" "}
-          = 1 − {wrong} {wrong === 1 ? "break" : "breaks"} / {marks.length}{" "}
-          {marks.length === 1 ? "page" : "pages"} (Main pages by breaks in the Algo. Sequence,
-          J pages by blank / junk in both).
+          ({wrong} {wrong === 1 ? "break" : "breaks"} / {marks.length} {marks.length === 1 ? "page" : "pages"})
         </p>
       ) : null}
       {invalid ? (
@@ -2543,9 +2541,9 @@ function SequencingTable({
               </button>
             </>
           ) : (
-            <button type="button" className="imaging-gt-discard" onClick={startEdit}>
+            <button type="button" className="imaging-gt-discard" onClick={startEdit} title="Edit the ground truth">
               <Pencil size={14} aria-hidden="true" />
-              Edit Ground Truth
+              Edit
             </button>
           )}
         </span>
