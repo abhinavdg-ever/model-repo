@@ -5552,17 +5552,6 @@ input {
   width: 38%;
 }
 
-/* Page Sequencing: the ground-truth buttons sit in the Ground Truth header. */
-.imaging-sequencing-table th.sequence-truth-head {
-  overflow: visible;
-  white-space: normal;
-}
-
-.sequence-truth-head .encounter-review-bar {
-  justify-content: flex-start;
-  margin: 0.3rem 0 0;
-}
-
 /* Sequencing and Encounter body cells read like Member Extraction's values. */
 .imaging-sequencing-table tbody td,
 .imaging-documents-table tbody td {

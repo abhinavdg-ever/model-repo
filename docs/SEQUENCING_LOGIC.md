@@ -230,8 +230,8 @@ A **complete (100%) duplicate** is in neither series.
 The client's sheet often numbers **every** page 1, 2, 3 …, junk included. Each value is
 read like this:
 
-1. A page is **J** when its value starts with `J`, or its ground truth has `blank_page` =
-   Yes, or its ground truth has `junk_page` = Yes.
+1. A page is **J** when its value starts with `J`, or its ground truth has `blank_page`,
+   `junk_page` or `is_invoice` = Yes.
 2. J pages are renumbered **J1, J2 …** by their stored number, with page number breaking
    ties.
 3. Every other page with a number is renumbered **1, 2, 3 …** the same way. This closes
@@ -241,9 +241,8 @@ read like this:
 A chart already saved in that form looks the same as it is stored.
 
 > The loader (`core-pipeline/jobs/ground_truth_load.py`) also stores a blank / junk page's
-> sequence as `J<n>` when the sheet says Blank, Junk **or Invoice**. It keeps the sheet's
-> number and does not renumber. review-ui counts only `blank_page` and `junk_page`, so an
-> invoice page loaded before that change, still holding a plain number, is counted as Main.
+> sequence as `J<n>` when the sheet says Blank, Junk or Invoice, the same three columns. It
+> keeps the sheet's number and does not renumber; review-ui renumbers on display.
 
 ### 2.4 Marks on the Ground Truth column
 
@@ -298,7 +297,8 @@ when at least one page is marked.
 
 ### 2.6 Editing the ground truth
 
-The **Edit** button sits in the Ground Truth column header.
+The **Edit** button sits at the top right of the Page Sequencing panel. While editing,
+Copy Original, Copy Algo., Discard and Save take its place.
 
 - **Starting values.** Edit starts from the values as shown (§2.3), not as stored.
 - **Allowed values.** Each value must be a whole number from 1 or `J1`, `J2` …. A blank
@@ -324,4 +324,3 @@ The **Edit** button sits in the Ground Truth column header.
 - **Near-blank pages are Main in review-ui.** A page the stage sets aside as near-blank
   (§1.3), but that blank/junk did not mark, is placed at the end with a high `seq`.
   review-ui shows it as Main, so it can show as a break.
-- **Invoices.** The loader treats Invoice = Yes as junk; review-ui does not (§2.3).

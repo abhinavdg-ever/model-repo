@@ -2319,8 +2319,8 @@ function originalSequences(pages: ImagingPageResult[]): Map<number, string> {
 }
 
 /** The ground-truth sequence as shown, edited and compared. The client's sheet numbers
- * every page 1, 2, 3 …, junk included, so a page whose ground truth is blank or junk
- * (blank_page / junk_page) becomes J1, J2 … and the Main pages are renumbered 1, 2, 3 …,
+ * every page 1, 2, 3 …, junk included, so a page whose ground truth is blank, junk or an
+ * invoice (blank_page / junk_page / is_invoice) becomes J1, J2 … and the Main pages are renumbered 1, 2, 3 …,
  * each in stored order. A chart already in that form comes back unchanged. */
 function groundTruthSequences(pages: ImagingPageResult[]): Map<number, string> {
   const out = new Map<number, string>();
@@ -2335,7 +2335,11 @@ function groundTruthSequences(pages: ImagingPageResult[]): Map<number, string> {
       continue;
     }
     const gt = page.groundTruth;
-    const isJunk = Boolean(j) || yesNo(gt?.blankPage) === "yes" || yesNo(gt?.junkPage) === "yes";
+    const isJunk =
+      Boolean(j) ||
+      yesNo(gt?.blankPage) === "yes" ||
+      yesNo(gt?.junkPage) === "yes" ||
+      yesNo(gt?.isInvoice) === "yes";
     (isJunk ? junk : main).push([n, page.pageNumber]);
   }
   for (const [list, prefix] of [[main, ""], [junk, "J"]] as const) {
@@ -2485,38 +2489,8 @@ function SequencingTable({
 
   return (
     <div className="section-coords-panel">
-      <div className="section-coords-title">Page Sequencing</div>
-      {!sequencingProcessed ? (
-        <p className="section-coords-empty">
-          Sequencing has not run for this chart yet — Algo. Sequence stays Yet
-          to Process until the page_sequencing stage writes results.
-        </p>
-      ) : null}
-      {marks.length > 0 ? (
-        <p className="sequence-break-summary">
-          Accuracy ={" "}
-          <span className={wrong ? "cmp-mismatch" : "cmp-match"}>
-            {(100 * (1 - wrong / marks.length)).toFixed(1)}%
-          </span>{" "}
-          ({wrong} {wrong === 1 ? "break" : "breaks"} / {marks.length} {marks.length === 1 ? "page" : "pages"})
-        </p>
-      ) : null}
-      {invalid ? (
-        <div className="encounter-review-problem">
-          Page {invalid.pageNumber}: a sequence is a whole number from 1 (Main) or J1, J2 … (blank / junk).
-        </div>
-      ) : null}
-      {continuity ? <div className="encounter-review-problem">{continuity}</div> : null}
-      {error ? <div className="error-banner">{error}</div> : null}
-      <table className="imaging-summary-table imaging-sequencing-table">
-        <thead>
-          <tr>
-            <th scope="col">S.No</th>
-            <th scope="col">File</th>
-            <th scope="col">Original Sequence</th>
-            <th scope="col">Algo. Sequence</th>
-            <th scope="col" className="sequence-truth-head">
-              <span>Ground Truth</span>
+      <div className="encounter-review-head">
+        <div className="section-coords-title">Page Sequencing</div>
         <span className="encounter-review-bar">
           {editing ? (
             <>
@@ -2547,7 +2521,37 @@ function SequencingTable({
             </button>
           )}
         </span>
-            </th>
+      </div>
+      {!sequencingProcessed ? (
+        <p className="section-coords-empty">
+          Sequencing has not run for this chart yet — Algo. Sequence stays Yet
+          to Process until the page_sequencing stage writes results.
+        </p>
+      ) : null}
+      {marks.length > 0 ? (
+        <p className="sequence-break-summary">
+          Accuracy ={" "}
+          <span className={wrong ? "cmp-mismatch" : "cmp-match"}>
+            {(100 * (1 - wrong / marks.length)).toFixed(1)}%
+          </span>{" "}
+          ({wrong} {wrong === 1 ? "break" : "breaks"} / {marks.length} {marks.length === 1 ? "page" : "pages"})
+        </p>
+      ) : null}
+      {invalid ? (
+        <div className="encounter-review-problem">
+          Page {invalid.pageNumber}: a sequence is a whole number from 1 (Main) or J1, J2 … (blank / junk).
+        </div>
+      ) : null}
+      {continuity ? <div className="encounter-review-problem">{continuity}</div> : null}
+      {error ? <div className="error-banner">{error}</div> : null}
+      <table className="imaging-summary-table imaging-sequencing-table">
+        <thead>
+          <tr>
+            <th scope="col">S.No</th>
+            <th scope="col">File</th>
+            <th scope="col">Original Sequence</th>
+            <th scope="col">Algo. Sequence</th>
+            <th scope="col">Ground Truth</th>
           </tr>
         </thead>
         <tbody>

@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import logging
 import time
+from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from fastapi import HTTPException
 
@@ -45,6 +46,18 @@ from app.services.imaging_overlays import (
 )
 
 logger = logging.getLogger("review_ui.postgres")
+
+
+@contextmanager
+def _section(conn: Any, name: str, folder_id: str) -> Iterator[None]:
+    """One part of a chart's overlay in its own savepoint. A failure (a column an older
+    database lacks, a slow query cancelled) skips that part with a warning; the parts
+    after it still load. Before, one failure dropped every later part silently."""
+    try:
+        with conn.transaction():
+            yield
+    except Exception as exc:
+        logger.warning("imaging overlay %s skipped for %s: %s", name, folder_id, exc)
 
 # API kind → ocr_results.ocr_type
 KIND_TO_OCR_TYPE: dict[str, str] = {
@@ -847,139 +860,7 @@ class PostgresFolderRepository(FolderRepository):
         try:
             with self._connect() as conn:
                 with conn.cursor() as cur:
-                    # Quality
-                    cur.execute(
-                        """
-                        SELECT p.page_name, q.printed_or_handwritten, q.hw_confidence,
-                               q.quality_score, q.quality_tag,
-                               q.orientation_angle, q.tilt_angle, q.mirrored,
-                               q.document_type, q.is_visible,
-                               q.handwritten_area_pct
-                        FROM ocr_quality_results q
-                        JOIN page_list p ON p.id = q.page_id
-                        JOIN chart_list c ON c.id = q.chart_id
-                        WHERE c.chart_name = %s
-                        """,
-                        (folder_id,),
-                    )
-                    for (
-                        page_name, hw, conf, qscore, qtag, orient, tilt, mirrored,
-                        doc_type, visible, hw_area,
-                    ) in cur.fetchall():
-                        fields = _ensure(str(page_name))
-                        if hw:
-                            label = str(hw).strip().lower()
-                            if "hand" in label:
-                                fields["handwrittenOrPrinted"] = "Handwritten"
-                            elif "uncertain" in label:
-                                fields["handwrittenOrPrinted"] = "Uncertain"
-                            elif "mix" in label:
-                                fields["handwrittenOrPrinted"] = "Mixed"
-                            else:
-                                fields["handwrittenOrPrinted"] = "Printed"
-                        if conf is not None:
-                            fields["handwrittenOrPrintedConfidence"] = float(conf)
-                        if qscore is not None:
-                            fields["pageQualityConfidence"] = float(qscore)
-                        if qtag:
-                            fields["pageQualityTag"] = str(qtag)
-                        if orient is not None:
-                            fields["orientationAngle"] = float(orient)
-                        if tilt is not None:
-                            fields["tiltAngle"] = float(tilt)
-                        if mirrored is not None:
-                            fields["mirrored"] = bool(mirrored)
-                        fields.update(
-                            page_type_fields(doc_type, visible, hw_area)
-                        )
-
-                    # Blank/junk — v7 stamps exactly one final row per page,
-                    # so precedence is not re-derived here any more.
-                    cur.execute(
-                        """
-                        SELECT p.page_name, b.blank_junk_flag, b.junk_subtype,
-                               b.confidence, orig.page_name
-                        FROM v_page_blank_junk_final b
-                        JOIN page_list p ON p.id = b.page_id
-                        JOIN chart_list c ON c.id = b.chart_id
-                        LEFT JOIN page_list orig ON orig.id = b.duplicate_of_page_id
-                        WHERE c.chart_name = %s
-                        """,
-                        (folder_id,),
-                    )
-                    for page_name, flag, subtype, conf, duplicate_of in cur.fetchall():
-                        fields = _ensure(str(page_name))
-                        blank, dup, page_type = _blank_junk_ui(flag, subtype)
-                        fields["blankOrJunk"] = blank
-                        fields["isDuplicate"] = dup
-                        fields["pageType"] = page_type
-                        if duplicate_of:
-                            fields["duplicateOf"] = str(duplicate_of)
-                        if conf is not None:
-                            fields["pageTypeConfidence"] = float(conf)
-
-                    # Member extraction
-                    cur.execute(
-                        """
-                        SELECT p.page_name,
-                               m.extracted_name, m.extracted_dob, m.extracted_member_id,
-                               m.confidence
-                        FROM member_extraction_results m
-                        JOIN chart_list c ON c.id = m.chart_id
-                        JOIN page_list p ON p.id = m.page_id
-                        WHERE c.chart_name = %s
-                        """,
-                        (folder_id,),
-                    )
-                    for page_name, name, dob, mid, conf in cur.fetchall():
-                        if not page_name:
-                            continue
-                        fields = _ensure(str(page_name))
-                        fields["memberName"] = name
-                        fields["memberDob"] = _fmt_date(dob)
-                        fields["memberId"] = mid
-                        if conf is not None:
-                            fields["memberConfidence"] = float(conf)
-
-                    # DOS (Extracted): the DOS stage's own row per page, the same values it
-                    # writes to <chart>_dos.csv. schema/v1.sql is the only schema.
-                    cur.execute(
-                        """
-                        SELECT p.page_name,
-                               d.date_of_service_from, d.date_of_service_to,
-                               d.date_of_service_from_doclevel, d.date_of_service_to_doclevel,
-                               d.confidence
-                        FROM dos_extraction_results d
-                        JOIN page_list p ON p.id = d.page_id
-                        JOIN chart_list c ON c.id = d.chart_id
-                        WHERE c.chart_name = %s
-                        """,
-                        (folder_id,),
-                    )
-                    for page_name, d_from, d_to, doc_from, doc_to, conf in cur.fetchall():
-                        fields = _ensure(str(page_name))
-                        fields["dosFrom"] = _fmt_date(d_from)
-                        fields["dosTo"] = _fmt_date(d_to)
-                        fields["docDosFrom"] = _fmt_date(doc_from)
-                        fields["docDosTo"] = _fmt_date(doc_to)
-                        if conf is not None:
-                            fields["dosConfidence"] = float(conf)
-
-                    # Codable / non-codable / discharge (page_classification)
-                    cur.execute(
-                        """
-                        SELECT p.page_name, pc.page_subtype,
-                               pc.classification_category, pc.confidence,
-                               to_jsonb(pc) ->> 'page_type',
-                               to_jsonb(pc) -> 'axes' ->> 'specialty',
-                               to_jsonb(pc) -> 'axes' ->> 'specialty_confidence'
-                        FROM page_classification pc
-                        JOIN page_list p ON p.id = pc.page_id
-                        JOIN chart_list c ON c.id = pc.chart_id
-                        WHERE c.chart_name = %s
-                        """,
-                        (folder_id,),
-                    )
+                    # codable display, shared by page_classification and imaging_final
                     codeable_display = {
                         "codeable": "Codable",
                         "non_codeable": "Non-Codable",
@@ -987,18 +868,157 @@ class PostgresFolderRepository(FolderRepository):
                         "discharge_frequency": "Discharge",
                         "not_sure": "Not Sure",
                     }
-                    for page_name, subtype, cat, conf, page_type, specialty, specialty_conf in cur.fetchall():
-                        fields = _ensure(str(page_name))
-                        fields["specialty"] = specialty or "Unknown"
-                        if specialty_conf:
-                            fields["specialtyConfidence"] = float(specialty_conf)
-                        key = str(cat or "").strip()
-                        shown = compose_page_type(page_type, subtype)
-                        if shown:
-                            fields["pageType"] = shown
-                        fields["isCodeable"] = codeable_display.get(key, key or "Not Sure")
-                        if conf is not None:
-                            fields["pageTypeConfidence"] = float(conf)
+
+                    with _section(conn, "quality", folder_id):
+                        # Quality
+                        cur.execute(
+                            """
+                            SELECT p.page_name, q.printed_or_handwritten, q.hw_confidence,
+                                   q.quality_score, q.quality_tag,
+                                   q.orientation_angle, q.tilt_angle, q.mirrored,
+                                   q.document_type, q.is_visible,
+                                   q.handwritten_area_pct
+                            FROM ocr_quality_results q
+                            JOIN page_list p ON p.id = q.page_id
+                            JOIN chart_list c ON c.id = q.chart_id
+                            WHERE c.chart_name = %s
+                            """,
+                            (folder_id,),
+                        )
+                        for (
+                            page_name, hw, conf, qscore, qtag, orient, tilt, mirrored,
+                            doc_type, visible, hw_area,
+                        ) in cur.fetchall():
+                            fields = _ensure(str(page_name))
+                            if hw:
+                                label = str(hw).strip().lower()
+                                if "hand" in label:
+                                    fields["handwrittenOrPrinted"] = "Handwritten"
+                                elif "uncertain" in label:
+                                    fields["handwrittenOrPrinted"] = "Uncertain"
+                                elif "mix" in label:
+                                    fields["handwrittenOrPrinted"] = "Mixed"
+                                else:
+                                    fields["handwrittenOrPrinted"] = "Printed"
+                            if conf is not None:
+                                fields["handwrittenOrPrintedConfidence"] = float(conf)
+                            if qscore is not None:
+                                fields["pageQualityConfidence"] = float(qscore)
+                            if qtag:
+                                fields["pageQualityTag"] = str(qtag)
+                            if orient is not None:
+                                fields["orientationAngle"] = float(orient)
+                            if tilt is not None:
+                                fields["tiltAngle"] = float(tilt)
+                            if mirrored is not None:
+                                fields["mirrored"] = bool(mirrored)
+                            fields.update(
+                                page_type_fields(doc_type, visible, hw_area)
+                            )
+
+                    with _section(conn, "blank_junk", folder_id):
+                        # Blank/junk — v7 stamps exactly one final row per page,
+                        # so precedence is not re-derived here any more.
+                        cur.execute(
+                            """
+                            SELECT p.page_name, b.blank_junk_flag, b.junk_subtype,
+                                   b.confidence, orig.page_name
+                            FROM v_page_blank_junk_final b
+                            JOIN page_list p ON p.id = b.page_id
+                            JOIN chart_list c ON c.id = b.chart_id
+                            LEFT JOIN page_list orig ON orig.id = b.duplicate_of_page_id
+                            WHERE c.chart_name = %s
+                            """,
+                            (folder_id,),
+                        )
+                        for page_name, flag, subtype, conf, duplicate_of in cur.fetchall():
+                            fields = _ensure(str(page_name))
+                            blank, dup, page_type = _blank_junk_ui(flag, subtype)
+                            fields["blankOrJunk"] = blank
+                            fields["isDuplicate"] = dup
+                            fields["pageType"] = page_type
+                            if duplicate_of:
+                                fields["duplicateOf"] = str(duplicate_of)
+                            if conf is not None:
+                                fields["pageTypeConfidence"] = float(conf)
+
+                    with _section(conn, "member", folder_id):
+                        # Member extraction
+                        cur.execute(
+                            """
+                            SELECT p.page_name,
+                                   m.extracted_name, m.extracted_dob, m.extracted_member_id,
+                                   m.confidence
+                            FROM member_extraction_results m
+                            JOIN chart_list c ON c.id = m.chart_id
+                            JOIN page_list p ON p.id = m.page_id
+                            WHERE c.chart_name = %s
+                            """,
+                            (folder_id,),
+                        )
+                        for page_name, name, dob, mid, conf in cur.fetchall():
+                            if not page_name:
+                                continue
+                            fields = _ensure(str(page_name))
+                            fields["memberName"] = name
+                            fields["memberDob"] = _fmt_date(dob)
+                            fields["memberId"] = mid
+                            if conf is not None:
+                                fields["memberConfidence"] = float(conf)
+
+                    with _section(conn, "dos", folder_id):
+                        # DOS (Extracted): the DOS stage's own row per page, the same values it
+                        # writes to <chart>_dos.csv. schema/v1.sql is the only schema.
+                        cur.execute(
+                            """
+                            SELECT p.page_name,
+                                   d.date_of_service_from, d.date_of_service_to,
+                                   d.date_of_service_from_doclevel, d.date_of_service_to_doclevel,
+                                   d.confidence
+                            FROM dos_extraction_results d
+                            JOIN page_list p ON p.id = d.page_id
+                            JOIN chart_list c ON c.id = d.chart_id
+                            WHERE c.chart_name = %s
+                            """,
+                            (folder_id,),
+                        )
+                        for page_name, d_from, d_to, doc_from, doc_to, conf in cur.fetchall():
+                            fields = _ensure(str(page_name))
+                            fields["dosFrom"] = _fmt_date(d_from)
+                            fields["dosTo"] = _fmt_date(d_to)
+                            fields["docDosFrom"] = _fmt_date(doc_from)
+                            fields["docDosTo"] = _fmt_date(doc_to)
+                            if conf is not None:
+                                fields["dosConfidence"] = float(conf)
+
+                    with _section(conn, "page_classification", folder_id):
+                        # Codable / non-codable / discharge (page_classification)
+                        cur.execute(
+                            """
+                            SELECT p.page_name, pc.page_subtype,
+                                   pc.classification_category, pc.confidence,
+                                   to_jsonb(pc) ->> 'page_type',
+                                   to_jsonb(pc) -> 'axes' ->> 'specialty',
+                                   to_jsonb(pc) -> 'axes' ->> 'specialty_confidence'
+                            FROM page_classification pc
+                            JOIN page_list p ON p.id = pc.page_id
+                            JOIN chart_list c ON c.id = pc.chart_id
+                            WHERE c.chart_name = %s
+                            """,
+                            (folder_id,),
+                        )
+                        for page_name, subtype, cat, conf, page_type, specialty, specialty_conf in cur.fetchall():
+                            fields = _ensure(str(page_name))
+                            fields["specialty"] = specialty or "Unknown"
+                            if specialty_conf:
+                                fields["specialtyConfidence"] = float(specialty_conf)
+                            key = str(cat or "").strip()
+                            shown = compose_page_type(page_type, subtype)
+                            if shown:
+                                fields["pageType"] = shown
+                            fields["isCodeable"] = codeable_display.get(key, key or "Not Sure")
+                            if conf is not None:
+                                fields["pageTypeConfidence"] = float(conf)
 
                     # Main pages with no page_classification row keep junk's
                     # pageType=\"Not Available\" — stamp Not Sure for codability.
@@ -1010,133 +1030,138 @@ class PostgresFolderRepository(FolderRepository):
                         ):
                             fields["isCodeable"] = "Not Sure"
 
-                    # Encounter type (DOS-wide TF)
-                    cur.execute(
-                        """
-                        SELECT p.page_name, e.encounter_type, e.confidence
-                        FROM encounter_type_results e
-                        JOIN page_list p ON p.id = e.page_id
-                        JOIN chart_list c ON c.id = e.chart_id
-                        WHERE c.chart_name = %s
-                        """,
-                        (folder_id,),
-                    )
-                    enc_display = {
-                        "outpatient_f2f": "Outpatient (F2F)",
-                        "outpatient_tele": "Outpatient (Tele)",
-                        "inpatient": "Inpatient",
-                        "home": "Home",
-                        "not_applicable": "Not Applicable",
-                    }
-                    for page_name, et, conf in cur.fetchall():
-                        fields = _ensure(str(page_name))
-                        key = str(et or "").strip()
-                        fields["encounterType"] = enc_display.get(key, key)
-
-                    # Page sequencing
-                    cur.execute(
-                        """
-                        SELECT p.page_name, p.page_number,
-                               s.original_page_number, s.seq, s.confidence
-                        FROM page_sequencing_results s
-                        JOIN page_list p ON p.id = s.page_id
-                        JOIN chart_list c ON c.id = s.chart_id
-                        WHERE c.chart_name = %s
-                        """,
-                        (folder_id,),
-                    )
-                    for page_name, page_num, orig, seq, conf in cur.fetchall():
-                        fields = _ensure(str(page_name))
-                        current = orig if orig is not None else page_num
-                        if current is not None:
-                            fields["currentSequence"] = int(current)
-                        if seq is not None:
-                            fields["actualSequence"] = int(seq)
-
-                    # Document continuity, then Final values. A database without
-                    # these tables yet skips them, not the page.
-                    cur.execute("SELECT to_regclass('page_continuity_results')")
-                    if (cur.fetchone() or [None])[0]:
-                        # The gap scorer's columns (2026-10-20) may not exist yet: read the
-                        # row as JSON so an older database still shows its documents.
+                    with _section(conn, "encounter_type", folder_id):
+                        # Encounter type (DOS-wide TF)
                         cur.execute(
                             """
-                            SELECT p.page_name, to_jsonb(k)
-                            FROM page_continuity_results k
-                            JOIN page_list p ON p.id = k.page_id
-                            JOIN chart_list c ON c.id = k.chart_id
+                            SELECT p.page_name, e.encounter_type, e.confidence
+                            FROM encounter_type_results e
+                            JOIN page_list p ON p.id = e.page_id
+                            JOIN chart_list c ON c.id = e.chart_id
                             WHERE c.chart_name = %s
                             """,
                             (folder_id,),
                         )
-                        members: dict[int, list[dict[str, Any]]] = {}
-                        for page_name, k in cur.fetchall():
-                            k = k or {}
-                            document = k.get("document_seq")
-                            position = k.get("position")
+                        enc_display = {
+                            "outpatient_f2f": "Outpatient (F2F)",
+                            "outpatient_tele": "Outpatient (Tele)",
+                            "inpatient": "Inpatient",
+                            "home": "Home",
+                            "not_applicable": "Not Applicable",
+                        }
+                        for page_name, et, conf in cur.fetchall():
                             fields = _ensure(str(page_name))
-                            fields["documentSeq"] = int(document) if document is not None else None
-                            fields["documentPosition"] = position
-                            fields["documentLabel"] = continuity_label(
-                                position, int(document) if document is not None else None,
-                                k.get("confidence_level"),
-                            )
-                            fields["continuityRelation"] = k.get("relation")
-                            fields["continuityDecidedBy"] = k.get("decided_by")
-                            fields["continuityEvidence"] = k.get("evidence")
-                            fields["continuityConfidence"] = (
-                                float(k["confidence"]) if k.get("confidence") is not None else None
-                            )
-                            if document is not None:
-                                members.setdefault(int(document), []).append(fields)
-                        # Documents and junk groups share the numbering: a group whose every
-                        # page is junk reads 'New (Junk 4)'.
-                        for document, group in members.items():
-                            if all(str(f.get("blankOrJunk") or "").lower().startswith("yes (junk)") for f in group):
-                                for f in group:
-                                    f["documentLabel"] = (f.get("documentLabel") or "").replace(
-                                        f"(Doc {document})", f"(Junk {document})"
-                                    )
+                            key = str(et or "").strip()
+                            fields["encounterType"] = enc_display.get(key, key)
 
-                    cur.execute("SELECT to_regclass('imaging_final')")
-                    if (cur.fetchone() or [None])[0]:
+                    with _section(conn, "sequencing", folder_id):
+                        # Page sequencing
                         cur.execute(
                             """
-                            SELECT p.page_name, f.page_type, f.classification_category,
-                                   f.dos_from, f.dos_to, to_jsonb(f) ->> 'page_subtype',
-                                   to_jsonb(f) ->> 'specialty',
-                                   to_jsonb(f) ->> 'provider_name',
-                                   to_jsonb(f) ->> 'signature_present',
-                                   to_jsonb(f) ->> 'provider_credentials',
-                                   to_jsonb(f) -> 'signers',
-                                   to_jsonb(f) ->> 'provider_version',
-                                   to_jsonb(f) ->> 'provider_confidence'
-                            FROM imaging_final f
-                            JOIN page_list p ON p.id = f.page_id
-                            JOIN chart_list c ON c.id = f.chart_id
+                            SELECT p.page_name, p.page_number,
+                                   s.original_page_number, s.seq, s.confidence
+                            FROM page_sequencing_results s
+                            JOIN page_list p ON p.id = s.page_id
+                            JOIN chart_list c ON c.id = s.chart_id
                             WHERE c.chart_name = %s
                             """,
                             (folder_id,),
                         )
-                        for (page_name, final_type, category, final_from, final_to, final_sub,
-                             final_specialty, provider, signed, credentials, signers, version,
-                             provider_confidence) in cur.fetchall():
+                        for page_name, page_num, orig, seq, conf in cur.fetchall():
                             fields = _ensure(str(page_name))
-                            # Provider Extraction: the signature rows the extraction stage
-                            # writes (the same as provider_signature.csv); the name cell
-                            # carries the credentials ('Ramsey Luce, R.N.').
-                            people = signer_fields(signers, provider, credentials, version)
-                            fields.update({key: value for key, value in people.items() if value})
-                            if provider_confidence not in (None, ""):
-                                fields["providerSignatureConfidence"] = float(provider_confidence)
-                            if signed is not None:
-                                fields["providerSignature"] = "Yes" if signed == "true" else "No"
-                            fields["finalSpecialty"] = final_specialty or None
-                            fields["finalPageType"] = compose_page_type(final_type, final_sub) or None
-                            fields["finalCodeable"] = codeable_display.get(category or "")
-                            fields["finalDosFrom"] = _fmt_date(final_from)
-                            fields["finalDosTo"] = _fmt_date(final_to)
-        except Exception:
+                            current = orig if orig is not None else page_num
+                            if current is not None:
+                                fields["currentSequence"] = int(current)
+                            if seq is not None:
+                                fields["actualSequence"] = int(seq)
+
+                    with _section(conn, "continuity", folder_id):
+                        # Document continuity, then Final values. A database without
+                        # these tables yet skips them, not the page.
+                        cur.execute("SELECT to_regclass('page_continuity_results')")
+                        if (cur.fetchone() or [None])[0]:
+                            # The gap scorer's columns (2026-10-20) may not exist yet: read the
+                            # row as JSON so an older database still shows its documents.
+                            cur.execute(
+                                """
+                                SELECT p.page_name, to_jsonb(k)
+                                FROM page_continuity_results k
+                                JOIN page_list p ON p.id = k.page_id
+                                JOIN chart_list c ON c.id = k.chart_id
+                                WHERE c.chart_name = %s
+                                """,
+                                (folder_id,),
+                            )
+                            members: dict[int, list[dict[str, Any]]] = {}
+                            for page_name, k in cur.fetchall():
+                                k = k or {}
+                                document = k.get("document_seq")
+                                position = k.get("position")
+                                fields = _ensure(str(page_name))
+                                fields["documentSeq"] = int(document) if document is not None else None
+                                fields["documentPosition"] = position
+                                fields["documentLabel"] = continuity_label(
+                                    position, int(document) if document is not None else None,
+                                    k.get("confidence_level"),
+                                )
+                                fields["continuityRelation"] = k.get("relation")
+                                fields["continuityDecidedBy"] = k.get("decided_by")
+                                fields["continuityEvidence"] = k.get("evidence")
+                                fields["continuityConfidence"] = (
+                                    float(k["confidence"]) if k.get("confidence") is not None else None
+                                )
+                                if document is not None:
+                                    members.setdefault(int(document), []).append(fields)
+                            # Documents and junk groups share the numbering: a group whose every
+                            # page is junk reads 'New (Junk 4)'.
+                            for document, group in members.items():
+                                if all(str(f.get("blankOrJunk") or "").lower().startswith("yes (junk)") for f in group):
+                                    for f in group:
+                                        f["documentLabel"] = (f.get("documentLabel") or "").replace(
+                                            f"(Doc {document})", f"(Junk {document})"
+                                        )
+
+                    with _section(conn, "imaging_final", folder_id):
+                        cur.execute("SELECT to_regclass('imaging_final')")
+                        if (cur.fetchone() or [None])[0]:
+                            cur.execute(
+                                """
+                                SELECT p.page_name, f.page_type, f.classification_category,
+                                       f.dos_from, f.dos_to, to_jsonb(f) ->> 'page_subtype',
+                                       to_jsonb(f) ->> 'specialty',
+                                       to_jsonb(f) ->> 'provider_name',
+                                       to_jsonb(f) ->> 'signature_present',
+                                       to_jsonb(f) ->> 'provider_credentials',
+                                       to_jsonb(f) -> 'signers',
+                                       to_jsonb(f) ->> 'provider_version',
+                                       to_jsonb(f) ->> 'provider_confidence'
+                                FROM imaging_final f
+                                JOIN page_list p ON p.id = f.page_id
+                                JOIN chart_list c ON c.id = f.chart_id
+                                WHERE c.chart_name = %s
+                                """,
+                                (folder_id,),
+                            )
+                            for (page_name, final_type, category, final_from, final_to, final_sub,
+                                 final_specialty, provider, signed, credentials, signers, version,
+                                 provider_confidence) in cur.fetchall():
+                                fields = _ensure(str(page_name))
+                                # Provider Extraction: the signature rows the extraction stage
+                                # writes (the same as provider_signature.csv); the name cell
+                                # carries the credentials ('Ramsey Luce, R.N.').
+                                people = signer_fields(signers, provider, credentials, version)
+                                fields.update({key: value for key, value in people.items() if value})
+                                if provider_confidence not in (None, ""):
+                                    fields["providerSignatureConfidence"] = float(provider_confidence)
+                                if signed is not None:
+                                    fields["providerSignature"] = "Yes" if signed == "true" else "No"
+                                fields["finalSpecialty"] = final_specialty or None
+                                fields["finalPageType"] = compose_page_type(final_type, final_sub) or None
+                                fields["finalCodeable"] = codeable_display.get(category or "")
+                                fields["finalDosFrom"] = _fmt_date(final_from)
+                                fields["finalDosTo"] = _fmt_date(final_to)
+        except Exception as exc:
+            logger.warning("imaging overlay unavailable for %s: %s", folder_id, exc)
             return by_page
 
         return by_page
