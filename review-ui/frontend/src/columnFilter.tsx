@@ -260,9 +260,10 @@ export function ClearAllFilters({ count, onClear }: { count: number; onClear: ()
 }
 
 /** The chart-metadata filters both tables offer (manifest / metadata CSV). */
-export type MetaFilterKey = "source" | "measure" | "retrieval";
+export type MetaFilterKey = "scope" | "source" | "measure" | "retrieval";
 export type MetaFilters = Partial<Record<MetaFilterKey, string[]>>;
 export const META_FILTERS: { key: MetaFilterKey; label: string; title: string }[] = [
+  { key: "scope", label: "Scope", title: "Scope (Project Scope)" },
   { key: "measure", label: "Measure", title: "Measure" },
   { key: "source", label: "Source Name", title: "Source Name" },
   { key: "retrieval", label: "Retrieval Method", title: "Retrieval Method (RR Method)" },

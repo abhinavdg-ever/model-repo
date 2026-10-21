@@ -28,7 +28,8 @@ class FolderSummary(BaseModel):
     ground_truth_available: bool = False
     # True when the chart folder exists under the review-ui data root.
     on_disk: bool = False
-    # Chart metadata (manifest_member_list / metadata CSV): Source, Measure, Retrieval.
+    # Chart metadata (manifest_member_list / metadata CSV): Scope, Source, Measure, Retrieval.
+    project_scope: str | None = None
     source_name: str | None = None
     measure: str | None = None
     rr_method: str | None = None
@@ -61,6 +62,7 @@ class FolderListResponse(BaseModel):
     ground_truth_charts: int = 0
     run_options: list[str] = Field(default_factory=list)
     batch_options: list[str] = Field(default_factory=list)
+    scope_options: list[str] = Field(default_factory=list)
     source_options: list[str] = Field(default_factory=list)
     measure_options: list[str] = Field(default_factory=list)
     retrieval_options: list[str] = Field(default_factory=list)
@@ -406,6 +408,7 @@ class AccuracyChartPayload(BaseModel):
     # Run / Batch and chart metadata, for the Accuracy View filters.
     runId: str | None = None
     batchId: str | None = None
+    projectScope: str | None = None
     sourceName: str | None = None
     measure: str | None = None
     rrMethod: str | None = None

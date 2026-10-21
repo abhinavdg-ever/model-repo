@@ -22,6 +22,7 @@ export type FolderSummary = {
   ground_truth_available?: boolean;
   on_disk?: boolean;
   /** Chart metadata (manifest / metadata CSV). */
+  project_scope?: string | null;
   source_name?: string | null;
   measure?: string | null;
   rr_method?: string | null;
@@ -34,6 +35,8 @@ export type FolderListParams = {
   status?: OcrRunStatus[];
   run?: string[];
   batch?: string[];
+  /** Project Scope. */
+  scope?: string[];
   source?: string[];
   measure?: string[];
   /** RR Method. */
@@ -71,6 +74,7 @@ export type FolderListResponse = {
   ground_truth_charts?: number;
   run_options: string[];
   batch_options: string[];
+  scope_options?: string[];
   source_options?: string[];
   measure_options?: string[];
   retrieval_options?: string[];
@@ -404,6 +408,7 @@ export function listFolders(params?: FolderListParams): Promise<FolderListRespon
   for (const s of params?.status ?? []) sp.append("status", s);
   for (const s of params?.run ?? []) sp.append("run", s);
   for (const s of params?.batch ?? []) sp.append("batch", s);
+  for (const s of params?.scope ?? []) sp.append("scope", s);
   for (const s of params?.source ?? []) sp.append("source", s);
   for (const s of params?.measure ?? []) sp.append("measure", s);
   for (const s of params?.retrieval ?? []) sp.append("retrieval", s);
@@ -451,6 +456,7 @@ export type AccuracyChartPayload = {
   lastVerifiedAt?: string | null;
   runId?: string | null;
   batchId?: string | null;
+  projectScope?: string | null;
   sourceName?: string | null;
   measure?: string | null;
   rrMethod?: string | null;

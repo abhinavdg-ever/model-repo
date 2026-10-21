@@ -33,3 +33,8 @@ DROP TRIGGER IF EXISTS trg_encounter_review_updated_at ON encounter_review;
 CREATE TRIGGER trg_encounter_review_updated_at
     BEFORE UPDATE ON encounter_review
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- 2. manifest_member_list.project_scope (2026-10-21): the client's "Project Scope" column
+--    of the metadata sheet, review-ui's Scope filter. core-pipeline also adds it on the
+--    first manifest load. Same definition as schema/v1.sql.
+ALTER TABLE manifest_member_list ADD COLUMN IF NOT EXISTS project_scope VARCHAR(255);

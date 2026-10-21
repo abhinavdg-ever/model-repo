@@ -2,7 +2,7 @@
 """Add the client's extra columns to every batch metadata CSV, then write them to Postgres.
 
 The client sends one dump across all charts: ``metadata_extra.csv`` (recordId plus
-MemberID, ClientID, ProjectID, SourceName, RR Method, Measure, ServiceNote). Put it in the metadata
+MemberID, ClientID, ProjectID, Project Scope, SourceName, RR Method, Measure, ServiceNote). Put it in the metadata
 folder beside the batch files (``metadata_R1_B1.csv`` …). This script matches each batch
 row to the dump by recordId, adds the missing columns to the batch file (a blank in the
 dump keeps the file's value; names and DOB are never touched), and with ``--load``

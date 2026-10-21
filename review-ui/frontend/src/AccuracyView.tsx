@@ -687,6 +687,7 @@ function RunAfterColumnFilter({
 
 /** A chart's value for one metadata filter. */
 function metaValue(row: ChartAccuracy, key: MetaFilterKey): string | null | undefined {
+  if (key === "scope") return row.projectScope;
   return key === "source" ? row.sourceName : key === "measure" ? row.measure : row.rrMethod;
 }
 
@@ -901,6 +902,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
           row.lastVerifiedAt = chart.lastVerifiedAt ?? null;
           row.runId = chart.runId ?? null;
           row.batchId = chart.batchId ?? null;
+          row.projectScope = chart.projectScope ?? null;
           row.sourceName = chart.sourceName ?? null;
           row.measure = chart.measure ?? null;
           row.rrMethod = chart.rrMethod ?? null;

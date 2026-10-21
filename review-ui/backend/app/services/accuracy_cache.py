@@ -469,6 +469,7 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
             lastVerifiedAt=verified.get(folder.id),
             runId=folder.run_id,
             batchId=folder.batch_id,
+            projectScope=folder.project_scope,
             sourceName=folder.source_name,
             measure=folder.measure,
             rrMethod=folder.rr_method,

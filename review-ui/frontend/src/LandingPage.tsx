@@ -406,6 +406,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
       setRunOptions(data.run_options);
       setBatchOptions(data.batch_options);
       setMetaOptions({
+        scope: data.scope_options ?? [],
         source: data.source_options ?? [],
         measure: data.measure_options ?? [],
         retrieval: data.retrieval_options ?? [],

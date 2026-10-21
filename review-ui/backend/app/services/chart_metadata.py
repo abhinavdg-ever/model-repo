@@ -1,7 +1,9 @@
-"""Each chart's Source, Measure and Retrieval (RR Method), for the list filters.
+"""Each chart's Scope (Project Scope), Source, Measure and Retrieval (RR Method), for the
+list filters.
 
-From ``manifest_member_list`` (source_name, measure, rr_method) when a database is
-configured, with the metadata CSVs (SourceName, Measure, RR Method) filling what it lacks.
+From ``manifest_member_list`` (project_scope, source_name, measure, rr_method) when a
+database is configured, with the metadata CSVs (Project Scope, SourceName, Measure,
+RR Method) filling what it lacks.
 A chart with several manifest rows takes its first.
 """
 
@@ -20,6 +22,7 @@ logger = logging.getLogger("review_ui.chart_metadata")
 
 # Field -> the CSV headers it is read from (matched without case, spaces or underscores).
 FIELDS: dict[str, tuple[str, ...]] = {
+    "project_scope": ("ProjectScope", "project_scope", "Scope"),
     "source_name": ("SourceName", "source_name"),
     "measure": ("Measure", "MeasureName"),
     "rr_method": ("RRMethod", "rr_method", "RetrievalMethod", "RetrievalName"),
@@ -41,15 +44,20 @@ def fetch_db_chart_metadata(database_url: str, *, db_schema: str = "public") -> 
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT DISTINCT ON (record_id) record_id, source_name, measure, rr_method
-                      FROM manifest_member_list
-                     WHERE source_name IS NOT NULL OR measure IS NOT NULL OR rr_method IS NOT NULL
+                    SELECT DISTINCT ON (record_id) record_id, j ->> 'source_name',
+                           j ->> 'measure', j ->> 'rr_method', j ->> 'project_scope'
+                      FROM (SELECT id, record_id, to_jsonb(m) AS j FROM manifest_member_list m) rows
+                     -- Read through to_jsonb so a database without a column (before
+                     -- schema/changes_2026-10-19.sql, or project_scope before 2026-10-21)
+                     -- answers NULL for it instead of failing the whole lookup.
+                     WHERE COALESCE(j ->> 'source_name', j ->> 'measure', j ->> 'rr_method',
+                                    j ->> 'project_scope') IS NOT NULL
                      ORDER BY record_id, id
                     """
                 )
                 rows = cur.fetchall()
     except Exception as exc:
-        # A database without schema/changes_2026-10-19.sql has no such columns.
+        # No manifest_member_list at all, or the database is unreachable.
         logger.warning("manifest metadata lookup failed: %s", exc)
         return {}
     return {
@@ -57,8 +65,9 @@ def fetch_db_chart_metadata(database_url: str, *, db_schema: str = "public") -> 
             "source_name": _text(source),
             "measure": _text(measure),
             "rr_method": _text(method),
+            "project_scope": _text(scope),
         }
-        for rid, source, measure, method in rows
+        for rid, source, measure, method, scope in rows
         if rid
     }
 

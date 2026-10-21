@@ -151,6 +151,7 @@ def _dob(row: dict[str, str]) -> Optional[str]:
 EXTRA_HEADERS: dict[str, tuple[str, ...]] = {
     "client_id": ("ClientID",),
     "project_id": ("ProjectID",),
+    "project_scope": ("ProjectScope", "Scope"),
     "source_name": ("SourceName",),
     "rr_method": ("RRMethod", "RetrievalMethod"),
     "measure": ("Measure", "MeasureName"),
@@ -163,7 +164,8 @@ def header_key(header: str) -> str:
 
 
 def _extra_fields(row: dict[str, str]) -> dict[str, Optional[str]]:
-    """client_id, source_name, rr_method, measure, service_note from a manifest row."""
+    """client_id, project_id, project_scope, source_name, rr_method, measure, service_note
+    from a manifest row."""
     by_key = {header_key(k): v for k, v in row.items() if k}
     out: dict[str, Optional[str]] = {}
     for column, headers in EXTRA_HEADERS.items():

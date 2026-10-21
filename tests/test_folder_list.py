@@ -147,10 +147,12 @@ def test_chart_metadata_from_the_csvs(tmp_path):
     from app.services.metadata_csv import clear_metadata_cache
 
     (tmp_path / "metadata_R1_B1.csv").write_text(
-        "recordId,DummyFirstName,SourceName,Measure,RR Method\n"
-        "c1,Ann,Clinic A,CBP,Fax\nc2,Bob,,,\n",
+        "recordId,DummyFirstName,SourceName,Measure,RR Method,Project Scope\n"
+        "c1,Ann,Clinic A,CBP,Fax,ACA\nc2,Bob,,,,\n",
         encoding="utf-8",
     )
     clear_metadata_cache()
     found = chart_metadata_map(None, metadata_dir=tmp_path)
-    assert found == {"c1": {"source_name": "Clinic A", "measure": "CBP", "rr_method": "Fax"}}
+    assert found == {
+        "c1": {"project_scope": "ACA", "source_name": "Clinic A", "measure": "CBP", "rr_method": "Fax"}
+    }

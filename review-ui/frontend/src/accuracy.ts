@@ -119,6 +119,7 @@ export type ChartAccuracy = {
   /** Run / Batch and chart metadata, for the filters above the By chart table. */
   runId?: string | null;
   batchId?: string | null;
+  projectScope?: string | null;
   sourceName?: string | null;
   measure?: string | null;
   rrMethod?: string | null;

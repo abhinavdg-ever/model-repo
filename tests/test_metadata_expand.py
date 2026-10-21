@@ -28,7 +28,7 @@ def master(tmp_path: Path) -> Path:
     path = tmp_path / "master.csv"
     write_csv(path, [
         {"recordId": "70066727_56507239", "DummyFirstName": "Richard", "MemberID": "993544760",
-         "ClientID": "C12", "ProjectID": "P7", "SourceName": "Clinic A", "RR Method": "Fax", "Measure": "CBP", "ServiceNote": NOTE},
+         "ClientID": "C12", "ProjectID": "P7", "Project Scope": "Medicare Risk", "SourceName": "Clinic A", "RR Method": "Fax", "Measure": "CBP", "ServiceNote": NOTE},
         {"recordId": "70066769_56507087", "DummyFirstName": "Craig", "MemberID": "993573870",
          "ClientID": "C12", "SourceName": "", "RR Method": "Onsite", "Measure": "COL", "ServiceNote": "short"},
     ])
@@ -47,7 +47,9 @@ def test_fills_a_batch_file_and_adds_missing_columns(tmp_path: Path) -> None:
     result = metadata_expand.run(master(tmp_path), metadata_dir=folder)
     rows = read_csv(batch)
     assert list(rows[0]) == ["recordId", "DummyFirstName", "DummyLastName", "DummyDOB", "MemberID",
-                             "ClientID", "ProjectID", "SourceName", "RR Method", "Measure", "ServiceNote"]
+                             "ClientID", "ProjectID", "Project Scope", "SourceName", "RR Method", "Measure",
+                             "ServiceNote"]
+    assert rows[0]["Project Scope"] == "Medicare Risk"
     assert rows[0]["MemberID"] == "993544760" and rows[0]["ServiceNote"] == NOTE
     assert rows[0]["ProjectID"] == "P7"  # quotes / commas survive
     assert rows[0]["DummyLastName"] == "Lane"  # names untouched
@@ -85,6 +87,12 @@ def test_the_loader_reads_the_new_columns_in_any_spelling() -> None:
     )
     assert member is not None
     assert member["project_id"] == "P1"
+    assert member["project_scope"] is None
+    scoped = _row_to_member(
+        {"recordId": "R1", "DummyFirstName": "A", "DummyLastName": "B", "Project_Scope": "ACA"},
+        source_file="metadata_R1_B1.csv", source_path="/x",
+    )
+    assert scoped is not None and scoped["project_scope"] == "ACA"
     assert (member["client_id"], member["source_name"], member["rr_method"], member["measure"], member["service_note"]) == (
         "C1", "S", "Fax", "CBP", NOTE,
     )

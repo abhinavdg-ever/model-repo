@@ -79,6 +79,7 @@ class FolderListParams:
     source: list[str] = field(default_factory=list)
     measure: list[str] = field(default_factory=list)
     retrieval: list[str] = field(default_factory=list)
+    scope: list[str] = field(default_factory=list)
     # Only charts last run at or after this moment (None = any time).
     run_after: Optional[datetime] = None
     sort: SortKey = "updated"
@@ -101,6 +102,7 @@ class FolderListResult:
     run_options: list[str]
     batch_options: list[str]
     source_options: list[str]
+    scope_options: list[str]
     measure_options: list[str]
     retrieval_options: list[str]
     limit: Optional[int]
@@ -277,8 +279,10 @@ def filter_sort_page(
     status_set = {s for s in params.status if s}
     run_set = {s for s in params.run if s}
     batch_set = {s for s in params.batch if s}
-    # Source / Measure / Retrieval: options from every listed chart, not locked to another filter.
+    # Scope / Source / Measure / Retrieval: options from every listed chart, not locked to
+    # another filter.
     metadata_filters = [
+        ("project_scope", {s for s in params.scope if s}),
         ("source_name", {s for s in params.source if s}),
         ("measure", {s for s in params.measure if s}),
         ("rr_method", {s for s in params.retrieval if s}),
@@ -349,6 +353,7 @@ def filter_sort_page(
         ground_truth_charts=sum(1 for f in done if f.ground_truth_available),
         run_options=run_options,
         batch_options=batch_options,
+        scope_options=metadata_options["project_scope"],
         source_options=metadata_options["source_name"],
         measure_options=metadata_options["measure"],
         retrieval_options=metadata_options["rr_method"],

@@ -81,6 +81,9 @@
 --    login_count; email optional), with user_login (every sign-in).
 --    page_ground_truth and page_ground_truth_entry gain user_id (who saved it).
 --    Existing databases: schema/changes_2026-10-19.sql.
+--  * manifest_member_list (v1.sql) gains project_scope (2026-10-21; the client's "Project
+--    Scope", review-ui's Scope filter). Existing databases: schema/changes_2026-10-21.sql
+--    (core-pipeline also adds it on the first manifest load).
 --  * manifest_member_list (v1.sql) gains client_id, project_id, source_name, rr_method,
 --    measure and service_note (TEXT): the client's chart metadata. Existing
 --    databases: schema/changes_2026-10-19.sql (which also holds the 2026-10-18 changes).

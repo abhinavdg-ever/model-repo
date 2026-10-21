@@ -200,6 +200,7 @@ def list_folders(
     source: list[str] | None = Query(None, description="Repeatable Source (source_name) filter"),
     measure: list[str] | None = Query(None, description="Repeatable Measure filter"),
     retrieval: list[str] | None = Query(None, description="Repeatable Retrieval (RR Method) filter"),
+    scope: list[str] | None = Query(None, description="Repeatable Scope (project_scope) filter"),
     sort: str = Query("updated", pattern="^(filename|pages|updated)$"),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     run_after: datetime | None = Query(
@@ -215,6 +216,7 @@ def list_folders(
         source=list(source or []),
         measure=list(measure or []),
         retrieval=list(retrieval or []),
+        scope=list(scope or []),
         run_after=run_after,
         sort=sort,  # type: ignore[arg-type]
         sort_dir=sort_dir,  # type: ignore[arg-type]
@@ -253,6 +255,7 @@ def list_folders(
         ground_truth_charts=result.ground_truth_charts,
         run_options=result.run_options,
         batch_options=result.batch_options,
+        scope_options=result.scope_options,
         source_options=result.source_options,
         measure_options=result.measure_options,
         retrieval_options=result.retrieval_options,

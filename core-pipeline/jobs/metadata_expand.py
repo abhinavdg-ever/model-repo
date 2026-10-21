@@ -2,7 +2,8 @@
 
 The client sends one dump across all charts, ``metadata_extra.csv`` (one row per recordId),
 placed beside the batch files in review-ui/data/metadata. It carries columns the batch
-files do not: MemberID, ClientID, ProjectID, SourceName, RR Method, Measure, ServiceNote. This utility:
+files do not: MemberID, ClientID, ProjectID, Project Scope, SourceName, RR Method, Measure,
+ServiceNote. This utility:
 
   1. reads the dump (``--source``, default ``<metadata dir>/metadata_extra.csv``; .csv / .xlsx),
   2. for every batch file in the metadata folder (metadata_R<n>_B<n>.csv, metadata_demotest.csv;
@@ -53,6 +54,7 @@ TARGET_COLUMNS: list[tuple[str, tuple[str, ...]]] = [
     ("MemberID", ("MemberID", "MemberId", "member_id", "external_member_id")),
     ("ClientID", ("client_id", *EXTRA_HEADERS["client_id"])),
     ("ProjectID", ("project_id", *EXTRA_HEADERS["project_id"])),
+    ("Project Scope", ("project_scope", *EXTRA_HEADERS["project_scope"])),
     ("SourceName", ("source_name", *EXTRA_HEADERS["source_name"])),
     ("RR Method", ("rr_method", *EXTRA_HEADERS["rr_method"])),
     ("Measure", ("measure", *EXTRA_HEADERS["measure"])),

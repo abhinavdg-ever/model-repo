@@ -322,10 +322,12 @@ CREATE TABLE manifest_member_list (
     last_name           VARCHAR(100),
     member_dob          DATE,
     external_member_id  VARCHAR(100),
-    -- Chart metadata from the client's sheet (ClientID, ProjectID, SourceName,
-    -- RR Method, Measure, ServiceNote). Carried along; nothing decides on them yet.
+    -- Chart metadata from the client's sheet (ClientID, ProjectID, Project Scope,
+    -- SourceName, RR Method, Measure, ServiceNote). Carried along; nothing decides on
+    -- them yet (review-ui filters on Scope, Source, Measure and Retrieval).
     client_id           VARCHAR(100),
     project_id          VARCHAR(100),
+    project_scope       VARCHAR(255),
     source_name         VARCHAR(255),
     rr_method           VARCHAR(100),
     measure             VARCHAR(255),
