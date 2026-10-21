@@ -9,9 +9,9 @@ COPY index.html tsconfig.json vite.config.ts ./
 COPY public ./public
 COPY src ./src
 
-# Fail the build if Page Sequencing equal-column CSS did not land in the bundle.
+# Fail the build if the Page Sequencing CSS (table + Ground Truth header) did not land.
 RUN grep -q 'imaging-sequencing-table' src/styles.css \
- && grep -q 'width: 25%' src/styles.css
+ && grep -q 'sequence-truth-head' src/styles.css
 
 
 RUN npm run build
