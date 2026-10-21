@@ -171,3 +171,19 @@ def test_the_review_ui_reader_takes_a_cp1252_csv():
 
     frame = read_csv_any_encoding("Name,Sequence\nRenée,1\n".encode("cp1252"))
     assert frame.iloc[0]["Name"] == "Renée"
+
+
+def test_blank_and_junk_pages_get_a_j_sequence():
+    from jobs.ground_truth_load import parse_rows
+
+    rows = parse_rows(
+        ["Chart_Name", "Id", "Blank Page", "Junk Page", "Sequence"],
+        [
+            ["c1", "1.png", "No", "No", "1"],
+            ["c1", "2.png", "No", "Yes", "1"],
+            ["c1", "3.png", "Yes", "No", "2.0"],
+            ["c1", "4.png", "No", "No", "2"],
+            ["c1", "5.png", "No", "Yes", ""],
+        ],
+    )
+    assert [row["page_sequence"] for row in rows] == ["1", "J1", "J2", "2", None]

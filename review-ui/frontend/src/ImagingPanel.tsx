@@ -2260,15 +2260,84 @@ export default function ImagingPanel({
 
 const SECTION_SKIP_MESSAGE = "Skipped for Junk/Blank";
 
-/** Whole-number sequence, or null. */
+/** Whole-number sequence of a Main page, or null ("J3" and anything else: null). */
 function sequenceNumber(value: string | number | null | undefined): number | null {
-  const text = String(value ?? "").trim();
+  const text = normalizeSequence(value);
   return /^[1-9]\d*$/.test(text) ? Number(text) : null;
 }
 
-/** Breaks in the Algo. Sequence against the ground truth. Pages with both numbers are
- * put in Algo. order; a page breaks when it is not the next page in ground-truth order
- * after the one before it (the first page: not the first in ground-truth order). */
+/** A sequence as it is compared and saved: "3", "3.0" and "03" are "3"; "j 2" is "J2".
+ * Anything else is returned trimmed, so a bad value shows up. */
+function normalizeSequence(value: string | number | null | undefined): string {
+  const text = String(value ?? "").trim();
+  const junk = /^j\s*0*([1-9]\d*)$/i.exec(text);
+  if (junk) return `J${junk[1]}`;
+  if (/^\d+(\.0+)?$/.test(text) && Number(text) >= 1) return String(Math.trunc(Number(text)));
+  return text;
+}
+
+/** Two series: Main pages 1, 2, 3 …; blank / junk pages J1, J2, J3 …. */
+const SEQUENCE_VALUE = /^J?[1-9]\d*$/;
+
+/** A complete (100%) duplicate: the only page with no sequence at all. */
+function isSkippedDuplicate(page: ImagingPageResult): boolean {
+  return isCompleteDuplicate(page.isDuplicate, page.pageTypeConfidence);
+}
+
+/** The Algo. Sequence of every page, in page order: Main pages keep the sequencing
+ * stage's number; blank / junk pages (and partial duplicates) are J1, J2 … in page
+ * order; a complete duplicate is Skipped. */
+function algoSequences(
+  pages: ImagingPageResult[],
+  processed: boolean,
+): Map<number, string> {
+  const out = new Map<number, string>();
+  let junk = 0;
+  for (const page of [...pages].sort((a, b) => a.pageNumber - b.pageNumber)) {
+    if (isSkippedDuplicate(page)) out.set(page.pageNumber, SKIPPED);
+    else if (isBlankJunkPage(page)) out.set(page.pageNumber, `J${(junk += 1)}`);
+    else out.set(page.pageNumber, fmt(page.actualSequence, processed));
+  }
+  return out;
+}
+
+/** Original order as ground truth: Main pages renumbered 1, 2, 3 … and blank / junk
+ * pages J1, J2 … in page order; a complete duplicate stays blank. */
+function originalSequences(pages: ImagingPageResult[]): Map<number, string> {
+  const out = new Map<number, string>();
+  let main = 0;
+  let junk = 0;
+  const ordered = [...pages].sort(
+    (a, b) => (a.currentSequence ?? a.pageNumber) - (b.currentSequence ?? b.pageNumber),
+  );
+  for (const page of ordered) {
+    if (isSkippedDuplicate(page)) out.set(page.pageNumber, "");
+    else if (isBlankJunkPage(page)) out.set(page.pageNumber, `J${(junk += 1)}`);
+    else out.set(page.pageNumber, String((main += 1)));
+  }
+  return out;
+}
+
+/** What is wrong with one series of sequences: each must run 1, 2, 3 … with no gap or
+ * repeat. ``prefix`` is "" for Main pages, "J" for blank / junk. */
+function seriesProblem(values: string[], prefix: "" | "J"): string | null {
+  const numbers = values
+    .filter((value) => (prefix ? value.startsWith("J") : /^\d/.test(value)))
+    .map((value) => Number(value.slice(prefix.length)))
+    .sort((a, b) => a - b);
+  const repeated = numbers.find((n, i) => i > 0 && numbers[i - 1] === n);
+  if (repeated != null) return `Sequence ${prefix}${repeated} is used more than once.`;
+  const gap = numbers.findIndex((n, i) => n !== i + 1);
+  if (gap >= 0) {
+    return `The ${prefix ? "J" : "Main"} sequence must run ${prefix}1–${prefix}${numbers.length} with no gaps: ${prefix}${gap + 1} is missing.`;
+  }
+  return null;
+}
+
+/** Breaks in the Algo. Sequence against the ground truth, Main pages only. Pages with
+ * both numbers are put in Algo. order; a page breaks when it is not the next page in
+ * ground-truth order after the one before it (the first page: not the first in
+ * ground-truth order). */
 function sequenceBreaks(
   pages: ImagingPageResult[],
   truth: (page: ImagingPageResult) => number | null,
@@ -2292,9 +2361,10 @@ function sequenceBreaks(
   return { breaks, compared: both.length };
 }
 
-/** Page sequencing with its ground truth (page_ground_truth.page_sequence). Edit turns
- * the ground-truth column into inputs; Save writes the pages that changed. Once saved,
- * each Algo. Sequence is marked against the ground truth by breaks. */
+/** Page sequencing with its ground truth (page_ground_truth.page_sequence, text: "3" for
+ * a Main page, "J2" for a blank / junk one). Edit turns the ground-truth column into
+ * inputs; Save writes the pages that changed. Once saved, each Main page's Algo.
+ * Sequence is marked against the ground truth by breaks. */
 function SequencingTable({
   folderId,
   pages,
@@ -2307,48 +2377,39 @@ function SequencingTable({
   onSaved: (page: ImagingPageResult, groundTruth: PageGroundTruth) => void;
 }) {
   const sequencingProcessed = Boolean(sections.sequencing);
-  const stored = (p: ImagingPageResult) => (p.groundTruth?.pageSequence ?? "").trim();
+  const stored = (p: ImagingPageResult) => normalizeSequence(p.groundTruth?.pageSequence);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const algo = useMemo(() => algoSequences(pages, sequencingProcessed), [pages, sequencingProcessed]);
 
   const startEdit = () => {
     setDraft(Object.fromEntries(pages.map((p) => [p.pageNumber, stored(p)])));
     setError(null);
     setEditing(true);
   };
-  const changed = editing
-    ? pages.filter((p) => (draft[p.pageNumber] ?? "").trim() !== stored(p))
-    : [];
-  const invalid = changed.find((p) => {
-    const value = (draft[p.pageNumber] ?? "").trim();
-    return value !== "" && !/^[1-9]\d*$/.test(value);
-  });
-  // A page skipped as blank / junk copies as blank.
+  const drafted = (p: ImagingPageResult) => normalizeSequence(draft[p.pageNumber]);
+  const changed = editing ? pages.filter((p) => drafted(p) !== stored(p)) : [];
+  const invalid = changed.find((p) => drafted(p) !== "" && !SEQUENCE_VALUE.test(drafted(p)));
+  // A complete duplicate copies as blank; blank / junk pages as J1, J2 ….
   const fill = (from: "algo" | "original") => {
+    const original = originalSequences(pages);
     setDraft(
       Object.fromEntries(
         pages.map((p) => {
-          if (isBlankJunkPage(p)) return [p.pageNumber, ""];
-          const value = from === "algo" ? p.actualSequence : (p.currentSequence ?? p.pageNumber);
-          return [p.pageNumber, value == null ? (draft[p.pageNumber] ?? "") : String(value)];
+          if (from === "original") return [p.pageNumber, original.get(p.pageNumber) ?? ""];
+          const value = algo.get(p.pageNumber) ?? "";
+          return [p.pageNumber, SEQUENCE_VALUE.test(value) ? value : (draft[p.pageNumber] ?? "")];
         }),
       ),
     );
   };
-  // Every filled ground truth together must run 1, 2, 3 … with no gap or repeat.
+  // Main pages must run 1, 2, 3 … and blank / junk pages J1, J2, J3 …, no gap or repeat.
   const continuity = (() => {
     if (!editing || invalid) return null;
-    const numbers = pages
-      .map((p) => sequenceNumber(draft[p.pageNumber]))
-      .filter((n): n is number => n != null)
-      .sort((a, b) => a - b);
-    const repeated = numbers.find((n, i) => i > 0 && numbers[i - 1] === n);
-    if (repeated != null) return `Sequence ${repeated} is used more than once.`;
-    const gap = numbers.findIndex((n, i) => n !== i + 1);
-    if (gap >= 0) return `The sequence must run 1–${numbers.length} with no gaps: ${gap + 1} is missing.`;
-    return null;
+    const values = pages.map(drafted).filter(Boolean);
+    return seriesProblem(values, "") ?? seriesProblem(values, "J");
   })();
   const { breaks, compared } = sequenceBreaks(pages, (p) => sequenceNumber(stored(p)));
 
@@ -2362,7 +2423,7 @@ function SequencingTable({
         changed.map((p) => ({
           pageNumber: p.pageNumber,
           sourcePageId: p.fileName,
-          pageSequence: (draft[p.pageNumber] ?? "").trim() || null,
+          pageSequence: drafted(p) || null,
         })),
       );
       const byNumber = new Map(saved.map((gt) => [gt.pageNumber, gt]));
@@ -2425,12 +2486,12 @@ function SequencingTable({
           <span className={breaks.size ? "cmp-mismatch" : "cmp-match"}>
             {breaks.size === 0 ? "no breaks" : `${breaks.size} ${breaks.size === 1 ? "break" : "breaks"}`}
           </span>{" "}
-          across {compared} {compared === 1 ? "page" : "pages"}.
+          across {compared} Main {compared === 1 ? "page" : "pages"}.
         </p>
       ) : null}
       {invalid ? (
         <div className="encounter-review-problem">
-          Page {invalid.pageNumber}: a sequence is a whole number from 1.
+          Page {invalid.pageNumber}: a sequence is a whole number from 1 (Main) or J1, J2 … (blank / junk).
         </div>
       ) : null}
       {continuity ? <div className="encounter-review-problem">{continuity}</div> : null}
@@ -2447,15 +2508,18 @@ function SequencingTable({
         </thead>
         <tbody>
           {pages.map((p, index) => {
-            const skip = isBlankJunkPage(p) ? { skipped: true } : undefined;
-            const marked = !editing && sequenceNumber(stored(p)) != null && sequenceNumber(p.actualSequence) != null && !skip;
+            const marked =
+              !editing &&
+              !isBlankJunkPage(p) &&
+              sequenceNumber(stored(p)) != null &&
+              sequenceNumber(p.actualSequence) != null;
             return (
             <tr key={`seq-${p.pageNumber}-${p.fileName}`}>
               <td>{index + 1}</td>
               <td>{p.fileName}</td>
               <td>{fmt(p.currentSequence ?? p.pageNumber, true)}</td>
               <td>
-                {fmt(p.actualSequence, sequencingProcessed, skip)}
+                {algo.get(p.pageNumber)}
                 {marked ? (
                   breaks.has(p.pageNumber) ? (
                     <span className="cmp-mismatch sequence-break-mark"> ✗ Break</span>
@@ -2468,8 +2532,8 @@ function SequencingTable({
                 {editing ? (
                   <input
                     className="encounter-review-input encounter-review-page"
-                    type="number"
-                    min={1}
+                    type="text"
+                    inputMode="text"
                     value={draft[p.pageNumber] ?? ""}
                     aria-label={`Ground-truth sequence of page ${p.pageNumber}`}
                     onChange={(e) =>

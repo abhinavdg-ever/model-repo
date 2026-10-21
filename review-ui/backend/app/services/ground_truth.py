@@ -382,6 +382,10 @@ SELECT id, 'manual_entry', %s::jsonb, %s FROM g
 """
 
 
+# Main pages 1, 2, 3 …; blank / junk pages J1, J2, J3 ….
+_SEQUENCE = re.compile(r"J?[1-9]\d*")
+
+
 def save_page_sequences(
     database_url: str,
     folder_id: str,
@@ -398,8 +402,10 @@ def save_page_sequences(
         if page.pageNumber < 1:
             raise ValueError("invalid page number")
         value = clean_label(page.pageSequence)
-        if value is not None and not (value.isdigit() and int(value) > 0):
-            raise ValueError(f"page {page.pageNumber}: sequence must be a whole number from 1")
+        if value is not None and not _SEQUENCE.fullmatch(value):
+            raise ValueError(
+                f"page {page.pageNumber}: sequence must be a whole number from 1, or J1, J2 … for blank / junk"
+            )
     with connection(database_url, db_schema) as conn:
         ensure_entries(conn, database_url, db_schema)
         with conn.cursor() as cur:

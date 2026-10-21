@@ -172,6 +172,23 @@ def whole_number(value: Optional[str]) -> Optional[str]:
     return str(int(number)) if number == int(number) else value
 
 
+def is_junk_truth(row: dict[str, Any]) -> bool:
+    """The sheet says the page is blank, junk or an invoice (a Yes in any of them)."""
+    return any(
+        str(row.get(field) or "").strip().casefold().startswith(("y", "true", "1"))
+        for field in ("blank_page", "junk_page", "is_invoice")
+    )
+
+
+def junk_sequence(value: str) -> str:
+    """A blank / junk page's sequence as J<n>: "3" and "J3" are "J3"; anything else
+    is kept as written."""
+    text = value.strip()
+    if text[:1] in {"J", "j"}:
+        text = text[1:].strip()
+    return f"J{text}" if text.isdigit() and int(text) > 0 else value
+
+
 # Codeable, Non Codeable, Non-Codeable, NonCodeable, non_codeable, Codable …
 _CODEABLE = re.compile(r"\b(?:(non)[\s_-]*)?code?able\b", re.IGNORECASE)
 
@@ -217,6 +234,10 @@ def parse_rows(headers: list[Any], data_rows: list[list[Any]]) -> list[dict[str,
             elif field == "page_sequence":
                 cell = whole_number(cell)
             row[field] = cell
+        if row.get("page_sequence") and is_junk_truth(row):
+            # Blank / junk pages run their own series in the client sheet (1, 2, 3 beside
+            # the Main pages' 1, 2, 3); stored as J1, J2, J3 so the two never collide.
+            row["page_sequence"] = junk_sequence(row["page_sequence"])
         out.append(row)
     return out
 
