@@ -46,6 +46,17 @@ export function formatDuplicateLabel(
   return "No";
 }
 
+/** An exact (100%) duplicate: the Blank / Junk column shows it as ``Yes (Duplicate)``.
+ * Partial duplicates keep their own Blank / Junk verdict. */
+export function isCompleteDuplicate(
+  isDuplicate: boolean | null | undefined,
+  confidence: number | null | undefined,
+): boolean {
+  if (!isDuplicate || confidence == null) return false;
+  const sim = Number(confidence);
+  return Number.isFinite(sim) && sim >= DUPLICATE_YES_MIN;
+}
+
 /** Right-hand note for a duplicate row. Empty when this page is not one. */
 export function duplicateTargetNote(fileName: string | null | undefined): string {
   const ref = duplicatePageRef(fileName);

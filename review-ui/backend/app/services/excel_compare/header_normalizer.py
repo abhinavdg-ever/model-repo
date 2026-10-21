@@ -98,6 +98,8 @@ COLUMN_ALIASES = {
     "current seq": "Current Sequence",
     "actual sequence": "Actual Sequence",
     "actual seq": "Actual Sequence",
+    "sequence": "Actual Sequence",
+    "page sequence": "Actual Sequence",
 }
 
 

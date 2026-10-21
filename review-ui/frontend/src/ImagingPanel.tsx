@@ -17,6 +17,7 @@ import { credentialsVerdict, noValue } from "./accuracy";
 import {
   duplicateDisplayConfidence,
   formatDuplicateLabel,
+  isCompleteDuplicate,
 } from "./duplicateLabel";
 import {
   displayCodeable,
@@ -33,8 +34,6 @@ import {
 import { PAGE_SUBTYPE_CHOICES, PAGE_TYPE_CHOICES } from "./reviewChoices";
 import {
   EncounterReviewEditor,
-  TablePager,
-  pageSlice,
   type EncounterSeed,
 } from "./ReviewTables";
 import { properName } from "./properName";
@@ -242,11 +241,22 @@ function fmtConfidence(
   return `${pct.toFixed(1)}%`;
 }
 
+/** ``duplicate`` (the page itself) shows an exact duplicate that is not already blank or
+ * junk as ``Yes (Duplicate)``. Display only: scoring reads the stored verdict. */
 function fmtBlankOrJunk(
   value: string | boolean | null | undefined,
   processed = true,
+  duplicate?: Pick<ImagingPageResult, "isDuplicate" | "pageTypeConfidence">,
 ): string {
   if (!processed) return YET_TO_PROCESS;
+  const blankOrJunk = typeof value === "boolean" ? value : String(value ?? "").trim().toLowerCase().startsWith("yes");
+  if (
+    duplicate &&
+    !blankOrJunk &&
+    isCompleteDuplicate(duplicate.isDuplicate, duplicate.pageTypeConfidence)
+  ) {
+    return "Yes (Duplicate)";
+  }
   if (value === null || value === undefined || value === "") return NOT_FOUND;
   if (typeof value === "boolean") return value ? "Yes (Junk)" : "No";
   return String(value);
@@ -1592,14 +1602,16 @@ function PageDetails({
         title="Page Classification"
         rows={[
           (() => {
-            const row = sameValue(fmtBlankOrJunk(page.blankOrJunk, sections.junk), fmtConfidence(page.pageTypeConfidence, sections.junk), {
+            const stored = fmtBlankOrJunk(page.blankOrJunk, sections.junk);
+            const row = sameValue(fmtBlankOrJunk(page.blankOrJunk, sections.junk, page), fmtConfidence(page.pageTypeConfidence, sections.junk), {
               id: "blank_junk",
               label: "Is Blank or Junk?",
               truth: bits.blankJunk,
               choices: BLANK_JUNK_CHOICES,
               key: true,
             });
-            return { ...row, compare: blankJunkCompare(row.extracted, row.processed) };
+            // Scored on the stored verdict, as the accuracy report does.
+            return { ...row, compare: blankJunkCompare(stored, stored) };
           })(),
           sameValue(fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk, page.duplicateOf), fmtConfidence(duplicateDisplayConfidence(page.isDuplicate, page.pageTypeConfidence), sections.junk), {
             id: "duplicate",
@@ -1810,7 +1822,6 @@ function DocumentsTable({
   encounters: StagedEncounter[];
 }) {
   const rows = useMemo(() => documentRows(pages, encounters), [pages, encounters]);
-  const [tablePage, setTablePage] = useState(0);
   if (rows.length === 0) {
     return (
       <div className="ocr-empty">
@@ -1822,9 +1833,7 @@ function DocumentsTable({
   }
   const typeKnown = Boolean(sections.junk || sections.codeable);
   const encounterKnown = Boolean(sections.encounter) || rows.some((row) => row.encounterType);
-  const slice = pageSlice(rows, tablePage);
   return (
-    <>
     <table className="imaging-summary-table imaging-documents-table">
       <thead>
         <tr>
@@ -1837,7 +1846,7 @@ function DocumentsTable({
         </tr>
       </thead>
       <tbody>
-        {slice.rows.map((row) => (
+        {rows.map((row) => (
           <tr key={row.seq}>
             <td>{row.junk ? `Junk ${row.seq}` : row.seq}</td>
             <td>{row.startPage}</td>
@@ -1845,21 +1854,62 @@ function DocumentsTable({
             <td>{row.junk ? "Junk" : fmtPageType(row.pageType, typeKnown)}</td>
             {/* A junk group is no visit: no encounter type and no DOS to find. */}
             <td>{row.junk ? SKIPPED : fmt(row.encounterType, encounterKnown)}</td>
-            <td className="imaging-mono">
+            <td>
               {row.junk ? SKIPPED : sections.dos ? fmtDocumentDos(row.dosFrom, row.dosTo) : YET_TO_PROCESS}
             </td>
           </tr>
         ))}
       </tbody>
     </table>
-    <TablePager
-      page={slice.page}
-      pages={slice.pages}
-      total={rows.length}
-      onPage={setTablePage}
-      label="Encounters"
-    />
-    </>
+  );
+}
+
+/** Encounter tab: the Algo encounters and the ground truth, one subtab each. The ground
+ * truth stays mounted while hidden so an unsaved edit survives a switch. */
+function EncounterIdentification({
+  folderId,
+  pages,
+  sections,
+  encounters,
+}: {
+  folderId: string;
+  pages: ImagingPageResult[];
+  sections: ImagingSectionsProcessed;
+  encounters: StagedEncounter[];
+}) {
+  const [view, setView] = useState<"algo" | "truth">("algo");
+  const seed = useMemo(() => encounterSeed(pages, encounters), [pages, encounters]);
+  const pageCount = Math.max(0, ...pages.map((page) => page.pageNumber));
+  return (
+    <div className="section-coords-panel">
+      <div className="section-coords-title">Encounter Identification</div>
+      <div className="output-tabs imaging-doc-tabs" role="tablist" aria-label="Encounter view">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "algo"}
+          className={view === "algo" ? "active" : ""}
+          onClick={() => setView("algo")}
+        >
+          Algo Encounters
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "truth"}
+          className={view === "truth" ? "active" : ""}
+          onClick={() => setView("truth")}
+        >
+          Ground Truth
+        </button>
+      </div>
+      <div hidden={view !== "algo"}>
+        <DocumentsTable pages={pages} sections={sections} encounters={encounters} />
+      </div>
+      <div hidden={view !== "truth"}>
+        <EncounterReviewEditor folderId={folderId} seed={seed} pageCount={pageCount} />
+      </div>
+    </div>
   );
 }
 
@@ -1988,7 +2038,7 @@ function DocSummary({
                 </td>
                 <td>
                   <GtCell
-                    text={fmtBlankOrJunk(p.blankOrJunk, sections.junk)}
+                    text={fmtBlankOrJunk(p.blankOrJunk, sections.junk, p)}
                     bits={bits.blankJunk}
                   />
                 </td>
@@ -2151,18 +2201,15 @@ export default function ImagingPanel({
   if (tab === "encounter") {
     // One row per encounter (continuity document); staged encounters first. The
     // reviewer's encounters below, starting from a copy of these.
-    const encounters = document.encounters ?? [];
     return (
       <div className="imaging-panel-stack">
         <ManifestDetails manifest={manifest} />
-        <div className="section-coords-panel">
-          <div className="section-coords-title">Encounters</div>
-          <DocumentsTable pages={document.pages} sections={sections} encounters={encounters} />
-        </div>
-        <EncounterReviewEditor
+        <EncounterIdentification
+          key={document.folder_id}
           folderId={document.folder_id}
-          seed={encounterSeed(document.pages, encounters)}
-          pageCount={Math.max(0, ...document.pages.map((page) => page.pageNumber))}
+          pages={document.pages}
+          sections={sections}
+          encounters={document.encounters ?? []}
         />
       </div>
     );
@@ -2213,8 +2260,41 @@ export default function ImagingPanel({
 
 const SECTION_SKIP_MESSAGE = "Skipped for Junk/Blank";
 
+/** Whole-number sequence, or null. */
+function sequenceNumber(value: string | number | null | undefined): number | null {
+  const text = String(value ?? "").trim();
+  return /^[1-9]\d*$/.test(text) ? Number(text) : null;
+}
+
+/** Breaks in the Algo. Sequence against the ground truth. Pages with both numbers are
+ * put in Algo. order; a page breaks when it is not the next page in ground-truth order
+ * after the one before it (the first page: not the first in ground-truth order). */
+function sequenceBreaks(
+  pages: ImagingPageResult[],
+  truth: (page: ImagingPageResult) => number | null,
+): { breaks: Set<number>; compared: number } {
+  const both = pages.filter(
+    (p) => !isBlankJunkPage(p) && sequenceNumber(p.actualSequence) != null && truth(p) != null,
+  );
+  const rank = new Map(
+    [...both]
+      .sort((a, b) => truth(a)! - truth(b)! || a.pageNumber - b.pageNumber)
+      .map((p, i) => [p.pageNumber, i]),
+  );
+  const algo = [...both].sort(
+    (a, b) => sequenceNumber(a.actualSequence)! - sequenceNumber(b.actualSequence)! || a.pageNumber - b.pageNumber,
+  );
+  const breaks = new Set<number>();
+  algo.forEach((p, i) => {
+    const expected = i === 0 ? 0 : rank.get(algo[i - 1].pageNumber)! + 1;
+    if (rank.get(p.pageNumber) !== expected) breaks.add(p.pageNumber);
+  });
+  return { breaks, compared: both.length };
+}
+
 /** Page sequencing with its ground truth (page_ground_truth.page_sequence). Edit turns
- * the ground-truth column into inputs; Save writes the pages that changed. */
+ * the ground-truth column into inputs; Save writes the pages that changed. Once saved,
+ * each Algo. Sequence is marked against the ground truth by breaks. */
 function SequencingTable({
   folderId,
   pages,
@@ -2245,19 +2325,35 @@ function SequencingTable({
     const value = (draft[p.pageNumber] ?? "").trim();
     return value !== "" && !/^[1-9]\d*$/.test(value);
   });
-  const fill = (from: "actual" | "current") => {
+  // A page skipped as blank / junk copies as blank.
+  const fill = (from: "algo" | "original") => {
     setDraft(
       Object.fromEntries(
         pages.map((p) => {
-          const value = from === "actual" ? p.actualSequence : (p.currentSequence ?? p.pageNumber);
+          if (isBlankJunkPage(p)) return [p.pageNumber, ""];
+          const value = from === "algo" ? p.actualSequence : (p.currentSequence ?? p.pageNumber);
           return [p.pageNumber, value == null ? (draft[p.pageNumber] ?? "") : String(value)];
         }),
       ),
     );
   };
+  // Every filled ground truth together must run 1, 2, 3 … with no gap or repeat.
+  const continuity = (() => {
+    if (!editing || invalid) return null;
+    const numbers = pages
+      .map((p) => sequenceNumber(draft[p.pageNumber]))
+      .filter((n): n is number => n != null)
+      .sort((a, b) => a - b);
+    const repeated = numbers.find((n, i) => i > 0 && numbers[i - 1] === n);
+    if (repeated != null) return `Sequence ${repeated} is used more than once.`;
+    const gap = numbers.findIndex((n, i) => n !== i + 1);
+    if (gap >= 0) return `The sequence must run 1–${numbers.length} with no gaps: ${gap + 1} is missing.`;
+    return null;
+  })();
+  const { breaks, compared } = sequenceBreaks(pages, (p) => sequenceNumber(stored(p)));
 
   async function save() {
-    if (invalid || changed.length === 0) return;
+    if (invalid || continuity || changed.length === 0) return;
     setSaving(true);
     setError(null);
     try {
@@ -2289,11 +2385,11 @@ function SequencingTable({
         <span className="encounter-review-bar">
           {editing ? (
             <>
-              <button type="button" className="imaging-gt-discard" onClick={() => fill("actual")} disabled={saving}>
-                Copy Actual
+              <button type="button" className="imaging-gt-discard" onClick={() => fill("original")} disabled={saving}>
+                Copy Original
               </button>
-              <button type="button" className="imaging-gt-discard" onClick={() => fill("current")} disabled={saving}>
-                Copy Current
+              <button type="button" className="imaging-gt-discard" onClick={() => fill("algo")} disabled={saving}>
+                Copy Algo.
               </button>
               <button type="button" className="imaging-gt-discard" onClick={() => setEditing(false)} disabled={saving}>
                 <CircleMinus size={15} aria-hidden="true" />
@@ -2303,7 +2399,7 @@ function SequencingTable({
                 type="button"
                 className="imaging-gt-save"
                 onClick={() => void save()}
-                disabled={saving || changed.length === 0 || Boolean(invalid)}
+                disabled={saving || changed.length === 0 || Boolean(invalid) || Boolean(continuity)}
               >
                 <Save size={15} aria-hidden="true" />
                 {saving ? "Saving…" : `Save${changed.length ? ` (${changed.length})` : ""}`}
@@ -2319,8 +2415,17 @@ function SequencingTable({
       </div>
       {!sequencingProcessed ? (
         <p className="section-coords-empty">
-          Sequencing has not run for this chart yet — Actual Sequence stays Yet
+          Sequencing has not run for this chart yet — Algo. Sequence stays Yet
           to Process until the page_sequencing stage writes results.
+        </p>
+      ) : null}
+      {!editing && compared > 0 ? (
+        <p className="sequence-break-summary">
+          Algo. Sequence against Ground Truth:{" "}
+          <span className={breaks.size ? "cmp-mismatch" : "cmp-match"}>
+            {breaks.size === 0 ? "no breaks" : `${breaks.size} ${breaks.size === 1 ? "break" : "breaks"}`}
+          </span>{" "}
+          across {compared} {compared === 1 ? "page" : "pages"}.
         </p>
       ) : null}
       {invalid ? (
@@ -2328,30 +2433,36 @@ function SequencingTable({
           Page {invalid.pageNumber}: a sequence is a whole number from 1.
         </div>
       ) : null}
+      {continuity ? <div className="encounter-review-problem">{continuity}</div> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       <table className="imaging-summary-table imaging-sequencing-table">
         <thead>
           <tr>
-            <th scope="col">Page #</th>
+            <th scope="col">S.No</th>
             <th scope="col">File</th>
-            <th scope="col">Current Sequence</th>
-            <th scope="col">Actual Sequence</th>
+            <th scope="col">Original Sequence</th>
+            <th scope="col">Algo. Sequence</th>
             <th scope="col">Ground Truth</th>
           </tr>
         </thead>
         <tbody>
-          {pages.map((p) => {
+          {pages.map((p, index) => {
             const skip = isBlankJunkPage(p) ? { skipped: true } : undefined;
+            const marked = !editing && sequenceNumber(stored(p)) != null && sequenceNumber(p.actualSequence) != null && !skip;
             return (
             <tr key={`seq-${p.pageNumber}-${p.fileName}`}>
-              <td>{p.pageNumber}</td>
-              <td className="imaging-mono">{p.fileName}</td>
+              <td>{index + 1}</td>
+              <td>{p.fileName}</td>
               <td>{fmt(p.currentSequence ?? p.pageNumber, true)}</td>
               <td>
-                <GtCell
-                  text={fmt(p.actualSequence, sequencingProcessed, skip)}
-                  bits={pageBits(p, sections).pageSequence}
-                />
+                {fmt(p.actualSequence, sequencingProcessed, skip)}
+                {marked ? (
+                  breaks.has(p.pageNumber) ? (
+                    <span className="cmp-mismatch sequence-break-mark"> ✗ Break</span>
+                  ) : (
+                    <span className="cmp-match sequence-break-mark"> ✓</span>
+                  )
+                ) : null}
               </td>
               <td>
                 {editing ? (
@@ -2366,7 +2477,7 @@ function SequencingTable({
                     }
                   />
                 ) : (
-                  stored(p) || NOT_FOUND
+                  stored(p)
                 )}
               </td>
             </tr>

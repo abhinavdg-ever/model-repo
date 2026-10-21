@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, CircleMinus, Copy, Plus, Save, Trash2 } from "lucide-react";
+import { CircleMinus, Copy, ListPlus, Plus, Save, Trash2 } from "lucide-react";
 import {
   getEncounterReview,
   saveEncounterReview,
@@ -7,8 +7,6 @@ import {
   type EncounterReviewRow,
 } from "./api";
 import { PAGE_TYPE_CHOICES } from "./reviewChoices";
-
-export const ROWS_PER_TABLE_PAGE = 10;
 
 /** encounter_canon.json's settings, then the label for every other page type. */
 export const ENCOUNTER_TYPE_CHOICES = [
@@ -18,44 +16,6 @@ export const ENCOUNTER_TYPE_CHOICES = [
   "Home",
   "Not Applicable",
 ];
-
-/** The slice of ``items`` on table page ``page`` (0-based), and how many pages there are. */
-export function pageSlice<T>(items: T[], page: number, size = ROWS_PER_TABLE_PAGE) {
-  const pages = Math.max(1, Math.ceil(items.length / size));
-  const current = Math.min(Math.max(0, page), pages - 1);
-  return { rows: items.slice(current * size, current * size + size), page: current, pages };
-}
-
-export function TablePager({
-  page,
-  pages,
-  total,
-  onPage,
-  label,
-}: {
-  page: number;
-  pages: number;
-  total: number;
-  onPage: (page: number) => void;
-  label: string;
-}) {
-  if (pages <= 1) return null;
-  const first = page * ROWS_PER_TABLE_PAGE + 1;
-  const last = Math.min(total, first + ROWS_PER_TABLE_PAGE - 1);
-  return (
-    <div className="review-table-pager pager-nav" aria-label={`${label} pages`}>
-      <button type="button" onClick={() => onPage(page - 1)} disabled={page === 0} aria-label="Previous">
-        <ChevronLeft size={15} aria-hidden="true" />
-      </button>
-      <span className="pager-label">
-        {first}–{last} of {total}
-      </span>
-      <button type="button" onClick={() => onPage(page + 1)} disabled={page >= pages - 1} aria-label="Next">
-        <ChevronRight size={15} aria-hidden="true" />
-      </button>
-    </div>
-  );
-}
 
 /** A pipeline encounter offered as the starting point when nothing was reviewed yet. */
 export type EncounterSeed = Omit<EncounterReviewRow, "seq">;
@@ -127,6 +87,33 @@ function draftProblem(drafts: Draft[], pageCount: number): string | null {
   return null;
 }
 
+// One load per chart: reopening the Encounter tab reuses it, and the chart viewer
+// starts it as soon as the imaging results are in.
+const reviewCache = new Map<string, Promise<EncounterReview>>();
+
+/** The chart's saved encounters, fetched once per chart (a failed load is retried). */
+export function loadEncounterReview(folderId: string): Promise<EncounterReview> {
+  let pending = reviewCache.get(folderId);
+  if (!pending) {
+    pending = getEncounterReview(folderId);
+    pending.catch(() => reviewCache.delete(folderId));
+    reviewCache.set(folderId, pending);
+  }
+  return pending;
+}
+
+function emptyDraft(startPage: number): Draft {
+  return {
+    key: nextKey++,
+    startPage: String(startPage),
+    endPage: String(startPage),
+    pageType: "",
+    encounterType: "",
+    dosFrom: "",
+    dosTo: "",
+  };
+}
+
 function savedNote(review: EncounterReview | null): string {
   if (!review || review.rows.length === 0) return "";
   const when = review.savedAt ? new Date(review.savedAt).toLocaleString() : "";
@@ -135,9 +122,10 @@ function savedNote(review: EncounterReview | null): string {
     .join(" ");
 }
 
-/** Reviewed encounters under the pipeline's: page ranges with page type, encounter type
- * and DOS, edited in place and saved to encounter_review. Not ground truth. With nothing
- * saved, the pipeline's encounters are copied in as the starting point. */
+/** Ground-truth encounters (the Encounter tab's Ground Truth subtab): page ranges with
+ * page type, encounter type and DOS, edited in place and saved to encounter_review. With
+ * nothing saved, the Algo encounters are copied in as the starting point. Every row is
+ * shown; a row can be inserted below any other, and the rows after it move down. */
 export function EncounterReviewEditor({
   folderId,
   seed,
@@ -153,20 +141,18 @@ export function EncounterReviewEditor({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(0);
 
   const startFrom = (saved: EncounterReview | null) => {
     const copied = !saved || saved.rows.length === 0;
     setDrafts((copied ? seed : saved.rows).map(toDraft));
     setDirty(false);
-    setPage(0);
   };
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    getEncounterReview(folderId)
+    loadEncounterReview(folderId)
       .then((saved) => {
         if (cancelled) return;
         setReview(saved);
@@ -190,7 +176,6 @@ export function EncounterReviewEditor({
 
   const problem = useMemo(() => draftProblem(drafts, pageCount), [drafts, pageCount]);
   const copied = !review || review.rows.length === 0;
-  const slice = pageSlice(drafts, page);
 
   const edit = (key: number, field: keyof Omit<Draft, "key">, value: string) => {
     setDrafts((rows) => rows.map((row) => (row.key === key ? { ...row, [field]: value } : row)));
@@ -198,26 +183,19 @@ export function EncounterReviewEditor({
   };
   const insertAfter = (index: number, row: Draft) => {
     setDrafts((rows) => [...rows.slice(0, index + 1), row, ...rows.slice(index + 1)]);
-    setPage(Math.floor((index + 1) / ROWS_PER_TABLE_PAGE));
     setDirty(true);
+  };
+  /** A blank row below row ``index`` (-1: at the top), starting on the next page. */
+  const insertBlank = (index: number) => {
+    const before = drafts[index];
+    const next = before ? Number(before.endPage) + 1 || 1 : 1;
+    insertAfter(index, emptyDraft(pageCount > 0 ? Math.min(next, pageCount) : next));
   };
   const remove = (key: number) => {
     setDrafts((rows) => rows.filter((row) => row.key !== key));
     setDirty(true);
   };
-  const addRow = () => {
-    const last = drafts[drafts.length - 1];
-    const start = last ? Math.min(Number(last.endPage) + 1 || 1, Math.max(pageCount, 1)) : 1;
-    insertAfter(drafts.length - 1, {
-      key: nextKey++,
-      startPage: String(start),
-      endPage: String(start),
-      pageType: "",
-      encounterType: "",
-      dosFrom: "",
-      dosTo: "",
-    });
-  };
+  const addRow = () => insertBlank(drafts.length - 1);
 
   async function save() {
     if (problem) return;
@@ -225,6 +203,7 @@ export function EncounterReviewEditor({
     setError(null);
     try {
       const saved = await saveEncounterReview(folderId, drafts.map(toRow));
+      reviewCache.set(folderId, Promise.resolve(saved));
       setReview(saved);
       startFrom(saved);
     } catch (err) {
@@ -237,12 +216,11 @@ export function EncounterReviewEditor({
   return (
     <div className="section-coords-panel encounter-review">
       <div className="encounter-review-head">
-        <div className="section-coords-title">Reviewed Encounters</div>
         <span className="encounter-review-note">
           {loading
             ? "Loading…"
             : copied
-              ? "Nothing saved yet: copied from the pipeline's encounters above."
+              ? "Nothing saved yet: copied from the Algo Encounters."
               : savedNote(review)}
         </span>
       </div>
@@ -272,15 +250,14 @@ export function EncounterReviewEditor({
               </tr>
             </thead>
             <tbody>
-              {slice.rows.length === 0 ? (
+              {drafts.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="encounter-review-empty">
                     No encounters. Add one below.
                   </td>
                 </tr>
               ) : null}
-              {slice.rows.map((row, offset) => {
-                const index = slice.page * ROWS_PER_TABLE_PAGE + offset;
+              {drafts.map((row, index) => {
                 return (
                   <tr key={row.key}>
                     <td>{index + 1}</td>
@@ -329,6 +306,14 @@ export function EncounterReviewEditor({
                     <td className="encounter-review-actions">
                       <button
                         type="button"
+                        title="Insert a blank row below this one (the rows after it move down)"
+                        aria-label={`Insert a row after encounter ${index + 1}`}
+                        onClick={() => insertBlank(index)}
+                      >
+                        <ListPlus size={13} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
                         title="Copy this row below it"
                         aria-label={`Copy encounter ${index + 1}`}
                         onClick={() => insertAfter(index, { ...row, key: nextKey++ })}
@@ -349,13 +334,6 @@ export function EncounterReviewEditor({
               })}
             </tbody>
           </table>
-          <TablePager
-            page={slice.page}
-            pages={slice.pages}
-            total={drafts.length}
-            onPage={setPage}
-            label="Reviewed encounters"
-          />
           {problem && dirty ? <div className="encounter-review-problem">{problem}</div> : null}
           {error ? <div className="error-banner">{error}</div> : null}
           <div className="encounter-review-bar">

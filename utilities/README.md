@@ -44,6 +44,20 @@ curl -X POST localhost:8001/api/manifest/metadata-extra -H 'Content-Type: applic
   -d '{"metadata_dir": "/path/to/metadata", "load": true}'
 ```
 
+## Ground-truth Sequence only → page_ground_truth.page_sequence
+
+`load_page_sequence.py` reads the ground-truth sheet (Chart_Name, Id, and a `Sequence`,
+`Page Sequence` or `Actual Sequence` column) and writes only `page_sequence`; other
+ground-truth labels, including review-ui edits, are left alone. The full loader
+(`python cli.py ground-truth --local FILE`) now reads a `Sequence` header too, but it
+rewrites every column.
+
+```bash
+cd core-pipeline && source .venv/bin/activate
+python ../utilities/load_page_sequence.py /path/to/ground_truth.csv --dry-run   # report only
+python ../utilities/load_page_sequence.py /path/to/ground_truth.csv             # write
+```
+
 ## Find chart folders under a blob prefix
 
 Two inputs: the blob location (`container/prefix`) and a local Excel file of

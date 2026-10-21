@@ -35,21 +35,27 @@ CREATE TABLE IF NOT EXISTS encounter_review (
 CREATE INDEX IF NOT EXISTS idx_encounter_review_chart_name ON encounter_review(chart_name);
 """
 
-_table_ready: set[tuple[str, str]] = set()
+# Per (url, schema): the table exists, and whether a users table does (for the
+# saved-by name). Checked once per process, so a load is a single query.
+_table_ready: dict[tuple[str, str], bool] = {}
 _table_lock = threading.Lock()
 
 
-def _ensure_table(conn, database_url: str, db_schema: str) -> None:
+def _ensure_table(conn, database_url: str, db_schema: str) -> bool:
+    """Create encounter_review when missing; True when a users table exists."""
     key = (database_url, db_schema)
     if key in _table_ready:
-        return
+        return _table_ready[key]
     with _table_lock:
         if key in _table_ready:
-            return
+            return _table_ready[key]
         with conn.cursor() as cur:
             cur.execute(_CREATE_TABLE)
+            cur.execute("SELECT to_regclass('users') IS NOT NULL")
+            has_users = bool(cur.fetchone()[0])
         conn.commit()
-        _table_ready.add(key)
+        _table_ready[key] = has_users
+        return has_users
 
 
 _SELECT = """
@@ -70,14 +76,9 @@ SELECT seq, start_page, end_page, page_type, encounter_type,
 """
 
 
-def _read(cur, chart: str) -> EncounterReview:
-    try:
-        cur.execute("SAVEPOINT encounter_review_users")
-        cur.execute(_SELECT, (chart,))
-    except Exception:
-        # No users table (a database from before sign-in): no saved-by name.
-        cur.execute("ROLLBACK TO SAVEPOINT encounter_review_users")
-        cur.execute(_SELECT_NO_USERS, (chart,))
+def _read(cur, chart: str, has_users: bool) -> EncounterReview:
+    # No users table (a database from before sign-in): no saved-by name.
+    cur.execute(_SELECT if has_users else _SELECT_NO_USERS, (chart,))
     rows = cur.fetchall()
     latest = max(rows, key=lambda row: row[7]) if rows else None
     return EncounterReview(
@@ -106,9 +107,9 @@ def load_encounter_review(
         return EncounterReview()
     chart = _chart_name(folder_id)
     with connection(database_url, db_schema) as conn:
-        _ensure_table(conn, database_url, db_schema)
+        has_users = _ensure_table(conn, database_url, db_schema)
         with conn.cursor() as cur:
-            return _read(cur, chart)
+            return _read(cur, chart, has_users)
 
 
 def save_encounter_review(
@@ -136,7 +137,7 @@ def save_encounter_review(
                 f"{after.startPage}–{after.endPage} overlap"
             )
     with connection(database_url, db_schema) as conn:
-        _ensure_table(conn, database_url, db_schema)
+        has_users = _ensure_table(conn, database_url, db_schema)
         with conn.cursor() as cur:
             cur.execute("DELETE FROM encounter_review WHERE chart_name = %s", (chart,))
             for seq, row in enumerate(ordered, start=1):
@@ -153,4 +154,4 @@ def save_encounter_review(
                         clean_label(row.dosFrom), clean_label(row.dosTo), user_id,
                     ),
                 )
-            return _read(cur, chart)
+            return _read(cur, chart, has_users)

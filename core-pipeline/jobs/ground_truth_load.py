@@ -39,6 +39,8 @@ _HEADER = {
     "codeableornoncodeable": "codeable",
     "blankpage": "blank_page",
     "pagesequence": "page_sequence",
+    "sequence": "page_sequence",
+    "actualsequence": "page_sequence",
     "junkpage": "junk_page",
     "isinvoicepage": "is_invoice",
     "rotation": "rotation",

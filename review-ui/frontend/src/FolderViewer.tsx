@@ -57,6 +57,7 @@ import PageJump from "./PageJump";
 import { blankJunkTruth } from "./groundTruth";
 import { useImagePan } from "./useImagePan";
 import { usePageViewerHotkeys } from "./usePageViewerHotkeys";
+import { loadEncounterReview } from "./ReviewTables";
 import type { ChartRef } from "./chartSequence";
 
 type Props = {
@@ -273,6 +274,13 @@ export default function FolderViewer({
   useEffect(() => {
     setImagesFailed(false);
   }, [folderId]);
+
+  // The Encounter tab's ground truth, fetched once the imaging results are in so the
+  // tab opens without waiting (and without delaying the chart's own load).
+  const imagingLoaded = imagingDoc != null;
+  useEffect(() => {
+    if (imagingLoaded) loadEncounterReview(folderId).catch(() => undefined);
+  }, [folderId, imagingLoaded]);
 
   async function retryImages() {
     setRetryingImages(true);
@@ -1588,20 +1596,20 @@ export default function FolderViewer({
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={imagingTab === "sequencing"}
-                    className={imagingTab === "sequencing" ? "active" : ""}
-                    onClick={() => openImagingTab("sequencing")}
-                  >
-                    Sequencing
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
                     aria-selected={imagingTab === "encounter"}
                     className={imagingTab === "encounter" ? "active" : ""}
                     onClick={() => openImagingTab("encounter")}
                   >
                     Encounter
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={imagingTab === "sequencing"}
+                    className={imagingTab === "sequencing" ? "active" : ""}
+                    onClick={() => openImagingTab("sequencing")}
+                  >
+                    Sequencing
                   </button>
                   <button
                     type="button"

@@ -2811,7 +2811,7 @@ input {
 
 .imaging-sequencing-table th,
 .imaging-sequencing-table td {
-  width: 20%;
+  width: 18%;
   padding: 0.35rem 0.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5459,22 +5459,8 @@ input {
   color: #ffffff;
 }
 
-/* Encounter tab: the reviewer's encounters under the pipeline's; Sequencing's
-   ground-truth editor uses the same head row and inputs. */
-.review-table-pager {
-  justify-content: flex-end;
-}
-
-.review-table-pager button {
-  width: 1.7rem;
-  height: 1.7rem;
-}
-
-.encounter-review {
-  margin-top: 0.9rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--border);
-}
+/* Encounter tab's Ground Truth subtab; Sequencing's ground-truth editor uses the same
+   head row and inputs. */
 
 .encounter-review-head {
   display: flex;
@@ -5558,3 +5544,33 @@ input {
   font-size: 0.76rem;
 }
 
+
+/* Sequencing: a narrow S.No, a wider File. */
+.imaging-sequencing-table th:nth-child(1),
+.imaging-sequencing-table td:nth-child(1) {
+  width: 8%;
+}
+
+.imaging-sequencing-table th:nth-child(2),
+.imaging-sequencing-table td:nth-child(2) {
+  width: 38%;
+}
+
+/* Sequencing and Encounter body cells read like Member Extraction's values. */
+.imaging-sequencing-table tbody td,
+.imaging-documents-table tbody td {
+  font-family: var(--font);
+  font-size: 0.76rem;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.sequence-break-summary {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--neutral-700);
+}
+
+.sequence-break-mark {
+  font-size: 0.72rem;
+}
