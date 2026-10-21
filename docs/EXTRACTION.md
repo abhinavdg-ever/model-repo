@@ -19,7 +19,7 @@ The stage writes two CSVs. The matching tables are proposals in `schema/v2.sql` 
 | Output | Table (v2) | CSV |
 |--------|--------|-----|
 | Selected electronic signature (key, region, scale, sentence, ner text, provider name, signature date converted to a date, score, source) | `provider_signature_results` | `imaging/<chart>_provider_signature.csv` |
-| Printed page number, plus section headers as the same JSON array stored on the OCR page | `additional_page_details` | `imaging/<chart>_additional_page_details.csv` |
+| Printed page number, plus section headers as the same JSON array stored on the OCR page. `heading_candidates` (database only, not in the CSV) keeps every heading row, accepted or not, with the page size, so review-ui's Production Mode shows the lighter candidates as Local Mode does | `additional_page_details` | `imaging/<chart>_additional_page_details.csv` |
 
 Member verification, DOS and sequencing still write their own tables and CSVs. Headings are also merged into the OCR JSON `section_headers`.
 

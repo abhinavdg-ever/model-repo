@@ -798,6 +798,10 @@ CREATE TABLE additional_page_details (
     confidence              NUMERIC(5,4),
     source                  VARCHAR(20),
     section_headers         JSONB NOT NULL DEFAULT '[]'::jsonb,
+    -- Every heading row the detector found, accepted or not, with the page size:
+    -- {"width", "height", "fields": {"heading_heron": [...]}} (2026-10-21). review-ui's
+    -- Production Mode draws headings and the lighter candidates from it.
+    heading_candidates      JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (page_id)

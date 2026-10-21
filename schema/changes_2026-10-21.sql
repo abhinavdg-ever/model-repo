@@ -38,3 +38,10 @@ CREATE TRIGGER trg_encounter_review_updated_at
 --    of the metadata sheet, review-ui's Scope filter. core-pipeline also adds it on the
 --    first manifest load. Same definition as schema/v1.sql.
 ALTER TABLE manifest_member_list ADD COLUMN IF NOT EXISTS project_scope VARCHAR(255);
+
+-- 3. additional_page_details.heading_candidates (2026-10-21): every heading row the
+--    key/value stage's detector found, accepted or not, with the page size. review-ui's
+--    Production Mode shows the headings and the lighter candidates from it. core-pipeline
+--    also adds it on its first write. Same definition as schema/v1.sql.
+ALTER TABLE additional_page_details
+    ADD COLUMN IF NOT EXISTS heading_candidates JSONB NOT NULL DEFAULT '{}'::jsonb;

@@ -363,8 +363,10 @@ def signature_fields(
 def additional_fields(
     hit: Optional[dict[str, Any]],
     section_headers: list[dict[str, Any]],
+    heading_candidates: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """Printed page number plus the section-header JSON for one page."""
+    """Printed page number plus the section-header JSON for one page. ``heading_candidates``
+    is every heading row the detector found, accepted or not (see heading_candidates_of)."""
     return {
         "page_number_key": _text(hit, "key"),
         "page_number_region": _text(hit, "region"),
@@ -375,6 +377,7 @@ def additional_fields(
         "confidence": _score(hit),
         "source": _text(hit, "source"),
         "section_headers": section_headers,
+        "heading_candidates": heading_candidates or {},
     }
 
 
@@ -401,6 +404,8 @@ def additional_csv_row(chart_name: str, page_name: str, page_number: Any, fields
         "page_number": page_number if page_number is not None else "",
     }
     for key, value in fields.items():
+        if key == "heading_candidates":
+            continue  # database only; the CSV columns are a fixed contract
         if key == "section_headers":
             row[key] = json.dumps(value or [], ensure_ascii=False)
         else:

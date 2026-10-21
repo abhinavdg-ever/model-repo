@@ -362,3 +362,20 @@ def test_no_signature_names_the_page_provider_with_signature_no():
     assert (fields["provider_name"], fields["provider_credentials"]) == ("Finkelstein Tom I", "MD")
     # Nothing counted anywhere: all empty.
     assert signature_fields([], [], [])["provider_name"] is None
+
+
+def test_heading_candidates_keep_every_heading_row_with_the_page_size():
+    from stages.lib.extraction import staging
+    from stages.lib.extraction.heading.extract import heading_fields
+    from stages.lib.extraction.stage import heading_candidates_of
+
+    field_id = heading_fields()[0]
+    rows = [
+        {"accepted": True, "selected": True, "text": "Assessment", "box": [1, 2, 3, 4]},
+        {"accepted": False, "text": "Patient:", "box": [5, 6, 7, 8]},
+    ]
+    page = staging.StagedPage("1.jpg", {"width": 100, "height": 200, "fields": {field_id: rows}})
+    assert heading_candidates_of(page) == {"width": 100, "height": 200, "fields": {field_id: rows}}
+    assert heading_candidates_of(None) == {}
+    assert heading_candidates_of(staging.StagedPage("2.jpg", {"fields": {}})) == {}
+    assert additional_fields(None, [], heading_candidates_of(page))["heading_candidates"]["fields"][field_id] == rows

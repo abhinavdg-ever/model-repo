@@ -642,12 +642,24 @@ def review_from_additional(
     folder_id: str, page_file: str, row: dict | None
 ) -> ExtractionReviewResponse:
     """One page's additional_page_details row as the Additional tab's response: Page Number
-    and Headings filled, every other staged field empty (they live only in staging)."""
+    and Headings filled, every other staged field empty (they live only in staging).
+
+    ``heading_candidates`` (every heading row, accepted or not) goes through the same rules
+    as the staging file, so the lighter candidates show too. A row written before it
+    existed falls back to ``section_headers`` (the accepted headings only)."""
     if row is None:
         return ExtractionReviewResponse(
             folder_id=folder_id, available=False, page_file=page_file, fields=field_rows(None)
         )
-    headers = _stored_headers(row.get("section_headers"))
+    candidates = row.get("heading_candidates")
+    staged = candidates if isinstance(candidates, dict) and candidates.get("fields") else None
+    if staged is not None:
+        headers = heron_headers(staged)
+        kept = next((f for f in field_rows(staged) if f.id == "heading_heron"), None)
+        names = kept.extracted if kept else ""
+    else:
+        headers = _stored_headers(row.get("section_headers"))
+        names = " | ".join(header.text for header in headers)
     number = str(row.get("printed_page_no") or row.get("page_number_value") or "").strip()
     total = str(row.get("printed_page_total") or "").strip()
     page_no = f"{number} of {total}" if number and total else number
@@ -661,8 +673,7 @@ def review_from_additional(
             field = field.model_copy(
                 update={"extracted": page_no, "processed": page_no, "confidence": confidence}
             )
-        elif field.id == "heading_heron" and headers:
-            names = " | ".join(header.text for header in headers)
+        elif field.id == "heading_heron" and names:
             field = field.model_copy(update={"extracted": names, "processed": names})
         fields.append(field)
     return ExtractionReviewResponse(

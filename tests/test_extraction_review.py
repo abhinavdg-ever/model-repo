@@ -427,3 +427,27 @@ def test_production_without_a_row_is_not_available():
 
     review = review_from_additional("chart", "9.jpg", None)
     assert not review.available and review.section_headers == []
+
+
+def test_production_shows_the_same_candidates_as_local_from_heading_candidates():
+    from app.services.extraction_review import review_from_additional
+
+    page = {
+        "width": 1000,
+        "height": 2000,
+        "fields": {
+            "heading_heron": [
+                {"accepted": True, "selected": True, "text": "History of Present Illness",
+                 "level": "Heading", "box": [100, 200, 400, 260]},
+                {"accepted": False, "text": "Patient:", "box": [10, 10, 40, 30]},
+            ]
+        },
+    }
+    # section_headers holds only the accepted heading; heading_candidates holds both rows.
+    row = {"section_headers": [], "heading_candidates": page}
+    review = review_from_additional("chart", "1.jpg", row)
+    local = heron_headers(page)
+    assert [(h.text, h.candidate) for h in review.section_headers] == [(h.text, h.candidate) for h in local]
+    heading_field = next(f for f in review.fields if f.id == "heading_heron")
+    local_field = next(f for f in field_rows(page) if f.id == "heading_heron")
+    assert heading_field.extracted == local_field.extracted == "History of Present Illness"

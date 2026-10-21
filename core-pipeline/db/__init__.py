@@ -1398,18 +1398,32 @@ def get_additional_page_details_map(conn: Any, chart_id: int) -> dict[int, dict[
     return _by_page(conn, "SELECT * FROM additional_page_details WHERE chart_id = %s", chart_id)
 
 
+# Databases created before heading_candidates (2026-10-21) gain it on the first write.
+_ADD_HEADING_CANDIDATES = (
+    "ALTER TABLE additional_page_details "
+    "ADD COLUMN IF NOT EXISTS heading_candidates JSONB NOT NULL DEFAULT '{}'::jsonb"
+)
+_heading_candidates_ready = False
+
+
 @_dispatch
 def upsert_additional_page_details(
     conn: Any, *, chart_id: int, page_id: int, fields: dict[str, Any]
 ) -> None:
-    """Printed page number and section headers for one page (key/value stage)."""
+    """Printed page number, section headers and every heading candidate for one page
+    (key/value stage)."""
+    global _heading_candidates_ready
+    if not _heading_candidates_ready:
+        conn.execute(_ADD_HEADING_CANDIDATES)
+        _heading_candidates_ready = True
     conn.execute(
         """
         INSERT INTO additional_page_details (
             chart_id, page_id, page_number_key, page_number_region,
             page_number_sentence, page_number_value, printed_page_no,
-            printed_page_total, confidence, source, section_headers
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+            printed_page_total, confidence, source, section_headers,
+            heading_candidates
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
         ON CONFLICT (page_id) DO UPDATE SET
             page_number_key      = EXCLUDED.page_number_key,
             page_number_region   = EXCLUDED.page_number_region,
@@ -1420,6 +1434,7 @@ def upsert_additional_page_details(
             confidence           = EXCLUDED.confidence,
             source               = EXCLUDED.source,
             section_headers      = EXCLUDED.section_headers,
+            heading_candidates   = EXCLUDED.heading_candidates,
             updated_at           = now()
         """,
         (
@@ -1434,6 +1449,7 @@ def upsert_additional_page_details(
             fields.get("confidence"),
             (fields.get("source") or "")[:20] or None,
             json.dumps(fields.get("section_headers") or [], default=str),
+            json.dumps(fields.get("heading_candidates") or {}, default=str),
         ),
     )
 

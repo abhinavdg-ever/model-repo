@@ -111,6 +111,18 @@ def section_headers_of(staged_page: staging.StagedPage) -> list[dict[str, Any]]:
     return headers
 
 
+def heading_candidates_of(staged_page: Optional[staging.StagedPage]) -> dict[str, Any]:
+    """Every heading row the detector found on the page, accepted or not, with the page size:
+    the staged page cut down to its heading fields. review-ui's Production Mode draws the
+    headings and the lighter candidates from it, as Local Mode does from the staging file."""
+    if staged_page is None:
+        return {}
+    fields = {field_id: staged_page.rows(field_id) for field_id in heading_fields()}
+    if not any(fields.values()):
+        return {}
+    return {"width": staged_page.width, "height": staged_page.height, "fields": fields}
+
+
 def _header_top_left(item: dict[str, Any]) -> tuple[float, float]:
     box = item.get("bbox")
     if isinstance(box, (list, tuple)) and len(box) >= 2:
@@ -284,7 +296,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 page_no = _chosen(staged_page, "page_no")
                 headers = headers_by_page.get(page["page_name"]) or []
                 sig = page_signature(staged_page)
-                extra = additional_fields(page_no, headers)
+                extra = additional_fields(page_no, headers, heading_candidates_of(staged_page))
                 upsert_additional_page_details(
                     conn, chart_id=chart_id, page_id=page["id"], fields=extra
                 )
