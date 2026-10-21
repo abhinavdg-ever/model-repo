@@ -99,7 +99,6 @@ COLUMN_ALIASES = {
     "actual sequence": "Actual Sequence",
     "actual seq": "Actual Sequence",
     "sequence": "Actual Sequence",
-    "page sequence": "Actual Sequence",
 }
 
 

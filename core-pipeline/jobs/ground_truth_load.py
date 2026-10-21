@@ -38,9 +38,9 @@ _HEADER = {
     "codableornoncodable": "codeable",
     "codeableornoncodeable": "codeable",
     "blankpage": "blank_page",
-    "pagesequence": "page_sequence",
+    # The numeric Sequence column. "Page Sequence" in the client sheet is something
+    # else and is not loaded.
     "sequence": "page_sequence",
-    "actualsequence": "page_sequence",
     "junkpage": "junk_page",
     "isinvoicepage": "is_invoice",
     "rotation": "rotation",
@@ -167,6 +167,18 @@ def _cell(value: Any) -> Optional[str]:
     return text or None
 
 
+def whole_number(value: Optional[str]) -> Optional[str]:
+    """A sequence as a whole number: "3", "3.0" and "03" are "3". Anything else is kept
+    as written, so a bad cell shows up rather than vanishing."""
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except ValueError:
+        return value
+    return str(int(number)) if number == int(number) else value
+
+
 # Codeable, Non Codeable, Non-Codeable, NonCodeable, non_codeable, Codable …
 _CODEABLE = re.compile(r"\b(?:(non)[\s_-]*)?code?able\b", re.IGNORECASE)
 
@@ -203,7 +215,11 @@ def parse_rows(headers: list[Any], data_rows: list[list[Any]]) -> list[dict[str,
         }
         for field in _TEXT_FIELDS:
             cell = _cell(mapped.get(field))
-            row[field] = spell_codeable(cell) if field == "codeable" else cell
+            if field == "codeable":
+                cell = spell_codeable(cell)
+            elif field == "page_sequence":
+                cell = whole_number(cell)
+            row[field] = cell
         out.append(row)
     return out
 

@@ -3,8 +3,8 @@
 
 The full loader (``python cli.py ground-truth --local FILE``) rewrites every ground-truth
 column of each page in the sheet. This one writes the sequence alone, so labels edited in
-review-ui stay as they are. The sheet is the same as the full load's: Chart_Name, Id and a
-sequence column headed ``Sequence``, ``Page Sequence`` or ``Actual Sequence``. A page not
+review-ui stay as they are. The sheet is the same as the full load's: Chart_Name, Id and the
+numeric ``Sequence`` column (a ``Page Sequence`` column is not read). A page not
 yet in page_ground_truth is added with just its sequence. An empty cell clears it.
 
 Each page written also gets a ``bulk_upload`` entry: the page's previous bulk labels with

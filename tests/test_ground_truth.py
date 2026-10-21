@@ -108,6 +108,17 @@ def test_the_codeable_header_spelling_is_accepted():
     assert rows[0]["codeable"] == "Non-Codable"
 
 
+def test_page_sequence_comes_from_the_sequence_column_only():
+    from jobs.ground_truth_load import parse_rows
+
+    rows = parse_rows(
+        ["Chart_Name", "Id", "Sequence", "Page Sequence"],
+        [["c1", "1.png", "3.0", "Page 7"], ["c1", "2.png", "", "Page 8"]],
+    )
+    assert rows[0]["page_sequence"] == "3"
+    assert rows[1]["page_sequence"] is None
+
+
 def test_a_load_appends_a_bulk_upload_entry_with_the_labels_it_wrote():
     import json
 
