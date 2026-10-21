@@ -119,6 +119,28 @@ def test_page_sequence_comes_from_the_sequence_column_only():
     assert rows[1]["page_sequence"] is None
 
 
+def test_only_the_columns_in_the_file_are_upserted():
+    from jobs.ground_truth_load import parse_rows, upsert_sql
+
+    rows = parse_rows(["Chart_Name", "Id", "Sequence"], [["c1", "1.png", "4"]])
+    assert rows[0]["_columns"] == ("page_sequence",)
+    assert "member_name" not in rows[0]
+    sql = upsert_sql(rows[0]["_columns"])
+    assert "page_sequence = EXCLUDED.page_sequence" in sql
+    assert "member_name" not in sql and "dos_from" not in sql
+    # The bulk entry keeps the page's earlier bulk labels and adds this file's.
+    assert "|| %(labels)s::jsonb" in sql
+
+
+def test_upsert_sql_takes_ground_truth_columns_only():
+    import pytest
+
+    from jobs.ground_truth_load import upsert_sql
+
+    with pytest.raises(ValueError):
+        upsert_sql(("page_sequence", "id; drop table x"))
+
+
 def test_a_load_appends_a_bulk_upload_entry_with_the_labels_it_wrote():
     import json
 
@@ -128,3 +150,24 @@ def test_a_load_appends_a_bulk_upload_entry_with_the_labels_it_wrote():
     labels = json.loads(entry_labels({"rotation": "90", "member_name": None}))
     assert set(labels) == set(_TEXT_FIELDS)
     assert labels["rotation"] == "90" and labels["member_name"] is None
+
+
+def test_a_cp1252_csv_from_excel_loads(tmp_path):
+    from jobs.ground_truth_load import read_table
+
+    path = tmp_path / "gt.csv"
+    path.write_bytes("Chart_Name,Id,Member Name,Sequence\nc1,1.png,Renée O’Neil,2\n".encode("cp1252"))
+    rows = read_table(path)
+    assert rows[0]["member_name"] == "Renée O’Neil"
+    assert rows[0]["page_sequence"] == "2"
+
+
+def test_the_review_ui_reader_takes_a_cp1252_csv():
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "review-ui" / "backend"))
+    from app.services.excel_compare.file_reader import read_csv_any_encoding
+
+    frame = read_csv_any_encoding("Name,Sequence\nRenée,1\n".encode("cp1252"))
+    assert frame.iloc[0]["Name"] == "Renée"

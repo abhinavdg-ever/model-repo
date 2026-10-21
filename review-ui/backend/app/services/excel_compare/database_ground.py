@@ -122,11 +122,11 @@ def _read(data: bytes, filename: str):
     import pandas as pd
 
     from . import _upload
+    from .file_reader import decode_csv
 
-    source = _upload(data, filename)
     if filename.lower().endswith(".csv"):
-        frame = pd.read_csv(source, dtype=str, keep_default_na=False)
+        frame = pd.read_csv(io.StringIO(decode_csv(data)), dtype=str, keep_default_na=False)
     else:
-        frame = pd.read_excel(source, dtype=str, keep_default_na=False)
+        frame = pd.read_excel(_upload(data, filename), dtype=str, keep_default_na=False)
     frame.columns = [str(column).strip().lower() for column in frame.columns]
     return frame

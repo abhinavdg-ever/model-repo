@@ -48,9 +48,10 @@ curl -X POST localhost:8001/api/manifest/metadata-extra -H 'Content-Type: applic
 
 `load_page_sequence.py` reads the ground-truth sheet (Chart_Name, Id, and the numeric
 `Sequence` column; `Page Sequence` is not read) and writes only `page_sequence`; other
-ground-truth labels, including review-ui edits, are left alone. The full loader
-(`python cli.py ground-truth --local FILE`) now reads a `Sequence` header too, but it
-rewrites every column.
+ground-truth labels, including review-ui edits, are left alone, even when the sheet has
+them. The full loader (`python cli.py ground-truth --local FILE`) upserts every column the
+sheet has and leaves the ones it does not have: a sheet of just Chart_Name, Id and
+Sequence does the same as this script. CSVs saved by Excel (cp1252) load as well as UTF-8.
 
 ```bash
 cd core-pipeline && source .venv/bin/activate

@@ -4,10 +4,13 @@ The spreadsheet is one row per page. Chart_Name is the chart folder name.
 Id is the page file stem: 1, 1.jpg, 1.png, and 1.tif are the same page.
 
 A load can run before the chart exists. Re-runs upsert on
-(chart_name, page_number). Pages absent from a later file are left in place.
+(chart_name, page_number). Only the label columns the file has are written:
+a file with just Chart_Name, Id and Sequence sets page_sequence and leaves every
+other label as it is. Within a column the file has, an empty cell clears the
+label. Pages absent from a later file are left in place.
 Each row written also appends a ``bulk_upload`` entry to
-page_ground_truth_entry, so review-ui can show the latest load with manual
-edits hidden.
+page_ground_truth_entry (the page's previous bulk labels with this file's on
+top), so review-ui can show the latest load with manual edits hidden.
 
 Usage:
   python -m jobs.ground_truth_load --local /path/to/ground_truth.xlsx
@@ -16,11 +19,12 @@ Usage:
 from __future__ import annotations
 
 import csv
+import io
 import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, Optional, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -91,49 +95,38 @@ CREATE INDEX IF NOT EXISTS idx_page_ground_truth_entry_page_ground_truth_id_entr
     ON page_ground_truth_entry(page_ground_truth_id, entry_mode);
 """
 
-_UPSERT = """
+def upsert_sql(columns: Sequence[str]) -> str:
+    """The upsert for a file whose label columns are ``columns`` (names from
+    _TEXT_FIELDS only): those labels, the page id and source path are written;
+    every other label keeps its stored value."""
+    unknown = set(columns) - set(_TEXT_FIELDS)
+    if unknown:
+        raise ValueError(f"not ground-truth columns: {sorted(unknown)}")
+    insert = ["chart_name", "page_number", "source_page_id", *columns, "source_path"]
+    updates = ",\n    ".join(f"{column} = EXCLUDED.{column}" for column in (*columns, "source_path"))
+    return f"""
 WITH g AS (
-INSERT INTO page_ground_truth (
-    chart_name, page_number, source_page_id,
-    member_name, member_dob, dos_from, dos_to,
-    encounter_type, page_type, codeable,
-    blank_page, junk_page, is_invoice, page_sequence,
-    rotation, is_visible, rendering_provider, provider_specialty,
-    provider_signature, deleted_level, source_path
-) VALUES (
-    %(chart_name)s, %(page_number)s, %(source_page_id)s,
-    %(member_name)s, %(member_dob)s, %(dos_from)s, %(dos_to)s,
-    %(encounter_type)s, %(page_type)s, %(codeable)s,
-    %(blank_page)s, %(junk_page)s, %(is_invoice)s, %(page_sequence)s,
-    %(rotation)s, %(is_visible)s, %(rendering_provider)s, %(provider_specialty)s,
-    %(provider_signature)s, %(deleted_level)s, %(source_path)s
-)
+INSERT INTO page_ground_truth ({", ".join(insert)})
+VALUES ({", ".join(f"%({column})s" for column in insert)})
 ON CONFLICT (chart_name, page_number) DO UPDATE SET
-    source_page_id = EXCLUDED.source_page_id,
-    member_name = EXCLUDED.member_name,
-    member_dob = EXCLUDED.member_dob,
-    dos_from = EXCLUDED.dos_from,
-    dos_to = EXCLUDED.dos_to,
-    encounter_type = EXCLUDED.encounter_type,
-    page_type = EXCLUDED.page_type,
-    codeable = EXCLUDED.codeable,
-    blank_page = EXCLUDED.blank_page,
-    junk_page = EXCLUDED.junk_page,
-    is_invoice = EXCLUDED.is_invoice,
-    page_sequence = EXCLUDED.page_sequence,
-    rotation = EXCLUDED.rotation,
-    is_visible = EXCLUDED.is_visible,
-    rendering_provider = EXCLUDED.rendering_provider,
-    provider_specialty = EXCLUDED.provider_specialty,
-    provider_signature = EXCLUDED.provider_signature,
-    deleted_level = EXCLUDED.deleted_level,
-    source_path = EXCLUDED.source_path,
+    source_page_id = COALESCE(EXCLUDED.source_page_id, page_ground_truth.source_page_id),
+    {updates},
     updated_at = now()
 RETURNING id
 )
 INSERT INTO page_ground_truth_entry (page_ground_truth_id, entry_mode, labels, source_path)
-SELECT id, 'bulk_upload', %(labels)s::jsonb, %(source_path)s FROM g
+SELECT g.id, 'bulk_upload',
+       COALESCE((SELECT e.labels FROM page_ground_truth_entry e
+                  WHERE e.page_ground_truth_id = g.id AND e.entry_mode = 'bulk_upload'
+                  ORDER BY e.id DESC LIMIT 1), '{{}}'::jsonb)
+       || %(labels)s::jsonb,
+       %(source_path)s
+  FROM g
 """
+
+
+# Every label column: a sheet with the full set.
+_UPSERT = upsert_sql(_TEXT_FIELDS)
 
 
 def norm_header(value: Any) -> str:
@@ -191,8 +184,11 @@ def spell_codeable(value: Optional[str]) -> Optional[str]:
 
 
 def parse_rows(headers: list[Any], data_rows: list[list[Any]]) -> list[dict[str, Any]]:
-    """Map a header row and data rows onto page_ground_truth columns."""
+    """Map a header row and data rows onto page_ground_truth columns. Each row holds
+    only the label columns the headers name, listed in ``_columns``."""
     columns = [norm_header(h) for h in headers]
+    named = {_HEADER.get(key) for key in columns}
+    present = tuple(field for field in _TEXT_FIELDS if field in named)
     out: list[dict[str, Any]] = []
     for raw in data_rows:
         if raw is None or not any(c is not None and str(c).strip() for c in raw):
@@ -212,8 +208,9 @@ def parse_rows(headers: list[Any], data_rows: list[list[Any]]) -> list[dict[str,
             "chart_name": chart,
             "page_number": page_number,
             "source_page_id": _cell(mapped.get("source_page_id")),
+            "_columns": present,
         }
-        for field in _TEXT_FIELDS:
+        for field in present:
             cell = _cell(mapped.get(field))
             if field == "codeable":
                 cell = spell_codeable(cell)
@@ -224,10 +221,23 @@ def parse_rows(headers: list[Any], data_rows: list[list[Any]]) -> list[dict[str,
     return out
 
 
+# A CSV saved from Excel on Windows is often cp1252, not UTF-8 ("é", "’", "–" break
+# UTF-8 decoding). latin-1 decodes any byte, so it is the last resort.
+CSV_ENCODINGS = ("utf-8-sig", "cp1252", "latin-1")
+
+
+def decode_csv(data: bytes) -> str:
+    """The file's text: UTF-8 (with or without BOM), else cp1252, else latin-1."""
+    for encoding in CSV_ENCODINGS:
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("latin-1", errors="replace")
+
+
 def _read_csv(path: Path) -> tuple[list[Any], list[list[Any]]]:
-    with path.open(newline="", encoding="utf-8-sig") as handle:
-        reader = csv.reader(handle)
-        rows = list(reader)
+    rows = list(csv.reader(io.StringIO(decode_csv(path.read_bytes()), newline="")))
     if not rows:
         return [], []
     return rows[0], rows[1:]
@@ -262,10 +272,39 @@ def read_table(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def entry_labels(row: dict[str, Any]) -> str:
+def entry_labels(row: dict[str, Any], columns: Sequence[str] = _TEXT_FIELDS) -> str:
     """The labels a load writes, as the page_ground_truth_entry JSON. An empty
     cell is kept as null: the load cleared that column."""
-    return json.dumps({field: row.get(field) for field in _TEXT_FIELDS})
+    return json.dumps({field: row.get(field) for field in columns})
+
+
+def upsert_rows(conn: Any, rows: list[dict[str, Any]], columns: Optional[Sequence[str]] = None) -> int:
+    """Upsert parsed rows, each with the label columns its file had (or ``columns``
+    for every row). Returns the number of rows written."""
+    groups: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    for row in rows:
+        if row.get("_skip"):
+            continue
+        groups.setdefault(tuple(columns if columns is not None else row["_columns"]), []).append(row)
+    with conn.cursor() as cur:
+        cur.execute(_ADD_IS_VISIBLE)
+        cur.execute(_ADD_ENTRY_TABLE)
+        for group_columns, group in groups.items():
+            cur.executemany(
+                upsert_sql(group_columns),
+                [
+                    {
+                        **{column: row.get(column) for column in group_columns},
+                        "chart_name": row["chart_name"],
+                        "page_number": row["page_number"],
+                        "source_page_id": row.get("source_page_id"),
+                        "source_path": row.get("source_path"),
+                        "labels": entry_labels(row, group_columns),
+                    }
+                    for row in group
+                ],
+            )
+    return sum(len(group) for group in groups.values())
 
 
 def iter_files(path: Path) -> Iterator[Path]:
@@ -302,10 +341,7 @@ def run_load(local_path: str) -> dict[str, Any]:
 
     if writable:
         with connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(_ADD_IS_VISIBLE)
-                cur.execute(_ADD_ENTRY_TABLE)
-                cur.executemany(_UPSERT, [{**row, "labels": entry_labels(row)} for row in writable])
+            upsert_rows(conn, writable)
 
     return {
         "files": files,
@@ -313,4 +349,5 @@ def run_load(local_path: str) -> dict[str, Any]:
         "rows_written": len(writable),
         "rows_skipped": skipped,
         "charts": charts,
+        "columns": sorted({column for row in writable for column in row["_columns"]}),
     }

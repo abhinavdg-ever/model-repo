@@ -1,4 +1,4 @@
-from .file_reader import read_tabular_file
+from .file_reader import read_csv_any_encoding, read_tabular_file
 from .header_normalizer import normalize_headers
 from .record_matcher import KEY_COLUMNS, match_records
 from .field_comparator import (
@@ -63,7 +63,7 @@ def read_uploaded_file(file_object):
         return pd.read_excel(file_object)
 
     if extension == "csv":
-        return pd.read_csv(file_object)
+        return read_csv_any_encoding(file_object)
 
     raise ValueError(f"Unsupported file type: .{extension}")
 

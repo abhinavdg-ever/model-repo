@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Load only the Sequence column of a ground-truth sheet into page_ground_truth.page_sequence.
 
-The full loader (``python cli.py ground-truth --local FILE``) rewrites every ground-truth
-column of each page in the sheet. This one writes the sequence alone, so labels edited in
-review-ui stay as they are. The sheet is the same as the full load's: Chart_Name, Id and the
-numeric ``Sequence`` column (a ``Page Sequence`` column is not read). A page not
-yet in page_ground_truth is added with just its sequence. An empty cell clears it.
+The full loader (``python cli.py ground-truth --local FILE``) writes every ground-truth
+column the sheet has. This one writes the sequence alone, even from a full sheet, so the
+other labels (and review-ui edits to them) stay as they are. The sheet is the same as
+the full load's: Chart_Name, Id and the numeric ``Sequence`` column (a ``Page Sequence``
+column is not read). A page not yet in page_ground_truth is added with just its
+sequence. An empty cell clears it.
 
 Each page written also gets a ``bulk_upload`` entry: the page's previous bulk labels with
 the new sequence, so review-ui's "bulk upload" view keeps the other columns.
@@ -41,39 +42,7 @@ try:
 except ImportError:
     pass
 
-from jobs.ground_truth_load import (  # noqa: E402
-    _HEADER,
-    _read_csv,
-    _read_xlsx,
-    iter_files,
-    norm_header,
-    read_table,
-)
-
-
-def has_sequence_column(path: Path) -> bool:
-    headers, _ = _read_csv(path) if path.suffix.casefold() == ".csv" else _read_xlsx(path)
-    return any(_HEADER.get(norm_header(h)) == "page_sequence" for h in headers)
-
-_UPSERT = """
-WITH g AS (
-INSERT INTO page_ground_truth (chart_name, page_number, source_page_id, page_sequence, source_path)
-VALUES (%(chart_name)s, %(page_number)s, %(source_page_id)s, %(page_sequence)s, %(source_path)s)
-ON CONFLICT (chart_name, page_number) DO UPDATE SET
-    source_page_id = COALESCE(EXCLUDED.source_page_id, page_ground_truth.source_page_id),
-    page_sequence = EXCLUDED.page_sequence,
-    updated_at = now()
-RETURNING id
-)
-INSERT INTO page_ground_truth_entry (page_ground_truth_id, entry_mode, labels, source_path)
-SELECT g.id, 'bulk_upload',
-       COALESCE((SELECT e.labels FROM page_ground_truth_entry e
-                  WHERE e.page_ground_truth_id = g.id AND e.entry_mode = 'bulk_upload'
-                  ORDER BY e.id DESC LIMIT 1), '{}'::jsonb)
-       || jsonb_build_object('page_sequence', %(page_sequence)s::text),
-       %(source_path)s
-  FROM g
-"""
+from jobs.ground_truth_load import iter_files, read_table, upsert_rows  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -89,10 +58,11 @@ def main(argv: list[str] | None = None) -> int:
 
     rows = []
     for path in iter_files(root):
-        if not has_sequence_column(path):
+        parsed = [row for row in read_table(path) if not row.get("_skip")]
+        if parsed and "page_sequence" not in parsed[0]["_columns"]:
             print(f"{path.name}: no Sequence column, skipped", file=sys.stderr)
             continue
-        rows.extend(row for row in read_table(path) if not row.get("_skip"))
+        rows.extend(parsed)
     if not rows:
         print("no rows with Chart_Name, Id and Sequence")
         return 1
@@ -108,20 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     from db import connect
 
     with connect() as conn:
-        with conn.cursor() as cur:
-            cur.executemany(
-                _UPSERT,
-                [
-                    {
-                        "chart_name": row["chart_name"],
-                        "page_number": row["page_number"],
-                        "source_page_id": row.get("source_page_id"),
-                        "page_sequence": row.get("page_sequence"),
-                        "source_path": row.get("source_path"),
-                    }
-                    for row in rows
-                ],
-            )
+        upsert_rows(conn, rows, columns=("page_sequence",))
     print(json.dumps({"pages_written": len(rows), "charts": charts}))
     return 0
 
