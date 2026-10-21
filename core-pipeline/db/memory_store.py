@@ -756,13 +756,13 @@ class MemoryStore:
         }
 
     def high_quality_printed_page_ids(self, chart_id: int) -> set[int]:
-        from db import is_printed_type, page_type
+        from db import page_type
 
         return {
             pid
             for pid, row in self.get_quality_map(chart_id).items()
             if str(row.get("quality_tag") or "").lower() == "high"
-            and is_printed_type(page_type(row))
+            and page_type(row) == "printed"
         }
 
     def list_quality_for_csv(self, chart_id: int) -> list[dict[str, Any]]:

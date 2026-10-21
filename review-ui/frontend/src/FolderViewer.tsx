@@ -188,7 +188,7 @@ function isFinal2QualitySkip(page: ImagingPageResult | null): boolean {
   if (!page || isBlankOrJunkYes(page)) return false;
   const type = (page.documentType || page.handwrittenOrPrinted || "").trim().toLowerCase();
   const tag = (page.pageQualityTag || "").trim().toLowerCase();
-  return (type === "printed" || type === "visual") && tag === "high";
+  return type === "printed" && tag === "high";
 }
 
 function isOcrSkipMessage(text: string): boolean {
@@ -714,23 +714,21 @@ export default function FolderViewer({
       return null;
     };
 
-    // Current imaging wins over leftover OCR files (e.g. skip_ocr kept
-    // final2.json while quality re-ran to High+Printed, or junk flipped).
-    if (ocrTab === "final1" || ocrTab === "final2") {
-      if (isBlankOrJunkYes(imagingPage)) {
-        return FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE;
-      }
-      if (ocrTab === "final2" && isFinal2QualitySkip(imagingPage)) {
-        return FINAL2_QUALITY_SKIP_MESSAGE;
-      }
+    // Current imaging wins over a leftover Final2 file (e.g. skip_ocr kept
+    // final2.json while quality re-ran to High+Printed).
+    if (ocrTab === "final2" && isFinal2QualitySkip(imagingPage)) {
+      return FINAL2_QUALITY_SKIP_MESSAGE;
     }
 
-    if ((ocrTab === "final1" || ocrTab === "final2") && ocrFullText) {
-      const chunk = ocrTextForFilename(ocrFullText, page.filename);
+    if (ocrTab === "final1" || ocrTab === "final2") {
+      // A blank / junk page still shows its Final OCR when that OCR ran (pages
+      // judged in pass 2 have it); the skip note only stands in for missing text.
+      const chunk = ocrFullText ? ocrTextForFilename(ocrFullText, page.filename) : "";
       const skip = resolveSkip(chunk);
+      if (chunk.trim() && !skip) return chunk;
+      if (isBlankOrJunkYes(imagingPage)) return FINAL_OCR_BLANK_JUNK_SKIP_MESSAGE;
       if (skip) return skip;
-      if (chunk.trim()) return chunk;
-      return `No OCR text found for ${page.filename}.`;
+      if (ocrFullText) return `No OCR text found for ${page.filename}.`;
     }
 
     if (ocrTab === "final2" && page.has_final2_ocr && !ocrFullText) {

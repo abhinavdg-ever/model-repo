@@ -34,6 +34,7 @@ class GateSignature:
     quality_tag: str  # high | medium | low | ""
     rotation_applied: bool
     orientation_bucket: int  # 0/90/180/270
+    visual: bool = False  # document_type 'visual': printed, but Final2 still runs
 
     @property
     def skips_bj_pass1(self) -> bool:
@@ -41,7 +42,7 @@ class GateSignature:
 
     @property
     def is_high_quality_printed(self) -> bool:
-        return self.hw_class == "printed" and self.quality_tag == "high"
+        return self.hw_class == "printed" and not self.visual and self.quality_tag == "high"
 
     @property
     def needs_final2(self) -> bool:
@@ -113,6 +114,8 @@ def gate_signature_from_row(row: Optional[dict[str, Any]]) -> Optional[GateSigna
     """Build a signature, or None when no quality row exists yet."""
     if not row:
         return None
+    from db import page_type
+
     hw = hw_class_from_row(row)
     tag = str(row.get("quality_tag") or "").strip().lower()
     # A row with neither HW nor tag is treated as missing for delta purposes.
@@ -124,6 +127,7 @@ def gate_signature_from_row(row: Optional[dict[str, Any]]) -> Optional[GateSigna
         quality_tag=tag,
         rotation_applied=bool(row.get("rotation_applied")),
         orientation_bucket=orientation_bucket(row.get("orientation_angle")),
+        visual=page_type(row) == "visual",
     )
 
 
@@ -225,6 +229,7 @@ def plan_page_delta(
     path_changed = (
         old.skips_bj_pass1 != new.skips_bj_pass1
         or old.hw_class != new.hw_class
+        or old.visual != new.visual
         or old.quality_tag != new.quality_tag
     )
     if not path_changed:

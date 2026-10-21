@@ -336,7 +336,9 @@ Downstream stages read `v_page_blank_junk_final` and never re-derive precedence.
 
 Both run on pages not ruled out by pass 1, **plus every handwritten /
 low-quality page**. Azure final2 additionally **skips high-quality printed**
-pages (`skip_reason=high_quality_printed`) — final1 is enough for them.
+pages (`skip_reason=high_quality_printed`) — final1 is enough for them. Only
+`document_type = printed` counts: a high-quality **visual** page still goes to Azure
+(2026-10-21).
 
 ```mermaid
 flowchart LR

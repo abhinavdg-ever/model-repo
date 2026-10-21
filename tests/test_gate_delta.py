@@ -115,6 +115,16 @@ def test_medium_to_high_no_final2_call():
     assert STAGE_BJ2 in stages
 
 
+def test_visual_high_still_needs_final2():
+    # Only printed + high skips Azure; a visual page at high quality goes to Final2.
+    assert not _sig(visual=True).is_high_quality_printed
+    assert _sig(visual=True).needs_final2
+    assert _sig().is_high_quality_printed
+    assert gate_signature_from_row(
+        {"document_type": "visual", "quality_tag": "high", "orientation_angle": 0}
+    ).visual
+
+
 def test_printed_to_handwritten():
     old = _sig(hw_class="printed", quality_tag="high")
     new = _sig(hw_class="non_printed", quality_tag="low")

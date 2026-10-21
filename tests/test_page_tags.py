@@ -151,7 +151,7 @@ def test_page_sets_follow_the_type():
         )
     assert store.non_printed_page_ids(1) == {3, 4, 5}
     assert store.handwritten_page_ids(1) == {4}
-    assert store.high_quality_printed_page_ids(1) == {1, 2}
+    assert store.high_quality_printed_page_ids(1) == {1}  # visual + high still goes to Azure
 
 
 def test_review_ui_reads_the_columns_and_the_csv_cells():

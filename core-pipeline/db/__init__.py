@@ -927,13 +927,14 @@ def low_quality_page_ids(conn: Any, chart_id: int) -> set[int]:
 
 @_dispatch
 def high_quality_printed_page_ids(conn: Any, chart_id: int) -> set[int]:
-    """High-quality printed / visual pages — Azure final2 is skipped (final1 is enough)."""
+    """High-quality printed pages — Azure final2 is skipped (final1 is enough). Visual
+    pages are not skipped (2026-10-21): only printed + high."""
     rows = conn.execute(
         f"""
         SELECT page_id FROM ocr_quality_results
          WHERE chart_id = %s
            AND lower(coalesce(quality_tag, '')) = 'high'
-           AND {_PAGE_TYPE_SQL} IN ('printed', 'visual')
+           AND {_PAGE_TYPE_SQL} = 'printed'
         """,
         (chart_id,),
     ).fetchall()
