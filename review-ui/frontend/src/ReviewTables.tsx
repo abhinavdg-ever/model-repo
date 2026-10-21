@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CircleMinus, Copy, ListPlus, Plus, Save, Trash2 } from "lucide-react";
+import { CircleMinus, Copy, ListPlus, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import {
   getEncounterReview,
   saveEncounterReview,
@@ -118,16 +118,21 @@ export function loadEncounterReview(folderId: string): Promise<EncounterReview> 
   return pending;
 }
 
-function emptyDraft(startPage: number): Draft {
+function emptyDraft(): Draft {
   return {
     key: nextKey++,
-    startPage: String(startPage),
-    endPage: String(startPage),
+    startPage: "",
+    endPage: "",
     pageType: "",
     encounterType: "",
     dosFrom: "",
     dosTo: "",
   };
+}
+
+function isEmptyDraft(draft: Draft): boolean {
+  return [draft.startPage, draft.endPage, draft.pageType, draft.encounterType, draft.dosFrom, draft.dosTo]
+    .every((value) => !value.trim());
 }
 
 function savedNote(review: EncounterReview | null): string {
@@ -139,9 +144,10 @@ function savedNote(review: EncounterReview | null): string {
 }
 
 /** Ground-truth encounters (the Encounter tab's Ground Truth subtab): page ranges with
- * page type, encounter type and DOS, edited in place and saved to encounter_review. With
- * nothing saved, the Algo encounters are copied in as the starting point. Every row is
- * shown; a row can be inserted below any other, and the rows after it move down. */
+ * page type, encounter type and DOS, saved to encounter_review. The saved rows are shown
+ * read-only (empty when nothing is saved); Edit opens them as inputs, starting from the
+ * Algorithm encounters when nothing is saved. A row can be inserted below any other, and
+ * the rows after it move down. */
 export function EncounterReviewEditor({
   folderId,
   seed,
@@ -154,6 +160,7 @@ export function EncounterReviewEditor({
   const [review, setReview] = useState<EncounterReview | null>(null);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [dirty, setDirty] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -202,12 +209,8 @@ export function EncounterReviewEditor({
     setDrafts((rows) => [...rows.slice(0, index + 1), row, ...rows.slice(index + 1)]);
     setDirty(true);
   };
-  /** A blank row below row ``index`` (-1: at the top), starting on the next page. */
-  const insertBlank = (index: number) => {
-    const before = drafts[index];
-    const next = before ? Number(before.endPage) + 1 || 1 : 1;
-    insertAfter(index, emptyDraft(pageCount > 0 ? Math.min(next, pageCount) : next));
-  };
+  /** An empty row below row ``index`` (-1: at the top); nothing is filled in. */
+  const insertBlank = (index: number) => insertAfter(index, emptyDraft());
   const remove = (key: number) => {
     setDrafts((rows) => rows.filter((row) => row.key !== key));
     setDirty(true);
@@ -223,6 +226,7 @@ export function EncounterReviewEditor({
       reviewCache.set(folderId, Promise.resolve(saved));
       setReview(saved);
       startFrom(saved);
+      setEditing(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save the encounters");
     } finally {
@@ -236,12 +240,62 @@ export function EncounterReviewEditor({
         <span className="encounter-review-note">
           {loading
             ? "Loading…"
-            : copied
-              ? "Nothing saved yet: copied from the Algo Encounters."
-              : savedNote(review)}
+            : !copied
+              ? savedNote(review)
+              : editing
+                ? "Nothing saved yet: copied from the Algorithm encounters."
+                : "Nothing saved yet."}
         </span>
+        {!loading && !editing ? (
+          <span className="encounter-review-bar">
+            <button
+              type="button"
+              className="imaging-gt-discard"
+              onClick={() => {
+                startFrom(review);
+                setError(null);
+                setEditing(true);
+              }}
+            >
+              <Pencil size={14} aria-hidden="true" />
+              Edit Ground Truth
+            </button>
+          </span>
+        ) : null}
+        {!loading && editing ? (
+          <span className="encounter-review-bar">
+            <button
+              type="button"
+              className="imaging-gt-discard"
+              onClick={() => {
+                startFrom(review);
+                setEditing(false);
+              }}
+              disabled={saving}
+            >
+              <CircleMinus size={15} aria-hidden="true" />
+              Discard
+            </button>
+            <button
+              type="button"
+              className="imaging-gt-save"
+              onClick={() => void save()}
+              disabled={saving || Boolean(problem) || (!dirty && !copied)}
+              title={problem ?? undefined}
+            >
+              <Save size={15} aria-hidden="true" />
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </span>
+        ) : null}
       </div>
-      {!loading ? (
+      {!loading && !editing ? (
+        <>
+          <SavedEncounters rows={review?.rows ?? []} />
+          {error ? <div className="error-banner">{error}</div> : null}
+        </>
+      ) : null}
+      {!loading && editing ? (
         <>
           <datalist id="encounter-review-page-types">
             {PAGE_TYPE_CHOICES.map((choice) => (
@@ -275,7 +329,7 @@ export function EncounterReviewEditor({
                 </tr>
               ) : null}
               {drafts.map((row, index) => {
-                const rowProblem = problems.get(row.key);
+                const rowProblem = isEmptyDraft(row) ? undefined : problems.get(row.key);
                 return (
                   <tr
                     key={row.key}
@@ -370,31 +424,48 @@ export function EncounterReviewEditor({
               <Plus size={15} aria-hidden="true" />
               Add row
             </button>
-            <span className="encounter-review-bar-gap" />
-            {dirty ? (
-              <button
-                type="button"
-                className="imaging-gt-discard"
-                onClick={() => startFrom(review)}
-                disabled={saving}
-              >
-                <CircleMinus size={15} aria-hidden="true" />
-                Discard
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="imaging-gt-save"
-              onClick={() => void save()}
-              disabled={saving || Boolean(problem) || (!dirty && !copied)}
-              title={problem ?? undefined}
-            >
-              <Save size={15} aria-hidden="true" />
-              {saving ? "Saving…" : "Save"}
-            </button>
           </div>
         </>
       ) : null}
     </div>
+  );
+}
+
+/** The saved ground-truth encounters, read-only. */
+function SavedEncounters({ rows }: { rows: EncounterReviewRow[] }) {
+  return (
+    <table className="imaging-summary-table imaging-documents-table encounter-review-table">
+      <thead>
+        <tr>
+          <th scope="col">Encounter #</th>
+          <th scope="col">Start Page</th>
+          <th scope="col">End Page</th>
+          <th scope="col">Page Type</th>
+          <th scope="col">Encounter Type</th>
+          <th scope="col">DOS From</th>
+          <th scope="col">DOS To</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <tr>
+            <td colSpan={7} className="encounter-review-empty">
+              No ground truth saved for this chart.
+            </td>
+          </tr>
+        ) : null}
+        {rows.map((row, index) => (
+          <tr key={`${row.seq}-${row.startPage}`}>
+            <td>{index + 1}</td>
+            <td>{row.startPage}</td>
+            <td>{row.endPage}</td>
+            <td>{row.pageType ?? ""}</td>
+            <td>{row.encounterType ?? ""}</td>
+            <td>{row.dosFrom ?? ""}</td>
+            <td>{row.dosTo ?? ""}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

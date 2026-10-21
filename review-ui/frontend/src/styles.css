@@ -2632,7 +2632,7 @@ input {
 .section-coords-title {
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--brand-200, #1a3a4a);
+  color: var(--text);
 }
 
 .section-coords-source {
@@ -5486,10 +5486,6 @@ input {
   margin-left: 0;
 }
 
-.encounter-review-bar-gap {
-  flex: 1;
-}
-
 .encounter-review-input {
   width: 100%;
   min-width: 6rem;
@@ -5554,6 +5550,17 @@ input {
 .imaging-sequencing-table th:nth-child(2),
 .imaging-sequencing-table td:nth-child(2) {
   width: 38%;
+}
+
+/* Page Sequencing: the ground-truth buttons sit in the Ground Truth header. */
+.imaging-sequencing-table th.sequence-truth-head {
+  overflow: visible;
+  white-space: normal;
+}
+
+.sequence-truth-head .encounter-review-bar {
+  justify-content: flex-start;
+  margin: 0.3rem 0 0;
 }
 
 /* Sequencing and Encounter body cells read like Member Extraction's values. */

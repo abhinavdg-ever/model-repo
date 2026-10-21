@@ -1864,7 +1864,7 @@ function DocumentsTable({
   );
 }
 
-/** Encounter tab: the Algo encounters and the ground truth, one subtab each. The ground
+/** Encounter tab: the Algorithm encounters and the ground truth, one subtab each. The ground
  * truth stays mounted while hidden so an unsaved edit survives a switch. */
 function EncounterIdentification({
   folderId,
@@ -1891,7 +1891,7 @@ function EncounterIdentification({
           className={view === "algo" ? "active" : ""}
           onClick={() => setView("algo")}
         >
-          Algo Encounters
+          Algorithm
         </button>
         <button
           type="button"
@@ -2318,6 +2318,34 @@ function originalSequences(pages: ImagingPageResult[]): Map<number, string> {
   return out;
 }
 
+/** The ground-truth sequence as shown, edited and compared. The client's sheet numbers
+ * every page 1, 2, 3 …, junk included, so a page whose ground truth is blank or junk
+ * (blank_page / junk_page) becomes J1, J2 … and the Main pages are renumbered 1, 2, 3 …,
+ * each in stored order. A chart already in that form comes back unchanged. */
+function groundTruthSequences(pages: ImagingPageResult[]): Map<number, string> {
+  const out = new Map<number, string>();
+  const main: [number, number][] = [];
+  const junk: [number, number][] = [];
+  for (const page of pages) {
+    const value = normalizeSequence(page.groundTruth?.pageSequence);
+    const j = /^J([1-9]\d*)$/.exec(value);
+    const n = j ? Number(j[1]) : sequenceNumber(value);
+    if (n == null) {
+      out.set(page.pageNumber, value);
+      continue;
+    }
+    const gt = page.groundTruth;
+    const isJunk = Boolean(j) || yesNo(gt?.blankPage) === "yes" || yesNo(gt?.junkPage) === "yes";
+    (isJunk ? junk : main).push([n, page.pageNumber]);
+  }
+  for (const [list, prefix] of [[main, ""], [junk, "J"]] as const) {
+    [...list]
+      .sort((a, b) => a[0] - b[0] || a[1] - b[1])
+      .forEach(([, pageNumber], i) => out.set(pageNumber, `${prefix}${i + 1}`));
+  }
+  return out;
+}
+
 /** What is wrong with one series of sequences: each must run 1, 2, 3 … with no gap or
  * repeat. ``prefix`` is "" for Main pages, "J" for blank / junk. */
 function seriesProblem(values: string[], prefix: "" | "J"): string | null {
@@ -2362,9 +2390,10 @@ function sequenceBreaks(
 }
 
 /** Page sequencing with its ground truth (page_ground_truth.page_sequence, text: "3" for
- * a Main page, "J2" for a blank / junk one). Edit turns the ground-truth column into
- * inputs; Save writes the pages that changed. Once saved, each Main page's Algo.
- * Sequence is marked against the ground truth by breaks. */
+ * a Main page, "J2" for a blank / junk one; see groundTruthSequences). Edit turns the
+ * ground-truth column into inputs; Save writes every page whose stored value differs.
+ * Outside editing, each ground truth is marked: a Main page by breaks against the Algo.
+ * Sequence, a J page as correct when the Algo. also has it blank / junk. */
 function SequencingTable({
   folderId,
   pages,
@@ -2383,9 +2412,11 @@ function SequencingTable({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const algo = useMemo(() => algoSequences(pages, sequencingProcessed), [pages, sequencingProcessed]);
+  const truth = useMemo(() => groundTruthSequences(pages), [pages]);
+  const shown = (p: ImagingPageResult) => truth.get(p.pageNumber) ?? "";
 
   const startEdit = () => {
-    setDraft(Object.fromEntries(pages.map((p) => [p.pageNumber, stored(p)])));
+    setDraft(Object.fromEntries(pages.map((p) => [p.pageNumber, shown(p)])));
     setError(null);
     setEditing(true);
   };
@@ -2411,7 +2442,20 @@ function SequencingTable({
     const values = pages.map(drafted).filter(Boolean);
     return seriesProblem(values, "") ?? seriesProblem(values, "J");
   })();
-  const { breaks, compared } = sequenceBreaks(pages, (p) => sequenceNumber(stored(p)));
+  const { breaks } = sequenceBreaks(pages, (p) => sequenceNumber(shown(p)));
+  /** A J page agrees when the Algo. also has it blank / junk; a Main page by its breaks. */
+  const verdict = (p: ImagingPageResult): "match" | "break" | "mismatch" | null => {
+    const value = shown(p);
+    if (editing || isSkippedDuplicate(p) || !SEQUENCE_VALUE.test(value)) return null;
+    const gtJunk = value.startsWith("J");
+    if (gtJunk !== isBlankJunkPage(p)) return "mismatch";
+    if (gtJunk) return "match";
+    if (sequenceNumber(p.actualSequence) == null) return null;
+    return breaks.has(p.pageNumber) ? "break" : "match";
+  };
+  // Accuracy = 1 − breaks / pages marked; a break is any ✗ (Main break or junk mismatch).
+  const marks = editing ? [] : pages.map(verdict).filter((mark) => mark != null);
+  const wrong = marks.filter((mark) => mark !== "match").length;
 
   async function save() {
     if (invalid || continuity || changed.length === 0) return;
@@ -2441,8 +2485,40 @@ function SequencingTable({
 
   return (
     <div className="section-coords-panel">
-      <div className="encounter-review-head">
-        <div className="section-coords-title">Page Sequencing</div>
+      <div className="section-coords-title">Page Sequencing</div>
+      {!sequencingProcessed ? (
+        <p className="section-coords-empty">
+          Sequencing has not run for this chart yet — Algo. Sequence stays Yet
+          to Process until the page_sequencing stage writes results.
+        </p>
+      ) : null}
+      {marks.length > 0 ? (
+        <p className="sequence-break-summary">
+          Accuracy:{" "}
+          <span className={wrong ? "cmp-mismatch" : "cmp-match"}>
+            {(100 * (1 - wrong / marks.length)).toFixed(1)}%
+          </span>{" "}
+          = 1 − {wrong} {wrong === 1 ? "break" : "breaks"} / {marks.length}{" "}
+          {marks.length === 1 ? "page" : "pages"} (Main pages by breaks in the Algo. Sequence,
+          J pages by blank / junk in both).
+        </p>
+      ) : null}
+      {invalid ? (
+        <div className="encounter-review-problem">
+          Page {invalid.pageNumber}: a sequence is a whole number from 1 (Main) or J1, J2 … (blank / junk).
+        </div>
+      ) : null}
+      {continuity ? <div className="encounter-review-problem">{continuity}</div> : null}
+      {error ? <div className="error-banner">{error}</div> : null}
+      <table className="imaging-summary-table imaging-sequencing-table">
+        <thead>
+          <tr>
+            <th scope="col">S.No</th>
+            <th scope="col">File</th>
+            <th scope="col">Original Sequence</th>
+            <th scope="col">Algo. Sequence</th>
+            <th scope="col" className="sequence-truth-head">
+              <span>Ground Truth</span>
         <span className="encounter-review-bar">
           {editing ? (
             <>
@@ -2473,61 +2549,18 @@ function SequencingTable({
             </button>
           )}
         </span>
-      </div>
-      {!sequencingProcessed ? (
-        <p className="section-coords-empty">
-          Sequencing has not run for this chart yet — Algo. Sequence stays Yet
-          to Process until the page_sequencing stage writes results.
-        </p>
-      ) : null}
-      {!editing && compared > 0 ? (
-        <p className="sequence-break-summary">
-          Algo. Sequence against Ground Truth:{" "}
-          <span className={breaks.size ? "cmp-mismatch" : "cmp-match"}>
-            {breaks.size === 0 ? "no breaks" : `${breaks.size} ${breaks.size === 1 ? "break" : "breaks"}`}
-          </span>{" "}
-          across {compared} Main {compared === 1 ? "page" : "pages"}.
-        </p>
-      ) : null}
-      {invalid ? (
-        <div className="encounter-review-problem">
-          Page {invalid.pageNumber}: a sequence is a whole number from 1 (Main) or J1, J2 … (blank / junk).
-        </div>
-      ) : null}
-      {continuity ? <div className="encounter-review-problem">{continuity}</div> : null}
-      {error ? <div className="error-banner">{error}</div> : null}
-      <table className="imaging-summary-table imaging-sequencing-table">
-        <thead>
-          <tr>
-            <th scope="col">S.No</th>
-            <th scope="col">File</th>
-            <th scope="col">Original Sequence</th>
-            <th scope="col">Algo. Sequence</th>
-            <th scope="col">Ground Truth</th>
+            </th>
           </tr>
         </thead>
         <tbody>
           {pages.map((p, index) => {
-            const marked =
-              !editing &&
-              !isBlankJunkPage(p) &&
-              sequenceNumber(stored(p)) != null &&
-              sequenceNumber(p.actualSequence) != null;
+            const mark = verdict(p);
             return (
             <tr key={`seq-${p.pageNumber}-${p.fileName}`}>
               <td>{index + 1}</td>
               <td>{p.fileName}</td>
               <td>{fmt(p.currentSequence ?? p.pageNumber, true)}</td>
-              <td>
-                {algo.get(p.pageNumber)}
-                {marked ? (
-                  breaks.has(p.pageNumber) ? (
-                    <span className="cmp-mismatch sequence-break-mark"> ✗ Break</span>
-                  ) : (
-                    <span className="cmp-match sequence-break-mark"> ✓</span>
-                  )
-                ) : null}
-              </td>
+              <td>{algo.get(p.pageNumber)}</td>
               <td>
                 {editing ? (
                   <input
@@ -2541,7 +2574,19 @@ function SequencingTable({
                     }
                   />
                 ) : (
-                  stored(p)
+                  <>
+                    {shown(p)}
+                    {mark === "match" ? <span className="cmp-match sequence-break-mark"> ✓</span> : null}
+                    {mark === "break" ? <span className="cmp-mismatch sequence-break-mark"> ✗ Break</span> : null}
+                    {mark === "mismatch" ? (
+                      <span
+                        className="cmp-mismatch sequence-break-mark"
+                        title={isBlankJunkPage(p) ? "Blank / junk in the Algo., Main in the ground truth" : "Main in the Algo., blank / junk in the ground truth"}
+                      >
+                        {" "}✗ {isBlankJunkPage(p) ? "Junk in Algo." : "Main in Algo."}
+                      </span>
+                    ) : null}
+                  </>
                 )}
               </td>
             </tr>
