@@ -24,6 +24,9 @@ from app.services.chart_run_batch import (
     with_run_batch_default,
 )
 from app.services.chart_metadata import chart_metadata_map
+
+# The metadata filters' option for a chart with no value.
+BLANK_OPTION = "(Blank)"
 from app.services.ground_truth import charts_with_ground_truth
 from app.services.db import connection
 
@@ -287,8 +290,10 @@ def filter_sort_page(
         ("measure", {s for s in params.measure if s}),
         ("rr_method", {s for s in params.retrieval if s}),
     ]
+    # A chart with no value (none in the database or the CSVs) is offered as "(Blank)".
     metadata_options = {
         attr: sorted({getattr(f, attr) for f in active if getattr(f, attr)}, key=lambda s: s.casefold())
+        + ([BLANK_OPTION] if any(not getattr(f, attr) for f in active) else [])
         for attr, _ in metadata_filters
     }
     run_after = _aware(params.run_after) if params.run_after else None
@@ -318,7 +323,7 @@ def filter_sort_page(
             continue
         if run_after and (f.last_updated_at is None or _aware(f.last_updated_at) < run_after):
             continue
-        if any(wanted and getattr(f, attr) not in wanted for attr, wanted in metadata_filters):
+        if any(wanted and (getattr(f, attr) or BLANK_OPTION) not in wanted for attr, wanted in metadata_filters):
             continue
         filtered.append(f)
 

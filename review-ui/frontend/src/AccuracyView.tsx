@@ -18,6 +18,7 @@ import { useViewState } from "./viewState";
 import {
   ClearAllFilters,
   ColumnFilterButton,
+  BLANK_META,
   META_FILTERS,
   MetaFilterBar,
   TopCheckFilter,
@@ -695,8 +696,7 @@ function passesMeta(row: ChartAccuracy, filters: MetaFilters): boolean {
   return META_FILTERS.every(({ key }) => {
     const wanted = filters[key];
     if (!wanted?.length) return true;
-    const value = metaValue(row, key);
-    return value != null && wanted.includes(value);
+    return wanted.includes(metaValue(row, key) || BLANK_META);
   });
 }
 
@@ -806,11 +806,15 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
     const out = {} as Record<MetaFilterKey, string[]>;
     for (const { key } of META_FILTERS) {
       const values = new Set<string>();
+      let blank = false;
       for (const row of allRows) {
         const value = metaValue(row, key);
         if (value) values.add(value);
+        else blank = true;
       }
+      // A chart with no value is offered as "(Blank)", last.
       out[key] = [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      if (blank) out[key].push(BLANK_META);
     }
     return out;
   }, [allRows]);

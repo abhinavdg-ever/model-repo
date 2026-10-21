@@ -132,14 +132,18 @@ def test_source_measure_retrieval_filter_and_offer_every_value():
     rows = [
         _f("a").model_copy(update={"source_name": "Clinic A", "measure": "CBP", "rr_method": "Fax"}),
         _f("b").model_copy(update={"source_name": "Clinic B", "measure": "CBP", "rr_method": "Onsite"}),
-        _f("c"),  # no metadata: dropped by any of the three filters
+        _f("c"),  # no metadata: offered and picked as "(Blank)"
     ]
     result = filter_sort_page(rows, FolderListParams(measure=["CBP"], retrieval=["Fax"]))
     assert [f.id for f in result.items] == ["a"]
-    assert result.source_options == ["Clinic A", "Clinic B"]
-    assert result.measure_options == ["CBP"]
-    assert result.retrieval_options == ["Fax", "Onsite"]
+    assert result.source_options == ["Clinic A", "Clinic B", "(Blank)"]
+    assert result.measure_options == ["CBP", "(Blank)"]
+    assert result.retrieval_options == ["Fax", "Onsite", "(Blank)"]
+    assert result.scope_options == ["(Blank)"]
     assert filter_sort_page(rows, FolderListParams()).total == 3
+    blank = filter_sort_page(rows, FolderListParams(measure=["(Blank)"]))
+    assert [f.id for f in blank.items] == ["c"]
+    assert filter_sort_page(rows, FolderListParams(scope=["(Blank)"])).total == 3
 
 
 def test_chart_metadata_from_the_csvs(tmp_path):

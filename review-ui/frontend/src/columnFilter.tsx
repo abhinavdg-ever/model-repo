@@ -269,6 +269,9 @@ export const META_FILTERS: { key: MetaFilterKey; label: string; title: string }[
   { key: "retrieval", label: "Retrieval Method", title: "Retrieval Method (RR Method)" },
 ];
 
+/** A metadata filter's option for a chart with no value (same as the API's). */
+export const BLANK_META = "(Blank)";
+
 /** How many of the metadata filters are on. */
 export function metaFilterCount(filters: MetaFilters | undefined): number {
   return META_FILTERS.filter(({ key }) => (filters?.[key]?.length ?? 0) > 0).length;
