@@ -505,6 +505,7 @@ def _page_inputs(
                 (final2 or {}).get(pid), (final1 or {}).get(pid), page=page, chart_name=ctx.chart_name
             )
             bottom = method.content_bottom(inputs.lines) if inputs.lines else None
+            inputs.content_bottom = bottom
             if bottom is not None and bottom <= top:
                 inputs.body_ink, inputs.body_ink_fraction = _body_ink(ctx.chart_name, page["page_name"])
             # Tesseract's text for the junk terms the final OCR missed; only where prelim is

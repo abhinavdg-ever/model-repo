@@ -260,3 +260,35 @@ class TestDistilBertLadder:
     def test_no_model_keeps_the_page_for_review(self):
         verdict = run(FILLER)
         assert verdict.code == classify.CODE_MAIN and verdict.votes["review_required"]
+
+
+class TestShortPage:
+    """R6 (pass 2, after R4, before R5): content in the top 15%, no ink below -> Junk / Others."""
+
+    def short(self, **kw) -> method.Verdict:
+        base = {"content_bottom": 0.10, "body_ink": False, "body_ink_fraction": 0.001}
+        return run(FILLER, **{**base, **kw})
+
+    def test_a_short_page_with_nothing_below_is_junk(self):
+        verdict = self.short(bert=bert(0.30))
+        assert (verdict.code, verdict.rule, verdict.confidence) == (classify.CODE_OTHERS, "R6", 0.95)
+        assert verdict.votes["short_page"]["content_bottom"] == 0.10
+
+    def test_distilbert_sure_of_a_keep_skips_it(self):
+        verdict = self.short(bert=bert(0.05))  # p(keep) 0.95 > 0.90
+        assert verdict.rule == "R5" and verdict.code == classify.CODE_MAIN
+        assert "skipped" in verdict.votes["short_page"]
+        assert self.short(bert=bert(0.10)).rule == "R6"  # p(keep) 0.90 is not above 0.90
+
+    def test_ink_below_or_not_measured_does_not_fire(self):
+        assert self.short(bert=bert(0.30), body_ink=True, body_ink_fraction=0.02).rule == "R5"
+        assert self.short(bert=bert(0.30), body_ink=None, body_ink_fraction=None).rule == "R5"
+
+    def test_a_long_page_or_no_geometry_does_not_fire(self):
+        assert self.short(bert=bert(0.30), content_bottom=0.40).rule == "R5"
+        verdict = self.short(bert=bert(0.30), content_bottom=None)
+        assert verdict.rule == "R5" and verdict.votes["short_page"] == "no_geometry"
+
+    def test_a_signature_comes_first_and_pass_1_never_runs_it(self):
+        assert self.short(bert=bert(0.30), signed=True).rule == "R4"
+        assert run(FILLER, pass_no=1, content_bottom=0.10, body_ink=False, bert=bert(0.30)).rule == "P1"

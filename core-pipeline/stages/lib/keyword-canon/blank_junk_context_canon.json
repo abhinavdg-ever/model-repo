@@ -22,8 +22,9 @@
     "footer_band": 0.08
   },
   "short_page": {
-    "note": "Short page rule (precedence step R6). Content that ends within the top 'top_fraction' (15%; 20% 2026-10-18 to 2026-10-19) of the page height -> JUNK / Others, even when it carries a clinical heading and whatever the neighbouring pages are. Not when Provider Signature = Yes, or when both voters say KEEP (KK) and DistilBERT's KEEP is strong (voters.bert.keep_strong) (docs/BLANK_JUNK_LOGIC.md).",
+    "note": "Short page rule R6, pass 2, after R4 (signature) and before R5 (DistilBERT); restored 2026-10-21. Content that ends within the top 'top_fraction' (15%) of the page height, footer band and running stamps left out, with less than body_ink_max_fraction ink below -> JUNK / Others (confidence 0.95). Not when DistilBERT p(keep) > skip_keep_above (0.90), when the word boxes or the image cannot be read, or when R4 kept the page (docs/BLANK_JUNK_LOGIC.md).",
     "top_fraction": 0.15,
+    "skip_keep_above": 0.9,
     "ignore_footer_band": 0.06,
     "body_ink_band": [
       0.17,
@@ -769,7 +770,7 @@
     ]
   },
   "distilbert": {
-    "note": "2026-10-20: DistilBERT alone decides after R1-R4 (method.py). Pass 1: p(keep) above pass1_final_keep_above -> Main, final, pass 2 skipped; every other page waits for pass 2. Pass 2: R4 (signature) is overruled when p(junk) is above signature_overruled_above; R5: p(junk) >= junk_at -> Junk, review_junk_at..junk_at -> Junk for review, below review_junk_at -> Main. p(junk) = every JUNK_* label plus BLANK.",
+    "note": "2026-10-20: DistilBERT alone decides after R1-R4 (method.py). Pass 1: p(keep) above pass1_final_keep_above -> Main, final, pass 2 skipped; every other page waits for pass 2. Pass 2: R4 (signature) is overruled when p(junk) is above signature_overruled_above; then R6 (short_page, restored 2026-10-21); R5: p(junk) >= junk_at -> Junk, review_junk_at..junk_at -> Junk for review, below review_junk_at -> Main. p(junk) = every JUNK_* label plus BLANK.",
     "pass1_final_keep_above": 0.95,
     "junk_at": 0.85,
     "review_junk_at": 0.5,

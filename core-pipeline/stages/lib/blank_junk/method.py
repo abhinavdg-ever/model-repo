@@ -1,4 +1,4 @@
-"""Blank / junk decision: rules R1-R4, then DistilBERT alone (docs/BLANK_JUNK_LOGIC.md).
+"""Blank / junk decision: rules R1-R4, the short page R6, then DistilBERT (docs/BLANK_JUNK_LOGIC.md).
 
 Inputs per page (``PageInputs``): the OCR text, its word boxes when the pass has them,
 DistilBERT's probabilities (model_bridge.model_scores), the page type and handwritten
@@ -20,12 +20,14 @@ phrases R2, R3 and R4 look for. The ladder, first rule that fires decides:
   pass 2 (Final OCR text):
     R4 signature    Provider Signature = Yes, or a signature phrase -> Main, unless DistilBERT's
                     p(junk) > 0.95 (a signed records-request letter is still junk)
+    R6 short page   the content ends in the top 15% and the band below has < 0.5% ink ->
+                    Junk / Others, unless DistilBERT p(keep) > 0.90
     R5 DistilBERT   p(junk) >= 0.85 -> Junk (DistilBERT's subtype); 0.50 - 0.85 -> Junk for
                     review; below 0.50 -> Main
     handwritten     a page more than 30% handwritten is never junked by R5: Main for review
 
 So junk is decided in pass 1 only by R1-R3; DistilBERT's junk calls wait for the Final OCR.
-Confidence: R1 1.0, R2 0.99, R3 0.90, R4 0.95; R5 (and the pass-1 keep) DistilBERT's
+Confidence: R1 1.0, R2 0.99, R3 0.90, R4 0.95, R6 0.95; R5 (and the pass-1 keep) DistilBERT's
 probability for its verdict. Thresholds live in ``keyword-canon/blank_junk_context_canon.json``
 (``distilbert``), which reloads on change.
 """
@@ -75,7 +77,7 @@ RETRIEVAL_GROUPS = ("record_request", "roi_vendors")
 HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice", "id_card")
 
 # R1-R4 are rules: their confidence is fixed. R5 takes DistilBERT's probability.
-FIXED_CONFIDENCE = {"R1": 1.0, "R2": 0.99, "R3": 0.90, "R4": 0.95}
+FIXED_CONFIDENCE = {"R1": 1.0, "R2": 0.99, "R3": 0.90, "R4": 0.95, "R6": 0.95}
 # Starts the reason of a pass-1 keep that is final: pass 2 does not judge that page again.
 FINAL_KEEP = "R5 keep (final)"
 MIN_TEXT_CHARS = 15
@@ -414,6 +416,7 @@ class PageInputs:
     text: str
     pass_no: int
     lines: Optional[list[Line]] = None  # pass 2 word boxes, as lines
+    content_bottom: Optional[float] = None  # where the content ends (share of height); pass 2
     bert: Optional[dict[str, Any]] = None  # {"p_keep", "p_junk", "top_junk_label"}
     document_type: str = ""  # page-tag model: printed / handwritten / form / visual / ...
     page_tags: bool = False  # the page-tag model wrote document_type
@@ -478,8 +481,39 @@ def is_final_keep(reason: Optional[str]) -> bool:
     return (reason or "").startswith(FINAL_KEEP)
 
 
+def _short_page(inputs: PageInputs, p_keep: Optional[float], votes: dict[str, Any]) -> Optional[str]:
+    """R6's reason when the page is short and empty below, else None; records
+    ``votes.short_page`` either way. Not measured (no word boxes, unreadable image) never
+    fires; nor does a page DistilBERT is sure to keep (p(keep) > ``skip_keep_above``)."""
+    cfg = canon().raw["short_page"]
+    top = float(cfg["top_fraction"])
+    if inputs.content_bottom is None:
+        votes["short_page"] = "no_geometry"
+        return None
+    info: dict[str, Any] = {"content_bottom": round(inputs.content_bottom, 4)}
+    votes["short_page"] = info
+    if inputs.content_bottom > top:
+        return None
+    limit = float(cfg["body_ink_max_fraction"])
+    info.update(
+        ink="not_measured" if inputs.body_ink is None else inputs.body_ink,
+        ink_fraction=inputs.body_ink_fraction,
+        ink_limit=limit,
+    )
+    if inputs.body_ink is None or inputs.body_ink:
+        return None
+    keep_above = float(cfg.get("skip_keep_above", 0.9))
+    if p_keep is not None and p_keep > keep_above:
+        info["skipped"] = f"DistilBERT p(keep) {p_keep:.3f} > {keep_above}"
+        return None
+    return (
+        f"R6 short page: content ends at {inputs.content_bottom:.1%} <= {top:.0%}, "
+        f"ink below {inputs.body_ink_fraction or 0:.2%} < {limit:.1%} -> Junk / Others"
+    )
+
+
 def decide(inputs: PageInputs) -> Verdict:
-    """The page's verdict: R1-R3, then in pass 1 the sure keep, in pass 2 R4 and R5."""
+    """The page's verdict: R1-R3, then in pass 1 the sure keep, in pass 2 R4, R6 and R5."""
     prof = canon()
     t = _thresholds()
     text = inputs.text or ""
@@ -561,6 +595,11 @@ def decide(inputs: PageInputs) -> Verdict:
             votes["r4_overruled"] = f"{why}, but DistilBERT p(junk) {p_junk:.3f} > {over}"
         else:
             return ruled(CODE_MAIN, "R4", f"R4 signature ({why}) -> Main")
+
+    # R6 short page: only a header / banner at the top and nothing drawn below it.
+    short_page = _short_page(inputs, p_keep, votes)
+    if short_page:
+        return ruled(CODE_OTHERS, "R6", short_page)
 
     # R5 DistilBERT alone.
     if p_junk is None:

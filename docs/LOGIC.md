@@ -275,9 +275,10 @@ for. Junk is decided in pass 2 on the Final OCR, except the certain R1–R3 call
 | R5 keep | DistilBERT p(keep) > 0.95 → Main, **final**: pass 2 skips the page | Main | 1 |
 | — | Anything else in pass 1 | Main for now, judged in pass 2 | 1 |
 | R4 | Provider Signature = Yes, or a signature phrase — unless DistilBERT p(junk) > 0.95 | Main | 2 |
+| R6 | Short page: content ends in the top 15%, < 0.5% ink below, and DistilBERT p(keep) ≤ 0.90 (restored 2026-10-21) | junk / Others | 2 |
 | R5 | p(junk) ≥ 0.85 → junk / DistilBERT's subtype; 0.50–0.85 → junk for review; below → Main. A page > 30% handwritten is never junked here (Main, for review) | | 2 |
 
-**Confidence:** R1 1.00, R2 0.99, R3 0.90, R4 0.95; R5 (and the pass-1 keep) take
+**Confidence:** R1 1.00, R2 0.99, R3 0.90, R4 0.95, R6 0.95; R5 (and the pass-1 keep) take
 DistilBERT's probability for the verdict. No model loaded: pass 2 keeps the page Main
 with `review_required`. DistilBERT's probabilities and the deciding rule are staged in
 `<chart>/staging/blank_junk.json` (beside `extraction.json`), not the database.

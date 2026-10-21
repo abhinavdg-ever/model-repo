@@ -18,10 +18,11 @@ relative to `core-pipeline/`.
 Every page gets one verdict: **Main**, **Blank**, or **Junk / subtype**.
 
 1. **Rules R1–R4** run in number order; the first that fires decides.
-2. Then **DistilBERT alone** decides (R5). There is no keyword scoring or vote any more:
+2. In pass 2, **R6 short page** comes next (restored 2026-10-21; §2.1).
+3. Then **DistilBERT alone** decides (R5). There is no keyword scoring or vote any more:
    keywords survive only as the fixed phrases R2 (placeholder), R3 (card wording) and R4
    (signature phrase) look for.
-3. After the verdict, **duplicates** are found among the Main pages (§4).
+4. After the verdict, **duplicates** are found among the Main pages (§4).
 
 **Junk is decided in pass 2**, on the Final OCR text, except the certain R1–R3 calls, which
 pass 1 makes on the Tesseract text (they save the page's Final OCR).
@@ -30,7 +31,7 @@ pass 1 makes on the Tesseract text (they save the page's Final OCR).
 |---|---|---|
 | Text | Tesseract (preliminary OCR) | Final OCR: Azure (Final 2), else Docling (Final 1) |
 | Pages | Printed, not low quality | Every page pass 1 did not settle, plus handwritten / mixed / low-quality pages |
-| Decides | R1 Blank / tiny junk, R2 Blank, R3 card junk / Visual keep, and **R5 keep** (p(keep) > 0.95, final) | R1–R4, R5 |
+| Decides | R1 Blank / tiny junk, R2 Blank, R3 card junk / Visual keep, and **R5 keep** (p(keep) > 0.95, final) | R1–R4, R6, R5 |
 | Otherwise | Main for now, "judged in pass 2" | final verdict |
 
 A page pass 1 settled (Blank, Junk, a Visual keep, or an R5 keep) is **not judged again in
@@ -50,6 +51,7 @@ pass 2**: the R5 keep's reason starts `R5 keep (final)`, and pass 2 skips it
 | **R5 keep** | Pass 1 only: DistilBERT p(keep) > **0.95** | **Main, final** (pass 2 skips it) | 1 | p(keep) |
 | — | Pass 1, anything else | Main for now; judged in pass 2 | 1 | p(keep) |
 | **R4** | Provider Signature = Yes, or a signature phrase — **unless DistilBERT p(junk) > 0.95** (a signed records-request letter is still junk; `votes.r4_overruled`) | Main | 2 | 0.95 |
+| **R6** | Short page: content ends in the top **15%** and the band below has < **0.5%** ink — **unless DistilBERT p(keep) > 0.90** (§2.1) | Junk / Others | 2 | 0.95 |
 | **R5** | p(junk) ≥ **0.85** | Junk / DistilBERT's subtype | 2 | p(junk) |
 | **R5** | 0.50 ≤ p(junk) < 0.85 | Junk / DistilBERT's subtype, **for review** (`votes.review_required`) | 2 | p(junk) |
 | **R5** | p(junk) < 0.50 | Main | 2 | p(keep) |
@@ -63,6 +65,28 @@ pass 2**: the R5 keep's reason starts `R5 keep (final)`, and pass 2 skips it
 - **Blank against Junk** (either way, prediction vs ground truth) still scores as a match in
   review-ui: both say "out of the record".
 
+### 2.1 R6 — the short page (restored 2026-10-21)
+
+For a page whose only content is a header, stamp line or vendor banner at the top. Pass 2
+only (it needs the Final OCR word positions), after R4 and before R5. Settings:
+`short_page` in the canon.
+
+1. **Where does the content end?** (`content_bottom`) The lowest OCR line's bottom edge,
+   as a share of the page height, ignoring the bottom **6%** (`ignore_footer_band`) and
+   running stamps (`ignore_line_patterns`: "Page 3 of 7", a bare page number, "Printed:
+   …", a fax line, "Confidential…").
+2. **Is it short?** Content ends at or above **15%** (`top_fraction`).
+3. **Anything below that OCR did not read?** In the band from **17% to 94%**
+   (`body_ink_band`), the share of dark ink pixels. **≥ 0.5%** (`body_ink_max_fraction`)
+   is content (a picture, handwriting, a signature): R6 does not fire.
+4. **DistilBERT sure it is a keep?** p(keep) **> 0.90** (`skip_keep_above`): R6 does not
+   fire, and R5 decides.
+
+Otherwise the page is **Junk / Others**, confidence 0.95. A signed page never reaches R6
+(R4 keeps it first). No word positions, or an image that cannot be read, switches R6 off.
+`votes.short_page` records `content_bottom` (or `"no_geometry"`), and for a short page
+`ink`, `ink_fraction`, `ink_limit` and `skipped` when DistilBERT's keep overruled it.
+
 ---
 
 ## 3. Settings (`blank_junk_context_canon.json`)
@@ -74,6 +98,7 @@ pass 2**: the R5 keep's reason starts `R5 keep (final)`, and pass 2 skips it
 | Junk for review | p(junk) ≥ 0.50 | `distilbert.review_junk_at` |
 | Signature overruled | p(junk) > 0.95 | `distilbert.signature_overruled_above` |
 | Handwritten veto | > 30% | `handwritten_veto.min_handwritten_area_pct` |
+| Short page (R6) | content ends ≤ 15%; ink below < 0.5%; skipped at p(keep) > 0.90 | `short_page.top_fraction`, `body_ink_max_fraction`, `skip_keep_above` |
 | Visual | < 20 words; card weight ≥ 4 | `visual` |
 | Tiny / blank word / placeholder | 15 chars / 30 chars / 25 words | `method.py` constants |
 
@@ -99,7 +124,15 @@ UI shows Yes at 100%, May Be below; May Be confidence = 1 + (similarity − 1) �
 
 ---
 
-## 5. Changes, 2026-10-20 — DistilBERT alone
+## 5. Changes
+
+### 2026-10-21 — R6 short page restored
+
+- **R6** runs again in pass 2, after R4 and before R5: a short page with no ink below is
+  Junk / Others, unless DistilBERT p(keep) > 0.90 (was: both voters KEEP with a strong
+  DistilBERT KEEP, before the vote was removed).
+
+### 2026-10-20 — DistilBERT alone
 
 - **Keyword scoring and the vote are gone** (R6 short page, R7 retrieval, R8 strong
   clinical, R9 the vote, and R5.1's clinical / demographic protection). The user: the
