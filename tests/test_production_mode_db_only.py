@@ -26,10 +26,12 @@ def test_production_still_serves_a_workspace_page_image(tmp_path):
 
 
 def test_the_extraction_pane_reads_no_staging_in_production(tmp_path):
+    # Production reads additional_page_details (unreachable here), never the staging file.
     from app.api.routes import get_folder_extraction
 
     result = get_folder_extraction("chart1", page="1.jpg", settings=_production(tmp_path))
-    assert result.available is False and result.fields == []
+    assert result.available is False and result.section_headers == []
+    assert all(not field.extracted for field in result.fields)
 
 
 def test_review_ui_takes_the_vm_managed_identity(monkeypatch):

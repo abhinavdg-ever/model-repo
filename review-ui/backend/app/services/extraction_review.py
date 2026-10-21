@@ -7,6 +7,7 @@ Processed is the same string as extracted until that rewrite exists.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from difflib import SequenceMatcher
 from functools import lru_cache
@@ -600,3 +601,97 @@ def load_extraction_review(
         fields=field_rows(page),
         section_headers=heron_headers(page),
     )
+
+
+# Production Mode has no chart workspace, so no staging file. The extraction stage also
+# writes each page's printed page number and its headings to additional_page_details;
+# read from there, the Additional tab still shows Page Numbers and Section Headers.
+_ADDITIONAL_SQL = """
+    SELECT p.page_name, to_jsonb(a)
+    FROM additional_page_details a
+    JOIN page_list p ON p.id = a.page_id
+    JOIN chart_list c ON c.id = a.chart_id
+    WHERE c.chart_name = %s
+"""
+
+
+def _stored_headers(items: object) -> list[OcrSectionHeader]:
+    """additional_page_details.section_headers (the stage's ``norm`` 0–1 boxes) as overlay
+    headers, labelled the way the staging headers are."""
+    headers: list[OcrSectionHeader] = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        text = _display_header(str(item.get("text") or ""))
+        norm = item.get("norm")
+        if not text or not isinstance(norm, dict):
+            continue
+        try:
+            box = {key: float(norm[key]) for key in ("left", "top", "width", "height")}
+            level = int(item.get("level") or 2)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if box["width"] <= 0 or box["height"] <= 0:
+            continue
+        headers.append(OcrSectionHeader(text=text, level=level, **box))
+    headers.sort(key=lambda header: (header.top, header.left))
+    return headers
+
+
+def review_from_additional(
+    folder_id: str, page_file: str, row: dict | None
+) -> ExtractionReviewResponse:
+    """One page's additional_page_details row as the Additional tab's response: Page Number
+    and Headings filled, every other staged field empty (they live only in staging)."""
+    if row is None:
+        return ExtractionReviewResponse(
+            folder_id=folder_id, available=False, page_file=page_file, fields=field_rows(None)
+        )
+    headers = _stored_headers(row.get("section_headers"))
+    number = str(row.get("printed_page_no") or row.get("page_number_value") or "").strip()
+    total = str(row.get("printed_page_total") or "").strip()
+    page_no = f"{number} of {total}" if number and total else number
+    try:
+        confidence = float(row["confidence"]) if row.get("confidence") is not None else None
+    except (TypeError, ValueError):
+        confidence = None
+    fields = []
+    for field in field_rows(None):
+        if field.id == "page_no" and page_no:
+            field = field.model_copy(
+                update={"extracted": page_no, "processed": page_no, "confidence": confidence}
+            )
+        elif field.id == "heading_heron" and headers:
+            names = " | ".join(header.text for header in headers)
+            field = field.model_copy(update={"extracted": names, "processed": names})
+        fields.append(field)
+    return ExtractionReviewResponse(
+        folder_id=folder_id,
+        available=True,
+        page_file=page_file,
+        fields=fields,
+        section_headers=headers,
+    )
+
+
+def load_extraction_review_from_db(
+    database_url: str, db_schema: str, folder_id: str, page_file: str
+) -> ExtractionReviewResponse:
+    """Production Mode's Additional tab, from additional_page_details. A database without
+    the table, or one that cannot be read, answers 'not available' rather than failing."""
+    from app.services.db import connection
+
+    try:
+        with connection(database_url, db_schema) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT to_regclass('additional_page_details')")
+                if not (cur.fetchone() or [None])[0]:
+                    return review_from_additional(folder_id, page_file, None)
+                cur.execute(_ADDITIONAL_SQL, (folder_id,))
+                pages = {str(name): row for name, row in cur.fetchall() if isinstance(row, dict)}
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "additional_page_details unreadable for %s: %s", folder_id, exc
+        )
+        return review_from_additional(folder_id, page_file, None)
+    return review_from_additional(folder_id, page_file, _page_for(pages, page_file))

@@ -38,7 +38,7 @@ from app.core.schemas import (
 from app.services.blob_store import download_blob_bytes
 from app.services.folder_list import FolderListParams, build_folder_list
 from app.services.annotations import annotation_file, load_annotations, save_annotation
-from app.services.extraction_review import load_extraction_review
+from app.services.extraction_review import load_extraction_review, load_extraction_review_from_db
 from app.services.staged_continuity import load_staged_encounters
 from app.services.imaging_csv import filter_folder, iter_csv_lines
 from app.services.chart_run_batch import database_url_usable
@@ -679,9 +679,14 @@ def get_folder_extraction(
 ) -> ExtractionReviewResponse:
     """Selected key/value extraction for one page. Processed equals extracted.
 
-    It is the raw staging file on disk, so Production Mode (Postgres + Blob only) has none."""
+    Local Mode reads the raw staging file on disk. Production Mode (Postgres + Blob only)
+    has no workspace: it reads Page Number and Section Headers from additional_page_details."""
     if settings.is_production_mode:
-        return ExtractionReviewResponse(folder_id=folder_id, available=False)
+        if not database_url_usable(settings.database_url):
+            return ExtractionReviewResponse(folder_id=folder_id, available=False)
+        return load_extraction_review_from_db(
+            settings.database_url, settings.db_schema, folder_id, page
+        )
     return load_extraction_review(settings.resolved_data_root, folder_id, page)
 
 

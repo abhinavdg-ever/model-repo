@@ -396,3 +396,34 @@ def test_staged_encounters_are_read_from_continuity_json(tmp_path):
     assert load_staged_encounters(tmp_path, "chart_b") == []
     assert load_staged_encounters(None, "chart_a") == []
     assert load_staged_encounters(tmp_path, "../chart_a") == []
+
+
+def test_production_reads_page_number_and_headers_from_additional_page_details():
+    from app.services.extraction_review import review_from_additional
+
+    row = {
+        "printed_page_no": "2",
+        "printed_page_total": "5",
+        "confidence": 0.9,
+        "section_headers": [
+            {"text": "Assessment and Plan", "level": 1,
+             "norm": {"left": 0.1, "top": 0.6, "width": 0.3, "height": 0.02}},
+            {"text": "Chief Complaint", "level": 2,
+             "norm": {"left": 0.1, "top": 0.2, "width": 0.2, "height": 0.02}},
+            {"text": "no box", "norm": None},
+        ],
+    }
+    review = review_from_additional("chart", "2.jpg", row)
+    assert review.available
+    assert [h.text for h in review.section_headers] == ["Chief Complaint", "Assessment and Plan"]
+    fields = {f.id: f for f in review.fields}
+    assert fields["page_no"].extracted == "2 of 5"
+    assert fields["heading_heron"].extracted == "Chief Complaint | Assessment and Plan"
+    assert fields["name"].extracted == ""
+
+
+def test_production_without_a_row_is_not_available():
+    from app.services.extraction_review import review_from_additional
+
+    review = review_from_additional("chart", "9.jpg", None)
+    assert not review.available and review.section_headers == []
