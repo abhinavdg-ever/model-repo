@@ -451,3 +451,31 @@ def test_production_shows_the_same_candidates_as_local_from_heading_candidates()
     heading_field = next(f for f in review.fields if f.id == "heading_heron")
     local_field = next(f for f in field_rows(page) if f.id == "heading_heron")
     assert heading_field.extracted == local_field.extracted == "History of Present Illness"
+
+
+def test_every_page_loads_in_one_call_and_matches_the_per_page_answer(tmp_path):
+    from app.services.extraction_review import load_extraction_pages
+
+    chart = tmp_path / "chart9"
+    (chart / "staging").mkdir(parents=True)
+    page = {
+        "width": 1000,
+        "height": 2000,
+        "fields": {
+            "heading_heron": [
+                {"accepted": True, "selected": True, "text": "History of Present Illness",
+                 "level": "Heading", "box": [100, 200, 400, 260]},
+                {"accepted": False, "text": "Patient:", "box": [10, 10, 40, 30]},
+            ],
+            "dob": [{"accepted": True, "selected": True, "value": "01/02/1950"}],
+        },
+    }
+    payload = {"model_version": "v3", "pages": {"1.jpg": page, "2.jpg": {"fields": {}}}}
+    (chart / "staging" / "extraction.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    every = load_extraction_pages(tmp_path, "chart9")
+    assert every.available and set(every.pages) == {"1.jpg", "2.jpg"}
+    for name in every.pages:
+        assert every.pages[name] == load_extraction_review(tmp_path, "chart9", name)
+    (tmp_path / "chart10").mkdir()
+    assert not load_extraction_pages(tmp_path, "chart10").available  # no staging file

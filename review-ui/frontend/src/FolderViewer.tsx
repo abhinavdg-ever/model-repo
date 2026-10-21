@@ -20,12 +20,13 @@ import {
 } from "lucide-react";
 import {
   getFolder,
-  getFolderExtraction,
+  getFolderExtractionPages,
   getFolderImaging,
   getFolderOcr,
   OCR_TAB_LABELS,
   pageImageUrl,
   retryPageImages,
+  type ExtractionPagesResponse,
   type ExtractionReviewResponse,
   type FolderDetail,
   type ImagingDocumentResponse,
@@ -184,6 +185,24 @@ function forcefitBlankClinical(
 }
 
 /** Infer Final2 quality-skip from imaging when JSON has no skippedReason yet. */
+/** One page's extraction review from the chart-wide response: by file name, then
+ * case-insensitively, then by stem (1.jpg ↔ 1.png). */
+function extractionForPage(
+  all: ExtractionPagesResponse | null,
+  filename: string | undefined,
+): ExtractionReviewResponse | null {
+  if (!all || !filename) return null;
+  const exact = all.pages[filename];
+  if (exact) return exact;
+  const want = filename.toLowerCase();
+  const stem = want.replace(/\.[^.]+$/, "");
+  for (const [name, review] of Object.entries(all.pages)) {
+    const key = name.toLowerCase();
+    if (key === want || key.replace(/\.[^.]+$/, "") === stem) return review;
+  }
+  return null;
+}
+
 function isFinal2QualitySkip(page: ImagingPageResult | null): boolean {
   if (!page || isBlankOrJunkYes(page)) return false;
   const type = (page.documentType || page.handwrittenOrPrinted || "").trim().toLowerCase();
@@ -225,7 +244,8 @@ export default function FolderViewer({
   const [loadingOcr, setLoadingOcr] = useState(initialMode === "ocr");
   const [loadingImaging, setLoadingImaging] = useState(initialMode === "imaging");
   const [imagingError, setImagingError] = useState<string | null>(null);
-  const [extraction, setExtraction] = useState<ExtractionReviewResponse | null>(null);
+  const [extractionPages, setExtractionPages] = useState<ExtractionPagesResponse | null>(null);
+  const extractionFetchedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -509,7 +529,8 @@ export default function FolderViewer({
     setOcrByKind({});
     setHeadersByKind({});
     setImagingError(null);
-    setExtraction(null);
+    setExtractionPages(null);
+    extractionFetchedRef.current = false;
     ocrFetchedRef.current = new Set();
     imagingFetchedRef.current = false;
     setLoadingImaging(outputMode === "imaging");
@@ -650,22 +671,33 @@ export default function FolderViewer({
     };
   }, [folderId]);
 
+  // The whole chart's extraction (Section Headers, Page Numbers) in one request when the
+  // chart opens, like the imaging results; changing page is then a lookup, not a fetch.
   useEffect(() => {
-    if ((outputMode !== "imaging" && outputMode !== "ocr") || !page?.filename) {
+    if ((outputMode !== "imaging" && outputMode !== "ocr") || extractionFetchedRef.current) {
       return;
     }
+    extractionFetchedRef.current = true;
     let cancelled = false;
-    getFolderExtraction(folderId, page.filename)
+    getFolderExtractionPages(folderId)
       .then((data) => {
-        if (!cancelled) setExtraction(data);
+        if (!cancelled) setExtractionPages(data);
       })
       .catch(() => {
-        if (!cancelled) setExtraction(null);
+        if (!cancelled) {
+          extractionFetchedRef.current = false;
+          setExtractionPages(null);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [folderId, outputMode, page?.filename]);
+  }, [folderId, outputMode]);
+
+  const extraction = useMemo(
+    () => extractionForPage(extractionPages, page?.filename),
+    [extractionPages, page?.filename],
+  );
 
   // One full-screen gate until folder + mode payload + first page image are ready.
   const bootComplete = useMemo(() => {

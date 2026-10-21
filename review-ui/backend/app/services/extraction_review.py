@@ -15,7 +15,12 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
-from app.core.schemas import ExtractionFieldRow, ExtractionReviewResponse, OcrSectionHeader
+from app.core.schemas import (
+    ExtractionFieldRow,
+    ExtractionPagesResponse,
+    ExtractionReviewResponse,
+    OcrSectionHeader,
+)
 from app.services.dates import show_dates_in
 
 # Order is the extraction field list, then headings. Labels are what a reviewer sees.
@@ -369,7 +374,13 @@ def _contains_heading(key: str, known: frozenset[str]) -> bool:
 
 def common_heading_score(text: str) -> float:
     """1.0 when the text is or contains a common heading, else the closest similarity, else 0."""
-    key = _common_key(text)
+    return _common_key_score(_common_key(text))
+
+
+# The same heading text recurs on page after page and is scored twice per row (shown
+# headers and the Headings list); the list itself is read once per process.
+@lru_cache(maxsize=50_000)
+def _common_key_score(key: str) -> float:
     known = _common_headings()
     if not key or not known:
         return 1.0 if key and not known else 0.0
@@ -377,14 +388,17 @@ def common_heading_score(text: str) -> float:
         return 1.0
     if len(key) < _FUZZY_MIN_CHARS:
         return 0.0
-    return max(
-        (
-            SequenceMatcher(None, key, item).ratio()
-            for item in known
-            if len(item) >= _FUZZY_MIN_CHARS and abs(len(item) - len(key)) <= 0.25 * len(key) + 2
-        ),
-        default=0.0,
-    )
+    best = 0.0
+    matcher = SequenceMatcher(None, key)
+    for item in known:
+        if len(item) < _FUZZY_MIN_CHARS or abs(len(item) - len(key)) > 0.25 * len(key) + 2:
+            continue
+        matcher.set_seq2(item)
+        # Both quick ratios are upper bounds of ratio(): skip what cannot beat the best.
+        if matcher.real_quick_ratio() <= best or matcher.quick_ratio() <= best:
+            continue
+        best = max(best, matcher.ratio())
+    return best
 
 
 def _proper_piece(piece: str) -> str:
@@ -685,11 +699,9 @@ def review_from_additional(
     )
 
 
-def load_extraction_review_from_db(
-    database_url: str, db_schema: str, folder_id: str, page_file: str
-) -> ExtractionReviewResponse:
-    """Production Mode's Additional tab, from additional_page_details. A database without
-    the table, or one that cannot be read, answers 'not available' rather than failing."""
+def _additional_rows(database_url: str, db_schema: str, folder_id: str) -> dict[str, dict]:
+    """The chart's additional_page_details rows by page name; {} when the table is missing
+    or the database cannot be read (logged)."""
     from app.services.db import connection
 
     try:
@@ -697,12 +709,61 @@ def load_extraction_review_from_db(
             with conn.cursor() as cur:
                 cur.execute("SELECT to_regclass('additional_page_details')")
                 if not (cur.fetchone() or [None])[0]:
-                    return review_from_additional(folder_id, page_file, None)
+                    return {}
                 cur.execute(_ADDITIONAL_SQL, (folder_id,))
-                pages = {str(name): row for name, row in cur.fetchall() if isinstance(row, dict)}
+                return {str(name): row for name, row in cur.fetchall() if isinstance(row, dict)}
     except Exception as exc:
         logging.getLogger(__name__).warning(
             "additional_page_details unreadable for %s: %s", folder_id, exc
         )
-        return review_from_additional(folder_id, page_file, None)
+        return {}
+
+
+def load_extraction_review_from_db(
+    database_url: str, db_schema: str, folder_id: str, page_file: str
+) -> ExtractionReviewResponse:
+    """Production Mode's Additional tab, from additional_page_details. A database without
+    the table, or one that cannot be read, answers 'not available' rather than failing."""
+    pages = _additional_rows(database_url, db_schema, folder_id)
     return review_from_additional(folder_id, page_file, _page_for(pages, page_file))
+
+
+def load_extraction_pages(data_root: Path, folder_id: str) -> ExtractionPagesResponse:
+    """Local Mode: every staged page's review, read from extraction.json once."""
+    path = _folder_dir(data_root, folder_id) / "staging" / "extraction.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+    except (OSError, ValueError):
+        payload = None
+    pages = payload.get("pages") if isinstance(payload, dict) else None
+    if not isinstance(pages, dict):
+        return ExtractionPagesResponse(folder_id=folder_id, available=False)
+    version = str(payload.get("model_version") or "")
+    return ExtractionPagesResponse(
+        folder_id=folder_id,
+        available=True,
+        pages={
+            str(name): ExtractionReviewResponse(
+                folder_id=folder_id,
+                available=True,
+                model_version=version,
+                page_file=str(name),
+                fields=field_rows(page),
+                section_headers=heron_headers(page),
+            )
+            for name, page in pages.items()
+            if isinstance(page, dict)
+        },
+    )
+
+
+def load_extraction_pages_from_db(
+    database_url: str, db_schema: str, folder_id: str
+) -> ExtractionPagesResponse:
+    """Production Mode: every page's review from additional_page_details, one query."""
+    rows = _additional_rows(database_url, db_schema, folder_id)
+    return ExtractionPagesResponse(
+        folder_id=folder_id,
+        available=bool(rows),
+        pages={name: review_from_additional(folder_id, name, row) for name, row in rows.items()},
+    )

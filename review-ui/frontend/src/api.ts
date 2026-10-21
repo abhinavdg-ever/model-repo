@@ -121,6 +121,13 @@ export type ExtractionReviewResponse = {
   section_headers: OcrSectionHeader[];
 };
 
+/** Every page's extraction review for a chart, by page file name. */
+export type ExtractionPagesResponse = {
+  folder_id: string;
+  available: boolean;
+  pages: Record<string, ExtractionReviewResponse>;
+};
+
 export type OcrSectionHeader = {
   text: string;
   level: number;
@@ -533,6 +540,11 @@ export function getFolderExtraction(
 ): Promise<ExtractionReviewResponse> {
   const params = new URLSearchParams({ page: pageFile });
   return api(`/api/folders/${encodeURIComponent(folderId)}/extraction?${params}`);
+}
+
+/** Every page's extraction review in one request (once per chart, like imaging). */
+export function getFolderExtractionPages(folderId: string): Promise<ExtractionPagesResponse> {
+  return api(`/api/folders/${encodeURIComponent(folderId)}/extraction/pages`);
 }
 
 /** URL for History bulk imaging export (server-side stream; Landing uses client progress). */

@@ -392,6 +392,15 @@ class ExtractionReviewResponse(BaseModel):
     section_headers: list[OcrSectionHeader] = Field(default_factory=list)
 
 
+class ExtractionPagesResponse(BaseModel):
+    """Every page's extraction review for a chart, by page file name: loaded once per chart
+    like the imaging results, not once per page."""
+
+    folder_id: str
+    available: bool
+    pages: dict[str, ExtractionReviewResponse] = Field(default_factory=dict)
+
+
 class AccuracyTally(BaseModel):
     correct: int = 0
     wrong: int = 0

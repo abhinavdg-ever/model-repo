@@ -25,6 +25,7 @@ from app.core.schemas import (
     FolderListResponse,
     FolderSummary,
     HealthResponse,
+    ExtractionPagesResponse,
     ExtractionReviewResponse,
     AccuracyReportResponse,
     ImagingDocumentResponse,
@@ -38,7 +39,12 @@ from app.core.schemas import (
 from app.services.blob_store import download_blob_bytes
 from app.services.folder_list import FolderListParams, build_folder_list
 from app.services.annotations import annotation_file, load_annotations, save_annotation
-from app.services.extraction_review import load_extraction_review, load_extraction_review_from_db
+from app.services.extraction_review import (
+    load_extraction_pages,
+    load_extraction_pages_from_db,
+    load_extraction_review,
+    load_extraction_review_from_db,
+)
 from app.services.staged_continuity import load_staged_encounters
 from app.services.imaging_csv import filter_folder, iter_csv_lines
 from app.services.chart_run_batch import database_url_usable
@@ -669,6 +675,21 @@ def post_annotation(body: AnnotationSaveRequest) -> AnnotationRow:
         value=saved["value"],
         saved_at=saved["saved_at"],
     )
+
+
+@router.get("/folders/{folder_id}/extraction/pages", response_model=ExtractionPagesResponse)
+def get_folder_extraction_pages(
+    folder_id: str,
+    settings: Settings = Depends(get_settings),
+) -> ExtractionPagesResponse:
+    """Every page's extraction review in one response, so the Additional tab (Section
+    Headers, Page Numbers) is ready on every page as soon as the chart opens. Same sources
+    as /extraction: the staging file (Local), additional_page_details (Production)."""
+    if settings.is_production_mode:
+        if not database_url_usable(settings.database_url):
+            return ExtractionPagesResponse(folder_id=folder_id, available=False)
+        return load_extraction_pages_from_db(settings.database_url, settings.db_schema, folder_id)
+    return load_extraction_pages(settings.resolved_data_root, folder_id)
 
 
 @router.get("/folders/{folder_id}/extraction", response_model=ExtractionReviewResponse)
