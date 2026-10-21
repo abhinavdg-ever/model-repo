@@ -63,28 +63,44 @@ function toRow(draft: Draft, index: number): EncounterReviewRow {
   };
 }
 
-/** What is wrong with the drafts, or null: whole page numbers within the chart, start
- * before end, no two ranges sharing a page. */
-function draftProblem(drafts: Draft[], pageCount: number): string | null {
-  const ranges: [number, number][] = [];
+/** What is wrong with each draft, by draft key: page numbers within the chart, start
+ * before end, and no two ranges sharing a page (both rows of an overlap are marked). */
+function rowProblems(drafts: Draft[], pageCount: number): Map<number, string> {
+  const out = new Map<number, string>();
+  const note = (key: number, message: string) => {
+    if (!out.has(key)) out.set(key, message);
+  };
+  const ranges: { key: number; index: number; start: number; end: number }[] = [];
   for (const [index, draft] of drafts.entries()) {
     const start = Number(draft.startPage);
     const end = Number(draft.endPage);
     const name = `Encounter ${index + 1}`;
-    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < 1) {
-      return `${name}: start and end page must be page numbers.`;
+    if (!draft.startPage.trim() || !draft.endPage.trim() || !Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < 1) {
+      note(draft.key, `${name}: start and end page must be page numbers.`);
+      continue;
     }
-    if (end < start) return `${name}: end page is before the start page.`;
-    if (pageCount > 0 && end > pageCount) return `${name}: the chart has ${pageCount} pages.`;
-    ranges.push([start, end]);
+    if (end < start) {
+      note(draft.key, `${name}: end page ${end} is before the start page ${start}.`);
+      continue;
+    }
+    if (pageCount > 0 && end > pageCount) {
+      note(draft.key, `${name}: the chart has ${pageCount} pages.`);
+      continue;
+    }
+    ranges.push({ key: draft.key, index, start, end });
   }
-  ranges.sort((a, b) => a[0] - b[0]);
-  for (let i = 1; i < ranges.length; i += 1) {
-    if (ranges[i][0] <= ranges[i - 1][1]) {
-      return `Pages ${ranges[i - 1][0]}–${ranges[i - 1][1]} and ${ranges[i][0]}–${ranges[i][1]} overlap.`;
+  for (const [i, a] of ranges.entries()) {
+    for (const b of ranges.slice(i + 1)) {
+      if (a.start <= b.end && b.start <= a.end) {
+        const message =
+          `Encounter ${a.index + 1} (pages ${a.start}–${a.end}) and ` +
+          `Encounter ${b.index + 1} (pages ${b.start}–${b.end}) overlap.`;
+        note(a.key, message);
+        note(b.key, message);
+      }
     }
   }
-  return null;
+  return out;
 }
 
 // One load per chart: reopening the Encounter tab reuses it, and the chart viewer
@@ -174,7 +190,8 @@ export function EncounterReviewEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [folderId]);
 
-  const problem = useMemo(() => draftProblem(drafts, pageCount), [drafts, pageCount]);
+  const problems = useMemo(() => rowProblems(drafts, pageCount), [drafts, pageCount]);
+  const problem = problems.size > 0 ? [...problems.values()][0] : null;
   const copied = !review || review.rows.length === 0;
 
   const edit = (key: number, field: keyof Omit<Draft, "key">, value: string) => {
@@ -258,13 +275,19 @@ export function EncounterReviewEditor({
                 </tr>
               ) : null}
               {drafts.map((row, index) => {
+                const rowProblem = problems.get(row.key);
                 return (
-                  <tr key={row.key}>
+                  <tr
+                    key={row.key}
+                    className={rowProblem ? "encounter-review-row-error" : undefined}
+                    title={rowProblem}
+                  >
                     <td>{index + 1}</td>
                     {(["startPage", "endPage"] as const).map((field) => (
                       <td key={field}>
                         <input
-                          className="encounter-review-input encounter-review-page"
+                          className={`encounter-review-input encounter-review-page${rowProblem ? " is-invalid" : ""}`}
+                          aria-invalid={rowProblem ? true : undefined}
                           type="number"
                           min={1}
                           max={pageCount || undefined}
@@ -334,7 +357,13 @@ export function EncounterReviewEditor({
               })}
             </tbody>
           </table>
-          {problem && dirty ? <div className="encounter-review-problem">{problem}</div> : null}
+          {problems.size > 0 ? (
+            <ul className="encounter-review-problem encounter-review-problems">
+              {[...new Set(problems.values())].map((message) => (
+                <li key={message}>{message}</li>
+              ))}
+            </ul>
+          ) : null}
           {error ? <div className="error-banner">{error}</div> : null}
           <div className="encounter-review-bar">
             <button type="button" className="imaging-gt-discard" onClick={addRow} disabled={saving}>

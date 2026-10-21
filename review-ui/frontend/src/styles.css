@@ -5574,3 +5574,19 @@ input {
 .sequence-break-mark {
   font-size: 0.72rem;
 }
+
+/* Encounter ground truth: a row whose pages are invalid or overlap another, marked as
+   it is typed. */
+.encounter-review-row-error td {
+  background: rgba(180, 35, 24, 0.06);
+}
+
+.encounter-review-input.is-invalid {
+  border-color: #b42318;
+  box-shadow: 0 0 0 1px #b42318;
+}
+
+.encounter-review-problems {
+  margin: 0;
+  padding-left: 1.1rem;
+}
