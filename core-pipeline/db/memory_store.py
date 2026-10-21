@@ -710,6 +710,25 @@ class MemoryStore:
                 if row["chart_id"] == chart_id
             }
 
+    def set_quality_tag(
+        self,
+        *,
+        page_id: int,
+        quality_tag: Optional[str],
+        quality_detail: dict[str, Any],
+        review_required: Optional[bool],
+    ) -> None:
+        with self._lock:
+            row = self.quality.get(page_id)
+            if row is None:
+                return
+            row.update(
+                quality_tag=quality_tag,
+                quality_detail=quality_detail,
+                review_required=review_required,
+                updated_at=_now(),
+            )
+
     def handwritten_page_ids(self, chart_id: int) -> set[int]:
         from db import page_type
 

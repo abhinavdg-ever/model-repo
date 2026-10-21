@@ -12,7 +12,7 @@ signed, where each value is stored, and what uses it.
 | Staging | `<chart>/staging/extraction.json` — every candidate, per field |
 | Outputs | DB `provider_signature_results` + `imaging/<chart>_provider_signature.csv` (kv_extract); DB `imaging_final` + `imaging/<chart>_final.csv` (imaging_final) — §2 |
 | review-ui | Production: the database (`imaging_final`); Local: the CSVs only — §3 |
-| Database changes | [`schema/changes_2026-10-19.sql`](../schema/changes_2026-10-19.sql) |
+| Database changes | `schema/changes_2026-10-19.sql` (removed; `git show 173a6cb:schema/changes_2026-10-19.sql`) |
 
 ---
 
@@ -200,7 +200,7 @@ No column is removed. A chart becomes v2 when `kv_extract` and `imaging_final` r
 The writers write only the columns a table has, so a database without the new columns
 keeps working.
 
-**Database changes:** [`schema/changes_2026-10-19.sql`](../schema/changes_2026-10-19.sql) —
+**Database changes:** `schema/changes_2026-10-19.sql` (removed; `git show 173a6cb:schema/changes_2026-10-19.sql`) —
 additive, safe to re-run (`psql "$DATABASE_URL" -f schema/changes_2026-10-19.sql`). A new
 database gets the same from `schema/v1.sql`.
 

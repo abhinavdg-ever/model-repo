@@ -33,9 +33,12 @@ from db import (
     connect,
     get_blank_junk_flags,
     get_ocr_texts,
+    get_quality_map,
     high_quality_printed_page_ids,
     low_quality_page_ids,
     non_printed_page_ids,
+    page_type,
+    set_quality_tag,
     upsert_ocr_result,
 )
 from db.paths import write_final2_json
@@ -425,6 +428,66 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool]) -> dict[str, Any]:
     return out
 
 
+def _docling_content(raw: str) -> str:
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        return raw
+    return str(parsed.get("content") or "") if isinstance(parsed, dict) else str(parsed)
+
+
+def regrade_by_ocr_overlap(conn: Any, chart_id: int) -> int:
+    """Downgrade quality_tag where Docling (Final OCR 1) and Tesseract disagree.
+
+    Runs before the Azure skip is decided, so a page that falls from High is
+    sent to Azure. Re-running starts from the tag stage 1 measured (kept in
+    ``quality_detail.ocr_overlap``), so it never downgrades twice. Pages
+    without Docling text are left alone. Returns the number of pages changed.
+    """
+    from stages.lib.image_preprocess.quality_label_postprocess import (
+        downgrade_by_ocr_overlap,
+        ocr_overlap,
+    )
+
+    docling = get_ocr_texts(conn, chart_id, "docling")
+    tesseract = get_ocr_texts(conn, chart_id, "tesseract")
+    changed = 0
+    for page_id, row in get_quality_map(conn, chart_id).items():
+        if page_id not in docling:
+            continue
+        detail = row.get("quality_detail") or {}
+        if isinstance(detail, str):
+            detail = json.loads(detail or "{}")
+        before = detail.get("ocr_overlap") or {}
+        tag = before.get("tag_before", row.get("quality_tag"))
+        review = before.get("review_required_before", row.get("review_required"))
+        overlap = ocr_overlap(_docling_content(docling[page_id]), tesseract.get(page_id))
+        new_tag = downgrade_by_ocr_overlap(tag, overlap)
+        if new_tag == "low" and page_type(row) != "blank":
+            new_review = True
+        else:
+            new_review = review
+        detail = {
+            **detail,
+            "ocr_overlap": {
+                "overlap": overlap,
+                "tag_before": tag,
+                "tag_after": new_tag,
+                "review_required_before": review,
+            },
+        }
+        if new_tag != row.get("quality_tag"):
+            changed += 1
+        set_quality_tag(
+            conn,
+            page_id=page_id,
+            quality_tag=new_tag,
+            quality_detail=detail,
+            review_required=new_review,
+        )
+    return changed
+
+
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
     use_azure = _azure_configured()
     if not use_azure:
@@ -437,6 +500,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
     with stage_run(chart_id, STAGE, force=force) as ctx:
         hq_printed: set[int] = set()
         with connect() as conn:
+            regraded = regrade_by_ocr_overlap(conn, chart_id)
+            if regraded:
+                logger.info(
+                    "Final2: %d page(s) re-graded by Docling/Tesseract overlap", regraded
+                )
             bj1 = get_blank_junk_flags(conn, chart_id, pass_no=1)
             pass1_skippers = non_printed_page_ids(conn, chart_id) | low_quality_page_ids(
                 conn, chart_id

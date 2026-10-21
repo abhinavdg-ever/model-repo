@@ -13,7 +13,7 @@ to `core-pipeline/`.
 | Settings | `stages/lib/keyword-canon/continuity_canon.json`, version 4 (reloads on change) |
 | Inputs | `staging/extraction.json` first (§3), then the DB (DOS, page type, blank / junk) and the OCR JSON |
 | Writes | `page_continuity_results` (the original columns plus `confidence`, one row per content or junk page), `<chart>/staging/continuity.json` (every score of every gap), `imaging/<chart>_continuity.csv` (every page) |
-| Database | one new column, `confidence` (0–1); on an existing database `schema/changes_2026-10-19.sql` §8 widens `decided_by` and §9 adds `confidence` |
+| Database | one new column, `confidence` (0–1); on an existing database `schema/changes_2026-10-19.sql` (removed; `git show 173a6cb:schema/changes_2026-10-19.sql`) §8 widens `decided_by` and §9 adds `confidence` |
 
 ---
 

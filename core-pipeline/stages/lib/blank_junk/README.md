@@ -6,7 +6,7 @@ short-page geometry live in `../keyword-canon/blank_junk_context_canon.json`. Th
 worked examples, is `docs/BLANK_JUNK_LOGIC.md`; the summary is `docs/LOGIC.md` §3.
 
 Duplicates: Main pages only, ≥ 98% similar OCR text (SequenceMatcher, only when the lengths
-are within 10%) to a Main neighbour within ±10 pages, or text wholly contained in it; pages
+are within 10%) to a Main neighbour within ±25 pages, or text wholly contained in it; pages
 under 300 characters never compared; the longer (or earlier) page is kept.
 
 The rest of this file describes the older regex classifier (`classify_junk.py` and the
@@ -25,7 +25,7 @@ calls either; they remain for the standalone script below.
 | **Record Request/Transmittal** | Yes (Junk) | Record Request/Transmittal | request letter; records↔request (any order); attached; transmittal/transmitted; Urgent Request for Records; Your Records requested |
 | **Instructions** | Yes (Junk) | Instructions | “what to send”, provide documentation, please send, … |
 | **Others** | Yes (Junk) | Others | Table of contents; **&lt; 20 words** and not a signature page; **gibberish Tesseract OCR** (many no-vowel tokens / junk symbols) |
-| **Duplicate** | No | Not Available | Main pages only: ≥98% similar OCR text to a ±10 Main neighbor, or text wholly contained in it; pages under 300 chars never compared; longer (or earlier) page kept; UI Yes at 100% / May Be at 98–<100% |
+| **Duplicate** | No | Not Available | Main pages only: ≥98% similar OCR text to a ±25 Main neighbor, or text wholly contained in it; pages under 300 chars never compared; longer (or earlier) page kept; UI Yes at 100% / May Be at 98–<100% |
 | **Main** | No | Not Available | Everything else |
 
 ### Priority order

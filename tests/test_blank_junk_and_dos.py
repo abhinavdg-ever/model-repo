@@ -1,6 +1,6 @@
 """Blank/junk duplicate scoping and DOS date handling.
 
-Duplicate detection runs after the model, among Main pages only: ±10 neighbor
+Duplicate detection runs after the model, among Main pages only: ±25 neighbor
 similarity (≥98%) or one page's text wholly contained in the other's.
 Blank / junk / short pages are excluded from comparison; on a match the higher
 character-count page stays the original (earlier page on a tie).
@@ -73,25 +73,25 @@ class TestDuplicateScope:
         assert by_id[1]["flag"] == "duplicate"
         assert by_id[1]["duplicate_of"] == 2
 
-    def test_pages_more_than_ten_apart_are_not_compared(self):
-        pages = [page(i, i) for i in range(1, 13)]
+    def test_pages_more_than_twenty_five_apart_are_not_compared(self):
+        pages = [page(i, i) for i in range(1, 28)]
         body = _body()
-        # page 1 and page 12 are identical but 11 steps apart (> ±10)
-        texts = {i: f"Unrelated progress note number {i} with its own findings. " * 6 for i in range(2, 12)}
-        texts[1] = texts[12] = body
-        rows = _classify(pages, texts, set(range(1, 13)))
+        # page 1 and page 27 are identical but 26 steps apart (> ±25)
+        texts = {i: f"Unrelated progress note number {i} with its own findings. " * 6 for i in range(2, 27)}
+        texts[1] = texts[27] = body
+        rows = _classify(pages, texts, set(range(1, 28)))
         flags = {r["page_id"]: r["flag"] for r in rows}
         assert flags[1] == "not_blank_junk"
-        assert flags[12] == "not_blank_junk"
+        assert flags[27] == "not_blank_junk"
 
-    def test_pages_ten_apart_are_compared(self):
-        pages = [page(i, i) for i in range(1, 12)]
+    def test_pages_twenty_five_apart_are_compared(self):
+        pages = [page(i, i) for i in range(1, 27)]
         body = _body()
-        texts = {i: f"Unrelated progress note number {i} with its own findings. " * 6 for i in range(2, 11)}
-        texts[1] = texts[11] = body
-        rows = _classify(pages, texts, set(range(1, 12)))
+        texts = {i: f"Unrelated progress note number {i} with its own findings. " * 6 for i in range(2, 26)}
+        texts[1] = texts[26] = body
+        rows = _classify(pages, texts, set(range(1, 27)))
         flags = {r["page_id"]: r["flag"] for r in rows}
-        assert "duplicate" in (flags[1], flags[11])
+        assert "duplicate" in (flags[1], flags[26])
 
     def test_pages_five_apart_are_compared(self):
         pages = [page(i, i) for i in range(1, 7)]

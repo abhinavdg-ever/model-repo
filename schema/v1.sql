@@ -440,6 +440,33 @@ CREATE TRIGGER trg_page_ground_truth_entry_updated_at
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 
+-- A reviewer's encounters for a chart, edited on review-ui's Encounter tab: page
+-- ranges with their page type, encounter type and DOS. Not ground truth and not
+-- pipeline output; a save replaces the chart's rows. Keyed by chart name like
+-- page_ground_truth, so it outlives a chart's results being cleared.
+CREATE TABLE encounter_review (
+    id                      BIGSERIAL PRIMARY KEY,
+    chart_name              VARCHAR(150) NOT NULL,
+    seq                     INT NOT NULL,
+    start_page              INT NOT NULL CHECK (start_page >= 1),
+    end_page                INT NOT NULL,
+    page_type               TEXT,
+    encounter_type          TEXT,
+    dos_from                TEXT,
+    dos_to                  TEXT,
+    user_id                 BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_encounter_review_chart_name_seq UNIQUE (chart_name, seq),
+    CHECK (end_page >= start_page)
+);
+CREATE INDEX idx_encounter_review_chart_name ON encounter_review(chart_name);
+
+CREATE TRIGGER trg_encounter_review_updated_at
+    BEFORE UPDATE ON encounter_review
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
 -- ---------------------------------------------------------------------
 -- PAGE-LEVEL RESULT TABLES
 -- ---------------------------------------------------------------------

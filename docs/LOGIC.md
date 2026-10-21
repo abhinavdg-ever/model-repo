@@ -161,6 +161,23 @@ numeric `quality_score` is unchanged — only the discrete label moves. That
 keeps Final2's `high_quality_printed` skip honest (handwritten pages never
 qualified anyway) while the UI does not show a handwritten page as “high”.
 
+**Re-grade by OCR overlap (between Final OCR 1 and Final OCR 2).** Before
+Final OCR 2 decides which pages skip Azure, `regrade_by_ocr_overlap()`
+(`stages/lib/ocr/stage_final2.py`) compares each page's Docling text with its
+Tesseract text: word overlap (Dice on lowercase word counts).
+
+| Overlap | `quality_tag` |
+|---|---|
+| ≥ 50% | unchanged |
+| < 50% | one level down (high → medium, medium → low) |
+| < 10% | low |
+
+So a High printed page whose two OCRs disagree goes to Azure. A page moved to
+Low gets `review_required` (unless blank). Pages without Docling text are not
+touched. The overlap and the tag before/after are in
+`quality_detail.ocr_overlap`; a re-run starts from the stored "before" tag, so
+it never downgrades twice. `quality_score` is unchanged.
+
 Submetrics and warnings live in `quality_detail` JSONB. Handwriting is separate
 (`printed_or_handwritten` / `hw_method` / `hw_confidence`) — ConvNeXt when the
 `.pth` is present, otherwise the RF pickle. In v7 `quality_tag` wrongly held the
@@ -277,7 +294,7 @@ Duplicates are checked **after** the model's verdict, and only between pages the
 model kept as Main — a blank or junk page is never compared. A Main page is a
 duplicate when its normalized OCR text is **≥ 98% similar**
 (`difflib.SequenceMatcher`, run only when the two lengths are within 10% of each
-other) to a Main neighbor **within ±10 pages** in chart order, or when its text is
+other) to a Main neighbor **within ±25 pages** in chart order, or when its text is
 **wholly contained** in that neighbor's.
 
 | Rule | Behaviour |

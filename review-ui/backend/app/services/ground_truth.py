@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from app.core.schemas import ImagingPageResult, PageGroundTruth
+from app.core.schemas import ImagingPageResult, PageGroundTruth, PageSequenceLabel
 from app.services.chart_run_batch import database_url_usable
 from app.services.db import connection
 
@@ -364,6 +364,55 @@ def upsert_page_ground_truth(
     if row is None:
         raise RuntimeError("ground truth upsert returned no row")
     return _ground_truth_from_row(row)
+
+
+_UPSERT_SEQUENCE = """
+WITH g AS (
+INSERT INTO page_ground_truth (chart_name, page_number, source_page_id, page_sequence, user_id)
+VALUES (%s, %s, %s, %s, %s)
+ON CONFLICT (chart_name, page_number) DO UPDATE SET
+    source_page_id = COALESCE(EXCLUDED.source_page_id, page_ground_truth.source_page_id),
+    page_sequence = EXCLUDED.page_sequence,
+    user_id = EXCLUDED.user_id,
+    updated_at = now()
+RETURNING id
+)
+INSERT INTO page_ground_truth_entry (page_ground_truth_id, entry_mode, labels, user_id)
+SELECT id, 'manual_entry', %s::jsonb, %s FROM g
+"""
+
+
+def save_page_sequences(
+    database_url: str,
+    folder_id: str,
+    pages: list[PageSequenceLabel],
+    db_schema: str = "public",
+    *,
+    user_id: int | None = None,
+) -> dict[int, PageGroundTruth]:
+    """Set the ground-truth actual sequence of each page in ``pages``; other labels on
+    those pages are left as they are. Each page's change is a manual_entry.
+    Returns every ground-truth page of the chart, by page number."""
+    chart = _chart_name(folder_id)
+    for page in pages:
+        if page.pageNumber < 1:
+            raise ValueError("invalid page number")
+        value = clean_label(page.pageSequence)
+        if value is not None and not (value.isdigit() and int(value) > 0):
+            raise ValueError(f"page {page.pageNumber}: sequence must be a whole number from 1")
+    with connection(database_url, db_schema) as conn:
+        ensure_entries(conn, database_url, db_schema)
+        with conn.cursor() as cur:
+            for page in pages:
+                value = clean_label(page.pageSequence)
+                cur.execute(
+                    _UPSERT_SEQUENCE,
+                    (
+                        chart, page.pageNumber, clean_label(page.sourcePageId), value, user_id,
+                        json.dumps({"page_sequence": value}), user_id,
+                    ),
+                )
+    return ground_truth_by_page(database_url, chart, db_schema)
 
 
 def _ground_truth_from_labels(

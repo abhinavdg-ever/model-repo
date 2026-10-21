@@ -160,6 +160,40 @@ class PageGroundTruth(BaseModel):
     providerCredentials: str | None = None
 
 
+class PageSequenceLabel(BaseModel):
+    """One page's ground-truth actual sequence (page_ground_truth.page_sequence)."""
+
+    pageNumber: int
+    sourcePageId: str | None = None
+    pageSequence: str | None = None
+
+
+class PageSequenceSave(BaseModel):
+    pages: list[PageSequenceLabel]
+
+
+class EncounterReviewRow(BaseModel):
+    """One reviewed encounter: a page range and its values (encounter_review)."""
+
+    seq: int = 0
+    startPage: int
+    endPage: int
+    pageType: str | None = None
+    encounterType: str | None = None
+    dosFrom: str | None = None
+    dosTo: str | None = None
+
+
+class EncounterReview(BaseModel):
+    rows: list[EncounterReviewRow] = []
+    savedAt: str | None = None
+    savedBy: str | None = None
+
+
+class EncounterReviewSave(BaseModel):
+    rows: list[EncounterReviewRow]
+
+
 class ImagingPageResult(BaseModel):
     """Per-page imaging fields from pipeline CSVs / Postgres (no fabricated dummy values)."""
 

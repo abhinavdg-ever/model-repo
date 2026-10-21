@@ -827,6 +827,29 @@ def get_quality_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
     return {r["page_id"]: r for r in rows}
 
 
+@_dispatch
+def set_quality_tag(
+    conn: Any,
+    *,
+    page_id: int,
+    quality_tag: Optional[str],
+    quality_detail: dict[str, Any],
+    review_required: Optional[bool],
+) -> None:
+    """Re-grade one page after stage 1 (the Docling / Tesseract overlap check)."""
+    import json
+
+    conn.execute(
+        """
+        UPDATE ocr_quality_results
+           SET quality_tag = %s, quality_detail = %s::jsonb, review_required = %s,
+               updated_at = now()
+         WHERE page_id = %s
+        """,
+        (quality_tag, json.dumps(quality_detail, default=str), review_required, page_id),
+    )
+
+
 # Page decisions read document_type. Printed and visual pages are read as
 # printed text; every other type (handwritten, form, blank, uncertain) skips
 # the Tesseract blank/junk pass and is judged on final OCR.

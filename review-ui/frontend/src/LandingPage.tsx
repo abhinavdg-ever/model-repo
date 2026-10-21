@@ -543,11 +543,13 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   }
 
   function closeDownloadDialog() {
+    // While charts are being fetched, Cancel stops after the current chart and
+    // downloads the charts already finished (startDownloadResults closes the dialog).
     if (downloadBusy) {
       downloadCancelRef.current = true;
+      return;
     }
     setDownloadOpen(false);
-    setDownloadBusy(false);
     setDownloadError(null);
   }
 
@@ -584,14 +586,17 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
         processed += 1;
         setDownloadDone(processed);
       }
-      if (!downloadCancelRef.current) {
+      const cancelled = downloadCancelRef.current;
+      // Cancelled: the charts finished so far, if any.
+      if (!cancelled || processed > 0) {
+        const name = withTruth ? "imaging_export_with_ground_truth" : "imaging_export";
         downloadTextFile(
-          withTruth ? "imaging_export_with_ground_truth.csv" : "imaging_export.csv",
+          cancelled ? `${name}_partial_${processed}_of_${all.items.length}.csv` : `${name}.csv`,
           `${lines.join("\n")}\n`,
           "text/csv;charset=utf-8",
         );
-        setDownloadOpen(false);
       }
+      setDownloadOpen(false);
     } catch (err) {
       setDownloadError(err instanceof Error ? err.message : "Download failed");
     } finally {
@@ -1081,7 +1086,8 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
             <p className="blob-auth-copy">
               This will take a few minutes. Results are built chart by chart for
               the {total} chart{total === 1 ? "" : "s"} in
-              the current filter.
+              the current filter. Cancel while it runs to download the charts
+              finished so far.
             </p>
             <div className="download-results-choice" role="radiogroup" aria-label="What to download">
               {(
@@ -1150,9 +1156,15 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                 type="button"
                 className="landing-file-viewer-btn"
                 onClick={closeDownloadDialog}
-                disabled={downloadBusy}
+                title={
+                  downloadBusy
+                    ? "Stop and download the charts finished so far"
+                    : undefined
+                }
               >
-                Cancel
+                {downloadBusy
+                  ? `Cancel (download ${downloadDone} finished)`
+                  : "Cancel"}
               </button>
               <button
                 type="button"

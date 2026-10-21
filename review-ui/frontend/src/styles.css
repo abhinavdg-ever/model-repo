@@ -2811,7 +2811,7 @@ input {
 
 .imaging-sequencing-table th,
 .imaging-sequencing-table td {
-  width: 25%;
+  width: 20%;
   padding: 0.35rem 0.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2894,10 +2894,32 @@ input {
   box-shadow: 1px 0 0 var(--border), 4px 0 6px -4px rgba(0, 0, 0, 0.12);
 }
 
+/* Header row stays on top while the panel scrolls down. -0.9rem = .ocr-panel's
+   top padding. Collapsed borders do not travel with sticky cells: the inset
+   shadow draws the bottom line. */
+.imaging-summary-table.imaging-doc-table thead th {
+  position: sticky;
+  top: -0.9rem;
+  z-index: 2;
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+
 .imaging-summary-table.imaging-doc-table thead th:nth-child(1),
 .imaging-summary-table.imaging-doc-table thead th:nth-child(2) {
   background: var(--neutral-50);
-  z-index: 2;
+  z-index: 3;
+}
+
+.imaging-summary-table.imaging-doc-table thead th:nth-child(2) {
+  box-shadow: inset 0 -1px 0 var(--border), 1px 0 0 var(--border), 4px 0 6px -4px rgba(0, 0, 0, 0.12);
+}
+
+.imaging-conf-line {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.68rem;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 .imaging-summary-table.imaging-doc-table tbody tr:nth-child(even) td:nth-child(1),
@@ -5436,3 +5458,103 @@ input {
   background: var(--brand-600);
   color: #ffffff;
 }
+
+/* Encounter tab: the reviewer's encounters under the pipeline's; Sequencing's
+   ground-truth editor uses the same head row and inputs. */
+.review-table-pager {
+  justify-content: flex-end;
+}
+
+.review-table-pager button {
+  width: 1.7rem;
+  height: 1.7rem;
+}
+
+.encounter-review {
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.encounter-review-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.encounter-review-note {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.encounter-review-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+.encounter-review > .encounter-review-bar {
+  margin-left: 0;
+}
+
+.encounter-review-bar-gap {
+  flex: 1;
+}
+
+.encounter-review-input {
+  width: 100%;
+  min-width: 6rem;
+  box-sizing: border-box;
+  padding: 0.12rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+}
+
+.encounter-review-input.encounter-review-page {
+  width: 4.2rem;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.encounter-review-table td {
+  white-space: nowrap;
+}
+
+.encounter-review-actions {
+  width: 1%;
+}
+
+.encounter-review-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-right: 0.15rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--card);
+  color: var(--neutral-700);
+  cursor: pointer;
+}
+
+.encounter-review-actions button:hover {
+  background: var(--neutral-100);
+}
+
+.encounter-review-empty {
+  color: var(--muted);
+  text-align: center;
+}
+
+.encounter-review-problem {
+  color: #b42318;
+  font-size: 0.76rem;
+}
+

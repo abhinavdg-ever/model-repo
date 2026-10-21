@@ -19,7 +19,7 @@ key/value extraction's ``extraction.json`` (not the database).
 
 Duplicate detection (after the verdict, among Main pages only):
 
-* Compare each comparable page only to neighbors **±10** in page order.
+* Compare each comparable page only to neighbors **±25** in page order.
 * Match when normalized-text similarity is **≥ 98%** (SequenceMatcher, run only
   when the two lengths are within 10% of each other), or when one page's text
   is wholly contained in the other's.

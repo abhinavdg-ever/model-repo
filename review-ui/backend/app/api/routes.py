@@ -31,6 +31,9 @@ from app.core.schemas import (
     ImagingManifestDetails,
     OcrTextResponse,
     PageGroundTruth,
+    PageSequenceSave,
+    EncounterReview,
+    EncounterReviewSave,
 )
 from app.services.blob_store import download_blob_bytes
 from app.services.folder_list import FolderListParams, build_folder_list
@@ -48,8 +51,10 @@ from app.services.ground_truth import (
     bulk_ground_truth,
     ground_truth_charts,
     ground_truth_labels,
+    save_page_sequences,
     upsert_page_ground_truth,
 )
+from app.services.encounter_review import load_encounter_review, save_encounter_review
 from app.services.page_images import (
     bytes_to_display_jpeg,
     cached_derived_jpeg,
@@ -701,6 +706,69 @@ def delete_folder(
     clear_report_cache()  # the accuracy report lists charts
     logger.info("chart %s deleted by %s", folder_id, user.username)
     return result
+
+
+@router.put("/folders/{folder_id}/ground-truth/sequence", response_model=list[PageGroundTruth])
+def save_folder_page_sequences(
+    folder_id: str,
+    body: PageSequenceSave,
+    settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
+) -> list[PageGroundTruth]:
+    """Set the ground-truth actual sequence of the given pages (Sequencing tab).
+    Returns the chart's ground-truth pages."""
+    if not database_url_usable(settings.database_url):
+        raise HTTPException(status_code=503, detail="Database is not configured")
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in again to save ground truth")
+    try:
+        saved = save_page_sequences(
+            settings.database_url, folder_id, body.pages, settings.db_schema, user_id=user.id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("page sequence save failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not save the page sequence") from exc
+    clear_report_cache()  # the accuracy report reads ground truth
+    return sorted(saved.values(), key=lambda page: page.pageNumber)
+
+
+@router.get("/folders/{folder_id}/encounter-review", response_model=EncounterReview)
+def get_folder_encounter_review(
+    folder_id: str, settings: Settings = Depends(get_settings)
+) -> EncounterReview:
+    """The reviewer's encounters for the chart; empty rows when none were saved."""
+    try:
+        return load_encounter_review(settings.database_url, folder_id, settings.db_schema)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("encounter review read failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not read the encounter review") from exc
+
+
+@router.put("/folders/{folder_id}/encounter-review", response_model=EncounterReview)
+def save_folder_encounter_review(
+    folder_id: str,
+    body: EncounterReviewSave,
+    settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
+) -> EncounterReview:
+    """Replace the reviewer's encounters for the chart (Encounter tab). Not ground truth."""
+    if not database_url_usable(settings.database_url):
+        raise HTTPException(status_code=503, detail="Database is not configured")
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in again to save encounters")
+    try:
+        return save_encounter_review(
+            settings.database_url, folder_id, body.rows, settings.db_schema, user_id=user.id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("encounter review save failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not save the encounters") from exc
 
 
 @router.post("/folders/{folder_id}/ground-truth", response_model=PageGroundTruth)

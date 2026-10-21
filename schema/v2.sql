@@ -67,6 +67,9 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * encounter_review (v1.sql, 2026-10-21): a reviewer's encounters (page ranges with
+--    page type, encounter type, DOS) from review-ui's Encounter tab; not ground truth
+--    (changes_2026-10-21.sql).
 --  * encounter_type_results (v1.sql, 2026-10-20): encounter_type allows 'not_applicable'
 --    (encounters that are not Progress Note / Discharge Summary; section 10).
 --  * page_continuity_results.confidence (v1.sql, 2026-10-20): the 0-1 confidence of each

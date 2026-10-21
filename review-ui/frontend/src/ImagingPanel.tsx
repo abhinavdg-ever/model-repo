@@ -11,6 +11,7 @@ import {
   type OcrSectionHeader,
   type PageGroundTruth,
   type StagedEncounter,
+  savePageSequences,
 } from "./api";
 import { credentialsVerdict, noValue } from "./accuracy";
 import {
@@ -30,6 +31,12 @@ import {
   type GtBit,
 } from "./groundTruth";
 import { PAGE_SUBTYPE_CHOICES, PAGE_TYPE_CHOICES } from "./reviewChoices";
+import {
+  EncounterReviewEditor,
+  TablePager,
+  pageSlice,
+  type EncounterSeed,
+} from "./ReviewTables";
 import { properName } from "./properName";
 
 const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
@@ -93,7 +100,7 @@ export function fillDocDosForDownload(pages: ImagingPageResult[]): ImagingPageRe
 }
 
 type ImagingTab = "page" | "sequencing" | "encounter" | "doc" | "additional";
-type DocView = "values" | "confidence" | "rejection";
+type DocView = "values" | "rejection";
 
 type Props = {
   tab: ImagingTab;
@@ -1178,6 +1185,12 @@ function GtMarks({ bits }: { bits: GtBit[] }) {
   );
 }
 
+/** A score under its value in Doc Summary; nothing when there is none. */
+function ConfLine({ value }: { value: string }) {
+  if (value === "NA") return null;
+  return <span className="imaging-conf-line">Conf: {value}</span>;
+}
+
 function GtCell({ text, bits }: { text: string; bits: GtBit[] }) {
   return (
     <span className="gt-cell">
@@ -1797,6 +1810,7 @@ function DocumentsTable({
   encounters: StagedEncounter[];
 }) {
   const rows = useMemo(() => documentRows(pages, encounters), [pages, encounters]);
+  const [tablePage, setTablePage] = useState(0);
   if (rows.length === 0) {
     return (
       <div className="ocr-empty">
@@ -1808,7 +1822,9 @@ function DocumentsTable({
   }
   const typeKnown = Boolean(sections.junk || sections.codeable);
   const encounterKnown = Boolean(sections.encounter) || rows.some((row) => row.encounterType);
+  const slice = pageSlice(rows, tablePage);
   return (
+    <>
     <table className="imaging-summary-table imaging-documents-table">
       <thead>
         <tr>
@@ -1821,7 +1837,7 @@ function DocumentsTable({
         </tr>
       </thead>
       <tbody>
-        {rows.map((row) => (
+        {slice.rows.map((row) => (
           <tr key={row.seq}>
             <td>{row.junk ? `Junk ${row.seq}` : row.seq}</td>
             <td>{row.startPage}</td>
@@ -1836,7 +1852,27 @@ function DocumentsTable({
         ))}
       </tbody>
     </table>
+    <TablePager
+      page={slice.page}
+      pages={slice.pages}
+      total={rows.length}
+      onPage={setTablePage}
+      label="Encounters"
+    />
+    </>
   );
+}
+
+/** The pipeline's encounters as the reviewer's starting rows. */
+function encounterSeed(pages: ImagingPageResult[], encounters: StagedEncounter[]): EncounterSeed[] {
+  return documentRows(pages, encounters).map((row) => ({
+    startPage: row.startPage,
+    endPage: row.endPage,
+    pageType: row.junk ? "Junk" : row.pageType,
+    encounterType: row.junk ? null : row.encounterType,
+    dosFrom: row.junk ? null : row.dosFrom,
+    dosTo: row.junk ? null : (row.dosTo ?? row.dosFrom),
+  }));
 }
 
 function DocSummary({
@@ -1851,7 +1887,6 @@ function DocSummary({
   const [view, setView] = useState<DocView>("values");
   // Each page's own DOS, else the default 2222-02-02; never the previous page's.
   const rows = useMemo(() => withPageDos(pages, sections.dos), [pages, sections.dos]);
-  const showConfidence = view === "confidence";
 
   return (
     <div className="imaging-doc-summary">
@@ -1864,15 +1899,6 @@ function DocSummary({
           onClick={() => setView("values")}
         >
           Values
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "confidence"}
-          className={view === "confidence" ? "active" : ""}
-          onClick={() => setView("confidence")}
-        >
-          With Confidence
         </button>
         <button
           type="button"
@@ -1915,14 +1941,6 @@ function DocSummary({
               <th scope="col">Codable / Non-Codable</th>
               <th scope="col">Current Sequence</th>
               <th scope="col">Actual Sequence</th>
-              {showConfidence ? (
-                <>
-                  <th scope="col">Member Conf.</th>
-                  <th scope="col">Quality Conf.</th>
-                  <th scope="col">DOS Conf.</th>
-                  <th scope="col">Type Conf.</th>
-                </>
-              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -1937,6 +1955,7 @@ function DocSummary({
                 <td className="imaging-mono">{p.fileName}</td>
                 <td>
                   <GtCell text={fmt(p.memberName && properName(p.memberName), sections.member, skip)} bits={bits.memberName} />
+                  <ConfLine value={fmtConfidence(p.memberConfidence, sections.member, skip)} />
                 </td>
                 <td>
                   <GtCell text={displayIsoDates(fmt(p.memberDob, sections.member, skip))} bits={bits.memberDob} />
@@ -1950,6 +1969,7 @@ function DocSummary({
                     p.pageQualityTag,
                     sections.quality ?? sections.hw,
                   )}
+                  <ConfLine value={fmtConfidence(p.pageQualityConfidence, sections.hw || sections.rotation)} />
                 </td>
                 <td>
                   <GtCell
@@ -1961,6 +1981,7 @@ function DocSummary({
                 <td>{fmt(p.mirrored, sections.rotation)}</td>
                 <td>
                   <GtCell text={displayIsoDates(fmt(p.dosFrom, sections.dos, skip))} bits={bits.dosFrom} />
+                  <ConfLine value={fmtConfidence(p.dosConfidence, sections.dos, skip)} />
                 </td>
                 <td>
                   <GtCell text={displayIsoDates(fmt(p.dosTo, sections.dos, skip))} bits={bits.dosTo} />
@@ -1980,6 +2001,14 @@ function DocSummary({
                   <GtCell
                     text={fmtPageType(pageParts.family, typeKnown)}
                     bits={bits.pageType}
+                  />
+                  <ConfLine
+                    value={fmtConfidence(
+                      p.isDuplicate
+                        ? duplicateDisplayConfidence(p.isDuplicate, p.pageTypeConfidence)
+                        : p.pageTypeConfidence,
+                      sections.junk,
+                    )}
                   />
                 </td>
                 <td>
@@ -2006,29 +2035,6 @@ function DocSummary({
                     bits={bits.pageSequence}
                   />
                 </td>
-                {showConfidence ? (
-                  <>
-                    <td>{fmtConfidence(p.memberConfidence, sections.member, skip)}</td>
-                    <td>
-                      {fmtConfidence(
-                        p.pageQualityConfidence,
-                        sections.hw || sections.rotation,
-                      )}
-                    </td>
-                    <td>{fmtConfidence(p.dosConfidence, sections.dos, skip)}</td>
-                    <td>
-                      {fmtConfidence(
-                        p.isDuplicate
-                          ? duplicateDisplayConfidence(
-                              p.isDuplicate,
-                              p.pageTypeConfidence,
-                            )
-                          : p.pageTypeConfidence,
-                        sections.junk,
-                      )}
-                    </td>
-                  </>
-                ) : null}
               </tr>
               );
             })}
@@ -2131,19 +2137,33 @@ export default function ImagingPanel({
       <div className="imaging-panel-stack">
         <ManifestDetails manifest={manifest} />
         <SequencingTable
+          folderId={document.folder_id}
           pages={seqRows}
-          sequencingProcessed={Boolean(sections.sequencing)}
+          sections={sections}
+          onSaved={(page, groundTruth) =>
+            onGroundTruthSaved?.(page.pageNumber, page.fileName, groundTruth)
+          }
         />
       </div>
     );
   }
 
   if (tab === "encounter") {
-    // One row per encounter (continuity document); staged encounters first.
+    // One row per encounter (continuity document); staged encounters first. The
+    // reviewer's encounters below, starting from a copy of these.
+    const encounters = document.encounters ?? [];
     return (
       <div className="imaging-panel-stack">
         <ManifestDetails manifest={manifest} />
-        <DocumentsTable pages={document.pages} sections={sections} encounters={document.encounters ?? []} />
+        <div className="section-coords-panel">
+          <div className="section-coords-title">Encounters</div>
+          <DocumentsTable pages={document.pages} sections={sections} encounters={encounters} />
+        </div>
+        <EncounterReviewEditor
+          folderId={document.folder_id}
+          seed={encounterSeed(document.pages, encounters)}
+          pageCount={Math.max(0, ...document.pages.map((page) => page.pageNumber))}
+        />
       </div>
     );
   }
@@ -2193,22 +2213,122 @@ export default function ImagingPanel({
 
 const SECTION_SKIP_MESSAGE = "Skipped for Junk/Blank";
 
+/** Page sequencing with its ground truth (page_ground_truth.page_sequence). Edit turns
+ * the ground-truth column into inputs; Save writes the pages that changed. */
 function SequencingTable({
+  folderId,
   pages,
-  sequencingProcessed,
+  sections,
+  onSaved,
 }: {
+  folderId: string;
   pages: ImagingPageResult[];
-  sequencingProcessed: boolean;
+  sections: ImagingSectionsProcessed;
+  onSaved: (page: ImagingPageResult, groundTruth: PageGroundTruth) => void;
 }) {
+  const sequencingProcessed = Boolean(sections.sequencing);
+  const stored = (p: ImagingPageResult) => (p.groundTruth?.pageSequence ?? "").trim();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Record<number, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const startEdit = () => {
+    setDraft(Object.fromEntries(pages.map((p) => [p.pageNumber, stored(p)])));
+    setError(null);
+    setEditing(true);
+  };
+  const changed = editing
+    ? pages.filter((p) => (draft[p.pageNumber] ?? "").trim() !== stored(p))
+    : [];
+  const invalid = changed.find((p) => {
+    const value = (draft[p.pageNumber] ?? "").trim();
+    return value !== "" && !/^[1-9]\d*$/.test(value);
+  });
+  const fill = (from: "actual" | "current") => {
+    setDraft(
+      Object.fromEntries(
+        pages.map((p) => {
+          const value = from === "actual" ? p.actualSequence : (p.currentSequence ?? p.pageNumber);
+          return [p.pageNumber, value == null ? (draft[p.pageNumber] ?? "") : String(value)];
+        }),
+      ),
+    );
+  };
+
+  async function save() {
+    if (invalid || changed.length === 0) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await savePageSequences(
+        folderId,
+        changed.map((p) => ({
+          pageNumber: p.pageNumber,
+          sourcePageId: p.fileName,
+          pageSequence: (draft[p.pageNumber] ?? "").trim() || null,
+        })),
+      );
+      const byNumber = new Map(saved.map((gt) => [gt.pageNumber, gt]));
+      for (const page of changed) {
+        const gt = byNumber.get(page.pageNumber);
+        if (gt) onSaved(page, gt);
+      }
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save the page sequence");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="section-coords-panel">
-      <div className="section-coords-title">Page Sequencing</div>
+      <div className="encounter-review-head">
+        <div className="section-coords-title">Page Sequencing</div>
+        <span className="encounter-review-bar">
+          {editing ? (
+            <>
+              <button type="button" className="imaging-gt-discard" onClick={() => fill("actual")} disabled={saving}>
+                Copy Actual
+              </button>
+              <button type="button" className="imaging-gt-discard" onClick={() => fill("current")} disabled={saving}>
+                Copy Current
+              </button>
+              <button type="button" className="imaging-gt-discard" onClick={() => setEditing(false)} disabled={saving}>
+                <CircleMinus size={15} aria-hidden="true" />
+                Discard
+              </button>
+              <button
+                type="button"
+                className="imaging-gt-save"
+                onClick={() => void save()}
+                disabled={saving || changed.length === 0 || Boolean(invalid)}
+              >
+                <Save size={15} aria-hidden="true" />
+                {saving ? "Saving…" : `Save${changed.length ? ` (${changed.length})` : ""}`}
+              </button>
+            </>
+          ) : (
+            <button type="button" className="imaging-gt-discard" onClick={startEdit}>
+              <Pencil size={14} aria-hidden="true" />
+              Edit Ground Truth
+            </button>
+          )}
+        </span>
+      </div>
       {!sequencingProcessed ? (
         <p className="section-coords-empty">
           Sequencing has not run for this chart yet — Actual Sequence stays Yet
           to Process until the page_sequencing stage writes results.
         </p>
       ) : null}
+      {invalid ? (
+        <div className="encounter-review-problem">
+          Page {invalid.pageNumber}: a sequence is a whole number from 1.
+        </div>
+      ) : null}
+      {error ? <div className="error-banner">{error}</div> : null}
       <table className="imaging-summary-table imaging-sequencing-table">
         <thead>
           <tr>
@@ -2216,6 +2336,7 @@ function SequencingTable({
             <th scope="col">File</th>
             <th scope="col">Current Sequence</th>
             <th scope="col">Actual Sequence</th>
+            <th scope="col">Ground Truth</th>
           </tr>
         </thead>
         <tbody>
@@ -2226,7 +2347,28 @@ function SequencingTable({
               <td>{p.pageNumber}</td>
               <td className="imaging-mono">{p.fileName}</td>
               <td>{fmt(p.currentSequence ?? p.pageNumber, true)}</td>
-              <td>{fmt(p.actualSequence, sequencingProcessed, skip)}</td>
+              <td>
+                <GtCell
+                  text={fmt(p.actualSequence, sequencingProcessed, skip)}
+                  bits={pageBits(p, sections).pageSequence}
+                />
+              </td>
+              <td>
+                {editing ? (
+                  <input
+                    className="encounter-review-input encounter-review-page"
+                    type="number"
+                    min={1}
+                    value={draft[p.pageNumber] ?? ""}
+                    aria-label={`Ground-truth sequence of page ${p.pageNumber}`}
+                    onChange={(e) =>
+                      setDraft((values) => ({ ...values, [p.pageNumber]: e.target.value }))
+                    }
+                  />
+                ) : (
+                  stored(p) || NOT_FOUND
+                )}
+              </td>
             </tr>
             );
           })}

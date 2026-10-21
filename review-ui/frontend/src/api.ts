@@ -477,6 +477,50 @@ export function savePageGroundTruth(
   });
 }
 
+/** Set the ground-truth actual sequence of the given pages; returns the chart's
+ * ground-truth pages. */
+export function savePageSequences(
+  folderId: string,
+  pages: { pageNumber: number; sourcePageId?: string | null; pageSequence: string | null }[],
+): Promise<PageGroundTruth[]> {
+  return api(`/api/folders/${encodeURIComponent(folderId)}/ground-truth/sequence`, {
+    method: "PUT",
+    body: JSON.stringify({ pages }),
+  });
+}
+
+/** A reviewer's encounter: a page range and its values. Not ground truth. */
+export type EncounterReviewRow = {
+  seq: number;
+  startPage: number;
+  endPage: number;
+  pageType: string | null;
+  encounterType: string | null;
+  dosFrom: string | null;
+  dosTo: string | null;
+};
+
+export type EncounterReview = {
+  rows: EncounterReviewRow[];
+  savedAt: string | null;
+  savedBy: string | null;
+};
+
+export function getEncounterReview(folderId: string): Promise<EncounterReview> {
+  return api(`/api/folders/${encodeURIComponent(folderId)}/encounter-review`);
+}
+
+/** Replace the chart's reviewed encounters. */
+export function saveEncounterReview(
+  folderId: string,
+  rows: EncounterReviewRow[],
+): Promise<EncounterReview> {
+  return api(`/api/folders/${encodeURIComponent(folderId)}/encounter-review`, {
+    method: "PUT",
+    body: JSON.stringify({ rows }),
+  });
+}
+
 export function getFolderExtraction(
   folderId: string,
   pageFile: string,
