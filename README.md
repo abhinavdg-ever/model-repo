@@ -202,6 +202,7 @@ Azure OpenAI and NER paths and skip themselves when those are not configured.
 | [`docs/DOS_LOGIC.md`](docs/DOS_LOGIC.md) | Date of service: the date hierarchy, every rule and setting |
 | [`docs/BLANK_JUNK_LOGIC.md`](docs/BLANK_JUNK_LOGIC.md) | Blank / junk: rules R1–R9, the vote, the short page, every setting |
 | [`docs/CONTINUITY_LOGIC.md`](docs/CONTINUITY_LOGIC.md) | Which pages form a document, and the Final values they share |
+| [`docs/SEQUENCING_LOGIC.md`](docs/SEQUENCING_LOGIC.md) | Page sequencing: markers, streams, covers; review-ui's J series, breaks and accuracy |
 | [`docs/PROVIDER_LOGIC.md`](docs/PROVIDER_LOGIC.md) | Provider name, credentials and signature, and what uses them |
 | [`docs/PAGE_CLASSIFICATION.md`](docs/PAGE_CLASSIFICATION.md) | Page type / sub-type: the page axes model, canon and Final rules |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System shape, data model, the role of every file |
