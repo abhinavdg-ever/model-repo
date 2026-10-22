@@ -3,11 +3,13 @@ import pandas as pd
 from .normalizer import (
     clean_text,
     clean_date,
+    clean_identifier,
     credentials_match,
     display_date,
     has_value,
     normalize_yes_no,
     normalize_codable,
+    normalize_name,
     normalize_print_type,
 )
 
@@ -96,6 +98,19 @@ PRINT_TYPE_FIELDS = {
     "Type (Printed/HW)",
 }
 
+# The same words in any order are the same name.
+NAME_FIELDS = {
+    "Extracted Name",
+}
+
+# Read as text, but a float-read "204568.0" is the ID 204568 -- in the
+# comparison and in what is shown.
+IDENTIFIER_FIELDS = {
+    "Member ID",
+    "Current Sequence",
+    "Actual Sequence",
+}
+
 
 UNVALIDATED_REASON = (
     "No comparison fields were available for this record. PDF ID + "
@@ -110,6 +125,9 @@ def _raw_value(row, field_name):
 
     if pd.isna(value):
         return ""
+
+    if field_name in IDENTIFIER_FIELDS:
+        return clean_identifier(value)
 
     return str(value).strip()
 
@@ -132,6 +150,9 @@ def normalize_field_value(field_name, value):
 
     if field_name in PRINT_TYPE_FIELDS:
         return normalize_print_type(value)
+
+    if field_name in NAME_FIELDS:
+        return normalize_name(value)
 
     return clean_text(value)
 
@@ -184,10 +205,11 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
             system_raw = display_date(system_raw)
 
         # Both sides are shown when they read differently but still count as a
-        # match: credentials ("MD" / "MD, PhD"), a Yes / No presence label, or
-        # an unlabelled field next to an algo value.
+        # match: credentials ("MD" / "MD, PhD"), a name in another order, a
+        # Yes / No presence label, or an unlabelled field next to an algo value.
         differs = (
             field_name in CREDENTIAL_FIELDS
+            or field_name in NAME_FIELDS
             or presence in ("yes", "no")
             or not gt_raw
         ) and clean_text(gt_raw) != clean_text(system_raw)

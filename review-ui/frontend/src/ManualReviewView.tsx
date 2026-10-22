@@ -333,6 +333,18 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
   }, [groundSource, systemSource]);
   const [comparing, setComparing] = useState(false);
   const [downloading, setDownloading] = useState<"xlsx" | "pdf" | null>(null);
+  // Seconds since the download began, so a long build visibly progresses.
+  const [downloadSeconds, setDownloadSeconds] = useState(0);
+  useEffect(() => {
+    if (!downloading) return;
+    setDownloadSeconds(0);
+    const started = Date.now();
+    const timer = window.setInterval(
+      () => setDownloadSeconds(Math.floor((Date.now() - started) / 1000)),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [downloading]);
   const [error, setError] = useState<string | null>(null);
   // Status filter, search and page survive opening a chart and coming Back.
   const [view, setView] = useViewState<{ filter: Filter; page: number; query: string }>(
@@ -463,16 +475,19 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     setDownloading(kind);
     setError(null);
     try {
+      // The comparison on screen, so the file matches it and nothing is compared again.
+      const reportId = result?.reportId;
       const blob =
         kind === "pdf"
-          ? await downloadManualReviewSummary(input())
-          : await downloadManualReviewReport(input());
+          ? await downloadManualReviewSummary(input(), reportId)
+          : await downloadManualReviewReport(input(), reportId);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = kind === "pdf" ? "manual_review_master_summary.pdf" : "manual_review_report.xlsx";
       a.click();
-      URL.revokeObjectURL(url);
+      // Revoked once the browser has started the download, not before.
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not build the report",
@@ -649,7 +664,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                 ) : (
                   <Download size={15} aria-hidden="true" />
                 )}
-                Download Excel Report
+                {downloading === "xlsx" ? "Building Excel Report…" : "Download Excel Report"}
               </button>
               <button
                 type="button"
@@ -666,13 +681,21 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                 ) : (
                   <FileText size={15} aria-hidden="true" />
                 )}
-                Download Master Summary
+                {downloading === "pdf" ? "Building Master Summary…" : "Download Master Summary"}
               </button>
             </>
           ) : null}
         </div>
       </section>
 
+      <p className="accuracy-note excel-compare-downloading" role="status" aria-live="polite">
+        {downloading
+          ? `Building the ${downloading === "pdf" ? "Master Summary (PDF)" : "Excel report"}… ${downloadSeconds}s` +
+            (result?.reportId
+              ? ""
+              : " — this comparison was stopped part-way, so it is compared again in full first; that can take a few minutes.")
+          : ""}
+      </p>
       {error ? <div className="error-banner">{error}</div> : null}
       {stopped && result ? (
         <p className="accuracy-note excel-compare-stopped">

@@ -297,3 +297,120 @@ def test_database_algo_row_carries_document_type():
     row[-2], row[-1] = None, "handwritten"
     page = database_algo._page(tuple(row))
     assert (page.documentType, page.handwrittenOrPrinted) == (None, "Handwritten")
+
+
+def test_names_match_in_any_order_and_punctuation():
+    def compare(gt, algo):
+        return compare_fields({"Extracted Name": gt}, {"Extracted Name": algo}, ["Extracted Name"])[
+            "Extracted Name"
+        ]
+
+    for algo in ("Lisa Anderson", "Lisa, Anderson", "ANDERSON, LISA", "anderson  lisa"):
+        assert compare("Anderson Lisa", algo)["match"] is True, algo
+    # Both spellings are shown when they read differently but agree.
+    assert compare("Anderson Lisa", "Lisa, Anderson")["display"] == "GT: Anderson Lisa | Algo: Lisa, Anderson"
+    assert compare("Anderson Lisa", "Anderson Lisa")["display"] == "Anderson Lisa"
+    assert compare("Anderson Lisa", "Lisa M Anderson")["match"] is False
+    assert compare("Anderson Lisa", "Laura Anderson")["match"] is False
+
+
+def test_float_read_member_ids_match():
+    def compare(gt, algo):
+        return compare_fields({"Member ID": gt}, {"Member ID": algo}, ["Member ID"])["Member ID"]
+
+    assert compare("204568", "204568.0") == {
+        "match": True, "display": "204568", "gt_raw": "204568", "system_raw": "204568",
+    }
+    assert compare(204568.0, "204568")["match"] is True
+    assert compare("00204568", "204568")["match"] is False  # leading zeros are part of the ID
+    assert compare("204568.5", "204568")["match"] is False
+
+
+def test_float_read_ids_from_a_sheet_with_blanks():
+    # A blank Member ID makes pandas read the column as floats.
+    ground = pd.DataFrame([{"PDF ID": "1", "Page Number": 1, "Member ID": 204568, "Current Sequence": 1},
+                           {"PDF ID": "1", "Page Number": 2, "Member ID": None, "Current Sequence": None}])
+    algo = pd.DataFrame([{"PDF ID": "1", "Page Number": 1, "Member ID": "204568", "Current Sequence": "1"},
+                         {"PDF ID": "1", "Page Number": 2, "Member ID": "", "Current Sequence": ""}])
+    result = compare_files(_upload(ground, "g.csv"), _upload(algo, "a.csv"))
+    assert [row["Status"] for row in result["result_rows"]] == ["CORRECT", "CORRECT"]
+    assert result["result_rows"][0]["Member ID"] == "204568"
+
+
+def _api_client():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.api.routes import router
+
+    app = FastAPI()
+    app.include_router(router, prefix="/api")
+    return TestClient(app)
+
+
+def _qa_files():
+    return {
+        "ground_file": ("qa.csv", io.BytesIO(_qa_sheet().to_csv(index=False).encode()), "text/csv"),
+        "system_file": ("algo.csv", io.BytesIO(_algo_sheet().to_csv(index=False).encode()), "text/csv"),
+    }
+
+
+def test_downloads_build_from_the_comparison_on_screen():
+    import json
+
+    pytest.importorskip("reportlab")
+    pytest.importorskip("httpx")
+    client = _api_client()
+    upload = {"system_source": "upload"}
+
+    streamed = client.post("/api/excel-compare/stream", files=_qa_files(), data=upload)
+    done = [json.loads(line) for line in streamed.text.splitlines() if line.strip()][-1]
+    whole = client.post("/api/excel-compare", files=_qa_files(), data=upload).json()
+
+    for report_id in (done["reportId"], whole["reportId"]):
+        # No inputs at all: only the kept comparison can answer.
+        for path, kind in (("/api/excel-compare/report", b"PK"), ("/api/excel-compare/summary", b"%PDF")):
+            res = client.post(path, data={**upload, "report_id": report_id})
+            assert res.status_code == 200, res.text
+            assert res.content[: len(kind)] == kind
+
+
+def test_a_dropped_report_id_compares_again():
+    pytest.importorskip("reportlab")
+    pytest.importorskip("httpx")
+    res = _api_client().post(
+        "/api/excel-compare/summary", files=_qa_files(),
+        data={"system_source": "upload", "report_id": "no-longer-kept"},
+    )
+    assert res.status_code == 200
+    assert res.content[:4] == b"%PDF"
+
+
+def test_only_the_last_few_comparisons_are_kept():
+    import app.services.excel_compare as excel_compare
+
+    ids = [excel_compare._remember({"n": n}) for n in range(excel_compare.KEEP_RESULTS + 2)]
+    assert excel_compare.remembered(ids[0]) is None
+    assert excel_compare.remembered(ids[-1]) == {"n": excel_compare.KEEP_RESULTS + 1}
+    assert excel_compare.remembered(None) is None
+
+
+def test_a_pattern_across_many_charts_still_builds():
+    pytest.importorskip("reportlab")
+    from app.services.excel_compare.master_summary import (
+        MAX_PATTERN_CHARTS,
+        _pages_by_chart,
+        build_master_summary_pdf,
+    )
+
+    # The same disagreement on every page of 400 charts: its Where cell would
+    # outgrow a page (a LayoutError) if every chart were listed.
+    rows = [{"PDF ID": f"C{c:04d}", "Page Number": p, "Page Type": "ED Note"}
+            for c in range(400) for p in range(1, 4)]
+    algo = [dict(row, **{"Page Type": "Progress note"}) for row in rows]
+    result = compare_files(_upload(pd.DataFrame(rows), "g.csv"), _upload(pd.DataFrame(algo), "a.csv"))
+    text = _pdf_text(build_master_summary_pdf(result))
+    assert f"and {400 - MAX_PATTERN_CHARTS} more charts" in text
+    assert "The first 1500 of 1200" not in text  # 1200 mismatches: the appendix lists them all
+    entries = [("A", 1), ("B", 2), ("C", 3)]
+    assert _pages_by_chart(entries, max_charts=2) == "A: 1; B: 2 … and 1 more charts"

@@ -4985,6 +4985,16 @@ input {
   color: var(--status-warning-fg);
 }
 
+.excel-compare-downloading {
+  margin: 0.5rem 0 0;
+  color: var(--status-info-fg);
+  font-weight: 600;
+}
+
+.excel-compare-downloading:empty {
+  display: none;
+}
+
 /* Results head: title and status pills on the left, search on the right. */
 .excel-compare-status-filters {
   margin-right: auto;

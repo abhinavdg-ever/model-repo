@@ -625,6 +625,9 @@ export type ManualReviewResult = {
   chartsCompared?: number;
   /** Matched records that disagreed on each field, most first. Set once done. */
   fieldErrors?: { field: string; count: number; percentage: number }[];
+  /** Names this finished comparison for the downloads, which then build from it
+   * instead of comparing again. Absent while streaming or after a Stop. */
+  reportId?: string;
   /** The fields compared this run, in report order. */
   fields: string[];
   exemptedColumns: { column: string; reason: string }[];
@@ -692,7 +695,7 @@ type ManualReviewCounts = Pick<
 
 type ManualReviewTotals = Pick<
   ManualReviewResult,
-  "matchedCount" | "groundCharts" | "systemCharts" | "chartsCompared" | "fieldErrors"
+  "matchedCount" | "groundCharts" | "systemCharts" | "chartsCompared" | "fieldErrors" | "reportId"
 >;
 
 export type ManualReviewEvent =
@@ -728,20 +731,28 @@ export async function streamManualReview(
   }
 }
 
-export async function downloadManualReviewReport(input: ManualReviewInput): Promise<Blob> {
+/** ``reportId`` (the comparison on screen) builds the file without comparing again;
+ * the inputs are sent too, for when the backend no longer has that comparison. */
+function downloadForm(input: ManualReviewInput, reportId?: string): FormData {
+  const form = manualReviewForm(input);
+  if (reportId) form.append("report_id", reportId);
+  return form;
+}
+
+export async function downloadManualReviewReport(input: ManualReviewInput, reportId?: string): Promise<Blob> {
   const res = await fetch("/api/excel-compare/report", {
     method: "POST",
-    body: manualReviewForm(input),
+    body: downloadForm(input, reportId),
   });
   if (!res.ok) throw new Error(await errorText(res));
   return res.blob();
 }
 
 /** The printable Master Summary (PDF) of the same comparison. */
-export async function downloadManualReviewSummary(input: ManualReviewInput): Promise<Blob> {
+export async function downloadManualReviewSummary(input: ManualReviewInput, reportId?: string): Promise<Blob> {
   const res = await fetch("/api/excel-compare/summary", {
     method: "POST",
-    body: manualReviewForm(input),
+    body: downloadForm(input, reportId),
   });
   if (!res.ok) throw new Error(await errorText(res));
   return res.blob();

@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
 
 from app.adapters.base import FolderRepository
@@ -1137,6 +1138,39 @@ async def post_excel_compare_stream(
     )
 
 
+_REPORT_ID = Form(
+    default=None,
+    description="The reportId of the comparison on screen: built from it, without comparing again.",
+)
+
+
+async def _download_result(
+    report_id: str | None,
+    settings: Settings,
+    repo: FolderRepository,
+    ground_file: UploadFile | None,
+    ground_source: str,
+    ground_truth: GroundTruthSource,
+    system_file: UploadFile | None,
+    system_source: str,
+) -> dict:
+    """The comparison a download is built from: the one on screen (``report_id``)
+    while it is kept, else the inputs compared again."""
+    result = excel_compare.remembered(report_id)
+    if result is not None:
+        return result
+    ground, system = await _compare_inputs(
+        settings, repo, ground_file, ground_source, ground_truth, system_file, system_source
+    )
+    try:
+        return await run_in_threadpool(excel_compare.comparison, ground, system)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("manual review comparison failed: %s", exc)
+        raise HTTPException(status_code=400, detail=f"Comparison failed: {exc}") from exc
+
+
 @router.post("/excel-compare/report")
 async def post_excel_compare_report(
     ground_file: UploadFile | None = File(default=None),
@@ -1144,20 +1178,19 @@ async def post_excel_compare_report(
     ground_truth: GroundTruthSource = _GROUND_TRUTH,
     system_file: UploadFile | None = File(default=None),
     system_source: str = _SYSTEM_SOURCE,
+    report_id: str | None = _REPORT_ID,
     repo: FolderRepository = Depends(get_repository),
     settings: Settings = Depends(get_settings),
 ) -> Response:
     """The same comparison as an Excel workbook (Comparison Results, Summary, Exempted Columns)."""
-    ground, system = await _compare_inputs(
-        settings, repo, ground_file, ground_source, ground_truth, system_file, system_source
+    result = await _download_result(
+        report_id, settings, repo, ground_file, ground_source, ground_truth, system_file, system_source
     )
     try:
-        data = excel_compare.report(ground, system)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        data = await run_in_threadpool(excel_compare.report, result)
     except Exception as exc:
         logger.warning("manual review report failed: %s", exc)
-        raise HTTPException(status_code=400, detail=f"Comparison failed: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"Could not build the report: {exc}") from exc
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1172,34 +1205,32 @@ async def post_excel_compare_summary(
     ground_truth: GroundTruthSource = _GROUND_TRUTH,
     system_file: UploadFile | None = File(default=None),
     system_source: str = _SYSTEM_SOURCE,
+    report_id: str | None = _REPORT_ID,
     repo: FolderRepository = Depends(get_repository),
     settings: Settings = Depends(get_settings),
 ) -> Response:
-    """The same comparison as the printable Master Summary PDF (totals, field-wise
-    mismatches with evidence, Missing / Extra pages, exempted columns)."""
-    ground, system = await _compare_inputs(
-        settings, repo, ground_file, ground_source, ground_truth, system_file, system_source
+    """The same comparison as the printable Master Summary PDF (totals, chart-wise and
+    field-wise accuracy, mismatch patterns, Missing / Extra pages, exempted columns)."""
+    result = await _download_result(
+        report_id, settings, repo, ground_file, ground_source, ground_truth, system_file, system_source
+    )
+    ground_label = (
+        ground_file.filename
+        if ground_source == "upload" and ground_file and ground_file.filename
+        else "Ground truth (database)"
+    )
+    system_label = (
+        system_file.filename
+        if system_source == "upload" and system_file and system_file.filename
+        else "Pipeline output (database)"
     )
     try:
-        data = excel_compare.summary_pdf(
-            ground,
-            system,
-            ground_label=(
-                ground_file.filename
-                if ground_source == "upload" and ground_file and ground_file.filename
-                else "Ground truth (database)"
-            ),
-            system_label=(
-                system_file.filename
-                if system_source == "upload" and system_file and system_file.filename
-                else "Pipeline output (database)"
-            ),
+        data = await run_in_threadpool(
+            excel_compare.summary_pdf, result, ground_label=ground_label, system_label=system_label
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.warning("manual review summary failed: %s", exc)
-        raise HTTPException(status_code=400, detail=f"Comparison failed: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"Could not build the Master Summary: {exc}") from exc
     return Response(
         content=data,
         media_type="application/pdf",

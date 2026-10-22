@@ -9,10 +9,17 @@ dates). A matched row also carries ``Mismatched`` and ``Evidence`` (see
 compare.py), and ``compare.summarize`` totals a run for both the one-pass
 and the streaming compare. The API layer is ``run``, ``stream``, ``report``
 and ``summary_pdf`` below.
+
+A finished comparison is kept under a ``reportId`` (``run``'s result, the
+stream's ``done`` event): the downloads build from it, so they match the
+screen and skip reading and comparing everything again.
 """
 
 from __future__ import annotations
 
+import secrets
+import threading
+from collections import OrderedDict
 from collections.abc import Callable, Iterator
 from io import BytesIO
 from typing import Any
@@ -20,6 +27,29 @@ from typing import Any
 from . import database_algo, database_ground, database_system  # noqa: F401  (no pandas at import)
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+
+# Finished comparisons kept for their downloads, newest last. review-ui runs
+# one process; a download whose result is gone compares again.
+KEEP_RESULTS = 4
+_results: OrderedDict[str, dict] = OrderedDict()
+_results_lock = threading.Lock()
+
+
+def _remember(result: dict) -> str:
+    report_id = secrets.token_urlsafe(16)
+    with _results_lock:
+        _results[report_id] = result
+        while len(_results) > KEEP_RESULTS:
+            _results.popitem(last=False)
+    return report_id
+
+
+def remembered(report_id: str | None) -> dict | None:
+    """The comparison a ``reportId`` names, or None once it has been dropped."""
+    if not report_id:
+        return None
+    with _results_lock:
+        return _results.get(report_id)
 
 
 def _upload(data: bytes, filename: str) -> BytesIO:
@@ -101,6 +131,7 @@ def run(ground: tuple[bytes, str], system: tuple[bytes, str]) -> dict[str, Any]:
         "exemptedColumns": list(result["exempted_columns"]),
         "summary": summary,
         "rows": rows,
+        "reportId": _remember(result),
     }
 
 
@@ -130,6 +161,7 @@ def stream(
         summarize,
     )
     from .database_system import COLUMNS
+    from .header_normalizer import unrecognized_columns
     from .record_matcher import normalize_key, unique_pdf_ids
 
     ground_df = _read_file(_upload(*ground))
@@ -200,7 +232,22 @@ def stream(
         all_rows, counts["groundCount"], counts["systemCount"], fields,
         set(pdf_ids), system_charts,
     )
-    yield {"type": "done", **counts, **_totals(result), "summary": _summary(result["summary_df"])}
+    report_id = _remember({
+        **result,
+        "result_rows": all_rows,
+        "active_comparison_fields": fields,
+        "exempted_columns": exempted,
+        "unrecognized_columns": {
+            "ground": unrecognized_columns(ground_df),
+            # The pipeline output's own columns are all read.
+            "system": unrecognized_columns(system_df) if system is not None else [],
+        },
+    })
+    yield {
+        "type": "done", **counts, **_totals(result),
+        "summary": _summary(result["summary_df"]),
+        "reportId": report_id,
+    }
 
 
 def columns() -> dict[str, Any]:
@@ -219,12 +266,18 @@ def columns() -> dict[str, Any]:
     }
 
 
-def report(ground: tuple[bytes, str], system: tuple[bytes, str]) -> bytes:
-    """The same comparison as the tool's Excel report (three sheets)."""
+def comparison(ground: tuple[bytes, str], system: tuple[bytes, str]) -> dict:
+    """compare_files over two sheets: the result the downloads are built from.
+    (Not ``compare``: importing the ``.compare`` module rebinds that name.)"""
     from .compare import compare_files
+
+    return compare_files(_upload(*ground), _upload(*system))
+
+
+def report(result: dict) -> bytes:
+    """A comparison (``comparison`` or ``remembered``) as the tool's Excel report (three sheets)."""
     from .result_builder import write_report
 
-    result = compare_files(_upload(*ground), _upload(*system))
     buffer = BytesIO()
     write_report(
         buffer,
@@ -237,14 +290,11 @@ def report(ground: tuple[bytes, str], system: tuple[bytes, str]) -> bytes:
 
 
 def summary_pdf(
-    ground: tuple[bytes, str],
-    system: tuple[bytes, str],
+    result: dict,
     ground_label: str = "Ground Truth",
     system_label: str = "Algo Generated",
 ) -> bytes:
-    """The same comparison as the tool's printable Master Summary (PDF)."""
-    from .compare import compare_files
+    """A comparison (``comparison`` or ``remembered``) as the printable Master Summary (PDF)."""
     from .master_summary import build_master_summary_pdf
 
-    result = compare_files(_upload(*ground), _upload(*system))
     return build_master_summary_pdf(result, ground_label=ground_label, system_label=system_label)

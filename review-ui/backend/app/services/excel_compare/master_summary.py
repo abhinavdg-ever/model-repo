@@ -54,6 +54,12 @@ FAIR_AT = 80.0
 
 CONTENT_WIDTH = LETTER[0] - 1.2 * inch
 
+# Bounds that keep a large run's PDF quick to build and readable. The
+# Excel report always has every row; the PDF says when it stops short.
+MAX_PATTERN_CHARTS = 6
+MAX_PATTERNS = 60
+MAX_APPENDIX_ROWS = 1500
+
 NOT_APPLICABLE = "N/A"
 BLANK = "<i>(blank)</i>"
 
@@ -167,9 +173,11 @@ def _page_ranges(pages):
     return ", ".join(parts)
 
 
-def _pages_by_chart(entries, single_chart=False):
+def _pages_by_chart(entries, single_chart=False, max_charts=None):
     """[(pdf_id, page), ...] -> "70084804: 1-6, 71; 70085129: 3" in first-seen
-    chart order; just "1-6, 71" when the whole run is one chart."""
+    chart order; just "1-6, 71" when the whole run is one chart. Past
+    `max_charts`, the rest is counted ("... and 12 more charts") so one cell
+    never outgrows a page."""
 
     by_chart = defaultdict(list)
 
@@ -180,7 +188,14 @@ def _pages_by_chart(entries, single_chart=False):
         (pages,) = by_chart.values()
         return _page_ranges(pages)
 
-    return "; ".join(f"{chart}: {_page_ranges(pages)}" for chart, pages in by_chart.items())
+    charts = list(by_chart.items())
+    shown = charts if max_charts is None else charts[:max_charts]
+    text = "; ".join(f"{chart}: {_page_ranges(pages)}" for chart, pages in shown)
+
+    if len(charts) > len(shown):
+        text += f" … and {len(charts) - len(shown)} more charts"
+
+    return text
 
 
 # =============================================================
@@ -646,16 +661,31 @@ def build_master_summary_pdf(
 
     patterns = _mismatch_patterns(r.get("mismatch_evidence", []))
     pattern_table = None
+    pattern_note = (
+        "Identical disagreements grouped: each line is one field where the ground truth "
+        "said one thing and the algo another, with how many pages and which. Fixing a "
+        "line at the top fixes every page it lists. Dates read MM/DD/YYYY on both sides."
+    )
+
+    if len(patterns) > MAX_PATTERNS:
+        pattern_note += (
+            f" The {MAX_PATTERNS} most frequent of {len(patterns)} patterns are shown; "
+            f"the Excel report has every mismatch."
+        )
 
     if patterns:
         rows = [["Field", "Ground Truth", "Algo Generated", "Pages", "Where"]]
-        for pattern in patterns:
+        for pattern in patterns[:MAX_PATTERNS]:
             rows.append([
                 escape(pattern["field"]),
                 _text(pattern["gt"]),
                 _text(pattern["algo"]),
                 str(pattern["count"]),
-                escape(_pages_by_chart(pattern["pages"], single_chart=charts_compared == 1)),
+                escape(_pages_by_chart(
+                    pattern["pages"],
+                    single_chart=charts_compared == 1,
+                    max_charts=MAX_PATTERN_CHARTS,
+                )),
             ])
         pattern_table = _table(
             rows,
@@ -667,9 +697,7 @@ def build_master_summary_pdf(
     _section(
         elements, styles,
         "4. Top Mismatch Patterns",
-        "Identical disagreements grouped: each line is one field where the ground truth "
-        "said one thing and the algo another, with how many pages and which. Fixing a "
-        "line at the top fixes every page it lists. Dates read MM/DD/YYYY on both sides.",
+        pattern_note,
         pattern_table,
         "No field-level mismatches.",
     )
@@ -747,8 +775,16 @@ def build_master_summary_pdf(
 
     if evidence:
         elements.append(PageBreak())
+        shown = evidence[:MAX_APPENDIX_ROWS]
+        note = (
+            f"All {len(evidence)} individual field mismatches by chart and page -- the "
+            f"audit trail behind section 4."
+            if len(shown) == len(evidence)
+            else f"The first {len(shown)} of {len(evidence)} individual field mismatches, "
+            f"by chart and page. The Excel report's Comparison Results sheet has every one."
+        )
         rows = [["PDF ID", "Page", "Field", "Ground Truth", "Algo Generated"]]
-        for entry in evidence:
+        for entry in shown:
             rows.append([
                 escape(str(entry["pdf_id"])),
                 escape(str(entry["page_number"])),
@@ -760,8 +796,7 @@ def build_master_summary_pdf(
         _section(
             elements, styles,
             "Appendix: Every Field Mismatch",
-            f"All {len(evidence)} individual field mismatches by chart and page -- the "
-            f"audit trail behind section 4.",
+            note,
             _table(rows, [1.0 * inch, 0.5 * inch, 1.5 * inch, half, half], styles,
                    right_cols=(1,)),
             "",

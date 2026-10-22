@@ -221,3 +221,39 @@ def normalize_print_type(value):
     collapsed = re.sub(r"[^a-z0-9]+", " ", text).strip()
 
     return _PRINT_TYPE_ALIASES.get(collapsed, collapsed)
+
+
+# =============================================================
+# NAME NORMALIZATION
+#
+# The same words in any order, case or punctuation are the same
+# name: "Lisa, Anderson" = "Anderson Lisa" = "LISA ANDERSON". A
+# different or missing word (an initial, a middle name) is not.
+# =============================================================
+
+def normalize_name(value):
+    """A name's words, sorted, for comparison purposes only."""
+
+    return " ".join(sorted(re.findall(r"[a-z0-9]+", clean_text(value))))
+
+
+# =============================================================
+# IDENTIFIER NORMALIZATION
+#
+# A numeric column with a blank cell is read as floats, so an ID
+# 204568 arrives as "204568.0". Only that trailing ".0" is dropped;
+# anything else (leading zeros, letters) is kept as written.
+# =============================================================
+
+_FLOAT_INTEGER = re.compile(r"[+-]?\d+\.0+")
+
+
+def clean_identifier(value):
+    """ "204568.0" -> "204568"; any other value unchanged."""
+
+    text = str(value).strip()
+
+    if _FLOAT_INTEGER.fullmatch(text):
+        return text.split(".", 1)[0]
+
+    return text
