@@ -177,6 +177,12 @@ class WordOverlap:
         smaller = min(self.words_a, self.words_b)
         return self.shared / smaller if smaller else 0.0
 
+    @property
+    def different(self) -> int:
+        """Distinct words on only one of the two pages (for a contained pair, what the
+        larger page adds)."""
+        return self.words_a + self.words_b - 2 * self.shared
+
 
 def word_overlap(a: str, b: str) -> WordOverlap:
     wa, wb = unique_words(a or ""), unique_words(b or "")

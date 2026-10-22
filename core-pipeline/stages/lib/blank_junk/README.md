@@ -7,8 +7,9 @@ worked examples, is `docs/BLANK_JUNK_LOGIC.md`; the summary is `docs/LOGIC.md` �
 
 Duplicates: Main and junk pages (never blank), against a neighbour within ±25 pages; a
 Main page is always the original of a junk copy. Pages are compared on their distinct
-words as read: overlap ≥ 98%, or the smaller page's words all on the other, is a duplicate;
-95–98% a partial duplicate that keeps its verdict. Pages
+words as read. Duplicate: lengths within 10% and (contained, overlap ≥ 98%, or < 5 distinct
+words different); partial: overlap 95–98% or < 15 different; contained with < 10 words
+different marks the later page, otherwise the larger page stays (docs/BLANK_JUNK_LOGIC.md §4). Pages
 under 300 characters never compared; the longer (or earlier) page is kept.
 
 The rest of this file describes the older regex classifier (`classify_junk.py` and the

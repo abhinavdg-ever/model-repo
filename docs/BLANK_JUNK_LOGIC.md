@@ -125,17 +125,29 @@ footers included (`classify.word_overlap`, 2026-10-22):
   repeats do not matter);
 - **contained** = share of the smaller page's distinct words found on the other.
 
-A pair is a duplicate at overlap **≥ 98%**, or when the smaller page's distinct words are
-all on the other (`duplicates.contained_at`, 100%, in the canon) — it then scores 1.0.
+A pair is decided by these rules (canon `duplicates`, 2026-10-22):
+
+| | Rule |
+|---|---|
+| **Duplicate** | lengths within 10% (shorter ≥ 90% of the longer, whitespace-stripped characters) **and** one of: contained (every distinct word of the smaller page on the other); overlap ≥ 98%; fewer than 5 distinct words different |
+| **Partial** | not a duplicate, and overlap 95–98% or fewer than 15 distinct words different |
+| Neither | everything else |
+
+"Distinct words different" = distinct words on only one of the two pages, both sides
+added. The word-count rules apply only at overlap ≥ 80% (two short unrelated pages also
+differ in few words).
+
+**Which page is the duplicate:** contained with fewer than 10 distinct words different →
+the **later** page (order of appearance); otherwise the **larger** page stays (a tie: the
+earlier) and the other is the duplicate. A Main page is always the original of a junk copy.
 
 | Similarity | Verdict | Blank / Junk | Duplicate (UI) |
 |---|---|---|---|
-| overlap **≥ 98%**, or contained | `duplicate` (code 4) | Yes (Duplicate) | Yes (To Page N) |
-| overlap **95% – < 98%** | keeps its verdict, `duplicate_of_page_id` set | as judged | Partial (To Page N) |
-| below 95% | Main | No | No |
+| Duplicate | `duplicate` (code 4) | Yes (Duplicate) | Yes (To Page N) |
+| Partial | keeps its verdict, `duplicate_of_page_id` set | as judged | Partial (To Page N) |
+| Neither | as judged | as judged | No |
 
-The longer page (or the earlier one) is kept as the original — except that a Main page is
-never the copy of a junk page: when one of the pair is Main, it is the original. A junk
+A junk
 page ≥ 98% alike is a duplicate (Blank / Junk "Yes (Duplicate)", or its original's "Yes
 (Junk)"); a 95–98% one stays junk with Partial. The similarity is stored
 as `confidence` on duplicate and partial rows; a partial page keeps its own verdict
@@ -160,6 +172,13 @@ and `shared_words`.
 ---
 
 ## 5. Changes
+
+### 2026-10-22 — Duplicate bands: overlap or word difference, similar length, later page
+
+- Duplicate: lengths within 10% and (contained, overlap ≥ 98%, or < 5 distinct words
+  different); Partial: overlap 95–98% or < 15 different (word counts only at overlap ≥ 80%).
+- Contained with < 10 words different: the later page is the duplicate; otherwise the larger
+  page stays. A flagged pair below 95% overlap shows 50% confidence in review-ui.
 
 ### 2026-10-22 — Duplicates on distinct-word overlap and containment only
 

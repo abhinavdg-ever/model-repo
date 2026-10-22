@@ -41,7 +41,10 @@ export function duplicateDisplayConfidence(
   if (score == null && flagged) score = similarity ?? null;
   if (score == null) return flagged ? null : 1;
   const sim = Number(score);
-  return Number.isFinite(sim) ? similarityConfidence(sim) : null;
+  if (!Number.isFinite(sim)) return null;
+  // Flagged on its few differing words below the 95% cut: as unsure as the cut.
+  if (flagged && sim < DUPLICATE_PARTIAL_MIN) return 0.5;
+  return similarityConfidence(sim);
 }
 
 /**

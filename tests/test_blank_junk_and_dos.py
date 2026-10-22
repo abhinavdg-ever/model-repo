@@ -63,16 +63,16 @@ class TestDuplicateScope:
         assert by_id[3]["flag"] == "duplicate"
         assert by_id[3]["duplicate_of"] == 1
 
-    def test_longer_later_page_wins_as_original(self):
+    def test_a_near_identical_later_page_is_the_duplicate_even_if_longer(self):
+        # 2026-10-22 (user): contained, fewer than 10 words different -> the later page.
         pages = [page(1, 1), page(2, 2)]
         long = _body(8)
-        # Tiny truncation keeps SequenceMatcher ratio well above 98%.
         short = long[:-3]
         rows = _classify(pages, {1: short, 2: long}, {1, 2})
         by_id = {r["page_id"]: r for r in rows}
-        assert by_id[2]["flag"] == "not_blank_junk"
-        assert by_id[1]["flag"] == "duplicate"
-        assert by_id[1]["duplicate_of"] == 2
+        assert by_id[1]["flag"] == "not_blank_junk"
+        assert by_id[2]["flag"] == "duplicate"
+        assert by_id[2]["duplicate_of"] == 1
 
     def test_pages_more_than_twenty_five_apart_are_not_compared(self):
         pages = [page(i, i) for i in range(1, 28)]
@@ -862,6 +862,58 @@ class TestWordOverlap:
         words = classify.word_overlap(p22, p34)
         assert (words.words_a, words.words_b, words.shared) == (171, 175, 171)
         assert round(words.overlap, 4) == 0.9771 and words.contained == 1.0
+        assert words.different == 4  # page 34 adds 4 distinct words
         rows = {r["page_id"]: r for r in _classify([page(22, 22), page(34, 34)], {22: p22, 34: p34}, {22, 34})}
-        assert (rows[22]["flag"], rows[22]["duplicate_of"]) == ("duplicate", 34)
+        # Contained with fewer than 10 words different: the later page is the duplicate.
+        assert (rows[34]["flag"], rows[34]["duplicate_of"]) == ("duplicate", 22)
+        assert rows[22]["flag"] == "not_blank_junk"
 
+    def test_which_page_of_a_contained_pair_is_the_duplicate(self):
+        inner = " ".join(_prose(55))
+        few_more = inner + " reviewed signed today"  # < 10 distinct words added
+        many_more = inner + " " + " ".join(f"extra{i}" for i in range(12))
+        pages = [page(1, 1), page(2, 2)]
+        # Fewer than 10 words different: the later page, even though it is larger.
+        rows = {r["page_id"]: r for r in _classify(pages, {1: inner, 2: few_more}, {1, 2})}
+        assert (rows[2]["flag"], rows[2]["duplicate_of"]) == ("duplicate", 1)
+        # 10 or more: the larger page stays, whichever comes first.
+        rows = {r["page_id"]: r for r in _classify(pages, {1: many_more, 2: inner}, {1, 2})}
+        assert (rows[2]["flag"], rows[2]["duplicate_of"]) == ("duplicate", 1)
+        rows = {r["page_id"]: r for r in _classify(pages, {1: inner, 2: many_more}, {1, 2})}
+        assert (rows[1]["flag"], rows[1]["duplicate_of"]) == ("duplicate", 2)
+
+    def test_few_words_different_is_a_duplicate_or_partial_whatever_the_overlap(self):
+        # A short page: fewer distinct words, so each difference costs more overlap.
+        words = [f"word{i}" for i in range(60)]
+        base = " ".join(words)
+        pages = [page(1, 1), page(2, 2)]
+        for replaced, expected in ((2, "duplicate"), (6, "partial"), (9, None)):
+            other = " ".join(f"new{i}" if i < replaced else w for i, w in enumerate(words))
+            pair = classify.word_overlap(base, other)
+            assert pair.different == 2 * replaced and pair.overlap < 0.95
+            rows = _classify(pages, {1: base, 2: other}, {1, 2})
+            flags = {r["flag"] for r in rows}
+            pointing = [r for r in rows if r["duplicate_of"] is not None]
+            if expected == "duplicate":
+                assert "duplicate" in flags
+            elif expected == "partial":
+                assert "duplicate" not in flags and pointing
+            else:
+                assert not pointing
+
+    def test_unrelated_short_pages_are_not_flagged_on_their_word_count(self):
+        a, b = "Alpha clinical history. " * 20, "Beta surgical findings. " * 20
+        pair = classify.word_overlap(a, b)
+        assert pair.different == 6 and pair.overlap == 0.0
+        rows = _classify([page(1, 1), page(2, 2)], {1: a, 2: b}, {1, 2})
+        assert all(r["duplicate_of"] is None for r in rows)
+
+    def test_a_duplicate_is_about_as_long_as_its_original(self):
+        # 2026-10-22 (user): contained, but the other page is a third longer -> not a
+        # duplicate (a partial at most).
+        inner = " ".join(_prose(56))
+        outer = inner + " " + " ".join(_prose(57, words=140))
+        assert classify.word_overlap(inner, outer).contained == 1.0
+        assert classify.duplicate_char_count(inner) < 0.9 * classify.duplicate_char_count(outer)
+        rows = _classify([page(1, 1), page(2, 2)], {1: inner, 2: outer}, {1, 2})
+        assert all(r["flag"] != "duplicate" for r in rows)

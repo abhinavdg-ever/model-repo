@@ -46,9 +46,13 @@ def duplicate_display_confidence(
     if score is None:
         return 1.0 if not (is_duplicate or is_partial) else None
     try:
-        return similarity_confidence(float(score))
+        value = float(score)
     except (TypeError, ValueError):
         return None
+    if (is_duplicate or is_partial) and value < DUPLICATE_PARTIAL_MIN:
+        # Flagged on its few differing words below the 95% cut: as unsure as the cut.
+        return 0.5
+    return similarity_confidence(value)
 
 
 def format_duplicate_label(

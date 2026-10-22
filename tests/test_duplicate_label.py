@@ -74,3 +74,9 @@ def test_a_duplicate_shows_its_originals_blank_junk_tag():
         "Yes (Junk)", "Yes (Junk)", "Yes (Duplicate)", "No", "Yes (Duplicate)",
     ]
     assert out[1].isDuplicate is True
+
+
+def test_a_pair_flagged_on_its_word_count_below_the_cut_reads_50_percent():
+    # A short page: 4 distinct words different (a duplicate) at 90% overlap.
+    assert duplicate_display_confidence(True, 0.9, False, 0.90) == 0.5
+    assert duplicate_display_confidence(False, 0.9, True, 0.93) == 0.5

@@ -23,7 +23,15 @@
   },
   "duplicates": {
     "note": "2026-10-22 (user): pages are compared on their distinct words as read (nothing stripped). overlap = shared distinct words / all distinct words of the two pages; contained = share of the smaller page's distinct words found on the other. Overlap >= 98%, or contained >= contained_at, is a duplicate; overlap 95-98% a partial. (Page-number and changed-word rules were removed the same day.)",
-    "contained_at": 1.0
+    "contained_at": 1.0,
+    "duplicate_below_words": 5,
+    "partial_below_words": 15,
+    "count_rule_min_overlap": 0.8,
+    "duplicate_min_length_ratio": 0.9,
+    "length_note": "A duplicate's shorter page is at least duplicate_min_length_ratio of the longer one's length (whitespace-stripped characters); otherwise the pair is a partial at most (2026-10-22, user: duplicates are about the same length).",
+    "bands_note": "Distinct words different = distinct words on only one of the two pages, both sides added. Duplicate: contained, or overlap >= 98%, or fewer than duplicate_below_words different. Partial: overlap 95-98%, or fewer than partial_below_words different. Else neither (2026-10-22, user). The word counts apply only at overlap >= count_rule_min_overlap: two short unrelated pages also differ in few words.",
+    "earlier_kept_below_words": 10,
+    "earlier_kept_note": "Which page is the duplicate: when one page is contained in the other and they differ in fewer than earlier_kept_below_words distinct words, the later page (order of appearance); otherwise the larger page stays (a tie: the earlier) and the other is the duplicate. A Main page is always the original of a junk copy."
   },
   "short_page": {
     "note": "Short page rule R6, pass 2, after R4 (signature) and before R5 (DistilBERT); restored 2026-10-21. Content that ends within the top 'top_fraction' (15%) of the page height, footer band and running stamps left out, with less than body_ink_max_fraction ink below -> JUNK / Others (confidence 0.95). Not when DistilBERT p(keep) > skip_keep_above (0.90), when the word boxes or the image cannot be read, or when R4 kept the page (docs/BLANK_JUNK_LOGIC.md).",

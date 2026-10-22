@@ -26,17 +26,20 @@ Duplicate detection (after the verdict, among Main and junk pages -- never blank
   (``classify.word_overlap``, 2026-10-22, user): the **overlap** is shared distinct
   words / all distinct words of the two pages; **contained** is the share of the
   smaller page's distinct words found on the other.
-* Overlap **≥ 98%**, or contained ≥ ``duplicates.contained_at`` (canon, 100%):
-  ``duplicate`` -- UI Duplicate "Yes", Blank / Junk
+* Contained (canon ``duplicates.contained_at``, 100%), overlap **≥ 98%**, or fewer than
+  ``duplicate_below_words`` (5) distinct words different: ``duplicate`` -- UI Duplicate "Yes", Blank / Junk
   "Yes (Duplicate)" -- whether the page was judged Main or junk (2026-10-22: junk
   pages were never compared, so a 98%-alike junk page read "Yes (Junk)", Duplicate
-  "No"). **[95%, 98%)**: a partial duplicate -- the page keeps its verdict (Main or
+  "No"). Overlap **[95%, 98%)** or fewer than ``partial_below_words`` (15) distinct
+  words different: a partial duplicate -- the page keeps its verdict (Main or
   junk) with ``duplicate_of_page_id`` set; UI "Partial".
   2026-10-22 (user); before, only ≥ 98% counted and the UI split it 100% Yes /
   below May Be.
 * The similarity is stored as ``confidence`` on both kinds of row.
 * On a match, keep the page with the **higher character count** as the
-  original; on a tie, keep the **earlier** page. The other is the duplicate
+  original; on a tie, keep the **earlier** page -- except a contained pair with fewer
+  than ``duplicates.earlier_kept_below_words`` (10) distinct words different: the
+  **later** page is the duplicate (2026-10-22, user). The other is the duplicate
   (or partial duplicate). A Main page is never the copy of a junk page: when one
   of the pair is Main, it is the original.
 * Blank pages and texts shorter than 300 normalized chars are never compared.
@@ -110,10 +113,22 @@ STAGE = "blank_junk"
 # Every rule and the vote live in method.py.
 
 
-def _contained_at() -> float:
-    """The canon's ``duplicates.contained_at`` (reloads on change): the share of the
-    smaller page's distinct words that must be on the other page for a duplicate."""
-    return float(method.canon().raw.get("duplicates", {}).get("contained_at", 1.0))
+def _duplicate_rules() -> dict[str, float]:
+    """The canon's ``duplicates`` block (reloads on change), with its defaults:
+    ``contained_at`` (share of the smaller page's distinct words that must be on the
+    other), ``duplicate_below_words`` / ``partial_below_words`` (fewer distinct words
+    different than this is a duplicate / partial whatever the overlap), and
+    ``earlier_kept_below_words`` (a contained pair differing in fewer keeps the earlier
+    page; the later one is the duplicate)."""
+    cfg = method.canon().raw.get("duplicates", {})
+    return {
+        "contained_at": float(cfg.get("contained_at", 1.0)),
+        "duplicate_below_words": int(cfg.get("duplicate_below_words", 5)),
+        "partial_below_words": int(cfg.get("partial_below_words", 15)),
+        "count_rule_min_overlap": float(cfg.get("count_rule_min_overlap", 0.80)),
+        "duplicate_min_length_ratio": float(cfg.get("duplicate_min_length_ratio", 0.90)),
+        "earlier_kept_below_words": int(cfg.get("earlier_kept_below_words", 10)),
+    }
 
 
 JUNK_CSV_COLS = [
@@ -314,6 +329,8 @@ def _classify(
     dup_of: dict[int, int] = {}
     dup_sim: dict[int, float] = {}
     dup_contained: dict[int, bool] = {}
+    # Distinct words different, for the reason a duplicate / partial row carries.
+    pair_words: dict[int, int] = {}
     # [PARTIAL, THRESHOLD): the page's closest near-copy, applied after duplicates.
     partial_of: dict[int, int] = {}
     partial_sim: dict[int, float] = {}
@@ -321,7 +338,7 @@ def _classify(
     # for blank_junk.json and duplicate_confidence: which page, its overlap and how
     # much of the smaller page is on the other.
     best: dict[int, dict[str, Any]] = {}
-    contained_at = _contained_at()
+    rules = _duplicate_rules()
 
     def _note_best(page_id: int, other_id: int, words: Any, score: float, contained: bool) -> None:
         if score > best.get(page_id, {}).get("similarity", -1.0):
@@ -335,6 +352,7 @@ def _classify(
                 "distinct_words": mine,
                 "other_distinct_words": theirs,
                 "shared_words": words.shared,
+                "different_words": words.different,
             }
 
     n = len(pages)
@@ -350,30 +368,56 @@ def _classify(
             if not _comparable(nid):
                 continue
             words = word_overlap(texts.get(pid) or "", texts.get(nid) or "")
-            is_contained = words.contained >= contained_at
+            is_contained = words.contained >= rules["contained_at"]
             # A contained pair scores 1.0; otherwise its overlap.
             sim = 1.0 if is_contained else words.overlap
             _note_best(pid, nid, words, sim, is_contained)
             _note_best(nid, pid, words, sim, is_contained)
-            if sim < DUPLICATE_PARTIAL_THRESHOLD:
+            # 2026-10-22 (user): contained, >= 98% overlap or fewer than 5 distinct words
+            # different -> duplicate; 95-98% or fewer than 15 -> partial; else neither.
+            # The word counts count only between pages that are mostly the same: two short
+            # unrelated pages also differ in few words.
+            counts = words.overlap >= rules["count_rule_min_overlap"]
+            # A duplicate is about as long as its original (2026-10-22, user): a page
+            # inside a much longer one is a partial at most.
+            len_a = duplicate_char_count(texts.get(pid) or "")
+            len_b = duplicate_char_count(texts.get(nid) or "")
+            similar_length = min(len_a, len_b) >= rules["duplicate_min_length_ratio"] * max(len_a, len_b)
+            if similar_length and (
+                is_contained
+                or sim >= DUPLICATE_SIMILARITY_THRESHOLD
+                or (counts and words.different < rules["duplicate_below_words"])
+            ):
+                kind = "duplicate"
+            elif sim >= DUPLICATE_PARTIAL_THRESHOLD or (
+                counts and words.different < rules["partial_below_words"]
+            ):
+                kind = "partial"
+            else:
                 continue
-            kind = "duplicate" if sim >= DUPLICATE_SIMILARITY_THRESHOLD else "partial"
-            orig, dup = _prefer_original(
-                i,
-                pid,
-                duplicate_char_count(texts.get(pid) or ""),
-                j,
-                nid,
-                duplicate_char_count(texts.get(nid) or ""),
-            )
+            if is_contained and words.different < rules["earlier_kept_below_words"]:
+                # 2026-10-22 (user): one page inside the other, all but a few words the
+                # same -- the later page, in order of appearance, is the duplicate.
+                orig, dup = pid, nid
+            else:
+                # Otherwise the larger page stays (on a tie, the earlier).
+                orig, dup = _prefer_original(
+                    i,
+                    pid,
+                    duplicate_char_count(texts.get(pid) or ""),
+                    j,
+                    nid,
+                    duplicate_char_count(texts.get(nid) or ""),
+                )
             # A Main page is never made the copy of a junk page: the Main one is the
             # original, and the junk one its duplicate.
             if _is_main(dup) and not _is_main(orig):
                 orig, dup = dup, orig
             if kind == "partial":
-                if sim > partial_sim.get(dup, 0.0):
+                if sim > partial_sim.get(dup, 0.0) or dup not in partial_of:
                     partial_of[dup] = orig
                     partial_sim[dup] = sim
+                    pair_words[dup] = words.different
                 continue
             orig = _ultimate_original(dup_of, orig)
             if dup == orig:
@@ -388,6 +432,7 @@ def _classify(
                 dup_of[dup] = orig
                 dup_sim[dup] = sim
                 dup_contained[dup] = is_contained
+                pair_words[dup] = words.different
 
     # Apply duplicate marks (including demoting prior-main pages not in todo).
     page_by_id = {p["id"]: p for p in pages}
@@ -396,10 +441,10 @@ def _classify(
         if dup_id == orig_id:
             continue
         sim = dup_sim.get(dup_id, DUPLICATE_SIMILARITY_THRESHOLD)
-        if dup_contained.get(dup_id):
-            match = "its distinct words all on the original"
-        else:
-            match = f"similarity={sim:.4f} ≥{DUPLICATE_SIMILARITY_THRESHOLD:.0%}"
+        match = (
+            "its distinct words all on the original" if dup_contained.get(dup_id)
+            else f"overlap={sim:.4f}"
+        ) + f", {pair_words.get(dup_id, 0)} distinct words different"
         reason = (
             f"duplicate_of_page_id:{orig_id} "
             f"({match} within ±{DUPLICATE_NEIGHBOR_WINDOW})"
@@ -426,8 +471,8 @@ def _classify(
             continue
         sim = partial_sim[page_id]
         note = (
-            f"partial_duplicate_of_page_id:{orig_id} (similarity={sim:.4f}, "
-            f"{DUPLICATE_PARTIAL_THRESHOLD:.0%}-{DUPLICATE_SIMILARITY_THRESHOLD:.0%} "
+            f"partial_duplicate_of_page_id:{orig_id} (overlap={sim:.4f}, "
+            f"{pair_words.get(page_id, 0)} distinct words different "
             f"within ±{DUPLICATE_NEIGHBOR_WINDOW})"
         )
         own = by_id.get(page_id) or {}
