@@ -1,6 +1,6 @@
 from .file_reader import read_csv_any_encoding, read_tabular_file
-from .header_normalizer import normalize_headers
-from .record_matcher import KEY_COLUMNS, match_records
+from .header_normalizer import normalize_headers, unrecognized_columns
+from .record_matcher import KEY_COLUMNS, match_records, unique_pdf_ids
 from .field_comparator import (
     ACTIVE_COMPARISON_FIELDS,
     ALWAYS_EXEMPT_FIELDS,
@@ -32,6 +32,19 @@ REQUIRED_COLUMNS = list(KEY_COLUMNS)
 
 
 NOT_PRESENT_IN_BOTH_REASON = "Not present in both files."
+
+
+def _safe_rate(numerator, denominator):
+    """
+    Percentage, or None when the denominator is zero (empty
+    input) so callers can render "N/A" instead of a misleading
+    0% for a metric that isn't actually applicable.
+    """
+
+    if not denominator:
+        return None
+
+    return round(numerator / denominator * 100, 2)
 
 
 # =============================================================
@@ -196,12 +209,21 @@ def compare_frames(ground, system, fields_to_compare):
             reason,
             fields_to_compare,
         )
-        # review-ui highlights these cells. write_report picks its columns
-        # explicitly, so the workbook is unchanged.
+        # review-ui highlights these cells, and the master summary lists the
+        # evidence. write_report picks its columns explicitly, so the
+        # workbook is unchanged.
         row["Mismatched"] = [
             field_name
             for field_name, field_result in field_results.items()
             if not field_result["match"]
+        ]
+        row["Evidence"] = [
+            {
+                "field": field_name,
+                "ground_truth_value": field_results[field_name]["gt_raw"],
+                "system_value": field_results[field_name]["system_raw"],
+            }
+            for field_name in row["Mismatched"]
         ]
         result_rows.append(row)
 
@@ -216,6 +238,122 @@ def compare_frames(ground, system, fields_to_compare):
         )
 
     return result_rows, len(missing_gt_indices), len(extra_system_indices)
+
+
+def summarize(
+    result_rows,
+    ground_count,
+    system_count,
+    fields_to_compare,
+    ground_chart_ids,
+    system_chart_ids,
+):
+    """
+    Every total, rate and breakdown of a run, from its result rows.
+    compare_files and review-ui's streaming compare both call this,
+    so the screen, the workbook and the master summary agree.
+
+    Rates:
+      Exact Match Rate       = CORRECT / Total Ground Truth
+      Overall Match %        = Matched (CORRECT+ERROR+UNVALIDATED) / Total Ground Truth
+      Overall Discrepancy %  = (ERROR + MISSING) / Total Ground Truth
+      Extra Rate             = EXTRA / Total Algo Generated
+
+    Exact Match Rate is None ("N/A") when zero fields were
+    compared: correct_count is structurally 0 then, and "0%"
+    would read as "every record disagreed".
+
+    ERROR + MISSING + EXTRA is an exact count of records affected
+    by discrepancies: matching puts every key in exactly one of
+    matched / missing / extra. UNVALIDATED is neither a match nor
+    a discrepancy, so it is in neither.
+
+    A chart is one distinct PDF ID, however many pages it has.
+    """
+
+    def count(status):
+        return sum(1 for row in result_rows if row["Status"] == status)
+
+    correct_count = count("CORRECT")
+    error_count = count("ERROR")
+    missing_count = count("MISSING")
+    extra_count = count("EXTRA")
+    unvalidated_count = count("UNVALIDATED")
+    matched_count = correct_count + error_count + unvalidated_count
+
+    fields_were_compared = bool(fields_to_compare)
+
+    # ---------------------------------------------------------
+    # Per-field error breakdown
+    #
+    # How many matched records disagreed on each field. A record
+    # with 2 mismatched fields counts in 2 entries, so these can
+    # add up to more than error_count. Percentages are of matched
+    # records: missing/extra records were never compared.
+    # ---------------------------------------------------------
+
+    field_error_counts = {field_name: 0 for field_name in fields_to_compare}
+    mismatch_evidence = []
+
+    for row in result_rows:
+        for entry in row.get("Evidence", []):
+            field_error_counts[entry["field"]] = field_error_counts.get(entry["field"], 0) + 1
+            mismatch_evidence.append({
+                "pdf_id": row.get("PDF ID", ""),
+                "page_number": row.get("Page Number", ""),
+                **entry,
+            })
+
+    field_error_summary = sorted(
+        (
+            {
+                "field": field_name,
+                "error_count": errors,
+                "error_percentage": (
+                    round(errors / matched_count * 100, 2) if matched_count else 0.0
+                ),
+            }
+            for field_name, errors in field_error_counts.items()
+        ),
+        key=lambda entry: (-entry["error_count"], entry["field"]),
+    )
+
+    total_unique_ground_charts = len(ground_chart_ids)
+    total_unique_system_charts = len(system_chart_ids)
+    total_unique_charts_compared = len(set(ground_chart_ids) | set(system_chart_ids))
+
+    summary_df = build_summary(
+        ground_count, system_count, result_rows,
+        fields_were_compared=fields_were_compared,
+        total_unique_ground_charts=total_unique_ground_charts,
+        total_unique_system_charts=total_unique_system_charts,
+        total_unique_charts_compared=total_unique_charts_compared,
+    )
+
+    return {
+        "ground_count": ground_count,
+        "system_count": system_count,
+        "matched_count": matched_count,
+        "correct_count": correct_count,
+        "error_count": error_count,
+        "missing_count": missing_count,
+        "extra_count": extra_count,
+        "unvalidated_count": unvalidated_count,
+        "exact_match_rate": (
+            _safe_rate(correct_count, ground_count) if fields_were_compared else None
+        ),
+        "overall_match_percentage": _safe_rate(matched_count, ground_count),
+        "overall_discrepancy_rate": _safe_rate(error_count + missing_count, ground_count),
+        "extra_rate": _safe_rate(extra_count, system_count),
+        "unique_discrepancy_count": error_count + missing_count + extra_count,
+        "field_error_summary": field_error_summary,
+        "mismatch_evidence": mismatch_evidence,
+        "fields_were_compared": fields_were_compared,
+        "total_unique_ground_charts": total_unique_ground_charts,
+        "total_unique_system_charts": total_unique_system_charts,
+        "total_unique_charts_compared": total_unique_charts_compared,
+        "summary_df": summary_df,
+    }
 
 
 def compare_files(ground_file, system_file):
@@ -249,34 +387,24 @@ def compare_files(ground_file, system_file):
 
     system = restrict_to_ground(ground, system)
 
-    result_rows, missing_count, extra_count = compare_frames(
-        ground, system, fields_to_compare
-    )
-
-    # ---------------------------------------------------------
-    # Summary
-    # ---------------------------------------------------------
-
-    summary_df = build_summary(len(ground), len(system), result_rows)
-
-    correct_count = sum(
-        1 for row in result_rows if row["Status"] == "CORRECT"
-    )
-    error_count = sum(
-        1 for row in result_rows if row["Status"] == "ERROR"
-    )
+    result_rows, _, _ = compare_frames(ground, system, fields_to_compare)
 
     return {
-        "ground_count": len(ground),
-        "system_count": len(system),
-        "correct_count": correct_count,
-        "error_count": error_count,
-        "missing_count": missing_count,
-        "extra_count": extra_count,
+        **summarize(
+            result_rows,
+            len(ground),
+            len(system),
+            fields_to_compare,
+            unique_pdf_ids(ground),
+            unique_pdf_ids(system),
+        ),
         "result_rows": result_rows,
-        "summary_df": summary_df,
         "active_comparison_fields": fields_to_compare,
         "exempted_columns": exempted_columns,
+        "unrecognized_columns": {
+            "ground": unrecognized_columns(ground),
+            "system": unrecognized_columns(system),
+        },
     }
 
 

@@ -18,9 +18,10 @@ onnxruntime>=1.17
 tokenizers>=0.15
 numpy>=1.26
 # Manual Review (QA ground truth vs algo output): reading CSV / XLSX / XLS
-# uploads and writing the report workbook. Rebuild the image after a change
+# uploads, writing the report workbook and the Master Summary PDF. Rebuild the image after a change
 # here (`docker compose up -d --build`); a stale image fails with
 # "No module named 'pandas'".
 pandas>=2.2,<4
 openpyxl>=3.1
 xlrd>=2.0
+reportlab>=4.0

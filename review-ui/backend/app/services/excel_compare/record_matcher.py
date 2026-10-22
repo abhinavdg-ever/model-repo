@@ -15,16 +15,40 @@ KEY_COLUMNS = [
 ]
 
 
+def normalize_pdf_id(pdf_id):
+    """
+    Normalize a single PDF ID value the same way normalize_key()
+    does -- shared so any context needing PDF ID identity alone
+    (e.g. unique chart counts), independent of Page Number, stays
+    byte-for-byte consistent with the matching key.
+    """
+
+    if pd.isna(pdf_id):
+        return ""
+
+    return str(pdf_id).strip()
+
+
+def unique_pdf_ids(df):
+    """
+    The set of distinct, normalized, non-blank PDF IDs in a file
+    -- one entry per chart, regardless of how many pages (rows)
+    that chart has. Blank/invalid PDF IDs are excluded.
+    """
+
+    ids = {normalize_pdf_id(value) for value in df.get("PDF ID", [])}
+    ids.discard("")
+
+    return ids
+
+
 def normalize_key(pdf_id, page_number):
     """
     Normalize a (PDF ID, Page Number) pair for reliable
     equality comparison.
     """
 
-    if pd.isna(pdf_id):
-        pdf_id_key = ""
-    else:
-        pdf_id_key = str(pdf_id).strip()
+    pdf_id_key = normalize_pdf_id(pdf_id)
 
     if pd.isna(page_number):
         page_key = ""

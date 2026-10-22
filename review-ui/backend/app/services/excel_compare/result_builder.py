@@ -133,9 +133,25 @@ def build_extra_result(system_row, fields=None):
 # SUMMARY
 # =============================================================
 
-def build_summary(ground_count, system_count, result_rows):
+def build_summary(
+    ground_count, system_count, result_rows,
+    fields_were_compared=True,
+    total_unique_ground_charts=None,
+    total_unique_system_charts=None,
+    total_unique_charts_compared=None,
+):
     """
     Build compact summary metrics across all compared records.
+
+    `fields_were_compared=False` means zero comparison fields
+    were available this run -- every matched record is
+    "UNVALIDATED" rather than CORRECT/ERROR, so Correct Records /
+    Match Percentage are reported as "N/A" rather than a
+    misleading 0%.
+
+    The three `total_unique_*_charts` args are optional (None
+    omits those rows), so a caller that doesn't count charts gets
+    the same rows as before.
     """
 
     df = pd.DataFrame(result_rows)
@@ -147,6 +163,7 @@ def build_summary(ground_count, system_count, result_rows):
     error_count = int((df["Status"] == "ERROR").sum())
     missing_count = int((df["Status"] == "MISSING").sum())
     extra_count = int((df["Status"] == "EXTRA").sum())
+    unvalidated_count = int((df["Status"] == "UNVALIDATED").sum())
 
     # ---------------------------------------------------------
     # Match Percentage
@@ -159,6 +176,15 @@ def build_summary(ground_count, system_count, result_rows):
         match_percentage = (correct_count / ground_count) * 100
     else:
         match_percentage = 0.0
+
+    match_percentage_display = (
+        "N/A" if not fields_were_compared else round(match_percentage, 2)
+    )
+
+    if ground_count:
+        unvalidated_percentage = round(unvalidated_count / ground_count * 100, 2)
+    else:
+        unvalidated_percentage = 0.0
 
     # ---------------------------------------------------------
     # Overall Disparity/Error Percentage
@@ -196,7 +222,7 @@ def build_summary(ground_count, system_count, result_rows):
         {
             "Metric": "Correct Records",
             "Count": correct_count,
-            "Percentage": round(match_percentage, 2),
+            "Percentage": match_percentage_display,
         },
         {
             "Metric": "Errors",
@@ -218,9 +244,14 @@ def build_summary(ground_count, system_count, result_rows):
             "Percentage": round(extra_percentage, 2),
         },
         {
+            "Metric": "Unvalidated Records",
+            "Count": unvalidated_count,
+            "Percentage": unvalidated_percentage,
+        },
+        {
             "Metric": "Match Percentage",
             "Count": correct_count,
-            "Percentage": round(match_percentage, 2),
+            "Percentage": match_percentage_display,
         },
         {
             "Metric": "Overall Disparity Rate",
@@ -228,6 +259,35 @@ def build_summary(ground_count, system_count, result_rows):
             "Percentage": round(disparity_percentage, 2),
         },
     ]
+
+    # ---------------------------------------------------------
+    # Unique Charts
+    #
+    # A chart is identified by PDF ID alone, independent of Page
+    # Number -- not a percentage-based metric, so "Percentage" is
+    # a plain "-" placeholder for these rows.
+    # ---------------------------------------------------------
+
+    if total_unique_ground_charts is not None:
+        summary_rows.append({
+            "Metric": "Total Unique Ground Truth Charts",
+            "Count": total_unique_ground_charts,
+            "Percentage": "-",
+        })
+
+    if total_unique_system_charts is not None:
+        summary_rows.append({
+            "Metric": "Total Unique Algo Charts",
+            "Count": total_unique_system_charts,
+            "Percentage": "-",
+        })
+
+    if total_unique_charts_compared is not None:
+        summary_rows.append({
+            "Metric": "Total Unique Charts Compared",
+            "Count": total_unique_charts_compared,
+            "Percentage": "-",
+        })
 
     return pd.DataFrame(summary_rows)
 

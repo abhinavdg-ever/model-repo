@@ -21,6 +21,15 @@ def clean_text(value):
 
 _NO_DATE_VALUES = {"", "-", "--", "na", "n/a", "none", "null", "nil"}
 
+# What an extracted value reads when nothing was found.
+_NOTHING_FOUND = _NO_DATE_VALUES | {"not found"}
+
+
+def has_value(value):
+    """True unless the cell is blank or says nothing was found ("-", N/A, ...)."""
+
+    return clean_text(value) not in _NOTHING_FOUND
+
 
 def clean_date(value):
     """
@@ -183,3 +192,32 @@ def normalize_codable(value):
     collapsed = re.sub(r"\s+", " ", collapsed).strip()
 
     return _CODABLE_ALIASES.get(collapsed, collapsed)
+
+# =============================================================
+# PRINTED / HANDWRITTEN NORMALIZATION
+#
+# The sheet's "Type (Printed/HW)" spells handwritten as HW. Only
+# these explicit spellings are folded; anything else (Mixed,
+# Form, ...) compares as its own text.
+# =============================================================
+
+_PRINT_TYPE_ALIASES = {
+    "printed": "printed",
+    "print": "printed",
+    "hw": "handwritten",
+    "handwritten": "handwritten",
+    "handwriting": "handwritten",
+    "hand written": "handwritten",
+}
+
+
+def normalize_print_type(value):
+    """
+    Normalize equivalent Printed / Handwritten representations for
+    comparison purposes only.
+    """
+
+    text = clean_text(value)
+    collapsed = re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+    return _PRINT_TYPE_ALIASES.get(collapsed, collapsed)

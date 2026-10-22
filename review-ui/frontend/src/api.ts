@@ -595,7 +595,9 @@ export function blobPageImageUrl(folderId: string, pageNumber: number): string {
   return `/api/blob/${encodeURIComponent(folderId)}/pages/${pageNumber}/image`;
 }
 
-export type ManualReviewStatus = "CORRECT" | "ERROR" | "MISSING" | "EXTRA";
+/** UNVALIDATED: matched on PDF ID + Page Number with no field to compare --
+ * not evidence the fields agree. */
+export type ManualReviewStatus = "CORRECT" | "ERROR" | "MISSING" | "EXTRA" | "UNVALIDATED";
 
 export type ManualReviewRow = {
   pdfId: string;
@@ -614,10 +616,20 @@ export type ManualReviewResult = {
   errorCount: number;
   missingCount: number;
   extraCount: number;
+  unvalidatedCount: number;
+  /** CORRECT + ERROR + UNVALIDATED. Set once the comparison is done. */
+  matchedCount?: number;
+  /** Distinct PDF IDs. Set once the comparison is done. */
+  groundCharts?: number;
+  systemCharts?: number;
+  chartsCompared?: number;
+  /** Matched records that disagreed on each field, most first. Set once done. */
+  fieldErrors?: { field: string; count: number; percentage: number }[];
   /** The fields compared this run, in report order. */
   fields: string[];
   exemptedColumns: { column: string; reason: string }[];
-  summary: { metric: string; count: number; percentage: number }[];
+  /** percentage is null where the summary says N/A (nothing compared) or "-" (chart counts). */
+  summary: { metric: string; count: number; percentage: number | null }[];
   rows: ManualReviewRow[];
   /** Chart -> its last pipeline run (ISO); null when never run. Streamed compare only. */
   lastRun?: Record<string, string | null>;
@@ -675,13 +687,18 @@ export async function compareManualReview(input: ManualReviewInput): Promise<Man
 
 type ManualReviewCounts = Pick<
   ManualReviewResult,
-  "groundCount" | "systemCount" | "correctCount" | "errorCount" | "missingCount" | "extraCount"
+  "groundCount" | "systemCount" | "correctCount" | "errorCount" | "missingCount" | "extraCount" | "unvalidatedCount"
+>;
+
+type ManualReviewTotals = Pick<
+  ManualReviewResult,
+  "matchedCount" | "groundCharts" | "systemCharts" | "chartsCompared" | "fieldErrors"
 >;
 
 export type ManualReviewEvent =
   | ({ type: "start"; charts: number } & Pick<ManualReviewResult, "fields" | "exemptedColumns">)
   | ({ type: "chart"; pdfId: string; lastRunAt: string | null; rows: ManualReviewRow[] } & ManualReviewCounts)
-  | ({ type: "done"; summary: ManualReviewResult["summary"] } & ManualReviewCounts)
+  | ({ type: "done"; summary: ManualReviewResult["summary"] } & ManualReviewCounts & ManualReviewTotals)
   | { type: "error"; pdfId: string; detail: string };
 
 /** The comparison one chart at a time (NDJSON), handed to ``onEvent`` as each
@@ -713,6 +730,16 @@ export async function streamManualReview(
 
 export async function downloadManualReviewReport(input: ManualReviewInput): Promise<Blob> {
   const res = await fetch("/api/excel-compare/report", {
+    method: "POST",
+    body: manualReviewForm(input),
+  });
+  if (!res.ok) throw new Error(await errorText(res));
+  return res.blob();
+}
+
+/** The printable Master Summary (PDF) of the same comparison. */
+export async function downloadManualReviewSummary(input: ManualReviewInput): Promise<Blob> {
+  const res = await fetch("/api/excel-compare/summary", {
     method: "POST",
     body: manualReviewForm(input),
   });

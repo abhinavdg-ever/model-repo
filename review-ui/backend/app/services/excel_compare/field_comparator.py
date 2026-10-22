@@ -5,8 +5,10 @@ from .normalizer import (
     clean_date,
     credentials_match,
     display_date,
+    has_value,
     normalize_yes_no,
     normalize_codable,
+    normalize_print_type,
 )
 
 
@@ -32,6 +34,7 @@ ACTIVE_COMPARISON_FIELDS = [
     "Extracted Name",
     "Extracted DOB",
     "Member ID",
+    "Type (Printed/HW)",
     "DOS From",
     "DOS To",
     "Is Blank or Junk?",
@@ -45,7 +48,6 @@ ACTIVE_COMPARISON_FIELDS = [
 ]
 
 ALWAYS_EXEMPT_FIELDS = [
-    "Type (Printed/HW)",
     "Handwritten %",
     "Visibility",
     "Quality",
@@ -90,6 +92,17 @@ CODABLE_FIELDS = {
     "Codable / Non-Codable",
 }
 
+PRINT_TYPE_FIELDS = {
+    "Type (Printed/HW)",
+}
+
+
+UNVALIDATED_REASON = (
+    "No comparison fields were available for this record. PDF ID + "
+    "Page Number were matched, but no field-level validation was "
+    "performed -- this is not evidence that field values agree."
+)
+
 
 def _raw_value(row, field_name):
 
@@ -116,6 +129,9 @@ def normalize_field_value(field_name, value):
 
     if field_name in CODABLE_FIELDS:
         return normalize_codable(value)
+
+    if field_name in PRINT_TYPE_FIELDS:
+        return normalize_print_type(value)
 
     return clean_text(value)
 
@@ -156,7 +172,8 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
             is_match = True
         elif presence in ("yes", "no"):
             # "Is a member ID on the page?" -- found or not, not the value.
-            is_match = (presence == "yes") == bool(clean_text(system_raw))
+            # An algo "-" or "N/A" is "none found", as a blank is.
+            is_match = (presence == "yes") == has_value(system_raw)
         elif field_name in CREDENTIAL_FIELDS:
             is_match = credentials_match(gt_raw, system_raw)
         else:
@@ -183,6 +200,8 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
         field_results[field_name] = {
             "match": is_match,
             "display": display_value,
+            "gt_raw": gt_raw,
+            "system_raw": system_raw,
         }
 
     return field_results
@@ -190,9 +209,17 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
 
 def determine_status(field_results):
     """
-    CORRECT only if every compared field matches; otherwise
-    ERROR. This never considers association/matching evidence.
+    UNVALIDATED if there were zero fields to compare -- a record
+    matched by key alone is NOT evidence that its fields agree,
+    so this must never collapse into CORRECT.
+
+    Otherwise: CORRECT only if every compared field matches;
+    ERROR otherwise. This never considers association/matching
+    evidence.
     """
+
+    if not field_results:
+        return "UNVALIDATED"
 
     if all(result["match"] for result in field_results.values()):
         return "CORRECT"
@@ -204,6 +231,9 @@ def build_reason(status, field_results):
     """
     Human-readable explanation of the Status.
     """
+
+    if status == "UNVALIDATED":
+        return UNVALIDATED_REASON
 
     if status == "CORRECT":
         return "All fields match."

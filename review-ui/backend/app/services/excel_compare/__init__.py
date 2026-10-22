@@ -3,9 +3,12 @@
 (PDF ID, Page Number).
 
 Ported from the standalone Streamlit ExcelCompare tool. The comparison and
-report modules are its code with package-relative imports; the only change is
-the ``Mismatched`` list compare_files adds to a matched row (see compare.py).
-The API layer is ``run`` and ``report`` below.
+report modules are its code with package-relative imports, plus review-ui's
+own reading rules (ground truth as the base, presence labels, credentials,
+dates). A matched row also carries ``Mismatched`` and ``Evidence`` (see
+compare.py), and ``compare.summarize`` totals a run for both the one-pass
+and the streaming compare. The API layer is ``run``, ``stream``, ``report``
+and ``summary_pdf`` below.
 """
 
 from __future__ import annotations
@@ -46,15 +49,35 @@ def _row(row: dict, fields: list[str]) -> dict[str, Any]:
     }
 
 
+def _percentage(value: Any) -> float | None:
+    """The summary's "N/A" (nothing compared) and "-" (chart counts) read as None."""
+    return float(value) if isinstance(value, (int, float)) else None
+
+
 def _summary(summary_df) -> list[dict[str, Any]]:
     return [
         {
             "metric": str(item["Metric"]),
             "count": int(item["Count"]),
-            "percentage": float(item["Percentage"]),
+            "percentage": _percentage(item["Percentage"]),
         }
         for item in summary_df.to_dict("records")
     ]
+
+
+def _totals(result: dict) -> dict[str, Any]:
+    """compare.summarize's totals the screen shows beyond the status counts."""
+    return {
+        "matchedCount": int(result["matched_count"]),
+        "unvalidatedCount": int(result["unvalidated_count"]),
+        "groundCharts": int(result["total_unique_ground_charts"]),
+        "systemCharts": int(result["total_unique_system_charts"]),
+        "chartsCompared": int(result["total_unique_charts_compared"]),
+        "fieldErrors": [
+            {"field": e["field"], "count": int(e["error_count"]), "percentage": float(e["error_percentage"])}
+            for e in result["field_error_summary"]
+        ],
+    }
 
 
 def run(ground: tuple[bytes, str], system: tuple[bytes, str]) -> dict[str, Any]:
@@ -73,6 +96,7 @@ def run(ground: tuple[bytes, str], system: tuple[bytes, str]) -> dict[str, Any]:
         "errorCount": int(result["error_count"]),
         "missingCount": int(result["missing_count"]),
         "extraCount": int(result["extra_count"]),
+        **_totals(result),
         "fields": fields,
         "exemptedColumns": list(result["exempted_columns"]),
         "summary": summary,
@@ -103,10 +127,10 @@ def stream(
         _validate_columns,
         compare_frames,
         restrict_to_ground,
+        summarize,
     )
     from .database_system import COLUMNS
-    from .record_matcher import normalize_key
-    from .result_builder import build_summary
+    from .record_matcher import normalize_key, unique_pdf_ids
 
     ground_df = _read_file(_upload(*ground))
     _validate_columns(ground_df, "Ground Truth")
@@ -133,7 +157,11 @@ def stream(
     }
 
     all_rows: list[dict] = []
-    counts = {"groundCount": 0, "systemCount": 0, "correctCount": 0, "errorCount": 0, "missingCount": 0, "extraCount": 0}
+    system_charts: set[str] = set()
+    counts = {
+        "groundCount": 0, "systemCount": 0, "correctCount": 0, "errorCount": 0,
+        "missingCount": 0, "extraCount": 0, "unvalidatedCount": 0,
+    }
     for pdf_id in pdf_ids:
         try:
             ground_part = ground_df[ground_keys == pdf_id]
@@ -148,10 +176,12 @@ def stream(
             yield {"type": "error", "pdfId": pdf_id, "detail": str(exc)}
             return
         all_rows.extend(rows)
+        system_charts |= unique_pdf_ids(system_part)
         counts["groundCount"] += len(ground_part)
         counts["systemCount"] += len(system_part)
         counts["correctCount"] += sum(1 for row in rows if row["Status"] == "CORRECT")
         counts["errorCount"] += sum(1 for row in rows if row["Status"] == "ERROR")
+        counts["unvalidatedCount"] += sum(1 for row in rows if row["Status"] == "UNVALIDATED")
         counts["missingCount"] += missing
         counts["extraCount"] += extra
         try:
@@ -166,8 +196,11 @@ def stream(
             **counts,
         }
 
-    summary = build_summary(counts["groundCount"], counts["systemCount"], all_rows)
-    yield {"type": "done", **counts, "summary": _summary(summary)}
+    result = summarize(
+        all_rows, counts["groundCount"], counts["systemCount"], fields,
+        set(pdf_ids), system_charts,
+    )
+    yield {"type": "done", **counts, **_totals(result), "summary": _summary(result["summary_df"])}
 
 
 def columns() -> dict[str, Any]:
@@ -201,3 +234,17 @@ def report(ground: tuple[bytes, str], system: tuple[bytes, str]) -> bytes:
         result["exempted_columns"],
     )
     return buffer.getvalue()
+
+
+def summary_pdf(
+    ground: tuple[bytes, str],
+    system: tuple[bytes, str],
+    ground_label: str = "Ground Truth",
+    system_label: str = "Algo Generated",
+) -> bytes:
+    """The same comparison as the tool's printable Master Summary (PDF)."""
+    from .compare import compare_files
+    from .master_summary import build_master_summary_pdf
+
+    result = compare_files(_upload(*ground), _upload(*system))
+    return build_master_summary_pdf(result, ground_label=ground_label, system_label=system_label)

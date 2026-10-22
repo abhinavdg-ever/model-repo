@@ -8,6 +8,7 @@ import {
   Download,
   ExternalLink,
   FileSpreadsheet,
+  FileText,
   Info,
   Link2,
   Loader2,
@@ -19,6 +20,7 @@ import {
 import {
   streamManualReview,
   downloadManualReviewReport,
+  downloadManualReviewSummary,
   getManualReviewColumns,
   type ManualReviewColumns,
   type ManualReviewResult,
@@ -45,6 +47,7 @@ const STATUS_CLASS: Record<ManualReviewStatus, string> = {
   ERROR: "status-pill status-failed",
   MISSING: "status-pill status-imaging",
   EXTRA: "status-pill status-progress",
+  UNVALIDATED: "status-pill status-queued",
 };
 
 type Filter = "ALL" | ManualReviewStatus;
@@ -291,8 +294,8 @@ function sideValue(row: ManualReviewRow, field: string, side: "gt" | "algo"): st
   return side === "gt" ? sides.gt : sides.system;
 }
 
-function percent(value: number | undefined): string {
-  return value === undefined ? "—" : `${value.toFixed(2)}%`;
+function percent(value: number | null | undefined): string {
+  return value == null ? "—" : `${value.toFixed(2)}%`;
 }
 
 /** The last comparison, kept while review-ui is open so coming back to the
@@ -329,7 +332,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     writeSources({ ground: groundSource, system: systemSource });
   }, [groundSource, systemSource]);
   const [comparing, setComparing] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  const [downloading, setDownloading] = useState<"xlsx" | "pdf" | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Status filter, search and page survive opening a chart and coming Back.
   const [view, setView] = useViewState<{ filter: Filter; page: number; query: string }>(
@@ -415,6 +418,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
               errorCount: 0,
               missingCount: 0,
               extraCount: 0,
+              unvalidatedCount: 0,
               fields: event.fields,
               exemptedColumns: event.exemptedColumns,
               summary: [],
@@ -454,16 +458,19 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     }
   }
 
-  async function runDownload() {
+  async function runDownload(kind: "xlsx" | "pdf") {
     if (!ready) return;
-    setDownloading(true);
+    setDownloading(kind);
     setError(null);
     try {
-      const blob = await downloadManualReviewReport(input());
+      const blob =
+        kind === "pdf"
+          ? await downloadManualReviewSummary(input())
+          : await downloadManualReviewReport(input());
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "manual_review_report.xlsx";
+      a.download = kind === "pdf" ? "manual_review_master_summary.pdf" : "manual_review_report.xlsx";
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -471,7 +478,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
         err instanceof Error ? err.message : "Could not build the report",
       );
     } finally {
-      setDownloading(false);
+      setDownloading(null);
     }
   }
 
@@ -520,6 +527,9 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
         { id: "ERROR", label: "Errors", count: statusCount("ERROR") },
         { id: "MISSING", label: "Missing", count: statusCount("MISSING") },
         { id: "CORRECT", label: "Correct", count: statusCount("CORRECT") },
+        ...(statusCount("UNVALIDATED") > 0
+          ? [{ id: "UNVALIDATED" as const, label: "Unvalidated", count: statusCount("UNVALIDATED") }]
+          : []),
       ]
     : [];
 
@@ -623,23 +633,42 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
             </button>
           ) : null}
           {result && !comparing ? (
-            <button
-              type="button"
-              className="landing-file-viewer-btn"
-              disabled={downloading}
-              onClick={runDownload}
-            >
-              {downloading ? (
-                <Loader2
-                  size={15}
-                  className="accuracy-calculating-spin"
-                  aria-hidden="true"
-                />
-              ) : (
-                <Download size={15} aria-hidden="true" />
-              )}
-              Download Excel Report
-            </button>
+            <>
+              <button
+                type="button"
+                className="landing-file-viewer-btn"
+                disabled={downloading !== null}
+                onClick={() => runDownload("xlsx")}
+              >
+                {downloading === "xlsx" ? (
+                  <Loader2
+                    size={15}
+                    className="accuracy-calculating-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Download size={15} aria-hidden="true" />
+                )}
+                Download Excel Report
+              </button>
+              <button
+                type="button"
+                className="landing-file-viewer-btn"
+                disabled={downloading !== null}
+                onClick={() => runDownload("pdf")}
+              >
+                {downloading === "pdf" ? (
+                  <Loader2
+                    size={15}
+                    className="accuracy-calculating-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <FileText size={15} aria-hidden="true" />
+                )}
+                Download Master Summary
+              </button>
+            </>
           ) : null}
         </div>
       </section>
@@ -663,15 +692,34 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                   items: [
                     ["ground truth", result.groundCount],
                     ["algo generated", result.systemCount],
-                    ["matched", result.correctCount + result.errorCount],
+                    [
+                      "matched",
+                      result.matchedCount ??
+                        result.correctCount + result.errorCount + result.unvalidatedCount,
+                    ],
                   ],
                 },
+                ...(result.groundCharts !== undefined
+                  ? [
+                      {
+                        label: "Charts",
+                        items: [
+                          ["ground truth", result.groundCharts],
+                          ["algo generated", result.systemCharts ?? 0],
+                          ["compared", result.chartsCompared ?? 0],
+                        ],
+                      },
+                    ]
+                  : []),
                 {
                   label: "Outcome",
                   items: [
                     ["exact matches", result.correctCount],
                     ["field errors", result.errorCount],
                     ["missing", result.missingCount],
+                    ...(result.unvalidatedCount > 0
+                      ? [["unvalidated", result.unvalidatedCount]]
+                      : []),
                   ],
                 },
                 {
@@ -733,6 +781,32 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                     ))}
                   </ul>
                 ) : null}
+              </div>
+            ) : null}
+            {result.fieldErrors && result.fieldErrors.length > 0 ? (
+              <div className="excel-compare-fields">
+                <span className="excel-compare-stat-group-label">By field</span>
+                <ul>
+                  {result.fieldErrors.map((entry) => {
+                    // Accuracy = matched pages that agreed on the field, as in the Master Summary.
+                    const accuracy = 100 - entry.percentage;
+                    const tone = accuracy >= 95 ? "good" : accuracy >= 80 ? "fair" : "poor";
+                    return (
+                      <li key={entry.field}>
+                        <span className="excel-compare-field-name">{entry.field}</span>
+                        <span className="excel-compare-field-bar" aria-hidden="true">
+                          <span className={`is-${tone}`} style={{ width: `${accuracy}%` }} />
+                        </span>
+                        <span className="excel-compare-field-value">
+                          {accuracy.toFixed(2)}%
+                          <span>
+                            {entry.count} mismatch{entry.count === 1 ? "" : "es"}
+                          </span>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
             ) : null}
           </section>

@@ -280,7 +280,11 @@ def test_stream_sends_one_chart_at_a_time(client, repo):
 def test_stream_with_an_uploaded_algo_file_matches_the_whole_compare(client):
     whole = client.post("/api/excel-compare", files=_files(), data=UPLOAD).json()
     done = _events(client.post("/api/excel-compare/stream", files=_files(), data=UPLOAD))[-1]
-    for count in ("groundCount", "systemCount", "correctCount", "errorCount", "missingCount", "extraCount"):
+    for count in (
+        "groundCount", "systemCount", "correctCount", "errorCount", "missingCount", "extraCount",
+        "unvalidatedCount", "matchedCount", "groundCharts", "systemCharts", "chartsCompared",
+        "fieldErrors", "summary",
+    ):
         assert done[count] == whole[count]
 
 
@@ -339,7 +343,8 @@ def test_unlabelled_and_presence_ground_truth():
         return compare_fields({field: gt}, {field: algo}, [field])[field]
 
     # A blank cell is "not labelled": not an error, both sides shown.
-    assert compare("DOS From", "", "2025-08-27") == {"match": True, "display": "GT:  | Algo: 08/27/2025"}
+    blank = compare("DOS From", "", "2025-08-27")
+    assert (blank["match"], blank["display"]) == (True, "GT:  | Algo: 08/27/2025")
     # "-" is a label ("no date") and is compared.
     assert compare("DOS From", "-", "2025-08-27")["match"] is False
     # Yes / No member labels are presence: is a value on the page?
@@ -356,7 +361,8 @@ def test_credentials_match_as_the_accuracy_tab_scores_them():
         result = compare_fields({"Provider Credentials": gt}, {"Provider Credentials": algo}, ["Provider Credentials"])
         return result["Provider Credentials"]
 
-    assert compare("M.D., Ph.D.", "PhD MD") == {"match": True, "display": "GT: M.D., Ph.D. | Algo: PhD MD"}
+    both = compare("M.D., Ph.D.", "PhD MD")
+    assert (both["match"], both["display"]) == (True, "GT: M.D., Ph.D. | Algo: PhD MD")
     assert compare("MD", "MD")["display"] == "MD"
     assert compare("MD", "MD, PhD")["match"] is True  # some shared counts
     assert compare("MD", "NP")["match"] is False
@@ -434,6 +440,7 @@ def test_batched_database_rows_map_like_the_chart_view():
             final_type=None, final_subtype=None, final_category=None, final_from=None, final_to=None,
             sequenced=False, current=None, actual=None,
             provider=None, signed=None, credentials=None, signers=None, version=None,
+            document_type=None, printed_or_handwritten=None,
         )
         base.update(cells)
         return tuple(base.values())

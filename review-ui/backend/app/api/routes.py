@@ -1165,6 +1165,48 @@ async def post_excel_compare_report(
     )
 
 
+@router.post("/excel-compare/summary")
+async def post_excel_compare_summary(
+    ground_file: UploadFile | None = File(default=None),
+    ground_source: str = _GROUND_SOURCE,
+    ground_truth: GroundTruthSource = _GROUND_TRUTH,
+    system_file: UploadFile | None = File(default=None),
+    system_source: str = _SYSTEM_SOURCE,
+    repo: FolderRepository = Depends(get_repository),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """The same comparison as the printable Master Summary PDF (totals, field-wise
+    mismatches with evidence, Missing / Extra pages, exempted columns)."""
+    ground, system = await _compare_inputs(
+        settings, repo, ground_file, ground_source, ground_truth, system_file, system_source
+    )
+    try:
+        data = excel_compare.summary_pdf(
+            ground,
+            system,
+            ground_label=(
+                ground_file.filename
+                if ground_source == "upload" and ground_file and ground_file.filename
+                else "Ground truth (database)"
+            ),
+            system_label=(
+                system_file.filename
+                if system_source == "upload" and system_file and system_file.filename
+                else "Pipeline output (database)"
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("manual review summary failed: %s", exc)
+        raise HTTPException(status_code=400, detail=f"Comparison failed: {exc}") from exc
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="manual_review_master_summary.pdf"'},
+    )
+
+
 @router.get("/folders/{folder_id}/imaging", response_model=ImagingDocumentResponse)
 def get_folder_imaging(
     folder_id: str,

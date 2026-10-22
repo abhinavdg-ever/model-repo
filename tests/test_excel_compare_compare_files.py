@@ -327,7 +327,10 @@ def test_file_with_no_comparison_fields_exempts_all_but_still_matches_on_key():
         result = compare_files(ground_path, system_path)
 
     assert result["active_comparison_fields"] == []
-    assert result["result_rows"][0]["Status"] == "CORRECT"
+    # Matched on the key alone is not evidence the fields agree.
+    assert result["result_rows"][0]["Status"] == "UNVALIDATED"
+    assert result["unvalidated_count"] == 1
+    assert result["exact_match_rate"] is None
 
     exempted_columns_names = {
         entry["column"] for entry in result["exempted_columns"]

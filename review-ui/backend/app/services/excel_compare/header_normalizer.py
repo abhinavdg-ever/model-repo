@@ -83,6 +83,11 @@ COLUMN_ALIASES = {
     "is duplicate": "Duplicate",
     "member name": "Extracted Name",
     "member dob": "Extracted DOB",
+    # The legacy 9-field sheet's Yes / No labels: the same presence
+    # reading as page_ground_truth's (field_comparator.PRESENCE_FIELDS).
+    "member name yes no": "Extracted Name",
+    "member dob yes no": "Extracted DOB",
+    "tilt y n": "Tilt",
     "dup": "Duplicate",
     "page type": "Page Type",
     "encounter type": "Page Type",
@@ -207,7 +212,7 @@ def normalize_headers(df):
     rename_map = build_header_rename_map(df.columns)
 
     if not rename_map:
-        return df
+        return _with_signature_credentials(_with_blank_or_junk(df))
 
     sources = {}
     for column in df.columns:
@@ -226,7 +231,27 @@ def normalize_headers(df):
         merged[canonical] = value
 
     frame = pd.DataFrame(merged, index=df.index)
-    return _with_blank_or_junk(frame)
+    return _with_signature_credentials(_with_blank_or_junk(frame))
+
+
+# Headers no canonical column is named after, but that one is built from.
+DERIVED_SOURCES = {"blank page", "junk page", "provider signature"}
+
+
+def unrecognized_columns(frame):
+    """
+    Headers of an already-normalized frame that nothing reads: no
+    canonical column, alias or derived column uses them. Listed in
+    the master summary so a misspelt header is seen, not silently
+    left out of the comparison.
+    """
+
+    return [
+        str(column)
+        for column in frame.columns
+        if _normalize_for_matching(column) not in _HEADER_LOOKUP
+        and _normalize_for_matching(column) not in DERIVED_SOURCES
+    ]
 
 
 def _with_blank_or_junk(frame):
@@ -255,4 +280,36 @@ def _with_blank_or_junk(frame):
         _blank_or_junk({"blank_page": cell(row, blank), "junk_page": cell(row, junk)})
         for _, row in frame.iterrows()
     ]
+    return frame
+
+
+def _with_signature_credentials(frame):
+    """The legacy sheet's Provider Signature holds credentials (MD, DO): read
+    it as Provider Credentials, as database ground truth reads
+    provider_signature. Yes / No signatures carry no credentials, so a column
+    of only those adds nothing."""
+
+    from .database_ground import CREDENTIALS, _credentials
+
+    if CREDENTIALS in frame.columns:
+        return frame
+
+    column = next(
+        (c for c in frame.columns if _normalize_for_matching(c) == "provider signature"),
+        None,
+    )
+
+    if column is None:
+        return frame
+
+    values = [
+        _credentials({"provider_signature": None if value != value else value})  # NaN -> None
+        for value in frame[column]
+    ]
+
+    if not any(values):
+        return frame
+
+    frame = frame.copy()
+    frame[CREDENTIALS] = values
     return frame

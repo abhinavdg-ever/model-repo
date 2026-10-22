@@ -6,7 +6,9 @@ PDF ID is the chart name and Page Number the page number. Only the labels
 whose meaning matches a Manual Review column are carried over. Member name,
 DOB and ID are Yes / No presence labels; the comparison reads them as "was a
 value found" (field_comparator.PRESENCE_FIELDS). Page Type is encounter_type;
-page_type is ignored. A column no page has a value for is dropped, so it
+page_type is ignored. printed_or_handwritten is not carried over: Type
+(Printed/HW) is compared against an uploaded sheet's column only. A column
+no page has a value for is dropped, so it
 reads as "not present" rather than as a blank on every row.
 """
 

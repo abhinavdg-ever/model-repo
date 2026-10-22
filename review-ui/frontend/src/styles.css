@@ -4900,6 +4900,80 @@ input {
   transform: none;
 }
 
+.excel-compare-fields {
+  margin-top: 0.9rem;
+}
+
+.excel-compare-fields ul {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.excel-compare-fields li {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr) 9.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+}
+
+.excel-compare-field-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.excel-compare-field-bar {
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.excel-compare-field-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.excel-compare-field-bar > .is-good {
+  background: var(--status-success-fg);
+}
+
+.excel-compare-field-bar > .is-fair {
+  background: var(--status-warning-fg);
+}
+
+.excel-compare-field-bar > .is-poor {
+  background: var(--status-error-fg);
+}
+
+.excel-compare-field-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+}
+
+.excel-compare-field-value span {
+  margin-left: 0.45rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+@media (max-width: 640px) {
+  .excel-compare-fields li {
+    grid-template-columns: minmax(0, 1fr) 7.5rem;
+  }
+
+  .excel-compare-field-bar {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
 .excel-compare-stop {
   background: var(--card);
   color: var(--status-error-fg);

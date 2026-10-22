@@ -33,7 +33,8 @@ SELECT c.chart_name,
        f.page_type, f.page_subtype, f.classification_category, f.dos_from, f.dos_to,
        s.id IS NOT NULL, COALESCE(s.original_page_number, p.page_number), s.seq,
        f.provider_name, f.signature_present, to_jsonb(f) ->> 'provider_credentials',
-       to_jsonb(f) -> 'signers', to_jsonb(f) ->> 'provider_version'
+       to_jsonb(f) -> 'signers', to_jsonb(f) ->> 'provider_version',
+       to_jsonb(q) ->> 'document_type', q.printed_or_handwritten
   FROM chart_list c
   JOIN page_list p ON p.chart_id = c.id
   LEFT JOIN member_extraction_results m ON m.page_id = p.id
@@ -42,6 +43,7 @@ SELECT c.chart_name,
   LEFT JOIN page_classification pc ON pc.page_id = p.id
   LEFT JOIN imaging_final f ON f.page_id = p.id
   LEFT JOIN page_sequencing_results s ON s.page_id = p.id
+  LEFT JOIN ocr_quality_results q ON q.page_id = p.id
  WHERE c.chart_name = ANY(%s)
  ORDER BY c.chart_name, 2
 """
@@ -52,7 +54,7 @@ _LAST_RUN = "SELECT chart_name, updated_at FROM chart_list WHERE chart_name = AN
 def _page(row: tuple) -> ImagingPageResult:
     from app.adapters.postgres.repository import _blank_junk_ui, _fmt_date
     from app.services.accuracy_cache import _CODEABLE, _text
-    from app.services.imaging_overlays import compose_page_type, signer_fields
+    from app.services.imaging_overlays import compose_page_type, page_type_fields, signer_fields
 
     (
         _chart, page_number, page_name,
@@ -62,6 +64,7 @@ def _page(row: tuple) -> ImagingPageResult:
         final_type, final_subtype, final_category, final_from, final_to,
         sequenced, current_seq, actual_seq,
         provider, signed, credentials, signers, version,
+        document_type, printed_or_handwritten,
     ) = row
     # The signature rows' provider(s) (imaging_final), as the chart view shows them.
     people = signer_fields(signers, _text(provider), credentials, version)
@@ -97,7 +100,25 @@ def _page(row: tuple) -> ImagingPageResult:
         providerName=provider_name or None,
         providerCredentials=provider_credentials or None,
         providerSignature=None if signed is None else ("Yes" if signed else "No"),
+        # The chart view's Type: document_type (Printed / Handwritten / Form /
+        # Visual / Blank), else the older printed_or_handwritten label.
+        documentType=page_type_fields(document_type, None, None).get("documentType"),
+        handwrittenOrPrinted=_hw_label(printed_or_handwritten),
     )
+
+
+def _hw_label(value: object) -> str | None:
+    """printed_or_handwritten as PostgresFolderRepository.get_imaging shows it."""
+    label = str(value or "").strip().lower()
+    if not label:
+        return None
+    if "hand" in label:
+        return "Handwritten"
+    if "uncertain" in label:
+        return "Uncertain"
+    if "mix" in label:
+        return "Mixed"
+    return "Printed"
 
 
 def fetch(

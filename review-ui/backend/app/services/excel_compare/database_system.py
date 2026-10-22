@@ -24,6 +24,7 @@ COLUMNS = [
     "Extracted Name",
     "Extracted DOB",
     "Member ID",
+    "Type (Printed/HW)",
     "DOS From",
     "DOS To",
     "Is Blank or Junk?",
@@ -80,6 +81,8 @@ def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
                     "Extracted Name": _text(page.memberName),
                     "Extracted DOB": _text(page.memberDob),
                     "Member ID": _text(page.memberId),
+                    # As the chart view's Type: document type, else printed / handwritten.
+                    "Type (Printed/HW)": _text(page.documentType) or _text(page.handwrittenOrPrinted),
                     "DOS From": dos_from,
                     "DOS To": dos_to,
                     "Is Blank or Junk?": _blank_or_junk(page.blankOrJunk),
