@@ -760,3 +760,53 @@ def test_the_sequence_match_never_exceeds_the_word_match():
         a = " ".join(_prose(rng.randrange(1000), words=120))
         b = _edited(a.split(), rng.randrange(1, 60)) if rng.random() < 0.5 else " ".join(_prose(rng.randrange(1000), words=120))
         assert classify.sequence_similarity(a, b) <= classify.word_similarity(a, b) + 1e-12
+
+
+class TestPass1SureJunk:
+    """2026-10-22 (user): DistilBERT's sure pass-1 junk (p(junk) > 0.95) is settled in
+    pass 1; Final OCR 1 still reads it for the quality check, nothing after does."""
+
+    def test_final_ocr_1_reads_sure_junk_but_not_other_pass_1_junk(self):
+        from stages._support import FINAL_JUNK
+        from stages.lib.ocr.stage_final1 import pass1_drops
+
+        flags = {1: "junk", 2: "junk", 3: "duplicate", 4: "not_blank_junk", 5: "junk"}
+        reasons = {1: f"{FINAL_JUNK}: DistilBERT p(junk) 0.990 > 0.95", 2: "R1 tiny page", 3: "dup"}
+        # Page 5 is handwritten: pass 2 judges it, so final OCR always reads it.
+        assert pass1_drops([1, 2, 3, 4, 5], flags, reasons, judged_in_pass2={5}) == [2, 3]
+
+    def test_pass1_ruled_out_lists_what_later_stages_skip(self):
+        from db import (
+            connect,
+            disable_skip_db_write,
+            enable_skip_db_write,
+            list_pages,
+            set_quality_tag,
+            upsert_blank_junk,
+            upsert_chart,
+            upsert_pages,
+            upsert_quality,
+        )
+        from stages._support import FINAL_JUNK, pass1_ruled_out
+
+        enable_skip_db_write(reset=True)
+        try:
+            with connect() as conn:
+                cid = int(upsert_chart(conn, chart_name="chart_p1", source="local")["id"])
+                upsert_pages(conn, cid, [{"page_name": f"{n}.jpg", "page_number": n} for n in (1, 2, 3)])
+                ids = [p["id"] for p in list_pages(conn, cid)]
+                for pid, flag, reason in zip(ids, ("junk", "not_blank_junk", "blank"),
+                                             (f"{FINAL_JUNK}: sure", "P1 deferred", "R1 blank")):
+                    upsert_blank_junk(conn, chart_id=cid, page_id=pid, pass_no=1,
+                                      blank_junk_flag=flag, ocr_source="tesseract", reason=reason)
+                assert pass1_ruled_out(conn, cid) == {ids[0], ids[2]}
+                # Final2's re-grade marks the sure-junk page and the blank page low: the
+                # sure junk stays settled (nothing after Final OCR 1 reads it); a low page
+                # pass 1 merely flagged is pass 2's again, as before.
+                for pid in (ids[0], ids[2]):
+                    upsert_quality(conn, chart_id=cid, page_id=pid, printed_or_handwritten="printed")
+                    set_quality_tag(conn, page_id=pid, quality_tag="low", quality_detail={},
+                                    review_required=True)
+                assert pass1_ruled_out(conn, cid) == {ids[0]}
+        finally:
+            disable_skip_db_write()

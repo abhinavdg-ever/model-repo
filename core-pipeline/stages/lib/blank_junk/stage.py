@@ -11,9 +11,10 @@ Two passes, as the pipeline spec requires:
           is not judged again.
 
 The verdict is ``method.decide`` (docs/BLANK_JUNK_LOGIC.md): rules R1-R4, then DistilBERT
-alone (no keyword vote). Pass 1 removes only blank pages and R1-R3 junk, and settles the
-pages DistilBERT is sure to keep (p(keep) > 0.95: pass 2 skips them); every other page
-stays Main, gets final OCR, and DistilBERT decides it in pass 2. DistilBERT's
+alone (no keyword vote). Pass 1 removes blank pages, R1-R3 junk and the pages DistilBERT is
+sure are junk (p(junk) > 0.95: Final OCR 1 still reads them for the quality re-grade, nothing
+after does), and settles the pages it is sure to keep (p(keep) > 0.95: pass 2 skips them);
+every other page stays Main, gets final OCR, and DistilBERT decides it in pass 2. DistilBERT's
 probabilities and the deciding rule go to ``<chart>/staging/blank_junk.json`` beside the
 key/value extraction's ``extraction.json`` (not the database).
 
@@ -71,6 +72,7 @@ from stages._support import (
     best_page_text,
     mark_completed,
     mark_skipped,
+    pass1_ruled_out,
     stage_run,
     unwrap_ocr_content,
 )
@@ -728,13 +730,9 @@ def _run_pass(
                 ocr_source = "azuredocintel"  # default; per-row override below
                 pass1 = get_blank_junk_flags(conn, chart_id, pass_no=1)
                 # Eligible: non-printed + low-quality (never judged in pass 1),
-                # plus printed pages pass 1 did not already rule out.
-                pass1_skippers = non_printed | low_ids
-                not_eligible = [
-                    pid for pid in ctx.todo
-                    if pid not in pass1_skippers
-                    and pass1.get(pid, "not_blank_junk") in BJ_EXCLUDE
-                ]
+                # plus printed pages pass 1 did not already rule out. DistilBERT's sure
+                # pass-1 junk stays ruled out even if Final2's re-grade marked it low.
+                not_eligible = sorted(pass1_ruled_out(conn, chart_id) & ctx.todo)
                 mark_skipped(conn, ctx, not_eligible, "blank_junk_pass1")
                 # A Visual page (visual, < 20 words in the text pass 1 read) is decided in
                 # pass 1 (R3); pass 2 does not judge it again. A visual page with more text

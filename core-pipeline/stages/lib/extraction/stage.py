@@ -36,6 +36,7 @@ from stages._support import (
     mark_completed,
     mark_processing,
     mark_skipped,
+    pass1_ruled_out,
     stage_run,
 )
 
@@ -230,12 +231,17 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         with connect() as conn:
             final2 = get_ocr_texts(conn, chart_id, "azuredocintel")
             final1 = get_ocr_texts(conn, chart_id, "docling")
+            # Pages pass 1 settled as blank / junk / duplicate are not read after Final OCR 1.
+            ruled_out = pass1_ruled_out(conn, chart_id)
+            mark_skipped(conn, ctx, sorted(ruled_out & ctx.todo), "blank_junk_pass1")
 
         # The whole chart is extracted together, whichever pages are still to do.
         pages: list[dict[str, Any]] = []
         no_boxes: list[int] = []
         from_final1 = 0
         for page in ctx.pages:
+            if page["id"] in ruled_out:
+                continue
             image = page_image_path(ctx.chart_name, page["page_name"])
             extractable = page_for_extraction(
                 _page_json(final2.get(page["id"])),

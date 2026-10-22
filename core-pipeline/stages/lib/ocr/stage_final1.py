@@ -15,7 +15,7 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 from config import (
     DOCLING_PAGE_TIMEOUT_SECONDS,
@@ -26,6 +26,7 @@ from config import (
 from db import (
     connect,
     get_blank_junk_flags,
+    get_blank_junk_reasons,
     get_ocr_texts,
     low_quality_page_ids,
     non_printed_page_ids,
@@ -34,6 +35,7 @@ from db import (
 from db.paths import write_final1_json
 from stages._support import (
     BJ_EXCLUDE,
+    is_final_junk,
     mark_completed,
     mark_failed,
     mark_processing,
@@ -190,6 +192,24 @@ def _ocr_one(args: tuple[dict[str, Any], Path, bool, str]) -> dict[str, Any]:
         reset_current_chart(chart_token)
 
 
+
+def pass1_drops(
+    todo: Iterable[int],
+    flags: dict[int, str],
+    reasons: dict[int, str],
+    judged_in_pass2: set[int],
+) -> list[int]:
+    """Pages Final OCR 1 skips: printed pages pass 1 settled as blank / junk / duplicate.
+    Handwritten / low-quality pages (``judged_in_pass2``) continue -- pass 1 never judged
+    them -- and so does DistilBERT's sure pass-1 junk, whose Final OCR 1 text the quality
+    re-grade compares with Tesseract's (Final OCR 2 and every later stage skip it)."""
+    return [
+        pid for pid in todo
+        if pid not in judged_in_pass2
+        and flags.get(pid, "not_blank_junk") in BJ_EXCLUDE
+        and not is_final_junk(reasons.get(pid))
+    ]
+
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
     # Docling is used automatically when the package + RapidOCR .pth models are
     # present — no enable flag. Otherwise RapidOCR-onnx only.
@@ -213,17 +233,12 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
     with stage_run(chart_id, STAGE, force=force) as ctx:
         with connect() as conn:
             bj1 = get_blank_junk_flags(conn, chart_id, pass_no=1)
+            reasons1 = get_blank_junk_reasons(conn, chart_id, pass_no=1)
             pass1_skippers = non_printed_page_ids(conn, chart_id) | low_quality_page_ids(
                 conn, chart_id
             )
 
-            # Blank/junk/duplicate printed pages are done with. Handwritten /
-            # low-quality pages continue — pass 1 never judged them.
-            drop = [
-                pid for pid in ctx.todo
-                if pid not in pass1_skippers
-                and bj1.get(pid, "not_blank_junk") in BJ_EXCLUDE
-            ]
+            drop = pass1_drops(ctx.todo, bj1, reasons1, pass1_skippers)
             bj_skipped = set(drop)
             mark_skipped(conn, ctx, drop, "blank_junk_pass1")
 

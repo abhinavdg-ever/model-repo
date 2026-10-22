@@ -24,19 +24,24 @@ Every page gets one verdict: **Main**, **Blank**, or **Junk / subtype**.
    (card wording) look for. R4 reads only kv_extract's Electronic Signature (2026-10-21).
 4. After the verdict, **duplicates** are found among the Main pages (§4).
 
-**Junk is decided in pass 2**, on the Final OCR text, except the certain R1–R3 calls, which
-pass 1 makes on the Tesseract text (they save the page's Final OCR).
+**Junk is decided in pass 2**, on the Final OCR text, except the certain calls pass 1 makes
+on the Tesseract text: R1–R3 (they save the page's Final OCR) and DistilBERT's sure junk,
+p(junk) > 0.95 (2026-10-22; it saves Final OCR 2 — Final OCR 1 still runs for the quality
+re-grade — and every stage after it).
 
 | | Pass 1 (stage 3) | Pass 2 (stage 7) |
 |---|---|---|
 | Text | Tesseract (preliminary OCR) | Final OCR: Azure (Final 2), else Docling (Final 1) |
 | Pages | Printed, not low quality | Every page pass 1 did not settle, plus handwritten / mixed / low-quality pages |
-| Decides | R1 Blank / tiny junk, R2 Blank, R3 card junk / Visual keep, and **R5 keep** (p(keep) > 0.95, final) | R1–R4, R6, R5 |
+| Decides | R1 Blank / tiny junk, R2 Blank, R3 card junk / Visual keep, **R5 keep** (p(keep) > 0.95, final) and **R5 junk** (p(junk) > 0.95, final; not over 30% handwritten) | R1–R4, R6, R5 |
 | Otherwise | Main for now, "judged in pass 2" | final verdict |
 
 A page pass 1 settled (Blank, Junk, a Visual keep, or an R5 keep) is **not judged again in
 pass 2**: the R5 keep's reason starts `R5 keep (final)`, and pass 2 skips it
-(`final_keep_pass1`).
+(`final_keep_pass1`). An R5 junk's reason starts `R5 junk (final)`
+(`stages/_support.FINAL_JUNK`): Final OCR 1 still reads that page, because Final 2's quality
+re-grade compares Final 1 with Tesseract, but Final OCR 2, section headers, kv_extract and
+pass 2 skip it (`pass1_ruled_out`) — even when the re-grade then marks it low.
 
 ---
 
@@ -145,6 +150,14 @@ average.
 ---
 
 ## 5. Changes
+
+### 2026-10-22 — Pass 1 junks DistilBERT's sure calls
+
+- Pass 1: DistilBERT p(junk) > 0.95 (`pass1_final_junk_above`) → Junk / its subtype, final,
+  as the sure keep is. Not on a page more than 30% handwritten (pass 2's veto). Pass 2 would
+  junk it too: R4 is overruled at the same p(junk), and R5 junks from 0.85.
+- Final OCR 1 still runs on it (quality re-grade); Final OCR 2 (billed), section headers,
+  kv_extract and pass 2 do not, even when the re-grade marks the page low.
 
 ### 2026-10-22 — Duplicates: two matchers, Partial, Yes (Duplicate)
 

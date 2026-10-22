@@ -31,23 +31,20 @@ from config import (
 )
 from db import (
     connect,
-    get_blank_junk_flags,
     get_ocr_texts,
     get_quality_map,
     high_quality_printed_page_ids,
-    low_quality_page_ids,
-    non_printed_page_ids,
     page_type,
     set_quality_tag,
     upsert_ocr_result,
 )
 from db.paths import write_final2_json
 from stages._support import (
-    BJ_EXCLUDE,
     mark_completed,
     mark_failed,
     mark_processing,
     mark_skipped,
+    pass1_ruled_out,
     stage_run,
 )
 
@@ -505,17 +502,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 logger.info(
                     "Final2: %d page(s) re-graded by Docling/Tesseract overlap", regraded
                 )
-            bj1 = get_blank_junk_flags(conn, chart_id, pass_no=1)
-            pass1_skippers = non_printed_page_ids(conn, chart_id) | low_quality_page_ids(
-                conn, chart_id
-            )
             hq_printed = high_quality_printed_page_ids(conn, chart_id)
 
-            drop = [
-                pid for pid in ctx.todo
-                if pid not in pass1_skippers
-                and bj1.get(pid, "not_blank_junk") in BJ_EXCLUDE
-            ]
+            # Pages pass 1 settled; DistilBERT's sure junk stays settled even when the
+            # re-grade above has just marked it low (pass1_ruled_out).
+            drop = sorted(pass1_ruled_out(conn, chart_id) & ctx.todo)
             bj_skipped = set(drop)
             mark_skipped(conn, ctx, drop, "blank_junk_pass1")
             # High-quality printed pages already have usable final1 text —

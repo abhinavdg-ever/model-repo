@@ -24,6 +24,7 @@ from stages._support import (
     mark_failed,
     mark_processing,
     mark_skipped,
+    pass1_ruled_out,
     stage_run,
 )
 from stages.lib.ocr.section_headers_io import (
@@ -144,6 +145,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         f1_by_name = _pages_by_name(final1_doc)
         f2_by_name = _pages_by_name(final2_doc)
 
+        with connect() as conn:
+            # Pages pass 1 settled as blank / junk / duplicate are not read after Final OCR 1.
+            mark_skipped(conn, ctx, sorted(pass1_ruled_out(conn, chart_id) & ctx.todo), "blank_junk_pass1")
         todo_pages = [p for p in ctx.pages if p["id"] in ctx.todo]
         with connect() as conn:
             for page in todo_pages:

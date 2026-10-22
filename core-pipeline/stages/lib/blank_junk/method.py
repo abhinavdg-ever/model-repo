@@ -17,6 +17,9 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
                     -> Junk / Others; else < 20 words -> Main; else on
   pass 1 (Tesseract text) stops here:
     R5 keep         DistilBERT p(keep) > 0.95 -> Main, final: pass 2 does not judge it again
+    R5 junk         DistilBERT p(junk) > 0.95 -> Junk (DistilBERT's subtype), final: pass 2
+                    does not judge it again; Final OCR 1 still reads it, Final OCR 2 does not
+                    (2026-10-22). Not on a page more than 30% handwritten
     otherwise       Main for now; Final OCR, then pass 2 decides
   pass 2 (Final OCR text):
     R4 signature    Electronic Signature found by kv_extract -> Main, unless DistilBERT's
@@ -27,7 +30,8 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
                     review; below 0.50 -> Main
     handwritten     a page more than 30% handwritten is never junked by R5: Main for review
 
-So junk is decided in pass 1 only by R1-R3; DistilBERT's junk calls wait for the Final OCR.
+So junk is decided in pass 1 by R1-R3 and DistilBERT's sure calls (p(junk) > 0.95); the rest
+of its junk calls wait for the Final OCR.
 Confidence: R1 1.0, R2 0.99, R3 0.90, R4 0.95, R6 0.95; R5 (and the pass-1 keep) DistilBERT's
 probability for its verdict. Thresholds live in ``keyword-canon/blank_junk_context_canon.json``
 (``distilbert``), which reloads on change.
@@ -48,6 +52,7 @@ from classify import (
     CODE_OTHERS,
     CODE_RECORD_REQUEST,
 )
+from stages._support import FINAL_JUNK
 from stages.lib.canon_store import CANON_DIR, CanonFile
 
 
@@ -464,6 +469,7 @@ def _thresholds() -> dict[str, float]:
     cfg = canon().raw.get("distilbert", {})
     return {
         "pass1_final_keep_above": float(cfg.get("pass1_final_keep_above", 0.95)),
+        "pass1_final_junk_above": float(cfg.get("pass1_final_junk_above", 0.95)),
         "junk_at": float(cfg.get("junk_at", 0.85)),
         "review_junk_at": float(cfg.get("review_junk_at", 0.50)),
         "signature_overruled_above": float(cfg.get("signature_overruled_above", 0.95)),
@@ -567,8 +573,9 @@ def decide(inputs: PageInputs) -> Verdict:
             return ruled(CODE_MAIN, "R3", "R3 Visual -> Main")
 
     if not pass2:
-        # Pass 1 junks nothing more: DistilBERT's junk calls wait for the Final OCR. A page
-        # it is sure to keep is final, and pass 2 leaves it alone.
+        # Pass 1 settles only what DistilBERT is sure of: a keep, or a junk page (which
+        # pass 2's R4 / R6 / R5 would junk too, as R4 is overruled at the same p(junk)).
+        # Everything else waits for the Final OCR and pass 2.
         limit = t["pass1_final_keep_above"]
         if p_keep is not None and p_keep > limit:
             return ruled(
@@ -576,6 +583,18 @@ def decide(inputs: PageInputs) -> Verdict:
                 f"{FINAL_KEEP}: DistilBERT p(keep) {p_keep:.3f} > {limit} -> Main; pass 2 skipped",
                 p_keep,
             )
+        junk_limit = t["pass1_final_junk_above"]
+        hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
+        handwritten = inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit
+        if p_junk is not None and p_junk > junk_limit and not handwritten:
+            return ruled(
+                _junk_code(subtype), "R5",
+                f"{FINAL_JUNK}: DistilBERT p(junk) {p_junk:.3f} > {junk_limit} -> Junk / {subtype}; "
+                f"pass 2 and Final OCR 2 skipped",
+                p_junk,
+            )
+        if p_junk is not None and p_junk > junk_limit:
+            votes["veto"] = "handwritten"
         votes["deferred"] = True
         why = f"p(keep) {p_keep:.3f} <= {limit}" if p_keep is not None else "no DistilBERT score"
         return ruled(CODE_MAIN, "P1", f"pass 1: {why} -> Main for now, judged in pass 2 on the final OCR",
