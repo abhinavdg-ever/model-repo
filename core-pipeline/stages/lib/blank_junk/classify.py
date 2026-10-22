@@ -200,6 +200,30 @@ def word_similarity(a: str, b: str) -> float:
     return 2 * sum((wa & wb).values()) / total
 
 
+def differing_words(a: str, b: str) -> int:
+    """How many words differ between the two pages: the larger of the words only the
+    first has and the words only the second has, so a replaced word counts once and an
+    added word once. The absolute size of the difference, which a percentage hides on a
+    long page."""
+    wa, wb = _word_counts(a or ""), _word_counts(b or "")
+    return max(sum((wa - wb).values()), sum((wb - wa).values()))
+
+
+# "Page 15", "Page 1 of 7", "page 3/9".
+_PAGE_MARKER = re.compile(r"\bpage\s*(\d{1,4})(?:\s*(?:of|/)\s*(\d{1,4}))?\b", re.IGNORECASE)
+
+
+@lru_cache(maxsize=4096)
+def page_markers(text: str) -> "Counter[str]":
+    """The printed page numbers on a page ("15", "1/7"), counted. Two pages of a record
+    that embed the same document share its "Page 1 of 7" but not the chart's own
+    "Page 15" / "Page 27"; the same page sent twice carries the same numbers."""
+    return Counter(
+        f"{number}/{total}" if total else number
+        for number, total in _PAGE_MARKER.findall(text or "")
+    )
+
+
 def similarity_parts(
     a: str, b: str, *, at_least: float = 0.0
 ) -> tuple[Optional[float], float, Optional[float], float]:

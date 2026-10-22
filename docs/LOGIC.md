@@ -304,7 +304,8 @@ the word-count match (Dice). Details: `docs/BLANK_JUNK_LOGIC.md` §4.
 |---|---|
 | Window | Compare only pages 25 before / 25 after (page order); the word-sequence match only for a pair whose word-count match reaches 95% |
 | Threshold | Average similarity **≥ 0.98** → duplicate (UI Yes, Blank / Junk Yes (Duplicate)); **[0.95, 0.98)** → partial, keeps its verdict (UI Partial). Every compared page stores its best similarity (`duplicate_confidence`); UI confidence falls exponentially from 100% at 100% to 50% at 95%, then the not-a-duplicate confidence rises to 100% at 80% |
-| Containment | The shorter page's normalized text appears whole inside the longer one → duplicate, confidence 1.0 |
+| Containment | The shorter page's normalized text appears whole inside the longer one, which adds at most 10 words → duplicate, confidence 1.0 |
+| Rigor | Both pages print page numbers and they differ → neither duplicate nor partial; ≥ 98% with more than 10 words changed → partial at most (canon `duplicates`) |
 | Who wins | Higher normalized character count stays **main**; on a tie, the **earlier** page |
 | Excluded | Blank / junk pages and texts shorter than 300 normalized characters (~50 words) |
 | Cross-pass | Prior-pass `main` pages are neighbors in pass 2 (so HW can match a printed original) |

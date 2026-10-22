@@ -99,6 +99,8 @@ from classify import (  # noqa: E402
     classification_confidence,
     duplicate_char_count,
     text_is_comparable,
+    differing_words,
+    page_markers,
     similarity_parts,
     text_is_contained,
 )
@@ -108,6 +110,15 @@ from model_bridge import model_scores  # noqa: E402
 STAGE = "blank_junk"
 
 # Every rule and the vote live in method.py.
+
+
+def _duplicate_rules() -> dict[str, Any]:
+    """The canon's ``duplicates`` block (reloads on change), with its defaults."""
+    cfg = method.canon().raw.get("duplicates", {})
+    return {
+        "max_differing_words": int(cfg.get("max_differing_words", 10)),
+        "page_numbers_must_match": bool(cfg.get("page_numbers_must_match", True)),
+    }
 
 
 JUNK_CSV_COLS = [
@@ -316,12 +327,19 @@ def _classify(
     # far apart to reach the partial threshold has no sequence score, only the most
     # its average could be (``exact`` false); it ranks by that bound.
     best: dict[int, dict[str, Any]] = {}
+    # The same, among pairs the rules did not turn down: what duplicate_confidence
+    # (review-ui's Duplicate confidence) is built from.
+    admissible: dict[int, float] = {}
+    rules = _duplicate_rules()
 
     def _note_best(
         page_id: int, other_id: int, sequence: Optional[float], word: float,
         sim: Optional[float], at_most: float, contained: bool,
+        differing: int, markers: tuple[list[str], list[str]], rejected: Optional[str],
     ) -> None:
         rank = sim if sim is not None else at_most
+        if rejected is None and rank > admissible.get(page_id, -1.0):
+            admissible[page_id] = rank
         if rank > best.get(page_id, {}).get("_rank", -1.0):
             best[page_id] = {
                 "_rank": rank,
@@ -332,6 +350,9 @@ def _classify(
                 "sequence_similarity": None if sequence is None else round(sequence, 4),
                 "word_similarity": round(word, 4),
                 "contained": contained,
+                "differing_words": differing,
+                "page_numbers": {"this": markers[0], "other": markers[1]},
+                "rejected": rejected,
             }
 
     n = len(pages)
@@ -347,16 +368,38 @@ def _classify(
             if not _comparable(nid):
                 continue
             a_text, b_text = texts.get(pid) or "", texts.get(nid) or ""
-            is_contained = text_is_contained(a_text, b_text)
+            differing = differing_words(a_text, b_text)
+            # A page wholly inside a longer one is its copy only when little is added:
+            # a subset of a longer page is judged on its similarity.
+            is_contained = (
+                differing <= rules["max_differing_words"] and text_is_contained(a_text, b_text)
+            )
             if is_contained:
                 sequence = word = sim = at_most = 1.0
             else:
                 sequence, word, sim, at_most = similarity_parts(
                     a_text, b_text, at_least=DUPLICATE_PARTIAL_THRESHOLD
                 )
-            _note_best(pid, nid, sequence, word, sim, at_most, is_contained)
-            _note_best(nid, pid, sequence, word, sim, at_most, is_contained)
-            if sim is None or sim < DUPLICATE_PARTIAL_THRESHOLD:
+            # 2026-10-22 (user): the percentage alone is not enough on a long page.
+            # Two pages of a record embedding the same document differ in a few
+            # lines -- their wrapper and the chart's own page number.
+            marks_a, marks_b = page_markers(a_text), page_markers(b_text)
+            kind: Optional[str] = None
+            rejected: Optional[str] = None
+            if sim is not None and sim >= DUPLICATE_PARTIAL_THRESHOLD:
+                if rules["page_numbers_must_match"] and marks_a and marks_b and marks_a != marks_b:
+                    rejected = "page numbers differ"
+                elif sim >= DUPLICATE_SIMILARITY_THRESHOLD and differing <= rules["max_differing_words"]:
+                    kind = "duplicate"
+                else:
+                    # 95-98%, or >= 98% with more than max_differing_words words changed:
+                    # a near copy, not the page itself.
+                    kind = "partial"
+            listed = (sorted(marks_a.elements()), sorted(marks_b.elements()))
+            _note_best(pid, nid, sequence, word, sim, at_most, is_contained, differing, listed, rejected)
+            _note_best(nid, pid, sequence, word, sim, at_most, is_contained, differing,
+                       (listed[1], listed[0]), rejected)
+            if kind is None:
                 continue
             orig, dup = _prefer_original(
                 i,
@@ -370,7 +413,7 @@ def _classify(
             # original, and the junk one its duplicate.
             if _is_main(dup) and not _is_main(orig):
                 orig, dup = dup, orig
-            if sim < DUPLICATE_SIMILARITY_THRESHOLD:
+            if kind == "partial":
                 if sim > partial_sim.get(dup, 0.0):
                     partial_of[dup] = orig
                     partial_sim[dup] = sim
@@ -449,14 +492,11 @@ def _classify(
         named[page_id] = {"page_name": other.get("page_name"), "page_number": other.get("page_number"), **match}
     for page_id, row in by_id.items():
         row["best_match"] = named.get(page_id)
-        # The score review-ui's Duplicate confidence is built from. A pair never near
-        # 95% has only the bound on its average: never above the real score.
-        match = best.get(page_id)
-        row["duplicate_confidence"] = (
-            None if match is None
-            else match["similarity"] if match["similarity"] is not None
-            else match["similarity_at_most"]
-        )
+        # The score review-ui's Duplicate confidence is built from: the best pair the
+        # rules did not turn down. A pair never near 95% has only the bound on its
+        # average: never above the real score.
+        score = admissible.get(page_id)
+        row["duplicate_confidence"] = None if score is None else round(score, 4)
     if best_matches is not None:
         best_matches.update({page_by_id[pid]["page_name"]: match for pid, match in named.items()})
 

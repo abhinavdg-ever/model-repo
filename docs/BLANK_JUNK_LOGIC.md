@@ -125,11 +125,27 @@ Similarity is the **average of two matchers** (`classify.similarity_parts`):
 - the **word match** — Dice overlap of the two pages' word counts (order-blind, so a
   page whose columns OCR read in another order still scores 1.0).
 
-One page's text **wholly contained** in the other's scores 1.0.
+One page's text **wholly contained** in the other's scores 1.0 — only when the longer page
+adds at most `max_differing_words` (10) words; a page inside a much longer one is judged on
+its similarity.
+
+Two more rules (2026-10-22), because a percentage alone is not enough on a long page — two
+pages of a record that embed the same document (an After Visit Summary under two sections)
+read 97–98% alike:
+
+- **Page numbers must agree** (`page_numbers_must_match`). When both pages print page
+  numbers ("Page 15", "Page 1 of 7") and they differ, the pair is neither a duplicate nor a
+  partial: they are different pages of the record. The embedded "Page 1 of 7" matches; the
+  chart's own "Page 15" / "Page 27" does not.
+- **At most X words changed** (`max_differing_words`, 10): ≥ 98% is a duplicate only when
+  no more than 10 words differ (the larger side's words the other lacks; a replaced word
+  counts once). With more it is a partial at most.
+
+Both live in the canon's `duplicates` block.
 
 | Similarity | Verdict | Blank / Junk | Duplicate (UI) |
 |---|---|---|---|
-| **≥ 98%** or contained | `duplicate` (code 4) | Yes (Duplicate) | Yes (To Page N) |
+| **≥ 98%** (or contained) with ≤ 10 words changed and no differing page number | `duplicate` (code 4) | Yes (Duplicate) | Yes (To Page N) |
 | **95% – < 98%** | stays **Main**, `duplicate_of_page_id` set | No | Partial (To Page N) |
 | below 95% | Main | No | No |
 
@@ -161,6 +177,15 @@ average.
 ---
 
 ## 5. Changes
+
+### 2026-10-22 — Duplicates need more than the percentage
+
+- An After Visit Summary embedded under two sections of one chart (pages 22 and 34, chart
+  pages 15 and 27) scored about 97% and was flagged. A pair now also needs matching page
+  numbers (when both print them) and, for a duplicate, at most 10 changed words; containment
+  counts only when the longer page adds at most 10 words. `best_match` shows
+  `differing_words`, `page_numbers` and `rejected`; a turned-down pair does not feed
+  `duplicate_confidence`.
 
 ### 2026-10-22 — Duplicate confidence from the similarity
 

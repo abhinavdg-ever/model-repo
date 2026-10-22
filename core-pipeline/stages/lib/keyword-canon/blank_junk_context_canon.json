@@ -21,6 +21,11 @@
     "header_band": 0.12,
     "footer_band": 0.08
   },
+  "duplicates": {
+    "note": "2026-10-22 (user): the similarity alone is not enough on a long page -- two pages of a record embedding the same document (an After Visit Summary under two sections) read 97-98% alike. A pair is a duplicate only when, besides >= 98% (or one page wholly inside the other), at most max_differing_words words differ (the larger side's words the other lacks: a replaced word counts once); with more it is a partial at most. When both pages print page numbers ('Page 15', 'Page 1 of 7') and they differ (page_numbers_must_match), the pair is neither: different pages of the record.",
+    "max_differing_words": 10,
+    "page_numbers_must_match": true
+  },
   "short_page": {
     "note": "Short page rule R6, pass 2, after R4 (signature) and before R5 (DistilBERT); restored 2026-10-21. Content that ends within the top 'top_fraction' (15%) of the page height, footer band and running stamps left out, with less than body_ink_max_fraction ink below -> JUNK / Others (confidence 0.95). Not when DistilBERT p(keep) > skip_keep_above (0.90), when the word boxes or the image cannot be read, or when R4 kept the page (docs/BLANK_JUNK_LOGIC.md).",
     "top_fraction": 0.15,

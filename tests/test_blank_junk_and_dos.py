@@ -116,7 +116,7 @@ class TestDuplicateScope:
     def test_page_contained_in_a_neighbor_is_duplicate(self):
         pages = [page(1, 1), page(2, 2)]
         inner = _body(6)
-        outer = inner + "Addendum with medication reconciliation and labs. " * 12
+        outer = inner + "Signed electronically today."  # a few words added
         rows = _classify(pages, {1: inner, 2: outer}, {1, 2})
         by_id = {r["page_id"]: r for r in rows}
         assert by_id[2]["flag"] == "not_blank_junk"
@@ -124,6 +124,14 @@ class TestDuplicateScope:
         assert by_id[1]["duplicate_of"] == 2
         assert by_id[1]["confidence"] == 1.0
         assert "contained" in by_id[1]["reason"]
+
+    def test_a_page_inside_a_much_longer_one_is_not_its_copy(self):
+        # 2026-10-22 (user): a subset of a longer page is judged on its similarity.
+        pages = [page(1, 1), page(2, 2)]
+        inner = _body(6)
+        outer = inner + "Addendum with medication reconciliation and labs. " * 12
+        rows = _classify(pages, {1: inner, 2: outer}, {1, 2})
+        assert all(r["flag"] != "duplicate" for r in rows)
 
     def test_short_identical_pages_are_not_compared(self):
         pages = [page(1, 1), page(2, 2)]
@@ -874,3 +882,87 @@ class TestDuplicateConfidenceStored:
             assert store.blank_junk[(7, 2)]["duplicate_confidence"] == 0.9123
         finally:
             disable_skip_db_write()
+
+
+# An Epic After Visit Summary embedded twice in one record (pages 22 and 34 of a
+# reviewed chart, 2026-10-22): the same document under two sections, chart pages 15
+# and 27. Read 97-98% alike, but they are not duplicates.
+_AVS_HEADER = (
+    "CHRISTUS St. Vincent Urology Associates 465 SAINT MICHAELS DR SANTA FE NM 87505-7670 "
+    "Gordon, Donald MRN: 0000590471, DOB: 01/09/1962 Legal Sex: M Visit date: 8/13/2025\n"
+    "08/13/2025 - Office Visit in CHRISTUS St. Vincent Urology Associates (continued)\n"
+)
+_AVS_BODY = """AFTER VISIT SUMMARY
+Gordon, Donald DOB 01/09/1962 8/13/2025 3:45 PM CHRISTUS St Vincent Urology Associates 505-982-3534
+Instructions from C Stewart, MD Read the attached information Cystoscopy (English)
+Return for cystoscopy and trus next visit in ~ 1 week or sooner if possible
+Today's Visit You saw C Stewart, MD on Wednesday August 13, 2025. The following issues were addressed: Urinary retention Indwelling Foley catheter present
+Blood Pressure 107/58 BMI 26.98 Weight 188 lb Height 5' 10" Temperature (Temporal) 98.7 °F Pulse 89 Oxygen Saturation 93%
+What's Next AUG 22 2025 PROCEDURE 15 with C Stewart, MD Friday August 22 3:00 PM (Arrive by 2:45 PM) CHRISTUS St Vincent Urology Associates 465 St Michaels Dr Ste 110 Santa Fe NM 87505-7670 505-982-3534
+DEC 26 2025 CSV PRE-OP with T Jefferson, PA-C Friday December 26 2:00 PM (Arrive by 1:45 PM) CHRISTUS St Vincent Orthopaedic Specialty Clinic 2968 Rodeo Park Dr W Ste 150 SANTA FE NM 87505-6383 505-982-5014
+JAN 8 2026 LEFT ARTHROPLASTY TOTAL KNEE with J Carothers, MD CSVH OR 455 St Michael's Dr Santa Fe NM 87505
+MyChart View your After Visit Summary and more online at https://mychart.christushealth.org/mychart/. If you have questions, please call (833)91CHART to speak with our MyChart staff.
+Joseph Gordon, (MRN: 0000590471) Printed at 8/13/2025 5:10 PM Page 1 of 7 Epic"""
+
+
+def _avs_page(wrapper: str, chart_page: int) -> str:
+    return f"{_AVS_HEADER}{wrapper}\n{_AVS_BODY}\nPrinted on 4/3/26 9:22 PM Page {chart_page}\n"
+
+
+class TestDuplicateRigor:
+    """2026-10-22 (user): a percentage alone is not enough on a long page."""
+
+    def test_one_document_under_two_sections_is_not_a_duplicate(self):
+        p22 = _avs_page("After Visit Summary (continued)", 15)
+        p34 = _avs_page(
+            "Documents (continued)\nAfter Visit Summary - Document on 8/13/2025 5:10 PM: "
+            "After Visit Summary\nDocument (below)", 27,
+        )
+        assert classify.text_similarity(p22, p34) >= 0.95  # alike enough to be flagged before
+        best: dict = {}
+        rows = _classify([page(22, 22), page(34, 34)], {22: p22, 34: p34}, {22, 34}, best_matches=best)
+        assert all(r["flag"] != "duplicate" and r["duplicate_of"] is None for r in rows)
+        match = best["22.jpg"]
+        assert match["rejected"] == "page numbers differ"
+        assert match["page_numbers"] == {"this": ["1/7", "15"], "other": ["1/7", "27"]}
+        assert match["differing_words"] == 15
+        # A turned-down pair does not count toward the Duplicate confidence.
+        assert all(r["duplicate_confidence"] is None or r["duplicate_confidence"] < 0.95 for r in rows)
+
+    def test_over_98_percent_with_more_than_x_words_changed_is_partial_at_most(self):
+        words = _prose(40, words=1200)
+        a, b = " ".join(words), _edited(words, 14)  # 14 words changed of 1200
+        assert classify.text_similarity(a, b) >= 0.98
+        assert classify.differing_words(a, b) == 14
+        rows = {r["page_id"]: r for r in _classify([page(1, 1), page(2, 2)], {1: a, 2: b}, {1, 2})}
+        assert all(r["flag"] != "duplicate" for r in rows.values())
+        assert any(r["duplicate_of"] is not None for r in rows.values())  # Partial
+
+    def test_the_same_page_numbers_do_not_stop_a_duplicate(self):
+        words = _prose(41)
+        a = " ".join(words) + " Page 3 of 9"
+        b = _edited(words, 3) + " Page 3 of 9"
+        rows = _classify([page(1, 1), page(2, 2)], {1: a, 2: b}, {1, 2})
+        assert any(r["flag"] == "duplicate" for r in rows)
+
+    def test_page_markers_and_differing_words(self):
+        assert classify.page_markers("Page 1 of 7 ... page 15") == {"1/7": 1, "15": 1}
+        assert classify.page_markers("PROCEDURE 15 with C Stewart") == {}
+        assert classify.differing_words("a b c d", "a b x d") == 1  # replaced: once
+        assert classify.differing_words("a b c", "a b c d e") == 2  # added
+
+    def test_containment_obeys_the_same_rules(self):
+        # X wholly inside Y: a duplicate only when Y adds at most max_differing_words
+        # words and no different page number.
+        x = " ".join(_prose(42))
+        few_added = x + " reviewed and signed"
+        more_added = x + " " + " ".join(_prose(43, words=30))
+        other_page = x + " Page 27"
+        pages = [page(1, 1), page(2, 2)]
+        for y, duplicate in ((few_added, True), (more_added, False)):
+            rows = _classify(pages, {1: x + " Page 15", 2: y + " Page 15"}, {1, 2})
+            assert any(r["flag"] == "duplicate" for r in rows) is duplicate
+        best: dict = {}
+        rows = _classify(pages, {1: x + " Page 15", 2: other_page}, {1, 2}, best_matches=best)
+        assert all(r["flag"] != "duplicate" for r in rows)
+        assert best["1.jpg"]["rejected"] == "page numbers differ"

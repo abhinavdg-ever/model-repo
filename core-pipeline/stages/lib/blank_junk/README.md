@@ -9,7 +9,9 @@ Duplicates: Main and junk pages (never blank), against a neighbour within ±25 p
 Main page is always the original of a junk copy. Similarity is the
 average of the word-sequence match (SequenceMatcher over words, autojunk off) and the
 word-count match; ≥ 98% or
-text wholly contained in it is a duplicate, 95–98% a partial duplicate that stays Main. Pages
+text wholly contained in it (adding at most 10 words) is a duplicate when at most 10 words
+differ and the printed page numbers agree; 95–98% (or more words changed) a partial
+duplicate that keeps its verdict. Pages
 under 300 characters never compared; the longer (or earlier) page is kept.
 
 The rest of this file describes the older regex classifier (`classify_junk.py` and the
