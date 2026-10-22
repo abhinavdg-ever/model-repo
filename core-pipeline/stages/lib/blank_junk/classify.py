@@ -160,31 +160,33 @@ def text_is_contained(a: str, b: str) -> bool:
     return short in long
 
 
-def _matcher(na: str, nb: str):
-    """SequenceMatcher over two normalized texts. ``autojunk`` off: on text over 200
-    characters it drops every character making up more than 1% of it -- nearly every
-    letter of a page -- and a page 98% alike scored about 0.2 (fixed 2026-10-22)."""
+def _words(text: str) -> list[str]:
+    return re.findall(r"\w+", (text or "").lower())
+
+
+def sequence_similarity(a: str, b: str) -> float:
+    """SequenceMatcher ratio over the two pages' words in order, in [0, 1].
+    Order-sensitive: the same words read in another order score lower.
+
+    Over words, not characters: a page's ~400 words match in about a millisecond
+    where its ~3,000 characters took 30-60 ms, which made a chart of repeated forms
+    take minutes. ``autojunk`` off: with it on, SequenceMatcher drops every item
+    making up more than 1% of a long sequence, and a page 98% alike scored about 0.2
+    (fixed 2026-10-22)."""
     from difflib import SequenceMatcher
 
-    return SequenceMatcher(None, na, nb, autojunk=False)
-
-
-def char_similarity(a: str, b: str) -> float:
-    """SequenceMatcher ratio on normalized OCR text, in [0, 1]. Order-sensitive:
-    the same words read in another order score lower."""
-    na = normalize_duplicate_text(a)
-    nb = normalize_duplicate_text(b)
-    if not na or not nb:
+    wa, wb = _words(a), _words(b)
+    if not wa or not wb:
         return 0.0
-    if na == nb:
+    if wa == wb:
         return 1.0
-    return _matcher(na, nb).ratio()
+    return SequenceMatcher(None, wa, wb, autojunk=False).ratio()
 
 
 @lru_cache(maxsize=4096)
 def _word_counts(text: str) -> "Counter[str]":
     """A page's word counts; each page meets up to 2 x ±window neighbors. Not mutated."""
-    return Counter(re.findall(r"\w+", text.lower()))
+    return Counter(_words(text))
 
 
 def word_similarity(a: str, b: str) -> float:
@@ -201,36 +203,30 @@ def word_similarity(a: str, b: str) -> float:
 def similarity_parts(
     a: str, b: str, *, at_least: float = 0.0
 ) -> tuple[Optional[float], float, Optional[float], float]:
-    """``(char, word, average, best possible average)`` for two pages' OCR text.
+    """``(sequence, word, average, best possible average)`` for two pages' OCR text.
 
-    The full character match is slow on a page of text, so it runs only when the pair
-    could still average ``at_least``: the cheap word match first, then SequenceMatcher's
-    ``quick_ratio`` (an upper bound on the character match). A pair that cannot reach
-    it comes back with ``char`` and ``average`` None and the last value an upper bound
-    on the average; otherwise the last value is the average itself.
+    The word-order match can never exceed the word-count match (its matched words
+    are a share of the words the pages have in common), so the average is at most
+    the word match. A pair whose word match is below ``at_least`` cannot reach it:
+    it comes back with ``sequence`` and ``average`` None and the word match as the
+    bound, without running SequenceMatcher. Otherwise the last value is the average.
     """
     na = normalize_duplicate_text(a)
     nb = normalize_duplicate_text(b)
     if na and na == nb:
         return 1.0, 1.0, 1.0, 1.0
     word = word_similarity(a, b)
-    if not na or not nb:
-        return 0.0, word, word / 2, word / 2
-    if (1.0 + word) / 2 < at_least:
-        return None, word, None, (1.0 + word) / 2
-    matcher = _matcher(na, nb)
-    char_at_most = matcher.quick_ratio()
-    if (char_at_most + word) / 2 < at_least:
-        return None, word, None, (char_at_most + word) / 2
-    char = matcher.ratio()
-    average = (char + word) / 2
-    return char, word, average, average
+    if word < at_least:
+        return None, word, None, word
+    sequence = sequence_similarity(a, b)
+    average = (sequence + word) / 2
+    return sequence, word, average, average
 
 
 def text_similarity(a: str, b: str) -> float:
     """How alike two pages' OCR text is, in [0, 1]: the average of the
-    order-sensitive character match and the order-blind word match, so neither
-    a reordered read nor a run of shared boilerplate decides alone."""
+    order-sensitive word-sequence match and the order-blind word-count match, so
+    neither a reordered read nor a run of shared boilerplate decides alone."""
     return similarity_parts(a, b)[2]
 
 

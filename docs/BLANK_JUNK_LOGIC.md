@@ -113,8 +113,8 @@ After the verdicts, among **Main** pages only (never blank / junk), each page ag
 its neighbours within **±25** pages, pages of **≥ 300** characters (whitespace stripped).
 Similarity is the **average of two matchers** (`classify.similarity_parts`):
 
-- the **character match** — SequenceMatcher on lower-cased, whitespace-stripped text,
-  `autojunk` off (order-sensitive);
+- the **word-sequence match** — SequenceMatcher over the page's words in order,
+  `autojunk` off (order-sensitive; over words, not characters, for speed);
 - the **word match** — Dice overlap of the two pages' word counts (order-blind, so a
   page whose columns OCR read in another order still scores 1.0).
 
@@ -133,11 +133,12 @@ its original's page type and sub-type (page classification) and Final values
 (`imaging_final`); it stays Non-Codable. UI confidence: a duplicate 100%; a partial
 1 + (similarity − 1) × 10 (95% → 50%, 97% → 70%).
 
-The slow character match runs only for a pair that could still reach 95%: the word
-match first, then SequenceMatcher's `quick_ratio` bound. `staging/blank_junk.json` gives
+The word-sequence match can never exceed the word-count match, so a pair whose word match
+is below 95% is skipped without running SequenceMatcher. `staging/blank_junk.json` gives
 every compared page its `best_match` — the neighbour (`page_name`, `page_number`),
-`similarity`, `char_similarity`, `word_similarity`, `contained`; for a pair that was
-never near 95%, `exact` is false and `similarity_at_most` bounds the average.
+`similarity`, `sequence_similarity`, `word_similarity`, `contained`; for a pair that was
+never near 95%, `exact` is false and `similarity_at_most` (the word match) bounds the
+average.
 
 ---
 
@@ -147,12 +148,16 @@ never near 95%, `exact` is false and `similarity_at_most` bounds the average.
 
 ### 2026-10-22 — Duplicates: two matchers, Partial, Yes (Duplicate)
 
-- Similarity is the average of the character match and the word match (was the
-  character match alone).
+- Similarity is the average of the word-sequence match and the word-count match (was a
+  character SequenceMatcher alone).
 - **SequenceMatcher `autojunk` is off.** With it on (the default), any text over 200
   characters dropped every character making up more than 1% of it — nearly every
   letter — so a page 98% alike scored about 0.2. Before this, only identical or
   contained pages were ever found.
+- The order-sensitive match is over words, not characters: about 1 ms a pair instead of
+  30–60 ms. A chart of 100 near-identical form pages took 111 s character by character,
+  4.3 s by words. A character-level score (Levenshtein via `rapidfuzz`) would forgive OCR
+  misreads inside a word, at the cost of a new dependency.
 - ≥ 98% (or contained) is a duplicate: Blank / Junk **Yes (Duplicate)**, Duplicate Yes
   (was Yes only at 100%, May Be at 98–100%). 95–98% is **Partial**: the page stays Main.
 - A duplicate takes its original's page type in page classification too.
@@ -477,7 +482,7 @@ Main.
 | R2 placeholder | ≤ 25 words | `method.py` |
 | Hard junk groups | record_request, roi_vendors, invoice, id_card | `method.py` `HARD_JUNK_GROUPS` |
 | R6 undo | KK with DistilBERT's KEEP strong (p(keep) ≥ 0.85) | canon `voters.bert.keep_strong` |
-| Duplicates | ≥ 98% duplicate, 95–98% partial (average of character + word match), ±25 pages, ≥ 300 characters | `classify.py` |
+| Duplicates | ≥ 98% duplicate, 95–98% partial (average of word-sequence + word-count match), ±25 pages, ≥ 300 characters | `classify.py` |
 
 ### Old §10. Changes, 2026-10-17 / 18
 

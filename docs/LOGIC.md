@@ -296,12 +296,12 @@ model kept as Main — a blank or junk page is never compared. A Main page is a
 duplicate when its OCR text is **≥ 98% similar** to a Main neighbor **within ±25
 pages** in chart order, or when its text is **wholly contained** in that neighbor's;
 **95% – < 98%** is a partial duplicate, which stays Main. Similarity is the average of
-the character match (`difflib.SequenceMatcher`, `autojunk` off) and the word match
-(Dice on word counts). Details: `docs/BLANK_JUNK_LOGIC.md` §4.
+the word-sequence match (`difflib.SequenceMatcher` over the words, `autojunk` off) and
+the word-count match (Dice). Details: `docs/BLANK_JUNK_LOGIC.md` §4.
 
 | Rule | Behaviour |
 |---|---|
-| Window | Compare only pages 25 before / 25 after (page order); the character match only for a pair that could still reach 95% |
+| Window | Compare only pages 25 before / 25 after (page order); the word-sequence match only for a pair whose word-count match reaches 95% |
 | Threshold | Average similarity **≥ 0.98** → duplicate (UI Yes, Blank / Junk Yes (Duplicate)); **[0.95, 0.98)** → partial, stays Main (UI Partial, display confidence `1 + (sim − 1) × 10`, e.g. 95%→50% / 97%→70%) |
 | Containment | The shorter page's normalized text appears whole inside the longer one → duplicate, confidence 1.0 |
 | Who wins | Higher normalized character count stays **main**; on a tie, the **earlier** page |

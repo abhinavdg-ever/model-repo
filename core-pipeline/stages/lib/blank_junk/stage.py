@@ -20,9 +20,10 @@ key/value extraction's ``extraction.json`` (not the database).
 Duplicate detection (after the verdict, among Main pages only):
 
 * Compare each comparable page only to neighbors **±25** in page order.
-* Similarity is the average of two matchers (``classify.text_similarity``): the
-  order-sensitive character match (SequenceMatcher) and the order-blind word
-  match. One page's text wholly contained in the other's scores 1.0.
+* Similarity is the average of two matchers (``classify.similarity_parts``): the
+  order-sensitive word-sequence match (SequenceMatcher over the words) and the
+  order-blind word-count match. One page's text wholly contained in the other's
+  scores 1.0.
 * **≥ 98%** (or contained): ``duplicate`` -- UI Duplicate "Yes", Blank / Junk
   "Yes (Duplicate)". **[95%, 98%)**: a partial duplicate -- the page stays
   ``not_blank_junk`` (Main) with ``duplicate_of_page_id`` set; UI "Partial".
@@ -102,16 +103,6 @@ from model_bridge import model_scores  # noqa: E402
 STAGE = "blank_junk"
 
 # Every rule and the vote live in method.py.
-
-
-def _can_reach(len_a: int, len_b: int, threshold: float) -> bool:
-    """Whether two pages this long could average ``threshold``: the character
-    match is at most 2 * shorter / (shorter + longer) and the word match at most
-    1, so a pair that fails this is never compared."""
-    if not len_a or not len_b:
-        return False
-    best_char = 2 * min(len_a, len_b) / (len_a + len_b)
-    return (best_char + 1.0) / 2 >= threshold
 
 
 JUNK_CSV_COLS = [
@@ -312,12 +303,12 @@ def _classify(
     partial_sim: dict[int, float] = {}
     # Each page's highest match among the neighbors it was compared with, any
     # score, for blank_junk.json: which page, and both matchers' scores. A pair too
-    # far apart to reach the partial threshold has no exact character score, only
-    # the most its average could be (``exact`` false); it ranks by that bound.
+    # far apart to reach the partial threshold has no sequence score, only the most
+    # its average could be (``exact`` false); it ranks by that bound.
     best: dict[int, dict[str, Any]] = {}
 
     def _note_best(
-        page_id: int, other_id: int, char: Optional[float], word: float,
+        page_id: int, other_id: int, sequence: Optional[float], word: float,
         sim: Optional[float], at_most: float, contained: bool,
     ) -> None:
         rank = sim if sim is not None else at_most
@@ -328,7 +319,7 @@ def _classify(
                 "similarity": None if sim is None else round(sim, 4),
                 "similarity_at_most": None if sim is not None else round(at_most, 4),
                 "exact": sim is not None,
-                "char_similarity": None if char is None else round(char, 4),
+                "sequence_similarity": None if sequence is None else round(sequence, 4),
                 "word_similarity": round(word, 4),
                 "contained": contained,
             }
@@ -348,16 +339,13 @@ def _classify(
             a_text, b_text = texts.get(pid) or "", texts.get(nid) or ""
             is_contained = text_is_contained(a_text, b_text)
             if is_contained:
-                char = word = sim = at_most = 1.0
+                sequence = word = sim = at_most = 1.0
             else:
-                a_len, b_len = duplicate_char_count(a_text), duplicate_char_count(b_text)
-                if not _can_reach(a_len, b_len, DUPLICATE_PARTIAL_THRESHOLD):
-                    continue
-                char, word, sim, at_most = similarity_parts(
+                sequence, word, sim, at_most = similarity_parts(
                     a_text, b_text, at_least=DUPLICATE_PARTIAL_THRESHOLD
                 )
-            _note_best(pid, nid, char, word, sim, at_most, is_contained)
-            _note_best(nid, pid, char, word, sim, at_most, is_contained)
+            _note_best(pid, nid, sequence, word, sim, at_most, is_contained)
+            _note_best(nid, pid, sequence, word, sim, at_most, is_contained)
             if sim is None or sim < DUPLICATE_PARTIAL_THRESHOLD:
                 continue
             orig, dup = _prefer_original(
@@ -629,11 +617,11 @@ def _write_votes(
     Each pass entry also has ``best_match``: the page's highest duplicate score among
     the neighbors it was compared with, at any score -- ``page_name`` /
     ``page_number`` of that neighbor, ``similarity`` (the average that decides),
-    ``char_similarity``, ``word_similarity`` and ``contained``. When no neighbor came
-    near 95%, the slow character match was not run: ``exact`` is false, ``similarity``
-    and ``char_similarity`` are null and ``similarity_at_most`` bounds the average. It
-    is null when the page was never compared (too short, blank / junk, or no neighbor
-    close enough in length to reach the partial threshold). A page only compared against this pass
+    ``sequence_similarity``, ``word_similarity`` and ``contained``. When no neighbor's
+    word match reached 95%, the sequence match was not run: ``exact`` is false,
+    ``similarity`` and ``sequence_similarity`` are null and ``similarity_at_most``
+    (the word match) bounds the average. It is null when the page was never compared
+    (too short, or blank / junk). A page only compared against this pass
     (an earlier pass's Main page) gets an entry with ``best_match`` alone.
 
     This pass's entries are replaced and the other pass's kept, so after a full run the

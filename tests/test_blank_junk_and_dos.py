@@ -623,11 +623,11 @@ class TestDuplicateBands:
     """2026-10-22 (user): ≥ 98% duplicate, [95%, 98%) partial, from two matchers."""
 
     def test_a_98_percent_alike_long_page_is_a_duplicate(self):
-        # Before autojunk was turned off this pair scored about 0.2 and was missed.
+        # With SequenceMatcher's autojunk on this pair scored about 0.2 and was missed.
         words = _prose(1)
         a, b = " ".join(words), _edited(words, 4)
-        char, word, sim, _ = classify.similarity_parts(a, b)
-        assert char > 0.98 and word > 0.98 and sim >= 0.98
+        sequence, word, sim, _ = classify.similarity_parts(a, b)
+        assert sequence > 0.98 and word > 0.98 and sim >= 0.98
         rows = _classify([page(1, 1), page(2, 2)], {1: a, 2: b}, {1, 2})
         dup = next(r for r in rows if r["flag"] == "duplicate")
         assert dup["confidence"] >= 0.98
@@ -665,13 +665,13 @@ class TestDuplicateBands:
         words = _prose(5)
         half = len(words) // 2
         a, b = " ".join(words), " ".join(words[half:] + words[:half])
-        char, word, _, _ = classify.similarity_parts(a, b)
-        assert word == 1.0 and char < 1.0
+        sequence, word, _, _ = classify.similarity_parts(a, b)
+        assert word == 1.0 and sequence < 1.0
 
-    def test_far_apart_pages_skip_the_character_match(self):
+    def test_far_apart_pages_skip_the_sequence_match(self):
         a, b = " ".join(_prose(6)), " ".join(_prose(7))
-        char, word, sim, at_most = classify.similarity_parts(a, b, at_least=0.95)
-        assert char is None and sim is None and at_most < 0.95
+        sequence, word, sim, at_most = classify.similarity_parts(a, b, at_least=0.95)
+        assert sequence is None and sim is None and at_most == word < 0.95
         assert classify.similarity_parts(a, b)[0] is not None  # without a floor it runs
 
     def test_best_match_names_the_page_and_both_scores(self):
@@ -685,7 +685,7 @@ class TestDuplicateBands:
         match = best["2.jpg"]
         assert (match["page_name"], match["page_number"], match["exact"]) == ("1.jpg", 1, True)
         assert 0.95 <= match["similarity"] < 0.98
-        assert match["char_similarity"] is not None and match["word_similarity"] is not None
+        assert match["sequence_similarity"] is not None and match["word_similarity"] is not None
         assert best["3.jpg"]["exact"] is False and best["3.jpg"]["similarity_at_most"] < 0.95
         assert next(r for r in rows if r["page_id"] == 2)["best_match"] == match
 
@@ -749,3 +749,14 @@ class TestDuplicatePageType:
             assert rows[first]["decided_by"] == f"duplicate_of:{second}"
         finally:
             disable_skip_db_write()
+
+
+def test_the_sequence_match_never_exceeds_the_word_match():
+    """Why a pair below 95% on words is skipped without running SequenceMatcher."""
+    import random
+
+    rng = random.Random(11)
+    for _ in range(40):
+        a = " ".join(_prose(rng.randrange(1000), words=120))
+        b = _edited(a.split(), rng.randrange(1, 60)) if rng.random() < 0.5 else " ".join(_prose(rng.randrange(1000), words=120))
+        assert classify.sequence_similarity(a, b) <= classify.word_similarity(a, b) + 1e-12

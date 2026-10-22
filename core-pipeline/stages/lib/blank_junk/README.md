@@ -6,7 +6,8 @@ short-page geometry live in `../keyword-canon/blank_junk_context_canon.json`. Th
 worked examples, is `docs/BLANK_JUNK_LOGIC.md`; the summary is `docs/LOGIC.md` §3.
 
 Duplicates: Main pages only, against a Main neighbour within ±25 pages. Similarity is the
-average of the character match (SequenceMatcher, autojunk off) and the word match; ≥ 98% or
+average of the word-sequence match (SequenceMatcher over words, autojunk off) and the
+word-count match; ≥ 98% or
 text wholly contained in it is a duplicate, 95–98% a partial duplicate that stays Main. Pages
 under 300 characters never compared; the longer (or earlier) page is kept.
 
@@ -26,7 +27,7 @@ calls either; they remain for the standalone script below.
 | **Record Request/Transmittal** | Yes (Junk) | Record Request/Transmittal | request letter; records↔request (any order); attached; transmittal/transmitted; Urgent Request for Records; Your Records requested |
 | **Instructions** | Yes (Junk) | Instructions | “what to send”, provide documentation, please send, … |
 | **Others** | Yes (Junk) | Others | Table of contents; **&lt; 20 words** and not a signature page; **gibberish Tesseract OCR** (many no-vowel tokens / junk symbols) |
-| **Duplicate** | Yes (Duplicate) | the original's | Main pages only: ≥ 98% similar (average of character + word match) to a ±25 Main neighbor, or text wholly contained in it; pages under 300 chars never compared; longer (or earlier) page kept. 95–98% is Partial: the page stays Main |
+| **Duplicate** | Yes (Duplicate) | the original's | Main pages only: ≥ 98% similar (average of word-sequence + word-count match) to a ±25 Main neighbor, or text wholly contained in it; pages under 300 chars never compared; longer (or earlier) page kept. 95–98% is Partial: the page stays Main |
 | **Main** | No | Not Available | Everything else |
 
 ### Priority order
