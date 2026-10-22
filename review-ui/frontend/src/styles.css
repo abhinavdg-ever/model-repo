@@ -2441,6 +2441,19 @@ input {
   width: 100%;
 }
 
+/* An editing cell: the input, and its floppy save once the value has changed. */
+.imaging-gt-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+}
+
+.imaging-gt-icon.imaging-gt-cell-save:hover {
+  background: var(--brand-800);
+  color: #fff;
+}
+
 .imaging-gt-menu {
   position: absolute;
   z-index: 30;

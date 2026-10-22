@@ -1036,6 +1036,14 @@ function ChoiceMenu({
     typed && folded.length >= 2
       ? options.filter((option) => option.toLowerCase().includes(folded))
       : [];
+  function commit() {
+    const next = normalizeEntry(fieldId, text);
+    if (next == null) {
+      setInvalid(entryHint(fieldId));
+      return;
+    }
+    onCommit(next);
+  }
   function onKeyDown(event: KeyboardEvent) {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -1045,29 +1053,27 @@ function ChoiceMenu({
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      const next = normalizeEntry(fieldId, text);
-      if (next == null) {
-        setInvalid(entryHint(fieldId));
-        return;
-      }
-      onCommit(next);
+      commit();
     }
   }
   return (
     <div className="imaging-gt-picker" onKeyDown={onKeyDown}>
-      <input
-        aria-label={`${label} ground truth`}
-        aria-invalid={invalid ? true : undefined}
-        value={text}
-        placeholder={NOT_FOUND}
-        autoFocus
-        onChange={(event) => {
-          setText(event.target.value);
-          setTyped(true);
-          setInvalid(null);
-          onDraft(event.target.value);
-        }}
-      />
+      <span className="imaging-gt-entry">
+        <input
+          aria-label={`${label} ground truth`}
+          aria-invalid={invalid ? true : undefined}
+          value={text}
+          placeholder={NOT_FOUND}
+          autoFocus
+          onChange={(event) => {
+            setText(event.target.value);
+            setTyped(true);
+            setInvalid(null);
+            onDraft(event.target.value);
+          }}
+        />
+        {text !== value ? <CellSaveButton label={label} onSave={commit} /> : null}
+      </span>
       {recos.length > 0 ? (
         <ul className="imaging-gt-menu" role="listbox" aria-label={label}>
           {recos.map((option) => (
@@ -1093,6 +1099,23 @@ function ChoiceMenu({
   );
 }
 
+/** Saves this one cell, as Enter does; shown once the value differs from the stored one.
+ * ``onMouseDown`` keeps the focus (and the typed text) in the input. */
+function CellSaveButton({ label, onSave }: { label: string; onSave: () => void }) {
+  return (
+    <button
+      type="button"
+      className="imaging-gt-icon imaging-gt-cell-save"
+      aria-label={`Save ${label} ground truth`}
+      title="Save (Enter)"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onSave}
+    >
+      <Save size={12} strokeWidth={2.4} aria-hidden="true" />
+    </button>
+  );
+}
+
 function TextTruth({
   fieldId,
   label,
@@ -1110,37 +1133,43 @@ function TextTruth({
 }) {
   const [draft, setDraft] = useState(value);
   const [invalid, setInvalid] = useState<string | null>(null);
+  function commit() {
+    const next = normalizeEntry(fieldId, draft);
+    if (next == null) {
+      setInvalid(entryHint(fieldId));
+      return;
+    }
+    onCommit(next);
+  }
   return (
     <span className="imaging-gt-picker">
-      <input
-        aria-label={`${label} ground truth`}
-        aria-invalid={invalid ? true : undefined}
-        value={draft}
-        placeholder={NOT_FOUND}
-        autoFocus
-        onChange={(event) => {
-          setDraft(event.target.value);
-          setInvalid(null);
-          onDraft(event.target.value);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            onCancel();
-            return;
-          }
-          if (event.key === "Enter") {
-            event.preventDefault();
-            const next = normalizeEntry(fieldId, draft);
-            if (next == null) {
-              setInvalid(entryHint(fieldId));
+      <span className="imaging-gt-entry">
+        <input
+          aria-label={`${label} ground truth`}
+          aria-invalid={invalid ? true : undefined}
+          value={draft}
+          placeholder={NOT_FOUND}
+          autoFocus
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setInvalid(null);
+            onDraft(event.target.value);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              onCancel();
               return;
             }
-            onCommit(next);
-          }
-        }}
-      />
+            if (event.key === "Enter") {
+              event.preventDefault();
+              commit();
+            }
+          }}
+        />
+        {draft !== value ? <CellSaveButton label={label} onSave={commit} /> : null}
+      </span>
       {invalid ? <span className="imaging-gt-hint">{invalid}</span> : null}
     </span>
   );
