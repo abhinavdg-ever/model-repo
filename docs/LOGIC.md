@@ -296,16 +296,15 @@ a blank page is never compared. A page is a duplicate when its OCR text is **≥
 similar** to a neighbor **within ±25 pages** in chart order, or when its text is
 **wholly contained** in that neighbor's, whatever its own verdict; a Main page is
 always the original of a junk copy. **95% – < 98%** is a partial duplicate, which
-keeps its verdict. Similarity is the average of
-the word-sequence match (`difflib.SequenceMatcher` over the words, `autojunk` off) and
-the word-count match (Dice). Details: `docs/BLANK_JUNK_LOGIC.md` §4.
+keeps its verdict. Pages are compared on their distinct words as read (nothing
+stripped): overlap = shared / all distinct words; contained = share of the smaller
+page's words on the other. Details: `docs/BLANK_JUNK_LOGIC.md` §4.
 
 | Rule | Behaviour |
 |---|---|
-| Window | Compare only pages 25 before / 25 after (page order); the word-sequence match only for a pair whose word-count match reaches 95% |
-| Threshold | Average similarity **≥ 0.98** → duplicate (UI Yes, Blank / Junk Yes (Duplicate)); **[0.95, 0.98)** → partial, keeps its verdict (UI Partial). Every compared page stores its best similarity (`duplicate_confidence`); UI confidence falls exponentially from 100% at 100% to 50% at 95%, then the not-a-duplicate confidence rises to 100% at 80% |
-| Containment | The shorter page's normalized text appears whole inside the longer one, which adds at most 10 words → duplicate, confidence 1.0 |
-| Rigor | Both pages print page numbers and they differ → neither duplicate nor partial; ≥ 98% with more than 10 words changed → partial at most (canon `duplicates`) |
+| Window | Compare only pages 25 before / 25 after (page order) |
+| Threshold | Distinct-word overlap **≥ 0.98** → duplicate (UI Yes, Blank / Junk Yes (Duplicate)); **[0.95, 0.98)** → partial, keeps its verdict (UI Partial). Every compared page stores its best similarity (`duplicate_confidence`); UI confidence falls exponentially from 100% at 100% to 50% at 95%, then the not-a-duplicate confidence rises to 100% at 80% |
+| Containment | Every distinct word of the smaller page is on the other (canon `duplicates.contained_at`, 1.0) → duplicate, confidence 1.0 |
 | Who wins | Higher normalized character count stays **main**; on a tie, the **earlier** page |
 | Excluded | Blank / junk pages and texts shorter than 300 normalized characters (~50 words) |
 | Cross-pass | Prior-pass `main` pages are neighbors in pass 2 (so HW can match a printed original) |

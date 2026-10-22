@@ -22,11 +22,12 @@ key/value extraction's ``extraction.json`` (not the database).
 Duplicate detection (after the verdict, among Main and junk pages -- never blank):
 
 * Compare each comparable page only to neighbors **±25** in page order.
-* Similarity is the average of two matchers (``classify.similarity_parts``): the
-  order-sensitive word-sequence match (SequenceMatcher over the words) and the
-  order-blind word-count match. One page's text wholly contained in the other's
-  scores 1.0.
-* **≥ 98%** (or contained): ``duplicate`` -- UI Duplicate "Yes", Blank / Junk
+* Pages are compared on their distinct words, everything on the page included
+  (``classify.word_overlap``, 2026-10-22, user): the **overlap** is shared distinct
+  words / all distinct words of the two pages; **contained** is the share of the
+  smaller page's distinct words found on the other.
+* Overlap **≥ 98%**, or contained ≥ ``duplicates.contained_at`` (canon, 100%):
+  ``duplicate`` -- UI Duplicate "Yes", Blank / Junk
   "Yes (Duplicate)" -- whether the page was judged Main or junk (2026-10-22: junk
   pages were never compared, so a 98%-alike junk page read "Yes (Junk)", Duplicate
   "No"). **[95%, 98%)**: a partial duplicate -- the page keeps its verdict (Main or
@@ -99,10 +100,7 @@ from classify import (  # noqa: E402
     classification_confidence,
     duplicate_char_count,
     text_is_comparable,
-    differing_words,
-    page_markers,
-    similarity_parts,
-    text_is_contained,
+    word_overlap,
 )
 import method  # noqa: E402
 from model_bridge import model_scores  # noqa: E402
@@ -112,13 +110,10 @@ STAGE = "blank_junk"
 # Every rule and the vote live in method.py.
 
 
-def _duplicate_rules() -> dict[str, Any]:
-    """The canon's ``duplicates`` block (reloads on change), with its defaults."""
-    cfg = method.canon().raw.get("duplicates", {})
-    return {
-        "max_differing_words": int(cfg.get("max_differing_words", 10)),
-        "page_numbers_must_match": bool(cfg.get("page_numbers_must_match", True)),
-    }
+def _contained_at() -> float:
+    """The canon's ``duplicates.contained_at`` (reloads on change): the share of the
+    smaller page's distinct words that must be on the other page for a duplicate."""
+    return float(method.canon().raw.get("duplicates", {}).get("contained_at", 1.0))
 
 
 JUNK_CSV_COLS = [
@@ -322,37 +317,24 @@ def _classify(
     # [PARTIAL, THRESHOLD): the page's closest near-copy, applied after duplicates.
     partial_of: dict[int, int] = {}
     partial_sim: dict[int, float] = {}
-    # Each page's highest match among the neighbors it was compared with, any
-    # score, for blank_junk.json: which page, and both matchers' scores. A pair too
-    # far apart to reach the partial threshold has no sequence score, only the most
-    # its average could be (``exact`` false); it ranks by that bound.
+    # Each page's highest match among the neighbors it was compared with, any score,
+    # for blank_junk.json and duplicate_confidence: which page, its overlap and how
+    # much of the smaller page is on the other.
     best: dict[int, dict[str, Any]] = {}
-    # The same, among pairs the rules did not turn down: what duplicate_confidence
-    # (review-ui's Duplicate confidence) is built from.
-    admissible: dict[int, float] = {}
-    rules = _duplicate_rules()
+    contained_at = _contained_at()
 
-    def _note_best(
-        page_id: int, other_id: int, sequence: Optional[float], word: float,
-        sim: Optional[float], at_most: float, contained: bool,
-        differing: int, markers: tuple[list[str], list[str]], rejected: Optional[str],
-    ) -> None:
-        rank = sim if sim is not None else at_most
-        if rejected is None and rank > admissible.get(page_id, -1.0):
-            admissible[page_id] = rank
-        if rank > best.get(page_id, {}).get("_rank", -1.0):
+    def _note_best(page_id: int, other_id: int, words: Any, score: float, contained: bool) -> None:
+        if score > best.get(page_id, {}).get("similarity", -1.0):
+            mine, theirs = (words.words_a, words.words_b) if page_id == pid else (words.words_b, words.words_a)
             best[page_id] = {
-                "_rank": rank,
                 "page_id": other_id,
-                "similarity": None if sim is None else round(sim, 4),
-                "similarity_at_most": None if sim is not None else round(at_most, 4),
-                "exact": sim is not None,
-                "sequence_similarity": None if sequence is None else round(sequence, 4),
-                "word_similarity": round(word, 4),
+                "similarity": round(score, 4),
+                "overlap": round(words.overlap, 4),
+                "contained_share": round(words.contained, 4),
                 "contained": contained,
-                "differing_words": differing,
-                "page_numbers": {"this": markers[0], "other": markers[1]},
-                "rejected": rejected,
+                "distinct_words": mine,
+                "other_distinct_words": theirs,
+                "shared_words": words.shared,
             }
 
     n = len(pages)
@@ -367,40 +349,15 @@ def _classify(
             nid = pages[j]["id"]
             if not _comparable(nid):
                 continue
-            a_text, b_text = texts.get(pid) or "", texts.get(nid) or ""
-            differing = differing_words(a_text, b_text)
-            # A page wholly inside a longer one is its copy only when little is added:
-            # a subset of a longer page is judged on its similarity.
-            is_contained = (
-                differing <= rules["max_differing_words"] and text_is_contained(a_text, b_text)
-            )
-            if is_contained:
-                sequence = word = sim = at_most = 1.0
-            else:
-                sequence, word, sim, at_most = similarity_parts(
-                    a_text, b_text, at_least=DUPLICATE_PARTIAL_THRESHOLD
-                )
-            # 2026-10-22 (user): the percentage alone is not enough on a long page.
-            # Two pages of a record embedding the same document differ in a few
-            # lines -- their wrapper and the chart's own page number.
-            marks_a, marks_b = page_markers(a_text), page_markers(b_text)
-            kind: Optional[str] = None
-            rejected: Optional[str] = None
-            if sim is not None and sim >= DUPLICATE_PARTIAL_THRESHOLD:
-                if rules["page_numbers_must_match"] and marks_a and marks_b and marks_a != marks_b:
-                    rejected = "page numbers differ"
-                elif sim >= DUPLICATE_SIMILARITY_THRESHOLD and differing <= rules["max_differing_words"]:
-                    kind = "duplicate"
-                else:
-                    # 95-98%, or >= 98% with more than max_differing_words words changed:
-                    # a near copy, not the page itself.
-                    kind = "partial"
-            listed = (sorted(marks_a.elements()), sorted(marks_b.elements()))
-            _note_best(pid, nid, sequence, word, sim, at_most, is_contained, differing, listed, rejected)
-            _note_best(nid, pid, sequence, word, sim, at_most, is_contained, differing,
-                       (listed[1], listed[0]), rejected)
-            if kind is None:
+            words = word_overlap(texts.get(pid) or "", texts.get(nid) or "")
+            is_contained = words.contained >= contained_at
+            # A contained pair scores 1.0; otherwise its overlap.
+            sim = 1.0 if is_contained else words.overlap
+            _note_best(pid, nid, words, sim, is_contained)
+            _note_best(nid, pid, words, sim, is_contained)
+            if sim < DUPLICATE_PARTIAL_THRESHOLD:
                 continue
+            kind = "duplicate" if sim >= DUPLICATE_SIMILARITY_THRESHOLD else "partial"
             orig, dup = _prefer_original(
                 i,
                 pid,
@@ -440,7 +397,7 @@ def _classify(
             continue
         sim = dup_sim.get(dup_id, DUPLICATE_SIMILARITY_THRESHOLD)
         if dup_contained.get(dup_id):
-            match = "text contained in the original"
+            match = "its distinct words all on the original"
         else:
             match = f"similarity={sim:.4f} ≥{DUPLICATE_SIMILARITY_THRESHOLD:.0%}"
         reason = (
@@ -492,11 +449,9 @@ def _classify(
         named[page_id] = {"page_name": other.get("page_name"), "page_number": other.get("page_number"), **match}
     for page_id, row in by_id.items():
         row["best_match"] = named.get(page_id)
-        # The score review-ui's Duplicate confidence is built from: the best pair the
-        # rules did not turn down. A pair never near 95% has only the bound on its
-        # average: never above the real score.
-        score = admissible.get(page_id)
-        row["duplicate_confidence"] = None if score is None else round(score, 4)
+        # The score review-ui's Duplicate confidence is built from: its best match.
+        match = best.get(page_id)
+        row["duplicate_confidence"] = None if match is None else match["similarity"]
     if best_matches is not None:
         best_matches.update({page_by_id[pid]["page_name"]: match for pid, match in named.items()})
 
@@ -678,13 +633,13 @@ def _write_votes(
 
     Each pass entry also has ``best_match``: the page's highest duplicate score among
     the neighbors it was compared with, at any score -- ``page_name`` /
-    ``page_number`` of that neighbor, ``similarity`` (the average that decides),
-    ``sequence_similarity``, ``word_similarity`` and ``contained``. When no neighbor's
-    word match reached 95%, the sequence match was not run: ``exact`` is false,
-    ``similarity`` and ``sequence_similarity`` are null and ``similarity_at_most``
-    (the word match) bounds the average. It is null when the page was never compared
-    (too short, or blank / junk). A page only compared against this pass
-    (an earlier pass's Main page) gets an entry with ``best_match`` alone.
+    ``page_number`` of that neighbor, ``similarity`` (the score that decides: 1.0 when
+    contained, else the overlap), ``overlap`` (shared distinct words / all distinct
+    words of the two), ``contained_share`` (the smaller page's distinct words found on
+    the other), ``contained``, and the counts ``distinct_words`` /
+    ``other_distinct_words`` / ``shared_words``. It is null when the page was never
+    compared (too short, or blank). A page only compared against this pass (an
+    earlier pass's Main page) gets an entry with ``best_match`` alone.
 
     This pass's entries are replaced and the other pass's kept, so after a full run the
     file holds both passes.

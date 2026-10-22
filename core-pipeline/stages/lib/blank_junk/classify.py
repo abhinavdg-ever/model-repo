@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections import Counter
+from dataclasses import dataclass
 from functools import lru_cache
-from typing import Optional
 
 from blank import detect_blank_page, is_declared_blank_page
 from cover import detect_cover_page
@@ -59,9 +58,10 @@ JUNK_CODES = frozenset(
 )
 
 _MIN_FINGERPRINT_CHARS = 50
-# 2026-10-22 (user): similarity is the average of two matchers (text_similarity).
-# At or above this, or one page's text wholly inside the other's, the page is a
-# duplicate: flag ``duplicate``, UI Duplicate "Yes", Blank / Junk "Yes (Duplicate)".
+# 2026-10-22 (user): pages are compared on their distinct words, as read (word_overlap).
+# Overlap at or above this, or the smaller page's words all on the other page (canon
+# ``duplicates.contained_at``), is a duplicate: flag ``duplicate``, UI Duplicate "Yes",
+# Blank / Junk "Yes (Duplicate)".
 DUPLICATE_SIMILARITY_THRESHOLD = 0.98
 # [PARTIAL, THRESHOLD) is a partial duplicate: the page stays Main (not Yes
 # (Duplicate)) and records the page it nearly copies; UI Duplicate "Partial".
@@ -150,108 +150,42 @@ def text_is_comparable(text: str) -> bool:
     return duplicate_char_count(text) >= DUPLICATE_MIN_CHARS
 
 
-def text_is_contained(a: str, b: str) -> bool:
-    """True when the shorter normalized text appears whole inside the longer."""
-    na = normalize_duplicate_text(a)
-    nb = normalize_duplicate_text(b)
-    if not na or not nb:
-        return False
-    short, long = (na, nb) if len(na) <= len(nb) else (nb, na)
-    return short in long
-
-
-def _words(text: str) -> list[str]:
-    return re.findall(r"\w+", (text or "").lower())
-
-
-def sequence_similarity(a: str, b: str) -> float:
-    """SequenceMatcher ratio over the two pages' words in order, in [0, 1].
-    Order-sensitive: the same words read in another order score lower.
-
-    Over words, not characters: a page's ~400 words match in about a millisecond
-    where its ~3,000 characters took 30-60 ms, which made a chart of repeated forms
-    take minutes. ``autojunk`` off: with it on, SequenceMatcher drops every item
-    making up more than 1% of a long sequence, and a page 98% alike scored about 0.2
-    (fixed 2026-10-22)."""
-    from difflib import SequenceMatcher
-
-    wa, wb = _words(a), _words(b)
-    if not wa or not wb:
-        return 0.0
-    if wa == wb:
-        return 1.0
-    return SequenceMatcher(None, wa, wb, autojunk=False).ratio()
-
-
 @lru_cache(maxsize=4096)
-def _word_counts(text: str) -> "Counter[str]":
-    """A page's word counts; each page meets up to 2 x ±window neighbors. Not mutated."""
-    return Counter(_words(text))
+def unique_words(text: str) -> frozenset[str]:
+    """A page's distinct words, lower-cased, everything on the page included (headers,
+    footers and all). Each page meets up to 2 x ±window neighbors, so it is cached."""
+    return frozenset(re.findall(r"\w+", (text or "").lower()))
 
 
-def word_similarity(a: str, b: str) -> float:
-    """Dice overlap of the two pages' word counts, in [0, 1]. Order-blind: OCR
-    reading the same page's columns or boxes in another order still scores 1."""
-    wa = _word_counts(a or "")
-    wb = _word_counts(b or "")
-    total = sum(wa.values()) + sum(wb.values())
-    if not total or not wa or not wb:
-        return 0.0
-    return 2 * sum((wa & wb).values()) / total
+@dataclass(frozen=True)
+class WordOverlap:
+    """Two pages compared on their distinct words (2026-10-22, user)."""
+
+    words_a: int
+    words_b: int
+    shared: int
+
+    @property
+    def overlap(self) -> float:
+        """Shared distinct words / all distinct words of the two pages, in [0, 1]."""
+        union = self.words_a + self.words_b - self.shared
+        return self.shared / union if union else 0.0
+
+    @property
+    def contained(self) -> float:
+        """Share of the smaller page's distinct words found on the other page."""
+        smaller = min(self.words_a, self.words_b)
+        return self.shared / smaller if smaller else 0.0
 
 
-def differing_words(a: str, b: str) -> int:
-    """How many words differ between the two pages: the larger of the words only the
-    first has and the words only the second has, so a replaced word counts once and an
-    added word once. The absolute size of the difference, which a percentage hides on a
-    long page."""
-    wa, wb = _word_counts(a or ""), _word_counts(b or "")
-    return max(sum((wa - wb).values()), sum((wb - wa).values()))
-
-
-# "Page 15", "Page 1 of 7", "page 3/9".
-_PAGE_MARKER = re.compile(r"\bpage\s*(\d{1,4})(?:\s*(?:of|/)\s*(\d{1,4}))?\b", re.IGNORECASE)
-
-
-@lru_cache(maxsize=4096)
-def page_markers(text: str) -> "Counter[str]":
-    """The printed page numbers on a page ("15", "1/7"), counted. Two pages of a record
-    that embed the same document share its "Page 1 of 7" but not the chart's own
-    "Page 15" / "Page 27"; the same page sent twice carries the same numbers."""
-    return Counter(
-        f"{number}/{total}" if total else number
-        for number, total in _PAGE_MARKER.findall(text or "")
-    )
-
-
-def similarity_parts(
-    a: str, b: str, *, at_least: float = 0.0
-) -> tuple[Optional[float], float, Optional[float], float]:
-    """``(sequence, word, average, best possible average)`` for two pages' OCR text.
-
-    The word-order match can never exceed the word-count match (its matched words
-    are a share of the words the pages have in common), so the average is at most
-    the word match. A pair whose word match is below ``at_least`` cannot reach it:
-    it comes back with ``sequence`` and ``average`` None and the word match as the
-    bound, without running SequenceMatcher. Otherwise the last value is the average.
-    """
-    na = normalize_duplicate_text(a)
-    nb = normalize_duplicate_text(b)
-    if na and na == nb:
-        return 1.0, 1.0, 1.0, 1.0
-    word = word_similarity(a, b)
-    if word < at_least:
-        return None, word, None, word
-    sequence = sequence_similarity(a, b)
-    average = (sequence + word) / 2
-    return sequence, word, average, average
+def word_overlap(a: str, b: str) -> WordOverlap:
+    wa, wb = unique_words(a or ""), unique_words(b or "")
+    return WordOverlap(len(wa), len(wb), len(wa & wb))
 
 
 def text_similarity(a: str, b: str) -> float:
-    """How alike two pages' OCR text is, in [0, 1]: the average of the
-    order-sensitive word-sequence match and the order-blind word-count match, so
-    neither a reordered read nor a run of shared boilerplate decides alone."""
-    return similarity_parts(a, b)[2]
+    """How alike two pages' OCR text is, in [0, 1]: their distinct-word overlap."""
+    return word_overlap(a, b).overlap
 
 
 def classification_confidence(code: int, *, blank_via_image: bool = False) -> float | None:

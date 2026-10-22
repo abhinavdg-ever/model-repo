@@ -113,26 +113,6 @@ class TestDuplicateScope:
             assert row["flag"] != "duplicate"
             assert row["duplicate_of"] is None
 
-    def test_page_contained_in_a_neighbor_is_duplicate(self):
-        pages = [page(1, 1), page(2, 2)]
-        inner = _body(6)
-        outer = inner + "Signed electronically today."  # a few words added
-        rows = _classify(pages, {1: inner, 2: outer}, {1, 2})
-        by_id = {r["page_id"]: r for r in rows}
-        assert by_id[2]["flag"] == "not_blank_junk"
-        assert by_id[1]["flag"] == "duplicate"
-        assert by_id[1]["duplicate_of"] == 2
-        assert by_id[1]["confidence"] == 1.0
-        assert "contained" in by_id[1]["reason"]
-
-    def test_a_page_inside_a_much_longer_one_is_not_its_copy(self):
-        # 2026-10-22 (user): a subset of a longer page is judged on its similarity.
-        pages = [page(1, 1), page(2, 2)]
-        inner = _body(6)
-        outer = inner + "Addendum with medication reconciliation and labs. " * 12
-        rows = _classify(pages, {1: inner, 2: outer}, {1, 2})
-        assert all(r["flag"] != "duplicate" for r in rows)
-
     def test_short_identical_pages_are_not_compared(self):
         pages = [page(1, 1), page(2, 2)]
         short = "Office visit note. Assessment and plan follow. " * 2
@@ -627,91 +607,6 @@ def _edited(words: list[str], changes: int) -> str:
     return " ".join(out)
 
 
-class TestDuplicateBands:
-    """2026-10-22 (user): ≥ 98% duplicate, [95%, 98%) partial, from two matchers."""
-
-    def test_a_98_percent_alike_long_page_is_a_duplicate(self):
-        # With SequenceMatcher's autojunk on this pair scored about 0.2 and was missed.
-        words = _prose(1)
-        a, b = " ".join(words), _edited(words, 4)
-        sequence, word, sim, _ = classify.similarity_parts(a, b)
-        assert sequence > 0.98 and word > 0.98 and sim >= 0.98
-        rows = _classify([page(1, 1), page(2, 2)], {1: a, 2: b}, {1, 2})
-        dup = next(r for r in rows if r["flag"] == "duplicate")
-        assert dup["confidence"] >= 0.98
-        assert dup["duplicate_of"] in (1, 2) and dup["duplicate_of"] != dup["page_id"]
-
-    def test_95_to_98_percent_is_partial_and_stays_main(self):
-        words = _prose(2)
-        a, b = " ".join(words), _edited(words, 14)
-        sim = classify.text_similarity(a, b)
-        assert 0.95 <= sim < 0.98
-        rows = _classify([page(1, 1), page(2, 2)], {1: a, 2: b}, {1, 2})
-        assert all(r["flag"] != "duplicate" for r in rows)
-        (partial,) = [r for r in rows if r["duplicate_of"] is not None]
-        assert partial["flag"] == "not_blank_junk"
-        assert abs(partial["confidence"] - sim) < 1e-9
-        assert "partial_duplicate_of_page_id:" in partial["reason"]
-
-    def test_below_95_percent_is_neither(self):
-        words = _prose(3)
-        a, b = " ".join(words), _edited(words, 45)
-        assert classify.text_similarity(a, b) < 0.95
-        rows = _classify([page(1, 1), page(2, 2)], {1: a, 2: b}, {1, 2})
-        assert all(r["duplicate_of"] is None and r["flag"] != "duplicate" for r in rows)
-
-    def test_a_partial_keeps_its_own_verdict_reason_first(self):
-        # Pass 2 reads a pass-1 keep from the start of the reason.
-        words = _prose(4)
-        a, b = " ".join(words), _edited(words, 14)
-        rows = _classify([page(1, 1), page(2, 2)], {1: a, 2: b}, {1, 2})
-        (partial,) = [r for r in rows if r["duplicate_of"] is not None]
-        assert not partial["reason"].startswith("partial_duplicate")
-        assert "; partial_duplicate_of_page_id:" in partial["reason"]
-
-    def test_the_word_match_ignores_reading_order(self):
-        words = _prose(5)
-        half = len(words) // 2
-        a, b = " ".join(words), " ".join(words[half:] + words[:half])
-        sequence, word, _, _ = classify.similarity_parts(a, b)
-        assert word == 1.0 and sequence < 1.0
-
-    def test_far_apart_pages_skip_the_sequence_match(self):
-        a, b = " ".join(_prose(6)), " ".join(_prose(7))
-        sequence, word, sim, at_most = classify.similarity_parts(a, b, at_least=0.95)
-        assert sequence is None and sim is None and at_most == word < 0.95
-        assert classify.similarity_parts(a, b)[0] is not None  # without a floor it runs
-
-    def test_best_match_names_the_page_and_both_scores(self):
-        words = _prose(8)
-        texts = {1: " ".join(words), 2: _edited(words, 14), 3: " ".join(_prose(9))}
-        pages = [page(1, 1), page(2, 2), page(3, 3)]
-        best: dict = {}
-        # Page 1 was judged Main in an earlier pass: it gets a best match, not a row.
-        rows = _classify(pages, texts, {2, 3}, prior_main_ids={1}, best_matches=best)
-        assert {"1.jpg", "2.jpg", "3.jpg"} <= set(best)
-        match = best["2.jpg"]
-        assert (match["page_name"], match["page_number"], match["exact"]) == ("1.jpg", 1, True)
-        assert 0.95 <= match["similarity"] < 0.98
-        assert match["sequence_similarity"] is not None and match["word_similarity"] is not None
-        assert best["3.jpg"]["exact"] is False and best["3.jpg"]["similarity_at_most"] < 0.95
-        assert next(r for r in rows if r["page_id"] == 2)["best_match"] == match
-
-    def test_blank_junk_json_carries_best_match(self, tmp_path, monkeypatch):
-        import json
-
-        from stages.lib.blank_junk import stage as bj_stage
-
-        monkeypatch.setattr(bj_stage, "votes_path", lambda _chart: tmp_path / "blank_junk.json")
-        rows = [{"page_name": "2.jpg", "votes": {"rule": "R5"}, "label": "Main",
-                 "confidence": 0.7, "reason": "keep", "best_match": {"page_name": "1.jpg"}}]
-        bj_stage._write_votes("c", 2, rows, {"1.jpg": {"page_name": "2.jpg"}})
-        pages = json.loads((tmp_path / "blank_junk.json").read_text(encoding="utf-8"))["pages"]
-        assert pages["2.jpg"]["pass_2"]["best_match"] == {"page_name": "1.jpg"}
-        # An earlier-pass page only compared against this pass: best_match alone.
-        assert pages["1.jpg"]["pass_2"] == {"best_match": {"page_name": "2.jpg"}}
-
-
 class TestDuplicatePageType:
     def test_a_duplicate_takes_its_originals_page_type(self, tmp_path, monkeypatch):
         import config
@@ -757,17 +652,6 @@ class TestDuplicatePageType:
             assert rows[first]["decided_by"] == f"duplicate_of:{second}"
         finally:
             disable_skip_db_write()
-
-
-def test_the_sequence_match_never_exceeds_the_word_match():
-    """Why a pair below 95% on words is skipped without running SequenceMatcher."""
-    import random
-
-    rng = random.Random(11)
-    for _ in range(40):
-        a = " ".join(_prose(rng.randrange(1000), words=120))
-        b = _edited(a.split(), rng.randrange(1, 60)) if rng.random() < 0.5 else " ".join(_prose(rng.randrange(1000), words=120))
-        assert classify.sequence_similarity(a, b) <= classify.word_similarity(a, b) + 1e-12
 
 
 class TestPass1SureJunk:
@@ -842,7 +726,7 @@ class TestJunkPagesAreCompared:
 
     def test_a_partial_junk_page_stays_junk(self, monkeypatch):
         words = _prose(23)
-        a, b = " ".join(words), _edited(words, 14)
+        a, b = " ".join(words), _edited(words, 4)
         assert 0.95 <= classify.text_similarity(a, b) < 0.98
         by = self._run(monkeypatch, {1: a, 2: b}, junk_ids={1, 2})
         partial = next(r for r in by.values() if r["duplicate_of"] is not None)
@@ -909,60 +793,75 @@ def _avs_page(wrapper: str, chart_page: int) -> str:
     return f"{_AVS_HEADER}{wrapper}\n{_AVS_BODY}\nPrinted on 4/3/26 9:22 PM Page {chart_page}\n"
 
 
-class TestDuplicateRigor:
-    """2026-10-22 (user): a percentage alone is not enough on a long page."""
+class TestWordOverlap:
+    """2026-10-22 (user): pages compared on their distinct words, as read; a duplicate
+    at >= 98% overlap or when the smaller page's words are all on the other."""
 
-    def test_one_document_under_two_sections_is_not_a_duplicate(self):
+    def test_overlap_and_contained(self):
+        words = classify.word_overlap("a b c d", "a b c e f")
+        assert (words.words_a, words.words_b, words.shared) == (4, 5, 3)
+        assert words.overlap == 0.5  # 3 shared / 6 distinct in all
+        assert words.contained == 0.75  # 3 of the smaller page's 4
+        assert classify.word_overlap("b a a", "a b").overlap == 1.0  # order and repeats ignored
+
+    def test_bands(self):
+        words = _prose(50)
+        a = " ".join(words)
+        pages = [page(1, 1), page(2, 2)]
+        for changes, expected in ((1, "duplicate"), (6, "partial"), (40, None)):
+            b = _edited(words, changes)
+            rows = _classify(pages, {1: a, 2: b}, {1, 2})
+            flags = {r["flag"] for r in rows}
+            pointing = [r for r in rows if r["duplicate_of"] is not None]
+            overlap = classify.word_overlap(a, b).overlap
+            if expected == "duplicate":
+                assert overlap >= 0.98 and "duplicate" in flags, overlap
+            elif expected == "partial":
+                assert 0.95 <= overlap < 0.98 and "duplicate" not in flags and pointing, overlap
+                assert "partial_duplicate_of_page_id:" in pointing[0]["reason"]
+            else:
+                assert overlap < 0.95 and not pointing, overlap
+
+    def test_reading_order_does_not_matter(self):
+        words = _prose(51)
+        half = len(words) // 2
+        rows = _classify([page(1, 1), page(2, 2)],
+                         {1: " ".join(words), 2: " ".join(words[half:] + words[:half])}, {1, 2})
+        assert any(r["flag"] == "duplicate" for r in rows)
+
+    def test_a_page_inside_a_longer_one_is_its_duplicate(self):
+        inner = " ".join(_prose(52))
+        outer = inner + " " + " ".join(_prose(53, words=40))
+        assert classify.word_overlap(inner, outer).contained == 1.0
+        rows = {r["page_id"]: r for r in _classify([page(1, 1), page(2, 2)], {1: inner, 2: outer}, {1, 2})}
+        assert (rows[1]["flag"], rows[1]["duplicate_of"], rows[1]["confidence"]) == ("duplicate", 2, 1.0)
+        assert rows[2]["flag"] == "not_blank_junk"  # the longer page is the original
+
+    def test_best_match_shows_the_counts(self):
+        words = _prose(54)
+        texts = {1: " ".join(words), 2: _edited(words, 4)}
+        best: dict = {}
+        _classify([page(1, 1), page(2, 2)], texts, {1, 2}, best_matches=best)
+        match = best["2.jpg"]
+        words2 = classify.word_overlap(texts[2], texts[1])
+        assert (match["page_name"], match["page_number"]) == ("1.jpg", 1)
+        assert match["overlap"] == round(words2.overlap, 4) == match["similarity"]
+        assert match["shared_words"] == words2.shared
+        assert (match["distinct_words"], match["other_distinct_words"]) == (words2.words_a, words2.words_b)
+        assert match["contained"] is False
+
+    def test_one_document_under_two_sections(self):
+        # The After Visit Summary embedded on pages 22 and 34 (chart pages 15 and 27):
+        # 97.7% overlap, and every distinct word of page 22 is on page 34 -- so, as
+        # contained, a duplicate. Nothing in the words tells the two apart.
         p22 = _avs_page("After Visit Summary (continued)", 15)
         p34 = _avs_page(
             "Documents (continued)\nAfter Visit Summary - Document on 8/13/2025 5:10 PM: "
             "After Visit Summary\nDocument (below)", 27,
         )
-        assert classify.text_similarity(p22, p34) >= 0.95  # alike enough to be flagged before
-        best: dict = {}
-        rows = _classify([page(22, 22), page(34, 34)], {22: p22, 34: p34}, {22, 34}, best_matches=best)
-        assert all(r["flag"] != "duplicate" and r["duplicate_of"] is None for r in rows)
-        match = best["22.jpg"]
-        assert match["rejected"] == "page numbers differ"
-        assert match["page_numbers"] == {"this": ["1/7", "15"], "other": ["1/7", "27"]}
-        assert match["differing_words"] == 15
-        # A turned-down pair does not count toward the Duplicate confidence.
-        assert all(r["duplicate_confidence"] is None or r["duplicate_confidence"] < 0.95 for r in rows)
+        words = classify.word_overlap(p22, p34)
+        assert (words.words_a, words.words_b, words.shared) == (171, 175, 171)
+        assert round(words.overlap, 4) == 0.9771 and words.contained == 1.0
+        rows = {r["page_id"]: r for r in _classify([page(22, 22), page(34, 34)], {22: p22, 34: p34}, {22, 34})}
+        assert (rows[22]["flag"], rows[22]["duplicate_of"]) == ("duplicate", 34)
 
-    def test_over_98_percent_with_more_than_x_words_changed_is_partial_at_most(self):
-        words = _prose(40, words=1200)
-        a, b = " ".join(words), _edited(words, 14)  # 14 words changed of 1200
-        assert classify.text_similarity(a, b) >= 0.98
-        assert classify.differing_words(a, b) == 14
-        rows = {r["page_id"]: r for r in _classify([page(1, 1), page(2, 2)], {1: a, 2: b}, {1, 2})}
-        assert all(r["flag"] != "duplicate" for r in rows.values())
-        assert any(r["duplicate_of"] is not None for r in rows.values())  # Partial
-
-    def test_the_same_page_numbers_do_not_stop_a_duplicate(self):
-        words = _prose(41)
-        a = " ".join(words) + " Page 3 of 9"
-        b = _edited(words, 3) + " Page 3 of 9"
-        rows = _classify([page(1, 1), page(2, 2)], {1: a, 2: b}, {1, 2})
-        assert any(r["flag"] == "duplicate" for r in rows)
-
-    def test_page_markers_and_differing_words(self):
-        assert classify.page_markers("Page 1 of 7 ... page 15") == {"1/7": 1, "15": 1}
-        assert classify.page_markers("PROCEDURE 15 with C Stewart") == {}
-        assert classify.differing_words("a b c d", "a b x d") == 1  # replaced: once
-        assert classify.differing_words("a b c", "a b c d e") == 2  # added
-
-    def test_containment_obeys_the_same_rules(self):
-        # X wholly inside Y: a duplicate only when Y adds at most max_differing_words
-        # words and no different page number.
-        x = " ".join(_prose(42))
-        few_added = x + " reviewed and signed"
-        more_added = x + " " + " ".join(_prose(43, words=30))
-        other_page = x + " Page 27"
-        pages = [page(1, 1), page(2, 2)]
-        for y, duplicate in ((few_added, True), (more_added, False)):
-            rows = _classify(pages, {1: x + " Page 15", 2: y + " Page 15"}, {1, 2})
-            assert any(r["flag"] == "duplicate" for r in rows) is duplicate
-        best: dict = {}
-        rows = _classify(pages, {1: x + " Page 15", 2: other_page}, {1, 2}, best_matches=best)
-        assert all(r["flag"] != "duplicate" for r in rows)
-        assert best["1.jpg"]["rejected"] == "page numbers differ"

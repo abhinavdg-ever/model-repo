@@ -6,12 +6,9 @@ short-page geometry live in `../keyword-canon/blank_junk_context_canon.json`. Th
 worked examples, is `docs/BLANK_JUNK_LOGIC.md`; the summary is `docs/LOGIC.md` §3.
 
 Duplicates: Main and junk pages (never blank), against a neighbour within ±25 pages; a
-Main page is always the original of a junk copy. Similarity is the
-average of the word-sequence match (SequenceMatcher over words, autojunk off) and the
-word-count match; ≥ 98% or
-text wholly contained in it (adding at most 10 words) is a duplicate when at most 10 words
-differ and the printed page numbers agree; 95–98% (or more words changed) a partial
-duplicate that keeps its verdict. Pages
+Main page is always the original of a junk copy. Pages are compared on their distinct
+words as read: overlap ≥ 98%, or the smaller page's words all on the other, is a duplicate;
+95–98% a partial duplicate that keeps its verdict. Pages
 under 300 characters never compared; the longer (or earlier) page is kept.
 
 The rest of this file describes the older regex classifier (`classify_junk.py` and the
@@ -30,7 +27,7 @@ calls either; they remain for the standalone script below.
 | **Record Request/Transmittal** | Yes (Junk) | Record Request/Transmittal | request letter; records↔request (any order); attached; transmittal/transmitted; Urgent Request for Records; Your Records requested |
 | **Instructions** | Yes (Junk) | Instructions | “what to send”, provide documentation, please send, … |
 | **Others** | Yes (Junk) | Others | Table of contents; **&lt; 20 words** and not a signature page; **gibberish Tesseract OCR** (many no-vowel tokens / junk symbols) |
-| **Duplicate** | Yes (Duplicate) | the original's | Main and junk pages (never blank): ≥ 98% similar (average of word-sequence + word-count match) to a ±25 Main neighbor, or text wholly contained in it; pages under 300 chars never compared; longer (or earlier) page kept. 95–98% is Partial: the page stays Main |
+| **Duplicate** | Yes (Duplicate) | the original's | Main and junk pages (never blank): distinct-word overlap ≥ 98% with a ±25 neighbor, or its words all on it; pages under 300 chars never compared; longer (or earlier) page kept. 95–98% is Partial: the page stays Main |
 | **Main** | No | Not Available | Everything else |
 
 ### Priority order

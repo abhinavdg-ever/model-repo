@@ -118,35 +118,20 @@ R3's card wording (the signature phrase group was removed 2026-10-21). The `vote
 
 After the verdicts, among **Main and junk** pages (never blank), each page against
 its neighbours within **±25** pages, pages of **≥ 300** characters (whitespace stripped).
-Similarity is the **average of two matchers** (`classify.similarity_parts`):
+Pages are compared on their **distinct words**, as read — nothing stripped, headers and
+footers included (`classify.word_overlap`, 2026-10-22):
 
-- the **word-sequence match** — SequenceMatcher over the page's words in order,
-  `autojunk` off (order-sensitive; over words, not characters, for speed);
-- the **word match** — Dice overlap of the two pages' word counts (order-blind, so a
-  page whose columns OCR read in another order still scores 1.0).
+- **overlap** = shared distinct words / all distinct words of the two pages (order and
+  repeats do not matter);
+- **contained** = share of the smaller page's distinct words found on the other.
 
-One page's text **wholly contained** in the other's scores 1.0 — only when the longer page
-adds at most `max_differing_words` (10) words; a page inside a much longer one is judged on
-its similarity.
-
-Two more rules (2026-10-22), because a percentage alone is not enough on a long page — two
-pages of a record that embed the same document (an After Visit Summary under two sections)
-read 97–98% alike:
-
-- **Page numbers must agree** (`page_numbers_must_match`). When both pages print page
-  numbers ("Page 15", "Page 1 of 7") and they differ, the pair is neither a duplicate nor a
-  partial: they are different pages of the record. The embedded "Page 1 of 7" matches; the
-  chart's own "Page 15" / "Page 27" does not.
-- **At most X words changed** (`max_differing_words`, 10): ≥ 98% is a duplicate only when
-  no more than 10 words differ (the larger side's words the other lacks; a replaced word
-  counts once). With more it is a partial at most.
-
-Both live in the canon's `duplicates` block.
+A pair is a duplicate at overlap **≥ 98%**, or when the smaller page's distinct words are
+all on the other (`duplicates.contained_at`, 100%, in the canon) — it then scores 1.0.
 
 | Similarity | Verdict | Blank / Junk | Duplicate (UI) |
 |---|---|---|---|
-| **≥ 98%** (or contained) with ≤ 10 words changed and no differing page number | `duplicate` (code 4) | Yes (Duplicate) | Yes (To Page N) |
-| **95% – < 98%** | stays **Main**, `duplicate_of_page_id` set | No | Partial (To Page N) |
+| overlap **≥ 98%**, or contained | `duplicate` (code 4) | Yes (Duplicate) | Yes (To Page N) |
+| overlap **95% – < 98%** | keeps its verdict, `duplicate_of_page_id` set | as judged | Partial (To Page N) |
 | below 95% | Main | No | No |
 
 The longer page (or the earlier one) is kept as the original — except that a Main page is
@@ -165,12 +150,10 @@ below 95% the confidence that the page is **not** a duplicate rises back to 100%
 alike and stays there — 99% → 87%, 98% → 76%, 96% → 57%, 90% → 63%
 (`duplicate_label.similarity_confidence` / `duplicateLabel.ts`).
 
-The word-sequence match can never exceed the word-count match, so a pair whose word match
-is below 95% is skipped without running SequenceMatcher. `staging/blank_junk.json` gives
-every compared page its `best_match` — the neighbour (`page_name`, `page_number`),
-`similarity`, `sequence_similarity`, `word_similarity`, `contained`; for a pair that was
-never near 95%, `exact` is false and `similarity_at_most` (the word match) bounds the
-average.
+`staging/blank_junk.json` gives every compared page its `best_match`: the neighbour
+(`page_name`, `page_number`), `similarity` (the deciding score), `overlap`,
+`contained_share`, `contained`, and the counts `distinct_words`, `other_distinct_words`
+and `shared_words`.
 
 ---
 
@@ -178,7 +161,15 @@ average.
 
 ## 5. Changes
 
-### 2026-10-22 — Duplicates need more than the percentage
+### 2026-10-22 — Duplicates on distinct-word overlap and containment only
+
+- Replaces the two averaged matchers and the page-number / changed-word rules (all added
+  earlier the same day): pages are compared on their distinct words as read, nothing
+  stripped. Overlap ≥ 98% or the smaller page wholly contained → duplicate; 95–98% →
+  partial. The After Visit Summary pair below scores 97.7% overlap and is 100% contained:
+  a duplicate.
+
+### 2026-10-22 — Duplicates need more than the percentage (replaced the same day)
 
 - An After Visit Summary embedded under two sections of one chart (pages 22 and 34, chart
   pages 15 and 27) scored about 97% and was flagged. A pair now also needs matching page
@@ -548,7 +539,7 @@ Main.
 | R2 placeholder | ≤ 25 words | `method.py` |
 | Hard junk groups | record_request, roi_vendors, invoice, id_card | `method.py` `HARD_JUNK_GROUPS` |
 | R6 undo | KK with DistilBERT's KEEP strong (p(keep) ≥ 0.85) | canon `voters.bert.keep_strong` |
-| Duplicates | ≥ 98% duplicate, 95–98% partial (average of word-sequence + word-count match), ±25 pages, ≥ 300 characters | `classify.py` |
+| Duplicates | distinct-word overlap ≥ 98% or contained → duplicate, 95–98% partial; ±25 pages, ≥ 300 characters | `classify.py` |
 
 ### Old §10. Changes, 2026-10-17 / 18
 
