@@ -448,6 +448,14 @@ def _classify(
         named[page_id] = {"page_name": other.get("page_name"), "page_number": other.get("page_number"), **match}
     for page_id, row in by_id.items():
         row["best_match"] = named.get(page_id)
+        # The score review-ui's Duplicate confidence is built from. A pair never near
+        # 95% has only the bound on its average: never above the real score.
+        match = best.get(page_id)
+        row["duplicate_confidence"] = (
+            None if match is None
+            else match["similarity"] if match["similarity"] is not None
+            else match["similarity_at_most"]
+        )
     if best_matches is not None:
         best_matches.update({page_by_id[pid]["page_name"]: match for pid, match in named.items()})
 
@@ -800,6 +808,7 @@ def _run_pass(
                     duplicate_of_page_id=row["duplicate_of"],
                     confidence=row["confidence"],
                     reason=row["reason"],
+                    duplicate_confidence=row.get("duplicate_confidence"),
                 )
                 # Demoted prior-main pages are upserted but were not in todo.
                 if row["page_id"] in ctx.todo:

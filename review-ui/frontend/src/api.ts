@@ -203,6 +203,8 @@ export type ImagingPageResult = {
   isDuplicate?: boolean | null;
   /** 95–98% alike: a partial duplicate; the page keeps its own verdict (Main or junk). */
   isPartialDuplicate?: boolean | null;
+  /** The page's highest duplicate similarity (0–1), whatever its verdict. */
+  duplicateConfidence?: number | null;
   /** Page file this page was marked a duplicate of, e.g. "4.png". */
   duplicateOf?: string | null;
   /** Blank/Main/Duplicate → Not Available; Invoice|Cover → type */

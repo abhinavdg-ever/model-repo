@@ -961,6 +961,14 @@ def page_blocks_prelim(
 # ---------------------------------------------------------------------------
 
 
+# Databases created before duplicate_confidence (2026-10-22) gain it on the first write.
+_ADD_DUPLICATE_CONFIDENCE = (
+    "ALTER TABLE blank_junk_classification "
+    "ADD COLUMN IF NOT EXISTS duplicate_confidence NUMERIC(5,4)"
+)
+_duplicate_confidence_ready = False
+
+
 @_dispatch
 def upsert_blank_junk(
     conn: Any,
@@ -975,15 +983,22 @@ def upsert_blank_junk(
     confidence: Optional[float] = None,
     reason: Optional[str] = None,
     is_final: bool = False,
+    duplicate_confidence: Optional[float] = None,
 ) -> None:
     """Write one pass's verdict. `is_final` is set separately by mark_final()
-    so that exactly one row per page carries it."""
+    so that exactly one row per page carries it. ``duplicate_confidence`` is the
+    page's highest duplicate similarity (None when it was never compared)."""
+    global _duplicate_confidence_ready
+    if not _duplicate_confidence_ready:
+        conn.execute(_ADD_DUPLICATE_CONFIDENCE)
+        _duplicate_confidence_ready = True
     conn.execute(
         """
         INSERT INTO blank_junk_classification (
             chart_id, page_id, pass_no, blank_junk_flag, junk_subtype,
-            duplicate_of_page_id, ocr_source, confidence, reason, is_final
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            duplicate_of_page_id, ocr_source, confidence, reason, is_final,
+            duplicate_confidence
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (page_id, pass_no) DO UPDATE SET
             blank_junk_flag      = EXCLUDED.blank_junk_flag,
             junk_subtype         = EXCLUDED.junk_subtype,
@@ -991,11 +1006,13 @@ def upsert_blank_junk(
             ocr_source           = EXCLUDED.ocr_source,
             confidence           = EXCLUDED.confidence,
             reason               = EXCLUDED.reason,
+            duplicate_confidence = EXCLUDED.duplicate_confidence,
             updated_at           = now()
         """,
         (
             chart_id, page_id, pass_no, blank_junk_flag, junk_subtype,
             duplicate_of_page_id, ocr_source, confidence, reason, is_final,
+            duplicate_confidence,
         ),
     )
 

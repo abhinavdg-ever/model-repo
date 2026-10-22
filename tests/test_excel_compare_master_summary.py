@@ -505,3 +505,22 @@ def test_local_mode_reads_a_partial_on_a_junk_page():
     page4 = index_junk_rows(rows, "c")["#4"]
     assert (page4["blankOrJunk"], page4["isDuplicate"], page4["isPartialDuplicate"]) == ("Yes (Junk)", False, True)
     assert page4["duplicateOf"] == "3.jpg"
+
+
+def test_local_mode_reads_duplicate_scores_from_blank_junk_json(tmp_path):
+    import json
+
+    from app.services.imaging_overlays import index_duplicate_scores
+
+    staged = tmp_path / "blank_junk.json"
+    staged.write_text(json.dumps({"version": 1, "pages": {
+        "1.jpg": {"pass_1": {"best_match": {"similarity": 0.91}},
+                  "pass_2": {"best_match": {"similarity": 0.99, "exact": True}}},
+        "2.jpg": {"pass_1": {"best_match": {"similarity": None, "similarity_at_most": 0.7, "exact": False}}},
+        "3.jpg": {"pass_1": {"verdict": "Main"}},
+    }}), encoding="utf-8")
+    by = index_duplicate_scores(staged)
+    assert by["1.jpg"]["duplicateConfidence"] == 0.99  # the last pass
+    assert by["#2"]["duplicateConfidence"] == 0.7
+    assert "3.jpg" not in by
+    assert index_duplicate_scores(tmp_path / "missing.json") == {}

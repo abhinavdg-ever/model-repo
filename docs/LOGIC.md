@@ -303,7 +303,7 @@ the word-count match (Dice). Details: `docs/BLANK_JUNK_LOGIC.md` §4.
 | Rule | Behaviour |
 |---|---|
 | Window | Compare only pages 25 before / 25 after (page order); the word-sequence match only for a pair whose word-count match reaches 95% |
-| Threshold | Average similarity **≥ 0.98** → duplicate (UI Yes, Blank / Junk Yes (Duplicate)); **[0.95, 0.98)** → partial, stays Main (UI Partial, display confidence `1 + (sim − 1) × 10`, e.g. 95%→50% / 97%→70%) |
+| Threshold | Average similarity **≥ 0.98** → duplicate (UI Yes, Blank / Junk Yes (Duplicate)); **[0.95, 0.98)** → partial, keeps its verdict (UI Partial). Every compared page stores its best similarity (`duplicate_confidence`); UI confidence falls exponentially from 100% at 100% to 50% at 95%, then the not-a-duplicate confidence rises to 100% at 80% |
 | Containment | The shorter page's normalized text appears whole inside the longer one → duplicate, confidence 1.0 |
 | Who wins | Higher normalized character count stays **main**; on a tie, the **earlier** page |
 | Excluded | Blank / junk pages and texts shorter than 300 normalized characters (~50 words) |
@@ -324,7 +324,7 @@ Downstream stages read `v_page_blank_junk_final` and never re-derive precedence.
 
 | Target | Columns |
 |---|---|
-| `blank_junk_classification` | `pass_no`, `blank_junk_flag`, `junk_subtype`, `duplicate_of_page_id`, `ocr_source`, `confidence`, `reason`, `is_final` |
+| `blank_junk_classification` | `pass_no`, `blank_junk_flag`, `junk_subtype`, `duplicate_of_page_id`, `ocr_source`, `confidence`, `reason`, `is_final`, `duplicate_confidence` |
 | disk | `imaging/<chart>_junk.csv` — **fully rewritten from the database** after each pass |
 | disk | `staging/blank_junk.json` — every ballot and deciding rule per page and pass |
 

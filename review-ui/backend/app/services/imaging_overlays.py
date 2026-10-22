@@ -823,6 +823,36 @@ def _put_page_keys(
         by_key[f"#{raw_num}"] = fields
 
 
+def index_duplicate_scores(staged_path: Path) -> dict[str, dict[str, Any]]:
+    """``<chart>/staging/blank_junk.json`` -> each page's ``duplicateConfidence``: the
+    best match of its last pass (pass 2, else pass 1). A pair never near 95% has only
+    the bound on its average (``similarity_at_most``). Local Mode's source for what
+    Production Mode reads from ``blank_junk_classification.duplicate_confidence``;
+    an absent or unreadable file gives nothing (never raises)."""
+    try:
+        payload = json.loads(staged_path.read_text(encoding="utf-8")) if staged_path.is_file() else {}
+    except (OSError, ValueError):
+        return {}
+    by_key: dict[str, dict[str, Any]] = {}
+    for page_name, passes in (payload.get("pages") or {}).items():
+        if not isinstance(passes, dict):
+            continue
+        last = passes.get("pass_2") or passes.get("pass_1") or {}
+        match = last.get("best_match") if isinstance(last, dict) else None
+        if not isinstance(match, dict):
+            continue
+        score = match.get("similarity")
+        if score is None:
+            score = match.get("similarity_at_most")
+        if score is None:
+            continue
+        try:
+            _put_page_keys(by_key, {"page_name": str(page_name)}, {"duplicateConfidence": float(score)})
+        except (TypeError, ValueError):
+            continue
+    return by_key
+
+
 _DUP_PAGE_RE = re.compile(r"duplicate_of_page:(\S+)")
 
 

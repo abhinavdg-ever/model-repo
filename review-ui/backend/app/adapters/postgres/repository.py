@@ -922,7 +922,9 @@ class PostgresFolderRepository(FolderRepository):
                         cur.execute(
                             """
                             SELECT p.page_name, b.blank_junk_flag, b.junk_subtype,
-                                   b.confidence, orig.page_name
+                                   b.confidence, orig.page_name,
+                                   -- NULL until changes_2026-10-22.sql has replaced the view.
+                                   to_jsonb(b) ->> 'duplicate_confidence'
                             FROM v_page_blank_junk_final b
                             JOIN page_list p ON p.id = b.page_id
                             JOIN chart_list c ON c.id = b.chart_id
@@ -931,7 +933,7 @@ class PostgresFolderRepository(FolderRepository):
                             """,
                             (folder_id,),
                         )
-                        for page_name, flag, subtype, conf, duplicate_of in cur.fetchall():
+                        for page_name, flag, subtype, conf, duplicate_of, best in cur.fetchall():
                             fields = _ensure(str(page_name))
                             blank, dup, page_type = _blank_junk_ui(flag, subtype)
                             fields["blankOrJunk"] = blank
@@ -945,6 +947,8 @@ class PostgresFolderRepository(FolderRepository):
                                 fields["duplicateOf"] = str(duplicate_of)
                             if conf is not None:
                                 fields["pageTypeConfidence"] = float(conf)
+                            if best is not None:
+                                fields["duplicateConfidence"] = float(best)
 
                     with _section(conn, "member", folder_id):
                         # Member extraction

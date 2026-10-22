@@ -251,6 +251,9 @@ class ImagingPageResult(BaseModel):
     isPartialDuplicate: bool | None = None
     # Page file the duplicate (or partial duplicate) was matched to, e.g. "4.png".
     duplicateOf: str | None = None
+    # The page's highest duplicate similarity against its neighbors (0-1), whatever its
+    # verdict; the Duplicate confidence comes from it. None when never compared.
+    duplicateConfidence: float | None = None
     # Blank / Main / Duplicate → "Not Available"; Invoice|Cover → that label
     pageType: str | None = None
     pageTypeConfidence: float | None = None

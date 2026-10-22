@@ -858,3 +858,31 @@ class TestJunkPagesAreCompared:
         by = self._run(monkeypatch, {1: body, 2: "   "}, junk_ids=set())
         assert by[2]["flag"] == "blank" and by[2]["duplicate_of"] is None
         assert by[1]["duplicate_of"] is None
+
+
+class TestDuplicateConfidenceStored:
+    """2026-10-22 (user): every compared page stores its best similarity, which
+    review-ui turns into the Duplicate confidence."""
+
+    def test_every_compared_page_carries_its_best_similarity(self):
+        words = _prose(30)
+        texts = {1: " ".join(words), 2: _edited(words, 14), 3: " ".join(_prose(31)), 4: "   "}
+        rows = {r["page_id"]: r for r in _classify([page(i, i) for i in texts], texts, set(texts))}
+        sim = classify.text_similarity(texts[1], texts[2])
+        assert abs(rows[1]["duplicate_confidence"] - round(sim, 4)) < 1e-9
+        assert abs(rows[2]["duplicate_confidence"] - round(sim, 4)) < 1e-9
+        # Never near 95%: the bound on its average, below the cut.
+        assert rows[3]["duplicate_confidence"] < 0.95
+        assert rows[4]["duplicate_confidence"] is None  # blank: never compared
+
+    def test_the_store_keeps_it(self):
+        from db import connect, disable_skip_db_write, enable_skip_db_write, upsert_blank_junk
+
+        store = enable_skip_db_write(reset=True)
+        try:
+            with connect() as conn:
+                upsert_blank_junk(conn, chart_id=1, page_id=7, pass_no=2, blank_junk_flag="not_blank_junk",
+                                  ocr_source="azuredocintel", duplicate_confidence=0.9123)
+            assert store.blank_junk[(7, 2)]["duplicate_confidence"] == 0.9123
+        finally:
+            disable_skip_db_write()

@@ -583,6 +583,10 @@ CREATE TABLE blank_junk_classification (
     is_final          BOOLEAN NOT NULL DEFAULT FALSE,
     confidence        NUMERIC(5,4),
     reason            TEXT,
+    -- The page's highest duplicate similarity against its neighbors, whatever its
+    -- verdict (2026-10-22): review-ui turns it into the Duplicate confidence.
+    -- NULL when the page was never compared (blank, or under 300 characters).
+    duplicate_confidence NUMERIC(5,4),
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (page_id, pass_no)
@@ -599,7 +603,9 @@ CREATE TRIGGER trg_blank_junk_classification_updated_at
 
 CREATE OR REPLACE VIEW v_page_blank_junk_final AS
 SELECT chart_id, page_id, blank_junk_flag, junk_subtype, duplicate_of_page_id,
-       ocr_source, pass_no, confidence, reason, updated_at
+       ocr_source, pass_no, confidence, reason, updated_at,
+       -- Appended (a replaced view keeps its earlier columns in order).
+       duplicate_confidence
 FROM blank_junk_classification
 WHERE is_final;
 

@@ -821,6 +821,7 @@ class MemoryStore:
         confidence: Optional[float] = None,
         reason: Optional[str] = None,
         is_final: bool = False,
+        duplicate_confidence: Optional[float] = None,
     ) -> None:
         with self._lock:
             key = (page_id, pass_no)
@@ -838,6 +839,7 @@ class MemoryStore:
                 "confidence": confidence,
                 "reason": reason,
                 "is_final": bool(is_final),
+                "duplicate_confidence": duplicate_confidence,
                 "updated_at": _now(),
             }
 

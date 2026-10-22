@@ -7,21 +7,41 @@
 export const DUPLICATE_PARTIAL_MIN = 0.95;
 export const DUPLICATE_YES_MIN = 0.98;
 
+/** Below this similarity a page is surely not a duplicate (100% confidence). */
+export const DUPLICATE_SURE_BELOW = 0.8;
+
 /**
- * Stored similarity → UI confidence. A duplicate is 100%; a partial duplicate
- * ``1 + (sim − 1) × 10`` (95% → 50%, 97% → 70%).
+ * Confidence in the duplicate call a similarity makes (2026-10-22, user): from 100% at
+ * 100% alike it falls exponentially to 50% at 95%, the cut between a duplicate and
+ * not; below 95% the confidence that the page is NOT a duplicate rises back to 100% at
+ * 80% alike. 99% → 87%, 98% → 76%, 96% → 57%, 90% → 63%.
+ */
+export function similarityConfidence(similarity: number): number {
+  if (similarity >= DUPLICATE_PARTIAL_MIN) {
+    return 0.5 ** ((1 - similarity) / (1 - DUPLICATE_PARTIAL_MIN));
+  }
+  if (similarity <= DUPLICATE_SURE_BELOW) return 1;
+  return 0.5 ** ((similarity - DUPLICATE_SURE_BELOW) / (DUPLICATE_PARTIAL_MIN - DUPLICATE_SURE_BELOW));
+}
+
+/**
+ * The Duplicate column's confidence. ``bestSimilarity`` is the page's highest duplicate
+ * similarity (``duplicateConfidence``); without it a duplicate or partial row's own
+ * ``similarity`` stands in, and a page never scored reads 100%, as before.
  */
 export function duplicateDisplayConfidence(
   isDuplicate: boolean | null | undefined,
   similarity: number | null | undefined,
   isPartial?: boolean | null,
+  bestSimilarity?: number | null,
 ): number | null {
   if (isDuplicate == null) return null;
-  if (isDuplicate || !isPartial) return 1.0;
-  if (similarity == null) return null;
-  const sim = Number(similarity);
-  if (!Number.isFinite(sim)) return null;
-  return 1 + (sim - 1) * 10;
+  const flagged = isDuplicate || Boolean(isPartial);
+  let score = bestSimilarity ?? null;
+  if (score == null && flagged) score = similarity ?? null;
+  if (score == null) return flagged ? null : 1;
+  const sim = Number(score);
+  return Number.isFinite(sim) ? similarityConfidence(sim) : null;
 }
 
 /**

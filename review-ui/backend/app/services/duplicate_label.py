@@ -1,7 +1,8 @@
 """Duplicate UI / CSV label + display confidence from junk flag + similarity.
 
 2026-10-22 (user): ≥ 98% alike (or contained) is a duplicate, "Yes"; 95-98% is a
-partial duplicate, "Partial", which the pipeline keeps as a Main page.
+partial duplicate, "Partial", which keeps its own verdict. The confidence follows the
+page's best similarity (similarity_confidence).
 """
 
 from __future__ import annotations
@@ -10,29 +11,44 @@ DUPLICATE_PARTIAL_MIN = 0.95
 DUPLICATE_YES_MIN = 0.98
 
 
+# Confidence from the page's best duplicate similarity (2026-10-22, user): falls
+# exponentially from 100% at 100% alike to 50% at 95% (the cut between a duplicate and
+# not); below it the confidence that the page is NOT a duplicate rises back to 100% at
+# 80% alike and stays there.
+DUPLICATE_SURE_BELOW = 0.80
+
+
+def similarity_confidence(similarity: float) -> float:
+    """Confidence in the duplicate call a similarity in [0, 1] makes: is a duplicate
+    (Yes / Partial) at or above 95%, is not below it."""
+    if similarity >= DUPLICATE_PARTIAL_MIN:
+        return 0.5 ** ((1.0 - similarity) / (1.0 - DUPLICATE_PARTIAL_MIN))
+    if similarity <= DUPLICATE_SURE_BELOW:
+        return 1.0
+    return 0.5 ** ((similarity - DUPLICATE_SURE_BELOW) / (DUPLICATE_PARTIAL_MIN - DUPLICATE_SURE_BELOW))
+
+
 def duplicate_display_confidence(
     is_duplicate: bool | None,
     similarity: float | None,
     is_partial: bool | None = None,
+    best_similarity: float | None = None,
 ) -> float | None:
-    """Map stored similarity to UI confidence.
-
-    Yes / No → 1.0. Partial → ``1 + (sim − 1) × 10``
-    (95% → 50%, 97% → 70%).
-    """
+    """The Duplicate column's confidence. ``best_similarity`` is the page's highest
+    duplicate similarity (``duplicate_confidence``); without it a duplicate or partial
+    row's own ``similarity`` (its stored confidence) stands in, and a page never scored
+    reads 1.0, as before the score was stored."""
     if is_duplicate is None:
         return None
-    if not is_duplicate and not is_partial:
-        return 1.0
-    if similarity is None:
-        return None
+    score = best_similarity
+    if score is None and (is_duplicate or is_partial):
+        score = similarity
+    if score is None:
+        return 1.0 if not (is_duplicate or is_partial) else None
     try:
-        sim = float(similarity)
+        return similarity_confidence(float(score))
     except (TypeError, ValueError):
         return None
-    if sim >= DUPLICATE_YES_MIN:
-        return 1.0
-    return 1 + (sim - 1) * 10
 
 
 def format_duplicate_label(

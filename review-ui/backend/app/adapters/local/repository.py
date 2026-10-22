@@ -1622,6 +1622,7 @@ class LocalFolderRepository(FolderRepository):
             empty_imaging_pages,
             index_dos_rows,
             index_hw_rows,
+            index_duplicate_scores,
             index_junk_rows,
             index_codeable_rows,
             index_encounter_rows,
@@ -1755,6 +1756,10 @@ class LocalFolderRepository(FolderRepository):
             imaging_pages, index_member_extraction_rows(member_rows, chart)
         )
         imaging_pages = overlay_fields(imaging_pages, index_junk_rows(junk_rows, chart))
+        imaging_pages = overlay_fields(
+            imaging_pages,
+            index_duplicate_scores(Path(self.data_root) / chart / "staging" / "blank_junk.json"),
+        )
         imaging_pages = overlay_fields(
             imaging_pages, index_codeable_rows(codeable_rows, chart)
         )

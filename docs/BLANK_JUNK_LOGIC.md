@@ -138,8 +138,14 @@ page ≥ 98% alike is a duplicate (Blank / Junk "Yes (Duplicate)", or its origin
 as `confidence` on duplicate and partial rows; a partial page keeps its own verdict
 reason first, then `; partial_duplicate_of_page_id:N (similarity=…)`. A duplicate takes
 its original's page type and sub-type (page classification) and Final values
-(`imaging_final`); it stays Non-Codable. UI confidence: a duplicate 100%; a partial
-1 + (similarity − 1) × 10 (95% → 50%, 97% → 70%).
+(`imaging_final`); it stays Non-Codable.
+
+Every compared page also stores its best similarity, whatever its verdict, as
+`duplicate_confidence` (NULL when never compared). The UI's Duplicate confidence comes
+from it: from 100% at 100% alike it falls exponentially to 50% at 95% (the cut);
+below 95% the confidence that the page is **not** a duplicate rises back to 100% at 80%
+alike and stays there — 99% → 87%, 98% → 76%, 96% → 57%, 90% → 63%
+(`duplicate_label.similarity_confidence` / `duplicateLabel.ts`).
 
 The word-sequence match can never exceed the word-count match, so a pair whose word match
 is below 95% is skipped without running SequenceMatcher. `staging/blank_junk.json` gives
@@ -153,6 +159,13 @@ average.
 ---
 
 ## 5. Changes
+
+### 2026-10-22 — Duplicate confidence from the similarity
+
+- `blank_junk_classification.duplicate_confidence` (and `v_page_blank_junk_final`): each
+  page's best similarity (`schema/changes_2026-10-22.sql`; the stage also adds the column
+  on its first write). The UI confidence follows it on both sides of the 95% cut (§4).
+  Was: a duplicate 100%, a partial 1 + (similarity − 1) × 10, a non-duplicate 100%.
 
 ### 2026-10-22 — Junk pages are compared for duplicates too
 

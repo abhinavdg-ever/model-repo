@@ -67,6 +67,9 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * blank_junk_classification.duplicate_confidence (v1.sql, 2026-10-22): each page's
+--    highest duplicate similarity, appended to v_page_blank_junk_final
+--    (changes_2026-10-22.sql).
 --  * encounter_review (v1.sql, 2026-10-21): a reviewer's encounters (page ranges with
 --    page type, encounter type, DOS) from review-ui's Encounter tab; not ground truth
 --    (changes_2026-10-21.sql).

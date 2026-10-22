@@ -1645,7 +1645,7 @@ function PageDetails({
             // Scored on the stored verdict, as the accuracy report does.
             return { ...row, compare: blankJunkCompare(stored, stored) };
           })(),
-          sameValue(fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk, page.duplicateOf, page.isPartialDuplicate), fmtConfidence(duplicateDisplayConfidence(page.isDuplicate, page.pageTypeConfidence, page.isPartialDuplicate), sections.junk), {
+          sameValue(fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk, page.duplicateOf, page.isPartialDuplicate), fmtConfidence(duplicateDisplayConfidence(page.isDuplicate, page.pageTypeConfidence, page.isPartialDuplicate, page.duplicateConfidence), sections.junk), {
             id: "duplicate",
             label: "Is Duplicate",
             choices: DUPLICATE_CHOICES,
@@ -2087,7 +2087,7 @@ function DocSummary({
                   <ConfLine
                     value={fmtConfidence(
                       p.isDuplicate
-                        ? duplicateDisplayConfidence(p.isDuplicate, p.pageTypeConfidence)
+                        ? duplicateDisplayConfidence(p.isDuplicate, p.pageTypeConfidence, p.isPartialDuplicate, p.duplicateConfidence)
                         : p.pageTypeConfidence,
                       sections.junk,
                     )}

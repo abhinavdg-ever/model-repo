@@ -25,13 +25,35 @@ def test_duplicate_labels():
     assert format_duplicate_label(None, 1.0) == "NA"
 
 
+def test_similarity_confidence_curve():
+    from app.services.duplicate_label import similarity_confidence
+
+    # Duplicate side: 100% at 100% alike, falling exponentially to 50% at 95%.
+    assert similarity_confidence(1.0) == 1.0
+    assert abs(similarity_confidence(0.99) - 0.8706) < 1e-4
+    assert abs(similarity_confidence(0.98) - 0.7579) < 1e-4
+    assert abs(similarity_confidence(0.95) - 0.5) < 1e-9
+    # Not-a-duplicate side: rising from 50% at 95% to 100% at 80%, and 100% below.
+    assert abs(similarity_confidence(0.90) - 0.6300) < 1e-4
+    assert similarity_confidence(0.80) == 1.0
+    assert similarity_confidence(0.40) == 1.0
+    values = [similarity_confidence(s / 100) for s in range(95, 101)]
+    assert values == sorted(values)  # rises with similarity above the cut
+    below = [similarity_confidence(s / 100) for s in range(80, 95)]
+    assert below == sorted(below, reverse=True)  # rises as similarity falls below it
+
+
 def test_duplicate_display_confidence():
-    assert duplicate_display_confidence(False, None) == 1.0
+    # The page's best similarity decides, whatever its verdict.
+    assert abs(duplicate_display_confidence(True, 0.985, best_similarity=0.985) - 0.8123) < 1e-4
+    assert abs(duplicate_display_confidence(False, 0.7, True, 0.96) - 0.5743) < 1e-4
+    assert abs(duplicate_display_confidence(False, 0.7, False, 0.90) - 0.6300) < 1e-4
+    assert duplicate_display_confidence(False, 0.7, False, 0.50) == 1.0
+    # Before the score was stored: a duplicate / partial row's own similarity stands in;
+    # a page never scored reads 1.0.
     assert duplicate_display_confidence(True, 1.0) == 1.0
-    assert duplicate_display_confidence(True, 0.985) == 1.0
-    # Partial: 1 + (sim - 1) x 10.
-    assert abs(duplicate_display_confidence(False, 0.97, True) - 0.70) < 1e-9
-    assert abs(duplicate_display_confidence(False, 0.95, True) - 0.50) < 1e-9
+    assert abs(duplicate_display_confidence(False, 0.97, True) - 0.6598) < 1e-4
+    assert duplicate_display_confidence(False, None) == 1.0
     assert duplicate_display_confidence(None, 1.0) is None
 
 
