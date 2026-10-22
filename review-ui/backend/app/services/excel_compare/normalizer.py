@@ -237,6 +237,27 @@ def normalize_name(value):
     return " ".join(sorted(re.findall(r"[a-z0-9]+", clean_text(value))))
 
 
+def display_name(value):
+    """
+    A name as Manual Review shows it, on both sides alike: commas and
+    other punctuation dropped, spaces collapsed, Title Case, words in
+    their own order. Apostrophes and hyphens inside a word stay
+    ("O'Brien", "Smith-Jones").
+    """
+
+    if pd.isna(value):
+        return ""
+
+    # "-" / N/A say "no name": kept as written, never blanked into "unlabelled".
+    if not has_value(value):
+        return str(value).strip()
+
+    text = re.sub(r"[^\w'\-]+", " ", str(value))
+    words = [word.strip("'-") for word in text.split()]
+
+    return " ".join(word.title() for word in words if word)
+
+
 # =============================================================
 # IDENTIFIER NORMALIZATION
 #

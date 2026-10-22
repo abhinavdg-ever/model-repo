@@ -6,6 +6,7 @@ from .normalizer import (
     clean_identifier,
     credentials_match,
     display_date,
+    display_name,
     has_value,
     normalize_yes_no,
     normalize_codable,
@@ -98,7 +99,8 @@ PRINT_TYPE_FIELDS = {
     "Type (Printed/HW)",
 }
 
-# The same words in any order are the same name.
+# The same words in any order are the same name; shown as display_name()
+# on both sides ("Lisa, Anderson" reads "Lisa Anderson").
 NAME_FIELDS = {
     "Extracted Name",
 }
@@ -128,6 +130,9 @@ def _raw_value(row, field_name):
 
     if field_name in IDENTIFIER_FIELDS:
         return clean_identifier(value)
+
+    if field_name in NAME_FIELDS:
+        return display_name(value)
 
     return str(value).strip()
 
@@ -205,11 +210,11 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
             system_raw = display_date(system_raw)
 
         # Both sides are shown when they read differently but still count as a
-        # match: credentials ("MD" / "MD, PhD"), a name in another order, a
-        # Yes / No presence label, or an unlabelled field next to an algo value.
+        # match: credentials ("MD" / "MD, PhD"), a Yes / No presence label, or
+        # an unlabelled field next to an algo value. A matching name is one
+        # value: the ground truth's, normalized.
         differs = (
             field_name in CREDENTIAL_FIELDS
-            or field_name in NAME_FIELDS
             or presence in ("yes", "no")
             or not gt_raw
         ) and clean_text(gt_raw) != clean_text(system_raw)

@@ -307,9 +307,11 @@ def test_names_match_in_any_order_and_punctuation():
 
     for algo in ("Lisa Anderson", "Lisa, Anderson", "ANDERSON, LISA", "anderson  lisa"):
         assert compare("Anderson Lisa", algo)["match"] is True, algo
-    # Both spellings are shown when they read differently but agree.
-    assert compare("Anderson Lisa", "Lisa, Anderson")["display"] == "GT: Anderson Lisa | Algo: Lisa, Anderson"
+    # A matching name is one value, normalized: no commas, Title Case.
+    assert compare("Anderson, Lisa", "lisa anderson")["display"] == "Anderson Lisa"
     assert compare("Anderson Lisa", "Anderson Lisa")["display"] == "Anderson Lisa"
+    # A mismatch shows both sides, each normalized the same way.
+    assert compare("ANDERSON, LISA", "Laura, Anderson")["display"] == "GT: Anderson Lisa | Algo: Laura Anderson"
     assert compare("Anderson Lisa", "Lisa M Anderson")["match"] is False
     assert compare("Anderson Lisa", "Laura Anderson")["match"] is False
 
@@ -414,3 +416,23 @@ def test_a_pattern_across_many_charts_still_builds():
     assert "The first 1500 of 1200" not in text  # 1200 mismatches: the appendix lists them all
     entries = [("A", 1), ("B", 2), ("C", 3)]
     assert _pages_by_chart(entries, max_charts=2) == "A: 1; B: 2 … and 1 more charts"
+
+
+def test_display_name_normalizes_without_losing_labels():
+    from app.services.excel_compare.normalizer import display_name
+
+    assert display_name("ANDERSON,  LISA") == "Anderson Lisa"
+    assert display_name("o'brien, mary-jo") == "O'Brien Mary-Jo"
+    assert display_name("Lisa M. Anderson") == "Lisa M Anderson"
+    # "No name" labels and presence answers are kept as written.
+    assert [display_name(v) for v in ("-", "N/A", "Yes", "")] == ["-", "N/A", "Yes", ""]
+
+
+def test_missing_rows_show_the_normalized_name():
+    ground = pd.DataFrame([{"PDF ID": "1", "Page Number": 1, "Extracted Name": "ANDERSON, LISA"},
+                           {"PDF ID": "1", "Page Number": 2, "Extracted Name": "ANDERSON, LISA"}])
+    algo = pd.DataFrame([{"PDF ID": "1", "Page Number": 1, "Extracted Name": "Lisa Anderson"}])
+    rows = compare_files(_upload(ground, "g.csv"), _upload(algo, "a.csv"))["result_rows"]
+    assert [(row["Status"], row["Extracted Name"]) for row in rows] == [
+        ("CORRECT", "Anderson Lisa"), ("MISSING", "Anderson Lisa"),
+    ]

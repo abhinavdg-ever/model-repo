@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from .field_comparator import ACTIVE_COMPARISON_FIELDS, DATE_FIELDS, IDENTIFIER_FIELDS
-from .normalizer import clean_identifier, display_date
+from .field_comparator import ACTIVE_COMPARISON_FIELDS, DATE_FIELDS, IDENTIFIER_FIELDS, NAME_FIELDS
+from .normalizer import clean_identifier, display_date, display_name
 
 
 # =============================================================
@@ -22,7 +22,7 @@ def _raw_value(row, field_name):
 
 def _field_value(row, field_name):
     """A field shown on its own (Missing / Extra): dates read MM/DD/YYYY, IDs
-    without a float's ".0"."""
+    without a float's ".0", names as display_name()."""
 
     value = _raw_value(row, field_name)
 
@@ -31,6 +31,9 @@ def _field_value(row, field_name):
 
     if field_name in IDENTIFIER_FIELDS:
         return clean_identifier(value)
+
+    if field_name in NAME_FIELDS:
+        return display_name(value)
 
     return value
 

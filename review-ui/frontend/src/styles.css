@@ -4985,6 +4985,39 @@ input {
   color: var(--status-warning-fg);
 }
 
+/* Results column header: the field name over its Match / No match filter. */
+.excel-compare-col-head {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.excel-compare-col-filter {
+  padding: 0.1rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.excel-compare-col-filter.is-active {
+  border-color: var(--status-info-fg);
+  background: var(--status-info-bg);
+  color: var(--status-info-fg);
+  font-weight: 600;
+}
+
+.excel-compare-clear-columns {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
 .excel-compare-downloading {
   margin: 0.5rem 0 0;
   color: var(--status-info-fg);

@@ -52,6 +52,19 @@ const STATUS_CLASS: Record<ManualReviewStatus, string> = {
 
 type Filter = "ALL" | ManualReviewStatus;
 
+/** A results column narrowed to pages where that field matched or did not. */
+type FieldFilter = "match" | "mismatch";
+
+/** Whether a row passes every column filter. Only a compared row (Correct or
+ * Error) has a field outcome, so a Missing / Extra / Unvalidated row is left
+ * out while any column filter is on. */
+function passesFieldFilters(row: ManualReviewRow, fieldFilters: Record<string, FieldFilter>): boolean {
+  const active = Object.entries(fieldFilters);
+  if (active.length === 0) return true;
+  if (row.status !== "CORRECT" && row.status !== "ERROR") return false;
+  return active.every(([field, want]) => row.mismatched.includes(field) === (want === "mismatch"));
+}
+
 /** An input card: its title row (with any controls), then the body. The title row
  * sits outside the drop zone's <label> so its buttons never open the file picker. */
 function InputCard({
@@ -346,13 +359,22 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     return () => window.clearInterval(timer);
   }, [downloading]);
   const [error, setError] = useState<string | null>(null);
-  // Status filter, search and page survive opening a chart and coming Back.
-  const [view, setView] = useViewState<{ filter: Filter; page: number; query: string }>(
-    "manual-review",
-    { filter: "ALL", page: 1, query: "" },
-  );
+  // Status filter, column filters, search and page survive opening a chart and coming Back.
+  const [view, setView] = useViewState<{
+    filter: Filter;
+    page: number;
+    query: string;
+    fieldFilters: Record<string, FieldFilter>;
+  }>("manual-review", { filter: "ALL", page: 1, query: "", fieldFilters: {} });
   const { filter, page, query } = view;
+  const fieldFilters = view.fieldFilters ?? {};
   const setFilter = (value: Filter) => setView({ filter: value });
+  const setFieldFilter = (field: string, value: FieldFilter | "") => {
+    const next = { ...fieldFilters };
+    if (value) next[field] = value;
+    else delete next[field];
+    setView({ fieldFilters: next, page: 1 });
+  };
   const setPage = (value: number) => setView({ page: value });
   const setQuery = (value: string) => setView({ query: value });
   // Charts read so far while a comparison streams in; null when idle.
@@ -414,8 +436,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
     setComparing(true);
     setError(null);
     setStopped(null);
-    setFilter("ALL");
-    setPage(1);
+    setView({ filter: "ALL", page: 1, fieldFilters: {} });
     // Filled in chart by chart as the backend reads each one.
     let current: ManualReviewResult | null = null;
     try {
@@ -500,12 +521,18 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
   const rate = (metric: string) =>
     result?.summary.find((row) => row.metric === metric)?.percentage;
 
-  // Search by chart name, as on the Accuracy tab; the status pills count what it leaves.
+  // Search by chart name, as on the Accuracy tab, and the column filters; the status
+  // pills count what they leave.
   const searched = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const rows = result?.rows ?? [];
-    return needle ? rows.filter((row) => row.pdfId.toLowerCase().includes(needle)) : rows;
-  }, [result, query]);
+    return rows.filter(
+      (row) =>
+        (!needle || row.pdfId.toLowerCase().includes(needle)) &&
+        passesFieldFilters(row, fieldFilters),
+    );
+  }, [result, query, fieldFilters]);
+  const fieldFilterCount = Object.keys(fieldFilters).length;
   const filtered = useMemo(
     () => (filter === "ALL" ? searched : searched.filter((row) => row.status === filter)),
     [searched, filter],
@@ -871,6 +898,16 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                   aria-label="Search charts"
                 />
               </label>
+              {fieldFilterCount > 0 ? (
+                <button
+                  type="button"
+                  className="excel-compare-filter excel-compare-clear-columns"
+                  onClick={() => setView({ fieldFilters: {}, page: 1 })}
+                >
+                  <X size={12} aria-hidden="true" />
+                  Clear column filters <span>{fieldFilterCount}</span>
+                </button>
+              ) : null}
             </div>
             <div className="accuracy-table-scroll">
               <table className="landing-history-table accuracy-table excel-compare-table">
@@ -882,7 +919,19 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                     <th scope="col">Source</th>
                     {result.fields.map((field) => (
                       <th key={field} scope="col">
-                        {field}
+                        <span className="excel-compare-col-head">
+                          {field}
+                          <select
+                            className={`excel-compare-col-filter${fieldFilters[field] ? " is-active" : ""}`}
+                            value={fieldFilters[field] ?? ""}
+                            onChange={(e) => setFieldFilter(field, e.target.value as FieldFilter | "")}
+                            aria-label={`Filter ${field} by match`}
+                          >
+                            <option value="">All</option>
+                            <option value="match">Match</option>
+                            <option value="mismatch">No match</option>
+                          </select>
+                        </span>
                       </th>
                     ))}
                     <th scope="col">Status</th>
@@ -896,7 +945,9 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                         colSpan={result.fields.length + 6}
                         className="accuracy-empty"
                       >
-                        No records match.
+                        {fieldFilterCount > 0
+                          ? "No compared pages match these column filters."
+                          : "No records match."}
                       </td>
                     </tr>
                   ) : null}
