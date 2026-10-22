@@ -904,3 +904,16 @@ class TestWordOverlap:
         assert classify.duplicate_char_count(inner) < 0.9 * classify.duplicate_char_count(outer)
         rows = _classify([page(1, 1), page(2, 2)], {1: inner, 2: outer}, {1, 2})
         assert all(r["flag"] != "duplicate" for r in rows)
+
+    def test_the_later_page_is_flagged_even_when_it_is_longer(self):
+        # 2026-10-22 (user): not contained, 98%+ alike -> the later page, whatever its length.
+        words = _prose(58)
+        earlier = " ".join(words)
+        later = _edited(words, 1) + " signed"  # a word replaced, one added: longer, not contained
+        pair = classify.word_overlap(earlier, later)
+        assert pair.contained < 1.0 and pair.overlap >= 0.98
+        assert classify.duplicate_char_count(later) > classify.duplicate_char_count(earlier)
+        rows = {r["page_id"]: r for r in _classify([page(1, 1), page(2, 2)], {1: earlier, 2: later}, {1, 2})}
+        assert (rows[2]["flag"], rows[2]["duplicate_of"]) == ("duplicate", 1)
+        assert rows[1]["flag"] == "not_blank_junk"
+

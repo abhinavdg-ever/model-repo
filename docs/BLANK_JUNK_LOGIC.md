@@ -137,9 +137,10 @@ A pair is decided by these rules (canon `duplicates`, 2026-10-22):
 added. The word-count rules apply only at overlap ≥ 80% (two short unrelated pages also
 differ in few words).
 
-**Which page is the duplicate:** contained with fewer than 10 distinct words different →
-the **later** page (order of appearance); otherwise the **larger** page stays (a tie: the
-earlier) and the other is the duplicate.
+**Which page is the duplicate:** the **later** page (order of appearance) — unless one page
+is contained in the other and the larger has **more than 10** distinct words the smaller
+lacks (`larger_kept_above_words`): then the larger page stays and the smaller is the
+duplicate.
 
 | Similarity | Verdict | Blank / Junk | Duplicate (UI) |
 |---|---|---|---|
@@ -170,6 +171,12 @@ and `shared_words`.
 ---
 
 ## 5. Changes
+
+### 2026-10-23 — The later page is the duplicate
+
+- The later page (order of appearance) is flagged, for duplicates and partials alike —
+  unless a contained pair's larger page adds more than 10 distinct words: the larger stays.
+  (Was: the larger page stays except contained pairs under 10 words different.)
 
 ### 2026-10-22 — Only Main pages compared; a duplicate reads Yes (Junk), "Duplicate (To Page N)"
 

@@ -8,9 +8,9 @@ worked examples, is `docs/BLANK_JUNK_LOGIC.md`; the summary is `docs/LOGIC.md` �
 Duplicates: Main pages only (never blank or junk), against a neighbour within ±25 pages.
 Pages are compared on their distinct
 words as read. Duplicate: lengths within 10% and (contained, overlap ≥ 98%, or < 5 distinct
-words different); partial: overlap 95–98% or < 15 different; contained with < 10 words
-different marks the later page, otherwise the larger page stays (docs/BLANK_JUNK_LOGIC.md §4). Pages
-under 300 characters never compared; the longer (or earlier) page is kept.
+words different); partial: overlap 95–98% or < 15 different; the later page is the
+duplicate, unless a contained pair's larger page adds more than 10 distinct words (then the
+larger stays; docs/BLANK_JUNK_LOGIC.md §4). Pages under 300 characters never compared.
 
 The rest of this file describes the older regex classifier (`classify_junk.py` and the
 detector modules) and the former post-model rules (`postprocess.py`). The stage no longer

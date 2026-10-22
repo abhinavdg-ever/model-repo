@@ -305,7 +305,7 @@ page's words on the other. Details: `docs/BLANK_JUNK_LOGIC.md` §4.
 | Window | Compare only pages 25 before / 25 after (page order) |
 | Threshold | Lengths within 10% and (contained, overlap ≥ 0.98, or < 5 distinct words different) → duplicate; overlap 0.95–0.98 or < 15 different → partial (word counts only at overlap ≥ 0.80). Distinct-word overlap **≥ 0.98** → duplicate (UI Yes, Blank / Junk Yes (Duplicate)); **[0.95, 0.98)** → partial, keeps its verdict (UI Partial). Every compared page stores its best similarity (`duplicate_confidence`); UI confidence falls exponentially from 100% at 100% to 50% at 95%, then the not-a-duplicate confidence rises to 100% at 80% |
 | Containment | Every distinct word of the smaller page is on the other (canon `duplicates.contained_at`, 1.0) → duplicate, confidence 1.0 |
-| Who wins | Contained with < 10 distinct words different → the **later** page is the duplicate; otherwise the larger page (by characters) stays, on a tie the **earlier** |
+| Who wins | The **later** page (order of appearance) is the duplicate — unless one page is contained in the other and the larger adds more than 10 distinct words: the larger page stays |
 | Excluded | Blank / junk pages and texts shorter than 300 normalized characters (~50 words) |
 | Cross-pass | Prior-pass `main` pages are neighbors in pass 2 (so HW can match a printed original) |
 

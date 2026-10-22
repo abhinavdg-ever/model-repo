@@ -33,7 +33,11 @@ Duplicate detection (after the verdict, among Main pages only -- never blank or 
   (15) distinct words different: a partial duplicate -- the page stays Main with
   ``duplicate_of_page_id`` set; UI "Partial (To Page N)".
 * The similarity is stored as ``confidence`` on both kinds of row.
-* On a match, keep the page with the **higher character count** as the
+* On a match the **later** page (order of appearance) is the duplicate (or partial
+  duplicate) -- except a contained pair whose larger page has more than
+  ``duplicates.larger_kept_above_words`` (10) distinct words the smaller lacks: the
+  larger page stays and the smaller is the duplicate (2026-10-22, user).
+* as the
   original; on a tie, keep the **earlier** page -- except a contained pair with fewer
   than ``duplicates.earlier_kept_below_words`` (10) distinct words different: the
   **later** page is the duplicate (2026-10-22, user). The other is the duplicate
@@ -114,8 +118,9 @@ def _duplicate_rules() -> dict[str, float]:
     ``contained_at`` (share of the smaller page's distinct words that must be on the
     other), ``duplicate_below_words`` / ``partial_below_words`` (fewer distinct words
     different than this is a duplicate / partial whatever the overlap), and
-    ``earlier_kept_below_words`` (a contained pair differing in fewer keeps the earlier
-    page; the later one is the duplicate)."""
+    ``larger_kept_above_words`` (a contained pair whose larger page has more distinct
+    words than this beyond the smaller keeps the larger page; otherwise the later page
+    is the duplicate)."""
     cfg = method.canon().raw.get("duplicates", {})
     return {
         "contained_at": float(cfg.get("contained_at", 1.0)),
@@ -123,7 +128,7 @@ def _duplicate_rules() -> dict[str, float]:
         "partial_below_words": int(cfg.get("partial_below_words", 15)),
         "count_rule_min_overlap": float(cfg.get("count_rule_min_overlap", 0.80)),
         "duplicate_min_length_ratio": float(cfg.get("duplicate_min_length_ratio", 0.90)),
-        "earlier_kept_below_words": int(cfg.get("earlier_kept_below_words", 10)),
+        "larger_kept_above_words": int(cfg.get("larger_kept_above_words", 10)),
     }
 
 
@@ -217,24 +222,6 @@ def _row_for(
         "reason": reason,
         "votes": votes,
     }
-
-
-def _prefer_original(
-    idx_a: int,
-    id_a: int,
-    chars_a: int,
-    idx_b: int,
-    id_b: int,
-    chars_b: int,
-) -> tuple[int, int]:
-    """Return ``(original_id, duplicate_id)`` — higher chars wins; tie → earlier."""
-    if chars_a > chars_b:
-        return id_a, id_b
-    if chars_b > chars_a:
-        return id_b, id_a
-    if idx_a <= idx_b:
-        return id_a, id_b
-    return id_b, id_a
 
 
 def _ultimate_original(dup_of: dict[int, int], page_id: int) -> int:
@@ -387,20 +374,14 @@ def _classify(
                 kind = "partial"
             else:
                 continue
-            if is_contained and words.different < rules["earlier_kept_below_words"]:
-                # 2026-10-22 (user): one page inside the other, all but a few words the
-                # same -- the later page, in order of appearance, is the duplicate.
-                orig, dup = pid, nid
+            # 2026-10-22 (user): the later page, in order of appearance, is the duplicate
+            # -- unless one page is contained in the other and the larger adds more than
+            # larger_kept_above_words distinct words: the larger page stays.
+            if is_contained and words.different > rules["larger_kept_above_words"]:
+                larger_first = words.words_a > words.words_b
+                orig, dup = (pid, nid) if larger_first else (nid, pid)
             else:
-                # Otherwise the larger page stays (on a tie, the earlier).
-                orig, dup = _prefer_original(
-                    i,
-                    pid,
-                    duplicate_char_count(texts.get(pid) or ""),
-                    j,
-                    nid,
-                    duplicate_char_count(texts.get(nid) or ""),
-                )
+                orig, dup = pid, nid
             if kind == "partial":
                 if sim > partial_sim.get(dup, 0.0) or dup not in partial_of:
                     partial_of[dup] = orig
