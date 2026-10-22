@@ -12,8 +12,9 @@ Two passes, as the pipeline spec requires:
 
 The verdict is ``method.decide`` (docs/BLANK_JUNK_LOGIC.md): rules R1-R4, then DistilBERT
 alone (no keyword vote). Pass 1 removes blank pages, R1-R3 junk and the pages DistilBERT is
-sure are junk (p(junk) > 0.95: Final OCR 1 still reads them for the quality re-grade, nothing
-after does), and settles the pages it is sure to keep (p(keep) > 0.95: pass 2 skips them);
+sure are junk (p(junk) > 0.95); every page it settles still gets Final OCR 1, which changes
+nothing (no quality re-grade, no Final OCR 2, no later stage reads it). It also settles the
+pages it is sure to keep (p(keep) > 0.95: pass 2 skips them);
 every other page stays Main, gets final OCR, and DistilBERT decides it in pass 2. DistilBERT's
 probabilities and the deciding rule go to ``<chart>/staging/blank_junk.json`` beside the
 key/value extraction's ``extraction.json`` (not the database).
@@ -749,8 +750,7 @@ def _run_pass(
                 ocr_source = "azuredocintel"  # default; per-row override below
                 pass1 = get_blank_junk_flags(conn, chart_id, pass_no=1)
                 # Eligible: non-printed + low-quality (never judged in pass 1),
-                # plus printed pages pass 1 did not already rule out. DistilBERT's sure
-                # pass-1 junk stays ruled out even if Final2's re-grade marked it low.
+                # plus printed pages pass 1 did not already rule out.
                 not_eligible = sorted(pass1_ruled_out(conn, chart_id) & ctx.todo)
                 mark_skipped(conn, ctx, not_eligible, "blank_junk_pass1")
                 # A Visual page (visual, < 20 words in the text pass 1 read) is decided in

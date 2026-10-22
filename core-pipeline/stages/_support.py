@@ -29,36 +29,23 @@ logger = logging.getLogger(__name__)
 BJ_EXCLUDE = frozenset({"blank", "junk", "duplicate"})
 
 # Starts the reason of a pass-1 junk verdict DistilBERT was sure of (p(junk) above
-# ``pass1_final_junk_above``, 2026-10-22): final, so pass 2 does not judge it again and
-# Final OCR 2 (billed) skips it, but Final OCR 1 still reads the page.
+# ``pass1_final_junk_above``, 2026-10-22): final, so pass 2 does not judge it again.
 FINAL_JUNK = "R5 junk (final)"
 
 
-def is_final_junk(reason: Optional[str]) -> bool:
-    """A pass-1 junk verdict DistilBERT was sure of (see FINAL_JUNK)."""
-    return (reason or "").startswith(FINAL_JUNK)
-
-
 def pass1_ruled_out(conn: Any, chart_id: int) -> set[int]:
-    """Pages blank / junk / duplicate pass 1 settled. Nothing after Final OCR 1 reads
-    them: Final OCR 1 runs only on DistilBERT's sure junk (the quality re-grade compares
-    it with Tesseract), and Final OCR 2, section headers, kv_extract and pass 2 skip
-    every one. Handwritten and low-quality pages are never settled in pass 1 -- except
-    sure junk that the re-grade then marks low: it stays settled."""
-    from db import (
-        get_blank_junk_flags,
-        get_blank_junk_reasons,
-        low_quality_page_ids,
-        non_printed_page_ids,
-    )
+    """Pages pass 1 settled as blank / junk / duplicate (2026-10-22, user). Final OCR 1
+    still reads them, but its text changes nothing: Final OCR 2's quality re-grade and
+    Azure call skip them, and so do section headers, kv_extract, pass 2 and every stage
+    after (continuity reads them from Tesseract only). Handwritten and low-quality pages
+    are never settled in pass 1."""
+    from db import get_blank_junk_flags, low_quality_page_ids, non_printed_page_ids
 
     judged_in_pass2 = non_printed_page_ids(conn, chart_id) | low_quality_page_ids(conn, chart_id)
-    reasons = get_blank_junk_reasons(conn, chart_id, pass_no=1)
     return {
         page_id
         for page_id, flag in get_blank_junk_flags(conn, chart_id, pass_no=1).items()
-        if flag in BJ_EXCLUDE
-        and (page_id not in judged_in_pass2 or is_final_junk(reasons.get(page_id)))
+        if flag in BJ_EXCLUDE and page_id not in judged_in_pass2
     }
 
 

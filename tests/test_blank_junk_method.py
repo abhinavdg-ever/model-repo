@@ -230,22 +230,22 @@ class TestDistilBertLadder:
 
     def test_pass_1_junks_only_what_distilbert_is_sure_of(self):
         # 2026-10-22 (user): p(junk) > 0.95 is junk in pass 1, for good.
-        from stages._support import is_final_junk
+        from stages._support import FINAL_JUNK
 
         verdict = run(INVOICE_TEXT, pass_no=1, bert=bert(0.99))
         assert (verdict.code, verdict.rule) == (classify.CODE_INVOICE, "R5")
-        assert is_final_junk(verdict.reason) and verdict.confidence == pytest.approx(0.99)
+        assert verdict.reason.startswith(FINAL_JUNK) and verdict.confidence == pytest.approx(0.99)
         for p in (0.95, 0.60, 0.10):
             verdict = run(INVOICE_TEXT, pass_no=1, bert=bert(p))
             assert verdict.code == classify.CODE_MAIN and verdict.rule == "P1"
-            assert not is_final_junk(verdict.reason) and verdict.votes["deferred"]
+            assert not verdict.reason.startswith(FINAL_JUNK) and verdict.votes["deferred"]
 
     def test_pass_1_does_not_junk_a_handwritten_page(self):
-        from stages._support import is_final_junk
+        from stages._support import FINAL_JUNK
 
         verdict = run(INVOICE_TEXT, pass_no=1, bert=bert(0.99), hw_area_pct=40.0)
         assert verdict.code == classify.CODE_MAIN and verdict.rule == "P1"
-        assert not is_final_junk(verdict.reason) and verdict.votes["veto"] == "handwritten"
+        assert not verdict.reason.startswith(FINAL_JUNK) and verdict.votes["veto"] == "handwritten"
 
     def test_pass_1_still_takes_r1_and_r3_junk(self):
         assert run("Page 3 of 7", pass_no=1, bert=bert(0.0)).rule == "R1"

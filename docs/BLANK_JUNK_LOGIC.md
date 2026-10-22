@@ -25,9 +25,10 @@ Every page gets one verdict: **Main**, **Blank**, or **Junk / subtype**.
 4. After the verdict, **duplicates** are found among the Main pages (§4).
 
 **Junk is decided in pass 2**, on the Final OCR text, except the certain calls pass 1 makes
-on the Tesseract text: R1–R3 (they save the page's Final OCR) and DistilBERT's sure junk,
-p(junk) > 0.95 (2026-10-22; it saves Final OCR 2 — Final OCR 1 still runs for the quality
-re-grade — and every stage after it).
+on the Tesseract text: R1–R3 and DistilBERT's sure junk, p(junk) > 0.95 (2026-10-22). Every
+page pass 1 settles (blank, junk or duplicate) still gets Final OCR 1, which is stored and
+changes nothing: no quality re-grade, no Final OCR 2 (billed), and every later stage skips
+the page.
 
 | | Pass 1 (stage 3) | Pass 2 (stage 7) |
 |---|---|---|
@@ -39,9 +40,10 @@ re-grade — and every stage after it).
 A page pass 1 settled (Blank, Junk, a Visual keep, or an R5 keep) is **not judged again in
 pass 2**: the R5 keep's reason starts `R5 keep (final)`, and pass 2 skips it
 (`final_keep_pass1`). An R5 junk's reason starts `R5 junk (final)`
-(`stages/_support.FINAL_JUNK`): Final OCR 1 still reads that page, because Final 2's quality
-re-grade compares Final 1 with Tesseract, but Final OCR 2, section headers, kv_extract and
-pass 2 skip it (`pass1_ruled_out`) — even when the re-grade then marks it low.
+(`stages/_support.FINAL_JUNK`). Every page pass 1 settled as blank / junk / duplicate
+(`stages/_support.pass1_ruled_out`) gets Final OCR 1, but Final 2's quality re-grade and its
+Azure call skip it, and so do section headers, kv_extract, pass 2 and the stages after;
+continuity reads it from Tesseract only, as before.
 
 ---
 
@@ -180,8 +182,10 @@ average.
 - Pass 1: DistilBERT p(junk) > 0.95 (`pass1_final_junk_above`) → Junk / its subtype, final,
   as the sure keep is. Not on a page more than 30% handwritten (pass 2's veto). Pass 2 would
   junk it too: R4 is overruled at the same p(junk), and R5 junks from 0.85.
-- Final OCR 1 still runs on it (quality re-grade); Final OCR 2 (billed), section headers,
-  kv_extract and pass 2 do not, even when the re-grade marks the page low.
+- Every page pass 1 settles (blank, junk, duplicate) gets Final OCR 1 (it was skipped).
+  Its text is stored only: it does not re-grade quality; Final OCR 2 (billed), section
+  headers, kv_extract, pass 2 and later stages skip the page; continuity reads it from
+  Tesseract only.
 
 ### 2026-10-22 — Duplicates: two matchers, Partial, Yes (Duplicate)
 

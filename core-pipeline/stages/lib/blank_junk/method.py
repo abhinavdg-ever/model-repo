@@ -18,8 +18,9 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
   pass 1 (Tesseract text) stops here:
     R5 keep         DistilBERT p(keep) > 0.95 -> Main, final: pass 2 does not judge it again
     R5 junk         DistilBERT p(junk) > 0.95 -> Junk (DistilBERT's subtype), final: pass 2
-                    does not judge it again; Final OCR 1 still reads it, Final OCR 2 does not
-                    (2026-10-22). Not on a page more than 30% handwritten
+                    does not judge it again (2026-10-22). Not on a page more than 30%
+                    handwritten. Like every page pass 1 settles, it gets Final OCR 1 (stored
+                    only: no quality re-grade) and no Final OCR 2 or later stage
     otherwise       Main for now; Final OCR, then pass 2 decides
   pass 2 (Final OCR text):
     R4 signature    Electronic Signature found by kv_extract -> Main, unless DistilBERT's

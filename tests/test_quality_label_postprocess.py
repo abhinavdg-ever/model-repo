@@ -105,3 +105,28 @@ def test_regrade_runs_before_the_azure_skip_and_never_twice():
     assert quality[3]["review_required"] is True
     assert quality[2]["quality_detail"]["ocr_overlap"]["tag_before"] == "high"
     assert store.high_quality_printed_page_ids(1) == {1, 4}
+
+
+def test_regrade_leaves_pages_pass_1_settled_alone():
+    """2026-10-22 (user): Final OCR 1 runs on pages pass 1 settled as blank / junk /
+    duplicate, but their quality is not updated from it."""
+    import json
+
+    from db.memory_store import MemoryStore
+    from stages.lib.ocr.stage_final2 import regrade_by_ocr_overlap
+
+    store = MemoryStore()
+    for page_id in (1, 2):
+        store.upsert_quality(
+            chart_id=1, page_id=page_id, printed_or_handwritten="printed",
+            quality_tag="high", document_type="printed", review_required=False,
+        )
+        # Docling and Tesseract disagree: a page that would fall from High.
+        store.upsert_ocr_result(chart_id=1, page_id=page_id, ocr_type="docling",
+                                raw_text=json.dumps({"content": "one two"}))
+        store.upsert_ocr_result(chart_id=1, page_id=page_id, ocr_type="tesseract", raw_text="zzz")
+
+    assert regrade_by_ocr_overlap(store, 1, skip={2}) == 1
+    quality = store.get_quality_map(1)
+    assert quality[2]["quality_tag"] == "high"
+    assert "ocr_overlap" not in (quality[2].get("quality_detail") or {})

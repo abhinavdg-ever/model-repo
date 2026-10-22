@@ -433,13 +433,15 @@ def _docling_content(raw: str) -> str:
     return str(parsed.get("content") or "") if isinstance(parsed, dict) else str(parsed)
 
 
-def regrade_by_ocr_overlap(conn: Any, chart_id: int) -> int:
+def regrade_by_ocr_overlap(conn: Any, chart_id: int, skip: frozenset[int] | set[int] = frozenset()) -> int:
     """Downgrade quality_tag where Docling (Final OCR 1) and Tesseract disagree.
 
     Runs before the Azure skip is decided, so a page that falls from High is
     sent to Azure. Re-running starts from the tag stage 1 measured (kept in
     ``quality_detail.ocr_overlap``), so it never downgrades twice. Pages
-    without Docling text are left alone. Returns the number of pages changed.
+    without Docling text, and ``skip`` (pages pass 1 settled as blank / junk /
+    duplicate: their Final OCR 1 text changes nothing), are left alone.
+    Returns the number of pages changed.
     """
     from stages.lib.image_preprocess.quality_label_postprocess import (
         downgrade_by_ocr_overlap,
@@ -450,7 +452,7 @@ def regrade_by_ocr_overlap(conn: Any, chart_id: int) -> int:
     tesseract = get_ocr_texts(conn, chart_id, "tesseract")
     changed = 0
     for page_id, row in get_quality_map(conn, chart_id).items():
-        if page_id not in docling:
+        if page_id not in docling or page_id in skip:
             continue
         detail = row.get("quality_detail") or {}
         if isinstance(detail, str):
@@ -497,16 +499,17 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
     with stage_run(chart_id, STAGE, force=force) as ctx:
         hq_printed: set[int] = set()
         with connect() as conn:
-            regraded = regrade_by_ocr_overlap(conn, chart_id)
+            # Pages pass 1 settled: not re-graded, not sent to Azure (worked out before
+            # the re-grade, which must not move them).
+            settled = pass1_ruled_out(conn, chart_id)
+            regraded = regrade_by_ocr_overlap(conn, chart_id, skip=settled)
             if regraded:
                 logger.info(
                     "Final2: %d page(s) re-graded by Docling/Tesseract overlap", regraded
                 )
             hq_printed = high_quality_printed_page_ids(conn, chart_id)
 
-            # Pages pass 1 settled; DistilBERT's sure junk stays settled even when the
-            # re-grade above has just marked it low (pass1_ruled_out).
-            drop = sorted(pass1_ruled_out(conn, chart_id) & ctx.todo)
+            drop = sorted(settled & ctx.todo)
             bj_skipped = set(drop)
             mark_skipped(conn, ctx, drop, "blank_junk_pass1")
             # High-quality printed pages already have usable final1 text —

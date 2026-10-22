@@ -41,7 +41,7 @@ from db import (
 )
 from config import staging_dir
 from db.paths import imaging_csv, write_csv
-from stages._support import best_page_text, mark_completed, stage_run
+from stages._support import best_page_text, mark_completed, pass1_ruled_out, stage_run
 from stages.lib.continuity.engine import (
     PageInput,
     assign,
@@ -246,6 +246,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             classification = get_page_classification_map(conn, chart_id)
             dos = get_dos_map(conn, chart_id)
             details = get_additional_page_details_map(conn, chart_id)
+            # Pages pass 1 settled are read as before Final OCR 1 ran on them (2026-10-22):
+            # their Tesseract text, no Final layout -- that OCR changes nothing downstream.
+            settled = pass1_ruled_out(conn, chart_id)
 
         from stages.lib.extraction.stage import ensure_staging
 
@@ -264,13 +267,16 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             final = bj.get(page_id)
             kind = _kind(final)
             staged = staging.page(name) if staging else None
+            pass1_only = page_id in settled
             text = "" if kind in ("blank", "duplicate") else best_page_text(
-                final2=final2.get(page_id),
-                final1=final1.get(page_id),
+                final2=None if pass1_only else final2.get(page_id),
+                final1=None if pass1_only else final1.get(page_id),
                 prelim=prelim.get(page_id),
                 quality_row=quality.get(page_id),
             )
-            lines, headers, source = page_layout(json2.get(name), json1.get(name))
+            lines, headers, source = (
+                ([], [], "") if pass1_only else page_layout(json2.get(name), json1.get(name))
+            )
             lines = lines or text_lines(text)
             sources[page_id] = source or "text"
             page_dos = dos.get(page_id) or {}

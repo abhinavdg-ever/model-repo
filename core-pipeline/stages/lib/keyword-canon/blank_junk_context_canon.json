@@ -749,7 +749,7 @@
     ]
   },
   "distilbert": {
-    "note": "2026-10-20: DistilBERT alone decides after R1-R4 (method.py). Pass 1: p(keep) above pass1_final_keep_above -> Main, final, pass 2 skipped; p(junk) above pass1_final_junk_above -> Junk, final, pass 2 and Final OCR 2 skipped, Final OCR 1 still runs (2026-10-22; not on a page more than handwritten_veto % handwritten); every other page waits for pass 2. Pass 2: R4 (signature) is overruled when p(junk) is above signature_overruled_above; then R6 (short_page, restored 2026-10-21); R5: p(junk) >= junk_at -> Junk, review_junk_at..junk_at -> Junk for review, below review_junk_at -> Main. p(junk) = every JUNK_* label plus BLANK.",
+    "note": "2026-10-20: DistilBERT alone decides after R1-R4 (method.py). Pass 1: p(keep) above pass1_final_keep_above -> Main, final, pass 2 skipped; p(junk) above pass1_final_junk_above -> Junk, final, pass 2 and Final OCR 2 skipped (2026-10-22; not on a page more than handwritten_veto % handwritten; like every page pass 1 settles it gets Final OCR 1, stored only); every other page waits for pass 2. Pass 2: R4 (signature) is overruled when p(junk) is above signature_overruled_above; then R6 (short_page, restored 2026-10-21); R5: p(junk) >= junk_at -> Junk, review_junk_at..junk_at -> Junk for review, below review_junk_at -> Main. p(junk) = every JUNK_* label plus BLANK.",
     "pass1_final_keep_above": 0.95,
     "pass1_final_junk_above": 0.95,
     "junk_at": 0.85,
