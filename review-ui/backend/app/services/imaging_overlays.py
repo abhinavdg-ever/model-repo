@@ -898,8 +898,8 @@ def index_junk_rows(
             blank_or_junk = "Yes (Junk)"
         else:
             blank_or_junk = "No"
-        # A Main page that names the page it nearly copies: a partial (95-98%) duplicate.
-        is_partial = not is_duplicate and group == "main" and bool(_duplicate_of_name(row))
+        # A Main or junk page that names the page it nearly copies: a partial (95-98%) duplicate.
+        is_partial = not is_duplicate and group in ("main", "junk") and bool(_duplicate_of_name(row))
 
         if is_blank or is_duplicate or label_l in {"main", "none", ""}:
             page_type = "Not Available"

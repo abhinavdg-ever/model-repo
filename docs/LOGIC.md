@@ -291,11 +291,12 @@ no longer run; the ladder above replaces them.
 
 ### Duplicate detection
 
-Duplicates are checked **after** the model's verdict, and only between pages the
-model kept as Main — a blank or junk page is never compared. A Main page is a
-duplicate when its OCR text is **≥ 98% similar** to a Main neighbor **within ±25
-pages** in chart order, or when its text is **wholly contained** in that neighbor's;
-**95% – < 98%** is a partial duplicate, which stays Main. Similarity is the average of
+Duplicates are checked **after** the model's verdict, between Main and junk pages —
+a blank page is never compared. A page is a duplicate when its OCR text is **≥ 98%
+similar** to a neighbor **within ±25 pages** in chart order, or when its text is
+**wholly contained** in that neighbor's, whatever its own verdict; a Main page is
+always the original of a junk copy. **95% – < 98%** is a partial duplicate, which
+keeps its verdict. Similarity is the average of
 the word-sequence match (`difflib.SequenceMatcher` over the words, `autojunk` off) and
 the word-count match (Dice). Details: `docs/BLANK_JUNK_LOGIC.md` §4.
 

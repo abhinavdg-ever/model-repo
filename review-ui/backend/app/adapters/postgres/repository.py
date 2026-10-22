@@ -936,9 +936,9 @@ class PostgresFolderRepository(FolderRepository):
                             blank, dup, page_type = _blank_junk_ui(flag, subtype)
                             fields["blankOrJunk"] = blank
                             fields["isDuplicate"] = dup
-                            # A Main page pointing at another is a partial (95-98%) duplicate.
+                            # A Main or junk page pointing at another is a partial (95-98%) duplicate.
                             fields["isPartialDuplicate"] = (
-                                (flag or "").strip().lower() == "not_blank_junk" and bool(duplicate_of)
+                                (flag or "").strip().lower() in ("not_blank_junk", "junk") and bool(duplicate_of)
                             )
                             fields["pageType"] = page_type
                             if duplicate_of:

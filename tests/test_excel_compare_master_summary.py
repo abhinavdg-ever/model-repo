@@ -495,3 +495,13 @@ def test_local_mode_reads_duplicates_and_partials_from_the_junk_csv():
     )
     assert by["#3"]["duplicateOf"] == "1.jpg"
     assert by["#1"]["isPartialDuplicate"] is False
+
+
+def test_local_mode_reads_a_partial_on_a_junk_page():
+    from app.services.imaging_overlays import index_junk_rows
+
+    rows = [{"chart_name": "c", "page_name": "4.jpg", "page_number": "4", "page_classification": "Letter/Fax",
+             "page_group": "junk", "page_classification_confidence": "0.96", "duplicate_of_page": "3.jpg"}]
+    page4 = index_junk_rows(rows, "c")["#4"]
+    assert (page4["blankOrJunk"], page4["isDuplicate"], page4["isPartialDuplicate"]) == ("Yes (Junk)", False, True)
+    assert page4["duplicateOf"] == "3.jpg"

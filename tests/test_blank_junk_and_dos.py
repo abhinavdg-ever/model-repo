@@ -810,3 +810,51 @@ class TestPass1SureJunk:
                 assert pass1_ruled_out(conn, cid) == {ids[0]}
         finally:
             disable_skip_db_write()
+
+
+class TestJunkPagesAreCompared:
+    """2026-10-22 (user): a 98%-alike page is a duplicate whatever its verdict -- junk
+    pages were never compared, so they read Yes (Junk) with Duplicate No."""
+
+    JUNK = {"bert": {"p_keep": 0.02, "p_junk": 0.98, "top_junk_label": "JUNK_FAX_TRANSMISSION"}}
+    KEEP = {"bert": {"p_keep": 0.98, "p_junk": 0.02, "top_junk_label": ""}}
+
+    def _run(self, monkeypatch, texts, junk_ids):
+        import method
+        from stages.lib.blank_junk import stage as bj_stage
+
+        by_text = {texts[i]: (self.JUNK if i in junk_ids else self.KEEP) for i in texts}
+        monkeypatch.setattr(bj_stage, "model_scores", lambda text, docling=None: by_text.get(text, self.KEEP))
+        pages = [page(i, i) for i in texts]
+        inputs = {i: method.PageInputs(text=texts[i], pass_no=2) for i in texts}
+        rows = _classify(pages, texts, set(texts), inputs=inputs)
+        return {r["page_id"]: r for r in rows}
+
+    def test_two_identical_junk_pages_are_a_duplicate(self, monkeypatch):
+        fax = " ".join(_prose(20))
+        by = self._run(monkeypatch, {1: fax, 2: fax}, junk_ids={1, 2})
+        assert by[1]["flag"] == "junk"
+        assert (by[2]["flag"], by[2]["duplicate_of"]) == ("duplicate", 1)
+
+    def test_a_main_page_stays_the_original_of_its_junk_copy(self, monkeypatch):
+        words = _prose(21)
+        main = " ".join(words)
+        longer_junk = main + " " + " ".join(_prose(22, words=4))  # longer, 98%+ alike
+        by = self._run(monkeypatch, {1: main, 2: longer_junk}, junk_ids={2})
+        assert (by[1]["flag"], by[1]["duplicate_of"]) == ("not_blank_junk", None)
+        assert (by[2]["flag"], by[2]["duplicate_of"]) == ("duplicate", 1)
+
+    def test_a_partial_junk_page_stays_junk(self, monkeypatch):
+        words = _prose(23)
+        a, b = " ".join(words), _edited(words, 14)
+        assert 0.95 <= classify.text_similarity(a, b) < 0.98
+        by = self._run(monkeypatch, {1: a, 2: b}, junk_ids={1, 2})
+        partial = next(r for r in by.values() if r["duplicate_of"] is not None)
+        assert partial["flag"] == "junk"
+        assert "partial_duplicate_of_page_id:" in partial["reason"]
+
+    def test_a_blank_page_is_never_compared(self, monkeypatch):
+        body = " ".join(_prose(24))
+        by = self._run(monkeypatch, {1: body, 2: "   "}, junk_ids=set())
+        assert by[2]["flag"] == "blank" and by[2]["duplicate_of"] is None
+        assert by[1]["duplicate_of"] is None

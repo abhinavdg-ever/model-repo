@@ -114,7 +114,7 @@ R3's card wording (the signature phrase group was removed 2026-10-21). The `vote
 
 ## 4. Duplicates
 
-After the verdicts, among **Main** pages only (never blank / junk), each page against
+After the verdicts, among **Main and junk** pages (never blank), each page against
 its neighbours within **±25** pages, pages of **≥ 300** characters (whitespace stripped).
 Similarity is the **average of two matchers** (`classify.similarity_parts`):
 
@@ -131,7 +131,10 @@ One page's text **wholly contained** in the other's scores 1.0.
 | **95% – < 98%** | stays **Main**, `duplicate_of_page_id` set | No | Partial (To Page N) |
 | below 95% | Main | No | No |
 
-The longer page (or the earlier one) is kept as the original. The similarity is stored
+The longer page (or the earlier one) is kept as the original — except that a Main page is
+never the copy of a junk page: when one of the pair is Main, it is the original. A junk
+page ≥ 98% alike is a duplicate (Blank / Junk "Yes (Duplicate)", or its original's "Yes
+(Junk)"); a 95–98% one stays junk with Partial. The similarity is stored
 as `confidence` on duplicate and partial rows; a partial page keeps its own verdict
 reason first, then `; partial_duplicate_of_page_id:N (similarity=…)`. A duplicate takes
 its original's page type and sub-type (page classification) and Final values
@@ -150,6 +153,14 @@ average.
 ---
 
 ## 5. Changes
+
+### 2026-10-22 — Junk pages are compared for duplicates too
+
+- Duplicates were looked for among Main pages only, so a page judged junk (any R5 junk,
+  "junk for review" included) was never compared: a 98%-alike copy read "Yes (Junk)",
+  Duplicate "No", with no score in `blank_junk.json`. Main and junk pages are now compared
+  (blank never); ≥ 98% is a duplicate whatever the verdict, and a Main page is always the
+  original of a junk copy.
 
 ### 2026-10-22 — Pass 1 junks DistilBERT's sure calls
 

@@ -91,8 +91,8 @@ def _page(row: tuple) -> ImagingPageResult:
         dosTo=_fmt_date(dos_to),
         blankOrJunk=blank,
         isDuplicate=duplicate,
-        # A Main page naming the page it nearly copies: a partial (95-98%) duplicate.
-        isPartialDuplicate=_text(flag) == "not_blank_junk" and bool(names_original),
+        # A Main or junk page naming the page it nearly copies: a partial (95-98%) duplicate.
+        isPartialDuplicate=_text(flag) in ("not_blank_junk", "junk") and bool(names_original),
         pageType=shown_type,
         isCodeable=codeable,
         currentSequence=int(current_seq) if sequenced and current_seq is not None else None,

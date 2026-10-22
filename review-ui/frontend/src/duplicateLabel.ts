@@ -2,7 +2,7 @@
  *
  * 2026-10-22 (user): ≥ 98% alike (or contained) is a duplicate — ``isDuplicate``,
  * "Yes", and Blank / Junk "Yes (Duplicate)"; 95–98% is a partial duplicate —
- * ``isPartialDuplicate``, "Partial", and the page stays Main. */
+ * ``isPartialDuplicate``, "Partial", and the page keeps its own verdict (Main or junk). */
 
 export const DUPLICATE_PARTIAL_MIN = 0.95;
 export const DUPLICATE_YES_MIN = 0.98;
@@ -53,7 +53,7 @@ export function formatDuplicateLabel(
 }
 
 /** A duplicate (≥ 98%): the Blank / Junk column shows it as ``Yes (Duplicate)``,
- * and it has no sequence. A partial duplicate is a Main page. */
+ * and it has no sequence. A partial duplicate keeps its own verdict. */
 export function isCompleteDuplicate(
   isDuplicate: boolean | null | undefined,
   confidence?: number | null,

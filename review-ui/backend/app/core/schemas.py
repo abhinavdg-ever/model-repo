@@ -247,7 +247,7 @@ class ImagingPageResult(BaseModel):
     # None = not run → NA; True/False when classified. True: ≥ 98% alike (or
     # contained) -- the page is a duplicate (Blank / Junk "Yes (Duplicate)").
     isDuplicate: bool | None = None
-    # True: 95-98% alike -- a partial duplicate that stays a Main page.
+    # True: 95-98% alike -- a partial duplicate; the page keeps its own verdict (Main or junk).
     isPartialDuplicate: bool | None = None
     # Page file the duplicate (or partial duplicate) was matched to, e.g. "4.png".
     duplicateOf: str | None = None
