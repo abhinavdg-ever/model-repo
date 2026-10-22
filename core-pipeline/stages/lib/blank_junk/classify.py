@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections import Counter
+from functools import lru_cache
+from typing import Optional
 
 from blank import detect_blank_page, is_declared_blank_page
 from cover import detect_cover_page
@@ -56,13 +59,16 @@ JUNK_CODES = frozenset(
 )
 
 _MIN_FINGERPRINT_CHARS = 50
-# Minimum similarity to flag a neighbor as a duplicate (May Be or Yes).
+# 2026-10-22 (user): similarity is the average of two matchers (text_similarity).
+# At or above this, or one page's text wholly inside the other's, the page is a
+# duplicate: flag ``duplicate``, UI Duplicate "Yes", Blank / Junk "Yes (Duplicate)".
 DUPLICATE_SIMILARITY_THRESHOLD = 0.98
+# [PARTIAL, THRESHOLD) is a partial duplicate: the page stays Main (not Yes
+# (Duplicate)) and records the page it nearly copies; UI Duplicate "Partial".
+DUPLICATE_PARTIAL_THRESHOLD = 0.95
 # Pages shorter than this (whitespace-stripped characters, ~50 words) are never
 # compared: a short page shares or sits inside too much unrelated text.
 DUPLICATE_MIN_CHARS = 300
-# Exact normalized match → UI "Yes"; [THRESHOLD, 1.0) → "May Be".
-DUPLICATE_YES_THRESHOLD = 1.0
 DUPLICATE_NEIGHBOR_WINDOW = 25  # 2026-10-21 (user): was 10 (5 before 2026-10-20)
 
 DEFAULT_SETTINGS = {
@@ -154,17 +160,78 @@ def text_is_contained(a: str, b: str) -> bool:
     return short in long
 
 
-def text_similarity(a: str, b: str) -> float:
-    """SequenceMatcher ratio on normalized OCR text, in [0, 1]."""
+def _matcher(na: str, nb: str):
+    """SequenceMatcher over two normalized texts. ``autojunk`` off: on text over 200
+    characters it drops every character making up more than 1% of it -- nearly every
+    letter of a page -- and a page 98% alike scored about 0.2 (fixed 2026-10-22)."""
     from difflib import SequenceMatcher
 
+    return SequenceMatcher(None, na, nb, autojunk=False)
+
+
+def char_similarity(a: str, b: str) -> float:
+    """SequenceMatcher ratio on normalized OCR text, in [0, 1]. Order-sensitive:
+    the same words read in another order score lower."""
     na = normalize_duplicate_text(a)
     nb = normalize_duplicate_text(b)
     if not na or not nb:
         return 0.0
     if na == nb:
         return 1.0
-    return SequenceMatcher(None, na, nb).ratio()
+    return _matcher(na, nb).ratio()
+
+
+@lru_cache(maxsize=4096)
+def _word_counts(text: str) -> "Counter[str]":
+    """A page's word counts; each page meets up to 2 x ±window neighbors. Not mutated."""
+    return Counter(re.findall(r"\w+", text.lower()))
+
+
+def word_similarity(a: str, b: str) -> float:
+    """Dice overlap of the two pages' word counts, in [0, 1]. Order-blind: OCR
+    reading the same page's columns or boxes in another order still scores 1."""
+    wa = _word_counts(a or "")
+    wb = _word_counts(b or "")
+    total = sum(wa.values()) + sum(wb.values())
+    if not total or not wa or not wb:
+        return 0.0
+    return 2 * sum((wa & wb).values()) / total
+
+
+def similarity_parts(
+    a: str, b: str, *, at_least: float = 0.0
+) -> tuple[Optional[float], float, Optional[float], float]:
+    """``(char, word, average, best possible average)`` for two pages' OCR text.
+
+    The full character match is slow on a page of text, so it runs only when the pair
+    could still average ``at_least``: the cheap word match first, then SequenceMatcher's
+    ``quick_ratio`` (an upper bound on the character match). A pair that cannot reach
+    it comes back with ``char`` and ``average`` None and the last value an upper bound
+    on the average; otherwise the last value is the average itself.
+    """
+    na = normalize_duplicate_text(a)
+    nb = normalize_duplicate_text(b)
+    if na and na == nb:
+        return 1.0, 1.0, 1.0, 1.0
+    word = word_similarity(a, b)
+    if not na or not nb:
+        return 0.0, word, word / 2, word / 2
+    if (1.0 + word) / 2 < at_least:
+        return None, word, None, (1.0 + word) / 2
+    matcher = _matcher(na, nb)
+    char_at_most = matcher.quick_ratio()
+    if (char_at_most + word) / 2 < at_least:
+        return None, word, None, (char_at_most + word) / 2
+    char = matcher.ratio()
+    average = (char + word) / 2
+    return char, word, average, average
+
+
+def text_similarity(a: str, b: str) -> float:
+    """How alike two pages' OCR text is, in [0, 1]: the average of the
+    order-sensitive character match and the order-blind word match, so neither
+    a reordered read nor a run of shared boilerplate decides alone."""
+    return similarity_parts(a, b)[2]
 
 
 def classification_confidence(code: int, *, blank_via_image: bool = False) -> float | None:

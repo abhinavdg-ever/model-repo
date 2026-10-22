@@ -143,7 +143,7 @@ def _blank_junk_ui(flag: str | None, subtype: str | None) -> tuple[str | None, b
     if f == "blank":
         return "Yes (Blank)", False, "Not Available"
     if f == "duplicate":
-        return "No", True, "Not Available"
+        return "Yes (Duplicate)", True, "Not Available"
     if f == "junk":
         return "Yes (Junk)", False, subtype or "Junk"
     if f == "not_blank_junk":
@@ -936,6 +936,10 @@ class PostgresFolderRepository(FolderRepository):
                             blank, dup, page_type = _blank_junk_ui(flag, subtype)
                             fields["blankOrJunk"] = blank
                             fields["isDuplicate"] = dup
+                            # A Main page pointing at another is a partial (95-98%) duplicate.
+                            fields["isPartialDuplicate"] = (
+                                (flag or "").strip().lower() == "not_blank_junk" and bool(duplicate_of)
+                            )
                             fields["pageType"] = page_type
                             if duplicate_of:
                                 fields["duplicateOf"] = str(duplicate_of)

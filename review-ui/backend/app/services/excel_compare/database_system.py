@@ -16,7 +16,7 @@ import csv
 import io
 from collections.abc import Iterable
 
-from app.core.schemas import ImagingDocumentResponse
+from app.core.schemas import ImagingDocumentResponse, ImagingPageResult
 
 COLUMNS = [
     "PDF ID",
@@ -46,8 +46,17 @@ def _yes_no(value: bool | None) -> str:
     return "" if value is None else ("Yes" if value else "No")
 
 
+def _duplicate(page: ImagingPageResult) -> str:
+    """Yes (≥ 98%) / Partial (95-98%) / No; not run stays blank."""
+    if page.isDuplicate:
+        return "Yes"
+    if page.isPartialDuplicate:
+        return "Partial"
+    return _yes_no(page.isDuplicate)
+
+
 def _blank_or_junk(value: str | None) -> str:
-    """"Yes (Blank)" / "Yes (Junk)" / "No" -> Yes / No; not run stays blank."""
+    """"Yes (Blank)" / "Yes (Junk)" / "Yes (Duplicate)" / "No" -> Yes / No; not run stays blank."""
     text = _text(value)
     if not text:
         return ""
@@ -86,7 +95,7 @@ def system_csv(docs: Iterable[tuple[str, ImagingDocumentResponse]]) -> bytes:
                     "DOS From": dos_from,
                     "DOS To": dos_to,
                     "Is Blank or Junk?": _blank_or_junk(page.blankOrJunk),
-                    "Duplicate": _yes_no(page.isDuplicate),
+                    "Duplicate": _duplicate(page),
                     "Page Type": page_type,
                     "Page Subtype": page_subtype,
                     "Codable / Non-Codable": _text(page.finalCodeable) or _text(page.isCodeable),

@@ -127,6 +127,22 @@ _NO_VALUES = {"no", "n", "false", "f", "0"}
 _NOT_APPLICABLE_VALUES = {"na", "none", "null", "nil", "notapplicable"}
 
 
+def normalize_labelled_yes_no(value):
+    """
+    Yes / No with a note in brackets reads as the Yes / No alone: "Yes (Junk)",
+    "Yes (Duplicate)" and "Yes (Blank)" are all "yes", so a duplicate matches a
+    page labelled junk; "Yes (To Page 4)" is "yes". Anything else goes through
+    normalize_yes_no.
+    """
+
+    match = re.fullmatch(r"(yes|no)\s*\(.*\)", clean_text(value))
+
+    if match:
+        return match.group(1)
+
+    return normalize_yes_no(value)
+
+
 def normalize_yes_no(value):
     """
     Normalize equivalent Yes/No representations for comparison

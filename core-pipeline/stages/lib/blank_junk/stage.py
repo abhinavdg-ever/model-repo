@@ -20,13 +20,18 @@ key/value extraction's ``extraction.json`` (not the database).
 Duplicate detection (after the verdict, among Main pages only):
 
 * Compare each comparable page only to neighbors **±25** in page order.
-* Match when normalized-text similarity is **≥ 98%** (SequenceMatcher, run only
-  when the two lengths are within 10% of each other), or when one page's text
-  is wholly contained in the other's.
-* Store that ratio as ``confidence`` (UI: 100% → Yes, [98%, 100%) → May Be);
-  a contained page scores 1.0.
+* Similarity is the average of two matchers (``classify.text_similarity``): the
+  order-sensitive character match (SequenceMatcher) and the order-blind word
+  match. One page's text wholly contained in the other's scores 1.0.
+* **≥ 98%** (or contained): ``duplicate`` -- UI Duplicate "Yes", Blank / Junk
+  "Yes (Duplicate)". **[95%, 98%)**: a partial duplicate -- the page stays
+  ``not_blank_junk`` (Main) with ``duplicate_of_page_id`` set; UI "Partial".
+  2026-10-22 (user); before, only ≥ 98% counted and the UI split it 100% Yes /
+  below May Be.
+* The similarity is stored as ``confidence`` on both kinds of row.
 * On a match, keep the page with the **higher character count** as the
-  original; on a tie, keep the **earlier** page. The other is ``duplicate``.
+  original; on a tie, keep the **earlier** page. The other is the duplicate
+  (or partial duplicate).
 * Blank / junk pages and texts shorter than 300 normalized chars are never
   compared.
 * Prior-pass ``main`` pages are included as neighbors so pass 2 can still
@@ -82,13 +87,14 @@ from classify import (  # noqa: E402
     CODE_JUNK,
     CODE_MAIN,
     DUPLICATE_NEIGHBOR_WINDOW,
+    DUPLICATE_PARTIAL_THRESHOLD,
     DUPLICATE_SIMILARITY_THRESHOLD,
     JUNK_CODES,
     classification_confidence,
     duplicate_char_count,
     text_is_comparable,
+    similarity_parts,
     text_is_contained,
-    text_similarity,
 )
 import method  # noqa: E402
 from model_bridge import model_scores  # noqa: E402
@@ -96,8 +102,16 @@ from model_bridge import model_scores  # noqa: E402
 STAGE = "blank_junk"
 
 # Every rule and the vote live in method.py.
-# Two pages' lengths must be within this share of each other for SequenceMatcher.
-DUPLICATE_LENGTH_RATIO = 0.10
+
+
+def _can_reach(len_a: int, len_b: int, threshold: float) -> bool:
+    """Whether two pages this long could average ``threshold``: the character
+    match is at most 2 * shorter / (shorter + longer) and the word match at most
+    1, so a pair that fails this is never compared."""
+    if not len_a or not len_b:
+        return False
+    best_char = 2 * min(len_a, len_b) / (len_a + len_b)
+    return (best_char + 1.0) / 2 >= threshold
 
 
 JUNK_CSV_COLS = [
@@ -245,19 +259,24 @@ def _classify(
     *,
     inputs: Optional[dict[int, "method.PageInputs"]] = None,
     docling_pages: Optional[dict[int, dict[str, Any]]] = None,
+    best_matches: Optional[dict[str, dict[str, Any]]] = None,
 ) -> list[dict[str, Any]]:
     """Classify ``todo`` pages, then look for duplicates among Main pages.
 
     ``inputs`` carries each page's method.PageInputs without the model scores, which
     are added here. Duplicates are checked only after the verdict, and only between
-    Main pages within ±5 in page order that are at least ``DUPLICATE_MIN_CHARS``
-    long. A pair matches at ≥ 98% similarity, or when one page's text is wholly
-    contained in the other's (confidence 1.0).
+    Main pages within ±``DUPLICATE_NEIGHBOR_WINDOW`` in page order that are at least
+    ``DUPLICATE_MIN_CHARS`` long. A pair is a duplicate at ≥ 98% similarity, or when
+    one page's text is wholly contained in the other's (confidence 1.0); a partial
+    duplicate at [95%, 98%), which stays Main.
 
     ``prior_main_ids`` are pages already ``not_blank_junk`` from an earlier pass;
-    they participate as comparison neighbors (and may be demoted to duplicate
-    when a longer later page matches). Similarity is stored as ``confidence``
-    (1.0 → UI Yes; [0.98, 1.0) → May Be).
+    they participate as comparison neighbors (and may be demoted to duplicate, or
+    marked partial, when a longer page matches). Similarity is stored as
+    ``confidence`` on duplicate and partial rows.
+
+    ``best_matches`` (page name -> its highest match, see _write_votes) is filled
+    for every page compared, including earlier-pass pages that get no row here.
     """
     prior = set(prior_main_ids or ())
     by_id: dict[int, dict[str, Any]] = {}
@@ -284,10 +303,36 @@ def _classify(
             return by_id[page_id]["code"] == CODE_MAIN
         return page_id in prior
 
-    # Phase 2 — pairwise ±2 window among comparable pages.
+    # Phase 2 — each comparable page against the next ±window comparable pages.
     dup_of: dict[int, int] = {}
     dup_sim: dict[int, float] = {}
     dup_contained: dict[int, bool] = {}
+    # [PARTIAL, THRESHOLD): the page's closest near-copy, applied after duplicates.
+    partial_of: dict[int, int] = {}
+    partial_sim: dict[int, float] = {}
+    # Each page's highest match among the neighbors it was compared with, any
+    # score, for blank_junk.json: which page, and both matchers' scores. A pair too
+    # far apart to reach the partial threshold has no exact character score, only
+    # the most its average could be (``exact`` false); it ranks by that bound.
+    best: dict[int, dict[str, Any]] = {}
+
+    def _note_best(
+        page_id: int, other_id: int, char: Optional[float], word: float,
+        sim: Optional[float], at_most: float, contained: bool,
+    ) -> None:
+        rank = sim if sim is not None else at_most
+        if rank > best.get(page_id, {}).get("_rank", -1.0):
+            best[page_id] = {
+                "_rank": rank,
+                "page_id": other_id,
+                "similarity": None if sim is None else round(sim, 4),
+                "similarity_at_most": None if sim is not None else round(at_most, 4),
+                "exact": sim is not None,
+                "char_similarity": None if char is None else round(char, 4),
+                "word_similarity": round(word, 4),
+                "contained": contained,
+            }
+
     n = len(pages)
     for i, page in enumerate(pages):
         pid = page["id"]
@@ -303,14 +348,18 @@ def _classify(
             a_text, b_text = texts.get(pid) or "", texts.get(nid) or ""
             is_contained = text_is_contained(a_text, b_text)
             if is_contained:
-                sim = 1.0
+                char = word = sim = at_most = 1.0
             else:
                 a_len, b_len = duplicate_char_count(a_text), duplicate_char_count(b_text)
-                if abs(a_len - b_len) > DUPLICATE_LENGTH_RATIO * max(a_len, b_len, 1):
+                if not _can_reach(a_len, b_len, DUPLICATE_PARTIAL_THRESHOLD):
                     continue
-                sim = text_similarity(a_text, b_text)
-                if sim < DUPLICATE_SIMILARITY_THRESHOLD:
-                    continue
+                char, word, sim, at_most = similarity_parts(
+                    a_text, b_text, at_least=DUPLICATE_PARTIAL_THRESHOLD
+                )
+            _note_best(pid, nid, char, word, sim, at_most, is_contained)
+            _note_best(nid, pid, char, word, sim, at_most, is_contained)
+            if sim is None or sim < DUPLICATE_PARTIAL_THRESHOLD:
+                continue
             orig, dup = _prefer_original(
                 i,
                 pid,
@@ -319,6 +368,11 @@ def _classify(
                 nid,
                 duplicate_char_count(texts.get(nid) or ""),
             )
+            if sim < DUPLICATE_SIMILARITY_THRESHOLD:
+                if sim > partial_sim.get(dup, 0.0):
+                    partial_of[dup] = orig
+                    partial_sim[dup] = sim
+                continue
             orig = _ultimate_original(dup_of, orig)
             if dup == orig:
                 continue
@@ -359,6 +413,43 @@ def _classify(
             votes={**earlier, "duplicate": reason} if earlier else None,
         )
 
+    # Partial duplicates stay Main: the page keeps its own verdict (its reason
+    # first, so pass 2 still reads a pass-1 keep) and points at its near-copy.
+    partial: set[int] = set()
+    for page_id, orig_id in partial_of.items():
+        if page_id in dup_of:
+            continue  # a full duplicate of another page
+        orig_id = _ultimate_original(dup_of, orig_id)
+        if orig_id == page_id:
+            continue
+        sim = partial_sim[page_id]
+        note = (
+            f"partial_duplicate_of_page_id:{orig_id} (similarity={sim:.4f}, "
+            f"{DUPLICATE_PARTIAL_THRESHOLD:.0%}-{DUPLICATE_SIMILARITY_THRESHOLD:.0%} "
+            f"within ±{DUPLICATE_NEIGHBOR_WINDOW})"
+        )
+        own = by_id.get(page_id) or {}
+        earlier = own.get("votes")
+        by_id[page_id] = _row_for(
+            page_by_id[page_id],
+            code=CODE_MAIN,
+            reason=f"{own['reason']}; {note}" if own.get("reason") else note,
+            duplicate_of=orig_id,
+            confidence=sim,
+            votes={**earlier, "partial_duplicate": note} if earlier else None,
+        )
+        partial.add(page_id)
+
+    named: dict[int, dict[str, Any]] = {}
+    for page_id, match in best.items():
+        other = page_by_id.get(match["page_id"]) or {}
+        match = {key: value for key, value in match.items() if key != "_rank"}
+        named[page_id] = {"page_name": other.get("page_name"), "page_number": other.get("page_number"), **match}
+    for page_id, row in by_id.items():
+        row["best_match"] = named.get(page_id)
+    if best_matches is not None:
+        best_matches.update({page_by_id[pid]["page_name"]: match for pid, match in named.items()})
+
     rows: list[dict[str, Any]] = []
     emitted: set[int] = set()
     for page in pages:
@@ -370,7 +461,7 @@ def _classify(
         pid = page["id"]
         if pid in emitted or pid not in by_id:
             continue
-        if pid in dup_of:
+        if pid in dup_of or pid in partial:
             rows.append(by_id[pid])
     return rows
 
@@ -524,11 +615,26 @@ def votes_path(chart_name: str) -> Path:
     return staging_dir(chart_name) / VOTES_FILE
 
 
-def _write_votes(chart_name: str, pass_no: int, rows: list[dict[str, Any]]) -> Optional[Path]:
+def _write_votes(
+    chart_name: str,
+    pass_no: int,
+    rows: list[dict[str, Any]],
+    best_matches: Optional[dict[str, dict[str, Any]]] = None,
+) -> Optional[Path]:
     """Every page's ballots and deciding rule for this pass, staged beside the chart::
 
         {"version": 1, "chart_name": …, "updated_at": …,
          "pages": {"<page name>": {"pass_1": {...}, "pass_2": {...}}}}
+
+    Each pass entry also has ``best_match``: the page's highest duplicate score among
+    the neighbors it was compared with, at any score -- ``page_name`` /
+    ``page_number`` of that neighbor, ``similarity`` (the average that decides),
+    ``char_similarity``, ``word_similarity`` and ``contained``. When no neighbor came
+    near 95%, the slow character match was not run: ``exact`` is false, ``similarity``
+    and ``char_similarity`` are null and ``similarity_at_most`` bounds the average. It
+    is null when the page was never compared (too short, blank / junk, or no neighbor
+    close enough in length to reach the partial threshold). A page only compared against this pass
+    (an earlier pass's Main page) gets an entry with ``best_match`` alone.
 
     This pass's entries are replaced and the other pass's kept, so after a full run the
     file holds both passes.
@@ -554,7 +660,10 @@ def _write_votes(chart_name: str, pass_no: int, rows: list[dict[str, Any]]) -> O
             "verdict": row["label"],
             "confidence": round(float(row["confidence"]), 4),
             "reason": row["reason"],
+            "best_match": row.get("best_match"),
         }
+    for page_name, match in (best_matches or {}).items():
+        pages.setdefault(page_name, {}).setdefault(key, {})["best_match"] = match
     payload = {
         "version": VOTES_VERSION,
         "chart_name": chart_name,
@@ -672,9 +781,10 @@ def _run_pass(
             )
         else:
             inputs = _page_inputs(ctx, pass_no, quality)
+        best_matches: dict[str, dict[str, Any]] = {}
         classified = _classify(
             ctx.pages, texts, ctx.todo, prior_main_ids=prior_mains,
-            inputs=inputs, docling_pages=docling_pages,
+            inputs=inputs, docling_pages=docling_pages, best_matches=best_matches,
         )
 
         with connect() as conn:
@@ -699,7 +809,7 @@ def _run_pass(
                     mark_completed(conn, ctx, row["page_id"])
             mark_blank_junk_final(conn, chart_id)
             path = _rewrite_csv(conn, chart_id, ctx.chart_name)
-        votes_file = _write_votes(ctx.chart_name, pass_no, classified)
+        votes_file = _write_votes(ctx.chart_name, pass_no, classified, best_matches)
 
         counts: dict[str, int] = {}
         for row in classified:

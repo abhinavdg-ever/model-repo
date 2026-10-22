@@ -293,22 +293,24 @@ no longer run; the ladder above replaces them.
 
 Duplicates are checked **after** the model's verdict, and only between pages the
 model kept as Main — a blank or junk page is never compared. A Main page is a
-duplicate when its normalized OCR text is **≥ 98% similar**
-(`difflib.SequenceMatcher`, run only when the two lengths are within 10% of each
-other) to a Main neighbor **within ±25 pages** in chart order, or when its text is
-**wholly contained** in that neighbor's.
+duplicate when its OCR text is **≥ 98% similar** to a Main neighbor **within ±25
+pages** in chart order, or when its text is **wholly contained** in that neighbor's;
+**95% – < 98%** is a partial duplicate, which stays Main. Similarity is the average of
+the character match (`difflib.SequenceMatcher`, `autojunk` off) and the word match
+(Dice on word counts). Details: `docs/BLANK_JUNK_LOGIC.md` §4.
 
 | Rule | Behaviour |
 |---|---|
-| Window | Compare only pages 5 before / 5 after (page order); SequenceMatcher only when the lengths are within 10% |
-| Threshold | Similarity **≥ 0.98** on whitespace-stripped lowercase text (UI: 100% → Yes, [98%, 100%) → May Be; May Be display confidence = `1 + (sim − 1) × 10`, e.g. 98%→80% / 99%→90%) |
+| Window | Compare only pages 25 before / 25 after (page order); the character match only for a pair that could still reach 95% |
+| Threshold | Average similarity **≥ 0.98** → duplicate (UI Yes, Blank / Junk Yes (Duplicate)); **[0.95, 0.98)** → partial, stays Main (UI Partial, display confidence `1 + (sim − 1) × 10`, e.g. 95%→50% / 97%→70%) |
 | Containment | The shorter page's normalized text appears whole inside the longer one → duplicate, confidence 1.0 |
 | Who wins | Higher normalized character count stays **main**; on a tie, the **earlier** page |
 | Excluded | Blank / junk pages and texts shorter than 300 normalized characters (~50 words) |
 | Cross-pass | Prior-pass `main` pages are neighbors in pass 2 (so HW can match a printed original) |
 
-`duplicate_of_page_id` records the kept original. A demoted prior-main page gets
-an updated row on the current pass.
+`duplicate_of_page_id` records the kept original (on a partial row too). A demoted
+prior-main page gets an updated row on the current pass. A duplicate takes its
+original's page type.
 
 ### One final verdict
 

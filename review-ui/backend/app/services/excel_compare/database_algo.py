@@ -34,7 +34,8 @@ SELECT c.chart_name,
        s.id IS NOT NULL, COALESCE(s.original_page_number, p.page_number), s.seq,
        f.provider_name, f.signature_present, to_jsonb(f) ->> 'provider_credentials',
        to_jsonb(f) -> 'signers', to_jsonb(f) ->> 'provider_version',
-       to_jsonb(q) ->> 'document_type', q.printed_or_handwritten
+       to_jsonb(q) ->> 'document_type', q.printed_or_handwritten,
+       b.duplicate_of_page_id IS NOT NULL
   FROM chart_list c
   JOIN page_list p ON p.chart_id = c.id
   LEFT JOIN member_extraction_results m ON m.page_id = p.id
@@ -65,6 +66,7 @@ def _page(row: tuple) -> ImagingPageResult:
         sequenced, current_seq, actual_seq,
         provider, signed, credentials, signers, version,
         document_type, printed_or_handwritten,
+        names_original,
     ) = row
     # The signature rows' provider(s) (imaging_final), as the chart view shows them.
     people = signer_fields(signers, _text(provider), credentials, version)
@@ -89,6 +91,8 @@ def _page(row: tuple) -> ImagingPageResult:
         dosTo=_fmt_date(dos_to),
         blankOrJunk=blank,
         isDuplicate=duplicate,
+        # A Main page naming the page it nearly copies: a partial (95-98%) duplicate.
+        isPartialDuplicate=_text(flag) == "not_blank_junk" and bool(names_original),
         pageType=shown_type,
         isCodeable=codeable,
         currentSequence=int(current_seq) if sequenced and current_seq is not None else None,

@@ -19,7 +19,9 @@ the **Final** answer.
 
 Blank / junk / duplicate pages are ``non_codeable`` and keep their junk label
 as the sub-type; a label that is a taxonomy sub-type (Invoice) also gives its
-page type.
+page type. A duplicate takes its original's page type and sub-type instead
+(2026-10-22, user): it is the same page. It stays ``non_codeable`` -- one copy is
+coded -- and ``imaging_final`` copies the original's Final values as before.
 
 Runs before ``continuity``, which reads its page type and confidence to see
 where a document ends; it reads no DOS itself.
@@ -135,6 +137,24 @@ def _bj_label(flag: str, junk_subtype: Optional[str]) -> str:
     return (junk_subtype or "Others").strip() or "Others"
 
 
+# What a duplicate takes from its original's row: its page type. Codability stays
+# non_codeable (only the original is coded).
+DUPLICATE_COPIES = ("page_type", "page_subtype", "model_type", "axes")
+
+
+def _original_of(bj_rows: dict[int, dict[str, Any]], page_id: int) -> Optional[int]:
+    """The page a duplicate copies, followed through a chain of duplicates."""
+    seen = {page_id}
+    current = page_id
+    while True:
+        row = bj_rows.get(current) or {}
+        nxt = row.get("duplicate_of_page_id") if row.get("blank_junk_flag") == "duplicate" else None
+        if nxt is None or nxt in seen:
+            return current if current != page_id else None
+        seen.add(nxt)
+        current = nxt
+
+
 def _blank_junk_row(flag: str, junk_subtype: Optional[str], confidence: Any) -> dict[str, Any]:
     """Blank / junk / duplicate: not classified. The junk label is the
     sub-type; there is no page type."""
@@ -187,34 +207,50 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
 
         trained = bert.trained_classes()
         counts = {"main": 0, "blank_junk": 0, "review": 0, "no_bert": 0, "axes_model": 0, "specialty": 0}
+        # Every page's row first: a duplicate takes its original's page type, and the
+        # original can come later in the chart.
+        built: dict[int, tuple[dict[str, Any], Any, str]] = {}
+        for page in ctx.pages:
+            page_id = page["id"]
+            bj = bj_rows.get(page_id) or {}
+            flag = bj.get("blank_junk_flag") or "not_blank_junk"
+            f2, f1, pr = final2.get(page_id), final1.get(page_id), prelim.get(page_id)
+            page_axes = None
+            if flag in BJ_EXCLUDE:
+                row = _blank_junk_row(flag, bj.get("junk_subtype"), bj.get("confidence"))
+                counts["blank_junk"] += 1
+                source = ""
+            else:
+                text = best_page_text(final2=f2, final1=f1, prelim=pr, quality_row=quality.get(page_id))
+                headings = tuple(_headings(f2, f1))
+                prediction = bert.predict(text)
+                keyword = keywords.classify(text, headings=headings)
+                ladder = classify_page(prediction, keyword, trained)
+                page_axes = axes.predict(text, headings)
+                row = _page_row(page_axes, ladder)
+                if page_axes is not None:
+                    counts["axes_model"] += int(page_axes.route is not None)
+                    counts["specialty"] += int(page_axes.specialty is not None)
+                counts["main"] += 1
+                counts["review"] += int(row["needs_review"])
+                counts["no_bert"] += int(prediction is None)
+                source = _ocr_source_label(final2=f2, final1=f1, prelim=pr)
+            built[page_id] = (row, page_axes, source)
+
+        for page_id, (row, _, _) in built.items():
+            if not row["duplicate_flag"]:
+                continue
+            original = _original_of(bj_rows, page_id)
+            reference = built.get(original, (None,))[0] if original is not None else None
+            if reference is not None and reference.get("page_type"):
+                row.update({key: reference.get(key) for key in DUPLICATE_COPIES})
+                row["decided_by"] = f"duplicate_of:{original}"
+
         csv_rows: list[dict[str, Any]] = []
         with connect() as conn:
             for page in ctx.pages:
                 page_id = page["id"]
-                bj = bj_rows.get(page_id) or {}
-                flag = bj.get("blank_junk_flag") or "not_blank_junk"
-                f2, f1, pr = final2.get(page_id), final1.get(page_id), prelim.get(page_id)
-                page_axes = None
-                if flag in BJ_EXCLUDE:
-                    row = _blank_junk_row(flag, bj.get("junk_subtype"), bj.get("confidence"))
-                    counts["blank_junk"] += 1
-                    source = ""
-                else:
-                    text = best_page_text(final2=f2, final1=f1, prelim=pr, quality_row=quality.get(page_id))
-                    headings = tuple(_headings(f2, f1))
-                    prediction = bert.predict(text)
-                    keyword = keywords.classify(text, headings=headings)
-                    ladder = classify_page(prediction, keyword, trained)
-                    page_axes = axes.predict(text, headings)
-                    row = _page_row(page_axes, ladder)
-                    if page_axes is not None:
-                        counts["axes_model"] += int(page_axes.route is not None)
-                        counts["specialty"] += int(page_axes.specialty is not None)
-                    counts["main"] += 1
-                    counts["review"] += int(row["needs_review"])
-                    counts["no_bert"] += int(prediction is None)
-                    source = _ocr_source_label(final2=f2, final1=f1, prelim=pr)
-
+                row, page_axes, source = built[page_id]
                 upsert_page_classification(conn, chart_id=chart_id, page_id=page_id, **row)
                 if page_id in ctx.todo:
                     mark_completed(conn, ctx, page_id)

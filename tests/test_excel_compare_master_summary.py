@@ -291,12 +291,18 @@ def test_database_algo_row_carries_document_type():
         columns += char == "," and depth == 0
     row = [None] * columns
     row[0], row[1], row[2] = "100", 4, "4.png"
-    row[-2], row[-1] = "visual", "printed"
+    row[-3], row[-2] = "visual", "printed"
     page = database_algo._page(tuple(row))
     assert (page.documentType, page.handwrittenOrPrinted) == ("Visual", "Printed")
-    row[-2], row[-1] = None, "handwritten"
+    row[-3], row[-2] = None, "handwritten"
     page = database_algo._page(tuple(row))
     assert (page.documentType, page.handwrittenOrPrinted) == (None, "Handwritten")
+    # The last column: this Main page names the page it nearly copies (Partial).
+    row[8], row[-1] = "not_blank_junk", True
+    assert database_algo._page(tuple(row)).isPartialDuplicate is True
+    row[8], row[-1] = "duplicate", True
+    page = database_algo._page(tuple(row))
+    assert (page.isDuplicate, page.isPartialDuplicate, page.blankOrJunk) == (True, False, "Yes (Duplicate)")
 
 
 def test_names_match_in_any_order_and_punctuation():
@@ -436,3 +442,56 @@ def test_missing_rows_show_the_normalized_name():
     assert [(row["Status"], row["Extracted Name"]) for row in rows] == [
         ("CORRECT", "Anderson Lisa"), ("MISSING", "Anderson Lisa"),
     ]
+
+
+def test_a_duplicate_matches_a_page_labelled_junk():
+    def match(field, gt, algo):
+        return compare_fields({field: gt}, {field: algo}, [field])[field]["match"]
+
+    for gt in ("Yes (Junk)", "Yes", "yes (blank)"):
+        assert match("Is Blank or Junk?", gt, "Yes (Duplicate)") is True, gt
+    assert match("Is Blank or Junk?", "No", "Yes (Duplicate)") is False
+    # Duplicate: Yes / Partial / No, and the screen's "Yes (To Page 4)" is a Yes.
+    assert match("Duplicate", "Yes", "Yes (To Page 4)") is True
+    assert match("Duplicate", "Partial", "Partial") is True
+    assert match("Duplicate", "Yes", "Partial") is False
+
+
+def test_algo_duplicate_reads_yes_partial_no():
+    import csv
+
+    from app.core.schemas import ImagingDocumentResponse, ImagingPageResult
+    from app.services.excel_compare.database_system import system_csv
+
+    pages = [
+        ImagingPageResult(pageNumber=1, fileName="1.png", isDuplicate=True, blankOrJunk="Yes (Duplicate)"),
+        ImagingPageResult(pageNumber=2, fileName="2.png", isDuplicate=False, isPartialDuplicate=True, blankOrJunk="No"),
+        ImagingPageResult(pageNumber=3, fileName="3.png", isDuplicate=False, blankOrJunk="No"),
+    ]
+    doc = ImagingDocumentResponse.model_construct(pages=pages, verifications=[], verification=None)
+    rows = list(csv.DictReader(io.StringIO(system_csv([("100", doc)]).decode())))
+    assert [(r["Duplicate"], r["Is Blank or Junk?"]) for r in rows] == [
+        ("Yes", "Yes"), ("Partial", "No"), ("No", "No"),
+    ]
+
+
+def test_local_mode_reads_duplicates_and_partials_from_the_junk_csv():
+    from app.services.imaging_overlays import index_junk_rows
+
+    rows = [
+        {"chart_name": "c", "page_name": "1.jpg", "page_number": "1", "page_classification": "Main",
+         "page_group": "main", "page_classification_confidence": "0.7", "duplicate_of_page": ""},
+        {"chart_name": "c", "page_name": "2.jpg", "page_number": "2", "page_classification": "Duplicate",
+         "page_group": "duplicate", "page_classification_confidence": "0.99", "duplicate_of_page": "1.jpg"},
+        {"chart_name": "c", "page_name": "3.jpg", "page_number": "3", "page_classification": "Main",
+         "page_group": "main", "page_classification_confidence": "0.96", "duplicate_of_page": "1.jpg"},
+    ]
+    by = index_junk_rows(rows, "c")
+    assert (by["#2"]["blankOrJunk"], by["#2"]["isDuplicate"], by["#2"]["isPartialDuplicate"]) == (
+        "Yes (Duplicate)", True, False,
+    )
+    assert (by["#3"]["blankOrJunk"], by["#3"]["isDuplicate"], by["#3"]["isPartialDuplicate"]) == (
+        "No", False, True,
+    )
+    assert by["#3"]["duplicateOf"] == "1.jpg"
+    assert by["#1"]["isPartialDuplicate"] is False

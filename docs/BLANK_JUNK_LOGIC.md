@@ -110,21 +110,53 @@ R3's card wording (the signature phrase group was removed 2026-10-21). The `vote
 ## 4. Duplicates
 
 After the verdicts, among **Main** pages only (never blank / junk), each page against
-its neighbours within **±5** pages, pages of **≥ 300** characters (whitespace stripped):
+its neighbours within **±25** pages, pages of **≥ 300** characters (whitespace stripped).
+Similarity is the **average of two matchers** (`classify.similarity_parts`):
 
-- **SequenceMatcher ≥ 98%** on lower-cased OCR text (only when the lengths are within
-  10%), or
-- one page's text **wholly contained** in the other's (confidence 1.0).
+- the **character match** — SequenceMatcher on lower-cased, whitespace-stripped text,
+  `autojunk` off (order-sensitive);
+- the **word match** — Dice overlap of the two pages' word counts (order-blind, so a
+  page whose columns OCR read in another order still scores 1.0).
 
-The longer page (or the earlier one) is kept; the other is Duplicate (code 4). Review
-UI shows Yes at 100%, May Be below; May Be confidence = 1 + (similarity − 1) × 10
-(98% → 80%, 99% → 90%).
+One page's text **wholly contained** in the other's scores 1.0.
+
+| Similarity | Verdict | Blank / Junk | Duplicate (UI) |
+|---|---|---|---|
+| **≥ 98%** or contained | `duplicate` (code 4) | Yes (Duplicate) | Yes (To Page N) |
+| **95% – < 98%** | stays **Main**, `duplicate_of_page_id` set | No | Partial (To Page N) |
+| below 95% | Main | No | No |
+
+The longer page (or the earlier one) is kept as the original. The similarity is stored
+as `confidence` on duplicate and partial rows; a partial page keeps its own verdict
+reason first, then `; partial_duplicate_of_page_id:N (similarity=…)`. A duplicate takes
+its original's page type and sub-type (page classification) and Final values
+(`imaging_final`); it stays Non-Codable. UI confidence: a duplicate 100%; a partial
+1 + (similarity − 1) × 10 (95% → 50%, 97% → 70%).
+
+The slow character match runs only for a pair that could still reach 95%: the word
+match first, then SequenceMatcher's `quick_ratio` bound. `staging/blank_junk.json` gives
+every compared page its `best_match` — the neighbour (`page_name`, `page_number`),
+`similarity`, `char_similarity`, `word_similarity`, `contained`; for a pair that was
+never near 95%, `exact` is false and `similarity_at_most` bounds the average.
 
 ---
 
 ---
 
 ## 5. Changes
+
+### 2026-10-22 — Duplicates: two matchers, Partial, Yes (Duplicate)
+
+- Similarity is the average of the character match and the word match (was the
+  character match alone).
+- **SequenceMatcher `autojunk` is off.** With it on (the default), any text over 200
+  characters dropped every character making up more than 1% of it — nearly every
+  letter — so a page 98% alike scored about 0.2. Before this, only identical or
+  contained pages were ever found.
+- ≥ 98% (or contained) is a duplicate: Blank / Junk **Yes (Duplicate)**, Duplicate Yes
+  (was Yes only at 100%, May Be at 98–100%). 95–98% is **Partial**: the page stays Main.
+- A duplicate takes its original's page type in page classification too.
+- `blank_junk.json` records each page's best match (`best_match`).
 
 ### 2026-10-21 — R4 on the Electronic Signature only
 
@@ -445,7 +477,7 @@ Main.
 | R2 placeholder | ≤ 25 words | `method.py` |
 | Hard junk groups | record_request, roi_vendors, invoice, id_card | `method.py` `HARD_JUNK_GROUPS` |
 | R6 undo | KK with DistilBERT's KEEP strong (p(keep) ≥ 0.85) | canon `voters.bert.keep_strong` |
-| Duplicates | ≥ 98%, ±25 pages, ≥ 300 characters | `classify.py` |
+| Duplicates | ≥ 98% duplicate, 95–98% partial (average of character + word match), ±25 pages, ≥ 300 characters | `classify.py` |
 
 ### Old §10. Changes, 2026-10-17 / 18
 

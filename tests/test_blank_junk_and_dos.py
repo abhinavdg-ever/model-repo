@@ -1,10 +1,11 @@
 """Blank/junk duplicate scoping and DOS date handling.
 
-Duplicate detection runs after the model, among Main pages only: ±25 neighbor
-similarity (≥98%) or one page's text wholly contained in the other's.
-Blank / junk / short pages are excluded from comparison; on a match the higher
-character-count page stays the original (earlier page on a tie).
-UI: similarity 100% → Yes; [98%, 100%) → May Be; else No.
+Duplicate detection runs after the model, among Main pages only: ±25 neighbors,
+similarity = the average of the character match and the word match. ≥ 98% (or one
+page's text wholly contained in the other's) is a duplicate; [95%, 98%) a partial
+duplicate, which stays Main. Blank / junk / short pages are excluded from
+comparison; on a match the higher character-count page stays the original
+(earlier page on a tie). UI: duplicate → Yes, partial → Partial, else No.
 """
 from __future__ import annotations
 
@@ -598,3 +599,153 @@ def test_votes_are_staged_beside_the_chart_and_each_pass_keeps_its_own(tmp_path,
     assert data["version"] == 1 and data["chart_name"] == "c"
     assert data["pages"]["1.jpg"]["pass_1"]["rule"] == "R7"
     assert data["pages"]["1.jpg"]["pass_2"]["rule"] == "R9"
+
+
+def _prose(seed: int, words: int = 420) -> list[str]:
+    """A page of prose-like text: Zipf-weighted words, so pages share common words."""
+    import random
+
+    rng = random.Random(seed)
+    vocab = [f"w{i}" for i in range(3000)]
+    weights = [1 / (i + 1) for i in range(3000)]
+    return rng.choices(vocab, weights, k=words)
+
+
+def _edited(words: list[str], changes: int) -> str:
+    """The page with ``changes`` words replaced, spread through it."""
+    out = list(words)
+    for i in range(0, len(out), max(1, len(out) // changes))[:changes]:
+        out[i] = f"edit{i}"
+    return " ".join(out)
+
+
+class TestDuplicateBands:
+    """2026-10-22 (user): ≥ 98% duplicate, [95%, 98%) partial, from two matchers."""
+
+    def test_a_98_percent_alike_long_page_is_a_duplicate(self):
+        # Before autojunk was turned off this pair scored about 0.2 and was missed.
+        words = _prose(1)
+        a, b = " ".join(words), _edited(words, 4)
+        char, word, sim, _ = classify.similarity_parts(a, b)
+        assert char > 0.98 and word > 0.98 and sim >= 0.98
+        rows = _classify([page(1, 1), page(2, 2)], {1: a, 2: b}, {1, 2})
+        dup = next(r for r in rows if r["flag"] == "duplicate")
+        assert dup["confidence"] >= 0.98
+        assert dup["duplicate_of"] in (1, 2) and dup["duplicate_of"] != dup["page_id"]
+
+    def test_95_to_98_percent_is_partial_and_stays_main(self):
+        words = _prose(2)
+        a, b = " ".join(words), _edited(words, 14)
+        sim = classify.text_similarity(a, b)
+        assert 0.95 <= sim < 0.98
+        rows = _classify([page(1, 1), page(2, 2)], {1: a, 2: b}, {1, 2})
+        assert all(r["flag"] != "duplicate" for r in rows)
+        (partial,) = [r for r in rows if r["duplicate_of"] is not None]
+        assert partial["flag"] == "not_blank_junk"
+        assert abs(partial["confidence"] - sim) < 1e-9
+        assert "partial_duplicate_of_page_id:" in partial["reason"]
+
+    def test_below_95_percent_is_neither(self):
+        words = _prose(3)
+        a, b = " ".join(words), _edited(words, 45)
+        assert classify.text_similarity(a, b) < 0.95
+        rows = _classify([page(1, 1), page(2, 2)], {1: a, 2: b}, {1, 2})
+        assert all(r["duplicate_of"] is None and r["flag"] != "duplicate" for r in rows)
+
+    def test_a_partial_keeps_its_own_verdict_reason_first(self):
+        # Pass 2 reads a pass-1 keep from the start of the reason.
+        words = _prose(4)
+        a, b = " ".join(words), _edited(words, 14)
+        rows = _classify([page(1, 1), page(2, 2)], {1: a, 2: b}, {1, 2})
+        (partial,) = [r for r in rows if r["duplicate_of"] is not None]
+        assert not partial["reason"].startswith("partial_duplicate")
+        assert "; partial_duplicate_of_page_id:" in partial["reason"]
+
+    def test_the_word_match_ignores_reading_order(self):
+        words = _prose(5)
+        half = len(words) // 2
+        a, b = " ".join(words), " ".join(words[half:] + words[:half])
+        char, word, _, _ = classify.similarity_parts(a, b)
+        assert word == 1.0 and char < 1.0
+
+    def test_far_apart_pages_skip_the_character_match(self):
+        a, b = " ".join(_prose(6)), " ".join(_prose(7))
+        char, word, sim, at_most = classify.similarity_parts(a, b, at_least=0.95)
+        assert char is None and sim is None and at_most < 0.95
+        assert classify.similarity_parts(a, b)[0] is not None  # without a floor it runs
+
+    def test_best_match_names_the_page_and_both_scores(self):
+        words = _prose(8)
+        texts = {1: " ".join(words), 2: _edited(words, 14), 3: " ".join(_prose(9))}
+        pages = [page(1, 1), page(2, 2), page(3, 3)]
+        best: dict = {}
+        # Page 1 was judged Main in an earlier pass: it gets a best match, not a row.
+        rows = _classify(pages, texts, {2, 3}, prior_main_ids={1}, best_matches=best)
+        assert {"1.jpg", "2.jpg", "3.jpg"} <= set(best)
+        match = best["2.jpg"]
+        assert (match["page_name"], match["page_number"], match["exact"]) == ("1.jpg", 1, True)
+        assert 0.95 <= match["similarity"] < 0.98
+        assert match["char_similarity"] is not None and match["word_similarity"] is not None
+        assert best["3.jpg"]["exact"] is False and best["3.jpg"]["similarity_at_most"] < 0.95
+        assert next(r for r in rows if r["page_id"] == 2)["best_match"] == match
+
+    def test_blank_junk_json_carries_best_match(self, tmp_path, monkeypatch):
+        import json
+
+        from stages.lib.blank_junk import stage as bj_stage
+
+        monkeypatch.setattr(bj_stage, "votes_path", lambda _chart: tmp_path / "blank_junk.json")
+        rows = [{"page_name": "2.jpg", "votes": {"rule": "R5"}, "label": "Main",
+                 "confidence": 0.7, "reason": "keep", "best_match": {"page_name": "1.jpg"}}]
+        bj_stage._write_votes("c", 2, rows, {"1.jpg": {"page_name": "2.jpg"}})
+        pages = json.loads((tmp_path / "blank_junk.json").read_text(encoding="utf-8"))["pages"]
+        assert pages["2.jpg"]["pass_2"]["best_match"] == {"page_name": "1.jpg"}
+        # An earlier-pass page only compared against this pass: best_match alone.
+        assert pages["1.jpg"]["pass_2"] == {"best_match": {"page_name": "2.jpg"}}
+
+
+class TestDuplicatePageType:
+    def test_a_duplicate_takes_its_originals_page_type(self, tmp_path, monkeypatch):
+        import config
+        import db
+        from db import (
+            connect,
+            disable_skip_db_write,
+            enable_skip_db_write,
+            init_page_stages,
+            list_pages,
+            upsert_blank_junk,
+            upsert_chart,
+            upsert_ocr_result,
+            upsert_pages,
+        )
+        from stages.lib.page_classify import stage as classify_stage
+
+        monkeypatch.setattr(config, "DATA_ROOT", tmp_path)
+        monkeypatch.setattr(classify_stage, "connect", db.connect)
+        store = enable_skip_db_write(reset=True)
+        try:
+            note = "Progress Note\nChief complaint: cough. Assessment and plan: follow up in two weeks. " * 8
+            with connect() as conn:
+                cid = int(upsert_chart(conn, chart_name="chart_dup", source="local")["id"])
+                upsert_pages(conn, cid, [{"page_name": f"{n}.jpg", "page_number": n} for n in (1, 2)])
+                first, second = (p["id"] for p in list_pages(conn, cid))
+                init_page_stages(conn, cid)
+                for pid in (first, second):
+                    upsert_ocr_result(conn, chart_id=cid, page_id=pid, ocr_type="azuredocintel", raw_text=note)
+                # The duplicate comes first in the chart; its original is page 2.
+                upsert_blank_junk(conn, chart_id=cid, page_id=first, blank_junk_flag="duplicate",
+                                  pass_no=2, ocr_source="azuredocintel", duplicate_of_page_id=second,
+                                  confidence=0.99, is_final=True)
+                upsert_blank_junk(conn, chart_id=cid, page_id=second, blank_junk_flag="not_blank_junk",
+                                  pass_no=2, ocr_source="azuredocintel", is_final=True)
+            classify_stage.run(cid, force=True)
+            rows = {r["page_id"]: r for r in store.page_classifications.values()}
+            assert rows[second]["page_type"]
+            assert rows[first]["page_type"] == rows[second]["page_type"]
+            assert rows[first]["page_subtype"] == rows[second]["page_subtype"]
+            assert rows[first]["duplicate_flag"] is True
+            assert rows[first]["classification_category"] == "non_codeable"
+            assert rows[first]["decided_by"] == f"duplicate_of:{second}"
+        finally:
+            disable_skip_db_write()

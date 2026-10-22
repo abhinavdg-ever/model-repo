@@ -441,6 +441,7 @@ def test_batched_database_rows_map_like_the_chart_view():
             sequenced=False, current=None, actual=None,
             provider=None, signed=None, credentials=None, signers=None, version=None,
             document_type=None, printed_or_handwritten=None,
+            names_original=False,
         )
         base.update(cells)
         return tuple(base.values())
@@ -451,7 +452,8 @@ def test_batched_database_rows_map_like_the_chart_view():
         flag="duplicate",
     ))
     assert classified.pageType == "Progress Note (Office Visit)"
-    assert (classified.isCodeable, classified.isDuplicate, classified.blankOrJunk) == ("Codable", True, "No")
+    # A duplicate reads Yes (Duplicate) under Blank / Junk (2026-10-22).
+    assert (classified.isCodeable, classified.isDuplicate, classified.blankOrJunk) == ("Codable", True, "Yes (Duplicate)")
     assert (classified.dosFrom, classified.finalDosFrom) == ("2025-08-27", "2025-09-01")
     assert (classified.currentSequence, classified.actualSequence) == (3, 5)
     # A main page with no classification row reads Not Sure, as get_imaging stamps it.

@@ -242,11 +242,14 @@ class ImagingPageResult(BaseModel):
     finalDosFrom: str | None = None
     finalDosTo: str | None = None
     # None = classification not run → UI shows NA
-    # Values: "Yes (Blank)" | "Yes (Junk)" | "No"
+    # Values: "Yes (Blank)" | "Yes (Junk)" | "Yes (Duplicate)" | "No"
     blankOrJunk: str | None = None
-    # None = not run → NA; True/False when classified
+    # None = not run → NA; True/False when classified. True: ≥ 98% alike (or
+    # contained) -- the page is a duplicate (Blank / Junk "Yes (Duplicate)").
     isDuplicate: bool | None = None
-    # Page file the duplicate was matched to, e.g. "4.png".
+    # True: 95-98% alike -- a partial duplicate that stays a Main page.
+    isPartialDuplicate: bool | None = None
+    # Page file the duplicate (or partial duplicate) was matched to, e.g. "4.png".
     duplicateOf: str | None = None
     # Blank / Main / Duplicate → "Not Available"; Invoice|Cover → that label
     pageType: str | None = None

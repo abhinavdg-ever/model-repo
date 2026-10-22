@@ -1,23 +1,28 @@
-"""Duplicate UI / CSV label + display confidence from junk flag + similarity."""
+"""Duplicate UI / CSV label + display confidence from junk flag + similarity.
+
+2026-10-22 (user): ≥ 98% alike (or contained) is a duplicate, "Yes"; 95-98% is a
+partial duplicate, "Partial", which the pipeline keeps as a Main page.
+"""
 
 from __future__ import annotations
 
-DUPLICATE_MAYBE_MIN = 0.95
-DUPLICATE_YES_MIN = 1.0
+DUPLICATE_PARTIAL_MIN = 0.95
+DUPLICATE_YES_MIN = 0.98
 
 
 def duplicate_display_confidence(
     is_duplicate: bool | None,
     similarity: float | None,
+    is_partial: bool | None = None,
 ) -> float | None:
     """Map stored similarity to UI confidence.
 
-    Yes / No → 1.0. May Be → ``1 + (sim − 1) × 10``
-    (98% → 80%, 99% → 90%, 95% → 50%).
+    Yes / No → 1.0. Partial → ``1 + (sim − 1) × 10``
+    (95% → 50%, 97% → 70%).
     """
     if is_duplicate is None:
         return None
-    if not is_duplicate:
+    if not is_duplicate and not is_partial:
         return 1.0
     if similarity is None:
         return None
@@ -33,20 +38,14 @@ def duplicate_display_confidence(
 def format_duplicate_label(
     is_duplicate: bool | None,
     confidence: float | None,
+    is_partial: bool | None = None,
 ) -> str:
-    """Yes at 100%; May Be at [95%, 100%); No otherwise."""
+    """Yes for a duplicate (≥ 98%); Partial for a partial duplicate (95-98%); No otherwise."""
+    del confidence  # the pipeline's flag decides; kept for callers' signature
     if is_duplicate is None:
         return "NA"
-    if not is_duplicate:
-        return "No"
-    if confidence is None:
-        return "May Be"
-    try:
-        sim = float(confidence)
-    except (TypeError, ValueError):
-        return "May Be"
-    if sim >= DUPLICATE_YES_MIN:
+    if is_duplicate:
         return "Yes"
-    if sim >= DUPLICATE_MAYBE_MIN:
-        return "May Be"
+    if is_partial:
+        return "Partial"
     return "No"

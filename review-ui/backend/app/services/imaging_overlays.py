@@ -324,10 +324,11 @@ def overlay_fields(
 
 
 def inherit_duplicate_blank_junk(pages: list[ImagingPageResult]) -> list[ImagingPageResult]:
-    """A duplicate page shows its original's Blank/Junk tag.
+    """A duplicate page shows its original's Blank/Junk tag when the original is
+    blank or junk; otherwise it keeps its own "Yes (Duplicate)".
 
     Duplicates are found among Main pages, but the original can be junked later
-    (pass 2), so a fixed "No" on the duplicate would disagree with the page it copies.
+    (pass 2), so the duplicate then reads as the page it copies.
     ``duplicateOf`` is the original's file name; a page whose original is not found
     keeps its own tag.
     """
@@ -343,7 +344,12 @@ def inherit_duplicate_blank_junk(pages: list[ImagingPageResult]) -> list[Imaging
             if original_name
             else None
         )
-        if page.isDuplicate and original is not None and original is not page and original.blankOrJunk:
+        if (
+            page.isDuplicate
+            and original is not None
+            and original is not page
+            and (original.blankOrJunk or "").strip().lower().startswith("yes")
+        ):
             page = page.model_copy(update={"blankOrJunk": original.blankOrJunk})
         out.append(page)
     return out
@@ -886,20 +892,25 @@ def index_junk_rows(
 
         if is_blank:
             blank_or_junk = "Yes (Blank)"
-        elif is_typed_junk and not is_duplicate:
+        elif is_duplicate:
+            blank_or_junk = "Yes (Duplicate)"
+        elif is_typed_junk:
             blank_or_junk = "Yes (Junk)"
         else:
             blank_or_junk = "No"
+        # A Main page that names the page it nearly copies: a partial (95-98%) duplicate.
+        is_partial = not is_duplicate and group == "main" and bool(_duplicate_of_name(row))
 
         if is_blank or is_duplicate or label_l in {"main", "none", ""}:
             page_type = "Not Available"
         else:
             page_type = page_type_labels.get(label_l, label if is_typed_junk else "Not Available")
 
-        duplicate_of = _duplicate_of_name(row) if is_duplicate else ""
+        duplicate_of = _duplicate_of_name(row) if is_duplicate or is_partial else ""
         fields: dict[str, Any] = {
             "blankOrJunk": blank_or_junk,
             "isDuplicate": bool(is_duplicate),
+            "isPartialDuplicate": is_partial,
             "pageType": page_type,
             "pageTypeConfidence": _parse_confidence(
                 row.get("page_classification_confidence")
@@ -910,7 +921,7 @@ def index_junk_rows(
         fields = {
             k: v
             for k, v in fields.items()
-            if v is not None or k in {"blankOrJunk", "isDuplicate"}
+            if v is not None or k in {"blankOrJunk", "isDuplicate", "isPartialDuplicate"}
         }
         fields["isDuplicate"] = bool(is_duplicate)
         if duplicate_of:

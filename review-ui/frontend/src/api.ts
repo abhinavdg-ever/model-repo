@@ -201,6 +201,8 @@ export type ImagingPageResult = {
   blankOrJunk?: string | null;
   /** null = not classified → NA */
   isDuplicate?: boolean | null;
+  /** 95–98% alike: a partial duplicate, still a Main page. */
+  isPartialDuplicate?: boolean | null;
   /** Page file this page was marked a duplicate of, e.g. "4.png". */
   duplicateOf?: string | null;
   /** Blank/Main/Duplicate → Not Available; Invoice|Cover → type */

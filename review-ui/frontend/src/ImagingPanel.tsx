@@ -241,8 +241,9 @@ function fmtConfidence(
   return `${pct.toFixed(1)}%`;
 }
 
-/** ``duplicate`` (the page itself) shows an exact duplicate that is not already blank or
- * junk as ``Yes (Duplicate)``. Display only: scoring reads the stored verdict. */
+/** ``duplicate`` (the page itself) shows a duplicate (≥ 98%) that is not already blank or
+ * junk as ``Yes (Duplicate)`` -- for a run stored before the backend sent it itself.
+ * Display only: scoring reads the stored verdict. */
 function fmtBlankOrJunk(
   value: string | boolean | null | undefined,
   processed = true,
@@ -267,11 +268,13 @@ function fmtDuplicate(
   confidence: number | null | undefined,
   processed = true,
   duplicateOf?: string | null,
+  isPartial?: boolean | null,
 ): string {
   return formatDuplicateLabel(isDuplicate, confidence, processed, {
     yetToProcess: YET_TO_PROCESS,
     notFound: NOT_FOUND,
     duplicateOf,
+    isPartial,
   });
 }
 
@@ -1613,7 +1616,7 @@ function PageDetails({
             // Scored on the stored verdict, as the accuracy report does.
             return { ...row, compare: blankJunkCompare(stored, stored) };
           })(),
-          sameValue(fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk, page.duplicateOf), fmtConfidence(duplicateDisplayConfidence(page.isDuplicate, page.pageTypeConfidence), sections.junk), {
+          sameValue(fmtDuplicate(page.isDuplicate, page.pageTypeConfidence, sections.junk, page.duplicateOf, page.isPartialDuplicate), fmtConfidence(duplicateDisplayConfidence(page.isDuplicate, page.pageTypeConfidence, page.isPartialDuplicate), sections.junk), {
             id: "duplicate",
             label: "Is Duplicate",
             choices: DUPLICATE_CHOICES,
@@ -2044,7 +2047,7 @@ function DocSummary({
                 </td>
                 <td>
                   <ValueWithNote
-                    value={fmtDuplicate(p.isDuplicate, p.pageTypeConfidence, sections.junk, p.duplicateOf)}
+                    value={fmtDuplicate(p.isDuplicate, p.pageTypeConfidence, sections.junk, p.duplicateOf, p.isPartialDuplicate)}
                   />
                 </td>
                 <td>
@@ -2279,14 +2282,14 @@ function normalizeSequence(value: string | number | null | undefined): string {
 /** Two series: Main pages 1, 2, 3 …; blank / junk pages J1, J2, J3 …. */
 const SEQUENCE_VALUE = /^J?[1-9]\d*$/;
 
-/** A complete (100%) duplicate: the only page with no sequence at all. */
+/** A duplicate (≥ 98%): the only page with no sequence at all. */
 function isSkippedDuplicate(page: ImagingPageResult): boolean {
   return isCompleteDuplicate(page.isDuplicate, page.pageTypeConfidence);
 }
 
-/** The Algo. Sequence of every page, in page order: Main pages keep the sequencing
- * stage's number; blank / junk pages (and partial duplicates) are J1, J2 … in page
- * order; a complete duplicate is Skipped. */
+/** The Algo. Sequence of every page, in page order: Main pages (partial duplicates
+ * included) keep the sequencing stage's number; blank / junk pages are J1, J2 … in page
+ * order; a duplicate is Skipped. */
 function algoSequences(
   pages: ImagingPageResult[],
   processed: boolean,
@@ -2302,7 +2305,7 @@ function algoSequences(
 }
 
 /** Original order as ground truth: Main pages renumbered 1, 2, 3 … and blank / junk
- * pages J1, J2 … in page order; a complete duplicate stays blank. */
+ * pages J1, J2 … in page order; a duplicate stays blank. */
 function originalSequences(pages: ImagingPageResult[]): Map<number, string> {
   const out = new Map<number, string>();
   let main = 0;

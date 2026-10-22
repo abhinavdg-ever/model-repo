@@ -10,6 +10,7 @@ from .normalizer import (
     has_value,
     normalize_yes_no,
     normalize_codable,
+    normalize_labelled_yes_no,
     normalize_name,
     normalize_print_type,
 )
@@ -148,7 +149,7 @@ def normalize_field_value(field_name, value):
         return clean_date(value)
 
     if field_name in YES_NO_FIELDS:
-        return normalize_yes_no(value)
+        return normalize_labelled_yes_no(value)
 
     if field_name in CODABLE_FIELDS:
         return normalize_codable(value)
