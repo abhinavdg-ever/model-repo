@@ -60,12 +60,12 @@ def format_duplicate_label(
     confidence: float | None,
     is_partial: bool | None = None,
 ) -> str:
-    """Yes for a duplicate (≥ 98%); Partial for a partial duplicate (95-98%); No otherwise."""
+    """Duplicate for a duplicate; Partial for a partial duplicate; No otherwise."""
     del confidence  # the pipeline's flag decides; kept for callers' signature
     if is_duplicate is None:
         return "NA"
     if is_duplicate:
-        return "Yes"
+        return "Duplicate"
     if is_partial:
         return "Partial"
     return "No"

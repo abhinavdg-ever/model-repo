@@ -291,12 +291,12 @@ no longer run; the ladder above replaces them.
 
 ### Duplicate detection
 
-Duplicates are checked **after** the model's verdict, between Main and junk pages —
-a blank page is never compared. A page is a duplicate when its OCR text is **≥ 98%
-similar** to a neighbor **within ±25 pages** in chart order, or when its text is
-**wholly contained** in that neighbor's, whatever its own verdict; a Main page is
-always the original of a junk copy. **95% – < 98%** is a partial duplicate, which
-keeps its verdict. Pages are compared on their distinct words as read (nothing
+Duplicates are checked **after** the model's verdict, between Main pages only — a
+blank or junk page is never compared. A page is a duplicate when its OCR text is
+**≥ 98% similar** to a neighbor **within ±25 pages** in chart order, or when its text is
+**wholly contained** in that neighbor's (rules below); it then reads Blank / Junk "Yes
+(Junk)", Duplicate "Duplicate (To Page N)". **95% – < 98%** is a partial duplicate,
+which stays Main. Pages are compared on their distinct words as read (nothing
 stripped): overlap = shared / all distinct words; contained = share of the smaller
 page's words on the other. Details: `docs/BLANK_JUNK_LOGIC.md` §4.
 

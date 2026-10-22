@@ -19,7 +19,7 @@ every other page stays Main, gets final OCR, and DistilBERT decides it in pass 2
 probabilities and the deciding rule go to ``<chart>/staging/blank_junk.json`` beside the
 key/value extraction's ``extraction.json`` (not the database).
 
-Duplicate detection (after the verdict, among Main and junk pages -- never blank):
+Duplicate detection (after the verdict, among Main pages only -- never blank or junk):
 
 * Compare each comparable page only to neighbors **±25** in page order.
 * Pages are compared on their distinct words, everything on the page included
@@ -27,21 +27,17 @@ Duplicate detection (after the verdict, among Main and junk pages -- never blank
   words / all distinct words of the two pages; **contained** is the share of the
   smaller page's distinct words found on the other.
 * Contained (canon ``duplicates.contained_at``, 100%), overlap **≥ 98%**, or fewer than
-  ``duplicate_below_words`` (5) distinct words different: ``duplicate`` -- UI Duplicate "Yes", Blank / Junk
-  "Yes (Duplicate)" -- whether the page was judged Main or junk (2026-10-22: junk
-  pages were never compared, so a 98%-alike junk page read "Yes (Junk)", Duplicate
-  "No"). Overlap **[95%, 98%)** or fewer than ``partial_below_words`` (15) distinct
-  words different: a partial duplicate -- the page keeps its verdict (Main or
-  junk) with ``duplicate_of_page_id`` set; UI "Partial".
-  2026-10-22 (user); before, only ≥ 98% counted and the UI split it 100% Yes /
-  below May Be.
+  ``duplicate_below_words`` (5) distinct words different, with lengths within 10%:
+  ``duplicate`` -- UI Duplicate "Duplicate (To Page N)", Blank / Junk "Yes (Junk)"
+  (2026-10-22, user). Overlap **[95%, 98%)** or fewer than ``partial_below_words``
+  (15) distinct words different: a partial duplicate -- the page stays Main with
+  ``duplicate_of_page_id`` set; UI "Partial (To Page N)".
 * The similarity is stored as ``confidence`` on both kinds of row.
 * On a match, keep the page with the **higher character count** as the
   original; on a tie, keep the **earlier** page -- except a contained pair with fewer
   than ``duplicates.earlier_kept_below_words`` (10) distinct words different: the
   **later** page is the duplicate (2026-10-22, user). The other is the duplicate
-  (or partial duplicate). A Main page is never the copy of a junk page: when one
-  of the pair is Main, it is the original.
+  (or partial duplicate).
 * Blank pages and texts shorter than 300 normalized chars are never compared.
 * Prior-pass ``main`` pages are included as neighbors so pass 2 can still
   match a handwritten page to a printed one from pass 1.
@@ -278,14 +274,13 @@ def _classify(
     docling_pages: Optional[dict[int, dict[str, Any]]] = None,
     best_matches: Optional[dict[str, dict[str, Any]]] = None,
 ) -> list[dict[str, Any]]:
-    """Classify ``todo`` pages, then look for duplicates among Main and junk pages.
+    """Classify ``todo`` pages, then look for duplicates among Main pages.
 
     ``inputs`` carries each page's method.PageInputs without the model scores, which
-    are added here. Duplicates are checked only after the verdict, between Main and junk
-    pages (never blank) within ±``DUPLICATE_NEIGHBOR_WINDOW`` in page order that are at
-    least ``DUPLICATE_MIN_CHARS`` long; a Main page is never the copy of a junk page. A pair is a duplicate at ≥ 98% similarity, or when
-    one page's text is wholly contained in the other's (confidence 1.0); a partial
-    duplicate at [95%, 98%), which stays Main.
+    are added here. Duplicates are checked only after the verdict, between Main pages
+    within ±``DUPLICATE_NEIGHBOR_WINDOW`` in page order that are at least
+    ``DUPLICATE_MIN_CHARS`` long, on their distinct words (see the module docstring for
+    the duplicate / partial rules).
 
     ``prior_main_ids`` are pages already ``not_blank_junk`` from an earlier pass;
     they participate as comparison neighbors (and may be demoted to duplicate, or
@@ -313,17 +308,14 @@ def _classify(
         )
 
     def _comparable(page_id: int) -> bool:
-        """Main and junk pages alike (2026-10-22: a 98%-alike page is a duplicate
-        whatever its verdict); blank pages and short texts never."""
+        """Main pages only (2026-10-22, user): blank and junk pages, and short texts,
+        are never compared."""
         text = texts.get(page_id) or ""
         if not text_is_comparable(text):
             return False
         if page_id in by_id:
-            return by_id[page_id]["code"] != CODE_BLANK
+            return by_id[page_id]["code"] == CODE_MAIN
         return page_id in prior
-
-    def _is_main(page_id: int) -> bool:
-        return by_id[page_id]["code"] == CODE_MAIN if page_id in by_id else page_id in prior
 
     # Phase 2 — each comparable page against the next ±window comparable pages.
     dup_of: dict[int, int] = {}
@@ -409,10 +401,6 @@ def _classify(
                     nid,
                     duplicate_char_count(texts.get(nid) or ""),
                 )
-            # A Main page is never made the copy of a junk page: the Main one is the
-            # original, and the junk one its duplicate.
-            if _is_main(dup) and not _is_main(orig):
-                orig, dup = dup, orig
             if kind == "partial":
                 if sim > partial_sim.get(dup, 0.0) or dup not in partial_of:
                     partial_of[dup] = orig
@@ -460,8 +448,8 @@ def _classify(
             votes={**earlier, "duplicate": reason} if earlier else None,
         )
 
-    # Partial duplicates keep their own verdict -- Main or junk -- (its reason first,
-    # so pass 2 still reads a pass-1 keep) and point at their near-copy.
+    # Partial duplicates stay Main (their own reason first, so pass 2 still reads a
+    # pass-1 keep) and point at their near-copy.
     partial: set[int] = set()
     for page_id, orig_id in partial_of.items():
         if page_id in dup_of:

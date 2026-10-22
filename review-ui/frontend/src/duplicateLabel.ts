@@ -1,8 +1,8 @@
 /** Duplicate UI label + display confidence from the pipeline's duplicate verdict.
  *
- * 2026-10-22 (user): ≥ 98% alike (or contained) is a duplicate — ``isDuplicate``,
- * "Yes", and Blank / Junk "Yes (Duplicate)"; 95–98% is a partial duplicate —
- * ``isPartialDuplicate``, "Partial", and the page keeps its own verdict (Main or junk). */
+ * 2026-10-22 (user): a duplicate — ``isDuplicate`` — reads "Duplicate (To Page N)" here
+ * and "Yes (Junk)" under Blank / Junk; a partial duplicate — ``isPartialDuplicate`` —
+ * reads "Partial (To Page N)" and stays a Main page. */
 
 export const DUPLICATE_PARTIAL_MIN = 0.95;
 export const DUPLICATE_YES_MIN = 0.98;
@@ -48,7 +48,7 @@ export function duplicateDisplayConfidence(
 }
 
 /**
- * ``Yes (To Page 4)`` for a duplicate, ``Partial (To Page 4)`` for a partial
+ * ``Duplicate (To Page 4)`` for a duplicate, ``Partial (To Page 4)`` for a partial
  * duplicate, ``No`` otherwise. ``labels.duplicateOf`` is the reference page's
  * file name.
  */
@@ -70,12 +70,12 @@ export function formatDuplicateLabel(
   if (isDuplicate == null) return notFound;
   const target = duplicatePageRef(labels.duplicateOf);
   const withTarget = (state: string) => (target ? `${state} (To ${target})` : state);
-  if (isDuplicate) return withTarget("Yes");
+  if (isDuplicate) return withTarget("Duplicate");
   if (labels.isPartial) return withTarget("Partial");
   return "No";
 }
 
-/** A duplicate (≥ 98%): the Blank / Junk column shows it as ``Yes (Duplicate)``,
+/** A duplicate: the Blank / Junk column shows it as ``Yes (Junk)``,
  * and it has no sequence. A partial duplicate keeps its own verdict. */
 export function isCompleteDuplicate(
   isDuplicate: boolean | null | undefined,
@@ -91,7 +91,7 @@ export function duplicateTargetNote(fileName: string | null | undefined): string
   return ref ? `Duplicate to ${ref}` : "";
 }
 
-/** Download cell: the same as on screen — ``Yes (To Page 4)``, ``Partial (To Page 4)``, ``No``. */
+/** Download cell: the same as on screen — ``Duplicate (To Page 4)``, ``Partial (To Page 4)``, ``No``. */
 export function formatDuplicateDownload(
   isDuplicate: boolean | null | undefined,
   confidence: number | null | undefined,

@@ -130,15 +130,20 @@ _NOT_APPLICABLE_VALUES = {"na", "none", "null", "nil", "notapplicable"}
 def normalize_labelled_yes_no(value):
     """
     Yes / No with a note in brackets reads as the Yes / No alone: "Yes (Junk)",
-    "Yes (Duplicate)" and "Yes (Blank)" are all "yes", so a duplicate matches a
+    "Yes (Blank)" and the Duplicate column's "Duplicate (To Page 4)" are all "yes", so a duplicate matches a
     page labelled junk; "Yes (To Page 4)" is "yes". Anything else goes through
     normalize_yes_no.
     """
 
-    match = re.fullmatch(r"(yes|no)\s*\(.*\)", clean_text(value))
+    text = clean_text(value)
+    match = re.fullmatch(r"(yes|no)\s*\(.*\)", text)
 
     if match:
         return match.group(1)
+
+    # The screen's Duplicate column: "Duplicate (To Page 4)" is a Yes.
+    if re.fullmatch(r"duplicate(\s*\(.*\))?", text):
+        return "yes"
 
     return normalize_yes_no(value)
 

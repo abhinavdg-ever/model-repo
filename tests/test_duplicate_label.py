@@ -19,8 +19,8 @@ from app.services.duplicate_label import (  # noqa: E402
 def test_duplicate_labels():
     assert format_duplicate_label(False, None) == "No"
     # The pipeline's flag decides: every duplicate is ≥ 98%.
-    assert format_duplicate_label(True, 1.0) == "Yes"
-    assert format_duplicate_label(True, 0.985) == "Yes"
+    assert format_duplicate_label(True, 1.0) == "Duplicate"
+    assert format_duplicate_label(True, 0.985) == "Duplicate"
     assert format_duplicate_label(False, 0.96, True) == "Partial"
     assert format_duplicate_label(None, 1.0) == "NA"
 
@@ -63,15 +63,15 @@ def test_a_duplicate_shows_its_originals_blank_junk_tag():
 
     pages = [
         ImagingPageResult(pageNumber=1, fileName="1.jpg", blankOrJunk="Yes (Junk)", isDuplicate=False),
-        ImagingPageResult(pageNumber=2, fileName="2.jpg", blankOrJunk="Yes (Duplicate)", isDuplicate=True, duplicateOf="1.jpg"),
-        ImagingPageResult(pageNumber=3, fileName="3.jpg", blankOrJunk="Yes (Duplicate)", isDuplicate=True, duplicateOf="9.jpg"),
+        ImagingPageResult(pageNumber=2, fileName="2.jpg", blankOrJunk="Yes (Junk)", isDuplicate=True, duplicateOf="1.jpg"),
+        ImagingPageResult(pageNumber=3, fileName="3.jpg", blankOrJunk="Yes (Junk)", isDuplicate=True, duplicateOf="9.jpg"),
         ImagingPageResult(pageNumber=4, fileName="4.jpg", blankOrJunk="No", isDuplicate=False),
-        # A duplicate of a Main page keeps its own Yes (Duplicate).
-        ImagingPageResult(pageNumber=5, fileName="5.jpg", blankOrJunk="Yes (Duplicate)", isDuplicate=True, duplicateOf="4.jpg"),
+        # A duplicate of a Main page keeps its own Yes (Junk).
+        ImagingPageResult(pageNumber=5, fileName="5.jpg", blankOrJunk="Yes (Junk)", isDuplicate=True, duplicateOf="4.jpg"),
     ]
     out = inherit_duplicate_blank_junk(pages)
     assert [page.blankOrJunk for page in out] == [
-        "Yes (Junk)", "Yes (Junk)", "Yes (Duplicate)", "No", "Yes (Duplicate)",
+        "Yes (Junk)", "Yes (Junk)", "Yes (Junk)", "No", "Yes (Junk)",
     ]
     assert out[1].isDuplicate is True
 

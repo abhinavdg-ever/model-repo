@@ -143,7 +143,7 @@ def _blank_junk_ui(flag: str | None, subtype: str | None) -> tuple[str | None, b
     if f == "blank":
         return "Yes (Blank)", False, "Not Available"
     if f == "duplicate":
-        return "Yes (Duplicate)", True, "Not Available"
+        return "Yes (Junk)", True, "Not Available"
     if f == "junk":
         return "Yes (Junk)", False, subtype or "Junk"
     if f == "not_blank_junk":

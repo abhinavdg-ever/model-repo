@@ -116,7 +116,7 @@ R3's card wording (the signature phrase group was removed 2026-10-21). The `vote
 
 ## 4. Duplicates
 
-After the verdicts, among **Main and junk** pages (never blank), each page against
+After the verdicts, among **Main** pages only (never blank or junk), each page against
 its neighbours within **±25** pages, pages of **≥ 300** characters (whitespace stripped).
 Pages are compared on their **distinct words**, as read — nothing stripped, headers and
 footers included (`classify.word_overlap`, 2026-10-22):
@@ -139,17 +139,15 @@ differ in few words).
 
 **Which page is the duplicate:** contained with fewer than 10 distinct words different →
 the **later** page (order of appearance); otherwise the **larger** page stays (a tie: the
-earlier) and the other is the duplicate. A Main page is always the original of a junk copy.
+earlier) and the other is the duplicate.
 
 | Similarity | Verdict | Blank / Junk | Duplicate (UI) |
 |---|---|---|---|
-| Duplicate | `duplicate` (code 4) | Yes (Duplicate) | Yes (To Page N) |
-| Partial | keeps its verdict, `duplicate_of_page_id` set | as judged | Partial (To Page N) |
+| Duplicate | `duplicate` (code 4) | Yes (Junk) | Duplicate (To Page N) |
+| Partial | stays Main, `duplicate_of_page_id` set | No | Partial (To Page N) |
 | Neither | as judged | as judged | No |
 
-A junk
-page ≥ 98% alike is a duplicate (Blank / Junk "Yes (Duplicate)", or its original's "Yes
-(Junk)"); a 95–98% one stays junk with Partial. The similarity is stored
+The similarity is stored
 as `confidence` on duplicate and partial rows; a partial page keeps its own verdict
 reason first, then `; partial_duplicate_of_page_id:N (similarity=…)`. A duplicate takes
 its original's page type and sub-type (page classification) and Final values
@@ -172,6 +170,12 @@ and `shared_words`.
 ---
 
 ## 5. Changes
+
+### 2026-10-22 — Only Main pages compared; a duplicate reads Yes (Junk), "Duplicate (To Page N)"
+
+- Junk pages no longer take part in the duplicate check (reverses "junk pages are
+  compared too" of the same day). A duplicate shows Blank / Junk "Yes (Junk)" and
+  Duplicate "Duplicate (To Page N)" (was "Yes (Duplicate)" / "Yes (To Page N)").
 
 ### 2026-10-22 — Duplicate bands: overlap or word difference, similar length, later page
 

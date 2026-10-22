@@ -242,7 +242,7 @@ function fmtConfidence(
 }
 
 /** ``duplicate`` (the page itself) shows a duplicate (≥ 98%) that is not already blank or
- * junk as ``Yes (Duplicate)`` -- for a run stored before the backend sent it itself.
+ * junk as ``Yes (Junk)`` -- for a run stored before the backend sent it itself.
  * Display only: scoring reads the stored verdict. */
 function fmtBlankOrJunk(
   value: string | boolean | null | undefined,
@@ -256,7 +256,7 @@ function fmtBlankOrJunk(
     !blankOrJunk &&
     isCompleteDuplicate(duplicate.isDuplicate, duplicate.pageTypeConfidence)
   ) {
-    return "Yes (Duplicate)";
+    return "Yes (Junk)";
   }
   if (value === null || value === undefined || value === "") return NOT_FOUND;
   if (typeof value === "boolean") return value ? "Yes (Junk)" : "No";

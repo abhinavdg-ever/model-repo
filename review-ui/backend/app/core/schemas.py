@@ -242,10 +242,10 @@ class ImagingPageResult(BaseModel):
     finalDosFrom: str | None = None
     finalDosTo: str | None = None
     # None = classification not run → UI shows NA
-    # Values: "Yes (Blank)" | "Yes (Junk)" | "Yes (Duplicate)" | "No"
+    # Values: "Yes (Blank)" | "Yes (Junk)" | "No" (a duplicate reads "Yes (Junk)")
     blankOrJunk: str | None = None
     # None = not run → NA; True/False when classified. True: ≥ 98% alike (or
-    # contained) -- the page is a duplicate (Blank / Junk "Yes (Duplicate)").
+    # contained) -- the page is a duplicate (Blank / Junk "Yes (Junk)").
     isDuplicate: bool | None = None
     # True: 95-98% alike -- a partial duplicate; the page keeps its own verdict (Main or junk).
     isPartialDuplicate: bool | None = None

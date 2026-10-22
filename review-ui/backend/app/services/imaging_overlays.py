@@ -325,7 +325,7 @@ def overlay_fields(
 
 def inherit_duplicate_blank_junk(pages: list[ImagingPageResult]) -> list[ImagingPageResult]:
     """A duplicate page shows its original's Blank/Junk tag when the original is
-    blank or junk; otherwise it keeps its own "Yes (Duplicate)".
+    blank (or junk); otherwise it keeps its own "Yes (Junk)".
 
     Duplicates are found among Main pages, but the original can be junked later
     (pass 2), so the duplicate then reads as the page it copies.
@@ -923,7 +923,7 @@ def index_junk_rows(
         if is_blank:
             blank_or_junk = "Yes (Blank)"
         elif is_duplicate:
-            blank_or_junk = "Yes (Duplicate)"
+            blank_or_junk = "Yes (Junk)"
         elif is_typed_junk:
             blank_or_junk = "Yes (Junk)"
         else:

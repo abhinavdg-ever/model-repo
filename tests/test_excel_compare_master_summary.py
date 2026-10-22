@@ -302,7 +302,7 @@ def test_database_algo_row_carries_document_type():
     assert database_algo._page(tuple(row)).isPartialDuplicate is True
     row[8], row[-1] = "duplicate", True
     page = database_algo._page(tuple(row))
-    assert (page.isDuplicate, page.isPartialDuplicate, page.blankOrJunk) == (True, False, "Yes (Duplicate)")
+    assert (page.isDuplicate, page.isPartialDuplicate, page.blankOrJunk) == (True, False, "Yes (Junk)")
 
 
 def test_names_match_in_any_order_and_punctuation():
@@ -453,6 +453,7 @@ def test_a_duplicate_matches_a_page_labelled_junk():
     assert match("Is Blank or Junk?", "No", "Yes (Duplicate)") is False
     # Duplicate: Yes / Partial / No, and the screen's "Yes (To Page 4)" is a Yes.
     assert match("Duplicate", "Yes", "Yes (To Page 4)") is True
+    assert match("Duplicate", "Yes", "Duplicate (To Page 4)") is True  # the screen's label
     assert match("Duplicate", "Partial", "Partial") is True
     assert match("Duplicate", "Yes", "Partial") is False
 
@@ -464,7 +465,7 @@ def test_algo_duplicate_reads_yes_partial_no():
     from app.services.excel_compare.database_system import system_csv
 
     pages = [
-        ImagingPageResult(pageNumber=1, fileName="1.png", isDuplicate=True, blankOrJunk="Yes (Duplicate)"),
+        ImagingPageResult(pageNumber=1, fileName="1.png", isDuplicate=True, blankOrJunk="Yes (Junk)"),
         ImagingPageResult(pageNumber=2, fileName="2.png", isDuplicate=False, isPartialDuplicate=True, blankOrJunk="No"),
         ImagingPageResult(pageNumber=3, fileName="3.png", isDuplicate=False, blankOrJunk="No"),
     ]
@@ -488,7 +489,7 @@ def test_local_mode_reads_duplicates_and_partials_from_the_junk_csv():
     ]
     by = index_junk_rows(rows, "c")
     assert (by["#2"]["blankOrJunk"], by["#2"]["isDuplicate"], by["#2"]["isPartialDuplicate"]) == (
-        "Yes (Duplicate)", True, False,
+        "Yes (Junk)", True, False,
     )
     assert (by["#3"]["blankOrJunk"], by["#3"]["isDuplicate"], by["#3"]["isPartialDuplicate"]) == (
         "No", False, True,

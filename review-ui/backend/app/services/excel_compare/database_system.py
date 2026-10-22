@@ -56,7 +56,7 @@ def _duplicate(page: ImagingPageResult) -> str:
 
 
 def _blank_or_junk(value: str | None) -> str:
-    """"Yes (Blank)" / "Yes (Junk)" / "Yes (Duplicate)" / "No" -> Yes / No; not run stays blank."""
+    """"Yes (Blank)" / "Yes (Junk)" (a duplicate too) / "No" -> Yes / No; not run stays blank."""
     text = _text(value)
     if not text:
         return ""
