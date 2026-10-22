@@ -132,6 +132,21 @@ def test_only_the_columns_in_the_file_are_upserted():
     assert "|| %(labels)s::jsonb" in sql
 
 
+def test_reloading_an_unchanged_page_writes_nothing():
+    """Last Verified At is the page's updated_at: reloading the same sheet must not
+    move it. Only a change to the labels or page id updates the row (and so
+    appends a bulk entry, which hangs off the RETURNING row)."""
+    from jobs.ground_truth_load import upsert_sql
+
+    sql = upsert_sql(("member_name", "dos_from"))
+    guard = sql.split("updated_at = now()", 1)[1].split("RETURNING", 1)[0]
+    assert "IS DISTINCT FROM" in guard
+    for column in ("source_page_id", "member_name", "dos_from"):
+        assert f"page_ground_truth.{column}" in guard
+    assert "source_path" not in guard  # a new path alone is not a new label
+    assert "dos_to" not in guard  # labels the file does not carry are not compared
+
+
 def test_upsert_sql_takes_ground_truth_columns_only():
     import pytest
 

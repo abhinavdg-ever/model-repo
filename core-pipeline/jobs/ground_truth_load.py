@@ -104,6 +104,16 @@ def upsert_sql(columns: Sequence[str]) -> str:
         raise ValueError(f"not ground-truth columns: {sorted(unknown)}")
     insert = ["chart_name", "page_number", "source_page_id", *columns, "source_path"]
     updates = ",\n    ".join(f"{column} = EXCLUDED.{column}" for column in (*columns, "source_path"))
+    # Only a page whose labels (or page id) change is written: reloading the same
+    # sheet must not move updated_at -- review-ui's Last Verified At -- or append a
+    # bulk entry. A new file path alone is not a change of labels.
+    stored = ", ".join(f"page_ground_truth.{column}" for column in ("source_page_id", *columns))
+    incoming = ", ".join(
+        [
+            "COALESCE(EXCLUDED.source_page_id, page_ground_truth.source_page_id)",
+            *(f"EXCLUDED.{column}" for column in columns),
+        ]
+    )
     return f"""
 WITH g AS (
 INSERT INTO page_ground_truth ({", ".join(insert)})
@@ -112,6 +122,7 @@ ON CONFLICT (chart_name, page_number) DO UPDATE SET
     source_page_id = COALESCE(EXCLUDED.source_page_id, page_ground_truth.source_page_id),
     {updates},
     updated_at = now()
+WHERE ROW({stored}) IS DISTINCT FROM ROW({incoming})
 RETURNING id
 )
 INSERT INTO page_ground_truth_entry (page_ground_truth_id, entry_mode, labels, source_path)
