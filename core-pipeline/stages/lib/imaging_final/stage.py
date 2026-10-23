@@ -132,6 +132,8 @@ def _final_page(page_id: int, kind: dict[str, Any], link: dict[str, Any]) -> Fin
         page_subtype=kind.get("page_subtype"),
         family=axes.family_of(kind) or None,
         names=axes.names_of(kind),
+        l2=axes.l2_of(kind),
+        under_l1=axes.under_l1_of(kind),
         category=kind.get("classification_category"),
         codeability_rule=axes.stored(kind).get("codeability_rule"),
         title_l1=axes.title_of(kind),
@@ -186,7 +188,18 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             for pid in document_pages:
                 carried[pid] = finals
                 document_of[pid] = document_pages
-        final_pages = {
+        # Specialty is the encounter's: the first page of the document that has one sets
+        # it for every page, so it never changes midway (2026-10-23, user).
+        specialty_of: dict[int, Optional[str]] = {}
+        for document_pages in documents.values():
+            found = next(
+                (axes.stored(classification.get(pid) or {}).get("specialty") for pid in document_pages
+                 if axes.stored(classification.get(pid) or {}).get("specialty")),
+                None,
+            )
+            for pid in document_pages:
+                specialty_of[pid] = found
+                final_pages = {
             page["id"]: _final_page(
                 page["id"], classification.get(page["id"]) or {}, continuity.get(page["id"]) or {}
             )
@@ -252,7 +265,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 "duplicate_of_page_id": None,
                 # The page's own, like the sub-type; not carried across the document.
                 # Unknown on a classified page the axes gave no specialty.
-                "specialty": axes.stored(kind).get("specialty") or (DEFAULT_SPECIALTY if kind else None),
+                "specialty": (
+                    specialty_of.get(page_id) if page_id in specialty_of else axes.stored(kind).get("specialty")
+                ) or (DEFAULT_SPECIALTY if kind else None),
             }
             rows[page_id] = row
 

@@ -548,6 +548,10 @@ def decide(inputs: PageInputs) -> Verdict:
 
     # R1 blank, or a tiny page that is junk
     chars = len(re.sub(r"\s", "", text))
+    # For blank_junk.json (2026-10-23): no ink or no text, and the ID / insurance-card words
+    # found (counted on Visual pages only, the R3 card evidence).
+    votes["empty"] = bool(inputs.no_ink or (not visual and chars == 0))
+    votes["card_keywords"] = scores.hits.get(f"junk.{prof.raw['visual']['card_group']}", [])
     if inputs.no_ink:
         return ruled(CODE_BLANK, "R1", "R1 blank: no ink")
     if not visual and chars == 0:

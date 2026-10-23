@@ -60,6 +60,11 @@
       "points": 3,
       "status": "assumed: check first (section headings mistaken for titles)"
     },
+    "visit_heading": {
+      "side": "opening",
+      "points": 3,
+      "status": "2026-10-23 (user): a visit-opening heading (visit_headings) in the page's top band opens a new Progress Note: +3 toward a break, and with visit_headings.decisive a break whatever the score, unless the printed page N of M runs on."
+    },
     "page_type_change": {
       "side": "pair",
       "points": 3,
@@ -345,6 +350,30 @@
       "history_of_present_illness"
     ]
   },
+  "visit_headings": {
+    "comment": "2026-10-23 (user): headings that open a visit. A page with one at the start of a line in its top band (top_fraction of the page height; the first 8 lines without positions), or as a section heading there, scores visit_heading toward a break. With decisive true (2026-10-23, user) such a page always starts a new document, unless the printed page N of M runs on from the page before.",
+    "top_fraction": 0.33,
+    "terms": [
+      "reason for visit",
+      "reason for appointment",
+      "visit information",
+      "visit info",
+      "chief complaint",
+      "cc",
+      "hpi",
+      "history of present illness"
+    ],
+    "decisive": true
+  },
+  "demographics_break": {
+    "comment": "2026-10-23 (user): a Demographics page never shares a document with another kind of page (a Progress Note, say). Every gap between a page of these types and a page of others is a break, whatever the score, and the final pass does not merge it back; consecutive Demographics pages stay together. Standing alone, the document takes default_final_dos (2222-02-02). Names are v24 names matched without case against every name of the page.",
+    "page_types": [
+      "Demographics",
+      "Patient Demographics",
+      "Patient Information",
+      "Patient Registration"
+    ]
+  },
   "default_final_dos": {
     "comment": "A stand-alone document of these pages (every page carrying a name listed here) is not a visit: its Final DOS is DOS_DEFAULT_DATE (dos_canon.json, 2222-02-02) on every page, whatever dates its pages carry. One of these pages inside a visit's document (a progress note with a problem-list page) takes the visit's DOS. Each page's Extracted DOS is untouched. Names are v24 names — canon page types (page_canon_v24.json) or L1 / L2 / L3 — matched without case against every name of the page (axes.names_of).",
     "page_types": [
@@ -408,5 +437,9 @@
     "cv_split": "GroupKFold by chart_id",
     "fitted": "2026-10-18",
     "known_bias": "documents printing pagination are longer and more template-driven; furniture signals may be overstated and prose signals understated"
+  },
+  "visual_join": {
+    "comment": "2026-10-23 (user): a Visual page (ocr_quality_results.document_type 'visual' with fewer than blank_junk visual.max_words words) that is not junk always joins the page before it, whatever the score.",
+    "enabled": true
   }
 }

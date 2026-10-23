@@ -12,7 +12,7 @@ to `core-pipeline/`.
 | Stage | `stages/lib/continuity/stage.py` — `continuity`, seq 87, after `page_subtype` and `dos_extract`, before `imaging_final` |
 | Settings | `stages/lib/keyword-canon/continuity_canon.json`, version 4 (reloads on change) |
 | Inputs | `staging/extraction.json` first (§3), then the DB (DOS, page type, blank / junk) and the OCR JSON |
-| Writes | `page_continuity_results` (the original columns plus `confidence`, one row per content or junk page), `<chart>/staging/continuity.json` (every score of every gap), `imaging/<chart>_continuity.csv` (every page) |
+| Writes | `page_continuity_results` (the original columns plus `confidence`, one row per content or junk page), `<chart>/staging/continuity.json` (version 2: documents, then per page both gaps in plain words and the Final values; every score in `continuity_detail.json`), `imaging/<chart>_continuity.csv` (every page) |
 | Database | one new column, `confidence` (0–1); on an existing database `schema/changes_2026-10-19.sql` (removed; `git show 173a6cb:schema/changes_2026-10-19.sql`) §8 widens `decided_by` and §9 adds `confidence` |
 
 ---
@@ -255,6 +255,10 @@ encounter from.
   **the different date wins** and the gap breaks, at medium confidence, flagged
   (`decisive_conflict`). A date is a fact about the care; a page number is a fact about
   the printing.
+- **Forced by rule** (2026-10-23, canon `continuity_canon.json`), after the score:
+  - a **Demographics** page beside another kind of page: always a break (`demographics_break`);
+  - a **visit heading** (Reason for Visit / Appointment, Chief Complaint, HPI…) in the page's top band: always a break, a new Progress Note — unless the printed page N of M runs on (`visit_headings.decisive`);
+  - a **Visual** page that is not junk: always joins the page before it (`visual_join`).
 
 ### 8.3 Confidence
 

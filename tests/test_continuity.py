@@ -435,12 +435,15 @@ class TestStage:
                                            page_type="Discharge Summary",
                                            page_subtype="Discharge Summary",
                                            classification_category="discharge_summary",
-                                           keyword_title_hit=True)
+                                           keyword_title_hit=True,
+                                           axes={"l1": "Discharge Summary", "title_l1": "Discharge Summary",
+                                                 "specialty": "Cardiology"})
                 upsert_page_classification(conn, chart_id=cid, page_id=second,
                                            page_type="Progress Note",
                                            page_subtype="Progress Note",
                                            classification_category="codeable",
-                                           keyword_title_hit=False)
+                                           keyword_title_hit=False,
+                                           axes={"l1": "Progress Note", "specialty": "Neurology"})
                 upsert_dos(conn, chart_id=cid, page_id=first,
                            date_of_service_from="2024-03-14", date_of_service_to="2024-03-14",
                            date_of_service_from_doclevel=None, date_of_service_to_doclevel=None,
@@ -450,8 +453,17 @@ class TestStage:
             assert result["documents"] == 1
             # Every score is staged beside extraction.json.
             scores = json.loads(Path(result["continuity_json"]).read_text(encoding="utf-8"))
-            assert scores["pages"][1]["break_before"] <= -5 and scores["pages"][1]["gap_before"]["pair"]
+            # continuity.json: per page the gap before / after in words, and the result.
+            second_page = scores["pages"]["2.jpg"]
+            assert second_page["prev_to_this"]["decision"] == "Same document"
+            assert second_page["prev_to_this"]["score"] <= -5
+            assert any("page numbers run on" in why for why in second_page["prev_to_this"]["because"])
+            assert scores["pages"]["1.jpg"]["prev_to_this"] == "first page"
+            assert second_page["final"]["document"] == 1
             assert scores["documents"][0]["pages"] == ["1.jpg", "2.jpg"]
+            # Every signal of every gap is in continuity_detail.json.
+            detail = json.loads(Path(result["continuity_json"]).with_name("continuity_detail.json").read_text(encoding="utf-8"))
+            assert detail["pages"][1]["break_before"] <= -5 and detail["pages"][1]["gap_before"]["pair"]
             grouping = {r["page_id"]: r for r in store.continuity.values()}
             # Undated, printed "Page 2 of 2" after "Page 1 of 2": page numbers run on (-5,
             # decisive), a joined gap.
@@ -484,6 +496,10 @@ class TestStage:
             assert grouping[second]["start_confirmed"] is True
             # Continue decided -> the first page's page type and DOS.
             assert rows[second]["page_type"] == "Discharge Summary"
+            # A Progress Note has no place under Discharge Summary: Others, never L1 / L1.
+            assert rows[second]["page_subtype"] == "Others"
+            # The encounter's first specialty, carried to every page.
+            assert rows[first]["specialty"] == rows[second]["specialty"] == "Cardiology"
             assert rows[second]["page_type_source"] == "continuation"
             assert rows[second]["continuation_rule"] == "agreed_first_page"
             assert rows[second]["codability"] == "Discharge"
@@ -544,3 +560,54 @@ def test_imaging_final_gives_junk_pages_no_document_values():
     pages = [{"id": 1}, {"id": 2}, {"id": 3}]
     continuity = {1: {"document_seq": 1, "seq": 1}, 2: {"document_seq": 1, "seq": 2}, 3: {"document_seq": 2, "seq": 1}}
     assert _documents(pages, continuity, frozenset({2, 3})) == {1: [1]}
+
+
+class TestEncounterSignals:
+    """2026-10-23 (user): visit headings open an encounter; Demographics stands alone."""
+
+    def test_a_visit_heading_at_the_top_pushes_toward_a_break(self):
+        rows = assign([bare(1), bare(2, "Chief Complaint: cough for two weeks")])
+        before = gap(rows[1])
+        assert before["opening"]["visit_heading"] == 3
+        assert before["evidence"]["visit_heading"].lower().startswith("chief complaint")
+
+    def test_a_visit_heading_at_the_top_always_breaks(self):
+        # Same labelled DOS (-5, decisive join) would otherwise keep them together.
+        note = dict(dos_from="2024-03-14", dos_trust=5)
+        rows = assign([bare(1, **note), bare(2, "HPI: cough for two weeks", **note)])
+        assert gap(rows[1])["decision"] == "break"
+        assert rows[0]["document_seq"] != rows[1]["document_seq"]
+
+    def test_a_visit_heading_on_a_page_that_runs_on_by_number_still_joins(self):
+        rows = assign([bare(1, printed=(1, 2)), bare(2, "Reason for Appointment: follow up", printed=(2, 2))])
+        assert rows[0]["document_seq"] == rows[1]["document_seq"]
+
+    def test_a_visual_page_joins_the_page_before_it(self):
+        demo = dict(page_type="Demographics", names=("Patient Demographics", "Demographics"))
+        rows = assign([bare(1, "Chief Complaint: cough"), bare(2, "", visual=True, **demo)])
+        assert gap(rows[1])["evidence"]["visual_join"]
+        assert rows[0]["document_seq"] == rows[1]["document_seq"]
+
+    def test_a_visit_heading_low_on_the_page_does_not_count(self):
+        body = "\n".join(["assessment stable"] * 6 + ["Reason for Visit: follow up"])
+        rows = assign([bare(1), bare(2, body)])
+        assert "visit_heading" not in gap(rows[1])["opening"]
+
+    def test_demographics_never_joins_a_progress_note(self):
+        # Page numbers running on (-5, decisive join) would join these two.
+        demo = bare(1, page_type="Demographics", names=("Patient Demographics", "Demographics"),
+                    printed=(1, 2), dos_from="2024-03-14", dos_trust=5)
+        note = bare(2, page_type="Progress Note", names=("Progress Note",),
+                    printed=(2, 2), dos_from="2024-03-14", dos_trust=5)
+        rows = assign([demo, note])
+        assert gap(rows[1])["decision"] == "break"
+        assert gap(rows[1])["evidence"]["demographics_boundary"]
+        assert rows[0]["document_seq"] != rows[1]["document_seq"]
+        # Standing alone, the Demographics document takes the default DOS.
+        assert rows[0]["final_dos_from"] == "2222-02-02"
+        assert rows[1]["final_dos_from"] == "2024-03-14"
+
+    def test_consecutive_demographics_pages_stay_together(self):
+        demo = dict(page_type="Demographics", names=("Patient Demographics", "Demographics"))
+        rows = assign([bare(1, printed=(1, 2), **demo), bare(2, printed=(2, 2), **demo)])
+        assert rows[0]["document_seq"] == rows[1]["document_seq"]

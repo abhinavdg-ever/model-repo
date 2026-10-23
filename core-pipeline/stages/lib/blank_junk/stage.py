@@ -634,48 +634,116 @@ def votes_path(chart_name: str) -> Path:
     return staging_dir(chart_name) / VOTES_FILE
 
 
+# Every pass's full ballots (DistilBERT, rules, the best duplicate match), for debugging.
+DETAIL_FILE = "blank_junk_detail.json"
+# blank_junk.json lists a page's closest neighbor only from this similarity up.
+CLOSEST_FROM = 0.70
+
+
+def _duplicate_view(entry: dict[str, Any]) -> dict[str, Any]:
+    """Duplicate / Partial / No, and the closest page when it is at least 70% alike."""
+    reason = str(entry.get("reason") or "")
+    status = (
+        "Duplicate" if entry.get("verdict") == "Duplicate"
+        else "Partial" if "partial_duplicate_of_page_id:" in reason
+        else "No"
+    )
+    out: dict[str, Any] = {"status": status}
+    match = entry.get("best_match") or {}
+    similarity = match.get("similarity")
+    if similarity is not None and similarity >= CLOSEST_FROM:
+        out["closest_page"] = match.get("page_name")
+        out["similarity"] = similarity
+    return out
+
+
+def _pass_view(entry: dict[str, Any]) -> dict[str, Any]:
+    """One pass of one page, in the fields a reviewer reads (2026-10-23, user)."""
+    if "verdict" not in entry:
+        # Only compared against this pass's pages (judged in an earlier pass).
+        return {"judged": False, "duplicate": _duplicate_view(entry)}
+    bert = entry.get("bert") or {}
+    short = entry.get("short_page")
+    return {
+        "p_junk": bert.get("p_junk"),
+        "p_keep": bert.get("p_keep"),
+        "empty": entry.get("empty"),
+        "text_ends_at": short.get("content_bottom") if isinstance(short, dict) else None,
+        "card_keywords": entry.get("card_keywords") or [],
+        "result": entry.get("verdict"),
+        "rule": entry.get("rule"),
+        "why": entry.get("reason"),
+        "duplicate": _duplicate_view(entry),
+    }
+
+
+def _simple(detail_pages: dict[str, Any], passes_run: list[int]) -> dict[str, Any]:
+    """blank_junk.json's pages from the detail: pass_1, pass_2 and the final decision."""
+    out: dict[str, Any] = {}
+    for page_name, passes in detail_pages.items():
+        page: dict[str, Any] = {}
+        for pass_no in (1, 2):
+            entry = passes.get(f"pass_{pass_no}")
+            if entry is not None:
+                page[f"pass_{pass_no}"] = _pass_view(entry)
+            elif pass_no == 2 and 2 in passes_run and "pass_1" in passes:
+                page["pass_2"] = "not judged: settled in pass 1"
+        judged = [
+            (pass_no, passes[f"pass_{pass_no}"]) for pass_no in (2, 1)
+            if "verdict" in (passes.get(f"pass_{pass_no}") or {})
+        ]
+        if judged:
+            pass_no, entry = judged[0]
+            page["final"] = {
+                "decision": entry.get("verdict"),
+                "rule": entry.get("rule"),
+                "why": entry.get("reason"),
+                "pass": pass_no,
+            }
+        out[page_name] = page
+    return out
+
+
 def _write_votes(
     chart_name: str,
     pass_no: int,
     rows: list[dict[str, Any]],
     best_matches: Optional[dict[str, dict[str, Any]]] = None,
 ) -> Optional[Path]:
-    """Every page's ballots and deciding rule for this pass, staged beside the chart::
+    """Stage this pass beside the chart, in two files.
 
-        {"version": 1, "chart_name": …, "updated_at": …,
-         "pages": {"<page name>": {"pass_1": {...}, "pass_2": {...}}}}
+    ``blank_junk.json`` (2026-10-23, user: simple): per page, ``pass_1`` / ``pass_2`` --
+    p_junk, p_keep, empty, text_ends_at (where the text stops, pass 2), card_keywords,
+    result, rule, why, and duplicate (Duplicate / Partial / No; the closest page and its
+    similarity when at least 70% alike) -- and ``final`` (decision, rule, why, pass). A
+    page pass 1 settled reads "not judged: settled in pass 1" for pass 2.
 
-    Each pass entry also has ``best_match``: the page's highest duplicate score among
-    the neighbors it was compared with, at any score -- ``page_name`` /
-    ``page_number`` of that neighbor, ``similarity`` (the score that decides: 1.0 when
-    contained, else the overlap), ``overlap`` (shared distinct words / all distinct
-    words of the two), ``contained_share`` (the smaller page's distinct words found on
-    the other), ``contained``, and the counts ``distinct_words`` /
-    ``other_distinct_words`` / ``shared_words``. It is null when the page was never
-    compared (too short, or blank). A page only compared against this pass (an
-    earlier pass's Main page) gets an entry with ``best_match`` alone.
+    ``blank_junk_detail.json``: every ballot of every pass as decided, with each page's
+    ``best_match`` (the neighbor, similarity, overlap, contained_share, contained and the
+    word counts). A page only compared against this pass gets ``best_match`` alone.
 
-    This pass's entries are replaced and the other pass's kept, so after a full run the
-    file holds both passes.
+    This pass's entries are replaced and the other pass's kept, so after a full run both
+    files hold both passes.
     """
     from datetime import datetime, timezone
 
     path = votes_path(chart_name)
+    detail_path = path.with_name(DETAIL_FILE)
     try:
-        existing = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+        existing = json.loads(detail_path.read_text(encoding="utf-8")) if detail_path.is_file() else {}
     except (OSError, ValueError):
         existing = {}
     if existing.get("version") != VOTES_VERSION:
         existing = {}
     pages: dict[str, Any] = existing.get("pages") or {}
+    passes_run = sorted({*existing.get("passes_run", []), pass_no})
     key = f"pass_{pass_no}"
     for page in pages.values():
         page.pop(key, None)
     for row in rows:
-        if row.get("votes") is None:
-            continue
         pages.setdefault(row["page_name"], {})[key] = {
-            **row["votes"],
+            **(row.get("votes") or {}),
+            "rule": (row.get("votes") or {}).get("rule") or ("duplicate" if row["flag"] == "duplicate" else None),
             "verdict": row["label"],
             "confidence": round(float(row["confidence"]), 4),
             "reason": row["reason"],
@@ -683,17 +751,26 @@ def _write_votes(
         }
     for page_name, match in (best_matches or {}).items():
         pages.setdefault(page_name, {}).setdefault(key, {})["best_match"] = match
-    payload = {
+    updated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    detail = {
         "version": VOTES_VERSION,
         "chart_name": chart_name,
-        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "updated_at": updated_at,
+        "passes_run": passes_run,
         "pages": pages,
+    }
+    simple = {
+        "version": 2,
+        "chart_name": chart_name,
+        "updated_at": updated_at,
+        "pages": _simple(pages, passes_run),
     }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(payload, indent=1, default=str), encoding="utf-8")
-        tmp.replace(path)
+        for target, body in ((detail_path, detail), (path, simple)):
+            tmp = target.with_suffix(".tmp")
+            tmp.write_text(json.dumps(body, indent=1, default=str), encoding="utf-8")
+            tmp.replace(target)
     except OSError as exc:
         logger.warning("could not write %s: %s", path, exc)
         return None

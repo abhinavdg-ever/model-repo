@@ -276,10 +276,14 @@ its own names below it.
 | `continuation_rule` | When | Final |
 |---|---|---|
 | `agreed` | the page's L1 is the agreed family | kept as is (*Lab Report/Result (Laboratory)* stays under a *Lab Report/Result (Radiology)* first page) |
-| `agreed_first_page` / `agreed_vote` | its L1 differs | page type = the agreed L1; sub-type = the page's own page type (an Unknown page: the agreed L1). `agreed_vote`, or a weak link, flags the page for review. `page_type_source = continuation` |
+| `agreed_first_page` / `agreed_vote` | its L1 differs | page type = the agreed L1; L2 / L3 = what the page classifier gave the page **under that L1** (`axes.under_l1`: the model's L2 under it at `l2_min`, else the canon's; L3 the canon's), so L1, L2 and L3 always agree with the v24 hierarchy — "L1 (L2)" / L3 or L1 / L2. Inside a **Progress Note**, a page of an `embedded_families` L1 (Lab Report/Result, Medication Record, Immunization, Problem List, Order and Requisition) is Progress Note / its own L2, else its family (**Progress Note / Medication List**). Nothing that fits: **L1 / Others**. `agreed_vote`, or a weak link, flags the page for review. `page_type_source = continuation` |
 | `no_agreement` | the vote has no clear majority | kept as is, **flagged for review** |
-| `embedded_same_page` | page in no multi-page document, of an `embedded_families` L1 (Lab Report/Result), headed by a Progress Note canon title | Progress Note / its own page type |
+| `embedded_same_page` | page in no multi-page document, of an `embedded_families` L1, headed by a Progress Note canon title | Progress Note / its own L2, else its family |
 | `no_change` | page in no multi-page document | kept as is |
+
+**An L1 is never its own sub-type** (2026-10-23): a page with only an L1 is *L1 / Others* (`axes.page_names`), and a row written before that reads the same in Final.
+
+**Specialty** is the document's: the first page of the document with a specialty sets it for every page (never changing midway); `Unknown` when none has one.
 
 **Codability** comes from the canon (the page's own category). A page that
 takes the agreed family, or whose canon rule is `context` (e.g. *Clinical
@@ -308,10 +312,11 @@ DOS = the first page's.
 | Chart | Page | Extracted | Link | Final |
 |---|---|---|---|---|
 | A | 1 "DISCHARGE SUMMARY", Page 1 of 3 | Discharge Summary | start, confirmed | Discharge Summary (`agreed`) |
-| A | 2 untitled, reads like a note, Page 2 of 3 | Progress Note | strong | **Discharge Summary / Progress Note** (`agreed_first_page`) |
-| A | 3 lab table, Page 3 of 3 | Laboratory Data | strong | **Discharge Summary / Laboratory Data** (`agreed_first_page`) |
+| A | 2 untitled, reads like a note, Page 2 of 3 | Progress Note | strong | **Discharge Summary / Others**, or the L2 it scored under Discharge Summary (`agreed_first_page`) |
+| A | 3 lab table, Page 3 of 3 | Lab Report/Result (Laboratory) | strong | **Discharge Summary / Others** (`agreed_first_page`) |
 | B | 1 "OFFICE VISIT", Page 1 of 2 | Progress Note / Office Visit | start, confirmed | Progress Note / Office Visit |
-| B | 2 lab results, Page 2 of 2 | Laboratory Data / Chemistry | strong | **Progress Note / Laboratory Data**, Non-Codable (`agreed_first_page`) |
+| B | 2 lab results, Page 2 of 2 | Lab Report/Result (Laboratory) / Chemistry Report | strong | **Progress Note / Laboratory**, Non-Codable (`agreed_first_page`) |
+| B′ | 2 medication list | Medication Record / Medication List | strong | **Progress Note / Medication List**, Non-Codable (`agreed_first_page`) |
 | C | 1 Chief Complaint, 2 lab, 3 med list, signed | Clinical Summary, Laboratory Data, Medication List | strong | **Progress Note** / Clinical Summary (Codable), / Laboratory Data and / Medication List (Non-Codable) (`progress_note`) |
 | D | 1 untitled 0.40, 2–3 lab 0.90 / 0.80 | Clinical Summary, Laboratory Data ×2 | strong, start unconfirmed | **Laboratory Data** / Clinical Summary on page 1, **review** (`agreed_vote`) |
 

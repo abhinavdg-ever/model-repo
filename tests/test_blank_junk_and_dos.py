@@ -579,14 +579,48 @@ def test_votes_are_staged_beside_the_chart_and_each_pass_keeps_its_own(tmp_path,
     from stages.lib.blank_junk import stage as bj_stage
 
     monkeypatch.setattr(bj_stage, "staging_dir", lambda name: tmp_path / name / "staging")
-    row = {"page_name": "1.jpg", "label": "Main", "confidence": 0.9, "reason": "R7", "votes": {"rule": "R7"}}
+    row = {"page_name": "1.jpg", "label": "Main", "confidence": 0.9, "reason": "R7", "flag": "not_blank_junk",
+           "votes": {"rule": "R7", "bert": {"p_junk": 0.1, "p_keep": 0.9}, "empty": False, "card_keywords": []}}
     bj_stage._write_votes("c", 1, [row])
-    bj_stage._write_votes("c", 2, [{**row, "reason": "R3", "votes": {"rule": "R3"}}])
-    bj_stage._write_votes("c", 2, [{**row, "reason": "R9", "votes": {"rule": "R9"}}])
-    data = json.loads((tmp_path / "c" / "staging" / "blank_junk.json").read_text(encoding="utf-8"))
-    assert data["version"] == 1 and data["chart_name"] == "c"
-    assert data["pages"]["1.jpg"]["pass_1"]["rule"] == "R7"
-    assert data["pages"]["1.jpg"]["pass_2"]["rule"] == "R9"
+    bj_stage._write_votes("c", 2, [{**row, "reason": "R3", "votes": {**row["votes"], "rule": "R3"}}])
+    bj_stage._write_votes("c", 2, [{**row, "reason": "R9", "votes": {**row["votes"], "rule": "R9"}}])
+    staging = tmp_path / "c" / "staging"
+    detail = json.loads((staging / "blank_junk_detail.json").read_text(encoding="utf-8"))
+    assert detail["pages"]["1.jpg"]["pass_1"]["rule"] == "R7"
+    assert detail["pages"]["1.jpg"]["pass_2"]["rule"] == "R9"
+    simple = json.loads((staging / "blank_junk.json").read_text(encoding="utf-8"))
+    page = simple["pages"]["1.jpg"]
+    assert (page["pass_1"]["rule"], page["pass_2"]["rule"]) == ("R7", "R9")
+    assert page["pass_2"]["p_junk"] == 0.1 and page["pass_2"]["result"] == "Main"
+    assert page["final"] == {"decision": "Main", "rule": "R9", "why": "R9", "pass": 2}
+
+
+def test_blank_junk_json_is_one_simple_block_per_page(tmp_path, monkeypatch):
+    """2026-10-23 (user): per pass p(junk), p(keep), empty, where the text ends, card
+    words, result, rule, the duplicate status (closest page from 70%), and the final."""
+    import json
+
+    from stages.lib.blank_junk import stage as bj_stage
+
+    monkeypatch.setattr(bj_stage, "staging_dir", lambda name: tmp_path / name / "staging")
+    votes = {"rule": "R5", "bert": {"p_junk": 0.02, "p_keep": 0.98}, "empty": False, "card_keywords": []}
+    settled = {"page_name": "1.jpg", "label": "Main", "confidence": 0.98, "flag": "not_blank_junk",
+               "reason": "R5 keep (final): sure", "votes": votes, "best_match": {"page_name": "2.jpg", "similarity": 0.62}}
+    copy = {"page_name": "3.jpg", "label": "Duplicate", "confidence": 0.99, "flag": "duplicate",
+            "reason": "duplicate_of_page_id:9", "votes": None, "best_match": {"page_name": "2.jpg", "similarity": 0.99}}
+    card = {"page_name": "4.jpg", "label": "Others", "confidence": 0.9, "flag": "junk", "reason": "R3 card",
+            "votes": {**votes, "rule": "R3", "card_keywords": ["driver's license"],
+                      "short_page": {"content_bottom": 0.4}}}
+    bj_stage._write_votes("c", 1, [settled])
+    bj_stage._write_votes("c", 2, [copy, card])
+    pages = json.loads((tmp_path / "c" / "staging" / "blank_junk.json").read_text(encoding="utf-8"))["pages"]
+    assert pages["1.jpg"]["pass_2"] == "not judged: settled in pass 1"
+    assert pages["1.jpg"]["pass_1"]["duplicate"] == {"status": "No"}  # 62%: below 70%, no closest
+    assert pages["1.jpg"]["final"]["pass"] == 1
+    assert pages["3.jpg"]["pass_2"]["duplicate"] == {"status": "Duplicate", "closest_page": "2.jpg", "similarity": 0.99}
+    assert pages["3.jpg"]["final"]["decision"] == "Duplicate"
+    assert pages["4.jpg"]["pass_2"]["card_keywords"] == ["driver's license"]
+    assert pages["4.jpg"]["pass_2"]["text_ends_at"] == 0.4
 
 
 def _prose(seed: int, words: int = 420) -> list[str]:

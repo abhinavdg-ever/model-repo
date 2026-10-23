@@ -65,6 +65,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
 
 from stages.lib.canon_store import CANON_DIR, CanonFile
+from stages.lib.page_classify import axes
 from stages.lib.page_classify import taxonomy as tax
 from stages.lib.page_classify.bert import BertResult
 from stages.lib.page_classify.keywords import KeywordResult
@@ -73,6 +74,7 @@ _ARBITRATION: CanonFile[dict[str, Any]] = CanonFile(CANON_DIR / "page_arbitratio
 
 
 UNKNOWN = "Unknown"
+OTHERS = axes.OTHERS
 
 
 def thresholds() -> dict[str, float]:
@@ -241,6 +243,8 @@ class FinalPage:
     page_subtype: Optional[str]
     family: Optional[str] = None  # L1; None reads page_type
     names: tuple[str, ...] = ()  # canon page type, L3, L2, L1 (axes.names_of)
+    l2: Optional[str] = None  # its own L2 (axes.l2_of)
+    under_l1: dict[str, Any] = field(default_factory=dict)  # axes.under_l1_of
     category: Optional[str] = None  # its own classification_category (from the canon)
     codeability_rule: Optional[str] = None  # page_type_tag | context | source
     title_l1: Optional[str] = None  # the L1 whose canon title heads the page
@@ -291,10 +295,37 @@ def _codability_in(agreed: str, page: FinalPage, document_codability: Optional[s
     return document_codability
 
 
+def _names_under(agreed: str, page: FinalPage) -> tuple[str, str]:
+    """``page_type`` / ``page_subtype`` for a page bound into a document of the
+    ``agreed`` family, so L1, L2 and L3 always agree with the v24 hierarchy:
+
+    * inside a Progress Note, a page of an embedded family is Progress Note /
+      its own L2, else its family (Progress Note / Medication List);
+    * elsewhere, the L2 (and L3) the page classifier gave the page under that
+      L1 (``under_l1``: the model's, else the canon's) -- "L1 (L2)" / L3 or
+      L1 / L2;
+    * a row classified before ``under_l1`` existed: its own name, when the
+      hierarchy places it under that L1;
+    * otherwise L1 / Others.
+    """
+    if agreed == _section_l1():
+        if _family(page) in set(_note_rules().get("embedded_families") or ()):
+            return agreed, page.l2 or _family(page) or OTHERS
+        return agreed, OTHERS
+    there = (page.under_l1 or {}).get(agreed) or {}
+    if there.get("l2"):
+        return (f"{agreed} ({there['l2']})", there["l3"]) if there.get("l3") else (agreed, there["l2"])
+    permitted = axes.l2_names(agreed)
+    own = (page.l2, *page.names) if page.names else (page.l2, page.page_subtype, page.page_type)
+    return agreed, next((name for name in own if name and name in permitted), OTHERS)
+
+
 def _keep(page: FinalPage, rule: str, review: bool, codability: Optional[str] = None) -> FinalResult:
+    # An L1 is never its own sub-type (rows written before page_names said Others).
+    repeated = _known(page.page_type) and page.page_subtype == page.page_type
     return FinalResult(
         page_type=page.page_type,
-        page_subtype=page.page_subtype,
+        page_subtype=OTHERS if repeated else page.page_subtype,
         model_type=page.model_type,
         codability=codability or CODABILITY_OF.get(page.category or ""),
         source="page",
@@ -347,10 +378,10 @@ def decide_final(
             context = page.codeability_rule == "context" and page is not opener
             return _keep(page, "agreed", False,
                          _codability_in(agreed, page, document_codability) if context else None)
-        subtype = page.page_type if _known(page.page_type) else agreed
+        page_type, page_subtype = _names_under(agreed, page)
         return FinalResult(
-            page_type=agreed,
-            page_subtype=subtype,
+            page_type=page_type,
+            page_subtype=page_subtype,
             model_type=page.model_type,
             codability=_codability_in(agreed, page, document_codability),
             source="continuation",
@@ -361,7 +392,7 @@ def decide_final(
     if _family(page) in set(_note_rules().get("embedded_families") or ()) and page.title_l1 == section:
         return FinalResult(
             page_type=section,
-            page_subtype=page.page_type,
+            page_subtype=_names_under(section, page)[1],
             model_type=page.model_type,
             codability=_codability_in(section, page, CODABILITY_OF["codeable"]),
             source="embedded",

@@ -195,12 +195,19 @@ class TestPageNames:
     @pytest.mark.parametrize("levels, names", [
         ((LAB, "Radiology", "CT Scan Report"), ("Lab Report/Result (Radiology)", "CT Scan Report")),
         ((LAB, "Radiology", None), (LAB, "Radiology")),
-        (("Progress Note", None, None), ("Progress Note", "Progress Note")),
+        (("Progress Note", None, None), ("Progress Note", "Others")),
         ((None, None, None), (None, None)),
     ])
     def test_one_two_and_three_levels(self, levels, names):
         l1, l2, l3 = levels
         assert axes.page_names(axes.AxesResult(l1=l1, l2=l2, l3=l3)) == names
+
+    def test_under_every_other_l1_the_page_has_a_place(self):
+        result = axes.gate(None, {}, CT_PAGE)
+        assert result.l1 == LAB and LAB not in result.under_l1
+        assert "Progress Note" not in result.under_l1  # its L2 is the content section
+        for l1, there in result.under_l1.items():
+            assert there["l2"] in axes.l2_names(l1)
 
     def test_no_axes_means_no_names(self):
         assert axes.page_names(None) == (None, None)
@@ -235,7 +242,7 @@ class TestStageRow:
 
         result = axes.AxesResult(l1="Discharge Summary", l1_confidence=0.9, codeability="discharge")
         row = _page_row(result, self._ladder())
-        assert (row["page_type"], row["page_subtype"]) == ("Discharge Summary", "Discharge Summary")
+        assert (row["page_type"], row["page_subtype"]) == ("Discharge Summary", "Others")
         assert row["classification_category"] == "discharge_summary"
 
     def test_csv_axes_columns_are_codeable_csv_columns(self):

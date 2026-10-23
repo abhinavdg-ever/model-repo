@@ -37,11 +37,13 @@ from db import (
     get_ocr_texts,
     get_page_classification_map,
     get_quality_map,
+    page_type,
     upsert_continuity,
 )
 from config import staging_dir
 from db.paths import imaging_csv, write_csv
 from stages._support import best_page_text, mark_completed, pass1_ruled_out, stage_run
+from stages.lib.blank_junk.method import text_is_visual
 from stages.lib.continuity.engine import (
     PageInput,
     assign,
@@ -169,28 +171,116 @@ def _tail_text(lines: list[Any], fraction: float = 0.33) -> str:
 
 
 STAGING_FILE = "continuity.json"
+# Every gap's full scoring (each signal, sub-scores, flags), for debugging.
+DETAIL_FILE = "continuity_detail.json"
 
 
 def scores_path(chart_name: str):
     return staging_dir(chart_name) / STAGING_FILE
 
 
+# Each signal in words, for continuity.json's "because" (2026-10-23, user: make it simple).
+_SAYS = {
+    "different_dos": "different DOS",
+    "same_dos": "same DOS",
+    "pagination_follows": "page numbers run on",
+    "signed_in_tail": "previous page signed at its end",
+    "signed_anywhere": "previous page signed",
+    "last_numbered_page": "previous page is its last numbered page",
+    "has_title": "title at the top",
+    "visit_heading": "visit heading",
+    "page_type_change": "page type changes",
+    "junk_run": "junk pages begin or end",
+    "says_continued": "says continued",
+    "sections_forward": "sections run on in order",
+    "same_visit_number": "same visit number",
+    "text_start": "where the text starts",
+    "same_header_line": "same header line",
+    "same_footer_line": "same footer line",
+    "wording_char": "wording runs on",
+    "wording_word": "wording runs on (words)",
+    "same_junk_kind": "same kind of junk",
+    "blank_between": "blank page between",
+    "cut_mid_sentence": "previous page ends mid-sentence",
+    "starts_mid_thought": "starts mid-sentence",
+    "same_page_type": "same page type",
+}
+
+
+def _because(gap: dict[str, Any]) -> list[str]:
+    """The gap's strongest reasons in words, strongest first (at most four), after any
+    rule that forced it."""
+    out: list[str] = []
+    evidence = gap.get("evidence") or {}
+    if evidence.get("demographics_boundary"):
+        out.append("Demographics page beside another kind of page: always a break")
+    parts = {**(gap.get("ending") or {}), **(gap.get("opening") or {}), **(gap.get("pair") or {})}
+    for name, value in sorted(parts.items(), key=lambda kv: -abs(kv[1]))[:4]:
+        if name == "page_fill":
+            words = "previous page ends early" if value > 0 else "previous page is full"
+        elif name == "visit_heading" and evidence.get("visit_heading"):
+            words = f"visit heading '{evidence['visit_heading']}'"
+        else:
+            words = _SAYS.get(name, name.replace("_", " "))
+        out.append(f"{words} {value:+g}")
+    if gap.get("final_pass"):
+        out.append(f"final pass: {gap['final_pass']}")
+    return out
+
+
+def _gap_view(gap: Optional[dict[str, Any]], edge: str) -> Any:
+    if not gap:
+        return edge
+    return {
+        "decision": "Break" if gap.get("decision") == "break" else "Same document",
+        "score": gap.get("score"),
+        "sure": gap.get("level"),
+        "because": _because(gap),
+    }
+
+
 def _write_scores(chart_name: str, inputs: list[PageInput], rows: list[dict[str, Any]], rules: Any) -> str:
-    """Every gap's scores and signals, per page and per document, beside extraction.json."""
+    """``continuity.json``: the documents, then each page's gap before (prev_to_this), gap
+    after (this_to_next) and final result, in words. Every signal of every gap goes to
+    ``continuity_detail.json`` beside it."""
     documents: dict[int, dict[str, Any]] = {}
-    pages = []
+    detail_documents: dict[int, dict[str, Any]] = {}
+    pages: dict[str, Any] = {}
+    detail_pages = []
     for item, row in zip(inputs, rows):
         number = row["document_seq"]
+        junk = row["segment_kind"] == "junk"
         if number is not None:
-            doc = documents.setdefault(number, {
+            doc = detail_documents.setdefault(number, {
                 "document": number, "kind": row["segment_kind"], "pages": [],
                 # A junk group has no visit: its DOS is skipped.
-                "dos_from": "Skipped" if row["segment_kind"] == "junk" else row["final_dos_from"],
-                "dos_to": "Skipped" if row["segment_kind"] == "junk" else row["final_dos_to"],
+                "dos_from": "Skipped" if junk else row["final_dos_from"],
+                "dos_to": "Skipped" if junk else row["final_dos_to"],
                 "page_type": row["final_page_type"],
             })
             doc["pages"].append(item.page_name)
-        pages.append({
+            documents.setdefault(number, {
+                "document": number,
+                "kind": "Junk" if junk else "Document",
+                "page_type": row["final_page_type"],
+                "dos": "Skipped" if junk else row["final_dos_from"],
+                "pages": doc["pages"],
+            })
+        before, after = row["signals"]["before"], row["signals"]["after"]
+        pages[item.page_name] = {
+            "page": item.page_number,
+            "kind": item.kind,
+            "prev_to_this": _gap_view(before, "first page"),
+            "this_to_next": _gap_view(after, "last page"),
+            "final": {
+                "document": number,
+                "tag": row["label"],
+                "page_type": row.get("final_page_type"),
+                "dos": row.get("final_dos_from"),
+                "review": bool(row["review_required"]),
+            },
+        }
+        detail_pages.append({
             "page_name": item.page_name,
             "page_number": item.page_number,
             "kind": item.kind,
@@ -211,22 +301,32 @@ def _write_scores(chart_name: str, inputs: list[PageInput], rows: list[dict[str,
             "title": item.title_hit,
             "page_type": item.page_type,
             "visit_ids": sorted(item.visit_ids),
-            "gap_before": row["signals"]["before"],
-            "gap_after": row["signals"]["after"],
+            "gap_before": before,
+            "gap_after": after,
         })
+    written_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     path = scores_path(chart_name)
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "version": 1,
+    # The encounter stage, which runs next, appends "encounters" to this file.
+    payload: dict[str, Any] = {
+        "version": 2,
         "chart_name": chart_name,
-        "written_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "canon_version": 4,
+        "written_at": written_at,
         "documents": list(documents.values()),
         "pages": pages,
     }
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-    tmp.replace(path)
+    detail = {
+        "version": 1,
+        "chart_name": chart_name,
+        "written_at": written_at,
+        "canon_version": 4,
+        "documents": list(detail_documents.values()),
+        "pages": detail_pages,
+    }
+    for target, body in ((path, payload), (path.with_name(DETAIL_FILE), detail)):
+        tmp = target.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(body, indent=2, default=str), encoding="utf-8")
+        tmp.replace(target)
     return str(path)
 
 
@@ -312,6 +412,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         float(final["confidence"]) if kind == "junk" and (final or {}).get("confidence") is not None else None
                     ),
                     duplicate_of=(final or {}).get("duplicate_of_page_id") if kind == "duplicate" else None,
+                    visual=kind == "main" and text_is_visual(page_type(quality.get(page_id)), text),
                 )
             )
 

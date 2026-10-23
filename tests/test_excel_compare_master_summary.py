@@ -514,14 +514,15 @@ def test_local_mode_reads_duplicate_scores_from_blank_junk_json(tmp_path):
     from app.services.imaging_overlays import index_duplicate_scores
 
     staged = tmp_path / "blank_junk.json"
-    staged.write_text(json.dumps({"version": 1, "pages": {
-        "1.jpg": {"pass_1": {"best_match": {"similarity": 0.91}},
-                  "pass_2": {"best_match": {"similarity": 0.99, "exact": True}}},
-        "2.jpg": {"pass_1": {"best_match": {"similarity": None, "similarity_at_most": 0.7, "exact": False}}},
-        "3.jpg": {"pass_1": {"verdict": "Main"}},
+    staged.write_text(json.dumps({"version": 2, "pages": {
+        "1.jpg": {"pass_1": {"duplicate": {"status": "No", "closest_page": "2.jpg", "similarity": 0.91}},
+                  "pass_2": {"duplicate": {"status": "Duplicate", "closest_page": "2.jpg", "similarity": 0.99}}},
+        "2.jpg": {"pass_1": {"duplicate": {"status": "No", "closest_page": "1.jpg", "similarity": 0.72}},
+                  "pass_2": "not judged: settled in pass 1"},
+        "3.jpg": {"pass_1": {"duplicate": {"status": "No"}}},
     }}), encoding="utf-8")
     by = index_duplicate_scores(staged)
-    assert by["1.jpg"]["duplicateConfidence"] == 0.99  # the last pass
-    assert by["#2"]["duplicateConfidence"] == 0.7
-    assert "3.jpg" not in by
+    assert by["1.jpg"]["duplicateConfidence"] == 0.99  # the last judged pass
+    assert by["#2"]["duplicateConfidence"] == 0.72
+    assert "3.jpg" not in by  # below 70%: not listed
     assert index_duplicate_scores(tmp_path / "missing.json") == {}

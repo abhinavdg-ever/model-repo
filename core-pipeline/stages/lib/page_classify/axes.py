@@ -43,6 +43,8 @@ logger = logging.getLogger(__name__)
 
 MODEL_FILES = ("label_space.json", "heads.pt", "encoder/config.json")
 NEEDS_REVIEW = "needs_review"
+# The L2 of a page whose L1 has no L2 for it (never the L1 repeated).
+OTHERS = "Others"
 MODEL, CANON = "model", "canon"
 
 _ARBITRATION: CanonFile[dict[str, Any]] = CanonFile(CANON_DIR / "page_arbitration.json")
@@ -95,6 +97,10 @@ class AxesResult:
     codeability_rule: Optional[str] = None
     # The L1 whose canon title term heads the page, if any.
     title_l1: Optional[str] = None
+    # Under every other L1 that has L2s: the L2 (and L3) the page would take
+    # there -- {L1: {l2, l2_confidence, l2_source, l3, l3_confidence}}. The Final
+    # step reads it when the page's document has another L1.
+    under_l1: dict[str, Any] = field(default_factory=dict, compare=False)
     prediction: dict[str, Any] = field(default_factory=dict, compare=False)
 
     def as_json(self) -> dict[str, Any]:
@@ -110,6 +116,7 @@ class AxesResult:
             "canon_page_type": self.canon_page_type,
             "codeability_rule": self.codeability_rule,
             "title_l1": self.title_l1,
+            "under_l1": self.under_l1 or None,
             "prediction": self.prediction or None,
         }
 
@@ -117,6 +124,7 @@ class AxesResult:
         """The codeable CSV's axes columns."""
         flat = self.as_json()
         flat.pop("prediction")
+        flat.pop("under_l1")
         return {
             ("axes_" + key if not key.startswith("specialty") else key): value
             for key, value in flat.items()
@@ -124,16 +132,16 @@ class AxesResult:
 
 
 def page_names(result: Optional[AxesResult]) -> tuple[Optional[str], Optional[str]]:
-    """``page_type`` / ``page_subtype`` from the decided levels: L1 / L1 with L1
-    only, L1 / L2 with two levels, "L1 (L2)" / L3 with three; (None, None)
-    when no L1 was decided."""
+    """``page_type`` / ``page_subtype`` from the decided levels: L1 / Others with
+    L1 only (an L1 is never its own sub-type), L1 / L2 with two levels,
+    "L1 (L2)" / L3 with three; (None, None) when no L1 was decided."""
     if result is None or not result.l1:
         return None, None
     if result.l2 and result.l3:
         return f"{result.l1} ({result.l2})", result.l3
     if result.l2:
         return result.l1, result.l2
-    return result.l1, result.l1
+    return result.l1, OTHERS
 
 
 # --- Reading a stored row (downstream stages) -------------------------------------------
@@ -176,6 +184,23 @@ def v24_names() -> frozenset[str]:
     entries = _CANON_V24.get().entries
     levels = {e["path"].get(k) for e in entries.values() for k in ("L1", "L2", "L3")}
     return frozenset(entries) | frozenset(n for n in levels if n)
+
+
+def l2_names(l1: Optional[str]) -> frozenset[str]:
+    """Every L2 the v24 hierarchy places under ``l1`` (none for an L1 without L2s)."""
+    entries = _CANON_V24.get().entries.values()
+    return frozenset(e["path"]["L2"] for e in entries if e["path"].get("L1") == l1 and e["path"].get("L2"))
+
+
+def under_l1_of(kind: dict[str, Any]) -> dict[str, Any]:
+    """The L2 / L3 the page would take under each other L1 (``AxesResult.under_l1``)."""
+    value = stored(kind).get("under_l1")
+    return value if isinstance(value, dict) else {}
+
+
+def l2_of(kind: dict[str, Any]) -> Optional[str]:
+    """The page's own L2, if its axes decided one."""
+    return stored(kind).get("l2") or None
 
 
 def title_of(kind: dict[str, Any]) -> Optional[str]:
@@ -336,6 +361,8 @@ def gate(
         l3, l3_conf = by_canon("L3", s["l3_canon_min"], l1, l2)
         sources[2] = CANON if l3 else "-"
 
+    under = _under_every_l1(raw, text, headings, l1, s, by_canon)
+
     # The canon page type behind the decided path gives the codeability (always
     # the canon's; the model's is kept in the raw prediction only) and, when
     # the model asserts none, the specialty.
@@ -363,14 +390,42 @@ def gate(
         canon_page_type=entry_name,
         codeability_rule=rule,
         title_l1=title_l1(text, headings),
+        under_l1=under,
         prediction=_raw_json(raw),
     )
+
+
+def _under_every_l1(raw: dict[str, Any], text: str, headings: tuple[str, ...], own_l1: Optional[str],
+                    s: dict[str, Any], by_canon) -> dict[str, Any]:
+    """The L2 / L3 the page would take under each L1 other than its own, by the
+    same gates as its own: the model's L2 under that L1 at ``l2_min``, else the
+    canon's at ``canon_min``; L3 always the canon's at ``l3_canon_min``. An L1
+    whose L2 is the content section (section_L1) is left out."""
+    model_by_l1 = raw.get("by_L1") or {}
+    l1s = sorted({e["path"]["L1"] for e in _CANON_V24.get().entries.values() if e["path"].get("L2")})
+    out: dict[str, Any] = {}
+    for l1 in l1s:
+        if l1 in (own_l1, s["section_L1"]):
+            continue
+        model = model_by_l1.get(l1) or {}
+        if model.get("L2") and (model.get("L2_confidence") or 0.0) >= s["l2_min"]:
+            l2, l2_conf, source = model["L2"], model["L2_confidence"], MODEL
+        else:
+            (l2, l2_conf), source = by_canon("L2", s["canon_min"], l1), CANON
+        if not l2:
+            continue
+        l3, l3_conf = by_canon("L3", s["l3_canon_min"], l1, l2)
+        out[l1] = {"l2": l2, "l2_confidence": _round(l2_conf), "l2_source": source,
+                   "l3": l3, "l3_confidence": _round(l3_conf)}
+    return out
 
 
 def _raw_json(raw: dict[str, Any]) -> dict[str, Any]:
     """The model's whole answer, rounded, for the raw prediction."""
     out: dict[str, Any] = {}
     for key, value in raw.items():
+        if key == "by_L1":  # gated into under_l1
+            continue
         if key in ("L1_top", "specialty_top"):
             out[key] = [[n, _round(p)] for n, p in value or []]
         elif key.endswith("_confidence"):

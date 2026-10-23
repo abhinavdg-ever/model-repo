@@ -61,7 +61,7 @@ SIGNALS = (
     "last_numbered_page", "has_title", "page_type_change", "junk_run", "says_continued",
     "sections_forward", "same_visit_number", "page_fill", "text_start", "same_header_line",
     "wording_char", "same_junk_kind", "blank_between", "same_footer_line", "wording_word",
-    "cut_mid_sentence", "starts_mid_thought", "same_page_type",
+    "cut_mid_sentence", "starts_mid_thought", "same_page_type", "visit_heading",
 )
 DECISIVE = frozenset({"different_dos", "same_dos", "pagination_follows", "junk_run"})
 # Every decided_by the engine writes (page_continuity_results' CHECK must allow each).
@@ -114,6 +114,8 @@ class PageInput:
     junk_subtype: str = ""
     junk_confidence: Optional[float] = None
     duplicate_of: Any = None
+    # A Visual page (page-tag document_type visual, few words; blank_junk.method.is_visual).
+    visual: bool = False
 
     @property
     def located(self) -> bool:
@@ -161,6 +163,13 @@ class Rules:
     final_rules: dict[str, bool]
     progress_note_families: tuple[str, ...]
     review_long_run: int
+    # A heading that opens a visit ("Chief Complaint") in the page's top band (2026-10-23).
+    visit_headings: tuple[re.Pattern[str], ...]
+    visit_heading_top: float
+    # A page of these types never shares a document with a page of other types (2026-10-23).
+    demographics_types: frozenset[str]
+    visit_heading_breaks: bool
+    visual_joins: bool
 
     def pts(self, name: str) -> float:
         return float(self.points[name]["points"])
@@ -227,6 +236,16 @@ def _build(data: dict[str, Any]) -> Rules:
         final_rules={k: bool(v) for k, v in (final.get("rules") or {}).items()},
         progress_note_families=tuple(final.get("progress_note_families") or ("Progress Note",)),
         review_long_run=int((data.get("review_triggers") or {}).get("long_run_without_pagination", 25)),
+        visit_headings=tuple(
+            re.compile(rf"^\W*{re.escape(term)}\b", re.IGNORECASE)
+            for term in (data.get("visit_headings") or {}).get("terms") or ()
+        ),
+        visit_heading_top=float((data.get("visit_headings") or {}).get("top_fraction", 0.33)),
+        visit_heading_breaks=bool((data.get("visit_headings") or {}).get("decisive", True)),
+        visual_joins=bool((data.get("visual_join") or {}).get("enabled", True)),
+        demographics_types=frozenset(
+            t.casefold() for t in (data.get("demographics_break") or {}).get("page_types") or ()
+        ),
     )
 
 
@@ -345,6 +364,8 @@ class Gap:
     confidence: float = 0.0
     flags: list[str] = field(default_factory=list)
     final_pass: str = ""
+    # What a signal found, in words (the visit heading's text), for continuity.json.
+    evidence: dict[str, str] = field(default_factory=dict)
 
     @property
     def sections(self) -> tuple[float, float, float]:
@@ -383,6 +404,7 @@ class Gap:
             "recorded": self.recorded,
             "flags": self.flags,
             "final_pass": self.final_pass or None,
+            "evidence": self.evidence,
         }
 
 
@@ -447,6 +469,10 @@ def score_gap(
     # opening: the later page alone
     if b.title_hit:
         O["has_title"] = pts("has_title")
+    heading = visit_heading(b, rules)
+    if heading:
+        O["visit_heading"] = pts("visit_heading")
+        gap.evidence["visit_heading"] = heading
     if b.located and b_body:
         head_bottoms = [l.bottom for l in b.lines if l.top is not None and l.top < rules.head_top and l.bottom]
         base = max(head_bottoms) if head_bottoms else 0.0
@@ -518,7 +544,59 @@ def score_gap(
         P["blank_between"] = pts("blank_between")
 
     _decide(gap, rules, proxy_fill)
+    # Demographics never shares a document with another kind of page (2026-10-23, user):
+    # a break whatever the score, which no later pass merges back.
+    if a.kind == "main" and b.kind == "main" and is_demographics(a, rules) != is_demographics(b, rules):
+        gap.is_break, gap.decided_by, gap.level = True, "decisive", "high"
+        gap.confidence = max(gap.confidence, 0.9)
+        gap.evidence["demographics_boundary"] = "Demographics page beside another kind of page"
+        gap.flags.append("Demographics boundary: always a break")
+    # A visit heading at the top (Reason for Appointment, HPI, ...) opens a new Progress
+    # Note (2026-10-23, user) -- unless the printed page N of M says it runs on.
+    if (
+        rules.visit_heading_breaks and heading and a.kind == "main" and b.kind == "main"
+        and "pagination_follows" not in P
+    ):
+        gap.is_break, gap.decided_by, gap.level = True, "decisive", "high"
+        gap.confidence = max(gap.confidence, 0.9)
+        gap.flags.append(f"visit heading '{heading}': always a break")
+    # A Visual page that is not junk belongs to the page before it (2026-10-23, user).
+    if rules.visual_joins and b.visual and b.kind == "main" and a.kind == "main":
+        gap.is_break, gap.decided_by, gap.level = False, "decisive", "high"
+        gap.confidence = max(gap.confidence, 0.9)
+        gap.evidence["visual_join"] = "Visual page joins the page before it"
+        gap.flags.append("Visual page: always joins the previous page")
     return gap
+
+
+def is_demographics(page: "PageInput", rules: Rules) -> bool:
+    """The page is a Demographics page: any of its v24 names (or its family) is one of the
+    canon's ``demographics_break.page_types``."""
+    names = {name.casefold() for name in (*page.names, page.page_type) if name}
+    return bool(names & rules.demographics_types)
+
+
+def visit_heading(page: "PageInput", rules: Rules) -> Optional[str]:
+    """A heading that opens a visit ("Chief Complaint", "Reason for Visit") among the
+    page's lines in its top band -- the first lines when the OCR gave no positions -- or
+    among its section headings there. The matched text, or None."""
+    if not rules.visit_headings:
+        return None
+    located = [line for line in page.lines if line.top is not None]
+    lines = (
+        [line.text for line in located if line.top < rules.visit_heading_top]
+        if located else [line.text for line in page.lines[:8]]
+    )
+    lines += [
+        str(header.get("text") or "")
+        for header in page.section_headers
+        if header.get("top") is None or float(header.get("top") or 0) < rules.visit_heading_top
+    ]
+    for text in lines:
+        for pattern in rules.visit_headings:
+            if pattern.search(text.strip()):
+                return text.strip()[:60]
+    return None
 
 
 def _level(total: float, rules: Rules) -> str:

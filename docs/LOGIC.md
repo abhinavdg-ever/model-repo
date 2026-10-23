@@ -326,7 +326,7 @@ Downstream stages read `v_page_blank_junk_final` and never re-derive precedence.
 |---|---|
 | `blank_junk_classification` | `pass_no`, `blank_junk_flag`, `junk_subtype`, `duplicate_of_page_id`, `ocr_source`, `confidence`, `reason`, `is_final`, `duplicate_confidence` |
 | disk | `imaging/<chart>_junk.csv` — **fully rewritten from the database** after each pass |
-| disk | `staging/blank_junk.json` — every ballot and deciding rule per page and pass |
+| disk | `staging/blank_junk.json` — one simple block per page and pass plus the final decision; `staging/blank_junk_detail.json` — every ballot |
 
 > v6 truncated the CSV in pass 1 and appended in pass 2, so re-running pass 2
 > alone duplicated every row. The full rewrite makes the file converge.
@@ -687,7 +687,7 @@ high, and 0–1). Recorded, not yet acting: where the next page's text begins, a
 two sub-score conflict patterns.
 
 **Final values** (the `imaging_final` stage): Final page type = the document's
-first page's (sub-type can differ, §7). Final DOS = the **first dated
+first page's L1; each page's L2 / L3 is the one it scored under that L1, so the pair always fits the v24 hierarchy, else *L1 / Others* (Progress Note / Medication List inside a note). Specialty = the first page with one, on every page. Final DOS = the **first dated
 page's** (the first page's when dated), Final encounter type = the **first page's**, on every page; a stand-alone document whose every page is
 a `default_final_dos` type (demographics, registration, growth chart, problem
 list, immunizations) takes 2222-02-02. A document's DOS in review-ui's Doc Summary is that Final DOS.
@@ -698,7 +698,7 @@ list, immunizations) takes 2222-02-02. A document's DOS in review-ui's Doc Summa
 |---|---|
 | `page_continuity_results` | the original columns, one row per content or junk page: `document_seq` (documents and junk groups share the numbering), `seq`, `position` (first = New, single = Standalone), `relation`, `score` (the Break Before), `confidence` (0–1, that decision's), `decided_by`, `confidence_level`, `evidence`, `link_strength`, `start_confirmed`, `review_required` |
 | `<chart>/staging/continuity.json` | every score of every gap: per page both scores, the label, confidence, the facts read (DOS trust, page number, signature, visit numbers) and both gaps' ending / opening / pair points, sub-scores, flags and final pass; per document its pages, DOS and page type |
-| `imaging_final` (the `imaging_final` stage) | one row per page: the Final value of every reviewer field; page type agreed across the document (`page_type_source`), DOS the first dated page's and encounter type the first page's (`dos_source = document`); a duplicate page copies the page it duplicates (`duplicate`, `duplicate_of_page_id`); `specialty` is the page's own page-axes specialty, `Unknown` when it has none (no ground truth). See [CONTINUITY_LOGIC.md](CONTINUITY_LOGIC.md) |
+| `imaging_final` (the `imaging_final` stage) | one row per page: the Final value of every reviewer field; page type agreed across the document (`page_type_source`), DOS the first dated page's and encounter type the first page's (`dos_source = document`); a duplicate page copies the page it duplicates (`duplicate`, `duplicate_of_page_id`); `specialty` is the document's first page-axes specialty (the page's own outside a document), `Unknown` when none (no ground truth). See [CONTINUITY_LOGIC.md](CONTINUITY_LOGIC.md) |
 | disk | `imaging/<chart>_continuity.csv`: every page (blank and duplicate too), the same fields plus `kind`, `segment`, `dos_trust`, the printed `page_no` / `page_total`, `section_headers` and `layout_source` |
 
 ---

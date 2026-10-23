@@ -231,23 +231,24 @@ DS = "Discharge Summary"
 
 
 def fp(pid, page_type, page_subtype=None, *, family=None, names=(), category="codeable", rule="page_type_tag",
-       title=None, seq=None, link=None, conf=None):
-    return FinalPage(pid, page_type, page_subtype or page_type, family=family, names=names, category=category,
+       title=None, seq=None, link=None, conf=None, l2=None):
+    return FinalPage(pid, page_type, page_subtype or page_type, family=family, names=names, l2=l2, category=category,
                      codeability_rule=rule, title_l1=title, model_type=page_type,
                      document_seq=1 if seq else None, seq=seq, link_strength=link, confidence=conf)
 
 
 class TestAgreedPageType:
-    """Every page takes the first page's family (L1); its own names stay below it."""
+    """Every page takes the first page's family (L1); its L2 is one the hierarchy places under it."""
 
-    def test_the_first_page_sets_the_family_and_pages_keep_their_own_as_sub_type(self):
+    def test_the_first_page_sets_the_family_and_a_foreign_page_is_others(self):
         doc = [fp(1, DS, "Depart/Discharge Note", category="discharge_summary", seq=1),
                fp(2, PN, seq=2, link="strong"),
                fp(3, f"{LAB} (Laboratory)", "Chemistry Panel", family=LAB, category="non_codeable",
-                  names=("Chemistry Panel", "Laboratory", LAB), seq=3, link="strong")]
+                  names=("Chemistry Panel", "Laboratory", LAB), l2="Laboratory", seq=3, link="strong")]
         finals = [decide_final(p, doc) for p in doc]
         assert [f.page_type for f in finals] == [DS] * 3
-        assert [f.page_subtype for f in finals] == ["Depart/Discharge Note", PN, f"{LAB} (Laboratory)"]
+        # Neither a Progress Note nor a lab page has a place under Discharge Summary.
+        assert [f.page_subtype for f in finals] == ["Depart/Discharge Note", "Others", "Others"]
         assert [f.continuation_rule for f in finals] == ["agreed", "agreed_first_page", "agreed_first_page"]
         assert {f.codability for f in finals} == {"Discharge"}
         assert not any(f.needs_review for f in finals)
@@ -264,12 +265,29 @@ class TestAgreedPageType:
     def test_lab_inside_a_progress_note_stays_non_codable_radiology_does_not(self):
         doc = [fp(1, PN, seq=1),
                fp(2, f"{LAB} (Laboratory)", "Chemistry Panel", family=LAB, category="non_codeable",
-                  names=("Chemistry Panel", "Laboratory", LAB), seq=2, link="strong"),
+                  names=("Chemistry Panel", "Laboratory", LAB), l2="Laboratory", seq=2, link="strong"),
                fp(3, f"{LAB} (Radiology)", "CT Scan Report", family=LAB, category="non_codeable",
-                  names=("CT Scan Report", "Radiology", LAB), seq=3, link="strong")]
+                  names=("CT Scan Report", "Radiology", LAB), l2="Radiology", seq=3, link="strong")]
         lab, rad = decide_final(doc[1], doc), decide_final(doc[2], doc)
-        assert (lab.page_type, lab.page_subtype, lab.codability) == (PN, f"{LAB} (Laboratory)", "Non-Codable")
-        assert (rad.page_type, rad.page_subtype, rad.codability) == (PN, f"{LAB} (Radiology)", "Codable")
+        assert (lab.page_type, lab.page_subtype, lab.codability) == (PN, "Laboratory", "Non-Codable")
+        assert (rad.page_type, rad.page_subtype, rad.codability) == (PN, "Radiology", "Codable")
+
+    def test_a_medication_list_inside_a_progress_note_is_progress_note_medication_list(self):
+        doc = [fp(1, PN, seq=1),
+               fp(2, "Medication Record", "Medication List", family="Medication Record",
+                  names=("Medication List", "Medication Record"), l2="Medication List", seq=2, link="strong"),
+               fp(3, "Administrative", "Billing Statement", family="Administrative",
+                  names=("Billing Statement", "Administrative"), l2="Billing Statement", seq=3, link="strong")]
+        med, bill = decide_final(doc[1], doc), decide_final(doc[2], doc)
+        assert (med.page_type, med.page_subtype, med.codability) == (PN, "Medication List", "Non-Codable")
+        assert (bill.page_type, bill.page_subtype) == (PN, "Others")
+
+    def test_a_page_whose_own_l2_belongs_under_the_document_keeps_it(self):
+        doc = [fp(1, "Medication Record", "Medication List", family="Medication Record", seq=1),
+               fp(2, PN, "Medication Reconciliation", family=PN,
+                  names=("Medication Reconciliation", PN), seq=2, link="strong")]
+        final = decide_final(doc[1], doc)
+        assert (final.page_type, final.page_subtype) == ("Medication Record", "Medication Reconciliation")
 
     def test_a_context_page_takes_its_documents_codability(self):
         doc = [fp(1, "Problem List", seq=1, category="codeable"),
@@ -293,7 +311,7 @@ class TestAgreedPageType:
                fp(3, LAB, "Radiology", family=LAB, seq=3, link="strong", conf=0.80)]
         first = decide_final(doc[0], doc)
         assert (first.page_type, first.page_subtype, first.continuation_rule, first.needs_review) == (
-            LAB, LAB, "agreed_vote", True)
+            LAB, "Others", "agreed_vote", True)
 
     def test_no_clear_majority_keeps_each_page_and_flags_it(self):
         doc = [fp(1, "Unknown", seq=1, conf=0.6), fp(2, PN, seq=2, link="strong", conf=0.7),
@@ -315,10 +333,10 @@ class TestAgreedPageType:
 
     def test_embedded_same_page_needs_no_document(self):
         lab = fp(5, f"{LAB} (Laboratory)", "Chemistry Panel", family=LAB, category="non_codeable",
-                 names=("Chemistry Panel", "Laboratory", LAB), title=PN)
+                 names=("Chemistry Panel", "Laboratory", LAB), l2="Laboratory", title=PN)
         final = decide_final(lab, None)
         assert (final.page_type, final.page_subtype, final.continuation_rule, final.codability) == (
-            PN, f"{LAB} (Laboratory)", "embedded_same_page", "Non-Codable")
+            PN, "Laboratory", "embedded_same_page", "Non-Codable")
         rad = fp(6, f"{LAB} (Radiology)", "CT Scan Report", family=LAB, names=("Radiology", LAB), title=PN)
         assert decide_final(rad, None).codability == "Codable"
 
@@ -371,3 +389,25 @@ class TestModelFolder:
         monkeypatch.setattr(config, "PAGE_FAMILY_MODEL_DIR", str(tmp_path / "missing"))
         status = bert_module.describe()
         assert status["ready"] is False and "keywords only" in status["reason"]
+
+
+class TestFinalHierarchy:
+    """When the document's L1 differs, L2 / L3 come from the page's own scores under that L1."""
+
+    def test_the_page_takes_its_l2_and_l3_under_the_new_l1(self):
+        doc = [fp(1, f"{LAB} (Radiology)", "CT Scan Report", family=LAB, seq=1),
+               fp(2, PN, "Others", family=PN, seq=2, link="strong")]
+        doc[1] = FinalPage(**{**doc[1].__dict__, "under_l1": {
+            LAB: {"l2": "Laboratory", "l3": "Chemistry Report"}}})
+        final = decide_final(doc[1], doc)
+        assert (final.page_type, final.page_subtype) == (f"{LAB} (Laboratory)", "Chemistry Report")
+
+    def test_nothing_under_the_new_l1_is_others(self):
+        doc = [fp(1, "Medication Record", "Medication List", family="Medication Record", seq=1),
+               fp(2, "Administrative", "Billing Statement", family="Administrative",
+                  names=("Billing Statement", "Administrative"), seq=2, link="strong")]
+        final = decide_final(doc[1], doc)
+        assert (final.page_type, final.page_subtype) == ("Medication Record", "Others")
+
+    def test_an_l1_is_never_its_own_sub_type(self):
+        assert decide_final(fp(1, PN), None).page_subtype == "Others"

@@ -8,7 +8,7 @@ relative to `core-pipeline/`.
 | Engine | `stages/lib/blank_junk/method.py` (`decide`) |
 | Stage | `stages/lib/blank_junk/stage.py` (pass 1 and pass 2) |
 | Settings | `stages/lib/keyword-canon/blank_junk_context_canon.json` → `distilbert` (reloads on change) |
-| Debug | `<chart>/staging/blank_junk.json`: every page's DistilBERT probabilities, rule and reason, both passes |
+| Debug | `<chart>/staging/blank_junk.json` (version 2): per page `pass_1` / `pass_2` (p_junk, p_keep, empty, text_ends_at, card_keywords, result, rule, why, duplicate) and `final` (decision, rule, why, pass); `blank_junk_detail.json`: every ballot |
 | Output | `blank_junk_classification` (DB), `imaging/<chart>_junk.csv` |
 
 ---

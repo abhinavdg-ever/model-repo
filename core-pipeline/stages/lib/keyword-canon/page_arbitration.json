@@ -25,7 +25,7 @@
     "review_cap": 0.49
   },
   "inside_progress_note": {
-    "comment": "v24 Final rules (imaging_final, arbitration.decide_final). A page whose Final family becomes the section L1 (Progress Note) — continuing a Progress Note document, or embedded_families on a page headed by a Progress Note title — takes the document's codability, except a page carrying one of non_codeable_names (any of its canon page type / L3 / L2 / L1), which stays Non-Codable.",
+    "comment": "v24 Final rules (imaging_final, arbitration.decide_final). A page whose Final family becomes the section L1 (Progress Note) — continuing a Progress Note document, or embedded_families on a page headed by a Progress Note title — takes the document's codability, except a page carrying one of non_codeable_names (any of its canon page type / L3 / L2 / L1), which stays Non-Codable. Final L1 and L2 always agree with the v24 hierarchy (page_canon_v24.json paths): inside a Progress Note, a page of an embedded_families family is Progress Note / its own L2 (else its family), e.g. Progress Note / Medication List; inside any other document, a page keeps its own name as L2 only when the hierarchy places it under that L1; otherwise L1 / Others.",
     "non_codeable_names": [
       "Laboratory",
       "Laboratory Data",
@@ -33,7 +33,11 @@
       "Medication List"
     ],
     "embedded_families": [
-      "Lab Report/Result"
+      "Lab Report/Result",
+      "Medication Record",
+      "Immunization",
+      "Problem List",
+      "Order and Requisition"
     ]
   },
   "document_agreement": {

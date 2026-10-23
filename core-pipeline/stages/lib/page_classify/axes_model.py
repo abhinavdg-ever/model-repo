@@ -121,6 +121,7 @@ def decode(logits, model, space: dict[str, Any], top_k: int = 3) -> list[dict[st
     l3_prob = torch.softmax(masked_l3(logits, model, l2_idx), -1) if space["L3"] and l2_idx is not None else None
     spec_prob = torch.softmax(logits["specialty"], -1) if space["specialty"] else None
     code_prob = torch.softmax(logits["codeability"], -1)
+    by_l1 = _best_under_every_l1(logits, model, space, l1_prob.shape[0]) if l2_prob is not None else []
     out = []
     for i in range(l1_prob.shape[0]):
         values, indices = torch.topk(l1_prob[i], k=min(top_k, len(space["L1"])))
@@ -134,6 +135,7 @@ def decode(logits, model, space: dict[str, Any], top_k: int = 3) -> list[dict[st
             if l3_prob is not None and space["L3_by_L2"].get(pair):
                 j = int(l3_prob[i].argmax())
                 row["L3"], row["L3_confidence"] = space["L3"][j].rsplit(SEP, 1)[1], float(l3_prob[i, j])
+        row["by_L1"] = by_l1[i] if by_l1 else {}
         if spec_prob is not None:
             values, indices = torch.topk(spec_prob[i], k=min(top_k, len(space["specialty"])))
             row["specialty_top"] = [(space["specialty"][j], float(v))
@@ -145,6 +147,31 @@ def decode(logits, model, space: dict[str, Any], top_k: int = 3) -> list[dict[st
         row["codeability"], row["codeability_confidence"] = space["codeability"][j], float(code_prob[i, j])
         row["path"] = " > ".join(x for x in (row["L1"], row["L2"], row["L3"]) if x)
         out.append(row)
+    return out
+
+
+def _best_under_every_l1(logits, model, space: dict[str, Any], rows: int) -> list[dict[str, Any]]:
+    """Per row, the best L2 (and the best L3 under it) the model gives under each
+    L1 that has L2s, so the Final step can re-place a page whose document has
+    another L1 without re-running the model."""
+    import torch
+
+    out: list[dict[str, Any]] = [{} for _ in range(rows)]
+    for j, l1 in enumerate(space["L1"]):
+        if not space["L2_by_L1"].get(l1):
+            continue
+        index = torch.full((rows,), j, dtype=torch.long)
+        l2_prob = torch.softmax(masked_l2(logits, model, index), -1)
+        l2_idx = l2_prob.argmax(-1)
+        l3_prob = torch.softmax(masked_l3(logits, model, l2_idx), -1) if space["L3"] else None
+        for i in range(rows):
+            pair = space["L2"][int(l2_idx[i])]
+            best = {"L2": pair.split(SEP, 1)[1], "L2_confidence": float(l2_prob[i, l2_idx[i]]),
+                    "L3": None, "L3_confidence": None}
+            if l3_prob is not None and space["L3_by_L2"].get(pair):
+                k = int(l3_prob[i].argmax())
+                best["L3"], best["L3_confidence"] = space["L3"][k].rsplit(SEP, 1)[1], float(l3_prob[i, k])
+            out[i][l1] = best
     return out
 
 
