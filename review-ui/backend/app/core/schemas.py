@@ -491,8 +491,8 @@ class PlaygroundRun(BaseModel):
     target: str
     container_name: str = ""
     input_path: str
-    chart_list: list[str] | str | None = None
-    sample: int | None = Field(None, ge=1)
+    # Required: 1 to playground.MAX_CHARTS (10) chart names.
+    chart_list: list[str] | str
     skip_ocr: bool = True
     skip_completed: bool = False
 

@@ -8,6 +8,20 @@ type Props = {
   onBack: () => void;
 };
 
+/** Charts one run may start (the server refuses more). */
+const MAX_CHARTS = 10;
+
+/** Chart names as the server reads them: split on commas, spaces and new lines,
+ * quotes and brackets dropped, each once. */
+export function chartNames(text: string): string[] {
+  const out: string[] = [];
+  for (const raw of text.split(/[\s,;]+/)) {
+    const name = raw.trim().replace(/^["'`[\](){}]+|["'`[\](){}]+$/g, "").trim();
+    if (name && !out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
 /** As the server derives it: the last folder dropped, Raw_Input -> Processed
  * (Raw_Input/Run2/Batch6/DEID_PNGs -> Processed/Run2/Batch6). */
 export function outputPathFor(inputPath: string): string {
@@ -26,7 +40,6 @@ export default function PlaygroundView({ config, onBack }: Props) {
   const [container, setContainer] = useState(config?.playground_container || "imaging-pipeline");
   const [inputPath, setInputPath] = useState("");
   const [charts, setCharts] = useState("");
-  const [sample, setSample] = useState("");
   const [skipOcr, setSkipOcr] = useState(true);
   const [skipCompleted, setSkipCompleted] = useState(false);
   const [running, setRunning] = useState(false);
@@ -35,6 +48,12 @@ export default function PlaygroundView({ config, onBack }: Props) {
 
   const enabled = Boolean(config?.playground_enabled);
   const outputPath = inputPath.trim() ? outputPathFor(inputPath) : "";
+  const names = chartNames(charts);
+  const chartProblem = !names.length
+    ? "List at least one chart"
+    : names.length > MAX_CHARTS
+      ? `${names.length} charts listed: at most ${MAX_CHARTS} per run`
+      : null;
   const chosenTarget = targets.some((t) => t.url === target) ? target : defaultTarget;
 
   async function run() {
@@ -42,14 +61,12 @@ export default function PlaygroundView({ config, onBack }: Props) {
     setError(null);
     setResult(null);
     try {
-      const count = Number.parseInt(sample, 10);
       setResult(
         await startPlaygroundRun({
           target: chosenTarget,
           container_name: container.trim(),
           input_path: inputPath.trim(),
-          chart_list: charts,
-          sample: Number.isFinite(count) && count > 0 ? count : null,
+          chart_list: names.join(","),
           skip_ocr: skipOcr,
           skip_completed: skipCompleted,
         }),
@@ -78,8 +95,8 @@ export default function PlaygroundView({ config, onBack }: Props) {
       <section className="accuracy-section" aria-label="Batch run">
         <h2>Batch Run</h2>
         <p className="accuracy-note">
-          Starts a core-pipeline batch run over every chart folder in a blob folder (or just the
-          charts listed). Results are written to the matching Processed folder.
+          Starts a core-pipeline batch run over the charts listed (up to {MAX_CHARTS}) in a blob
+          folder. Results are written to the matching Processed folder.
         </p>
         {!enabled ? (
           <PageMessage kind="error">
@@ -117,23 +134,17 @@ export default function PlaygroundView({ config, onBack }: Props) {
             <small>Derived: the last folder dropped, Raw_Input becomes Processed.</small>
           </label>
           <label>
-            <span>Charts (optional)</span>
+            <span>Charts (required, up to {MAX_CHARTS})</span>
             <textarea
               rows={3}
               value={charts}
-              placeholder="Blank = every chart in the folder. One per line, or comma-separated."
+              required
+              placeholder="52743839_44976074, 52754737_48221214 — one per line or comma-separated; no quotes needed"
               onChange={(e) => setCharts(e.target.value)}
             />
-          </label>
-          <label>
-            <span>At most (optional)</span>
-            <input
-              type="number"
-              min={1}
-              value={sample}
-              placeholder="All"
-              onChange={(e) => setSample(e.target.value)}
-            />
+            <small className={charts.trim() && chartProblem ? "playground-error" : undefined}>
+              {charts.trim() && chartProblem ? chartProblem : `${names.length} of ${MAX_CHARTS}`}
+            </small>
           </label>
           <div className="playground-checks">
             <label>
@@ -153,7 +164,9 @@ export default function PlaygroundView({ config, onBack }: Props) {
             <button
               type="button"
               className="landing-file-viewer-btn"
-              disabled={!enabled || running || !chosenTarget || !inputPath.trim() || !container.trim()}
+              disabled={
+                !enabled || running || !chosenTarget || !inputPath.trim() || !container.trim() || Boolean(chartProblem)
+              }
               onClick={run}
             >
               <Play size={14} aria-hidden="true" />

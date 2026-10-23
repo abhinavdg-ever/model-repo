@@ -774,11 +774,18 @@ def playground_batch_run(
     container = body.container_name.strip() or settings.playground_container.strip()
     if not container:
         raise HTTPException(status_code=400, detail="Give the blob container")
+    charts = playground.chart_names(body.chart_list)
+    if not charts:
+        raise HTTPException(status_code=400, detail="List the charts to run (up to 10)")
+    if len(charts) > playground.MAX_CHARTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{len(charts)} charts listed: a run takes at most {playground.MAX_CHARTS}",
+        )
     request = playground.batch_body(
         container_name=container,
         input_path=body.input_path,
-        chart_list=playground.chart_names(body.chart_list),
-        sample=body.sample,
+        chart_list=charts,
         skip_ocr=body.skip_ocr,
         skip_completed=body.skip_completed,
     )

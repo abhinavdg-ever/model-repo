@@ -17,8 +17,9 @@ def test_the_output_folder_follows_from_the_input(given, output):
     assert playground.output_path_for(given) == output
 
 
-def test_chart_names_split_on_commas_spaces_and_lines():
+def test_chart_names_split_on_commas_spaces_and_lines_and_need_no_quotes():
     assert playground.chart_names("a, b\nc  a") == ["a", "b", "c"]
+    assert playground.chart_names('["a", "b"]') == playground.chart_names("'a','b'") == ["a", "b"]
     assert playground.chart_names(None) == []
 
 
@@ -65,6 +66,19 @@ def test_only_an_admin_starts_a_run_and_the_output_is_derived(monkeypatch):
         assert blank.status_code == 400
         missing = {k: v for k, v in run.items() if k != "target"}
         assert client.post("/api/playground/batch-run", json=missing, headers=bearer("admin")).status_code == 422
+        # Charts are required, at most 10, and "At most" (sample) is gone.
+        no_charts = {k: v for k, v in run.items() if k != "chart_list"}
+        assert client.post("/api/playground/batch-run", json=no_charts, headers=bearer("admin")).status_code == 422
+        empty = client.post("/api/playground/batch-run", json={**run, "chart_list": " , "}, headers=bearer("admin"))
+        assert empty.status_code == 400
+        eleven = ",".join(f"c{n}" for n in range(11))
+        many = client.post("/api/playground/batch-run", json={**run, "chart_list": eleven}, headers=bearer("admin"))
+        assert many.status_code == 400 and "at most 10" in many.json()["detail"]
+        ten = client.post("/api/playground/batch-run", json={**run, "chart_list": eleven.rsplit(",", 1)[0]},
+                          headers=bearer("admin"))
+        assert ten.status_code == 202 and len(sent["body"]["chart_list"]) == 10
+        sampled = client.post("/api/playground/batch-run", json={**run, "sample": 3}, headers=bearer("admin"))
+        assert sampled.status_code == 422
         evil = client.post("/api/playground/batch-run", json={**run, "target": "http://elsewhere:80"},
                            headers=bearer("admin"))
         assert evil.status_code == 400
@@ -94,7 +108,7 @@ def test_without_pipelines_the_playground_is_off(monkeypatch):
     token = auth.issue_token(s, auth.SignedInUser(id=9, username="u", name="U", role="admin"))
     try:
         reply = TestClient(app).post(
-            "/api/playground/batch-run", json={"target": "VM", "input_path": "Raw_Input/R/B/p"},
+            "/api/playground/batch-run", json={"target": "VM", "input_path": "Raw_Input/R/B/p", "chart_list": "c1"},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert reply.status_code == 503

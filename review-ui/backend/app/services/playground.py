@@ -16,6 +16,8 @@ from typing import Any
 RAW_INPUT = "Raw_Input"
 PROCESSED = "Processed"
 TIMEOUT_SECONDS = 60
+# Charts one Playground run may start (2026-10-23, user).
+MAX_CHARTS = 10
 
 
 class PipelineError(RuntimeError):
@@ -45,11 +47,13 @@ def output_path_for(input_path: str) -> str:
 
 
 def chart_names(text: str | list[str] | None) -> list[str]:
-    """Chart names from a list, or text split on commas, spaces and new lines."""
+    """Chart names from a list, or text split on commas, spaces and new lines. Quotes
+    and brackets around them are dropped: no quoting is needed, and a pasted
+    ["a", "b"] or 'a','b' reads the same as a, b."""
     items = text if isinstance(text, list) else re.split(r"[\s,;]+", text or "")
     seen: list[str] = []
     for item in items:
-        name = str(item).strip()
+        name = str(item).strip().strip("\"'`[](){}").strip()
         if name and name not in seen:
             seen.append(name)
     return seen
@@ -60,7 +64,6 @@ def batch_body(
     container_name: str,
     input_path: str,
     chart_list: list[str],
-    sample: int | None,
     skip_ocr: bool,
     skip_completed: bool,
 ) -> dict[str, Any]:
@@ -76,8 +79,6 @@ def batch_body(
     }
     if chart_list:
         body["chart_list"] = chart_list
-    if sample:
-        body["sample"] = sample
     return body
 
 

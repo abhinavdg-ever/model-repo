@@ -394,7 +394,6 @@ export type PlaygroundRunRequest = {
   container_name: string;
   input_path: string;
   chart_list: string;
-  sample: number | null;
   skip_ocr: boolean;
   skip_completed: boolean;
 };
