@@ -475,8 +475,10 @@ class AppConfigResponse(BaseModel):
     blob_entra_ready: bool = False
     blob_auth_required: bool = False
     blob_sas_configured: bool = False
-    # Playground (admins only): CORE_PIPELINE_URL is set, and the default container.
+    # Playground (admins only): the core-pipeline APIs a run can go to (first = default)
+    # and the default container.
     playground_enabled: bool = False
+    playground_targets: list[str] = Field(default_factory=list)
     playground_container: str = ""
 
 
@@ -485,9 +487,31 @@ class PlaygroundRun(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # One of CORE_PIPELINE_URLS; empty = the first.
+    target: str = ""
     container_name: str = ""
     input_path: str
     chart_list: list[str] | str | None = None
     sample: int | None = Field(None, ge=1)
     skip_ocr: bool = False
     skip_completed: bool = False
+
+
+class NewUser(BaseModel):
+    """An admin creates a user; the username must not exist yet (any case)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    username: str
+    name: str = ""
+    password: str
+    role: Literal["reviewer", "admin", "viewer"] = "reviewer"
+
+
+class PasswordReset(BaseModel):
+    """An admin sets a new password for an existing user."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    username: str
+    password: str

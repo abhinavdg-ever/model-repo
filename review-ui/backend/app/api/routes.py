@@ -20,6 +20,8 @@ from app.core.schemas import (
     AnnotationRow,
     AnnotationSaveRequest,
     AppConfigResponse,
+    NewUser,
+    PasswordReset,
     PlaygroundRun,
     FileViewerFolderDetail,
     FileViewerListResponse,
@@ -39,7 +41,7 @@ from app.core.schemas import (
     EncounterReviewSave,
 )
 from app.services.blob_store import download_blob_bytes
-from app.services import playground
+from app.services import playground, user_admin
 from app.services.folder_list import FolderListParams, build_folder_list
 from app.services.annotations import annotation_file, load_annotations, save_annotation
 from app.services.extraction_review import (
@@ -186,7 +188,8 @@ def app_config(request: Request) -> AppConfigResponse:
         blob_entra_ready=settings.blob_entra_ready,
         blob_auth_required=settings.blob_auth_required,
         blob_sas_configured=sas_configured,
-        playground_enabled=bool(settings.core_pipeline_url.strip()),
+        playground_enabled=bool(settings.playground_targets),
+        playground_targets=settings.playground_targets,
         playground_container=settings.playground_container.strip(),
     )
 
@@ -754,9 +757,13 @@ def playground_batch_run(
         raise HTTPException(status_code=401, detail="Sign in again to start a run")
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Only an admin can start a run")
-    base_url = settings.core_pipeline_url.strip()
-    if not base_url:
-        raise HTTPException(status_code=503, detail="Playground is off: set CORE_PIPELINE_URL in review-ui/.env")
+    targets = settings.playground_targets
+    if not targets:
+        raise HTTPException(status_code=503, detail="Playground is off: set CORE_PIPELINE_URLS in review-ui/.env")
+    base_url = body.target.strip().rstrip("/") or targets[0]
+    # Only a configured pipeline: the browser never names an arbitrary address.
+    if base_url not in targets:
+        raise HTTPException(status_code=400, detail=f"Unknown pipeline {base_url}; choose one of {', '.join(targets)}")
     if not playground.clean_path(body.input_path):
         raise HTTPException(status_code=400, detail="Give the blob folder that holds the chart folders")
     container = body.container_name.strip() or settings.playground_container.strip()
@@ -776,7 +783,70 @@ def playground_batch_run(
         logger.warning("playground run refused for %s: %s", request["input_path"], exc.detail)
         raise HTTPException(status_code=exc.status if 400 <= exc.status < 600 else 502, detail=exc.detail) from exc
     logger.info("playground run of %s -> %s started by %s", request["input_path"], request["output_path"], user.username)
-    return {"request": request, "pipeline": answer}
+    return {"target": base_url, "request": request, "pipeline": answer}
+
+
+def _admin_with_db(user: SignedInUser | None, settings: Settings) -> SignedInUser:
+    """The signed-in admin, when users are kept in a database (401 / 403 / 503 otherwise)."""
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in again to manage users")
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only an admin can manage users")
+    if not database_url_usable(settings.database_url):
+        raise HTTPException(status_code=503, detail="Users are kept in the database, which is not configured")
+    return user
+
+
+def _user_call(action, *args, **kwargs):
+    try:
+        return action(*args, **kwargs)
+    except user_admin.UserError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+    except Exception as exc:
+        logger.warning("user admin failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not reach the users table") from exc
+
+
+@router.get("/users")
+def list_users(
+    settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
+) -> list[dict]:
+    """Admins only: every user (no password hashes)."""
+    _admin_with_db(user, settings)
+    return _user_call(user_admin.list_users, settings.database_url, settings.db_schema)
+
+
+@router.post("/users", status_code=201)
+def create_user(
+    body: NewUser,
+    settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
+) -> dict:
+    """Admins only: a new user. 409 when the username is already taken."""
+    admin = _admin_with_db(user, settings)
+    created = _user_call(
+        user_admin.create_user, settings.database_url, settings.db_schema,
+        username=body.username, name=body.name, password=body.password, role=body.role,
+    )
+    logger.info("user %s (%s) created by %s", created["username"], created["role"], admin.username)
+    return created
+
+
+@router.put("/users/password")
+def reset_user_password(
+    body: PasswordReset,
+    settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
+) -> dict:
+    """Admins only: a new password for an existing user. 404 when there is none."""
+    admin = _admin_with_db(user, settings)
+    changed = _user_call(
+        user_admin.reset_password, settings.database_url, settings.db_schema,
+        username=body.username, password=body.password,
+    )
+    logger.info("password of %s reset by %s", changed["username"], admin.username)
+    return changed
 
 
 @router.put("/folders/{folder_id}/ground-truth/sequence", response_model=list[PageGroundTruth])

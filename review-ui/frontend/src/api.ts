@@ -327,8 +327,9 @@ export type AppConfig = {
   blob_entra_ready: boolean;
   blob_auth_required: boolean;
   blob_sas_configured: boolean;
-  /** Playground (admins): CORE_PIPELINE_URL is set on the server. */
+  /** Playground (admins): CORE_PIPELINE_URLS is set on the server; the first is the default. */
   playground_enabled?: boolean;
+  playground_targets?: string[];
   playground_container?: string;
 };
 
@@ -388,6 +389,8 @@ export function deleteFolder(folderId: string): Promise<{ chart_name: string; pa
 }
 
 export type PlaygroundRunRequest = {
+  /** One of playground_targets. */
+  target: string;
   container_name: string;
   input_path: string;
   chart_list: string;
@@ -397,6 +400,8 @@ export type PlaygroundRunRequest = {
 };
 
 export type PlaygroundRunResponse = {
+  /** The core-pipeline the run went to. */
+  target: string;
   /** What was sent to core-pipeline's batch-run, output_path derived. */
   request: Record<string, unknown> & { input_path: string; output_path: string };
   /** core-pipeline's answer (queued in the background). */
@@ -406,6 +411,44 @@ export type PlaygroundRunResponse = {
 /** Admins only: start a core-pipeline batch run over a blob folder. */
 export function startPlaygroundRun(body: PlaygroundRunRequest): Promise<PlaygroundRunResponse> {
   return api("/api/playground/batch-run", { method: "POST", body: JSON.stringify(body) });
+}
+
+export type UserRole = "reviewer" | "admin" | "viewer";
+
+export type UserRow = {
+  username: string;
+  name: string;
+  role: UserRole;
+  isActive: boolean;
+  lastLoginAt: string | null;
+};
+
+/** Admins only: every user (no passwords). */
+export function listUsers(): Promise<UserRow[]> {
+  return api("/api/users");
+}
+
+/** Admins only: a new user; fails (409) when the username is taken. */
+export function createUser(body: { username: string; name: string; password: string; role: UserRole }): Promise<UserRow> {
+  return api("/api/users", { method: "POST", body: JSON.stringify(body) });
+}
+
+/** Admins only: a new password for an existing user; fails (404) when there is none. */
+export function resetUserPassword(body: { username: string; password: string }): Promise<UserRow> {
+  return api("/api/users/password", { method: "PUT", body: JSON.stringify(body) });
+}
+
+/** The server's ``detail`` from a failed call's message, else the message. */
+export function errorDetail(err: unknown, fallback: string): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  try {
+    const detail = (JSON.parse(raw) as { detail?: unknown }).detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) return detail.map((d) => (d as { msg?: string }).msg ?? String(d)).join("; ");
+    return raw || fallback;
+  } catch {
+    return raw || fallback;
+  }
 }
 
 /** Sign in; throws with the server's message ("Invalid username or password.") on failure. */

@@ -28,7 +28,7 @@ def test_only_an_admin_starts_a_run_and_the_output_is_derived(monkeypatch):
     from app.core.config import get_settings
     from app.main import app
 
-    s = Settings(database_url="", auth_secret="test-secret", core_pipeline_url="http://pipeline:8001")
+    s = Settings(database_url="", auth_secret="test-secret", core_pipeline_urls="http://pipeline:8001, http://172.20.4.170:8001/")
     app.dependency_overrides[get_settings] = lambda: s
     sent: dict = {}
 
@@ -57,6 +57,13 @@ def test_only_an_admin_starts_a_run_and_the_output_is_derived(monkeypatch):
             "skip_ocr": False, "skip_completed": False, "chart_list": ["c1", "c2"],
         }
         assert ok.json()["pipeline"] == {"status": "accepted"}
+        # The second pipeline on request; an address not configured is refused.
+        other = client.post("/api/playground/batch-run", json={**run, "target": "http://172.20.4.170:8001"},
+                            headers=bearer("admin"))
+        assert other.status_code == 202 and sent["base_url"] == "http://172.20.4.170:8001"
+        evil = client.post("/api/playground/batch-run", json={**run, "target": "http://elsewhere:80"},
+                           headers=bearer("admin"))
+        assert evil.status_code == 400
         # An output path cannot be sent: it is always derived.
         bad = client.post("/api/playground/batch-run", json={**run, "output_path": "x"}, headers=bearer("admin"))
         assert bad.status_code == 422
@@ -64,13 +71,17 @@ def test_only_an_admin_starts_a_run_and_the_output_is_derived(monkeypatch):
         app.dependency_overrides.clear()
 
 
-def test_without_core_pipeline_url_the_playground_is_off(monkeypatch):
+def test_by_default_localhost_and_the_lan_pipeline_are_offered():
+    assert Settings(database_url="").playground_targets == ["http://localhost:8001", "http://172.20.4.170:8001"]
+
+
+def test_without_pipelines_the_playground_is_off(monkeypatch):
     from fastapi.testclient import TestClient
 
     from app.core.config import get_settings
     from app.main import app
 
-    s = Settings(database_url="", auth_secret="test-secret", core_pipeline_url="")
+    s = Settings(database_url="", auth_secret="test-secret", core_pipeline_urls="")
     app.dependency_overrides[get_settings] = lambda: s
     token = auth.issue_token(s, auth.SignedInUser(id=9, username="u", name="U", role="admin"))
     try:

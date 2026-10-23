@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft, Play } from "lucide-react";
-import { startPlaygroundRun, type AppConfig, type PlaygroundRunResponse } from "./api";
+import { errorDetail, startPlaygroundRun, type AppConfig, type PlaygroundRunResponse } from "./api";
 
 type Props = {
   config: AppConfig | null;
@@ -16,17 +16,9 @@ export function outputPathFor(inputPath: string): string {
   return ["Processed", ...parts].join("/");
 }
 
-function errorText(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err);
-  try {
-    const detail = (JSON.parse(raw) as { detail?: unknown }).detail;
-    return typeof detail === "string" ? detail : JSON.stringify(detail);
-  } catch {
-    return raw || "Could not start the run";
-  }
-}
-
 export default function PlaygroundView({ config, onBack }: Props) {
+  const targets = config?.playground_targets ?? [];
+  const [target, setTarget] = useState(targets[0] ?? "");
   const [container, setContainer] = useState(config?.playground_container || "imaging-pipeline");
   const [inputPath, setInputPath] = useState("");
   const [charts, setCharts] = useState("");
@@ -48,6 +40,7 @@ export default function PlaygroundView({ config, onBack }: Props) {
       const count = Number.parseInt(sample, 10);
       setResult(
         await startPlaygroundRun({
+          target: target || targets[0] || "",
           container_name: container.trim(),
           input_path: inputPath.trim(),
           chart_list: charts,
@@ -57,7 +50,7 @@ export default function PlaygroundView({ config, onBack }: Props) {
         }),
       );
     } catch (err) {
-      setError(errorText(err));
+      setError(errorDetail(err, "Could not start the run"));
     } finally {
       setRunning(false);
     }
@@ -86,11 +79,21 @@ export default function PlaygroundView({ config, onBack }: Props) {
         </p>
         {!enabled ? (
           <p className="playground-error" role="alert">
-            The Playground is off on this server: set CORE_PIPELINE_URL in review-ui/.env.
+            The Playground is off on this server: set CORE_PIPELINE_URLS in review-ui/.env.
           </p>
         ) : null}
 
         <div className="playground-form">
+          <label>
+            <span>Pipeline</span>
+            <select value={target || targets[0] || ""} onChange={(e) => setTarget(e.target.value)}>
+              {targets.map((url) => (
+                <option key={url} value={url}>
+                  {url}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             <span>Container</span>
             <input value={container} onChange={(e) => setContainer(e.target.value)} />
@@ -162,7 +165,7 @@ export default function PlaygroundView({ config, onBack }: Props) {
         {result ? (
           <div className="playground-result" role="status">
             <p>
-              Started: <code>{result.request.input_path}</code> → <code>{result.request.output_path}</code>.
+              Started on <code>{result.target}</code>: <code>{result.request.input_path}</code> → <code>{result.request.output_path}</code>.
               It runs in the background; the charts appear in History as they finish.
             </p>
             <pre>{JSON.stringify(result.pipeline, null, 2)}</pre>

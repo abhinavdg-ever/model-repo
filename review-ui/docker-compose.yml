@@ -6,8 +6,8 @@
 # things with the core-pipeline deployment:
 #   * the Postgres database (available later; compose is Local Mode for now)
 #   * the chart workspace volume, mounted READ-ONLY here
-# It calls the core-pipeline API only for the admins' Playground, and only when
-# CORE_PIPELINE_URL is set; core-pipeline never calls this one.
+# It calls the core-pipeline API only for the admins' Playground (CORE_PIPELINE_URLS);
+# core-pipeline never calls this one.
 #
 # Two modes, switched per browser from the top bar (Local / DB):
 #   Local — OCR / imaging / page images from /data/folders.
@@ -57,9 +57,10 @@ services:
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
       BLOB_SAS_TOKEN: ${BLOB_SAS_TOKEN:-}
-      # Playground (admins): start core-pipeline batch runs. Empty = off. On the same
-      # host: http://host.docker.internal:8001.
-      CORE_PIPELINE_URL: ${CORE_PIPELINE_URL:-}
+      # Playground (admins): the core-pipeline APIs a run can go to, comma-separated,
+      # first = default. Inside this container "localhost" is the container itself:
+      # the pipeline on the same host is http://host.docker.internal:8001.
+      CORE_PIPELINE_URLS: ${CORE_PIPELINE_URLS:-http://host.docker.internal:8001,http://172.20.4.170:8001}
       PLAYGROUND_CONTAINER: ${PLAYGROUND_CONTAINER:-imaging-pipeline}
     # host.docker.internal on Linux too (the Playground's CORE_PIPELINE_URL).
     extra_hosts:

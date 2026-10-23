@@ -88,9 +88,9 @@ class Settings(BaseSettings):
 
     # Legacy SAS only (blob_auth_mode=sas). Not usable when Shared Key is disabled.
     blob_sas_token: str = ""
-    # Playground (admins): core-pipeline's API, e.g. http://localhost:8001. Empty =
-    # off; this is the only place review-ui calls core-pipeline.
-    core_pipeline_url: str = ""
+    # Playground (admins): the core-pipeline APIs a run can be sent to, comma-separated;
+    # the first is the default. Empty = off. The only place review-ui calls core-pipeline.
+    core_pipeline_urls: str = "http://localhost:8001,http://172.20.4.170:8001"
     playground_container: str = "imaging-pipeline"
 
     @field_validator("blob_auth_mode", mode="before")
@@ -257,6 +257,16 @@ class Settings(BaseSettings):
                     return pref
             return empty_dirs[0]
         return path
+
+    @property
+    def playground_targets(self) -> list[str]:
+        """CORE_PIPELINE_URLS as a list, each without a trailing slash."""
+        seen: list[str] = []
+        for url in self.core_pipeline_urls.split(","):
+            url = url.strip().rstrip("/")
+            if url and url not in seen:
+                seen.append(url)
+        return seen
 
     @property
     def cors_origins(self) -> list[str]:

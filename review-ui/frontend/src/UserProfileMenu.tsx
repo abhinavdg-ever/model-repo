@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import { FlaskConical, FolderOpen, History, LogOut } from "lucide-react";
+import { FlaskConical, FolderOpen, History, LogOut, Users } from "lucide-react";
+import { roleLabel } from "./UsersView";
 
 type Props = {
   displayName?: string;
   initials?: string;
+  /** The signed-in user's role, shown under the name (Admin / Reviewer / Viewer). */
+  role?: string;
   /** "file-viewer" shows a History link; otherwise a File Viewer link */
-  currentView?: "landing" | "folder" | "file-viewer" | "accuracy" | "manual-review" | "playground";
+  currentView?: "landing" | "folder" | "file-viewer" | "accuracy" | "manual-review" | "playground" | "users";
   onOpenFileViewer?: () => void;
   /** Admins only: given, the menu offers the Playground. */
   onOpenPlayground?: () => void;
+  /** Admins only: given, the menu offers Users (create a user / reset a password). */
+  onOpenUsers?: () => void;
   onOpenHistory?: () => void;
   onLogout: () => void;
 };
@@ -16,10 +21,12 @@ type Props = {
 export default function UserProfileMenu({
   displayName = "imaging-user",
   initials = "IU",
+  role,
   currentView = "landing",
   onOpenFileViewer,
   onOpenHistory,
   onOpenPlayground,
+  onOpenUsers,
   onLogout,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -63,7 +70,7 @@ export default function UserProfileMenu({
           <div className="user-menu-header">
             <div>
               <strong>{displayName}</strong>
-              <p>Signed in</p>
+              <p>Signed in{role ? ` · ${roleLabel(role)}` : ""}</p>
             </div>
           </div>
 
@@ -107,6 +114,21 @@ export default function UserProfileMenu({
             >
               <FlaskConical size={14} aria-hidden="true" />
               Playground
+            </button>
+          ) : null}
+
+          {onOpenUsers && currentView !== "users" ? (
+            <button
+              type="button"
+              className="user-menu-item"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onOpenUsers();
+              }}
+            >
+              <Users size={14} aria-hidden="true" />
+              Users
             </button>
           ) : null}
 

@@ -1,8 +1,8 @@
 """Playground (admins only): start a core-pipeline batch run over a blob folder.
 
-The one place review-ui calls core-pipeline, and only when CORE_PIPELINE_URL is
-set. The request goes to ``POST /api/charts/batch-run`` as a blob run; the output
-folder follows from the input folder (``output_path_for``).
+The one place review-ui calls core-pipeline: one of CORE_PIPELINE_URLS (localhost
+and 172.20.4.170 by default). The request goes to ``POST /api/charts/batch-run``
+as a blob run; the output folder follows from the input (``output_path_for``).
 """
 
 from __future__ import annotations

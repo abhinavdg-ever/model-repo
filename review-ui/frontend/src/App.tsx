@@ -6,6 +6,7 @@ import FileViewer from "./FileViewer";
 import AccuracyView from "./AccuracyView";
 import ManualReviewView from "./ManualReviewView";
 import PlaygroundView from "./PlaygroundView";
+import UsersView from "./UsersView";
 import LoginPage from "./LoginPage";
 import UserProfileMenu from "./UserProfileMenu";
 import { getAppConfig, type AppConfig, type OutputMode } from "./api";
@@ -18,7 +19,8 @@ type Route =
   | { view: "file-viewer"; folderId?: string }
   | { view: "accuracy" }
   | { view: "manual-review" }
-  | { view: "playground" };
+  | { view: "playground" }
+  | { view: "users" };
 
 function parseMode(raw: string | null): OutputMode {
   return raw === "imaging" ? "imaging" : "ocr";
@@ -38,6 +40,9 @@ function parsePath(pathname: string, search: string): Route {
   }
   if (pathname === "/playground" || pathname === "/playground/") {
     return { view: "playground" };
+  }
+  if (pathname === "/users" || pathname === "/users/") {
+    return { view: "users" };
   }
   const fileMatch = pathname.match(/^\/file-viewer(?:\/([^/]+))?\/?$/);
   if (fileMatch) {
@@ -70,6 +75,7 @@ function pathFor(route: Route): string {
   if (route.view === "accuracy") return "/accuracy";
   if (route.view === "manual-review") return "/manual-review";
   if (route.view === "playground") return "/playground";
+  if (route.view === "users") return "/users";
   if (route.view === "file-viewer") {
     return route.folderId
       ? `/file-viewer/${encodeURIComponent(route.folderId)}`
@@ -198,10 +204,12 @@ export default function App() {
           <UserProfileMenu
             displayName={session?.user.name || session?.user.username || "Signed in"}
             initials={session ? initialsOf(session.user) : "U"}
+            role={session?.user.role}
             currentView={route.view}
             onOpenFileViewer={() => guardedNavigate({ view: "file-viewer" })}
             onOpenHistory={() => guardedNavigate({ view: "landing" })}
             onOpenPlayground={isAdmin ? () => guardedNavigate({ view: "playground" }) : undefined}
+            onOpenUsers={isAdmin ? () => guardedNavigate({ view: "users" }) : undefined}
             onLogout={handleLogout}
           />
         </div>
@@ -235,12 +243,16 @@ export default function App() {
               pathFor({ view: "folder", folderId, mode: "imaging", from: "accuracy" })
             }
           />
-        ) : route.view === "playground" ? (
+        ) : route.view === "playground" || route.view === "users" ? (
           isAdmin ? (
-            <PlaygroundView config={appConfig} onBack={() => navigate({ view: "landing" })} />
+            route.view === "users" ? (
+              <UsersView onBack={() => navigate({ view: "landing" })} />
+            ) : (
+              <PlaygroundView config={appConfig} onBack={() => navigate({ view: "landing" })} />
+            )
           ) : (
             <div className="workspace">
-              <p className="accuracy-note">The Playground is for admins only.</p>
+              <p className="accuracy-note">This page is for admins only.</p>
             </div>
           )
         ) : route.view === "file-viewer" ? (

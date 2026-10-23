@@ -5733,6 +5733,7 @@ input {
 }
 
 .playground-form input:not([type="checkbox"]),
+.playground-form select,
 .playground-form textarea {
   font: inherit;
   font-weight: 400;
@@ -5779,3 +5780,22 @@ input {
   background: #fafaf7;
   font-size: 0.75rem;
 }
+
+.playground-users {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  min-width: 520px;
+}
+
+.playground-users th,
+.playground-users td {
+  text-align: left;
+  padding: 0.35rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.playground-users th {
+  color: var(--brand-800);
+  font-weight: 600;
+}
+
