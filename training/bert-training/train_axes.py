@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Train the page-axes model: one encoder, five heads (L1, L2, L3, specialty,
-codeability) over the v24 taxonomy.
+codeability) over the v29 taxonomy.
 
 Input is ``training_data.jsonl`` (one page per line: ``text`` plus the labels
 ``L1``, ``L2``, ``L3``, ``specialty``, ``codeability``, and ``chart_id``).
-Every name comes from ``taxonomy_v24.json`` beside this file; nothing here
+Every name comes from ``taxonomy_v29.json`` beside this file (built by
+``training/taxonomy/build_taxonomy_v29.py``); nothing here
 knows a page type. Output, by default ``output/page-axes``, always holds the
 best epoch by validation macro F1 of the selected heads.
 
@@ -50,7 +51,7 @@ from typing import Any, Iterable
 HERE = Path(__file__).resolve().parent
 DEFAULT_DATA = HERE / "data" / "training_data.jsonl"
 DEFAULT_OUTPUT = HERE / "output" / "page-axes"
-TAXONOMY = HERE / "taxonomy_v24.json"
+TAXONOMY = HERE / "taxonomy_v29.json"
 
 os.environ.setdefault("USE_TF", "0")
 os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
@@ -125,7 +126,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def load_taxonomy(path: Path = TAXONOMY) -> dict[str, Any]:
     if not path.is_file():
-        raise SystemExit(f"No taxonomy at {path} (copy taxonomy_v24.json beside train_axes.py)")
+        raise SystemExit(f"No taxonomy at {path} (copy taxonomy_v29.json beside train_axes.py)")
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -182,7 +183,7 @@ def load_records(path: Path, taxonomy: dict[str, Any], min_chars: int) -> tuple[
             })
     problems = validate(records, taxonomy)
     if problems:
-        raise SystemExit("Labels not in taxonomy_v24.json — fix them in the annotation tool or rebuild "
+        raise SystemExit("Labels not in the taxonomy — fix them in the annotation tool or rebuild "
                          "the taxonomy:\n  " + "\n  ".join(problems))
     return records, short
 

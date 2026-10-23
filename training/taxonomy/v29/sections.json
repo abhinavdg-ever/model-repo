@@ -1,0 +1,367 @@
+{
+ "version": 1,
+ "note": "Page content sections for the subcategory axis. A page can carry several, so this is multi-label. Each section lists the header phrases that announce it. 'rollup' phrases are sub-parts that imply the parent section (exam regions imply Physical Exam, analytes imply Lab Results) and are deliberately weaker evidence than a real header. 'priority' breaks ties when one dominant section must be named: lower wins, and it is ordered by what a coder cares about, so a page carrying both a diagnosis and a lab table is reported as Visit Diagnosis.",
+ "matching": {
+  "header_line_only": true,
+  "header_band": {
+   "top_fraction": 0.15,
+   "multiplier": 2.0
+  },
+  "header_weight": 6.0,
+  "rollup_weight": 1.0,
+  "min_score_to_tag": 4.0,
+  "administrative_is_furniture": true
+ },
+ "sections": {
+  "visit_diagnosis": {
+   "display": "Visit Diagnosis",
+   "priority": 10,
+   "codeable_signal": true,
+   "headers": [
+    "assessment",
+    "assessment and plan",
+    "assessment plan",
+    "impression",
+    "diagnosis",
+    "diagnoses",
+    "visit diagnosis",
+    "visit diagnoses",
+    "principal diagnosis",
+    "encounter diagnosis",
+    "active problems",
+    "problem list",
+    "clinical diagnosis",
+    "imp plan",
+    "impression plan",
+    "discharge diagnosis",
+    "discharge diagnoses",
+    "final diagnosis",
+    "final diagnoses",
+    "principal discharge diagnosis",
+    "diagnoses at discharge",
+    "diagnosis at discharge"
+   ],
+   "rollup": []
+  },
+  "plan": {
+   "display": "Plan",
+   "priority": 15,
+   "codeable_signal": true,
+   "headers": [
+    "plan",
+    "treatment plan",
+    "plan of care",
+    "recommendations",
+    "disposition",
+    "orders placed"
+   ],
+   "rollup": []
+  },
+  "history_of_present_illness": {
+   "display": "History of Present Illness",
+   "priority": 20,
+   "codeable_signal": true,
+   "headers": [
+    "hpi",
+    "history of present illness",
+    "interval history",
+    "interval hx",
+    "subjective",
+    "narrative"
+   ],
+   "rollup": []
+  },
+  "chief_complaint": {
+   "display": "Chief Complaint",
+   "priority": 25,
+   "codeable_signal": false,
+   "headers": [
+    "chief complaint",
+    "chief complaints",
+    "reason for visit",
+    "presenting complaint",
+    "reason for encounter"
+   ],
+   "rollup": []
+  },
+  "physical_exam": {
+   "display": "Physical Exam",
+   "priority": 30,
+   "codeable_signal": true,
+   "headers": [
+    "physical exam",
+    "physical examination",
+    "exam",
+    "objective",
+    "examination"
+   ],
+   "rollup": [
+    "general",
+    "constitutional",
+    "heent",
+    "neck",
+    "chest",
+    "lungs",
+    "respiratory",
+    "cardiovascular",
+    "heart",
+    "abdomen",
+    "extremities",
+    "skin",
+    "neurological",
+    "neurologic",
+    "psychiatric",
+    "musculoskeletal",
+    "lymphatic"
+   ]
+  },
+  "review_of_systems": {
+   "display": "Review of Systems",
+   "priority": 35,
+   "codeable_signal": false,
+   "headers": [
+    "ros",
+    "review of systems",
+    "systems review"
+   ],
+   "rollup": []
+  },
+  "vitals": {
+   "display": "Vitals",
+   "priority": 40,
+   "codeable_signal": false,
+   "headers": [
+    "vitals",
+    "vital signs",
+    "vs"
+   ],
+   "rollup": [
+    "blood pressure",
+    "pulse",
+    "temperature",
+    "respirations",
+    "spo",
+    "oxygen saturation",
+    "height",
+    "weight",
+    "bmi"
+   ]
+  },
+  "lab_results": {
+   "display": "Lab Results",
+   "priority": 45,
+   "codeable_signal": false,
+   "headers": [
+    "labs",
+    "lab results",
+    "laboratory",
+    "laboratory results",
+    "lab data",
+    "results",
+    "diagnostic results"
+   ],
+   "rollup": [
+    "cbc",
+    "bmp",
+    "cmp",
+    "a1c",
+    "hemoglobin",
+    "glucose",
+    "protein",
+    "bilirubin",
+    "ketones",
+    "urinalysis",
+    "creatinine",
+    "tsh",
+    "cholesterol",
+    "specific gravity"
+   ]
+  },
+  "imaging_results": {
+   "display": "Imaging Results",
+   "priority": 46,
+   "codeable_signal": false,
+   "headers": [
+    "imaging",
+    "imaging results",
+    "radiology",
+    "radiology results"
+   ],
+   "rollup": [
+    "x ray",
+    "ct scan",
+    "mri",
+    "ultrasound",
+    "echocardiogram"
+   ]
+  },
+  "procedures": {
+   "display": "Procedures",
+   "priority": 50,
+   "codeable_signal": true,
+   "headers": [
+    "procedures",
+    "procedure",
+    "procedure performed",
+    "procedures performed",
+    "in office procedures"
+   ],
+   "rollup": []
+  },
+  "medications": {
+   "display": "Medications",
+   "priority": 55,
+   "codeable_signal": false,
+   "headers": [
+    "medications",
+    "current medications",
+    "medication list",
+    "current outpatient medications",
+    "prescriptions",
+    "meds"
+   ],
+   "rollup": []
+  },
+  "allergies": {
+   "display": "Allergies",
+   "priority": 56,
+   "codeable_signal": false,
+   "headers": [
+    "allergies",
+    "drug allergies",
+    "allergy list",
+    "nkda"
+   ],
+   "rollup": []
+  },
+  "immunizations": {
+   "display": "Immunizations",
+   "priority": 57,
+   "codeable_signal": false,
+   "headers": [
+    "immunizations",
+    "immunization history",
+    "vaccines",
+    "vaccination history"
+   ],
+   "rollup": []
+  },
+  "past_medical_history": {
+   "display": "Past Medical History",
+   "priority": 60,
+   "codeable_signal": true,
+   "headers": [
+    "past medical history",
+    "pmh",
+    "medical history",
+    "past surgical history",
+    "psh",
+    "surgical history",
+    "treatment history",
+    "case history"
+   ],
+   "rollup": []
+  },
+  "social_history": {
+   "display": "Social History",
+   "priority": 65,
+   "codeable_signal": false,
+   "headers": [
+    "social history",
+    "sochx",
+    "smoking status",
+    "tobacco use",
+    "alcohol use",
+    "substance use"
+   ],
+   "rollup": []
+  },
+  "family_history": {
+   "display": "Family History",
+   "priority": 66,
+   "codeable_signal": false,
+   "headers": [
+    "family history",
+    "famhx",
+    "family hx"
+   ],
+   "rollup": [
+    "mother",
+    "father",
+    "grandmother",
+    "grandfather",
+    "sibling"
+   ]
+  },
+  "summary": {
+   "display": "Summary",
+   "priority": 70,
+   "codeable_signal": false,
+   "headers": [
+    "summary",
+    "clinical summary",
+    "visit summary",
+    "encounter summary",
+    "patient summary",
+    "after visit summary",
+    "comments"
+   ],
+   "rollup": []
+  },
+  "patient_instructions": {
+   "display": "Patient Instructions",
+   "priority": 75,
+   "codeable_signal": false,
+   "headers": [
+    "instructions",
+    "patient instructions",
+    "patient education",
+    "education",
+    "discharge instructions",
+    "home care instructions"
+   ],
+   "rollup": []
+  },
+  "follow_up": {
+   "display": "Follow Up",
+   "priority": 80,
+   "codeable_signal": false,
+   "headers": [
+    "follow up",
+    "followup",
+    "next appointment",
+    "return visit",
+    "return to clinic",
+    "disposition and follow up"
+   ],
+   "rollup": []
+  },
+  "administrative": {
+   "display": "Administrative",
+   "priority": 95,
+   "codeable_signal": false,
+   "furniture": true,
+   "headers": [
+    "mrn",
+    "dob",
+    "date of birth",
+    "encounter id",
+    "encounter info",
+    "note date",
+    "provider",
+    "care team",
+    "billing summary",
+    "appointment type",
+    "patient mrn",
+    "account",
+    "guarantor",
+    "location",
+    "printed",
+    "phone",
+    "signed",
+    "electronically signed"
+   ],
+   "rollup": []
+  }
+ }
+}

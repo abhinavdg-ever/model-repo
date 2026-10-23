@@ -1,0 +1,490 @@
+{
+ "version": 1,
+ "note": "The specialty stream. Parallel to page type, never nested inside it: a page is Progress Note / Office Visit Note AND Ophthalmology, not Progress Note > Ophthalmology. Optional by design. Measured on 623 real pages, a specialty is detectable on 43% and two or more compete on 12%, so 'Unspecified' is a normal answer rather than a failure. Strongest evidence is the practice name in the letterhead, which is why header hits are weighted above body hits.",
+ "matching": {
+  "header_band_fraction": 0.18,
+  "header_weight": 6.0,
+  "body_weight": 1.0,
+  "min_score": 6.0,
+  "margin_to_decide": 3.0,
+  "comment_margin": "If the top two specialties are within this, the page is Ambiguous rather than a coin flip. Resolve it at document level instead.",
+  "inherit_across_document": true,
+  "comment_inherit": "A specialty found on any page of a document applies to every page of it. A lab table on page 4 of an ophthalmology note is still ophthalmology."
+ },
+ "specialties": {
+  "Ophthalmology": {
+   "header": [
+    "ophthalmology",
+    "optometry",
+    "eye institute",
+    "eye center",
+    "eye associates",
+    "eye care",
+    "retina",
+    "vision center"
+   ],
+   "body": [
+    "intraocular",
+    "fundus",
+    "visual field",
+    "slit lamp",
+    "visual acuity",
+    "tonometry",
+    "dilated retinal",
+    "cataract",
+    "glaucoma",
+    "macular"
+   ]
+  },
+  "Cardiology": {
+   "header": [
+    "cardiology",
+    "cardiovascular",
+    "heart institute",
+    "heart center",
+    "cardiac center"
+   ],
+   "body": [
+    "echocardiogram",
+    "electrocardiogram",
+    "pacemaker",
+    "ejection fraction",
+    "stress test",
+    "telemetry",
+    "atrial fibrillation",
+    "coronary"
+   ]
+  },
+  "Oncology": {
+   "header": [
+    "oncology",
+    "cancer center",
+    "cancer institute",
+    "hematology oncology",
+    "infusion center"
+   ],
+   "body": [
+    "chemotherapy",
+    "tumor board",
+    "staging",
+    "metastatic",
+    "radiation therapy",
+    "cycle 1",
+    "carcinoma"
+   ]
+  },
+  "Urology": {
+   "header": [
+    "urology",
+    "urologic",
+    "urological associates"
+   ],
+   "body": [
+    "cystoscopy",
+    "prostate",
+    "bladder instillation",
+    "bcg",
+    "psa",
+    "urodynamic",
+    "nephrolithiasis",
+    "renal stone"
+   ]
+  },
+  "Orthopedics": {
+   "header": [
+    "orthopaedic",
+    "orthopedic",
+    "bone and joint",
+    "sports medicine",
+    "spine center"
+   ],
+   "body": [
+    "arthroplasty",
+    "rotator cuff",
+    "fracture",
+    "acl",
+    "meniscus",
+    "range of motion",
+    "joint injection"
+   ]
+  },
+  "Neurology": {
+   "header": [
+    "neurology",
+    "neurological",
+    "neuroscience"
+   ],
+   "body": [
+    "electroencephalogram",
+    "electromyography",
+    "nerve conduction",
+    "seizure",
+    "neuropathy",
+    "migraine",
+    "parkinson"
+   ]
+  },
+  "Nephrology": {
+   "header": [
+    "nephrology",
+    "renal associates",
+    "kidney center",
+    "dialysis center"
+   ],
+   "body": [
+    "hemodialysis",
+    "peritoneal dialysis",
+    "esrd",
+    "creatinine clearance",
+    "av fistula",
+    "renal failure"
+   ]
+  },
+  "Obstetrics and Gynecology": {
+   "header": [
+    "obstetric",
+    "gynecolog",
+    "ob/gyn",
+    "obgyn",
+    "maternal fetal",
+    "women's health"
+   ],
+   "body": [
+    "prenatal",
+    "antepartum",
+    "postpartum",
+    "gestational age",
+    "fetal heart",
+    "colposcopy",
+    "pap smear",
+    "trimester"
+   ]
+  },
+  "Gastroenterology": {
+   "header": [
+    "gastroenterology",
+    "digestive health",
+    "gi associates"
+   ],
+   "body": [
+    "colonoscopy",
+    "endoscopy",
+    "egd",
+    "sigmoidoscopy",
+    "polyp",
+    "esophageal",
+    "hepatic"
+   ]
+  },
+  "Pulmonology": {
+   "header": [
+    "pulmonology",
+    "pulmonary",
+    "respiratory",
+    "sleep center",
+    "sleep lab"
+   ],
+   "body": [
+    "spirometry",
+    "pulmonary function",
+    "copd",
+    "sleep study",
+    "apnea",
+    "cpap",
+    "fev1"
+   ]
+  },
+  "Dermatology": {
+   "header": [
+    "dermatology",
+    "skin center",
+    "skin institute"
+   ],
+   "body": [
+    "mohs",
+    "skin biopsy",
+    "lesion",
+    "melanoma",
+    "basal cell",
+    "cryotherapy"
+   ]
+  },
+  "Behavioral Health": {
+   "header": [
+    "psychiatry",
+    "psychiatric",
+    "behavioral health",
+    "mental health",
+    "psychology"
+   ],
+   "body": [
+    "psychotherapy",
+    "depression screening",
+    "phq-9",
+    "gad-7",
+    "axis i",
+    "suicidal ideation"
+   ]
+  },
+  "Radiology": {
+   "header": [
+    "radiology",
+    "imaging center",
+    "imaging services",
+    "diagnostic imaging"
+   ],
+   "body": [
+    "impression:",
+    "findings:",
+    "contrast",
+    "tomography",
+    "mammography"
+   ]
+  },
+  "Pathology": {
+   "header": [
+    "pathology",
+    "laboratory medicine",
+    "cytopathology"
+   ],
+   "body": [
+    "specimen",
+    "gross description",
+    "microscopic",
+    "immunohistochem",
+    "histolog"
+   ]
+  },
+  "Rehabilitation": {
+   "header": [
+    "physical therapy",
+    "occupational therapy",
+    "speech therapy",
+    "rehabilitation",
+    "rehab services"
+   ],
+   "body": [
+    "range of motion",
+    "gait training",
+    "therapeutic exercise",
+    "functional mobility",
+    "plan of care units"
+   ]
+  },
+  "Audiology": {
+   "header": [
+    "audiology",
+    "hearing center",
+    "ear nose and throat",
+    "otolaryngology"
+   ],
+   "body": [
+    "audiogram",
+    "tympanometry",
+    "hearing aid",
+    "speech discrimination"
+   ]
+  },
+  "Primary Care": {
+   "header": [
+    "family medicine",
+    "family practice",
+    "internal medicine",
+    "primary care",
+    "general practice",
+    "family health"
+   ],
+   "body": [
+    "annual wellness",
+    "health maintenance",
+    "preventive care"
+   ]
+  },
+  "Emergency": {
+   "header": [
+    "emergency department",
+    "emergency room",
+    "urgent care",
+    "emergency services"
+   ],
+   "body": [
+    "triage",
+    "chief complaint:",
+    "ed course",
+    "disposition:"
+   ]
+  },
+  "Podiatry": {
+   "header": [
+    "podiatry",
+    "podiatric",
+    "foot and ankle",
+    "foot & ankle",
+    "foot clinic",
+    "d.p.m",
+    "dpm",
+    "foot care center",
+    "ankle institute"
+   ],
+   "body": [
+    "plantar fasciitis",
+    "hallux valgus",
+    "onychomycosis",
+    "bunionectomy",
+    "diabetic foot exam",
+    "nail debridement",
+    "hammertoe",
+    "metatarsal",
+    "charcot foot",
+    "ankle brachial index"
+   ]
+  },
+  "Home Health": {
+   "header": [
+    "home care",
+    "home health",
+    "home health agency",
+    "home health care",
+    "homecare services",
+    "in-home care",
+    "nursing visit note",
+    "skilled nursing visit",
+    "visiting nurse"
+   ],
+   "body": [
+    "activities of daily living in the home",
+    "attended by",
+    "can patient direct a home care worker",
+    "caregiver",
+    "dates of service",
+    "home safety",
+    "homebound reason",
+    "identify all individuals living in the home",
+    "light housekeeping",
+    "lives alone",
+    "meal preparation",
+    "needs assistance for all activities",
+    "nursing assessment for home care",
+    "supervisory only",
+    "task list and time record",
+    "taxing effort to leave home",
+    "total time",
+    "type of visit: skilled",
+    "unable to leave home"
+   ]
+  }
+ },
+ "collapse_page_types": {
+  "comment": "Page types in the current canon that encode a specialty rather than a document kind. Under the parallel model each becomes its generic type plus a specialty value, which removes near-empty classes the model cannot learn and moves the signal into a facet that generalises.",
+  "Cardiology Note": {
+   "page_family": "Progress Note",
+   "page_type": "Progress Note",
+   "specialty": "Cardiology"
+  },
+  "Dermatology Note": {
+   "page_family": "Progress Note",
+   "page_type": "Progress Note",
+   "specialty": "Dermatology"
+  },
+  "Nephrology Note": {
+   "page_family": "Progress Note",
+   "page_type": "Progress Note",
+   "specialty": "Nephrology"
+  },
+  "Neurology Note": {
+   "page_family": "Progress Note",
+   "page_type": "Progress Note",
+   "specialty": "Neurology"
+  },
+  "Oncology Note": {
+   "page_family": "Progress Note",
+   "page_type": "Progress Note",
+   "specialty": "Oncology"
+  },
+  "Urology Note": {
+   "page_family": "Progress Note",
+   "page_type": "Progress Note",
+   "specialty": "Urology"
+  },
+  "Audiology Report": {
+   "page_family": "Progress Note",
+   "page_type": "Progress Note",
+   "specialty": "Audiology"
+  },
+  "Genetic Counseling Note": {
+   "page_family": "Progress Note",
+   "page_type": "Consultation Note",
+   "specialty": "Primary Care"
+  },
+  "Travel Medicine Consultation": {
+   "page_family": "Progress Note",
+   "page_type": "Consultation Note",
+   "specialty": "Primary Care"
+  },
+  "Ophthalmology Report": {
+   "page_family": "Eye Examination",
+   "page_type": "Eye Examination Report",
+   "specialty": "Ophthalmology"
+  },
+  "Optometry Note": {
+   "page_family": "Eye Examination",
+   "page_type": "Eye Examination Report",
+   "specialty": "Ophthalmology"
+  },
+  "Physical Therapy Note": {
+   "page_family": "Therapy Note",
+   "page_type": "Therapy Note",
+   "specialty": "Rehabilitation"
+  },
+  "Occupational Therapy Note": {
+   "page_family": "Therapy Note",
+   "page_type": "Therapy Note",
+   "specialty": "Rehabilitation"
+  },
+  "Occupational Therapy Daily Note": {
+   "page_family": "Therapy Note",
+   "page_type": "Therapy Note",
+   "specialty": "Rehabilitation"
+  },
+  "Speech Therapy Note": {
+   "page_family": "Therapy Note",
+   "page_type": "Therapy Note",
+   "specialty": "Rehabilitation"
+  },
+  "Respiratory Therapy Note": {
+   "page_family": "Therapy Note",
+   "page_type": "Therapy Note",
+   "specialty": "Pulmonology"
+  },
+  "Chiropractic Treatment Note": {
+   "page_family": "Therapy Note",
+   "page_type": "Therapy Note",
+   "specialty": "Rehabilitation"
+  },
+  "Acupuncture Treatment Record": {
+   "page_family": "Therapy Note",
+   "page_type": "Therapy Note",
+   "specialty": "Rehabilitation"
+  },
+  "Cardiac Rehabilitation Note": {
+   "page_family": "Therapy Note",
+   "page_type": "Therapy Note",
+   "specialty": "Cardiology"
+  },
+  "Physical Therapy Discharge Summary": {
+   "page_family": "Therapy Discharge Summary",
+   "page_type": "Therapy Discharge Summary",
+   "specialty": "Rehabilitation"
+  },
+  "Occupational Therapy Discharge Summary": {
+   "page_family": "Therapy Discharge Summary",
+   "page_type": "Therapy Discharge Summary",
+   "specialty": "Rehabilitation"
+  },
+  "Behavioral Health Discharge Summary": {
+   "page_family": "Discharge Summary",
+   "page_type": "Discharge Summary",
+   "specialty": "Behavioral Health"
+  }
+ }
+}

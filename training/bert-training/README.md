@@ -155,10 +155,12 @@ length, seed and split settings of the saved run.
 | `training_log.csv` | loss, macro F1, accuracy and time per epoch |
 | `run_config.json` | settings, versions, device, page counts, best epoch |
 
-## Page axes (taxonomy v24): L1, L2, L3, specialty, codeability
+## Page axes (taxonomy v29): L1, L2, L3, specialty, codeability
 
 `train_axes.py` replaces the single `model_type` head with one encoder and
-five heads over `taxonomy_v24.json` (built from the client's
+five heads over `taxonomy_v29.json` (2026-10-23: built by
+`training/taxonomy/build_taxonomy_v29.py` from the v29 rules file in
+`training/taxonomy/v29/`; before that `taxonomy_v24.json`, built from the client's
 `Page_Taxonomy.xlsx` by `training/taxonomy/build_taxonomy.py`; no page type
 name is in the code). It sits beside `train.py`, which stays because
 core-pipeline still loads the old single-head model.
@@ -173,7 +175,7 @@ text ─ DistilBERT ────┼─ L2           masked by L1; not trained un
 
 ### On Colab (the usual way)
 
-1. Copy **`train_axes.py`, `predict_axes.py`, `taxonomy_v24.json`,
+1. Copy **`train_axes.py`, `predict_axes.py`, `taxonomy_v29.json`,
    `requirements.txt`** (from this folder) and **`training_data.jsonl`** (from
    the annotation tool's image folder) into one Drive folder.
 2. Open `page_axes.ipynb` in Colab, Runtime → Change runtime type → **GPU**.

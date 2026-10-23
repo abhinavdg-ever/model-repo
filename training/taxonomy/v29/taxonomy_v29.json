@@ -1,0 +1,2041 @@
+{
+ "version": 29,
+ "note": "Page type hierarchy, v10. Three principles settled here. (1) A diagnostic procedure that produces a report is a RESULT: colonoscopy, catheterisation, endoscopy and laryngoscopy sit under Lab Report/Result > Diagnostic Study, not under Operative Note. Operative Note is for the operation itself. (2) A level that only names a service line is not a level: Cardiac Diagnostic and Neurodiagnostic are gone as L2s, folded into Diagnostic Study with the specialty carrying the service line. (3) No two L2 labels under one L1 may mean the same thing, so near-synonyms are merged rather than listed side by side. 'Others' sorts last at every level.",
+ "L1": [
+  "Progress Note",
+  "Lab Report/Result",
+  "Operative Note",
+  "Procedure Note",
+  "Discharge Summary",
+  "Consent and Authorization",
+  "Demographics",
+  "Immunization",
+  "Medication Record",
+  "Order and Requisition",
+  "Problem List",
+  "Forms and Questionnaires",
+  "Patient Communication",
+  "Administrative",
+  "Others"
+ ],
+ "fallback_L2": "Others",
+ "fallback_L3": "",
+ "progress_note": {
+  "_comment": "Progress Note is the only L1 whose L2 is decided by page CONTENT rather than by the document's family. It is resolved by the section tagger (sections/sections.json), not by family_map. L3 is blank: the client asked for the bigger sections only. L3_fine below is the finer split, kept so it is one flag away if it is ever wanted. 'Procedure' here is an in-office procedure described inside a note, which is a different thing from a formal operative report; those are L1 Operative Note.",
+  "L2_source": "sections",
+  "L3": "",
+  "L3_fine_enabled": false,
+  "L2_values": [
+   "CC/HPI",
+   "Visit Diagnosis",
+   "Assessment and Plan",
+   "Summary",
+   "Problem List",
+   "Medication List",
+   "Lab Results",
+   "Imaging Results",
+   "Procedure",
+   "Physical Exam",
+   "Questionnaire",
+   "Patient Instructions",
+   "Signature",
+   "Others"
+  ],
+  "_comment_dominance": "When a page carries more than one section, the page takes the first of these that is present. Diagnosis and complaint outrank the data tables below them, because a page that states the visit diagnosis is about the visit even if two thirds of it is a lab grid.",
+  "dominance_order": [
+   "Visit Diagnosis",
+   "CC/HPI",
+   "Assessment and Plan",
+   "Summary",
+   "Problem List",
+   "Medication List",
+   "Procedure",
+   "Lab Results",
+   "Imaging Results",
+   "Physical Exam",
+   "Questionnaire",
+   "Patient Instructions",
+   "Signature",
+   "Others"
+  ],
+  "_comment_sections": "sections.json key -> coarse L2. Keys not listed here contribute no L2 (administrative is page furniture).",
+  "from_sections": {
+   "chief_complaint": "CC/HPI",
+   "history_of_present_illness": "CC/HPI",
+   "visit_diagnosis": "Visit Diagnosis",
+   "plan": "Assessment and Plan",
+   "summary": "Summary",
+   "problem_list": "Problem List",
+   "medications": "Medication List",
+   "allergies": "Medication List",
+   "lab_results": "Lab Results",
+   "imaging_results": "Imaging Results",
+   "procedures": "Procedure",
+   "physical_exam": "Physical Exam",
+   "review_of_systems": "Physical Exam",
+   "vitals": "Physical Exam",
+   "past_medical_history": "CC/HPI",
+   "social_history": "CC/HPI",
+   "family_history": "CC/HPI",
+   "immunizations": "CC/HPI",
+   "questionnaire": "Questionnaire",
+   "patient_instructions": "Patient Instructions",
+   "follow_up": "Patient Instructions",
+   "plan_of_care": "Assessment and Plan",
+   "hospital_course": "Summary",
+   "discharge_diagnosis": "Visit Diagnosis",
+   "discharge_medication": "Medication List",
+   "disposition": "Patient Instructions",
+   "signature": "Signature"
+  },
+  "_comment_signature": "A signature-only page: the closing page of a note carrying the attestation and little else. It is the End-of-document signal the boundary tagger already looks for, so it gets its own L2 rather than falling into Others.",
+  "_comment_merges": "Plan of Care folds into Assessment and Plan, and History into CC/HPI, on client direction. Both pairs were splitting the same page in practice: a care plan IS the plan section, and past medical, social and family history are the background half of the present-illness narrative.",
+  "section_rank": {
+   "_comment": "Dominance is ranked per SECTION, not per L2. Without this, folding History into CC/HPI silently promoted it: a page carrying a past medical history and a medication list used to resolve to Medication List, and would now resolve to CC/HPI purely because CC/HPI ranks second. The background-history sections keep the rank History had, so they win only when nothing else fired.",
+   "past_medical_history": "__low",
+   "social_history": "__low",
+   "family_history": "__low",
+   "immunizations": "__low"
+  }
+ },
+ "context_rules": {
+  "_comment": "Rules that need the document the page sits in, so they run after the continuity step, not before it. A form or questionnaire bound into a progress note is part of that note; the same form standing alone as its own document is not.",
+  "absorb_into_progress_note": {
+   "when_document_L1": "Progress Note",
+   "page_types": [
+    "Questionnaire",
+    "Evaluation Form",
+    "Checklist",
+    "Preventive Health Checklist",
+    "Screening Test Record",
+    "Health Maintenance Report",
+    "Mini Mental Status Examination",
+    "Activities of Daily Living Flow Sheet",
+    "Staying Healthy Assessment",
+    "Functional Assessment",
+    "Nutrition Assessment",
+    "Assessment Note",
+    "Annual Health Assessment",
+    "Annual Wellness Visit",
+    "Plan of Care",
+    "Care Plan",
+    "Treatment Plan",
+    "Nursing Care Plan",
+    "Interdisciplinary Plan of Care",
+    "Medication List",
+    "Allergy List",
+    "Problem List",
+    "Clinical Diagnosis List"
+   ],
+   "becomes": {
+    "L1": "Progress Note",
+    "L2": "Questionnaire",
+    "L3": ""
+   },
+   "comment": "Standalone, these keep their Misc path (Screening and Checklist / Assessment and Evaluation).",
+   "_comment_split": "A questionnaire page becomes L2 Questionnaire; a care plan page becomes L2 Plan of Care. Standing alone both keep their Misc path.",
+   "becomes_by_page_type": {
+    "Plan of Care": "Plan of Care",
+    "Care Plan": "Plan of Care",
+    "Treatment Plan": "Plan of Care",
+    "Nursing Care Plan": "Plan of Care",
+    "Interdisciplinary Plan of Care": "Plan of Care",
+    "Medication List": "Medication List",
+    "Allergy List": "Medication List",
+    "Problem List": "Problem List",
+    "Clinical Diagnosis List": "Problem List"
+   },
+   "_comment_standalone": "Standing alone these keep their own L1: Forms and Questionnaires for a questionnaire or care plan.",
+   "_x": null
+  },
+  "procedure_in_operative_document": {
+   "_comment": "A procedure page bound into an operative document belongs to that operation: the intraoperative record, the phase record, the OR summary. The same page standing on its own is a treatment record and belongs to the Procedure Note L1. Deciding this by NAME is impossible, because both are called a procedure note, so it is decided by the document the page sits in. Runs after the continuity step, like the other context rules.",
+   "when_document_L1": "Operative Note",
+   "page_types_from_L1": "Procedure Note",
+   "becomes": {
+    "L1": "Operative Note",
+    "L2": "Procedure",
+    "L3": ""
+   },
+   "default_when_no_document": "Procedure Note"
+  },
+  "discharge_diagnosis_page": {
+   "when_document_L1": "Discharge Summary",
+   "when_dominant_section": [
+    "visit_diagnosis"
+   ],
+   "becomes": {
+    "L1": "Discharge Summary",
+    "L2": "Discharge Diagnosis",
+    "L3": ""
+   },
+   "comment": "A page whose dominant header is a diagnosis list, sitting inside a discharge packet, is the discharge diagnosis page. The same page standing alone in an outpatient note is Progress Note > Visit Diagnosis. L1 is decided by the document family first, so this only fires inside a discharge document. It only overrides the Depart/Discharge Note catch-all: a Transfer of Care or Interim Summary page keeps its own L2 even when its dominant section is a diagnosis list, because that page's identity is the handover, not the diagnosis.",
+   "codeability": "discharge",
+   "only_when_L2_is": [
+    "Depart/Discharge Note"
+   ]
+  },
+  "notice_inside_consent_packet": {
+   "when_page_type_in": [
+    "General Notice",
+    "Discharge Notice",
+    "Notice",
+    "Notice of Privacy Practices",
+    "Privacy Notice",
+    "Patient Rights Notice",
+    "Policy Page",
+    "Office Policy",
+    "Financial Policy"
+   ],
+   "becomes": {
+    "L1": "Consent and Authorization",
+    "L2": "General Consent",
+    "L3": ""
+   },
+   "comment": "A notice about a policy is a consent wherever it sits, in a packet or on its own. Patient Communication > Notice keeps only notices that are not about a policy: a closure, a recall, a service change, a results-ready message.",
+   "_renamed": "policy_notices_are_consent",
+   "applies_anywhere": true,
+   "only_when_about": [
+    "privacy",
+    "health information practices",
+    "patient rights",
+    "patient responsibilities",
+    "office policy",
+    "financial policy",
+    "no show policy",
+    "cancellation policy",
+    "terms and conditions",
+    "assignment of benefits"
+   ]
+  }
+ },
+ "collapse_L3": {
+  "_comment": "L2 buckets that never expand to L3; L3 stays blank. Only the buckets with real page volume on the 624-page labelled set keep an L3 leaf, so this list is data, not logic in code.",
+  "Demographics": [
+   "Patient Demographics",
+   "Face Sheet",
+   "Registration Form",
+   "Others"
+  ],
+  "Immunization": [
+   "Immunization Record",
+   "Others"
+  ],
+  "Operative Note": [
+   "Surgery Report",
+   "Procedure",
+   "Pre-operative",
+   "Post-operative",
+   "Anesthesia Record",
+   "Critical Care Record",
+   "Triage Report",
+   "Others"
+  ],
+  "Administrative": [
+   "Appointment Record",
+   "Billing Statement",
+   "Administrative Record",
+   "Others"
+  ],
+  "Forms and Questionnaires": [
+   "Assessment",
+   "Questionnaire",
+   "Others"
+  ],
+  "Problem List": [],
+  "Medication Record": [
+   "Medication List",
+   "Prescription Page",
+   "Refill Record",
+   "Blood Transfusion Record",
+   "Others"
+  ],
+  "Order and Requisition": [
+   "Others"
+  ],
+  "Others": [
+   "Others"
+  ],
+  "Discharge Summary": [
+   "Depart/Discharge Note",
+   "Discharge Instruction",
+   "Discharge Medication",
+   "Transfer of Care",
+   "Interim Summary",
+   "Short Stay Summary",
+   "Others"
+  ],
+  "Patient Communication": [
+   "Provider Letter",
+   "Patient Message",
+   "Notice",
+   "Patient Education Material",
+   "Others"
+  ],
+  "Procedure Note": [
+   "Dialysis Record",
+   "Infusion and Chemotherapy",
+   "Radiation Therapy",
+   "Wound Care",
+   "Therapy Session",
+   "Elastography",
+   "Injection Visit",
+   "Knee Procedure",
+   "Laser Procedure",
+   "Lumbar Procedure",
+   "Office Procedure",
+   "Pathology Procedure",
+   "Others"
+  ],
+  "Consent and Authorization": [
+   "Surgical Consent",
+   "Transfusion Consent",
+   "Immunization Consent",
+   "HIPAA and Privacy",
+   "Release of Information",
+   "Prior Authorization",
+   "Referral Authorization",
+   "Assignment of Benefits",
+   "Others"
+  ]
+ },
+ "L3_additions": {
+  "_comment": "L3 leaves the client named that the canon did not carry as their own page type. CT angiography is a separate study from a plain CT: different protocol, different report, different code.",
+  "Lab Report/Result": {
+   "Radiology": [
+    "CT Angiography Report",
+    "MR Angiography Report"
+   ]
+  }
+ },
+ "family_map": {
+  "_comment": "page_family -> L1 and, outside Progress Note, L2. Progress Note families carry no L2 here: their L2 comes from the section tagger. 'specialty' is set only where the family was really a service line, and the document then takes a generic path.",
+  "Progress Note": {
+   "L1": "Progress Note"
+  },
+  "Specialty Note": {
+   "L1": "Progress Note"
+  },
+  "Emergency Department Note": {
+   "L1": "Progress Note",
+   "specialty": "Emergency"
+  },
+  "Home Visit Note": {
+   "L1": "Progress Note"
+  },
+  "Operative Report": {
+   "L1": "Operative Note",
+   "L2": "Surgery Report"
+  },
+  "Endoscopy Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "specialty": "Gastroenterology"
+  },
+  "Anesthesia Record": {
+   "L1": "Operative Note",
+   "L2": "Anesthesia Record",
+   "specialty": "Anesthesia"
+  },
+  "Perioperative Evaluation": {
+   "L1": "Operative Note",
+   "L2": "Pre-operative"
+  },
+  "Implant Record": {
+   "L1": "Operative Note",
+   "L2": "Others"
+  },
+  "Critical Care Record": {
+   "L1": "Progress Note",
+   "specialty": "Critical Care"
+  },
+  "Behavioral Health Note": {
+   "L1": "Progress Note",
+   "specialty": "Behavioral Health"
+  },
+  "Palliative Care Note": {
+   "L1": "Progress Note",
+   "specialty": "Palliative Care"
+  },
+  "Wound Care Note": {
+   "L1": "Procedure Note",
+   "L2": "Wound Care",
+   "specialty": "Wound Care"
+  },
+  "Therapy Note": {
+   "L1": "Procedure Note",
+   "L2": "Therapy Session",
+   "specialty": "Rehabilitation"
+  },
+  "Dialysis Record": {
+   "L1": "Procedure Note",
+   "L2": "Dialysis Record",
+   "specialty": "Dialysis"
+  },
+  "Infusion Therapy Record": {
+   "L1": "Procedure Note",
+   "L2": "Infusion and Chemotherapy",
+   "specialty": "Infusion"
+  },
+  "Obstetric and Gynecologic Record": {
+   "L1": "Progress Note",
+   "specialty": "Obstetrics and Gynecology"
+  },
+  "Eye Examination": {
+   "L1": "Progress Note",
+   "specialty": "Ophthalmology"
+  },
+  "Telephone Encounter": {
+   "L1": "Progress Note"
+  },
+  "Provider Letter": {
+   "L1": "Patient Communication"
+  },
+  "Laboratory Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Laboratory"
+  },
+  "Radiology Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Radiology"
+  },
+  "Pathology Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Pathology",
+   "specialty": "Pathology"
+  },
+  "Cardiac Diagnostic Test": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "specialty": "Cardiology"
+  },
+  "Neurodiagnostic Test": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "specialty": "Neurology"
+  },
+  "Nuclear Medicine Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Radiology",
+   "specialty": "Radiology"
+  },
+  "Diagnostic Study": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study"
+  },
+  "Sleep Study": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "specialty": "Sleep Study"
+  },
+  "Patient Demographics": {
+   "L1": "Demographics",
+   "L2": "Patient Demographics"
+  },
+  "Discharge Summary": {
+   "L1": "Discharge Summary",
+   "L2": "Depart/Discharge Note"
+  },
+  "Discharge Instructions": {
+   "L1": "Discharge Summary",
+   "L2": "Discharge Instruction"
+  },
+  "Discharge Medication": {
+   "L1": "Discharge Summary",
+   "L2": "Discharge Medication"
+  },
+  "Therapy Discharge Summary": {
+   "L1": "Discharge Summary",
+   "L2": "Depart/Discharge Note",
+   "specialty": "Rehabilitation"
+  },
+  "Transfer of Care Summary": {
+   "L1": "Discharge Summary",
+   "L2": "Transfer of Care"
+  },
+  "Interim Summary": {
+   "L1": "Discharge Summary",
+   "L2": "Interim Summary"
+  },
+  "Medication Record": {
+   "L1": "Medication Record"
+  },
+  "Order and Requisition": {
+   "L1": "Order and Requisition"
+  },
+  "Consent Form": {
+   "L1": "Consent and Authorization"
+  },
+  "Problem List": {
+   "L1": "Problem List"
+  },
+  "Plan of Care": {
+   "L1": "Progress Note",
+   "L2_hint": "Assessment and Plan"
+  },
+  "Screening and Checklist": {
+   "L1": "Forms and Questionnaires",
+   "L2": "Questionnaire"
+  },
+  "Assessment and Evaluation": {
+   "L1": "Forms and Questionnaires",
+   "L2": "Assessment"
+  },
+  "Patient Communication": {
+   "L1": "Patient Communication"
+  },
+  "Appointment Record": {
+   "L1": "Administrative",
+   "L2": "Appointment Record"
+  },
+  "Billing Statement": {
+   "L1": "Administrative",
+   "L2": "Billing Statement"
+  },
+  "Unknown": {
+   "L1": "Others"
+  },
+  "Authorization Form": {
+   "L1": "Consent and Authorization"
+  },
+  "Immunization Record": {
+   "L1": "Immunization",
+   "L2": "Immunization Record"
+  },
+  "Admission Record": {
+   "L1": "Progress Note"
+  },
+  "Vitals and Telemetry": {
+   "L1": "Progress Note"
+  },
+  "Nursing Note": {
+   "L1": "Progress Note",
+   "specialty": "Nursing"
+  },
+  "Prehospital Record": {
+   "L1": "Progress Note",
+   "specialty": "Emergency"
+  },
+  "Flow Sheet": {
+   "L1": "Operative Note",
+   "L2": "Critical Care Record",
+   "specialty": "Critical Care"
+  },
+  "Procedure Note": {
+   "L1": "Procedure Note"
+  },
+  "Discharge Diagnosis": {
+   "L1": "Discharge Summary",
+   "L2": "Discharge Diagnosis"
+  },
+  "Discharge Diagnoses": {
+   "L1": "Discharge Summary",
+   "L2": "Discharge Diagnosis"
+  },
+  "Final Diagnosis": {
+   "L1": "Discharge Summary",
+   "L2": "Discharge Diagnosis"
+  },
+  "Final Diagnoses": {
+   "L1": "Discharge Summary",
+   "L2": "Discharge Diagnosis"
+  },
+  "Principal Discharge Diagnosis": {
+   "L1": "Discharge Summary",
+   "L2": "Discharge Diagnosis"
+  },
+  "Hospital Discharge Diagnosis": {
+   "L1": "Discharge Summary",
+   "L2": "Discharge Diagnosis"
+  },
+  "Discharge Diagnosis List": {
+   "L1": "Discharge Summary",
+   "L2": "Discharge Diagnosis"
+  },
+  "Principal Diagnosis": {
+   "L1": "Discharge Summary",
+   "L2": "Discharge Diagnosis"
+  },
+  "Invoice Page": {
+   "L1": "Administrative",
+   "L2": "Billing Statement"
+  },
+  "Appointment Note": {
+   "L1": "Administrative",
+   "L2": "Appointment Record"
+  },
+  "Statement of Account": {
+   "L1": "Administrative",
+   "L2": "Billing Statement"
+  },
+  "Superbill": {
+   "L1": "Administrative",
+   "L2": "Billing Statement"
+  },
+  "Payment Plan": {
+   "L1": "Administrative",
+   "L2": "Billing Statement"
+  },
+  "Explanation of Benefits": {
+   "L1": "Administrative",
+   "L2": "Billing Statement"
+  },
+  "Appointment List": {
+   "L1": "Administrative",
+   "L2": "Appointment Record"
+  },
+  "Scheduling Note": {
+   "L1": "Administrative",
+   "L2": "Appointment Record"
+  },
+  "No Show Letter": {
+   "L1": "Administrative",
+   "L2": "Appointment Record"
+  },
+  "Cancellation Notice": {
+   "L1": "Administrative",
+   "L2": "Appointment Record"
+  },
+  "Home Health Visit Note": {
+   "L1": "Progress Note",
+   "L2": "",
+   "specialty": "Home Health"
+  },
+  "Home Care Progress Note": {
+   "L1": "Progress Note",
+   "L2": "",
+   "specialty": "Home Health"
+  },
+  "Home Health Certification": {
+   "L1": "Order and Requisition",
+   "L2": "Physician Order",
+   "specialty": "Home Health"
+  },
+  "Plan of Treatment (Home Health)": {
+   "L1": "Progress Note",
+   "L2": "Assessment and Plan",
+   "specialty": "Home Health"
+  }
+ },
+ "page_type_overrides": {
+  "_comment": "Page types that move somewhere other than their family's default. Under v5 the long list of specialty-note overrides collapses: every one of them is Progress Note with a specialty, and the L2 comes from the page content, so only the specialty needs stating.",
+  "Immunization List": {
+   "L1": "Immunization",
+   "L2": "Immunization Record"
+  },
+  "Vaccination Administration Record": {
+   "L1": "Immunization",
+   "L2": "Immunization Record"
+  },
+  "Immunization Consent Form": {
+   "L1": "Consent and Authorization",
+   "L2": "Immunization Consent"
+  },
+  "Face Sheet": {
+   "L1": "Demographics",
+   "L2": "Face Sheet"
+  },
+  "Patient Demographics": {
+   "L1": "Demographics",
+   "L2": "Patient Demographics"
+  },
+  "Cardiology Note": {
+   "L1": "Progress Note",
+   "specialty": "Cardiology"
+  },
+  "Dermatology Note": {
+   "L1": "Progress Note",
+   "specialty": "Dermatology"
+  },
+  "Nephrology Note": {
+   "L1": "Progress Note",
+   "specialty": "Nephrology"
+  },
+  "Neurology Note": {
+   "L1": "Progress Note",
+   "specialty": "Neurology"
+  },
+  "Oncology Note": {
+   "L1": "Progress Note",
+   "specialty": "Oncology"
+  },
+  "Urology Note": {
+   "L1": "Progress Note",
+   "specialty": "Urology"
+  },
+  "Audiology Report": {
+   "L1": "Progress Note",
+   "specialty": "Audiology"
+  },
+  "Consultation Note": {
+   "L1": "Progress Note"
+  },
+  "Device Specialist Note": {
+   "L1": "Progress Note",
+   "specialty": "Cardiology"
+  },
+  "Genetic Counseling Note": {
+   "L1": "Progress Note"
+  },
+  "Travel Medicine Consultation": {
+   "L1": "Progress Note"
+  },
+  "Sleep Clinic Note": {
+   "L1": "Progress Note",
+   "specialty": "Sleep Study"
+  },
+  "Dialysis Treatment Record": {
+   "L1": "Procedure Note",
+   "L2": "Dialysis Record",
+   "specialty": "Dialysis"
+  },
+  "Hemodialysis Flow Sheet": {
+   "L1": "Procedure Note",
+   "L2": "Dialysis Record",
+   "specialty": "Dialysis"
+  },
+  "Peritoneal Dialysis Record": {
+   "L1": "Procedure Note",
+   "L2": "Dialysis Record",
+   "specialty": "Dialysis"
+  },
+  "Prenatal Record": {
+   "L1": "Progress Note",
+   "specialty": "Obstetrics and Gynecology"
+  },
+  "Antepartum Record": {
+   "L1": "Progress Note",
+   "specialty": "Obstetrics and Gynecology"
+  },
+  "Postpartum Visit": {
+   "L1": "Progress Note",
+   "specialty": "Obstetrics and Gynecology"
+  },
+  "Eye Examination Report": {
+   "L1": "Progress Note",
+   "specialty": "Ophthalmology"
+  },
+  "Visual Evaluation": {
+   "L1": "Progress Note",
+   "specialty": "Ophthalmology"
+  },
+  "Physical Therapy Note": {
+   "L1": "Procedure Note",
+   "L2": "Therapy Session",
+   "specialty": "Rehabilitation"
+  },
+  "Occupational Therapy Note": {
+   "L1": "Procedure Note",
+   "L2": "Therapy Session",
+   "specialty": "Rehabilitation"
+  },
+  "Speech Therapy Note": {
+   "L1": "Procedure Note",
+   "L2": "Therapy Session",
+   "specialty": "Rehabilitation"
+  },
+  "Rehabilitation Treatment Note": {
+   "L1": "Procedure Note",
+   "L2": "Therapy Session",
+   "specialty": "Rehabilitation"
+  },
+  "Critical Care Note": {
+   "L1": "Progress Note",
+   "specialty": "Critical Care"
+  },
+  "Palliative Care Note": {
+   "L1": "Progress Note",
+   "specialty": "Palliative Care"
+  },
+  "Hospice Care Record": {
+   "L1": "Progress Note",
+   "specialty": "Palliative Care"
+  },
+  "Wound Care Note": {
+   "L1": "Procedure Note",
+   "L2": "Wound Care",
+   "specialty": "Wound Care"
+  },
+  "Infusion Therapy Note": {
+   "L1": "Procedure Note",
+   "L2": "Infusion and Chemotherapy",
+   "specialty": "Infusion"
+  },
+  "Chemotherapy Administration Record": {
+   "L1": "Procedure Note",
+   "L2": "Infusion and Chemotherapy",
+   "specialty": "Oncology"
+  },
+  "Sleep Study Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "specialty": "Sleep Study"
+  },
+  "Oximetry Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "specialty": "Sleep Study"
+  },
+  "Split Night Study Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "specialty": "Sleep Study"
+  },
+  "Titration Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "specialty": "Sleep Study"
+  },
+  "Pap and HPV Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "specialty": "Obstetrics and Gynecology"
+  },
+  "Colposcopy Examination": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "specialty": "Obstetrics and Gynecology"
+  },
+  "Fundus Photography Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "specialty": "Ophthalmology"
+  },
+  "Visual Field Interpretation": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "specialty": "Ophthalmology"
+  },
+  "Lens Parameters": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "specialty": "Ophthalmology"
+  },
+  "Radiation Therapy Record": {
+   "L1": "Procedure Note",
+   "L2": "Radiation Therapy",
+   "specialty": "Oncology"
+  },
+  "CT Angiography Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Radiology",
+   "L3": "CT Angiography Report"
+  },
+  "MR Angiography Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Radiology",
+   "L3": "MR Angiography Report",
+   "specialty": "Neurology"
+  },
+  "Short Stay Summary": {
+   "L1": "Discharge Summary",
+   "L2": "Short Stay Summary"
+  },
+  "Short Stay Record": {
+   "L1": "Discharge Summary",
+   "L2": "Short Stay Summary"
+  },
+  "Anesthesia Record": {
+   "L1": "Operative Note",
+   "L2": "Anesthesia Record",
+   "specialty": "Anesthesia"
+  },
+  "Anesthesia Evaluation": {
+   "L1": "Operative Note",
+   "L2": "Pre-operative"
+  },
+  "Pre-Anesthesia Evaluation": {
+   "L1": "Operative Note",
+   "L2": "Pre-operative"
+  },
+  "Post-Anesthesia Care Record": {
+   "L1": "Operative Note",
+   "L2": "Anesthesia Record",
+   "specialty": "Anesthesia"
+  },
+  "Perioperative Evaluation": {
+   "L1": "Operative Note",
+   "L2": "Pre-operative"
+  },
+  "Preoperative Evaluation": {
+   "L1": "Operative Note",
+   "L2": "Pre-operative"
+  },
+  "Implant Record": {
+   "L1": "Operative Note",
+   "L2": "Others"
+  },
+  "Surgery Report": {
+   "L1": "Operative Note",
+   "L2": "Surgery Report"
+  },
+  "Operative Report": {
+   "L1": "Operative Note",
+   "L2": "Surgery Report"
+  },
+  "Operative Note": {
+   "L1": "Operative Note",
+   "L2": "Surgery Report"
+  },
+  "Triage Report": {
+   "L1": "Operative Note",
+   "L2": "Triage Report",
+   "specialty": "Emergency"
+  },
+  "Triage Note": {
+   "L1": "Operative Note",
+   "L2": "Triage Report",
+   "specialty": "Emergency"
+  },
+  "Triage Assessment": {
+   "L1": "Operative Note",
+   "L2": "Triage Report",
+   "specialty": "Emergency"
+  },
+  "Triage Call Note": {
+   "L1": "Operative Note",
+   "L2": "Triage Report",
+   "specialty": "Emergency"
+  },
+  "Colonoscopy Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "L3": "Colonoscopy Report",
+   "specialty": "Gastroenterology"
+  },
+  "Endoscopy Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "L3": "Endoscopy Report",
+   "specialty": "Gastroenterology"
+  },
+  "Cardiac Catheterization Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "L3": "Cardiac Catheterization Report",
+   "specialty": "Cardiology"
+  },
+  "Laryngoscopy Procedure Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "L3": "Laryngoscopy Procedure Report",
+   "specialty": "Audiology"
+  },
+  "Esophagogastroduodenoscopy Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "L3": "Esophagogastroduodenoscopy Report",
+   "specialty": "Gastroenterology"
+  },
+  "Sigmoidoscopy Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "L3": "Sigmoidoscopy Report",
+   "specialty": "Gastroenterology"
+  },
+  "Bronchoscopy Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "L3": "Bronchoscopy Report",
+   "specialty": "Pulmonology"
+  },
+  "Cystoscopy Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "L3": "Cystoscopy Report",
+   "specialty": "Urology"
+  },
+  "Mohs Surgery Report": {
+   "L1": "Operative Note",
+   "L2": "Surgery Report",
+   "specialty": "Dermatology"
+  },
+  "Surgical Pathology Procedure": {
+   "L1": "Operative Note",
+   "L2": "Surgery Report",
+   "specialty": "Pathology"
+  },
+  "Gastroenterology Procedure Note": {
+   "L1": "Procedure Note",
+   "L2": "Office Procedure",
+   "specialty": "Gastroenterology"
+  },
+  "Retinal Office Procedure Note": {
+   "L1": "Procedure Note",
+   "L2": "Office Procedure",
+   "specialty": "Ophthalmology"
+  },
+  "Blood Transfusion Record": {
+   "L1": "Medication Record",
+   "L2": "Blood Transfusion Record"
+  },
+  "Transfusion Record": {
+   "L1": "Medication Record",
+   "L2": "Blood Transfusion Record"
+  },
+  "Blood Product Administration Record": {
+   "L1": "Medication Record",
+   "L2": "Blood Transfusion Record"
+  },
+  "Transfusion Flow Sheet": {
+   "L1": "Medication Record",
+   "L2": "Blood Transfusion Record"
+  },
+  "Immunization Record": {
+   "L1": "Immunization",
+   "L2": "Immunization Record"
+  },
+  "Vaccination Record": {
+   "L1": "Immunization",
+   "L2": "Immunization Record"
+  },
+  "Immunization History": {
+   "L1": "Immunization",
+   "L2": "Immunization Record"
+  },
+  "Pain Management Note": {
+   "L1": "Progress Note",
+   "specialty": "Palliative Care"
+  },
+  "Pain Clinic Note": {
+   "L1": "Progress Note",
+   "specialty": "Palliative Care"
+  },
+  "Pain Management Consultation": {
+   "L1": "Progress Note",
+   "specialty": "Palliative Care"
+  },
+  "Home Health Visit Note": {
+   "L1": "Progress Note",
+   "specialty": "Home Health"
+  },
+  "Skilled Nursing Visit Note": {
+   "L1": "Progress Note",
+   "specialty": "Nursing"
+  },
+  "Housecalls Visit Summary": {
+   "L1": "Progress Note",
+   "specialty": "Home Health"
+  },
+  "Face to Face Evaluation Note": {
+   "L1": "Progress Note",
+   "specialty": "Home Health"
+  },
+  "Occupational Health Record": {
+   "L1": "Forms and Questionnaires",
+   "L2": "Assessment",
+   "specialty": "Occupational Health"
+  },
+  "Work Injury Evaluation": {
+   "L1": "Forms and Questionnaires",
+   "L2": "Assessment",
+   "specialty": "Occupational Health"
+  },
+  "Fitness for Duty Evaluation": {
+   "L1": "Forms and Questionnaires",
+   "L2": "Assessment",
+   "specialty": "Occupational Health"
+  },
+  "Nurses Notes": {
+   "L1": "Progress Note",
+   "specialty": "Nursing"
+  },
+  "Nursing Note": {
+   "L1": "Progress Note",
+   "specialty": "Nursing"
+  },
+  "ICU Flow Sheet": {
+   "L1": "Operative Note",
+   "L2": "Critical Care Record",
+   "specialty": "Critical Care"
+  },
+  "Ventilator Management Record": {
+   "L1": "Operative Note",
+   "L2": "Critical Care Record",
+   "specialty": "Critical Care"
+  },
+  "Case Management Note": {
+   "L1": "Administrative",
+   "L2": "Administrative Record"
+  },
+  "Care Coordination Note": {
+   "L1": "Administrative",
+   "L2": "Administrative Record"
+  },
+  "Utilization Review Note": {
+   "L1": "Administrative",
+   "L2": "Administrative Record"
+  },
+  "Emergency Medical Services Report": {
+   "L1": "Progress Note",
+   "specialty": "Emergency"
+  },
+  "Medicare Annual Wellness Visit": {
+   "L1": "Forms and Questionnaires",
+   "L2": "Assessment"
+  },
+  "Resumen de Alta": {
+   "L1": "Discharge Summary",
+   "L2": "Depart/Discharge Note"
+  },
+  "Resumen de Instruccion": {
+   "L1": "Discharge Summary",
+   "L2": "Discharge Instruction"
+  },
+  "Consulta": {
+   "L1": "Progress Note"
+  },
+  "Vital Signs Record": {
+   "L1": "Progress Note",
+   "L2": "Physical Exam"
+  },
+  "Telemetry Record": {
+   "L1": "Progress Note",
+   "L2": "Physical Exam"
+  },
+  "Functional Status Report": {
+   "L1": "Forms and Questionnaires",
+   "L2": "Assessment"
+  },
+  "Clock Drawing Test": {
+   "L1": "Forms and Questionnaires",
+   "L2": "Questionnaire"
+  },
+  "Growth Chart": {
+   "L1": "Forms and Questionnaires",
+   "L2": "Questionnaire"
+  },
+  "Medication Reconciliation": {
+   "L1": "Medication Record",
+   "L2": "Medication List"
+  },
+  "Patient Agreement Form": {
+   "L1": "Consent and Authorization",
+   "L2": "General Consent"
+  },
+  "Web Encounter": {
+   "L1": "Patient Communication",
+   "L2": "Patient Message"
+  },
+  "Psychiatric Evaluation": {
+   "L1": "Progress Note",
+   "specialty": "Behavioral Health"
+  },
+  "Superbill": {
+   "L1": "Administrative",
+   "L2": "Billing Statement"
+  },
+  "Charge Sheet": {
+   "L1": "Administrative",
+   "L2": "Billing Statement"
+  },
+  "Coding Summary": {
+   "L1": "Administrative",
+   "L2": "Administrative Record"
+  },
+  "Admission Record": {
+   "L1": "Progress Note",
+   "L2": "Summary"
+  },
+  "Pre-Admission Testing Record": {
+   "L1": "Operative Note",
+   "L2": "Pre-operative"
+  },
+  "Anesthesia Transfer of Care Note": {
+   "L1": "Operative Note",
+   "L2": "Anesthesia Record",
+   "specialty": "Anesthesia"
+  },
+  "Plan of Care": {
+   "L1": "Progress Note",
+   "L2": "Assessment and Plan"
+  },
+  "Care Plan": {
+   "L1": "Progress Note",
+   "L2": "Assessment and Plan"
+  },
+  "Treatment Plan": {
+   "L1": "Progress Note",
+   "L2": "Assessment and Plan"
+  },
+  "Nursing Care Plan": {
+   "L1": "Progress Note",
+   "L2": "Assessment and Plan"
+  },
+  "Interdisciplinary Plan of Care": {
+   "L1": "Progress Note",
+   "L2": "Assessment and Plan"
+  },
+  "Rehabilitation Plan": {
+   "L1": "Progress Note",
+   "L2": "Assessment and Plan"
+  },
+  "Dialysis Flow Sheet": {
+   "L1": "Procedure Note",
+   "L2": "Dialysis Record",
+   "specialty": "Dialysis"
+  },
+  "Infusion Record": {
+   "L1": "Procedure Note",
+   "L2": "Infusion and Chemotherapy",
+   "specialty": "Infusion"
+  },
+  "Burn Treatment Record": {
+   "L1": "Procedure Note",
+   "L2": "Wound Care",
+   "specialty": "Wound Care"
+  },
+  "Occupational Therapy Daily Note": {
+   "L1": "Procedure Note",
+   "L2": "Therapy Session",
+   "specialty": "Rehabilitation"
+  },
+  "Respiratory Therapy Note": {
+   "L1": "Procedure Note",
+   "L2": "Therapy Session",
+   "specialty": "Pulmonology"
+  },
+  "Chiropractic Treatment Note": {
+   "L1": "Procedure Note",
+   "L2": "Therapy Session",
+   "specialty": "Rehabilitation"
+  },
+  "Acupuncture Treatment Record": {
+   "L1": "Procedure Note",
+   "L2": "Therapy Session",
+   "specialty": "Rehabilitation"
+  },
+  "Cardiac Rehabilitation Note": {
+   "L1": "Procedure Note",
+   "L2": "Therapy Session",
+   "specialty": "Cardiology"
+  },
+  "Therapy Report": {
+   "L1": "Procedure Note",
+   "L2": "Therapy Session",
+   "specialty": "Rehabilitation"
+  },
+  "Procedure Note": {
+   "L1": "Procedure Note",
+   "L2": "Others"
+  },
+  "Office Procedure Report": {
+   "L1": "Procedure Note",
+   "L2": "Office Procedure"
+  },
+  "Laser Report": {
+   "L1": "Procedure Note",
+   "L2": "Laser Procedure"
+  },
+  "Injection Visit": {
+   "L1": "Procedure Note",
+   "L2": "Injection Visit"
+  },
+  "Therapy Discharge Summary": {
+   "L1": "Discharge Summary",
+   "L2": "Depart/Discharge Note",
+   "specialty": "Rehabilitation"
+  },
+  "Physical Therapy Discharge Summary": {
+   "L1": "Discharge Summary",
+   "L2": "Depart/Discharge Note",
+   "specialty": "Rehabilitation"
+  },
+  "Occupational Therapy Discharge Summary": {
+   "L1": "Discharge Summary",
+   "L2": "Depart/Discharge Note",
+   "specialty": "Rehabilitation"
+  },
+  "Knee Procedure Note": {
+   "L1": "Procedure Note",
+   "L2": "Knee Procedure",
+   "specialty": "Orthopedics"
+  },
+  "Lumbar Procedure Note": {
+   "L1": "Procedure Note",
+   "L2": "Lumbar Procedure",
+   "specialty": "Orthopedics"
+  },
+  "Elastography Procedure Report": {
+   "L1": "Procedure Note",
+   "L2": "Elastography"
+  },
+  "Laser Procedure Report": {
+   "L1": "Procedure Note",
+   "L2": "Laser Procedure"
+  },
+  "Pathology Procedure Note": {
+   "L1": "Procedure Note",
+   "L2": "Pathology Procedure",
+   "specialty": "Pathology"
+  },
+  "Intraoperative Record": {
+   "L1": "Operative Note",
+   "L2": "Procedure"
+  },
+  "Intraoperative Report": {
+   "L1": "Operative Note",
+   "L2": "Procedure"
+  },
+  "Phase Record": {
+   "L1": "Operative Note",
+   "L2": "Procedure"
+  },
+  "OR Summary": {
+   "L1": "Operative Note",
+   "L2": "Procedure"
+  },
+  "Operating Room Summary": {
+   "L1": "Operative Note",
+   "L2": "Procedure"
+  },
+  "Postoperative Procedure Note": {
+   "L1": "Operative Note",
+   "L2": "Post-operative"
+  },
+  "Mammogram Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Radiology",
+   "L3": "Mammogram Report",
+   "specialty": "Oncology"
+  },
+  "Bone Mineral Density Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Radiology",
+   "L3": "Bone Mineral Density Report",
+   "specialty": "Orthopedics"
+  },
+  "Carotid Duplex Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "L3": "Carotid Duplex Report",
+   "specialty": "Cardiology"
+  },
+  "Ankle-Brachial Index Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "L3": "Ankle-Brachial Index Report",
+   "specialty": "Cardiology"
+  },
+  "Plethysmography Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "L3": "Plethysmography Report",
+   "specialty": "Cardiology"
+  },
+  "Extremity Doppler Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "L3": "Extremity Doppler Report",
+   "specialty": "Cardiology"
+  },
+  "Doppler Duplex Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "L3": "Doppler Duplex Report",
+   "specialty": "Cardiology"
+  },
+  "Pulmonary Function Test": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "L3": "Pulmonary Function Test",
+   "specialty": "Pulmonology"
+  },
+  "Esophageal Manometry Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Diagnostic Study",
+   "L3": "Esophageal Manometry Report",
+   "specialty": "Gastroenterology"
+  },
+  "Allergy Testing Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Laboratory",
+   "L3": "Allergy Testing Report",
+   "specialty": "Pulmonology"
+  },
+  "FISH Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Laboratory",
+   "L3": "FISH Report",
+   "specialty": "Pathology"
+  },
+  "Genetic Test Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Laboratory",
+   "L3": "Genetic Test Report",
+   "specialty": "Pathology"
+  },
+  "Brain MRI Report": {
+   "L1": "Lab Report/Result",
+   "L2": "Radiology",
+   "L3": "Brain MRI Report",
+   "specialty": "Neurology"
+  },
+  "Preoperative Order": {
+   "L1": "Operative Note",
+   "L2": "Pre-operative"
+  },
+  "Postoperative Follow-up Note": {
+   "L1": "Operative Note",
+   "L2": "Post-operative"
+  },
+  "Postoperative Order": {
+   "L1": "Operative Note",
+   "L2": "Post-operative"
+  },
+  "Surgical Consent Form": {
+   "L1": "Consent and Authorization",
+   "L2": "Surgical Consent"
+  },
+  "Transfusion Consent Form": {
+   "L1": "Consent and Authorization",
+   "L2": "Transfusion Consent"
+  },
+  "HIPAA Form": {
+   "L1": "Consent and Authorization",
+   "L2": "HIPAA and Privacy"
+  },
+  "Consent Form": {
+   "L1": "Consent and Authorization",
+   "L2": "General Consent",
+   "_comment": "Was 'Others' before the signer rule of 2026-10-23 gave the generic forms a home."
+  },
+  "Release of Information Authorization": {
+   "L1": "Consent and Authorization",
+   "L2": "Release of Information"
+  },
+  "Prior Authorization Request": {
+   "L1": "Consent and Authorization",
+   "L2": "Prior Authorization"
+  },
+  "Insurance Authorization Note": {
+   "L1": "Consent and Authorization",
+   "L2": "Prior Authorization"
+  },
+  "Referral Authorization": {
+   "L1": "Consent and Authorization",
+   "L2": "Referral Authorization"
+  },
+  "Referral Authorization Form": {
+   "L1": "Consent and Authorization",
+   "L2": "Referral Authorization"
+  },
+  "Assignment of Benefits": {
+   "L1": "Consent and Authorization",
+   "L2": "Assignment of Benefits"
+  },
+  "Authorization Form": {
+   "L1": "Consent and Authorization",
+   "L2": "General Authorization"
+  },
+  "Patient Registration": {
+   "L1": "Demographics",
+   "L2": "Registration Form"
+  },
+  "Registration Form": {
+   "L1": "Demographics",
+   "L2": "Registration Form"
+  },
+  "Registration Page": {
+   "L1": "Demographics",
+   "L2": "Registration Form"
+  },
+  "Admission Face Sheet": {
+   "L1": "Demographics",
+   "L2": "Registration Form"
+  },
+  "Myocardial Perfusion Study": {
+   "L1": "Lab Report/Result",
+   "L2": "Radiology",
+   "L3": "Nuclear Medicine Report",
+   "specialty": "Cardiology"
+  },
+  "Nutrition Note": {
+   "L1": "Progress Note",
+   "specialty": "Nutrition"
+  },
+  "Dietary Note": {
+   "L1": "Progress Note",
+   "specialty": "Nutrition"
+  },
+  "Dietitian Note": {
+   "L1": "Progress Note",
+   "specialty": "Nutrition"
+  },
+  "Medical Nutrition Therapy Note": {
+   "L1": "Progress Note",
+   "specialty": "Nutrition"
+  },
+  "Nutrition Assessment": {
+   "L1": "Forms and Questionnaires",
+   "L2": "Assessment",
+   "specialty": "Nutrition"
+  },
+  "Health History Form": {
+   "L1": "Forms and Questionnaires",
+   "L2": "Questionnaire"
+  },
+  "Signature Page": {
+   "L1": "Progress Note",
+   "L2": "Signature"
+  },
+  "Medical Record Request": {
+   "L1": "Administrative",
+   "L2": "Administrative Record"
+  },
+  "Policy Page": {
+   "L1": "Consent and Authorization",
+   "L2": "General Consent",
+   "unless": [
+    {
+     "the page is a document index or import log": {
+      "L1": "Others",
+      "L2": ""
+     }
+    },
+    {
+     "the page is an insurance or benefit verification the practice produced": {
+      "L1": "Consent and Authorization",
+      "L2": "General Authorization"
+     }
+    }
+   ],
+   "_comment": "Any practice policy, privacy or patient-rights page is a consent, whether or not a signature line survived the scan: these pages exist to be acknowledged, and an unsigned copy is the same document waiting for a signature. Never Administrative. The two exceptions exist because the annotation tool's 'Policy Page' was also used for chart index pages and for insurance verification printouts, which are not policies at all."
+  },
+  "Nursing Assessment for Home Care": {
+   "L1": "Forms and Questionnaires",
+   "L2": "Assessment",
+   "specialty": "Home Health"
+  },
+  "Home Health Care Evaluation": {
+   "L1": "Forms and Questionnaires",
+   "L2": "Assessment",
+   "specialty": "Home Health"
+  },
+  "Home Health Task List and Time Record": {
+   "L1": "Progress Note",
+   "L2": "Others",
+   "specialty": "Home Health"
+  },
+  "Nursing Visit Note": {
+   "L1": "Progress Note",
+   "L2": "Others",
+   "specialty": "Home Health",
+   "_comment": "The home health nursing visit note (Briggs 3489 and its equivalents). A note is a Progress Note whatever service produced it; Home Health is the specialty, and 'homebound reason' is its tell."
+  }
+ },
+ "specialty_values": [
+  "Anesthesia",
+  "Audiology",
+  "Behavioral Health",
+  "Cardiology",
+  "Critical Care",
+  "Dermatology",
+  "Dialysis",
+  "Emergency",
+  "Gastroenterology",
+  "Home Health",
+  "Infusion",
+  "Nephrology",
+  "Neurology",
+  "Nursing",
+  "Nutrition",
+  "Obstetrics and Gynecology",
+  "Occupational Health",
+  "Oncology",
+  "Ophthalmology",
+  "Orthopedics",
+  "Palliative Care",
+  "Pathology",
+  "Podiatry",
+  "Primary Care",
+  "Pulmonology",
+  "Radiology",
+  "Rehabilitation",
+  "Sleep Study",
+  "Surgery",
+  "Urology",
+  "Wound Care",
+  "Others",
+  "Unknown"
+ ],
+ "discharge_note_L2": [
+  "Depart/Discharge Note",
+  "Discharge Instruction",
+  "Discharge Medication",
+  "Transfer of Care",
+  "Interim Summary",
+  "Short Stay Summary",
+  "Discharge Diagnosis",
+  "Others"
+ ],
+ "_comment_specialty": "Others = the page names a service line that is not one of the listed values. Unknown = no specialty signal on the page at all. They are different outcomes and the annotation tool must keep them apart: Others is a gap in this list, Unknown is a gap in the page.",
+ "operative_note_L2": [
+  "Surgery Report",
+  "Procedure",
+  "Pre-operative",
+  "Post-operative",
+  "Anesthesia Record",
+  "Critical Care Record",
+  "Triage Report",
+  "Others"
+ ],
+ "L2_from_page_type": {
+  "_comment": "L1s that were promoted out of Misc. Their subtree moved up a level, so the page type IS the L2 and L3 stays blank. Without this they would collapse to a single 'Others' L2.",
+  "values": [
+   "Patient Communication",
+   "Medication Record",
+   "Order and Requisition",
+   "Others",
+   "Problem List"
+  ]
+ },
+ "lab_report_L2": [
+  "Laboratory",
+  "Radiology",
+  "Pathology",
+  "Diagnostic Study"
+ ],
+ "flat_L1": {
+  "_comment": "L1s with no L2 at all. The page type is the whole answer.",
+  "values": [
+   "Problem List"
+  ]
+ },
+ "L2_merge": {
+  "_comment": "Near-synonymous page types collapsed onto one L2 label, so no two L2s under an L1 can mean the same thing. An annotator who cannot tell two labels apart will use them interchangeably, and the model then learns a coin flip.",
+  "Order and Requisition": {
+   "Order Note": "Physician Order",
+   "Service Request": "Physician Order",
+   "Physician Order": "Physician Order",
+   "Laboratory Form": "Laboratory Requisition",
+   "Laboratory Requisition": "Laboratory Requisition",
+   "Insurance Authorization Note": "__move:Authorization",
+   "Referral Authorization Form": "__move:Authorization",
+   "Referral Order": "Referral Order",
+   "Referral Form": "Referral Order",
+   "Referral Request": "Referral Order",
+   "Specialist Referral": "Referral Order",
+   "Consultation Request": "Referral Order",
+   "Imaging Order": "Physician Order",
+   "Radiology Order": "Physician Order",
+   "Medication Order": "Physician Order",
+   "Nursing Order": "Physician Order",
+   "Therapy Order": "Physician Order"
+  },
+  "Problem List": {},
+  "Forms and Questionnaires": {
+   "Screening and Checklist": "Questionnaire",
+   "Checklist": "Questionnaire",
+   "Preventive Health Checklist": "Questionnaire",
+   "Screening Test Record": "Questionnaire",
+   "Health Maintenance Report": "Questionnaire",
+   "Clock Drawing Test": "Questionnaire",
+   "Growth Chart": "Questionnaire",
+   "Mini Mental Status Examination": "Questionnaire",
+   "Activities of Daily Living Flow Sheet": "Assessment",
+   "Staying Healthy Assessment": "Assessment",
+   "Assessment and Evaluation": "Assessment",
+   "Functional Status Report": "Assessment",
+   "Evaluation Form": "Assessment",
+   "Plan of Care": "__move:Progress Note"
+  },
+  "Patient Communication": {
+   "General Message": "Patient Message",
+   "Telephone Message": "Patient Message",
+   "Patient Portal Communication": "Patient Message",
+   "Ambulatory Correspondence": "Provider Letter",
+   "Provider Letter": "Provider Letter",
+   "General Notice": "Notice",
+   "Discharge Notice": "Notice",
+   "Patient Instruction": "Patient Education Material",
+   "Patient Education Material": "Patient Education Material",
+   "Web Encounter": "Patient Message",
+   "Notice of Privacy Practices": "__move:Consent and Authorization",
+   "Notice of Health Information Practices": "__move:Consent and Authorization",
+   "Privacy Notice": "__move:Consent and Authorization",
+   "Patient Rights Notice": "__move:Consent and Authorization",
+   "Patient Rights and Responsibilities": "__move:Consent and Authorization",
+   "Office Policy": "__move:Consent and Authorization",
+   "Financial Policy": "__move:Consent and Authorization"
+  },
+  "Consent and Authorization": {
+   "Surgical Consent Form": "Surgical Consent",
+   "Transfusion Consent Form": "Transfusion Consent",
+   "Immunization Consent Form": "Immunization Consent",
+   "HIPAA Form": "HIPAA and Privacy",
+   "Patient Agreement Form": "General Consent",
+   "Consent Form": "General Consent",
+   "Release of Information Authorization": "Release of Information",
+   "Prior Authorization Request": "Prior Authorization",
+   "Insurance Authorization Note": "Prior Authorization",
+   "Referral Authorization": "Referral Authorization",
+   "Referral Authorization Form": "Referral Authorization",
+   "Assignment of Benefits": "Assignment of Benefits",
+   "Authorization Form": "General Authorization",
+   "General Consent Form": "General Consent",
+   "Consent to Treat": "General Consent",
+   "Financial Consent": "General Consent",
+   "Treatment Authorization": "General Authorization",
+   "Service Authorization": "General Authorization",
+   "Notice of Privacy Practices": "General Consent",
+   "Notice of Health Information Practices": "General Consent",
+   "Privacy Notice": "General Consent",
+   "Patient Rights Notice": "General Consent",
+   "Patient Rights and Responsibilities": "General Consent",
+   "Office Policy": "General Consent",
+   "Financial Policy": "General Consent",
+   "Policy Page": "General Consent"
+  }
+ },
+ "order_requisition_L2": [
+  "Physician Order",
+  "Laboratory Requisition",
+  "Referral Order",
+  "Others"
+ ],
+ "letters_messages_L2": [
+  "Provider Letter",
+  "Patient Message",
+  "Notice",
+  "Patient Education Material",
+  "Others"
+ ],
+ "sort_others_last": true,
+ "L3_merge": {
+  "_comment": "L3 labels under one L2 that a reader cannot tell apart. Each pair below is one study under two names, or a subset silently competing with its own parent. Keeping both guarantees the annotators split on it and the model learns noise.",
+  "Lab Report/Result": {
+   "Radiology": {
+    "Sonogram Report": "Ultrasound Report",
+    "Tomography Report": "CT Scan Report",
+    "Brain MRI Report": "MRI Report",
+    "Chest View": "X-Ray Report",
+    "SPECT Report": "Nuclear Medicine Report"
+   },
+   "Laboratory": {
+    "Blood Glucose Result": "Glucose Report",
+    "Allergy List": "Allergy Testing Report",
+    "Prothrombin Time Result": "INR and Prothrombin Time",
+    "INR Result": "INR and Prothrombin Time"
+   },
+   "Pathology": {
+    "Tissue Examination Report": "Pathology Report"
+   },
+   "Diagnostic Study": {
+    "Treadmill Report": "Stress Test Report",
+    "Nerve Conduction Study": "Electromyography and Nerve Conduction",
+    "Electromyography Report": "Electromyography and Nerve Conduction",
+    "Doppler Duplex Report": "",
+    "Cardiovascular Report": "",
+    "Cardiac Event Report": "Holter Monitor Report",
+    "Peripheral Neuropathy Result": "Electromyography and Nerve Conduction"
+   }
+  },
+  "Procedure Note": {}
+ },
+ "immunization_L2": [
+  "Immunization Record",
+  "Others"
+ ],
+ "medication_record_L2": [
+  "Medication List",
+  "Prescription Page",
+  "Refill Record",
+  "Blood Transfusion Record",
+  "Others"
+ ],
+ "generic_leaf_rule": {
+  "_comment": "A page type whose name is just its own parent's name is the generic case, not a sibling of the specific ones. 'Endoscopy Report' next to Colonoscopy, Cystoscopy and Bronchoscopy, or 'Consent Form' next to Surgical and Transfusion Consent Form, is a label an annotator reaches for when unsure, which is what 'Others' is for. Structural, so it needs no list: if the label's meaningful words are a subset of the parent's, the leaf is blanked and the parent stands alone.",
+  "enabled": true,
+  "stopwords": [
+   "report",
+   "record",
+   "note",
+   "form",
+   "page",
+   "result",
+   "study",
+   "list",
+   "summary",
+   "examination",
+   "exam",
+   "sheet",
+   "the",
+   "of",
+   "and"
+  ],
+  "parent_also_covers": {
+   "Diagnostic Study": [
+    "endoscopy",
+    "scope",
+    "imaging"
+   ],
+   "Laboratory": [
+    "laboratory",
+    "lab"
+   ],
+   "Pathology": [
+    "pathology"
+   ],
+   "Radiology": [
+    "radiology",
+    "imaging"
+   ]
+  }
+ },
+ "lone_others_rule": {
+  "_comment": "If 'Others' is the ONLY L2 under an L1 (or the only L3 under an L2) it carries no information: there is nothing for it to be other than. The level is dropped and the parent stands alone. Computed from the enumerated tree, so it stays correct as families are added.",
+  "enabled": true
+ },
+ "administrative_L2": [
+  "Appointment Record",
+  "Billing Statement",
+  "Others"
+ ],
+ "implied_specialty_rule": {
+  "_comment": "An implied specialty may only sit on a fully specified path. A row with a blank L3, or any row whose L2 or L3 is Others, is a BUCKET: Diagnostic Study holds cardiology, sleep, GI and ophthalmology studies alike, and Others holds whatever did not fit, so inheriting one member's specialty and printing it against the whole bucket is wrong. Taxonomy table only. At inference a page resolving into a bucket still gets its specialty from the detector reading the page, which is the right source for it.",
+  "require_L3": true,
+  "exclude_others": true
+ },
+ "_comment_page_artefact": "Fax covers, blank pages, index and separator pages are removed by the junk filter before classification, so they carry no page type here. The canon keeps its Page Artefact entries so the filter has something to match on.",
+ "l2_catch_all_rule": {
+  "_comment": "Where an L2 has named L3 children, its catch-all child is 'Others', not a blank. A blank L3 next to named siblings reads as missing data; Others reads as a decision. Where an L2 has no L3 children at all the L3 stays blank, because there is nothing to be other than.",
+  "enabled": true
+ },
+ "no_L2_others": {
+  "_comment": "L1s whose L2 set is closed: every page lands in one of the named buckets.",
+  "values": [
+   "Lab Report/Result"
+  ]
+ },
+ "forms_L2": [
+  "Assessment",
+  "Questionnaire",
+  "Others"
+ ],
+ "_comment_procedure_note": "Procedure Note is a treatment RECORD: a repeated therapeutic session or an administration, which is neither an operation (Operative Note) nor an encounter narrative (Progress Note). Dialysis is the clearest case: a run is a procedure performed on a schedule, logged on a flow sheet, not a visit written up. Infusion, chemotherapy, radiation, wound care and the therapy disciplines behave the same way. The specialty still rides on the parallel axis, so Dialysis, Oncology, Wound Care and Rehabilitation are not lost by moving the document here.",
+ "procedure_note_L2": [
+  "Dialysis Record",
+  "Infusion and Chemotherapy",
+  "Radiation Therapy",
+  "Wound Care",
+  "Therapy Session",
+  "Elastography",
+  "Injection Visit",
+  "Knee Procedure",
+  "Laser Procedure",
+  "Lumbar Procedure",
+  "Office Procedure",
+  "Pathology Procedure",
+  "Others"
+ ],
+ "_comment_procedure_L3": "Procedure Note has no L3: the specific procedure IS the L2. A knee injection and a lumbar epidural are different procedures and different codes, so they sit at the same level as a dialysis run rather than one tier below it.",
+ "_comment_procedure_scope": "Only procedures observed in the client's own page-type list or production volumes are carried. Site and modality variants that were not observed are deliberately absent: an empty class cannot be learned by the model and lengthens the annotator's dropdown for nothing. Add one when a page for it actually appears.",
+ "_comment_specialty_sweep": "A page type implies a specialty only when the study itself names a service line. A mammogram is breast imaging and belongs to oncology; a CT is a CT and could be ordered by anyone. The deliberately unassigned ones are listed below so the decision is visible rather than looking like an omission: on those pages the specialty comes from the letterhead via the detector, or from the document by inheritance, or it is Unknown.",
+ "specialty_deliberately_unset": {
+  "CT Scan Report": "a CT can be ordered by any service; the body region is not in the page type",
+  "MRI Report": "same as CT: the modality does not name a service line",
+  "Ultrasound Report": "ordered by obstetrics, vascular, abdominal and musculoskeletal alike",
+  "X-Ray Report": "the most service-neutral study there is",
+  "CT Angiography Report": "cardiac, neuro and peripheral CTA are all common; the region is not in the name",
+  "Chemistry Report": "routine lab, no service line",
+  "Hematology Report": "routine lab; haematology-oncology would be named in the letterhead, not the test",
+  "Microbiology Report": "routine lab, no service line",
+  "Urinalysis Report": "routine lab; ordered far more often by primary care than urology",
+  "Glucose Report": "routine lab, no service line",
+  "INR and Prothrombin Time": "routine coagulation monitoring, no service line",
+  "Laboratory Flow Sheet": "a trended grid of whatever was ordered"
+ },
+ "consent_auth_L2": [
+  "Surgical Consent",
+  "Transfusion Consent",
+  "Immunization Consent",
+  "HIPAA and Privacy",
+  "Release of Information",
+  "Assignment of Benefits",
+  "General Consent",
+  "Prior Authorization",
+  "Referral Authorization",
+  "General Authorization",
+  "Others"
+ ],
+ "demographics_L2": [
+  "Patient Demographics",
+  "Face Sheet",
+  "Registration Form",
+  "Others"
+ ],
+ "mece_rules": {
+  "_comment": "Three L1s can all receive something a human would call a form. The discriminator is what the form DOES, not that it is a form. Applied in this order, the three are mutually exclusive and between them exhaustive.",
+  "form_routing": [
+   {
+    "test": "grants a permission and carries a patient or guardian signature",
+    "goes_to": "Consent and Authorization",
+    "examples": [
+     "Surgical Consent Form",
+     "HIPAA Form",
+     "Release of Information Authorization",
+     "Assignment of Benefits",
+     "Patient Agreement Form"
+    ]
+   },
+   {
+    "test": "captures identity, contact or coverage, with no clinical content",
+    "goes_to": "Demographics > Registration Form",
+    "examples": [
+     "Patient Registration",
+     "Registration Form",
+     "Face Sheet"
+    ]
+   },
+   {
+    "test": "collects clinical information about the patient, scored or free text",
+    "goes_to": "Forms and Questionnaires",
+    "examples": [
+     "Health History Form",
+     "Questionnaire",
+     "Nutrition Assessment",
+     "Functional Status Report",
+     "Screening Test Record"
+    ]
+   },
+   {
+    "test": "a billing or scheduling page: a statement, invoice, superbill, appointment list or no-show letter",
+    "goes_to": "Administrative",
+    "examples": [
+     "Billing Statement",
+     "Invoice Page",
+     "Appointment Note",
+     "No Show Letter"
+    ]
+   },
+   {
+    "test": "a practice policy, rights or responsibilities page the patient signs or acknowledges",
+    "goes_to": "Consent and Authorization > General Consent",
+    "examples": [
+     "Financial Policy",
+     "Office Policy",
+     "Patient Rights and Responsibilities",
+     "Notice of Privacy Practices with signature line"
+    ]
+   },
+   {
+    "test": "an insurance or benefit verification page the practice or payer produced",
+    "goes_to": "Consent and Authorization > General Authorization",
+    "examples": [
+     "Authorization Verified",
+     "Benefit Verification",
+     "Eligibility Check"
+    ]
+   },
+   {
+    "test": "a chart artefact with no clinical or financial content: a document index, an import log, a fax banner page",
+    "goes_to": "Others",
+    "examples": [
+     "Document Index",
+     "Import Log",
+     "Chart Index"
+    ]
+   }
+  ],
+  "consent_vs_authorization": {
+   "_comment": "Replaced 2026-10-23. The old test asked what the page permitted, which split badly: a HIPAA release permits a disclosure and is signed by the patient, so it answered both ways. The test is now who issues it.",
+   "test": "who signs or issues the page",
+   "consent": "the patient or their guardian signs it, including acknowledging a notice",
+   "authorization": "the hospital, provider or payer issues it",
+   "when_no_signature_block_is_legible": "fall back to the title: a page titled consent is a consent, a page titled authorization issued on practice or payer letterhead is an authorization, otherwise General Consent if addressed to the patient and Others if neither"
+  },
+  "hipaa_pages": {
+   "_comment": "Both sides of a HIPAA page are patient-signed, so both are consents. The split is only how specific it is.",
+   "names_a_recipient": "Consent and Authorization > Release of Information",
+   "acknowledges_the_notice_only": "Consent and Authorization > HIPAA and Privacy"
+  },
+  "context_resolved_pairs": {
+   "_comment": "Three L2 labels exist under more than one L1. They are not duplicates: the PATH differs, and which one applies is decided by the document the page is bound into, not by the page. All three run after the continuity step. Listed here so the collision reads as a designed pair rather than an oversight, and so the annotation tool can show both options with the rule.",
+   "pairs": [
+    {
+     "label": "Medication List",
+     "in_a_note": "Progress Note > Medication List",
+     "standing_alone": "Medication Record > Medication List",
+     "rule": "a medication table printed inside a note is part of that note"
+    },
+    {
+     "label": "Questionnaire",
+     "in_a_note": "Progress Note > Questionnaire",
+     "standing_alone": "Forms and Questionnaires > Questionnaire",
+     "rule": "a form bound into a note is part of that note; this one also flips codeability"
+    },
+    {
+     "label": "Procedure",
+     "in_a_note": "Operative Note > Procedure",
+     "standing_alone": "Procedure Note > (the specific procedure)",
+     "rule": "a procedure page in an operative document belongs to that operation"
+    }
+   ]
+  },
+  "referral_pages": {
+   "_comment": "Three different pages are all called referrals. They are separated by who wrote them and what the page does, which is the same signer test used for consent and authorization.",
+   "the provider sends the patient to a specialist": "Order and Requisition > Referral Order",
+   "the payer or plan approves that referral": "Consent and Authorization > Referral Authorization",
+   "the specialist writes back": "Patient Communication > Provider Letter",
+   "tell_them_apart": "a referral order names the specialty or provider being referred TO and carries the referring provider's signature; a referral authorization carries an approval or reference number, a validity period and payer letterhead"
+  },
+  "notice_vs_consent": {
+   "_comment": "Added 2026-10-23 at the client's instruction.",
+   "a notice about a policy, privacy, rights or responsibilities": "Consent and Authorization > General Consent",
+   "a notice about an event: closure, recall, results ready, service change": "Patient Communication > Notice",
+   "patient-facing teaching material about a condition or procedure": "Patient Communication > Patient Education Material"
+  }
+ },
+ "_comment_podiatry": "Foot and ankle care. Named Podiatry rather than 'Foot and Ankle' because the letterhead evidence is the DPM credential and the word podiatry; 'foot and ankle' is carried as an alias. It overlaps Orthopedics by body site, so the rule is the provider, not the anatomy: a DPM or a podiatry practice is Podiatry, an orthopedic surgeon operating on a foot is Orthopedics. Rename to 'Foot and Ankle' in this list and in specialty.json if the client prefers that wording.",
+ "consent_auth_side": {
+  "_comment": "Who issues the page decides which word applies. The patient gives consent; the hospital, provider or payer gives authorization. This is a test about the signer, not about the word printed in the title: a page headed 'Authorization for Release of Information' is signed by the patient and is therefore a consent.",
+  "rule": {
+   "patient_or_guardian_signs": "consent",
+   "hospital_provider_or_payer_issues": "authorization"
+  },
+  "consent": [
+   "Surgical Consent",
+   "Transfusion Consent",
+   "Immunization Consent",
+   "HIPAA and Privacy",
+   "Release of Information",
+   "Assignment of Benefits",
+   "General Consent"
+  ],
+  "authorization": [
+   "Prior Authorization",
+   "Referral Authorization",
+   "General Authorization"
+  ],
+  "_comment_reassigned": "Two L2s moved to the consent side under this rule despite carrying the word authorization in their usual titles. Release of Information is signed by the patient permitting a disclosure. Assignment of Benefits is signed by the patient assigning payment. Both are patient-given, so both are consents. Flagged because the naming reads the other way.",
+  "_comment_notice": "A notice page is a consent when it sits in a consent packet or carries a patient signature or acknowledgement line. A notice the practice merely sends out, with nothing for the patient to sign, stays Patient Communication > Notice.",
+  "signature_line_evidence": {
+   "consent": [
+    "patient signature",
+    "patient/guardian signature",
+    "signature of patient",
+    "patient or legal representative",
+    "guardian signature",
+    "signature of recipient",
+    "i acknowledge",
+    "i consent",
+    "i authorize the release",
+    "witness to patient signature"
+   ],
+   "authorization": [
+    "authorized representative of",
+    "provider signature",
+    "physician signature",
+    "utilization management",
+    "plan representative",
+    "payer signature",
+    "authorized by",
+    "approval number",
+    "reference number",
+    "valid from"
+   ]
+  }
+ },
+ "_comment_administrative_scope": "Administrative means money or scheduling, nothing else. Billing statements, invoices, superbills, statements of account, payment plans; appointment lists, no-show letters, scheduling notes. The old 'Administrative Record' catch-all was removed on 2026-10-23 because it had become a home for anything non-clinical: 15 of its 19 pages were financial-policy and patient-rights pages the patient signs, which are consents, and insurance verification pages, which are authorizations. A catch-all under a vague L1 attracts exactly the pages that belong somewhere specific."
+}
