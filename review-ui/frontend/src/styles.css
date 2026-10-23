@@ -5799,3 +5799,86 @@ input {
   font-weight: 600;
 }
 
+
+/* Users page: the form on the left, the list on the right (stacked when narrow). */
+.users-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 440px) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .users-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.users-list {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.users-list .playground-users {
+  width: 100%;
+  min-width: 0;
+}
+
+.users-list .playground-users tbody tr {
+  cursor: pointer;
+}
+
+.users-list .playground-users tbody tr:hover,
+.users-list .playground-users tbody tr:focus-visible {
+  background: var(--neutral-100, #f4f4f1);
+  outline: none;
+}
+
+.users-list .playground-users tbody tr.selected {
+  background: #e7eef8;
+}
+
+.password-field {
+  position: relative;
+  display: flex;
+}
+
+.password-field input {
+  flex: 1;
+  padding-right: 2.2rem !important;
+}
+
+.password-eye {
+  position: absolute;
+  right: 0.3rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.password-eye:hover,
+.password-eye:focus-visible {
+  color: var(--brand-800);
+  background: var(--neutral-100, #f4f4f1);
+}
+
+.users-message {
+  margin: 0 0 0.9rem;
+}
+
+.playground-error.users-message {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #a33b32;
+  border-radius: 8px;
+  background: #fbeceb;
+  font-weight: 600;
+}

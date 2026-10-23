@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, KeyRound, UserPlus } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, KeyRound, UserPlus } from "lucide-react";
 import {
   createUser,
   errorDetail,
@@ -17,6 +17,31 @@ const ROLE_LABEL: Record<UserRole, string> = { admin: "Admin", reviewer: "Review
 
 export function roleLabel(role: string | undefined): string {
   return ROLE_LABEL[(role ?? "") as UserRole] ?? (role ? role[0].toUpperCase() + role.slice(1) : "");
+}
+
+/** A password box with an eye button that shows / hides what was typed. */
+function PasswordInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <div className="password-field">
+      <input
+        type={shown ? "text" : "password"}
+        value={value}
+        autoComplete="new-password"
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <button
+        type="button"
+        className="password-eye"
+        onClick={() => setShown((v) => !v)}
+        aria-label={shown ? "Hide password" : "Show password"}
+        aria-pressed={shown}
+        title={shown ? "Hide password" : "Show password"}
+      >
+        {shown ? <EyeOff size={15} aria-hidden="true" /> : <Eye size={15} aria-hidden="true" />}
+      </button>
+    </div>
+  );
 }
 
 /** Admins only: create a user, or reset an existing user's password. */
@@ -59,6 +84,12 @@ export default function UsersView({ onBack }: Props) {
             : password !== confirm
               ? "The two passwords differ"
               : null;
+
+  /** A row in the list: reset that user's password. */
+  function pick(user: UserRow) {
+    switchMode("reset");
+    setUsername(user.username);
+  }
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -108,7 +139,18 @@ export default function UsersView({ onBack }: Props) {
         </div>
       </div>
 
-      <section className="accuracy-section" aria-label="Create or reset">
+      {error ? (
+        <p className="playground-error users-message" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {notice ? (
+        <p className="success-banner users-message" role="status">
+          {notice}
+        </p>
+      ) : null}
+      <div className="users-layout">
+      <section className="accuracy-section users-form" aria-label="Create or reset">
         <div className="output-tabs" role="tablist" aria-label="User action">
           <button
             type="button"
@@ -169,21 +211,11 @@ export default function UsersView({ onBack }: Props) {
           ) : null}
           <label>
             <span>{mode === "create" ? "Password" : "New password"}</span>
-            <input
-              type="password"
-              value={password}
-              autoComplete="new-password"
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <PasswordInput value={password} onChange={setPassword} />
           </label>
           <label>
             <span>Confirm password</span>
-            <input
-              type="password"
-              value={confirm}
-              autoComplete="new-password"
-              onChange={(e) => setConfirm(e.target.value)}
-            />
+            <PasswordInput value={confirm} onChange={setConfirm} />
           </label>
           {problem && (username || password || confirm) ? <small className="playground-error">{problem}</small> : null}
           <div>
@@ -198,20 +230,11 @@ export default function UsersView({ onBack }: Props) {
             </button>
           </div>
         </div>
-        {error ? (
-          <p className="playground-error" role="alert">
-            {error}
-          </p>
-        ) : null}
-        {notice ? (
-          <p className="success-banner" role="status">
-            {notice}
-          </p>
-        ) : null}
       </section>
 
-      <section className="accuracy-section" aria-label="Users">
-        <h2>Users</h2>
+      <section className="accuracy-section users-list" aria-label="Users">
+        <h2>Users ({users.length})</h2>
+        <p className="accuracy-note">Click a user to reset their password.</p>
         {loadError ? <p className="playground-error">{loadError}</p> : null}
         <table className="playground-users">
           <thead>
@@ -225,7 +248,19 @@ export default function UsersView({ onBack }: Props) {
           </thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.username}>
+              <tr
+                key={u.username}
+                className={mode === "reset" && u.username === username ? "selected" : ""}
+                onClick={() => pick(u)}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    pick(u);
+                  }
+                }}
+                title={`Reset the password of ${u.username}`}
+              >
                 <td>{u.username}</td>
                 <td>{u.name}</td>
                 <td>{roleLabel(u.role)}</td>
@@ -236,6 +271,7 @@ export default function UsersView({ onBack }: Props) {
           </tbody>
         </table>
       </section>
+      </div>
     </div>
   );
 }
