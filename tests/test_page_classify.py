@@ -65,19 +65,15 @@ class TestTaxonomy:
         assert not names.is_valid_pair(PN, "Chemistry")
 
     def test_the_training_copies_match_the_pipeline_taxonomy(self):
-        """The single-head BERT trainer (whose model this stage loads) keeps its
-        own copy of the pipeline taxonomy; it must name the same classes. The
-        annotation tool and the multi-head trainer use taxonomy v24 instead,
-        whose copies must all equal the one build_taxonomy.py writes."""
-        pipeline = json.loads(
-            (CORE / "stages/lib/keyword-canon/page_taxonomy.json").read_text(encoding="utf-8")
-        )
-        copy = REPO / "training" / "bert-training" / "taxonomy.json"
-        assert json.loads(copy.read_text(encoding="utf-8")) == pipeline
-        v24 = [REPO / "training" / folder / "taxonomy_v24.json"
-               for folder in ("taxonomy", "annotation-tool", "bert-training")]
+        """The annotation tool uses taxonomy v24, whose copy must equal the one
+        build_taxonomy.py writes; the page-axes trainer uses taxonomy v29, whose
+        copy must equal the one build_taxonomy_v29.py writes. (The single-head
+        trainer and its taxonomy.json copy were removed on 2026-10-23.)"""
+        v24 = [REPO / "training" / folder / "taxonomy_v24.json" for folder in ("taxonomy", "annotation-tool")]
         texts = {path.read_text(encoding="utf-8") for path in v24}
         assert len(texts) == 1, "run training/taxonomy/build_taxonomy.py"
+        v29 = [REPO / "training" / folder / "taxonomy_v29.json" for folder in ("taxonomy", "bert-training")]
+        assert len({path.read_text(encoding="utf-8") for path in v29}) == 1, "run training/taxonomy/build_taxonomy_v29.py"
         canon = [REPO / "training" / folder / "page_canon_v24.json" for folder in ("taxonomy", "annotation-tool")]
         assert len({path.read_text(encoding="utf-8") for path in canon}) == 1, "run training/taxonomy/build_canon.py"
 
