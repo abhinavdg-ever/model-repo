@@ -20,6 +20,7 @@ from app.core.schemas import (
     AnnotationRow,
     AnnotationSaveRequest,
     AppConfigResponse,
+    PlaygroundRun,
     FileViewerFolderDetail,
     FileViewerListResponse,
     FolderDetail,
@@ -38,6 +39,7 @@ from app.core.schemas import (
     EncounterReviewSave,
 )
 from app.services.blob_store import download_blob_bytes
+from app.services import playground
 from app.services.folder_list import FolderListParams, build_folder_list
 from app.services.annotations import annotation_file, load_annotations, save_annotation
 from app.services.extraction_review import (
@@ -184,6 +186,8 @@ def app_config(request: Request) -> AppConfigResponse:
         blob_entra_ready=settings.blob_entra_ready,
         blob_auth_required=settings.blob_auth_required,
         blob_sas_configured=sas_configured,
+        playground_enabled=bool(settings.core_pipeline_url.strip()),
+        playground_container=settings.playground_container.strip(),
     )
 
 
@@ -736,6 +740,43 @@ def delete_folder(
     clear_report_cache()  # the accuracy report lists charts
     logger.info("chart %s deleted by %s", folder_id, user.username)
     return result
+
+
+@router.post("/playground/batch-run", status_code=202)
+def playground_batch_run(
+    body: PlaygroundRun,
+    settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
+) -> dict:
+    """Admins only: start a core-pipeline batch run over a blob folder, written to the
+    matching Processed folder (Raw_Input/Run2/Batch6/DEID_PNGs -> Processed/Run2/Batch6)."""
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in again to start a run")
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only an admin can start a run")
+    base_url = settings.core_pipeline_url.strip()
+    if not base_url:
+        raise HTTPException(status_code=503, detail="Playground is off: set CORE_PIPELINE_URL in review-ui/.env")
+    if not playground.clean_path(body.input_path):
+        raise HTTPException(status_code=400, detail="Give the blob folder that holds the chart folders")
+    container = body.container_name.strip() or settings.playground_container.strip()
+    if not container:
+        raise HTTPException(status_code=400, detail="Give the blob container")
+    request = playground.batch_body(
+        container_name=container,
+        input_path=body.input_path,
+        chart_list=playground.chart_names(body.chart_list),
+        sample=body.sample,
+        skip_ocr=body.skip_ocr,
+        skip_completed=body.skip_completed,
+    )
+    try:
+        answer = playground.start_batch(base_url, request)
+    except playground.PipelineError as exc:
+        logger.warning("playground run refused for %s: %s", request["input_path"], exc.detail)
+        raise HTTPException(status_code=exc.status if 400 <= exc.status < 600 else 502, detail=exc.detail) from exc
+    logger.info("playground run of %s -> %s started by %s", request["input_path"], request["output_path"], user.username)
+    return {"request": request, "pipeline": answer}
 
 
 @router.put("/folders/{folder_id}/ground-truth/sequence", response_model=list[PageGroundTruth])

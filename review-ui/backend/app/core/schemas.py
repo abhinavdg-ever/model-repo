@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 OcrKind = Literal["preliminary", "final1", "final2"]
 OcrRunStatus = Literal[
@@ -475,3 +475,19 @@ class AppConfigResponse(BaseModel):
     blob_entra_ready: bool = False
     blob_auth_required: bool = False
     blob_sas_configured: bool = False
+    # Playground (admins only): CORE_PIPELINE_URL is set, and the default container.
+    playground_enabled: bool = False
+    playground_container: str = ""
+
+
+class PlaygroundRun(BaseModel):
+    """A batch run from the Playground. The output folder is derived, not sent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    container_name: str = ""
+    input_path: str
+    chart_list: list[str] | str | None = None
+    sample: int | None = Field(None, ge=1)
+    skip_ocr: bool = False
+    skip_completed: bool = False

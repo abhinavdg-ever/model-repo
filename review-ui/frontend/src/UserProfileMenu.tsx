@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { FolderOpen, History, LogOut } from "lucide-react";
+import { FlaskConical, FolderOpen, History, LogOut } from "lucide-react";
 
 type Props = {
   displayName?: string;
   initials?: string;
   /** "file-viewer" shows a History link; otherwise a File Viewer link */
-  currentView?: "landing" | "folder" | "file-viewer" | "accuracy" | "manual-review";
+  currentView?: "landing" | "folder" | "file-viewer" | "accuracy" | "manual-review" | "playground";
   onOpenFileViewer?: () => void;
+  /** Admins only: given, the menu offers the Playground. */
+  onOpenPlayground?: () => void;
   onOpenHistory?: () => void;
   onLogout: () => void;
 };
@@ -17,6 +19,7 @@ export default function UserProfileMenu({
   currentView = "landing",
   onOpenFileViewer,
   onOpenHistory,
+  onOpenPlayground,
   onLogout,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -91,6 +94,21 @@ export default function UserProfileMenu({
               File Viewer
             </button>
           )}
+
+          {onOpenPlayground && currentView !== "playground" ? (
+            <button
+              type="button"
+              className="user-menu-item"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onOpenPlayground();
+              }}
+            >
+              <FlaskConical size={14} aria-hidden="true" />
+              Playground
+            </button>
+          ) : null}
 
           <button
             type="button"

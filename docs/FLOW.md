@@ -40,6 +40,12 @@ The two services **never call each other**. They share the database and the
 `data/folders` volume — core-pipeline writes it, review-ui mounts it read-only.
 Either can be redeployed without the other.
 
+One exception, off by default: review-ui's **Playground** (admins only, profile
+menu) starts a core-pipeline batch run (`POST /api/charts/batch-run`, blob input,
+output derived as `Raw_Input/Run2/Batch6/DEID_PNGs` → `Processed/Run2/Batch6`)
+when `CORE_PIPELINE_URL` is set in `review-ui/.env`. core-pipeline never calls
+review-ui.
+
 ---
 
 ## 2. End-to-end chart flow

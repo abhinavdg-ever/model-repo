@@ -327,6 +327,9 @@ export type AppConfig = {
   blob_entra_ready: boolean;
   blob_auth_required: boolean;
   blob_sas_configured: boolean;
+  /** Playground (admins): CORE_PIPELINE_URL is set on the server. */
+  playground_enabled?: boolean;
+  playground_container?: string;
 };
 
 export const OCR_TAB_LABELS: Record<OcrKind, string> = {
@@ -382,6 +385,27 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
  * on disk are kept). */
 export function deleteFolder(folderId: string): Promise<{ chart_name: string; page_count: number | null }> {
   return api(`/api/folders/${encodeURIComponent(folderId)}`, { method: "DELETE" });
+}
+
+export type PlaygroundRunRequest = {
+  container_name: string;
+  input_path: string;
+  chart_list: string;
+  sample: number | null;
+  skip_ocr: boolean;
+  skip_completed: boolean;
+};
+
+export type PlaygroundRunResponse = {
+  /** What was sent to core-pipeline's batch-run, output_path derived. */
+  request: Record<string, unknown> & { input_path: string; output_path: string };
+  /** core-pipeline's answer (queued in the background). */
+  pipeline: Record<string, unknown>;
+};
+
+/** Admins only: start a core-pipeline batch run over a blob folder. */
+export function startPlaygroundRun(body: PlaygroundRunRequest): Promise<PlaygroundRunResponse> {
+  return api("/api/playground/batch-run", { method: "POST", body: JSON.stringify(body) });
 }
 
 /** Sign in; throws with the server's message ("Invalid username or password.") on failure. */

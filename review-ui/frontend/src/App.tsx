@@ -5,6 +5,7 @@ import FolderViewer from "./FolderViewer";
 import FileViewer from "./FileViewer";
 import AccuracyView from "./AccuracyView";
 import ManualReviewView from "./ManualReviewView";
+import PlaygroundView from "./PlaygroundView";
 import LoginPage from "./LoginPage";
 import UserProfileMenu from "./UserProfileMenu";
 import { getAppConfig, type AppConfig, type OutputMode } from "./api";
@@ -16,7 +17,8 @@ type Route =
   | { view: "folder"; folderId: string; mode: OutputMode; from?: ChartSource }
   | { view: "file-viewer"; folderId?: string }
   | { view: "accuracy" }
-  | { view: "manual-review" };
+  | { view: "manual-review" }
+  | { view: "playground" };
 
 function parseMode(raw: string | null): OutputMode {
   return raw === "imaging" ? "imaging" : "ocr";
@@ -33,6 +35,9 @@ function parsePath(pathname: string, search: string): Route {
   }
   if (pathname === "/manual-review" || pathname === "/manual-review/") {
     return { view: "manual-review" };
+  }
+  if (pathname === "/playground" || pathname === "/playground/") {
+    return { view: "playground" };
   }
   const fileMatch = pathname.match(/^\/file-viewer(?:\/([^/]+))?\/?$/);
   if (fileMatch) {
@@ -64,6 +69,7 @@ function pathFor(route: Route): string {
   }
   if (route.view === "accuracy") return "/accuracy";
   if (route.view === "manual-review") return "/manual-review";
+  if (route.view === "playground") return "/playground";
   if (route.view === "file-viewer") {
     return route.folderId
       ? `/file-viewer/${encodeURIComponent(route.folderId)}`
@@ -82,6 +88,7 @@ function modePillClass(label: string): string {
 export default function App() {
   const [session, setSession] = useState<Session | null>(readSession);
   const authed = session !== null;
+  const isAdmin = session?.user.role === "admin";
   const [route, setRoute] = useState<Route>(() =>
     parsePath(window.location.pathname, window.location.search),
   );
@@ -194,6 +201,7 @@ export default function App() {
             currentView={route.view}
             onOpenFileViewer={() => guardedNavigate({ view: "file-viewer" })}
             onOpenHistory={() => guardedNavigate({ view: "landing" })}
+            onOpenPlayground={isAdmin ? () => guardedNavigate({ view: "playground" }) : undefined}
             onLogout={handleLogout}
           />
         </div>
@@ -227,6 +235,14 @@ export default function App() {
               pathFor({ view: "folder", folderId, mode: "imaging", from: "accuracy" })
             }
           />
+        ) : route.view === "playground" ? (
+          isAdmin ? (
+            <PlaygroundView config={appConfig} onBack={() => navigate({ view: "landing" })} />
+          ) : (
+            <div className="workspace">
+              <p className="accuracy-note">The Playground is for admins only.</p>
+            </div>
+          )
         ) : route.view === "file-viewer" ? (
           <FileViewer
             initialFolderId={route.folderId ?? null}

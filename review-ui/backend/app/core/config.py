@@ -88,6 +88,10 @@ class Settings(BaseSettings):
 
     # Legacy SAS only (blob_auth_mode=sas). Not usable when Shared Key is disabled.
     blob_sas_token: str = ""
+    # Playground (admins): core-pipeline's API, e.g. http://localhost:8001. Empty =
+    # off; this is the only place review-ui calls core-pipeline.
+    core_pipeline_url: str = ""
+    playground_container: str = "imaging-pipeline"
 
     @field_validator("blob_auth_mode", mode="before")
     @classmethod
