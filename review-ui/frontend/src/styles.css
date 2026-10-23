@@ -5882,3 +5882,29 @@ input {
   background: #fbeceb;
   font-weight: 600;
 }
+
+/* Users page: each side its own card, so the form and the list read as separate panels. */
+.users-layout {
+  gap: 1.5rem;
+}
+
+.users-form,
+.users-list {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.1rem 1.1rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.users-form .output-tabs {
+  margin-bottom: 0.6rem;
+}
+
+.users-form .playground-form {
+  max-width: none;
+}
+
+.users-list h2 {
+  margin-top: 0;
+}
