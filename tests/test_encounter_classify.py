@@ -109,7 +109,7 @@ def test_undated_pages_never_inherit(canon):
     )
     assert rows[0]["encounter_type"] == "outpatient_tele"
     assert (rows[1]["encounter_type"], rows[1]["decided_by"]) == ("outpatient_f2f", "default")
-    assert rows[1]["reason"] == "no_date"
+    assert rows[1]["reason"] == "no_setting_evidence"  # nothing on it votes
     assert rows[1]["confidence"] == 0.3
 
 
@@ -204,18 +204,20 @@ def test_worked_example(canon):
     rows = {r["page_id"]: r for r in classify_pages(pages, entries=canon, visit_log=log)}
 
     a = rows[1]
+    # Page 1 (hospital course, x2) and page 3 (Discharge Summary) vote inpatient; page 7 abstains.
     assert (a["encounter_type"], a["confidence"], a["decided_by"], a["matched_keyword"]) == (
-        "inpatient", 0.95, "tier1", "Discharge Summary")
+        "inpatient", 1.0, "vote", "hospital course")
+    assert [v["weight"] for v in log[0]["votes"]] == [2.0, 1.0, 1.0]
     assert rows[7]["encounter_type"] == "inpatient"
     assert "discharged home" in log[0]["negatives_fired"]
 
     b = rows[25]
     assert (b["encounter_type"], b["confidence"], b["decided_by"], b["matched_keyword"]) == (
-        "outpatient_tele", 0.80, "tier2", "telehealth")
+        "outpatient_tele", 1.0, "vote", "telehealth")
     assert rows[26]["encounter_type"] == "outpatient_tele"
     assert rows[26]["continue_applied"] == "y"  # its own text gives no answer
 
-    assert (rows[32]["encounter_type"], rows[32]["decided_by"], rows[32]["reason"]) == ("outpatient_f2f", "default", "no_date")
+    assert (rows[32]["encounter_type"], rows[32]["decided_by"]) == ("outpatient_f2f", "default")
 
 
 # --- label-free regression checks ---------------------------------------
@@ -247,13 +249,11 @@ def test_a_continuity_document_is_one_visit_even_across_dates(canon):
     assert rows[3]["encounter_type"] != "outpatient_tele"
 
 
-def test_a_document_with_no_date_on_any_page_defaults_to_f2f(canon):
+def test_a_document_with_no_date_still_votes(canon):
     pages = [{**page(1, "telehealth visit", dos=""), "document": 1},
              {**page(2, "", dos=""), "document": 1}]
     rows = classify_pages(pages, entries=canon)
-    assert all((r["encounter_type"], r["decided_by"], r["confidence"]) == ("outpatient_f2f", "default", 0.3)
-               for r in rows)
-    assert rows[0]["reason"] == "no_date"
+    assert all((r["encounter_type"], r["decided_by"]) == ("outpatient_tele", "vote") for r in rows)
 
 
 def test_without_documents_visits_are_date_runs(canon):
@@ -284,14 +284,16 @@ def test_a_lab_encounter_is_not_applicable_on_every_page(canon):
     pages = [{**page(1, "telehealth visit"), "page_family": "Lab Report/Result", "document": 1},
              {**page(2, "office visit"), "page_family": "Progress Note", "document": 1}]
     rows = classify_pages(pages, entries=canon)
+    # The lab first page (x2) votes Not Applicable, outvoting the one F2F page.
     assert all((r["encounter_type"], r["encounter_label"], r["decided_by"]) ==
-               ("not_applicable", "Not Applicable", "not_applicable") for r in rows)
+               ("not_applicable", "Not Applicable", "vote") for r in rows)
     assert rows[0]["matched_keyword"] == "Lab Report/Result"
 
 
 def test_progress_notes_and_discharge_summaries_are_classified(canon):
     for family, text, expected in (("Progress Note", "telehealth visit", "outpatient_tele"),
-                                   ("Discharge Summary", "", "outpatient_f2f")):
+                                   ("Discharge Summary", "", "inpatient"),
+                                   ("Progress Note", "", "outpatient_f2f")):
         rows = classify_pages([{**page(1, text), "page_family": family}], entries=canon)
         assert rows[0]["encounter_type"] == expected
 
@@ -308,4 +310,40 @@ def test_follow_up_visits_are_outpatient_f2f(canon):
                  "Return visit: knee pain."):
         d = one(canon, page(1, text))
         assert (d.setting, d.decided_by) == ("outpatient_f2f", "tier2"), text
+
+
+# --- every page votes, the first page counts twice (2026-10-23) ---------
+
+
+def _doc(*pages):
+    return [{**p, "document": 1} for p in pages]
+
+
+def test_the_first_page_counts_twice_and_wins_a_tie(canon):
+    pages = _doc({**page(1, "telehealth visit"), "page_family": "Progress Note"},
+                 {**page(2, "hospital course"), "page_family": "Progress Note"},
+                 {**page(3, "hospital course"), "page_family": "Progress Note"})
+    log: list = []
+    rows = classify_pages(pages, entries=canon, visit_log=log)
+    # 2 (tele, first page) against 2 (inpatient): the first page's vote.
+    assert rows[0]["encounter_type"] == "outpatient_tele" and rows[0]["confidence"] == 0.5
+    assert rows[1]["continue_applied"] == "y"
+
+
+def test_more_pages_outvote_the_first(canon):
+    pages = _doc({**page(1, "telehealth visit"), "page_family": "Progress Note"},
+                 *[{**page(n, "hospital course"), "page_family": "Progress Note"} for n in (2, 3, 4)])
+    rows = classify_pages(pages, entries=canon)
+    assert rows[0]["encounter_type"] == "inpatient" and rows[0]["confidence"] == 0.6
+
+
+def test_family_defaults_vote_when_a_page_has_no_evidence(canon):
+    pages = _doc({**page(1, ""), "page_family": "Discharge Summary"},
+                 {**page(2, ""), "page_family": "Progress Note"},
+                 {**page(3, ""), "page_family": "Lab Report/Result"})
+    log: list = []
+    rows = classify_pages(pages, entries=canon, visit_log=log)
+    assert [(v["setting"], v["by"]) for v in log[0]["votes"]] == [
+        ("inpatient", "family_default"), ("outpatient_f2f", "family_default"), ("not_applicable", "not_applicable")]
+    assert rows[0]["encounter_type"] == "inpatient"
 

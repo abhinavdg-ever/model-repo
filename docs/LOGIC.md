@@ -709,9 +709,10 @@ list, immunizations) takes 2222-02-02. A document's DOS in review-ui's Doc Summa
 `stages/lib/encounter/stage.py` · **Catalog:** `keyword-canon/encounter_canon.json`
 
 One answer per visit — Outpatient (F2F), Outpatient (Tele), Inpatient or Home —
-stamped on every page of the visit. **Evidence is ranked, not added up:** the
-most authoritative evidence a visit has decides alone, so repeated "follow up"
-can never outweigh one discharge summary.
+stamped on every page of the visit. **Every page votes** (2026-10-23): a page's
+vote is its own strongest evidence (ranked, not added up, so repeated "follow up"
+never outweighs one discharge summary), the **first page counts twice**, and the
+weighted majority wins.
 
 ### Visits
 
@@ -742,7 +743,24 @@ Phrases match on word boundaries; a phrase ending in punctuation (`a/p:`,
 finding they name, or every tier 2/3 finding of a setting. They never touch
 tier 1.
 
-### Decision
+### Each page's vote
+
+| The page | Votes |
+|---|---|
+| Its L1 family is not in `applies_to` (Progress Note, Discharge Summary): a lab report, orders, forms… | **Not Applicable** |
+| Tier 1 or tier 2 evidence on the page | that setting (the table below decides within the page) |
+| No evidence, family Progress Note | **Outpatient (F2F)** (`vote.family_defaults`) |
+| No evidence, family Discharge Summary | **Inpatient** |
+| No evidence, no family | does not vote |
+
+**The tally:** the encounter's first page weighs `vote.first_page_weight` (2), every
+other page 1. The setting with the most weight wins (`decided_by=vote`); a tie goes to
+the first page's vote, then the setting priority. `confidence` = the winner's share of
+the weight; `reason` lists every setting's weight; `conflict=y` when more than one
+setting got a vote. No page voting at all: **Outpatient (F2F)** at 0.3
+(`decided_by=default`, canon `default`).
+
+### Within one page
 
 | Situation | Answer | `confidence` |
 |---|---|---|
@@ -750,11 +768,10 @@ tier 1.
 | Tier 1, two settings | more tier 3 hints, then setting priority (Home 10, Tele 20, F2F 30, Inpatient 40); `conflict=y` | 0.70 |
 | Tier 1 empty, tier 2 one setting | that setting | 0.80 |
 | Tier 2, two settings | as above; `conflict=y` | 0.60 |
-| The encounter's page family (its first classified page's L1) is not in `applies_to` (Progress Note, Discharge Summary) | **Not Applicable** (`not_applicable`), `decided_by=not_applicable`, `matched_keyword` = the family; lab, orders, forms… | 1.0 |
-| Nothing in tiers 1–2, or no usable date | **Outpatient (F2F)**, `decided_by=default`, `reason` = `no_setting_evidence` / `no_date` (canon `default`; empty setting there = leave unresolved) | 0.3 |
+| Nothing in tiers 1–2 | the family default, else no vote | — |
 
-An encounter with no classified page type at all is still classified. A defaulted visit never inherits from a neighbouring page. The buckets live
-in the catalog; calibrate them against a labelled sample.
+These confidences describe a page's own evidence; the encounter's `confidence` is the
+vote share. The buckets live in the catalog; calibrate them against a labelled sample.
 
 The **loader refuses** a catalog where a setting is unknown, a tier 1 id is not
 a page type id, a phrase sits in two tiers or under two settings, a context
@@ -765,8 +782,8 @@ phrase also scores, or a negative cancels a phrase that does not exist.
 | Target | Columns |
 |---|---|
 | `encounter_type_results` | every non-blank/junk page (defaulted ones at 0.3): `encounter_type`, `confidence`, `matched_keyword`. Rows for unresolved pages (only if the canon default is emptied) are deleted |
-| staging | `<chart>/staging/continuity.json` → `encounters`: one entry per encounter (pages, page family, DOS, the decision); review-ui's Doc Summary reads it first |
-| disk | `imaging/<chart>_encounter.csv`, every page: `encounter_type`, `encounter_label`, `confidence`, `matched_keyword` (page type for tier 1, phrase for tier 2), `continue_applied` (the page alone would answer differently or not at all), `decided_by` (`tier1`/`tier2`/`not_applicable`/`default`/`unresolved`), `reason`, `conflict` |
+| staging | `<chart>/staging/continuity.json` → `encounters`: one entry per encounter (pages, page family, DOS, every page's vote and weight, the decision); review-ui's Doc Summary reads it first |
+| disk | `imaging/<chart>_encounter.csv`, every page: `encounter_type`, `encounter_label`, `confidence`, `matched_keyword` (page type for tier 1, phrase for tier 2), `continue_applied` (the page's own vote differs, or it did not vote), `decided_by` (`vote`/`default`/`unresolved`), `reason`, `conflict` |
 
 `ENCOUNTER_DEBUG=true` writes one evidence record per visit to
 `<chart>/debug/<chart>_encounter_evidence.csv`: every finding with its tier,

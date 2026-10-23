@@ -15,11 +15,14 @@ evidence a visit has and decides from that alone, so twenty passing mentions of
        tier 3  hints that also occur in other settings ("follow up")
      Negatives remove the tier 2/3 findings they name. Context phrases are
      logged and never score.
-  3. Decide: the highest non-empty tier of tiers 1–2 decides alone. Two
-     settings in that tier is a conflict: more tier 3 hints wins, then the
-     setting priority, and the visit is flagged for review.
-  4. Stamp every page of the visit with the answer. An unresolved visit stays
-     empty — it never inherits from a neighbouring page.
+  3. Every page votes (2026-10-23): Not Applicable when its family is not
+     one encounter type applies to (a lab report); else its own highest
+     non-empty tier of tiers 1–2 (two settings there: more tier 3 hints, then
+     priority); else its family's default (Progress Note -> Outpatient F2F,
+     Discharge Summary -> Inpatient). The encounter's first page counts twice;
+     the weighted majority wins (a tie: the first page's vote), confidence =
+     its share of the weight. No vote at all: the canon default.
+  4. Stamp every page of the visit with the answer.
 
 Every phrase, tier and number lives in ``encounter_canon.json``.
 """
@@ -84,6 +87,11 @@ class Canon:
     applies_to: frozenset[str] = frozenset()
     not_applicable: str = "not_applicable"
     not_applicable_confidence: float = 1.0
+    # The vote (2026-10-23): a page with no setting evidence votes its family's default
+    # (Progress Note -> outpatient_f2f, Discharge Summary -> inpatient); the encounter's
+    # first page counts first_page_weight times.
+    family_defaults: dict[str, str] = field(default_factory=dict)
+    first_page_weight: float = 2.0
 
 
 class CanonError(ValueError):
@@ -123,6 +131,10 @@ def _validate(raw: dict[str, Any], page_type_ids: Optional[set[str]]) -> None:
         key = normalize_text(phrase)
         if key in owner:
             errors.append(f"context phrase {phrase!r} also scores in {owner[key]}")
+
+    for family, setting in ((raw.get("vote") or {}).get("family_defaults") or {}).items():
+        if setting not in settings:
+            errors.append(f"vote.family_defaults.{family}: unknown setting {setting!r}")
 
     default = (raw.get("default") or {}).get("setting")
     if default and default not in settings:
@@ -189,6 +201,11 @@ def _parse_canon(raw: dict[str, Any], *, check_page_types: bool = True) -> Canon
         ),
         not_applicable=na_setting,
         not_applicable_confidence=float(na.get("confidence", 1.0)),
+        family_defaults={
+            str(f).strip().casefold(): str(v)
+            for f, v in ((raw.get("vote") or {}).get("family_defaults") or {}).items()
+        },
+        first_page_weight=float((raw.get("vote") or {}).get("first_page_weight", 2.0)),
     )
 
 
@@ -384,6 +401,60 @@ def encounter_family(visit: list[dict[str, Any]]) -> str:
     return ""
 
 
+@dataclass
+class Vote:
+    """One page's say in its encounter's setting."""
+
+    setting: str  # "" = abstains (no evidence and no family default)
+    weight: float
+    decided_by: str  # tier1 | tier2 | family_default | not_applicable | none
+    matched_keyword: str
+    evidence: Evidence
+
+
+def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vote:
+    """The page's own setting: Not Applicable for a family encounter type does not apply
+    to (a lab report), else its strongest evidence (tier 1, then tier 2), else its
+    family's default (Progress Note -> Outpatient F2F, Discharge Summary -> Inpatient)."""
+    family = str(page.get("page_family") or "").strip()
+    if canon.applies_to and family and family.casefold() != "unknown" and family.casefold() not in canon.applies_to:
+        return Vote(canon.not_applicable, weight, "not_applicable", family, Evidence())
+    evidence = gather([page], canon)
+    own = decide(evidence, canon)
+    if own.setting:
+        return Vote(own.setting, weight, own.decided_by, own.matched_keyword, evidence)
+    fallback = canon.family_defaults.get(family.casefold(), "")
+    return Vote(fallback, weight, "family_default" if fallback else "none", "", evidence)
+
+
+def tally(votes: list[Vote], canon: Canon) -> Decision:
+    """The weighted majority, the first page counting ``first_page_weight`` times. A tie
+    goes to the first page's vote, then the setting priority. Confidence = the winner's
+    share of the weight. No vote at all: the canon default (low confidence)."""
+    if votes:
+        votes[0].weight = canon.first_page_weight
+    weights: dict[str, float] = {}
+    for vote in votes:
+        if vote.setting:
+            weights[vote.setting] = weights.get(vote.setting, 0.0) + vote.weight
+    if not weights:
+        return Decision("", "unresolved", 0.0, False, "", reason="no_setting_evidence")
+    best = max(weights.values())
+    tied = [setting for setting, weight in weights.items() if abs(weight - best) < 1e-9]
+    opener = votes[0].setting
+    winner = opener if opener in tied else min(tied, key=lambda s: canon.priority.get(s, 999))
+    keyword = next((v.matched_keyword for v in votes if v.setting == winner and v.matched_keyword), "")
+    return Decision(
+        setting=winner,
+        decided_by="vote",
+        confidence=round(best / sum(weights.values()), 4),
+        conflict=len(weights) > 1,
+        matched_keyword=keyword,
+        reason="; ".join(f"{s} {w:g}" for s, w in sorted(weights.items(), key=lambda kv: -kv[1])),
+        contenders=tuple(weights) if len(weights) > 1 else (),
+    )
+
+
 def classify_pages(
     pages: Iterable[dict[str, Any]],
     *,
@@ -403,34 +474,23 @@ def classify_pages(
     for visit in group_visits(list(pages)):
         first = visit[0]
         family = encounter_family(visit)
-        if canon.applies_to and family and family.casefold() not in canon.applies_to:
-            # Not a visit note (lab, orders, forms...): no encounter type, on every page.
-            # An encounter with no classified page type at all is still classified.
-            decision = Decision(
-                canon.not_applicable, "not_applicable", canon.not_applicable_confidence, False,
-                family, reason=f"page_type:{family}",
-            )
-            evidence = Evidence()
-        elif not any((page.get("dos_from") or "").strip() for page in visit):
-            decision = Decision(
-                "", "unresolved", 0.0, False, "", reason=first.get("reason") or "no_date"
-            )
-            evidence = Evidence()
-        else:
-            evidence = gather(visit, canon)
-            decision = decide(evidence, canon)
+        votes = [page_vote(page, canon) for page in visit]
+        decision = tally(votes, canon)
         if not decision.setting and canon.default_setting:
-            # Nothing found: the default setting, low confidence; the reason says why.
+            # No page voted (no evidence, no family default): the default, low confidence.
             decision = Decision(
                 canon.default_setting, "default", canon.default_confidence, False, "",
                 reason=decision.reason,
             )
+        evidence = Evidence()
+        for vote in votes:
+            evidence.findings.extend(vote.evidence.findings)
+            evidence.cancelled.extend(vote.evidence.cancelled)
+            evidence.negatives_fired.extend(n for n in vote.evidence.negatives_fired if n not in evidence.negatives_fired)
+            evidence.context.extend(c for c in vote.evidence.context if c not in evidence.context)
 
-        for page in visit:
-            own = (
-                decide(gather([page], canon), canon).setting
-                if decision.setting and decision.decided_by in ("tier1", "tier2") else decision.setting
-            )
+        for page, vote in zip(visit, votes):
+            own = vote.setting
             rows.append(
                 {
                     "page_id": page.get("page_id"),
@@ -468,6 +528,12 @@ def classify_pages(
                     "confidence": decision.confidence,
                     "conflict": decision.conflict,
                     "contenders": list(decision.contenders),
+                    # Each page's vote, in page order; the first page counts double.
+                    "votes": [
+                        {"page": p.get("page_name"), "setting": v.setting, "weight": v.weight, "by": v.decided_by,
+                         "keyword": v.matched_keyword}
+                        for p, v in zip(visit, votes)
+                    ],
                     "reason": decision.reason,
                     "findings": [vars(f) for f in evidence.findings],
                     "cancelled": [vars(f) for f in evidence.cancelled],
