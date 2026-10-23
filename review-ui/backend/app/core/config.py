@@ -261,13 +261,19 @@ class Settings(BaseSettings):
 
     @property
     def playground_targets(self) -> list[dict[str, str]]:
-        """CORE_PIPELINE_URLS as [{label, url}], each URL without a trailing slash."""
+        """CORE_PIPELINE_URLS as [{label, url}], each URL without a trailing slash. A bare
+        URL is labelled Local when it names this machine (localhost, 127.0.0.1,
+        host.docker.internal), else VM."""
         seen: list[dict[str, str]] = []
         for item in self.core_pipeline_urls.split(","):
-            label, _, url = item.strip().rpartition("=") if "=" in item else ("", "", item.strip())
+            label, _, url = item.strip().partition("=") if "=" in item.split("//")[0] else ("", "", item.strip())
             url = url.strip().rstrip("/")
-            if url and all(t["url"] != url for t in seen):
-                seen.append({"label": label.strip() or url, "url": url})
+            if not url or any(t["url"] == url for t in seen):
+                continue
+            if not label.strip():
+                local = any(h in url for h in ("localhost", "127.0.0.1", "host.docker.internal", "[::1]"))
+                label = "Local" if local else "VM"
+            seen.append({"label": label.strip(), "url": url})
         return seen
 
     @property

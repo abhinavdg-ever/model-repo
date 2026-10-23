@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Eye, EyeOff, KeyRound, UserPlus } from "lucide-react";
+import PageMessage from "./PageMessage";
 import {
   createUser,
   errorDetail,
@@ -140,14 +141,14 @@ export default function UsersView({ onBack }: Props) {
       </div>
 
       {error ? (
-        <p className="playground-error users-message" role="alert">
+        <PageMessage kind="error" onClose={() => setError(null)}>
           {error}
-        </p>
+        </PageMessage>
       ) : null}
       {notice ? (
-        <p className="success-banner users-message" role="status">
+        <PageMessage kind="success" onClose={() => setNotice(null)}>
           {notice}
-        </p>
+        </PageMessage>
       ) : null}
       <div className="users-layout">
       <section className="accuracy-section users-form" aria-label="Create or reset">
@@ -235,7 +236,7 @@ export default function UsersView({ onBack }: Props) {
       <section className="accuracy-section users-list" aria-label="Users">
         <h2>Users ({users.length})</h2>
         <p className="accuracy-note">Click a user to reset their password.</p>
-        {loadError ? <p className="playground-error">{loadError}</p> : null}
+        {loadError ? <PageMessage kind="error">{loadError}</PageMessage> : null}
         <table className="playground-users">
           <thead>
             <tr>

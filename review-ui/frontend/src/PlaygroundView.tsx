@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft, Play } from "lucide-react";
+import PageMessage from "./PageMessage";
 import { errorDetail, startPlaygroundRun, type AppConfig, type PlaygroundRunResponse } from "./api";
 
 type Props = {
@@ -19,7 +20,9 @@ export function outputPathFor(inputPath: string): string {
 export default function PlaygroundView({ config, onBack }: Props) {
   const targets = config?.playground_targets ?? [];
   // VM first, by default; there is no blank choice.
-  const [target, setTarget] = useState(targets[0]?.url ?? "");
+  // VM by default (else the first); there is no blank choice.
+  const defaultTarget = (targets.find((t) => t.label.toLowerCase() === "vm") ?? targets[0])?.url ?? "";
+  const [target, setTarget] = useState(defaultTarget);
   const [container, setContainer] = useState(config?.playground_container || "imaging-pipeline");
   const [inputPath, setInputPath] = useState("");
   const [charts, setCharts] = useState("");
@@ -32,7 +35,7 @@ export default function PlaygroundView({ config, onBack }: Props) {
 
   const enabled = Boolean(config?.playground_enabled);
   const outputPath = inputPath.trim() ? outputPathFor(inputPath) : "";
-  const chosenTarget = targets.some((t) => t.url === target) ? target : targets[0]?.url ?? "";
+  const chosenTarget = targets.some((t) => t.url === target) ? target : defaultTarget;
 
   async function run() {
     setRunning(true);
@@ -73,16 +76,15 @@ export default function PlaygroundView({ config, onBack }: Props) {
       </div>
 
       <section className="accuracy-section" aria-label="Batch run">
-        <h2>Run a batch of charts</h2>
+        <h2>Batch Run</h2>
         <p className="accuracy-note">
           Starts a core-pipeline batch run over every chart folder in a blob folder (or just the
-          charts listed). Results are written to the matching Processed folder. Every stage
-          reprocesses; Final OCR 2 is billed per page unless Skip OCR is on.
+          charts listed). Results are written to the matching Processed folder.
         </p>
         {!enabled ? (
-          <p className="playground-error" role="alert">
+          <PageMessage kind="error">
             The Playground is off on this server: set CORE_PIPELINE_URLS in review-ui/.env.
-          </p>
+          </PageMessage>
         ) : null}
 
         <div className="playground-form">
@@ -90,12 +92,12 @@ export default function PlaygroundView({ config, onBack }: Props) {
             <span>Pipeline</span>
             <select value={chosenTarget} required onChange={(e) => setTarget(e.target.value)}>
               {targets.map((t) => (
-                <option key={t.url} value={t.url} title={t.url}>
-                  {t.label}
+                <option key={t.url} value={t.url}>
+                  {t.label} ({t.url})
                 </option>
               ))}
             </select>
-            <small>{chosenTarget || "No pipeline configured"}</small>
+            {!targets.length ? <small>No pipeline configured</small> : null}
           </label>
           <label>
             <span>Container</span>
@@ -136,7 +138,7 @@ export default function PlaygroundView({ config, onBack }: Props) {
           <div className="playground-checks">
             <label>
               <input type="checkbox" checked={skipOcr} onChange={(e) => setSkipOcr(e.target.checked)} />
-              Skip OCR (reuse existing OCR, no Final OCR 2 bill)
+              Skip OCR (reuse existing OCR)
             </label>
             <label>
               <input
@@ -161,14 +163,14 @@ export default function PlaygroundView({ config, onBack }: Props) {
         </div>
 
         {error ? (
-          <p className="playground-error" role="alert">
-            {error}
-          </p>
+          <PageMessage kind="error" onClose={() => setError(null)}>
+            Could not start the run: {error}
+          </PageMessage>
         ) : null}
         {result ? (
-          <p className="success-banner" role="status">
+          <PageMessage kind="success" onClose={() => setResult(null)}>
             Job submitted successfully. Please view History when it finishes.
-          </p>
+          </PageMessage>
         ) : null}
       </section>
     </div>

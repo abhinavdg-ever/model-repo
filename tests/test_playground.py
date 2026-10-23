@@ -78,9 +78,9 @@ def test_only_an_admin_starts_a_run_and_the_output_is_derived(monkeypatch):
 def test_by_default_the_vm_then_local_pipeline_are_offered():
     assert Settings(database_url="").playground_targets == [
         {"label": "VM", "url": "http://172.20.4.170:8001"}, {"label": "Local", "url": "http://localhost:8001"}]
-    # A bare URL is its own label.
-    assert Settings(database_url="", core_pipeline_urls="http://x:1/").playground_targets == [
-        {"label": "http://x:1", "url": "http://x:1"}]
+    # A bare URL is Local when it names this machine, else VM.
+    assert Settings(database_url="", core_pipeline_urls="http://localhost:8001/, http://172.20.4.170:8001").playground_targets == [
+        {"label": "Local", "url": "http://localhost:8001"}, {"label": "VM", "url": "http://172.20.4.170:8001"}]
 
 
 def test_without_pipelines_the_playground_is_off(monkeypatch):

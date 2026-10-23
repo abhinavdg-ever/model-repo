@@ -5871,18 +5871,6 @@ input {
   background: var(--neutral-100, #f4f4f1);
 }
 
-.users-message {
-  margin: 0 0 0.9rem;
-}
-
-.playground-error.users-message {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #a33b32;
-  border-radius: 8px;
-  background: #fbeceb;
-  font-weight: 600;
-}
-
 /* Users page: each side its own card, so the form and the list read as separate panels. */
 .users-layout {
   gap: 1.5rem;
@@ -5907,4 +5895,60 @@ input {
 
 .users-list h2 {
   margin-top: 0;
+}
+
+/* Page-wide success / error message (PageMessage.tsx): Playground and User Management. */
+.page-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0.75rem 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.page-message-success {
+  color: var(--status-success-fg);
+  background: var(--status-success-bg);
+  border-color: var(--status-success-fg);
+}
+
+.page-message-error {
+  color: var(--status-error-fg);
+  background: var(--status-error-bg);
+  border-color: var(--status-error-fg);
+}
+
+.page-message-icon {
+  flex: none;
+  margin-top: 0.05rem;
+}
+
+.page-message-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.page-message-close {
+  flex: none;
+  display: inline-flex;
+  padding: 0.1rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.page-message-close:hover,
+.page-message-close:focus-visible {
+  opacity: 1;
 }
