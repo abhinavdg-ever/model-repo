@@ -795,7 +795,7 @@ class TestWordOverlap:
         words = _prose(50)
         a = " ".join(words)
         pages = [page(1, 1), page(2, 2)]
-        for changes, expected in ((1, "duplicate"), (6, "partial"), (40, None)):
+        for changes, expected in ((1, "duplicate"), (7, "partial"), (40, None)):  # 7: 95.6%, 10 different
             b = _edited(words, changes)
             rows = _classify(pages, {1: a, 2: b}, {1, 2})
             flags = {r["flag"] for r in rows}
@@ -874,7 +874,8 @@ class TestWordOverlap:
         words = [f"word{i}" for i in range(60)]
         base = " ".join(words)
         pages = [page(1, 1), page(2, 2)]
-        for replaced, expected in ((2, "duplicate"), (6, "partial"), (9, None)):
+        # 2026-10-23 (user): duplicate below 8 distinct words different, partial below 15.
+        for replaced, expected in ((3, "duplicate"), (4, "partial"), (6, "partial"), (8, None)):
             other = " ".join(f"new{i}" if i < replaced else w for i, w in enumerate(words))
             pair = classify.word_overlap(base, other)
             assert pair.different == 2 * replaced and pair.overlap < 0.95

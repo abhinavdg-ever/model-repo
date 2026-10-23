@@ -7,7 +7,7 @@ worked examples, is `docs/BLANK_JUNK_LOGIC.md`; the summary is `docs/LOGIC.md` �
 
 Duplicates: Main pages only (never blank or junk), against a neighbour within ±25 pages.
 Pages are compared on their distinct
-words as read. Duplicate: lengths within 10% and (contained, overlap ≥ 98%, or < 5 distinct
+words as read. Duplicate: lengths within 10% and (contained, overlap ≥ 98%, or < 8 distinct
 words different); partial: overlap 95–98% or < 15 different; the later page is the
 duplicate, unless a contained pair's larger page adds more than 10 distinct words (then the
 larger stays; docs/BLANK_JUNK_LOGIC.md §4). Pages under 300 characters never compared.

@@ -27,7 +27,7 @@ Duplicate detection (after the verdict, among Main pages only -- never blank or 
   words / all distinct words of the two pages; **contained** is the share of the
   smaller page's distinct words found on the other.
 * Contained (canon ``duplicates.contained_at``, 100%), overlap **≥ 98%**, or fewer than
-  ``duplicate_below_words`` (5) distinct words different, with lengths within 10%:
+  ``duplicate_below_words`` (8) distinct words different, with lengths within 10%:
   ``duplicate`` -- UI Duplicate "Duplicate (To Page N)", Blank / Junk "Yes (Junk)"
   (2026-10-22, user). Overlap **[95%, 98%)** or fewer than ``partial_below_words``
   (15) distinct words different: a partial duplicate -- the page stays Main with
@@ -124,7 +124,7 @@ def _duplicate_rules() -> dict[str, float]:
     cfg = method.canon().raw.get("duplicates", {})
     return {
         "contained_at": float(cfg.get("contained_at", 1.0)),
-        "duplicate_below_words": int(cfg.get("duplicate_below_words", 5)),
+        "duplicate_below_words": int(cfg.get("duplicate_below_words", 8)),
         "partial_below_words": int(cfg.get("partial_below_words", 15)),
         "count_rule_min_overlap": float(cfg.get("count_rule_min_overlap", 0.80)),
         "duplicate_min_length_ratio": float(cfg.get("duplicate_min_length_ratio", 0.90)),
@@ -352,7 +352,7 @@ def _classify(
             sim = 1.0 if is_contained else words.overlap
             _note_best(pid, nid, words, sim, is_contained)
             _note_best(nid, pid, words, sim, is_contained)
-            # 2026-10-22 (user): contained, >= 98% overlap or fewer than 5 distinct words
+            # 2026-10-22 (user): contained, >= 98% overlap or fewer than 8 distinct words
             # different -> duplicate; 95-98% or fewer than 15 -> partial; else neither.
             # The word counts count only between pages that are mostly the same: two short
             # unrelated pages also differ in few words.

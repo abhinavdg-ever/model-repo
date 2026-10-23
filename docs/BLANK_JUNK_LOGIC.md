@@ -129,7 +129,7 @@ A pair is decided by these rules (canon `duplicates`, 2026-10-22):
 
 | | Rule |
 |---|---|
-| **Duplicate** | lengths within 10% (shorter ≥ 90% of the longer, whitespace-stripped characters) **and** one of: contained (every distinct word of the smaller page on the other); overlap ≥ 98%; fewer than 5 distinct words different |
+| **Duplicate** | lengths within 10% (shorter ≥ 90% of the longer, whitespace-stripped characters) **and** one of: contained (every distinct word of the smaller page on the other); overlap ≥ 98%; fewer than 8 distinct words different |
 | **Partial** | not a duplicate, and overlap 95–98% or fewer than 15 distinct words different |
 | Neither | everything else |
 
@@ -171,6 +171,11 @@ and `shared_words`.
 ---
 
 ## 5. Changes
+
+### 2026-10-23 — Duplicate below 8 words different
+
+- A duplicate by word count is now fewer than **8** distinct words different (was 5); a
+  partial stays fewer than 15.
 
 ### 2026-10-23 — The later page is the duplicate
 

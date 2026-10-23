@@ -24,7 +24,7 @@
   "duplicates": {
     "note": "2026-10-22 (user): pages are compared on their distinct words as read (nothing stripped). overlap = shared distinct words / all distinct words of the two pages; contained = share of the smaller page's distinct words found on the other. Overlap >= 98%, or contained >= contained_at, is a duplicate; overlap 95-98% a partial. (Page-number and changed-word rules were removed the same day.)",
     "contained_at": 1.0,
-    "duplicate_below_words": 5,
+    "duplicate_below_words": 8,
     "partial_below_words": 15,
     "count_rule_min_overlap": 0.8,
     "duplicate_min_length_ratio": 0.9,
