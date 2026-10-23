@@ -13,6 +13,7 @@ import csv
 import json
 import re
 from datetime import date
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
@@ -469,6 +470,39 @@ def provider_version(value: Any) -> int:
         return 1
 
 
+def _name_words(name: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", name.casefold())
+
+
+def same_person(a: str, b: str) -> bool:
+    """Two spellings of one signer: the same words ignoring case and punctuation
+    ("Lynda J Storm" / "Lynda J. Storm"), the same first and last name with or
+    without middle initials ("Lynda Storm"), or an OCR slip (≥ 90% alike)."""
+    wa, wb = _name_words(a), _name_words(b)
+    if not wa or not wb:
+        return False
+    if wa == wb or sorted(wa) == sorted(wb):
+        return True
+    if len(wa) > 1 and len(wb) > 1 and (wa[0], wa[-1]) == (wb[0], wb[-1]):
+        return True
+    return SequenceMatcher(None, " ".join(wa), " ".join(wb)).ratio() >= 0.9
+
+
+def _distinct_signers(people: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each signer once: a later spelling of someone already listed is dropped,
+    lending its credentials and date when the first had none."""
+    kept: list[dict[str, Any]] = []
+    for person in people:
+        twin = next((k for k in kept if same_person(k["name"], person["name"])), None)
+        if twin is None:
+            kept.append(dict(person))
+            continue
+        for key in ("credentials", "signatureDate"):
+            if not twin.get(key) and person.get(key):
+                twin[key] = person[key]
+    return kept
+
+
 def signer_fields(signers: Any, name: str | None, credentials: str | None, version: Any = None) -> dict[str, Any]:
     """providerName / providerCredentials / providerSigners from a signature row, read by
     the rule that wrote it (``provider_version``).
@@ -494,6 +528,7 @@ def signer_fields(signers: Any, name: str | None, credentials: str | None, versi
         if who:
             people.append({"name": who, "credentials": creds or None,
                            "signatureDate": item.get("signature_date") or None})
+    people = _distinct_signers(people)
     if people:
         joined = " | ".join(p["credentials"] for p in people if p["credentials"])
         return {"providerName": people[0]["name"], "providerCredentials": joined or None,

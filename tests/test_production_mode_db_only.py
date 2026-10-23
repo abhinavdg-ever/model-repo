@@ -75,6 +75,22 @@ def test_provider_rows_are_read_by_the_rule_that_wrote_them():
         "providerName": "Meghan Newman", "providerCredentials": "DNP"}
 
 
+def test_one_signer_spelled_two_ways_is_listed_once():
+    from app.services.imaging_overlays import signer_fields
+
+    people = signer_fields(
+        '[{"name": "Lynda J Storm", "credentials": "PA", "signature_date": null},'
+        ' {"name": "Lynda J. Storm", "credentials": "PA", "signature_date": "2026-01-12"},'
+        ' {"name": "Lynda Storm", "credentials": null, "signature_date": null},'
+        ' {"name": "Jane Roe", "credentials": "DNP", "signature_date": null}]',
+        "Lynda J Storm", "PA", 2,
+    )
+    assert [p["name"] for p in people["providerSigners"]] == ["Lynda J Storm", "Jane Roe"]
+    assert people["providerCredentials"] == "PA | DNP"
+    # The dropped spelling lends the date the first one lacked.
+    assert people["providerSigners"][0]["signatureDate"] == "2026-01-12"
+
+
 def test_credentials_are_shown_without_dots():
     from app.services.imaging_overlays import signer_fields, undotted
 

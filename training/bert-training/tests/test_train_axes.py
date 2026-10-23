@@ -215,6 +215,12 @@ def test_forward_backward_mask_and_reload(space, tiny_encoder, tmp_path):
             assert not space["L2_by_L1"][row["L1"]]
         if row["L3"] is not None:
             assert f"{row['L1']} > {row['L2']} > {row['L3']}" in space["L3"]
+        # The best L2 / L3 under every L1 with L2s: the Final step re-places a page with it.
+        assert set(row["by_L1"]) == {l1 for l1 in space["L1"] if space["L2_by_L1"].get(l1)}
+        for l1, best in row["by_L1"].items():
+            assert f"{l1} > {best['L2']}" in space["L2_by_L1"][l1]
+            if best["L3"] is not None:
+                assert f"{l1} > {best['L2']} > {best['L3']}" in space["L3"]
 
     ax.save_model(tmp_path / "m", model, tokenizer, space, {"max_length": 16, "head_fraction": 0.85,
                                                             "dropout": 0.0})
