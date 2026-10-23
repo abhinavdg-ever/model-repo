@@ -1,7 +1,6 @@
 # Flow — what happens when
 
 What moves through the system, in order, and what each step leaves behind.
-For *why* each step decides what it decides, see [LOGIC.md](LOGIC.md).
 For the HTTP surface, see [API.md](API.md).
 
 ---

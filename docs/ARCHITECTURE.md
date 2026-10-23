@@ -3,8 +3,7 @@
 The shape of the system, the data model, and **what every file in the repository
 is for**.
 
-Companion documents: [FLOW.md](FLOW.md) (what runs when),
-[LOGIC.md](LOGIC.md) (how each decision is made), [API.md](API.md) (how to run
+Companion documents: [FLOW.md](FLOW.md) (what runs when), [API.md](API.md) (how to run
 and call it).
 
 ---
@@ -522,7 +521,7 @@ catalog and downloader. What is *not* vendored is the runtime (`gliner`, `torch`
 repository. Until both are installed, member verification runs rules-only and
 **no document can be Rejected**, because `wrong_member_on_page` decides from what
 NER read off the page. `GET /health` names which of the three preconditions is
-unmet. Turning it on: [LOGIC.md](LOGIC.md#turning-it-on).
+unmet. Turning it on: [API.md](API.md) (the NER layer).
 
 **The SQL is syntax-validated, not run.** `v1.sql` and `v2.sql` parse
 clean under a real PostgreSQL parser (`pglast`), and the code paths that use them
