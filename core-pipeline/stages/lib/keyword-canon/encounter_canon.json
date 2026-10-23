@@ -287,7 +287,7 @@
     }
   ],
   "vote": {
-    "note": "2026-10-23 (user): every page of an encounter votes for its encounter type and the first page counts first_page_weight times; the weighted majority wins (a tie goes to the first page's vote), confidence = the winner's share of the weight. A page votes Not Applicable when its L1 family is not in applies_to.families (a lab report), else its own tier 1 / tier 2 evidence, else its family's default below. A page with none of these does not vote; an encounter with no vote takes default.",
+    "note": "2026-10-23 (user): every page of an encounter votes for its encounter type and the first page counts first_page_weight times; Not Applicable wins only when every vote is Not Applicable (one page voting a setting sets those votes aside); otherwise the weighted majority of the settings wins (a tie goes to the first page's vote), confidence = the winner's share of the weight. A page votes Not Applicable when its L1 family is not in applies_to.families (a lab report), else its own tier 1 / tier 2 evidence, else its family's default below. A page with none of these does not vote; an encounter with no vote takes default.",
     "first_page_weight": 2,
     "family_defaults": {
       "Progress Note": "outpatient_f2f",

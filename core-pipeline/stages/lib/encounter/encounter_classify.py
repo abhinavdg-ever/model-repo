@@ -20,7 +20,8 @@ evidence a visit has and decides from that alone, so twenty passing mentions of
      non-empty tier of tiers 1–2 (two settings there: more tier 3 hints, then
      priority); else its family's default (Progress Note -> Outpatient F2F,
      Discharge Summary -> Inpatient). The encounter's first page counts twice;
-     the weighted majority wins (a tie: the first page's vote), confidence =
+     Not Applicable wins only when every vote is Not Applicable; else the
+     weighted majority of the settings wins (a tie: the first page's vote), confidence =
      its share of the weight. No vote at all: the canon default.
   4. Stamp every page of the visit with the answer.
 
@@ -428,15 +429,20 @@ def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vot
 
 
 def tally(votes: list[Vote], canon: Canon) -> Decision:
-    """The weighted majority, the first page counting ``first_page_weight`` times. A tie
-    goes to the first page's vote, then the setting priority. Confidence = the winner's
-    share of the weight. No vote at all: the canon default (low confidence)."""
+    """The weighted majority, the first page counting ``first_page_weight`` times. Not
+    Applicable wins only when every vote is Not Applicable; otherwise those votes are set
+    aside. A tie goes to the first page's vote, then the setting priority. Confidence = the
+    winner's share of the weight counted. No vote at all: the canon default (low confidence)."""
     if votes:
         votes[0].weight = canon.first_page_weight
     weights: dict[str, float] = {}
     for vote in votes:
         if vote.setting:
             weights[vote.setting] = weights.get(vote.setting, 0.0) + vote.weight
+    # Not Applicable only when it is every vote (2026-10-23, user): one page voting a
+    # setting decides among the settings; the lab pages' votes then do not count.
+    if len(weights) > 1:
+        weights.pop(canon.not_applicable, None)
     if not weights:
         return Decision("", "unresolved", 0.0, False, "", reason="no_setting_evidence")
     best = max(weights.values())

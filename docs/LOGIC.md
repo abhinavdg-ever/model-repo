@@ -754,7 +754,9 @@ tier 1.
 | No evidence, no family | does not vote |
 
 **The tally:** the encounter's first page weighs `vote.first_page_weight` (2), every
-other page 1. The setting with the most weight wins (`decided_by=vote`); a tie goes to
+other page 1. **Not Applicable wins only when every vote is Not Applicable**; when any
+page votes a setting, the Not Applicable votes are set aside. The setting with the most
+weight wins (`decided_by=vote`); a tie goes to
 the first page's vote, then the setting priority. `confidence` = the winner's share of
 the weight; `reason` lists every setting's weight; `conflict=y` when more than one
 setting got a vote. No page voting at all: **Outpatient (F2F)** at 0.3

@@ -284,9 +284,11 @@ def test_a_lab_encounter_is_not_applicable_on_every_page(canon):
     pages = [{**page(1, "telehealth visit"), "page_family": "Lab Report/Result", "document": 1},
              {**page(2, "office visit"), "page_family": "Progress Note", "document": 1}]
     rows = classify_pages(pages, entries=canon)
-    # The lab first page (x2) votes Not Applicable, outvoting the one F2F page.
-    assert all((r["encounter_type"], r["encounter_label"], r["decided_by"]) ==
-               ("not_applicable", "Not Applicable", "vote") for r in rows)
+    # One page votes a setting: Not Applicable is set aside, however the lab pages weigh.
+    assert all((r["encounter_type"], r["decided_by"]) == ("outpatient_f2f", "vote") for r in rows)
+    only_labs = [{**page(n, "telehealth visit"), "page_family": "Lab Report/Result", "document": 1} for n in (1, 2)]
+    rows = classify_pages(only_labs, entries=canon)
+    assert all((r["encounter_type"], r["encounter_label"]) == ("not_applicable", "Not Applicable") for r in rows)
     assert rows[0]["matched_keyword"] == "Lab Report/Result"
 
 
@@ -346,4 +348,3 @@ def test_family_defaults_vote_when_a_page_has_no_evidence(canon):
     assert [(v["setting"], v["by"]) for v in log[0]["votes"]] == [
         ("inpatient", "family_default"), ("outpatient_f2f", "family_default"), ("not_applicable", "not_applicable")]
     assert rows[0]["encounter_type"] == "inpatient"
-
