@@ -44,7 +44,8 @@ One exception: review-ui's **Playground** (admins only, profile
 menu) starts a core-pipeline batch run (`POST /api/charts/batch-run`, blob input,
 output derived as `Raw_Input/Run2/Batch6/DEID_PNGs` → `Processed/Run2/Batch6`)
 on the pipeline the admin picks from `CORE_PIPELINE_URLS` in `review-ui/.env`
-(default `http://localhost:8001,http://172.20.4.170:8001`; empty turns it off). core-pipeline never calls
+("Label=URL" pairs; default `VM=http://172.20.4.170:8001,Local=http://localhost:8001`,
+VM preselected; empty turns it off). core-pipeline never calls
 review-ui.
 
 ---

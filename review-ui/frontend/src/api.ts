@@ -329,7 +329,7 @@ export type AppConfig = {
   blob_sas_configured: boolean;
   /** Playground (admins): CORE_PIPELINE_URLS is set on the server; the first is the default. */
   playground_enabled?: boolean;
-  playground_targets?: string[];
+  playground_targets?: { label: string; url: string }[];
   playground_container?: string;
 };
 
@@ -400,8 +400,9 @@ export type PlaygroundRunRequest = {
 };
 
 export type PlaygroundRunResponse = {
-  /** The core-pipeline the run went to. */
+  /** The core-pipeline the run went to, and its label (VM / Local). */
   target: string;
+  target_label: string;
   /** What was sent to core-pipeline's batch-run, output_path derived. */
   request: Record<string, unknown> & { input_path: string; output_path: string };
   /** core-pipeline's answer (queued in the background). */

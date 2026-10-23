@@ -88,9 +88,10 @@ class Settings(BaseSettings):
 
     # Legacy SAS only (blob_auth_mode=sas). Not usable when Shared Key is disabled.
     blob_sas_token: str = ""
-    # Playground (admins): the core-pipeline APIs a run can be sent to, comma-separated;
-    # the first is the default. Empty = off. The only place review-ui calls core-pipeline.
-    core_pipeline_urls: str = "http://localhost:8001,http://172.20.4.170:8001"
+    # Playground (admins): the core-pipeline APIs a run can be sent to, as comma-separated
+    # "Label=URL" pairs (a bare URL is its own label); the first is the default. Empty =
+    # off. The only place review-ui calls core-pipeline.
+    core_pipeline_urls: str = "VM=http://172.20.4.170:8001,Local=http://localhost:8001"
     playground_container: str = "imaging-pipeline"
 
     @field_validator("blob_auth_mode", mode="before")
@@ -259,13 +260,14 @@ class Settings(BaseSettings):
         return path
 
     @property
-    def playground_targets(self) -> list[str]:
-        """CORE_PIPELINE_URLS as a list, each without a trailing slash."""
-        seen: list[str] = []
-        for url in self.core_pipeline_urls.split(","):
+    def playground_targets(self) -> list[dict[str, str]]:
+        """CORE_PIPELINE_URLS as [{label, url}], each URL without a trailing slash."""
+        seen: list[dict[str, str]] = []
+        for item in self.core_pipeline_urls.split(","):
+            label, _, url = item.strip().rpartition("=") if "=" in item else ("", "", item.strip())
             url = url.strip().rstrip("/")
-            if url and url not in seen:
-                seen.append(url)
+            if url and all(t["url"] != url for t in seen):
+                seen.append({"label": label.strip() or url, "url": url})
         return seen
 
     @property

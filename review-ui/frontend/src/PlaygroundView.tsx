@@ -18,12 +18,13 @@ export function outputPathFor(inputPath: string): string {
 
 export default function PlaygroundView({ config, onBack }: Props) {
   const targets = config?.playground_targets ?? [];
-  const [target, setTarget] = useState(targets[0] ?? "");
+  // VM first, by default; there is no blank choice.
+  const [target, setTarget] = useState(targets[0]?.url ?? "");
   const [container, setContainer] = useState(config?.playground_container || "imaging-pipeline");
   const [inputPath, setInputPath] = useState("");
   const [charts, setCharts] = useState("");
   const [sample, setSample] = useState("");
-  const [skipOcr, setSkipOcr] = useState(false);
+  const [skipOcr, setSkipOcr] = useState(true);
   const [skipCompleted, setSkipCompleted] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +32,7 @@ export default function PlaygroundView({ config, onBack }: Props) {
 
   const enabled = Boolean(config?.playground_enabled);
   const outputPath = inputPath.trim() ? outputPathFor(inputPath) : "";
+  const chosenTarget = targets.some((t) => t.url === target) ? target : targets[0]?.url ?? "";
 
   async function run() {
     setRunning(true);
@@ -40,7 +42,7 @@ export default function PlaygroundView({ config, onBack }: Props) {
       const count = Number.parseInt(sample, 10);
       setResult(
         await startPlaygroundRun({
-          target: target || targets[0] || "",
+          target: chosenTarget,
           container_name: container.trim(),
           input_path: inputPath.trim(),
           chart_list: charts,
@@ -86,13 +88,14 @@ export default function PlaygroundView({ config, onBack }: Props) {
         <div className="playground-form">
           <label>
             <span>Pipeline</span>
-            <select value={target || targets[0] || ""} onChange={(e) => setTarget(e.target.value)}>
-              {targets.map((url) => (
-                <option key={url} value={url}>
-                  {url}
+            <select value={chosenTarget} required onChange={(e) => setTarget(e.target.value)}>
+              {targets.map((t) => (
+                <option key={t.url} value={t.url} title={t.url}>
+                  {t.label}
                 </option>
               ))}
             </select>
+            <small>{chosenTarget || "No pipeline configured"}</small>
           </label>
           <label>
             <span>Container</span>
@@ -148,7 +151,7 @@ export default function PlaygroundView({ config, onBack }: Props) {
             <button
               type="button"
               className="landing-file-viewer-btn"
-              disabled={!enabled || running || !inputPath.trim() || !container.trim()}
+              disabled={!enabled || running || !chosenTarget || !inputPath.trim() || !container.trim()}
               onClick={run}
             >
               <Play size={14} aria-hidden="true" />
@@ -163,13 +166,9 @@ export default function PlaygroundView({ config, onBack }: Props) {
           </p>
         ) : null}
         {result ? (
-          <div className="playground-result" role="status">
-            <p>
-              Started on <code>{result.target}</code>: <code>{result.request.input_path}</code> → <code>{result.request.output_path}</code>.
-              It runs in the background; the charts appear in History as they finish.
-            </p>
-            <pre>{JSON.stringify(result.pipeline, null, 2)}</pre>
-          </div>
+          <p className="success-banner" role="status">
+            Job submitted successfully. Please view History when it finishes.
+          </p>
         ) : null}
       </section>
     </div>

@@ -28,7 +28,7 @@ def test_only_an_admin_starts_a_run_and_the_output_is_derived(monkeypatch):
     from app.core.config import get_settings
     from app.main import app
 
-    s = Settings(database_url="", auth_secret="test-secret", core_pipeline_urls="http://pipeline:8001, http://172.20.4.170:8001/")
+    s = Settings(database_url="", auth_secret="test-secret", core_pipeline_urls="VM=http://pipeline:8001, Local=http://localhost:8001/")
     app.dependency_overrides[get_settings] = lambda: s
     sent: dict = {}
 
@@ -42,7 +42,7 @@ def test_only_an_admin_starts_a_run_and_the_output_is_derived(monkeypatch):
         token = auth.issue_token(s, auth.SignedInUser(id=9, username="u", name="U", role=role))
         return {"Authorization": f"Bearer {token}"}
 
-    run = {"input_path": "Raw_Input/Run2/Batch6/DEID_PNGs", "chart_list": "c1, c2"}
+    run = {"target": "VM", "input_path": "Raw_Input/Run2/Batch6/DEID_PNGs", "chart_list": "c1, c2"}
     try:
         client = TestClient(app)
         assert client.post("/api/playground/batch-run", json=run).status_code == 401
@@ -50,17 +50,21 @@ def test_only_an_admin_starts_a_run_and_the_output_is_derived(monkeypatch):
         ok = client.post("/api/playground/batch-run", json=run, headers=bearer("admin"))
         assert ok.status_code == 202
         assert sent["base_url"] == "http://pipeline:8001"
-        # Defaults: OCR runs and finished charts re-run.
+        # Defaults: OCR reused (no Final OCR 2 bill) and finished charts re-run.
         assert sent["body"] == {
             "input_type": "blob", "container_name": "imaging-pipeline",
             "input_path": "Raw_Input/Run2/Batch6/DEID_PNGs", "output_path": "Processed/Run2/Batch6",
-            "skip_ocr": False, "skip_completed": False, "chart_list": ["c1", "c2"],
+            "skip_ocr": True, "skip_completed": False, "chart_list": ["c1", "c2"],
         }
+        assert ok.json()["target_label"] == "VM"
         assert ok.json()["pipeline"] == {"status": "accepted"}
-        # The second pipeline on request; an address not configured is refused.
-        other = client.post("/api/playground/batch-run", json={**run, "target": "http://172.20.4.170:8001"},
-                            headers=bearer("admin"))
-        assert other.status_code == 202 and sent["base_url"] == "http://172.20.4.170:8001"
+        # The other pipeline by URL or label; an address not configured, or none, is refused.
+        other = client.post("/api/playground/batch-run", json={**run, "target": "Local"}, headers=bearer("admin"))
+        assert other.status_code == 202 and sent["base_url"] == "http://localhost:8001"
+        blank = client.post("/api/playground/batch-run", json={**run, "target": " "}, headers=bearer("admin"))
+        assert blank.status_code == 400
+        missing = {k: v for k, v in run.items() if k != "target"}
+        assert client.post("/api/playground/batch-run", json=missing, headers=bearer("admin")).status_code == 422
         evil = client.post("/api/playground/batch-run", json={**run, "target": "http://elsewhere:80"},
                            headers=bearer("admin"))
         assert evil.status_code == 400
@@ -71,8 +75,12 @@ def test_only_an_admin_starts_a_run_and_the_output_is_derived(monkeypatch):
         app.dependency_overrides.clear()
 
 
-def test_by_default_localhost_and_the_lan_pipeline_are_offered():
-    assert Settings(database_url="").playground_targets == ["http://localhost:8001", "http://172.20.4.170:8001"]
+def test_by_default_the_vm_then_local_pipeline_are_offered():
+    assert Settings(database_url="").playground_targets == [
+        {"label": "VM", "url": "http://172.20.4.170:8001"}, {"label": "Local", "url": "http://localhost:8001"}]
+    # A bare URL is its own label.
+    assert Settings(database_url="", core_pipeline_urls="http://x:1/").playground_targets == [
+        {"label": "http://x:1", "url": "http://x:1"}]
 
 
 def test_without_pipelines_the_playground_is_off(monkeypatch):
@@ -86,7 +94,7 @@ def test_without_pipelines_the_playground_is_off(monkeypatch):
     token = auth.issue_token(s, auth.SignedInUser(id=9, username="u", name="U", role="admin"))
     try:
         reply = TestClient(app).post(
-            "/api/playground/batch-run", json={"input_path": "Raw_Input/R/B/p"},
+            "/api/playground/batch-run", json={"target": "VM", "input_path": "Raw_Input/R/B/p"},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert reply.status_code == 503

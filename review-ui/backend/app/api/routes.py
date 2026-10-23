@@ -760,10 +760,15 @@ def playground_batch_run(
     targets = settings.playground_targets
     if not targets:
         raise HTTPException(status_code=503, detail="Playground is off: set CORE_PIPELINE_URLS in review-ui/.env")
-    base_url = body.target.strip().rstrip("/") or targets[0]
+    wanted = body.target.strip().rstrip("/")
+    if not wanted:
+        raise HTTPException(status_code=400, detail="Choose the pipeline to run on")
     # Only a configured pipeline: the browser never names an arbitrary address.
-    if base_url not in targets:
-        raise HTTPException(status_code=400, detail=f"Unknown pipeline {base_url}; choose one of {', '.join(targets)}")
+    chosen = next((t for t in targets if wanted in (t["url"], t["label"])), None)
+    if chosen is None:
+        names = ", ".join(f"{t['label']} ({t['url']})" for t in targets)
+        raise HTTPException(status_code=400, detail=f"Unknown pipeline {wanted}; choose one of {names}")
+    base_url = chosen["url"]
     if not playground.clean_path(body.input_path):
         raise HTTPException(status_code=400, detail="Give the blob folder that holds the chart folders")
     container = body.container_name.strip() or settings.playground_container.strip()
@@ -783,7 +788,7 @@ def playground_batch_run(
         logger.warning("playground run refused for %s: %s", request["input_path"], exc.detail)
         raise HTTPException(status_code=exc.status if 400 <= exc.status < 600 else 502, detail=exc.detail) from exc
     logger.info("playground run of %s -> %s started by %s", request["input_path"], request["output_path"], user.username)
-    return {"target": base_url, "request": request, "pipeline": answer}
+    return {"target": base_url, "target_label": chosen["label"], "request": request, "pipeline": answer}
 
 
 def _admin_with_db(user: SignedInUser | None, settings: Settings) -> SignedInUser:

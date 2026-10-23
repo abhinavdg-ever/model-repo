@@ -478,7 +478,7 @@ class AppConfigResponse(BaseModel):
     # Playground (admins only): the core-pipeline APIs a run can go to (first = default)
     # and the default container.
     playground_enabled: bool = False
-    playground_targets: list[str] = Field(default_factory=list)
+    playground_targets: list[dict[str, str]] = Field(default_factory=list)
     playground_container: str = ""
 
 
@@ -487,13 +487,13 @@ class PlaygroundRun(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    # One of CORE_PIPELINE_URLS; empty = the first.
-    target: str = ""
+    # One of CORE_PIPELINE_URLS, by URL or label (VM / Local). Required.
+    target: str
     container_name: str = ""
     input_path: str
     chart_list: list[str] | str | None = None
     sample: int | None = Field(None, ge=1)
-    skip_ocr: bool = False
+    skip_ocr: bool = True
     skip_completed: bool = False
 
 
