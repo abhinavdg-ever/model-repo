@@ -143,9 +143,10 @@ def test_master_summary_pdf_reconciles_with_the_comparison():
     text = _pdf_text(data)
     for heading in ("1. Overall Comparison Summary", "2. Chart-wise Summary",
                     "3. Field-wise Accuracy", "4. Top Mismatch Patterns",
-                    "5. Missing / Extra Pages", "6. Columns Not Compared",
-                    "Appendix: Every Field Mismatch"):
+                    "5. Missing / Extra Pages", "6. Columns Not Compared"):
         assert heading in text
+    # No appendix listing every mismatch: the Excel report has them (2026-10-23, user).
+    assert "Appendix" not in text
     assert "qa & review.csv" in text  # escaped, not parsed as markup
     assert "01/29/2025" in text
     # The QA sheet's ID columns are named as unread, so a misspelt header shows.
@@ -419,7 +420,6 @@ def test_a_pattern_across_many_charts_still_builds():
     result = compare_files(_upload(pd.DataFrame(rows), "g.csv"), _upload(pd.DataFrame(algo), "a.csv"))
     text = _pdf_text(build_master_summary_pdf(result))
     assert f"and {400 - MAX_PATTERN_CHARTS} more charts" in text
-    assert "The first 1500 of 1200" not in text  # 1200 mismatches: the appendix lists them all
     entries = [("A", 1), ("B", 2), ("C", 3)]
     assert _pages_by_chart(entries, max_charts=2) == "A: 1; B: 2 … and 1 more charts"
 

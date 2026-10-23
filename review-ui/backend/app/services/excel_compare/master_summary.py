@@ -16,7 +16,6 @@ from reportlab.platypus import (
     Paragraph,
     Spacer,
     KeepTogether,
-    PageBreak,
     CondPageBreak,
 )
 
@@ -31,7 +30,7 @@ from reportlab.platypus import (
 #
 # Ordered by what a reviewer acts on: headline numbers, which
 # charts and fields are worst, the recurring disagreements behind
-# them, then the per-field evidence as an appendix.
+# them. The per-field evidence is in the Excel report, not here.
 # =============================================================
 
 REPORT_TITLE = "Manual Review — Master Summary"
@@ -58,7 +57,6 @@ CONTENT_WIDTH = LETTER[0] - 1.2 * inch
 # Excel report always has every row; the PDF says when it stops short.
 MAX_PATTERN_CHARTS = 6
 MAX_PATTERNS = 60
-MAX_APPENDIX_ROWS = 1500
 
 NOT_APPLICABLE = "N/A"
 BLANK = "<i>(blank)</i>"
@@ -454,7 +452,6 @@ def build_master_summary_pdf(
       4. Top Mismatch Patterns -- identical disagreements grouped.
       5. Missing / Extra Pages -- as page ranges per chart.
       6. Columns Not Compared -- exempted, and headers nothing reads.
-      Appendix -- every individual field mismatch.
 
     Returns the PDF as raw bytes.
     """
@@ -763,44 +760,6 @@ def build_master_summary_pdf(
         if len(not_compared) > 1 else None,
         "Every column was compared.",
     )
-
-    # ---------------------------------------------------------
-    # Appendix: every field mismatch
-    # ---------------------------------------------------------
-
-    evidence = sorted(
-        r.get("mismatch_evidence", []),
-        key=lambda e: (str(e["pdf_id"]), _page_key(e["page_number"])),
-    )
-
-    if evidence:
-        elements.append(PageBreak())
-        shown = evidence[:MAX_APPENDIX_ROWS]
-        note = (
-            f"All {len(evidence)} individual field mismatches by chart and page -- the "
-            f"audit trail behind section 4."
-            if len(shown) == len(evidence)
-            else f"The first {len(shown)} of {len(evidence)} individual field mismatches, "
-            f"by chart and page. The Excel report's Comparison Results sheet has every one."
-        )
-        rows = [["PDF ID", "Page", "Field", "Ground Truth", "Algo Generated"]]
-        for entry in shown:
-            rows.append([
-                escape(str(entry["pdf_id"])),
-                escape(str(entry["page_number"])),
-                escape(entry["field"]),
-                _text(entry["ground_truth_value"]),
-                _text(entry["system_value"]),
-            ])
-        half = (CONTENT_WIDTH - 3.0 * inch) / 2
-        _section(
-            elements, styles,
-            "Appendix: Every Field Mismatch",
-            note,
-            _table(rows, [1.0 * inch, 0.5 * inch, 1.5 * inch, half, half], styles,
-                   right_cols=(1,)),
-            "",
-        )
 
     doc.build(elements, canvasmaker=_NumberedCanvas)
 
