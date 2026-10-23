@@ -1055,16 +1055,16 @@
    "specialty": "Critical Care"
   },
   "Case Management Note": {
-   "L1": "Administrative",
-   "L2": "Administrative Record"
+   "L1": "Progress Note",
+   "L2": "Others"
   },
   "Care Coordination Note": {
-   "L1": "Administrative",
-   "L2": "Administrative Record"
+   "L1": "Progress Note",
+   "L2": "Others"
   },
   "Utilization Review Note": {
-   "L1": "Administrative",
-   "L2": "Administrative Record"
+   "L1": "Consent and Authorization",
+   "L2": "Prior Authorization"
   },
   "Emergency Medical Services Report": {
    "L1": "Progress Note",
@@ -1131,7 +1131,7 @@
   },
   "Coding Summary": {
    "L1": "Administrative",
-   "L2": "Administrative Record"
+   "L2": "Others"
   },
   "Admission Record": {
    "L1": "Progress Note",
@@ -1480,8 +1480,7 @@
    "L2": "Signature"
   },
   "Medical Record Request": {
-   "L1": "Administrative",
-   "L2": "Administrative Record"
+   "L1": "Others"
   },
   "Policy Page": {
    "L1": "Consent and Authorization",
