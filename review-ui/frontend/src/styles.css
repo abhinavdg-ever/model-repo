@@ -5952,3 +5952,13 @@ input {
 .page-message-close:focus-visible {
   opacity: 1;
 }
+
+.page-message-half {
+  width: 50%;
+}
+
+@media (max-width: 900px) {
+  .page-message-half {
+    width: 100%;
+  }
+}

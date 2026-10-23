@@ -181,7 +181,7 @@ export default function PlaygroundView({ config, onBack }: Props) {
           </PageMessage>
         ) : null}
         {result ? (
-          <PageMessage kind="success" onClose={() => setResult(null)}>
+          <PageMessage kind="success" half onClose={() => setResult(null)}>
             Job submitted successfully. Please view History when it finishes.
           </PageMessage>
         ) : null}
