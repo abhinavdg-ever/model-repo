@@ -128,7 +128,7 @@ export default function UserProfileMenu({
               }}
             >
               <Users size={14} aria-hidden="true" />
-              Users
+              User Management
             </button>
           ) : null}
 

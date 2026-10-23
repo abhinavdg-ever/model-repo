@@ -134,7 +134,7 @@ export default function UsersView({ onBack }: Props) {
             Back
           </button>
           <div className="workspace-title">
-            <h1>Users</h1>
+            <h1>User Management</h1>
           </div>
         </div>
       </div>
