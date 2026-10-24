@@ -156,6 +156,28 @@ def connection(database_url: str, db_schema: str | None = "public") -> Iterator:
         borrowed.__exit__(None, None, None)
 
 
+# How long a "does this table exist" answer is trusted (a migration shows up after this).
+TABLE_EXISTS_TTL_SEC = 600.0
+_table_exists_cache: dict[tuple[str, str, str], tuple[float, bool]] = {}
+
+
+def table_exists(database_url: str, db_schema: str | None, table: str) -> bool:
+    """Whether ``table`` exists in the schema, cached for TABLE_EXISTS_TTL_SEC so a chart
+    open does not ask the database each time."""
+    import time
+
+    key = (psycopg_url(database_url), valid_schema(db_schema), table)
+    now = time.monotonic()
+    hit = _table_exists_cache.get(key)
+    if hit and now - hit[0] < TABLE_EXISTS_TTL_SEC:
+        return hit[1]
+    with connection(database_url, db_schema) as conn, conn.cursor() as cur:
+        cur.execute("SELECT to_regclass(%s) IS NOT NULL", (table,))
+        exists = bool((cur.fetchone() or [False])[0])
+    _table_exists_cache[key] = (now, exists)
+    return exists
+
+
 def close_pools() -> None:
     with _pools_lock:
         for pool in _pools.values():

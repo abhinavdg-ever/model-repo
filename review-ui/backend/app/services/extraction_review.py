@@ -702,14 +702,13 @@ def review_from_additional(
 def _additional_rows(database_url: str, db_schema: str, folder_id: str) -> dict[str, dict]:
     """The chart's additional_page_details rows by page name; {} when the table is missing
     or the database cannot be read (logged)."""
-    from app.services.db import connection
+    from app.services.db import connection, table_exists
 
     try:
+        if not table_exists(database_url, db_schema, "additional_page_details"):
+            return {}
         with connection(database_url, db_schema) as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT to_regclass('additional_page_details')")
-                if not (cur.fetchone() or [None])[0]:
-                    return {}
                 cur.execute(_ADDITIONAL_SQL, (folder_id,))
                 return {str(name): row for name, row in cur.fetchall() if isinstance(row, dict)}
     except Exception as exc:

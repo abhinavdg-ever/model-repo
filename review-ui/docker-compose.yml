@@ -34,7 +34,7 @@ services:
       # DB mode, Manual Review and Accuracy read Postgres through this.
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://USER:PASSWORD@HOST:5432/imaging_outputs}
       DB_SCHEMA: ${DB_SCHEMA:-public}
-      DB_POOL_MIN: ${DB_POOL_MIN:-1}
+      DB_POOL_MIN: ${DB_POOL_MIN:-4}
       DB_POOL_MAX: ${DB_POOL_MAX:-20}
       DB_POOL_WAIT_SEC: ${DB_POOL_WAIT_SEC:-10}
       # Seconds a scan of /data/folders is trusted before it is rechecked
