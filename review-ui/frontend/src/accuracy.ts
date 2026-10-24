@@ -25,7 +25,7 @@ export type MetricId =
   | "orientation";
 
 /** ``inOverall: false`` = scored, but not part of the page's overall match.
- * ``binary`` = Match or No Match only, never Partial.
+ * ``binary`` = Match or No Match only, never Partial (only Page Type has a Partial).
  * ``comingSoon`` = shown greyed as "Coming soon", not in the chart table. */
 export const METRICS: {
   id: MetricId;
@@ -40,13 +40,14 @@ export const METRICS: {
   {
     id: "member",
     label: "Member Verification",
-    rule: "Name and DOB presence labels against what the pipeline found (or did not find): both right = Match, one right = Partial, neither = No Match. Not Available = a page whose Name or DOB label is NA / Not Available (or missing), or one the member stage did not judge (blank / junk); it is counted, not scored. Member ID is not scored (no ground truth). Under Member & DOB = Yes (cases = pages the ground truth has both on): Precision, Recall and F1",
+    binary: true,
+    rule: "Name and DOB presence labels against what the pipeline found (or did not find): both right = Match, else No Match. Not Available = a page whose Name or DOB label is NA / Not Available (or missing), or one the member stage did not judge (blank / junk); it is counted, not scored. Member ID is not scored (no ground truth). Under Member & DOB = Yes (cases = pages the ground truth has both on): Precision, Recall and F1",
   },
   {
     id: "dos",
     label: "DOS",
     binary: true,
-    rule: "Every page is compared, except a blank / junk page (by the ground truth or the pipeline) and one where the ground truth has no date and the pipeline shows the 2222-02-02 placeholder (neither is scored). Labelled dates (From, To) match the Final DOS: Match; only the Extracted DOS: Partial; neither: No Match. A page whose DOS label is blank / NA / Not Available expects no date: no Extracted DOS is a Match (a Final DOS carried from the document's first page does not count), an Extracted DOS is a No Match. Under Date = Yes (cases = pages the ground truth dates): Precision = of the pages the pipeline dated, the share right; Recall = of the cases, the share found",
+    rule: "Every page is compared, except a blank / junk page (by the ground truth or the pipeline) and one where the ground truth has no date and the pipeline shows the 2222-02-02 placeholder (neither is scored). Labelled dates (From, To) both match the Final DOS or both match the Extracted DOS: Match; else No Match. A page whose DOS label is blank / NA / Not Available expects no date: no Extracted DOS is a Match (a Final DOS carried from the document's first page does not count), an Extracted DOS is a No Match. Under Date = Yes (cases = pages the ground truth dates): Precision = of the pages the pipeline dated, the share right; Recall = of the cases, the share found",
   },
   {
     id: "blankJunk",
@@ -63,7 +64,8 @@ export const METRICS: {
     id: "codeable",
     label: "Codable / Non-Codable",
     tableLabel: "Codability",
-    rule: "Every labelled page. Codable label matches the Final codability: Match. Matches only the Extracted one: Partial. Neither: No Match. Discharge counts as Codable on both sides; a page the pipeline called blank / junk is Non-Codable",
+    binary: true,
+    rule: "Every labelled page. Codable label matches the Final or the Extracted codability: Match. Neither: No Match. Discharge counts as Codable on both sides; a page the pipeline called blank / junk is Non-Codable",
   },
   {
     id: "signature",
@@ -75,8 +77,7 @@ export const METRICS: {
     id: "orientation",
     label: "Orientation",
     binary: true,
-    rule: "Every page with ground truth, Match or No Match: the stored text orientation equals the ground truth (0 / 90 / 180 / 270, degrees the text sits counter-clockwise). A label of NA / blank is Not Found, read as upright (0°), and so is a page with no stored angle. Under Rotated (not 0°) = Yes (pages the ground truth or the pipeline calls rotated): Precision = of the pages the pipeline turned, the share at the right angle; Recall = of the rotated pages, the share found at the right angle. Not part of the overall page match",
-    inOverall: false,
+    rule: "Every page with ground truth, Match or No Match: the stored text orientation equals the ground truth (0 / 90 / 180 / 270, degrees the text sits counter-clockwise). A label of NA / blank is Not Found, read as upright (0°), and so is a page with no stored angle. Under Rotated (not 0°) = Yes (pages the ground truth or the pipeline calls rotated): Precision = of the pages the pipeline turned, the share at the right angle; Recall = of the rotated pages, the share found at the right angle",
   },
 ];
 
@@ -86,8 +87,18 @@ export const LIVE_METRICS = METRICS.filter((metric) => !metric.comingSoon);
 /** The metrics a page's overall match is built from. */
 const OVERALL_METRICS = METRICS.filter((metric) => metric.inOverall !== false);
 
-/** yes = Match, maybe = Partial, no = No Match; na = Not Available (counted, not scored). */
-export type Tally = { yes: number; no: number; maybe: number; scored: number; na: number };
+/** yes = Match, maybe = Partial, no = No Match; na = Not Available (counted, not scored).
+ * Overall only: ``matched[k]`` = Partial pages with k features matching, and ``fullOnly`` = the
+ * accuracy counts full matches alone (a Partial scores 0, not 0.5). */
+export type Tally = {
+  yes: number;
+  no: number;
+  maybe: number;
+  scored: number;
+  na: number;
+  matched?: number[];
+  fullOnly?: boolean;
+};
 
 /** Counts for Class 1 (the "Yes" class): true / false positives and negatives. */
 export type ClassRates = {
@@ -234,10 +245,12 @@ function add(tally: Tally, verdict: Verdict | null) {
   tally.scored += 1;
 }
 
-/** Accuracy score = (Match + 0.5 × Partial) / (Match + Partial + No Match). */
+/** Accuracy score = (Match + 0.5 × Partial) / (Match + Partial + No Match); Overall
+ * counts full matches only: Match / (Match + Partial + No Match). */
 export function accuracyPercent(tally: Tally): number | null {
   if (tally.scored === 0) return null;
-  return Math.round((100 * (tally.yes + 0.5 * tally.maybe)) / tally.scored);
+  const partialWeight = tally.fullOnly ? 0 : 0.5;
+  return Math.round((100 * (tally.yes + partialWeight * tally.maybe)) / tally.scored);
 }
 
 function matched(bits: GtBit[]): boolean {
@@ -286,6 +299,12 @@ function finalOrExtracted(final: Verdict | null, extracted: Verdict | null): Ver
   return "no";
 }
 
+/** Match when the Final or the Extracted value matches, else No Match: no Partial. */
+function finalOrExtractedMatch(final: Verdict | null, extracted: Verdict | null): Verdict | null {
+  if (final === null && extracted === null) return null;
+  return final === "yes" || extracted === "yes" ? "yes" : "no";
+}
+
 function pageScores(
   page: ImagingPageResult,
   sections: ImagingSectionsProcessed,
@@ -293,7 +312,7 @@ function pageScores(
   scores: Record<MetricId, Verdict | null>;
   blankJunk: ReturnType<typeof blankJunkCall>;
   rotation: GtBit[];
-  /** The metrics a page is held to: all six, or five on a blank / junk page. */
+  /** The metrics a page is held to. */
   applicable: typeof METRICS;
   member: ReturnType<typeof memberCall>;
   dos: PresenceCall;
@@ -344,11 +363,11 @@ function pageScores(
   });
 
   // Name and DOB on every page: the ground truth's Yes is Yes, anything else (No, NA,
-  // blank) is No; the pipeline's is whether it extracted one. Both right = Match, one =
-  // Partial, neither = No Match. Member ID has no ground truth.
+  // blank) is No; the pipeline's is whether it extracted one. Both right = Match, else
+  // No Match. Member ID has no ground truth.
   const memberCalls = memberCall(page);
   const memberRight = memberCalls.expected.filter((value, index) => value === memberCalls.predicted[index]).length;
-  const member: Verdict = memberRight === 2 ? "yes" : memberRight === 1 ? "maybe" : "no";
+  const member: Verdict = memberRight === 2 ? "yes" : "no";
   const blankJunkCalls = blankJunkCall(bits.blankJunk);
 
   const truth = page.groundTruth ? blankJunkTruth(page.groundTruth) : null;
@@ -390,7 +409,7 @@ function pageScores(
   const gtDischarge = /discharge/i.test(text(page.groundTruth?.pageType)) || /discharge/i.test(text(page.groundTruth?.codeable));
   const codeable = gtDischarge
     ? "yes"
-    : finalOrExtracted(
+    : finalOrExtractedMatch(
         single(codeableBits(text(page.finalCodeable) || page.isCodeable)),
         single(codeableBits(page.isCodeable)),
       );
@@ -421,30 +440,29 @@ function pageScores(
     },
     blankJunk: blankJunkCalls,
     rotation: bits.rotation,
-    applicable: blankOrJunk
-      ? OVERALL_METRICS.filter((metric) => metric.id !== "pageType")
-      : OVERALL_METRICS,
+    applicable: OVERALL_METRICS,
     member: memberCalls,
     dos: dosCall,
     signature: signatureCalled,
   };
 }
 
-/** A page's overall match, over the metrics it has ground truth for (page type
- * is not one on a blank / junk page, and Orientation never is): all of them
- * matching is a match, at least half is partial, fewer is a miss. */
+/** A page's overall match, over the metrics it is scored on (an unscored metric is
+ * not a miss): every one matching is a Match, none is a No Match, anything between
+ * is Partial. ``matches`` = how many matched (a Page Type Partial is not a match). */
 function overallVerdict(
   scores: Record<MetricId, Verdict | null>,
   applicable: typeof METRICS = OVERALL_METRICS,
-): Verdict | null {
-  // Only the metrics this page has ground truth for: an unlabelled metric is
-  // not a miss. (Before, a page could only fully match with all six labelled.)
+): { verdict: Verdict; matches: number } | null {
   const scored = applicable.filter((metric) => scores[metric.id] != null);
   if (scored.length === 0) return null;
   const matches = scored.filter((metric) => scores[metric.id] === "yes").length;
-  if (matches === scored.length) return "yes";
-  if (2 * matches >= scored.length) return "maybe";
-  return "no";
+  const verdict: Verdict = matches === scored.length ? "yes" : matches === 0 ? "no" : "maybe";
+  return { verdict, matches };
+}
+
+function emptyOverall(): Tally {
+  return { ...emptyTally(), matched: [], fullOnly: true };
 }
 
 /** "M.D., Ph.D." -> {"MD", "PHD"}. */
@@ -540,7 +558,7 @@ export function scoreChart(
   const memberRates = emptyRates();
   const signatureRates: ClassRates = { ...emptyRates(), credCases: 0, credMatch: 0 };
   const dosRates = emptyRates();
-  const overall = emptyTally();
+  const overall = emptyOverall();
   for (const page of doc.pages) {
     if (!hasGroundTruth(page.groundTruth)) continue;
     const scored = pageScores(page, sections);
@@ -550,7 +568,13 @@ export function scoreChart(
     if (scored.signature.credMatch) signatureRates.credMatch = (signatureRates.credMatch ?? 0) + 1;
     addPresenceRates(dosRates, scored.dos);
 
-    add(overall, overallVerdict(scored.scores, scored.applicable));
+    const pageOverall = overallVerdict(scored.scores, scored.applicable);
+    if (pageOverall) {
+      add(overall, pageOverall.verdict);
+      if (pageOverall.verdict === "maybe") {
+        overall.matched![pageOverall.matches] = (overall.matched![pageOverall.matches] ?? 0) + 1;
+      }
+    }
     if (scored.blankJunk) {
       addRates(blankJunkRates, scored.blankJunk.expected, scored.blankJunk.predicted);
     }
@@ -643,8 +667,25 @@ export function sumTallies(rows: Tally[]): Tally {
     total.maybe += row.maybe;
     total.scored += row.scored;
     total.na += row.na;
+    if (row.fullOnly) total.fullOnly = true;
+    row.matched?.forEach((count, k) => {
+      if (!count) return;
+      total.matched ??= [];
+      total.matched[k] = (total.matched[k] ?? 0) + count;
+    });
   }
   return total;
+}
+
+/** Overall's Partial pages by how many features matched, most first: [[k, pages]]. */
+export function partialBands(tally: Tally): [number, number][] {
+  const out: [number, number][] = [];
+  const matched = tally.matched ?? [];
+  for (let k = matched.length - 1; k >= 1; k -= 1) {
+    const pages = matched[k] ?? 0;
+    if (pages > 0) out.push([k, pages]);
+  }
+  return out;
 }
 
 export function formatDistribution(tally: Tally, binary = false): string {

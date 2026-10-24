@@ -43,6 +43,7 @@ import {
   formatF1,
   formatPrecision,
   formatRecall,
+  partialBands,
   scoreChart,
   sumRates,
   sumTallies,
@@ -325,7 +326,9 @@ function CompactScore({
 }
 
 const SCORE_INFO =
-  "Accuracy score = (Match + 0.5 × Partial) / Total, where Total = Match + Partial + No Match.";
+  "Accuracy score = (Match + 0.5 × Partial) / Total, where Total = Match + Partial + No Match. Only Page Type has a Partial.";
+const OVERALL_SCORE_INFO =
+  "Accuracy score = Match / Total: full matches only, a Partial page (some features matching) scores 0.";
 const RATES_INFO =
   "The accuracy above counts every labelled page, Yes and No. Below it, Class 1 (the Yes pages) only; cases = the pages the ground truth calls Class 1. " +
   "Precision = TP / (TP + FP): share of the pipeline's Class 1 calls that were right. " +
@@ -355,10 +358,19 @@ function Donut({
   const radius = 36;
   const cases = rates ? classCases(rates) : 0;
   const circumference = 2 * Math.PI * radius;
+  // Overall splits its Partial pages by how many features matched, darkest = most.
+  const bands = tally.fullOnly ? partialBands(tally) : [];
   const segments = [
-    { key: "yes", count: tally.yes, tone: "accuracy-donut-yes" },
-    { key: "maybe", count: tally.maybe, tone: "accuracy-donut-maybe" },
-    { key: "no", count: tally.no, tone: "accuracy-donut-no" },
+    { key: "yes", count: tally.yes, tone: "accuracy-donut-yes", opacity: 1 },
+    ...(bands.length
+      ? bands.map(([k, pages], index) => ({
+          key: `m${k}`,
+          count: pages,
+          tone: "accuracy-donut-maybe",
+          opacity: 1 - (0.6 * index) / Math.max(1, bands.length - 1),
+        }))
+      : [{ key: "maybe", count: tally.maybe, tone: "accuracy-donut-maybe", opacity: 1 }]),
+    { key: "no", count: tally.no, tone: "accuracy-donut-no", opacity: 1 },
   ];
   let offset = 0;
   const arcs = segments.flatMap((segment) => {
@@ -371,6 +383,7 @@ function Donut({
         cx="50"
         cy="50"
         r={radius}
+        strokeOpacity={segment.opacity < 1 ? segment.opacity : undefined}
         strokeDasharray={length >= circumference - 0.01 ? undefined : `${length} ${circumference - length}`}
         strokeDashoffset={-offset}
       />
@@ -396,7 +409,7 @@ function Donut({
         className="accuracy-info-corner"
         text={[
           ...ruleSections(label, detail),
-          { title: "Accuracy score", lines: sentences(SCORE_INFO) },
+          { title: "Accuracy score", lines: sentences(tally.fullOnly ? OVERALL_SCORE_INFO : SCORE_INFO) },
           ...(rates ? [{ title: "Precision, Recall, F1", lines: sentences(RATES_INFO) }] : []),
         ]}
       />
@@ -404,6 +417,18 @@ function Donut({
       <p className="accuracy-distribution">
         <Distribution tally={tally} binary={binary} />
       </p>
+      {bands.length ? (
+        <p className="accuracy-distribution accuracy-bands">
+          {bands.map(([k, pages], index) => (
+            <Fragment key={k}>
+              {index > 0 ? " · " : null}
+              <span>
+                {k} matching {pages}
+              </span>
+            </Fragment>
+          ))}
+        </p>
+      ) : null}
       {rates ? (
         <div className="accuracy-class">
           {ratesLabel ? (
@@ -1068,11 +1093,13 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
               Comparison: <strong>{filtered.length}</strong> {filtered.length === 1 ? "Chart" : "Charts"},{" "}
               <strong>{overall.scored}</strong> {overall.scored === 1 ? "Page" : "Pages"}
             </p>
-            <p className="accuracy-note">Match counts as 1, Partial as 0.5, and No Match as 0.</p>
+            <p className="accuracy-note">
+              Match counts as 1 and No Match as 0. Only Page Type has a Partial (0.5). Overall counts full matches only.
+            </p>
             <div className="accuracy-donuts">
               <Donut
                 label="Overall"
-                detail="Each page is judged on the metrics it has ground truth for (Orientation, and page type on a blank / junk page, are left out): all of them matching is a match, at least half is partial, fewer is a miss. A metric with no ground-truth label does not count against the page"
+                detail="Each page is judged on the features it is scored on (all seven, when labelled): every one matching = Match, none = No Match, 1 to 6 matching = Partial, shown by how many matched. A Page Type Partial is not a match. The accuracy counts full matches only. A feature with no ground-truth label does not count against the page"
                 tally={overall}
               />
               {METRICS.map((metric) =>
