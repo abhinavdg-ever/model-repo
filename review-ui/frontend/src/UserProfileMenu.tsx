@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FlaskConical, FolderOpen, History, LogOut, Users } from "lucide-react";
+import { FlaskConical, FolderOpen, History, LogOut, Search, Users } from "lucide-react";
 import { roleLabel } from "./UsersView";
 
 type Props = {
@@ -8,12 +8,14 @@ type Props = {
   /** The signed-in user's role, shown under the name (Admin / Reviewer / Viewer). */
   role?: string;
   /** "file-viewer" shows a History link; otherwise a File Viewer link */
-  currentView?: "landing" | "folder" | "file-viewer" | "accuracy" | "manual-review" | "playground" | "users";
+  currentView?: "landing" | "folder" | "file-viewer" | "accuracy" | "manual-review" | "playground" | "users" | "search";
   onOpenFileViewer?: () => void;
   /** Admins only: given, the menu offers the Playground. */
   onOpenPlayground?: () => void;
   /** Admins only: given, the menu offers Users (create a user / reset a password). */
   onOpenUsers?: () => void;
+  /** Admins only: given, the menu offers Search (a word in the Tesseract OCR). */
+  onOpenSearch?: () => void;
   onOpenHistory?: () => void;
   onLogout: () => void;
 };
@@ -27,6 +29,7 @@ export default function UserProfileMenu({
   onOpenHistory,
   onOpenPlayground,
   onOpenUsers,
+  onOpenSearch,
   onLogout,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -114,6 +117,21 @@ export default function UserProfileMenu({
             >
               <FlaskConical size={14} aria-hidden="true" />
               Playground
+            </button>
+          ) : null}
+
+          {onOpenSearch && currentView !== "search" ? (
+            <button
+              type="button"
+              className="user-menu-item"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onOpenSearch();
+              }}
+            >
+              <Search size={14} aria-hidden="true" />
+              Search
             </button>
           ) : null}
 

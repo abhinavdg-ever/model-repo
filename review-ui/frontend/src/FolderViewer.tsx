@@ -264,6 +264,8 @@ export default function FolderViewer({
   // A page image failed (Blob sign-in failed and no local copy): the rest of the folder
   // still shows, with a bar above the images to load them again.
   const [imagesFailed, setImagesFailed] = useState(false);
+  // The server's reason for the first failed image (an <img> cannot read it itself).
+  const [imageFailReason, setImageFailReason] = useState<string | null>(null);
   const [imageAttempt, setImageAttempt] = useState(0);
   const [retryingImages, setRetryingImages] = useState(false);
   const [showCorrected, setShowCorrected] = useState(false);
@@ -293,7 +295,27 @@ export default function FolderViewer({
 
   useEffect(() => {
     setImagesFailed(false);
+    setImageFailReason(null);
   }, [folderId]);
+
+  /** An image failed: show the bar, and ask the server once why (its ``detail``). */
+  function imageFailed(url: string) {
+    setImagesFailed(true);
+    if (imageFailReason !== null) return;
+    setImageFailReason("");
+    fetch(url)
+      .then(async (res) => {
+        if (res.ok) return;
+        let detail = "";
+        try {
+          detail = String(((await res.json()) as { detail?: unknown }).detail ?? "");
+        } catch {
+          /* not JSON */
+        }
+        setImageFailReason(detail || `${res.status} ${res.statusText}`);
+      })
+      .catch((err: unknown) => setImageFailReason(err instanceof Error ? err.message : String(err)));
+  }
 
   // The Encounter tab's ground truth, fetched once the imaging results are in so the
   // tab opens without waiting (and without delaying the chart's own load).
@@ -306,6 +328,7 @@ export default function FolderViewer({
     setRetryingImages(true);
     await retryPageImages();
     setImagesFailed(false);
+    setImageFailReason(null);
     setImageAttempt((n) => n + 1);
     setRetryingImages(false);
   }
@@ -1224,7 +1247,10 @@ export default function FolderViewer({
           <section className="pane" aria-label="Page viewer">
             {imagesFailed ? (
               <div className="image-retry-bar" role="status">
-                <span>Page images could not be loaded. The other details are shown without them.</span>
+                <span>
+                  Page images could not be loaded
+                  {imageFailReason ? `: ${imageFailReason}` : ""}. The other details are shown without them.
+                </span>
                 <button type="button" onClick={retryImages} disabled={retryingImages}>
                   {retryingImages ? "Retrying…" : "Retry images"}
                 </button>
@@ -1384,9 +1410,9 @@ export default function FolderViewer({
                           h: img.naturalHeight,
                         });
                       }}
-                      onError={() => {
+                      onError={(e) => {
                         setPageImageLoading(false);
-                        setImagesFailed(true);
+                        imageFailed(e.currentTarget.src);
                       }}
                     />
                     {overlayBoxes.length > 0 && fittedImageSize ? (
@@ -1496,7 +1522,7 @@ export default function FolderViewer({
                       alt=""
                       loading="lazy"
                       decoding="async"
-                      onError={() => setImagesFailed(true)}
+                      onError={(e) => imageFailed(e.currentTarget.src)}
                     />
                   </button>
                   );

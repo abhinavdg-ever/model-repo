@@ -41,7 +41,7 @@ from app.core.schemas import (
     EncounterReviewSave,
 )
 from app.services.blob_store import download_blob_bytes
-from app.services import playground, user_admin
+from app.services import ocr_search, playground, user_admin
 from app.services.folder_list import FolderListParams, build_folder_list
 from app.services.annotations import annotation_file, load_annotations, save_annotation
 from app.services.extraction_review import (
@@ -461,6 +461,7 @@ def get_page_image(
     # Production Mode: Azure Blob first; when Blob has no copy or fails (sign-in, network),
     # the workspace copy of the page image. Page data never comes from disk.
     blob_error: str | None = None
+    blob_missing = False  # looked in Blob, nothing there (not a sign-in / network failure)
     if isinstance(repo, PostgresFolderRepository):
         try:
             served = _blob_page_image(repo, folder_id, page_number, corrected, thumb, cache_hdr)
@@ -475,14 +476,20 @@ def get_page_image(
             from app.services.blob_store import blob_unavailable
 
             blob_error = blob_unavailable()
+        if blob_error is None:
+            # No sign-in trouble: the blob was simply not where it was looked for.
+            missing = repo.no_blob_reason(folder_id, page_number)
+            if missing:
+                blob_error, blob_missing = f"not in Azure Blob: {missing}", True
 
     try:
         path = repo.get_page_image_path(folder_id, page_number, corrected=corrected)
     except Exception as exc:
         if blob_error:
-            # 503: the viewer offers "Retry images" (POST /api/blob/retry).
+            # 503 (sign-in / network): the viewer offers "Retry images" (POST /api/blob/retry).
+            # 404: the image is not in Blob at all, so a retry cannot help.
             raise HTTPException(
-                status_code=503,
+                status_code=404 if blob_missing else 503,
                 detail=f"Page image unavailable: {blob_error}; no local copy",
             ) from exc
         if isinstance(exc, HTTPException):
@@ -798,14 +805,16 @@ def playground_batch_run(
     return {"target": base_url, "target_label": chosen["label"], "request": request, "pipeline": answer}
 
 
-def _admin_with_db(user: SignedInUser | None, settings: Settings) -> SignedInUser:
-    """The signed-in admin, when users are kept in a database (401 / 403 / 503 otherwise)."""
+def _admin_with_db(
+    user: SignedInUser | None, settings: Settings, what: str = "manage users", kept: str = "Users are kept"
+) -> SignedInUser:
+    """The signed-in admin, when a database is configured (401 / 403 / 503 otherwise)."""
     if user is None:
-        raise HTTPException(status_code=401, detail="Sign in again to manage users")
+        raise HTTPException(status_code=401, detail=f"Sign in again to {what}")
     if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only an admin can manage users")
+        raise HTTPException(status_code=403, detail=f"Only an admin can {what}")
     if not database_url_usable(settings.database_url):
-        raise HTTPException(status_code=503, detail="Users are kept in the database, which is not configured")
+        raise HTTPException(status_code=503, detail=f"{kept} in the database, which is not configured")
     return user
 
 
@@ -817,6 +826,31 @@ def _user_call(action, *args, **kwargs):
     except Exception as exc:
         logger.warning("user admin failed: %s", exc)
         raise HTTPException(status_code=502, detail="Could not reach the users table") from exc
+
+
+@router.get("/search/ocr")
+def search_ocr(
+    q: str = Query(..., description="A word or phrase"),
+    whole_word: bool = Query(True, description="Match whole words only (pain, not painful)"),
+    run: str | None = Query(None, description="Only this run (chart_list.run_id)"),
+    batch: str | None = Query(None, description="Only this batch (chart_list.batch_id)"),
+    settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
+) -> dict:
+    """Admins only: pages whose Tesseract text has the word, grouped by batch and chart."""
+    admin = _admin_with_db(user, settings, "search the OCR", "The OCR text is kept")
+    try:
+        found = ocr_search.search_tesseract(
+            settings.database_url, settings.db_schema, q, whole_word=whole_word, run_id=run, batch_id=batch
+        )
+    except ocr_search.SearchError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+    except Exception as exc:
+        logger.warning("ocr search failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not search the OCR text") from exc
+    logger.info("ocr search %r by %s: %d page(s) in %d chart(s)", found["query"], admin.username,
+                found["total_pages"], found["total_charts"])
+    return found
 
 
 @router.get("/users")

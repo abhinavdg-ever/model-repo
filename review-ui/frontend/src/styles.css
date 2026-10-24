@@ -5962,3 +5962,93 @@ input {
     width: 100%;
   }
 }
+
+/* Search (admins): a word in the Tesseract OCR. */
+.search-form {
+  margin-bottom: 1rem;
+}
+
+.search-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.search-bar input:not([type="checkbox"]) {
+  flex: 1 1 260px;
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.search-bar input.search-narrow {
+  flex: 0 1 120px;
+}
+
+.search-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+}
+
+.search-batches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.4rem 0 0.9rem;
+}
+
+.search-batch-chip {
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--neutral-50, #f7f6f2);
+  font-size: 0.76rem;
+}
+
+.search-chart {
+  margin-bottom: 1.1rem;
+}
+
+.search-chart-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.3rem;
+}
+
+.search-chart-head a {
+  font-weight: 600;
+  color: var(--brand-800);
+}
+
+.search-chart-head .accuracy-note {
+  margin: 0;
+}
+
+.search-pages td:first-child,
+.search-pages td:nth-child(2) {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.search-pages tbody tr {
+  cursor: default;
+}
+
+.search-snippet {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  margin: 0.1rem 0;
+}
+
+.search-snippet mark {
+  background: #fde68a;
+  padding: 0 0.1rem;
+  border-radius: 2px;
+}

@@ -181,6 +181,8 @@ class PostgresFolderRepository(FolderRepository):
         self._processed_pages: dict[str, tuple[float, dict[str, tuple[str, str]]]] = {}
         # Charts whose missing Blob image was already logged; the last listing error per chart.
         self._no_blob_logged: set[str] = set()
+        # Why the last lookup found no blob for a page, for the image route's error.
+        self._no_blob_reasons: dict[tuple[str, int], str] = {}
         self._blob_list_errors: dict[str, str] = {}
 
     def _optional_local(self) -> LocalFolderRepository | None:
@@ -556,11 +558,16 @@ class PostgresFolderRepository(FolderRepository):
 
     def _no_blob(self, folder_id: str, page_number: int, why: str) -> None:
         """Say once per chart why its page images are not in Blob (the route then tries the
-        workspace copy)."""
+        workspace copy), and keep the reason for the page's error."""
+        self._no_blob_reasons[(folder_id, page_number)] = why
         if folder_id in self._no_blob_logged:
             return
         self._no_blob_logged.add(folder_id)
         logger.warning("page image not in Blob: chart=%s page=%s — %s", folder_id, page_number, why)
+
+    def no_blob_reason(self, folder_id: str, page_number: int) -> str | None:
+        """Why the last lookup found no blob for this page, or None."""
+        return self._no_blob_reasons.get((folder_id, page_number))
 
     def _processed_page_blob(
         self, folder_id: str, container: str, output_path: str, page_name: str

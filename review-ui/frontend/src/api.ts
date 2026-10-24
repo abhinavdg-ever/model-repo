@@ -438,6 +438,30 @@ export function resetUserPassword(body: { username: string; password: string }):
   return api("/api/users/password", { method: "PUT", body: JSON.stringify(body) });
 }
 
+export type OcrSearchSnippet = { before: string; match: string; after: string };
+export type OcrSearchPage = { page_number: number | null; page_name: string; hits: number; snippets: OcrSearchSnippet[] };
+export type OcrSearchChart = { chart: string; run: string; batch: string; hits: number; pages: OcrSearchPage[] };
+export type OcrSearchBatch = { run: string; batch: string; charts: number; pages: number; hits: number };
+export type OcrSearchResult = {
+  query: string;
+  whole_word: boolean;
+  charts: OcrSearchChart[];
+  batches: OcrSearchBatch[];
+  total_charts: number;
+  total_pages: number;
+  total_hits: number;
+  truncated: boolean;
+  max_pages: number;
+};
+
+/** Admins only: pages whose Tesseract text has the word or phrase. */
+export function searchOcr(params: { q: string; wholeWord: boolean; run?: string; batch?: string }): Promise<OcrSearchResult> {
+  const qs = new URLSearchParams({ q: params.q, whole_word: String(params.wholeWord) });
+  if (params.run?.trim()) qs.set("run", params.run.trim());
+  if (params.batch?.trim()) qs.set("batch", params.batch.trim());
+  return api(`/api/search/ocr?${qs.toString()}`);
+}
+
 /** The server's ``detail`` from a failed call's message, else the message. */
 export function errorDetail(err: unknown, fallback: string): string {
   const raw = err instanceof Error ? err.message : String(err);

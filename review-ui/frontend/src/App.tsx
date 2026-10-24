@@ -7,6 +7,7 @@ import AccuracyView from "./AccuracyView";
 import ManualReviewView from "./ManualReviewView";
 import PlaygroundView from "./PlaygroundView";
 import UsersView from "./UsersView";
+import SearchView from "./SearchView";
 import LoginPage from "./LoginPage";
 import UserProfileMenu from "./UserProfileMenu";
 import { getAppConfig, type AppConfig, type OutputMode } from "./api";
@@ -20,7 +21,8 @@ type Route =
   | { view: "accuracy" }
   | { view: "manual-review" }
   | { view: "playground" }
-  | { view: "users" };
+  | { view: "users" }
+  | { view: "search" };
 
 function parseMode(raw: string | null): OutputMode {
   return raw === "imaging" ? "imaging" : "ocr";
@@ -43,6 +45,9 @@ function parsePath(pathname: string, search: string): Route {
   }
   if (pathname === "/users" || pathname === "/users/") {
     return { view: "users" };
+  }
+  if (pathname === "/search" || pathname === "/search/") {
+    return { view: "search" };
   }
   const fileMatch = pathname.match(/^\/file-viewer(?:\/([^/]+))?\/?$/);
   if (fileMatch) {
@@ -76,6 +81,7 @@ function pathFor(route: Route): string {
   if (route.view === "manual-review") return "/manual-review";
   if (route.view === "playground") return "/playground";
   if (route.view === "users") return "/users";
+  if (route.view === "search") return "/search";
   if (route.view === "file-viewer") {
     return route.folderId
       ? `/file-viewer/${encodeURIComponent(route.folderId)}`
@@ -210,6 +216,7 @@ export default function App() {
             onOpenHistory={() => guardedNavigate({ view: "landing" })}
             onOpenPlayground={isAdmin ? () => guardedNavigate({ view: "playground" }) : undefined}
             onOpenUsers={isAdmin ? () => guardedNavigate({ view: "users" }) : undefined}
+            onOpenSearch={isAdmin ? () => guardedNavigate({ view: "search" }) : undefined}
             onLogout={handleLogout}
           />
         </div>
@@ -243,9 +250,15 @@ export default function App() {
               pathFor({ view: "folder", folderId, mode: "imaging", from: "accuracy" })
             }
           />
-        ) : route.view === "playground" || route.view === "users" ? (
+        ) : route.view === "playground" || route.view === "users" || route.view === "search" ? (
           isAdmin ? (
-            route.view === "users" ? (
+            route.view === "search" ? (
+              <SearchView
+                onBack={() => navigate({ view: "landing" })}
+                onOpenChart={(folderId) => navigate({ view: "folder", folderId, mode: "imaging" })}
+                chartHref={(folderId) => pathFor({ view: "folder", folderId, mode: "imaging" })}
+              />
+            ) : route.view === "users" ? (
               <UsersView onBack={() => navigate({ view: "landing" })} />
             ) : (
               <PlaygroundView config={appConfig} onBack={() => navigate({ view: "landing" })} />
