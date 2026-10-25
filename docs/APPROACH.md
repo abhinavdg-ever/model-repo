@@ -1198,8 +1198,39 @@ page type's.
 
 <!-- review:start -->
 Seven test charts (`Training/Test Charts`, 161 pages, phone photos of screens) ran the
-whole chain in test mode. They have no ground truth, so they were judged by consistency
-and by reading a sample of pages (results to follow below).
+whole chain in test mode. They have **no ground truth**, so they were judged by
+consistency and by reading a sample of pages (described by document type only).
+
+**What read well.** Blank / junk / duplicate: record requests, fax covers and an
+insurance card went to junk, the two duplicates were found. DOS: every Main page but one
+consent form carries a date. Member: not run (these charts have no manifest rows).
+
+**What was wrong, and what changed (user decisions, 2026-10-25)**
+
+| Finding | Change | Effect on the 7 charts |
+|---|---|---|
+| A follow-up Progress Note (45726104 p15) joined the lab report before it: two-column OCR put "Reason for Appointment" after the left column's words, so the visit heading was missed; same DOS (−3) outweighed the page-type change (+2.85) | a visit heading of two or more words also counts at the end of a line (4.1) | p15–16 are their own Progress Note document (Final type Lab Report → Progress Note) |
+| Lab / immunization / medication documents got an outpatient encounter because one of their pages read like a visit | the document's type decides: non-encounter families are Not Available for the whole encounter; Discharge Summary and Operative Note always Inpatient; Emergency Note no longer hard-coded (5.2) | 26 pages changed encounter type; Not Available 37 → 51 Main pages, F2F 72 → 55, Inpatient 20 → 26, Tele 3 → 0 |
+| Page type and codability each flagged 45% of pages; codability only copied the page type, and the subtype's doubt flagged the whole page | page type leaves out the subtype; codability as sure as the L1 (10.2) | pages with any flag 105 → 93; page type flags 74 → 51, codability 74 → 49 |
+| Two oncology "Follow Up Visit" pages (28394399 p1, p5) read Medication Record (model 0.49 on its long medication list) | "Follow Up Visit" titles added to the Progress Note (Office Visit) canon | **not fixed**: see the open item below |
+
+**Flags after the changes** (161 pages): page type 51, codability 49, encounter type 24,
+specialty 23, handwriting 10, blank/junk 2.
+
+**Open [decide]**
+
+* **Titles below a letterhead.** On 28394399 p1 / p5 the title sits on OCR line 23 / 18
+  (37–40% down the page), under a long practice letterhead; the canon's title zone is the
+  first 12 lines, so the title counts as an ordinary mention and the medication list
+  wins. The pages also carry Chief Complaint and History of Present Illness headings.
+  Options: a title zone by position (the top 45% of the page) rather than a line count;
+  or a page rule that visit headings (the continuity canon's list) make the family
+  Progress Note. Until then these two visits read Medication Record and their encounter
+  Not Available.
+* **Emergency Department notes** now take their setting from the evidence and the model
+  (54537378 p24, an ED note pending admission, was Inpatient by rule).
+* **Measured values** (handwritten area, visibility, orientation, tilt, mirrored) carry
+  no confidence; review-ui shows NA for them.
 <!-- review:end -->
 
 ---
