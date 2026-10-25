@@ -114,8 +114,8 @@ Putting pages back into their documents is the Final step's job (section 3.2).
    Extracted L1 / L2 / L3 + the vote's 5 best whole paths (every candidate kept)
 ```
 
-**Both vote, at every level [built 2026-10-25].** The page-axes model (one DistilBERT
-encoder, hierarchical heads: the L2 head masked to the L1's L2s, the L3 head to the L2's
+**Both vote, at every level [built 2026-10-25].** The page-axes model (one Bio_ClinicalBERT
+encoder since 2026-10-25, 7.1, hierarchical heads: the L2 head masked to the L1's L2s, the L3 head to the L2's
 L3s) gives a probability for every class at every level. The keyword canon gives each
 class a score from the canon terms on the page. At L1, then L2 under the winning L1, then
 L3 under the winning L2:
@@ -148,9 +148,11 @@ candidate paths, and the Final step revisits it with its document's type (3.2).
 * **Thin evidence cannot swing a page.** `k` grows with the keyword evidence: one
   ambiguous word moves the vote a little, several specific terms move it to the full
   share.
-* **`share` and `full` are tuned on the validation pages** (evaluate, below): today
-  share L1 0.2, L2 0.7, L3 0.0; full 6 at every level. On these pages the model is the
-  better judge of L1 and L3; the keywords count most at L2.
+* **`share` and `full` are tuned on the validation pages** (evaluate, below): with the
+  Bio_ClinicalBERT model (2026-10-25) share L1 0.2, L2 0.5, L3 0.2; full L1 6, L2 1,
+  L3 6. The tuning gave L1 0.0; 0.2 scores the same (test L1 0.741 against 0.738) and
+  keeps both sides voting at L1, as decided. The model is the better judge of L1; the
+  keywords count most at L2.
 * **Progress Note's L2 is the keywords' alone.** The model never learned it (its L2 head
   left the section L1 out), so the vote there is the keywords' (k = 1). This is what
   lets a Progress Note page that lists CT results read **Progress Note > Lab and Imaging
@@ -643,6 +645,31 @@ L2, because section tagging decides it):
   (5) and Nursing (7) are never asserted by the model and are left to the specialty
   keywords.
 
+* **The encoder [chosen 2026-10-25]: Bio_ClinicalBERT** (`emilyalsentzer/Bio_ClinicalBERT`,
+  12 layers, 433 MB). One model only (user: at most 1–2 models in the pipeline, no
+  longer run time); ModernBERT was stopped. Same split and seed for every run, test
+  pages 397:
+
+  | Test | DistilBERT | RoBERTa | **Bio_ClinicalBERT** | ModernBERT |
+  |---|---|---|---|---|
+  | L1 accuracy / macro F1 | 0.733 / 0.496 | 0.710 / 0.516 | **0.743 / 0.580** | best validation 0.469 at epoch 5, then worse |
+  | L2 / L3 accuracy | 0.769 / 0.803 | **0.835 / 0.859** | **0.835** / 0.831 | |
+  | specialty accuracy / macro F1 | **0.713** / 0.424 | **0.713 / 0.507** | 0.660 / 0.496 | |
+  | full path / hierarchical F1 | 0.617 / 0.668 | 0.615 / 0.659 | **0.632 / 0.688** | |
+  | best validation (selected macro F1) | 0.554 | 0.589 | **0.625** | 0.469 |
+  | seconds per training epoch (T4) | 51 | 53 | 99 | 338 |
+
+  Its gain is on the small and mid classes: L1 F1 Procedure Note 0 → 0.50, Forms and
+  Questionnaires 0.46 → 0.67, Discharge Summary 0.47 → 0.58, Demographics 0.85 → 0.89,
+  Lab Report 0.85 → 0.89; weaker on Medication Record (0.67 → 0.57). Problem List (0)
+  and Order and Requisition (0.20) stay weak with every encoder: they need pages, not
+  another encoder. **Cost:** 0.17 s a page on a laptop CPU against DistilBERT's 0.08 s
+  (one 512-token pass; measured in a fresh process). The DistilBERT model before is
+  kept in `models/page-family-backup/2026-10-25-distilbert/`.
+* **Specialty gate kept at 0.5 / 0.1** (re-checked on Bio_ClinicalBERT's predictions):
+  the model asserts a specialty on 119 of 397 test pages and is right on 86%; at 0.6 it
+  would assert 111 at 88%, at 0.4 132 at 82%.
+
 ### 7.2 Encounter (`training/bert-training-encounter`)
 
 * Input: `Training/encounter/encounter_tags.jsonl`, 2,785 pages.
@@ -675,6 +702,13 @@ L2, because section tagging decides it):
   22 encounter test pages (`check_encounter_tests.py`; ENC_22, the client default, is
   reported, not scored).
 
+* **Bio_ClinicalBERT tried for encounter too [2026-10-25]: not taken.** Same data, split
+  and settings; on the 283 test pages it is worse: accuracy 0.746 against 0.760, macro
+  F1 0.53 against 0.64, Evisit recall 0.40 against 0.60, Inpatient 0.36 against 0.40.
+  The encounter model stays DistilBERT (265 MB), so the pipeline runs two text models:
+  Bio_ClinicalBERT for the page type and DistilBERT for the encounter (blank / junk keeps
+  its own DistilBERT).
+
 ### 7.3 Which OCR text the models see
 
 Training text is Tesseract (the stage-2 preliminary OCR of a 2,200 px image). The
@@ -689,11 +723,16 @@ section 8.
 2. Copy `encoder/`, `heads.pt`, `label_space.json` into
    `core-pipeline/models/page-family/page-axes/`, and the encounter run's `encoder/`,
    `head.pt`, `label_space.json` into `core-pipeline/models/encounter/`. The two
-   `encoder/model.safetensors` files (265 MB each) are not in git: copy them onto every
-   host. `/health` → `page_axes_model` and `encounter_model` say whether each loaded.
+   `encoder/model.safetensors` files (page axes 433 MB, Bio_ClinicalBERT; encounter
+   265 MB, DistilBERT) are not in git: copy them onto every host. `/health` → `page_axes_model` and `encounter_model` say whether each loaded.
 3. `page_arbitration.json` → `axes.taxonomy_version` is `v29.2`; a model trained on
    another taxonomy is refused at load and the canon decides (visible in `/health`).
-4. Tune the gates on the run's validation predictions (`tune_thresholds.py`).
+4. Refit the keyword weights on the run's split and re-tune the vote (8.1):
+   `python -m stages.lib.page_classify.keyword_vote fit --data training_data.jsonl
+   --split <run>/split.csv`, then `evaluate ... --model models/page-family/page-axes
+   --save`. Check the specialty gate on the run's validation predictions.
+5. The model before is kept under `models/page-family-backup/<date>-<encoder>/`
+   (git-ignored); copying it back undoes the switch.
 
 ---
 
@@ -745,7 +784,23 @@ Path score as a gate (validation / test): at ≥ 0.50, 65% / 57% of pages qualif
 replaced the same day by the vote, 3.1). On the twelve made-up check pages: 24 of 38 head checks
 pass, no Lab Report page comes back as a Progress Note.
 
-**The keyword vote** (2026-10-25; weights fitted on the 1,843 training pages, `share` /
+**The keyword vote with Bio_ClinicalBERT** (2026-10-25, the installed model; weights refitted
+on its split's 2,005 training pages, share / full tuned on its 382 validation pages,
+reported on its 397 test pages; L2 / L3 given the true parent):
+
+| Test pages | Model alone | Keywords alone | The vote |
+|---|---|---|---|
+| L1 | 0.741 | 0.259 | 0.741 |
+| L2, true L1 (not Progress Note) | 0.819 | 0.671 | 0.815 |
+| L3, true L2 | 0.817 | 0.479 | **0.859** |
+| Progress Note L2 | 0.133 | 0.276 | **0.276** |
+| whole path | 0.338 | 0.136 | **0.380** |
+| Lab Report read as Progress Note | 1 / 84 | 0 / 84 | 1 / 84 |
+| Progress Note read as Lab Report | 10 / 181 | 4 / 181 | 11 / 181 |
+
+The tables below are the DistilBERT model's, kept for comparison.
+
+**The keyword vote** (2026-10-25, DistilBERT; weights fitted on the 1,843 training pages, `share` /
 `full` tuned on the 494 validation pages, reported on the 458 test pages; minimum 0.2;
 L2 and L3 measured given the true parent, so every method is scored on the same pages):
 

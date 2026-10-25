@@ -1,45 +1,41 @@
 {
   "scored_on": "test",
-  "pages": 458,
+  "pages": 397,
   "macro_f1": {
-    "L1": 0.4434,
-    "L2": 0.3716,
-    "L3": 0.2567,
-    "specialty": 0.3217,
-    "codeability": 0.5079
+    "L1": 0.5797,
+    "L2": 0.6161,
+    "L3": 0.7499,
+    "specialty": 0.4963
   },
   "accuracy": {
-    "L1": 0.6354,
-    "L2": 0.7079,
-    "L3": 0.5714,
-    "specialty": 0.69,
-    "codeability": 0.5895
+    "L1": 0.7431,
+    "L2": 0.8349,
+    "L3": 0.831,
+    "specialty": 0.6599
   },
   "head_pages": {
-    "L1": 458,
-    "L2": 267,
-    "L3": 63,
-    "specialty": 458,
-    "codeability": 458
+    "L1": 397,
+    "L2": 212,
+    "L3": 71,
+    "specialty": 397
   },
-  "full_path_accuracy": 0.476,
-  "hierarchical_precision": 0.5383,
-  "hierarchical_recall": 0.5653,
-  "hierarchical_f1": 0.5515,
+  "full_path_accuracy": 0.6322,
+  "hierarchical_precision": 0.6622,
+  "hierarchical_recall": 0.7164,
+  "hierarchical_f1": 0.6882,
   "path_note": "Progress Note and OTHER are scored on L1 only (their L2 is not the model's); L3 only under L2s with named L3s. Per-head L2/L3 scores assume the correct parent; the path scores use the predicted chain.",
   "routes": {
-    "model": 346,
-    "canon": 107,
-    "review": 5
+    "model": 338,
+    "canon": 51,
+    "review": 8
   },
-  "codeability_disagreements": 188,
   "lab_note_confusion": {
-    "lab_pages": 94,
-    "lab_as_note": 4,
-    "note_pages": 183,
-    "note_as_lab": 15
+    "lab_pages": 84,
+    "lab_as_note": 1,
+    "note_pages": 181,
+    "note_as_lab": 10
   },
-  "best_epoch": 19,
+  "best_epoch": 10,
   "selected_heads": [
     "L1",
     "L2",

@@ -1,4 +1,4 @@
-# models/page-family/page-axes/ — placeholder
+# models/page-family/page-axes/
 
 Step by step (what to copy, replace and check): [docs/APPROACH.md §7.4](../../../../docs/APPROACH.md#74-from-colab-to-the-pipeline).
 
@@ -14,8 +14,8 @@ The page-axes model goes here: the output folder of
 
 ```
 page-axes/
-├── encoder/            # DistilBERT encoder + tokenizer (config.json, model.safetensors, tokenizer files)
-├── heads.pt            # the five heads: L1, L2, L3, specialty, codeability
+├── encoder/            # Bio_ClinicalBERT encoder + tokenizer (config.json, model.safetensors 433 MB, tokenizer files)
+├── heads.pt            # the four heads: L1, L2, L3, specialty (a five-head model with codeability still loads)
 └── label_space.json    # every class list, mask and training count the model was trained with
 ```
 
@@ -31,5 +31,5 @@ and `heads.pt` are git-ignored); copy them onto each host. Until they are here,
 The model must be trained on the taxonomy version named in
 `stages/lib/keyword-canon/page_arbitration.json` → `axes.taxonomy_version`
 (v29.2); another version is refused at load, naming both, and the canon decides.
-The `label_space.json` committed here is still the v24 model's: until the v29.2
-folder is copied in, the model is refused and the canon decides.
+Installed 2026-10-25: the v29.2 Bio_ClinicalBERT run (docs/APPROACH.md §7.1); the
+DistilBERT model before it is in `models/page-family-backup/2026-10-25-distilbert/`.
