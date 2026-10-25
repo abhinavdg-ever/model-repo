@@ -1,25 +1,29 @@
-"""image_labels.csv and training_data.jsonl for one image folder (taxonomy v24).
+"""image_labels.csv and training_data.jsonl for one label folder (taxonomy v29.2).
 
-A page carries a path (L1 > L2 > L3) and, beside it, a specialty. Codeability
-is derived by the canon and its rules and is only displayed here; an annotator
-may override it with a reason, and both values are kept.
+A page carries a path (L1 > L2 > L3) and, beside it, a specialty and an
+encounter type. Codeability is derived by the canon and its rules and is only
+displayed here; an annotator may override it with a reason, and both values
+are kept.
 
 Opening a folder changes nothing on disk. Missing tool columns, images without
-a row and the pre-review suggestion snapshot are reconciled in memory only, and
-written (after one backup copy of the CSV) on the first Save or Add to Training
-JSON. Every write is a whole-file atomic replace. Page text is held in memory
-and written to training_data.jsonl only; it is never printed, logged or
-returned by any function meant for display.
+a row and the pre-review suggestion snapshot are reconciled in memory only.
+A write (after one backup copy of the CSV) happens on Save, Add to Training
+JSON or a migration, and it changes only the rows that were changed: every
+other row, and every other training record, is written back byte for byte
+(see rawfile.py). Every write is a whole-file atomic replace. Page text is
+held in memory and written to training_data.jsonl only; it is never printed,
+logged or returned by any function meant for display.
+
+Images may live beside the CSV (the old layout) or in a separate folder of
+OCR copies (the SSD layout: Training/processed for the labels, Training/ocr-jpeg
+for the images). A row's ``image`` key ending in .HEIC (or any format a
+browser cannot show) opens ``<images>/<stem>.jpg`` when it exists.
 """
 from __future__ import annotations
 
-import csv
-import io
 import json
-import os
 import re
 import shutil
-import tempfile
 import threading
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -27,16 +31,26 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
-from taxonomy import Taxonomy, join_path
+import encounter as encounter_module
+import migrate
+from rawfile import CsvFile, JsonlFile, atomic_write
+from taxonomy import LABEL_SETS_NAME, Taxonomy, join_path
 
 LABELS_NAME = "image_labels.csv"
-# The CSV as it was before the v24 tool first wrote to it. The earlier tool's
-# image_labels.backup.csv is left alone.
-BACKUP_NAME = "image_labels.v24.backup.csv"
+# The CSV as it was before this tool first wrote to it. Earlier tools' backups are left
+# alone.
+BACKUP_NAME = "image_labels.tool.backup.csv"
 TRAINING_NAME = "training_data.jsonl"
-# The canon (page types → v24 paths), from ../taxonomy/build_canon.py.
-CANON_PATH = Path(__file__).resolve().parent / "page_canon_v24.json"
+# The keyword canon (page types → paths in the taxonomy's names), the pipeline's
+# page_canon.json copied to ../taxonomy/. It is the keyword source only: a path it
+# gives is offered only where it is valid under the loaded taxonomy.
+CANON_PATH = Path(__file__).resolve().parents[1] / "taxonomy" / "page_canon.json"
+# Old name → v29.2 name, from the 2026-10-25 pack (see migrate.py).
+NAME_MAP_PATH = Path(__file__).resolve().parents[1] / "taxonomy" / "rules" / "name_map.json"
+IMAGES_DIR_NAME = "ocr-jpeg"  # the SSD layout's image folder, beside the label folder
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp", ".heic", ".heif"}
+# Formats a browser cannot show: an OCR copy is preferred, else converted on the way out.
+CONVERT_SUFFIXES = {".heic", ".heif", ".tif", ".tiff", ".bmp"}
 
 PATH_FIELDS = ("L1", "L2", "L3")
 LABEL_FIELDS = ("L1", "L2", "L3", "specialty")
@@ -49,6 +63,11 @@ SUGGESTED = {f: f"suggested_{f}" for f in LABEL_FIELDS}
 OVERRIDE = "codeability_override"
 OVERRIDE_REASON = "codeability_override_reason"
 RESOLUTION = "disagreement_resolution"  # label | canon, on a flagged page
+# '' | y | n | hand-labelled | unreviewed | claude-reviewed. retag.py writes y/n;
+# claude-reviewed is a page Claude checked. A save that changes nothing keeps
+# the value; a save that changes a label sets y (a human now agrees with it).
+AGREES = "label_agrees_with_text"
+CLAUDE_REVIEWED = "claude-reviewed"
 FLAG = "is_training_added"
 DONE = "is_completed"
 STATUS = "status"
@@ -72,18 +91,13 @@ def chart_and_index(image: str) -> tuple[Optional[str], Optional[int]]:
     return chart, int(match.group("index"))
 
 
-def _atomic_write(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(data)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp, path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
+_atomic_write = atomic_write
+
+
+def default_images_dir(root: Path) -> Optional[Path]:
+    """``<root>/../ocr-jpeg`` when it exists (the SSD layout), else None."""
+    candidate = Path(root).expanduser().resolve().parent / IMAGES_DIR_NAME
+    return candidate if candidate.is_dir() else None
 
 
 def discover_images(root: Path) -> list[str]:
@@ -115,21 +129,43 @@ class GenerateSummary:
 
 
 class Store:
-    def __init__(self, root: Path, taxonomy: Optional[Taxonomy] = None, canon: Path = CANON_PATH):
+    def __init__(
+        self, root: Path, taxonomy: Optional[Taxonomy] = None, canon: Path = CANON_PATH, *,
+        images: Optional[Path] = None, encounters: Optional[encounter_module.Encounters] = None,
+        label_sets: Optional[Path] = None, name_map: Path = NAME_MAP_PATH,
+    ):
+        """``root`` holds image_labels.csv and training_data.jsonl (and, in the
+        old layout, the images). ``images`` is a second image folder, searched
+        by file stem; by default ``<root>/../ocr-jpeg`` when it exists.
+        ``encounters`` defaults to the files encounter.locate() finds."""
         self.root = Path(root).expanduser().resolve()
         if not self.root.is_dir():
             raise FileNotFoundError(f"not a folder: {self.root}")
         self.taxonomy = taxonomy or Taxonomy()
         self.canon_file = Path(canon)
+        self.name_map_file = Path(name_map)
+        self.images_dir = Path(images).expanduser().resolve() if images else default_images_dir(self.root)
+        if self.images_dir is not None and not self.images_dir.is_dir():
+            raise FileNotFoundError(f"not a folder: {self.images_dir}")
         self.labels_path = self.root / LABELS_NAME
         self.training_path = self.root / TRAINING_NAME
+        if encounters is None:
+            found = encounter_module.locate(self.root)
+            encounters = encounter_module.Encounters(found["tags"], found["review"], found["canon"])
+        self.encounters = encounters
+        self.label_sets_path = Path(label_sets) if label_sets else (
+            self.root / LABEL_SETS_NAME if (self.root / LABEL_SETS_NAME).is_file() else None)
+        self.label_sets: Optional[dict[str, Any]] = (
+            json.loads(self.label_sets_path.read_text(encoding="utf-8")) if self.label_sets_path else None)
         self.lock = threading.RLock()
         self._backed_up = False
-        self._undo: list[tuple[int, dict[str, str]]] = []
-        self._bom = False
+        self._undo: list[tuple[int, dict[str, str], Any]] = []
+        self._csv = CsvFile()
+        self._jsonl = JsonlFile()
+        self._loaded: list[dict[str, str]] = []
         self.columns: list[str] = []
         self.rows: list[dict[str, str]] = []
-        self.files: dict[int, Optional[str]] = {}
+        self.files: dict[int, Optional[Path]] = {}
         self.records: dict[str, dict[str, Any]] = {}
         self.invalid: dict[int, str] = {}
         self._load()
@@ -138,17 +174,14 @@ class Store:
     def _load(self) -> None:
         images = discover_images(self.root)
         by_name: dict[str, list[str]] = defaultdict(list)
+        by_stem: dict[str, list[str]] = defaultdict(list)
         for rel in images:
             by_name[Path(rel).name].append(rel)
+            by_stem[Path(rel).stem.lower()].append(rel)
 
-        flag_present = False
-        if self.labels_path.is_file():
-            raw = self.labels_path.read_bytes()
-            self._bom = raw.startswith(b"\xef\xbb\xbf")
-            reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig"), newline=""))
-            self.columns = list(reader.fieldnames or [])
-            self.rows = [dict(row) for row in reader]
-            flag_present = FLAG in self.columns
+        self._csv = CsvFile.read(self.labels_path)
+        self.columns = list(self._csv.columns)
+        self.rows = [dict(row) for row in self._csv.rows]
         for column in [*BASE_COLUMNS, *TOOL_COLUMNS]:
             if column not in self.columns:
                 self.columns.append(column)
@@ -159,29 +192,24 @@ class Store:
 
         claimed: set[str] = set()
         for index, row in enumerate(self.rows):
-            value = (row.get("image") or "").strip()
-            resolved = None
-            if value and (self.root / value).is_file():
-                resolved = Path(value).as_posix()
-            elif value and "/" not in value.replace("\\", "/") and len(by_name.get(value, [])) == 1:
-                resolved = by_name[value][0]
-            self.files[index] = resolved
-            if resolved:
-                claimed.add(resolved)
+            rel, shown = self._resolve((row.get("image") or "").strip(), by_name, by_stem)
+            self.files[index] = shown
+            if rel:
+                claimed.add(rel)
         for rel in images:
             if rel not in claimed:
                 row = {column: "" for column in self.columns}
                 row["image"] = rel
                 chart, page = chart_and_index(rel)
                 row["chart_id"], row["page_index"] = chart or "", "" if page is None else str(page)
-                self.files[len(self.rows)] = rel
+                self.files[len(self.rows)] = self._resolve(rel, by_name, by_stem)[1]
                 self.rows.append(row)
 
-        if self.training_path.is_file():
-            for line in self.training_path.read_text(encoding="utf-8").splitlines():
-                if line.strip():
-                    record = json.loads(line)
-                    self.records[str(record.get("image"))] = record
+        self._jsonl = JsonlFile.read(self.training_path)
+        for record in self._jsonl.records:
+            self.records[str(record.get("image"))] = record
+        # Each record as read, to tell an untouched one (written back as read).
+        self._jsonl_original = [dict(r) for r in self._jsonl.records]
 
         for row in self.rows:
             # Snapshot what the machine proposed, once, before any review.
@@ -189,20 +217,52 @@ class Store:
                 for f, column in SUGGESTED.items():
                     row[column] = row.get(f) or ""
             record = self.records.get(row.get("image") or "")
-            if not flag_present:
-                # A file written by retag.py: in training when its record
-                # already carries the same labels.
+            if not row.get(FLAG):
+                # A row the tool never wrote (retag.py's, or untouched since):
+                # in training when its record already carries the same labels.
                 row[FLAG] = "Yes" if record and self._record_matches(record, row) else "No"
             elif row.get(FLAG) == "Yes" and record is None:
                 row[FLAG] = "No"
             row[DONE] = row.get(DONE) or "No"
+        # What every row read from the file looked like after reconciling: a
+        # row still equal to this at write time is written back as read.
+        self._loaded = [dict(row) for row in self.rows[: len(self._csv.rows)]]
         self._build_canon_map()
         self.check_rows()
 
+    def _resolve(self, key: str, by_name: dict[str, list[str]],
+                 by_stem: dict[str, list[str]]) -> tuple[Optional[str], Optional[Path]]:
+        """The image under the root this row claims, and the file to show.
+
+        Claimed: the key as a path, else a unique file of that name, else a
+        unique file of that stem (``X_Pg2.jpg`` in the CSV, ``X_Pg2.HEIC`` on
+        disk). Shown: a browser-ready claimed file; else ``<images>/<stem>.jpg``
+        (the OCR copy of a .HEIC page); else the claimed file, converted."""
+        if not key:
+            return None, None
+        rel = None
+        if (self.root / key).is_file():
+            rel = Path(key).as_posix()
+        elif "/" not in key.replace("\\", "/") and len(by_name.get(key, [])) == 1:
+            rel = by_name[key][0]
+        elif len(by_stem.get(Path(key).stem.lower(), [])) == 1:
+            rel = by_stem[Path(key).stem.lower()][0]
+        copy = self.images_dir / f"{Path(key).stem}.jpg" if self.images_dir else None
+        if rel and Path(rel).suffix.lower() not in CONVERT_SUFFIXES:
+            return rel, self.root / rel
+        if copy is not None and copy.is_file():
+            return rel, copy
+        return rel, (self.root / rel if rel else None)
+
     def _build_canon_map(self) -> None:
-        """A canon page type → its path: page_canon_v24.json, falling back to the
+        """A canon page type → its path: page_canon.json, falling back to the
         path this CSV's unreviewed rows most often resolved it to. And a dominant
-        section header → the section-L1 L2 it most often gave."""
+        section header → the section-L1 L2 it most often gave.
+
+        Each canon path is put through the name map (a no-op on the converted
+        canon) and kept only as far as it is valid under the loaded taxonomy (an L1 that
+        is not one is dropped, an L2 or L3 that is not one is blanked), so the
+        disagreement callout never offers a name the pickers do not."""
         by_type: dict[str, Counter] = defaultdict(Counter)
         by_section: dict[str, Counter] = defaultdict(Counter)
         for row in self.rows:
@@ -213,14 +273,31 @@ class Store:
                 by_type[row["page_type"]][(l1, l2, l3)] += 1
             if self.taxonomy.is_section_l1(l1) and l2 and row.get("dominant_section"):
                 by_section[row["dominant_section"]][l2] += 1  # no header is no evidence
-        self.canon_paths = {k: c.most_common(1)[0][0] for k, c in by_type.items()}
+        self.canon_paths = {}
+        for page_type, counter in by_type.items():
+            path = self._valid_part(*counter.most_common(1)[0][0])
+            if path is not None:
+                self.canon_paths[page_type] = path
         if self.canon_file.is_file():
-            # The canon wins over what this CSV happened to resolve.
+            # The canon wins over what this CSV happened to resolve, unless the
+            # taxonomy kept only part of its path and the CSV knows a whole one.
+            names = migrate.NameMap.load(self.name_map_file)
             canon = json.loads(self.canon_file.read_text(encoding="utf-8"))
             for entry in canon["page_types"]:
                 p = entry["path"]
-                self.canon_paths[entry["page_type"]] = (p["L1"], p["L2"], p["L3"])
+                translated = names.translate(p["L1"], p["L2"], p["L3"])
+                path = self._valid_part(*translated)
+                if path is not None and (path == translated or entry["page_type"] not in self.canon_paths):
+                    self.canon_paths[entry["page_type"]] = path
         self.section_l2 = {k: c.most_common(1)[0][0] for k, c in by_section.items()}
+
+    def _valid_part(self, l1: str, l2: str, l3: str) -> Optional[tuple[str, str, str]]:
+        tax = self.taxonomy
+        if l1 not in tax.l1:
+            return None
+        if l2 not in tax.l2_of(l1):
+            return l1, "", ""
+        return l1, l2, (l3 if l3 in tax.l3_of(l1, l2) else "")
 
     # -- checks ----------------------------------------------------------------
     def check_rows(self) -> None:
@@ -334,6 +411,8 @@ class Store:
             "in_training": row.get(FLAG) == "Yes",
             "completed": row.get(DONE) == "Yes",
             "missing": self.files.get(index) is None,
+            "agrees": get(AGREES),
+            "encounter": self.encounters.get(get("image")) if self.encounters.enabled else None,
             "problem": self.invalid.get(index, ""),
             "status": get(STATUS),
             "saved_at": get(SAVED_AT),
@@ -359,20 +438,21 @@ class Store:
             "invalid": sum(1 for i, _ in present if i in self.invalid),
             "specialty_other": sum(1 for _, r in present if r.get("specialty") == tax.specialty_other),
             "overridden": sum(1 for _, r in present if r.get(OVERRIDE)),
+            "claude_reviewed": sum(1 for _, r in present if r.get(AGREES) == CLAUDE_REVIEWED),
             "missing_files": len(self.rows) - len(present),
         }
 
     def image_path(self, index: int) -> Optional[Path]:
-        rel = self.files.get(index)
-        return self.root / rel if rel else None
+        return self.files.get(index)
 
     # -- writing ---------------------------------------------------------------
+    def _row_changed(self, index: int) -> bool:
+        return index >= len(self._loaded) or self.rows[index] != self._loaded[index]
+
     def _csv_bytes(self) -> bytes:
-        buffer = io.StringIO(newline="")
-        writer = csv.DictWriter(buffer, fieldnames=self.columns, extrasaction="ignore", lineterminator="\n")
-        writer.writeheader()
-        writer.writerows(self.rows)
-        return (b"\xef\xbb\xbf" if self._bom else b"") + buffer.getvalue().encode("utf-8")
+        if self.labels_path.is_file() and not any(self._row_changed(i) for i in range(len(self.rows))):
+            return self.labels_path.read_bytes()  # nothing changed: not even the tool's columns are added
+        return self._csv.to_bytes(self.columns, self.rows, self._row_changed)
 
     def _backup_once(self) -> None:
         backup = self.root / BACKUP_NAME
@@ -389,14 +469,23 @@ class Store:
             _atomic_write(self.labels_path, data)
 
     def _jsonl_bytes(self) -> bytes:
+        """The records in file order (new ones after, in CSV order). A record
+        unchanged since it was read is written back as its original line."""
         lines, seen = [], set()
+        for raw, original in zip(self._jsonl.raws, self._jsonl_original):
+            image = str(original.get("image"))
+            record = self.records.get(image)
+            if record is None or image in seen:
+                continue  # dropped, or a repeat of an image already written
+            seen.add(image)
+            lines.append(raw if record == original else JsonlFile.dumps(record))
         for row in self.rows:
             image = row.get("image")
             record = self.records.get(image)
             if record is not None and image not in seen:
                 seen.add(image)
-                lines.append(json.dumps(record, ensure_ascii=False))
-        return ("\n".join(lines) + ("\n" if lines else "")).encode("utf-8")
+                lines.append(JsonlFile.dumps(record))
+        return JsonlFile.to_bytes(lines)
 
     def save_training(self) -> None:
         with self.lock:
@@ -411,9 +500,13 @@ class Store:
     def set_labels(
         self, index: int, l1: str, l2: str = "", l3: str = "", specialty: str = "", *,
         override: str = "", override_reason: str = "", resolution: str = "",
+        encounter_type: Optional[str] = None,
     ) -> dict[str, Any]:
         """The Save button. The path and specialty must be valid under the
-        taxonomy; an override of the derived codeability needs a reason."""
+        taxonomy; an override of the derived codeability needs a reason.
+        A changed label sets label_agrees_with_text to y; an unchanged one
+        keeps whatever it was (claude-reviewed included). ``encounter_type``,
+        when given and different, is stored as a human decision."""
         tax = self.taxonomy
         l1, l2, l3, specialty = (v.strip() for v in (l1, l2, l3, specialty))
         problem = tax.problem(l1, l2, l3, specialty)
@@ -422,6 +515,11 @@ class Store:
         override, override_reason = override.strip(), override_reason.strip()
         if override and override not in tax.codeability_values:
             raise ValueError(f"{override!r} is not a codeability value")
+        encounter_type = (encounter_type or "").strip()
+        if encounter_type and not self.encounters.enabled:
+            raise ValueError("no encounter file is open")
+        if encounter_type and encounter_type not in self.encounters.classes:
+            raise ValueError(f"{encounter_type!r} is not an encounter type")
         with self.lock:
             row = self.rows[index]
             if override == (row.get("codeability") or ""):
@@ -437,32 +535,83 @@ class Store:
                 DONE: "Yes", STATUS: "Saved",
                 SAVED_AT: datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
+            if any((row.get(f) or "") != values[f] for f in LABEL_FIELDS):
+                values[AGREES] = "y"
             if resolution or not self.flagged(row):
                 values[RESOLUTION] = resolution
-            return self._apply(index, values)
+            return self._apply(index, values, encounter_type)
 
-    def _apply(self, index: int, values: dict[str, str]) -> dict[str, Any]:
+    def _apply(self, index: int, values: dict[str, str], encounter_type: str = "") -> dict[str, Any]:
         row = self.rows[index]
         before = dict(row)
+        image = row.get("image") or ""
+        encounter_before = self.encounters.snapshot(image) if self.encounters.enabled else None
         trained = (*LABEL_FIELDS, OVERRIDE)
         if any((row.get(k) or "") != values[k] for k in trained if k in values):
             row[FLAG] = "No"
         row.update(values)
         self._recheck(index)
-        self._undo.append((index, before))
+        self._undo.append((index, before, encounter_before))
         self.save_labels()
+        if encounter_type:
+            self.encounters.set(image, encounter_type, self._encounter_page(row))
         return self.item(index)
+
+    def _encounter_page(self, row: dict[str, str]) -> dict[str, Any]:
+        """What a new encounter_tags.jsonl entry carries besides the decision."""
+        record = self.records.get(row.get("image") or "") or {}
+        page = {k: row.get(k) or "" for k in ("L1", "L2", "chart_id", "page_index", "page_id", "specialty",
+                                              "page_type")}
+        if "text" in record:
+            page.update(text=record["text"], n_chars=record.get("n_chars", len(record["text"])))
+        return page
 
     def undo(self) -> Optional[dict[str, Any]]:
         with self.lock:
             if not self._undo:
                 return None
-            index, before = self._undo.pop()
+            index, before, encounter_before = self._undo.pop()
             self.rows[index].clear()
             self.rows[index].update(before)
             self._recheck(index)
             self.save_labels()
+            if encounter_before is not None:
+                self.encounters.restore(before.get("image") or "", encounter_before)
             return self.item(index)
+
+    # -- migration ---------------------------------------------------------------
+    def migrate(self, names: Optional[migrate.NameMap] = None, *, apply: bool = False) -> migrate.Report:
+        """Rename stored labels with the name map (see migrate.py). Rows whose
+        path is valid are not touched; split names are listed, not guessed.
+        With ``apply`` the renamed rows (and their training records) are
+        written; nothing else changes."""
+        names = names or migrate.NameMap.load(self.name_map_file)
+        report = migrate.Report(applied=apply)
+        with self.lock:
+            for index, row in enumerate(self.rows):
+                image = row.get("image") or ""
+                step = migrate.plan(names, self.taxonomy, image, *(row.get(f) or "" for f in PATH_FIELDS))
+                if isinstance(step, migrate.Decision):
+                    report.decisions.append(step)
+                elif isinstance(step, migrate.Change):
+                    report.changes.append(step)
+                    if apply:
+                        row.update(zip(PATH_FIELDS, step.new), path=join_path(*step.new))
+                suggested = migrate.plan(names, self.taxonomy, image,
+                                         *(row.get(SUGGESTED[f]) or "" for f in PATH_FIELDS))
+                if isinstance(suggested, migrate.Change):
+                    report.suggested_changes += 1
+                    if apply:
+                        row.update(zip((SUGGESTED[f] for f in PATH_FIELDS), suggested.new))
+                if apply and isinstance(step, migrate.Change):
+                    self._recheck(index)
+                    record = self.records.get(image)
+                    if record is not None and row.get(FLAG) == "Yes":
+                        self._record_labels(record, row)
+            if apply and (report.changes or report.suggested_changes):
+                self._build_canon_map()
+                self._checkpoint()
+        return report
 
     # -- Add to Training JSON ----------------------------------------------------
     def _record_values(self, row: dict[str, str]) -> dict[str, str]:
@@ -477,6 +626,10 @@ class Store:
                    if k != "codeability_rule")
 
     def _record_labels(self, record: dict[str, Any], row: dict[str, str]) -> bool:
+        """Make the record carry the row's labels. A record that already does
+        is left exactly as it is (no rule key added, derived keys kept)."""
+        if self._record_matches(record, row) and (not row.get(OVERRIDE) or record.get("codeability_rule") == "override"):
+            return False
         changed = False
         for key, value in self._record_values(row).items():
             if record.get(key) != value:
@@ -602,8 +755,8 @@ class Store:
             self._checkpoint()
 
 
-VIEWS = ("all", "disagreements", "needs_review", "invalid", "specialty_other", "overridden",
-         "untagged", "not_in_training", "in_training", "missing")
+VIEWS = ("all", "disagreements", "claude_reviewed", "needs_review", "invalid", "specialty_other",
+         "overridden", "untagged", "not_in_training", "in_training", "missing")
 
 
 def filter_items(
@@ -631,6 +784,8 @@ def filter_items(
         if view == "specialty_other" and row.get("specialty") != tax.specialty_other:
             continue
         if view == "overridden" and not row.get(OVERRIDE):
+            continue
+        if view == "claude_reviewed" and row.get(AGREES) != CLAUDE_REVIEWED:
             continue
         if view == "untagged" and store.tagged(row):
             continue

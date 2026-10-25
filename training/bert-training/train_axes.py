@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """Train the page-axes model: one encoder, five heads (L1, L2, L3, specialty,
-codeability) over the v29 taxonomy.
+codeability) over the v29.2 taxonomy.
 
 Input is ``training_data.jsonl`` (one page per line: ``text`` plus the labels
-``L1``, ``L2``, ``L3``, ``specialty``, ``codeability``, and ``chart_id``).
-Every name comes from ``taxonomy_v29.json`` beside this file (built by
-``training/taxonomy/build_taxonomy_v29.py``); nothing here
-knows a page type. Output, by default ``output/page-axes``, always holds the
-best epoch by validation macro F1 of the selected heads.
+``L1``, ``L2``, ``L3``, ``specialty``, ``codeability``, and ``chart_id``), a copy
+of ``Training/processed/training_data.jsonl``. Every name comes from
+``taxonomy.json`` beside this file (v29.2, from the 2026-10-25 Claude Code
+pack); nothing here knows a page type. Output, by default ``output/page-axes``,
+always holds the best epoch by validation macro F1 of the selected heads.
 
     python train_axes.py --check              # two steps and a time estimate; saves nothing
-    python train_axes.py                      # a run: 5 epochs
+    python train_axes.py                      # a run: 20 epochs
+    python train_axes.py --with-mock          # + data/mock_pages.jsonl, training split only
     python train_axes.py --base-model /models/distilbert-base-uncased   # vendored weights
 
 How the label space is built (all thresholds are options):
@@ -29,6 +30,10 @@ How the label space is built (all thresholds are options):
 * specialty — values with at least ``--min-specialty-pages`` pages; rarer ones
   are left out of the loss.
 * codeability — the four values from the taxonomy rules.
+
+Synthetic pages (``--with-mock``, or ``synthetic: true`` in the data) are always
+in the training split, never validation or test, so every score is a real-page
+score. The summary prints the Lab Report <-> Progress Note confusion, both ways.
 
 Page text is never printed: only counts, class names, shapes and metrics.
 """
@@ -51,7 +56,8 @@ from typing import Any, Iterable
 HERE = Path(__file__).resolve().parent
 DEFAULT_DATA = HERE / "data" / "training_data.jsonl"
 DEFAULT_OUTPUT = HERE / "output" / "page-axes"
-TAXONOMY = HERE / "taxonomy_v29.json"
+DEFAULT_MOCK = HERE / "data" / "mock_pages.jsonl"
+TAXONOMY = HERE / "taxonomy.json"
 
 os.environ.setdefault("USE_TF", "0")
 os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
@@ -64,7 +70,7 @@ BATCH_SIZE = 8
 LOG_EVERY = 10  # training steps between running-loss lines; 0 turns them off
 LEARNING_RATE = 3e-5
 WARMUP_FRACTION = 0.1  # of all steps, then linear decay
-EPOCHS = 5
+EPOCHS = 20
 SEED = 42
 DROPOUT = 0.1
 VAL_FRACTION = 0.15
@@ -78,10 +84,14 @@ MIN_L2_PAGES = 3
 MIN_L3_PAGES = 3
 MIN_SPECIALTY_PAGES = 3
 OTHER_L1 = "OTHER"
+UNKNOWN_SPECIALTY = "Unknown"  # "not determined", not "no specialty"
 ROUTE_MODEL = 0.50
 ROUTE_MARGIN = 0.10
 ROUTE_CANON = 0.25
 SELECT_HEADS = ("L1", "L2", "L3")
+# The pair the client asks about: genuine results pages must not read as a note.
+LAB_L1 = "Lab Report"
+NOTE_L1 = "Progress Note"
 
 HEADS = ("L1", "L2", "L3", "specialty", "codeability")
 IGNORE = -100
@@ -92,6 +102,10 @@ SEP = " > "
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--data", type=Path, default=DEFAULT_DATA, help="training_data.jsonl (default: data/)")
+    p.add_argument("--with-mock", nargs="?", type=Path, const=DEFAULT_MOCK, default=None, metavar="JSONL",
+                   help="add synthetic pages (default data/mock_pages.jsonl), training split only")
+    p.add_argument("--specialty-unknown", choices=("train", "ignore"), default="train",
+                   help="'Unknown' specialty (not determined): a class of its own, or left out of the loss")
     p.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="model folder (best epoch)")
     p.add_argument("--taxonomy", type=Path, default=TAXONOMY)
     p.add_argument("--base-model", default=BASE_MODEL,
@@ -126,7 +140,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def load_taxonomy(path: Path = TAXONOMY) -> dict[str, Any]:
     if not path.is_file():
-        raise SystemExit(f"No taxonomy at {path} (copy taxonomy_v29.json beside train_axes.py)")
+        raise SystemExit(f"No taxonomy at {path} (copy taxonomy.json beside train_axes.py)")
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -179,6 +193,7 @@ def load_records(path: Path, taxonomy: dict[str, Any], min_chars: int) -> tuple[
                 "image": str(row.get("image") or f"line-{number}"),
                 "text": text,
                 "chart_id": _clean(row.get("chart_id")),
+                "synthetic": bool(row.get("synthetic")),
                 **{k: _clean(row.get(k)) for k in ("L1", "L2", "L3", "specialty", "codeability")},
             })
     problems = validate(records, taxonomy)
@@ -193,7 +208,8 @@ def load_records(path: Path, taxonomy: dict[str, Any], min_chars: int) -> tuple[
 
 def build_label_space(records: list[dict], taxonomy: dict[str, Any], *, min_l1: int = MIN_L1_PAGES,
                       min_l2: int = MIN_L2_PAGES, min_l3: int = MIN_L3_PAGES,
-                      min_specialty: int = MIN_SPECIALTY_PAGES, other_l1: str = OTHER_L1) -> dict[str, Any]:
+                      min_specialty: int = MIN_SPECIALTY_PAGES, other_l1: str = OTHER_L1,
+                      specialty_unknown: str = "train") -> dict[str, Any]:
     """Every class list and mask, as plain JSON. Saved beside the model, so
     inference needs neither the taxonomy nor the data."""
     rules = taxonomy["rules"]
@@ -225,7 +241,8 @@ def build_label_space(records: list[dict], taxonomy: dict[str, Any], *, min_l1: 
     l3_by_l2 = {p: [t for t in l3_classes if t.rsplit(SEP, 1)[0] == p] for p in l2_classes if p in l3_parents}
 
     spec_count = Counter(r["specialty"] for r in records if r["specialty"])
-    specialty = [x["name"] for x in taxonomy["specialty"] if spec_count[x["name"]] >= min_specialty]
+    specialty = [x["name"] for x in taxonomy["specialty"] if spec_count[x["name"]] >= min_specialty
+                 and not (specialty_unknown == "ignore" and x["name"] == UNKNOWN_SPECIALTY)]
 
     return {
         "taxonomy_version": taxonomy.get("version", ""),
@@ -281,7 +298,8 @@ def encode_targets(record: dict, space: dict[str, Any]) -> tuple[dict[str, int],
 
     targets["specialty"] = index["specialty"].get(record["specialty"], IGNORE)
     if targets["specialty"] == IGNORE:
-        why["specialty"] = "rare specialty" if record["specialty"] else "blank specialty"
+        why["specialty"] = ("Unknown specialty" if record["specialty"] == UNKNOWN_SPECIALTY
+                            else "rare specialty" if record["specialty"] else "blank specialty")
     targets["codeability"] = index["codeability"].get(record["codeability"], IGNORE)
     return targets, why
 
@@ -428,6 +446,35 @@ def group_split(labels: list[str], groups: list[str], val_fraction: float, test_
             test -= back
             val -= back
     return ["test" if g in test else "val" if g in val else "train" for g in groups]
+
+
+def split_real_pages(records: list[dict], labels: list[str], groups: list[str], val_fraction: float,
+                     test_fraction: float, seed: int) -> list[str]:
+    """``group_split`` over the real pages; a synthetic page is always 'train'."""
+    real = [i for i, r in enumerate(records) if not r.get("synthetic")]
+    sides = ["train"] * len(records)
+    for i, side in zip(real, group_split([labels[i] for i in real], [groups[i] for i in real],
+                                         val_fraction, test_fraction, seed)):
+        sides[i] = side
+    return sides
+
+
+def lab_note_confusion(confusion: list[list[int]], l1_classes: list[str]) -> dict[str, Any] | None:
+    """Lab Report pages called Progress Note and the reverse, from an L1 confusion
+    matrix (rows = truth). None when either class is not trained."""
+    if LAB_L1 not in l1_classes or NOTE_L1 not in l1_classes:
+        return None
+    lab, note = l1_classes.index(LAB_L1), l1_classes.index(NOTE_L1)
+    return {"lab_pages": sum(confusion[lab]), "lab_as_note": confusion[lab][note],
+            "note_pages": sum(confusion[note]), "note_as_lab": confusion[note][lab]}
+
+
+def lab_note_line(c: dict[str, Any] | None) -> str:
+    if not c:
+        return f"{LAB_L1} <-> {NOTE_L1}: not scored (a class is not trained)"
+    pct = lambda n, d: f"{100 * n / d:.1f}%" if d else "—"  # noqa: E731
+    return (f"{LAB_L1} -> {NOTE_L1}: {c['lab_as_note']} of {c['lab_pages']} ({pct(c['lab_as_note'], c['lab_pages'])}); "
+            f"{NOTE_L1} -> {LAB_L1}: {c['note_as_lab']} of {c['note_pages']} ({pct(c['note_as_lab'], c['note_pages'])})")
 
 
 # --- Tokens --------------------------------------------------------------------------------
@@ -587,8 +634,23 @@ def decode(logits, model, space: dict[str, Any], top_k: int = 3) -> list[dict[st
         j = int(code_prob[i].argmax())
         row["codeability"], row["codeability_confidence"] = space["codeability"][j], float(code_prob[i, j])
         row["path"] = " > ".join(x for x in (row["L1"], row["L2"], row["L3"]) if x)
+        row["top3"] = top_paths(top, row["by_L1"])
         out.append(row)
     return out
+
+
+def top_paths(l1_top: list[tuple[str, float]], by_l1: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """The best L1 > L2 > L3 under each of the top L1s, best first. Score = p(L1) ·
+    p(L2 | L1) · p(L3 | L2); a level the L1 does not have counts as 1."""
+    paths = []
+    for l1, p1 in l1_top:
+        best = by_l1.get(l1) or {}
+        l2, l3 = best.get("L2"), best.get("L3")
+        score = p1 * (best.get("L2_confidence") or 1.0) * (best.get("L3_confidence") or 1.0)
+        paths.append({"path": " > ".join(x for x in (l1, l2, l3) if x), "L1": l1, "L2": l2, "L3": l3,
+                      "L1_confidence": p1, "L2_confidence": best.get("L2_confidence"),
+                      "L3_confidence": best.get("L3_confidence"), "score": score})
+    return sorted(paths, key=lambda x: -x["score"])
 
 
 def save_model(output: Path, model, tokenizer, space: dict[str, Any], settings: dict[str, Any]) -> None:
@@ -743,10 +805,19 @@ def main(argv: list[str] | None = None) -> int:
 
     taxonomy = load_taxonomy(args.taxonomy)
     records, short = load_records(args.data, taxonomy, args.min_chars)
-    print(f"Pages: {len(records)} usable, {short} left out with fewer than {args.min_chars} characters")
+    if args.with_mock is not None:
+        mock, mock_short = load_records(args.with_mock, taxonomy, args.min_chars)
+        for r in mock:
+            r["synthetic"] = True
+        records += mock
+        short += mock_short
+    synthetic = sum(1 for r in records if r["synthetic"])
+    print(f"Pages: {len(records)} usable ({synthetic} synthetic, training split only), {short} left out "
+          f"with fewer than {args.min_chars} characters")
+    print(f"Taxonomy {taxonomy.get('version', '?')}: {len(taxonomy['L1'])} L1 in the taxonomy")
     space = build_label_space(records, taxonomy, min_l1=args.min_l1_pages, min_l2=args.min_l2_pages,
                               min_l3=args.min_l3_pages, min_specialty=args.min_specialty_pages,
-                              other_l1=args.other_l1)
+                              other_l1=args.other_l1, specialty_unknown=args.specialty_unknown)
     encoded = [encode_targets(r, space) for r in records]
     targets = [t for t, _ in encoded]
     excluded = Counter((h, why) for _, reasons in encoded for h, why in reasons.items())
@@ -761,7 +832,7 @@ def main(argv: list[str] | None = None) -> int:
 
     groups = assign_groups(records)
     l1_labels = [space["L1"][t["L1"]] for t in targets]
-    sides = group_split(l1_labels, groups, args.val_fraction, args.test_fraction, args.seed)
+    sides = split_real_pages(records, l1_labels, groups, args.val_fraction, args.test_fraction, args.seed)
     split = {s: [i for i, side in enumerate(sides) if side == s] for s in ("train", "val", "test")}
     print("Split by group: " + ", ".join(
         f"{s} {len(ix)} pages / {len({groups[i] for i in ix})} groups" for s, ix in split.items()))
@@ -842,7 +913,7 @@ def main(argv: list[str] | None = None) -> int:
     if unknown:
         raise SystemExit(f"--select-heads: unknown head(s) {unknown}; choose from {list(HEADS)}")
     settings = {k: getattr(args, k) for k in ("base_model", "max_length", "head_fraction", "dropout",
-                                              "route_model", "route_canon")}
+                                              "route_model", "route_canon", "specialty_unknown")}
     settings["route_margin"] = ROUTE_MARGIN
     # Training pages per class: the pipeline asserts a class only when it was
     # trained on enough pages (page_arbitration.json → axes).
@@ -905,6 +976,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  full-path accuracy {summary['full_path_accuracy']:.3f}, hierarchical P {summary['hierarchical_precision']:.3f}"
           f" R {summary['hierarchical_recall']:.3f}  ({summary['path_note']})")
     print(f"  routes: {summary['routes']}; codeability model≠rule on {summary['codeability_disagreements']} pages")
+    print("  per-class recall (L1): " + ", ".join(
+        f"{name} {report['scores']['L1']['recall'][c]:.2f} ({report['scores']['L1']['support'][c]})"
+        for c, name in enumerate(saved_space["L1"])))
+    print(f"  {lab_note_line(summary['lab_note_confusion'])}  (on {side})")
     print(f"Saved: {output}")
     return 0
 
@@ -946,6 +1021,7 @@ def evaluate_saved(model, space, records, targets, groups, sides, ids, pad, args
         "routes": dict(Counter(r["route"] for r in rows)),
         "codeability_disagreements": sum(1 for r in rows
                                          if r["codeability"] != records[r["record"]]["codeability"]),
+        "lab_note_confusion": lab_note_confusion(scores["L1"]["confusion"], space["L1"]),
     }
     return {"summary": summary, "scores": scores, "rows": per_side, "gold": gold, "pred": pred,
             "side": side, "teacher": teacher, "ix": ix}

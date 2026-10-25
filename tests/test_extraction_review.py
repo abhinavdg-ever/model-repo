@@ -385,7 +385,7 @@ def test_staged_encounters_are_read_from_continuity_json(tmp_path):
     staging.mkdir(parents=True)
     (staging / "continuity.json").write_text(json.dumps({
         "pages": [],
-        "encounters": [{"seq": 1, "document": 2, "page_family": "Lab Report/Result",
+        "encounters": [{"seq": 1, "document": 2, "page_family": "Lab Report",
                         "pages": ["3.jpg"], "encounter_type": "not_applicable",
                         "encounter_label": "Not Applicable", "confidence": 1.0,
                         "decided_by": "not_applicable", "conflict": False, "contenders": []}],

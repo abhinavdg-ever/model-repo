@@ -1,1 +1,1 @@
-"""Page classification: BERT + keyword canon + arbitration ladder (page_taxonomy.json names)."""
+"""Page classification: the page axes (model top 3, keyword canon, Others) and the Final page type per document."""

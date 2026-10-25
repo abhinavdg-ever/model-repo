@@ -1,7 +1,7 @@
 # Page-axes training
 
 Trains the page-axes model the pipeline loads: one DistilBERT encoder, five heads
-(L1, L2, L3, specialty, codeability) over `taxonomy_v29.json`. Stands alone: it
+(L1, L2, L3, specialty, codeability) over `taxonomy.json` (v29.2). Stands alone: it
 imports nothing from `annotation-tool/` or `core-pipeline/`.
 
 | File | |
@@ -10,9 +10,11 @@ imports nothing from `annotation-tool/` or `core-pipeline/`.
 | `predict_axes.py` | inference on text or a JSONL file |
 | `tune_thresholds.py` | the routing thresholds from a run's `predictions_val.csv` |
 | `page_axes.ipynb` | Colab (or a PC) notebook that runs the above |
-| `taxonomy_v29.json` | the label space (written by `../taxonomy/build_taxonomy_v29.py`) |
+| `taxonomy.json` | the label space, v29.2 (from `Training/reference/claude_code_pack_2026-10-25/`; same file as `../taxonomy/taxonomy.json`) |
+| `check_test_pages.py`, `test_pages.jsonl` | 12 synthetic pages with the expected answer; fails if a Lab Report page comes back Progress Note |
 | `requirements.txt` | |
-| `data/training_data.jsonl` | input: copy it from the annotation tool's image folder |
+| `data/training_data.jsonl` | input: a copy of `Training/processed/training_data.jsonl` (2,750 pages) |
+| `data/mock_pages.jsonl` | optional input (`--with-mock`): `Training/mock/mock_pages.jsonl`, 25 synthetic pages, training split only |
 | `output/page-axes/` | output: the best epoch |
 
 `data/` and `output/` are git-ignored: the text is patient content and the weights
@@ -62,31 +64,34 @@ step 1.
 
 On Colab the notebook installs `requirements.txt` itself.
 
-## Page axes (taxonomy v29): L1, L2, L3, specialty, codeability
+## Page axes (taxonomy v29.2): L1, L2, L3, specialty, codeability
 
 `train_axes.py` replaces the single `model_type` head with one encoder and
-five heads over `taxonomy_v29.json` (2026-10-23: built by
-`training/taxonomy/build_taxonomy_v29.py` from the v29 rules file in
-`training/taxonomy/v29/`; before that `taxonomy_v24.json`, built from the client's
-`Page_Taxonomy.xlsx` by `training/taxonomy/build_taxonomy.py`; no page type
-name is in the code).
+five heads over `taxonomy.json`, **v29.2** since 2026-10-25: 17 L1 (Clinical
+Summary and Provider Letter new, `Lab Report/Result` renamed `Lab Report`), the
+renamed and new L2/L3s, and the page-essence rule. It is the pack's file, copied
+as is. The rules version (context rules, overrides, merges)
+is `training/taxonomy/rules/taxonomy_rules.json`. No page type name is in the code.
 
 ```
                       ┌─ L1           folded: thin L1s become OTHER
 text ─ DistilBERT ────┼─ L2           masked by L1; not trained under Progress Note
-        [CLS]         ├─ L3           masked by L2; only under the Lab Report/Result buckets
+        [CLS]         ├─ L3           masked by L2; only under the Lab Report buckets
                       ├─ specialty
                       └─ codeability
 ```
 
 ### On Colab (the usual way)
 
-1. Copy **`train_axes.py`, `predict_axes.py`, `taxonomy_v29.json`,
-   `requirements.txt`** (from this folder) and **`training_data.jsonl`** (from
-   the annotation tool's image folder) into one Drive folder.
+1. Copy **`train_axes.py`, `predict_axes.py`, `taxonomy.json`,
+   `requirements.txt`, `check_test_pages.py`, `test_pages.jsonl`** (from this
+   folder), **`training_data.jsonl`** (from `Training/processed/`) and, to train
+   with the synthetic pages, **`mock_pages.jsonl`** (from `Training/mock/`; set
+   `USE_MOCK = True`) into one Drive folder.
 2. Open `page_axes.ipynb` in Colab, Runtime → Change runtime type → **GPU**.
 3. Set `BASE_PATH` to that Drive folder and run the cells in order: install,
-   GPU check, `--check`, train, metrics, errors, inference box.
+   GPU check, `--check`, train (20 epochs), metrics, errors, the synthetic test
+   pages, inference box.
 
 The model lands in `BASE_PATH/page-axes/`. The default base model
 `distilbert-base-uncased` is downloaded from Hugging Face on Colab. Where
@@ -97,7 +102,9 @@ folder with vendored weights.
 
 ```bash
 python train_axes.py --check                       # label space, split, 2 steps, time estimate; saves nothing
-python train_axes.py                               # 5 epochs → output/page-axes/
+python train_axes.py                               # 20 epochs → output/page-axes/
+python train_axes.py --with-mock                   # + data/mock_pages.jsonl (training split only)
+python check_test_pages.py --model output/page-axes --pages test_pages.jsonl
 python train_axes.py --base-model /models/distilbert-base-uncased
 python predict_axes.py --text "OPERATIVE REPORT ..."
 python predict_axes.py --jsonl pages.jsonl --out predictions.csv     # no text in the CSV
@@ -114,8 +121,21 @@ python predict_axes.py --jsonl pages.jsonl --out predictions.csv     # no text i
 | `--val-fraction` / `--test-fraction` | 0.15 / 0.15 | by group; `--test-fraction 0` scores on validation |
 | `--select-heads` | `L1,L2,L3` | mean validation macro F1 of these picks the best epoch |
 | `--route-model` / `--route-canon` | 0.5 / 0.25 | the abstention thresholds |
+| `--epochs` | 20 | the best epoch (by validation) is what is kept |
+| `--with-mock [JSONL]` | off | add synthetic pages; they are always in the training split |
+| `--specialty-unknown` | `train` | `ignore` leaves `Unknown` (not determined, ~49% of pages) out of the specialty loss |
 
-### What each head can do with today's 1,011 pages
+### The Lab Report <-> Progress Note line
+
+The client's main worry is a genuine lab report called Progress Note. Labels follow
+the page-essence rule: a page that is wholly results (or a medication list, or an
+order list) carries that class even inside an office note; only a split page (results
+plus HPI / exam / plan) is Progress Note. The trainer does not merge, upsample or
+re-weight those split pages, and the summary prints, on its own line, how many Lab
+Report pages were called Progress Note and the reverse. `check_test_pages.py` exits
+non-zero if any Lab Report test page comes back Progress Note.
+
+### What each head can do (written for the 1,011 pages of 2026-10-23; today 2,750)
 
 * **L1** — 14 real classes plus `OTHER` (Immunization and Others, with 10
   pages or fewer, fold in): an L1 is trained once it has more than 10 pages.
@@ -129,8 +149,11 @@ python predict_axes.py --jsonl pages.jsonl --out predictions.csv     # no text i
 * **L3** — only under the four Lab Report/Result L2s. 93 pages there have a
   blank L3, which is a missing label: they are left out until tagged in the
   annotation tool.
-* **specialty** — weak: most pages are `Unknown`. Keep the keyword detector
-  and document inheritance in front of it.
+* **specialty** — weak: about half the pages are `Unknown`, which means *not
+  determined*. By default `Unknown` is trained as a class (so the head learns to
+  say "don't know"); `--specialty-unknown ignore` leaves it out of the loss, so the
+  head always names a specialty and the pipeline's confidence floor decides. Keep
+  the keyword detector and document inheritance in front of it either way.
 * **codeability** — trainable, but its label mostly comes from a rule, so the
   model partly learns to imitate the canon tag. `metrics_summary.json` counts
   where model and rule disagree; `errors.csv` lists them.
@@ -199,7 +222,8 @@ pages. `predictions_*.csv` carry `specialty_top3` for the specialty lead.
 In the pipeline the axes are the page type (`page_type` / `page_subtype` as
 L1 / Others, L1 / L2 or "L1 (L2)" / L3; the whole answer in
 `page_classification.axes`): L1 and L2 are the model's at 0.40 or more,
-otherwise the v24 keyword canon's at 0.50; L3 is always the canon's at 0.50.
+otherwise the keyword canon's at 0.50, otherwise Others; the top 3 paths are stored
+(`docs/APPROACH.md` §3).
 Its inference code is a copy of
 this file's (`core-pipeline/stages/lib/page_classify/axes_model.py`): after
 changing `encode_texts`, `build_model`, `decode`, `route`, `load_model` or

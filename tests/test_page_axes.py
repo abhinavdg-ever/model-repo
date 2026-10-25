@@ -1,5 +1,5 @@
 """Page axes: the inference copy of train_axes.py, and the gate that decides
-each level by the model or the v24 keyword canon.
+each level by the model (its top 3), the keyword canon, or Others.
 
 Made-up text only. No torch: the gate takes the model's raw answer as a dict.
 """
@@ -22,7 +22,8 @@ from stages.lib.page_classify import axes  # noqa: E402
 TRAINER = REPO / "training" / "bert-training" / "train_axes.py"
 COPY = CORE / "stages" / "lib" / "page_classify" / "axes_model.py"
 
-LAB = "Lab Report/Result"
+LAB = "Lab Report"
+RAD = "Radiology Report"
 CT_PAGE = """CT ABDOMEN PELVIS WITH CONTRAST
 COMPUTED TOMOGRAPHY
 Technique: axial images were acquired. Hounsfield units were measured.
@@ -36,7 +37,7 @@ SPACE = {
 }
 
 
-def raw(l1=LAB, l1_p=0.9, second=0.05, l2="Radiology", l2_p=0.9, l3=None, l3_p=None,
+def raw(l1=LAB, l1_p=0.9, second=0.05, l2=RAD, l2_p=0.9, l3=None, l3_p=None,
         specialty_top=(("Unknown", 0.9), ("Cardiology", 0.05)), codeability="non_codeable", code_p=0.9):
     return {
         "L1": l1, "L1_confidence": l1_p, "L1_top": [(l1, l1_p), ("Progress Note", second)],
@@ -98,28 +99,29 @@ class TestLevelOne:
         result = gate(raw(l1="OTHER", l1_p=0.95))
         assert (result.route, result.l1) == ("canon", LAB)
 
-    def test_nothing_sure_leaves_it_empty(self):
+    def test_nothing_sure_is_others(self):
         result = gate(raw(l1="Administrative", l1_p=0.2, second=0.1), text=NO_TERMS)
         assert result.route == "review"
-        assert (result.l1, result.l2, result.l3) == (None, None, None)
-        assert result.sources[:3] == ("-", "-", "-")
+        assert (result.l1, result.l2, result.l3) == ("Others", None, None)
+        assert result.sources[:3] == ("others", "-", "-")
+        assert result.decided_by == "others"
 
 
 class TestLevelTwoAndThree:
     def test_model_l2_at_fifty_percent_and_l3_from_the_canon(self):
         result = gate(raw(l2_p=0.51, l3="MRI Report", l3_p=0.99))
-        assert (result.l2, result.sources[1]) == ("Radiology", "model")
+        assert (result.l2, result.sources[1]) == (RAD, "model")
         assert (result.l3, result.sources[2]) == ("CT Scan Report", "canon")
         assert result.l3_confidence >= 0.5
         assert result.prediction["L3"] == "MRI Report"  # the model's L3 is kept, not used
 
     def test_low_model_l2_falls_back_to_the_canon(self):
-        result = gate(raw(l2="Laboratory", l2_p=0.45))
-        assert (result.l2, result.sources[1]) == ("Radiology", "canon")
+        result = gate(raw(l2="Lab Result", l2_p=0.45))
+        assert (result.l2, result.sources[1]) == (RAD, "canon")
 
     def test_l3_needs_the_canon_to_be_sure(self):
         result = gate(raw(l3="CT Scan Report", l3_p=0.99), text="RADIOLOGY\nresults below\n")
-        assert result.l2 == "Radiology"
+        assert result.l2 == RAD
         assert (result.l3, result.sources[2]) == (None, "-")
 
     def test_section_l1_has_no_l2_or_l3(self):
@@ -173,8 +175,10 @@ class TestWithoutModel:
     def test_canon_decides_every_level(self):
         result = axes.gate(None, {}, CT_PAGE)
         assert result.route is None
-        assert (result.l1, result.l2, result.l3) == (LAB, "Radiology", "CT Scan Report")
+        assert (result.l1, result.l2, result.l3) == (LAB, RAD, "CT Scan Report")
         assert result.as_json()["sources"] == "canon/canon/canon/-/canon"
+        assert result.as_json()["decided_by"] == "canon"
+        assert result.as_json()["model_top3"] is None
         assert result.as_json()["prediction"] is None
 
     def test_missing_folder_reports_canon_only(self, tmp_path, monkeypatch):
@@ -193,8 +197,8 @@ class TestPageNames:
     """page_type / page_subtype from the decided levels."""
 
     @pytest.mark.parametrize("levels, names", [
-        ((LAB, "Radiology", "CT Scan Report"), ("Lab Report/Result (Radiology)", "CT Scan Report")),
-        ((LAB, "Radiology", None), (LAB, "Radiology")),
+        ((LAB, RAD, "CT Scan Report"), ("Lab Report (Radiology Report)", "CT Scan Report")),
+        ((LAB, RAD, None), (LAB, RAD)),
         (("Progress Note", None, None), ("Progress Note", "Others")),
         ((None, None, None), (None, None)),
     ])
@@ -214,34 +218,30 @@ class TestPageNames:
 
 
 class TestStageRow:
-    @staticmethod
-    def _ladder():
-        from stages.lib.page_classify.arbitration import classify_page
-
-        return classify_page(None, None, frozenset())
-
     def test_three_levels_and_codeability_become_the_row(self):
         from stages.lib.page_classify.stage import _page_row
 
-        row = _page_row(axes.gate(None, {}, CT_PAGE), self._ladder())
-        assert (row["page_type"], row["page_subtype"]) == ("Lab Report/Result (Radiology)", "CT Scan Report")
-        assert row["model_type"] == "Lab Report/Result > Radiology > CT Scan Report"
+        row = _page_row(axes.gate(None, {}, CT_PAGE))
+        assert (row["page_type"], row["page_subtype"]) == ("Lab Report (Radiology Report)", "CT Scan Report")
+        assert row["model_type"] == "Lab Report > Radiology Report > CT Scan Report"
         assert (row["classification_category"], row["needs_review"]) == ("non_codeable", False)
-        assert row["decided_by"] == "axes:canon/canon/canon"
+        assert row["decided_by"] == "canon"
         assert row["axes"]["l3"] == "CT Scan Report"
+        assert not any(key.startswith(("bert_", "keyword_")) for key in row)  # those columns stay empty
 
-    def test_nothing_decided_is_unknown_for_review(self):
+    def test_nothing_decided_is_others_for_review(self):
         from stages.lib.page_classify.stage import _page_row
 
-        row = _page_row(axes.gate(None, {}, NO_TERMS), self._ladder())
-        assert (row["page_type"], row["page_subtype"]) == ("Unknown", "Unknown")
+        row = _page_row(axes.gate(None, {}, NO_TERMS))
+        assert (row["page_type"], row["page_subtype"]) == ("Others", "Others")
         assert (row["classification_category"], row["needs_review"]) == ("non_codeable", True)
+        assert row["decided_by"] == "others"
 
     def test_discharge_codeability_is_the_discharge_category(self):
         from stages.lib.page_classify.stage import _page_row
 
         result = axes.AxesResult(l1="Discharge Summary", l1_confidence=0.9, codeability="discharge")
-        row = _page_row(result, self._ladder())
+        row = _page_row(result)
         assert (row["page_type"], row["page_subtype"]) == ("Discharge Summary", "Others")
         assert row["classification_category"] == "discharge_summary"
 
@@ -263,7 +263,7 @@ class TestStorage:
 
 
 class TestDownstreamNames:
-    """Stages after classification read v24 names from the stored row."""
+    """Stages after classification read the stored row's names."""
 
     ROW = {"page_type": "Progress Note", "page_subtype": "Progress Note",
            "axes": {"l1": "Progress Note", "canon_page_type": "Telephone Encounter", "title_l1": "Progress Note"}}
@@ -288,15 +288,15 @@ class TestDownstreamNames:
         assert next(n for n in axes.names_of(self.ROW) if n in tier1) == "Telephone Encounter"
         assert tier1["Telephone Encounter"] == "outpatient_tele"
 
-    def test_every_encounter_tier_one_name_is_a_v24_name(self):
+    def test_every_encounter_tier_one_name_is_a_page_name(self):
         from stages.lib.encounter.encounter_classify import load_canon
 
-        assert set(load_canon().tier1) <= axes.v24_names()
+        assert set(load_canon().tier1) <= axes.names()
 
-    def test_default_dos_types_match_v24_names(self):
+    def test_default_dos_types_match_page_names(self):
         from stages.lib.continuity.engine import uses_default_final_dos
 
-        demographics = {"axes": {"l1": "Demographics", "l2": "Patient Demographics"}}
+        demographics = {"axes": {"l1": "Demographics", "l2": "Patient Information"}}
         assert uses_default_final_dos(*axes.names_of(demographics))
         assert not uses_default_final_dos(*axes.names_of(self.ROW))
 
@@ -316,3 +316,196 @@ class TestUnusableModelFolder:
         from stages.lib.page_classify import axes
 
         assert "heads.pt" in (axes._unusable(tmp_path) or "")
+
+
+# --- The flow: the model's top 3, the canon, Others ------------------------------------
+
+SLEEP_PAGE = """POLYSOMNOGRAPHY
+Sleep study performed overnight. Apnea hypopnea index and oxygen saturation recorded.
+"""
+
+
+class TestModelTopThree:
+    def test_the_top_three_paths_are_stored_with_their_scores(self):
+        r = raw(l1_p=0.8, second=0.15, l2_p=0.9)
+        r["L1_top"].append(("Administrative", 0.05))
+        r["by_L1"] = {"Progress Note": {"L2": "CC/HPI", "L2_confidence": 0.5},
+                      "Administrative": {"L2": "Superbill", "L2_confidence": 0.6}}
+        top = axes.gate(r, SPACE, CT_PAGE).as_json()["model_top3"]
+        assert [t["rank"] for t in top] == [1, 2, 3]
+        assert top[0]["path"] == f"{LAB} > {RAD}" and top[0]["score"] == pytest.approx(0.72)
+        assert top[1]["path"] == "Progress Note > CC/HPI" and top[1]["score"] == pytest.approx(0.075)
+        assert top[2]["score"] == pytest.approx(0.03)
+
+    def test_the_decoders_own_top3_is_used_as_given(self):
+        r = raw()
+        r["top3"] = [{"path": "OTHER", "L1": "OTHER", "L2": None, "L3": None, "L1_confidence": 0.6,
+                      "L2_confidence": None, "L3_confidence": None, "score": 0.6}]
+        top = axes.gate(r, SPACE, CT_PAGE).model_top3
+        assert (top[0]["l1"], top[0]["folded"]) == ("Others", True)  # never the folded class name
+
+
+class TestCanonFallback:
+    def test_a_class_the_model_folded_is_named_by_the_canon(self):
+        result = gate(raw(l1="OTHER", l1_p=0.9, l2=None), text=SLEEP_PAGE)
+        assert (result.route, result.decided_by) == ("canon", "canon")
+        assert (result.l1, result.l2, result.l3) == (LAB, "Diagnostic Study", "Sleep Study Report")
+        assert result.model_top3[0]["l1"] == "Others"
+
+    def test_an_l2_the_model_folded_to_others_lets_the_canon_name_it(self):
+        result = gate(raw(l2="Others", l2_p=0.9))
+        assert (result.l2, result.sources[1]) == (RAD, "canon")
+
+    def test_others_from_the_model_stays_when_the_canon_has_nothing(self):
+        result = gate(raw(l1="Administrative", l2="Others", l2_p=0.9), text=NO_TERMS)
+        assert (result.l1, result.l2, result.sources[1]) == ("Administrative", "Others", "model")
+
+
+# --- page_rules ----------------------------------------------------------------------
+
+LAB_PAGE = """COMPREHENSIVE METABOLIC PANEL
+Specimen: serum   Accession: A12345
+Collected: 03/14/2024   Reported: 03/15/2024
+Test        Result   Flag   Units   Reference Range
+Sodium      139             mmol/L  135-145
+Ordering Provider: Dr Example
+"""
+
+
+class TestRules:
+    def test_lab_guard_turns_a_progress_note_lab_page_into_a_lab_report(self):
+        result = gate(raw(l1="Progress Note", l2=None), text=LAB_PAGE)
+        assert (result.l1, result.l2, result.rules) == (LAB, "Lab Result", ("lab_guard",))
+        assert result.sources[:2] == ("rule", "rule")
+        assert result.decided_by == "rule"
+
+    def test_lab_guard_leaves_a_note_with_a_body_alone(self):
+        note = "OFFICE VISIT\nChief Complaint: cough\nAssessment and Plan: rest\n" + LAB_PAGE
+        result = gate(raw(l1="Progress Note", l2=None), text=note)
+        assert (result.l1, result.rules) == ("Progress Note", ())
+
+    def test_one_marker_is_not_enough_but_a_panel_title_is(self):
+        one = "Patient reported feeling well.\nNo complaints today.\n"
+        assert gate(raw(l1="Progress Note", l2=None), text=one).l1 == "Progress Note"
+        panel = "CBC WITH DIFFERENTIAL FINAL REPORT\nWBC 6.1\nHGB 13.2\n"
+        assert gate(raw(l1="Progress Note", l2=None), text=panel).l1 == LAB
+
+    @pytest.mark.parametrize("title, path", [
+        ("CONTINUITY OF CARE DOCUMENT", ("Clinical Summary", "Summary of Care (C-CDA)")),
+        ("After Visit Summary", ("Clinical Summary", "After-Visit Summary")),
+        ("Medical Records Request", ("Provider Letter", "Records Request")),
+        ("SUPERBILL", ("Administrative", "Superbill")),
+    ])
+    def test_a_title_decides(self, title, path):
+        text = f"{title}\nPatient: Test Person\nmade up body text\n"
+        result = gate(raw(l1="Progress Note", l2=None), text=text)
+        assert (result.l1, result.l2) == path
+        assert result.codeability in ("non_codeable", "needs_review")
+
+    def test_a_summary_mentioned_inside_a_note_is_not_a_title(self):
+        text = "OFFICE VISIT\nChief Complaint: cough\nThe after visit summary was printed for the patient.\n"
+        assert gate(raw(l1="Progress Note", l2=None), text=text).l1 == "Progress Note"
+
+    def test_a_discharge_summary_page_keeps_its_path(self):
+        text = "Summary of Care\nHospital course uneventful\n"
+        result = gate(raw(l1="Discharge Summary", l2="Depart/Discharge Note"), text=text)
+        assert result.l1 == "Discharge Summary"
+
+    def test_an_admission_h_and_p_belongs_to_the_stay(self):
+        text = "HISTORY AND PHYSICAL\nAdmission Date: 03/14/2024   Room/Bed: 4B-12\nChief Complaint: chest pain\n"
+        result = gate(raw(l1="Progress Note", l2=None), text=text)
+        assert (result.l1, result.l2, result.codeability) == ("Discharge Summary", "History and Physical", "discharge")
+
+    def test_an_office_h_and_p_stays_a_progress_note(self):
+        text = "HISTORY AND PHYSICAL\nNew patient visit\nChief Complaint: chest pain\n"
+        assert gate(raw(l1="Progress Note", l2=None), text=text).l1 == "Progress Note"
+
+
+# --- staging/page_classification.json ------------------------------------------------
+
+
+class TestStaging:
+    def test_written_atomically_and_read_back_by_page_name(self, tmp_path, monkeypatch):
+        from stages.lib.page_classify import stage
+
+        monkeypatch.setattr(stage, "staging_dir", lambda chart: tmp_path / chart / "staging")
+        result = axes.gate(raw(), SPACE, CT_PAGE)
+        row = stage._page_row(result)
+        entry = stage._staged_entry(row, result, "final1")
+        path = stage.write_staged("chart1", {"chart1_Pg1": entry})
+        assert path == tmp_path / "chart1" / "staging" / "page_classification.json"
+        assert not path.with_suffix(".tmp").exists()
+        pages = stage.read_staged("chart1")
+        assert pages["chart1_Pg1"]["decided_by"] == "model"
+        assert pages["chart1_Pg1"]["page_type"] == "Lab Report (Radiology Report)"
+        assert pages["chart1_Pg1"]["model_top3"][0]["path"] == f"{LAB} > {RAD}"
+        assert pages["chart1_Pg1"]["axes"]["l3"] == "CT Scan Report"
+
+    def test_a_missing_or_foreign_file_reads_empty(self, tmp_path, monkeypatch):
+        from stages.lib.page_classify import stage
+
+        monkeypatch.setattr(stage, "staging_dir", lambda chart: tmp_path / chart / "staging")
+        assert stage.read_staged("nothing") == {}
+        (tmp_path / "old" / "staging").mkdir(parents=True)
+        (tmp_path / "old" / "staging" / "page_classification.json").write_text('{"version": 0}', encoding="utf-8")
+        assert stage.read_staged("old") == {}
+
+
+# --- the converted canon ------------------------------------------------------------
+
+
+class TestConvertedCanon:
+    @staticmethod
+    def _files():
+        import json
+
+        folder = CORE / "stages" / "lib" / "keyword-canon"
+        return (json.loads((folder / "page_canon.json").read_text(encoding="utf-8")),
+                json.loads((folder / "page_taxonomy.json").read_text(encoding="utf-8")))
+
+    def test_every_canon_path_is_in_the_taxonomy(self):
+        canon, taxonomy = self._files()
+        space = taxonomy["label_space"]
+        for entry in canon["page_types"]:
+            path = entry["path"]
+            assert path["L1"] in space["L1"], entry["page_type"]
+            if path["L2"]:
+                assert path["L2"] in space["L2"][path["L1"]], entry["page_type"]
+            if path["L3"]:
+                assert path["L3"] in space["L3"][f"{path['L1']} > {path['L2']}"], entry["page_type"]
+
+    def test_converting_again_changes_nothing(self):
+        from stages.lib.page_classify.canon_convert import convert
+
+        canon, taxonomy = self._files()
+        again, unresolved = convert(canon, taxonomy)
+        assert again == canon and unresolved == {}
+
+    @pytest.mark.parametrize("old, new", [
+        ({"L1": "Lab Report/Result", "L2": "Laboratory", "L3": "INR and Prothrombin Time"},
+         {"L1": "Lab Report", "L2": "Lab Result", "L3": "Coagulation Report"}),
+        ({"L1": "Lab Report/Result", "L2": "Diagnostic Study", "L3": "Myocardial Perfusion Study"},
+         {"L1": "Lab Report", "L2": "Diagnostic Study", "L3": "Stress Test"}),
+        ({"L1": "Consent Form", "L2": "HIPAA Form", "L3": ""},
+         {"L1": "Consent and Authorization", "L2": "HIPAA and Privacy", "L3": ""}),
+        ({"L1": "Demographics", "L2": "Registration Form", "L3": ""},
+         {"L1": "Administrative", "L2": "Patient Registration", "L3": ""}),
+        ({"L1": "Patient Communication", "L2": "Provider Letter", "L3": ""},
+         {"L1": "Provider Letter", "L2": "Others", "L3": ""}),
+    ])
+    def test_old_paths_convert_by_the_tables(self, old, new):
+        from stages.lib.page_classify.canon_convert import convert_entry
+
+        _, taxonomy = self._files()
+        entry = {"page_type": "Made Up Page Type", "family": "", "path": old, "specialty": ""}
+        converted, unresolved = convert_entry(entry, taxonomy)
+        assert converted["path"] == new and unresolved == []
+
+    def test_an_unplaceable_l2_is_reported_not_guessed_silently(self):
+        from stages.lib.page_classify.canon_convert import convert_entry
+
+        _, taxonomy = self._files()
+        entry = {"page_type": "Made Up Page Type", "family": "",
+                 "path": {"L1": "Administrative", "L2": "Administrative Record", "L3": ""}, "specialty": ""}
+        converted, unresolved = convert_entry(entry, taxonomy)
+        assert converted["path"]["L2"] == "Others" and unresolved

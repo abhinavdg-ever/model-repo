@@ -54,7 +54,7 @@ def test_opening_changes_nothing_on_disk(folder, store):
     before = (folder / "image_labels.csv").read_bytes(), (folder / "training_data.jsonl").read_bytes()
     assert "is_training_added" in store.columns and "suggested_L1" in store.columns
     assert ((folder / "image_labels.csv").read_bytes(), (folder / "training_data.jsonl").read_bytes()) == before
-    assert not (folder / "image_labels.v24.backup.csv").exists()
+    assert not (folder / "image_labels.tool.backup.csv").exists()
 
 
 def test_retag_output_counts_as_in_training_and_snapshots_suggestions(store):
@@ -99,10 +99,10 @@ def test_save_validates_and_backs_up_once(folder, store):
     assert item["problem"] == ""
     saved = {r["image"]: r for r in read_labels(folder)}["70000001_Pg3.jpg"]
     assert (saved["L3"], saved["path"], saved["suggested_L3"], saved["is_completed"]) == ("Others", "Result > Imaging > Others", "", "Yes")
-    assert (folder / "image_labels.v24.backup.csv").is_file()
-    backup = digest(folder / "image_labels.v24.backup.csv")
+    assert (folder / "image_labels.tool.backup.csv").is_file()
+    backup = digest(folder / "image_labels.tool.backup.csv")
     store.set_labels(i, "Result", "Imaging", "CT", "Eye")
-    assert digest(folder / "image_labels.v24.backup.csv") == backup
+    assert digest(folder / "image_labels.tool.backup.csv") == backup
 
 
 def test_override_needs_a_reason_and_keeps_both_values(folder, store):
@@ -173,7 +173,9 @@ def test_add_to_training_relabels_without_ocr_and_reads_new_pages(folder, store)
     assert (r["L2"], r["path"], r["specialty"], r["codeability"], r["codeability_rule"]) == \
         ("Signature", "Note > Signature", "Eye", "discharge", "override")
     assert r["text"] == "made up text 70000001_Pg1.jpg"
-    assert "L1_train" not in r and all("L2_train" not in x for x in records.values())
+    # A relabelled record loses the derived fields; an untouched one keeps its line.
+    assert "L1_train" not in r and "L2_train" not in r
+    assert records["70000001_Pg2.jpg"]["L2_train"] == "Imaging"
     new = records["sub/IMG_0001.png"]
     assert new["file_size"] > 0 and new["ocr_engine"] == "fake ocr" and new["L1"] == "Flat"
     assert store.counts()["not_in_training"] == 0
@@ -193,6 +195,7 @@ def test_changed_image_is_read_again(folder, store):
 # -- the web API -----------------------------------------------------------------
 
 def test_api_round_trip(store):
+    pytest.importorskip("flask")
     from app import create_app
 
     client = create_app(store).test_client()

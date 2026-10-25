@@ -1,12 +1,17 @@
-"""Page-label annotation tool.
+"""Page-label annotation tool (taxonomy v29.2).
 
-    python app.py <image folder>               open the tool on http://127.0.0.1:5055
-    python app.py <image folder> --add-to-training   Add to Training JSON without the screen
+    python app.py <label folder>               open the tool on http://127.0.0.1:5055
+    python app.py <label folder> --add-to-training   Add to Training JSON without the screen
                                                       (--generate is the old name, still accepted)
+    python app.py <label folder> --migrate --dry-run  old label names: counts, rows to decide
+    python app.py <label folder> --migrate            rename them (never the split ones)
 
-The folder (and its sub-folders) holds the page images; image_labels.csv sits
-in its root. Runs locally only: bound to 127.0.0.1, no outside calls. Page
-text never reaches the screen, the terminal or a log.
+The label folder holds image_labels.csv and training_data.jsonl, and may hold
+the page images (in sub-folders too). On the SSD layout the images are the OCR
+copies in ../ocr-jpeg, found without a flag (--images names another folder),
+and the encounter files are processed/encounter_review.csv and
+../encounter/encounter_tags.jsonl. Runs locally only: bound to 127.0.0.1, no
+outside calls. Page text never reaches the screen, the terminal or a log.
 """
 from __future__ import annotations
 
@@ -27,12 +32,15 @@ from typing import Optional
 from flask import Flask, abort, jsonify, render_template, request, send_file
 from PIL import Image, ImageOps
 
+import encounter
 import ocr
-from store import VIEWS, GenerateSummary, Store, filter_items
+from check_taxonomy import print_sources
+from store import CONVERT_SUFFIXES, NAME_MAP_PATH, VIEWS, GenerateSummary, Store, filter_items
+from taxonomy import TAXONOMY_PATH, Taxonomy
 
 HERE = Path(__file__).resolve().parent
 # Formats a browser cannot show: converted to JPEG on the way out.
-CONVERT = {".heic", ".heif", ".tif", ".tiff", ".bmp"}
+CONVERT = CONVERT_SUFFIXES
 DISPLAY_MAX_SIDE = 2400
 
 
@@ -47,7 +55,9 @@ def create_app(store: Store) -> Flask:
     @app.get("/api/taxonomy")
     def taxonomy():
         # The whole label space: the page reads every name from here.
-        return jsonify(store.taxonomy.data)
+        encounters = store.encounters
+        return jsonify({**store.taxonomy.data,
+                        "encounter_types": encounters.classes if encounters.enabled else []})
 
     @app.get("/api/items")
     def items():
@@ -94,6 +104,7 @@ def create_app(store: Store) -> Flask:
                 override=text("codeability_override"),
                 override_reason=text("codeability_override_reason"),
                 resolution=text("resolution"),
+                encounter_type=text("encounter_type") or None,
             )
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
@@ -157,7 +168,7 @@ def _print_checks(store: Store) -> None:
     c = store.counts()
     print(f"Queues: {c['disagreements']} disagreement(s) to review, {c['invalid']} label(s) not valid "
           f"under the taxonomy, {c['needs_review']} needs_review, {c['specialty_other']} specialty "
-          f"'{store.taxonomy.specialty_other}'")
+          f"'{store.taxonomy.specialty_other}', {c['claude_reviewed']} claude-reviewed")
     reasons = Counter(store.invalid.values())
     for reason, n in reasons.most_common(10):
         print(f"  {n:>4}  {reason}")
@@ -165,21 +176,41 @@ def _print_checks(store: Store) -> None:
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("folder", nargs="?", help="image folder (holds image_labels.csv)")
+    parser.add_argument("folder", nargs="?", help="label folder (holds image_labels.csv)")
     parser.add_argument("--add-to-training", "--generate", dest="generate", action="store_true",
                         help="Add to Training JSON and exit")
     parser.add_argument("--port", type=int, default=5055)
+    parser.add_argument("--images", type=Path, help="folder of page images found by stem "
+                        "(default: ../ocr-jpeg beside the label folder, when it exists)")
+    parser.add_argument("--taxonomy", type=Path, default=TAXONOMY_PATH)
+    parser.add_argument("--label-sets", type=Path, help="default: label_sets.json in the label folder, if any")
+    parser.add_argument("--encounter-tags", type=Path, help="default: encounter_tags.jsonl in the label "
+                        "folder, else ../encounter/encounter_tags.jsonl")
+    parser.add_argument("--encounter-review", type=Path, help="default: encounter_review.csv in the label folder")
+    parser.add_argument("--encounter-canon", type=Path, help="the encounter classes (default: "
+                        "encounter_canon.json in the label folder, else the repo copy)")
+    parser.add_argument("--migrate", action="store_true", help="rename old label names with the name map and exit")
+    parser.add_argument("--dry-run", action="store_true", help="with --migrate: report only, write nothing")
+    parser.add_argument("--name-map", type=Path, default=NAME_MAP_PATH)
     args = parser.parse_args(argv)
 
-    folder = args.folder or input("Image folder: ").strip().strip('"')
-    store = Store(Path(folder))
+    folder = Path(args.folder or input("Label folder: ").strip().strip('"'))
+    found = encounter.locate(folder.expanduser().resolve())
+    encounters = encounter.Encounters(
+        args.encounter_tags or found["tags"], args.encounter_review or found["review"],
+        args.encounter_canon or found["canon"])
+    store = Store(folder, Taxonomy(args.taxonomy), images=args.images, encounters=encounters,
+                  label_sets=args.label_sets, name_map=args.name_map)
     counts = store.counts()
-    tax = store.taxonomy
-    print(f"taxonomy {tax.version}: {len(tax.l1)} L1, {tax.counts.get('L2')} L2, {tax.counts.get('L3')} L3, "
-          f"{len(tax.specialty)} specialties")
-    print(f"{store.root}: {counts['images']} images, {counts['untagged']} untagged, "
+    print_sources(store)
+    print(f"{store.root}: {counts['rows']} rows, {counts['images']} with an image, {counts['untagged']} untagged, "
           f"{counts['in_training']} in training, {counts['not_in_training']} not in training yet")
     _print_checks(store)
+
+    if args.migrate:
+        report = store.migrate(apply=not args.dry_run)
+        report.print()
+        return 0
 
     if args.generate:
         if store.needs_ocr():

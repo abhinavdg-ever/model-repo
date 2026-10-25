@@ -264,18 +264,10 @@ BLANK_JUNK_MODEL_DIR = _path_under_core(
     os.environ.get("BLANK_JUNK_MODEL_DIR"),
     "models/blank-junk",
 )
-# Old single-head BERT (Hugging Face folder from training/bert-training).
-# Retired 2026-10-16: the page-axes model decides page_type. Its backup is in
-# models/page-family-backup/2026-10-16; the folder below is left empty, so the
-# v1 ladder's raw columns (bert_*, keyword_*) are keywords only.
-PAGE_FAMILY_MODEL_DIR = _path_under_core(
-    os.environ.get("PAGE_FAMILY_MODEL_DIR"),
-    "models/page-family/bert",
-)
 # Page-axes model (L1 / L2 / L3 / specialty / codeability; folder written by
 # training/bert-training/train_axes.py: encoder/, heads.pt, label_space.json).
 # Decides page_type / page_subtype. Missing folder, or no transformers / torch,
-# means the v24 keyword canon decides alone.
+# means the keyword canon (keyword-canon/page_canon.json) decides alone.
 PAGE_AXES_MODEL_DIR = _path_under_core(
     os.environ.get("PAGE_AXES_MODEL_DIR"),
     "models/page-family/page-axes",

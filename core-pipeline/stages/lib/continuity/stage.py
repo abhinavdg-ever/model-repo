@@ -1,7 +1,7 @@
 """Stage: document continuity → ``page_continuity_results``.
 
 Runs after page type and DOS. Scores every gap between consecutive pages (``engine``,
-docs/CONTINUITY_LOGIC.md) and groups the pages into documents and junk segments. It
+docs/APPROACH.md §4) and groups the pages into documents and junk segments. It
 writes only the grouping; Final values are written by the ``imaging_final`` stage.
 
 The key/value extraction's staging (``<chart>/staging/extraction.json``) is the first
@@ -391,7 +391,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     text=text,
                     lines=lines,
                     section_headers=headers + _staged_sections(staged),
-                    # Pages are compared on their family (v24 L1) and full type path.
+                    # Pages are compared on their family (L1) and full type path.
                     page_type=axes.family_of(kind_row),
                     page_subtype=kind_row.get("page_subtype") or "",
                     names=axes.names_of(kind_row),

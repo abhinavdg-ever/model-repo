@@ -1,0 +1,62 @@
+{
+ "_comment": "Old (repo v29 of 2026-10-23, itself derived from v24) name -> current v29.2 name. Use it to migrate stored labels, canon outputs, tests and annotation-tool data. \"split\" entries need a per-page decision.",
+ "L1": {
+  "Lab Report/Result": "Lab Report"
+ },
+ "L2": {
+  "Lab Report/Result > Laboratory": "Lab Report > Lab Result",
+  "Lab Report/Result > Radiology": "Lab Report > Radiology Report",
+  "Lab Report/Result > Pathology": "Lab Report > Pathology Report",
+  "Lab Report/Result > Diagnostic Study": "Lab Report > Diagnostic Study",
+  "Progress Note > Procedure": "Progress Note > Procedure List",
+  "Operative Note > Procedure": "Operative Note > Procedure List",
+  "Demographics > Patient Demographics": "Demographics > Patient Information",
+  "Administrative > Billing Statement": "Administrative > Billing & Invoices",
+  "Demographics > Registration Form": "Administrative > Patient Registration",
+  "Progress Note > Lab Results": "Progress Note > Lab and Imaging Results"
+ },
+ "L2_split": {
+  "Progress Note > Imaging Results": "Progress Note > Lab and Imaging Results (or Lab Report > Radiology Report when the page is wholly a report)",
+  "Progress Note > Lab Results": "Progress Note > Lab and Imaging Results (or Lab Report > Lab Result when the page is wholly results)",
+  "Patient Communication > Provider Letter": "Provider Letter > Referral Letter | Consultation Letter | Records Request | Others (new L1)"
+ },
+ "L3": {
+  "INR and Prothrombin Time": "Coagulation Report",
+  "Stress Test Report": "Stress Test",
+  "Esophagogastroduodenoscopy Report": "Esophagogastroduodenoscopy (EGD) Report",
+  "Electrocardiogram": "Electrocardiogram (EKG/ECG) Report"
+ },
+ "L3_extra": {
+  "Myocardial Perfusion Study": "Stress Test",
+  "Pap and HPV Report": "Lab Report > Diagnostic Study (no L3) or Pathology Report > Cytology Report",
+  "Colposcopy Examination": "Lab Report > Diagnostic Study (no L3)",
+  "Fundus Photography Report": "Lab Report > Diagnostic Study (no L3)",
+  "Lens Parameters": "Lab Report > Diagnostic Study > Optical Biometry (IOL Calculation)"
+ },
+ "new_L1": [
+  "Clinical Summary",
+  "Provider Letter"
+ ],
+ "new_L2": [
+  "Progress Note > Vitals",
+  "Operative Note > Intra-operative Record",
+  "Operative Note > Implant Record",
+  "Procedure Note > Endoscopy (EGD)",
+  "Procedure Note > Cardiac Procedure",
+  "Discharge Summary > History and Physical",
+  "Discharge Summary > Consultation Note",
+  "Clinical Summary > Summary of Care (C-CDA)",
+  "Clinical Summary > After-Visit Summary",
+  "Clinical Summary > Others",
+  "Consent and Authorization > Consent for Treatment",
+  "Problem List > Problem List",
+  "Problem List > Diagnosis List/Index",
+  "Problem List > Others",
+  "Provider Letter > Referral Letter",
+  "Provider Letter > Consultation Letter",
+  "Provider Letter > Records Request",
+  "Provider Letter > Others",
+  "Patient Communication > Telephone Encounter",
+  "Administrative > Superbill"
+ ]
+}

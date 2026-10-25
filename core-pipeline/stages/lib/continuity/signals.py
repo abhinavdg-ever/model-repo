@@ -1,4 +1,4 @@
-"""The measurements behind the gap signals (docs/CONTINUITY_LOGIC.md §3, §5).
+"""The measurements behind the gap signals (docs/APPROACH.md §4).
 
 Pure functions on page lines and text. The engine turns each into points
 (``continuity_canon.json`` ``points``). Text similarity is a small TF-IDF written here (no

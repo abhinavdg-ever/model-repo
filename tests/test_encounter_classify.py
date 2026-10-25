@@ -63,7 +63,7 @@ def _raw():
     [
         (lambda r: r["tier2"]["home"].append("hospital course"), "is in both"),
         (lambda r: r["tier3"]["inpatient"].append("chief complaint"), "is in both"),
-        (lambda r: r["tier1_page_types"].update({"no_such_type": "home"}), "not a v24 canon page type"),
+        (lambda r: r["tier1_page_types"].update({"no_such_type": "home"}), "not an L1 / L2 / L3 of page_taxonomy.json"),
         (lambda r: r["tier1_page_types"].update({"Discharge Summary": "space"}), "unknown setting"),
         (lambda r: r["negatives"].append({"phrase": "x y", "cancels": ["not a phrase"]}),
          "not a tier 2 or tier 3 phrase"),
@@ -281,15 +281,15 @@ def test_an_empty_default_leaves_the_visit_unresolved(canon):
 
 
 def test_a_lab_encounter_is_not_applicable_on_every_page(canon):
-    pages = [{**page(1, "telehealth visit"), "page_family": "Lab Report/Result", "document": 1},
+    pages = [{**page(1, "telehealth visit"), "page_family": "Lab Report", "document": 1},
              {**page(2, "office visit"), "page_family": "Progress Note", "document": 1}]
     rows = classify_pages(pages, entries=canon)
     # One page votes a setting: Not Applicable is set aside, however the lab pages weigh.
     assert all((r["encounter_type"], r["decided_by"]) == ("outpatient_f2f", "vote") for r in rows)
-    only_labs = [{**page(n, "telehealth visit"), "page_family": "Lab Report/Result", "document": 1} for n in (1, 2)]
+    only_labs = [{**page(n, "telehealth visit"), "page_family": "Lab Report", "document": 1} for n in (1, 2)]
     rows = classify_pages(only_labs, entries=canon)
     assert all((r["encounter_type"], r["encounter_label"]) == ("not_applicable", "Not Applicable") for r in rows)
-    assert rows[0]["matched_keyword"] == "Lab Report/Result"
+    assert rows[0]["matched_keyword"] == "Lab Report"
 
 
 def test_progress_notes_and_discharge_summaries_are_classified(canon):
@@ -342,7 +342,7 @@ def test_more_pages_outvote_the_first(canon):
 def test_family_defaults_vote_when_a_page_has_no_evidence(canon):
     pages = _doc({**page(1, ""), "page_family": "Discharge Summary"},
                  {**page(2, ""), "page_family": "Progress Note"},
-                 {**page(3, ""), "page_family": "Lab Report/Result"})
+                 {**page(3, ""), "page_family": "Lab Report"})
     log: list = []
     rows = classify_pages(pages, entries=canon, visit_log=log)
     assert [(v["setting"], v["by"]) for v in log[0]["votes"]] == [

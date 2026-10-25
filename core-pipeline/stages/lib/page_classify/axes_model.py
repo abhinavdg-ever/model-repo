@@ -146,8 +146,23 @@ def decode(logits, model, space: dict[str, Any], top_k: int = 3) -> list[dict[st
         j = int(code_prob[i].argmax())
         row["codeability"], row["codeability_confidence"] = space["codeability"][j], float(code_prob[i, j])
         row["path"] = " > ".join(x for x in (row["L1"], row["L2"], row["L3"]) if x)
+        row["top3"] = top_paths(top, row["by_L1"])
         out.append(row)
     return out
+
+
+def top_paths(l1_top: list[tuple[str, float]], by_l1: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """The best L1 > L2 > L3 under each of the top L1s, best first. Score = p(L1) ·
+    p(L2 | L1) · p(L3 | L2); a level the L1 does not have counts as 1."""
+    paths = []
+    for l1, p1 in l1_top:
+        best = by_l1.get(l1) or {}
+        l2, l3 = best.get("L2"), best.get("L3")
+        score = p1 * (best.get("L2_confidence") or 1.0) * (best.get("L3_confidence") or 1.0)
+        paths.append({"path": " > ".join(x for x in (l1, l2, l3) if x), "L1": l1, "L2": l2, "L3": l3,
+                      "L1_confidence": p1, "L2_confidence": best.get("L2_confidence"),
+                      "L3_confidence": best.get("L3_confidence"), "score": score})
+    return sorted(paths, key=lambda x: -x["score"])
 
 
 def _best_under_every_l1(logits, model, space: dict[str, Any], rows: int) -> list[dict[str, Any]]:

@@ -197,7 +197,7 @@ def test_a_print_date_is_never_a_dos():
     assert [row.value for row in rows if row.accepted] == ["02/27/2024"]
 
 
-DISCHARGE, LAB = "Discharge Summary", "Lab Report/Result"
+DISCHARGE, LAB = "Discharge Summary", "Lab Report"
 
 
 def _dos_page(text, candidates=None, l1=""):

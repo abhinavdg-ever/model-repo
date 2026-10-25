@@ -27,11 +27,10 @@
       "Discharge Summary"
     ],
     "lab": [
-      "Lab Report/Result",
-      "Laboratory Data"
+      "Lab Report"
     ]
   },
-  "note_page_kinds": "A page's kind is its page classification L1 (page_subtype stage, before DOS; a row without v24 axes gives its page_type): these names make it discharge or lab; any other, or no classification, is other. Laboratory Data is the pre-v24 page type for Lab Report/Result.",
+  "note_page_kinds": "A page's kind is its page classification L1 (page_subtype stage, before DOS; a row without axes gives its page_type): these names make it discharge or lab; any other, or no classification, is other.",
   "kv_priority": {
     "discharge": [
       [

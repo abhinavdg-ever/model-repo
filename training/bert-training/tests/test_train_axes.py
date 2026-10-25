@@ -278,3 +278,39 @@ def test_evaluation_writes_every_output(space, tiny_encoder, tmp_path):
         assert (out / name).is_file(), name
     header = next(csv.reader((out / "errors.csv").open()))
     assert "text" not in header and "route" in header
+
+
+def test_synthetic_pages_stay_in_training():
+    rows = [rec("Note", "HPI", chart_id=str(100 + i), image=f"r{i}.jpg") for i in range(20)]
+    rows += [{**rec("Note", "HPI", image=f"m{i}.jpg"), "synthetic": True} for i in range(5)]
+    sides = ax.split_real_pages(rows, [r["L1"] for r in rows], ax.assign_groups(rows), 0.2, 0.2, seed=0)
+    assert all(side == "train" for side, r in zip(sides, rows) if r.get("synthetic"))
+    assert {"val", "test"} & set(sides[:20])
+
+
+def test_unknown_specialty_can_be_left_out_of_the_loss():
+    rows = records()
+    kept = ax.build_label_space(rows, TAX, min_l1=2, min_l2=2, min_l3=2, min_specialty=1)
+    assert "Unknown" in kept["specialty"]
+    space = ax.build_label_space(rows, TAX, min_l1=2, min_l2=2, min_l3=2, min_specialty=1,
+                                 specialty_unknown="ignore")
+    assert "Unknown" not in space["specialty"]
+    targets, why = ax.encode_targets(rec("Note", "HPI", specialty="Unknown"), space)
+    assert targets["specialty"] == ax.IGNORE and why["specialty"] == "Unknown specialty"
+
+
+def test_lab_note_confusion_both_ways():
+    classes = ["Progress Note", "Lab Report", "Other"]
+    confusion = [[8, 2, 0], [3, 6, 1], [0, 0, 5]]
+    c = ax.lab_note_confusion(confusion, classes)
+    assert c == {"lab_pages": 10, "lab_as_note": 3, "note_pages": 10, "note_as_lab": 2}
+    assert "3 of 10" in ax.lab_note_line(c) and "2 of 10" in ax.lab_note_line(c)
+    assert ax.lab_note_confusion(confusion, ["A", "B", "C"]) is None
+
+
+def test_top_paths_rank_whole_paths():
+    by_l1 = {"Result": {"L2": "Lab", "L2_confidence": 0.5, "L3": "CBC", "L3_confidence": 0.5},
+             "Consent": {"L2": "HIPAA", "L2_confidence": 0.9, "L3": None, "L3_confidence": None}}
+    top = ax.top_paths([("Result", 0.6), ("Consent", 0.3), ("Flat", 0.1)], by_l1)
+    assert [x["path"] for x in top] == ["Consent > HIPAA", "Result > Lab > CBC", "Flat"]
+    assert top[0]["score"] == pytest.approx(0.27) and top[1]["score"] == pytest.approx(0.15)

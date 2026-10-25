@@ -9,7 +9,7 @@ states:
    classification L1 (`page_kinds`):
    - **discharge** (Discharge Summary): Admit + Discharge pair → service → weak
      → dt/dd → header/footer
-   - **lab** (Lab Report/Result): collected → received → Report Date → service →
+   - **lab** (Lab Report): collected → received → Report Date → service →
      weak → dt/dd → header/footer → Admit + Discharge pair
    - **other**: service → weak → dt/dd → header/footer → Admit + Discharge pair
 

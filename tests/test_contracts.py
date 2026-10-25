@@ -1589,7 +1589,6 @@ class TestCapabilityReporting:
             "HW model",
             "RapidOCR",
             "blank/junk model",
-            "page-family model",
             "page-axes model",
             "KV extraction",
             "final1 Docling",

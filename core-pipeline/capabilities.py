@@ -273,16 +273,6 @@ def hw_model_status() -> dict[str, Any]:
     }
 
 
-def page_family_model_status() -> dict[str, Any]:
-    """BERT page classifier in models/page-family/bert. Never raises; never loads the weights."""
-    try:
-        from stages.lib.page_classify.bert import describe
-
-        return describe()
-    except Exception as exc:
-        return {"ready": False, "loaded": False, "reason": str(exc)}
-
-
 def page_axes_model_status() -> dict[str, Any]:
     """Page-axes model in models/page-family/page-axes. Never raises; never loads the weights."""
     try:
@@ -353,7 +343,6 @@ def all_capabilities(*, probe: bool = False) -> dict[str, Any]:
         "docling_final1": docling_status(),
         "hw_model": hw_model_status(),
         "blank_junk_model": blank_junk_model_status(),
-        "page_family_model": page_family_model_status(),
         "page_axes_model": page_axes_model_status(),
         "rapidocr_models": rapidocr_models_status(),
         "extraction": extraction_status(),
@@ -393,7 +382,6 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     hw = caps.get("hw_model") or {}
     rapid = caps.get("rapidocr_models") or {}
     bj = caps.get("blank_junk_model") or {}
-    family = caps.get("page_family_model") or {}
     page_axes = caps.get("page_axes_model") or {}
     kv = caps.get("extraction") or {}
 
@@ -413,10 +401,6 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
     hw_on = f"OK — {hw.get('engine') or 'ready'}"
     rapid_on = "OK"
     bj_on = f"OK — {bj.get('model_version') or 'ready'}"
-    family_on = (
-        f"OK — BERT, {family.get('classes')} classes; "
-        f"{len(family.get('untrained_model_types') or [])} model types by keywords only"
-    )
     axes_on = (
         f"OK — {page_axes.get('taxonomy_version')}, {page_axes.get('l1_classes')} L1 classes, "
         f"{page_axes.get('specialties')} specialties"
@@ -437,7 +421,6 @@ def startup_lines(caps: dict[str, Any]) -> list[tuple[str, str]]:
         ("HW model", _one_line(hw, hw_on)),
         ("RapidOCR", _one_line(rapid, rapid_on)),
         ("blank/junk model", _one_line(bj, bj_on)),
-        ("page-family model", _one_line(family, family_on)),
         ("page-axes model", _one_line(page_axes, axes_on)),
         ("KV extraction", _one_line(kv, kv_on)),
         ("final1 Docling", _one_line(docling, docling_on)),

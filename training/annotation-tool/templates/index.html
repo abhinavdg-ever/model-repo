@@ -153,6 +153,7 @@
     <dt>Training</dt><dd id="tr">—</dd>
     <dt>Canon type</dt><dd id="canonType">—</dd>
     <dt>Original label</dt><dd id="original">—</dd>
+    <dt>Reviewed</dt><dd id="agrees">—</dd>
   </dl>
 
   <h2>Page type</h2>
@@ -194,6 +195,12 @@
   <p class="hint" id="spHint"></p>
   <p class="desc" id="spDesc"></p>
 
+  <div id="encBlock" hidden>
+    <h2>Encounter type</h2>
+    <select id="encInput"></select>
+    <p class="desc" id="encDesc"></p>
+  </div>
+
   <h2>Codeability <span class="muted">— derived, not chosen</span></h2>
   <dl class="kv">
     <dt>Derived</dt><dd><span id="codValue" class="badge">—</span></dd>
@@ -223,6 +230,7 @@ const $ = (id) => document.getElementById(id);
 let tax = null, items = [], cur = -1, zoom = 1, turn = 0, fitWidth = true;
 let draft = {};
 const FIELDS = ["L1", "L2", "L3", "specialty", "codeability_override", "codeability_override_reason"];
+const encOf = (it) => (it && it.encounter && it.encounter.encounter_type) || "";
 
 async function api(path, body) {
   const res = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"},
@@ -233,7 +241,7 @@ async function api(path, body) {
 }
 const showError = (msg) => { $("error").textContent = msg || ""; };
 
-// ---- the label space, all from taxonomy_v24.json --------------------------
+// ---- the label space, all from taxonomy.json (v29.2) ------------------
 const R = () => tax.rules;
 const l1Entry = (a) => tax.L1.find((x) => x.name === a);
 const l2Entries = (a) => tax.L2[a] || [];
@@ -329,6 +337,7 @@ function focusNext(from) {
 
 // ---- loading --------------------------------------------------------------
 const VIEWS = [["all", "All images"], ["disagreements", "Disagreements: text vs label"],
+  ["claude_reviewed", "Claude-reviewed"],
   ["invalid", "Not valid under the taxonomy"], ["needs_review", "Codeability needs_review"],
   ["specialty_other", "Specialty: Others (extend the lexicon)"], ["overridden", "Codeability overridden"],
   ["untagged", "Untagged"], ["not_in_training", "Not in training yet"], ["in_training", "In training"],
@@ -344,6 +353,10 @@ async function loadTaxonomy() {
   }
   for (const v of R().codeability_values) {
     const o = document.createElement("option"); o.value = v; o.textContent = v; $("overrideValue").appendChild(o);
+  }
+  $("encBlock").hidden = !tax.encounter_types.length;
+  for (const v of ["", ...tax.encounter_types]) {
+    const o = document.createElement("option"); o.value = v; o.textContent = v || "—"; $("encInput").appendChild(o);
   }
   $("spUnknown").textContent = `${R().specialty_unknown} — no signal on the page`;
   $("spOther").textContent = `${R().specialty_other} — a service line not on the list`;
@@ -374,7 +387,8 @@ function renderCounts(c) {
   for (const [k, label, hot] of [["to_do", "to do"], ["completed", "completed"], ["disagreements", "disagreements", 1],
                                  ["invalid", "not valid", 1], ["needs_review", "needs_review"],
                                  ["specialty_other", `specialty ${R().specialty_other}`, 1],
-                                 ["overridden", "overridden"], ["missing_files", "rows without a file"]]) {
+                                 ["overridden", "overridden"], ["claude_reviewed", "claude-reviewed"],
+                                 ["missing_files", "rows without a file"]]) {
     if (!c[k] && hot) continue;
     const s = document.createElement("span"); if (hot && c[k]) s.className = "hot";
     const b = document.createElement("b"); b.textContent = c[k];
@@ -421,12 +435,13 @@ function select(pos) {
 }
 
 function loadDraft(it) {
-  draft = {resolution: it ? it.resolution : ""};
+  draft = {resolution: it ? it.resolution : "", encounter_type: encOf(it)};
   for (const f of FIELDS) draft[f] = it ? it[f] || "" : "";
   $("file").textContent = it ? it.image : "—";
   $("doneState").textContent = it ? (it.completed ? `Completed${it.saved_at ? " " + it.saved_at : ""}` : "To do") : "—";
   $("tr").textContent = it ? (it.in_training ? "Yes" : "No — waiting for Add to Training JSON") : "—";
   $("canonType").textContent = it && it.page_type || "—";
+  $("agrees").textContent = it && it.agrees || "—";
   $("original").textContent = it && it.annotator_page_type
     ? [it.annotator_page_type, it.annotator_page_subtype].filter(Boolean).join(" / ") : "—";
   $("overrideBlock").hidden = !(it && it.codeability_override);
@@ -482,7 +497,8 @@ function renderDraft() {
   const l3s = l3Entries(d.L1, d.L2);
   $("l3Block").hidden = !l3s.length;           // blank is correct where no named L3 exists
   $("l3Input").value = d.L3 || "";
-  $("l3Input").placeholder = `Required — ${R().fallback} if none fits`;
+  $("l3Input").placeholder = tax.paths.includes(pathOf({L1: d.L1, L2: d.L2}))
+    ? "Optional — blank when no named one fits" : `Required — ${R().fallback} if none fits`;
   $("l3Desc").textContent = ((l3Entry(d.L1, d.L2, d.L3) || {}).description || "").split(". ")[0];
 
   const named = d.specialty && d.specialty !== R().specialty_unknown && d.specialty !== R().specialty_other;
@@ -493,6 +509,13 @@ function renderDraft() {
   $("spDesc").textContent = (spEntry(d.specialty) || {}).description || "";
   $("spHint").textContent = it && it.suggested.specialty && it.suggested.specialty !== d.specialty
     ? `Detector proposed: ${it.suggested.specialty}` : "";
+
+  $("encInput").value = d.encounter_type || "";
+  const e = it && it.encounter;
+  $("encDesc").textContent = e && e.encounter_type
+    ? `${e.reviewer || "?"} · ${e.basis || "?"}${e.confidence ? " · " + e.confidence : ""}` +
+      (d.encounter_type !== e.encounter_type ? " — a change is saved as a human label" : "")
+    : "";
 
   renderCodeability(it);
   $("dirty").textContent = isDirty() ? "Not saved — Save keeps it, Skip discards it." : "";
@@ -530,7 +553,8 @@ function pathTag(d) {
 
 function isDirty() {
   const it = items[cur]; if (!it) return false;
-  return FIELDS.some((f) => (draft[f] || "") !== (it[f] || "")) || (draft.resolution || "") !== (it.resolution || "");
+  return FIELDS.some((f) => (draft[f] || "") !== (it[f] || "")) || (draft.resolution || "") !== (it.resolution || "")
+    || (draft.encounter_type || "") !== encOf(it);
 }
 
 // ---- actions --------------------------------------------------------------
@@ -582,6 +606,7 @@ $("view").onchange = () => loadItems();
 $("showCompleted").onchange = () => loadItems((items[cur] || {}).index);
 $("filterL1").onchange = () => loadItems();
 $("search").oninput = () => loadItems();
+$("encInput").onchange = () => { draft.encounter_type = $("encInput").value; renderDraft(); };
 $("spUnknown").onclick = () => { draft.specialty = R().specialty_unknown; renderDraft(); };
 $("spOther").onclick = () => { draft.specialty = R().specialty_other; renderDraft(); };
 $("overrideToggle").onclick = () => {

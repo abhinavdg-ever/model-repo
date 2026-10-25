@@ -1,7 +1,9 @@
-"""Keyword model: ``keyword-canon/page_keyword_canon.json`` → a sub-type with a score.
+"""Keyword matching for the keyword canon (``keyword-canon/page_canon.json``):
+a page type with a score.
 
-Runs on its own; it never sees BERT's output. The canon's ``how_to_match``
-rules, in order:
+The axes gate (``axes.py``) builds the canon with ``build`` and ranks its page
+types by L1, L2 or L3 (``group_of``). The canon's ``how_to_match`` rules, in
+order:
 
 * Case-insensitive, whole words or whole phrases only.
 * Longest match wins: a term inside a longer term that matched at the same
@@ -13,8 +15,7 @@ rules, in order:
   detected as one (``headings``: the section-header candidates in the Final2 /
   Final1 JSON), a line that is just the term, or a short line that starts with
   it ("OFFICE VISIT REPORT 10/03/2024"). The canon applies this to one-word
-  terms; it applies here to every title term: on 53688890 it removed 4 of 8
-  title hits that disagreed with a confident BERT and kept all 6 that agreed.
+  terms; it applies here to every title term.
 * Body terms weigh ``body_term``. Ambiguous terms weigh ``ambiguous_term`` and
   only once another term of the same sub-type has matched.
 * Each sub-type scores the sum over its distinct matched terms. A page type's
@@ -28,8 +29,6 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Optional
 
-from stages.lib.canon_store import CANON_DIR, CanonFile
-
 
 @dataclass(frozen=True)
 class KeywordResult:
@@ -39,7 +38,7 @@ class KeywordResult:
     score: float
     margin: float
     title_hit: bool
-    # The best-scoring page types, best first (for the ladder's top-3 comparison).
+    # The best-scoring groups, best first.
     top_page_types: tuple[str, ...] = ()
 
 
@@ -88,12 +87,8 @@ def _build(data: dict[str, Any]) -> _Canon:
     )
 
 
-_CANON: CanonFile[_Canon] = CanonFile(CANON_DIR / "page_keyword_canon.json", _build)
-
-
-def build_v24(data: dict[str, Any]) -> _Canon:
-    """The v24 canon (``page_canon_v24.json``, built by
-    ``training/taxonomy/build_canon.py``) in the same shape: each canon page
+def build(data: dict[str, Any]) -> _Canon:
+    """The keyword canon (``page_canon.json``) for ``classify``: each canon page
     type is a sub-type, grouped by its L1, with its path as the model type."""
     sub_types = []
     for entry in data["page_types"]:
@@ -152,7 +147,7 @@ def classify(
     text: str,
     headings: Iterable[str] = (),
     *,
-    canon: Optional[_Canon] = None,
+    canon: _Canon,
     subtypes: Optional[frozenset[str]] = None,
     group_of: Optional[dict[str, str]] = None,
 ) -> Optional[KeywordResult]:
@@ -160,11 +155,10 @@ def classify(
 
     ``headings`` are the page's heading lines as the OCR layout detected them
     (section-header candidates); without them only the line's own shape decides.
-    ``canon`` defaults to ``page_keyword_canon.json``; ``subtypes`` limits the
-    match to those sub-types, and ``group_of`` ranks them by another grouping
-    than their page type (the axes gate ranks v24 entries by L1, L2 or L3).
+    ``canon`` is a ``build`` result; ``subtypes`` limits the match to those
+    sub-types, and ``group_of`` ranks them by another grouping than their page
+    type (the axes gate ranks canon entries by L1, L2 or L3).
     """
-    canon = canon or _CANON.get()
     group_of = group_of or canon.subtype_page_type
     lines = _lines(text)
     if not lines:

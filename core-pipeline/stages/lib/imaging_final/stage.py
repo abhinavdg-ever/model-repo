@@ -10,7 +10,8 @@ Most Finals are the page's own value. Three are decided across a document:
   document takes its first page's page type —
   ``page_classify.arbitration.decide_final`` (a confidence-weighted vote only
   when the first page is Unknown). The sub-type can differ: a page whose own
-  type differs keeps it as the sub-type (Progress Note / Laboratory Data).
+  type differs is re-placed under the document's L1 (a Lab Report page inside a
+  Progress Note: Progress Note / Lab and Imaging Results; ``final_placement``).
   ``page_type_source`` is page / continuation / embedded, and
   ``continuation_rule`` names the rule.
 * **Date of service**: the document's first dated page's; **encounter type**:

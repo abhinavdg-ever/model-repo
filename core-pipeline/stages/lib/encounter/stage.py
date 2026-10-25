@@ -7,7 +7,7 @@ stamped on every page of the visit. Pages without a usable date, and visits
 with no setting evidence, stay empty with a reason; they never inherit.
 
 Tier 1 evidence is the page type: the page's own (Extracted) classification
-from ``page_classification``, its most specific v24 name the encounter canon
+from ``page_classification``, its most specific name the encounter canon
 lists (canon page type, L3, L2, L1), else its family (L1).
 
 Runs after ``continuity``. Writes ``encounter_type_results`` for resolved
@@ -193,7 +193,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             )
 
         # Tier 1 reads the page's own (Extracted) classification: its most
-        # specific v24 name the canon lists (canon page type, L3, L2, L1),
+        # specific name the canon lists (canon page type, L3, L2, L1),
         # else its family.
         tier1 = load_encounter_canon().tier1
         for page_input in page_inputs:
@@ -201,8 +201,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             names = axes.names_of(kind)
             page_input["page_type_id"] = next((n for n in names if n in tier1), axes.family_of(kind))
             page_input["page_type_name"] = page_input["page_type_id"]
-            # Encounter type applies only to some families (canon applies_to).
-            page_input["page_family"] = axes.family_of(kind)
+            # Encounter type applies only to some families (canon applies_to). A page
+            # neither the model nor the canon was sure of (decided_by others) has no
+            # family: it votes its own evidence, as an Unknown page did.
+            unsure = axes.decided_by_of(kind) == axes.BY_OTHERS
+            page_input["page_family"] = "" if unsure else axes.family_of(kind)
             # The continuity stage's document: one visit, one encounter type.
             page_input["document"] = (continuity.get(page_input["page_id"]) or {}).get("document_seq")
 

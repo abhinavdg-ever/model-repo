@@ -1,0 +1,233 @@
+{
+ "version": 1,
+ "note": "Encounter type vocabulary. Four real settings plus Not Available. Scored per page; the answer belongs to the DOCUMENT, so page scores are pooled over the document before a label is given. 'strong' phrases are worth 3, 'weak' 1, and a strong phrase in the top header band is worth 5. Negatives cancel their own class only.",
+ "classes": [
+  "Inpatient",
+  "Outpatient (F2F)",
+  "Outpatient (Evisit)",
+  "Outpatient (Home Visit)",
+  "Not Available"
+ ],
+ "default_when_outpatient_but_modality_unclear": "Outpatient (Evisit)",
+ "default_comment": "Client instruction: an outpatient encounter with no modality statement defaults to Evisit. Applied as an explicit rule after scoring, never learned, so it stays auditable.",
+ "matching": {
+  "header_band_fraction": 0.18,
+  "strong_weight": 3.0,
+  "strong_header_weight": 5.0,
+  "weak_weight": 1.0,
+  "min_score": 3.0,
+  "margin_to_decide": 2.0
+ },
+ "lexicon": {
+  "Inpatient": {
+   "strong": [
+    "date of admission",
+    "admitted on",
+    "admission date",
+    "discharge summary",
+    "hospital course",
+    "discharge diagnosis",
+    "inpatient",
+    "post-op day",
+    "transferred to the floor",
+    "admitted to the hospital",
+    "room number",
+    "attending of record",
+    "daily progress note",
+    "icu",
+    "intensive care unit",
+    "observation status",
+    "length of stay",
+    "bed assignment"
+   ],
+   "weak": [
+    "ward",
+    "rounds",
+    "nursing shift",
+    "telemetry",
+    "nurse station",
+    "admitting physician",
+    "step down"
+   ],
+   "negative": [
+    "discharged from clinic",
+    "office visit"
+   ]
+  },
+  "Outpatient (F2F)": {
+   "strong": [
+    "office visit",
+    "seen in the office",
+    "clinic visit",
+    "presented to the clinic",
+    "in-person visit",
+    "face to face visit",
+    "patient presents to the office",
+    "examined in clinic",
+    "vitals obtained in office",
+    "ambulatory visit",
+    "outpatient clinic",
+    "walk-in visit",
+    "surgery center",
+    "surgical center",
+    "surgery centre",
+    "surgical centre",
+    "ambulatory surgery",
+    "ambulatory surgical",
+    "outpatient surgery"
+   ],
+   "weak": [
+    "exam room",
+    "waiting room",
+    "front desk",
+    "check-in",
+    "height and weight measured",
+    "blood pressure taken"
+   ],
+   "negative": [
+    "telehealth",
+    "video visit",
+    "telephone visit",
+    "home visit"
+   ]
+  },
+  "Outpatient (Evisit)": {
+   "strong": [
+    "telehealth",
+    "telemedicine",
+    "video visit",
+    "virtual visit",
+    "telephone visit",
+    "audio-only visit",
+    "audio visit",
+    "e-visit",
+    "evisit",
+    "econsult",
+    "e-consult",
+    "consented to telehealth",
+    "patient was not physically present",
+    "visit conducted by video",
+    "visit conducted by telephone",
+    "remote evaluation",
+    "portal encounter",
+    "web encounter",
+    "originating site",
+    "distant site",
+    "modifier 95",
+    "pos 02",
+    "pos 10"
+   ],
+   "weak": [
+    "called the patient",
+    "connected via",
+    "verbal consent obtained",
+    "patient at home during the call"
+   ],
+   "negative": [
+    "seen in the office",
+    "home visit",
+    "in-person visit"
+   ]
+  },
+  "Outpatient (Home Visit)": {
+   "strong": [
+    "domiciliary visit",
+    "home based primary care",
+    "home health aide",
+    "home health visit",
+    "home visit",
+    "homebound",
+    "homebound reason",
+    "house call",
+    "in-home assessment",
+    "nursing visit note",
+    "patient seen at home",
+    "plan of treatment for home health",
+    "pos 12",
+    "seen at the patient's residence",
+    "skilled nursing visit in the home",
+    "taxing effort to leave home",
+    "unable to leave home",
+    "visit in the home"
+   ],
+   "weak": [
+    "attended by",
+    "caregiver present at home",
+    "change linens",
+    "home environment",
+    "home safety",
+    "light housekeeping",
+    "lives alone, assessed at home",
+    "meal preparation",
+    "residence",
+    "task list and time record"
+   ],
+   "negative": [
+    "telehealth",
+    "video visit",
+    "office visit"
+   ]
+  },
+  "Not Available": {
+   "strong": [
+    "specimen collected",
+    "specimen received",
+    "collection date",
+    "ordering provider",
+    "ordering physician",
+    "requisition",
+    "accession number",
+    "performing laboratory",
+    "reference range",
+    "this report is not a visit note",
+    "final report",
+    "signed by pathologist",
+    "radiologist signature",
+    "technologist",
+    "fasting status"
+   ],
+   "weak": [
+    "lab director",
+    "clia",
+    "result status",
+    "specimen type",
+    "report date"
+   ],
+   "negative": [
+    "chief complaint",
+    "history of present illness",
+    "assessment and plan"
+   ]
+  }
+ },
+ "document_type_priors": {
+  "_comment": "Page type is stronger evidence than any phrase for some documents. Applied before the lexicon; the lexicon then only has to settle the outpatient modality.",
+  "Discharge Summary": "Inpatient",
+  "Operative Note": "Inpatient",
+  "Lab Report": "Not Available",
+  "Order and Requisition": "Not Available",
+  "Consent and Authorization": "Not Available",
+  "Immunization": "Not Available",
+  "Demographics": "Not Available",
+  "Patient Communication": "Not Available",
+  "_comment_exceptions": "An Operative Note from an ambulatory surgery centre is outpatient, and a Patient Communication page can be the only record of an evisit. Both are overridden by a strong lexicon hit, which is why the prior is a starting point and not a decision."
+ },
+ "_comment_weak_terms_removed": "Removed on first run because they fire on unrelated text: 'floor' matched 'pelvic floor laxity', 'unit' and 'units' match every lab result line, and a bare 'phone' appears in every patient banner. A weak term that fires everywhere is worse than no term, because it shifts every page by the same amount and only adds noise to the margin.",
+ "_comment_word_boundaries": "All matching is whole-phrase with word boundaries. On the first run substring matching put 150 outpatient pages into Inpatient, because 'icu' is inside 'difficulty' and 'diverticulosis'.",
+ "_comment_2026_10_24": "Prior key 'Lab Report/Result' renamed to 'Lab Report' to match taxonomy_v29 L1. With the old key the prior never fired on current data, and about 290 lab pages fell to 'no evidence'.",
+ "patient_type_field": {
+  "label_pattern": "(?i)\\b(patient\\s*type(?:\\s*/\\s*class)?|pt\\.?\\s*type|patient\\s*class|encounter\\s*type|admit\\s*type)\\b",
+  "value_window_chars": 160,
+  "values": {
+   "outpatient": "Outpatient (F2F)",
+   "ambulatory": "Outpatient (F2F)",
+   "same day": "Outpatient (F2F)",
+   "inpatient": "Inpatient",
+   "observation": "Inpatient"
+  },
+  "page_rule": "A page that carries the field takes its value when the page was suggested a different setting (Inpatient or an Outpatient class). Not Available pages (labs, consents) keep Not Available.",
+  "chart_rule": "When a Demographics page (face sheet, registration) in a chart carries the field and no page in that chart carries a different value, the chart suggestion is that value, and every page in the chart suggested Inpatient flips to Outpatient (F2F) when the field says outpatient or ambulatory.",
+  "comment": "Client approved 2026-10-24. An explicit patient-type field outranks phrases such as \"admission date\", which hospital headers print on outpatient procedure records too (Chart 15: outpatient colonoscopy, 20 pages had been suggested Inpatient)."
+ },
+ "_comment_asc_2026_10_24": "Client direction 2026-10-24: ambulatory surgery centre wording is a strong Outpatient (F2F) hit, so it overrides the Operative Note prior (Inpatient)."
+}

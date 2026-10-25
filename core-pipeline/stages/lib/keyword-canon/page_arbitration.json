@@ -1,39 +1,23 @@
 {
-  "version": "1.2",
-  "status": "Default ladder. Thresholds, settings and patterns are starting values to be tuned on a validation split. 2026-10-11: BERT wins at >= bert_high (0.50), or at >= bert_low (0.25) with a lead >= bert_lead (0.10) over its second choice. Below bert_low the keyword model wins when clear (title hit); otherwise the two models' top 3 page types are compared. Below bert_unknown (0.10) the page is Unknown.",
-  "inputs": {
-    "bert": "model_type with a confidence (softmax probability). Implies page_type; implies page_subtype only when page_type is Progress Note.",
-    "keyword": "page_subtype with a score, a margin and a title_hit flag (from keyword_canon.json). Implies page_type and model_type.",
-    "page_order": "chart_id and page_index for every page. Needed only by level 3."
-  },
-  "thresholds": {
-    "bert_high": 0.5,
-    "bert_low": 0.25,
-    "bert_lead": 0.1,
-    "bert_unknown": 0.1,
-    "keyword_min_score": 3,
-    "keyword_min_margin": 2
-  },
+  "version": "2.0",
+  "status": "Page classification settings. 2026-10-25: the old BERT + keyword ladder is gone; the Extracted page type is the page axes (axes, axes_rules: page_classify/axes.py, page_rules.py) in the page taxonomy's names (page_taxonomy.json); the Final page type is decided per continuity document (inside_progress_note, final_placement, document_agreement: page_classify/arbitration.py decide_final). bert_* / keyword_* columns of page_classification are no longer filled.",
   "confidence": {
-    "comment": "The page type's confidence (page_classification.confidence, review-ui 'Page Type' confidence) follows the ladder step that decided it. b = BERT's probability. k = the keyword model's confidence: keyword_title_base (title hit) or keyword_body_base, plus keyword_per_margin per point of margin over the next page type, capped at keyword_title_cap / keyword_body_cap. agreement: 1 - (1-b)(1-k), capped at agreement_cap. bert_high / bert_medium / bert_low / unknown: b. keyword_only_class / keyword_title / keyword_body: k. top3_agreement: the lower of b and k. A step that flags the page for review is capped at review_cap. no_prediction: none. Blank/junk pages keep the blank/junk confidence.",
+    "comment": "The keyword canon's own confidence (axes canon_min / l3_canon_min compare against it): keyword_title_base for a title hit, else keyword_body_base, plus keyword_per_margin per point of margin over the next candidate, capped at keyword_title_cap / keyword_body_cap.",
     "keyword_title_base": 0.6,
     "keyword_body_base": 0.3,
     "keyword_per_margin": 0.05,
     "keyword_title_cap": 0.9,
-    "keyword_body_cap": 0.6,
-    "agreement_cap": 0.99,
-    "review_cap": 0.49
+    "keyword_body_cap": 0.6
   },
   "inside_progress_note": {
-    "comment": "v24 Final rules (imaging_final, arbitration.decide_final). A page whose Final family becomes the section L1 (Progress Note) — continuing a Progress Note document, or embedded_families on a page headed by a Progress Note title — takes the document's codability, except a page carrying one of non_codeable_names (any of its canon page type / L3 / L2 / L1), which stays Non-Codable. Final L1 and L2 always agree with the v24 hierarchy (page_canon_v24.json paths): inside a Progress Note, a page of an embedded_families family is Progress Note / its own L2 (else its family), e.g. Progress Note / Medication List; inside any other document, a page keeps its own name as L2 only when the hierarchy places it under that L1; otherwise L1 / Others.",
+    "comment": "Final rules (imaging_final, arbitration.decide_final). A page whose Final family becomes the section L1 (Progress Note) — continuing a Progress Note document, or embedded_families on a page headed by a Progress Note title — takes the document's codability, except a page carrying one of non_codeable_names (any of its canon page type / L3 / L2 / L1), which stays Non-Codable. Its Final L2 is final_placement['Progress Note'][its own L1] (Lab Report -> Lab and Imaging Results), else Others.",
     "non_codeable_names": [
-      "Laboratory",
-      "Laboratory Data",
+      "Lab Result",
       "Medication Record",
       "Medication List"
     ],
     "embedded_families": [
-      "Lab Report/Result",
+      "Lab Report",
       "Medication Record",
       "Immunization",
       "Problem List",
@@ -41,97 +25,21 @@
     ]
   },
   "document_agreement": {
-    "comment": "Across a continuity document every page takes the first page's page type (sub-types stay per page). Only when the first page is Unknown, a vote of the pages' types weighted by page-type confidence decides. The vote counts only when one type holds at least vote_min_share of the weight; below that the pages keep their own types and are flagged for review (no_agreement).",
+    "comment": "Across a continuity document every page takes the first page's L1 (sub-types stay per page). Only when the first page is Unknown or Others (neither the model nor the canon was sure), a vote of the pages' L1s weighted by page-type confidence decides, Others pages left out. The vote counts only when one L1 holds at least vote_min_share of the weight; below that the pages keep their own types and are flagged for review (no_agreement). An Others page then takes the document's L1 with the L2 the page classifier gave it there (under_l1), else <L1> / Others.",
     "vote_min_share": 0.6
   },
-  "level_1_page_type": [
-    {
-      "step": 1,
-      "name": "agreement",
-      "when": "BERT and keyword give the same page_type",
-      "winner": "both",
-      "needs_review": false
-    },
-    {
-      "step": 2,
-      "name": "bert_high",
-      "when": "they differ and BERT confidence >= bert_high, or BERT confidence >= bert_low with a lead >= bert_lead over BERT's second choice",
-      "winner": "bert",
-      "needs_review": false
-    },
-    {
-      "step": 3,
-      "name": "keyword_only_class",
-      "when": "they differ, the keyword page_type is a class BERT was not trained on (too few images), and keyword score >= keyword_min_score with title_hit",
-      "winner": "keyword",
-      "needs_review": false
-    },
-    {
-      "step": 4,
-      "name": "keyword_title",
-      "when": "they differ, BERT not high (step 2 did not apply), keyword has title_hit and margin >= keyword_min_margin",
-      "winner": "keyword",
-      "needs_review": false
-    },
-    {
-      "step": 5,
-      "name": "bert_medium",
-      "when": "they differ and BERT confidence >= bert_low",
-      "winner": "bert",
-      "needs_review": true
-    },
-    {
-      "step": "5b",
-      "name": "unknown",
-      "when": "a BERT model is loaded and its confidence < bert_unknown",
-      "winner": "none (page type Unknown)",
-      "needs_review": true
-    },
-    {
-      "step": "5c",
-      "name": "top3_agreement",
-      "when": "a page type appears in both BERT's and the keyword model's top 3: the one with the best combined rank (ties: BERT's order)",
-      "winner": "both",
-      "needs_review": true
-    },
-    {
-      "step": 6,
-      "name": "keyword_body",
-      "when": "BERT confidence < bert_low and keyword score >= keyword_min_score",
-      "winner": "keyword",
-      "needs_review": true
-    },
-    {
-      "step": 7,
-      "name": "bert_low",
-      "when": "nothing above applied",
-      "winner": "bert",
-      "needs_review": true
-    }
-  ],
-  "level_2_page_subtype": [
-    "If the winning page_type is Progress Note: use BERT's model_type when BERT's page_type is Progress Note; otherwise use the keyword sub-type when it belongs to Progress Note; otherwise the generic sub-type.",
-    "For any other winning page_type: use the keyword sub-type when it belongs to that page_type and its score >= keyword_min_score; otherwise the generic sub-type (same name as the page type)."
-  ],
   "level_3_continuation": {
-    "what": "On the continuity stage's documents (continuity_canon.json), in imaging_final: every page of a document takes its first page's page type; its own page type becomes the sub-type when it differs (Progress Note / Laboratory Data). Only when the first page is Unknown does a confidence-weighted vote decide (document_agreement). A page in no multi-page document keeps its own type, except embedded_same_page (a Laboratory Data / Radiology Report page with a Progress Note title on it).",
+    "what": "On the continuity stage's documents (continuity_canon.json), in imaging_final: every page of a document takes its first page's L1; a page of another L1 is re-placed under it (final_placement, under_l1, else Others). Only when the first page is Unknown / Others does a confidence-weighted vote decide (document_agreement). A page in no multi-page document keeps its own type, except embedded_same_page (a page of an embedded_families L1 with a Progress Note title on it).",
     "code": "page_classify/arbitration.py: agree_document_type, decide_final"
   },
-  "level_4_codability": "Read codability from the final page_type, after level 3. No model predicts it. An embedded lab or radiology page is therefore codable as Progress Note.",
-  "model_type_of_final_answer": "page_subtype when page_type is Progress Note, otherwise page_type. For an embedded page this gives Laboratory Data or Radiology Report, the same class BERT predicts for a stand-alone one.",
   "decided_by_values": [
-    "agreement",
-    "bert_high",
-    "keyword_only_class",
-    "keyword_title",
-    "bert_medium",
-    "keyword_body",
-    "bert_low",
-    "unknown",
-    "top3_agreement",
-    "no_prediction",
-    "continuation",
-    "embedded"
+    "model",
+    "canon",
+    "rule",
+    "others",
+    "blank_junk",
+    "duplicate_of:<page id>",
+    "no_text"
   ],
   "outputs": [
     "page_type",
@@ -140,12 +48,6 @@
     "codability",
     "decided_by",
     "needs_review",
-    "bert_model_type",
-    "bert_confidence",
-    "keyword_page_subtype",
-    "keyword_score",
-    "keyword_margin",
-    "keyword_title_hit",
     "page_type_per_page",
     "page_subtype_per_page",
     "is_continuation",
@@ -154,8 +56,8 @@
     "continuation_rule"
   ],
   "axes": {
-    "comment": "The v24 page axes: they decide page_classification.page_type / page_subtype (L1 / L1, L1 / L2, or 'L1 (L2)' / L3) and the category; the whole answer is in page_classification.axes. Each level is decided by the model when it clears its gate, otherwise by the v24 keyword canon (page_canon_v24.json) when the canon is sure enough; otherwise the column is NULL. axes.sources says which decided each level (model / canon / -). L1 from the model: route 'model' = top L1 >= route_model, ahead of the second by >= route_margin, not the folded OTHER class ('canon' = OTHER or >= route_canon, else 'review'; only 'model' lets the model decide). L1 from the canon: the best L1 among all canon entries, keyword confidence >= canon_min. L2 (not under section_L1, whose L2 is the content section from section tagging): the model's when the model decided L1 and L2 >= l2_min; else the canon's best L2 under that L1, >= canon_min. L3: always the canon's best L3 under that L1 > L2, keyword confidence >= l3_canon_min; the model's L3 is kept in axes.prediction only. Keyword confidence is page_arbitration.json → confidence (title hit 0.60, body 0.30, +0.05 per point of margin, capped). Specialty: the model's when it is not one of specialty_not_asserted, >= specialty_min, ahead of the second by >= specialty_lead, and trained on >= specialty_min_train_pages pages; else the specialty of the canon entry that decided the deepest level, when it has one. Codeability is always the canon's: the tag of the canon page type behind the decided path (the best keyword match among the entries under L1 [> L2 [> L3]], else the entry for exactly that path); needs_review when its rule is context (the Final step resolves it from the page's document) or source. The model's codeability is kept in axes.prediction only. Tune with training/bert-training/tune_thresholds.py on predictions_val.csv.",
-    "taxonomy_version": "v24",
+    "comment": "The page axes, the Extracted page type: page_classification.page_type / page_subtype (L1 / Others, L1 / L2, or 'L1 (L2)' / L3), the category, and the whole answer in page_classification.axes (and staging/page_classification.json). 1. The model's top 3: for each of its three best L1s, its best L2 and L3 under it with the score p(L1)p(L2|L1)p(L3|L2) (axes.model_top3); the first wins when route is 'model' = top L1 >= route_model, ahead of the second by >= route_margin, not the folded OTHER class ('canon' = OTHER or >= route_canon, else 'review'); its L2 at >= l2_min (an L2 the model folded to Others lets the canon try first). 2. Else the keyword canon (page_canon.json, in the taxonomy's names): the best L1 among its entries at keyword confidence >= canon_min, the best L2 under it likewise -- it names page types the model was never trained on. 3. Else Others (decided_by others). Section_L1 (Progress Note) takes no L2 here: its L2 is the content section. Then axes_rules may re-place the page. L3: always the canon's best L3 under L1 > L2 at l3_canon_min; the model's L3 is kept in model_top3 / prediction. Specialty: the model's when not one of specialty_not_asserted, >= specialty_min, ahead of the second by >= specialty_lead, trained on >= specialty_min_train_pages pages; else the canon entry's. Codeability: always the canon's -- the tag of the canon page type behind the decided path; needs_review when its rule is context (the Final step resolves it from the page's document) or source; a rule's own when the canon has no entry there. axes.sources says who decided each level (model / canon / rule / others / -), axes.decided_by the L1's. taxonomy_version: the model folder's label_space.json must carry it, else the model is refused and the canon decides.",
+    "taxonomy_version": "v29.2",
     "section_L1": "Progress Note",
     "route_model": 0.4,
     "route_margin": 0.1,
@@ -170,5 +72,154 @@
       "Unknown",
       "Others"
     ]
+  },
+  "axes_rules": {
+    "comment": "2026-10-25: rules the axes gate applies after the model and the canon (page_classify/page_rules.py). The first that fires sets L1 / L2 (axes.sources 'rule', axes.rules its name); L3 and codeability are then looked up under the new path, and codeability falls back to the rule's own when the canon has no entry there. Title rules read the title zone: the first title_zone_lines non-empty lines and the OCR's detected headings; a title counts when a line starts with it. Not implemented, pending a decision (2026-10-24 note, section F): ambulatory surgery centre wording -> Outpatient (F2F) encounter; payer record-retrieval fax covers and EHR import covers as junk.",
+    "title_zone_lines": 12,
+    "clinical_summary": {
+      "comment": "context_rules.clinical_summary: decided by the document title, never by a phrase inside a note. A Discharge Summary page keeps its path (a hospital packet page titled Clinical Summary). Pages inside the summary without the title take the path from the Final step (the document's first page).",
+      "summary_of_care_titles": [
+        "Continuity of Care Document",
+        "Summary of Care",
+        "Patient Summary of Care",
+        "Transition of Care Document",
+        "Transition of Care Summary",
+        "C-CDA",
+        "CCD"
+      ],
+      "after_visit_summary_titles": [
+        "After Visit Summary",
+        "After-Visit Summary",
+        "Patient Clinical Summary"
+      ],
+      "cda_oid": [
+        "\\b2\\.16\\.840\\.1\\.113883\\b",
+        "\\b1\\.2\\.840\\.114350\\b"
+      ],
+      "not_when_l1": [
+        "Discharge Summary"
+      ],
+      "l1": "Clinical Summary",
+      "summary_of_care_l2": "Summary of Care (C-CDA)",
+      "after_visit_summary_l2": "After-Visit Summary",
+      "codeability": "non_codeable"
+    },
+    "records_request": {
+      "comment": "context_rules.records_request: defined by purpose (letter, fax or EHR note), read from its title.",
+      "titles": [
+        "Medical Records Request",
+        "Medical Record Request",
+        "Request for Medical Records",
+        "Request for Records",
+        "Records Request",
+        "Record Request",
+        "Request for Copies of Medical Records"
+      ],
+      "l1": "Provider Letter",
+      "l2": "Records Request",
+      "codeability": "non_codeable"
+    },
+    "superbill": {
+      "comment": "context_rules.superbill: an encounter form or superbill (visit date, provider, ICD-10 and CPT codes). By title only: invoices and statements carry codes too.",
+      "titles": [
+        "Superbill",
+        "Super Bill",
+        "Encounter Form"
+      ],
+      "l1": "Administrative",
+      "l2": "Superbill",
+      "codeability": "non_codeable"
+    },
+    "hospital_stay": {
+      "comment": "context_rules.admission_history_and_physical / inpatient_consultation: an H&P or consult belongs to the stay only for an inpatient / observation / short stay. Applied to a page that came out Progress Note, titled H&P or Consultation, with stay evidence on the page itself. Not applied the other way (a model's Discharge Summary > H&P without evidence on the page stays): the evidence may sit on another page of the admission.",
+      "when_l1": "Progress Note",
+      "history_and_physical_titles": [
+        "History and Physical",
+        "History & Physical",
+        "H&P",
+        "H & P",
+        "Admission History",
+        "Admission H&P",
+        "Admission Note"
+      ],
+      "consultation_titles": [
+        "Consultation Note",
+        "Consultation Notes",
+        "Consultation Report",
+        "Consult Note",
+        "Inpatient Consultation",
+        "Inpatient Consult"
+      ],
+      "stay_evidence": [
+        "\\b(admission|admit|adm\\.?)\\s*date\\b",
+        "\\bdate of admission\\b",
+        "\\badmitting (physician|provider|doctor|diagnosis|dx)\\b",
+        "\\broom\\s*(/|and|&)\\s*bed\\b",
+        "\\b(room|bed)\\s*(#|no\\.?|number)",
+        "\\bobservation (status|unit|services?|stay)\\b",
+        "\\binpatient (status|admission|services?|unit|stay)\\b",
+        "\\bhospital day\\b"
+      ],
+      "l1": "Discharge Summary",
+      "history_and_physical_l2": "History and Physical",
+      "consultation_l2": "Consultation Note",
+      "codeability": "discharge"
+    },
+    "lab_guard": {
+      "comment": "2026-10-24 note section C: the model (or the canon) says Progress Note, but the page has no note-body section and carries lab-result markers -> Lab Report. note_body is the labelling regex. Markers count once each; min_lab_markers of them, or a panel title (CBC, CMP, ... followed by final / result / panel / report) on one of the first panel_title_lines lines.",
+      "when_l1": "Progress Note",
+      "becomes": [
+        "Lab Report",
+        "Lab Result"
+      ],
+      "note_body": [
+        "chief complaint",
+        "history of present illness",
+        "\\bhpi\\b",
+        "interval history",
+        "review of systems",
+        "\\bros\\s*:",
+        "physical exam",
+        "assessment\\s*(and|&)?\\s*plan",
+        "assessment\\s*:",
+        "impression\\s*(and|&)\\s*plan",
+        "\\bplan\\s*:",
+        "subjective\\s*:",
+        "objective\\s*:"
+      ],
+      "lab_markers": [
+        "\\bspecimen\\b",
+        "\\baccession\\b",
+        "\\bperforming (lab|laboratory|site)\\b",
+        "\\bresult status\\b",
+        "\\breference range\\b",
+        "\\bref\\.?\\s*range\\b",
+        "\\bcollected\\b",
+        "\\bcollection date\\b",
+        "\\breported\\b",
+        "\\bordering (provider|physician)\\b",
+        "\\bfinal report\\b",
+        "\\bflag\\b",
+        "\\bunits\\b",
+        "\\blab director\\b",
+        "\\bclia\\b"
+      ],
+      "min_lab_markers": 2,
+      "panel_title": "^(cbc|cmp|bmp|lipid panel|(hemoglobin |hb)?a1c|urinalysis|tsh|culture|surgical pathology)\\b.*\\b(final|result|results|panel|report)\\b",
+      "panel_title_lines": 3,
+      "codeability": "non_codeable"
+    }
+  },
+  "final_placement": {
+    "comment": "2026-10-25: Final L2 of a page whose own L1 differs from its document's: final_placement[document L1][page L1] (context_rules: page_essence keeps the page's own label in Extracted; the document view is Final — a Lab Report > Pathology Report page inside a Progress Note is Progress Note / Lab and Imaging Results; absorb_into_progress_note; procedure_in_operative_document). A pair not listed: under the Progress Note, Others; under any other L1, the L2 the page classifier gave the page there (axes.under_l1: the model's, else the canon's), else its own name when that L1 has it, else Others. Never L1 / L1.",
+    "Progress Note": {
+      "Lab Report": "Lab and Imaging Results",
+      "Medication Record": "Medication List",
+      "Problem List": "Problem List",
+      "Forms and Questionnaires": "Questionnaire"
+    },
+    "Operative Note": {
+      "Procedure Note": "Intra-operative Record"
+    }
   }
 }

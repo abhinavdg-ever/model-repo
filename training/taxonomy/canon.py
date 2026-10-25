@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""The page canon (page_canon_v24.json): canon page types, the v24 path each
-resolves to, its codeability tag, and the lexicon that matches it.
+"""The page canon (page_canon.json, a copy of the pipeline's): canon page types,
+the path each resolves to in the taxonomy's names, its codeability tag, and the lexicon that matches it.
 
     from canon import Canon
     canon = Canon.load()
@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 HERE = Path(__file__).resolve().parent
-CANON_PATH = HERE / "page_canon_v24.json"
+CANON_PATH = HERE / "page_canon.json"
 HEADING_EXTRA_CHARS = 25
 
 

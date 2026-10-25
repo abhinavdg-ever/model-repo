@@ -14,7 +14,7 @@ TOOL = Path(__file__).resolve().parents[1]
 if str(TOOL) not in sys.path:
     sys.path.insert(0, str(TOOL))
 
-# The shape of taxonomy_v24.json with invented names, so the tests do not move
+# The shape of taxonomy.json with invented names, so the tests do not move
 # when the client's workbook does.
 TAXONOMY = {
     "version": "test",
@@ -81,7 +81,7 @@ def digest(path: Path) -> str:
 def taxonomy(tmp_path_factory):
     from taxonomy import Taxonomy
 
-    path = tmp_path_factory.mktemp("tax") / "taxonomy_v24.json"
+    path = tmp_path_factory.mktemp("tax") / "taxonomy.json"
     path.write_text(json.dumps(TAXONOMY), encoding="utf-8")
     return Taxonomy(path)
 

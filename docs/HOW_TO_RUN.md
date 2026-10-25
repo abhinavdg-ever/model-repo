@@ -72,7 +72,7 @@ is relative to `core-pipeline/`. The Python packages that load them come from
 | `hw/image_type_classification.pkl` | Stage 1 handwriting — RandomForest backup when the ConvNeXt `.pth` or torch is absent | Heuristic only (`hw_method='fallback'`) |
 | `hw/metadata.json` | Record of how the ConvNeXt was trained. Not read at run time; the checkpoint carries its own settings | Nothing |
 | `blank-junk/bert/` + `default.json` | Blank/junk passes 1 and 2: DistilBERT voter | The vote runs on keywords alone (`engine: keywords` in `/health`) |
-| `page-family/bert/` (Hugging Face BERT, from `training/bert-training`) | Page classifier: model type | Keywords alone classify (visible in `/health`) |
+| `page-family/page-axes/` (from `training/bert-training/train_axes.py`, taxonomy v29.2) | Page axes: L1 / L2 / L3, specialty | The keyword canon classifies alone (visible in `/health`) |
 | `kv-extraction/` (`manifest.json`, `features.json`, `thresholds.json`, `metrics.json`, eight `ranker_*.txt`, `level_heading_heron.txt`) | Key/value extraction `kv_extract`, version `v002` | `kv_extract` pages are marked skipped (`extraction_not_ready`); member, DOS and page number use their own rules |
 | `stages/lib/image_preprocess/english_words.txt.gz` (not under `models/`) | Mirror check | Mirror is never detected |
 

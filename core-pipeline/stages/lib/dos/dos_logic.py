@@ -5,7 +5,7 @@ Per page, two states:
   1. Key/value — among the DOS dates the extractor accepted (never a print key's), the
      first tier group in the order for the page's kind, which is its page classification
      L1. Discharge (Discharge Summary): the Admit (From) / Discharge (To) pair, then Date of
-     Service. Lab (Lab Report/Result): Collected, then Received, then Date of Service.
+     Service. Lab (Lab Report): Collected, then Received, then Date of Service.
      Other: Date of Service. Then weak keys, dt / dd last among them, then keyless
      header / footer dates. Lab pages rank Report Date after Received; lab and other
      pages end with the Admit / Discharge pair (a misclassified discharge page). A tier not listed

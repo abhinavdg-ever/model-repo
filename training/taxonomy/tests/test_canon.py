@@ -48,11 +48,13 @@ def test_ambiguous_terms_never_decide_alone():
 
 
 def test_the_built_canon_is_valid_under_the_taxonomy():
-    built = HERE / "page_canon_v24.json"
+    built = HERE / "page_canon.json"
     canon = json.loads(built.read_text(encoding="utf-8"))
-    tax = json.loads((HERE / "taxonomy_v24.json").read_text(encoding="utf-8"))
+    tax = json.loads((HERE / "taxonomy.json").read_text(encoding="utf-8"))
     section = tax["rules"]["section_L1"]
-    valid = set(tax["paths"]) | {section}
+    # A canon entry may stop at an L1 or L2 that has children (the canon names a
+    # family, not every leaf), so every prefix of a valid path is valid.
+    valid = {section} | {" > ".join(p.split(" > ")[:n]) for p in tax["paths"] for n in (1, 2, 3)}
     names = [e["page_type"] for e in canon["page_types"]]
     assert len(names) == len(set(names))
     for e in canon["page_types"]:

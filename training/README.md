@@ -1,36 +1,44 @@
-# Training: page classifier
+# Training: page classifier and encounter type
 
-Two folders, each standing alone with its own requirements, inputs and outputs.
-Neither imports from the other or from `core-pipeline/`.
+Three folders, each standing alone with its own requirements, inputs and outputs.
+None imports from another or from `core-pipeline/`. The data lives outside the
+repo, in `/Volumes/Extreme SSD/Advantmed/Training/` (`processed/` labels and training
+file, `ocr-jpeg/` page images, `encounter/` encounter tags, `mock/` synthetic pages,
+`reference/` notes and the 2026-10-25 Claude Code pack).
 
 | Folder | What it does | Input | Output |
 |---|---|---|---|
 | `annotation-tool/` | Tag page images with a page type and sub-type; read their text (Tesseract) into a training file | a folder of page images with `image_labels.csv` | `image_labels.csv` and `training_data.jsonl`, in that same image folder |
 | `bert-training/` | Train the page-axes model (L1, L2, L3, specialty, codeability) | `bert-training/data/training_data.jsonl` | `bert-training/output/page-axes/` (the model) |
+| `bert-training-encounter/` | Train the encounter-type model (Inpatient, F2F, Evisit, Home Visit, Not Available) | `bert-training-encounter/data/encounter_tags.jsonl` | `bert-training-encounter/output/encounter/` (the model) |
 
 Labels are L1 > L2 > L3, plus specialty, plus a derived codeability.
 
-* **Trainer: taxonomy v29** (2026-10-23). `taxonomy/build_taxonomy_v29.py` turns the
-  v29 rules file (`taxonomy/v29/taxonomy_v29.json`) into `taxonomy_v29.json` and
-  copies it into `bert-training/`.
-* **Annotation tool: still taxonomy v24** (`taxonomy/build_taxonomy.py` from
-  `Page_Taxonomy.xlsx`) until it is moved to v29.
+* **Trainer: taxonomy v29.2** (2026-10-25). `taxonomy/taxonomy.json` (= the
+  copy in `bert-training/`) is the pack's label space, copied as is. Its rules
+  version (context rules, page_type_overrides, merges), `label_sets.json`,
+  `specialty.json`, `sections.json`, `encounter_canon.json` and the labelling
+  scripts are copied, for reference, into `taxonomy/rules/`;
+  `taxonomy/rules/name_map.json` maps the 23 Oct names to v29.2.
+* **The approach** (page classification, continuity, encounter): `docs/APPROACH.md`.
 
 The old single-head trainer (`train.py`) was removed on 2026-10-23; it is in git
 history. Full detail is in each folder's README.
 
 > **Patient data.** Page images, OCR text and labels are patient records.
-> Nothing here prints page text. `bert-training/data/`, `bert-training/output/`
-> and every `*.jsonl` under `training/` are git-ignored — keep it that way.
+> Nothing here prints page text. `bert-training*/data/`, `bert-training*/output/`
+> and every `*.jsonl` under `training/` are git-ignored — keep it that way (the one
+> exception is the synthetic `bert-training/test_pages.jsonl`).
 
 
-**The canon** (`taxonomy/page_canon_v24.json`, 298 canon page types) maps
-each canon page type to its v24 path, codeability tag and lexicon. Build it
-with `python taxonomy/build_canon.py` (sources: retag.py's labels, the v1
-keyword canon, `taxonomy/canon_hand_map.json`, the workbook; `--check` fails
-on a stale copy). `python taxonomy/canon.py score <training_data.jsonl>`
-scores every page against it and reports agreement with the labels. The
-lexicons are the untuned v1 starting lists: tune them there.
+**The canon** (`taxonomy/page_canon.json`, about 295 canon page types) is a copy of
+the pipeline's `core-pipeline/stages/lib/keyword-canon/page_canon.json`: each canon
+page type with its path in the taxonomy's names, its codeability tag and its
+lexicon. The pipeline's copy is the one to edit (paths are re-derived with
+`python -m stages.lib.page_classify.canon_convert` from `core-pipeline/`); a repo
+test fails when the two copies differ. `python taxonomy/canon.py score
+<training_data.jsonl>` scores every page against it and reports agreement with the
+labels. The lexicons are starting lists: tune them on labelled pages.
 
 ---
 
@@ -96,24 +104,40 @@ python app.py ~/Desktop/Training/processed --add-to-training   # Add to Training
 ## 2. Copy the training file
 
 ```bash
-cp ~/Desktop/Training/processed/training_data.jsonl training/bert-training/data/
+T="/Volumes/Extreme SSD/Advantmed/Training"
+cp "$T/processed/training_data.jsonl" "$T/mock/mock_pages.jsonl" training/bert-training/data/
+cp "$T/encounter/encounter_tags.jsonl" "$T/mock/mock_pages.jsonl" training/bert-training-encounter/data/
 ```
 
 ## 3. Train the page-axes model
 
 On **Colab** (the usual way): put `train_axes.py`, `predict_axes.py`,
-`taxonomy_v29.json`, `requirements.txt` and `training_data.jsonl` in one Drive
+`taxonomy.json`, `requirements.txt`, `check_test_pages.py`, `test_pages.jsonl`
+and `training_data.jsonl` (+ `mock_pages.jsonl` to use the synthetic pages) in one Drive
 folder, open `bert-training/page_axes.ipynb`, choose a GPU runtime, set `BASE_PATH`
 and run the cells in order (`--check` first, then the run). On a PC, from
 `training/bert-training/`:
 
 ```bash
 python train_axes.py --check        # label space, split, 2 steps, time estimate; saves nothing
-python train_axes.py                # 5 epochs -> output/page-axes/
+python train_axes.py                # 20 epochs -> output/page-axes/
 python predict_axes.py --text "OPERATIVE REPORT ..."
 ```
 
 Install, options, the group split and the output files: `bert-training/README.md`.
+
+## 3b. Train the encounter model
+
+Same way, from `bert-training-encounter/` (`encounter.ipynb` on Colab, with
+`train_encounter.py`, `predict_encounter.py`, `requirements.txt`, `encounter_tags.jsonl`):
+
+```bash
+python train_encounter.py --check   # counts, split, 2 steps, time estimate; saves nothing
+python train_encounter.py           # 20 epochs -> output/encounter/
+```
+
+Detail: `bert-training-encounter/README.md`. The pipeline does not load it yet: see
+`docs/APPROACH.md` for how it would join the encounter engine.
 
 ## 4. Put the model into the pipeline
 
@@ -130,4 +154,5 @@ Each folder has its own, using made-up images and text only:
 ```bash
 cd training/annotation-tool && python -m pytest tests -q
 cd training/bert-training && python -m pytest tests -q
+cd training/bert-training-encounter && python -m pytest tests -q
 ```

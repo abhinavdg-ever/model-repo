@@ -279,7 +279,7 @@ Shared plumbing stays in `core-pipeline/stages/` (`_support.py`) and `stages/uti
 | `lib/member/stage.py` | **Stage 8.** Plumbing around the ported engine: picks the manifest row, chooses eligible pages, assembles the best text per page, runs `verify_record`, persists page rows and the summary, writes three CSVs including the V1-shaped comparison file. |
 | `lib/dos/stage.py` | **Stage 9.** Builds the marker-delimited text, takes each page's best key/value date from staging, calls `detect_dos_per_page` (key/value date, else edge keyword), persists the page's date, writes the DOS CSV. See `docs/DOS_LOGIC.md`. |
 | `lib/ocr/reuse.py` | skip_ocr: reuse on-disk OCR artifacts instead of re-running OCR stages. |
-| `lib/page_classify/stage.py` | Page family (model) and subtype (keywords). |
+| `lib/page_classify/stage.py` | Extracted page type: the page axes (model top 3 → keyword canon → Others), to `page_classification` and `staging/page_classification.json`. |
 | `lib/encounter/stage.py` | Encounter type (`encounter_type`). |
 | `lib/sequencing/stage.py` | Page sequencing (`page_sequencing`). |
 | `__init__.py` | Package marker. |
@@ -293,7 +293,7 @@ One folder per pipeline concern; only `canon_store.py` sits at the top level.
 | `image_preprocess/` | Stage 1: rotation / tilt / mirror, handwriting classifier, quality score |
 | `ocr/` | Docling final1 engine + section-header matching (stage 6) |
 | `blank_junk/` | Blank / junk rules, DistilBERT model bridge, bundled model code (`model/`) |
-| `page_classify/` | Page family from the model; subtype from keyword rules |
+| `page_classify/` | `axes.py` (gate), `page_rules.py` (title rules, lab guard), `arbitration.py` (Final per document), `canon_convert.py` (puts `page_canon.json` in the taxonomy's names), `taxonomy.py` (label space) |
 | `encounter/` | Encounter type per visit (tiered evidence: page type → explicit setting text → hints) |
 | `dos/` | Date-of-service driver: key/value date, else edge keyword |
 | `member/` | Member extraction + verification engine |
@@ -375,7 +375,7 @@ inserts).
 | `__init__.py` | Re-exports the four extractors. |
 | **`extractors/ner_based/`** | |
 | `keys.py` | Cuts the real sentence around a field key out of the page ("Patient Name: Robert Smith"), with the reach-across-a-gap rules. NER reads real text, not rebuilt tokens. |
-| `stages/lib/keyword-canon/*_canon.json` | Editable keyword / catalog files, reloaded on change (no restart): `blank_junk_context_canon.json` (blank/junk method: clinical / junk / demographic words, weights, thresholds, short-page geometry, voter cut-offs), `junk_keywords_canon.json` (regex fallback phrases), `dos_canon.json` (DOS labels, `edge_words`, filler words, confidences, clinical / discharge cues, `DOS_DEFAULT_DATE`), `member_keywords_canon.json` (member key groups / ignore labels), `section_header_canon.json`, `page_taxonomy.json` / `page_keyword_canon.json` / `page_arbitration.json` (page classification), `continuity_canon.json`, `encounter_canon.json`. Loaded via `stages/lib/canon_store.py`. |
+| `stages/lib/keyword-canon/*_canon.json` | Editable keyword / catalog files, reloaded on change (no restart): `blank_junk_context_canon.json` (blank/junk method: clinical / junk / demographic words, weights, thresholds, short-page geometry, voter cut-offs), `junk_keywords_canon.json` (regex fallback phrases), `dos_canon.json` (DOS labels, `edge_words`, filler words, confidences, clinical / discharge cues, `DOS_DEFAULT_DATE`), `member_keywords_canon.json` (member key groups / ignore labels), `section_header_canon.json`, `page_taxonomy.json` (the v29.2 label space + canon conversion tables) / `page_canon.json` (page keyword canon) / `page_arbitration.json` (page axes gates and rules, Final placement), `continuity_canon.json`, `encounter_canon.json`. Loaded via `stages/lib/canon_store.py`. |
 | `name.py` | Runs NER on each patient-name sentence, merges adjacent person spans, trims label words, and picks the best candidate. Returns *every* person found, so the caller can also spot a wrong member. |
 | `dob.py`, `member_id.py` | Second-pass DOB / MemberID from NER over their key sentences. |
 | `model.py` | Model loading and prediction: offline mode, retries, fail-loud on an unloadable model, GLiNER and HF-token backends. Short-circuits when the layer is disabled. |

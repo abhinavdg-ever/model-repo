@@ -21,7 +21,11 @@
     "eye associates",
     "eye care",
     "retina",
-    "vision center"
+    "vision center",
+    "optometrist",
+    "visionworks",
+    "eye specialists",
+    "eye care center"
    ],
    "body": [
     "intraocular",
@@ -33,8 +37,13 @@
     "dilated retinal",
     "cataract",
     "glaucoma",
-    "macular"
-   ]
+    "macular",
+    "refraction",
+    "iol calculation",
+    "intraocular lens",
+    "corneal topography"
+   ],
+   "_comment": "Ophthalmology and optometry are one combined specialty (client, 2026-10-24)."
   },
   "Cardiology": {
    "header": [
@@ -77,7 +86,8 @@
    "header": [
     "urology",
     "urologic",
-    "urological associates"
+    "urological associates",
+    "urological"
    ],
    "body": [
     "cystoscopy",
@@ -349,7 +359,10 @@
     "in-home care",
     "nursing visit note",
     "skilled nursing visit",
-    "visiting nurse"
+    "visiting nurse",
+    "in-home visit",
+    "in home visit",
+    "home visit summary"
    ],
    "body": [
     "activities of daily living in the home",
@@ -370,8 +383,92 @@
     "taxing effort to leave home",
     "total time",
     "type of visit: skilled",
-    "unable to leave home"
+    "unable to leave home",
+    "in-home assessment",
+    "in home assessment"
    ]
+  },
+  "Pain Management": {
+   "header": [
+    "pain management",
+    "pain & spine",
+    "pain and spine",
+    "interventional pain",
+    "spine and pain",
+    "pain clinic",
+    "pain center",
+    "pain centre",
+    "pain institute",
+    "pain specialists"
+   ],
+   "body": [
+    "medial branch block",
+    "radiofrequency ablation",
+    "epidural steroid injection",
+    "facet injection",
+    "pain contract",
+    "controlled substance agreement",
+    "trigger point injection",
+    "pmp reviewed"
+   ]
+  },
+  "Anesthesia": {
+   "header": [
+    "anesthesia",
+    "anesthesiology",
+    "anesthesia record",
+    "anesthesia associates",
+    "crna"
+   ],
+   "body": [
+    "airway",
+    "laryngoscopy grade",
+    "mallampati",
+    "asa class",
+    "sugammadex",
+    "propofol",
+    "induction",
+    "extubated",
+    "monitored anesthesia care"
+   ]
+  },
+  "Critical Care": {
+   "header": [
+    "critical care",
+    "intensive care unit",
+    "icu",
+    "micu",
+    "sicu",
+    "ccu"
+   ],
+   "body": [
+    "ventilator",
+    "fio2",
+    "peep",
+    "vasopressor",
+    "central line",
+    "arterial line",
+    "sedation vacation"
+   ]
+  },
+  "Surgery": {
+   "header": [
+    "general surgery",
+    "surgical associates",
+    "surgical specialists",
+    "department of surgery",
+    "surgical group"
+   ],
+   "body": [
+    "operative report",
+    "preoperative diagnosis",
+    "postoperative diagnosis",
+    "estimated blood loss",
+    "incision",
+    "specimens removed",
+    "wound closure"
+   ],
+   "_comment": "Not \"surgery center\" or \"surgical center\": an ambulatory surgery centre hosts eye, GI and pain procedures, so its name does not decide the specialty."
   }
  },
  "collapse_page_types": {

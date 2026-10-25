@@ -1,21 +1,20 @@
 """Stage: page classification → ``page_classification`` (the Extracted answer).
 
 Every page that is not blank, junk or duplicate is classified on its own,
-from the page's text (Final2 → Final1 → Tesseract, plain text), by its v24
-page axes (``axes.predict``): L1, L2 and L3 from the page-axes model where it
-is sure and the v24 keyword canon elsewhere. They are written as
-``page_type`` / ``page_subtype`` — L1 / L1 with one level, L1 / L2 with two,
-"L1 (L2)" / L3 with three — with the axes' codeability as the category and
-the whole answer (specialty included) in ``axes``. That per-page result is
-the **Extracted** answer and is what this stage writes.
+from the page's text (Final2 → Final1 → Tesseract, plain text), by its page
+axes (``axes.predict``): the page-axes model's top 3 where it is sure, the
+keyword canon (``page_canon.json``) elsewhere, Others when neither is. They are
+written as ``page_type`` / ``page_subtype`` — L1 / Others with one level, L1 /
+L2 with two, "L1 (L2)" / L3 with three — with the axes' codeability as the
+category, ``decided_by`` model / canon / rule / others, and the whole answer
+(the model's top 3 and specialty included) in ``axes``. That per-page result
+is the **Extracted** answer and is what this stage writes, to Postgres and to
+``<chart>/staging/page_classification.json`` (one entry per page name).
 
-The v1 ladder still runs, for its raw columns only (``bert_*``,
-``keyword_*``): BERT (``bert.py``, retired — no model folder, so NULL) and the
-v1 keyword canon (``keywords.py``), arbitrated by
-``arbitration.classify_page``. Its page type is no longer written. The continuation rules that can change it (an untitled
-page continuing another document; lab or radiology inside a Progress Note)
-need the continuity stage's documents and are applied by ``imaging_final`` as
-the **Final** answer.
+``bert_*`` / ``keyword_*`` columns are no longer filled (the old ladder is
+gone; the columns stay). The rules that re-place a page for its document (a
+lab page inside a Progress Note; an Others page) need the continuity stage's
+documents and are applied by ``imaging_final`` as the **Final** answer.
 
 Blank / junk / duplicate pages are ``non_codeable`` and keep their junk label
 as the sub-type; a label that is a taxonomy sub-type (Invoice) also gives its
@@ -30,7 +29,9 @@ Also writes ``imaging/<chart>_codeable.csv`` for review-ui Local Mode.
 """
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 from typing import Any, Optional
 
 from db import (
@@ -40,11 +41,11 @@ from db import (
     get_quality_map,
     upsert_page_classification,
 )
+from config import staging_dir
 from db.paths import imaging_csv, write_csv
 from stages._support import BJ_EXCLUDE, best_page_text, mark_completed, stage_run
 from stages.lib.canon_store import CANON_DIR, CanonFile
-from stages.lib.page_classify import axes, bert, keywords
-from stages.lib.page_classify.arbitration import classify_page
+from stages.lib.page_classify import axes
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,68 @@ CODEABLE_COLS = [
 ]
 
 _DOS_PROFILE: CanonFile[dict[str, Any]] = CanonFile(CANON_DIR / "dos_canon.json")
+
+STAGING_FILE = "page_classification.json"
+STAGING_VERSION = 1
+
+
+def staging_path(chart_name: str) -> Path:
+    return staging_dir(chart_name) / STAGING_FILE
+
+
+def _staged_entry(row: dict[str, Any], page_axes: Optional[axes.AxesResult], source: str) -> dict[str, Any]:
+    """One page of ``page_classification.json``: the Extracted value, who decided
+    it, the model's top 3, and the whole axes answer."""
+    whole = page_axes.as_json() if page_axes else (row.get("axes") or None)
+    return {
+        "page_type": row.get("page_type"),
+        "page_subtype": row.get("page_subtype"),
+        "model_type": row.get("model_type"),
+        "classification_category": row.get("classification_category"),
+        "confidence": row.get("confidence"),
+        "decided_by": row.get("decided_by"),
+        "needs_review": row.get("needs_review"),
+        "model_top3": (whole or {}).get("model_top3"),
+        "ocr_source": source or None,
+        "axes": whole,
+    }
+
+
+def write_staged(chart_name: str, pages: dict[str, dict[str, Any]]) -> Optional[Path]:
+    """``staging/page_classification.json``: ``pages`` keyed by page name, written
+    atomically (a temp file, then replace) like blank_junk.json."""
+    from datetime import datetime, timezone
+
+    path = staging_path(chart_name)
+    body = {
+        "version": STAGING_VERSION,
+        "chart_name": chart_name,
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "pages": pages,
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(body, indent=1, default=str), encoding="utf-8")
+        tmp.replace(path)
+    except OSError as exc:
+        logger.warning("could not write %s: %s", path, exc)
+        return None
+    return path
+
+
+def read_staged(chart_name: str) -> dict[str, dict[str, Any]]:
+    """The staged pages by page name; {} when the file is missing, unreadable or
+    of another version (readers then fall back to page_classification)."""
+    path = staging_path(chart_name)
+    try:
+        body = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, ValueError):
+        return {}
+    if body.get("version") != STAGING_VERSION:
+        return {}
+    pages = body.get("pages")
+    return pages if isinstance(pages, dict) else {}
 
 
 def _ocr_source_label(*, final2: Optional[str], final1: Optional[str], prelim: Optional[str]) -> str:
@@ -171,9 +234,8 @@ def _blank_junk_row(flag: str, junk_subtype: Optional[str], confidence: Any) -> 
     }
 
 
-def _page_row(page_axes: Optional[axes.AxesResult], ladder: Any) -> dict[str, Any]:
-    """The page's row: names and category from its axes; the v1 ladder's raw
-    model outputs beside them."""
+def _page_row(page_axes: Optional[axes.AxesResult]) -> dict[str, Any]:
+    """The page's row: names, category and decided_by from its axes."""
     page_type, page_subtype = axes.page_names(page_axes)
     codeability = page_axes.codeability if page_axes else axes.NEEDS_REVIEW
     path = [x for x in (page_axes.l1, page_axes.l2, page_axes.l3) if x] if page_axes else []
@@ -184,14 +246,9 @@ def _page_row(page_axes: Optional[axes.AxesResult], ladder: Any) -> dict[str, An
         "classification_category": _AXES_CATEGORY.get(codeability, "non_codeable"),
         "confidence": page_axes.l1_confidence if page_axes else None,
         "duplicate_flag": False,
-        "decided_by": "axes:" + "/".join(page_axes.sources[:3]) if page_axes else "no_text",
-        "needs_review": page_type is None or codeability == axes.NEEDS_REVIEW,
-        "bert_model_type": ladder.bert_model_type,
-        "bert_confidence": ladder.bert_confidence,
-        "keyword_page_subtype": ladder.keyword_page_subtype,
-        "keyword_score": ladder.keyword_score,
-        "keyword_margin": ladder.keyword_margin,
-        "keyword_title_hit": ladder.keyword_title_hit,
+        "decided_by": page_axes.decided_by if page_axes else "no_text",
+        "needs_review": page_type is None or codeability == axes.NEEDS_REVIEW or (
+            page_axes is not None and page_axes.decided_by == axes.BY_OTHERS),
         "axes": page_axes.as_json() if page_axes else None,
     }
 
@@ -205,8 +262,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             final2 = get_ocr_texts(conn, chart_id, "azuredocintel")
             quality = get_quality_map(conn, chart_id)
 
-        trained = bert.trained_classes()
-        counts = {"main": 0, "blank_junk": 0, "review": 0, "no_bert": 0, "axes_model": 0, "specialty": 0}
+        counts = {"main": 0, "blank_junk": 0, "review": 0, "axes_model": 0, "canon": 0, "others": 0, "specialty": 0}
         # Every page's row first: a duplicate takes its original's page type, and the
         # original can come later in the chart.
         built: dict[int, tuple[dict[str, Any], Any, str]] = {}
@@ -223,17 +279,15 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             else:
                 text = best_page_text(final2=f2, final1=f1, prelim=pr, quality_row=quality.get(page_id))
                 headings = tuple(_headings(f2, f1))
-                prediction = bert.predict(text)
-                keyword = keywords.classify(text, headings=headings)
-                ladder = classify_page(prediction, keyword, trained)
                 page_axes = axes.predict(text, headings)
-                row = _page_row(page_axes, ladder)
+                row = _page_row(page_axes)
                 if page_axes is not None:
-                    counts["axes_model"] += int(page_axes.route is not None)
+                    counts["axes_model"] += int(page_axes.decided_by == axes.MODEL)
+                    counts["canon"] += int(page_axes.decided_by == axes.CANON)
+                    counts["others"] += int(page_axes.decided_by == axes.BY_OTHERS)
                     counts["specialty"] += int(page_axes.specialty is not None)
                 counts["main"] += 1
                 counts["review"] += int(row["needs_review"])
-                counts["no_bert"] += int(prediction is None)
                 source = _ocr_source_label(final2=f2, final1=f1, prelim=pr)
             built[page_id] = (row, page_axes, source)
 
@@ -247,11 +301,13 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 row["decided_by"] = f"duplicate_of:{original}"
 
         csv_rows: list[dict[str, Any]] = []
+        staged: dict[str, dict[str, Any]] = {}
         with connect() as conn:
             for page in ctx.pages:
                 page_id = page["id"]
                 row, page_axes, source = built[page_id]
                 upsert_page_classification(conn, chart_id=chart_id, page_id=page_id, **row)
+                staged[page["page_name"]] = _staged_entry(row, page_axes, source)
                 if page_id in ctx.todo:
                     mark_completed(conn, ctx, page_id)
 
@@ -267,7 +323,6 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "tag": category,
                         "is_codeable": _DISPLAY.get(category, ""),
                         "needs_review": "y" if row["needs_review"] else "n",
-                        "keyword_title_hit": "y" if row.get("keyword_title_hit") else "n",
                         "ocr_source": source,
                         **{k: ("" if v is None else v)
                            for k, v in (page_axes.csv_columns() if page_axes else {}).items()},
@@ -275,18 +330,19 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 )
 
         path = write_csv(imaging_csv(ctx.chart_name, "codeable"), CODEABLE_COLS, csv_rows)
+        staged_path = write_staged(ctx.chart_name, staged)
         logger.info(
-            "page_subtype chart=%s main=%d blank_junk=%d review=%d keywords_only=%d "
-            "axes_model=%d specialty=%d → %s",
+            "page_subtype chart=%s main=%d blank_junk=%d review=%d model=%d canon=%d others=%d "
+            "specialty=%d → %s",
             ctx.chart_name, counts["main"], counts["blank_junk"], counts["review"],
-            counts["no_bert"], counts["axes_model"], counts["specialty"], path,
+            counts["axes_model"], counts["canon"], counts["others"], counts["specialty"], path,
         )
         return {
             "chart_id": chart_id,
             "codeable_csv": str(path),
+            "page_classification_json": str(staged_path) if staged_path else None,
             "pages_done": ctx.done,
             "skipped": ctx.skipped,
             **counts,
-            "bert": bert.status().get("ready", False),
             "page_axes": axes.status().get("ready", False),
         }

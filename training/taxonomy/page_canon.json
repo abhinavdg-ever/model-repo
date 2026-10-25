@@ -1,7 +1,7 @@
 {
-  "version": "v24.1",
-  "taxonomy": "v24",
-  "status": "Built by build_canon.py from labelled pages, the v1 keyword canon, a hand map and the workbook. Lexicons are the v1 starting lists or just the page type's own name: tune them with `python canon.py score`.",
+  "version": "2026-10-25",
+  "taxonomy": "v29.2",
+  "status": "The keyword canon: page types with their lexicons (title / body / ambiguous terms), codeability and path. Paths are in the page taxonomy's names (page_taxonomy.json), put there by `python -m stages.lib.page_classify.canon_convert` (see paths_from). Lexicons are starting lists or the page type's own name: tune them on labelled pages.",
   "how_to_match": [
     "Match case-insensitively on whole words or whole phrases, never on substrings of a longer word.",
     "Longest match wins: when one term is contained in a longer term that also matched at the same place, count only the longer one.",
@@ -59,7 +59,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Obstetrics and Gynecology",
       "lexicon": {
         "title_terms": [
           "Antepartum Record"
@@ -103,9 +103,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -138,9 +138,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -153,7 +153,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Audiology",
       "lexicon": {
         "title_terms": [
           "Audiology Report"
@@ -178,7 +178,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Behavioral Health",
       "lexicon": {
         "title_terms": [
           "Behavioral Health Note"
@@ -222,17 +222,17 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
       "page_type": "Clinical Diagnosis List",
       "family": "Problem List",
       "path": {
-        "L1": "Progress Note",
-        "L2": "",
+        "L1": "Problem List",
+        "L2": "Diagnosis List/Index",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -286,8 +286,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -320,8 +320,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -334,7 +334,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Emergency",
       "lexicon": {
         "title_terms": [
           "Emergency Department Note"
@@ -359,7 +359,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Emergency",
       "lexicon": {
         "title_terms": [
           "Emergency Note",
@@ -379,9 +379,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -394,7 +394,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Ophthalmology",
       "lexicon": {
         "title_terms": [
           "Eye Examination Report"
@@ -436,9 +436,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -468,9 +468,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -499,9 +499,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -556,9 +556,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -594,9 +594,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -629,9 +629,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -644,7 +644,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Nephrology",
       "lexicon": {
         "title_terms": [
           "Nephrology Note"
@@ -691,8 +691,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -705,7 +705,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Nursing",
       "lexicon": {
         "title_terms": [
           "Nurses Notes"
@@ -730,7 +730,7 @@
       },
       "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Nursing",
       "lexicon": {
         "title_terms": [
           "Nursing Note",
@@ -750,22 +750,22 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
       "page_type": "Nutrition Assessment",
       "family": "Assessment and Evaluation",
       "path": {
-        "L1": "Progress Note",
-        "L2": "",
+        "L1": "Forms and Questionnaires",
+        "L2": "Assessment",
         "L3": ""
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Nutrition",
       "lexicon": {
         "title_terms": [
           "Nutrition Assessment"
@@ -811,9 +811,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -845,9 +845,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -881,8 +881,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -914,8 +914,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -947,9 +947,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1007,9 +1007,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1022,7 +1022,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Oncology",
       "lexicon": {
         "title_terms": [
           "Oncology Note"
@@ -1069,9 +1069,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1105,8 +1105,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1142,16 +1142,16 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
       "page_type": "Perioperative Evaluation",
       "family": "Perioperative Evaluation",
       "path": {
-        "L1": "Progress Note",
-        "L2": "",
+        "L1": "Operative Note",
+        "L2": "Pre-operative",
         "L3": ""
       },
       "codeability": "codeable",
@@ -1198,8 +1198,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1231,7 +1231,7 @@
       "pages": 2,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -1264,7 +1264,7 @@
       "pages": 5,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -1298,8 +1298,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1335,8 +1335,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1367,9 +1367,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1382,7 +1382,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Obstetrics and Gynecology",
       "lexicon": {
         "title_terms": [
           "Prenatal Record"
@@ -1432,17 +1432,17 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
       "page_type": "Problem List",
       "family": "Problem List",
       "path": {
-        "L1": "Progress Note",
-        "L2": "",
+        "L1": "Problem List",
+        "L2": "Problem List",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -1464,7 +1464,7 @@
       "pages": 25,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -1506,7 +1506,7 @@
       "pages": 129,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -1520,7 +1520,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Behavioral Health",
       "lexicon": {
         "title_terms": [
           "Psychiatric Evaluation",
@@ -1541,7 +1541,7 @@
       "pages": 6,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -1572,9 +1572,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1605,8 +1605,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1640,8 +1640,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1679,9 +1679,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1736,9 +1736,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1769,9 +1769,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1827,8 +1827,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1863,8 +1863,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1891,9 +1891,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1924,7 +1924,7 @@
       "pages": 17,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -1957,8 +1957,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -1991,9 +1991,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -2024,9 +2024,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -2039,7 +2039,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Ophthalmology",
       "lexicon": {
         "title_terms": [
           "Visual Evaluation"
@@ -2055,7 +2055,7 @@
       "pages": 1,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -2088,21 +2088,21 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
       "page_type": "Ankle-Brachial Index Report",
-      "family": "Lab Report/Result",
+      "family": "Lab Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Ankle-Brachial Index Report"
       },
       "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Cardiology",
       "lexicon": {
         "title_terms": [
           "Ankle-Brachial Index Report"
@@ -2119,9 +2119,9 @@
     },
     {
       "page_type": "Bronchoscopy Report",
-      "family": "Lab Report/Result",
+      "family": "Lab Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Bronchoscopy Report"
       },
@@ -2146,7 +2146,7 @@
       "page_type": "Cardiac Catheterization Report",
       "family": "Procedure Note",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Cardiac Catheterization Report"
       },
@@ -2171,7 +2171,7 @@
       "page_type": "Cardiac catheterization report",
       "family": "Cardiac Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Cardiac Catheterization Report"
       },
@@ -2199,8 +2199,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -2208,13 +2208,13 @@
       "page_type": "Carotid Duplex Report",
       "family": "Diagnostic Study",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Carotid Duplex Report"
       },
       "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Cardiology",
       "lexicon": {
         "title_terms": [
           "Carotid Duplex Report"
@@ -2233,7 +2233,7 @@
       "page_type": "Carotid duplex",
       "family": "Vascular Studies",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Carotid Duplex Report"
       },
@@ -2257,8 +2257,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -2266,7 +2266,7 @@
       "page_type": "Colonoscopy / sigmoidoscopy report",
       "family": "Gastroenterology / GI",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Colonoscopy Report"
       },
@@ -2294,8 +2294,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -2303,7 +2303,7 @@
       "page_type": "Colonoscopy Report",
       "family": "Endoscopy Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Colonoscopy Report"
       },
@@ -2328,9 +2328,9 @@
       "page_type": "Colposcopy exam",
       "family": "Obstetrics & Women's Health",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Colposcopy Examination"
+        "L3": ""
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
@@ -2355,15 +2355,15 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
     {
       "page_type": "Cystoscopy Report",
-      "family": "Lab Report/Result",
+      "family": "Lab Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Cystoscopy Report"
       },
@@ -2388,7 +2388,7 @@
       "page_type": "Echocardiogram Report",
       "family": "Cardiac Diagnostic Test",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Echocardiogram Report"
       },
@@ -2416,7 +2416,7 @@
       "pages": 22,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -2424,9 +2424,9 @@
       "page_type": "ECG Graph",
       "family": "EKG / ECG Tracing",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Electrocardiogram"
+        "L3": "Electrocardiogram (EKG/ECG) Report"
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
@@ -2448,8 +2448,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -2457,9 +2457,9 @@
       "page_type": "EKG / ECG Tracing",
       "family": "EKG / ECG Tracing",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Electrocardiogram"
+        "L3": "Electrocardiogram (EKG/ECG) Report"
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
@@ -2485,7 +2485,7 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -2493,9 +2493,9 @@
       "page_type": "EKG Report (12-lead / routine)",
       "family": "Cardiac Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Electrocardiogram"
+        "L3": "Electrocardiogram (EKG/ECG) Report"
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
@@ -2520,8 +2520,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -2529,9 +2529,9 @@
       "page_type": "Electrocardiogram",
       "family": "Cardiac Diagnostic Test",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Electrocardiogram"
+        "L3": "Electrocardiogram (EKG/ECG) Report"
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
@@ -2554,7 +2554,7 @@
       "page_type": "EEG / neurophysiology report",
       "family": "Neurology",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Electroencephalogram Report"
       },
@@ -2582,7 +2582,7 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -2590,7 +2590,7 @@
       "page_type": "EMG report",
       "family": "Neurology",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Electromyography and Nerve Conduction"
       },
@@ -2617,8 +2617,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -2626,7 +2626,7 @@
       "page_type": "Electromyography Report",
       "family": "Neurodiagnostic Test",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Electromyography and Nerve Conduction"
       },
@@ -2651,7 +2651,7 @@
       "page_type": "Esophageal manometry",
       "family": "Gastroenterology / GI",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Esophageal Manometry Report"
       },
@@ -2676,17 +2676,17 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
     {
       "page_type": "Esophagogastroduodenoscopy Report",
-      "family": "Lab Report/Result",
+      "family": "Lab Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Esophagogastroduodenoscopy Report"
+        "L3": "Esophagogastroduodenoscopy (EGD) Report"
       },
       "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
@@ -2709,7 +2709,7 @@
       "page_type": "Doppler-duplex",
       "family": "Vascular Studies",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Extremity Doppler Report"
       },
@@ -2735,8 +2735,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -2744,7 +2744,7 @@
       "page_type": "Extremity Doppler Report",
       "family": "Cardiac Diagnostic Test",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Extremity Doppler Report"
       },
@@ -2769,7 +2769,7 @@
       "page_type": "Lower / upper extremity Doppler-duplex",
       "family": "Vascular Studies",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Extremity Doppler Report"
       },
@@ -2798,8 +2798,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -2807,9 +2807,9 @@
       "page_type": "Fundus photography",
       "family": "Ophthalmology Note",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Fundus Photography Report"
+        "L3": ""
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
@@ -2833,7 +2833,7 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -2841,7 +2841,7 @@
       "page_type": "Holter Monitor Report",
       "family": "Diagnostic Study",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Holter Monitor Report"
       },
@@ -2866,7 +2866,7 @@
       "page_type": "Holter monitor report",
       "family": "EKG / ECG Tracing",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Holter Monitor Report"
       },
@@ -2891,8 +2891,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -2900,7 +2900,7 @@
       "page_type": "Laryngoscopy report",
       "family": "ENT Note",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Laryngoscopy Procedure Report"
       },
@@ -2926,7 +2926,7 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -2934,9 +2934,9 @@
       "page_type": "Lens Parameters",
       "family": "Ophthalmology Note",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Lens Parameters"
+        "L3": "Optical Biometry (IOL Calculation)"
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
@@ -2960,7 +2960,7 @@
       "pages": 0,
       "provenance": {
         "path": "name",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -2968,9 +2968,9 @@
       "page_type": "Myocardial perfusion imaging",
       "family": "Nuclear Medicine Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Myocardial Perfusion Study"
+        "L3": "Stress Test"
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
@@ -2997,7 +2997,7 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3005,7 +3005,7 @@
       "page_type": "Neurocognitive screening exam",
       "family": "Psychiatric Evaluation",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Neurocognitive Screening Examination"
       },
@@ -3032,7 +3032,7 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3040,7 +3040,7 @@
       "page_type": "Oximetry Report",
       "family": "Sleep Study",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Oximetry Report"
       },
@@ -3065,7 +3065,7 @@
       "page_type": "Oximetry report",
       "family": "Respiratory",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Oximetry Report"
       },
@@ -3090,8 +3090,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3099,7 +3099,7 @@
       "page_type": "Pacemaker Device Report",
       "family": "Cardiac Diagnostic Test",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Pacemaker Device Report"
       },
@@ -3124,7 +3124,7 @@
       "page_type": "Pacemaker Report",
       "family": "Implants",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Pacemaker Device Report"
       },
@@ -3151,8 +3151,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3160,9 +3160,9 @@
       "page_type": "Pap and HPV Report",
       "family": "Obstetric and Gynecologic Record",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Pap and HPV Report"
+        "L3": ""
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
@@ -3185,9 +3185,9 @@
       "page_type": "Pap smear report",
       "family": "Obstetrics & Women's Health",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Pap and HPV Report"
+        "L3": ""
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
@@ -3213,8 +3213,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3222,13 +3222,13 @@
       "page_type": "Plethysmography Report",
       "family": "Diagnostic Study",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Plethysmography Report"
       },
       "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Cardiology",
       "lexicon": {
         "title_terms": [
           "Plethysmography Report"
@@ -3247,7 +3247,7 @@
       "page_type": "Plethysmography report",
       "family": "Vascular Studies",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Plethysmography Report"
       },
@@ -3272,8 +3272,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3281,13 +3281,13 @@
       "page_type": "Pulmonary Function Test",
       "family": "Diagnostic Study",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Pulmonary Function Test"
       },
       "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Pulmonology",
       "lexicon": {
         "title_terms": [
           "Pulmonary Function Test"
@@ -3306,7 +3306,7 @@
       "page_type": "Pulmonary function test / spirometry",
       "family": "Respiratory",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Pulmonary Function Test"
       },
@@ -3334,16 +3334,16 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
     {
       "page_type": "Sigmoidoscopy Report",
-      "family": "Lab Report/Result",
+      "family": "Lab Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Sigmoidoscopy Report"
       },
@@ -3368,7 +3368,7 @@
       "page_type": "Polysomnography",
       "family": "Sleep Study",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Sleep Study Report"
       },
@@ -3394,8 +3394,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3403,7 +3403,7 @@
       "page_type": "Sleep Study",
       "family": "Sleep Study",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Sleep Study Report"
       },
@@ -3428,8 +3428,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3437,7 +3437,7 @@
       "page_type": "Sleep Study Report",
       "family": "Sleep Study",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Sleep Study Report"
       },
@@ -3462,7 +3462,7 @@
       "page_type": "Split-night sleep study",
       "family": "Sleep Study",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Sleep Study Report"
       },
@@ -3485,16 +3485,16 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
     {
       "page_type": "Split Night Study Report",
-      "family": "Lab Report/Result",
+      "family": "Lab Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Split Night Study Report"
       },
@@ -3519,9 +3519,9 @@
       "page_type": "Stress Test",
       "family": "Cardiac Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Stress Test Report"
+        "L3": "Stress Test"
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
@@ -3544,8 +3544,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3553,9 +3553,9 @@
       "page_type": "Stress Test Report",
       "family": "Cardiac Diagnostic Test",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Stress Test Report"
+        "L3": "Stress Test"
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
@@ -3578,9 +3578,9 @@
       "page_type": "Treadmill Report",
       "family": "Cardiac Diagnostic Test",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Stress Test Report"
+        "L3": "Stress Test"
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
@@ -3603,9 +3603,9 @@
       "page_type": "Treadmill report",
       "family": "Cardiac Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Stress Test Report"
+        "L3": "Stress Test"
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
@@ -3626,8 +3626,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3635,7 +3635,7 @@
       "page_type": "Sudoscan",
       "family": "Neurology",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Sudoscan Report"
       },
@@ -3659,7 +3659,7 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3667,7 +3667,7 @@
       "page_type": "CPAP / BiPAP titration report",
       "family": "Sleep Study",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Titration Report"
       },
@@ -3694,15 +3694,15 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
     {
       "page_type": "Videonystagmography Report",
-      "family": "Lab Report/Result",
+      "family": "Lab Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Videonystagmography Report"
       },
@@ -3725,11 +3725,11 @@
     },
     {
       "page_type": "Visual Field Interpretation",
-      "family": "Lab Report/Result",
+      "family": "Lab Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Visual Field Interpretation"
+        "L3": "Visual Field Report"
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
@@ -3752,7 +3752,7 @@
       "page_type": "Cardiac Report",
       "family": "Cardiac Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Others"
       },
@@ -3779,8 +3779,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3788,7 +3788,7 @@
       "page_type": "Cardiovascular Report",
       "family": "Cardiac Diagnostic Test",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Others"
       },
@@ -3813,7 +3813,7 @@
       "page_type": "DPN results",
       "family": "Neurology",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Others"
       },
@@ -3838,7 +3838,7 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3846,13 +3846,13 @@
       "page_type": "Endoscopy Report",
       "family": "Endoscopy Report",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
-        "L3": "Others"
+        "L3": "Endoscopy Report"
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Gastroenterology",
       "lexicon": {
         "title_terms": [
           "Endoscopy Report"
@@ -3871,7 +3871,7 @@
       "page_type": "Endoscopy report",
       "family": "Gastroenterology / GI",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Others"
       },
@@ -3898,8 +3898,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3907,7 +3907,7 @@
       "page_type": "Gastroenterology / GI",
       "family": "Gastroenterology / GI",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Others"
       },
@@ -3932,8 +3932,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3941,7 +3941,7 @@
       "page_type": "Vascular Studies",
       "family": "Vascular Studies",
       "path": {
-        "L1": "Lab Report/Result",
+        "L1": "Lab Report",
         "L2": "Diagnostic Study",
         "L3": "Others"
       },
@@ -3968,7 +3968,7 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -3976,8 +3976,8 @@
       "page_type": "Allergies Report",
       "family": "Allergies Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Allergy Testing Report"
       },
       "codeability": "non_codeable",
@@ -4001,8 +4001,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -4010,8 +4010,8 @@
       "page_type": "Allergy List",
       "family": "Laboratory Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Allergy Testing Report"
       },
       "codeability": "non_codeable",
@@ -4035,13 +4035,13 @@
       "page_type": "Allergy Testing Report",
       "family": "Laboratory Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Allergy Testing Report"
       },
       "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Pulmonology",
       "lexicon": {
         "title_terms": [
           "Allergy Testing Report"
@@ -4060,8 +4060,8 @@
       "page_type": "Allergy testing report",
       "family": "Laboratory Data",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Allergy Testing Report"
       },
       "codeability": "non_codeable",
@@ -4086,17 +4086,17 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
     {
       "page_type": "Chemistry Report",
-      "family": "Lab Report/Result",
+      "family": "Lab Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Chemistry Report"
       },
       "codeability": "non_codeable",
@@ -4120,13 +4120,13 @@
       "page_type": "FISH Report",
       "family": "Laboratory Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "FISH Report"
       },
       "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Pathology",
       "lexicon": {
         "title_terms": [
           "FISH Report"
@@ -4147,7 +4147,7 @@
       "pages": 1,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -4155,13 +4155,13 @@
       "page_type": "Genetic Test Report",
       "family": "Laboratory Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Genetic Test Report"
       },
       "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Pathology",
       "lexicon": {
         "title_terms": [
           "Genetic Test Report",
@@ -4183,7 +4183,7 @@
       "pages": 1,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -4191,8 +4191,8 @@
       "page_type": "Glucose Report",
       "family": "Laboratory Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Glucose Report"
       },
       "codeability": "non_codeable",
@@ -4216,8 +4216,8 @@
       "page_type": "Glucose report",
       "family": "Laboratory Data",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Glucose Report"
       },
       "codeability": "non_codeable",
@@ -4243,8 +4243,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -4252,8 +4252,8 @@
       "page_type": "Hematology",
       "family": "Laboratory Data",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Hematology Report"
       },
       "codeability": "non_codeable",
@@ -4278,8 +4278,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -4287,8 +4287,8 @@
       "page_type": "Hematology Report",
       "family": "Laboratory Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Hematology Report"
       },
       "codeability": "non_codeable",
@@ -4310,11 +4310,11 @@
     },
     {
       "page_type": "INR and Prothrombin Time",
-      "family": "Lab Report/Result",
+      "family": "Lab Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
-        "L3": "INR and Prothrombin Time"
+        "L1": "Lab Report",
+        "L2": "Lab Result",
+        "L3": "Coagulation Report"
       },
       "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
@@ -4335,10 +4335,10 @@
     },
     {
       "page_type": "Laboratory Flow Sheet",
-      "family": "Lab Report/Result",
+      "family": "Lab Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Laboratory Flow Sheet"
       },
       "codeability": "non_codeable",
@@ -4362,8 +4362,8 @@
       "page_type": "Microbiology",
       "family": "Laboratory Data",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Microbiology Report"
       },
       "codeability": "non_codeable",
@@ -4386,8 +4386,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -4395,8 +4395,8 @@
       "page_type": "Microbiology Report",
       "family": "Laboratory Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Microbiology Report"
       },
       "codeability": "non_codeable",
@@ -4420,8 +4420,8 @@
       "page_type": "Urinalysis",
       "family": "Laboratory Data",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Urinalysis Report"
       },
       "codeability": "non_codeable",
@@ -4445,8 +4445,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -4454,8 +4454,8 @@
       "page_type": "Urinalysis Report",
       "family": "Laboratory Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Urinalysis Report"
       },
       "codeability": "non_codeable",
@@ -4479,8 +4479,8 @@
       "page_type": "Chemistry",
       "family": "Laboratory Data",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Others"
       },
       "codeability": "non_codeable",
@@ -4508,8 +4508,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -4517,8 +4517,8 @@
       "page_type": "Laboratory Result",
       "family": "Laboratory Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Laboratory",
+        "L1": "Lab Report",
+        "L2": "Lab Result",
         "L3": "Others"
       },
       "codeability": "non_codeable",
@@ -4542,8 +4542,8 @@
       "page_type": "Biopsy Report",
       "family": "Pathology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Pathology",
+        "L1": "Lab Report",
+        "L2": "Pathology Report",
         "L3": "Biopsy Report"
       },
       "codeability": "codeable",
@@ -4568,16 +4568,16 @@
       "pages": 6,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
     {
       "page_type": "Cytology Report",
-      "family": "Lab Report/Result",
+      "family": "Lab Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Pathology",
+        "L1": "Lab Report",
+        "L2": "Pathology Report",
         "L3": "Cytology Report"
       },
       "codeability": "codeable",
@@ -4599,10 +4599,10 @@
     },
     {
       "page_type": "Cytometry Report",
-      "family": "Lab Report/Result",
+      "family": "Lab Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Pathology",
+        "L1": "Lab Report",
+        "L2": "Pathology Report",
         "L3": "Cytometry Report"
       },
       "codeability": "codeable",
@@ -4626,8 +4626,8 @@
       "page_type": "Cytology / molecular report",
       "family": "Pathology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Pathology",
+        "L1": "Lab Report",
+        "L2": "Pathology Report",
         "L3": "Molecular Diagnostics Report"
       },
       "codeability": "codeable",
@@ -4656,8 +4656,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -4665,8 +4665,8 @@
       "page_type": "Mohs surgery report",
       "family": "Pathology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Pathology",
+        "L1": "Lab Report",
+        "L2": "Pathology Report",
         "L3": "Others"
       },
       "codeability": "non_codeable",
@@ -4690,7 +4690,7 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -4698,13 +4698,13 @@
       "page_type": "Pathology Report",
       "family": "Pathology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Pathology",
+        "L1": "Lab Report",
+        "L2": "Pathology Report",
         "L3": "Others"
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Pathology",
       "lexicon": {
         "title_terms": [
           "Pathology Report"
@@ -4726,7 +4726,7 @@
       "pages": 11,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -4734,8 +4734,8 @@
       "page_type": "Tissue Report",
       "family": "Pathology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Pathology",
+        "L1": "Lab Report",
+        "L2": "Pathology Report",
         "L3": "Others"
       },
       "codeability": "non_codeable",
@@ -4758,8 +4758,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -4767,8 +4767,8 @@
       "page_type": "Bone Density (DEXA) Report",
       "family": "Radiology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "Bone Mineral Density Report"
       },
       "codeability": "non_codeable",
@@ -4797,8 +4797,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -4806,8 +4806,8 @@
       "page_type": "CT Angiography",
       "family": "Cardiac Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "CT Angiography Report"
       },
       "codeability": "non_codeable",
@@ -4833,7 +4833,7 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -4841,8 +4841,8 @@
       "page_type": "CT Scan Report",
       "family": "Radiology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "CT Scan Report"
       },
       "codeability": "non_codeable",
@@ -4867,7 +4867,7 @@
       "pages": 30,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -4875,8 +4875,8 @@
       "page_type": "Tomography",
       "family": "Radiology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "CT Scan Report"
       },
       "codeability": "non_codeable",
@@ -4899,8 +4899,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -4908,8 +4908,8 @@
       "page_type": "Tomography Report",
       "family": "Radiology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "CT Scan Report"
       },
       "codeability": "non_codeable",
@@ -4931,15 +4931,15 @@
     },
     {
       "page_type": "MR Angiography Report",
-      "family": "Lab Report/Result",
+      "family": "Lab Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "MR Angiography Report"
       },
       "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Neurology",
       "lexicon": {
         "title_terms": [
           "MR Angiography Report"
@@ -4958,13 +4958,13 @@
       "page_type": "Brain MRI Report",
       "family": "Radiology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
-        "L3": "MRI Report"
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
+        "L3": "Brain MRI Report"
       },
       "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Neurology",
       "lexicon": {
         "title_terms": [
           "Brain MRI Report"
@@ -4983,8 +4983,8 @@
       "page_type": "MR brain report",
       "family": "Radiology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "MRI Report"
       },
       "codeability": "non_codeable",
@@ -5008,8 +5008,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -5017,8 +5017,8 @@
       "page_type": "MRI Report",
       "family": "Radiology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "MRI Report"
       },
       "codeability": "non_codeable",
@@ -5042,7 +5042,7 @@
       "pages": 3,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -5050,8 +5050,8 @@
       "page_type": "Radiology Report",
       "family": "Radiology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "Mammogram Report"
       },
       "codeability": "non_codeable",
@@ -5079,7 +5079,7 @@
       "pages": 21,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -5087,8 +5087,8 @@
       "page_type": "Nuclear Medicine Report",
       "family": "Nuclear Medicine Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "Nuclear Medicine Report"
       },
       "codeability": "codeable",
@@ -5114,7 +5114,7 @@
       "pages": 2,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -5122,8 +5122,8 @@
       "page_type": "SPECT report",
       "family": "Nuclear Medicine Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "Nuclear Medicine Report"
       },
       "codeability": "codeable",
@@ -5148,7 +5148,7 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -5156,8 +5156,8 @@
       "page_type": "Sonogram Report",
       "family": "Radiology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "Ultrasound Report"
       },
       "codeability": "non_codeable",
@@ -5181,8 +5181,8 @@
       "page_type": "Sonogram report",
       "family": "Radiology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "Ultrasound Report"
       },
       "codeability": "non_codeable",
@@ -5206,8 +5206,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -5215,8 +5215,8 @@
       "page_type": "Ultrasound Report",
       "family": "Radiology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "Ultrasound Report"
       },
       "codeability": "non_codeable",
@@ -5241,7 +5241,7 @@
       "pages": 9,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -5249,8 +5249,8 @@
       "page_type": "X Ray Report",
       "family": "Radiology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "X-Ray Report"
       },
       "codeability": "non_codeable",
@@ -5276,8 +5276,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy L3"
       }
     },
@@ -5285,8 +5285,8 @@
       "page_type": "X-Ray Report",
       "family": "Radiology Report",
       "path": {
-        "L1": "Lab Report/Result",
-        "L2": "Radiology",
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
         "L3": "X-Ray Report"
       },
       "codeability": "non_codeable",
@@ -5311,7 +5311,7 @@
       "family": "Operative Report",
       "path": {
         "L1": "Operative Note",
-        "L2": "Anesthesia Record",
+        "L2": "Procedure List",
         "L3": ""
       },
       "codeability": "codeable",
@@ -5335,8 +5335,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -5349,7 +5349,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Critical Care",
       "lexicon": {
         "title_terms": [
           "ICU Flow Sheet"
@@ -5394,9 +5394,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -5431,8 +5431,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -5440,7 +5440,7 @@
       "family": "Operative Note",
       "path": {
         "L1": "Operative Note",
-        "L2": "Procedure",
+        "L2": "Procedure List",
         "L3": ""
       },
       "codeability": "codeable",
@@ -5494,9 +5494,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -5528,9 +5528,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -5560,8 +5560,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -5595,7 +5595,7 @@
       "pages": 15,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -5627,9 +5627,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -5662,8 +5662,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -5676,7 +5676,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Emergency",
       "lexicon": {
         "title_terms": [
           "Triage Report"
@@ -5745,9 +5745,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -5781,8 +5781,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -5817,9 +5817,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -5832,7 +5832,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Dialysis",
       "lexicon": {
         "title_terms": [
           "Dialysis Treatment Record"
@@ -5902,8 +5902,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -5937,8 +5937,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -6021,8 +6021,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -6110,7 +6110,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Oncology",
       "lexicon": {
         "title_terms": [
           "Radiation Therapy Record"
@@ -6154,9 +6154,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -6188,8 +6188,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -6220,8 +6220,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -6254,8 +6254,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -6288,9 +6288,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -6303,7 +6303,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Rehabilitation",
       "lexicon": {
         "title_terms": [
           "Physical Therapy Note"
@@ -6348,8 +6348,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -6382,8 +6382,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -6415,8 +6415,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -6473,9 +6473,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -6506,8 +6506,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -6520,7 +6520,7 @@
       },
       "codeability": "codeable",
       "codeability_rule": "page_type_tag",
-      "specialty": "",
+      "specialty": "Wound Care",
       "lexicon": {
         "title_terms": [
           "Wound Care Note"
@@ -6565,9 +6565,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -6599,7 +6599,7 @@
       "pages": 6,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -6631,7 +6631,7 @@
       "pages": 4,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -6666,7 +6666,7 @@
       "pages": 32,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -6697,8 +6697,8 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -6728,7 +6728,7 @@
       "pages": 6,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -6782,7 +6782,7 @@
       "pages": 1,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -6813,7 +6813,7 @@
       "pages": 3,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -6844,7 +6844,7 @@
       "pages": 6,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -6853,7 +6853,7 @@
       "family": "Discharge Summary",
       "path": {
         "L1": "Discharge Summary",
-        "L2": "Others",
+        "L2": "Discharge Diagnosis",
         "L3": ""
       },
       "codeability": "discharge",
@@ -6874,7 +6874,7 @@
       "pages": 2,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -6906,7 +6906,7 @@
       "pages": 8,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -6915,7 +6915,7 @@
       "family": "Patient Demographics",
       "path": {
         "L1": "Demographics",
-        "L2": "Patient Demographics",
+        "L2": "Patient Information",
         "L3": ""
       },
       "codeability": "codeable",
@@ -6942,7 +6942,7 @@
       "pages": 36,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -6951,7 +6951,7 @@
       "family": "Patient Demographics",
       "path": {
         "L1": "Demographics",
-        "L2": "Patient Demographics",
+        "L2": "Patient Information",
         "L3": ""
       },
       "codeability": "codeable",
@@ -6973,17 +6973,17 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
       "page_type": "Patient Registration",
       "family": "Patient Demographics",
       "path": {
-        "L1": "Demographics",
-        "L2": "Patient Demographics",
+        "L1": "Administrative",
+        "L2": "Patient Registration",
         "L3": ""
       },
       "codeability": "codeable",
@@ -7005,9 +7005,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -7092,9 +7092,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -7122,9 +7122,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -7158,9 +7158,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -7194,8 +7194,8 @@
       "pages": 0,
       "provenance": {
         "path": "name",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -7228,7 +7228,7 @@
       "pages": 30,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -7264,9 +7264,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -7274,7 +7274,7 @@
       "family": "Medication Record",
       "path": {
         "L1": "Medication Record",
-        "L2": "Medication Reconciliation",
+        "L2": "Medication List",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -7374,9 +7374,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -7433,9 +7433,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -7468,9 +7468,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -7525,9 +7525,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -7559,16 +7559,16 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
       "page_type": "HIPAA Form",
-      "family": "Consent Form",
+      "family": "Consent and Authorization",
       "path": {
-        "L1": "Consent Form",
-        "L2": "HIPAA Form",
+        "L1": "Consent and Authorization",
+        "L2": "HIPAA and Privacy",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -7592,16 +7592,16 @@
       "pages": 10,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
     {
       "page_type": "Immunization Consent Form",
-      "family": "Consent Form",
+      "family": "Consent and Authorization",
       "path": {
-        "L1": "Consent Form",
-        "L2": "Immunization Consent Form",
+        "L1": "Consent and Authorization",
+        "L2": "Immunization Consent",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -7623,10 +7623,10 @@
     },
     {
       "page_type": "Patient Agreement Form",
-      "family": "Consent Form",
+      "family": "Consent and Authorization",
       "path": {
-        "L1": "Consent Form",
-        "L2": "Patient Agreement Form",
+        "L1": "Consent and Authorization",
+        "L2": "General Consent",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -7648,10 +7648,10 @@
     },
     {
       "page_type": "Surgical Consent Form",
-      "family": "Consent Form",
+      "family": "Consent and Authorization",
       "path": {
-        "L1": "Consent Form",
-        "L2": "Surgical Consent Form",
+        "L1": "Consent and Authorization",
+        "L2": "Surgical Consent",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -7673,10 +7673,10 @@
     },
     {
       "page_type": "Transfusion Consent Form",
-      "family": "Consent Form",
+      "family": "Consent and Authorization",
       "path": {
-        "L1": "Consent Form",
-        "L2": "Transfusion Consent Form",
+        "L1": "Consent and Authorization",
+        "L2": "Transfusion Consent",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -7698,10 +7698,10 @@
     },
     {
       "page_type": "Consent Form",
-      "family": "Consent Form",
+      "family": "Consent and Authorization",
       "path": {
-        "L1": "Consent Form",
-        "L2": "Others",
+        "L1": "Consent and Authorization",
+        "L2": "General Consent",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -7727,15 +7727,15 @@
       "pages": 16,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
     {
       "page_type": "Assignment of Benefits",
-      "family": "Authorization",
+      "family": "Consent and Authorization",
       "path": {
-        "L1": "Authorization",
+        "L1": "Consent and Authorization",
         "L2": "Assignment of Benefits",
         "L3": ""
       },
@@ -7758,10 +7758,10 @@
     },
     {
       "page_type": "Prior Authorization Request",
-      "family": "Authorization",
+      "family": "Consent and Authorization",
       "path": {
-        "L1": "Authorization",
-        "L2": "Prior Authorization Request",
+        "L1": "Consent and Authorization",
+        "L2": "Prior Authorization",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -7785,7 +7785,7 @@
       "page_type": "Insurance Authorization Form",
       "family": "Referral & Authorization",
       "path": {
-        "L1": "Authorization",
+        "L1": "Consent and Authorization",
         "L2": "Referral Authorization",
         "L3": ""
       },
@@ -7810,16 +7810,16 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
       "page_type": "Referral & Authorization",
       "family": "Referral & Authorization",
       "path": {
-        "L1": "Authorization",
+        "L1": "Consent and Authorization",
         "L2": "Referral Authorization",
         "L3": ""
       },
@@ -7844,16 +7844,16 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
       "page_type": "Referral Authorization",
       "family": "Authorization Form",
       "path": {
-        "L1": "Authorization",
+        "L1": "Consent and Authorization",
         "L2": "Referral Authorization",
         "L3": ""
       },
@@ -7878,7 +7878,7 @@
       "page_type": "Referral Authorization Form",
       "family": "Order and Requisition",
       "path": {
-        "L1": "Authorization",
+        "L1": "Consent and Authorization",
         "L2": "Referral Authorization",
         "L3": ""
       },
@@ -7903,7 +7903,7 @@
       "page_type": "Referral Request",
       "family": "Referral & Authorization",
       "path": {
-        "L1": "Authorization",
+        "L1": "Consent and Authorization",
         "L2": "Referral Authorization",
         "L3": ""
       },
@@ -7928,16 +7928,16 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
       "page_type": "Referral authorization form",
       "family": "Referral & Authorization",
       "path": {
-        "L1": "Authorization",
+        "L1": "Consent and Authorization",
         "L2": "Referral Authorization",
         "L3": ""
       },
@@ -7962,17 +7962,17 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
       "page_type": "Release of Information Authorization",
-      "family": "Authorization",
+      "family": "Consent and Authorization",
       "path": {
-        "L1": "Authorization",
-        "L2": "Release of Information Authorization",
+        "L1": "Consent and Authorization",
+        "L2": "Release of Information",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -7994,10 +7994,10 @@
     },
     {
       "page_type": "Authorization Form",
-      "family": "Authorization",
+      "family": "Consent and Authorization",
       "path": {
-        "L1": "Authorization",
-        "L2": "Others",
+        "L1": "Consent and Authorization",
+        "L2": "General Authorization",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -8021,8 +8021,8 @@
       "page_type": "Clinical Summary",
       "family": "Clinical Summary",
       "path": {
-        "L1": "Problem List",
-        "L2": "",
+        "L1": "Clinical Summary",
+        "L2": "Others",
         "L3": ""
       },
       "codeability": "needs_review",
@@ -8047,8 +8047,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy"
       },
       "codeability_note": "codeable when bound into a progress note, non_codeable standing alone; decided after continuity"
@@ -8110,8 +8110,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy"
       },
       "codeability_note": "codeable when bound into a progress note, non_codeable standing alone; decided after continuity"
@@ -8143,8 +8143,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy"
       },
       "codeability_note": "codeable when bound into a progress note, non_codeable standing alone; decided after continuity"
@@ -8205,7 +8205,7 @@
       "pages": 1,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     },
@@ -8264,8 +8264,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy"
       },
       "codeability_note": "codeable when bound into a progress note, non_codeable standing alone; decided after continuity"
@@ -8300,7 +8300,7 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy"
       },
       "codeability_note": "codeable when bound into a progress note, non_codeable standing alone; decided after continuity"
@@ -8333,7 +8333,7 @@
       "pages": 1,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       },
       "codeability_note": "codeable when bound into a progress note, non_codeable standing alone; decided after continuity"
@@ -8366,7 +8366,7 @@
       "pages": 4,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       },
       "codeability_note": "codeable when bound into a progress note, non_codeable standing alone; decided after continuity"
@@ -8403,8 +8403,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy"
       },
       "codeability_note": "codeable when bound into a progress note, non_codeable standing alone; decided after continuity"
@@ -8414,7 +8414,7 @@
       "family": "Screening and Checklist",
       "path": {
         "L1": "Forms and Questionnaires",
-        "L2": "Questionnaire",
+        "L2": "Assessment",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -8464,8 +8464,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy"
       },
       "codeability_note": "codeable when bound into a progress note, non_codeable standing alone; decided after continuity"
@@ -8501,8 +8501,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy"
       },
       "codeability_note": "codeable when bound into a progress note, non_codeable standing alone; decided after continuity"
@@ -8536,7 +8536,7 @@
       "pages": 22,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       },
       "codeability_note": "codeable when bound into a progress note, non_codeable standing alone; decided after continuity"
@@ -8567,8 +8567,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy"
       },
       "codeability_note": "codeable when bound into a progress note, non_codeable standing alone; decided after continuity"
@@ -8625,9 +8625,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -8656,9 +8656,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -8716,9 +8716,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -8747,9 +8747,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -8781,8 +8781,8 @@
       "page_type": "Ambulatory Correspondence",
       "family": "Messages",
       "path": {
-        "L1": "Patient Communication",
-        "L2": "Provider Letter",
+        "L1": "Provider Letter",
+        "L2": "Others",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -8805,16 +8805,16 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
       "page_type": "Letter",
       "family": "Messages",
       "path": {
-        "L1": "Patient Communication",
-        "L2": "Provider Letter",
+        "L1": "Provider Letter",
+        "L2": "Others",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -8837,17 +8837,17 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
       "page_type": "Provider Letter",
       "family": "Provider Letter",
       "path": {
-        "L1": "Patient Communication",
-        "L2": "Provider Letter",
+        "L1": "Provider Letter",
+        "L2": "Others",
         "L3": ""
       },
       "codeability": "codeable",
@@ -8872,7 +8872,7 @@
       "family": "Administration",
       "path": {
         "L1": "Administrative",
-        "L2": "Administrative Record",
+        "L2": "Others",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -8894,9 +8894,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -8904,7 +8904,7 @@
       "family": "Administrative Record",
       "path": {
         "L1": "Administrative",
-        "L2": "Administrative Record",
+        "L2": "Others",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -8929,7 +8929,7 @@
       "family": "Policy",
       "path": {
         "L1": "Administrative",
-        "L2": "Administrative Record",
+        "L2": "Others",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -8954,17 +8954,17 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
       "page_type": "Policy Page",
       "family": "Administrative Record",
       "path": {
-        "L1": "Administrative",
-        "L2": "Administrative Record",
+        "L1": "Consent and Authorization",
+        "L2": "General Consent",
         "L3": ""
       },
       "codeability": "non_codeable",
@@ -9038,9 +9038,9 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
-        "codeability": "v1"
+        "path": "starting list labels",
+        "lexicon": "starting list",
+        "codeability": "starting list"
       }
     },
     {
@@ -9048,7 +9048,7 @@
       "family": "Billing / Invoice",
       "path": {
         "L1": "Administrative",
-        "L2": "Billing Statement",
+        "L2": "Billing & Invoices",
         "L3": ""
       },
       "codeability": "needs_review",
@@ -9077,8 +9077,8 @@
       },
       "pages": 0,
       "provenance": {
-        "path": "v1 labels",
-        "lexicon": "v1",
+        "path": "starting list labels",
+        "lexicon": "starting list",
         "codeability": "taxonomy"
       },
       "codeability_note": "non_codeable when the ingest source is a client upload, retrieval, FTP, RF support or remote download; needs the ingest field"
@@ -9088,7 +9088,7 @@
       "family": "Billing / Invoice",
       "path": {
         "L1": "Administrative",
-        "L2": "Billing Statement",
+        "L2": "Billing & Invoices",
         "L3": ""
       },
       "codeability": "needs_review",
@@ -9112,7 +9112,7 @@
       "pages": 0,
       "provenance": {
         "path": "hand",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "taxonomy"
       },
       "codeability_note": "non_codeable when the ingest source is a client upload, retrieval, FTP, RF support or remote download; needs the ingest field"
@@ -9122,7 +9122,7 @@
       "family": "Billing Statement",
       "path": {
         "L1": "Administrative",
-        "L2": "Billing Statement",
+        "L2": "Billing & Invoices",
         "L3": ""
       },
       "codeability": "needs_review",
@@ -9172,7 +9172,7 @@
       "pages": 6,
       "provenance": {
         "path": "labels",
-        "lexicon": "v1",
+        "lexicon": "starting list",
         "codeability": "labels"
       }
     }
@@ -9181,9 +9181,10 @@
     "page_types": 295,
     "families": 85,
     "from_labels": 106,
-    "with_v1_lexicon": 191,
+    "with_starting_lexicon": 191,
     "hand_placed": 53,
     "taxonomy_only": 32,
     "paths_reached": 120
-  }
+  },
+  "paths_from": "canon_convert.py: each entry's path and specialty in page_taxonomy.json's names (page_type_overrides, family_map, L2_merge, L3_merge, name map); lexicons unchanged"
 }

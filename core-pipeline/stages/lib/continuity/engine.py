@@ -1,4 +1,4 @@
-"""Where one document ends and the next begins (docs/CONTINUITY_LOGIC.md).
+"""Where one document ends and the next begins (docs/APPROACH.md §4).
 
 **Gaps, not pages.** Every gap between two consecutive pages gets a *break score*, a plain
 sum of points (``continuity_canon.json`` ``points``: 1 weak, 2 moderate, 3 strong, 5
@@ -94,9 +94,9 @@ class PageInput:
     # Section headings: [{"text", "matched_canonical", "top"}] from the OCR JSON, plus the
     # extraction's accepted section headings ({"text"}).
     section_headers: list[dict[str, Any]] = field(default_factory=list)
-    page_type: str = ""  # the family (v24 L1) the pages are compared on
+    page_type: str = ""  # the family (L1) the pages are compared on
     page_subtype: str = ""
-    # Every v24 name of the page, most specific first (axes.names_of): the full type path.
+    # Every name of the page, most specific first (axes.names_of): the full type path.
     names: tuple[str, ...] = ()
     page_confidence: Optional[float] = None
     title_hit: bool = False
@@ -570,7 +570,7 @@ def score_gap(
 
 
 def is_demographics(page: "PageInput", rules: Rules) -> bool:
-    """The page is a Demographics page: any of its v24 names (or its family) is one of the
+    """The page is a Demographics page: any of its names (or its family) is one of the
     canon's ``demographics_break.page_types``."""
     names = {name.casefold() for name in (*page.names, page.page_type) if name}
     return bool(names & rules.demographics_types)
@@ -1074,7 +1074,7 @@ def document_finals(members: Sequence[dict[str, Any]]) -> dict[str, Any]:
     """The values a document's pages share, from its pages in order.
 
     Each member has ``page_type``, ``dos_from``, ``dos_to`` and, optionally,
-    ``page_subtype``, ``names`` (its v24 names), ``classification_category``
+    ``page_subtype``, ``names`` (its names), ``classification_category``
     and ``encounter_type``. Every page takes the first page's page type, category and
     encounter type, and the DOS of the first page that has one (the first page's when it
     is dated; a later page's when the document opens undated). A stand-alone

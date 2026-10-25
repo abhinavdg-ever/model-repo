@@ -91,7 +91,7 @@ These are not fetched by the commands above, and they are not baked into the Doc
 | `models/hw/` | `handwritten_printed_convnext_tiny.pth`, `metadata.json`. Optional: `handwritten_printed_convnext_tiny_backup.pth`, `image_type_classification.pkl` | Handwriting and rotation. Missing `.pth` falls back to the `.pkl`. |
 | `models/kv-extraction/` | `manifest.json`, `thresholds.json`, `features.json`, and the `ranker_*.txt` files sitting in this folder (version v002) | Key/value ranker. Member, DOS, and page number read its picks. |
 | `models/blank-junk/` | `bert/` (DistilBERT), `default.json` | Blank and junk: DistilBERT is one of the two voters. Missing folder, or no torch / transformers, means the vote runs on keywords alone (`/health` says `engine: keywords`). `tfidf_flat.joblib` is no longer read. |
-| `models/page-family/bert/` | Hugging Face BERT folder (`config.json`, weights, tokenizer) from `training/bert-training` | Page classifier (model type). Labels must be `page_taxonomy.json` model types. Missing folder, or no transformers / torch, means keywords only (`/health` says so). |
+| `models/page-family/page-axes/` | `encoder/`, `heads.pt`, `label_space.json` from `training/bert-training/train_axes.py` | Page axes (L1 / L2 / L3 top 3, specialty). `label_space.json` `taxonomy_version` must equal `page_arbitration.json` → `axes.taxonomy_version` (v29.2). Missing folder, another version, or no transformers / torch means the keyword canon (`page_canon.json`) decides (`/health` says so). |
 
 ---
 

@@ -1,5 +1,5 @@
 """Document continuity: the gap scorer that splits a chart into documents
-(stages/lib/continuity, docs/CONTINUITY_LOGIC.md)."""
+(stages/lib/continuity, docs/APPROACH.md §4)."""
 from __future__ import annotations
 
 import dataclasses
@@ -204,19 +204,19 @@ class TestProgressNoteRunsOn:
 
     def test_it_absorbs_the_pages_after_it(self):
         rows = assign([bare(1, page_type="Progress Note", dos_from="2024-01-01", dos_trust=5, ends=0.6),
-                       bare(2, page_type="Laboratory Data", page_confidence=0.9, title_hit=True),
+                       bare(2, page_type="Lab Report", page_confidence=0.9, title_hit=True),
                        bare(3, page_type="Questionnaire", page_confidence=0.9, title_hit=True)])
         assert [r["document_seq"] for r in rows] == [1, 1, 1]
         assert gap(rows[1])["final_pass"] == "merged: progress_note_runs_on"
 
     def test_a_signature_ends_it(self):
         rows = assign([bare(1, page_type="Progress Note", signed=True, signed_in_tail=True, ends=0.6),
-                       bare(2, page_type="Laboratory Data", page_confidence=0.9, title_hit=True)])
+                       bare(2, page_type="Lab Report", page_confidence=0.9, title_hit=True)])
         assert [r["document_seq"] for r in rows] == [1, 2]
 
     def test_a_new_labelled_date_ends_it(self):
         rows = assign([bare(1, page_type="Progress Note", dos_from="2024-01-01", dos_trust=5),
-                       bare(2, page_type="Laboratory Data", page_confidence=0.9, title_hit=True, ends=0.6),
+                       bare(2, page_type="Lab Report", page_confidence=0.9, title_hit=True, ends=0.6),
                        bare(3, page_type="Progress Note", dos_from="2024-02-01", dos_trust=5)])
         assert [r["document_seq"] for r in rows] == [1, 1, 2]
 
@@ -289,7 +289,7 @@ class TestStaging:
 class TestFinalValues:
     def test_continue_pages_take_the_first_pages_dos_and_type(self):
         rows = assign([page(1, dos_from="2024-03-14", dos_trust=5, page_type="Progress Note"),
-                       page(2, page_type="Laboratory Data", page_confidence=0.5), page(3)])
+                       page(2, page_type="Lab Report", page_confidence=0.5), page(3)])
         assert [r["final_dos_from"] for r in rows] == ["2024-03-14"] * 3
         assert [r["final_page_type"] for r in rows] == ["Progress Note"] * 3
 

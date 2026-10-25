@@ -59,16 +59,16 @@ FAMILY_TO_L1 = {
     "prehospital_record": ("Progress Note", "Others"),
     "telephone_encounter": ("Patient Communication", "Patient Message"),
     "patient_communication": ("Patient Communication", "Patient Message"),
-    "provider_letter": ("Patient Communication", "Provider Letter"),
-    "laboratory_report": ("Lab Report/Result", "Laboratory"),
-    "pathology_report": ("Lab Report/Result", "Pathology"),
-    "radiology_report": ("Lab Report/Result", "Radiology"),
-    "nuclear_medicine_report": ("Lab Report/Result", "Radiology"),
-    "diagnostic_study": ("Lab Report/Result", "Diagnostic Study"),
-    "cardiac_diagnostic_test": ("Lab Report/Result", "Diagnostic Study"),
-    "neurodiagnostic_test": ("Lab Report/Result", "Diagnostic Study"),
-    "endoscopy_report": ("Lab Report/Result", "Diagnostic Study"),
-    "sleep_study": ("Lab Report/Result", "Diagnostic Study"),
+    "provider_letter": ("Provider Letter", "Others"),
+    "laboratory_report": ("Lab Report", "Lab Result"),
+    "pathology_report": ("Lab Report", "Pathology Report"),
+    "radiology_report": ("Lab Report", "Radiology Report"),
+    "nuclear_medicine_report": ("Lab Report", "Radiology Report"),
+    "diagnostic_study": ("Lab Report", "Diagnostic Study"),
+    "cardiac_diagnostic_test": ("Lab Report", "Diagnostic Study"),
+    "neurodiagnostic_test": ("Lab Report", "Diagnostic Study"),
+    "endoscopy_report": ("Lab Report", "Diagnostic Study"),
+    "sleep_study": ("Lab Report", "Diagnostic Study"),
     "discharge_summary": ("Discharge Summary", "Depart/Discharge Note"),
     "discharge_instructions": ("Discharge Summary", "Discharge Instruction"),
     "discharge_medication": ("Discharge Summary", "Discharge Medication"),
@@ -78,7 +78,7 @@ FAMILY_TO_L1 = {
     "admission_record": ("Discharge Summary", "Others"),
     "operative_report": ("Operative Note", "Surgery Report"),
     "anesthesia_record": ("Operative Note", "Anesthesia Record"),
-    "perioperative_evaluation": ("Operative Note", "Pre-operative Note"),
+    "perioperative_evaluation": ("Operative Note", "Pre-operative"),
     "critical_care_record": ("Operative Note", "Critical Care Record"),
     "procedure_note": ("Procedure Note", ""),
     "dialysis_record": ("Procedure Note", "Dialysis Record"),
@@ -177,7 +177,7 @@ def codeability(l1: str, has_signal: bool) -> tuple[str, str, str]:
         return ("codeable" if has_signal else "needs_review"), "section_signal", \
                ("a codeable section is present" if has_signal
                 else "clinical note with no diagnosis or plan section found")
-    if l1 in ("Lab Report/Result", "Immunization"):
+    if l1 in ("Lab Report", "Immunization"):
         return "non_codeable", "l1_result", "a result is not a codeable encounter"
     return "non_codeable", "l1_default", f"{l1} carries no codeable encounter"
 
