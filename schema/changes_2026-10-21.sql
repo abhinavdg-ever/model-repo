@@ -5,8 +5,8 @@
 --   psql "$DATABASE_URL" -f schema/changes_2026-10-21.sql          (macOS / Linux / VM)
 --   psql $env:DATABASE_URL -f schema/changes_2026-10-21.sql        (Windows PowerShell)
 --
--- Earlier change files (2026-10-18 to 2026-10-20) are in git history:
---   git show 173a6cb:schema/changes_2026-10-19.sql
+-- Run the earlier change file first:
+--   schema/changes_2026-10-19.sql (sections for 2026-10-18 to 2026-10-20)
 
 -- 1. encounter_review (2026-10-21): a reviewer's encounters (page ranges with page
 --    type, encounter type, DOS) saved on review-ui's Encounter tab. Not ground truth.

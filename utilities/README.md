@@ -29,7 +29,7 @@ columns to the batch file. A blank in the dump keeps the file's value, and names
 are never touched. With `--load` it then upserts the batch files into
 `manifest_member_list` (`client_id`, `project_id`, `project_scope`, `source_name`, `rr_method`, `measure`,
 `service_note`). The dump itself is never loaded as a batch. An existing database first
-needs `schema/changes_2026-10-19.sql` (removed; `git show 173a6cb:schema/changes_2026-10-19.sql`).
+needs `schema/changes_2026-10-19.sql`.
 
 ```bash
 cd core-pipeline && source .venv/bin/activate
