@@ -30,6 +30,9 @@ Technique: axial images were acquired. Hounsfield units were measured.
 IMPRESSION: no acute findings
 """
 NO_TERMS = "zzz qqq\nnothing a canon term would match here\n"
+SLEEP_PAGE = """POLYSOMNOGRAPHY
+Sleep study performed overnight. Apnea hypopnea index and oxygen saturation recorded.
+"""
 
 SPACE = {
     "other_L1": "OTHER",
@@ -52,6 +55,136 @@ def raw(l1=LAB, l1_p=0.9, second=0.05, l2=RAD, l2_p=0.9, l3=None, l3_p=None,
 
 def gate(r, text=CT_PAGE, space=SPACE):
     return axes.gate(r, space, text)
+
+
+PN = "Progress Note"
+LIR = "Lab and Imaging Results"
+NOTE_CT = """OFFICE VISIT
+Chief Complaint: follow-up
+History of Present Illness: doing well.
+Imaging reviewed: CT abdomen computed tomography 03/2024 no acute findings; CT chest stable.
+Assessment and Plan: continue current care.
+"""
+SUPERBILL_PAGE = "SUPERBILL\nPatient: Test Person\nmade up body text\n"
+RECORDS_PAGE = "Medical Records Request\nPatient: Test Person\nmade up body text\n"
+
+# A fixed keyword table for the gate tests, so they test the vote, not the fitted numbers.
+TABLE = {
+    "settings": {"share": {"L1": 0.5, "L2": 0.5, "L3": 0.5}, "full": {"L1": 3.0, "L2": 3.0, "L3": 3.0},
+                 "min": {"L1": 0.2, "L2": 0.2, "L3": 0.2}},
+    "L1": {"computed tomography|body": {LAB: 2.0}, "hounsfield|body": {LAB: 2.0}, "axial images|body": {LAB: 1.0},
+           "chief complaint|body": {PN: 2.0}, "office visit|title": {PN: 3.0}, "assessment|body": {PN: 0.5},
+           "superbill|title": {"Administrative": 4.0}, "clinical summary|title": {"Clinical Summary": 4.0},
+           "polysomnography|title": {LAB: 3.0}},
+    "L2": {LAB: {"computed tomography|body": {RAD: 2.0}, "hounsfield|body": {RAD: 1.0},
+                 "polysomnography|title": {"Diagnostic Study": 3.0}},
+           PN: {"computed tomography|body": {LIR: 2.0}, "chief complaint|body": {"CC/HPI": 1.0}},
+           "Administrative": {"superbill|title": {"Superbill": 4.0}}},
+    "L3": {f"{LAB} > {RAD}": {"computed tomography|body": {"CT Scan Report": 2.0}},
+           f"{LAB} > Diagnostic Study": {"polysomnography|title": {"Sleep Study Report": 3.0}}},
+}
+
+
+@pytest.fixture(autouse=True)
+def fixed_weights(monkeypatch, request):
+    """Every test votes with TABLE, except a class that sets REAL_WEIGHTS."""
+    from stages.lib.page_classify import keyword_vote
+
+    if not getattr(request.cls, "REAL_WEIGHTS", False):
+        monkeypatch.setattr(keyword_vote, "weights", lambda: TABLE)
+
+
+def answer(L1, L2=None, L3=None, specialty_top=(("Unknown", 0.9), ("Cardiology", 0.05))):
+    """A model answer with whole distributions (as decode gives them)."""
+    best = max(L1, key=L1.get)
+    return {"L1": best, "L1_confidence": L1[best], "L1_top": sorted(L1.items(), key=lambda kv: -kv[1])[:3],
+            "distributions": {"L1": L1, "L2": L2 or {}, "L3": L3 or {}},
+            "specialty_top": list(specialty_top), "specialty": specialty_top[0][0],
+            "specialty_confidence": specialty_top[0][1], "codeability": "codeable", "codeability_confidence": 0.9}
+
+
+class TestVote:
+    """keyword_vote.vote: the model and the keywords vote; the winner takes it."""
+
+    def test_with_no_keywords_the_model_decides(self):
+        from stages.lib.page_classify.keyword_vote import vote
+
+        assert vote({"A": 0.7, "B": 0.3}, {}, 0.5)[0][:1] == ("A",)
+
+    def test_a_strong_unique_keyword_outvotes_a_confident_model(self):
+        from stages.lib.page_classify.keyword_vote import vote
+
+        ranked = vote({"A": 0.9, "B": 0.05}, {"B": 4.0}, 0.5, 3.0)
+        assert ranked[0][0] == "B" and ranked[0][2] == "canon"
+        assert ranked[0][1] == pytest.approx(0.5 * 0.05 + 0.5)
+
+    def test_thin_evidence_cannot_swing_a_page(self):
+        from stages.lib.page_classify.keyword_vote import vote
+
+        assert vote({"A": 0.9, "B": 0.05}, {"B": 0.3}, 0.5, 3.0)[0][0] == "A"
+
+    def test_without_a_model_the_keywords_vote_alone(self):
+        from stages.lib.page_classify.keyword_vote import vote
+
+        ranked = vote(None, {"A": 1.0, "B": 3.0}, 0.5)
+        assert [c for c, _, _ in ranked] == ["B", "A"] and ranked[0][1] == pytest.approx(0.75)
+
+    def test_nothing_to_say_is_empty(self):
+        from stages.lib.page_classify.keyword_vote import vote
+
+        assert vote(None, {}, 0.5) == []
+
+
+class TestGateVote:
+    def test_model_and_keywords_agree(self):
+        result = gate(answer({LAB: 0.9, PN: 0.05}, {LAB: {RAD: 0.9}}))
+        assert (result.l1, result.l2, result.l3) == (LAB, RAD, "CT Scan Report")
+        assert result.sources[:3] == ("model", "model", "canon")  # no model L3: the keywords alone
+
+    def test_a_strong_keyword_changes_the_l1(self):
+        result = gate(answer({PN: 0.9, LAB: 0.05}), text=SUPERBILL_PAGE)
+        assert (result.l1, result.l2, result.sources[0]) == ("Administrative", "Superbill", "canon")
+
+    def test_below_the_minimum_the_l1_is_others(self):
+        spread = {name: 1 / 16 for name in axes.tax.label_space()["L1"][:16]}
+        result = gate(answer(spread), text=NO_TERMS)
+        assert (result.l1, result.decided_by) == ("Others", "others")
+
+    def test_an_unsure_l2_is_l1_others(self):
+        l2 = {"Lab Result": 0.19, RAD: 0.19, "Pathology Report": 0.19, "Diagnostic Study": 0.19}
+        result = gate(answer({LAB: 0.9}, {LAB: l2}), text=NO_TERMS)
+        assert (result.l1, result.l2) == (LAB, None)
+        assert axes.page_names(result) == (LAB, "Others")
+
+    def test_an_unsure_l3_is_others(self):
+        l3 = {f"{LAB} > {RAD}": {"CT Scan Report": 0.15, "MRI Report": 0.15, "X-Ray Report": 0.15}}
+        result = gate(answer({LAB: 0.9}, {LAB: {RAD: 0.9}}, l3), text=NO_TERMS)
+        assert (result.l3, result.sources[2]) == ("Others", "others")
+        assert axes.page_names(result) == (f"{LAB} ({RAD})", "Others")
+
+    def test_progress_note_l2_is_the_keywords_alone(self):
+        # The model's Progress Note L2 was never trained: it is ignored.
+        result = gate(answer({PN: 0.9}, {PN: {"CC/HPI": 0.99}}), text=NOTE_CT)
+        assert (result.l1, result.l2, result.sources[1]) == (PN, LIR, "canon")
+
+    def test_a_note_listing_ct_scans_keeps_both_paths(self):
+        """The user's example: a Progress Note page listing CT scans is Progress Note >
+        Lab and Imaging Results, and Lab Report > Radiology Report > CT Scan Report is
+        never ruled out: both are among the stored paths."""
+        result = gate(answer({PN: 0.6, LAB: 0.35}, {LAB: {RAD: 0.8}}), text=NOTE_CT)
+        assert (result.l1, result.l2) == (PN, LIR)
+        paths = [p["path"] for p in result.paths]
+        assert f"{PN} > {LIR}" in paths and f"{LAB} > {RAD} > CT Scan Report" in paths
+
+    def test_without_a_model_the_keywords_decide_every_level(self):
+        result = axes.gate(None, {}, SLEEP_PAGE)
+        assert (result.l1, result.l2, result.l3) == (LAB, "Diagnostic Study", "Sleep Study Report")
+        assert result.sources[:3] == ("canon", "canon", "canon")
+
+    def test_no_model_and_no_keywords_is_others(self):
+        result = axes.gate(None, {}, NO_TERMS)
+        assert (result.l1, result.l2, result.l3) == ("Others", None, None)
+        assert result.sources[:3] == ("others", "-", "-")
 
 
 class TestInferenceCopy:
@@ -79,73 +212,6 @@ class TestInferenceCopy:
         trainer = self._definitions(TRAINER)
         missing = sorted(n for n in used if n in trainer and n not in copy)
         assert not missing, f"axes_model.py calls trainer functions it does not copy: {missing}"
-
-
-class TestLevelOne:
-    def test_model_decides_at_forty_percent_with_a_lead(self):
-        result = gate(raw(l1_p=0.42, second=0.20))
-        assert (result.route, result.l1, result.sources[0]) == ("model", LAB, "model")
-
-    def test_below_forty_percent_the_canon_decides(self):
-        result = gate(raw(l1="Administrative", l1_p=0.38, second=0.30))
-        assert result.route == "canon"
-        assert (result.l1, result.sources[0]) == (LAB, "canon")
-        assert result.l1_confidence >= 0.5
-
-    def test_no_lead_but_keyword_support_takes_the_models_path(self):
-        result = gate(raw(l1_p=0.45, second=0.40))
-        assert result.sources[0] == "model" and result.path_choice["by"] == "keywords"
-
-    def test_no_lead_and_no_support_is_not_the_model(self):
-        result = gate(raw(l1_p=0.45, second=0.40), text=NO_TERMS)
-        assert (result.l1, result.sources[0]) == ("Others", "others")
-
-    def test_folded_other_class_goes_to_the_canon(self):
-        result = gate(raw(l1="OTHER", l1_p=0.95))
-        assert (result.route, result.l1) == ("canon", LAB)
-
-    def test_nothing_sure_is_others(self):
-        result = gate(raw(l1="Administrative", l1_p=0.2, second=0.1), text=NO_TERMS)
-        assert result.route == "review"
-        assert (result.l1, result.l2, result.l3) == ("Others", None, None)
-        assert result.sources[:3] == ("others", "-", "-")
-        assert result.decided_by == "others"
-
-
-class TestLevelTwoAndThree:
-    def test_a_confident_model_l3_beats_canon_body_terms(self):
-        result = gate(raw(l2_p=0.95, l3="MRI Report", l3_p=0.99))
-        assert (result.l2, result.sources[1]) == (RAD, "model")
-        assert (result.l3, result.sources[2]) == ("MRI Report", "model")
-
-    def test_a_canon_title_beats_the_model_l3(self):
-        result = gate(raw(l2_p=0.95, l3="MRI Report", l3_p=0.99), text="CT SCAN REPORT\n" + CT_PAGE)
-        assert (result.l3, result.sources[2]) == ("CT Scan Report", "canon")
-        assert result.l3_confidence >= 0.5
-
-    def test_a_canon_title_beats_the_model_l2(self):
-        result = gate(raw(l2="Lab Result", l2_p=0.95), text="CT SCAN REPORT\n" + CT_PAGE)
-        assert (result.l2, result.sources[1]) == (RAD, "canon")
-
-    def test_low_model_l2_falls_back_to_the_canon(self):
-        result = gate(raw(l2="Lab Result", l2_p=0.45))
-        assert (result.l2, result.sources[1]) == (RAD, "canon")
-
-    def test_an_unsure_l3_with_no_keywords_is_others(self):
-        result = gate(raw(l3="CT Scan Report", l3_p=0.30), text="RADIOLOGY\nresults below\n")
-        assert result.l2 == RAD
-        assert (result.l3, result.sources[2]) == ("Others", "others")
-        assert axes.page_names(result) == ("Lab Report (Radiology Report)", "Others")
-        assert result.codeability == "non_codeable"  # still the Radiology Report entry's tag
-
-    def test_an_l2_without_named_l3s_has_no_l3(self):
-        result = gate(raw(l1="Administrative", l2="Superbill", l2_p=0.9), text=NO_TERMS)
-        assert (result.l2, result.l3) == ("Superbill", None)
-
-    def test_section_l1_has_no_l2_or_l3(self):
-        result = gate(raw(l1="Progress Note", l2=None))
-        assert result.l1 == "Progress Note"
-        assert (result.l2, result.l3) == (None, None)
 
 
 CARDIO_PAGE = """RIVERSIDE CARDIOLOGY ASSOCIATES
@@ -203,7 +269,7 @@ class TestCodeability:
         assert (result.codeability, result.codeability_confidence) == ("needs_review", None)
 
     def test_nothing_decided_means_needs_review(self):
-        result = gate(raw(l1="Administrative", l1_p=0.2, second=0.1), text=NO_TERMS)
+        result = gate(raw(l1="Administrative", l1_p=0.15, second=0.1), text=NO_TERMS)
         assert (result.codeability, result.codeability_confidence) == ("needs_review", None)
 
 
@@ -245,7 +311,7 @@ class TestPageNames:
     def test_under_every_other_l1_the_page_has_a_place(self):
         result = axes.gate(None, {}, CT_PAGE)
         assert result.l1 == LAB and LAB not in result.under_l1
-        assert "Progress Note" not in result.under_l1  # its L2 is the content section
+        assert result.under_l1["Progress Note"]["l2"] == LIR  # the keywords' Progress Note L2
         for l1, there in result.under_l1.items():
             assert there["l2"] in axes.l2_names(l1)
 
@@ -356,9 +422,6 @@ class TestUnusableModelFolder:
 
 # --- The flow: the model's top 3, the canon, Others ------------------------------------
 
-SLEEP_PAGE = """POLYSOMNOGRAPHY
-Sleep study performed overnight. Apnea hypopnea index and oxygen saturation recorded.
-"""
 
 
 class TestModelPaths:
@@ -379,61 +442,6 @@ class TestModelPaths:
                       "L2_confidence": None, "L3_confidence": None, "score": 0.6}]
         top = axes.gate(r, SPACE, CT_PAGE).model_paths
         assert (top[0]["l1"], top[0]["folded"]) == ("Others", True)  # never the folded class name
-
-
-class TestPathChoice:
-    """The page takes the first of the model's best paths with a score of at least
-    path_min or keyword support; else its confident L1; else the canon."""
-
-    @staticmethod
-    def _with_paths(paths, **kw):
-        r = raw(**kw)
-        r["paths"] = [{"path": " > ".join(x for x in p[:3] if x), "L1": p[0], "L2": p[1], "L3": p[2],
-                       "L1_confidence": p[3], "L2_confidence": p[4], "L3_confidence": p[5],
-                       "score": p[3] * (p[4] or 1) * (p[5] or 1)} for p in paths]
-        return r
-
-    def test_a_path_above_the_threshold_is_taken(self):
-        r = self._with_paths([(LAB, RAD, "MRI Report", 0.9, 0.9, 0.8)])
-        result = gate(r)
-        assert result.path_choice == {"rank": 1, "path": f"{LAB} > {RAD} > MRI Report", "by": "score"}
-        assert (result.l1, result.l2, result.l3) == (LAB, RAD, "MRI Report")
-
-    def test_below_the_threshold_keyword_support_picks_a_lower_path(self):
-        # Rank 1 (Administrative) is weak and unsupported; rank 2 has the CT page's words.
-        r = self._with_paths([("Administrative", "Superbill", None, 0.45, 0.6, None),
-                              (LAB, RAD, None, 0.40, 0.6, None)], l1="Administrative", l1_p=0.45, second=0.40)
-        result = gate(r)
-        assert result.path_choice["rank"] == 2 and result.path_choice["by"] == "keywords"
-        assert (result.l1, result.l2, result.sources[0]) == (LAB, RAD, "model")
-
-    def test_a_confident_l1_keeps_its_best_path_when_its_paths_are_thin(self):
-        r = self._with_paths([(LAB, "Lab Result", None, 0.9, 0.3, None)], l2="Lab Result", l2_p=0.3)
-        result = gate(r, text=NO_TERMS)
-        assert result.path_choice["by"] == "l1"
-        assert (result.l1, result.l2) == (LAB, None)  # the weak L2 and no keywords: Lab Report / Others
-        assert axes.page_names(result) == (LAB, "Others")
-
-    def test_nothing_chosen_and_no_confident_l1_goes_to_the_canon(self):
-        r = self._with_paths([("Administrative", None, None, 0.3, None, None)], l1="Administrative", l1_p=0.3, second=0.2)
-        result = gate(r)
-        assert result.path_choice is None and (result.l1, result.sources[0]) == (LAB, "canon")
-
-
-class TestCanonFallback:
-    def test_a_class_the_model_folded_is_named_by_the_canon(self):
-        result = gate(raw(l1="OTHER", l1_p=0.9, l2=None), text=SLEEP_PAGE)
-        assert (result.route, result.decided_by) == ("canon", "canon")
-        assert (result.l1, result.l2, result.l3) == (LAB, "Diagnostic Study", "Sleep Study Report")
-        assert result.model_paths[0]["l1"] == "Others"
-
-    def test_an_l2_the_model_folded_to_others_lets_the_canon_name_it(self):
-        result = gate(raw(l2="Others", l2_p=0.9))
-        assert (result.l2, result.sources[1]) == (RAD, "canon")
-
-    def test_others_from_the_model_stays_when_the_canon_has_nothing(self):
-        result = gate(raw(l1="Administrative", l2="Others", l2_p=0.9), text=NO_TERMS)
-        assert (result.l1, result.l2, result.sources[1]) == ("Administrative", "Others", "model")
 
 
 # --- page_rules ----------------------------------------------------------------------
@@ -468,25 +476,12 @@ class TestRules:
     @pytest.mark.parametrize("title, path", [
         ("CONTINUITY OF CARE DOCUMENT", ("Clinical Summary", "Summary of Care (C-CDA)")),
         ("After Visit Summary", ("Clinical Summary", "After-Visit Summary")),
-        ("Medical Records Request", ("Provider Letter", "Records Request")),
-        ("SUPERBILL", ("Administrative", "Superbill")),
     ])
     def test_a_title_decides(self, title, path):
         text = f"{title}\nPatient: Test Person\nmade up body text\n"
         result = gate(raw(l1="Progress Note", l2=None), text=text)
         assert (result.l1, result.l2) == path
         assert result.codeability in ("non_codeable", "needs_review")
-
-    def test_a_title_row_can_set_an_l3(self):
-        from stages.lib.page_classify import page_rules
-
-        rules = {"title_paths": [{"name": "ct", "titles": ["CT Scan Report"],
-                                  "path": {"L1": LAB, "L2": RAD, "L3": "CT Scan Report"}}]}
-        fired = page_rules.apply("CT SCAN REPORT\nbody\n", (), "Progress Note", rules)
-        assert (fired.rule, fired.l1, fired.l2, fired.l3) == ("ct", LAB, RAD, "CT Scan Report")
-        # Already on that path, a row with no L3 changes nothing and does not fire.
-        rules["title_paths"][0]["path"].pop("L3")
-        assert page_rules.apply("CT SCAN REPORT\nbody\n", (), LAB, rules, RAD) is None
 
     def test_a_summary_mentioned_inside_a_note_is_not_a_title(self):
         text = "OFFICE VISIT\nChief Complaint: cough\nThe after visit summary was printed for the patient.\n"
@@ -538,6 +533,28 @@ class TestStaging:
 
 
 # --- the converted canon ------------------------------------------------------------
+
+
+class TestRealCanon:
+    """The shipped canon and fitted weights: pages pinned by rare, unique words."""
+
+    REAL_WEIGHTS = True
+
+    @pytest.mark.parametrize("text, path", [
+        (SUPERBILL_PAGE, ("Administrative", "Superbill")),
+        (RECORDS_PAGE, ("Provider Letter", "Records Request")),
+    ])
+    def test_a_strong_title_outvotes_a_confident_model(self, text, path):
+        result = gate(answer({PN: 0.9, LAB: 0.05}), text=text)
+        assert (result.l1, result.l2) == path
+
+    def test_every_weight_is_a_canon_term(self):
+        from stages.lib.page_classify import keyword_vote
+
+        terms = set(keyword_vote._canon_terms())
+        table = keyword_vote.weights()
+        keys = set(table["L1"]) | {f for t in table["L2"].values() for f in t} | {f for t in table["L3"].values() for f in t}
+        assert keys and all(k.rsplit("|", 1)[0] in terms for k in keys)
 
 
 class TestCodeabilityTable:

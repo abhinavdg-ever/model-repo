@@ -56,18 +56,14 @@
     "continuation_rule"
   ],
   "axes": {
-    "comment": "The page axes, the Extracted page type: page_classification.page_type / page_subtype (L1 / Others, L1 / L2, or 'L1 (L2)' / L3), the category, and the whole answer in page_classification.axes (and staging/page_classification.json). 1. The model's best paths: every allowed L1 > L2 > L3 scored p(L1)p(L2|L1)p(L3|L2), the 5 best kept (at most 3 under one L1, axes.model_paths); the page takes the first, in rank order, with score >= path_min or whose L1 the keyword canon supports (the canon's own best L1 at >= canon_min); with none, a confident L1 (route 'model' = top L1 >= route_model, ahead of the second by >= route_margin, not the folded OTHER class) keeps its best path (axes.path_choice says which and why). 2. Else the keyword canon's best L1 at >= canon_min. 3. Else Others (decided_by others). Section_L1 (Progress Note) takes no L2 here: its L2 is the content section. L2: a canon title match under the L1 first (keywords take precedence), then the chosen path's L2 at >= l2_min, then the canon's at canon_min, else none (page_subtype Others). Then axes_rules may re-place the page to any level (title_paths can set L1, L2 and L3). L3, only where L1 > L2 has named L3s: a rule's; a canon title; the chosen path's at >= l3_min; the canon's at l3_canon_min; else Others. Specialty: the model's when not one of specialty_not_asserted, >= specialty_min, ahead of the second by >= specialty_lead, trained on >= specialty_min_train_pages pages; else the specialty keywords (specialty_canon.json); else the canon entry's; else specialty_fallback (General), never Unknown. In Final, only the first page of the encounter (continuity document) decides its specialty. Codeability: always the canon's -- the tag of the canon page type behind the decided path; needs_review when its rule is context (the Final step resolves it from the page's document) or source; a rule's own when the canon has no entry there. axes.sources says who decided each level (model / canon / rule / others / -), axes.decided_by the L1's. taxonomy_version: the model folder's label_space.json must carry it, else the model is refused and the canon decides.",
+    "comment": "The page axes, the Extracted page type: page_classification.page_type / page_subtype (L1 / Others, L1 / L2, or 'L1 (L2)' / L3), the category, and the whole answer in page_classification.axes (and staging/page_classification.json). At every level (L1; L2 under the L1; L3 under the L2) the page-axes model and the keyword canon vote and the winner takes it (page_classify/keyword_vote.py; its settings -- the keywords' share, full evidence and the minimum vote per level, 0.2 -- and the learned term weights are in keyword-canon/page_keyword_weights.json). Below the minimum: L1 Others (decided_by others), L1 / Others, or L3 Others. The section L1's (Progress Note) L2 is the keywords' alone. axes.paths keeps the vote's best whole paths for the Final step; axes.model_paths the model's own. Then axes_rules (lab guard, hospital stay, clinical summary) may re-place the page. Specialty: the model's when not one of specialty_not_asserted, >= specialty_min, ahead of the second by >= specialty_lead, trained on >= specialty_min_train_pages pages; else the specialty keywords (specialty_canon.json); else the canon entry's; else specialty_fallback (General), never Unknown. In Final, only the first page of the encounter (continuity document) decides its specialty. Codeability here is the page's own, from the canon entry behind the decided path; the Final codability is the Final type's (decide_final). route / route_model / route_margin / route_canon are reported only (axes.route). canon_min and l3_canon_min are the keyword canon's own thresholds where it answers alone (canon_match). taxonomy_version: the model folder's label_space.json must carry it, else the model is refused and the keywords decide.",
     "taxonomy_version": "v29.2",
     "section_L1": "Progress Note",
     "route_model": 0.4,
     "route_margin": 0.1,
     "route_canon": 0.25,
-    "path_min": 0.5,
-    "comment_path_min": "2026-10-25: a model path (of its best 5, in rank order) is chosen at score p(L1)p(L2|L1)p(L3|L2) >= path_min, or with keyword support (the canon matches an entry under its L1 > L2 at >= canon_min). Measured on the held-out pages of the 2026-10-25 model: paths at >= 0.5 are right 71% (val and test), below it 16-28%.",
-    "l2_min": 0.5,
     "canon_min": 0.5,
     "l3_canon_min": 0.5,
-    "l3_min": 0.5,
     "specialty_min": 0.7,
     "specialty_lead": 0.2,
     "specialty_min_train_pages": 10,
@@ -108,40 +104,6 @@
       "after_visit_summary_l2": "After-Visit Summary",
       "codeability": "non_codeable"
     },
-    "title_paths": [
-      {
-        "name": "records_request",
-        "comment": "context_rules.records_request: defined by purpose (letter, fax or EHR note), read from its title.",
-        "titles": [
-          "Medical Records Request",
-          "Medical Record Request",
-          "Request for Medical Records",
-          "Request for Records",
-          "Records Request",
-          "Record Request",
-          "Request for Copies of Medical Records"
-        ],
-        "path": {
-          "L1": "Provider Letter",
-          "L2": "Records Request"
-        },
-        "codeability": "non_codeable"
-      },
-      {
-        "name": "superbill",
-        "comment": "context_rules.superbill: an encounter form or superbill (visit date, provider, ICD-10 and CPT codes). By title only: invoices and statements carry codes too.",
-        "titles": [
-          "Superbill",
-          "Super Bill",
-          "Encounter Form"
-        ],
-        "path": {
-          "L1": "Administrative",
-          "L2": "Superbill"
-        },
-        "codeability": "non_codeable"
-      }
-    ],
     "hospital_stay": {
       "comment": "context_rules.admission_history_and_physical / inpatient_consultation: an H&P or consult belongs to the stay only for an inpatient / observation / short stay. Applied to a page that came out Progress Note, titled H&P or Consultation, with stay evidence on the page itself. Not applied the other way (a model's Discharge Summary > H&P without evidence on the page stays): the evidence may sit on another page of the admission.",
       "when_l1": "Progress Note",

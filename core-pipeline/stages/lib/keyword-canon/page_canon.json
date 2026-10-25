@@ -967,14 +967,30 @@
         "title_terms": [
           "Office Visit Note"
         ],
-        "body_terms": [],
+        "body_terms": [
+          "history of present illness",
+          "HPI",
+          "review of systems",
+          "ROS",
+          "physical exam",
+          "physical examination",
+          "assessment and plan",
+          "assessment & plan",
+          "impression and plan",
+          "interval history",
+          "subjective",
+          "objective",
+          "chief complaint",
+          "reason for visit"
+        ],
         "ambiguous_terms": []
       },
       "pages": 36,
       "provenance": {
         "path": "labels",
         "lexicon": "name",
-        "codeability": "labels"
+        "codeability": "labels",
+        "lexicon_note_body": "2026-10-25: note-section words (the lab guard's note body), so a note page votes Progress Note"
       }
     },
     {
@@ -7828,8 +7844,7 @@
       "specialty": "",
       "lexicon": {
         "title_terms": [
-          "Referral & Authorization",
-          "request for records"
+          "Referral & Authorization"
         ],
         "body_terms": [
           "auth number",
@@ -9174,6 +9189,81 @@
         "path": "labels",
         "lexicon": "starting list",
         "codeability": "labels"
+      }
+    },
+    {
+      "page_type": "Superbill",
+      "family": "Administrative",
+      "path": {
+        "L1": "Administrative",
+        "L2": "Superbill",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "Superbill",
+          "Super Bill",
+          "Encounter Form"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "CPT",
+          "ICD-10",
+          "fee",
+          "charges"
+        ],
+        "ambiguous_terms": [
+          "procedure code",
+          "diagnosis code"
+        ]
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "2026-10-25 (user): moved from axes_rules.title_paths",
+        "lexicon": "axes_rules.superbill titles",
+        "codeability": "taxonomy tag"
+      }
+    },
+    {
+      "page_type": "Records Request",
+      "family": "Provider Letter",
+      "path": {
+        "L1": "Provider Letter",
+        "L2": "Records Request",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "Medical Records Request",
+          "Medical Record Request",
+          "Request for Medical Records",
+          "Request for Records",
+          "Records Request",
+          "Record Request",
+          "Request for Copies of Medical Records"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "please send",
+          "copies of records",
+          "date range of records"
+        ],
+        "ambiguous_terms": [
+          "request",
+          "records"
+        ]
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "2026-10-25 (user): moved from axes_rules.title_paths",
+        "lexicon": "axes_rules.records_request titles",
+        "codeability": "taxonomy tag"
       }
     }
   ],

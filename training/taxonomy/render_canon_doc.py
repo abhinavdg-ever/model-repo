@@ -175,11 +175,15 @@ def page_canon(pc: dict) -> list[str]:
     out += [f"{n}. {cell(x)}" for n, x in enumerate(pc["how_to_match"], 1)] + [""]
     out += ["**Weights**: " + cell(pc["weights"]) + f". Title zone: the first {pc['title_zone_lines']} lines.", ""]
     out += ["**Codeability rules**: " + cell(pc["codeability_rules"]), ""]
-    out += table(["Page type", "Family", "Path", "Codeability", "Specialty", "Title terms", "Body terms",
-                  "Ambiguous terms"],
+    out += ["**Strong terms** are rare words only that page type carries: in the keyword vote "
+            "(core-pipeline page_classify/keyword_vote.py) they score highest by default; every term's "
+            "weight per level is then learned from the labelled pages (keyword-canon/page_keyword_weights.json).", ""]
+    out += table(["Page type", "Family", "Path", "Codeability", "Specialty", "Strong terms", "Title terms",
+                  "Body terms", "Ambiguous terms"],
                  [[p["page_type"], p["family"], " > ".join(x for x in (p["path"].get("L1"), p["path"].get("L2"),
                                                                         p["path"].get("L3")) if x),
-                   p["codeability"], p.get("specialty", ""), p["lexicon"].get("title_terms", []),
+                   p["codeability"], p.get("specialty", ""), p["lexicon"].get("strong_terms", []),
+                   p["lexicon"].get("title_terms", []),
                    p["lexicon"].get("body_terms", []), p["lexicon"].get("ambiguous_terms", [])]
                   for p in sorted(pc["page_types"], key=lambda p: (p["family"], p["page_type"]))])
     return out

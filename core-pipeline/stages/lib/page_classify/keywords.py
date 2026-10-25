@@ -16,6 +16,8 @@ order:
   Final1 JSON), a line that is just the term, or a short line that starts with
   it ("OFFICE VISIT REPORT 10/03/2024"). The canon applies this to one-word
   terms; it applies here to every title term.
+* Strong terms (rare words only one page type carries) match like title terms here;
+  the keyword vote (``keyword_vote.py``) gives them the highest default weight.
 * Body terms weigh ``body_term``. Ambiguous terms weigh ``ambiguous_term`` and
   only once another term of the same sub-type has matched.
 * Each sub-type scores the sum over its distinct matched terms. A page type's
@@ -45,7 +47,7 @@ class KeywordResult:
 @dataclass(frozen=True)
 class _Term:
     text: str
-    kind: str  # title | body | ambiguous
+    kind: str  # strong | title | body | ambiguous
     page_subtype: str
     pattern: re.Pattern
     one_word: bool
@@ -73,7 +75,7 @@ def _build(data: dict[str, Any]) -> _Canon:
         name = sub["page_subtype"]
         page_types[name] = sub["page_type"]
         model_types[name] = sub["model_type"]
-        for kind in ("title", "body", "ambiguous"):
+        for kind in ("strong", "title", "body", "ambiguous"):
             for text in sub.get(f"{kind}_terms") or []:
                 text = str(text).strip()
                 if text:
@@ -97,7 +99,7 @@ def build(data: dict[str, Any]) -> _Canon:
             "page_subtype": entry["page_type"],
             "page_type": path["L1"],
             "model_type": " > ".join(x for x in (path["L1"], path.get("L2"), path.get("L3")) if x),
-            **{f"{kind}_terms": lexicon.get(f"{kind}_terms") or [] for kind in ("title", "body", "ambiguous")},
+            **{f"{kind}_terms": lexicon.get(f"{kind}_terms") or [] for kind in ("strong", "title", "body", "ambiguous")},
         })
     return _build({"sub_types": sub_types, "weights": data["weights"],
                    "title_zone_lines": data["title_zone_lines"]})
@@ -143,6 +145,48 @@ def is_heading(line: str, term: str, headings: frozenset[str], *, one_word: bool
     )
 
 
+def matches(
+    text: str,
+    headings: Iterable[str] = (),
+    *,
+    canon: _Canon,
+    subtypes: Optional[frozenset[str]] = None,
+) -> Optional[list[tuple[_Term, str]]]:
+    """Every canon term the page carries, after longest-match-wins, with where it
+    counts: "title" (a title term used as a heading in the title zone), "heading" (one
+    used as a heading lower down) or "body" (a body or ambiguous term, or a title term
+    inside a sentence). None for a page with no text."""
+    lines = _lines(text)
+    if not lines:
+        return None
+    heading_lines = frozenset(_norm(h) for h in headings if h)
+    title_zone_end = lines[min(canon.title_zone_lines, len(lines)) - 1][1]
+
+    found = []
+    for term in canon.terms:
+        if subtypes is not None and term.page_subtype not in subtypes:
+            continue
+        for m in term.pattern.finditer(text):
+            found.append((m.start(), m.end(), term))
+    found.sort(key=lambda f: (-(f[1] - f[0]), f[0]))
+    kept: list[tuple[int, int, _Term]] = []
+    for start, end, term in found:
+        if any(k_start <= start and end <= k_end and (k_end - k_start) > (end - start)
+               for k_start, k_end, _ in kept):
+            continue
+        kept.append((start, end, term))
+
+    out: list[tuple[_Term, str]] = []
+    for start, end, term in kept:
+        where = "body"
+        if term.kind in ("title", "strong"):
+            line = next((l for l in lines if l[0] <= start < l[1]), None)
+            if line is not None and is_heading(line[2], term.text, heading_lines, one_word=term.one_word):
+                where = "title" if start < title_zone_end else "heading"
+        out.append((term, where))
+    return out
+
+
 def classify(
     text: str,
     headings: Iterable[str] = (),
@@ -160,47 +204,26 @@ def classify(
     type (the axes gate ranks canon entries by L1, L2 or L3).
     """
     group_of = group_of or canon.subtype_page_type
-    lines = _lines(text)
-    if not lines:
+    hits = matches(text, headings, canon=canon, subtypes=subtypes)
+    if hits is None:
         return None
-    heading_lines = frozenset(_norm(h) for h in headings if h)
-    title_zone_end = lines[min(canon.title_zone_lines, len(lines)) - 1][1]
-
-    # Every match, then longest-match-wins across all terms.
-    found = []
-    for term in canon.terms:
-        if subtypes is not None and term.page_subtype not in subtypes:
-            continue
-        for m in term.pattern.finditer(text):
-            found.append((m.start(), m.end(), term))
-    found.sort(key=lambda f: (-(f[1] - f[0]), f[0]))
-    kept: list[tuple[int, int, _Term]] = []
-    for start, end, term in found:
-        if any(k_start <= start and end <= k_end and (k_end - k_start) > (end - start)
-               for k_start, k_end, _ in kept):
-            continue
-        kept.append((start, end, term))
 
     w = canon.weights
     # Per sub-type: the weight of each distinct term, and whether a title hit.
     by_subtype: dict[str, dict[str, float]] = {}
     title_hits: set[str] = set()
     ambiguous: dict[str, dict[str, float]] = {}
-    for start, end, term in kept:
-        if term.kind == "title":
-            line = next((l for l in lines if l[0] <= start < l[1]), None)
-            if line is None or not is_heading(line[2], term.text, heading_lines, one_word=term.one_word):
-                weight = w["body_term"]
-            elif start < title_zone_end:
-                weight = w["title_term_in_title_zone"]
-                title_hits.add(term.page_subtype)
-            else:
-                weight = w["title_term_elsewhere"]
-        elif term.kind == "body":
-            weight = w["body_term"]
-        else:
+    for term, where in hits:
+        if where == "title":
+            weight = w["title_term_in_title_zone"]
+            title_hits.add(term.page_subtype)
+        elif where == "heading":
+            weight = w["title_term_elsewhere"]
+        elif term.kind == "ambiguous":
             ambiguous.setdefault(term.page_subtype, {})[term.text.lower()] = w["ambiguous_term"]
             continue
+        else:
+            weight = w["body_term"]
         scores = by_subtype.setdefault(term.page_subtype, {})
         key = term.text.lower()
         scores[key] = max(scores.get(key, 0.0), weight)

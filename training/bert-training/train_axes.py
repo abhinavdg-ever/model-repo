@@ -639,6 +639,8 @@ def decode(logits, model, space: dict[str, Any], top_k: int = 3) -> list[dict[st
         row["path"] = " > ".join(x for x in (row["L1"], row["L2"], row["L3"]) if x)
         row["paths"] = top_paths(l1_prob[i].tolist(), None if l2_given is None else l2_given[i].tolist(),
                                  None if l3_given is None else l3_given[i].tolist(), space)
+        row["distributions"] = distributions(l1_prob[i].tolist(), None if l2_given is None else l2_given[i].tolist(),
+                                             None if l3_given is None else l3_given[i].tolist(), space)
         out.append(row)
     return out
 
@@ -655,6 +657,24 @@ def path_probabilities(logits, model, space: dict[str, Any]):
     if space["L3"] and model.l3_mask.numel() and logits["L3"].shape[-1] == model.l3_mask.shape[-1]:
         l3 = torch.softmax(logits["L3"].unsqueeze(1).masked_fill(~model.l3_mask.unsqueeze(0), MASKED), -1)
     return l2, l3
+
+
+def distributions(l1_prob: list[float], l2_given: list[list[float]] | None, l3_given: list[list[float]] | None,
+                  space: dict[str, Any]) -> dict[str, Any]:
+    """The model's whole answer per level, for the keyword vote: p(L1) over every L1,
+    p(L2 | L1) under every L1 with L2s, p(L3 | L2) under every L2 with L3s."""
+    l2_index = {pair: i for i, pair in enumerate(space["L2"])}
+    l3_index = {name: i for i, name in enumerate(space["L3"])}
+    out: dict[str, Any] = {"L1": {l1: round(float(p), 6) for l1, p in zip(space["L1"], l1_prob)}, "L2": {}, "L3": {}}
+    for a, l1 in enumerate(space["L1"]):
+        pairs = space["L2_by_L1"].get(l1) if l2_given is not None else None
+        if pairs:
+            out["L2"][l1] = {pair.split(SEP, 1)[1]: round(float(l2_given[a][l2_index[pair]]), 6) for pair in pairs}
+    for pair, names in (space.get("L3_by_L2") or {}).items():
+        if l3_given is not None and names and pair in l2_index:
+            out["L3"][pair] = {name.rsplit(SEP, 1)[1]: round(float(l3_given[l2_index[pair]][l3_index[name]]), 6)
+                               for name in names}
+    return out
 
 
 def top_paths(l1_prob: list[float], l2_given: list[list[float]] | None, l3_given: list[list[float]] | None,
