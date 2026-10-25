@@ -1416,7 +1416,8 @@ def get_additional_page_details_map(conn: Any, chart_id: int) -> dict[int, dict[
 # Databases created before heading_candidates (2026-10-21) gain it on the first write.
 _ADD_HEADING_CANDIDATES = (
     "ALTER TABLE additional_page_details "
-    "ADD COLUMN IF NOT EXISTS heading_candidates JSONB NOT NULL DEFAULT '{}'::jsonb"
+    "ADD COLUMN IF NOT EXISTS heading_candidates JSONB NOT NULL DEFAULT '{}'::jsonb, "
+    "ADD COLUMN IF NOT EXISTS extraction_fields JSONB NOT NULL DEFAULT '{}'::jsonb"
 )
 _heading_candidates_ready = False
 
@@ -1425,8 +1426,8 @@ _heading_candidates_ready = False
 def upsert_additional_page_details(
     conn: Any, *, chart_id: int, page_id: int, fields: dict[str, Any]
 ) -> None:
-    """Printed page number, section headers and every heading candidate for one page
-    (key/value stage)."""
+    """Printed page number, section headers, every heading candidate and every staged
+    field for one page (key/value stage)."""
     global _heading_candidates_ready
     if not _heading_candidates_ready:
         conn.execute(_ADD_HEADING_CANDIDATES)
@@ -1437,8 +1438,8 @@ def upsert_additional_page_details(
             chart_id, page_id, page_number_key, page_number_region,
             page_number_sentence, page_number_value, printed_page_no,
             printed_page_total, confidence, source, section_headers,
-            heading_candidates
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
+            heading_candidates, extraction_fields
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb)
         ON CONFLICT (page_id) DO UPDATE SET
             page_number_key      = EXCLUDED.page_number_key,
             page_number_region   = EXCLUDED.page_number_region,
@@ -1450,6 +1451,7 @@ def upsert_additional_page_details(
             source               = EXCLUDED.source,
             section_headers      = EXCLUDED.section_headers,
             heading_candidates   = EXCLUDED.heading_candidates,
+            extraction_fields    = EXCLUDED.extraction_fields,
             updated_at           = now()
         """,
         (
@@ -1465,6 +1467,7 @@ def upsert_additional_page_details(
             (fields.get("source") or "")[:20] or None,
             json.dumps(fields.get("section_headers") or [], default=str),
             json.dumps(fields.get("heading_candidates") or {}, default=str),
+            json.dumps(fields.get("extraction_fields") or {}, default=str),
         ),
     )
 
@@ -1594,14 +1597,18 @@ def get_continuity_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
 
 @_dispatch
 def upsert_continuity(conn: Any, *, chart_id: int, page_id: int, row: dict[str, Any]) -> None:
-    """One page's document grouping (``continuity.engine.assign``)."""
+    """One page's document grouping (``continuity.engine.assign``), with its label as shown."""
+    global _continuity_label_ready
+    if not _continuity_label_ready:
+        conn.execute("ALTER TABLE page_continuity_results ADD COLUMN IF NOT EXISTS label VARCHAR(60)")
+        _continuity_label_ready = True
     conn.execute(
         """
         INSERT INTO page_continuity_results (
             chart_id, page_id, document_seq, seq, position, relation, decided_by,
             confidence_level, score, confidence, review_required, link_strength,
-            start_confirmed, in_progress_note, evidence
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            start_confirmed, in_progress_note, evidence, label
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (page_id) DO UPDATE SET
             document_seq       = EXCLUDED.document_seq,
             seq                = EXCLUDED.seq,
@@ -1616,6 +1623,7 @@ def upsert_continuity(conn: Any, *, chart_id: int, page_id: int, row: dict[str, 
             start_confirmed    = EXCLUDED.start_confirmed,
             in_progress_note   = EXCLUDED.in_progress_note,
             evidence           = EXCLUDED.evidence,
+            label              = EXCLUDED.label,
             updated_at         = now()
         """,
         (
@@ -1634,8 +1642,78 @@ def upsert_continuity(conn: Any, *, chart_id: int, page_id: int, row: dict[str, 
             bool(row.get("start_confirmed")),
             bool(row.get("in_progress_note")),
             row.get("evidence") or None,
+            (row.get("label") or "")[:60] or None,
         ),
     )
+
+
+_continuity_label_ready = False
+
+# The encounter grouping table (schema/changes_2026-10-25.sql), created on first write so
+# a database that has not run the file still gets it.
+_CREATE_ENCOUNTER_RESULTS = """
+CREATE TABLE IF NOT EXISTS encounter_results (
+    id                BIGSERIAL PRIMARY KEY,
+    chart_id          BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
+    seq               INT NOT NULL,
+    document_seq      INT,
+    page_family       VARCHAR(100),
+    pages             JSONB NOT NULL DEFAULT '[]'::jsonb,
+    dos_from          VARCHAR(20),
+    dos_to            VARCHAR(20),
+    encounter_type    VARCHAR(30),
+    encounter_label   VARCHAR(60),
+    confidence        NUMERIC(5,4),
+    decided_by        VARCHAR(40),
+    reason            TEXT,
+    matched_keyword   VARCHAR(200),
+    conflict          BOOLEAN NOT NULL DEFAULT FALSE,
+    contenders        JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (chart_id, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_encounter_results_chart_id ON encounter_results(chart_id);
+"""
+_encounter_results_ready = False
+
+
+@_dispatch
+def replace_encounter_results(conn: Any, chart_id: int, encounters: Sequence[dict[str, Any]]) -> None:
+    """The chart's encounter grouping (encounter_type stage): its rows replaced by
+    ``encounters``, one per encounter, as staged in continuity.json."""
+    global _encounter_results_ready
+    if not _encounter_results_ready:
+        conn.execute(_CREATE_ENCOUNTER_RESULTS)
+        _encounter_results_ready = True
+    conn.execute("DELETE FROM encounter_results WHERE chart_id = %s", (chart_id,))
+    for item in encounters:
+        conn.execute(
+            """
+            INSERT INTO encounter_results (
+                chart_id, seq, document_seq, page_family, pages, dos_from, dos_to,
+                encounter_type, encounter_label, confidence, decided_by, reason,
+                matched_keyword, conflict, contenders
+            ) VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+            """,
+            (
+                chart_id,
+                int(item["seq"]),
+                item.get("document"),
+                (item.get("page_family") or "")[:100] or None,
+                json.dumps(list(item.get("pages") or []), default=str),
+                (item.get("dos_from") or "")[:20] or None,
+                (item.get("dos_to") or "")[:20] or None,
+                (item.get("encounter_type") or "")[:30] or None,
+                (item.get("encounter_label") or "")[:60] or None,
+                item.get("confidence"),
+                (item.get("decided_by") or "")[:40] or None,
+                item.get("reason") or None,
+                (item.get("matched_keyword") or "")[:200] or None,
+                bool(item.get("conflict")),
+                json.dumps(list(item.get("contenders") or []), default=str),
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------

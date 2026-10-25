@@ -172,6 +172,7 @@ class MemoryStore:
         self.dos: dict[int, dict[str, Any]] = {}
         self.page_classifications: dict[int, dict[str, Any]] = {}
         self.encounters: dict[int, dict[str, Any]] = {}
+        self.encounter_results: dict[int, list[dict[str, Any]]] = {}  # chart_id
         self.sequencing: dict[int, dict[str, Any]] = {}
         self.continuity: dict[int, dict[str, Any]] = {}
         self.additional_details: dict[int, dict[str, Any]] = {}
@@ -1169,6 +1170,10 @@ class MemoryStore:
                 "page_id": page_id,
                 "updated_at": _now(),
             }
+
+    def replace_encounter_results(self, chart_id: int, encounters: Sequence[dict[str, Any]]) -> None:
+        with self._lock:
+            self.encounter_results[chart_id] = [dict(item) for item in encounters]
 
     def upsert_continuity(self, *, chart_id: int, page_id: int, row: dict[str, Any]) -> None:
         with self._lock:

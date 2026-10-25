@@ -453,6 +453,30 @@ def test_production_shows_the_same_candidates_as_local_from_heading_candidates()
     assert heading_field.extracted == local_field.extracted == "History of Present Illness"
 
 
+
+def test_production_reads_every_staged_field_from_extraction_fields():
+    from app.services.extraction_review import review_from_additional
+
+    page = {
+        "width": 1000,
+        "height": 2000,
+        "model_version": "v002",
+        "fields": {
+            "name": [{"accepted": True, "selected": True, "value": "Jane Chen"}],
+            "heading_heron": [
+                {"accepted": True, "selected": True, "text": "Assessment", "level": "Heading",
+                 "box": [100, 200, 400, 260]},
+            ],
+        },
+    }
+    row = {"printed_page_no": "9", "heading_candidates": {}, "extraction_fields": page}
+    review = review_from_additional("chart", "1.jpg", row)
+    assert review.model_version == "v002"
+    # The same rows Local Mode shows from the staging file.
+    assert [(f.id, f.extracted) for f in review.fields] == [(f.id, f.extracted) for f in field_rows(page)]
+    assert {f.id: f.extracted for f in review.fields}["name"] == "Jane Chen"
+
+
 def test_every_page_loads_in_one_call_and_matches_the_per_page_answer(tmp_path):
     from app.services.extraction_review import load_extraction_pages
 

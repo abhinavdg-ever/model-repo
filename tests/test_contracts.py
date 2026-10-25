@@ -2785,3 +2785,26 @@ class TestNoModelWeightsInGit:
         text = attributes.read_text(encoding="utf-8") if attributes.is_file() else ""
         rules = {ln.split()[0] for ln in text.splitlines() if "filter=lfs" in ln and not ln.lstrip().startswith("#")}
         assert rules == self.LFS, f"git LFS rules in .gitattributes: {sorted(rules)}"
+
+
+
+def test_encounter_grouping_is_written_for_production_mode():
+    """The encounter stage writes its grouping (staged in continuity.json) to encounter_results,
+    so review-ui's Production Mode has it without the chart workspace."""
+    from db.memory_store import MemoryStore
+    from db import replace_encounter_results
+
+    store = MemoryStore()
+    replace_encounter_results(store, 3, [{"seq": 1, "pages": ["1.jpg", "2.jpg"], "encounter_type": "inpatient"}])
+    replace_encounter_results(store, 3, [{"seq": 1, "pages": ["1.jpg"]}])  # a re-run replaces
+    assert store.encounter_results[3] == [{"seq": 1, "pages": ["1.jpg"]}]
+
+
+def test_extraction_fields_carry_the_whole_staged_page():
+    from stages.lib.extraction import staging
+    from stages.lib.extraction.stage import extraction_fields_of
+
+    page = staging.StagedPage("1.jpg", {"width": 10, "height": 20, "fields": {"name": [{"value": "x"}]}})
+    assert extraction_fields_of(page, "v002") == {
+        "width": 10, "height": 20, "model_version": "v002", "fields": {"name": [{"value": "x"}]}}
+    assert extraction_fields_of(None) == {} and extraction_fields_of(staging.StagedPage("2.jpg", {})) == {}

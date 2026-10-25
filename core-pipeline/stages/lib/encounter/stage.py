@@ -37,6 +37,7 @@ from db import (
     get_page_classification_map,
     get_ocr_texts,
     get_quality_map,
+    replace_encounter_results,
     upsert_encounter,
 )
 from db.paths import imaging_csv, write_csv
@@ -263,6 +264,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     }
                 )
             delete_encounter(conn, chart_id, unresolved)
+            # The grouping itself, for review-ui's Production Mode (as staged below).
+            replace_encounter_results(conn, chart_id, visit_log)
 
         path = write_csv(
             imaging_csv(ctx.chart_name, "encounter"), ENCOUNTER_COLS, csv_rows

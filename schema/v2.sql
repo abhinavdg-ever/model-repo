@@ -69,6 +69,9 @@
 -- ---------------------------------------------------------------------
 --  * imaging_final.confidences / review_fields (v1.sql, 2026-10-25): every Final value's
 --    confidence on one scale and the values below the review line (changes_2026-10-25.sql).
+--  * Production Mode from Postgres only (v1.sql, 2026-10-25): encounter_results (the
+--    encounter grouping), additional_page_details.extraction_fields (the Extraction tab),
+--    page_continuity_results.label (the continuity label as shown).
 --  * blank_junk_classification.duplicate_confidence (v1.sql, 2026-10-22): each page's
 --    highest duplicate similarity, appended to v_page_blank_junk_final
 --    (changes_2026-10-22.sql).

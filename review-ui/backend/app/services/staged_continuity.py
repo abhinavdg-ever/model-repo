@@ -3,7 +3,8 @@
 The ``encounter_type`` stage appends ``encounters`` (one entry per encounter: its pages,
 page family, DOS and the one decision its pages carry). Doc Summary builds from it; a
 chart without it (older runs, Production Mode without the workspace) falls back to
-deriving encounters from ``document_seq``.
+deriving encounters from ``document_seq``. Production Mode reads the same grouping from
+``encounter_results`` (:func:`load_encounters_from_db`).
 """
 
 from __future__ import annotations
@@ -33,6 +34,41 @@ def load_staged_encounters(data_root: Path | None, folder_id: str) -> list[Stage
     for raw in payload.get("encounters") or []:
         try:
             out.append(StagedEncounter.model_validate(raw))
+        except ValueError:
+            continue
+    return out
+
+
+_ENCOUNTERS_SQL = """
+    SELECT to_jsonb(e)
+    FROM encounter_results e
+    JOIN chart_list c ON c.id = e.chart_id
+    WHERE c.chart_name = %s
+    ORDER BY e.seq
+"""
+
+
+def load_encounters_from_db(database_url: str, db_schema: str, folder_id: str) -> list[StagedEncounter]:
+    """Production Mode: the grouping the encounter stage wrote to ``encounter_results``;
+    [] when the table is missing or unreadable (logged, never raises)."""
+    from app.services.db import connection, table_exists
+
+    try:
+        if not table_exists(database_url, db_schema, "encounter_results"):
+            return []
+        with connection(database_url, db_schema) as conn:
+            with conn.cursor() as cur:
+                cur.execute(_ENCOUNTERS_SQL, (folder_id,))
+                rows = [row[0] for row in cur.fetchall()]
+    except Exception as exc:
+        logger.warning("encounter_results unreadable for %s: %s", folder_id, exc)
+        return []
+    out: list[StagedEncounter] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            out.append(StagedEncounter.model_validate({**row, "document": row.get("document_seq")}))
         except ValueError:
             continue
     return out

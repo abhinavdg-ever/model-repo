@@ -50,7 +50,7 @@ from app.services.extraction_review import (
     load_extraction_review,
     load_extraction_review_from_db,
 )
-from app.services.staged_continuity import load_staged_encounters
+from app.services.staged_continuity import load_encounters_from_db, load_staged_encounters
 from app.services.imaging_csv import filter_folder, iter_csv_lines
 from app.services.chart_run_batch import database_url_usable
 from app.services.accuracy_cache import clear_report_cache, load_report
@@ -1415,9 +1415,14 @@ def get_folder_imaging(
                 )
             }
         )
-    # The staged encounter grouping, when the chart workspace has one.
-    if not settings.is_production_mode and not doc.encounters:
-        encounters = load_staged_encounters(settings.resolved_data_root, folder_id)
+    # The encounter grouping: Production Mode from encounter_results, Local Mode from the
+    # chart workspace's staging file.
+    if not doc.encounters:
+        encounters = (
+            load_encounters_from_db(settings.database_url, settings.db_schema, folder_id)
+            if settings.is_production_mode
+            else load_staged_encounters(settings.resolved_data_root, folder_id)
+        )
         if encounters:
             doc = doc.model_copy(update={"encounters": encounters})
     logger.info(

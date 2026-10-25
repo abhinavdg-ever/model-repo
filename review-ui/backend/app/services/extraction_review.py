@@ -655,8 +655,9 @@ def _stored_headers(items: object) -> list[OcrSectionHeader]:
 def review_from_additional(
     folder_id: str, page_file: str, row: dict | None
 ) -> ExtractionReviewResponse:
-    """One page's additional_page_details row as the Additional tab's response: Page Number
-    and Headings filled, every other staged field empty (they live only in staging).
+    """One page's additional_page_details row as the Additional tab's response. A row with
+    ``extraction_fields`` carries every staged field; an older row has only Page Number and
+    Headings (every other field empty).
 
     ``heading_candidates`` (every heading row, accepted or not) goes through the same rules
     as the staging file, so the lighter candidates show too. A row written before it
@@ -664,6 +665,18 @@ def review_from_additional(
     if row is None:
         return ExtractionReviewResponse(
             folder_id=folder_id, available=False, page_file=page_file, fields=field_rows(None)
+        )
+    # Every staged field (2026-10-25): the same page the staging file holds, so the tab
+    # reads exactly as in Local Mode.
+    staged_page = row.get("extraction_fields")
+    if isinstance(staged_page, dict) and staged_page.get("fields"):
+        return ExtractionReviewResponse(
+            folder_id=folder_id,
+            available=True,
+            model_version=str(staged_page.get("model_version") or ""),
+            page_file=page_file,
+            fields=field_rows(staged_page),
+            section_headers=heron_headers(staged_page),
         )
     candidates = row.get("heading_candidates")
     staged = candidates if isinstance(candidates, dict) and candidates.get("fields") else None

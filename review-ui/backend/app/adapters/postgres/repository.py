@@ -143,6 +143,17 @@ _OVERLAY_SQL: dict[str, str] = {
                                 JOIN chart_list c ON c.id = k.chart_id
                                 WHERE c.chart_name = %s
                                 """,
+    "provider_signature": """
+                                SELECT p.page_name, s.provider_name, s.signature_present,
+                                       to_jsonb(s) ->> 'provider_credentials',
+                                       to_jsonb(s) -> 'signers',
+                                       to_jsonb(s) ->> 'provider_version',
+                                       s.confidence
+                                FROM provider_signature_results s
+                                JOIN page_list p ON p.id = s.page_id
+                                JOIN chart_list c ON c.id = s.chart_id
+                                WHERE c.chart_name = %s
+                                """,
     "imaging_final": """
                                 SELECT p.page_name, f.page_type, f.classification_category,
                                        f.dos_from, f.dos_to, to_jsonb(f) ->> 'page_subtype',
@@ -163,7 +174,11 @@ _OVERLAY_SQL: dict[str, str] = {
                                 """,
 }
 # Sections whose table an older database may lack: skipped (no rows) while it is absent.
-_OVERLAY_OPTIONAL_TABLE = {"continuity": "page_continuity_results", "imaging_final": "imaging_final"}
+_OVERLAY_OPTIONAL_TABLE = {
+    "continuity": "page_continuity_results",
+    "provider_signature": "provider_signature_results",
+    "imaging_final": "imaging_final",
+}
 
 
 # get_ocr_text's cache: (chart, kind) -> (fingerprint, response), least recently used out.
@@ -1205,7 +1220,8 @@ class PostgresFolderRepository(FolderRepository):
                         fields = _ensure(str(page_name))
                         fields["documentSeq"] = int(document) if document is not None else None
                         fields["documentPosition"] = position
-                        fields["documentLabel"] = continuity_label(
+                        # The engine's own label (2026-10-25), else rebuilt from position.
+                        fields["documentLabel"] = k.get("label") or continuity_label(
                             position, int(document) if document is not None else None,
                             k.get("confidence_level"),
                         )
@@ -1225,6 +1241,19 @@ class PostgresFolderRepository(FolderRepository):
                                 f["documentLabel"] = (f.get("documentLabel") or "").replace(
                                     f"(Doc {document})", f"(Junk {document})"
                                 )
+
+            with _skip_on_error("provider_signature", folder_id):
+                # The extraction stage's signature rows (Local reads provider_signature.csv);
+                # imaging_final, below, replaces them with the document's values once it ran.
+                for (page_name, provider, signed, credentials, signers, version,
+                     provider_confidence) in rows["provider_signature"] or []:
+                    fields = _ensure(str(page_name))
+                    people = signer_fields(signers, provider, credentials, version)
+                    fields.update({key: value for key, value in people.items() if value})
+                    if provider_confidence is not None:
+                        fields["providerSignatureConfidence"] = float(provider_confidence)
+                    if signed is not None:
+                        fields["providerSignature"] = "Yes" if signed else "No"
 
             with _skip_on_error("imaging_final", folder_id):
                 if rows["imaging_final"]:

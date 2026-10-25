@@ -124,6 +124,19 @@ def heading_candidates_of(staged_page: Optional[staging.StagedPage]) -> dict[str
     return {"width": staged_page.width, "height": staged_page.height, "fields": fields}
 
 
+def extraction_fields_of(staged_page: Optional[staging.StagedPage], model_version: str = "") -> dict[str, Any]:
+    """Every field the extraction staged for the page, as in the staging file: review-ui's
+    Production Mode builds the Extraction tab from it, as Local Mode does from the file."""
+    if staged_page is None or not staged_page.fields:
+        return {}
+    return {
+        "width": staged_page.width,
+        "height": staged_page.height,
+        "model_version": model_version,
+        "fields": staged_page.fields,
+    }
+
+
 def _header_top_left(item: dict[str, Any]) -> tuple[float, float]:
     box = item.get("bbox")
     if isinstance(box, (list, tuple)) and len(box) >= 2:
@@ -303,6 +316,9 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 headers = headers_by_page.get(page["page_name"]) or []
                 sig = page_signature(staged_page)
                 extra = additional_fields(page_no, headers, heading_candidates_of(staged_page))
+                extra["extraction_fields"] = extraction_fields_of(
+                    staged_page, getattr(staged, "model_version", "") if staged else ""
+                )
                 upsert_additional_page_details(
                     conn, chart_id=chart_id, page_id=page["id"], fields=extra
                 )

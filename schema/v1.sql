@@ -704,6 +704,36 @@ CREATE TRIGGER trg_page_classification_updated_at
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 
+-- The encounter grouping (encounter_type stage, 2026-10-25): one row per encounter, its
+-- pages, page family, DOS and the one decision its pages carry, as staged in
+-- <chart>/staging/continuity.json "encounters". review-ui's Doc Summary reads it.
+CREATE TABLE encounter_results (
+    id                BIGSERIAL PRIMARY KEY,
+    chart_id          BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
+    seq               INT NOT NULL,
+    document_seq      INT,
+    page_family       VARCHAR(100),
+    pages             JSONB NOT NULL DEFAULT '[]'::jsonb,
+    dos_from          VARCHAR(20),
+    dos_to            VARCHAR(20),
+    encounter_type    VARCHAR(30),
+    encounter_label   VARCHAR(60),
+    confidence        NUMERIC(5,4),
+    decided_by        VARCHAR(40),
+    reason            TEXT,
+    matched_keyword   VARCHAR(200),
+    conflict          BOOLEAN NOT NULL DEFAULT FALSE,
+    contenders        JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (chart_id, seq)
+);
+CREATE INDEX idx_encounter_results_chart_id ON encounter_results(chart_id);
+
+CREATE TRIGGER trg_encounter_results_updated_at
+    BEFORE UPDATE ON encounter_results
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 -- Encounter type: one label for all pages that share a page-level DOS.
 CREATE TABLE encounter_type_results (
     id                BIGSERIAL PRIMARY KEY,
@@ -808,6 +838,11 @@ CREATE TABLE additional_page_details (
     -- {"width", "height", "fields": {"heading_heron": [...]}} (2026-10-21). review-ui's
     -- Production Mode draws headings and the lighter candidates from it.
     heading_candidates      JSONB NOT NULL DEFAULT '{}'::jsonb,
+    -- Every field the extraction staged for the page (member, DOS, provider, signature,
+    -- page number, headings), as in staging/extraction.json: {"width", "height",
+    -- "model_version", "fields": {...}} (2026-10-25). review-ui's Production Mode builds
+    -- the Extraction tab from it.
+    extraction_fields       JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (page_id)
@@ -856,6 +891,9 @@ CREATE TABLE page_continuity_results (
     start_confirmed      BOOLEAN NOT NULL DEFAULT FALSE,
     in_progress_note     BOOLEAN NOT NULL DEFAULT FALSE,
     evidence             TEXT,
+    -- The page's continuity as shown ('Continue? (Doc 3)', 'New (Junk 4)'), the engine's
+    -- own label (2026-10-25); review-ui rebuilds it from position when NULL.
+    label                VARCHAR(60),
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (page_id)
