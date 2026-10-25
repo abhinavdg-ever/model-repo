@@ -1055,7 +1055,36 @@ was sure of (database change: `schema/changes_2026-10-25.sql`). review-ui shows 
 Final value's confidence beside it, and the Extracted value's where the run stored
 none.
 
-### 10.3 Worked examples
+### 10.3 Blank, junk and duplicate in detail
+
+Every page's blank / junk verdict carries a confidence (`blank_junk_classification.confidence`):
+
+| Verdict | Confidence |
+|---|---|
+| R1 empty page, R2 "intentionally left blank", R3 Visual page | the rule's strength: 1.0 / 0.99 / 0.90. The page has no text for DistilBERT to read, so there is no model probability to start from |
+| R4 signature → Main, R6 short page → Junk | DistilBERT's probability for that verdict (p(keep) for Main, p(junk) for Junk), lifted by the rule's strength 0.95; × 0.7 when DistilBERT itself says the other side (≥ 0.5). R6 calling junk while DistilBERT says keep at 0.70: (0.30 + 0.70 × 0.5 × 0.95) × 0.7 = **44%, review** |
+| R5, DistilBERT alone | p(keep) for Main, p(junk) for Junk |
+| Junk for review (p(junk) 0.50–0.85, under `junk_at`) | scaled to just under 50%: always flagged |
+| Kept Main because the page is handwritten | p(keep), under 0.5 here: flagged |
+| Pass 1, judged again in pass 2 | p(keep) for now; pass 2 replaces it |
+| DistilBERT unavailable | 0.5 × degraded = **30%**, flagged |
+
+Duplicates:
+
+* **Full duplicate** (Blank/Junk "Yes (Junk)", Duplicate "Duplicate (To Page N)"): its
+  confidence is the word-overlap similarity with its original, at least 98% unless the
+  pair qualified as contained or fewer than 8 words different.
+* **Partial duplicate** (95–98% alike): it keeps its own verdict (Main or junk), and so
+  that verdict's confidence. The similarity is not written over it.
+* **`duplicate_confidence`**: every compared page's best similarity, whatever its
+  verdict; review-ui's Duplicate row reads it (50% at 95% similarity).
+* A duplicate's **page type** is its original's, and so is that page type's confidence.
+
+In `imaging_final.confidences`, `blank_junk` is stored for pages that came out Blank,
+Junk or Duplicate. review-ui's Blank/Junk row shows the blank/junk confidence, not the
+page type's.
+
+### 10.4 Worked examples
 
 * A Progress Note page: the model gives L1 0.72, and a strong canon title term pins
   Progress Note (support 1.0): 0.72 + 0.28 × 0.5 = **0.86, good**. Its L2 Assessment and
@@ -1069,7 +1098,7 @@ none.
 * R6 (a short page) calls a page junk while DistilBERT says keep at 0.70:
   (0.30 + 0.70 × 0.5 × 0.95) × 0.7 = **0.44, review**.
 
-### 10.4 Still to do
+### 10.5 Still to do
 
 * **Calibrate** each module on the ground-truth charts: bucket the stored confidences,
   measure the share right in each bucket, write the knots to `calibration`. Until then
@@ -1077,6 +1106,9 @@ none.
 * The penalties are first settings (user, 2026-10-25). Re-weigh them with the
   calibration: if passable values are right 95% of the time, the penalties are too
   harsh.
+* A page that came out **Main** with a weak verdict (kept as handwritten at p(keep)
+  0.4) is not yet listed in `imaging_final.review_fields`: its number is in
+  `blank_junk_classification` only.
 * Orientation, tilt and mirroring still store no confidence (Tesseract's OSD value is
   open-ended and is not kept).
 
