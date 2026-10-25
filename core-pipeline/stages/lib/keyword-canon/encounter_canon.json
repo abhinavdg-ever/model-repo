@@ -371,6 +371,15 @@
       "outpatient_tele": 0.3,
       "home": 0.3,
       "inpatient": 0.3
+    },
+    "override_f2f_phrase": {
+      "min_confidence": 0.95,
+      "settings": [
+        "outpatient_tele",
+        "home",
+        "inpatient"
+      ],
+      "note": "2026-10-25 (user): a model answer at very high confidence beats a weak page phrase. When the page's only evidence is a tier 2 phrase for F2F ('office visit', 'clinic note': template wording that also sits on telehealth and home visits) and the model says Evisit, Home Visit or Inpatient at >= 0.95, the model's setting wins (by model_override). Only F2F phrases are overridden: a phrase for any other setting ('inpatient', 'telehealth visit') stays. Held-out pages: fires on 4, right on 4; encounter test pages ENC_15 (house call with an 'Office Visit' footer) and ENC_14 (telehealth on an office template)."
     }
   }
 }

@@ -102,6 +102,9 @@ class Canon:
     model_confirm: dict[str, tuple[tuple[str, re.Pattern[str]], ...]] = field(default_factory=dict)
     # With a confirming keyword, the model need only agree at this confidence.
     model_confirm_min: dict[str, float] = field(default_factory=dict)
+    # A model answer at this confidence for one of these settings beats a tier 2 F2F phrase.
+    model_override_min: float = 1.01
+    model_override_settings: frozenset[str] = frozenset()
 
 
 class CanonError(ValueError):
@@ -156,6 +159,9 @@ def _validate(raw: dict[str, Any], page_type_ids: Optional[set[str]]) -> None:
     for setting in model_vote.get("confirm") or {}:
         if setting not in settings:
             errors.append(f"model_vote.confirm.{setting}: unknown setting")
+    for setting in (model_vote.get("override_f2f_phrase") or {}).get("settings") or ():
+        if setting not in settings:
+            errors.append(f"model_vote.override_f2f_phrase.settings: unknown setting {setting!r}")
 
     default = (raw.get("default") or {}).get("setting")
     if default and default not in settings:
@@ -230,6 +236,8 @@ def _parse_canon(raw: dict[str, Any], *, check_page_types: bool = True) -> Canon
         model_settings=dict((raw.get("model_vote") or {}).get("settings") or {}),
         model_min={k: float(v) for k, v in ((raw.get("model_vote") or {}).get("min_confidence") or {}).items()},
         model_confirm_min={k: float(v) for k, v in ((raw.get("model_vote") or {}).get("confirm_min") or {}).items()},
+        model_override_min=float(((raw.get("model_vote") or {}).get("override_f2f_phrase") or {}).get("min_confidence", 1.01)),
+        model_override_settings=frozenset(((raw.get("model_vote") or {}).get("override_f2f_phrase") or {}).get("settings") or ()),
         model_confirm={
             setting: tuple((normalize_text(w), _phrase_re(normalize_text(w))) for w in words)
             for setting, words in ((raw.get("model_vote") or {}).get("confirm") or {}).items()
@@ -440,6 +448,9 @@ class Vote:
     evidence: Evidence
 
 
+F2F = "outpatient_f2f"
+
+
 def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vote:
     """The page's own setting: Not Applicable for a family encounter type does not apply
     to (a lab report), else its strongest evidence (tier 1, then tier 2), else the
@@ -447,15 +458,24 @@ def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vot
     canon's ``model_vote`` takes: a setting's probability at ``min_confidence``, or at
     ``confirm_min`` with one of its confirm words on the page (the keyword lowers the bar,
     never blocks), else its family's default
-    (Progress Note -> Outpatient F2F, Discharge Summary -> Inpatient)."""
+    (Progress Note -> Outpatient F2F, Discharge Summary -> Inpatient). A tier 2 F2F phrase
+    gives way to the model at ``override_f2f_phrase`` confidence (0.95) for Evisit, Home
+    Visit or Inpatient."""
     family = str(page.get("page_family") or "").strip()
     if canon.applies_to and family and family.casefold() != "unknown" and family.casefold() not in canon.applies_to:
         return Vote(canon.not_applicable, weight, "not_applicable", family, Evidence())
     evidence = gather([page], canon)
     own = decide(evidence, canon)
+    model = page.get("encounter_model")
+    if own.setting == F2F and own.decided_by == "tier2" and model:
+        # A model at very high confidence beats a weak F2F phrase ("office visit" on a
+        # house-call or telehealth template; 2026-10-25, user).
+        setting = canon.model_settings.get(model[0], "")
+        if setting in canon.model_override_settings and model[1] >= canon.model_override_min:
+            return Vote(setting, weight, "model", f"model {model[0]} {model[1]:.2f} over phrase {own.matched_keyword!r}",
+                        evidence)
     if own.setting:
         return Vote(own.setting, weight, own.decided_by, own.matched_keyword, evidence)
-    model = page.get("encounter_model")
     if model:
         name, confidence = model[0], model[1]
         probs = model[2] if len(model) > 2 else {name: confidence}

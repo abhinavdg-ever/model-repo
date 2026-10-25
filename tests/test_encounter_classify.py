@@ -453,3 +453,18 @@ def test_a_default_never_outvotes_a_page_with_evidence(canon):
     assert (row["encounter_type"], row["decided_by"]) == ("outpatient_tele", "vote")
     nothing = _doc({**page(1, ""), "page_family": "Progress Note"}, {**page(2, ""), "page_family": "Progress Note"})
     assert classify_pages(nothing, entries=canon)[0]["encounter_type"] == "outpatient_f2f"  # the fallback
+
+
+@pytest.mark.parametrize("text, answer, expected", [
+    # A house call on an office template: the model at 0.99 beats the F2F phrase.
+    ("office visit note, house call program", ("Outpatient (Home Visit)", 0.99), ("home", "model")),
+    ("clinic note", ("Outpatient (Evisit)", 0.97), ("outpatient_tele", "model")),
+    # Below 0.95 the phrase stays.
+    ("office visit", ("Outpatient (Home Visit)", 0.9), ("outpatient_f2f", "tier2")),
+    # Only F2F phrases give way: an inpatient statement stays, however sure the model.
+    ("patient is an inpatient", ("Outpatient (Evisit)", 0.99), ("inpatient", "tier2")),
+])
+def test_a_very_confident_model_beats_a_weak_f2f_phrase(canon, text, answer, expected):
+    log: list = []
+    classify_pages(_doc(_model_page(1, "Progress Note", answer, text)), entries=canon, visit_log=log)
+    assert (log[0]["votes"][0]["setting"], log[0]["votes"][0]["by"]) == expected

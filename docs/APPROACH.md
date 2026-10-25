@@ -441,6 +441,7 @@ Five values: **Inpatient**, **Outpatient (F2F)**, **Outpatient (Evisit)**, **Out
             │no
             ▼
           rules: tier 1 page type, tier 2 phrases, negatives ──found──▶ that setting (by tier1 / tier2)
+            (a tier 2 F2F phrase gives way to the model at ≥ 0.95 for Evisit / Home Visit / Inpatient)
             │nothing
             ▼
           Evisit / Home Visit / Inpatient: the model gives it ≥ 0.50, or ≥ 0.30 with one of
@@ -476,14 +477,25 @@ Five values: **Inpatient**, **Outpatient (F2F)**, **Outpatient (Evisit)**, **Out
   | Home | home, residence, homebound, caregiver, assisted living, apartment, POS 12, place of service 12, in the home, house call, family member present, home health, domiciliary, private residence |
   | Inpatient | admitted, admission, inpatient, hospital day, hospitalist, room, bed, observation, ICU, intensive care, nursing unit, ward, rounds, telemetry, length of stay, hospital course, discharge planning |
 
+  **Phrases and keywords are different things.** The rules' *phrases* (tier 2:
+  "telehealth visit", "home visit", "admitted", "office visit", "clinic note" ...) decide a
+  page on their own, before the model is asked. The *keywords* above only lower the model's
+  bar. **A very confident model beats a weak F2F phrase [built 2026-10-25, user]:** when
+  the page's only evidence is a tier 2 F2F phrase ("office visit", "clinic note": template
+  wording that also sits on telehealth and house-call pages) and the model says Evisit,
+  Home Visit or Inpatient at **≥ 0.95**, the model's setting wins
+  (`model_vote.override_f2f_phrase`). A phrase for any other setting stays ("inpatient"
+  beats a model that says Evisit). On held-out pages this fires 4 times, right 4 times.
+
   Measured on the retrained model's held-out pages (validation + test, pages with a
   setting): Evisit 7 of 7 right at ≥ 0.30, 4 of them pages the rules miss (a keyword
   requirement had blocked 3 of those 4); Home Visit 2 of 2; Inpatient 28 of 37 right at
   ≥ 0.50 (21 right beyond the rules) and 32 of 43 with a keyword at ≥ 0.30. On the 22
-  encounter test pages the rules with this vote get **17 of 21** (Inpatient 4/5, Not
-  Available 4/4, Evisit 3/4, F2F 4/5, Home Visit 2/3), against 14 with the first model;
-  the model alone gets 16 (it finds all 3 Home Visit pages; the rules let a page phrase
-  outrank it on one).
+  encounter test pages the rules with this vote get **19 of 21** (Inpatient 4/5, Not
+  Available 4/4, Evisit 4/4, F2F 4/5, Home Visit 3/3), against 17 before the F2F-phrase
+  override and 14 with the first model; the model alone gets 16. Still wrong: ENC_03
+  (ambulatory surgery centre wording should give F2F; the Operative Note prior gives
+  Inpatient) and ENC_09 (an ED visit ending in admission should be Inpatient).
 
   The samples are small; measure again on new charts before lowering a threshold. Each
   vote records `by: model` and the model's class and confidence in the encounter log
