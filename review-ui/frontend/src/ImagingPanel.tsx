@@ -2489,8 +2489,15 @@ function SequencingTable({
     if (sequenceNumber(p.actualSequence) == null) return null;
     return breaks.has(p.pageNumber) ? "break" : "match";
   };
-  // Accuracy = 1 − breaks / pages marked; a break is any ✗ (Main break or junk mismatch).
-  const marks = editing ? [] : pages.map(verdict).filter((mark) => mark != null);
+  // Accuracy = 1 − breaks / Main pages marked: Main against Main only. A J page, or a
+  // page that is J on one side and Main on the other, is marked but not counted (that is
+  // a blank / junk error, scored there).
+  const marks = editing
+    ? []
+    : pages
+        .filter((p) => !shown(p).startsWith("J") && !isBlankJunkPage(p))
+        .map(verdict)
+        .filter((mark) => mark != null);
   const wrong = marks.filter((mark) => mark !== "match").length;
 
   async function save() {

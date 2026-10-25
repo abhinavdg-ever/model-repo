@@ -6,6 +6,11 @@ cross-encoder continuation → cover pages last.
 
 Writes DB + ``imaging/<chart>_sequencing.csv``.
 ``currentSequence`` = file/page order; ``actualSequence`` = suggested ``seq``.
+
+Two series: Main pages are ordered 1, 2, 3 …; blank / junk pages are left out of the
+ordering and numbered J1, J2 … in page order (``seq`` NULL, ``sequence_method``
+``blank_junk``; the CSV says ``J1``). A duplicate has no sequence. Accuracy compares
+Main pages with Main pages only.
 """
 from __future__ import annotations
 
@@ -86,6 +91,17 @@ def _printed_marker(details: Optional[dict[str, Any]]) -> Optional[Any]:
     )
 
 
+def junk_sequences(pages: list[dict[str, Any]], verdicts: dict[int, str]) -> dict[int, int]:
+    """Blank / junk page id → its J number (1, 2, 3 … in page order). Main pages and
+    duplicates are not in it."""
+    out: dict[int, int] = {}
+    for page in sorted(pages, key=lambda p: int(p.get("page_number") or 0)):
+        verdict = verdicts.get(page["id"], "not_blank_junk")
+        if verdict in BJ_EXCLUDE and verdict != "duplicate":
+            out[page["id"]] = len(out) + 1
+    return out
+
+
 def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
     with stage_run(chart_id, STAGE, force=force) as ctx:
         with connect() as conn:
@@ -104,32 +120,30 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             quality = get_quality_map(conn, chart_id)
             details = get_additional_page_details_map(conn, chart_id)
 
-        # Sequencing needs the full main-page set (order is chart-global).
+        # Main pages are ordered together (order is chart-global); blank / junk pages
+        # get J1, J2 … in page order and a duplicate gets nothing.
         seq_inputs: list[dict[str, Any]] = []
         sources: dict[int, str] = {}
-        page_by_id: dict[int, dict[str, Any]] = {}
+        junk_seq = junk_sequences(ctx.pages, bj)
         for page in ctx.pages:
             page_id = page["id"]
-            page_by_id[page_id] = page
-            is_bj = bj.get(page_id, "not_blank_junk") in BJ_EXCLUDE
             f2 = final2.get(page_id)
             f1 = final1.get(page_id)
             pr = prelim.get(page_id)
-            text = ""
-            if not is_bj:
-                text = best_page_text(
-                    final2=f2,
-                    final1=f1,
-                    prelim=pr,
-                    quality_row=quality.get(page_id),
-                )
             sources[page_id] = _ocr_source_label(final2=f2, final1=f1, prelim=pr)
+            if bj.get(page_id, "not_blank_junk") in BJ_EXCLUDE:
+                continue
             seq_inputs.append(
                 {
                     "page_id": page_id,
                     "page_number": int(page.get("page_number") or 0),
-                    "text": text,
-                    "is_classified": is_bj,
+                    "text": best_page_text(
+                        final2=f2,
+                        final1=f1,
+                        prelim=pr,
+                        quality_row=quality.get(page_id),
+                    ),
+                    "is_classified": False,
                     "page_marker": _printed_marker(details.get(page_id)),
                 }
             )
@@ -150,6 +164,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 conf = a.get("sequence_confidence")
                 method = a.get("sequence_method") or ""
                 review = bool(a.get("sequence_review_flag"))
+                shown: Any = actual if actual is not None else ""
+                if page_id in junk_seq:
+                    method, shown = "blank_junk", f"J{junk_seq[page_id]}"
+                elif bj.get(page_id) == "duplicate":
+                    method = "duplicate"
 
                 if page_id in todo or force:
                     upsert_sequencing(
@@ -171,7 +190,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "page_name": page["page_name"],
                         "page_number": page.get("page_number"),
                         "current_sequence": current or "",
-                        "actual_sequence": actual if actual is not None else "",
+                        "actual_sequence": shown,
                         "sequence_method": method,
                         "confidence": conf if conf is not None else "",
                         "review_flag": "y" if review else "n",

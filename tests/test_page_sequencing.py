@@ -86,3 +86,12 @@ def test_original_order_fallback_when_no_markers():
     assignments = compute_sequence_assignments(pages, cross_encoder_enabled=False)
     ordered = sorted(assignments, key=lambda a: a["sequence_position"])
     assert [a["page_id"] for a in ordered] == ["a", "b"]
+
+
+def test_blank_and_junk_pages_have_their_own_series():
+    from stages.lib.sequencing.stage import junk_sequences
+
+    pages = [{"id": i, "page_number": n} for i, n in ((10, 4), (11, 1), (12, 2), (13, 3), (14, 5))]
+    verdicts = {11: "junk", 12: "not_blank_junk", 13: "duplicate", 14: "blank", 10: "not_blank_junk"}
+    # J1, J2 … in page order; Main pages and the duplicate are not numbered here.
+    assert junk_sequences(pages, verdicts) == {11: 1, 14: 2}

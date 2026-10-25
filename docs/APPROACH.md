@@ -1,10 +1,10 @@
-# Page classification, continuity and encounter type: the approach
+# Page classification, continuity, encounter type and page sequencing: the approach
 
 Taxonomy **v29.2** (the version lives inside the files, as `taxonomy_version`; no file
 or folder name carries a version). Written 2026-10-25.
 
 This is the one document for how a chart's pages are classified, grouped into
-documents and encounters, and given an encounter type: what each step reads, how it
+documents and encounters, given an encounter type and put in reading order: what each step reads, how it
 decides, what it stores, and how the models behind it are trained. The canon each step
 uses is reproduced in full in the [appendix](#appendix-the-canon-taxonomy-v292),
 rendered from the JSON files.
@@ -420,6 +420,7 @@ basis).
 | `staging/blank_junk.json`, `staging/extraction.json` | blank / junk / duplicate verdicts; key-value extraction, signatures |
 | `staging/continuity.json`, `page_continuity_results` | per gap: score, signals, decision; per page: document, tag; Final page type, DOS, encounter |
 | `encounter_type_results` | per page: Extracted setting, basis, evidence; per encounter: Final setting, confidence, decided_by |
+| `page_sequencing_results`, `imaging/<chart>_sequencing.csv` | per page: suggested order (`seq`), method, confidence, review flag (section 9) |
 | `imaging_final` | every field's Final value |
 
 A `staging/page_classification.json` entry (made-up values):
@@ -558,6 +559,119 @@ Report ↔ Progress Note line; pages and visits).
 4. **[to build]** continuity signals 4.2, 4.3, 4.4; measured (4.5) before their weights
    are trusted.
 5. **[to build]** the client default (5.2 step 4) and the encounter split (5.3).
+
+---
+
+## 9. Page sequencing [built]
+
+Sequencing suggests the order a chart's pages should be read in. It never moves or
+renames a file: **current sequence** is the scan order (`page_number`), **actual
+sequence** is the suggested order (`page_sequencing_results.seq`). It runs after
+encounter type and before `imaging_final` (stage `page_sequencing`; code in
+`core-pipeline/stages/lib/sequencing/`, ported from advantmed-document-processing).
+
+### 9.1 Two series: Main and J
+
+| Page (blank / junk pass-2 verdict) | Sequence | Stored |
+|---|---|---|
+| Main (not blank, junk or duplicate) | **1, 2, 3 …**, ordered by the steps in 9.2 | `seq` = the number |
+| Blank or junk | **J1, J2, J3 …** in scan order | `seq` NULL, `sequence_method` `blank_junk`; the CSV says `J1` |
+| Duplicate (≥ 98%, "Duplicate (To Page N)") | none: skipped | `seq` NULL, `sequence_method` `duplicate` |
+
+Blank and junk pages never enter the ordering, so they cannot push a Main page out of
+place, and the Main series always runs 1 to the number of Main pages with no gaps. The
+ground truth (`page_ground_truth.page_sequence`, text) uses the same two series: "3" for
+a Main page, "J2" for a blank / junk one. A client sheet that numbers every page
+1, 2, 3 … is converted on display: pages whose ground truth is blank, junk or an invoice
+become J1, J2 … and the Main pages are renumbered 1, 2, 3 …, each in stored order.
+
+### 9.2 How Main pages are ordered
+
+Text is the best OCR the page has (Final 2 → Final 1 → Tesseract; Tesseract never for a
+handwritten or low-quality page). Each page gives the engine its first and last 5
+lines (header / footer), first and last 15 lines (for continuation), word count and
+the printed page number the key/value extraction found.
+
+1. **Page markers.** Per page, one printed page number:
+   * the key/value extraction's `printed_page_no` / `printed_page_total` first
+     (`additional_page_details`; confidence 1.0 with a total, 0.85 without);
+   * otherwise patterns in the footer, then the header, then the body ("Page 3 of 7",
+     "Pg 3", "p. 3 of 7", "3 of 7", "3/7", "- 3 -", a footer line that is only a number).
+     Patterns that say "page" score 1.0; bare-number ones 0.92 (0.85 with no total;
+     0.78 for a lone footer number).
+   * Markers are grouped into **families by their total** ("of 7"). The family on the
+     most pages (then the most explicit, then the most distinct numbers) is the
+     record's real pagination, trusted even when its total is larger than the upload (a
+     partial upload of a bigger record). A page outside it keeps a lone marker only if
+     the pattern says "page" and the total fits the upload (≤ 2 × pages, or pages + 20).
+     Bare numbers on one page alone ("1/25", "2 of 3") are dates and doses, not
+     pagination, and are dropped.
+2. **Streams.** A chart can hold several printouts, each numbered from 1. Pages are
+   grouped by marker total; a group of ≤ 2 pages next to a group 3 × its size is
+   dropped as noise, and with only 1–2 marked pages in a chart of 5 or more, the chart
+   is not split (one stream; the markers still order it, step 3). Inside a group, two pages claiming the same number are split
+   into parallel streams (each page goes to the stream whose last page is nearest in
+   scan order); a page with the same text as another claiming that number is a
+   duplicate. Every stream after the first is flagged for review. Pages with no marker
+   are orphans, ordered by step 4 (joined to the stream when there is only one).
+3. **Order by markers.** Inside a stream, marked pages are reordered **within the
+   scan positions they already hold**: the set of positions marked pages occupy stays
+   the same, and they fill it in ascending marker number. Unmarked pages keep their
+   scan position. (Marker numbers and scan positions are different scales, so the two
+   are never sorted together.) Two marked pages with the same number, or markers with
+   different totals, are conflicts: they keep scan order and are flagged.
+   `explicit_marker` when the total equals the Main page count, otherwise
+   `explicit_marker_reference` (confidence capped at 0.90).
+4. **Pages with no marker.**
+   * *Cross-encoder continuation* (off: `SEQUENCING_CROSS_ENCODER=false` and the ONNX
+     model is not in `artifacts/`). When on, it scores "page B continues page A" from
+     A's last 15 lines and B's first 15 lines, for pages within 12 positions of each
+     other (at most 2,500 pairs), starts the chain at the page least likely to be a
+     continuation (a "continued" heading counts against it), then always takes the best
+     next page. Below 0.50 the page is flagged.
+   * *Header groups* (on). Pages whose normalised header or footer words overlap by
+     more than 70% (Jaccard) are one group: confidence 0.90 if a page in the group has
+     a marker, else 0.75. They keep scan order.
+   * *Scan order.* Anything left: `original_order`, confidence 0.30, flagged.
+5. **Cover pages last.** A fax cover, transmittal or "records from" sheet on scan page 1
+   (cover wording, or "fax / cover / enclosure" on a page under 80 words) moves to the
+   end of the Main series. A near-blank page (≤ 12 words and ≤ 80 characters) that the
+   blank / junk stage called Main is placed after the other Main pages.
+6. Main pages are renumbered 1 … n in the resulting order.
+
+### 9.3 What is stored
+
+| Field | `page_sequencing_results` | `imaging/<chart>_sequencing.csv` |
+|---|---|---|
+| scan order | `original_page_number` | `current_sequence` |
+| suggested order | `seq` (Main only) | `actual_sequence` (`3`, `J2`, or empty) |
+| how | `sequence_method`: `explicit_marker`, `explicit_marker_reference`, `cross_encoder`, `header_group`, `original_order`, `blank_junk`, `duplicate` | `sequence_method` |
+| how sure | `confidence` | `confidence` |
+| look at it | `review_flag` | `review_flag` (y / n), plus `stream_id` and `ocr_source` |
+
+`imaging_final.seq` copies `seq`.
+
+### 9.4 Accuracy: Main against Main only
+
+The review UI's Sequencing tab compares the pipeline with the ground truth on pages
+that are **Main on both sides**. The pipeline's Main pages are put in its order; a page
+is a **break** when it is not the next page, in ground-truth order, after the page
+before it (the first page: when it is not the ground truth's first). Accuracy is
+1 − breaks / Main pages compared. Counting breaks rather than equal numbers means one
+misplaced page costs one, not every page after it.
+
+J pages are marked (✓ when the pipeline also has the page as blank / junk, ✗ when not)
+but **not counted**: a page that is J on one side and Main on the other is a blank /
+junk error, and it is scored by Blank / Junk accuracy, not here. Duplicates are skipped.
+
+### 9.5 Open points [decide]
+
+* Continuity runs before sequencing and reads scan order. A chart scanned out of order
+  splits a document wherever the pages are out of place. Running sequencing first and
+  letting continuity read the suggested order would fix that, at the cost of a wrong
+  suggestion moving a break: measure on the ground-truth charts first.
+* The cross-encoder is off and its model is not in the repository. Ship it, or remove it.
+* Covers go last; the client sheet may want them first.
 
 ---
 
