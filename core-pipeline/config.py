@@ -272,6 +272,14 @@ PAGE_AXES_MODEL_DIR = _path_under_core(
     os.environ.get("PAGE_AXES_MODEL_DIR"),
     "models/page-family/page-axes",
 )
+# Encounter model (folder written by training/bert-training-encounter/train_encounter.py:
+# encoder/, head.pt, label_space.json). One more vote per page in the encounter stage,
+# where the rules found no evidence (encounter_canon.json -> model_vote). Missing folder,
+# or no transformers / torch, means the rules decide alone.
+ENCOUNTER_MODEL_DIR = _path_under_core(
+    os.environ.get("ENCOUNTER_MODEL_DIR"),
+    "models/encounter",
+)
 # Key/value extraction weights (stages/lib/extraction). The ranker version is
 # pinned: a different version changes the member, DOS and page-number values
 # the later stages read. GLiNER and Heron are downloaded beside it.

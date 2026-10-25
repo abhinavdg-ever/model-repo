@@ -1,18 +1,21 @@
-"""Rules the axes gate applies after the model and the canon have decided L1 / L2.
+"""Keyword rules the axes gate applies after the model and the canon: they take
+precedence over both.
 
 Each is cheap and rule-shaped, decided from the page's own text, and configured
 in ``page_arbitration.json`` → ``axes_rules`` (its phrases, the path it gives;
-``"enabled": false`` turns one off). The first rule that fires sets L1 / L2;
-L3 and codeability are then looked up under the new path as usual.
+``"enabled": false`` turns one off). The first rule that fires sets the path, to
+any level: L1, L1 > L2 or L1 > L2 > L3. A level the rule leaves open (no L3) is
+looked up under the new path as usual, and so is codeability.
+
+* **title_paths**: the rule table. Each row: ``titles`` (a title-zone line starts
+  with one), the ``path`` it gives (``L1``, optional ``L2`` / ``L3``), optional
+  ``codeability`` and ``not_when_l1``. Superbill, records requests and any page type
+  that should be pinned by its title live here; add a row to pin another.
 
 * **clinical_summary**: a Summary of Care / CCD / C-CDA or After Visit
   Summary *title* (a line of the title zone starts with it) makes the page
   Clinical Summary, never a phrase inside a note. A Discharge Summary page
   keeps its path (a hospital packet page titled Clinical Summary).
-* **records_request**: a records-request title → Provider Letter >
-  Records Request (defined by purpose: letter, fax or EHR note).
-* **superbill**: a superbill / encounter form title → Administrative >
-  Superbill.
 * **hospital_stay**: a Progress Note page titled History and Physical
   or Consultation that carries hospital-stay evidence (admission date,
   admitting physician, room/bed, observation or inpatient status) → Discharge
@@ -37,6 +40,7 @@ class Fired:
     l1: str
     l2: Optional[str]
     codeability: Optional[str] = None  # when the canon has no entry under the new path
+    l3: Optional[str] = None
 
 
 def _lines(text: str) -> list[str]:
@@ -87,8 +91,10 @@ def _runs(rule: dict[str, Any]) -> bool:
     return bool(rule) and rule.get("enabled", True)
 
 
-def apply(text: str, headings: tuple[str, ...], l1: Optional[str], s: dict[str, Any]) -> Optional[Fired]:
-    """The rule that changes the decided path, or None. ``s`` is ``axes_rules``."""
+def apply(text: str, headings: tuple[str, ...], l1: Optional[str], s: dict[str, Any],
+          l2: Optional[str] = None) -> Optional[Fired]:
+    """The rule that changes the decided path (L1 > L2 so far), or None. ``s`` is
+    ``axes_rules``."""
     zone = title_zone(text, headings, int(s.get("title_zone_lines", 12)))
 
     rule = s.get("clinical_summary") or {}
@@ -99,10 +105,16 @@ def apply(text: str, headings: tuple[str, ...], l1: Optional[str], s: dict[str, 
         if titled(zone, rule["after_visit_summary_titles"]):
             return Fired("clinical_summary", rule["l1"], rule["after_visit_summary_l2"], rule.get("codeability"))
 
-    for name in ("records_request", "superbill"):
-        rule = s.get(name) or {}
-        if _runs(rule) and l1 != rule["l1"] and titled(zone, rule["titles"]):
-            return Fired(name, rule["l1"], rule["l2"], rule.get("codeability"))
+    for rule in s.get("title_paths") or ():
+        path = rule.get("path") or {}
+        if not _runs(rule) or l1 in rule.get("not_when_l1", ()):
+            continue
+        target = (path["L1"], path.get("L2") or None, path.get("L3") or None)
+        # A row that would change nothing does not fire (the page already has the path).
+        if target[:2] == (l1, l2 or None) and not target[2]:
+            continue
+        if titled(zone, rule["titles"]):
+            return Fired(rule["name"], target[0], target[1], rule.get("codeability"), target[2])
 
     rule = s.get("hospital_stay") or {}
     if _runs(rule) and l1 == rule["when_l1"] and any(_pattern(p).search(text or "") for p in rule["stay_evidence"]):

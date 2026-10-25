@@ -93,6 +93,10 @@ class Canon:
     # first page counts first_page_weight times.
     family_defaults: dict[str, str] = field(default_factory=dict)
     first_page_weight: float = 2.0
+    # The encounter model's vote (2026-10-25, model_vote): its class -> setting, and the
+    # confidence each setting needs. A page with tier 1 / tier 2 evidence never asks it.
+    model_settings: dict[str, str] = field(default_factory=dict)
+    model_min: dict[str, float] = field(default_factory=dict)
 
 
 class CanonError(ValueError):
@@ -136,6 +140,14 @@ def _validate(raw: dict[str, Any], page_type_ids: Optional[set[str]]) -> None:
     for family, setting in ((raw.get("vote") or {}).get("family_defaults") or {}).items():
         if setting not in settings:
             errors.append(f"vote.family_defaults.{family}: unknown setting {setting!r}")
+
+    model_vote = raw.get("model_vote") or {}
+    for cls, setting in (model_vote.get("settings") or {}).items():
+        if setting not in settings:
+            errors.append(f"model_vote.settings.{cls}: unknown setting {setting!r}")
+    for setting in model_vote.get("min_confidence") or {}:
+        if setting not in settings:
+            errors.append(f"model_vote.min_confidence.{setting}: unknown setting")
 
     default = (raw.get("default") or {}).get("setting")
     if default and default not in settings:
@@ -207,6 +219,8 @@ def _parse_canon(raw: dict[str, Any], *, check_page_types: bool = True) -> Canon
             for f, v in ((raw.get("vote") or {}).get("family_defaults") or {}).items()
         },
         first_page_weight=float((raw.get("vote") or {}).get("first_page_weight", 2.0)),
+        model_settings=dict((raw.get("model_vote") or {}).get("settings") or {}),
+        model_min={k: float(v) for k, v in ((raw.get("model_vote") or {}).get("min_confidence") or {}).items()},
     )
 
 
@@ -408,15 +422,17 @@ class Vote:
 
     setting: str  # "" = abstains (no evidence and no family default)
     weight: float
-    decided_by: str  # tier1 | tier2 | family_default | not_applicable | none
+    decided_by: str  # tier1 | tier2 | model | family_default | not_applicable | none
     matched_keyword: str
     evidence: Evidence
 
 
 def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vote:
     """The page's own setting: Not Applicable for a family encounter type does not apply
-    to (a lab report), else its strongest evidence (tier 1, then tier 2), else its
-    family's default (Progress Note -> Outpatient F2F, Discharge Summary -> Inpatient)."""
+    to (a lab report), else its strongest evidence (tier 1, then tier 2), else the
+    encounter model's answer (``page["encounter_model"]``: class, confidence) when the
+    canon's ``model_vote`` takes that class at that confidence, else its family's default
+    (Progress Note -> Outpatient F2F, Discharge Summary -> Inpatient)."""
     family = str(page.get("page_family") or "").strip()
     if canon.applies_to and family and family.casefold() != "unknown" and family.casefold() not in canon.applies_to:
         return Vote(canon.not_applicable, weight, "not_applicable", family, Evidence())
@@ -424,6 +440,12 @@ def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vot
     own = decide(evidence, canon)
     if own.setting:
         return Vote(own.setting, weight, own.decided_by, own.matched_keyword, evidence)
+    model = page.get("encounter_model")
+    if model:
+        name, confidence = model
+        setting = canon.model_settings.get(name, "")
+        if setting and confidence >= canon.model_min.get(setting, 1.01):
+            return Vote(setting, weight, "model", f"model: {name} {confidence:.2f}", evidence)
     fallback = canon.family_defaults.get(family.casefold(), "")
     return Vote(fallback, weight, "family_default" if fallback else "none", "", evidence)
 

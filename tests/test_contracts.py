@@ -1590,6 +1590,7 @@ class TestCapabilityReporting:
             "RapidOCR",
             "blank/junk model",
             "page-axes model",
+            "encounter model",
             "KV extraction",
             "final1 Docling",
             "final2 OCR",
@@ -1599,6 +1600,7 @@ class TestCapabilityReporting:
         assert "hw_model" in snapshot
         assert "rapidocr_models" in snapshot
         assert "blank_junk_model" in snapshot
+        assert "encounter_model" in snapshot
 
     def test_health_still_exposes_member_ner_at_the_top_level(self, monkeypatch):
         """docs and review-ui read `member_ner.ready`; moving it would be a
@@ -2739,9 +2741,9 @@ class TestNoModelWeightsInGit:
     configs, tokenizers) are not weights in this sense."""
 
     WEIGHT_SUFFIXES = (".safetensors", ".pt", ".pth", ".bin", ".onnx", ".h5", ".ckpt", ".ot", ".gguf")
-    # Small on purpose: the page-axes heads (280 KB). The encoder they sit on
-    # (encoder/model.safetensors, 265 MB) is never committed.
-    ALLOWED = {"core-pipeline/models/page-family/page-axes/heads.pt"}
+    # Small on purpose: the page-axes heads (280 KB) and the encounter head (17 KB).
+    # The encoders they sit on (encoder/model.safetensors, 265 MB each) are never committed.
+    ALLOWED = {"core-pipeline/models/page-family/page-axes/heads.pt", "core-pipeline/models/encounter/head.pt"}
     MAX_TRACKED_BYTES = 20 * 1024 * 1024
 
     @staticmethod

@@ -12,6 +12,8 @@ encounter/
 └── metrics_summary.json  # the run's held-out scores
 ```
 
-**Not wired into the pipeline yet.** The encounter stage still decides with the rule
-engine alone (`stages/lib/encounter/`). How the model's vote joins the rules is open:
-`docs/APPROACH.md` §5 and §8.
+**In use** (2026-10-25): the encounter stage asks it for a page with no tier 1 / tier 2
+evidence, and counts its answer for Evisit and Home Visit at >= 0.60 and Inpatient at
+>= 0.70 (`stages/lib/keyword-canon/encounter_canon.json` -> `model_vote`). Without the
+weights the rules decide alone; `/health` -> `encounter_model.ready` says which.
+`docs/APPROACH.md` §5.1.

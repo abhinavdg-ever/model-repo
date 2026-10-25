@@ -293,5 +293,18 @@
       "Progress Note": "outpatient_f2f",
       "Discharge Summary": "inpatient"
     }
+  },
+  "model_vote": {
+    "note": "2026-10-25: the encounter model (models/encounter/) votes for a page with no tier 1 / tier 2 evidence of its own, before its family default, only for these classes at these confidences. Measured on the model's held-out pages: Evisit right 85% at >= 0.6, Home Visit 2 of 2, Inpatient 73% at 0.6 and 81% at 0.7; F2F only ~60% at any confidence, so F2F stays with the rules (the family default). Small samples (8-17 pages per class): measure again on new charts.",
+    "settings": {
+      "Outpatient (Evisit)": "outpatient_tele",
+      "Outpatient (Home Visit)": "home",
+      "Inpatient": "inpatient"
+    },
+    "min_confidence": {
+      "outpatient_tele": 0.6,
+      "home": 0.6,
+      "inpatient": 0.7
+    }
   }
 }

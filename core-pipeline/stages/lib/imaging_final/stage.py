@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 
 STAGE = "imaging_final"
 
-DEFAULT_SPECIALTY = "Unknown"
+DEFAULT_SPECIALTY = "General"  # 2026-10-25 (user): never Unknown
 
 FINAL_COLS = ["chart_name", "page_name", "page_number", *IMAGING_FINAL_COLUMNS]
 
@@ -126,6 +126,23 @@ def _documents(
     return {doc: [pid for _, pid in sorted(members)] for doc, members in documents.items()}
 
 
+def encounter_specialties(
+    documents: dict[int, list[int]], classification: dict[int, dict[str, Any]]
+) -> dict[int, str]:
+    """Page id -> its encounter's specialty: only the first page of the document decides
+    (2026-10-25, user), and every page takes it, so it never changes midway. A first
+    page with none (or Unknown / Others) gives General."""
+    out: dict[int, str] = {}
+    for document_pages in documents.values():
+        if not document_pages:
+            continue
+        first = axes.stored(classification.get(document_pages[0]) or {}).get("specialty")
+        found = first if first and first not in ("Unknown", "Others") else DEFAULT_SPECIALTY
+        for pid in document_pages:
+            out[pid] = found
+    return out
+
+
 def _final_page(page_id: int, kind: dict[str, Any], link: dict[str, Any]) -> FinalPage:
     return FinalPage(
         page_id=page_id,
@@ -189,18 +206,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             for pid in document_pages:
                 carried[pid] = finals
                 document_of[pid] = document_pages
-        # Specialty is the encounter's: the first page of the document that has one sets
-        # it for every page, so it never changes midway (2026-10-23, user).
-        specialty_of: dict[int, Optional[str]] = {}
-        for document_pages in documents.values():
-            found = next(
-                (axes.stored(classification.get(pid) or {}).get("specialty") for pid in document_pages
-                 if axes.stored(classification.get(pid) or {}).get("specialty")),
-                None,
-            )
-            for pid in document_pages:
-                specialty_of[pid] = found
-                final_pages = {
+        specialty_of = encounter_specialties(documents, classification)
+        final_pages = {
             page["id"]: _final_page(
                 page["id"], classification.get(page["id"]) or {}, continuity.get(page["id"]) or {}
             )

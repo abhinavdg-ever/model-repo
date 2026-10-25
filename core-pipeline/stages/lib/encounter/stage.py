@@ -10,6 +10,11 @@ Tier 1 evidence is the page type: the page's own (Extracted) classification
 from ``page_classification``, its most specific name the encounter canon
 lists (canon page type, L3, L2, L1), else its family (L1).
 
+A page with no tier 1 / tier 2 evidence asks the encounter model (``model_vote``,
+``models/encounter/``): its answer votes when ``encounter_canon.json`` → ``model_vote``
+takes that class at that confidence (Evisit, Home Visit, Inpatient), else the page votes
+its family's default. Without the model the rules decide alone.
+
 Runs after ``continuity``. Writes ``encounter_type_results`` for resolved
 pages, including visits with no evidence or no date, which default to
 Outpatient (F2F) at confidence 0.3 (canon ``default``); it removes rows for
@@ -44,6 +49,7 @@ from stages._support import (
 )
 from stages.lib.continuity.stage import scores_path as continuity_scores_path
 from stages.lib.encounter.encounter_classify import classify_pages, visit_date
+from stages.lib.encounter import model_vote
 from stages.lib.encounter.encounter_classify import load_canon as load_encounter_canon
 from stages.lib.page_classify import axes
 from stages.lib.page_classify.stage import _DOS_PROFILE
@@ -208,6 +214,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             page_input["page_family"] = "" if unsure else axes.family_of(kind)
             # The continuity stage's document: one visit, one encounter type.
             page_input["document"] = (continuity.get(page_input["page_id"]) or {}).get("document_seq")
+
+        # The encounter model's answer per page; the vote uses it only where the rules
+        # found no evidence (encounter_canon.json -> model_vote).
+        for page_input, answer in zip(page_inputs, model_vote.predict([p["text"] for p in page_inputs])):
+            page_input["encounter_model"] = answer
 
         # One record per encounter: always staged in continuity.json; the debug CSV too
         # with ENCOUNTER_DEBUG.

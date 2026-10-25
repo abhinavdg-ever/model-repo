@@ -4,24 +4,27 @@ and codeability, decided from the page alone (``page_arbitration.json`` →
 
 1. **The model's best paths.** Every L1 > L2 > L3 the taxonomy allows, scored
    p(L1)·p(L2|L1)·p(L3|L2) (a missing level counts 1); the 5 best are kept, at
-   most 3 under one L1, each level with its confidence: ``model_paths``, best
-   score first. The best L1's path wins
-   when it clears the gate: route ``model`` = top L1 >= ``route_model``, ahead of
-   the second by >= ``route_margin``, not the folded OTHER class. Its L2 counts at >=
-   ``l2_min`` (an L2 the model folded to Others lets the canon try first).
+   most 3 under one L1: ``model_paths``. The page takes the first, in rank order,
+   whose score is >= ``path_min`` or whose L1 the keyword canon supports (the
+   canon's own best L1 at >= ``canon_min``) -- ``path_choice`` says which and why.
+   With none, a confident L1 (route ``model``: top L1 >= ``route_model``, ahead of
+   the second by >= ``route_margin``, not the folded OTHER class) keeps its best path.
 2. **The keyword canon** (``keyword-canon/page_canon.json``) otherwise: the
-   best L1 among its entries at keyword confidence >= ``canon_min``, the best L2
-   under it likewise. It names page types the model was never trained on
-   (folded or rare classes) — the reason it runs when the model is unsure.
+   best L1 among its entries at keyword confidence >= ``canon_min``. It names page
+   types the model was never trained on (folded or rare classes).
 3. **Others** when neither is sure: L1 Others (``decided_by`` others).
 
-Then ``page_rules`` may re-place the page from its own text (title rules, the
-lab guard): ``sources`` says "rule" and ``rules`` names it. L3 is always the
-canon's best match under the decided L1 > L2, at ``l3_canon_min`` (the model's
-is kept in ``model_paths`` / ``prediction``). Specialty: the model's behind a
-strict gate, else the canon entry's. Codeability: always the canon's — the tag
-of the canon page type behind the decided path; needs_review when its rule is
-context / source (the Final step resolves context from the page's document).
+L2 under the decided L1: a canon *title* match first (keywords take precedence), then
+the chosen path's L2 at >= ``l2_min``, then the canon's at ``canon_min``; else none
+(page_subtype "Others"). Then the keyword rules (``page_rules``, ``axes_rules``) may
+re-place the page to any level: ``sources`` says "rule" and ``rules`` names it. L3,
+only where L1 > L2 has named L3s: a rule's; a canon title; the chosen path's at
+>= ``l3_min``; the canon's at ``l3_canon_min``; else Others. Specialty: the model's
+behind a strict gate; else the specialty keywords (``specialty_keywords``); else the
+canon entry's; else ``specialty_fallback`` (General) -- never Unknown. Codeability:
+always the canon's -- the tag of the canon page type behind the decided path;
+needs_review when its rule is context / source (the Final step resolves context from
+the page's document).
 
 The axes are the page's classification: ``page_names`` turns them into
 ``page_type`` / ``page_subtype`` (L1 / Others, L1 / L2, or "L1 (L2)" / L3), and
@@ -51,7 +54,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from stages.lib.canon_store import CANON_DIR, CanonFile
-from stages.lib.page_classify import keywords, page_rules
+from stages.lib.page_classify import keywords, page_rules, specialty_keywords
 from stages.lib.page_classify import taxonomy as tax
 
 logger = logging.getLogger(__name__)
@@ -119,6 +122,8 @@ class AxesResult:
     rules: tuple[str, ...] = ()
     # The model's best L1 > L2 > L3 paths (step 1); [] without a model.
     model_paths: tuple[dict[str, Any], ...] = field(default=(), compare=False)
+    # Which of them the page took and why (score | keywords | l1); None when none.
+    path_choice: Optional[dict[str, Any]] = field(default=None, compare=False)
     # Under every other L1 that has L2s: the L2 (and L3) the page would take
     # there -- {L1: {l2, l2_confidence, l2_source, l3, l3_confidence}}. The Final
     # step reads it when the page's document has another L1.
@@ -147,6 +152,7 @@ class AxesResult:
             "taxonomy_version": tax.version(),
             "rules": list(self.rules) or None,
             "model_paths": list(self.model_paths) or None,
+            "path_choice": self.path_choice,
             "under_l1": self.under_l1 or None,
             "prediction": self.prediction or None,
         }
@@ -155,7 +161,7 @@ class AxesResult:
         """The codeable CSV's axes columns (the CSV header is a frozen contract:
         the newer keys stay in the JSON only)."""
         flat = self.as_json()
-        for key in ("prediction", "under_l1", "model_paths", "decided_by", "taxonomy_version", "rules"):
+        for key in ("prediction", "under_l1", "model_paths", "path_choice", "decided_by", "taxonomy_version", "rules"):
             flat.pop(key)
         return {
             ("axes_" + key if not key.startswith("specialty") else key): value
@@ -399,6 +405,58 @@ def _model_specialty(raw: dict[str, Any], space: dict[str, Any], s: dict[str, An
     return name, best
 
 
+def _canon_title(text: str, headings: tuple[str, ...], level: str, minimum: float,
+                 l1: Optional[str] = None, l2: Optional[str] = None) -> tuple[Optional[str], Optional[float]]:
+    """The canon's ``level`` under ``l1`` / ``l2`` when a *title* term decided it (a
+    page headed by the name): keywords that take precedence over the model."""
+    from stages.lib.page_classify.arbitration import keyword_confidence
+
+    canon = _CANON.get()
+    names_ = frozenset(
+        name for name, e in canon.entries.items()
+        if e["path"].get(level) and (l1 is None or e["path"]["L1"] == l1)
+        and (l2 is None or e["path"].get("L2") == l2)
+    )
+    if not names_:
+        return None, None
+    group_of = {name: canon.entries[name]["path"][level] for name in names_}
+    found = keywords.classify(text, headings, canon=canon.keywords, subtypes=names_, group_of=group_of)
+    if found is None or not found.title_hit:
+        return None, None
+    conf = keyword_confidence(found)
+    return (found.page_type, conf) if conf is not None and conf >= minimum else (None, None)
+
+
+def choose_path(paths: tuple[dict[str, Any], ...], text: str, headings: tuple[str, ...],
+                s: dict[str, Any]) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+    """The model path the page takes: the first of its best paths, in rank order, whose
+    score is at least ``path_min`` ("score") or whose L1 the keyword canon supports --
+    the canon's own best L1 for the page, at ``canon_min`` ("keywords"). The path's L2
+    and L3 still pass their own gates. The folded OTHER class is never chosen (the
+    canon names those pages)."""
+    supported: Optional[str] = None
+    looked = False
+    for path in paths:
+        if path.get("folded"):
+            continue
+        if (path.get("score") or 0.0) >= s["path_min"]:
+            return path, "score"
+        if not looked:
+            value, conf, _ = canon_match(text, headings, "L1")
+            supported = value if conf is not None and conf >= s["canon_min"] else None
+            looked = True
+        if supported and path["l1"] == supported:
+            return path, "keywords"
+    return None, None
+
+
+def l3_names(l1: Optional[str], l2: Optional[str]) -> tuple[str, ...]:
+    """The named L3s under L1 > L2 (none for most L2s)."""
+    if not (l1 and l2):
+        return ()
+    return tuple((tax.label_space().get("L3") or {}).get(f"{l1} > {l2}") or ())
+
+
 def gate(
     raw: Optional[dict[str, Any]],
     space: dict[str, Any],
@@ -412,6 +470,7 @@ def gate(
     raw = raw or {}
     top = [(str(n), float(p)) for n, p in raw.get("L1_top") or []]
     where = route(top, space.get("other_L1", "OTHER"), s) if raw else None
+    paths = model_paths(raw, space) if raw else ()
     sources = ["-"] * 5
 
     def by_canon(level: str, minimum: float, l1: Optional[str] = None, l2: Optional[str] = None):
@@ -420,48 +479,81 @@ def gate(
             return None, None
         return value, conf
 
-    # L1: 1. the model, 2. the canon, 3. Others.
-    if where == MODEL:
-        l1, l1_conf, sources[0] = raw["L1"], raw["L1_confidence"], MODEL
+    # L1: 1. the model's best paths (score or keyword support), or its confident L1
+    # with that L1's best path; 2. the canon; 3. Others.
+    chosen, chosen_by = choose_path(paths, text, headings, s)
+    if chosen is None and where == MODEL:
+        chosen = next((p for p in paths if p["l1"] == raw.get("L1")), None)
+        chosen_by = "l1" if chosen else None
+    if chosen is not None:
+        l1, l1_conf, sources[0] = chosen["l1"], chosen["l1_confidence"], MODEL
     else:
         l1, l1_conf = by_canon("L1", s["canon_min"])
         sources[0] = CANON if l1 else "-"
     if not l1:
         l1, sources[0] = OTHERS, BY_OTHERS
+    choice = {"rank": chosen["rank"], "path": chosen["path"], "by": chosen_by} if chosen else None
 
+    # L2: a canon title under the L1 first (keywords take precedence), then the model's
+    # at l2_min, then the canon's at canon_min; else none (L1 / Others).
     l2 = l2_conf = None
     if l1 != s["section_L1"] and sources[0] != BY_OTHERS:
-        model_l2 = raw.get("L2") if sources[0] == MODEL and (raw.get("L2_confidence") or 0.0) >= s["l2_min"] else None
-        if model_l2 and model_l2 != OTHERS:
-            l2, l2_conf, sources[1] = model_l2, raw["L2_confidence"], MODEL
+        model_l2 = chosen.get("l2") if chosen and (chosen.get("l2_confidence") or 0.0) >= s["l2_min"] else None
+        l2, l2_conf = _canon_title(text, headings, "L2", s["canon_min"], l1)
+        if l2:
+            sources[1] = CANON
+        elif model_l2 and model_l2 != OTHERS:
+            l2, l2_conf, sources[1] = model_l2, chosen["l2_confidence"], MODEL
         else:  # the canon names what the model folded to Others, or was unsure of
             l2, l2_conf = by_canon("L2", s["canon_min"], l1)
             sources[1] = CANON if l2 else "-"
             if not l2 and model_l2:
-                l2, l2_conf, sources[1] = model_l2, raw["L2_confidence"], MODEL
+                l2, l2_conf, sources[1] = model_l2, chosen["l2_confidence"], MODEL
 
-    fired = page_rules.apply(text, headings, l1, _ARBITRATION.get().get("axes_rules") or {})
+    # Keyword rules take precedence over everything above, to any level.
+    fired = page_rules.apply(text, headings, l1, _ARBITRATION.get().get("axes_rules") or {}, l2)
     if fired is not None:
         l1, l1_conf, sources[0] = fired.l1, None, RULE
         l2, l2_conf, sources[1] = (None, None, "-") if l1 == s["section_L1"] else (fired.l2, None, RULE)
 
+    # L3, where L1 > L2 has named L3s: a rule's; a canon title; the model's at l3_min
+    # (on the chosen path); the canon's at l3_canon_min; else Others.
     l3 = l3_conf = None
-    if l2:
-        l3, l3_conf = by_canon("L3", s["l3_canon_min"], l1, l2)
-        sources[2] = CANON if l3 else "-"
+    if fired is not None and fired.l3:
+        l3, sources[2] = fired.l3, RULE
+    elif l3_names(l1, l2):
+        on_path = chosen if chosen and (chosen["l1"], chosen.get("l2")) == (l1, l2) else None
+        l3, l3_conf = _canon_title(text, headings, "L3", s["l3_canon_min"], l1, l2)
+        if l3:
+            sources[2] = CANON
+        elif on_path and on_path.get("l3") not in (None, OTHERS) and (on_path.get("l3_confidence") or 0.0) >= s["l3_min"]:
+            l3, l3_conf, sources[2] = on_path["l3"], on_path["l3_confidence"], MODEL
+        else:
+            l3, l3_conf = by_canon("L3", s["l3_canon_min"], l1, l2)
+            sources[2] = CANON if l3 else BY_OTHERS
+            l3 = l3 or OTHERS
 
     under = _under_every_l1(raw, text, headings, l1, s, by_canon)
 
     # The canon page type behind the decided path gives the codeability (always
-    # the canon's; the model's is kept in the raw prediction only) and, when
-    # the model asserts none, the specialty.
-    entry_name, canon_conf = canon_entry(text, headings, l1, l2, l3) if sources[0] != BY_OTHERS else (None, None)
+    # the canon's; the model's is kept in the raw prediction only).
+    named_l3 = l3 if l3 != OTHERS else None
+    entry_name, canon_conf = canon_entry(text, headings, l1, l2, named_l3) if sources[0] != BY_OTHERS else (None, None)
     entry = _CANON.get().entries.get(entry_name or "") or {}
+
+    # Specialty: the model's behind its gate; else the specialty keywords; else the canon
+    # entry's; else the fallback (General). Never Unknown.
     specialty, specialty_conf = _model_specialty(raw, space, s) if raw else (None, None)
     if specialty:
         sources[3] = MODEL
-    elif entry.get("specialty"):
-        specialty, specialty_conf, sources[3] = entry["specialty"], canon_conf, CANON
+    else:
+        found, score = specialty_keywords.specialty(text)
+        if found:
+            specialty, specialty_conf, sources[3] = found, specialty_keywords.confidence(score), CANON
+        elif entry.get("specialty") and entry["specialty"] not in s["specialty_not_asserted"]:
+            specialty, specialty_conf, sources[3] = entry["specialty"], canon_conf, CANON
+        else:
+            specialty, specialty_conf, sources[3] = s["specialty_fallback"], None, BY_OTHERS
 
     rule = entry.get("codeability_rule")
     codeability, codeability_conf = NEEDS_REVIEW, None
@@ -482,7 +574,8 @@ def gate(
         codeability_rule=rule,
         title_l1=title_l1(text, headings),
         rules=(fired.rule,) if fired is not None else (),
-        model_paths=model_paths(raw, space) if raw else (),
+        model_paths=paths,
+        path_choice=choice,
         under_l1=under,
         prediction=_raw_json(raw),
     )

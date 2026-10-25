@@ -63,8 +63,9 @@ continuity, so a change of encounter type can count toward a break; the encounte
 * Under **Progress Note** the L2 is the *content section* on the page (CC/HPI, Assessment
   and Plan, Vitals, Lab and Imaging Results, Medication List, ...), decided by section
   tagging, not by the model.
-* **Specialty** is a separate axis (34 values incl. Others and Unknown). Unknown means
-  *not determined*, not "no specialty".
+* **Specialty** is a separate axis (34 values incl. Others and Unknown). In the training
+  labels Unknown means *not determined*, not "no specialty"; the pipeline never outputs
+  it: a page with no specialty signal reads **General** (3.1).
 * **Codeability**: codeable, non_codeable, discharge, needs_review.
 
 Full lists with descriptions: appendix A. Renames from the 23 Oct version: appendix B.
@@ -98,13 +99,23 @@ Putting pages back into their documents is the Final step's job (section 3.2).
 ### 3.1 Extracted: one page at a time [built]
 
 ```
- page text ─▶ page-axes model ─▶ best 5 paths ─▶ confident? ──yes──▶ model's path
-                                                      │no
-                                                      ▼
-                                 keyword canon (page_canon.json) ──▶ clear match? ──yes──▶ canon's path
-                                                                          │no
-                                                                          ▼
-                                                                        Others
+ page text
+   │
+   ├─▶ keyword rules (title_paths, clinical summary, hospital stay, lab guard) ───▶ win at any level, last word
+   │
+   ├─▶ page-axes model ─▶ its 5 best paths, in rank order
+   │        first path with score ≥ 0.50, or whose L1 the keyword canon also picks ──▶ chosen path
+   │        none, but the top L1 is confident ─────────────────────────────────────▶ that L1's best path
+   │        neither
+   │          ▼
+   ├─▶ keyword canon: its best L1 at ≥ 0.50 ─────────────────────────────────────▶ canon's L1
+   │        none
+   │          ▼
+   └─▶ Others
+ then, under the decided L1:
+   L2  canon title ▶ path's L2 ≥ 0.50 ▶ canon L2 ≥ 0.50 ▶ "L1 / Others"
+   L3  (only where L1 > L2 has named L3s) rule ▶ canon title ▶ path's L3 ≥ 0.50 ▶ canon L3 ≥ 0.50 ▶ Others
+   specialty  model (strict gate) ▶ specialty keywords ▶ canon entry ▶ General
 ```
 
 **Step 1: the model's best paths.** The page-axes model (one DistilBERT encoder, five
@@ -118,14 +129,24 @@ score = p(L1) × p(L2 | L1) × p(L3 | L2)          a level the parent does not h
 
 The scores of all paths add up to 1. The **5 best** are stored for every page (section
 6), **at most 3 under one L1**, so a page torn between Lab Report > Pathology Report and
-Lab Report > Lab Result keeps both, and still shows its runner-up L1s. The Extracted
-value is the model's L1, then its best L2 under that L1 and best L3 under that L2,
-**when it is confident**: L1 probability ≥ `route_model` (0.50) and at
-least `route_margin` (0.10) above the second L1, and the L2 ≥ `l2_min` (0.40). The
-thresholds live in `page_arbitration.json` → `axes` and are tuned from a run's
-validation predictions with `tune_thresholds.py`.
+Lab Report > Lab Result keeps both, and still shows its runner-up L1s.
 
-**Step 2: the keyword canon, when the model is not confident.** The canon
+**Choosing a path.** The page takes the **first** of the 5, in rank order, that has
+either
+
+* a **score ≥ `path_min` (0.50)**: on the held-out pages of the 2026-10-25 model, paths
+  at or above 0.50 are fully right 71% of the time (validation and test), paths below
+  it 16–28%; or
+* **keyword support**: the keyword canon's own best L1 for the page (at ≥ `canon_min`,
+  0.50) is the path's L1. A lower-ranked path the page's words agree with beats a
+  higher-ranked one they do not.
+
+When no path qualifies but the model's top L1 is confident (≥ `route_model` 0.40 and
+≥ `route_margin` 0.10 ahead of the second, not the folded OTHER class), the page keeps
+that L1 and its best path; its L2 / L3 then pass their own gates below. Which path was
+taken, and why (`score`, `keywords` or `l1`), is stored as `path_choice`.
+
+**Step 2: the keyword canon, when the model gives nothing.** The canon
 (`page_canon.json`, about 295 page types, each with title terms, body terms and
 ambiguous terms, and its v29.2 path) is matched on whole words: a title term in the
 first 12 lines counts most. It matters most for page types the model was **not trained
@@ -133,9 +154,45 @@ on**: L1s with 10 pages or fewer fold into `OTHER` in the model, and L2/L3s with
 than 3 pages are left out of its loss, so only the canon can name them. A canon match
 needs a score ≥ `canon_min` (0.50). `decided_by = canon`.
 
-**Step 3: Others.** No confident model path and no clear canon match: L1 **Others**, or
-**"L1 / Others"** when the L1 is known but the L2 is not. Never "L1 / L1".
-`decided_by = others`. The Final step re-places these pages (3.2).
+**Step 3: Others.** Nothing above: L1 **Others**. `decided_by = others`. The Final step
+re-places these pages (3.2).
+
+**L2 under the decided L1.** In this order:
+
+1. a **canon title** match under that L1 (the page is headed by the name of an L2's page
+   type): keywords take precedence over the model;
+2. the chosen path's L2 at ≥ `l2_min` (0.50);
+3. the canon's best L2 under the L1 at ≥ `canon_min` (body terms count here);
+4. none: the page reads **"L1 / Others"**. Never "L1 / L1".
+
+The section L1 (Progress Note) takes no L2 here: its L2 is the content section.
+
+**L3, only where L1 > L2 has named L3s** (today the four Lab Report L2s: Lab Result,
+Radiology Report, Pathology Report, Diagnostic Study). In this order: a keyword rule's
+L3; a **canon title** match; the chosen path's L3 at ≥ `l3_min` (0.50); the canon's best
+L3 at ≥ `l3_canon_min` (0.50); else **Others** ("Lab Report (Radiology Report) / Others").
+Before 2026-10-25 the model's L3 was never used; now a confident one counts, below a
+canon title.
+
+**Keyword rules: the last word, to any level [built].** After the model and the canon,
+the rules in `page_arbitration.json` → `axes_rules` may re-place the page. A rule that
+fires wins; `sources` says `rule` and `rules` names it.
+
+* **`title_paths`, the rule table.** One row per pinned page type: `titles` (a line of
+  the title zone, the first 12 lines plus detected headings, starts with one, whole
+  words), the `path` it gives (`L1`, optional `L2`, optional `L3`), optional
+  `codeability` and `not_when_l1`. A row whose path the page already has does not fire.
+  Today: **Records Request** (Medical Records Request, Request for Records, ...) →
+  Provider Letter > Records Request; **Superbill** (Superbill, Super Bill, Encounter
+  Form) → Administrative > Superbill. To pin another page type, at any level, add a
+  row; the file reloads without a restart.
+* **clinical_summary**: a Summary of Care / CCD / C-CDA title or a CDA OID → Clinical
+  Summary > Summary of Care (C-CDA); an After Visit Summary title → Clinical Summary >
+  After-Visit Summary. A Discharge Summary page keeps its path.
+* **hospital_stay**: a Progress Note page titled History and Physical or Consultation
+  with hospital-stay evidence on it (admission date, room / bed, inpatient or
+  observation status) → Discharge Summary > History and Physical / Consultation Note.
+* **lab_guard**: below.
 
 **Guard: a lab report is never a Progress Note [built].** The client's main worry.
 After the model, when it says Progress Note but the page has **no note-body section**
@@ -152,9 +209,22 @@ Extracted path is Lab Report > Lab Result:
   lipid panel, A1c, urinalysis, TSH, culture, surgical pathology) followed by
   final / result / panel / report.
 
-**Specialty.** The model's specialty when it clears a strict gate, else the specialty
-canon (letterhead terms count most: appendix F), else Unknown. Final: every page of a
-document takes the specialty of the document's first page that has one.
+**Specialty [built 2026-10-25].** Extracted, per page, in this order:
+
+1. the model's, when it clears a strict gate: ≥ `specialty_min` (0.70), ≥
+   `specialty_lead` (0.20) ahead of the second, trained on ≥ 10 pages, and not Unknown
+   or Others;
+2. the **specialty keywords** (`keyword-canon/specialty_canon.json`, a copy of
+   appendix F): a letterhead term in the page's top 18% of lines scores 6, a body term
+   (or a letterhead term lower down) 1, each once; the best needs ≥ 6 and a lead of 3
+   (two close specialties are not a coin toss);
+3. the specialty of the canon page type behind the decided path (Sleep Study Report →
+   Sleep Study);
+4. **General**. A page is never Unknown.
+
+Final: **only the first page of the encounter (the continuity document) decides**, and
+every page of it takes that specialty, so it never changes midway. A first page with
+none gives General, whatever the later pages say.
 
 **Codeability.** From the canon entry behind the decided path; a `context` rule leaves
 `needs_review` for the Final step to settle from the document.
@@ -205,7 +275,7 @@ Administrative > Superbill by title only (invoices carry codes too); Discharge S
 History and Physical / Consultation Note for an H&P or consult page with hospital-stay
 evidence on the page (admission date, room / bed, admitting physician, observation or
 inpatient status).
-6. **Specialty** from the document's first page that has one; **codeability** context
+6. **Specialty** from the document's first page (General when it has none); **codeability** context
    rules settled from the document.
 
 Extracted is never overwritten: a reviewer and the accuracy report see both.
@@ -342,38 +412,50 @@ traced to the signal behind it.
 Five values: **Inpatient**, **Outpatient (F2F)**, **Outpatient (Evisit)**, **Outpatient
 (Home Visit)**, **Not Available**.
 
-### 5.1 Extracted: the page's own vote
+### 5.1 Extracted: the page's own vote [built 2026-10-25]
 
 ```
- page ──▶ rules: tier 1 page type, tier 2 / 3 phrases, patient-type field, negatives
-            │ stated / field evidence? ──yes──▶ that setting (basis: stated / field)
+ page ──▶ family takes no encounter (a lab report, an order, a form)? ──yes──▶ Not Available
             │no
             ▼
-          encounter model (page text) ──▶ ≥ 0.70? ──yes──▶ the model's setting (basis: model)
-            │no
+          rules: tier 1 page type, tier 2 phrases, negatives ──found──▶ that setting (by tier1 / tier2)
+            │nothing
             ▼
-          the page type's prior (family default; Not Available for lab, orders, forms,
-          consent, demographics ...) ──▶ (basis: prior)            else: no vote
+          encounter model: Evisit ≥ 0.60, Home Visit ≥ 0.60, Inpatient ≥ 0.70? ──yes──▶ that setting (by model)
+            │no (or F2F, or Not Available, or no model)
+            ▼
+          family default: Progress Note → F2F, Discharge Summary → Inpatient ──▶ (by family_default)
+            │no family
+            ▼
+          no vote
 ```
 
-* **The rules [built]** (`encounter_classify.py`, appendix I): tier 1 page types that
-  settle the setting (Discharge Summary → Inpatient, Telephone Encounter → Evisit,
-  HouseCalls visit summary → Home Visit, ...), tier 2 / tier 3 phrases
-  ("telehealth", "admitted", "home visit"), negatives that cancel a match, and a page
-  whose L1 family does not take an encounter (a lab report) votes Not Available. Its
-  page-type names are v29.2 **[built]**. A page decided Others votes its own evidence,
-  not Not Applicable.
-* **The encounter model [to build: train, then wire]** (`training/bert-training-encounter`):
-  one head over the five values, trained on 2,750 pages. It is a vote where the rules
-  have no stated or field evidence; it never overrides stated or field evidence.
+* **The rules** (`encounter_classify.py`, appendix I): tier 1 page types that settle the
+  setting (Discharge Summary → Inpatient, Telephone Encounter → Evisit, HouseCalls visit
+  summary → Home Visit, ...), tier 2 / tier 3 phrases ("telehealth", "admitted", "home
+  visit"), negatives that cancel a match. A page whose L1 family does not take an
+  encounter votes Not Applicable; a page decided Others votes its own evidence.
+* **The encounter model** (`models/encounter/`, trained by
+  `training/bert-training-encounter`): one head over the five values. It is asked only
+  for a page with **no tier 1 / tier 2 evidence** of its own, and its answer counts only
+  for the classes and confidences in `encounter_canon.json` → `model_vote`:
+
+  | Model says | Votes | Needs | Held-out precision at that confidence |
+  |---|---|---|---|
+  | Outpatient (Evisit) | Outpatient (Tele) | ≥ 0.60 | 85% (13 pages); 100% at ≥ 0.70 (8) |
+  | Outpatient (Home Visit) | Home | ≥ 0.60 | 2 of 2 |
+  | Inpatient | Inpatient | ≥ 0.70 | 81% (16 pages); 73% at ≥ 0.60 |
+  | Outpatient (F2F) | not used | | 55–62% at any confidence: the family default does as well |
+  | Not Available | not used | | the family rule decides it |
+
+  The samples are small; measure again on new charts before lowering a threshold. Each
+  vote records `by: model` and the model's class and confidence in the encounter log
+  (`staging/continuity.json`). Without the model folder (or torch) no page asks it and
+  `/health` → `encounter_model.ready` is false.
 * **What the training labels say about learnability**: 198 pages state the setting,
   94 carry a field, 236 are inferred from content (vitals + exam → F2F), 1,112 come from
   the page type, 1,086 are inherited from another page of the visit, 21 are the client
-  default (never learned). Inherited labels train at half weight: the page itself may
-  say nothing about the encounter, so the model is not taught to guess from nothing.
-
-Stored per page: the setting, its basis, the matched keyword or the model's
-probabilities (all five), and the confidence.
+  default (never learned). Inherited labels train at half weight.
 
 ### 5.2 Final: the encounter's vote [built; the client default to build]
 
@@ -405,12 +487,15 @@ Every page of the range carries the encounter's Final value; its Extracted value
 
 ### 5.4 How good is it today
 
-The current rules engine against the 2,750 tagged training pages (section 8.1): 0.81 of
-pages right, but **Evisit recall 0.07 and Home Visit 0.04**: the Progress Note default
-(F2F) wins whenever the page does not say the modality in the engine's words. That is
-the gap the encounter model and the client default (5.2 step 4) are for. The model's
-scores come from its Colab run (`metrics_summary.json`: pages and visits, by class, by
-basis).
+The rules engine against the 2,750 tagged training pages (section 8.1): 0.81 of pages
+right, but **Evisit recall 0.07 and Home Visit 0.04**: the Progress Note default (F2F)
+wins whenever the page does not say the modality in the engine's words. The encounter
+model (Colab, 2026-10-25, best epoch 4) on its held-out charts: page accuracy 0.60,
+macro F1 0.51; recall Inpatient 0.56, F2F 0.45, Evisit 0.43, Home Visit 0.18, Not
+Available 0.85; visits 0.66 (35 visits). Alone it is weaker than the rules, but where it
+is sure of Evisit, Home Visit or Inpatient it is mostly right, and those are exactly the
+rules' blind spots: hence the vote in 5.1 rather than replacing the rules. The client
+default (5.2 step 4) is still to build.
 
 ---
 
@@ -418,11 +503,11 @@ basis).
 
 | Where | Holds |
 |---|---|
-| `page_classification.axes` (Postgres JSONB) | Extracted L1 / L2 / L3 / specialty / codeability, each with confidence and `decided_by` (model / canon / others / guard), the **model's best 5 paths** (at most 3 per L1), the canon's match, `by_L1` |
+| `page_classification.axes` (Postgres JSONB) | Extracted L1 / L2 / L3 / specialty / codeability, each with confidence and `decided_by` (model / canon / others / guard), the **model's best 5 paths** (at most 3 per L1), `path_choice` (which one the page took: score / keywords / l1), `rules` (a keyword rule that fired), the canon's match, `by_L1` |
 | `staging/page_classification.json` **[built]** | the same per page, beside the other staging files (Postgres stays the source the later stages read) |
 | `staging/blank_junk.json`, `staging/extraction.json` | blank / junk / duplicate verdicts; key-value extraction, signatures |
 | `staging/continuity.json`, `page_continuity_results` | per gap: score, signals, decision; per page: document, tag; Final page type, DOS, encounter |
-| `encounter_type_results` | per page: Extracted setting, basis, evidence; per encounter: Final setting, confidence, decided_by |
+| `encounter_type_results` | per page: Extracted setting, basis, evidence; per encounter: Final setting, confidence, decided_by. Each page's vote, including `by: model` with the model's class and confidence, is in the encounter log in `staging/continuity.json` |
 | `page_sequencing_results`, `imaging/<chart>_sequencing.csv` | per page: suggested order (`seq`), method, confidence, review flag (section 9) |
 | `imaging_final` | every field's Final value |
 
@@ -435,7 +520,7 @@ L2, because section tagging decides it):
   "extracted": {"L1": "Lab Report", "L2": "Pathology Report", "L3": "Biopsy Report",
                  "path": "Lab Report > Pathology Report > Biopsy Report",
                  "decided_by": "model", "confidence": 0.82,
-                 "specialty": "Unknown", "codeability": "non_codeable"},
+                 "specialty": "General", "codeability": "non_codeable"},
   "model_paths": [
     {"rank": 1, "path": "Lab Report > Pathology Report > Biopsy Report", "score": 0.71,
      "l1_confidence": 0.86, "l2_confidence": 0.90, "l3_confidence": 0.92},
@@ -495,8 +580,10 @@ section 8.
 1. Run `page_axes.ipynb` (and `encounter.ipynb`) on a GPU runtime: `--check`, the run,
    the metrics, the test pages.
 2. Copy `encoder/`, `heads.pt`, `label_space.json` into
-   `core-pipeline/models/page-family/page-axes/` (the encounter model into its own
-   folder once wired).
+   `core-pipeline/models/page-family/page-axes/`, and the encounter run's `encoder/`,
+   `head.pt`, `label_space.json` into `core-pipeline/models/encounter/`. The two
+   `encoder/model.safetensors` files (265 MB each) are not in git: copy them onto every
+   host. `/health` → `page_axes_model` and `encounter_model` say whether each loaded.
 3. `page_arbitration.json` → `axes.taxonomy_version` is `v29.2`; a model trained on
    another taxonomy is refused at load and the canon decides (visible in `/health`).
 4. Tune the gates on the run's validation predictions (`tune_thresholds.py`).
@@ -535,8 +622,23 @@ Available). Each page voting alone: 0.75, so the encounter vote helps.
 **Keyword canon after the conversion**: its path agrees with the majority label for 93
 of the 106 canon page types that occur in the training data.
 
-**Page-axes and encounter models**: from the Colab runs (per-class recall; the Lab
-Report ↔ Progress Note line; pages and visits).
+**Page-axes model** (Colab, 2026-10-25, best epoch 19 of 20; 458 held-out test pages):
+
+| Head | Accuracy | Macro F1 |
+|---|---|---|
+| L1 | 0.64 | 0.44 |
+| L2 (given the right L1) | 0.71 | 0.37 |
+| L3 (given the right L2) | 0.57 | 0.26 |
+| Specialty | 0.69 | 0.32 |
+| Full path | 0.48 | hierarchical F1 0.55 |
+
+Lab Report read as Progress Note: 4 of 94; Progress Note read as Lab Report: 15 of 183.
+Path score as a gate (validation / test): at ≥ 0.50, 65% / 57% of pages qualify and
+71% / 71% of those paths are fully right; below it, 28% / 16%. Hence `path_min` 0.50 and
+keyword support for the rest. On the twelve made-up check pages: 24 of 38 head checks
+pass, no Lab Report page comes back as a Progress Note.
+
+**Encounter model**: section 5.4; its vote thresholds: 5.1.
 
 ### 8.2 Waiting on the client [decide]
 
@@ -544,24 +646,27 @@ Report ↔ Progress Note line; pages and visits).
   Policy (now Administrative > Others); Pap and HPV Report and Pap smear report (now
   Lab Report > Diagnostic Study; or Pathology Report > Cytology Report?).
 * A page only the Others step decided reads "Others / Others": acceptable?
-* The model's own L3 is ignored today (the canon decides L3): use a confident one?
 * More Final placements inside a Progress Note (3.2).
+* More `title_paths` rows: which page types should a title pin, at which level?
 * Should `staging/page_classification.json` become what later stages read first?
 
-* Superbill as its own L2 or under Administrative > Billing & Invoices.
 * Payer record-retrieval fax covers and EHR import covers as junk by rule.
 * Records Request defined by purpose (letter, fax or note).
 * "Surgery center" / "ambulatory surgery" wording → Outpatient (F2F).
 * Surgery scheduling forms as Administrative > Appointment Record.
-* Specialty Unknown: trained as a class, or masked out of the loss.
+* Specialty Unknown: trained as a class, or masked out of the loss (the pipeline shows
+  General either way).
 
 ### 8.3 Build order
 
 1. **[built]** v29.2 names everywhere, the converted canon, the v1 ladder removed,
    the best 5 paths stored, the Lab Report guard, `staging/page_classification.json`. Until
    the v29.2 model is copied in, the canon decides every page (`/health` says so).
-2. Train both models on Colab (20 epochs); copy the page-axes model in.
-3. **[to build]** encounter Extracted before continuity; the encounter model as a vote.
+2. **[built 2026-10-25]** both models trained on Colab and copied in; the path choice
+   (score or keyword support), keyword precedence at L2 / L3, the `title_paths` rule
+   table, L2 / L3 → Others, specialty keywords → General, the first page's specialty for
+   the encounter, the encounter model as a vote (5.1).
+3. **[to build]** encounter Extracted before continuity.
 4. **[to build]** continuity signals 4.2, 4.3, 4.4; measured (4.5) before their weights
    are trusted.
 5. **[to build]** the client default (5.2 step 4) and the encounter split (5.3).

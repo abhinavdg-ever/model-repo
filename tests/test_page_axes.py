@@ -1,5 +1,5 @@
 """Page axes: the inference copy of train_axes.py, and the gate that decides
-each level by the model (its top 3), the keyword canon, or Others.
+each level by keyword rules, the model (its best paths), the keyword canon, or Others.
 
 Made-up text only. No torch: the gate takes the model's raw answer as a dict.
 """
@@ -92,8 +92,13 @@ class TestLevelOne:
         assert (result.l1, result.sources[0]) == (LAB, "canon")
         assert result.l1_confidence >= 0.5
 
-    def test_no_lead_means_the_canon_decides(self):
-        assert gate(raw(l1_p=0.45, second=0.40)).sources[0] == "canon"
+    def test_no_lead_but_keyword_support_takes_the_models_path(self):
+        result = gate(raw(l1_p=0.45, second=0.40))
+        assert result.sources[0] == "model" and result.path_choice["by"] == "keywords"
+
+    def test_no_lead_and_no_support_is_not_the_model(self):
+        result = gate(raw(l1_p=0.45, second=0.40), text=NO_TERMS)
+        assert (result.l1, result.sources[0]) == ("Others", "others")
 
     def test_folded_other_class_goes_to_the_canon(self):
         result = gate(raw(l1="OTHER", l1_p=0.95))
@@ -108,21 +113,34 @@ class TestLevelOne:
 
 
 class TestLevelTwoAndThree:
-    def test_model_l2_at_fifty_percent_and_l3_from_the_canon(self):
-        result = gate(raw(l2_p=0.51, l3="MRI Report", l3_p=0.99))
+    def test_a_confident_model_l3_beats_canon_body_terms(self):
+        result = gate(raw(l2_p=0.95, l3="MRI Report", l3_p=0.99))
         assert (result.l2, result.sources[1]) == (RAD, "model")
+        assert (result.l3, result.sources[2]) == ("MRI Report", "model")
+
+    def test_a_canon_title_beats_the_model_l3(self):
+        result = gate(raw(l2_p=0.95, l3="MRI Report", l3_p=0.99), text="CT SCAN REPORT\n" + CT_PAGE)
         assert (result.l3, result.sources[2]) == ("CT Scan Report", "canon")
         assert result.l3_confidence >= 0.5
-        assert result.prediction["L3"] == "MRI Report"  # the model's L3 is kept, not used
+
+    def test_a_canon_title_beats_the_model_l2(self):
+        result = gate(raw(l2="Lab Result", l2_p=0.95), text="CT SCAN REPORT\n" + CT_PAGE)
+        assert (result.l2, result.sources[1]) == (RAD, "canon")
 
     def test_low_model_l2_falls_back_to_the_canon(self):
         result = gate(raw(l2="Lab Result", l2_p=0.45))
         assert (result.l2, result.sources[1]) == (RAD, "canon")
 
-    def test_l3_needs_the_canon_to_be_sure(self):
-        result = gate(raw(l3="CT Scan Report", l3_p=0.99), text="RADIOLOGY\nresults below\n")
+    def test_an_unsure_l3_with_no_keywords_is_others(self):
+        result = gate(raw(l3="CT Scan Report", l3_p=0.30), text="RADIOLOGY\nresults below\n")
         assert result.l2 == RAD
-        assert (result.l3, result.sources[2]) == (None, "-")
+        assert (result.l3, result.sources[2]) == ("Others", "others")
+        assert axes.page_names(result) == ("Lab Report (Radiology Report)", "Others")
+        assert result.codeability == "non_codeable"  # still the Radiology Report entry's tag
+
+    def test_an_l2_without_named_l3s_has_no_l3(self):
+        result = gate(raw(l1="Administrative", l2="Superbill", l2_p=0.9), text=NO_TERMS)
+        assert (result.l2, result.l3) == ("Superbill", None)
 
     def test_section_l1_has_no_l2_or_l3(self):
         result = gate(raw(l1="Progress Note", l2=None))
@@ -130,9 +148,27 @@ class TestLevelTwoAndThree:
         assert (result.l2, result.l3) == (None, None)
 
 
+CARDIO_PAGE = """RIVERSIDE CARDIOLOGY ASSOCIATES
+Office visit
+Echocardiogram reviewed. Ejection fraction 55%. Atrial fibrillation rate controlled.
+Plan: continue anticoagulation.
+"""
+
+
 class TestSpecialty:
-    def test_unknown_is_never_asserted(self):
-        assert gate(raw()).specialty is None
+    def test_unknown_is_never_asserted_it_is_general(self):
+        result = gate(raw())
+        assert (result.specialty, result.specialty_confidence, result.sources[3]) == ("General", None, "others")
+
+    def test_with_no_model_specialty_the_keywords_decide(self):
+        result = gate(raw(), text=CARDIO_PAGE)
+        assert (result.specialty, result.sources[3]) == ("Cardiology", "canon")
+        assert 0.5 <= result.specialty_confidence <= 1.0
+
+    def test_keywords_need_a_lead(self):
+        from stages.lib.page_classify import specialty_keywords
+
+        assert specialty_keywords.specialty("CARDIOLOGY AND NEPHROLOGY\nvisit\n") == (None, None)
 
     def test_confident_well_trained_specialty_is_asserted(self):
         result = gate(raw(specialty_top=(("Cardiology", 0.85), ("Unknown", 0.10))))
@@ -145,7 +181,7 @@ class TestSpecialty:
     ])
     def test_unsure_or_undertrained_specialty_is_not_asserted(self, top):
         result = gate(raw(specialty_top=top))
-        assert (result.specialty, result.specialty_confidence) == (None, None)
+        assert (result.specialty, result.specialty_confidence) == ("General", None)
 
 
 class TestCodeability:
@@ -176,7 +212,7 @@ class TestWithoutModel:
         result = axes.gate(None, {}, CT_PAGE)
         assert result.route is None
         assert (result.l1, result.l2, result.l3) == (LAB, RAD, "CT Scan Report")
-        assert result.as_json()["sources"] == "canon/canon/canon/-/canon"
+        assert result.as_json()["sources"] == "canon/canon/canon/others/canon"
         assert result.as_json()["decided_by"] == "canon"
         assert result.as_json()["model_paths"] is None
         assert result.as_json()["prediction"] is None
@@ -345,6 +381,45 @@ class TestModelPaths:
         assert (top[0]["l1"], top[0]["folded"]) == ("Others", True)  # never the folded class name
 
 
+class TestPathChoice:
+    """The page takes the first of the model's best paths with a score of at least
+    path_min or keyword support; else its confident L1; else the canon."""
+
+    @staticmethod
+    def _with_paths(paths, **kw):
+        r = raw(**kw)
+        r["paths"] = [{"path": " > ".join(x for x in p[:3] if x), "L1": p[0], "L2": p[1], "L3": p[2],
+                       "L1_confidence": p[3], "L2_confidence": p[4], "L3_confidence": p[5],
+                       "score": p[3] * (p[4] or 1) * (p[5] or 1)} for p in paths]
+        return r
+
+    def test_a_path_above_the_threshold_is_taken(self):
+        r = self._with_paths([(LAB, RAD, "MRI Report", 0.9, 0.9, 0.8)])
+        result = gate(r)
+        assert result.path_choice == {"rank": 1, "path": f"{LAB} > {RAD} > MRI Report", "by": "score"}
+        assert (result.l1, result.l2, result.l3) == (LAB, RAD, "MRI Report")
+
+    def test_below_the_threshold_keyword_support_picks_a_lower_path(self):
+        # Rank 1 (Administrative) is weak and unsupported; rank 2 has the CT page's words.
+        r = self._with_paths([("Administrative", "Superbill", None, 0.45, 0.6, None),
+                              (LAB, RAD, None, 0.40, 0.6, None)], l1="Administrative", l1_p=0.45, second=0.40)
+        result = gate(r)
+        assert result.path_choice["rank"] == 2 and result.path_choice["by"] == "keywords"
+        assert (result.l1, result.l2, result.sources[0]) == (LAB, RAD, "model")
+
+    def test_a_confident_l1_keeps_its_best_path_when_its_paths_are_thin(self):
+        r = self._with_paths([(LAB, "Lab Result", None, 0.9, 0.3, None)], l2="Lab Result", l2_p=0.3)
+        result = gate(r, text=NO_TERMS)
+        assert result.path_choice["by"] == "l1"
+        assert (result.l1, result.l2) == (LAB, None)  # the weak L2 and no keywords: Lab Report / Others
+        assert axes.page_names(result) == (LAB, "Others")
+
+    def test_nothing_chosen_and_no_confident_l1_goes_to_the_canon(self):
+        r = self._with_paths([("Administrative", None, None, 0.3, None, None)], l1="Administrative", l1_p=0.3, second=0.2)
+        result = gate(r)
+        assert result.path_choice is None and (result.l1, result.sources[0]) == (LAB, "canon")
+
+
 class TestCanonFallback:
     def test_a_class_the_model_folded_is_named_by_the_canon(self):
         result = gate(raw(l1="OTHER", l1_p=0.9, l2=None), text=SLEEP_PAGE)
@@ -402,6 +477,17 @@ class TestRules:
         assert (result.l1, result.l2) == path
         assert result.codeability in ("non_codeable", "needs_review")
 
+    def test_a_title_row_can_set_an_l3(self):
+        from stages.lib.page_classify import page_rules
+
+        rules = {"title_paths": [{"name": "ct", "titles": ["CT Scan Report"],
+                                  "path": {"L1": LAB, "L2": RAD, "L3": "CT Scan Report"}}]}
+        fired = page_rules.apply("CT SCAN REPORT\nbody\n", (), "Progress Note", rules)
+        assert (fired.rule, fired.l1, fired.l2, fired.l3) == ("ct", LAB, RAD, "CT Scan Report")
+        # Already on that path, a row with no L3 changes nothing and does not fire.
+        rules["title_paths"][0]["path"].pop("L3")
+        assert page_rules.apply("CT SCAN REPORT\nbody\n", (), LAB, rules, RAD) is None
+
     def test_a_summary_mentioned_inside_a_note_is_not_a_title(self):
         text = "OFFICE VISIT\nChief Complaint: cough\nThe after visit summary was printed for the patient.\n"
         assert gate(raw(l1="Progress Note", l2=None), text=text).l1 == "Progress Note"
@@ -452,6 +538,23 @@ class TestStaging:
 
 
 # --- the converted canon ------------------------------------------------------------
+
+
+class TestSpecialtyLexicon:
+    def test_the_pipeline_copy_is_the_training_lexicon(self):
+        import json
+
+        pipeline = CORE / "stages" / "lib" / "keyword-canon" / "specialty_canon.json"
+        training = REPO / "training" / "taxonomy" / "rules" / "specialty.json"
+        assert json.loads(pipeline.read_text(encoding="utf-8")) == json.loads(training.read_text(encoding="utf-8"))
+
+    def test_every_lexicon_specialty_is_in_the_label_space(self):
+        import json
+
+        from stages.lib.page_classify import taxonomy
+
+        lexicon = json.loads((CORE / "stages" / "lib" / "keyword-canon" / "specialty_canon.json").read_text(encoding="utf-8"))
+        assert set(lexicon["specialties"]) <= set(taxonomy.label_space()["specialty"])
 
 
 class TestConvertedCanon:
@@ -509,3 +612,23 @@ class TestConvertedCanon:
                  "path": {"L1": "Administrative", "L2": "Administrative Record", "L3": ""}, "specialty": ""}
         converted, unresolved = convert_entry(entry, taxonomy)
         assert converted["path"]["L2"] == "Others" and unresolved
+
+
+class TestEncounterSpecialty:
+    """imaging_final: only the first page of the encounter decides its specialty."""
+
+    @staticmethod
+    def _rows(*specialties):
+        return {i: {"axes": {"specialty": sp}} for i, sp in enumerate(specialties, start=1)}
+
+    def test_the_first_page_decides_for_every_page(self):
+        from stages.lib.imaging_final.stage import encounter_specialties
+
+        out = encounter_specialties({1: [1, 2, 3]}, self._rows("Cardiology", "Nephrology", "Nephrology"))
+        assert out == {1: "Cardiology", 2: "Cardiology", 3: "Cardiology"}
+
+    def test_a_first_page_with_none_gives_general_even_when_later_pages_have_one(self):
+        from stages.lib.imaging_final.stage import encounter_specialties
+
+        out = encounter_specialties({1: [1, 2], 2: [3]}, self._rows(None, "Cardiology", "Unknown"))
+        assert out == {1: "General", 2: "General", 3: "General"}

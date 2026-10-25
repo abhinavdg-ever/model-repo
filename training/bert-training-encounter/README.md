@@ -97,12 +97,15 @@ Files in `output/encounter/`: `label_space.json`, `encoder/`, `head.pt` (the mod
 `confusion_{pages,visits}.csv`, `predictions.csv`, `errors.csv` (no text);
 `training_log.csv`, `run_config.json`, `split.csv`.
 
-## In the pipeline (not wired yet)
+## In the pipeline
 
-The pipeline decides encounter type with the tiered rule engine in
-`core-pipeline/stages/lib/encounter/` (keyword tiers, page-type priors, the document
-vote). The model would add one more vote per page, used where the rules have no
-stated or field evidence. How, and in what order, is in `../../docs/APPROACH.md`.
+Copied to `core-pipeline/models/encounter/` (2026-10-25). The encounter stage still
+decides with its rules first (`core-pipeline/stages/lib/encounter/`); the model is one
+more vote per page, asked only where the page has no tier 1 / tier 2 evidence, and
+counted only for Evisit and Home Visit at >= 0.60 and Inpatient at >= 0.70
+(`encounter_canon.json` -> `model_vote`). The pipeline's inference code
+(`stages/lib/encounter/encounter_model.py`) is a copy of this trainer's; a test fails
+when they drift. Details: `../../docs/APPROACH.md` §5.1.
 
 ## Tests
 

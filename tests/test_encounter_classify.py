@@ -348,3 +348,76 @@ def test_family_defaults_vote_when_a_page_has_no_evidence(canon):
     assert [(v["setting"], v["by"]) for v in log[0]["votes"]] == [
         ("inpatient", "family_default"), ("outpatient_f2f", "family_default"), ("not_applicable", "not_applicable")]
     assert rows[0]["encounter_type"] == "inpatient"
+
+
+# --- the encounter model's vote (model_vote) -------------------------------
+
+
+def _model_page(n, family, answer, text=""):
+    return {**page(n, text), "page_family": family, "encounter_model": answer}
+
+
+@pytest.mark.parametrize("answer, expected", [
+    (("Outpatient (Evisit)", 0.85), ("outpatient_tele", "model")),
+    (("Outpatient (Home Visit)", 0.61), ("home", "model")),
+    (("Inpatient", 0.72), ("inpatient", "model")),
+    (("Inpatient", 0.65), ("outpatient_f2f", "family_default")),       # Inpatient needs 0.7
+    (("Outpatient (Evisit)", 0.55), ("outpatient_f2f", "family_default")),
+    (("Outpatient (F2F)", 0.99), ("outpatient_f2f", "family_default")),  # F2F stays with the rules
+    (("Not Available", 0.99), ("outpatient_f2f", "family_default")),
+    (None, ("outpatient_f2f", "family_default")),                        # no model
+])
+def test_the_model_votes_only_where_the_rules_found_nothing(canon, answer, expected):
+    log: list = []
+    classify_pages(_doc(_model_page(1, "Progress Note", answer)), entries=canon, visit_log=log)
+    assert (log[0]["votes"][0]["setting"], log[0]["votes"][0]["by"]) == expected
+
+
+def test_evidence_on_the_page_beats_the_model(canon):
+    log: list = []
+    classify_pages(_doc(_model_page(1, "Progress Note", ("Inpatient", 0.95), "telehealth visit")),
+                   entries=canon, visit_log=log)
+    assert (log[0]["votes"][0]["setting"], log[0]["votes"][0]["by"]) == ("outpatient_tele", "tier2")
+
+
+def test_a_lab_page_is_not_applicable_whatever_the_model_says(canon):
+    log: list = []
+    classify_pages(_doc(_model_page(1, "Lab Report", ("Outpatient (Evisit)", 0.95))), entries=canon, visit_log=log)
+    assert log[0]["votes"][0]["by"] == "not_applicable"
+
+
+def test_loader_refuses_an_unknown_model_vote_setting():
+    raw = copy.deepcopy(_raw())
+    raw["model_vote"]["settings"]["Outpatient (Evisit)"] = "telepathy"
+    with pytest.raises(CanonError, match="model_vote.settings"):
+        _parse_canon(raw)
+
+
+def test_without_the_model_folder_no_page_gets_an_answer(tmp_path, monkeypatch):
+    import config
+    from stages.lib.encounter import model_vote
+
+    monkeypatch.setattr(config, "ENCOUNTER_MODEL_DIR", str(tmp_path / "missing"))
+    monkeypatch.setattr(model_vote, "_loaded", None)
+    monkeypatch.setattr(model_vote, "_failed", None)
+    assert model_vote.predict(["telehealth visit", ""]) == [None, None]
+    assert model_vote.describe()["ready"] is False
+
+
+def test_the_inference_copy_matches_the_trainer():
+    import ast
+
+    def definitions(path):
+        source = path.read_text(encoding="utf-8")
+        out = {}
+        for node in ast.parse(source).body:
+            if isinstance(node, ast.FunctionDef):
+                out[node.name] = ast.get_source_segment(source, node)
+            elif isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+                out[node.targets[0].id] = ast.get_source_segment(source, node)
+        return out
+
+    trainer = definitions(REPO / "training" / "bert-training-encounter" / "train_encounter.py")
+    copied = definitions(CORE / "stages" / "lib" / "encounter" / "encounter_model.py")
+    drifted = [name for name, body in copied.items() if trainer.get(name) != body]
+    assert not drifted, f"copy these from train_encounter.py into encounter_model.py again: {drifted}"
