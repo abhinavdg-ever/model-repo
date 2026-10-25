@@ -54,7 +54,9 @@ def test_member_confidence_is_the_evidence_found():
 
     name_dob = _member_page("verified", detected_name="A B", detection_source_name="rule based",
                             detected_dob="01/01/1950", detection_source_dob="rule based")
-    assert _page_confidence(name_dob) == pytest.approx(0.84)
+    assert _page_confidence(name_dob) == pytest.approx(0.72)  # 0.6, backed by the other 0.6
+    # The extraction's own confidences (extraction.json) when it read them: they differ per page.
+    assert _page_confidence(name_dob, extracted={"name": 0.8, "dob": 0.97}) == pytest.approx(0.97 + 0.03 * 0.5 * 0.8)
     assert _page_confidence(_member_page("verified", detected_name="A B", detection_source_name="ner")) == 0.4
     assert _page_confidence(_member_page("not_verified")) is None  # nothing read, nothing decided
     unmatched = _member_page("not_verified", detected_name="A B", detection_source_name="rule based")

@@ -127,22 +127,29 @@ def _iso_dob(value: Optional[str]) -> Optional[str]:
     return None
 
 
-def _page_confidence(page: Any, absent: Optional[float] = None) -> Optional[float]:
+def _page_confidence(
+    page: Any, absent: Optional[float] = None, extracted: Optional[dict[str, Optional[float]]] = None,
+) -> Optional[float]:
     """How sure the page's member status is (stages/lib/confidence.py). Each identifier
-    read off the page (name, DOB, member ID) is evidence -- ``field_support.rule`` when
-    the rules read it, ``field_support.ner`` when NER did -- combined as independent
-    evidence, 1 - product(1 - support): a name and a DOB by the rules read 0.84, all
-    three 0.94, a name by NER alone 0.40. Verified and wrong member: that. Not verified
+    read off the page (name, DOB, member ID) is evidence: its own confidence in the
+    extraction (``extracted``: the staged row's model probability backed by the rules,
+    2026-10-25, user) when the extraction read it, else ``field_support.rule`` /
+    ``field_support.ner``. The strongest is the base and each other one backs it
+    (``confidence.backed``). Verified and wrong member: that. Not verified
     with identifiers that match nobody: that x ``fallback``. Nothing read: ``absent``,
     how sure the extraction is that the page names no member (the weakest of its name,
     DOB and member ID "not found"; 2026-10-25, user), else no confidence."""
     support = conf.settings_for("member", {"field_support": {"rule": 0.6, "ner": 0.4}})["field_support"]
+    extracted = extracted or {}
     found = [
-        float(support["rule"] if source == "rule based" else support["ner"])
-        for value, source in (
-            (page.detected_name, page.detection_source_name),
-            (page.detected_dob, page.detection_source_dob),
-            (page.detected_member_id, page.detection_source_member_id),
+        float(
+            extracted[field_id] if source == "rule based" and extracted.get(field_id) is not None
+            else support["rule"] if source == "rule based" else support["ner"]
+        )
+        for field_id, value, source in (
+            ("name", page.detected_name, page.detection_source_name),
+            ("dob", page.detected_dob, page.detection_source_dob),
+            ("member_id", page.detected_member_id, page.detection_source_member_id),
         )
         if _clean(value)
     ]
@@ -150,10 +157,11 @@ def _page_confidence(page: Any, absent: Optional[float] = None) -> Optional[floa
         found = [float(support["ner"])]  # another person's name in a patient-name sentence
     if not found:
         return absent
-    doubt = 1.0
-    for s in found:
-        doubt *= 1.0 - s
-    return conf.score(1.0 - doubt, "fallback" if page.db_page_status == "not_verified" else "", module="member")
+    found.sort(reverse=True)
+    value = found[0]
+    for other in found[1:]:
+        value = conf.backed(value, other)
+    return conf.score(value, "fallback" if page.db_page_status == "not_verified" else "", module="member")
 
 
 def _summary_confidence(result: Any, status: str, pages: dict[str, Optional[float]]) -> Optional[float]:
@@ -491,6 +499,19 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
 
         by_page_no = {p["page_no"]: p["_page_id"] for p in engine_pages}
 
+        from stages.lib.extraction.results import row_confidence
+
+        def _extracted(page_name: str) -> dict[str, Optional[float]]:
+            """The extraction's own confidence in each identifier it chose for the page."""
+            staged_page = staged.page(page_name)
+            if staged_page is None:
+                return {}
+            out: dict[str, Optional[float]] = {}
+            for field_id in ("name", "dob", "member_id"):
+                chosen = staged_page.selected(field_id)
+                out[field_id] = row_confidence(chosen[0]) if chosen else None
+            return out
+
         def _absent(page_name: str) -> Optional[float]:
             """The weakest "not found" of the page's name, DOB and member ID."""
             staged_page = staged.page(page_name)
@@ -532,7 +553,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         ner_key_source_member_id=_clean(page.ner_key_source_member_id),
                         page_status=page.db_page_status,
                         page_verified=page.page_verified,
-                        confidence=_page_confidence(page, _absent(page.page_name)),
+                        confidence=_page_confidence(page, _absent(page.page_name), _extracted(page.page_name)),
                         provided_name=manifest.get("member_name"),
                         provided_dob=provided_dob,
                         provided_external_member_id=manifest.get("external_member_id"),
@@ -562,7 +583,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "ner_key_source_member_id": page.ner_key_source_member_id,
                         "page_status": page.db_page_status,
                         "page_verified": page.page_verified,
-                        "confidence": _page_confidence(page, _absent(page.page_name)),
+                        "confidence": _page_confidence(page, _absent(page.page_name), _extracted(page.page_name)),
                         "provided_name": manifest.get("member_name") or "",
                         "provided_dob": provided_dob or "",
                         "provided_external_member_id": manifest.get("external_member_id") or "",

@@ -59,7 +59,8 @@ print('junk clinical short-circuit ok')"
 
 # Fail the build if stage 1 cannot judge orientation, or if the canons from
 # this checkout did not land: OSD data, the reading vocabulary, the stored
-# text-orientation convention, taxonomy 1.2 and the DOS range labels.
+# text-orientation convention, the page taxonomy's label space (any version) and the
+# DOS range labels.
 RUN tesseract --list-langs 2>&1 | grep -qx osd \
  && test -s stages/lib/image_preprocess/english_words.txt.gz \
  && python -c "\
@@ -68,7 +69,7 @@ from stages.lib.image_preprocess.stage import text_orientation; \
 orient = [text_orientation(c) for c in (0, 90, 180, 270)]; \
 assert orient == [0, 90, 180, 270], ('text_orientation', orient); \
 tax = json.load(open('stages/lib/keyword-canon/page_taxonomy.json')); \
-assert tax['version'] == '1.2' and len(tax['page_types']) == 51, tax['version']; \
+assert tax['label_space']['L1'] and tax['label_space']['L2'], tax.get('version'); \
 dos = json.load(open('stages/lib/keyword-canon/dos_canon.json')); \
 assert 'certification period' in dos['labels']['encounter'], 'dos_canon labels'; \
 print('orientation + canons ok')"

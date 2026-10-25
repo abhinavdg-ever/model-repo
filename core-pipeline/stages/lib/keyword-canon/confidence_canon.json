@@ -29,7 +29,7 @@
         "rule": 0.6,
         "ner": 0.4
       },
-      "note": "Each identifier read off a page (name, DOB, member ID) backs its member status by this much: the rules' reading 0.6, NER's 0.4; several combine as independent evidence."
+      "note": "Each identifier read off a page (name, DOB, member ID) backs its member status by its own confidence in the extraction (the staged row's model probability backed by the rules; 2026-10-26, user: not fixed numbers); without one, the rules' reading counts field_support.rule, NER's field_support.ner. The strongest is the base, each other one backs it (confidence.backed)."
     }
   }
 }

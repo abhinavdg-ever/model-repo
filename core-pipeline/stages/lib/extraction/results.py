@@ -60,6 +60,32 @@ def _confidence(hit: Optional[dict[str, Any]]) -> Optional[float]:
     return conf.score(conf.backed(model, rule) if rule is not None else model, module="extraction")
 
 
+def row_confidence(hit: Optional[dict[str, Any]]) -> Optional[float]:
+    """A staged row's confidence on the one scale (``_confidence``), for other stages."""
+    return _confidence(hit)
+
+
+def _name_key(name: Optional[str]) -> frozenset[str]:
+    return frozenset(w for w in re.findall(r"[a-z]+", (name or "").casefold()) if len(w) > 1)
+
+
+def _named_confidence(named: dict[str, Any], provider_hits: Optional[list[dict[str, Any]]]) -> Optional[float]:
+    """A credentials row that names its provider has only the rules' score (no model scores
+    it), the same on every page. The provider_name row for the same person carries the
+    model's probability: that, backed by the credentials row's rule score. Without one,
+    the credentials row's own."""
+    want = _name_key(split_name_credentials(_text(named, "provider_name"))[0])
+    same = [
+        item for item in _as_hits(provider_hits)
+        if item.get("model_score") not in (None, "") and want
+        and len(want & _name_key(split_name_credentials(caps_credentials_only(_text(item, "value")))[0])) >= min(2, len(want))
+    ]
+    if not same:
+        return _confidence(named)
+    best = max(same, key=lambda item: float(item["model_score"]))
+    return conf.score(conf.backed(float(best["model_score"]), _score(named) or 0.0), module="extraction")
+
+
 def _as_hits(hit: Any) -> list[dict[str, Any]]:
     if hit is None:
         return []
@@ -246,7 +272,8 @@ def _page_provider(
         if _counts(item) and _text(item, "value") and _text(item, "provider_name")
     ])
     if named is not None:
-        return split_name_credentials(_text(named, "provider_name"))[0], _text(named, "value"), _confidence(named)
+        return (split_name_credentials(_text(named, "provider_name"))[0], _text(named, "value"),
+                _named_confidence(named, provider_hits))
     best = _best([item for item in _as_hits(provider_hits) if _counts(item) and _text(item, "value")])
     if best is not None:
         name, creds = split_name_credentials(caps_credentials_only(_text(best, "value")))
