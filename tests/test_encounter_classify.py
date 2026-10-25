@@ -367,19 +367,28 @@ def _model_page(n, family, answer, text=""):
     return {**page(n, text), "page_family": family, "encounter_model": answer}
 
 
-@pytest.mark.parametrize("answer, expected", [
-    (("Outpatient (Evisit)", 0.85), ("outpatient_tele", "model")),
-    (("Outpatient (Home Visit)", 0.61), ("home", "model")),
-    (("Inpatient", 0.72), ("inpatient", "model")),
-    (("Inpatient", 0.65), ("outpatient_f2f", "family_default")),       # Inpatient needs 0.7
-    (("Outpatient (Evisit)", 0.55), ("outpatient_f2f", "family_default")),
-    (("Outpatient (F2F)", 0.99), ("outpatient_f2f", "family_default")),  # F2F stays with the rules
-    (("Not Available", 0.99), ("outpatient_f2f", "family_default")),
-    (None, ("outpatient_f2f", "family_default")),                        # no model
+@pytest.mark.parametrize("answer, text, expected", [
+    (("Outpatient (Evisit)", 0.85), "seen on video today", ("outpatient_tele", "model")),
+    (("Outpatient (Evisit)", 0.85), "", ("outpatient_f2f", "family_default")),          # no confirming keyword
+    (("Outpatient (Home Visit)", 0.61), "caregiver present", ("home", "model")),
+    (("Outpatient (Home Visit)", 0.61), "seen today", ("outpatient_f2f", "family_default")),
+    (("Inpatient", 0.72), "", ("inpatient", "model")),                                # Inpatient needs no keyword
+    (("Inpatient", 0.65), "", ("outpatient_f2f", "family_default")),                  # Inpatient needs 0.7
+    (("Outpatient (Evisit)", 0.35), "video", ("outpatient_tele", "model")),          # keyword rules, model agrees
+    (("Outpatient (Evisit)", 0.25), "video", ("outpatient_f2f", "family_default")),   # model below 0.3
+    # The model's top answer is F2F, but it gives Evisit 0.3 and the page says video: Evisit.
+    (("Outpatient (F2F)", 0.6, {"Outpatient (F2F)": 0.6, "Outpatient (Evisit)": 0.3}), "video",
+     ("outpatient_tele", "model")),
+    (("Outpatient (F2F)", 0.6, {"Outpatient (F2F)": 0.6, "Outpatient (Evisit)": 0.3}), "",
+     ("outpatient_f2f", "family_default")),                                           # no keyword: no vote
+    (("Outpatient (F2F)", 0.99), "", ("outpatient_f2f", "family_default")),           # F2F stays with the rules
+    (("Not Available", 0.99), "", ("outpatient_f2f", "family_default")),
+    (None, "video", ("outpatient_f2f", "family_default")),                            # no model
 ])
-def test_the_model_votes_only_where_the_rules_found_nothing(canon, answer, expected):
+def test_the_model_votes_only_where_the_rules_found_nothing(canon, answer, text, expected):
+    """Evisit and Home Visit: a confirming keyword rules, the model gives the setting >= 0.3 (2026-10-25, user)."""
     log: list = []
-    classify_pages(_doc(_model_page(1, "Progress Note", answer)), entries=canon, visit_log=log)
+    classify_pages(_doc(_model_page(1, "Progress Note", answer, text)), entries=canon, visit_log=log)
     assert (log[0]["votes"][0]["setting"], log[0]["votes"][0]["by"]) == expected
 
 
@@ -410,7 +419,7 @@ def test_without_the_model_folder_no_page_gets_an_answer(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "ENCOUNTER_MODEL_DIR", str(tmp_path / "missing"))
     monkeypatch.setattr(model_vote, "_loaded", None)
     monkeypatch.setattr(model_vote, "_failed", None)
-    assert model_vote.predict(["telehealth visit", ""]) == [None, None]
+    assert model_vote.predict(["telehealth visit", ""]) == [None, None]  # (class, confidence, probabilities) with a model
     assert model_vote.describe()["ready"] is False
 
 

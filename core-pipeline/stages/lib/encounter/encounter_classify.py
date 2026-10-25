@@ -97,6 +97,11 @@ class Canon:
     # confidence each setting needs. A page with tier 1 / tier 2 evidence never asks it.
     model_settings: dict[str, str] = field(default_factory=dict)
     model_min: dict[str, float] = field(default_factory=dict)
+    # Settings whose model vote needs a confirming keyword on the page (2026-10-25, user:
+    # Evisit and Home Visit): setting -> (word, pattern) pairs.
+    model_confirm: dict[str, tuple[tuple[str, re.Pattern[str]], ...]] = field(default_factory=dict)
+    # With a confirming keyword, the model need only agree at this confidence.
+    model_confirm_min: dict[str, float] = field(default_factory=dict)
 
 
 class CanonError(ValueError):
@@ -148,6 +153,9 @@ def _validate(raw: dict[str, Any], page_type_ids: Optional[set[str]]) -> None:
     for setting in model_vote.get("min_confidence") or {}:
         if setting not in settings:
             errors.append(f"model_vote.min_confidence.{setting}: unknown setting")
+    for setting in model_vote.get("confirm") or {}:
+        if setting not in settings:
+            errors.append(f"model_vote.confirm.{setting}: unknown setting")
 
     default = (raw.get("default") or {}).get("setting")
     if default and default not in settings:
@@ -221,6 +229,11 @@ def _parse_canon(raw: dict[str, Any], *, check_page_types: bool = True) -> Canon
         first_page_weight=float((raw.get("vote") or {}).get("first_page_weight", 2.0)),
         model_settings=dict((raw.get("model_vote") or {}).get("settings") or {}),
         model_min={k: float(v) for k, v in ((raw.get("model_vote") or {}).get("min_confidence") or {}).items()},
+        model_confirm_min={k: float(v) for k, v in ((raw.get("model_vote") or {}).get("confirm_min") or {}).items()},
+        model_confirm={
+            setting: tuple((normalize_text(w), _phrase_re(normalize_text(w))) for w in words)
+            for setting, words in ((raw.get("model_vote") or {}).get("confirm") or {}).items()
+        },
     )
 
 
@@ -431,7 +444,9 @@ def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vot
     """The page's own setting: Not Applicable for a family encounter type does not apply
     to (a lab report), else its strongest evidence (tier 1, then tier 2), else the
     encounter model's answer (``page["encounter_model"]``: class, confidence) when the
-    canon's ``model_vote`` takes that class at that confidence, else its family's default
+    canon's ``model_vote`` takes that class at that confidence -- for Evisit and Home Visit a
+    confirming keyword on the page rules and the model need only give that setting
+    ``confirm_min`` (0.3), top answer or not (``model_vote.confirm``) --, else its family's default
     (Progress Note -> Outpatient F2F, Discharge Summary -> Inpatient)."""
     family = str(page.get("page_family") or "").strip()
     if canon.applies_to and family and family.casefold() != "unknown" and family.casefold() not in canon.applies_to:
@@ -442,10 +457,23 @@ def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vot
         return Vote(own.setting, weight, own.decided_by, own.matched_keyword, evidence)
     model = page.get("encounter_model")
     if model:
-        name, confidence = model
+        name, confidence = model[0], model[1]
+        probs = model[2] if len(model) > 2 else {name: confidence}
         setting = canon.model_settings.get(name, "")
-        if setting and confidence >= canon.model_min.get(setting, 1.01):
+        if setting and setting not in canon.model_confirm and confidence >= canon.model_min.get(setting, 1.01):
             return Vote(setting, weight, "model", f"model: {name} {confidence:.2f}", evidence)
+        # Evisit / Home Visit: the keyword rules, the model need only not rule it out -- that
+        # setting at >= confirm_min, top answer or not, since the model leans against these
+        # two (2026-10-25, user).
+        hay = normalize_text(str(page.get("text") or ""))
+        for cls, cls_setting in canon.model_settings.items():
+            confirm = canon.model_confirm.get(cls_setting)
+            if not confirm:
+                continue
+            word = next((w for w, pattern in confirm if w in hay and pattern.search(hay)), None)
+            p = float(probs.get(cls, 0.0))
+            if word and p >= canon.model_confirm_min.get(cls_setting, 1.01):
+                return Vote(cls_setting, weight, "model", f"keyword {word!r} + model: {cls} {p:.2f}", evidence)
     fallback = canon.family_defaults.get(family.casefold(), "")
     return Vote(fallback, weight, "family_default" if fallback else "none", "", evidence)
 

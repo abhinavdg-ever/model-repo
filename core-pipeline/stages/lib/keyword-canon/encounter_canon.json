@@ -305,6 +305,52 @@
       "outpatient_tele": 0.6,
       "home": 0.6,
       "inpatient": 0.7
+    },
+    "confirm": {
+      "outpatient_tele": [
+        "video",
+        "camera",
+        "telephone",
+        "phone call",
+        "audio",
+        "virtual",
+        "remote",
+        "portal",
+        "mychart",
+        "zoom",
+        "doxy",
+        "pos 02",
+        "pos 10",
+        "place of service 02",
+        "place of service 10",
+        "modifier 95",
+        "patient located",
+        "provider located",
+        "consent for telehealth",
+        "two-way",
+        "audiovisual"
+      ],
+      "home": [
+        "home",
+        "residence",
+        "homebound",
+        "caregiver",
+        "assisted living",
+        "apartment",
+        "pos 12",
+        "place of service 12",
+        "in the home",
+        "house call",
+        "family member present",
+        "home health",
+        "domiciliary",
+        "private residence"
+      ]
+    },
+    "confirm_note": "2026-10-25 (user): for Evisit and Home Visit the keywords rule and the model confirms, because the model leans against these two classes. A vote for one of them needs one of its confirm words on the page (whole words, case-insensitive) AND the model giving that setting >= confirm_min (0.3) probability -- its top answer or not; with no confirm word the model's Evisit / Home Visit never votes. The confirm words are cues too common to decide alone (a phone number, 'discharged home'); the full statements (tier2: 'telehealth visit', 'home visit') decide without the model.",
+    "confirm_min": {
+      "outpatient_tele": 0.3,
+      "home": 0.3
     }
   }
 }

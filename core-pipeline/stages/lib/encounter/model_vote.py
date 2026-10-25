@@ -73,9 +73,10 @@ def _load() -> Optional[dict[str, Any]]:
         return _loaded
 
 
-def predict(texts: list[str]) -> list[Optional[tuple[str, float]]]:
-    """Per text: (class, confidence), or None for an empty text or without a model."""
-    out: list[Optional[tuple[str, float]]] = [None] * len(texts)
+def predict(texts: list[str]) -> list[Optional[tuple[str, float, dict[str, float]]]]:
+    """Per text: (top class, its confidence, every class's probability), or None for an
+    empty text or without a model."""
+    out: list[Optional[tuple[str, float, dict[str, float]]]] = [None] * len(texts)
     todo = [i for i, text in enumerate(texts) if (text or "").strip()]
     loaded = _load() if todo else None
     if loaded is None:
@@ -98,7 +99,8 @@ def predict(texts: list[str]) -> list[Optional[tuple[str, float]]]:
             probs = torch.softmax(loaded["model"](input_ids, mask), -1).tolist()
         for i, row in zip(chunk, probs):
             k = max(range(len(row)), key=row.__getitem__)
-            out[i] = (space["classes"][k], round(float(row[k]), 4))
+            out[i] = (space["classes"][k], round(float(row[k]), 4),
+                      {c: round(float(v), 4) for c, v in zip(space["classes"], row)})
     return out
 
 

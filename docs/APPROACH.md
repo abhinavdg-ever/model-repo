@@ -443,7 +443,8 @@ Five values: **Inpatient**, **Outpatient (F2F)**, **Outpatient (Evisit)**, **Out
           rules: tier 1 page type, tier 2 phrases, negatives ──found──▶ that setting (by tier1 / tier2)
             │nothing
             ▼
-          encounter model: Evisit ≥ 0.60, Home Visit ≥ 0.60, Inpatient ≥ 0.70? ──yes──▶ that setting (by model)
+          Evisit / Home Visit: a confirming keyword on the page AND the model giving it ≥ 0.30?
+          Inpatient: the model ≥ 0.70? ──yes──▶ that setting (by model)
             │no (or F2F, or Not Available, or no model)
             ▼
           family default: Progress Note → F2F, Discharge Summary → Inpatient ──▶ (by family_default)
@@ -463,13 +464,33 @@ Five values: **Inpatient**, **Outpatient (F2F)**, **Outpatient (Evisit)**, **Out
   for a page with **no tier 1 / tier 2 evidence** of its own, and its answer counts only
   for the classes and confidences in `encounter_canon.json` → `model_vote`:
 
-  | Model says | Votes | Needs | Held-out precision at that confidence |
-  |---|---|---|---|
-  | Outpatient (Evisit) | Outpatient (Tele) | ≥ 0.60 | 85% (13 pages); 100% at ≥ 0.70 (8) |
-  | Outpatient (Home Visit) | Home | ≥ 0.60 | 2 of 2 |
-  | Inpatient | Inpatient | ≥ 0.70 | 81% (16 pages); 73% at ≥ 0.60 |
-  | Outpatient (F2F) | not used | | 55–62% at any confidence: the family default does as well |
-  | Not Available | not used | | the family rule decides it |
+  **Evisit and Home Visit: the keyword rules, the model confirms [built 2026-10-25,
+  user].** The model leans against these two classes (few training pages), so it is not
+  asked to be confident about them. A vote needs a **confirming keyword** on the page
+  (`model_vote.confirm`) **and** the model giving that setting **≥ 0.30** probability
+  (`confirm_min`), whether or not it is the model's top answer:
+
+  | Setting | Confirming keywords (whole words) |
+  |---|---|
+  | Outpatient (Tele) / Evisit | video, camera, telephone, phone call, audio, virtual, remote, portal, MyChart, Zoom, Doxy, POS 02, POS 10, place of service 02 / 10, modifier 95, patient located, provider located, consent for telehealth, two-way, audiovisual |
+  | Home | home, residence, homebound, caregiver, assisted living, apartment, POS 12, place of service 12, in the home, house call, family member present, home health, domiciliary, private residence |
+
+  Without a confirming keyword the model's Evisit or Home Visit never votes. The words are
+  cues too common to decide alone (a phone number, "discharged home"), which is why the
+  model must back them; the full statements ("telehealth visit", "home visit", tier 2)
+  decide without the model.
+
+  | Model says | Votes | Needs |
+  |---|---|---|
+  | Outpatient (Evisit) | Outpatient (Tele) | a confirming keyword + Evisit ≥ 0.30 |
+  | Outpatient (Home Visit) | Home | a confirming keyword + Home Visit ≥ 0.30 |
+  | Inpatient | Inpatient | ≥ 0.70 (81% right on held-out pages, 16 pages) |
+  | Outpatient (F2F) | not used | the family default does as well |
+  | Not Available | not used | the family rule decides it |
+
+  With the installed (first-run) model, the rules and this vote get **14 of 21** scored
+  encounter test pages right (Not Available 4/4, F2F 4/5, Evisit 3/4, Inpatient 2/5, Home
+  Visit 1/3): the baseline for the retrained model.
 
   The samples are small; measure again on new charts before lowering a threshold. Each
   vote records `by: model` and the model's class and confidence in the encounter log
