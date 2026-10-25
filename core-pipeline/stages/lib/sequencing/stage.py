@@ -171,7 +171,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 review = bool(a.get("sequence_review_flag"))
                 shown: Any = actual if actual is not None else ""
                 if page_id in junk_seq:
-                    method, shown = "blank_junk", f"J{junk_seq[page_id]}"
+                    # J1..Jn is scan order among the set-aside pages: nothing is decided.
+                    method, shown, conf = "blank_junk", f"J{junk_seq[page_id]}", None
 
                 if page_id in todo or force:
                     upsert_sequencing(

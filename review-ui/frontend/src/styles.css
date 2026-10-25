@@ -6148,3 +6148,32 @@ input {
   padding: 0 0.1rem;
   border-radius: 2px;
 }
+
+/* One confidence scale (core-pipeline/stages/lib/confidence.py): good >= 80%, passable
+   50-80%, review below 50%. */
+.conf-band {
+  display: inline-block;
+  padding: 0 0.35rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.conf-good {
+  color: var(--status-success-fg);
+  background: var(--status-success-bg);
+}
+
+.conf-passable {
+  color: var(--status-warning-fg);
+  background: var(--status-warning-bg);
+}
+
+.conf-review {
+  color: var(--status-error-fg);
+  background: var(--status-error-bg);
+  font-weight: 600;
+}
+
+.conf-flag {
+  font-weight: 600;
+}

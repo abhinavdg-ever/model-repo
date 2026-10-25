@@ -453,7 +453,9 @@ def _classify(
             code=own.get("code", CODE_MAIN),
             reason=f"{own['reason']}; {note}" if own.get("reason") else note,
             duplicate_of=orig_id,
-            confidence=sim,
+            # Its verdict is still its own (Main): so is its confidence. The similarity
+            # is the duplicate_confidence.
+            confidence=own.get("confidence", sim),
             votes={**earlier, "partial_duplicate": note} if earlier else None,
         )
         partial.add(page_id)

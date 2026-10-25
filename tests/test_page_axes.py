@@ -224,7 +224,9 @@ Plan: continue anticoagulation.
 class TestSpecialty:
     def test_unknown_is_never_asserted_it_is_general(self):
         result = gate(raw())
-        assert (result.specialty, result.specialty_confidence, result.sources[3]) == ("General", None, "others")
+        assert (result.specialty, result.sources[3]) == ("General", "others")
+        # A fallback: the model's doubt about every named specialty (1 - 0.05) x 0.6.
+        assert result.specialty_confidence == 0.57
 
     def test_with_no_model_specialty_the_keywords_decide(self):
         result = gate(raw(), text=CARDIO_PAGE)
@@ -247,7 +249,8 @@ class TestSpecialty:
     ])
     def test_unsure_or_undertrained_specialty_is_not_asserted(self, top):
         result = gate(raw(specialty_top=top))
-        assert (result.specialty, result.specialty_confidence) == ("General", None)
+        assert result.specialty == "General"
+        assert result.specialty_confidence < 0.6  # a fallback never reads good
 
 
 class TestCodeability:

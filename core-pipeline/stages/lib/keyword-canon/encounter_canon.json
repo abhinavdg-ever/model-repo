@@ -19,15 +19,15 @@
     }
   },
   "confidence": {
-    "tier1": 0.95,
-    "tier1_conflict": 0.7,
+    "tier1": 1.0,
+    "tier1_conflict": 0.8,
     "tier2": 0.8,
-    "tier2_conflict": 0.6
+    "tier2_conflict": 0.6,
+    "note": "2026-10-25 (user: no fixed confidences): how strongly keyword evidence BACKS a setting, not a confidence. A page's confidence is the encounter model's probability for its setting (normalised over the settings, 'No evidence on page' left out), lifted by this support (stages/lib/confidence.py: p + (1 - p) x 0.5 x support) and penalised for doubt; without a model answer, the support x no_model. See vote.confidence_note."
   },
   "default": {
     "setting": "outpatient_f2f",
-    "confidence": 0.3,
-    "note": "2026-10-20 (user): a visit with no setting evidence, or no usable date, is Outpatient (F2F) at this low confidence; decided_by 'default', and reason keeps why (no_setting_evidence / no_date / default_date). Empty setting = leave it unresolved."
+    "note": "2026-10-20 (user): a visit with no setting evidence, or no usable date, is Outpatient (F2F); decided_by 'default', and reason keeps why (no_setting_evidence / no_date / default_date). Its confidence is a fallback's: the model's probability for F2F on the first page x fallback (0.6), so it is never good. Empty setting = leave it unresolved."
   },
   "applies_to": {
     "families": [
@@ -36,8 +36,7 @@
     ],
     "not_applicable": {
       "setting": "not_applicable",
-      "label": "Not Available",
-      "confidence": 1.0
+      "label": "Not Available"
     },
     "note": "2026-10-23 (user): a page whose L1 family is not listed votes Not Applicable (lab, orders, forms...); listed families vote their evidence or their vote.family_defaults. Empty families = every page votes its evidence. 2026-10-25 (user): shown as Not Available."
   },
@@ -339,9 +338,7 @@
       "Progress Note": "outpatient_f2f",
       "Discharge Summary": "inpatient"
     },
-    "family_default_confidence": 0.5,
-    "first_page_conflict_factor": 0.8,
-    "confidence_note": "2026-10-25: confidence. Each page's vote carries its own: tier 1 page type 0.95 (0.70 with a conflict on the page), tier 2 phrase 0.80 (0.60), the encounter model's probability for the setting, a family default 0.50, Not Applicable 1.0. The encounter's: the first page's own when it decides (x 0.8 when another page with evidence disagrees); for a vote, the winner's share of the weight x the weighted mean confidence of the pages that voted for it; no vote at all: default.confidence (0.3)."
+    "confidence_note": "2026-10-25 (user: a percentage, model probability penalised, one scale: >= 0.80 good, 0.50-0.80 passable, < 0.50 review). Each page's vote: the encounter model's probability for the setting (normalised over the settings), lifted by the keyword support behind it (tier 1 page type 1.0, tier 2 phrase 0.8, 0.8 / 0.6 with a conflict on the page, a confirm word 0.5), x keywords_disagree (0.7) when the model's own answer (>= 0.5) is another setting or the vote overrode a phrase; a family default (Progress Note -> F2F): the model's probability for it x fallback (0.6); Not Applicable: the model's probability backed fully by the page type. Without a model answer: the support x no_model (0.85). The encounter's: the first page's own when it decides (x conflict 0.8 when another page with evidence disagrees); for a vote, the winner's share of the weight x the weighted mean confidence of the pages that voted for it. Penalties: keyword-canon/confidence_canon.json."
   },
   "model_vote": {
     "note": "2026-10-25 (encounter model retrained on the page target, user: keywords must not block): the model votes for a page with no tier 1 / tier 2 evidence of its own, before its family default, for Evisit, Home Visit and Inpatient. A setting gets the vote when the model gives it >= min_confidence (0.5) -- its top answer or not -- or, with one of the setting's confirm words on the page, >= confirm_min (0.3): the keyword lowers the bar, it never blocks. Measured on the retrained model's held-out pages (val + test): Evisit 7 of 7 right at >= 0.3 (4 pages the rules miss), Home Visit 2 of 2, Inpatient 28 of 37 at >= 0.5 (21 right beyond the rules) and 32 of 43 with a keyword at >= 0.3. F2F and Not Available stay with the rules. Small samples: re-measure on new charts.",
@@ -350,6 +347,14 @@
       "Outpatient (Home Visit)": "home",
       "Inpatient": "inpatient"
     },
+    "classes": {
+      "outpatient_f2f": "Outpatient (F2F)",
+      "outpatient_tele": "Outpatient (Evisit)",
+      "home": "Outpatient (Home Visit)",
+      "inpatient": "Inpatient",
+      "not_applicable": "Not Available"
+    },
+    "classes_note": "Every setting's class in the encounter model, for the confidence of whatever was decided (model vote or not).",
     "min_confidence": {
       "outpatient_tele": 0.5,
       "home": 0.5,
@@ -421,6 +426,7 @@
       "home": 0.3,
       "inpatient": 0.3
     },
+    "confirm_support": 0.5,
     "override_f2f_phrase": {
       "min_confidence": 0.95,
       "settings": [

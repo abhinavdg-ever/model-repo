@@ -47,6 +47,7 @@ from db import (
 )
 from db.paths import imaging_csv, write_csv
 from stages._support import mark_completed, stage_run
+from stages.lib import confidence as conf
 from stages.lib.continuity.engine import document_finals
 from stages.lib.page_classify import axes
 from stages.lib.page_classify.arbitration import FinalPage, decide_final, packets
@@ -143,6 +144,59 @@ def encounter_specialties(
     return out
 
 
+def final_confidences(
+    page_id: int,
+    *,
+    page_type: Optional[str],
+    decider: int,
+    type_pages: list[int],
+    specialty_page: Optional[int],
+    dos_page: Optional[int],
+    encounter_page: int,
+    classification: dict[int, dict[str, Any]],
+    dos: dict[int, dict[str, Any]],
+    encounters: dict[int, dict[str, Any]],
+    members: dict[int, dict[str, Any]],
+    provider_confidence: Optional[float],
+    blank_junk: dict[int, dict[str, Any]],
+    quality: dict[int, dict[str, Any]],
+) -> dict[str, float]:
+    """Each Final value's confidence (stages/lib/confidence.py), from the page that
+    decided it: the page type and codability from the page whose type the document took
+    (``decider``), x conflict when another page of that document is sure (>= good) of
+    another L1; specialty from the encounter's first page; DOS from the document's dated
+    page (none for a default date: a business rule, nothing to doubt); encounter type
+    from the encounter's first page; member, provider, blank/junk and handwriting from
+    the page itself. Values with no confidence are left out."""
+    out: dict[str, Optional[float]] = {}
+    if page_type:
+        kind = classification.get(decider) or {}
+        family = axes.family_of(kind)
+        rivals = [
+            pid for pid in type_pages
+            if pid != decider and axes.family_of(classification.get(pid) or {}) not in ("", family)
+            and conf.band(_number((classification.get(pid) or {}).get("confidence"))) == conf.GOOD
+        ]
+        out["page_type"] = conf.score(_number(kind.get("confidence")), "conflict" if rivals else "")
+        out["codability"] = out["page_type"]
+    if specialty_page is not None:
+        out["specialty"] = _number(axes.stored(classification.get(specialty_page) or {}).get("specialty_confidence"))
+    if dos_page is not None:
+        out["dos"] = _number((dos.get(dos_page) or {}).get("confidence"))
+    out["encounter_type"] = _number((encounters.get(encounter_page) or {}).get("confidence"))
+    out["member"] = _number((members.get(page_id) or {}).get("confidence"))
+    out["provider"] = provider_confidence
+    if (blank_junk.get(page_id) or {}).get("blank_junk_flag") in ("blank", "junk", "duplicate"):
+        out["blank_junk"] = _number((blank_junk.get(page_id) or {}).get("confidence"))
+    out["handwriting"] = _number((quality.get(page_id) or {}).get("hw_confidence"))
+    return {k: round(v, 4) for k, v in out.items() if v is not None}
+
+
+def review_fields(confidences: dict[str, float]) -> list[str]:
+    """The Final values below the review line."""
+    return sorted(k for k, v in confidences.items() if conf.needs_review(v))
+
+
 def _final_page(page_id: int, kind: dict[str, Any], link: dict[str, Any]) -> FinalPage:
     return FinalPage(
         page_id=page_id,
@@ -219,6 +273,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             for p in packet:
                 type_document_of[p.page_id] = [q.page_id for q in packet]
 
+        document_of = {pid: pages for pages in documents.values() for pid in pages}
         rows: dict[int, dict[str, Any]] = {}
         # Every row first: a duplicate copies its reference page's, which can
         # come after it in page order.
@@ -285,6 +340,29 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     specialty_of.get(page_id) if page_id in specialty_of else axes.stored(kind).get("specialty")
                 ) or (DEFAULT_SPECIALTY if kind else None),
             }
+            in_document = document_of.get(page_id) or [page_id]
+            type_pages = type_document_of.get(page_id) or [page_id]
+            dated = (
+                None if document and document.get("dos_default")
+                else next((pid for pid in in_document if own[pid]["dos_from"] == dates["dos_from"]), page_id)
+                if dates["dos_from"] else None
+            )
+            row["confidences"] = final_confidences(
+                page_id,
+                page_type=verdict.page_type,
+                decider=page_id if verdict.source == "page" else type_pages[0],
+                type_pages=type_pages,
+                specialty_page=in_document[0] if kind else None,
+                dos_page=dated,
+                encounter_page=in_document[0],
+                classification=classification,
+                dos=dos,
+                encounters=encounters,
+                members=members,
+                provider_confidence=_number(signature.get("provider_confidence")),
+                blank_junk=blank_junk,
+                quality=quality,
+            )
             rows[page_id] = row
 
         # Duplicates are skipped by every stage after blank/junk, so they have
@@ -299,6 +377,15 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             row["page_type_source"] = "duplicate" if reference["page_type"] else None
             row["dos_source"] = "duplicate" if reference["dos_from"] else None
             row["duplicate_of_page_id"] = original
+            # The content values' confidences are the original's; its own verdict and
+            # image values stay its own.
+            own_values = {k: v for k, v in (row.get("confidences") or {}).items() if k in ("blank_junk", "handwriting")}
+            row["confidences"] = {**(reference.get("confidences") or {}), **own_values}
+
+        # Below the review line anywhere: the page needs review (2026-10-25, user).
+        for row in rows.values():
+            row["review_fields"] = review_fields(row.get("confidences") or {})
+            row["needs_review"] = bool(row["needs_review"] or row["review_fields"])
 
         csv_rows: list[dict[str, Any]] = []
         with connect() as conn:
@@ -314,7 +401,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "page_name": page["page_name"],
                         "page_number": page.get("page_number"),
                         **{
-                            k: "" if v is None else json.dumps(v, ensure_ascii=False) if isinstance(v, list) else v
+                            k: "" if v is None else json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else v
                             for k, v in row.items()
                         },
                     }

@@ -37,7 +37,7 @@ def test_blank_page_is_uncertain_and_skips_the_model():
     from stages.lib.image_preprocess.hw_printed import classify_image_type
 
     label, confidence, method = classify_image_type(_png(_white()))
-    assert (label, confidence, method) == ("Uncertain", 0.80, "blank_page")
+    assert (label, confidence, method) == ("Uncertain", 0.85, "blank_page")  # measured, no model
 
 
 def test_faint_strokes_are_uncertain():
@@ -49,7 +49,7 @@ def test_faint_strokes_are_uncertain():
             draw[x, y] = (160, 160, 160)
             draw[x, y + 1] = (160, 160, 160)
     label, confidence, method = content_before_model(image)
-    assert (label, confidence, method) == ("Uncertain", 0.80, "faint_marks_only")
+    assert (label, confidence, method) == ("Uncertain", 0.51, "faint_marks_only")  # x fallback: passable, never good
 
 
 def test_dark_ink_reaches_the_model():

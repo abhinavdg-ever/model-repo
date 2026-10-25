@@ -1193,9 +1193,24 @@ def index_final_rows(
                 "finalDosFrom": show_date(row.get("dos_from")),
                 "finalDosTo": show_date(row.get("dos_to")),
                 "finalSpecialty": (row.get("specialty") or "").strip() or None,
+                **_final_confidences(row),
             },
         )
     return by_key
+
+
+def _final_confidences(row: dict[str, str]) -> dict[str, Any]:
+    """The final CSV's ``confidences`` / ``review_fields`` JSON cells (2026-10-25), when
+    the run wrote them."""
+    out: dict[str, Any] = {}
+    for column, key in (("confidences", "finalConfidences"), ("review_fields", "reviewFields")):
+        try:
+            value = json.loads(row.get(column) or "null")
+        except ValueError:
+            continue
+        if isinstance(value, (dict, list)):
+            out[key] = value
+    return out
 
 
 def collect_rows(

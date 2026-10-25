@@ -33,6 +33,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
 
+from stages.lib import confidence as conf
 from stages.lib.canon_store import CANON_DIR, CanonFile
 
 from .signals import (
@@ -154,7 +155,6 @@ class Rules:
     medium_at: float
     curve_a: float
     curve_b: float
-    disagreement_factor: float
     review_below: float
     conflict_at: float
     conflict_apply: bool
@@ -227,8 +227,7 @@ def _build(data: dict[str, Any]) -> Rules:
         medium_at=float(decision.get("medium_at", 2)),
         curve_a=float(decision.get("a", 2.0)),
         curve_b=float(decision.get("b", 0.0)),
-        disagreement_factor=float(decision.get("section_disagreement_factor", 0.6)),
-        review_below=float(decision.get("review_below", 0.25)),
+        review_below=float(decision.get("review_below", 0.5)),
         conflict_at=float(conflict.get("at", 4)),
         conflict_apply=bool(conflict.get("apply", False)),
         weak_score=float(final.get("weak_score", 2)),
@@ -548,7 +547,7 @@ def score_gap(
     # a break whatever the score, which no later pass merges back.
     if a.kind == "main" and b.kind == "main" and is_demographics(a, rules) != is_demographics(b, rules):
         gap.is_break, gap.decided_by, gap.level = True, "decisive", "high"
-        gap.confidence = max(gap.confidence, 0.9)
+        gap.confidence = _ruled_confidence(gap, rules)
         gap.evidence["demographics_boundary"] = "Demographics page beside another kind of page"
         gap.flags.append("Demographics boundary: always a break")
     # A visit heading at the top (Reason for Appointment, HPI, ...) opens a new Progress
@@ -558,12 +557,12 @@ def score_gap(
         and "pagination_follows" not in P
     ):
         gap.is_break, gap.decided_by, gap.level = True, "decisive", "high"
-        gap.confidence = max(gap.confidence, 0.9)
+        gap.confidence = _ruled_confidence(gap, rules)
         gap.flags.append(f"visit heading '{heading}': always a break")
     # A Visual page that is not junk belongs to the page before it (2026-10-23, user).
     if rules.visual_joins and b.visual and b.kind == "main" and a.kind == "main":
         gap.is_break, gap.decided_by, gap.level = False, "decisive", "high"
-        gap.confidence = max(gap.confidence, 0.9)
+        gap.confidence = _ruled_confidence(gap, rules)
         gap.evidence["visual_join"] = "Visual page joins the page before it"
         gap.flags.append("Visual page: always joins the previous page")
     return gap
@@ -597,6 +596,34 @@ def visit_heading(page: "PageInput", rules: Rules) -> Optional[str]:
             if pattern.search(text.strip()):
                 return text.strip()[:60]
     return None
+
+
+def _score_confidence(gap: Gap, rules: Rules) -> float:
+    """How sure the score alone is of the gap's decision: |2 sigmoid((total - b) / a) - 1|
+    when the score points the way the gap was decided, else 0."""
+    probability = 1.0 / (1.0 + math.exp(-(gap.total - rules.curve_b) / rules.curve_a))
+    agrees = (gap.total > 0) == gap.is_break or gap.total == 0
+    return abs(2.0 * probability - 1.0) if agrees else 0.0
+
+
+DECISIVE_STRENGTH = 0.9  # how strongly a decisive signal or rule backs the gap's decision
+
+
+def _ruled_confidence(gap: Gap, rules: Rules, *reasons: str) -> float:
+    """A gap a decisive signal or rule decided: the score's own certainty, at least the
+    rule's strength (0.9) when the score agrees or is silent; when the score points the
+    other way (beyond medium_at), the rule's strength x ``keywords_disagree``."""
+    against = (gap.total > 0) != gap.is_break and abs(gap.total) >= rules.medium_at
+    if against:
+        return conf.score(DECISIVE_STRENGTH, "keywords_disagree", *reasons, module="continuity")
+    return conf.score(max(_score_confidence(gap, rules), DECISIVE_STRENGTH), *reasons, module="continuity")
+
+
+def _overturned(gap: Gap) -> float:
+    """A final-pass split or merge reversed the gap: the score's belief in the new
+    decision ((1 - confidence) / 2), backed by the final-pass rule, x ``overturned``."""
+    return conf.score(conf.backed((1.0 - float(gap.confidence or 0.0)) / 2.0, DECISIVE_STRENGTH), "overturned",
+                      module="continuity")
 
 
 def _level(total: float, rules: Rules) -> str:
@@ -644,15 +671,16 @@ def _decide(gap: Gap, rules: Rules, proxy_fill: bool) -> None:
             else "suspected title misfire (pattern B)"
         )
 
-    # How sure: one curve over the score (a, b to be fitted on the labelled gaps).
-    probability = 1.0 / (1.0 + math.exp(-(gap.total - rules.curve_b) / rules.curve_a))
-    confidence = abs(2.0 * probability - 1.0)
+    # How sure (stages/lib/confidence.py): one curve over the score (a, b to be fitted on
+    # the labelled gaps) gives the score's own certainty; sub-scores that disagree, two
+    # decisive signals that disagree, or a pattern A / B conflict multiply it by the
+    # conflict penalty; a decisive signal backs it (_ruled_confidence).
     signs = {s > 0 for s in (e, o, p) if s}
-    if len(signs) > 1:
-        confidence *= rules.disagreement_factor
+    reasons = ["conflict" if len(signs) > 1 or pattern or gap.decided_by == "decisive_conflict" else ""]
     if gap.decided_by == "decisive":
-        confidence = max(confidence, 0.9)
-    gap.confidence = round(confidence, 4)
+        gap.confidence = _ruled_confidence(gap, rules, *reasons)
+    else:
+        gap.confidence = conf.score(_score_confidence(gap, rules), *reasons, module="continuity")
     if gap.confidence < rules.review_below or gap.level == "low":
         gap.flags.append("low confidence")
     if proxy_fill:
@@ -740,6 +768,8 @@ def _final_pass(pages: Sequence[PageInput], segments: list[_Segment], gaps: dict
                     current = page.dos_from
                 elif page.dos_from != current and k > start:
                     gap = gaps[(seg.pages[k - 1], i)]
+                    if not gap.is_break:
+                        gap.confidence = _overturned(gap)
                     gap.is_break, gap.final_pass, gap.level = True, "split: two dates in one document", "medium"
                     gap.flags.append("final pass split")
                     out.append(_Segment(seg.kind, seg.pages[start:k]))
@@ -749,6 +779,8 @@ def _final_pass(pages: Sequence[PageInput], segments: list[_Segment], gaps: dict
 
     def merge(left: int, rule: str) -> None:
         gap = boundary(segments[left], segments[left + 1])
+        if gap.is_break:
+            gap.confidence = _overturned(gap)
         gap.is_break, gap.final_pass = False, f"merged: {rule}"
         segments[left] = _Segment(segments[left].kind, segments[left].pages + segments[left + 1].pages)
         del segments[left + 1]
@@ -976,7 +1008,11 @@ def _rows(
                 before.confidence if before is not None
                 else 1.0 if s is not None and not transparent else None
             ),
-            "confidence_level": before.level if before is not None else ("high" if s is not None and not transparent else ""),
+            # The confidence's band (stages/lib/confidence.py): high / medium / low.
+            "confidence_level": (
+                conf.level(before.confidence) if before is not None
+                else "high" if s is not None and not transparent else ""
+            ),
             "review_required": bool((before and before.flags) or (after and after.flags)),
             "evidence": (
                 before.summary() if before is not None

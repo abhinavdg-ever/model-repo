@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from stages.lib.extraction.results import (
     ADDITIONAL_CSV_COLS,
     SIGNATURE_CSV_COLS,
@@ -33,7 +35,7 @@ def test_signature_row_keeps_the_extractor_fields():
     assert fields["signature_key"] == "Electronically signed by"
     assert fields["provider_name"] == "A. Patel"
     assert fields["signature_date"] == "2024-03-15"
-    assert fields["confidence"] == 0.91
+    assert fields["confidence"] == 0.7735  # the rules' 0.91 x no_model 0.85 (no model score)
     assert fields["source"] == "ner"
     row = signature_csv_row("chart8841", "1.jpg", 1, fields)
     assert set(row) == set(SIGNATURE_CSV_COLS)
@@ -312,18 +314,27 @@ def test_credentials_must_be_in_capitals():
 
 def test_confidence_is_the_score_lowered_for_outside_values_and_several_signatures():
     own = signature_fields([{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "score": 0.8, "accepted": True}])
-    assert own["confidence"] == 0.8
+    assert own["confidence"] == 0.68  # the rules' 0.8 x no_model 0.85
     outside = signature_fields(
         [{"key": "Signed", "sentence": "Electronically Signed", "score": 0.8, "accepted": True}],
         [{"value": "Daniel J Hamilton, MD", "score": 0.9, "accepted": True}],
     )
-    assert outside["confidence"] == 0.6  # 0.8 x 0.75
+    assert outside["confidence"] == 0.51  # 0.68 x 0.75
     several = signature_fields([
         {"key": SIGNED_BY, "provider_name": "A. Patel, MD", "score": 0.8, "accepted": True, "selected": True},
         {"key": "Cosigned by", "provider_name": "Jane Roe, DNP", "score": 0.5, "accepted": True},
     ])
-    assert [s["confidence"] for s in several["signers"]] == [0.72, 0.45]  # each x 0.9
-    assert several["confidence"] == 0.585  # their average
+    assert [s["confidence"] for s in several["signers"]] == [0.612, 0.3825]  # each x 0.9
+    assert several["confidence"] == pytest.approx(0.4972, abs=1e-4)  # their average
+
+
+def test_the_models_score_is_the_base_and_the_rules_back_it():
+    both = signature_fields([{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "score": 0.8, "accepted": True,
+                              "rule_accepted": True, "model_score": 0.6}])
+    assert both["confidence"] == pytest.approx(0.6 + 0.4 * 0.5 * 0.8)  # 0.76
+    against = signature_fields([{"key": SIGNED_BY, "provider_name": "A. Patel, MD", "score": 0.4, "accepted": True,
+                                 "rule_accepted": False, "model_score": 0.9}])
+    assert against["confidence"] == pytest.approx(0.9 * 0.7)  # the rules rejected it
 
 
 def test_a_row_counts_when_accepted_or_scored_above_0_7():
@@ -340,7 +351,7 @@ def test_a_missing_name_comes_from_a_credential_row_that_names_its_provider():
         [{"value": "FNP", "provider_name": "Meghan Newman", "score": 0.9, "accepted": False}],  # counts: > 0.7
     )
     assert (fields["provider_name"], fields["provider_credentials"]) == ("Meghan Newman", "FNP")
-    assert fields["confidence"] == 0.6  # from outside the signature: 0.8 x 0.75
+    assert fields["confidence"] == 0.51  # from outside the signature: 0.8 x 0.85 x 0.75
 
 
 def test_a_signature_with_no_name_and_no_credentials_anywhere_is_no():
@@ -356,7 +367,7 @@ def test_no_signature_names_the_page_provider_with_signature_no():
     credentials = [{"key": "Credential", "value": "MD", "provider_name": "Weidong Huang", "score": 0.9, "accepted": True}]
     fields = signature_fields([], providers, credentials)
     assert (fields["signature_present"], fields["provider_name"], fields["provider_credentials"]) == (False, "Weidong Huang", "MD")
-    assert (fields["signers"], fields["confidence"]) == ([], 0.675)  # 0.9 x 0.75
+    assert (fields["signers"], fields["confidence"]) == ([], 0.5737)  # 0.9 x 0.85 x 0.75
     # Without a credentials row naming someone: the provider_name row.
     fields = signature_fields([], providers, [])
     assert (fields["provider_name"], fields["provider_credentials"]) == ("Finkelstein Tom I", "MD")

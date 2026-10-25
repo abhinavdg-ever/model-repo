@@ -55,6 +55,7 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Optional
 
+from stages.lib import confidence as conf
 from stages.lib.canon_store import CANON_DIR, CanonFile
 from stages.lib.page_classify import keyword_vote, keywords, page_rules, specialty_keywords
 from stages.lib.page_classify import taxonomy as tax
@@ -106,6 +107,8 @@ class AxesResult:
     l2_confidence: Optional[float] = None
     l3: Optional[str] = None
     l3_confidence: Optional[float] = None
+    # The whole path's (page_type_confidence): what page_classification.confidence stores.
+    page_type_confidence: Optional[float] = None
     specialty: Optional[str] = None
     specialty_confidence: Optional[float] = None
     codeability: str = NEEDS_REVIEW
@@ -146,6 +149,7 @@ class AxesResult:
             "l1": self.l1, "l1_confidence": self.l1_confidence,
             "l2": self.l2, "l2_confidence": self.l2_confidence,
             "l3": self.l3, "l3_confidence": self.l3_confidence,
+            "page_type_confidence": self.page_type_confidence,
             "specialty": self.specialty, "specialty_confidence": self.specialty_confidence,
             "codeability": self.codeability, "codeability_confidence": self.codeability_confidence,
             "sources": "/".join(self.sources),
@@ -164,7 +168,8 @@ class AxesResult:
         """The codeable CSV's axes columns (the CSV header is a frozen contract:
         the newer keys stay in the JSON only)."""
         flat = self.as_json()
-        for key in ("prediction", "under_l1", "model_paths", "paths", "decided_by", "taxonomy_version", "rules"):
+        for key in ("prediction", "under_l1", "model_paths", "paths", "decided_by", "taxonomy_version", "rules",
+                    "page_type_confidence"):
             flat.pop(key)
         return {
             ("axes_" + key if not key.startswith("specialty") else key): value
@@ -462,16 +467,66 @@ class _Vote:
         keyword = {c: w for c, w in keyword_vote.scores(self.feats, level, parent).items() if c in classes}
         return keyword_vote.vote(model, keyword, self.vs["share"][level], self.vs["full"][level], classes)
 
+    def _sides(self, level: str, parent: Optional[str]) -> tuple[dict[str, float], dict[str, float]]:
+        """The model's probabilities and the keyword scores at ``level`` over its classes."""
+        classes = self.space["L1"] if level == "L1" else (self.space[level].get(parent or "") or ())
+        model = self.dist[level] if level == "L1" else self.dist[level].get(parent or "")
+        model = {c: p for c, p in (model or {}).items() if c in classes}
+        keyword = {c: w for c, w in keyword_vote.scores(self.feats, level, parent).items() if c in classes and w > 0}
+        return model, keyword
+
+    def confidence(self, level: str, parent: Optional[str], cls: str, *, pinned: bool = False,
+                   rule: bool = False) -> Optional[float]:
+        """How sure the page is of ``cls`` at ``level`` (stages/lib/confidence.py): the
+        model's probability for it, lifted when the keywords back it (a strong title pin
+        or a page rule fully), times ``keywords_disagree`` when they point elsewhere (or
+        the model's own favourite is another class behind a rule). Without a model: the
+        keywords' share of the evidence times its strength (a pin or a rule: 1.0); the
+        page type takes ``no_model`` once (page_type_confidence)."""
+        model, keyword = self._sides(level, parent)
+        total = sum(keyword.values())
+        strength = min(1.0, total / max(1e-9, float(self.vs["full"][level])))
+        top = max(keyword, key=keyword.get) if total else None
+        reasons = []
+        if not model:
+            base = 1.0 if pinned or rule else (keyword.get(cls, 0.0) / total * strength if total else 0.0)
+            return conf.score(base, module="page_type")
+        base = model.get(cls, 0.0)
+        if pinned or rule:
+            base = conf.backed(base, 1.0)
+            if rule and max(model, key=model.get) != cls:
+                reasons.append("keywords_disagree")
+        elif top == cls:
+            base = conf.backed(base, keyword[cls] / total * strength)
+        elif top is not None and strength >= 0.5:
+            reasons.append("keywords_disagree")
+        return conf.score(base, *reasons, module="page_type")
+
+    def others_confidence(self, level: str, parent: Optional[str], raw: dict[str, Any], other: str) -> Optional[float]:
+        """How sure the page is of Others at ``level`` (no class reached the minimum): the
+        model's probability for its folded OTHER class at L1, else for none of the named
+        classes (1 - the best), times ``fallback``. Without a model: 0.5 x ``fallback``."""
+        model, _ = self._sides(level, parent)
+        if level == "L1":
+            folded = dict((str(n), float(p)) for n, p in raw.get("L1_top") or []).get(other)
+            if folded is not None:
+                return conf.score(folded, "fallback", module="page_type")
+        if not model:
+            return conf.score(0.5, "fallback", module="page_type")
+        return conf.score(1.0 - max(model.values()), "fallback", module="page_type")
+
     def pick(self, level: str, parent: Optional[str] = None) -> tuple[Optional[str], Optional[float], str]:
-        """The winner at ``level``: a class a strong canon term pins by title, else the
-        vote's winner when it reaches the level's minimum."""
+        """The winner at ``level`` and its confidence: a class a strong canon term pins by
+        title, else the vote's winner when it reaches the level's minimum."""
         classes = self.space["L1"] if level == "L1" else (self.space[level].get(parent or "") or ())
         pins = keyword_vote.pinned(self.feats, level, parent) & set(classes)
         if len(pins) == 1:
-            return next(iter(pins)), 1.0, CANON
+            cls = next(iter(pins))
+            return cls, self.confidence(level, parent, cls, pinned=True), CANON
         ranked = self.ranked(level, parent)
         if ranked and ranked[0][1] >= self.vs["min"][level] and ranked[0][1] > 0:
-            return ranked[0]
+            cls, _, who = ranked[0]
+            return cls, self.confidence(level, parent, cls), who
         return None, None, "-"
 
     def paths(self, k: int = MODEL_PATHS, per_l1: int = 3) -> tuple[dict[str, Any], ...]:
@@ -495,6 +550,49 @@ class _Vote:
         return tuple(kept[:k])
 
 
+def page_type_confidence(l1: Optional[str], l1_conf: Optional[float], l2: Optional[str], l2_conf: Optional[float],
+                         l3: Optional[str], l3_conf: Optional[float], *, model: bool = True) -> Optional[float]:
+    """The page type's confidence: the chance the whole path is right, the product of
+    its levels' (L2 and L3 conditional on their parent). A level left Others adds no
+    doubt of its own; L1 Others is the L1's own (fallback) confidence. Decided without
+    the model (canon only): times ``no_model`` once."""
+    if l1 is None or l1_conf is None:
+        return None
+    value = float(l1_conf)
+    for name, level_conf in ((l2, l2_conf), (l3, l3_conf)):
+        if name and name != OTHERS and level_conf is not None:
+            value *= float(level_conf)
+    return conf.score(value, *(() if model else ("no_model",)), module="page_type")
+
+
+def specialty_confidence(raw: dict[str, Any], specialty: Optional[str], keyword: Optional[tuple[str, float]], *,
+                         fallback: bool, not_asserted: Any = ()) -> Optional[float]:
+    """How sure the page is of its specialty (stages/lib/confidence.py): the model's
+    probability for it, lifted when the specialty keywords (or the canon entry) back it,
+    times ``keywords_disagree`` when they name another. When the model names no
+    specialty (its best is Unknown) or there is no model, the keywords' own confidence
+    (times ``no_model`` without a model). The fallback (General): the model's doubt
+    about every named specialty (1 - its best named one) times ``fallback``."""
+    if not specialty:
+        return None
+    probs = {str(n): float(p) for n, p in raw.get("specialty_top") or []}
+    if not probs and raw.get("specialty"):
+        probs = {str(raw["specialty"]): float(raw.get("specialty_confidence") or 0.0)}
+    named = {n: p for n, p in probs.items() if n not in not_asserted}
+    if fallback:
+        base = probs.get(specialty, 1.0 - max(named.values(), default=0.0)) if probs else 0.5
+        return conf.score(base, "fallback", module="specialty")
+    if not probs or max(probs, key=probs.get) in not_asserted:
+        own = keyword[1] if keyword and keyword[0] == specialty else 0.5
+        return conf.score(own, *(() if probs else ("no_model",)), module="specialty")
+    base, reasons = probs.get(specialty, 0.0), []
+    if keyword and keyword[0] == specialty:
+        base = conf.backed(base, keyword[1])
+    elif keyword:
+        reasons.append("keywords_disagree")
+    return conf.score(base, *reasons, module="specialty")
+
+
 def gate(
     raw: Optional[dict[str, Any]],
     space: dict[str, Any],
@@ -516,6 +614,7 @@ def gate(
     l1, l1_conf, sources[0] = voting.pick("L1")
     if not l1:
         l1, sources[0] = OTHERS, BY_OTHERS
+        l1_conf = voting.others_confidence("L1", None, raw, space.get("other_L1", "OTHER"))
     l2 = l2_conf = None
     if l1 != OTHERS:
         l2, l2_conf, sources[1] = voting.pick("L2", l1)
@@ -523,14 +622,16 @@ def gate(
     # Rules that look at more than words (lab guard, hospital stay, clinical summary).
     fired = page_rules.apply(text, headings, l1, _ARBITRATION.get().get("axes_rules") or {})
     if fired is not None:
-        l1, l1_conf, sources[0] = fired.l1, None, RULE
-        l2, l2_conf, sources[1] = fired.l2, None, RULE
+        l1, l1_conf, sources[0] = fired.l1, voting.confidence("L1", None, fired.l1, rule=True), RULE
+        l2, sources[1] = fired.l2, RULE
+        l2_conf = voting.confidence("L2", l1, fired.l2, rule=True) if fired.l2 else None
 
     l3 = l3_conf = None
     if l3_names(l1, l2):
         l3, l3_conf, sources[2] = voting.pick("L3", f"{l1} > {l2}")
         if not l3:
             l3, sources[2] = OTHERS, BY_OTHERS
+            l3_conf = voting.others_confidence("L3", f"{l1} > {l2}", raw, "")
 
     under = {}
     for other in tax.l1_names_with_l2():
@@ -550,30 +651,36 @@ def gate(
 
     # Specialty: the model's behind its gate; else the specialty keywords; else the canon
     # entry's; else the fallback (General). Never Unknown.
-    specialty, specialty_conf = _model_specialty(raw, space, s) if raw else (None, None)
+    specialty, _ = _model_specialty(raw, space, s) if raw else (None, None)
+    found, score = specialty_keywords.specialty(text)
+    keyword_specialty = (found, specialty_keywords.confidence(score)) if found else None
     if specialty:
         sources[3] = MODEL
+    elif found:
+        specialty, sources[3] = found, CANON
+    elif entry.get("specialty") and entry["specialty"] not in s["specialty_not_asserted"]:
+        specialty, sources[3] = entry["specialty"], CANON
+        keyword_specialty = (specialty, canon_conf or 0.0)
     else:
-        found, score = specialty_keywords.specialty(text)
-        if found:
-            specialty, specialty_conf, sources[3] = found, specialty_keywords.confidence(score), CANON
-        elif entry.get("specialty") and entry["specialty"] not in s["specialty_not_asserted"]:
-            specialty, specialty_conf, sources[3] = entry["specialty"], canon_conf, CANON
-        else:
-            specialty, specialty_conf, sources[3] = s["specialty_fallback"], None, BY_OTHERS
+        specialty, sources[3] = s["specialty_fallback"], BY_OTHERS
+    specialty_conf = specialty_confidence(raw, specialty, keyword_specialty, fallback=sources[3] == BY_OTHERS,
+                                          not_asserted=s["specialty_not_asserted"])
 
+    # Codeability is a function of the page type: it is as sure as the page type is.
+    path_conf = page_type_confidence(l1, l1_conf, l2, l2_conf, l3, l3_conf, model=bool(raw))
     rule = entry.get("codeability_rule")
     codeability, codeability_conf = NEEDS_REVIEW, None
     if rule == "page_type_tag" and entry.get("codeability", NEEDS_REVIEW) != NEEDS_REVIEW:
-        codeability, codeability_conf, sources[4] = entry["codeability"], canon_conf, CANON
+        codeability, codeability_conf, sources[4] = entry["codeability"], path_conf, CANON
     elif fired is not None and not entry and fired.codeability:
-        codeability, sources[4] = fired.codeability, RULE
+        codeability, codeability_conf, sources[4] = fired.codeability, path_conf, RULE
 
     return AxesResult(
         route=where,
         l1=l1, l1_confidence=_round(l1_conf),
         l2=l2, l2_confidence=_round(l2_conf),
         l3=l3, l3_confidence=_round(l3_conf),
+        page_type_confidence=_round(path_conf),
         specialty=specialty, specialty_confidence=_round(specialty_conf),
         codeability=codeability, codeability_confidence=_round(codeability_conf),
         sources=tuple(sources),

@@ -197,6 +197,15 @@ export type ImagingPageResult = {
   finalDosTo?: string | null;
   /** Final specialty (imaging_final): the page's own. */
   finalSpecialty?: string | null;
+  /** Each Final value's confidence (imaging_final.confidences): >= 0.8 good, 0.5–0.8
+   * passable, < 0.5 review. Keys: page_type, codability, specialty, dos, encounter_type,
+   * member, provider, blank_junk, handwriting. */
+  finalConfidences?: Record<string, number> | null;
+  /** The Final values below the review line. */
+  reviewFields?: string[] | null;
+  blankJunkConfidence?: number | null;
+  encounterConfidence?: number | null;
+  sequenceConfidence?: number | null;
   /** null = not classified yet → UI shows NA; else "Yes (Blank)" | "Yes (Junk)" | "No" */
   blankOrJunk?: string | null;
   /** null = not classified → NA */

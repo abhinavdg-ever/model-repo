@@ -110,7 +110,8 @@ def test_undated_pages_never_inherit(canon):
     assert rows[0]["encounter_type"] == "outpatient_tele"
     assert (rows[1]["encounter_type"], rows[1]["decided_by"]) == ("outpatient_f2f", "default")
     assert rows[1]["reason"] == "no_setting_evidence"  # nothing on it votes
-    assert rows[1]["confidence"] == 0.3
+    # A fallback with no model answer: 0.5 x fallback 0.6 x no_model 0.85 -- flagged.
+    assert rows[1]["confidence"] == pytest.approx(0.5 * 0.6 * 0.85)
 
 
 # --- step 2: findings ----------------------------------------------------
@@ -158,7 +159,7 @@ def test_tier3_alone_never_decides(canon):
 def test_tier1_beats_any_amount_of_tier2_and_tier3(canon):
     d = one(canon, page(1, "office visit clinic visit follow up " * 10, type_id="Discharge Summary",
                         name="Discharge Summary"))
-    assert (d.setting, d.decided_by, d.confidence) == ("inpatient", "tier1", 0.95)
+    assert (d.setting, d.decided_by, d.confidence) == ("inpatient", "tier1", 1.0)  # the keyword support
     assert d.matched_keyword == "Discharge Summary"
 
 
@@ -174,7 +175,7 @@ def test_conflict_goes_to_more_tier3_hints_and_is_flagged(canon):
         page(1, type_id="Discharge Summary"),
         page(2, "chief complaint, follow up, subjective: ...", type_id="Office Visit"),
     )
-    assert (d.setting, d.confidence, d.conflict) == ("outpatient_f2f", 0.70, True)
+    assert (d.setting, d.confidence, d.conflict) == ("outpatient_f2f", 0.80, True)
     assert set(d.contenders) == {"inpatient", "outpatient_f2f"}
 
 
@@ -206,13 +207,13 @@ def test_worked_example(canon):
     a = rows[1]
     # The first page has evidence of its own (hospital course): it decides the encounter.
     assert (a["encounter_type"], a["confidence"], a["decided_by"], a["matched_keyword"]) == (
-        "inpatient", canon.confidence["tier2"], "first_page", "hospital course")
+        "inpatient", pytest.approx(canon.confidence["tier2"] * 0.85), "first_page", "hospital course")
     assert rows[7]["encounter_type"] == "inpatient"
     assert "discharged home" in log[0]["negatives_fired"]
 
     b = rows[25]
     assert (b["encounter_type"], b["confidence"], b["decided_by"], b["matched_keyword"]) == (
-        "outpatient_tele", canon.confidence["tier2"], "first_page", "telehealth")
+        "outpatient_tele", pytest.approx(canon.confidence["tier2"] * 0.85), "first_page", "telehealth")
     assert rows[26]["encounter_type"] == "outpatient_tele"
     assert rows[26]["continue_applied"] == "y"  # its own text gives no answer
 
@@ -265,7 +266,8 @@ def test_without_documents_visits_are_date_runs(canon):
 def test_no_setting_evidence_defaults_to_f2f_low_confidence(canon):
     rows = classify_pages([page(1, "Chief complaint: cough.", dos="2025-03-14")], entries=canon)
     r = rows[0]
-    assert (r["encounter_type"], r["decided_by"], r["confidence"]) == ("outpatient_f2f", "default", 0.3)
+    assert (r["encounter_type"], r["decided_by"]) == ("outpatient_f2f", "default")
+    assert r["confidence"] == pytest.approx(0.5 * 0.6 * 0.85)  # a fallback, no model: flagged
     assert r["reason"] == "no_setting_evidence" and r["matched_keyword"] == ""
 
 
@@ -480,21 +482,36 @@ def test_ambulatory_surgery_is_outpatient_and_an_admission_is_inpatient(canon):
 
 
 def test_confidence_comes_from_the_evidence(canon):
-    # The first page decides on a tier 2 phrase: 0.80; another page with evidence disagreeing: x 0.8.
+    # Without a model answer: the keyword support x no_model (0.85).
     alone = classify_pages(_doc({**page(1, "telehealth visit"), "page_family": "Progress Note"}), entries=canon)[0]
-    assert alone["confidence"] == canon.confidence["tier2"]
+    assert alone["confidence"] == pytest.approx(0.8 * 0.85)
+    # Another page with evidence disagreeing: x conflict (0.8).
     split = classify_pages(_doc({**page(1, "telehealth visit"), "page_family": "Progress Note"},
                                 {**page(2, "hospital course"), "page_family": "Progress Note"}), entries=canon)[0]
-    assert split["confidence"] == pytest.approx(canon.confidence["tier2"] * 0.8)
+    assert split["confidence"] == pytest.approx(0.8 * 0.85 * 0.8)
     # The first page decides on the model: its probability.
     model = classify_pages(_doc(_model_page(1, "Progress Note", ("Inpatient", 0.66))), entries=canon)[0]
     assert (model["decided_by"], model["confidence"]) == ("first_page", 0.66)
-    # Only family defaults vote: share 1 x 0.5.
+    # Only family defaults vote: a fallback, never good (0.5 x 0.6 x 0.85 without a model).
     guess = classify_pages(_doc({**page(1, ""), "page_family": "Progress Note"},
                                 {**page(2, ""), "page_family": "Progress Note"}), entries=canon)[0]
-    assert (guess["encounter_type"], guess["decided_by"], guess["confidence"]) == ("outpatient_f2f", "vote", 0.5)
+    assert (guess["encounter_type"], guess["decided_by"]) == ("outpatient_f2f", "vote")
+    assert guess["confidence"] == pytest.approx(0.5 * 0.6 * 0.85)
     # A vote: the winner's share x the mean confidence of its voters.
     vote = classify_pages(_doc({**page(1, ""), "page_family": "Progress Note"},
                                {**page(2, "telehealth visit"), "page_family": "Progress Note"},
                                {**page(3, "video visit"), "page_family": "Progress Note"}), entries=canon)[0]
-    assert vote["confidence"] == pytest.approx(1.0 * canon.confidence["tier2"])
+    assert vote["confidence"] == pytest.approx(1.0 * 0.8 * 0.85)
+
+
+def test_model_and_keywords_agreeing_read_good_and_disagreeing_read_review(canon):
+    from stages.lib.encounter.encounter_classify import vote_confidence
+
+    probs = {"outpatient_f2f": 0.1, "outpatient_tele": 0.8, "home": 0.05, "inpatient": 0.05}
+    # A tier 2 phrase the model agrees with: 0.8 + 0.2 x 0.5 x 0.8 = 0.88 -- good.
+    assert vote_confidence("outpatient_tele", probs, support=0.8) == pytest.approx(0.88)
+    # A tier 2 phrase for a setting the model gives 0.05: (0.05 + 0.95 x 0.4) x 0.7 -- review.
+    low = vote_confidence("home", probs, support=0.8)
+    assert low == pytest.approx((0.05 + 0.95 * 0.4) * 0.7) and low < 0.5
+    # A family default the model backs at 0.9 is still only passable (x fallback 0.6).
+    assert vote_confidence("outpatient_f2f", {"outpatient_f2f": 0.9}, reasons=("fallback",)) == pytest.approx(0.54)

@@ -44,6 +44,7 @@ from db import (
 from config import staging_dir
 from db.paths import imaging_csv, write_csv
 from stages._support import BJ_EXCLUDE, best_page_text, mark_completed, stage_run
+from stages.lib import confidence as conf
 from stages.lib.canon_store import CANON_DIR, CanonFile
 from stages.lib.page_classify import axes
 
@@ -202,7 +203,7 @@ def _bj_label(flag: str, junk_subtype: Optional[str]) -> str:
 
 # What a duplicate takes from its original's row: its page type. Codability stays
 # non_codeable (only the original is coded).
-DUPLICATE_COPIES = ("page_type", "page_subtype", "model_type", "axes")
+DUPLICATE_COPIES = ("page_type", "page_subtype", "model_type", "axes", "confidence")
 
 
 def _original_of(bj_rows: dict[int, dict[str, Any]], page_id: int) -> Optional[int]:
@@ -234,20 +235,23 @@ def _blank_junk_row(flag: str, junk_subtype: Optional[str], confidence: Any) -> 
     }
 
 
-def _page_row(page_axes: Optional[axes.AxesResult]) -> dict[str, Any]:
-    """The page's row: names, category and decided_by from its axes."""
+def _page_row(page_axes: Optional[axes.AxesResult], reasons: tuple[str, ...] = ()) -> dict[str, Any]:
+    """The page's row: names, category and decided_by from its axes. The confidence is
+    the page type's (the whole path), times the page's own doubts (``reasons``:
+    handwritten, thin text); below the review band the page needs review."""
     page_type, page_subtype = axes.page_names(page_axes)
     codeability = page_axes.codeability if page_axes else axes.NEEDS_REVIEW
     path = [x for x in (page_axes.l1, page_axes.l2, page_axes.l3) if x] if page_axes else []
+    confidence = conf.score(page_axes.page_type_confidence, *reasons, module="page_type") if page_axes else None
     return {
         "page_type": page_type or UNKNOWN,
         "page_subtype": page_subtype or UNKNOWN,
         "model_type": " > ".join(path) or None,
         "classification_category": _AXES_CATEGORY.get(codeability, "non_codeable"),
-        "confidence": page_axes.l1_confidence if page_axes else None,
+        "confidence": confidence,
         "duplicate_flag": False,
         "decided_by": page_axes.decided_by if page_axes else "no_text",
-        "needs_review": page_type is None or codeability == axes.NEEDS_REVIEW or (
+        "needs_review": page_type is None or codeability == axes.NEEDS_REVIEW or conf.needs_review(confidence) or (
             page_axes is not None and page_axes.decided_by == axes.BY_OTHERS),
         "axes": page_axes.as_json() if page_axes else None,
     }
@@ -280,7 +284,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 text = best_page_text(final2=f2, final1=f1, prelim=pr, quality_row=quality.get(page_id))
                 headings = tuple(_headings(f2, f1))
                 page_axes = axes.predict(text, headings)
-                row = _page_row(page_axes)
+                row = _page_row(page_axes, conf.page_reasons(
+                    text, (quality.get(page_id) or {}).get("printed_or_handwritten")))
                 if page_axes is not None:
                     counts["axes_model"] += int(page_axes.decided_by == axes.MODEL)
                     counts["canon"] += int(page_axes.decided_by == axes.CANON)

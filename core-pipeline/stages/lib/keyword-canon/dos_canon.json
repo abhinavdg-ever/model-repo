@@ -16,10 +16,10 @@
   ],
   "confidence": {
     "kv": 0.9,
-    "edge": 0.5,
-    "dictation": 0.3
+    "edge": 0.8,
+    "dictation": 0.5
   },
-  "note_confidence": "kv is used only for a key/value date with no score (staging from before the model ran); a scored date carries the model's own score. edge is every edge-keyword date.",
+  "note_confidence": "2026-10-25 (user: one scale, never fixed; stages/lib/confidence.py, keyword-canon/confidence_canon.json): how strongly each source backs a date. A key/value date the model scored: the model's score lifted by the rules' score (x conflict 0.8 when another date of its priority group scores within 80% of it). kv: a key/value date with no score at all (staging from before the model ran), x no_model. edge: an edge-label date the key/value extractor did not read, x no_model (0.68: passable). dictation: a dictated / transcribed date, x no_model x fallback (0.26: flagged). No date: no confidence.",
   "weak_min_score": 0.3,
   "note_weak_min_score": "A weak key's date (weak, weak_last: Date, Report Date, Service, dt, dd, ...) is a candidate only when its score (the model's, else the rules') is above this. No other tier has a floor: any score counts, and the score only orders dates within a group.",
   "page_kinds": {

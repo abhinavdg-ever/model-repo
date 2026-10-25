@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "comment": "2026-10-25 (user): one confidence scale for every decided value, so a reviewer can trust the number the same way everywhere: >= 0.80 good, 0.50-0.80 passable, < 0.50 bad -> flagged for manual review. A confidence is never a fixed constant: it starts from the model's probability for the value it decided (or the rule's own strength where no model exists), backing keywords lift it, and each reason for doubt multiplies it by a penalty below. stages/lib/confidence.py applies this file; docs/APPROACH.md section 10 explains it per module.",
+  "bands": {
+    "good": 0.8,
+    "review": 0.5,
+    "note": "good: >= good. passable: >= review. Below review the value is flagged (needs review)."
+  },
+  "agree_lift": 0.5,
+  "agree_note": "Keywords or rules that back the same value lift the model's probability p toward 1: p + (1 - p) x agree_lift x support, support in [0, 1] (a strong title term 1.0, a weak body hint near 0). A model at 0.6 backed by a strong keyword reads 0.8; with no keyword it stays 0.6.",
+  "penalties": {
+    "keywords_disagree": 0.7,
+    "no_model": 0.85,
+    "fallback": 0.6,
+    "conflict": 0.8,
+    "overturned": 0.7,
+    "handwritten": 0.9,
+    "thin_text": 0.85,
+    "degraded": 0.6
+  },
+  "penalties_note": "keywords_disagree: the keywords / rules point to a different value than the one decided. no_model: a rule decided with no model to back it (or the model was unavailable). fallback: nothing decided it; a default filled it (Others, General, family default F2F, scan order kept with nothing to confirm it). conflict: other pages / sources of the same document or page say something else. overturned: a later pass reversed the first decision. handwritten: the page is handwritten (OCR is weaker). thin_text: the page has fewer than thin_text_chars characters of text. degraded: an optional dependency was missing and a stand-in decided.",
+  "thin_text_chars": 150,
+  "calibration": {},
+  "calibration_note": "Per module, optional: [[raw, calibrated], ...] knots, piecewise linear, so that a value of 0.8 means right about 8 times in 10 on labelled pages. Empty = identity. Fit from labelled pages, never by hand.",
+  "modules": {
+    "note": "Module-specific numbers that are not penalties: how strongly a kind of evidence backs a value.",
+    "member": {
+      "field_support": {
+        "rule": 0.6,
+        "ner": 0.4
+      },
+      "note": "Each identifier read off a page (name, DOB, member ID) backs its member status by this much: the rules' reading 0.6, NER's 0.4; several combine as independent evidence."
+    }
+  }
+}

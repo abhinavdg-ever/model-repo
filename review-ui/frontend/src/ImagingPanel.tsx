@@ -51,9 +51,9 @@ const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
   verification: false,
 };
 
-/** The DOS of a page with no date (DOS_DEFAULT_DATE in dos_canon.json), at 80% confidence. */
+/** The DOS of a page with no date (DOS_DEFAULT_DATE in dos_canon.json). A business rule,
+ * not a reading: it carries no confidence. */
 export const DEFAULT_DOS = "2222-02-02";
-const DEFAULT_DOS_CONFIDENCE = 0.8;
 
 function text(value: string | null | undefined): string | null {
   return (value ?? "").trim() || null;
@@ -66,12 +66,11 @@ function withDefaultDos(
   confidence: number | null,
 ): { dosFrom: string; dosTo: string; dosConfidence: number | null } {
   if (!from && !to) {
-    return { dosFrom: DEFAULT_DOS, dosTo: DEFAULT_DOS, dosConfidence: DEFAULT_DOS_CONFIDENCE };
+    return { dosFrom: DEFAULT_DOS, dosTo: DEFAULT_DOS, dosConfidence: null };
   }
   const dosFrom = displayIsoDates((from ?? to) as string);
   const dosTo = displayIsoDates((to ?? from) as string);
-  const isDefault = dosFrom === DEFAULT_DOS || dosTo === DEFAULT_DOS;
-  return { dosFrom, dosTo, dosConfidence: confidence ?? (isDefault ? DEFAULT_DOS_CONFIDENCE : null) };
+  return { dosFrom, dosTo, dosConfidence: confidence };
 }
 
 /** Doc Summary rows, in page order, each with its own DOS or the default. */
@@ -239,6 +238,30 @@ function fmtConfidence(
   if (opts?.skipped || !processed || value === null || value === undefined) return "NA";
   const pct = value <= 1 ? value * 100 : value;
   return `${pct.toFixed(1)}%`;
+}
+
+/** One scale for every confidence (core-pipeline/stages/lib/confidence.py). */
+const GOOD_AT = 80;
+const REVIEW_BELOW = 50;
+
+/** A Final value's confidence when the run stored one, else the Extracted value's. */
+function finalOr(page: ImagingPageResult, key: string, extracted: number | null | undefined): number | null {
+  const stored = page.finalConfidences?.[key];
+  return typeof stored === "number" ? stored : extracted ?? null;
+}
+
+/** A confidence cell coloured by its band: good (>= 80%), passable, review (< 50%). */
+function ConfidenceCell({ text }: { text: string }) {
+  const match = /^(\d+(?:\.\d+)?)%$/.exec(text.trim());
+  if (!match) return <>{text}</>;
+  const pct = Number(match[1]);
+  const band = pct >= GOOD_AT ? "good" : pct >= REVIEW_BELOW ? "passable" : "review";
+  return (
+    <span className={`conf-band conf-${band}`} title={band === "review" ? "Below 50%: review this value" : band}>
+      {text}
+      {band === "review" ? <span className="conf-flag"> · Review</span> : null}
+    </span>
+  );
 }
 
 /** ``duplicate`` (the page itself) shows a duplicate (≥ 98%) that is not already blank or
@@ -813,7 +836,7 @@ function CompareSection({
               <td>
                 <ValueWithNote value={row.processed} note={row.note} />
               </td>
-              {compact ? null : <td>{row.confidence}</td>}
+              {compact ? null : <td><ConfidenceCell text={row.confidence} /></td>}
               {row.gtHidden || !truthColumn ? null : (
               <>
               {compact ? null : <td className="gt-gap" aria-hidden="true" rowSpan={row.gtRowSpan} />}
@@ -1309,7 +1332,7 @@ function dosCompareRow(
   const stored = side === "from" ? page.dosFrom : page.dosTo;
   const extracted = extractedDos(page, stored, processed, skipped);
   const confidence = fmtConfidence(
-    page.dosConfidence,
+    finalOr(page, "dos", page.dosConfidence),
     processed,
     skipped ? { skipped: true } : undefined,
   );
@@ -1620,7 +1643,7 @@ function PageDetails({
         {...sectionProps}
         title="Encounter Info"
         rows={[
-          sameValue(fmt(page.encounterType, encounterKnown, skip), fmtConfidence(null, Boolean(sections.encounter), skip), {
+          sameValue(fmt(page.encounterType, encounterKnown, skip), fmtConfidence(finalOr(page, "encounter_type", page.encounterConfidence), Boolean(sections.encounter), skip), {
             id: "encounter",
             label: "Encounter Type",
             fixedNa: true,
@@ -1635,7 +1658,7 @@ function PageDetails({
         rows={[
           (() => {
             const stored = fmtBlankOrJunk(page.blankOrJunk, sections.junk);
-            const row = sameValue(fmtBlankOrJunk(page.blankOrJunk, sections.junk, page), fmtConfidence(page.pageTypeConfidence, sections.junk), {
+            const row = sameValue(fmtBlankOrJunk(page.blankOrJunk, sections.junk, page), fmtConfidence(page.blankJunkConfidence ?? page.pageTypeConfidence, sections.junk), {
               id: "blank_junk",
               label: "Is Blank or Junk?",
               truth: bits.blankJunk,
@@ -1651,7 +1674,7 @@ function PageDetails({
             choices: DUPLICATE_CHOICES,
           }),
           {
-            ...sameValue(fmtPageType(pageParts.family, pageTypeKnown), fmtConfidence(page.pageTypeConfidence, pageTypeKnown), {
+            ...sameValue(fmtPageType(pageParts.family, pageTypeKnown), fmtConfidence(finalOr(page, "page_type", page.pageTypeConfidence), pageTypeKnown), {
               id: "page_type",
               label: "Page Type",
               truth: bits.pageType,
@@ -1684,7 +1707,7 @@ function PageDetails({
             gtHidden: true,
           },
           {
-            ...sameValue(fmt(page.specialty, pageTypeKnown), fmtConfidence(page.specialtyConfidence ?? null, pageTypeKnown), {
+            ...sameValue(fmt(page.specialty, pageTypeKnown), fmtConfidence(finalOr(page, "specialty", page.specialtyConfidence), pageTypeKnown), {
               id: "specialty",
               label: "Specialty",
               noGroundTruth: true,
@@ -1692,7 +1715,7 @@ function PageDetails({
             processed: fmt(page.finalSpecialty ?? page.specialty, pageTypeKnown),
           },
           {
-            ...sameValue(fmtCodeable(page.isCodeable, page.pageType, codeableKnown), fmtConfidence(null, Boolean(sections.codeable)), {
+            ...sameValue(fmtCodeable(page.isCodeable, page.pageType, codeableKnown), fmtConfidence(finalOr(page, "codability", null), Boolean(sections.codeable)), {
               id: "codeable",
               label: "Is Codable Or Non-Codable",
               truth: bits.codeable,

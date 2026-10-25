@@ -11,6 +11,8 @@ import json
 import re
 from typing import Any, Optional
 
+from stages.lib import confidence as conf
+
 from .util.dates import canonical_date
 
 
@@ -37,6 +39,25 @@ def _score(hit: Optional[dict[str, Any]]) -> Optional[float]:
         return round(float(hit["score"]), 4)
     except (TypeError, ValueError):
         return None
+
+
+def _confidence(hit: Optional[dict[str, Any]]) -> Optional[float]:
+    """A row's confidence (stages/lib/confidence.py): the model's score, lifted by the
+    rules' score when the rules accepted the row too; times ``keywords_disagree`` when
+    the rules rejected what the model accepted; the rules' score alone (no model ran)
+    times ``no_model``. None when the row has neither."""
+    if not hit:
+        return None
+    rule = _score(hit)
+    try:
+        model = float(hit["model_score"]) if hit.get("model_score") not in (None, "") else None
+    except (TypeError, ValueError):
+        model = None
+    if model is None:
+        return None if rule is None else conf.score(rule, "no_model", module="extraction")
+    if hit.get("rule_accepted") is False:
+        return conf.score(model, "keywords_disagree", module="extraction")
+    return conf.score(conf.backed(model, rule) if rule is not None else model, module="extraction")
 
 
 def _as_hits(hit: Any) -> list[dict[str, Any]]:
@@ -166,7 +187,7 @@ def _best(rows: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
 # its credentials, one provider. 2 (2026-10-18): bare name, provider_credentials and every
 # accepted signer in signers. review-ui reads a row by its version.
 PROVIDER_VERSION = 2
-# Confidence = the signature's score, lowered when the name or credentials came from
+# Confidence = the signature row's (``_confidence``), lowered when the name or credentials came from
 # outside the signature (the page's provider_name / provider_credentials rows), and when
 # the page has several signatures.
 OUTSIDE_FACTOR = 0.75
@@ -225,11 +246,11 @@ def _page_provider(
         if _counts(item) and _text(item, "value") and _text(item, "provider_name")
     ])
     if named is not None:
-        return split_name_credentials(_text(named, "provider_name"))[0], _text(named, "value"), _score(named)
+        return split_name_credentials(_text(named, "provider_name"))[0], _text(named, "value"), _confidence(named)
     best = _best([item for item in _as_hits(provider_hits) if _counts(item) and _text(item, "value")])
     if best is not None:
         name, creds = split_name_credentials(caps_credentials_only(_text(best, "value")))
-        return name, creds, _score(best)
+        return name, creds, _confidence(best)
     return None, None, None
 
 
@@ -328,7 +349,7 @@ def signature_fields(
         if twin is not None:
             twin["credentials"] = twin["credentials"] or creds
             continue
-        score = _score(row)
+        score = _confidence(row)
         if score is not None:
             score = round(score * (OUTSIDE_FACTOR if outside else 1.0) * (SEVERAL_FACTOR if several else 1.0), 4)
         signers.append({
@@ -374,7 +395,7 @@ def additional_fields(
         "page_number_value": _text(hit, "value"),
         "printed_page_no": _text(hit, "page_no"),
         "printed_page_total": _text(hit, "page_total"),
-        "confidence": _score(hit),
+        "confidence": _confidence(hit),
         "source": _text(hit, "source"),
         "section_headers": section_headers,
         "heading_candidates": heading_candidates or {},

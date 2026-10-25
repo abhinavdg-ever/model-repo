@@ -288,7 +288,10 @@ class TestShortPage:
 
     def test_a_short_page_with_nothing_below_is_junk(self):
         verdict = self.short(bert=bert(0.30))
-        assert (verdict.code, verdict.rule, verdict.confidence) == (classify.CODE_OTHERS, "R6", 0.95)
+        assert (verdict.code, verdict.rule) == (classify.CODE_OTHERS, "R6")
+        # DistilBERT's p(junk) 0.30 lifted by the rule (0.95), x 0.7 as DistilBERT says keep: review.
+        assert verdict.confidence == pytest.approx((0.30 + 0.70 * 0.5 * 0.95) * 0.7, abs=1e-4)
+        assert verdict.confidence < 0.5
         assert verdict.votes["short_page"]["content_bottom"] == 0.10
 
     def test_distilbert_sure_of_a_keep_skips_it(self):

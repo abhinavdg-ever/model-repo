@@ -40,6 +40,7 @@ from db import (
     upsert_manifest_member,
 )
 from db.paths import imaging_csv, write_csv
+from stages.lib import confidence as conf
 from stages._support import (
     BJ_EXCLUDE,
     best_page_text,
@@ -126,24 +127,46 @@ def _iso_dob(value: Optional[str]) -> Optional[str]:
     return None
 
 
-def _page_confidence(page: Any) -> float:
-    """A transparent score from how many fields were found and how.
+def _page_confidence(page: Any) -> Optional[float]:
+    """How sure the page's member status is (stages/lib/confidence.py). Each identifier
+    read off the page (name, DOB, member ID) is evidence -- ``field_support.rule`` when
+    the rules read it, ``field_support.ner`` when NER did -- combined as independent
+    evidence, 1 - product(1 - support): a name and a DOB by the rules read 0.84, all
+    three 0.94, a name by NER alone 0.40. Verified and wrong member: that. Not verified
+    with identifiers that match nobody: that x ``fallback``. Nothing read: no
+    confidence (nothing was decided)."""
+    support = conf.settings_for("member", {"field_support": {"rule": 0.6, "ner": 0.4}})["field_support"]
+    found = [
+        float(support["rule"] if source == "rule based" else support["ner"])
+        for value, source in (
+            (page.detected_name, page.detection_source_name),
+            (page.detected_dob, page.detection_source_dob),
+            (page.detected_member_id, page.detection_source_member_id),
+        )
+        if _clean(value)
+    ]
+    if page.db_page_status == "wrong_member" and not found:
+        found = [float(support["ner"])]  # another person's name in a patient-name sentence
+    if not found:
+        return None
+    doubt = 1.0
+    for s in found:
+        doubt *= 1.0 - s
+    return conf.score(1.0 - doubt, "fallback" if page.db_page_status == "not_verified" else "", module="member")
 
-    The reference carried no numeric confidence — it reported the detection
-    source per field instead, which is what the review UI actually shows. This
-    keeps the column populated without inventing a model score: 0.5 for a
-    verified page plus 1/6 per field found, rules weighted above NER.
-    """
-    score = 0.5 if page.page_verified else 0.1
-    for value, source in (
-        (page.detected_name, page.detection_source_name),
-        (page.detected_dob, page.detection_source_dob),
-        (page.detected_member_id, page.detection_source_member_id),
-    ):
-        if not _clean(value):
-            continue
-        score += 0.1667 if source == "rule based" else 0.1
-    return round(min(score, 0.99), 4)
+
+def _summary_confidence(result: Any, status: str, pages: dict[str, Optional[float]]) -> Optional[float]:
+    """How sure the chart's member decision is: the share of checked pages that agree
+    with it (verified pages for verified, wrong-member pages for failed) times the mean
+    confidence of those pages; times ``degraded`` without NER (no page can be found
+    wrong member). None when nothing was checked."""
+    if not result.pages_checked:
+        return None
+    agreeing = "wrong_member" if status == "failed" else "verified"
+    backers = [pages.get(p.page_name) for p in result.pages if p.db_page_status == agreeing]
+    share = len(backers) / result.pages_checked
+    strength = sum(v or 0.0 for v in backers) / len(backers) if backers else 0.0
+    return conf.score(share * strength, "" if result.ner_enabled else "degraded", module="member")
 
 
 def _ocr_text_map(conn: Any, chart_id: int) -> dict[int, str]:
@@ -552,11 +575,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 matched_member_list_id=manifest.get("id"),
                 matched_name=manifest.get("member_name"),
                 name_mode=result.name_mode or None,
-                confidence=(
-                    round(result.pages_verified / result.pages_checked, 4)
-                    if result.pages_checked
-                    else None
-                ),
+                confidence=_summary_confidence(
+                    result, final_status, {p.page_name: _page_confidence(p) for p in result.pages}),
                 pages_checked=result.pages_checked,
                 pages_matched=result.pages_verified,
                 wrong_member_pages=result.pages_wrong_member,

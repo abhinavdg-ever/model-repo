@@ -1197,13 +1197,11 @@ def upsert_dos(
 
 
 def _confidence_level(confidence: Optional[float]) -> Optional[str]:
-    if confidence is None:
-        return None
-    if confidence >= 0.75:
-        return "high"
-    if confidence >= 0.45:
-        return "medium"
-    return "low"
+    """The confidence's band (stages/lib/confidence.py): high >= 0.80, medium >= 0.50,
+    low below (flagged for review)."""
+    from stages.lib import confidence as conf
+
+    return conf.level(None if confidence is None else float(confidence))
 
 
 PAGE_CLASSIFICATION_FIELDS = (
@@ -1507,10 +1505,15 @@ IMAGING_FINAL_COLUMNS = (
     "signers",
     "provider_version",
     "provider_confidence",
+    # 2026-10-25: each Final value's confidence on the one scale (stages/lib/confidence.py)
+    # and the values below the review line.
+    "confidences",
+    "review_fields",
 )
 
 
 _IMAGING_FINAL_PRESENT: Optional[tuple[str, ...]] = None
+_IMAGING_FINAL_JSON = ("signers", "confidences", "review_fields")
 
 
 def _imaging_final_columns(conn: Any) -> tuple[str, ...]:
@@ -1538,7 +1541,7 @@ def upsert_imaging_final(conn: Any, *, chart_id: int, page_id: int, row: dict[st
     """One page's Final values (``stages.lib.imaging_final``), in the columns the table has."""
     columns = _imaging_final_columns(conn)
     values = [
-        json.dumps(row[column], default=str) if column == "signers" and row.get(column) is not None
+        json.dumps(row[column], default=str) if column in _IMAGING_FINAL_JSON and row.get(column) is not None
         else row.get(column)
         for column in columns
     ]
@@ -2176,7 +2179,8 @@ def get_dos_map(conn: Any, chart_id: int) -> dict[int, dict[str, Any]]:
                date_of_service_from,
                date_of_service_to,
                date_of_service_from_doclevel,
-               date_of_service_to_doclevel
+               date_of_service_to_doclevel,
+               confidence
           FROM dos_extraction_results
          WHERE chart_id = %s
         """,

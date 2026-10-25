@@ -509,7 +509,7 @@ class TestDosDriver:
         from dos_logic import profile
 
         hit = _pages("No dates whatsoever on this page.")[0]
-        assert hit["confidence"] == 0
+        assert hit["confidence"] is None  # no date, nothing to be sure of
         assert hit["is_default"] is True
         assert hit["doc_dos_from_iso"] == profile().default_date
 

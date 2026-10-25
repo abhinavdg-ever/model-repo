@@ -101,7 +101,10 @@ def _classify_hw(image_path: Path) -> tuple[str, float | None, str, dict[str, An
         return hw_label, conf_out, method_s, tags
     except Exception as exc:
         logger.warning("HW classify fallback for %s: %s", image_path, exc)
-        return "printed", 0.5, "fallback", {"document_type": "printed"}
+        # Nothing judged the page: a stand-in, flagged (0.5 x degraded).
+        from stages.lib import confidence as conf
+
+        return "printed", conf.score(0.5, "degraded"), "fallback", {"document_type": "printed"}
 
 
 def _review_required(quality_tag: str | None, tags: dict[str, Any]) -> bool:

@@ -84,7 +84,8 @@ class TestDecisive:
         rows = assign([bare(1, dos_from="2024-01-01", dos_trust=5, printed=(1, 2)),
                        bare(2, dos_from="2024-02-01", dos_trust=5, printed=(2, 2))])
         assert rows[1]["relation"] == "new_document" and rows[1]["decided_by"] == "decisive_conflict"
-        assert rows[1]["confidence_level"] == "medium" and rows[1]["review_required"]
+        # Two decisive signals disagree: the conflict penalty puts it under the review line.
+        assert rows[1]["confidence_level"] == "low" and rows[1]["review_required"]
 
     def test_dos_trust_by_how_the_date_was_found(self):
         assert [trust_points(t, RULES) for t in ("service", "admit", "weak", "keyless", "collected", None)] == [5, 5, 3, 2, 3, 3]

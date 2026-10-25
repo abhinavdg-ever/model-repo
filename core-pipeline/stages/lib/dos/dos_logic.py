@@ -10,7 +10,10 @@ Per page, two states:
      header / footer dates. Lab pages rank Report Date after Received; lab and other
      pages end with the Admit / Discharge pair (a misclassified discharge page). A tier not listed
      for the kind is not a candidate.
-     Within a group the model's highest score wins; the confidence is that score.
+     Within a group the model's highest score wins. Its confidence
+     (stages/lib/confidence.py): the model's score lifted by the rules' score when both
+     read the date, the rules' alone times no_model, times conflict when another date of
+     the same group scores within 80% of it (``kv_confidence``).
   2. Edge keyword, only when key/value has no date — a DOS label (Encounter Date, Visit
      Date, Date of Service, Admission Date, Discharge Date, ...) that starts within the
      first or last ``edge_words`` (20) words of the page, with a date right after it. An
@@ -33,6 +36,7 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from typing import Any, Optional
 
+from stages.lib import confidence as conf
 from stages.lib.canon_store import CANON_DIR, CanonFile
 
 
@@ -333,7 +337,9 @@ def edge_page_date(
         hits = edge_dates(page_text, prof)
 
     def confidence(*chosen: LabelledDate) -> float:
-        return prof.confidence["edge"]
+        # A labelled date the key/value extractor did not read: the label's strength
+        # (canon confidence.edge), with no model behind it.
+        return conf.score(prof.confidence["edge"], "no_model", module="dos")
 
     encounter = next((h for h in hits if h.label_class == "encounter"), None)
     if encounter is not None:
@@ -456,8 +462,27 @@ def kv_page_date(
         return admit_discharge_date(_kv_stay(dated), [], prof)
     iso, iso_to = str(item["iso"]), str(item.get("iso_to") or "")
     is_pair = len(iso_to) == 10 and iso_to > iso
-    return PageDate(iso, iso_to if is_pair else iso, score(item),
+    group = _group(item, prof, rank)
+    rivals = [it for it in dated if _group(it, prof, rank) == group and str(it["iso"]) != iso
+              and score(it) >= 0.8 * score(item)]
+    return PageDate(iso, iso_to if is_pair else iso, kv_confidence(item, prof, conflict=bool(rivals)),
                     str(item.get("keyword") or ""), "kv", is_pair=is_pair)
+
+
+def kv_confidence(item: dict[str, Any], prof: Optional[DosProfile] = None, *, conflict: bool = False) -> float:
+    """A key/value date's confidence (stages/lib/confidence.py): the model's score,
+    lifted by the rules' score when the rules read the date too; the rules' score alone
+    (the canon's kv without one) times ``no_model``; times ``conflict`` when another
+    date of its priority group scores close to it."""
+    prof = prof or profile()
+    value, rule = item.get("confidence"), item.get("rule_score")
+    reasons = ["conflict" if conflict else ""]
+    if value is None:
+        return conf.score(prof.confidence["kv"], "no_model", *reasons, module="dos")
+    if item.get("model_scored", True):  # a score with no flag is the model's (older staging)
+        base = conf.backed(float(value), float(rule)) if rule is not None else float(value)
+        return conf.score(base, *reasons, module="dos")
+    return conf.score(float(value), "no_model", *reasons, module="dos")
 
 
 def _kv_stay(candidates: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -488,7 +513,9 @@ def dictation_page_date(page_text: str, prof: Optional[DosProfile] = None) -> Op
             match = DATE_RE.match(page_text, found.end())
             iso = parse_date_match(match) if match else None
             if iso:
-                return PageDate(iso, iso, prof.confidence["dictation"], label, "dictation")
+                # A dictation date is often not the visit's: a fallback, flagged.
+                return PageDate(iso, iso, conf.score(prof.confidence["dictation"], "no_model", "fallback", module="dos"),
+                                label, "dictation")
     return None
 
 
@@ -508,8 +535,7 @@ def admit_discharge_date(
     def side(cls: str) -> tuple[str, float | None, str] | None:
         item = kv_stay.get(cls)
         if item and len(str(item.get("iso") or "")) == 10:
-            score = item.get("confidence")
-            return str(item["iso"]), float(score) if score is not None else prof.confidence["kv"], str(item.get("keyword") or cls)
+            return str(item["iso"]), kv_confidence(item, prof), str(item.get("keyword") or cls)
         hit = edge_side[cls]
         return (hit.iso, None, hit.label) if hit else None
 
@@ -521,8 +547,10 @@ def admit_discharge_date(
         return None
     start = (admit or discharge)[0]
     end = (discharge or admit)[0]
+    # Both ends must be right: the weaker side's; an edge-label side is the label's strength.
     kv_scores = [s[1] for s in used if s[1] is not None]
-    confidence = max(kv_scores) if kv_scores else prof.confidence["edge"]
+    edge = conf.score(prof.confidence["edge"], "no_model", module="dos")
+    confidence = min(kv_scores + ([edge] if len(kv_scores) < len(used) else [])) if kv_scores else edge
     return PageDate(start, end, confidence, "+".join(s[2] for s in used), "admit_discharge",
                     is_pair=end != start, kv_backed=bool(kv_scores))
 
@@ -602,7 +630,7 @@ def _row(page: dict, page_date: Optional[PageDate], prof: DosProfile) -> dict:
         "match_type": match_type,
         "final_dos": page_date.dos_from if page_date else "",
         "keyword": page_date.keyword if page_date else None,
-        "confidence": round(page_date.confidence, 4) if page_date else 0.0,
+        "confidence": round(page_date.confidence, 4) if page_date else None,
         "page_source": page_date.source if page_date else "",
         "kv_backed": bool(page_date and (page_date.source == "kv" or page_date.kv_backed)),
         "is_default": page_date is None,

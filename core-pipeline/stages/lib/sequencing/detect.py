@@ -10,6 +10,8 @@ import logging
 from collections import defaultdict
 from typing import Any, Optional
 
+from stages.lib import confidence as conf
+
 from .engine.marker_detector import _EXPLICIT_PATTERNS, detect_markers
 from .engine.scorer import clamp_confidence
 from .engine.sequence_builder import build_sequence
@@ -54,10 +56,15 @@ def compute_sequence_assignments(
             cross_encoder_enabled=cross_encoder_enabled,
         )
 
-    order, held = fenced_order(features, markers, documents)
+    placed: dict[str, bool] = {}
+    order, held = fenced_order(features, markers, documents, placed=placed)
     position_of = {pid: n for n, pid in enumerate(order, start=1)}
+    sure = order_confidence(features, markers, held, placed)
     for assignment in assignments:
         assignment.sequence_position = position_of.get(assignment.page_id, assignment.sequence_position)
+        # The stored confidence is the fenced order's (the order kept), not the builder's.
+        if assignment.page_id in sure and assignment.page_id in position_of:
+            assignment.sequence_confidence = sure[assignment.page_id]
         if assignment.page_id in held:
             assignment.sequence_method = "marker_held"
             assignment.sequence_review_flag = True
@@ -91,7 +98,7 @@ WINDOW = 5  # the farthest a page moves from its scan position (2026-10-25, user
 
 
 def fenced_order(features: list, markers: dict[str, ExplicitMarker], documents: dict[str, Optional[int]],
-                 window: int = WINDOW) -> tuple[list[str], set[str]]:
+                 window: int = WINDOW, placed: Optional[dict[str, bool]] = None) -> tuple[list[str], set[str]]:
     """(page ids in the suggested order, pages held in place).
 
     Main pages keep their scan order, except pages that confidently say "page n of m":
@@ -104,7 +111,7 @@ def fenced_order(features: list, markers: dict[str, ExplicitMarker], documents: 
     documents it spans belongs to the family (the whole document is numbered n of m), so
     a document scanned fully in reverse is put back in order. A family is held in scan
     order, and flagged, when two of its pages claim one number or a page would move too
-    far."""
+    far. ``placed``, when passed, gets every page a family placed: page id -> moved."""
     ordered = sorted(features, key=lambda f: f.original_page_number)
     index = {f.page_id: i for i, f in enumerate(ordered)}
     pages_of: dict[Any, set[str]] = defaultdict(set)
@@ -146,7 +153,35 @@ def fenced_order(features: list, markers: dict[str, ExplicitMarker], documents: 
             continue
         for slot, f in zip(slots, target):
             result[slot] = f
+            if placed is not None:
+                placed[f.page_id] = slot != index[f.page_id]
     return [f.page_id for f in result], held
+
+
+MIN_NUMBERED_PAGES = 3  # numbered pages it takes to measure how often scan order holds
+
+
+def order_confidence(features: list, markers: dict[str, ExplicitMarker], held: set[str],
+                     placed: dict[str, bool]) -> dict[str, float]:
+    """How sure each Main page's place is (stages/lib/confidence.py). A page a "page n
+    of m" family placed: its marker's confidence. A held page (two pages claim one
+    number, or it would move too far): its marker's x ``conflict`` x ``fallback`` --
+    flagged. Any other page stays where it was scanned: as sure as scan order proved in
+    this chart, the share of the family-placed pages that did not move (at least
+    ``MIN_NUMBERED_PAGES`` of them); with fewer, 1.0 x ``fallback`` (nothing confirms it)."""
+    out: dict[str, float] = {}
+    stayed = [not moved for moved in placed.values()]
+    measured = len(stayed) >= MIN_NUMBERED_PAGES
+    scan_order = conf.score(sum(stayed) / len(stayed)) if measured else conf.score(1.0, "fallback")
+    for f in features:
+        marker = markers.get(f.page_id)
+        if f.page_id in held:
+            out[f.page_id] = conf.score(marker.confidence if marker else 1.0, "conflict", "fallback", module="sequencing")
+        elif f.page_id in placed and marker is not None:
+            out[f.page_id] = conf.score(marker.confidence, module="sequencing")
+        else:
+            out[f.page_id] = scan_order
+    return out
 
 
 def _sequence_multi_stream(

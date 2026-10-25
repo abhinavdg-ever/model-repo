@@ -241,6 +241,16 @@ class ImagingPageResult(BaseModel):
     finalSpecialty: str | None = None
     finalDosFrom: str | None = None
     finalDosTo: str | None = None
+    # Each Final value's confidence on the one scale (imaging_final.confidences, 2026-10-25:
+    # >= 0.80 good, 0.50-0.80 passable, < 0.50 review), keyed page_type / codability /
+    # specialty / dos / encounter_type / member / provider / blank_junk / handwriting,
+    # and the keys below the review line.
+    finalConfidences: dict[str, float] | None = None
+    reviewFields: list[str] | None = None
+    # The stages' own confidences that have no other field.
+    blankJunkConfidence: float | None = None
+    encounterConfidence: float | None = None
+    sequenceConfidence: float | None = None
     # None = classification not run → UI shows NA
     # Values: "Yes (Blank)" | "Yes (Junk)" | "No" (a duplicate reads "Yes (Junk)")
     blankOrJunk: str | None = None

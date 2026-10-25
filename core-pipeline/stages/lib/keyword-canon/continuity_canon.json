@@ -390,13 +390,12 @@
     ]
   },
   "decision": {
-    "comment": "score > 0 break, < 0 joined, 0 joined and flagged. Confidence level from |score|: >= high_at high, >= medium_at medium, else low. P(break) = 1 / (1 + exp(-(score - b) / a)), confidence = |2P - 1|; x section_disagreement_factor when the three sub-scores point opposite ways. a and b are to be fitted on the labelled gaps; until then a = 2, b = 0.",
+    "comment": "score > 0 break, < 0 joined, 0 joined and flagged. The engine's internal strength from |score|: >= high_at high, >= medium_at medium, else low (it steers the final pass). Confidence (2026-10-25, one scale for every module: stages/lib/confidence.py): P(break) = 1 / (1 + exp(-(score - b) / a)), confidence = |2P - 1| when the score points the way the gap was decided (else 0); x conflict (confidence_canon.json, 0.8) when the three sub-scores point opposite ways, two decisive signals disagree, or a pattern A / B fires; a decisive signal or rule (demographics, visit heading, Visual page) holds it at >= 0.9, or 0.9 x keywords_disagree when the score points the other way; a final-pass split / merge that reverses a gap: (1 - its confidence) / 2 backed by the rule, x overturned. The stored confidence_level is the confidence's band (high >= 0.80, medium >= 0.50, low below: flagged). a and b are to be fitted on the labelled gaps; until then a = 2, b = 0.",
     "high_at": 5,
     "medium_at": 2,
     "a": 2.0,
     "b": 0.0,
-    "section_disagreement_factor": 0.6,
-    "review_below": 0.25
+    "review_below": 0.5
   },
   "conflict_rules": {
     "comment": "Pattern A (ending >= at, pair <= -at: a finished document followed by the same visit -> break) and pattern B (opening >= at, pair <= -at: a section heading taken for a title -> join). Either drops the confidence one level and flags the gap. apply false: the patterns are recorded, not allowed to change an answer, until counted on a run (docs §7.6).",

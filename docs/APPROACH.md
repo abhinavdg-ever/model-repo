@@ -524,7 +524,8 @@ when no page has any** (user, 2026-10-25). A lab or other non-encounter page rea
 2. **Not Available wins only when every vote is Not Available**: one page voting a
    setting sets the Not Available votes aside.
 3. Otherwise the weighted majority wins; a tie goes to the first page's vote.
-   Confidence = the winner's share of the weight.
+   Confidence = the winner's share of the weight x the mean confidence of its voters
+   (section 10).
 4. **The client default [to build]**: when the winner is an Outpatient setting but no
    page of the range has stated, field or content (exam / vitals) evidence of the
    modality, the encounter is **Outpatient (Evisit)**, `decided_by = client_default`.
@@ -567,7 +568,7 @@ The client default (5.2 step 4) is still to build.
 | `staging/continuity.json`, `page_continuity_results` | per gap: score, signals, decision; per page: document, tag; Final page type, DOS, encounter |
 | `encounter_type_results` | per page: Extracted setting, basis, evidence; per encounter: Final setting, confidence, decided_by. Each page's vote, including `by: model` with the model's class and confidence, is in the encounter log in `staging/continuity.json` |
 | `page_sequencing_results`, `imaging/<chart>_sequencing.csv` | per page: suggested order (`seq`), method, confidence, review flag (section 9) |
-| `imaging_final` | every field's Final value |
+| `imaging_final` | every field's Final value; `confidences` (each Final value's, section 10) and `review_fields` (those below 50%) |
 
 A `staging/page_classification.json` entry (made-up values; Progress Note has no model
 L2, because section tagging decides it):
@@ -920,7 +921,8 @@ the printed page number the key/value extraction found.
    * *Header groups* (on). Pages whose normalised header or footer words overlap by
      more than 70% (Jaccard) are one group: confidence 0.90 if a page in the group has
      a marker, else 0.75. They keep scan order.
-   * *Scan order.* Anything left: `original_order`, confidence 0.30, flagged.
+   * *Scan order.* Anything left: `original_order`. Its stored confidence is the fenced
+     order's (section 10): as sure as scan order proved in the chart.
 5. **No long moves.** Since the fences (2026-10-25), a fax cover on page 1 is no longer
    sent to the end and a near-blank Main page is no longer moved after the others: both
    keep their scan positions (a fax cover is usually junk already, J series). The stream
@@ -963,6 +965,120 @@ J page like the others.
 * The cross-encoder is off and its model is not in the repository. Ship it, or remove it.
 * Covers no longer move (the fences); confirm the client sheet keeps a fax cover where it was scanned.
 * Moves from weaker evidence (a bare "n of m", header groups) stay off.
+
+---
+
+## 10. Confidence scores [built 2026-10-25]
+
+Every value the pipeline decides carries a **confidence between 0 and 1 on one scale**,
+whatever module produced it, so a reviewer reads every number the same way (user,
+2026-10-25):
+
+| Confidence | Band | What the reviewer does |
+|---|---|---|
+| **80–100%** | good | take it |
+| **50–80%** | passable | check it when there is time |
+| **below 50%** | review | flagged: check it before the chart goes out |
+
+The bands are in `keyword-canon/confidence_canon.json` (`bands`), applied by
+`core-pipeline/stages/lib/confidence.py`. The stored `confidence_level` words follow
+them (high / medium / low), and review-ui colours every confidence cell green / amber /
+red, adding **Review** below 50%.
+
+### 10.1 How a confidence is built
+
+A confidence is never a fixed constant. It is built in three steps:
+
+1. **Base: the model's probability** for the value it decided, a probability over all
+   its classes (already normalised). Where a step has no model, the rule's own strength
+   (how sure that kind of evidence is) times the **no_model** penalty.
+2. **Backing keywords.** When keywords or rules point to the same value, they lift the
+   model's probability *p* toward 1:
+
+   `p + (1 − p) × 0.5 × support`
+
+   *support* is 1.0 for a strong title term or a firing rule, near 0 for a weak body
+   word. A model at 0.60 backed by a strong keyword reads 0.80; with no keyword it stays
+   0.60. When the keywords point to **another** value, the confidence is multiplied by
+   **keywords_disagree**.
+3. **Penalties.** Each reason for doubt multiplies it once:
+
+| Penalty | × | When |
+|---|---|---|
+| `keywords_disagree` | 0.70 | keywords / rules point to another value than the one decided (or the model, to another value than a rule's) |
+| `no_model` | 0.85 | a rule decided with no model behind it, or the model was unavailable |
+| `fallback` | 0.60 | nothing decided it: a default filled it (Others, General, a family default, scan order nothing confirms) — never good |
+| `conflict` | 0.80 | other pages or sources of the same document / page say something else |
+| `overturned` | 0.70 | a later pass reversed the first decision |
+| `handwritten` | 0.90 | the page is handwritten or mixed (weaker OCR) |
+| `thin_text` | 0.85 | the page has under 150 characters of text |
+| `degraded` | 0.60 | an optional dependency was missing and a stand-in decided |
+
+Then an optional per-module **calibration** (`calibration` in the same file:
+piecewise-linear knots fitted on labelled pages, so that 80% means right about 8 times
+in 10), and a clip to [0, 1]. No module is calibrated yet: fit each on the ground-truth
+charts once the new models are installed (section 10.4).
+
+One more rule normalises a module's own bar: a value a module decides although the
+model is **under the module's own bar for being sure** (a junk verdict for review below
+`junk_at`, a handwriting label under its uncertain minimum) is scaled so the bar reads
+just under 50% — every such value is flagged, and a lower probability reads lower.
+
+### 10.2 Per module
+
+| Module | Value | Base | Lifted by | Penalised for |
+|---|---|---|---|---|
+| Image preprocess | Printed / Handwritten | the classifier's probability for its label | — | Uncertain label: under its bar (< 50%); ink overruling the model's Printed: backed by the ink, × keywords_disagree; no mark at all: 1.0 × no_model (0.85); faint marks only: × fallback too (0.51); classifier failed: 0.5 × degraded (0.30) |
+| Blank / junk | Main / Blank / Junk | DistilBERT's p(keep) for Main, p(junk) otherwise | R4 (signature) and R6 (short page) back it at 0.95 | DistilBERT saying the other side (≥ 0.5): × keywords_disagree; a junk verdict for review (p(junk) under `junk_at`): under its bar; DistilBERT missing: 0.5 × degraded. R1–R3 (empty, placeholder, Visual: no text to read) keep the rule's strength |
+| | Duplicate | the word-overlap similarity | — | a partial duplicate keeps its own verdict's confidence; the similarity is `duplicate_confidence` |
+| Page type (Extracted) | L1, L2, L3 | the model's probability (L2, L3 given the parent) | the keyword vote's share for the class × its strength; a strong title pin or a page rule fully | keywords pointing elsewhere (their strength ≥ half): × keywords_disagree; a page rule against the model's favourite: × keywords_disagree; Others: the model's p(OTHER) (else 1 − its best) × fallback |
+| | Page type | the product of its named levels (the chance the whole path is right) | — | no model: × no_model once; handwritten / thin page: × handwritten / thin_text. Stored in `page_classification.confidence`; below 50% the page needs review |
+| | Specialty | the model's probability | the specialty keywords (or the canon entry) naming it | keywords naming another: × keywords_disagree; model says Unknown: the keywords' own; General: (1 − the best named) × fallback |
+| | Codability | the page type's confidence | — | — (it is a function of the page type) |
+| Encounter | each page's vote | the encounter model's probability for the setting, normalised over the settings ("No evidence on page" left out) | the keyword evidence: tier 1 page type 1.0, tier 2 phrase 0.8 (0.8 / 0.6 with a conflict on the page), a confirm word 0.5 | the model's own answer (≥ 0.5) another setting, or the model overruling a phrase: × keywords_disagree; a family default: × fallback; no model answer: support × no_model |
+| | the encounter | the first page's vote when it decides | — | another page with evidence disagreeing: × conflict. A vote: the winner's share of the weight × its voters' mean confidence. Nothing voted: the model's p(F2F) × fallback |
+| DOS | key/value date | the extraction model's score | the rules' score when the rules read the date too | rules only: × no_model; another date of the same priority group within 80% of its score: × conflict; an admit / discharge pair: the weaker side |
+| | edge label / dictation | the label's strength (0.8 / 0.5) | — | × no_model (edge 0.68); dictation × fallback too (0.26); no date: no confidence |
+| Member | each page's status | each identifier read (name, DOB, member ID): the rules' reading 0.6, NER's 0.4, combined as independent evidence (1 − Π(1 − s)) | — | not verified with identifiers that match nobody: × fallback; nothing read: no confidence |
+| | the chart's decision | the share of checked pages agreeing with it × their mean confidence | — | NER off (no page can be wrong member): × degraded |
+| Provider / page number | signature, name, credentials | the extraction model's score | the rules' score when they accepted the row too | the rules rejected what the model accepted: × keywords_disagree; rules only: × no_model; name or credentials from outside the signature × 0.75; several signers × 0.9 each, the page the average |
+| Continuity | each gap | the score's own certainty: \|2·sigmoid((score − b) / a) − 1\| when the score points the way the gap was decided | a decisive signal or rule (a different date, demographics, a visit heading, a Visual page) holds it at ≥ 0.90 | sub-scores or decisive signals disagreeing, a pattern A / B: × conflict; a rule against the score: 0.9 × keywords_disagree; a final-pass split / merge reversing it: (1 − its confidence) / 2 backed by the rule, × overturned. `confidence_level` is the band |
+| Sequencing | each Main page's place | a "page n of m" family's page: its marker's confidence | — | held (two pages claim one number, or too far): × conflict × fallback; any other page stays in scan order: the share of the chart's numbered pages that were already in place (at least 3), else 1.0 × fallback. J pages: none (nothing decided) |
+| Final (`imaging_final`) | page type, codability | the deciding page's page-type confidence (the document's first page; the page's own when it kept its type) | — | another page of the document sure (≥ 80%) of another L1: × conflict |
+| | specialty, encounter type | the encounter's first page's | — | — |
+| | DOS | the document's dated page's | — | a stand-alone non-visit document's default date: none (a business rule) |
+| | member, provider, blank/junk, handwriting | the page's own | — | — |
+
+`imaging_final.confidences` holds each Final value's confidence and `review_fields`
+the ones below 50%. `needs_review` is set when any is, as well as for a page type nobody
+was sure of (database change: `schema/changes_2026-10-25.sql`). review-ui shows each
+Final value's confidence beside it, and the Extracted value's where the run stored
+none.
+
+### 10.3 Worked examples
+
+* A Progress Note page: the model gives L1 0.72, and a strong canon title term pins
+  Progress Note (support 1.0): 0.72 + 0.28 × 0.5 = **0.86, good**. Its L2 Assessment and
+  Plan at 0.90 with no keyword: page type 0.86 × 0.90 = **0.77, passable**.
+* The same page handwritten: 0.77 × 0.9 = **0.70**.
+* A tier 2 "telehealth visit" phrase, the encounter model giving Evisit 0.80:
+  0.80 + 0.20 × 0.5 × 0.8 = **0.88, good**. The same phrase with the model at F2F 0.85
+  (Evisit 0.05): (0.05 + 0.95 × 0.4) × 0.7 = **0.30, review**.
+* A Progress Note with no setting evidence, F2F by family default, the model at F2F
+  0.90: 0.90 × 0.6 = **0.54, passable** — a default is never good.
+* R6 (a short page) calls a page junk while DistilBERT says keep at 0.70:
+  (0.30 + 0.70 × 0.5 × 0.95) × 0.7 = **0.44, review**.
+
+### 10.4 Still to do
+
+* **Calibrate** each module on the ground-truth charts: bucket the stored confidences,
+  measure the share right in each bucket, write the knots to `calibration`. Until then
+  the numbers are honest probabilities and penalties, not measured hit rates.
+* The penalties are first settings (user, 2026-10-25). Re-weigh them with the
+  calibration: if passable values are right 95% of the time, the penalties are too
+  harsh.
+* Orientation, tilt and mirroring still store no confidence (Tesseract's OSD value is
+  open-ended and is not kept).
 
 ---
 
@@ -2681,11 +2797,11 @@ Encounter setting per visit. Evidence is ranked, not added up: the highest non-e
 | outpatient_f2f | label: Outpatient (F2F); priority: 30 |
 | inpatient | label: Inpatient; priority: 40 |
 
-**Confidence by tier**: tier1: 0.95; tier1_conflict: 0.7; tier2: 0.8; tier2_conflict: 0.6
+**Confidence by tier**: tier1: 1.0; tier1_conflict: 0.8; tier2: 0.8; tier2_conflict: 0.6; note: 2026-10-25 (user: no fixed confidences): how strongly keyword evidence BACKS a setting, not a confidence. A page's confidence is the encounter model's probability for its setting (normalised over the settings, 'No evidence on page' left out), lifted by this support (stages/lib/confidence.py: p + (1 - p) x 0.5 x support) and penalised for doubt; without a model answer, the support x no_model. See vote.confidence_note.
 
-**Default**: setting: outpatient_f2f; confidence: 0.3; note: 2026-10-20 (user): a visit with no setting evidence, or no usable date, is Outpatient (F2F) at this low confidence; decided_by 'default', and reason keeps why (no_setting_evidence / no_date / default_date). Empty setting = leave it unresolved.
+**Default**: setting: outpatient_f2f; note: 2026-10-20 (user): a visit with no setting evidence, or no usable date, is Outpatient (F2F); decided_by 'default', and reason keeps why (no_setting_evidence / no_date / default_date). Its confidence is a fallback's: the model's probability for F2F on the first page x fallback (0.6), so it is never good. Empty setting = leave it unresolved.
 
-**Applies to**: families: Progress Note, Discharge Summary; not_applicable: setting: not_applicable; label: Not Available; confidence: 1.0; note: 2026-10-23 (user): a page whose L1 family is not listed votes Not Applicable (lab, orders, forms...); listed families vote their evidence or their vote.family_defaults. Empty families = every page votes its evidence. 2026-10-25 (user): shown as Not Available.
+**Applies to**: families: Progress Note, Discharge Summary; not_applicable: setting: not_applicable; label: Not Available; note: 2026-10-23 (user): a page whose L1 family is not listed votes Not Applicable (lab, orders, forms...); listed families vote their evidence or their vote.family_defaults. Empty families = every page votes its evidence. 2026-10-25 (user): shown as Not Available.
 
 **Tier 1: page types that decide the setting**
 
@@ -2724,7 +2840,7 @@ Encounter setting per visit. Evidence is ranked, not added up: the highest non-e
 
 **Negatives** (phrases that cancel a match): phrase: follow up with your primary care; cancels: follow up, phrase: outpatient follow up; cancels: follow up, phrase: follow up in the office; cancels: follow up, phrase: discharged home; cancels_setting: home, phrase: discharge to home; cancels_setting: home, phrase: discharged to home; cancels_setting: home, phrase: scheduled for admission; cancels: admission date, date of admission, admitted on, phrase: pending admission; cancels: admission date, date of admission, admitted on, phrase: if admitted; cancels: admission date, date of admission, admitted on, phrase: telephone message; cancels_setting: outpatient_tele, phrase: phone message; cancels_setting: outpatient_tele, phrase: left a message; cancels_setting: outpatient_tele, phrase: ambulatory surgery center; cancels_setting: inpatient; tier1: True, phrase: ambulatory surgery centre; cancels_setting: inpatient; tier1: True, phrase: ambulatory surgical center; cancels_setting: inpatient; tier1: True, phrase: discharged home same day; cancels_setting: inpatient; tier1: True, phrase: discharged home the same day; cancels_setting: inpatient; tier1: True
 
-**Vote**: note: 2026-10-25 (user): the encounter's FIRST PAGE decides when it has evidence of its own (tier 1 page type, tier 2 phrase, or the encounter model: decided_by first_page). Only when it cannot (Not Applicable, its family default, or nothing) do the pages vote -- only those with evidence of their own; the family defaults (Progress Note -> F2F) only when no page has any: the first page counts first_page_weight times; Not Applicable wins only when every vote is Not Applicable; otherwise the weighted majority of the settings wins (a tie goes to the first page's vote), confidence = the winner's share of the weight.; first_page_weight: 2; family_defaults: Progress Note: outpatient_f2f; Discharge Summary: inpatient; family_default_confidence: 0.5; first_page_conflict_factor: 0.8; confidence_note: 2026-10-25: confidence. Each page's vote carries its own: tier 1 page type 0.95 (0.70 with a conflict on the page), tier 2 phrase 0.80 (0.60), the encounter model's probability for the setting, a family default 0.50, Not Applicable 1.0. The encounter's: the first page's own when it decides (x 0.8 when another page with evidence disagrees); for a vote, the winner's share of the weight x the weighted mean confidence of the pages that voted for it; no vote at all: default.confidence (0.3).
+**Vote**: note: 2026-10-25 (user): the encounter's FIRST PAGE decides when it has evidence of its own (tier 1 page type, tier 2 phrase, or the encounter model: decided_by first_page). Only when it cannot (Not Applicable, its family default, or nothing) do the pages vote -- only those with evidence of their own; the family defaults (Progress Note -> F2F) only when no page has any: the first page counts first_page_weight times; Not Applicable wins only when every vote is Not Applicable; otherwise the weighted majority of the settings wins (a tie goes to the first page's vote), confidence = the winner's share of the weight.; first_page_weight: 2; family_defaults: Progress Note: outpatient_f2f; Discharge Summary: inpatient; confidence_note: 2026-10-25 (user: a percentage, model probability penalised, one scale: >= 0.80 good, 0.50-0.80 passable, < 0.50 review). Each page's vote: the encounter model's probability for the setting (normalised over the settings), lifted by the keyword support behind it (tier 1 page type 1.0, tier 2 phrase 0.8, 0.8 / 0.6 with a conflict on the page, a confirm word 0.5), x keywords_disagree (0.7) when the model's own answer (>= 0.5) is another setting or the vote overrode a phrase; a family default (Progress Note -> F2F): the model's probability for it x fallback (0.6); Not Applicable: the model's probability backed fully by the page type. Without a model answer: the support x no_model (0.85). The encounter's: the first page's own when it decides (x conflict 0.8 when another page with evidence disagrees); for a vote, the winner's share of the weight x the weighted mean confidence of the pages that voted for it. Penalties: keyword-canon/confidence_canon.json.
 
 ### J. The pipeline's continuity canon (keyword-canon/continuity_canon.json)
 
@@ -2845,13 +2961,12 @@ Encounter setting per visit. Evidence is ranked, not added up: the highest non-e
 
 #### decision
 
-* **comment**: score > 0 break, < 0 joined, 0 joined and flagged. Confidence level from \|score\|: >= high_at high, >= medium_at medium, else low. P(break) = 1 / (1 + exp(-(score - b) / a)), confidence = \|2P - 1\|; x section_disagreement_factor when the three sub-scores point opposite ways. a and b are to be fitted on the labelled gaps; until then a = 2, b = 0.
+* **comment**: score > 0 break, < 0 joined, 0 joined and flagged. The engine's internal strength from \|score\|: >= high_at high, >= medium_at medium, else low (it steers the final pass). Confidence (2026-10-25, one scale for every module: stages/lib/confidence.py): P(break) = 1 / (1 + exp(-(score - b) / a)), confidence = \|2P - 1\| when the score points the way the gap was decided (else 0); x conflict (confidence_canon.json, 0.8) when the three sub-scores point opposite ways, two decisive signals disagree, or a pattern A / B fires; a decisive signal or rule (demographics, visit heading, Visual page) holds it at >= 0.9, or 0.9 x keywords_disagree when the score points the other way; a final-pass split / merge that reverses a gap: (1 - its confidence) / 2 backed by the rule, x overturned. The stored confidence_level is the confidence's band (high >= 0.80, medium >= 0.50, low below: flagged). a and b are to be fitted on the labelled gaps; until then a = 2, b = 0.
 * **high_at**: 5
 * **medium_at**: 2
 * **a**: 2.0
 * **b**: 0.0
-* **section_disagreement_factor**: 0.6
-* **review_below**: 0.25
+* **review_below**: 0.5
 
 #### conflict_rules
 

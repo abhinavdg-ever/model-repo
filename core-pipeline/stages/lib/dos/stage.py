@@ -173,6 +173,7 @@ def _kv_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "keyword": row.get("key") or "",
                 "confidence": row.get("model_score") if row.get("model_score") is not None else row.get("score"),
                 "model_scored": row.get("model_score") is not None,
+                "rule_score": row.get("score"),
             }
         )
     return found

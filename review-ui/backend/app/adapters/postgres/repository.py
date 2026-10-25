@@ -152,7 +152,10 @@ _OVERLAY_SQL: dict[str, str] = {
                                        to_jsonb(f) ->> 'provider_credentials',
                                        to_jsonb(f) -> 'signers',
                                        to_jsonb(f) ->> 'provider_version',
-                                       to_jsonb(f) ->> 'provider_confidence'
+                                       to_jsonb(f) ->> 'provider_confidence',
+                                       -- NULL until changes_2026-10-25.sql adds them.
+                                       to_jsonb(f) -> 'confidences',
+                                       to_jsonb(f) -> 'review_fields'
                                 FROM imaging_final f
                                 JOIN page_list p ON p.id = f.page_id
                                 JOIN chart_list c ON c.id = f.chart_id
@@ -1107,6 +1110,7 @@ class PostgresFolderRepository(FolderRepository):
                         fields["duplicateOf"] = str(duplicate_of)
                     if conf is not None:
                         fields["pageTypeConfidence"] = float(conf)
+                        fields["blankJunkConfidence"] = float(conf)
                     if best is not None:
                         fields["duplicateConfidence"] = float(best)
 
@@ -1172,6 +1176,8 @@ class PostgresFolderRepository(FolderRepository):
                     fields = _ensure(str(page_name))
                     key = str(et or "").strip()
                     fields["encounterType"] = enc_display.get(key, key)
+                    if conf is not None:
+                        fields["encounterConfidence"] = float(conf)
 
             with _skip_on_error("sequencing", folder_id):
                 # Page sequencing
@@ -1182,6 +1188,8 @@ class PostgresFolderRepository(FolderRepository):
                         fields["currentSequence"] = int(current)
                     if seq is not None:
                         fields["actualSequence"] = int(seq)
+                    if conf is not None:
+                        fields["sequenceConfidence"] = float(conf)
 
             with _skip_on_error("continuity", folder_id):
                 # Document continuity, then Final values. A database without
@@ -1222,8 +1230,14 @@ class PostgresFolderRepository(FolderRepository):
                 if rows["imaging_final"]:
                     for (page_name, final_type, category, final_from, final_to, final_sub,
                          final_specialty, provider, signed, credentials, signers, version,
-                         provider_confidence) in rows["imaging_final"] or []:
+                         provider_confidence, confidences, review) in rows["imaging_final"] or []:
                         fields = _ensure(str(page_name))
+                        if isinstance(confidences, dict):
+                            fields["finalConfidences"] = {
+                                k: float(v) for k, v in confidences.items() if isinstance(v, (int, float))
+                            }
+                        if isinstance(review, list):
+                            fields["reviewFields"] = [str(k) for k in review]
                         # Provider Extraction: the signature rows the extraction stage
                         # writes (the same as provider_signature.csv); the name cell
                         # carries the credentials ('Ramsey Luce, R.N.').

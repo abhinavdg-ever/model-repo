@@ -83,9 +83,9 @@ STRONG_RATIO = 0.50  # at most 50%: dark ink (pen, print), not pencil or show-th
 BLANK_MAX_FRACTION = 1e-4  # a page number or a stray dot, not content
 BLANK_METHOD = "blank_page"
 FAINT_METHOD = "faint_marks_only"
-# The model did not score these pages. Store a fixed confidence so the
-# column is not empty.
-PREMODEL_CONFIDENCE = 0.80
+# The model did not score these pages (stages/lib/confidence.py): a page with no mark at
+# all is a measurement, as sure as a rule with no model behind it (1.0 x no_model = 0.85);
+# faint marks only (pencil, show-through) are a guess on top (x fallback = 0.51).
 
 TAG_TASK = "page_tags"
 TAG_METHOD = "convnext_page_tags"
@@ -485,8 +485,8 @@ def content_before_model(image: Image.Image) -> tuple[str, float, str] | None:
 
     No marks → ``Uncertain`` / ``blank_page``. Faint marks (pencil or
     show-through) → ``Uncertain`` / ``faint_marks_only``. The model is not
-    asked to guess either page. Both store ``PREMODEL_CONFIDENCE``. Dark ink
-    returns None and the model runs.
+    asked to guess either page (``_premodel_confidence``). Dark ink returns None and the
+    model runs.
     """
     try:
         marks = page_marks(_image_bgr(image))
@@ -496,8 +496,14 @@ def content_before_model(image: Image.Image) -> tuple[str, float, str] | None:
     if float(marks["strong_fraction"]) >= BLANK_MAX_FRACTION:
         return None
     if float(marks["mark_fraction"]) < BLANK_MAX_FRACTION:
-        return "Uncertain", PREMODEL_CONFIDENCE, BLANK_METHOD
-    return "Uncertain", PREMODEL_CONFIDENCE, FAINT_METHOD
+        return "Uncertain", _premodel_confidence(BLANK_METHOD), BLANK_METHOD
+    return "Uncertain", _premodel_confidence(FAINT_METHOD), FAINT_METHOD
+
+
+def _premodel_confidence(method: str) -> float:
+    from stages.lib import confidence as conf
+
+    return conf.score(1.0, "no_model", "fallback" if method == FAINT_METHOD else "", module="handwriting")
 
 
 def handwriting_ink_evidence(image_bgr) -> dict[str, float | int]:
@@ -613,9 +619,13 @@ def upgrade_printed_with_ink(
     tall = int(ink["tall"])
     dispersed = bool(ink["dispersed"])
     if dispersed and (score >= INK_SCORE_THRESHOLD or tall >= INK_TALL_COMPONENT_MIN):
+        from stages.lib import confidence as conf
+
+        # The ink overrules the model's Printed: the model's p(Handwritten) backed by the
+        # ink, x keywords_disagree (stages/lib/confidence.py).
         return (
             "Handwritten",
-            round(max(float(p_handwritten), score), 4),
+            conf.score(conf.backed(float(p_handwritten), 1.0), "keywords_disagree", module="handwriting"),
             INK_METHOD,
         )
     return label, confidence, METHOD_NAME
@@ -648,8 +658,15 @@ def decide_label(
     else:
         label, confidence = "Printed", 1.0 - p
     if confidence < uncertain_min_confidence:
-        return "Uncertain", round(confidence, 4)
+        return "Uncertain", _under_bar(confidence, uncertain_min_confidence)
     return label, round(confidence, 4)
+
+
+def _under_bar(confidence: float, bar: float) -> float:
+    """An Uncertain page reads under the review line (stages/lib/confidence.py)."""
+    from stages.lib import confidence as conf
+
+    return conf.under_bar(confidence, bar, module="handwriting")
 
 
 def classify_tensor_batch(batch, bundle: ClassifierBundle):
@@ -703,6 +720,7 @@ def decide_tags(type_proba, vis_proba, area, bundle: ClassifierBundle) -> PageTy
     document_type = name.upper()
     if confidence < bundle.uncertain_min_confidence and document_type not in {"UNCERTAIN", "BLANK"}:
         document_type = "UNCERTAIN"
+        confidence = _under_bar(confidence, bundle.uncertain_min_confidence)
     area_pct = round(float(area) * 100.0, 1)
     return PageType(
         label=label_for_document_type(document_type, area_pct),

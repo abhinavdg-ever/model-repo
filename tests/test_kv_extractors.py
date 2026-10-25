@@ -159,7 +159,8 @@ def test_dos_has_two_states_kv_then_edge():
         detect_dos_per_page("===== 1.png =====\nno date\n")[0],
     ]
     assert [(h.get("page_source") or "none", h["confidence"]) for h in sources] == [
-        ("kv", 0.31), ("edge", 0.5), ("none", 0.0)]
+        # The model's score; an edge label 0.8 x no_model; no date: no confidence.
+        ("kv", 0.31), ("edge", 0.68), ("none", None)]
 
 
 def test_dictation_and_transcription_dates_are_never_an_edge_dos_or_a_range():
@@ -222,7 +223,7 @@ class TestDischargeDocuments:
 
     def test_admit_and_discharge_take_priority_over_the_visit_date(self):
         assert _dos_page("Doing well.", self.VISIT + self.STAY, DISCHARGE) == (
-            "2024-02-01", "2024-02-05", "admit_discharge", 0.9)
+            "2024-02-01", "2024-02-05", "admit_discharge", 0.7)  # both ends must be right: the weaker
 
     def test_a_discharge_date_pairs_with_an_edge_admit_label(self):
         assert _dos_page("Admission Date: 02/01/2024\nDoing well.", self.STAY[1:], DISCHARGE)[:3] == (
@@ -233,7 +234,7 @@ class TestDischargeDocuments:
 
     def test_edge_labels_fill_in_without_kv(self):
         assert _dos_page("Admission Date: 02/01/2024 Discharge Date: 02/05/2024", l1=DISCHARGE) == (
-            "2024-02-01", "2024-02-05", "admit_discharge", 0.5)
+            "2024-02-01", "2024-02-05", "admit_discharge", 0.68)  # edge labels: 0.8 x no_model
 
     def test_discharge_wording_without_the_l1_is_not_a_discharge_page(self):
         assert _dos_page("DISCHARGE SUMMARY\nDoing well.", self.VISIT + self.STAY)[:3] == (
@@ -337,7 +338,7 @@ class TestKvPriority:
         assert _dos_page("Note", dates[:1])[0] == "2024-05-01"
 
     def test_other_pages_end_with_dictation_then_transcription(self):
-        assert _dos_page("Note.\nT: 03/04/2024 D: 03/01/2024")[:4] == ("2024-03-01", "2024-03-01", "dictation", 0.3)
+        assert _dos_page("Note.\nT: 03/04/2024 D: 03/01/2024")[:4] == ("2024-03-01", "2024-03-01", "dictation", 0.255)
         assert _dos_page("Note.\nTranscribed: 03/04/2024")[0] == "2024-03-04"
         # A real date wins; a lab or discharge page never uses them.
         assert _dos_page("Note.\nD: 03/01/2024", [_kv("2024-02-27", "weak", 0.6)])[2] == "kv"

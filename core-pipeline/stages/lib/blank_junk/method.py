@@ -54,6 +54,7 @@ from classify import (
     CODE_RECORD_REQUEST,
 )
 from stages._support import FINAL_JUNK
+from stages.lib import confidence as conf
 from stages.lib.canon_store import CANON_DIR, CanonFile
 
 
@@ -83,8 +84,12 @@ RETRIEVAL_GROUPS = ("record_request", "roi_vendors")
 # and DOB, which must not rescue it as a face sheet. These groups are also the R3 card check.
 HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice", "id_card")
 
-# R1-R4 are rules: their confidence is fixed. R5 takes DistilBERT's probability.
-FIXED_CONFIDENCE = {"R1": 1.0, "R2": 0.99, "R3": 0.90, "R4": 0.95, "R6": 0.95}
+# How strongly each rule backs its verdict (stages/lib/confidence.py). R1-R3 judge a page
+# with (almost) no text -- empty, a placeholder, a Visual page -- where DistilBERT has
+# nothing to read: their confidence is this strength. R4 and R6 back DistilBERT's
+# probability for their verdict; R5 is DistilBERT alone.
+RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.90, "R4": 0.95, "R6": 0.95}
+NO_TEXT_RULES = ("R1", "R2", "R3")
 # Starts the reason of a pass-1 keep that is final: pass 2 does not judge that page again.
 FINAL_KEEP = "R5 keep (final)"
 MIN_TEXT_CHARS = 15
@@ -513,6 +518,23 @@ def _short_page(inputs: PageInputs, p_keep: Optional[float], votes: dict[str, An
     )
 
 
+def rule_confidence(code: int, rule: str, p_keep: Optional[float], p_junk: Optional[float]) -> float:
+    """A rule's verdict confidence (stages/lib/confidence.py). R1-R3 (no text to read):
+    the rule's strength. R4 / R6: DistilBERT's probability for the verdict (p(keep) for
+    Main, p(junk) otherwise) lifted by the rule's strength, times ``keywords_disagree``
+    when DistilBERT itself says the other side (>= 0.5); without DistilBERT the strength
+    times ``no_model``."""
+    strength = RULE_SUPPORT.get(rule, 0.5)
+    if rule in NO_TEXT_RULES:
+        return conf.score(strength, module="blank_junk")
+    p = p_keep if code == CODE_MAIN else p_junk
+    other = p_junk if code == CODE_MAIN else p_keep
+    if p is None:
+        return conf.score(strength, "no_model", module="blank_junk")
+    return conf.score(conf.backed(p, strength), "keywords_disagree" if (other or 0.0) >= 0.5 else "",
+                      module="blank_junk")
+
+
 def decide(inputs: PageInputs) -> Verdict:
     """The page's verdict: R1-R3, then in pass 1 the sure keep, in pass 2 R4, R6 and R5."""
     prof = canon()
@@ -543,8 +565,8 @@ def decide(inputs: PageInputs) -> Verdict:
 
     def ruled(code: int, rule: str, reason: str, confidence: Optional[float] = None) -> Verdict:
         votes["rule"] = rule
-        value = FIXED_CONFIDENCE.get(rule) if confidence is None else confidence
-        return Verdict(code, round(float(value if value is not None else 0.5), 4), rule, reason, votes)
+        value = rule_confidence(code, rule, p_keep, p_junk) if confidence is None else confidence
+        return Verdict(code, float(value), rule, reason, votes)
 
     # R1 blank, or a tiny page that is junk
     chars = len(re.sub(r"\s", "", text))
@@ -586,7 +608,7 @@ def decide(inputs: PageInputs) -> Verdict:
             return ruled(
                 CODE_MAIN, "R5",
                 f"{FINAL_KEEP}: DistilBERT p(keep) {p_keep:.3f} > {limit} -> Main; pass 2 skipped",
-                p_keep,
+                conf.score(p_keep),
             )
         junk_limit = t["pass1_final_junk_above"]
         hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
@@ -596,14 +618,14 @@ def decide(inputs: PageInputs) -> Verdict:
                 _junk_code(subtype), "R5",
                 f"{FINAL_JUNK}: DistilBERT p(junk) {p_junk:.3f} > {junk_limit} -> Junk / {subtype}; "
                 f"pass 2 and Final OCR 2 skipped",
-                p_junk,
+                conf.score(p_junk),
             )
         if p_junk is not None and p_junk > junk_limit:
             votes["veto"] = "handwritten"
         votes["deferred"] = True
         why = f"p(keep) {p_keep:.3f} <= {limit}" if p_keep is not None else "no DistilBERT score"
         return ruled(CODE_MAIN, "P1", f"pass 1: {why} -> Main for now, judged in pass 2 on the final OCR",
-                     p_keep if p_keep is not None else 0.5)
+                     conf.score(p_keep) if p_keep is not None else conf.score(0.5, "degraded"))
 
     # R4 signature: kv_extract's Electronic Signature only.
     if inputs.signed:
@@ -622,10 +644,10 @@ def decide(inputs: PageInputs) -> Verdict:
     # R5 DistilBERT alone.
     if p_junk is None:
         votes["review_required"] = True
-        return ruled(CODE_MAIN, "R5", "R5: DistilBERT unavailable -> Main (review)", 0.5)
+        return ruled(CODE_MAIN, "R5", "R5: DistilBERT unavailable -> Main (review)", conf.score(0.5, "degraded"))
     junk_at, review_at = t["junk_at"], t["review_junk_at"]
     if p_junk < review_at:
-        return ruled(CODE_MAIN, "R5", f"R5 DistilBERT p(junk) {p_junk:.3f} < {review_at} -> Main", p_keep)
+        return ruled(CODE_MAIN, "R5", f"R5 DistilBERT p(junk) {p_junk:.3f} < {review_at} -> Main", conf.score(p_keep))
     sure = p_junk >= junk_at
     hw_limit = float(prof.raw["handwritten_veto"]["min_handwritten_area_pct"])
     if inputs.hw_area_pct is not None and inputs.hw_area_pct > hw_limit:
@@ -634,13 +656,14 @@ def decide(inputs: PageInputs) -> Verdict:
         return ruled(
             CODE_MAIN, "R5",
             f"R5 DistilBERT p(junk) {p_junk:.3f}, but {inputs.hw_area_pct:g}% handwritten > {hw_limit:g}% -> Main (review)",
-            p_keep,
+            conf.score(p_keep),
         )
     if sure:
-        return ruled(_junk_code(subtype), "R5", f"R5 DistilBERT p(junk) {p_junk:.3f} >= {junk_at} -> Junk / {subtype}", p_junk)
+        return ruled(_junk_code(subtype), "R5", f"R5 DistilBERT p(junk) {p_junk:.3f} >= {junk_at} -> Junk / {subtype}",
+                     conf.score(p_junk))
     votes["review_required"] = True
     return ruled(
         _junk_code(subtype), "R5",
         f"R5 DistilBERT p(junk) {p_junk:.3f} in [{review_at}, {junk_at}) -> Junk / {subtype} (review)",
-        p_junk,
+        conf.under_bar(p_junk, junk_at),
     )
