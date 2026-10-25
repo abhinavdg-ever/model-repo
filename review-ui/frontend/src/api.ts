@@ -166,6 +166,10 @@ export type ImagingPageResult = {
   orientationAngle: number | null;
   tiltAngle: number | null;
   mirrored: boolean | null;
+  /** Stage 1's measured values' confidences: orientation, mirrored, tilt, visibility, handwritten_area. */
+  measuredConfidences?: Record<string, number> | null;
+  /** The subtype's own confidence (the deepest named level), apart from the page type's. */
+  subtypeConfidence?: number | null;
   pageQualityTag?: string | null;
   pageQualityConfidence: number | null;
   /** Encounter classification — logic TBD; UI shows Yet to Process when absent. */

@@ -30,6 +30,10 @@
         "ner": 0.4
       },
       "note": "Each identifier read off a page (name, DOB, member ID) backs its member status by its own confidence in the extraction (the staged row's model probability backed by the rules; 2026-10-26, user: not fixed numbers); without one, the rules' reading counts field_support.rule, NER's field_support.ner. The strongest is the base, each other one backs it (confidence.backed)."
+    },
+    "image_preprocess": {
+      "osd_scale": 3.0,
+      "note": "Tesseract OSD's orientation confidence is open-ended (about 0-20): mapped to 0-1 as 1 - exp(-c / osd_scale), so 1 -> 0.28, 3 -> 0.63, 6 -> 0.86, 10 -> 0.96; then backed by how well the page reads as English at the chosen turn (2026-10-26)."
     }
   }
 }

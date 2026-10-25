@@ -796,6 +796,7 @@ class MemoryStore:
                         "is_visible": q.get("is_visible"),
                         "handwritten_area_pct": q.get("handwritten_area_pct"),
                         "review_required": q.get("review_required"),
+                        "confidences": (q.get("quality_detail") or {}).get("confidences") or {},
                     }
                 )
 

@@ -1608,12 +1608,12 @@ function PageDetails({
             label: "Type (Printed/HW)",
             choices: TYPE_CHOICES,
           }),
-          sameValue(fmtHandwrittenArea(page.handwrittenAreaPct, sections.hw), fmtConfidence(null, sections.hw), {
+          sameValue(fmtHandwrittenArea(page.handwrittenAreaPct, sections.hw), fmtConfidence(page.measuredConfidences?.handwritten_area, sections.hw), {
             id: "handwritten_area",
             label: "Handwritten %",
             choices: HW_AREA_CHOICES,
           }),
-          sameValue(fmtVisibility(page.isVisible, sections.hw), fmtConfidence(null, sections.hw), {
+          sameValue(fmtVisibility(page.isVisible, sections.hw), fmtConfidence(page.measuredConfidences?.visibility, sections.hw), {
             id: "visibility",
             label: "Visibility",
             choices: VISIBILITY_CHOICES,
@@ -1623,16 +1623,16 @@ function PageDetails({
             label: "Quality",
             noGroundTruth: true,
           }),
-          sameValue(fmtDegrees(page.orientationAngle, sections.rotation), fmtConfidence(null, sections.rotation), {
+          sameValue(fmtDegrees(page.orientationAngle, sections.rotation), fmtConfidence(page.measuredConfidences?.orientation, sections.rotation), {
             id: "orientation",
             label: "Text Orientation",
             truth: bits.rotation,
           }),
-          sameValue(fmtDegrees(page.tiltAngle, sections.rotation), fmtConfidence(null, sections.rotation), {
+          sameValue(fmtDegrees(page.tiltAngle, sections.rotation), fmtConfidence(page.measuredConfidences?.tilt, sections.rotation), {
             id: "tilt",
             label: "Tilt (Text)",
           }),
-          sameValue(fmt(page.mirrored, sections.rotation), fmtConfidence(null, sections.rotation), {
+          sameValue(fmt(page.mirrored, sections.rotation), fmtConfidence(page.measuredConfidences?.mirrored, sections.rotation), {
             id: "mirrored",
             label: "Mirrored (Text)",
             choices: YES_NO_CHOICES,
@@ -1696,7 +1696,7 @@ function PageDetails({
             },
           },
           {
-            ...sameValue(fmtPageType(pageParts.subtype, pageTypeKnown), fmtConfidence(null, pageTypeKnown), {
+            ...sameValue(fmtPageType(pageParts.subtype, pageTypeKnown), fmtConfidence(page.subtypeConfidence, pageTypeKnown), {
               id: "page_subtype",
               label: "Page Subtype",
               truth: bits.pageType,

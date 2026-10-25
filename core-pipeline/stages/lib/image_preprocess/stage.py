@@ -10,11 +10,12 @@ Uses:
 """
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from config import (
     MAX_TILT_TO_APPLY,
@@ -98,6 +99,8 @@ def _classify_hw(image_path: Path) -> tuple[str, float | None, str, dict[str, An
             hw_label = "printed"
         tags = page.tags()
         tags["document_type"] = tags["document_type"] or hw_label
+        # Not a column: stage 1 files it with the other measured values' confidences.
+        tags["_visibility_confidence"] = page.visibility_confidence
         return hw_label, conf_out, method_s, tags
     except Exception as exc:
         logger.warning("HW classify fallback for %s: %s", image_path, exc)
@@ -243,10 +246,15 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
                 max_tilt=MAX_TILT_TO_APPLY,
             )
 
+        orientation_conf, tilt_conf = _rotation_confidences(
+            method, osd_confidence, chosen_read if small is not None else None, tilt
+        )
         return {
             "orientation_angle": orientation,
             "tilt_angle": tilt,
             "mirrored": mirrored,
+            "orientation_confidence": orientation_conf,
+            "tilt_confidence": tilt_conf,
             # A tilt over the limit is recorded but not applied, so on its
             # own it does not make the page need a corrected copy.
             "needs_correction": bool(
@@ -270,7 +278,47 @@ def _detect_rotation(image_path: Path) -> dict[str, Any]:
             "needs_correction": False,
             "rotation_applied": False,
             "method": "fallback",
+            # Nothing judged the page: a stand-in (0.5 x degraded).
+            "orientation_confidence": _stand_in(),
+            "tilt_confidence": _stand_in(),
         }
+
+
+def _stand_in() -> float:
+    from stages.lib import confidence as conf
+
+    return conf.score(0.5, "degraded", module="image_preprocess")
+
+
+def _rotation_confidences(
+    method: str, osd_confidence: float, read: Any, tilt: float
+) -> tuple[Optional[float], Optional[float]]:
+    """How sure the turn (and flip) and the tilt are (stages/lib/confidence.py,
+    2026-10-26, user). Turn: Tesseract OSD's own confidence, open-ended, mapped to
+    0-1 as 1 - exp(-c / osd_scale), backed by how well the page reads as English at the
+    chosen turn (the share of English words; the reading test confirms it); when the
+    reading test overruled OSD: that share x overturned; no OSD answer: that share x
+    fallback. A page with nothing to read (blank): OSD's alone. Tilt: how well the page
+    reads at the kept tilt; a tilt over the limit (recorded, not applied) x conflict."""
+    import math
+
+    from stages.lib import confidence as conf
+
+    scale = float(conf.settings_for("image_preprocess", {"osd_scale": 3.0})["osd_scale"])
+    osd_p = 1.0 - math.exp(-max(0.0, osd_confidence) / scale) if osd_confidence else None
+    share = float(read.share) if read is not None and read.tokens else None
+    if method == "osd":
+        turn = conf.backed(osd_p or 0.0, share or 0.0) if share is not None else osd_p
+        turn = conf.score(turn, module="image_preprocess")
+    elif method == "readability":
+        turn = conf.score(share if share is not None else 0.5, "overturned", module="image_preprocess")
+    else:  # osd_undecided
+        turn = conf.score(share if share is not None else 0.5, "fallback", module="image_preprocess")
+    if share is None:
+        tilt_conf = conf.score(0.5, "fallback", module="image_preprocess")
+    else:
+        tilt_conf = conf.score(share, "conflict" if abs(tilt) > MAX_TILT_TO_APPLY else "", module="image_preprocess")
+    return turn, tilt_conf
 
 
 ROTATION_COLS = [
@@ -282,6 +330,8 @@ ROTATION_COLS = [
     "tilt_angle",
     "mirrored",
     "rotation_applied",
+    "orientation_confidence",
+    "tilt_confidence",
 ]
 
 HW_COLS = [
@@ -296,6 +346,8 @@ HW_COLS = [
     "handwritten_probability",
     "is_visible",
     "handwritten_area_pct",
+    "visibility_confidence",
+    "handwritten_area_confidence",
 ]
 
 QUALITY_COLS = [
@@ -379,9 +431,25 @@ def _measure(args: tuple[dict[str, Any], Path, str]) -> dict[str, Any]:
         scored_path = corrected or image_path
         use_corrected, image_relpath = page_image_source(chart_name, page["page_name"])
         hw_label, hw_conf, hw_method, tags = _classify_hw(scored_path)
+        visibility_conf = tags.pop("_visibility_confidence", None)
         quality = _apply_quality_postprocess(
             _measure_quality(scored_path), tags.get("document_type")
         )
+        # The measured values' confidences (2026-10-26, user), in quality_detail: the turn and
+        # flip (one decision), the tilt, visibility (the page-tag model's probability) and
+        # the handwritten area (as sure as the page tag it comes with).
+        quality["quality_detail"] = {
+            **(quality.get("quality_detail") or {}),
+            "confidences": {
+                k: v for k, v in {
+                    "orientation": rot.get("orientation_confidence"),
+                    "mirrored": rot.get("orientation_confidence"),
+                    "tilt": rot.get("tilt_confidence"),
+                    "visibility": visibility_conf,
+                    "handwritten_area": hw_conf if tags.get("handwritten_area_pct") is not None else None,
+                }.items() if v is not None
+            },
+        }
         page_type = {
             **tags,
             "review_required": _review_required(quality.get("quality_tag"), tags),
@@ -422,6 +490,9 @@ def _rewrite_csvs(conn: Any, chart_id: int, chart_name: str) -> tuple[Path, Path
     for row in rows:
         orientation = float(row["orientation_angle"] or 0)
         label = row["printed_or_handwritten"] or "printed"
+        confs = row.get("confidences") or {}
+        if isinstance(confs, str):
+            confs = json.loads(confs)
         if label == "handwritten":
             hw_display = "Handwritten"
         elif label == "uncertain":
@@ -440,6 +511,8 @@ def _rewrite_csvs(conn: Any, chart_id: int, chart_name: str) -> tuple[Path, Path
                 "tilt_angle": float(row["tilt_angle"] or 0),
                 "mirrored": bool(row["mirrored"]),
                 "rotation_applied": bool(row["rotation_applied"]),
+                "orientation_confidence": confs.get("orientation"),
+                "tilt_confidence": confs.get("tilt"),
             }
         )
         hw_rows.append(
@@ -455,6 +528,8 @@ def _rewrite_csvs(conn: Any, chart_id: int, chart_name: str) -> tuple[Path, Path
                 "handwritten_probability": row.get("handwritten_probability"),
                 "is_visible": row.get("is_visible"),
                 "handwritten_area_pct": row.get("handwritten_area_pct"),
+                "visibility_confidence": confs.get("visibility"),
+                "handwritten_area_confidence": confs.get("handwritten_area"),
             }
         )
         quality_rows.append(

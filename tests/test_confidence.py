@@ -106,3 +106,24 @@ def test_a_page_with_no_member_read_takes_the_absence():
     from stages.lib.member.stage import _page_confidence
 
     assert _page_confidence(_member_page("not_verified"), 0.6) == 0.6
+
+
+def test_orientation_and_tilt_confidence_from_osd_and_the_read():
+    from types import SimpleNamespace
+
+    from stages.lib.image_preprocess.stage import _rotation_confidences
+
+    read = SimpleNamespace(share=0.9, tokens=120)
+    turn, tilt = _rotation_confidences("osd", 6.0, read, 1.0)
+    assert 0.86 < turn < 1.0 and tilt == pytest.approx(0.9)  # OSD 0.86, backed by a page that reads
+    assert _rotation_confidences("readability", 6.0, read, 1.0)[0] == pytest.approx(0.63)  # 0.9 x overturned
+    turn, tilt = _rotation_confidences("osd_undecided", 0.0, None, 0.0)
+    assert turn == pytest.approx(0.3) and tilt == pytest.approx(0.3)  # nothing read: 0.5 x fallback
+
+
+def test_review_ui_subtype_confidence_is_the_deepest_named_level():
+    from app.services.imaging_overlays import subtype_confidence
+
+    assert subtype_confidence("Lab Result", "0.9", "Chemistry Report", "0.6") == 0.6
+    assert subtype_confidence("Physical Exam", 0.24, None, None) == 0.24
+    assert subtype_confidence("Others", 0.9, None, None) is None

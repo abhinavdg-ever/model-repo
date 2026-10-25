@@ -320,6 +320,9 @@ def overlay_fields(
         if not hit:
             out.append(page)
             continue
+        if "measuredConfidences" in hit and page.measuredConfidences:
+            # Two files carry these (hw_printed, rotation): merge, never replace.
+            hit = {**hit, "measuredConfidences": {**page.measuredConfidences, **hit["measuredConfidences"]}}
         out.append(page.model_copy(update=hit))
     return out
 
@@ -584,6 +587,9 @@ def index_hw_rows(rows: list[dict[str, str]], chart_name: str) -> dict[str, dict
             ),
         }
         fields = {k: v for k, v in fields.items() if v is not None and v != ""}
+        measured = _measured(row, visibility="visibility_confidence", handwritten_area="handwritten_area_confidence")
+        if measured:
+            fields["measuredConfidences"] = measured
         if not fields:
             continue
         _put_page_keys(by_key, row, fields)
@@ -594,6 +600,27 @@ def index_hw_rows(rows: list[dict[str, str]], chart_name: str) -> dict[str, dict
             by_key[f"{raw_num}.jpg"] = fields
             by_key[f"{raw_num}.png"] = fields
     return by_key
+
+
+def subtype_confidence(l2: Any, l2_conf: Any, l3: Any, l3_conf: Any) -> float | None:
+    """The subtype's own confidence: the deepest named level's (L3, else L2; Others is not
+    named), as core-pipeline's axes.subtype_confidence."""
+    for name, value in ((l3, l3_conf), (l2, l2_conf)):
+        if name and str(name).strip() and str(name).strip() != "Others":
+            parsed = _parse_confidence(value) if isinstance(value, str) else (float(value) if value is not None else None)
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def _measured(row: dict[str, str], **columns: str) -> dict[str, float]:
+    """Stage 1's measured values' confidences from a CSV row: {key: column}."""
+    out: dict[str, float] = {}
+    for key, column in columns.items():
+        value = _parse_confidence(row.get(column))
+        if value is not None:
+            out[key] = value
+    return out
 
 
 def index_rotation_rows(
@@ -625,6 +652,10 @@ def index_rotation_rows(
             "mirrored": _parse_bool(row.get("mirrored")),
         }
         fields = {k: v for k, v in fields.items() if v is not None}
+        measured = _measured(row, orientation="orientation_confidence", mirrored="orientation_confidence",
+                             tilt="tilt_confidence")
+        if measured:
+            fields["measuredConfidences"] = measured
         if not fields:
             continue
         if filename:
@@ -1050,6 +1081,11 @@ def index_codeable_rows(
         confidence = _parse_confidence(row.get("confidence"))
         if confidence is not None:
             fields["pageTypeConfidence"] = confidence
+        subtype = subtype_confidence(
+            row.get("axes_l2"), row.get("axes_l2_confidence"), row.get("axes_l3"), row.get("axes_l3_confidence")
+        )
+        if subtype is not None:
+            fields["subtypeConfidence"] = subtype
         fields["specialty"] = (row.get("specialty") or "").strip() or "Unknown"
         if (row.get("specialty") or "").strip():
             fields["specialtyConfidence"] = _parse_confidence(row.get("specialty_confidence"))

@@ -95,7 +95,8 @@ def test_csvs_and_upsert_use_the_schema_column_names():
     from stages.lib.image_preprocess.stage import HW_COLS, QUALITY_COLS
 
     columns = ["document_type", "handwritten_probability", "is_visible", "handwritten_area_pct"]
-    assert HW_COLS[-4:] == columns
+    # Then the measured values' confidences (from quality_detail, not columns).
+    assert HW_COLS[-6:] == [*columns, "visibility_confidence", "handwritten_area_confidence"]
     assert QUALITY_COLS[-1] == "review_required"
     params = inspect.signature(upsert_quality).parameters
     assert all(name in params for name in [*columns, "review_required"])

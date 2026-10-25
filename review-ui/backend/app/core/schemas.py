@@ -215,6 +215,11 @@ class ImagingPageResult(BaseModel):
     orientationAngle: float | None = None
     tiltAngle: float | None = None
     mirrored: bool | None = None
+    # Stage 1's measured values' confidences (2026-10-26): orientation, mirrored, tilt,
+    # visibility, handwritten_area (ocr_quality_results.quality_detail.confidences).
+    measuredConfidences: dict[str, float] | None = None
+    # The subtype's own confidence (the deepest named level, conditional on its parent).
+    subtypeConfidence: float | None = None
     pageQualityTag: str | None = None
     pageQualityConfidence: float | None = None
     dosFrom: str | None = None

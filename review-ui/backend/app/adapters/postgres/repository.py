@@ -45,6 +45,7 @@ from app.services.imaging_overlays import (
     empty_imaging_pages,
     page_type_fields,
     signer_fields,
+    subtype_confidence,
 )
 
 logger = logging.getLogger("review_ui.postgres")
@@ -74,7 +75,8 @@ _OVERLAY_SQL: dict[str, str] = {
                                    q.quality_score, q.quality_tag,
                                    q.orientation_angle, q.tilt_angle, q.mirrored,
                                    q.document_type, q.is_visible,
-                                   q.handwritten_area_pct
+                                   q.handwritten_area_pct,
+                                   q.quality_detail -> 'confidences'
                             FROM ocr_quality_results q
                             JOIN page_list p ON p.id = q.page_id
                             JOIN chart_list c ON c.id = q.chart_id
@@ -115,7 +117,8 @@ _OVERLAY_SQL: dict[str, str] = {
                                    pc.classification_category, pc.confidence,
                                    to_jsonb(pc) ->> 'page_type',
                                    to_jsonb(pc) -> 'axes' ->> 'specialty',
-                                   to_jsonb(pc) -> 'axes' ->> 'specialty_confidence'
+                                   to_jsonb(pc) -> 'axes' ->> 'specialty_confidence',
+                                   to_jsonb(pc) -> 'axes'
                             FROM page_classification pc
                             JOIN page_list p ON p.id = pc.page_id
                             JOIN chart_list c ON c.id = pc.chart_id
@@ -1079,7 +1082,7 @@ class PostgresFolderRepository(FolderRepository):
                 # Quality
                 for (
                     page_name, hw, conf, qscore, qtag, orient, tilt, mirrored,
-                    doc_type, visible, hw_area,
+                    doc_type, visible, hw_area, measured,
                 ) in rows["quality"] or []:
                     fields = _ensure(str(page_name))
                     if hw:
@@ -1107,6 +1110,10 @@ class PostgresFolderRepository(FolderRepository):
                     fields.update(
                         page_type_fields(doc_type, visible, hw_area)
                     )
+                    if isinstance(measured, dict) and measured:
+                        fields["measuredConfidences"] = {
+                            k: float(v) for k, v in measured.items() if isinstance(v, (int, float))
+                        }
 
             with _skip_on_error("blank_junk", folder_id):
                 # Blank/junk — v7 stamps exactly one final row per page,
@@ -1155,8 +1162,13 @@ class PostgresFolderRepository(FolderRepository):
 
             with _skip_on_error("page_classification", folder_id):
                 # Codable / non-codable / discharge (page_classification)
-                for page_name, subtype, cat, conf, page_type, specialty, specialty_conf in rows["page_classification"] or []:
+                for page_name, subtype, cat, conf, page_type, specialty, specialty_conf, axes_json in rows["page_classification"] or []:
                     fields = _ensure(str(page_name))
+                    if isinstance(axes_json, dict):
+                        sub = subtype_confidence(axes_json.get("l2"), axes_json.get("l2_confidence"),
+                                                 axes_json.get("l3"), axes_json.get("l3_confidence"))
+                        if sub is not None:
+                            fields["subtypeConfidence"] = sub
                     fields["specialty"] = specialty or "Unknown"
                     if specialty_conf:
                         fields["specialtyConfidence"] = float(specialty_conf)

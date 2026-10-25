@@ -162,6 +162,8 @@ class PageType:
     p_handwritten: float | None = None
     visibility: str | None = None
     handwritten_area_pct: float | None = None
+    # The page-tag model's probability for its visibility answer (2026-10-26).
+    visibility_confidence: float | None = None
 
     def as_tuple(self) -> tuple[Any, float | None, str]:
         return self.label, self.confidence, self.method
@@ -730,6 +732,7 @@ def decide_tags(type_proba, vis_proba, area, bundle: ClassifierBundle) -> PageTy
         p_handwritten=round(float(type_proba[hw_index]), 4),
         visibility=VISIBILITY_TAGS[int(vis_proba.argmax())],
         handwritten_area_pct=area_pct,
+        visibility_confidence=round(float(vis_proba.max()), 4),
     )
 
 

@@ -2204,7 +2204,8 @@ def list_quality_for_csv(conn: Any, chart_id: int) -> list[dict[str, Any]]:
                    q.rotation_applied, q.hw_confidence, q.hw_method,
                    q.quality_tag, q.quality_score, q.input_dpi,
                    q.document_type, q.handwritten_probability, q.is_visible,
-                   q.handwritten_area_pct, q.review_required
+                   q.handwritten_area_pct, q.review_required,
+                   q.quality_detail -> 'confidences' AS confidences
               FROM ocr_quality_results q
               JOIN page_list p ON p.id = q.page_id
              WHERE q.chart_id = %s
