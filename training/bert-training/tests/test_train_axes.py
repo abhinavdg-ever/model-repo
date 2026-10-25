@@ -386,3 +386,48 @@ def test_class_weight_modes(space):
     # Repeats count as pages: doubling every page leaves the weights alone.
     assert ax.class_weights(targets, "L1", len(space["L1"]), "balanced", [2.0] * len(targets)).tolist() == \
         pytest.approx(balanced.tolist())
+
+
+def test_label_split_properties_the_pack_asks_for():
+    """No group on two sides; every label in 3+ groups has train pages; mock pages are
+    always train (Claude Cowork pack, 2026-10-25)."""
+    import random as rnd
+
+    rng = rnd.Random(7)
+    records, labels, groups = [], [], []
+    for g in range(60):
+        pages = rng.randint(1, 4)
+        labs = ["L1:" + rng.choice("ABCD")] + (["L2:" + rng.choice("xyz")] if rng.random() < 0.7 else []) + (
+            ["specialty:rare"] if g in (3, 40) else [])
+        for p in range(pages):
+            records.append({"synthetic": False})
+            labels.append(labs)
+            groups.append(f"chart:{g}")
+    for m in range(5):  # mock pages, each its own group
+        records.append({"synthetic": True})
+        labels.append(["L1:A"])
+        groups.append(f"page:mock{m}")
+    sides = ax.split_by_labels(records, labels, groups, 0.15, 0.15, seed=42, min_eval_groups=3)
+
+    by_group = {}
+    for g, s in zip(groups, sides):
+        by_group.setdefault(g, set()).add(s)
+    assert all(len(s) == 1 for s in by_group.values())              # no group on two sides
+    assert {"train", "val", "test"} <= set(sides)
+    groups_of = {}
+    for labs, g in zip(labels, groups):
+        for lab in labs:
+            groups_of.setdefault(lab, set()).add(g)
+    for lab, gs in groups_of.items():
+        if len(gs) >= 3:
+            assert any(lab in labs and s == "train" for labs, s in zip(labels, sides)), lab
+    assert all(s == "train" for r, s in zip(records, sides) if r["synthetic"])   # mock pages train
+    assert all(by_group[f"chart:{g}"] == {"train"} for g in (3, 40))  # a label in 2 groups stays in train
+
+
+def test_the_old_l1_split_still_works():
+    records = [{"synthetic": False} for _ in range(40)] + [{"synthetic": True}]
+    l1 = [("A", "B")[i % 2] for i in range(40)] + ["A"]
+    groups = [f"chart:{i // 2}" for i in range(40)] + ["page:mock"]
+    sides = ax.split_real_pages(records, l1, groups, 0.2, 0.2, seed=1)
+    assert sides[-1] == "train" and {"train", "val", "test"} <= set(sides)

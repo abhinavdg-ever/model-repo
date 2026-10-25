@@ -480,13 +480,18 @@ Five values: **Inpatient**, **Outpatient (F2F)**, **Outpatient (Evisit)**, **Out
   the page type, 1,086 are inherited from another page of the visit, 21 are the client
   default (never learned). Inherited labels train at half weight.
 
-### 5.2 Final: the encounter's vote [built; the client default to build]
+### 5.2 Final: the first page, else the encounter's vote [built; the client default to build]
 
 The **encounter range** is the continuity document: from its New page through its
-Continue pages to its Last page. Every page of the range votes its Extracted encounter
-type:
+Continue pages to its Last page.
 
-1. The first page counts **twice**.
+**The first page decides [built 2026-10-25, user]** when it has evidence of its own: a
+tier 1 page type, a tier 2 phrase, or the encounter model's confident answer
+(`decided_by = first_page`; conflict flagged when another page says otherwise). Only when
+the first page cannot decide (it is a lab or other Not Applicable page, or carries only
+its family's default) does every page of the range vote its Extracted encounter type:
+
+1. The first page still counts **twice**.
 2. **Not Available wins only when every vote is Not Available**: one page voting a
    setting sets the Not Available votes aside.
 3. Otherwise the weighted majority wins; a tie goes to the first page's vote.
@@ -592,6 +597,20 @@ L2, because section tagging decides it):
   page comes back Progress Note).
 * **Baseline to beat** (from the pack): TF-IDF + logistic regression, cross-validated by
   chart on the new labels, macro F1 0.65 for L1, 0.36 for L1 > L2, 0.36 for specialty.
+  The pack's CPU check run of the patched trainer (DistilBERT, 256 tokens, 4 epochs):
+  test macro F1 L1 0.56, L2 0.43, L3 0.56, specialty 0.30; Superbill F1 0.80.
+* **Four encoders to compare [ready 2026-10-25]** (`page_axes.ipynb` → `RUNS`, same seed
+  and split, mock pages on): `distilbert-base-uncased` (512 tokens, 15 epochs, lr 3e-5,
+  batch 16), `roberta-base` (512, 12, 2e-5, 16), `emilyalsentzer/Bio_ClinicalBERT` (512,
+  12, 2e-5, 16), `answerdotai/ModernBERT-base` (1,024, 12, 3e-5, 8; transformers ≥ 4.48).
+  The last cell compares them on test macro F1 of L1, L2, L3 and specialty, small-class
+  recall (fewer than 30 training pages), Lab Report read as Progress Note and the test
+  pages. The pipeline's loaders take any of them: `AutoModel` / `AutoTokenizer` from the
+  model folder, the hidden size from its config, `max_length` from `label_space.json`.
+* Specialty training pages on the new split: 26 of 29 specialties have at least 10, so the
+  pipeline's gate (`specialty_min_train_pages` 10) keeps them; Nutrition (3), Wound Care
+  (5) and Nursing (7) are never asserted by the model and are left to the specialty
+  keywords.
 
 ### 7.2 Encounter (`training/bert-training-encounter`)
 
@@ -607,7 +626,18 @@ L2, because section tagging decides it):
   (the first run's target). Page-level counts: Not Available 1,132, F2F 360, Inpatient
   125, Evisit 33, Home Visit 17: the two small classes are very small.
 * `train: false` rows (the client-default pages) are never learned; reported apart.
-* Inherited labels at weight 0.5; class-weighted loss and macro-F1 selection.
+* Inherited labels at weight 0.5; macro-F1 selection.
+* **Balancing Evisit and Home Visit [built 2026-10-25, user]:** classes with fewer than
+  100 training pages are oversampled (repeat-factor sampling, at most 4 repeats): Evisit
+  about ×2, Home Visit ×2.8, Inpatient ×1.3; the loss weights are softened to the square
+  root of inverse frequency (`--oversample`, `--max-repeat`, `--class-weight`). Plus **80
+  synthetic Evisit / Home Visit pages** (`make_synthetic_pages.py` → `synthetic_pages.jsonl`:
+  invented practices, people and dates; the setting stated many ways -- video, telephone,
+  portal, POS 02 / 10 / 12, modifier 95, residence, assisted living, homebound -- in
+  different places; half with a neutral title so the title alone is not the cue), training
+  side only: Evisit 24 → 64 and Home Visit 13 → 53 training pages. Scores stay real-page
+  scores. Real pages remain the limit: more labelled charts with telehealth and home
+  visits would help most.
 * Split by chart; synthetic pages training only; **20 epochs**.
 * Reported per class, page by page **and visit by visit** (the visit's truth is
   `encounter_type`; pages with no evidence abstain), by label basis, and on the pack's
@@ -718,6 +748,20 @@ confident model, and page types the model never learned are named. The Progress 
 from keywords is unreliable: Lab and Imaging Results was found on 4 of 9 validation
 pages and 0 of 3 test pages; at the 0.2 minimum it beats "always Others" on validation
 (35 / 176 vs 31) and loses on test (45 / 183 vs 62). Too few pages to settle it.
+
+**Correct answers the old path gate hid** (the pack's check: only 34 of 119 correct
+test pages passed `path_min` 0.5 in its run). With the installed model's cached answers
+on the relabelled pages, of the non-Progress-Note pages where the model's L1 and L2 are
+right:
+
+| | Model right | Old gate (path score ≥ 0.5) | The vote (≥ 0.2) |
+|---|---|---|---|
+| Test, all | 125 | 76 | **120** |
+| Test, small classes (< 30 training pages) | 19 | 14 | **18** |
+| Validation, all | 170 | 117 | **152** |
+| Validation, small classes | 45 | 28 | **39** |
+
+The path gate is gone (3.1); the vote keeps nearly every correct answer.
 
 **Encounter model**: section 5.4; its vote thresholds: 5.1.
 
@@ -2650,7 +2694,7 @@ Encounter setting per visit. Evidence is ranked, not added up: the highest non-e
 
 **Negatives** (phrases that cancel a match): phrase: follow up with your primary care; cancels: follow up, phrase: outpatient follow up; cancels: follow up, phrase: follow up in the office; cancels: follow up, phrase: discharged home; cancels_setting: home, phrase: discharge to home; cancels_setting: home, phrase: discharged to home; cancels_setting: home, phrase: scheduled for admission; cancels: admission date, date of admission, admitted on, phrase: pending admission; cancels: admission date, date of admission, admitted on, phrase: if admitted; cancels: admission date, date of admission, admitted on, phrase: telephone message; cancels_setting: outpatient_tele, phrase: phone message; cancels_setting: outpatient_tele, phrase: left a message; cancels_setting: outpatient_tele
 
-**Vote**: note: 2026-10-23 (user): every page of an encounter votes for its encounter type and the first page counts first_page_weight times; Not Applicable wins only when every vote is Not Applicable (one page voting a setting sets those votes aside); otherwise the weighted majority of the settings wins (a tie goes to the first page's vote), confidence = the winner's share of the weight. A page votes Not Applicable when its L1 family is not in applies_to.families (a lab report), else its own tier 1 / tier 2 evidence, else its family's default below. A page with none of these does not vote; an encounter with no vote takes default.; first_page_weight: 2; family_defaults: Progress Note: outpatient_f2f; Discharge Summary: inpatient
+**Vote**: note: 2026-10-25 (user): the encounter's FIRST PAGE decides when it has evidence of its own (tier 1 page type, tier 2 phrase, or the encounter model: decided_by first_page). Only when it cannot (Not Applicable, its family default, or nothing) does every page vote: the first page counts first_page_weight times; Not Applicable wins only when every vote is Not Applicable; otherwise the weighted majority of the settings wins (a tie goes to the first page's vote), confidence = the winner's share of the weight.; first_page_weight: 2; family_defaults: Progress Note: outpatient_f2f; Discharge Summary: inpatient
 
 ### J. The pipeline's continuity canon (keyword-canon/continuity_canon.json)
 

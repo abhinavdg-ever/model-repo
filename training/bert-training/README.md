@@ -99,6 +99,22 @@ The model lands in `BASE_PATH/page-axes/`. The default base model
 Hugging Face is blocked, set `BASE_MODEL` (notebook) or `--base-model` to a
 folder with vendored weights.
 
+### Comparing encoders (2026-10-25)
+
+`page_axes.ipynb` → `RUNS` holds four encoders (same seed, split and mock pages); set
+`RUN`, run all, repeat per run; each writes `runs/<RUN>/`, and the last cell compares them:
+
+| `RUN` | `--base-model` | `--max-length` | `--epochs` | `--lr` | `--batch-size` |
+|---|---|---:|---:|---:|---:|
+| distilbert | `distilbert-base-uncased` | 512 | 15 | 3e-5 | 16 |
+| roberta | `roberta-base` | 512 | 12 | 2e-5 | 16 |
+| bioclinicalbert | `emilyalsentzer/Bio_ClinicalBERT` | 512 | 12 | 2e-5 | 16 |
+| modernbert | `answerdotai/ModernBERT-base` | 1024 | 12 | 3e-5 | 8 |
+
+Pick on test macro F1 of L1, L2 and specialty, small-class recall and the test pages,
+not on accuracy alone. ModernBERT needs transformers >= 4.48; base-size models are about
+twice DistilBERT's size and CPU time (ModernBERT at 1,024 tokens about four times).
+
 ### From a terminal
 
 ```bash

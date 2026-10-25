@@ -24,6 +24,7 @@ What it learns (``--target``):
     python train_encounter.py --check          # two steps and a time estimate; saves nothing
     python train_encounter.py                  # a run: 20 epochs
     python train_encounter.py --with-mock      # + data/mock_pages.jsonl, training split only
+    python train_encounter.py --with-mock data/mock_pages.jsonl synthetic_pages.jsonl   # + Evisit / Home Visit pages
 
 What is learned, and what is not:
 
@@ -34,7 +35,10 @@ What is learned, and what is not:
   another page of the visit, so the page itself may say nothing about the
   encounter: they train at ``--inherited-weight`` (0.5). ``stated`` / ``field`` /
   ``inferred`` / ``prior`` / ``hand-labelled`` train at 1.
-* The loss is class-weighted, so Home Visit (51 pages) and Evisit (120) count.
+* Small classes are balanced (2026-10-25): pages of a class with fewer than ``--oversample``
+  (100) training pages repeat (repeat-factor sampling, at most ``--max-repeat`` 4), and the
+  loss weights are the square root of inverse frequency (``--class-weight sqrt``), so Home
+  Visit and Evisit count without being corrected twice.
 
 The split is by chart (the leading number of ``chart_id``: ``53688890`` and
 ``53688890_240126_2000`` are one chart); loose pages stand alone; synthetic pages
@@ -81,6 +85,14 @@ BASIS_WEIGHT = {"inherited": 0.5}  # every other basis trains at 1
 # 2026-10-25 (user: the first page-target run said No evidence on page far too often):
 # pages that show no setting are left out by default; the model learns from pages that do.
 NO_EVIDENCE_WEIGHT = 0.0
+# Small classes (2026-10-25, user: balance Evisit and Home Visit), as in the page-axes trainer:
+# pages of a class with fewer than OVERSAMPLE training pages repeat, and the loss weights are
+# softened to the square root since the repeats already correct most of the imbalance. 100,
+# not the page trainer's 30: Evisit (~25 training pages) repeats about x2, Home Visit (~14)
+# about x2.7, Inpatient (~60) x1.3; F2F and Not Available do not repeat.
+OVERSAMPLE_PAGES = 100
+MAX_REPEAT = 4.0
+CLASS_WEIGHT = "sqrt"
 
 BASE_MODEL = "distilbert-base-uncased"
 MAX_LENGTH = 512
@@ -101,8 +113,9 @@ IGNORE = -100
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--data", type=Path, default=DEFAULT_DATA, help="encounter_tags.jsonl (default: data/)")
-    p.add_argument("--with-mock", nargs="?", type=Path, const=DEFAULT_MOCK, default=None, metavar="JSONL",
-                   help="add synthetic pages (default data/mock_pages.jsonl), training split only")
+    p.add_argument("--with-mock", nargs="*", type=Path, default=None, metavar="JSONL",
+                   help="add synthetic pages, training split only: the files named (default data/mock_pages.jsonl; "
+                        "synthetic_pages.jsonl adds Evisit and Home Visit pages)")
     p.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="model folder (best epoch)")
     p.add_argument("--base-model", default=BASE_MODEL,
                    help="Hugging Face name or a local folder (use a folder where Hugging Face is blocked)")
@@ -124,6 +137,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--no-evidence-weight", type=float, default=NO_EVIDENCE_WEIGHT,
                    help="page target: loss weight of No evidence on page rows (0, the default, leaves them out "
                         "of training and of the page scores; 1 trains it as a full class)")
+    p.add_argument("--oversample", type=int, default=OVERSAMPLE_PAGES,
+                   help="repeat training pages of classes with fewer training pages than this (0: off)")
+    p.add_argument("--max-repeat", type=float, default=MAX_REPEAT)
+    p.add_argument("--class-weight", choices=("sqrt", "balanced", "none"), default=CLASS_WEIGHT)
     p.add_argument("--inherited-weight", type=float, default=BASIS_WEIGHT["inherited"],
                    help="loss weight of a label inherited from another page of the visit (0 leaves them out)")
     return p.parse_args(argv)
@@ -458,10 +475,36 @@ def seed_everything(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
+def repeat_factors(labels: list[int], threshold: int, max_repeat: float) -> list[float]:
+    """Repeat-factor sampling: per training page, sqrt(threshold / training pages of its
+    class), at least 1, at most max_repeat."""
+    if threshold <= 0:
+        return [1.0] * len(labels)
+    count = Counter(labels)
+    return [min(max_repeat, max(1.0, math.sqrt(threshold / count[label]))) for label in labels]
+
+
 def make_loader(ids: list[list[int]], labels: list[int], weights: list[float], pad_id: int, batch_size: int,
-                shuffle: bool, seed: int):
+                shuffle: bool, seed: int, repeat: list[float] | None = None):
     import torch
-    from torch.utils.data import DataLoader
+    from torch.utils.data import DataLoader, Sampler
+
+    class RepeatSampler(Sampler):
+        """Each epoch: page i appears floor(r_i) times, plus once more with probability
+        r_i - floor(r_i); then shuffled."""
+
+        def __init__(self) -> None:
+            self.rng = random.Random(seed)
+
+        def __iter__(self):
+            out = []
+            for i, r in enumerate(repeat):
+                out += [i] * (int(r) + (self.rng.random() < r - int(r)))
+            self.rng.shuffle(out)
+            return iter(out)
+
+        def __len__(self) -> int:
+            return int(round(sum(repeat)))
 
     def collate(batch):
         width = max(len(ids[i]) for i in batch)
@@ -473,21 +516,35 @@ def make_loader(ids: list[list[int]], labels: list[int], weights: list[float], p
             "weight": torch.tensor([weights[i] for i in batch], dtype=torch.float),
         }
 
+    if repeat is not None and any(r > 1 for r in repeat):
+        return DataLoader(list(range(len(ids))), batch_size=batch_size, sampler=RepeatSampler(),
+                          collate_fn=collate, num_workers=0)
     return DataLoader(list(range(len(ids))), batch_size=batch_size, shuffle=shuffle, collate_fn=collate,
                       num_workers=0, generator=torch.Generator().manual_seed(seed))
 
 
-def class_weights(labels: list[int], weights: list[float]):
-    """Inverse frequency over the weighted training rows."""
+def class_weights(labels: list[int], weights: list[float], mode: str = "balanced",
+                  repeat: list[float] | None = None):
+    """Inverse frequency over the weighted training rows as sampled (repeats counted);
+    "sqrt" softens it, "none" is 1 for every class that trains."""
     import torch
 
+    repeat = repeat or [1.0] * len(labels)
     counts = Counter()
-    for label, w in zip(labels, weights):
+    for label, w, r in zip(labels, weights, repeat):
         if w > 0:
-            counts[label] += w
+            counts[label] += w * r
     n = sum(counts.values())
-    return torch.tensor([n / (len(CLASSES) * max(1e-6, counts[c])) if counts[c] else 0.0
-                         for c in range(len(CLASSES))], dtype=torch.float)
+    out = []
+    for c in range(len(CLASSES)):
+        if not counts[c]:
+            out.append(0.0)
+        elif mode == "none":
+            out.append(1.0)
+        else:
+            w = n / (len(CLASSES) * counts[c])
+            out.append(math.sqrt(w) if mode == "sqrt" else w)
+    return torch.tensor(out, dtype=torch.float)
 
 
 def weighted_loss(logits, batch, class_w):
@@ -535,8 +592,8 @@ def main(argv: list[str] | None = None) -> int:
     print("Environment: " + ", ".join(f"{k} {v}" for k, v in environment.items()), flush=True)
 
     records, short = load_records(args.data, args.min_chars, target=args.target)
-    if args.with_mock is not None:
-        mock, mock_short = load_records(args.with_mock, args.min_chars, synthetic=True, target=args.target)
+    for mock_path in ([DEFAULT_MOCK] if args.with_mock == [] else args.with_mock or []):
+        mock, mock_short = load_records(mock_path, args.min_chars, synthetic=True, target=args.target)
         records += mock
         short += mock_short
     weights = [loss_weight(r, args.inherited_weight, args.no_evidence_weight) for r in records]
@@ -568,13 +625,19 @@ def main(argv: list[str] | None = None) -> int:
     model = build_model(args.base_model, args.dropout).to(device)
     pad = tokenizer.pad_token_id or 0
 
-    def loader(ix: list[int], shuffle: bool):
+    def loader(ix: list[int], shuffle: bool, repeat: list[float] | None = None):
         return make_loader([ids[i] for i in ix], [labels[i] for i in ix], [weights[i] for i in ix], pad,
-                           args.batch_size, shuffle, args.seed)
+                           args.batch_size, shuffle, args.seed, repeat)
 
     train_ix = [i for i in split["train"] if weights[i] > 0]
-    train_loader = loader(train_ix, True)
-    class_w = class_weights([labels[i] for i in train_ix], [weights[i] for i in train_ix]).to(device)
+    repeat = repeat_factors([labels[i] for i in train_ix], args.oversample, args.max_repeat)
+    if args.oversample > 0:
+        lifted = Counter(CLASSES[labels[i]] for i, r in zip(train_ix, repeat) if r > 1)
+        print(f"Oversampling: classes under {args.oversample} training pages repeat ({', '.join(f'{c} x{min(args.max_repeat, math.sqrt(args.oversample / n)):.1f}' for c, n in Counter(CLASSES[labels[i]] for i in train_ix).items() if c in lifted) or 'none'}); "
+              f"about {sum(repeat):.0f} samples per epoch from {len(repeat)} pages")
+    train_loader = loader(train_ix, True, repeat)
+    class_w = class_weights([labels[i] for i in train_ix], [weights[i] for i in train_ix], args.class_weight,
+                            repeat).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
     total_steps = max(1, len(train_loader) * args.epochs)
     scheduler = get_linear_schedule_with_warmup(optimizer, max(1, int(WARMUP_FRACTION * total_steps)), total_steps)

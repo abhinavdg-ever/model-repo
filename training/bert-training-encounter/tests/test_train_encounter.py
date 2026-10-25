@@ -102,3 +102,20 @@ def test_no_evidence_pages_are_left_out_by_default(tmp_path):
     records, _ = enc.load_records(write(tmp_path, rows), 20, target="page")
     assert [enc.loss_weight(r, 0.5, enc.NO_EVIDENCE_WEIGHT) for r in records] == [0.0, 1.0]
     assert [enc.loss_weight(r, 0.5, 1.0) for r in records] == [0.5, 1.0]  # trained as a class
+
+
+def test_small_classes_repeat_and_large_ones_do_not():
+    labels = [0] * 100 + [2] * 9 + [3] * 1
+    repeat = enc.repeat_factors(labels, 30, 4.0)
+    assert repeat[0] == 1.0                                    # 100 pages: no repeat
+    assert repeat[100] == pytest.approx((30 / 9) ** 0.5)       # Evisit-sized: about x1.8
+    assert repeat[-1] == 4.0                                   # one page: capped at 4
+    assert enc.repeat_factors(labels, 0, 4.0) == [1.0] * len(labels)
+
+
+def test_class_weight_modes():
+    pytest.importorskip("torch")
+    labels, weights = [0] * 8 + [1] * 2, [1.0] * 10
+    balanced = enc.class_weights(labels, weights, "balanced").tolist()
+    soft = enc.class_weights(labels, weights, "sqrt").tolist()
+    assert soft[:2] == pytest.approx([w ** 0.5 for w in balanced[:2]]) and soft[2] == 0.0

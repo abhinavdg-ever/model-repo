@@ -488,7 +488,8 @@ class TestStage:
             (only,) = staged["encounters"]
             assert only["pages"] == ["1.jpg", "2.jpg"] and only["document"] == 1
             assert only["page_family"] == "Discharge Summary"
-            assert only["encounter_type"] == "inpatient" and only["decided_by"] == "vote"
+            # The first page (a Discharge Summary) has evidence of its own: it decides.
+            assert only["encounter_type"] == "inpatient" and only["decided_by"] == "first_page"
 
             final = final_stage.run(cid, force=True)
             rows = {r["page_id"]: r for r in store.imaging_final.values()}

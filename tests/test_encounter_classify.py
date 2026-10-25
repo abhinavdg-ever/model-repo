@@ -204,16 +204,15 @@ def test_worked_example(canon):
     rows = {r["page_id"]: r for r in classify_pages(pages, entries=canon, visit_log=log)}
 
     a = rows[1]
-    # Page 1 (hospital course, x2) and page 3 (Discharge Summary) vote inpatient; page 7 abstains.
+    # The first page has evidence of its own (hospital course): it decides the encounter.
     assert (a["encounter_type"], a["confidence"], a["decided_by"], a["matched_keyword"]) == (
-        "inpatient", 1.0, "vote", "hospital course")
-    assert [v["weight"] for v in log[0]["votes"]] == [2.0, 1.0, 1.0]
+        "inpatient", canon.confidence["tier2"], "first_page", "hospital course")
     assert rows[7]["encounter_type"] == "inpatient"
     assert "discharged home" in log[0]["negatives_fired"]
 
     b = rows[25]
     assert (b["encounter_type"], b["confidence"], b["decided_by"], b["matched_keyword"]) == (
-        "outpatient_tele", 1.0, "vote", "telehealth")
+        "outpatient_tele", canon.confidence["tier2"], "first_page", "telehealth")
     assert rows[26]["encounter_type"] == "outpatient_tele"
     assert rows[26]["continue_applied"] == "y"  # its own text gives no answer
 
@@ -253,7 +252,7 @@ def test_a_document_with_no_date_still_votes(canon):
     pages = [{**page(1, "telehealth visit", dos=""), "document": 1},
              {**page(2, "", dos=""), "document": 1}]
     rows = classify_pages(pages, entries=canon)
-    assert all((r["encounter_type"], r["decided_by"]) == ("outpatient_tele", "vote") for r in rows)
+    assert all((r["encounter_type"], r["decided_by"]) == ("outpatient_tele", "first_page") for r in rows)
 
 
 def test_without_documents_visits_are_date_runs(canon):
@@ -321,22 +320,33 @@ def _doc(*pages):
     return [{**p, "document": 1} for p in pages]
 
 
-def test_the_first_page_counts_twice_and_wins_a_tie(canon):
-    pages = _doc({**page(1, "telehealth visit"), "page_family": "Progress Note"},
-                 {**page(2, "hospital course"), "page_family": "Progress Note"},
-                 {**page(3, "hospital course"), "page_family": "Progress Note"})
-    log: list = []
-    rows = classify_pages(pages, entries=canon, visit_log=log)
-    # 2 (tele, first page) against 2 (inpatient): the first page's vote.
-    assert rows[0]["encounter_type"] == "outpatient_tele" and rows[0]["confidence"] == 0.5
-    assert rows[1]["continue_applied"] == "y"
-
-
-def test_more_pages_outvote_the_first(canon):
+def test_the_first_page_decides_when_it_has_evidence(canon):
+    """2026-10-25 (user): the first page decides; outnumbered or not."""
     pages = _doc({**page(1, "telehealth visit"), "page_family": "Progress Note"},
                  *[{**page(n, "hospital course"), "page_family": "Progress Note"} for n in (2, 3, 4)])
     rows = classify_pages(pages, entries=canon)
-    assert rows[0]["encounter_type"] == "inpatient" and rows[0]["confidence"] == 0.6
+    assert (rows[0]["encounter_type"], rows[0]["decided_by"], rows[0]["conflict"]) == (
+        "outpatient_tele", "first_page", True)
+    assert rows[1]["encounter_type"] == "outpatient_tele" and rows[1]["continue_applied"] == "y"
+
+
+def test_a_first_page_without_evidence_lets_the_pages_vote(canon):
+    # The first page has only its family default (Progress Note -> F2F): the pages vote,
+    # the first page still counting twice: F2F 2 against telehealth 2 -> a tie goes to it.
+    tie = _doc({**page(1, ""), "page_family": "Progress Note"},
+               *[{**page(n, "telehealth visit"), "page_family": "Progress Note"} for n in (2, 3)])
+    assert classify_pages(tie, entries=canon)[0]["decided_by"] == "vote"
+    more = _doc({**page(1, ""), "page_family": "Progress Note"},
+                *[{**page(n, "telehealth visit"), "page_family": "Progress Note"} for n in (2, 3, 4)])
+    row = classify_pages(more, entries=canon)[0]
+    assert (row["encounter_type"], row["decided_by"]) == ("outpatient_tele", "vote")
+
+
+def test_a_lab_first_page_lets_the_pages_vote(canon):
+    pages = _doc({**page(1, ""), "page_family": "Lab Report"},
+                 {**page(2, "hospital course"), "page_family": "Progress Note"})
+    row = classify_pages(pages, entries=canon)[0]
+    assert (row["encounter_type"], row["decided_by"]) == ("inpatient", "vote")
 
 
 def test_family_defaults_vote_when_a_page_has_no_evidence(canon):

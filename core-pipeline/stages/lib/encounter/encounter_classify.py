@@ -450,6 +450,32 @@ def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vot
     return Vote(fallback, weight, "family_default" if fallback else "none", "", evidence)
 
 
+# A vote from the page's own evidence, which lets the first page decide its encounter alone.
+EVIDENCE = ("tier1", "tier2", "model")
+
+
+def first_page_decision(votes: list[Vote], canon: Canon) -> Optional[Decision]:
+    """The encounter's first page decides when it has evidence of its own (a tier 1 page
+    type, a tier 2 phrase, or the encounter model; 2026-10-25, user). None when it does
+    not (Not Applicable, its family's default, or nothing): then every page votes."""
+    if not votes or votes[0].decided_by not in EVIDENCE or not votes[0].setting:
+        return None
+    first = votes[0]
+    confidence = canon.confidence.get(first.decided_by, canon.confidence.get("tier2", 0.8))
+    if first.decided_by == "model":
+        confidence = canon.confidence.get("tier2", 0.8)
+    others = {v.setting for v in votes[1:] if v.setting and v.setting != canon.not_applicable}
+    return Decision(
+        setting=first.setting,
+        decided_by="first_page",
+        confidence=confidence,
+        conflict=bool(others - {first.setting}),
+        matched_keyword=first.matched_keyword,
+        reason=f"first page: {first.decided_by}",
+        contenders=tuple(sorted(others | {first.setting})) if others - {first.setting} else (),
+    )
+
+
 def tally(votes: list[Vote], canon: Canon) -> Decision:
     """The weighted majority, the first page counting ``first_page_weight`` times. Not
     Applicable wins only when every vote is Not Applicable; otherwise those votes are set
@@ -503,7 +529,7 @@ def classify_pages(
         first = visit[0]
         family = encounter_family(visit)
         votes = [page_vote(page, canon) for page in visit]
-        decision = tally(votes, canon)
+        decision = first_page_decision(votes, canon) or tally(votes, canon)
         if not decision.setting and canon.default_setting:
             # No page voted (no evidence, no family default): the default, low confidence.
             decision = Decision(

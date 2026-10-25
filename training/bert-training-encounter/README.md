@@ -30,6 +30,7 @@ alone: it imports nothing from `bert-training/`, `annotation-tool/` or `core-pip
 | `encounter.ipynb` | Colab (or a PC) notebook that runs the above |
 | `requirements.txt` | the same as `bert-training/` |
 | `encounter_test_pages.jsonl`, `check_encounter_tests.py`, `ENCOUNTER_TEST_PAGES.md` | 22 made-up pages with the expected setting (from the Claude Cowork pack) |
+| `make_synthetic_pages.py`, `synthetic_pages.jsonl` | 80 invented Evisit / Home Visit pages (half with a neutral title), training split only (`--with-mock data/mock_pages.jsonl synthetic_pages.jsonl`) |
 | `data/encounter_tags.jsonl` | input: a copy of `Training/encounter/encounter_tags.jsonl` |
 | `data/mock_pages.jsonl` | optional input (`--with-mock`): `Training/mock/mock_pages.jsonl` |
 | `output/encounter/` | output: the best epoch |
@@ -58,7 +59,10 @@ python predict_encounter.py --jsonl pages.jsonl --out predictions.csv   # no tex
 |---|---|---|
 | `--epochs` | 20 | the best epoch by validation macro F1 is kept |
 | `--inherited-weight` | 0.5 | loss weight of a label carried from another page of the visit; 0 leaves them out |
-| `--with-mock [JSONL]` | off | synthetic pages, always in the training split |
+| `--with-mock [JSONL ...]` | off | synthetic pages (one or more files), always in the training split |
+| `--oversample` / `--max-repeat` | 100 / 4 | repeat pages of classes under 100 training pages (Evisit ~x2, Home Visit ~x2.8 before synthetic pages) |
+| `--class-weight` | `sqrt` | softened inverse-frequency loss weights; `balanced` the old, `none` off |
+| `--no-evidence-weight` | 0 | No evidence on page rows: 0 leaves them out, 1 trains them as a class |
 | `--max-length` / `--head-fraction` | 512 / 0.85 | a long page keeps its first 85% of tokens and its last 15% |
 | `--val-fraction` / `--test-fraction` | 0.15 / 0.15 | by chart; `--test-fraction 0` scores on validation |
 | `--min-chars` | 20 | shorter pages are left out and counted |
