@@ -488,8 +488,11 @@ Continue pages to its Last page.
 **The first page decides [built 2026-10-25, user]** when it has evidence of its own: a
 tier 1 page type, a tier 2 phrase, or the encounter model's confident answer
 (`decided_by = first_page`; conflict flagged when another page says otherwise). Only when
-the first page cannot decide (it is a lab or other Not Applicable page, or carries only
-its family's default) does every page of the range vote its Extracted encounter type:
+the first page cannot decide (it is a lab or other non-encounter page, or carries only
+its family's default) do the pages vote -- **only the pages with evidence of their own**;
+a family default (Progress Note → F2F, Discharge Summary → Inpatient) is the **fallback
+when no page has any** (user, 2026-10-25). A lab or other non-encounter page reads
+**Not Available**.
 
 1. The first page still counts **twice**.
 2. **Not Available wins only when every vote is Not Available**: one page voting a
@@ -2655,7 +2658,7 @@ Encounter setting per visit. Evidence is ranked, not added up: the highest non-e
 
 **Default**: setting: outpatient_f2f; confidence: 0.3; note: 2026-10-20 (user): a visit with no setting evidence, or no usable date, is Outpatient (F2F) at this low confidence; decided_by 'default', and reason keeps why (no_setting_evidence / no_date / default_date). Empty setting = leave it unresolved.
 
-**Applies to**: families: Progress Note, Discharge Summary; not_applicable: setting: not_applicable; label: Not Applicable; confidence: 1.0; note: 2026-10-23 (user): a page whose L1 family is not listed votes Not Applicable (lab, orders, forms...); listed families vote their evidence or their vote.family_defaults. Empty families = every page votes its evidence.
+**Applies to**: families: Progress Note, Discharge Summary; not_applicable: setting: not_applicable; label: Not Available; confidence: 1.0; note: 2026-10-23 (user): a page whose L1 family is not listed votes Not Applicable (lab, orders, forms...); listed families vote their evidence or their vote.family_defaults. Empty families = every page votes its evidence. 2026-10-25 (user): shown as Not Available.
 
 **Tier 1: page types that decide the setting**
 
@@ -2694,7 +2697,7 @@ Encounter setting per visit. Evidence is ranked, not added up: the highest non-e
 
 **Negatives** (phrases that cancel a match): phrase: follow up with your primary care; cancels: follow up, phrase: outpatient follow up; cancels: follow up, phrase: follow up in the office; cancels: follow up, phrase: discharged home; cancels_setting: home, phrase: discharge to home; cancels_setting: home, phrase: discharged to home; cancels_setting: home, phrase: scheduled for admission; cancels: admission date, date of admission, admitted on, phrase: pending admission; cancels: admission date, date of admission, admitted on, phrase: if admitted; cancels: admission date, date of admission, admitted on, phrase: telephone message; cancels_setting: outpatient_tele, phrase: phone message; cancels_setting: outpatient_tele, phrase: left a message; cancels_setting: outpatient_tele
 
-**Vote**: note: 2026-10-25 (user): the encounter's FIRST PAGE decides when it has evidence of its own (tier 1 page type, tier 2 phrase, or the encounter model: decided_by first_page). Only when it cannot (Not Applicable, its family default, or nothing) does every page vote: the first page counts first_page_weight times; Not Applicable wins only when every vote is Not Applicable; otherwise the weighted majority of the settings wins (a tie goes to the first page's vote), confidence = the winner's share of the weight.; first_page_weight: 2; family_defaults: Progress Note: outpatient_f2f; Discharge Summary: inpatient
+**Vote**: note: 2026-10-25 (user): the encounter's FIRST PAGE decides when it has evidence of its own (tier 1 page type, tier 2 phrase, or the encounter model: decided_by first_page). Only when it cannot (Not Applicable, its family default, or nothing) do the pages vote -- only those with evidence of their own; the family defaults (Progress Note -> F2F) only when no page has any: the first page counts first_page_weight times; Not Applicable wins only when every vote is Not Applicable; otherwise the weighted majority of the settings wins (a tie goes to the first page's vote), confidence = the winner's share of the weight.; first_page_weight: 2; family_defaults: Progress Note: outpatient_f2f; Discharge Summary: inpatient
 
 ### J. The pipeline's continuity canon (keyword-canon/continuity_canon.json)
 

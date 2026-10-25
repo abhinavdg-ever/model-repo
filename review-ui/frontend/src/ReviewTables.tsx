@@ -14,7 +14,7 @@ export const ENCOUNTER_TYPE_CHOICES = [
   "Outpatient (Tele)",
   "Inpatient",
   "Home",
-  "Not Applicable",
+  "Not Available",
 ];
 
 /** A pipeline encounter offered as the starting point when nothing was reviewed yet. */

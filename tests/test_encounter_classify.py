@@ -287,7 +287,7 @@ def test_a_lab_encounter_is_not_applicable_on_every_page(canon):
     assert all((r["encounter_type"], r["decided_by"]) == ("outpatient_f2f", "vote") for r in rows)
     only_labs = [{**page(n, "telehealth visit"), "page_family": "Lab Report", "document": 1} for n in (1, 2)]
     rows = classify_pages(only_labs, entries=canon)
-    assert all((r["encounter_type"], r["encounter_label"]) == ("not_applicable", "Not Applicable") for r in rows)
+    assert all((r["encounter_type"], r["encounter_label"]) == ("not_applicable", "Not Available") for r in rows)
     assert rows[0]["matched_keyword"] == "Lab Report"
 
 
@@ -431,3 +431,15 @@ def test_the_inference_copy_matches_the_trainer():
     copied = definitions(CORE / "stages" / "lib" / "encounter" / "encounter_model.py")
     drifted = [name for name, body in copied.items() if trainer.get(name) != body]
     assert not drifted, f"copy these from train_encounter.py into encounter_model.py again: {drifted}"
+
+
+def test_a_default_never_outvotes_a_page_with_evidence(canon):
+    """2026-10-25 (user): the first page's Progress Note default (F2F) is only the fallback;
+    a later page that states telehealth decides the vote."""
+    pages = _doc({**page(1, ""), "page_family": "Progress Note"},
+                 {**page(2, "telehealth visit"), "page_family": "Progress Note"},
+                 {**page(3, ""), "page_family": "Progress Note"})
+    row = classify_pages(pages, entries=canon)[0]
+    assert (row["encounter_type"], row["decided_by"]) == ("outpatient_tele", "vote")
+    nothing = _doc({**page(1, ""), "page_family": "Progress Note"}, {**page(2, ""), "page_family": "Progress Note"})
+    assert classify_pages(nothing, entries=canon)[0]["encounter_type"] == "outpatient_f2f"  # the fallback

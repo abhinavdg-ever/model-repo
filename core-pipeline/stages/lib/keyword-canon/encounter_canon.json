@@ -36,10 +36,10 @@
     ],
     "not_applicable": {
       "setting": "not_applicable",
-      "label": "Not Applicable",
+      "label": "Not Available",
       "confidence": 1.0
     },
-    "note": "2026-10-23 (user): a page whose L1 family is not listed votes Not Applicable (lab, orders, forms...); listed families vote their evidence or their vote.family_defaults. Empty families = every page votes its evidence."
+    "note": "2026-10-23 (user): a page whose L1 family is not listed votes Not Applicable (lab, orders, forms...); listed families vote their evidence or their vote.family_defaults. Empty families = every page votes its evidence. 2026-10-25 (user): shown as Not Available."
   },
   "tier1_page_types": {
     "Discharge Summary": "inpatient",
@@ -287,7 +287,7 @@
     }
   ],
   "vote": {
-    "note": "2026-10-25 (user): the encounter's FIRST PAGE decides when it has evidence of its own (tier 1 page type, tier 2 phrase, or the encounter model: decided_by first_page). Only when it cannot (Not Applicable, its family default, or nothing) does every page vote: the first page counts first_page_weight times; Not Applicable wins only when every vote is Not Applicable; otherwise the weighted majority of the settings wins (a tie goes to the first page's vote), confidence = the winner's share of the weight. ",
+    "note": "2026-10-25 (user): the encounter's FIRST PAGE decides when it has evidence of its own (tier 1 page type, tier 2 phrase, or the encounter model: decided_by first_page). Only when it cannot (Not Applicable, its family default, or nothing) do the pages vote -- only those with evidence of their own; the family defaults (Progress Note -> F2F) only when no page has any: the first page counts first_page_weight times; Not Applicable wins only when every vote is Not Applicable; otherwise the weighted majority of the settings wins (a tie goes to the first page's vote), confidence = the winner's share of the weight. ",
     "first_page_weight": 2,
     "family_defaults": {
       "Progress Note": "outpatient_f2f",

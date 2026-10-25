@@ -477,14 +477,19 @@ def first_page_decision(votes: list[Vote], canon: Canon) -> Optional[Decision]:
 
 
 def tally(votes: list[Vote], canon: Canon) -> Decision:
-    """The weighted majority, the first page counting ``first_page_weight`` times. Not
-    Applicable wins only when every vote is Not Applicable; otherwise those votes are set
+    """The weighted majority, the first page counting ``first_page_weight`` times. Only
+    pages with evidence of their own (tier 1, tier 2, the model) vote when any has it;
+    otherwise the family defaults vote (Progress Note -> F2F). Not Applicable wins only
+    when every vote is Not Applicable; otherwise those votes are set
     aside. A tie goes to the first page's vote, then the setting priority. Confidence = the
     winner's share of the weight counted. No vote at all: the canon default (low confidence)."""
     if votes:
         votes[0].weight = canon.first_page_weight
+    # Pages with evidence of their own vote; a family default (Progress Note -> F2F) is
+    # only the fallback when no page has any (2026-10-25, user).
+    counted = [v for v in votes if v.decided_by in EVIDENCE] or votes
     weights: dict[str, float] = {}
-    for vote in votes:
+    for vote in counted:
         if vote.setting:
             weights[vote.setting] = weights.get(vote.setting, 0.0) + vote.weight
     # Not Applicable only when it is every vote (2026-10-23, user): one page voting a

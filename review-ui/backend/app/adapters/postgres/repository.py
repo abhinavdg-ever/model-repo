@@ -1166,7 +1166,7 @@ class PostgresFolderRepository(FolderRepository):
                     "outpatient_tele": "Outpatient (Tele)",
                     "inpatient": "Inpatient",
                     "home": "Home",
-                    "not_applicable": "Not Applicable",
+                    "not_applicable": "Not Available",
                 }
                 for page_name, et, conf in rows["encounter_type"] or []:
                     fields = _ensure(str(page_name))
