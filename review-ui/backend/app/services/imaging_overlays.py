@@ -974,10 +974,10 @@ def index_junk_rows(
             "isDuplicate": bool(is_duplicate),
             "isPartialDuplicate": is_partial,
             "pageType": page_type,
-            "pageTypeConfidence": _parse_confidence(
-                row.get("page_classification_confidence")
-                or row.get("confidence")
-                or row.get("page_type_confidence")
+            # The blank/junk verdict's own confidence (the stage writes it to this column);
+            # the page type's comes from the codeable CSV.
+            "blankJunkConfidence": _parse_confidence(
+                row.get("page_classification_confidence") or row.get("confidence")
             ),
         }
         fields = {
@@ -1064,7 +1064,7 @@ def index_codeable_rows(
 def index_encounter_rows(
     rows: list[dict[str, str]], chart_name: str
 ) -> dict[str, dict[str, Any]]:
-    """``*_encounter.csv`` → encounterType display label."""
+    """``*_encounter.csv`` → encounterType display label and its confidence."""
     by_key: dict[str, dict[str, Any]] = {}
     for row in rows:
         cname = (
@@ -1081,6 +1081,9 @@ def index_encounter_rows(
         if not label:
             continue
         fields: dict[str, Any] = {"encounterType": label}
+        confidence = _parse_confidence(row.get("confidence"))
+        if confidence is not None:
+            fields["encounterConfidence"] = confidence
         _put_page_keys(by_key, row, fields)
     return by_key
 
@@ -1088,7 +1091,7 @@ def index_encounter_rows(
 def index_sequencing_rows(
     rows: list[dict[str, str]], chart_name: str
 ) -> dict[str, dict[str, Any]]:
-    """``*_sequencing.csv`` → currentSequence / actualSequence."""
+    """``*_sequencing.csv`` → currentSequence / actualSequence and its confidence."""
     by_key: dict[str, dict[str, Any]] = {}
     for row in rows:
         cname = (
@@ -1109,6 +1112,9 @@ def index_sequencing_rows(
             fields["currentSequence"] = current
         if actual is not None:
             fields["actualSequence"] = actual
+        confidence = _parse_confidence(row.get("confidence"))
+        if confidence is not None:
+            fields["sequenceConfidence"] = confidence
         _put_page_keys(by_key, row, fields)
     return by_key
 

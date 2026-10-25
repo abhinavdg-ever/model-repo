@@ -1658,7 +1658,7 @@ function PageDetails({
         rows={[
           (() => {
             const stored = fmtBlankOrJunk(page.blankOrJunk, sections.junk);
-            const row = sameValue(fmtBlankOrJunk(page.blankOrJunk, sections.junk, page), fmtConfidence(page.blankJunkConfidence ?? page.pageTypeConfidence, sections.junk), {
+            const row = sameValue(fmtBlankOrJunk(page.blankOrJunk, sections.junk, page), fmtConfidence(finalOr(page, "blank_junk", page.blankJunkConfidence), sections.junk), {
               id: "blank_junk",
               label: "Is Blank or Junk?",
               truth: bits.blankJunk,
