@@ -32,7 +32,7 @@ from typing import Optional
 import train_axes as axes
 
 DEFAULT_MODEL = axes.DEFAULT_OUTPUT
-COLUMNS = ["image", "path", "top3", "route", "L1", "L1_confidence", "L1_top3", "L2", "L2_confidence", "L3",
+COLUMNS = ["image", "path", "paths", "route", "L1", "L1_confidence", "L1_top3", "L2", "L2_confidence", "L3",
            "L3_confidence", "specialty", "specialty_confidence", "codeability", "codeability_confidence"]
 
 
@@ -83,13 +83,13 @@ class AxesClassifier:
         elif r["L1"] == self.space["other_L1"]:
             print(f"  ({r['L1']}: a page type with too few training pages — the keyword canon decides)")
         print(f"  path: {r['path']}")
-        print("  top 3: " + "; ".join(f"{x['path']} {x['score']:.1%}" for x in r["top3"]))
+        print("  best paths: " + "; ".join(f"{x['path']} {x['score']:.1%}" for x in r["paths"]))
         return r
 
 
 def _cells(image: str, r: dict) -> list:
     rounded = lambda v: "" if v is None else round(v, 4)  # noqa: E731
-    return [image, r["path"], "; ".join(f"{x['path']} {x['score']:.2f}" for x in r["top3"]), r["route"], r["L1"], rounded(r["L1_confidence"]),
+    return [image, r["path"], "; ".join(f"{x['path']} {x['score']:.2f}" for x in r["paths"]), r["route"], r["L1"], rounded(r["L1_confidence"]),
             "; ".join(f"{n} {p:.2f}" for n, p in r["L1_top"]), r["L2"] or "", rounded(r["L2_confidence"]),
             r["L3"] or "", rounded(r["L3_confidence"]), r["specialty"] or "", rounded(r["specialty_confidence"]),
             r["codeability"], rounded(r["codeability_confidence"])]

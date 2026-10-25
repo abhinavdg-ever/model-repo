@@ -3,6 +3,7 @@ no internet, no training run: one forward/backward pass on a tiny random model."
 from __future__ import annotations
 
 import sys
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -221,6 +222,23 @@ def test_forward_backward_mask_and_reload(space, tiny_encoder, tmp_path):
             assert f"{l1} > {best['L2']}" in space["L2_by_L1"][l1]
             if best["L3"] is not None:
                 assert f"{l1} > {best['L2']} > {best['L3']}" in space["L3"]
+        # The best paths: whole paths the taxonomy allows, best first, 5 at most,
+        # at most 3 under one L1.
+        scores = [x["score"] for x in row["paths"]]
+        assert 1 <= len(row["paths"]) <= ax.TOP_PATHS and scores == sorted(scores, reverse=True)
+        assert max(Counter(x["L1"] for x in row["paths"]).values()) <= ax.PATHS_PER_L1
+        for x in row["paths"]:
+            assert x["path"] == " > ".join(n for n in (x["L1"], x["L2"], x["L3"]) if n)
+            assert x["L2"] is None or f"{x['L1']} > {x['L2']}" in space["L2_by_L1"][x["L1"]]
+            assert x["L3"] is None or x["path"] in space["L3"]
+
+    # Over every path, the scores are a probability distribution.
+    l2_given, l3_given = ax.path_probabilities({h: v.detach() for h, v in logits.items()}, model, space)
+    l1_prob = torch.softmax(logits["L1"].detach(), -1)
+    for i in range(l1_prob.shape[0]):
+        every = ax.top_paths(l1_prob[i].tolist(), l2_given[i].tolist(), l3_given[i].tolist(), space,
+                             k=1000, per_l1=1000)
+        assert sum(x["score"] for x in every) == pytest.approx(1.0, abs=1e-4)
 
     ax.save_model(tmp_path / "m", model, tokenizer, space, {"max_length": 16, "head_fraction": 0.85,
                                                             "dropout": 0.0})
@@ -309,8 +327,23 @@ def test_lab_note_confusion_both_ways():
 
 
 def test_top_paths_rank_whole_paths():
-    by_l1 = {"Result": {"L2": "Lab", "L2_confidence": 0.5, "L3": "CBC", "L3_confidence": 0.5},
-             "Consent": {"L2": "HIPAA", "L2_confidence": 0.9, "L3": None, "L3_confidence": None}}
-    top = ax.top_paths([("Result", 0.6), ("Consent", 0.3), ("Flat", 0.1)], by_l1)
-    assert [x["path"] for x in top] == ["Consent > HIPAA", "Result > Lab > CBC", "Flat"]
-    assert top[0]["score"] == pytest.approx(0.27) and top[1]["score"] == pytest.approx(0.15)
+    space = {"L1": ["Result", "Consent", "Flat"],
+             "L2": ["Result > Lab", "Result > Path", "Consent > HIPAA"],
+             "L3": ["Result > Lab > CBC", "Result > Lab > BMP"],
+             "L2_by_L1": {"Result": ["Result > Lab", "Result > Path"], "Consent": ["Consent > HIPAA"]},
+             "L3_by_L2": {"Result > Lab": ["Result > Lab > CBC", "Result > Lab > BMP"]}}
+    l2_given = [[0.5, 0.5, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]
+    l3_given = [[0.6, 0.4], [0.5, 0.5], [0.5, 0.5]]
+    top = ax.top_paths([0.6, 0.25, 0.15], l2_given, l3_given, space, k=3)
+    # Two of the three share the L1 Result; every allowed path was scored.
+    assert [x["path"] for x in top] == ["Result > Path", "Consent > HIPAA", "Result > Lab > CBC"]
+    assert [x["score"] for x in top] == pytest.approx([0.30, 0.25, 0.18])
+    assert top[0]["L3"] is None and top[2]["L3_confidence"] == pytest.approx(0.6)
+    # At most per_l1 under one L1: Result's third path gives way to Flat.
+    capped = ax.top_paths([0.6, 0.25, 0.15], l2_given, l3_given, space, k=5, per_l1=2)
+    assert [x["path"] for x in capped] == ["Result > Path", "Consent > HIPAA", "Result > Lab > CBC", "Flat"]
+    # An L1 with no L2 is a path of its own; with no L2 head, every path is an L1.
+    assert [x["path"] for x in ax.top_paths([0.6, 0.25, 0.15], None, None, space)] == ["Result", "Consent", "Flat"]
+    # The default keeps 5: Result > Lab > BMP (0.12) is Result's third, still allowed.
+    assert [x["path"] for x in ax.top_paths([0.6, 0.25, 0.15], l2_given, l3_given, space)][3:] == [
+        "Flat", "Result > Lab > BMP"]

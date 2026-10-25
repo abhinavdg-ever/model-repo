@@ -2,10 +2,10 @@
 and codeability, decided from the page alone (``page_arbitration.json`` →
 ``axes``), in the names of the page taxonomy (``keyword-canon/page_taxonomy.json``).
 
-1. **The model's top 3.** For each of its three best L1s the model's best L2
-   under that L1 and best L3 under that L2 (``by_L1``), each with its
-   confidence and the combination's score p(L1)·p(L2|L1)·p(L3|L2) (a missing
-   level counts 1): ``model_top3``, best score first. The best L1's path wins
+1. **The model's best paths.** Every L1 > L2 > L3 the taxonomy allows, scored
+   p(L1)·p(L2|L1)·p(L3|L2) (a missing level counts 1); the 5 best are kept, at
+   most 3 under one L1, each level with its confidence: ``model_paths``, best
+   score first. The best L1's path wins
    when it clears the gate: route ``model`` = top L1 >= ``route_model``, ahead of
    the second by >= ``route_margin``, not the folded OTHER class. Its L2 counts at >=
    ``l2_min`` (an L2 the model folded to Others lets the canon try first).
@@ -18,7 +18,7 @@ and codeability, decided from the page alone (``page_arbitration.json`` →
 Then ``page_rules`` may re-place the page from its own text (title rules, the
 lab guard): ``sources`` says "rule" and ``rules`` names it. L3 is always the
 canon's best match under the decided L1 > L2, at ``l3_canon_min`` (the model's
-is kept in ``model_top3`` / ``prediction``). Specialty: the model's behind a
+is kept in ``model_paths`` / ``prediction``). Specialty: the model's behind a
 strict gate, else the canon entry's. Codeability: always the canon's — the tag
 of the canon page type behind the decided path; needs_review when its rule is
 context / source (the Final step resolves context from the page's document).
@@ -61,6 +61,7 @@ NEEDS_REVIEW = "needs_review"
 # The L2 of a page whose L1 has no L2 for it (never the L1 repeated), and the
 # L1 of a page neither the model nor the canon is sure of.
 OTHERS = "Others"
+MODEL_PATHS = 5  # the model's best paths kept per page (``model_paths``)
 # Who decided a level.
 MODEL, CANON, RULE, BY_OTHERS = "model", "canon", "rule", "others"
 
@@ -116,8 +117,8 @@ class AxesResult:
     title_l1: Optional[str] = None
     # The page_rules that re-placed the page, if any.
     rules: tuple[str, ...] = ()
-    # The model's three best L1 > L2 > L3 combinations (step 1); [] without a model.
-    model_top3: tuple[dict[str, Any], ...] = field(default=(), compare=False)
+    # The model's best L1 > L2 > L3 paths (step 1); [] without a model.
+    model_paths: tuple[dict[str, Any], ...] = field(default=(), compare=False)
     # Under every other L1 that has L2s: the L2 (and L3) the page would take
     # there -- {L1: {l2, l2_confidence, l2_source, l3, l3_confidence}}. The Final
     # step reads it when the page's document has another L1.
@@ -145,7 +146,7 @@ class AxesResult:
             "title_l1": self.title_l1,
             "taxonomy_version": tax.version(),
             "rules": list(self.rules) or None,
-            "model_top3": list(self.model_top3) or None,
+            "model_paths": list(self.model_paths) or None,
             "under_l1": self.under_l1 or None,
             "prediction": self.prediction or None,
         }
@@ -154,7 +155,7 @@ class AxesResult:
         """The codeable CSV's axes columns (the CSV header is a frozen contract:
         the newer keys stay in the JSON only)."""
         flat = self.as_json()
-        for key in ("prediction", "under_l1", "model_top3", "decided_by", "taxonomy_version", "rules"):
+        for key in ("prediction", "under_l1", "model_paths", "decided_by", "taxonomy_version", "rules"):
             flat.pop(key)
         return {
             ("axes_" + key if not key.startswith("specialty") else key): value
@@ -277,15 +278,15 @@ def route(top: list[tuple[str, float]], other_l1: str, s: dict[str, Any]) -> str
     return "review"
 
 
-def model_top3(raw: dict[str, Any], space: dict[str, Any]) -> tuple[dict[str, Any], ...]:
-    """The model's three best L1 > L2 > L3, best score first: for each of its best
-    L1s, its best L2 under that L1 and best L3 under that L2 (``by_L1``), with
-    each level's confidence and the score p(L1)·p(L2|L1)·p(L3|L2) (a level the
-    L1 does not have counts 1). ``decode`` gives them as ``top3``; an answer
-    without it is scored here the same way. The folded OTHER class reads Others
-    (``folded``)."""
+def model_paths(raw: dict[str, Any], space: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """The model's best L1 > L2 > L3 paths, best score first, as ``decode`` ranks
+    them (``paths``: the 5 best over every allowed path, at most 3 under one L1),
+    with each level's confidence and the score p(L1)·p(L2|L1)·p(L3|L2) (a level the
+    parent does not have counts 1). An answer without ``paths`` gets one path per
+    L1 of its ``L1_top``, from ``by_L1``, scored the same way. The folded OTHER
+    class reads Others (``folded``)."""
     other = space.get("other_L1", "OTHER")
-    paths = raw.get("top3")
+    paths = raw.get("paths")
     if not paths:
         by_l1 = dict(raw.get("by_L1") or {})
         if raw.get("L1") and raw.get("L2"):
@@ -299,7 +300,7 @@ def model_top3(raw: dict[str, Any], space: dict[str, Any]) -> tuple[dict[str, An
                           "score": score})
         paths.sort(key=lambda x: -x["score"])
     out = []
-    for rank, found in enumerate(paths[:3], start=1):
+    for rank, found in enumerate(paths[:MODEL_PATHS], start=1):
         l1 = OTHERS if found.get("L1") == other else found.get("L1")
         l2, l3 = found.get("L2") or None, found.get("L3") or None
         out.append({
@@ -481,7 +482,7 @@ def gate(
         codeability_rule=rule,
         title_l1=title_l1(text, headings),
         rules=(fired.rule,) if fired is not None else (),
-        model_top3=model_top3(raw, space) if raw else (),
+        model_paths=model_paths(raw, space) if raw else (),
         under_l1=under,
         prediction=_raw_json(raw),
     )
@@ -515,7 +516,7 @@ def _raw_json(raw: dict[str, Any]) -> dict[str, Any]:
     """The model's whole answer, rounded, for the raw prediction."""
     out: dict[str, Any] = {}
     for key, value in raw.items():
-        if key in ("by_L1", "top3"):  # gated into under_l1; model_top3
+        if key in ("by_L1", "paths"):  # gated into under_l1; model_paths
             continue
         if key in ("L1_top", "specialty_top"):
             out[key] = [[n, _round(p)] for n, p in value or []]

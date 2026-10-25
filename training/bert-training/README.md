@@ -222,7 +222,9 @@ pages. `predictions_*.csv` carry `specialty_top3` for the specialty lead.
 In the pipeline the axes are the page type (`page_type` / `page_subtype` as
 L1 / Others, L1 / L2 or "L1 (L2)" / L3; the whole answer in
 `page_classification.axes`): L1 and L2 are the model's at 0.40 or more,
-otherwise the keyword canon's at 0.50, otherwise Others; the top 3 paths are stored
+otherwise the keyword canon's at 0.50, otherwise Others; the model's 5 best whole
+paths (`paths`: every allowed L1 > L2 > L3 scored p(L1)·p(L2|L1)·p(L3|L2), at most 3
+under one L1) are stored
 (`docs/APPROACH.md` §3).
 Its inference code is a copy of
 this file's (`core-pipeline/stages/lib/page_classify/axes_model.py`): after

@@ -31,9 +31,9 @@ to be trained and copied in); **[to build]** agreed design, not yet written;
   blank / junk / duplicate
   member verification
   PAGE CLASSIFICATION — Extracted ─────┐
-     top 3 paths, canon, Others        │
+     best 5 paths, canon, Others       │
   DATE OF SERVICE — Extracted          ├──▶  CONTINUITY: where documents begin and end
-  ENCOUNTER TYPE — Extracted ──────────┘        (gaps scored from page type top 3,
+  ENCOUNTER TYPE — Extracted ──────────┘        (gaps scored from the best paths, 
      rules + encounter model                     encounter change, layout, dates, ...)
                                                     │
                                                     ▼
@@ -98,7 +98,7 @@ Putting pages back into their documents is the Final step's job (section 3.2).
 ### 3.1 Extracted: one page at a time [built]
 
 ```
- page text ─▶ page-axes model ─▶ top 3 paths ──▶ confident? ──yes──▶ model's path
+ page text ─▶ page-axes model ─▶ best 5 paths ─▶ confident? ──yes──▶ model's path
                                                       │no
                                                       ▼
                                  keyword canon (page_canon.json) ──▶ clear match? ──yes──▶ canon's path
@@ -107,17 +107,20 @@ Putting pages back into their documents is the Final step's job (section 3.2).
                                                                         Others
 ```
 
-**Step 1: the model's top 3.** The page-axes model (one DistilBERT encoder, five heads:
-L1, L2, L3, specialty, codeability) scores every L1. For each of its 3 best L1s it takes
-the best L2 under that L1 and the best L3 under that L2 (the L2 and L3 heads are masked
-to their parent's children, so a path is always valid). A path's score is
+**Step 1: the model's best paths.** The page-axes model (one DistilBERT encoder, five
+heads: L1, L2, L3, specialty, codeability) is hierarchical: the L2 head is masked to the
+L2s under the L1, and the L3 head to the L3s under the L2, so every path is valid. It
+scores **every** L1 > L2 > L3 path the taxonomy allows:
 
 ```
-score = p(L1) × p(L2 | L1) × p(L3 | L2)          a level the L1 does not have counts as 1
+score = p(L1) × p(L2 | L1) × p(L3 | L2)          a level the parent does not have counts as 1
 ```
 
-The three paths, best first, are stored for every page (section 6). The top one is the
-Extracted value **when it is confident**: L1 probability ≥ `route_model` (0.50) and at
+The scores of all paths add up to 1. The **5 best** are stored for every page (section
+6), **at most 3 under one L1**, so a page torn between Lab Report > Pathology Report and
+Lab Report > Lab Result keeps both, and still shows its runner-up L1s. The Extracted
+value is the model's L1, then its best L2 under that L1 and best L3 under that L2,
+**when it is confident**: L1 probability ≥ `route_model` (0.50) and at
 least `route_margin` (0.10) above the second L1, and the L2 ≥ `l2_min` (0.40). The
 thresholds live in `page_arbitration.json` → `axes` and are tuned from a run's
 validation predictions with `tune_thresholds.py`.
@@ -234,15 +237,15 @@ non-junk Visual page always joins the page before. A **final pass** then splits 
 document holding two label-read dates and merges neighbours across a weak break. Each
 page is tagged New / Continue / Last / Standalone. Points: appendix J.
 
-### 4.2 New signal: page type from the top 3, not the top 1 [to build]
+### 4.2 New signal: page type from the best paths, not the top 1 [to build]
 
 Today the page-type signals compare the two pages' single best page type: +3 when they
 differ, a join when they agree. An ambiguous page (Progress Note 0.45, Lab Report 0.40)
-flips that +3 on a coin toss. The top 3 says how much the two pages *could* be the same
-thing.
+flips that +3 on a coin toss. The stored paths say how much the two pages *could* be the
+same thing.
 
-For each page, spread its top-3 path scores over L1s and normalise to sum 1:
-`P(L1) = Σ score of the top-3 paths with that L1 / Σ all three scores`. The overlap of
+For each page, spread its stored path scores (the best 5) over L1s and normalise to sum 1:
+`P(L1) = Σ score of the stored paths with that L1 / Σ all their scores`. The overlap of
 two pages is
 
 ```
@@ -257,7 +260,7 @@ overlap = Σ over L1 of min(P_earlier(L1), P_later(L1))        0 = nothing share
 | the pair is an **embedded pair** (Progress Note ↔ Lab Report, Progress Note ↔ Medication Record, Progress Note ↔ Order and Requisition, Operative Note ↔ Procedure Note, Discharge Summary ↔ Lab Report) | 0 | never a break on its own: by page essence these pages sit inside notes |
 
 These replace `page_type_change` (+3) and `same_page_type`. A page decided by the canon
-or Others has no model top 3: it uses its one path at score 1 (so it can join or break,
+or Others has no model paths: it uses its one path at score 1 (so it can join or break,
 but only when the other page is confident). Weights are *assumed* until measured (4.5).
 
 ### 4.3 New signal: the encounter type changes [to build]
@@ -415,7 +418,7 @@ basis).
 
 | Where | Holds |
 |---|---|
-| `page_classification.axes` (Postgres JSONB) | Extracted L1 / L2 / L3 / specialty / codeability, each with confidence and `decided_by` (model / canon / others / guard), the **model's top 3 paths**, the canon's match, `by_L1` |
+| `page_classification.axes` (Postgres JSONB) | Extracted L1 / L2 / L3 / specialty / codeability, each with confidence and `decided_by` (model / canon / others / guard), the **model's best 5 paths** (at most 3 per L1), the canon's match, `by_L1` |
 | `staging/page_classification.json` **[built]** | the same per page, beside the other staging files (Postgres stays the source the later stages read) |
 | `staging/blank_junk.json`, `staging/extraction.json` | blank / junk / duplicate verdicts; key-value extraction, signatures |
 | `staging/continuity.json`, `page_continuity_results` | per gap: score, signals, decision; per page: document, tag; Final page type, DOS, encounter |
@@ -423,20 +426,23 @@ basis).
 | `page_sequencing_results`, `imaging/<chart>_sequencing.csv` | per page: suggested order (`seq`), method, confidence, review flag (section 9) |
 | `imaging_final` | every field's Final value |
 
-A `staging/page_classification.json` entry (made-up values):
+A `staging/page_classification.json` entry (made-up values; Progress Note has no model
+L2, because section tagging decides it):
 
 ```json
 {
   "page": "17.jpg",
-  "extracted": {"L1": "Lab Report", "L2": "Pathology Report", "L3": "Surgical Pathology Report",
-                 "path": "Lab Report > Pathology Report > Surgical Pathology Report",
+  "extracted": {"L1": "Lab Report", "L2": "Pathology Report", "L3": "Biopsy Report",
+                 "path": "Lab Report > Pathology Report > Biopsy Report",
                  "decided_by": "model", "confidence": 0.82,
                  "specialty": "Unknown", "codeability": "non_codeable"},
-  "model_top3": [
-    {"path": "Lab Report > Pathology Report > Surgical Pathology Report", "score": 0.71,
-     "L1_confidence": 0.86, "L2_confidence": 0.90, "L3_confidence": 0.92},
-    {"path": "Progress Note > Lab and Imaging Results", "score": 0.09},
-    {"path": "Procedure Note > Endoscopy (EGD)", "score": 0.02}
+  "model_paths": [
+    {"rank": 1, "path": "Lab Report > Pathology Report > Biopsy Report", "score": 0.71,
+     "l1_confidence": 0.86, "l2_confidence": 0.90, "l3_confidence": 0.92},
+    {"rank": 2, "path": "Progress Note", "score": 0.09},
+    {"rank": 3, "path": "Lab Report > Pathology Report > Cytology Report", "score": 0.05},
+    {"rank": 4, "path": "Lab Report > Lab Result > Hematology Report", "score": 0.04},
+    {"rank": 5, "path": "Procedure Note > Endoscopy (EGD)", "score": 0.02}
   ],
   "canon": {"page_type": "Pathology Report", "score": 0.66},
   "route": "model"
@@ -552,7 +558,7 @@ Report ↔ Progress Note line; pages and visits).
 ### 8.3 Build order
 
 1. **[built]** v29.2 names everywhere, the converted canon, the v1 ladder removed,
-   the top 3 stored, the Lab Report guard, `staging/page_classification.json`. Until
+   the best 5 paths stored, the Lab Report guard, `staging/page_classification.json`. Until
    the v29.2 model is copied in, the canon decides every page (`/health` says so).
 2. Train both models on Colab (20 epochs); copy the page-axes model in.
 3. **[to build]** encounter Extracted before continuity; the encounter model as a vote.

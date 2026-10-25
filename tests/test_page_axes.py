@@ -178,7 +178,7 @@ class TestWithoutModel:
         assert (result.l1, result.l2, result.l3) == (LAB, RAD, "CT Scan Report")
         assert result.as_json()["sources"] == "canon/canon/canon/-/canon"
         assert result.as_json()["decided_by"] == "canon"
-        assert result.as_json()["model_top3"] is None
+        assert result.as_json()["model_paths"] is None
         assert result.as_json()["prediction"] is None
 
     def test_missing_folder_reports_canon_only(self, tmp_path, monkeypatch):
@@ -325,23 +325,23 @@ Sleep study performed overnight. Apnea hypopnea index and oxygen saturation reco
 """
 
 
-class TestModelTopThree:
-    def test_the_top_three_paths_are_stored_with_their_scores(self):
+class TestModelPaths:
+    def test_the_best_paths_are_stored_with_their_scores(self):
         r = raw(l1_p=0.8, second=0.15, l2_p=0.9)
         r["L1_top"].append(("Administrative", 0.05))
         r["by_L1"] = {"Progress Note": {"L2": "CC/HPI", "L2_confidence": 0.5},
                       "Administrative": {"L2": "Superbill", "L2_confidence": 0.6}}
-        top = axes.gate(r, SPACE, CT_PAGE).as_json()["model_top3"]
+        top = axes.gate(r, SPACE, CT_PAGE).as_json()["model_paths"]
         assert [t["rank"] for t in top] == [1, 2, 3]
         assert top[0]["path"] == f"{LAB} > {RAD}" and top[0]["score"] == pytest.approx(0.72)
         assert top[1]["path"] == "Progress Note > CC/HPI" and top[1]["score"] == pytest.approx(0.075)
         assert top[2]["score"] == pytest.approx(0.03)
 
-    def test_the_decoders_own_top3_is_used_as_given(self):
+    def test_the_decoders_own_paths_are_used_as_given(self):
         r = raw()
-        r["top3"] = [{"path": "OTHER", "L1": "OTHER", "L2": None, "L3": None, "L1_confidence": 0.6,
+        r["paths"] = [{"path": "OTHER", "L1": "OTHER", "L2": None, "L3": None, "L1_confidence": 0.6,
                       "L2_confidence": None, "L3_confidence": None, "score": 0.6}]
-        top = axes.gate(r, SPACE, CT_PAGE).model_top3
+        top = axes.gate(r, SPACE, CT_PAGE).model_paths
         assert (top[0]["l1"], top[0]["folded"]) == ("Others", True)  # never the folded class name
 
 
@@ -350,7 +350,7 @@ class TestCanonFallback:
         result = gate(raw(l1="OTHER", l1_p=0.9, l2=None), text=SLEEP_PAGE)
         assert (result.route, result.decided_by) == ("canon", "canon")
         assert (result.l1, result.l2, result.l3) == (LAB, "Diagnostic Study", "Sleep Study Report")
-        assert result.model_top3[0]["l1"] == "Others"
+        assert result.model_paths[0]["l1"] == "Others"
 
     def test_an_l2_the_model_folded_to_others_lets_the_canon_name_it(self):
         result = gate(raw(l2="Others", l2_p=0.9))
@@ -438,7 +438,7 @@ class TestStaging:
         pages = stage.read_staged("chart1")
         assert pages["chart1_Pg1"]["decided_by"] == "model"
         assert pages["chart1_Pg1"]["page_type"] == "Lab Report (Radiology Report)"
-        assert pages["chart1_Pg1"]["model_top3"][0]["path"] == f"{LAB} > {RAD}"
+        assert pages["chart1_Pg1"]["model_paths"][0]["path"] == f"{LAB} > {RAD}"
         assert pages["chart1_Pg1"]["axes"]["l3"] == "CT Scan Report"
 
     def test_a_missing_or_foreign_file_reads_empty(self, tmp_path, monkeypatch):

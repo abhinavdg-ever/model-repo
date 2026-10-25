@@ -97,6 +97,8 @@ HEADS = ("L1", "L2", "L3", "specialty", "codeability")
 IGNORE = -100
 MASKED = -1e4  # not -inf: a fully masked row stays finite under mixed precision
 SEP = " > "
+TOP_PATHS = 5  # whole paths kept per page (``paths``)
+PATHS_PER_L1 = 3  # of which at most this many under one L1
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -610,6 +612,7 @@ def decode(logits, model, space: dict[str, Any], top_k: int = 3) -> list[dict[st
     spec_prob = torch.softmax(logits["specialty"], -1) if space["specialty"] else None
     code_prob = torch.softmax(logits["codeability"], -1)
     by_l1 = _best_under_every_l1(logits, model, space, l1_prob.shape[0]) if l2_prob is not None else []
+    l2_given, l3_given = path_probabilities(logits, model, space)
     out = []
     for i in range(l1_prob.shape[0]):
         values, indices = torch.topk(l1_prob[i], k=min(top_k, len(space["L1"])))
@@ -634,23 +637,63 @@ def decode(logits, model, space: dict[str, Any], top_k: int = 3) -> list[dict[st
         j = int(code_prob[i].argmax())
         row["codeability"], row["codeability_confidence"] = space["codeability"][j], float(code_prob[i, j])
         row["path"] = " > ".join(x for x in (row["L1"], row["L2"], row["L3"]) if x)
-        row["top3"] = top_paths(top, row["by_L1"])
+        row["paths"] = top_paths(l1_prob[i].tolist(), None if l2_given is None else l2_given[i].tolist(),
+                                 None if l3_given is None else l3_given[i].tolist(), space)
         out.append(row)
     return out
 
 
-def top_paths(l1_top: list[tuple[str, float]], by_l1: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
-    """The best L1 > L2 > L3 under each of the top L1s, best first. Score = p(L1) ·
-    p(L2 | L1) · p(L3 | L2); a level the L1 does not have counts as 1."""
+def path_probabilities(logits, model, space: dict[str, Any]):
+    """(L2 under every L1, L3 under every L2) as probabilities: rows × L1 × L2 and
+    rows × L2 × L3, each row masked to its parent's children. None for a level the
+    model does not have."""
+    import torch
+
+    l2 = l3 = None
+    if space["L2"] and model.l2_mask.numel() and logits["L2"].shape[-1] == model.l2_mask.shape[-1]:
+        l2 = torch.softmax(logits["L2"].unsqueeze(1).masked_fill(~model.l2_mask.unsqueeze(0), MASKED), -1)
+    if space["L3"] and model.l3_mask.numel() and logits["L3"].shape[-1] == model.l3_mask.shape[-1]:
+        l3 = torch.softmax(logits["L3"].unsqueeze(1).masked_fill(~model.l3_mask.unsqueeze(0), MASKED), -1)
+    return l2, l3
+
+
+def top_paths(l1_prob: list[float], l2_given: list[list[float]] | None, l3_given: list[list[float]] | None,
+              space: dict[str, Any], k: int = TOP_PATHS, per_l1: int = PATHS_PER_L1) -> list[dict[str, Any]]:
+    """The k best whole paths L1 > L2 > L3 over every path the taxonomy allows, at
+    most ``per_l1`` under one L1, best first. Score = p(L1) · p(L2 | L1) · p(L3 | L2);
+    a level the parent does not have counts as 1. Paths may share an L1 (Lab Report >
+    Pathology Report and Lab Report > Lab Result). ``l2_given[a][p]`` is
+    p(L2 pair p | L1 a); ``l3_given[p][t]`` is p(L3 t | L2 pair p)."""
+    l2_index = {pair: i for i, pair in enumerate(space["L2"])}
+    l3_index = {name: i for i, name in enumerate(space["L3"])}
     paths = []
-    for l1, p1 in l1_top:
-        best = by_l1.get(l1) or {}
-        l2, l3 = best.get("L2"), best.get("L3")
-        score = p1 * (best.get("L2_confidence") or 1.0) * (best.get("L3_confidence") or 1.0)
+
+    def add(l1, p1, l2=None, p2=None, l3=None, p3=None):
+        score = p1 * (1.0 if p2 is None else p2) * (1.0 if p3 is None else p3)
         paths.append({"path": " > ".join(x for x in (l1, l2, l3) if x), "L1": l1, "L2": l2, "L3": l3,
-                      "L1_confidence": p1, "L2_confidence": best.get("L2_confidence"),
-                      "L3_confidence": best.get("L3_confidence"), "score": score})
-    return sorted(paths, key=lambda x: -x["score"])
+                      "L1_confidence": p1, "L2_confidence": p2, "L3_confidence": p3, "score": score})
+
+    for a, l1 in enumerate(space["L1"]):
+        p1 = float(l1_prob[a])
+        pairs = space["L2_by_L1"].get(l1) if l2_given is not None else None
+        if not pairs:
+            add(l1, p1)
+            continue
+        for pair in pairs:
+            p = l2_index[pair]
+            p2 = float(l2_given[a][p])
+            l3s = space["L3_by_L2"].get(pair) if l3_given is not None else None
+            if not l3s:
+                add(l1, p1, pair.split(SEP, 1)[1], p2)
+                continue
+            for name in l3s:
+                add(l1, p1, pair.split(SEP, 1)[1], p2, name.rsplit(SEP, 1)[1], float(l3_given[p][l3_index[name]]))
+    kept, per = [], {}
+    for found in sorted(paths, key=lambda x: -x["score"]):
+        if per.get(found["L1"], 0) < per_l1:
+            per[found["L1"]] = per.get(found["L1"], 0) + 1
+            kept.append(found)
+    return kept[:k]
 
 
 def save_model(output: Path, model, tokenizer, space: dict[str, Any], settings: dict[str, Any]) -> None:

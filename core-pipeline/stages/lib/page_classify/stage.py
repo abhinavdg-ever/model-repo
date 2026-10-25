@@ -2,12 +2,12 @@
 
 Every page that is not blank, junk or duplicate is classified on its own,
 from the page's text (Final2 → Final1 → Tesseract, plain text), by its page
-axes (``axes.predict``): the page-axes model's top 3 where it is sure, the
+axes (``axes.predict``): the page-axes model's best paths where it is sure, the
 keyword canon (``page_canon.json``) elsewhere, Others when neither is. They are
 written as ``page_type`` / ``page_subtype`` — L1 / Others with one level, L1 /
 L2 with two, "L1 (L2)" / L3 with three — with the axes' codeability as the
 category, ``decided_by`` model / canon / rule / others, and the whole answer
-(the model's top 3 and specialty included) in ``axes``. That per-page result
+(the model's best paths and specialty included) in ``axes``. That per-page result
 is the **Extracted** answer and is what this stage writes, to Postgres and to
 ``<chart>/staging/page_classification.json`` (one entry per page name).
 
@@ -108,7 +108,7 @@ def staging_path(chart_name: str) -> Path:
 
 def _staged_entry(row: dict[str, Any], page_axes: Optional[axes.AxesResult], source: str) -> dict[str, Any]:
     """One page of ``page_classification.json``: the Extracted value, who decided
-    it, the model's top 3, and the whole axes answer."""
+    it, the model's best paths (5, at most 3 per L1), and the whole axes answer."""
     whole = page_axes.as_json() if page_axes else (row.get("axes") or None)
     return {
         "page_type": row.get("page_type"),
@@ -118,7 +118,7 @@ def _staged_entry(row: dict[str, Any], page_axes: Optional[axes.AxesResult], sou
         "confidence": row.get("confidence"),
         "decided_by": row.get("decided_by"),
         "needs_review": row.get("needs_review"),
-        "model_top3": (whole or {}).get("model_top3"),
+        "model_paths": (whole or {}).get("model_paths"),
         "ocr_source": source or None,
         "axes": whole,
     }
