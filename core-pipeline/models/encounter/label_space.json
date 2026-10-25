@@ -1,0 +1,22 @@
+{
+  "label_version": "encounter-v1",
+  "classes": [
+    "Inpatient",
+    "Outpatient (F2F)",
+    "Outpatient (Evisit)",
+    "Outpatient (Home Visit)",
+    "Not Available"
+  ],
+  "base_model": "distilbert-base-uncased",
+  "max_length": 512,
+  "head_fraction": 0.85,
+  "dropout": 0.1,
+  "inherited_weight": 0.5,
+  "train_pages": {
+    "Not Available": 783,
+    "Outpatient (F2F)": 842,
+    "Outpatient (Evisit)": 50,
+    "Inpatient": 143,
+    "Outpatient (Home Visit)": 32
+  }
+}

@@ -1,0 +1,6 @@
+# The encoder weights (265 MB) are copied onto each host, never committed
+# (git LFS included). head.pt (17 KB), the configs, the tokenizer and
+# label_space.json are in git.
+encoder/model.safetensors
+*.safetensors
+*.bin
