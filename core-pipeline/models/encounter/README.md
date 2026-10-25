@@ -6,7 +6,7 @@ Inpatient · Outpatient (F2F) · Outpatient (Evisit) · Outpatient (Home Visit) 
 
 ```
 encounter/
-├── encoder/              # DistilBERT encoder + tokenizer (model.safetensors is git-ignored: copy it onto each host)
+├── encoder/              # DistilBERT encoder + tokenizer (model.safetensors in git LFS: git lfs pull)
 ├── head.pt               # the one head
 ├── label_space.json      # classes and training settings
 └── metrics_summary.json  # the run's held-out scores

@@ -1,7 +1,4 @@
-# The encoder weights (265 MB) are copied onto each host, never committed
-# (git LFS included). heads.pt (280 KB), the configs, the tokenizer and
-# label_space.json are in git. Checked by
-# tests/test_contracts.py::TestNoModelWeightsInGit.
-encoder/model.safetensors
-*.safetensors
+# The encoder weights (433 MB, Bio_ClinicalBERT) are in git LFS since 2026-10-25 (user):
+# encoder/model.safetensors is tracked through .gitattributes. Run `git lfs install`
+# and `git lfs pull` on each host. Other weight files stay out of git.
 *.bin

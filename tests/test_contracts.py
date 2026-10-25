@@ -2735,8 +2735,9 @@ class TestCredentialListCopy:
 
 
 class TestNoModelWeightsInGit:
-    """Model weights are copied onto each host, never committed (the repo is
-    public, and the page-axes weights were trained on chart text). Small files
+    """Model weights are copied onto each host, never committed -- except the
+    page-axes and encounter encoders, which are in git LFS since 2026-10-25 (user:
+    pushed to the public repo knowing they were trained on chart text). Small files
     that ship on purpose (tfidf_flat.joblib, image_type_classification.pkl,
     configs, tokenizers) are not weights in this sense."""
 
@@ -2744,6 +2745,11 @@ class TestNoModelWeightsInGit:
     # Small on purpose: the page-axes heads (280 KB) and the encounter head (17 KB).
     # The encoders they sit on (encoder/model.safetensors, 265 MB each) are never committed.
     ALLOWED = {"core-pipeline/models/page-family/page-axes/heads.pt", "core-pipeline/models/encounter/head.pt"}
+    # In git LFS (the repository holds a pointer): exactly these two encoders.
+    LFS = {
+        "core-pipeline/models/page-family/page-axes/encoder/model.safetensors",
+        "core-pipeline/models/encounter/encoder/model.safetensors",
+    }
     MAX_TRACKED_BYTES = 20 * 1024 * 1024
 
     @staticmethod
@@ -2762,19 +2768,20 @@ class TestNoModelWeightsInGit:
     def test_no_weight_file_is_tracked(self):
         weights = [
             p for p in self._tracked()
-            if p.lower().endswith(self.WEIGHT_SUFFIXES) and p not in self.ALLOWED
+            if p.lower().endswith(self.WEIGHT_SUFFIXES) and p not in self.ALLOWED | self.LFS
         ]
         assert not weights, f"model weights tracked in git (copy them onto each host instead): {weights}"
 
     def test_no_large_file_is_tracked(self):
         large = [
             p for p in self._tracked()
-            if (REPO_ROOT / p).is_file() and (REPO_ROOT / p).stat().st_size > self.MAX_TRACKED_BYTES
+            if p not in self.LFS
+            and (REPO_ROOT / p).is_file() and (REPO_ROOT / p).stat().st_size > self.MAX_TRACKED_BYTES
         ]
         assert not large, f"files over 20 MB tracked in git: {large}"
 
-    def test_no_git_lfs_rule(self):
+    def test_git_lfs_holds_only_the_two_encoders(self):
         attributes = REPO_ROOT / ".gitattributes"
         text = attributes.read_text(encoding="utf-8") if attributes.is_file() else ""
-        rules = [ln for ln in text.splitlines() if "filter=lfs" in ln and not ln.lstrip().startswith("#")]
-        assert not rules, f"git LFS rules in .gitattributes: {rules}"
+        rules = {ln.split()[0] for ln in text.splitlines() if "filter=lfs" in ln and not ln.lstrip().startswith("#")}
+        assert rules == self.LFS, f"git LFS rules in .gitattributes: {sorted(rules)}"

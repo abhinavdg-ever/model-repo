@@ -23,8 +23,8 @@ The metrics files (`metrics_summary.json`, `predictions_*.csv`, `errors.csv`, â€
 are not needed here.
 
 `PAGE_AXES_MODEL_DIR` (default `models/page-family/page-axes`) points at this
-folder. The weights stay local (`encoder/model.safetensors`
-and `heads.pt` are git-ignored); copy them onto each host. Until they are here,
+folder. `encoder/model.safetensors` is in git LFS (2026-10-25): `git lfs install`,
+then `git lfs pull`; `heads.pt` is plain git. Until they are here,
 `/health` shows `page_axes_model.ready: false` and the keyword canon (`page_canon.json`) decides
 `page_type` / `page_subtype` alone (`page_classification.axes` â†’ `route` null).
 

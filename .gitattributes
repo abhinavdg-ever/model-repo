@@ -25,3 +25,8 @@ Dockerfile  text eol=lf
 *.pdf   binary
 *.woff  binary
 *.woff2 binary
+
+# Model weights in git LFS (2026-10-25, user): exactly these two encoders. A host
+# without git-lfs gets a ~130-byte pointer in their place; /health names it.
+core-pipeline/models/page-family/page-axes/encoder/model.safetensors filter=lfs diff=lfs merge=lfs -text
+core-pipeline/models/encounter/encoder/model.safetensors filter=lfs diff=lfs merge=lfs -text
