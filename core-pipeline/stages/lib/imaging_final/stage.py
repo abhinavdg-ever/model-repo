@@ -179,7 +179,15 @@ def final_confidences(
             and conf.band(_number((classification.get(pid) or {}).get("confidence"))) == conf.GOOD
         ]
         out["page_type"] = conf.score(_number(kind.get("confidence")), "conflict" if rivals else "")
-        out["codability"] = out["page_type"]
+        # Codability: the axes' own (as sure as the L1), with the page's doubts (handwritten,
+        # thin text) carried over from the page type's; else the page type's.
+        stored = axes.stored(kind)
+        path, cod = _number(stored.get("page_type_confidence")), _number(stored.get("codeability_confidence"))
+        base = _number(kind.get("confidence"))
+        out["codability"] = (
+            conf.score(min(1.0, base * cod / path), "conflict" if rivals else "")
+            if base is not None and cod is not None and path else out["page_type"]
+        )
     if specialty_page is not None:
         out["specialty"] = _number(axes.stored(classification.get(specialty_page) or {}).get("specialty_confidence"))
     if dos_page is not None:

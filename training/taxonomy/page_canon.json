@@ -963,7 +963,10 @@
         "title_terms": [
           "Office Visit",
           "return visit",
-          "initial visit"
+          "initial visit",
+          "Follow Up Visit",
+          "Follow-Up Visit",
+          "Followup Visit"
         ],
         "body_terms": [
           "f/u"

@@ -32,20 +32,24 @@
   "applies_to": {
     "families": [
       "Progress Note",
-      "Discharge Summary"
+      "Discharge Summary",
+      "Operative Note"
     ],
     "not_applicable": {
       "setting": "not_applicable",
       "label": "Not Available"
     },
-    "note": "2026-10-23 (user): a page whose L1 family is not listed votes Not Applicable (lab, orders, forms...); listed families vote their evidence or their vote.family_defaults. Empty families = every page votes its evidence. 2026-10-25 (user): shown as Not Available."
+    "note": "2026-10-23 (user): a page whose L1 family is not listed votes Not Applicable (lab, orders, forms...); listed families vote their evidence or their vote.family_defaults. Empty families = every page votes its evidence. 2026-10-25 (user): shown as Not Available. 2026-10-25 (user): the encounter's document type decides first: a family in 'always' is that setting whatever its pages say (Discharge Summary, Operative Note -> Inpatient); a family not listed is Not Applicable for the whole encounter, even when one of its pages votes a setting.",
+    "always": {
+      "Discharge Summary": "inpatient",
+      "Operative Note": "inpatient"
+    }
   },
   "tier1_page_types": {
     "Discharge Summary": "inpatient",
     "ICU Note": "inpatient",
     "Ventilator management record": "inpatient",
     "Operative Report": "inpatient",
-    "Emergency Note": "inpatient",
     "Urgent care note": "outpatient_f2f",
     "HouseCalls visit summary": "home",
     "Telephone Encounter": "outpatient_tele",
@@ -437,5 +441,6 @@
       "note": "2026-10-25 (user): a model answer at very high confidence beats a weak page phrase. When the page's only evidence is a tier 2 phrase for F2F ('office visit', 'clinic note': template wording that also sits on telehealth and home visits) and the model says Evisit, Home Visit or Inpatient at >= 0.95, the model's setting wins (by model_override). Only F2F phrases are overridden: a phrase for any other setting ('inpatient', 'telehealth visit') stays. Held-out pages: fires on 4, right on 4; encounter test pages ENC_15 (house call with an 'Office Visit' footer) and ENC_14 (telehealth on an office template)."
     }
   },
-  "negatives_note": "2026-10-25 (user, encounter test pages ENC_03 / ENC_09): an ambulatory surgery centre or a same-day discharge home cancels the inpatient evidence, the Operative Note page-type prior included ('tier1': true); 'admitted to medicine', 'accepting physician' and the like are inpatient statements."
+  "negatives_note": "2026-10-25 (user, encounter test pages ENC_03 / ENC_09): an ambulatory surgery centre or a same-day discharge home cancels the inpatient evidence, the Operative Note page-type prior included ('tier1': true); 'admitted to medicine', 'accepting physician' and the like are inpatient statements.",
+  "tier1_note": "2026-10-25 (user): Emergency Note is not hard-coded to a setting; its pages' evidence and the model decide."
 }

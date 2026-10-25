@@ -94,6 +94,9 @@ class Canon:
     # Encounter type is valid only for these page families (L1); others are Not Applicable.
     applies_to: frozenset[str] = frozenset()
     not_applicable: str = "not_applicable"
+    # Families whose encounter is always one setting (2026-10-25, user: Discharge Summary
+    # and Operative Note are always Inpatient), whatever the pages say.
+    family_settings: dict[str, str] = field(default_factory=dict)
     # The vote (2026-10-23): a page with no setting evidence votes its family's default
     # (Progress Note -> outpatient_f2f, Discharge Summary -> inpatient); the encounter's
     # first page counts first_page_weight times.
@@ -238,6 +241,10 @@ def _parse_canon(raw: dict[str, Any], *, check_page_types: bool = True) -> Canon
             str(f).strip().casefold() for f in (raw.get("applies_to") or {}).get("families") or []
         ),
         not_applicable=na_setting,
+        family_settings={
+            str(f).strip().casefold(): str(v)
+            for f, v in ((raw.get("applies_to") or {}).get("always") or {}).items()
+        },
         family_defaults={
             str(f).strip().casefold(): str(v)
             for f, v in ((raw.get("vote") or {}).get("family_defaults") or {}).items()
@@ -560,6 +567,28 @@ def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vot
 EVIDENCE = ("tier1", "tier2", "model")
 
 
+def family_decision(family: str, first: dict[str, Any], canon: Canon) -> Optional[Decision]:
+    """The encounter's document type decides outright (2026-10-25, user): a family that is
+    always one setting (Discharge Summary, Operative Note -> Inpatient), or Not Applicable
+    for a family encounter type does not apply to (a lab report), whatever its pages vote.
+    None when the family leaves it to the pages (Progress Note) or is unknown.
+
+    Confidence: the model's probability for the setting, fully backed by the document type."""
+    key = family.strip().casefold()
+    if not key or key == "unknown":
+        return None
+    probs = setting_probs(first.get("encounter_model"), canon)
+    fixed = canon.family_settings.get(key)
+    if fixed:
+        return Decision(fixed, "family", vote_confidence(fixed, probs, support=1.0), False, family,
+                        reason=f"{family}: always {canon.labels.get(fixed, fixed)}")
+    if canon.applies_to and key not in canon.applies_to:
+        return Decision(canon.not_applicable, "not_applicable",
+                        vote_confidence(canon.not_applicable, probs, support=1.0), False, family,
+                        reason=f"{family}: encounter type does not apply")
+    return None
+
+
 def first_page_decision(votes: list[Vote], canon: Canon) -> Optional[Decision]:
     """The encounter's first page decides when it has evidence of its own (a tier 1 page
     type, a tier 2 phrase, or the encounter model; 2026-10-25, user). None when it does
@@ -646,7 +675,11 @@ def classify_pages(
         first = visit[0]
         family = encounter_family(visit)
         votes = [page_vote(page, canon) for page in visit]
-        decision = first_page_decision(votes, canon) or tally(votes, canon)
+        decision = (
+            family_decision(family, first, canon)
+            or first_page_decision(votes, canon)
+            or tally(votes, canon)
+        )
         if not decision.setting and canon.default_setting:
             # No page voted (no evidence, no family default): the default, a fallback.
             decision = Decision(

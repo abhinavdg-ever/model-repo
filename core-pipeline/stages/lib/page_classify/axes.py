@@ -552,17 +552,28 @@ class _Vote:
 
 def page_type_confidence(l1: Optional[str], l1_conf: Optional[float], l2: Optional[str], l2_conf: Optional[float],
                          l3: Optional[str], l3_conf: Optional[float], *, model: bool = True) -> Optional[float]:
-    """The page type's confidence: the chance the whole path is right, the product of
-    its levels' (L2 and L3 conditional on their parent). A level left Others adds no
-    doubt of its own; L1 Others is the L1's own (fallback) confidence. Decided without
-    the model (canon only): times ``no_model`` once."""
+    """The page type's confidence: the chance its named levels are right, the product of
+    their confidences (L2 and L3 conditional on their parent), leaving out the deepest
+    named level -- the subtype, shown beside the type with its own confidence
+    (``subtype_confidence``), so a doubtful subtype does not flag the page (2026-10-25,
+    user: fewer review flags). A level left Others adds no doubt of its own; L1 Others is
+    the L1's own (fallback) confidence. Decided without the model (canon only): times
+    ``no_model`` once."""
     if l1 is None or l1_conf is None:
         return None
+    named = [float(c) for name, c in ((l2, l2_conf), (l3, l3_conf)) if name and name != OTHERS and c is not None]
     value = float(l1_conf)
-    for name, level_conf in ((l2, l2_conf), (l3, l3_conf)):
-        if name and name != OTHERS and level_conf is not None:
-            value *= float(level_conf)
+    for level_conf in named[:-1]:
+        value *= level_conf
     return conf.score(value, *(() if model else ("no_model",)), module="page_type")
+
+
+def subtype_confidence(l2: Optional[str], l2_conf: Optional[float], l3: Optional[str],
+                       l3_conf: Optional[float]) -> Optional[float]:
+    """The subtype's own confidence (the deepest named level, conditional on its parent);
+    None when the page has no named subtype."""
+    named = [float(c) for name, c in ((l2, l2_conf), (l3, l3_conf)) if name and name != OTHERS and c is not None]
+    return round(named[-1], 4) if named else None
 
 
 def specialty_confidence(raw: dict[str, Any], specialty: Optional[str], keyword: Optional[tuple[str, float]], *,
@@ -666,14 +677,16 @@ def gate(
     specialty_conf = specialty_confidence(raw, specialty, keyword_specialty, fallback=sources[3] == BY_OTHERS,
                                           not_asserted=s["specialty_not_asserted"])
 
-    # Codeability is a function of the page type: it is as sure as the page type is.
+    # Codeability follows the page type, and the family (L1) settles it for nearly every
+    # type (a Progress Note's subtypes are all codeable): it is as sure as the L1 is.
     path_conf = page_type_confidence(l1, l1_conf, l2, l2_conf, l3, l3_conf, model=bool(raw))
+    family_conf = page_type_confidence(l1, l1_conf, None, None, None, None, model=bool(raw))
     rule = entry.get("codeability_rule")
     codeability, codeability_conf = NEEDS_REVIEW, None
     if rule == "page_type_tag" and entry.get("codeability", NEEDS_REVIEW) != NEEDS_REVIEW:
-        codeability, codeability_conf, sources[4] = entry["codeability"], path_conf, CANON
+        codeability, codeability_conf, sources[4] = entry["codeability"], family_conf, CANON
     elif fired is not None and not entry and fired.codeability:
-        codeability, codeability_conf, sources[4] = fired.codeability, path_conf, RULE
+        codeability, codeability_conf, sources[4] = fired.codeability, family_conf, RULE
 
     return AxesResult(
         route=where,

@@ -2647,7 +2647,7 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | CC/HPI | Progress Note | Progress Note > CC/HPI | codeable |  |  |  | complaint, hpi, presents, onset, duration, illness, reports, denies, history |  |
 | F2F Evaluation Note | Progress Note | Progress Note | codeable |  |  | F2F Evaluation Note, F2F encounter | Face-to-face, home health certification, clinical findings support | DME |
 | Lab and Imaging Results | Progress Note | Progress Note > Lab and Imaging Results | codeable |  |  |  | results, reviewed, labs, imaging, findings, impression, values |  |
-| Office Visit | Progress Note | Progress Note | codeable |  |  | Office Visit, return visit, initial visit | f/u | OV, follow-up, RTC, new patient |
+| Office Visit | Progress Note | Progress Note | codeable |  |  | Office Visit, return visit, initial visit, Follow Up Visit, Follow-Up Visit, Followup Visit | f/u | OV, follow-up, RTC, new patient |
 | Office Visit Note | Progress Note | Progress Note | codeable |  |  | Office Visit Note | history of present illness, HPI, review of systems, ROS, physical exam, physical examination, assessment and plan, assessment & plan, impression and plan, interval history, subjective, objective, chief complaint, reason for visit |  |
 | Patient Instructions | Progress Note | Progress Note > Patient Instructions | codeable |  |  |  | instructions, return, followup, call, precautions, education, advised |  |
 | Physical Exam | Progress Note | Progress Note > Physical Exam | codeable |  |  |  | exam, examination, general, heent, neck, lungs, heart, abdomen, extremities, neurological, skin, ros |  |
@@ -2889,7 +2889,7 @@ Encounter setting per visit. Evidence is ranked, not added up: the highest non-e
 
 **Default**: setting: outpatient_f2f; note: 2026-10-20 (user): a visit with no setting evidence, or no usable date, is Outpatient (F2F); decided_by 'default', and reason keeps why (no_setting_evidence / no_date / default_date). Its confidence is a fallback's: the model's probability for F2F on the first page x fallback (0.6), so it is never good. Empty setting = leave it unresolved.
 
-**Applies to**: families: Progress Note, Discharge Summary; not_applicable: setting: not_applicable; label: Not Available; note: 2026-10-23 (user): a page whose L1 family is not listed votes Not Applicable (lab, orders, forms...); listed families vote their evidence or their vote.family_defaults. Empty families = every page votes its evidence. 2026-10-25 (user): shown as Not Available.
+**Applies to**: families: Progress Note, Discharge Summary, Operative Note; not_applicable: setting: not_applicable; label: Not Available; note: 2026-10-23 (user): a page whose L1 family is not listed votes Not Applicable (lab, orders, forms...); listed families vote their evidence or their vote.family_defaults. Empty families = every page votes its evidence. 2026-10-25 (user): shown as Not Available. 2026-10-25 (user): the encounter's document type decides first: a family in 'always' is that setting whatever its pages say (Discharge Summary, Operative Note -> Inpatient); a family not listed is Not Applicable for the whole encounter, even when one of its pages votes a setting.; always: Discharge Summary: inpatient; Operative Note: inpatient
 
 **Tier 1: page types that decide the setting**
 
@@ -2899,7 +2899,6 @@ Encounter setting per visit. Evidence is ranked, not added up: the highest non-e
 | ICU Note | inpatient |
 | Ventilator management record | inpatient |
 | Operative Report | inpatient |
-| Emergency Note | inpatient |
 | Urgent care note | outpatient_f2f |
 | HouseCalls visit summary | home |
 | Telephone Encounter | outpatient_tele |

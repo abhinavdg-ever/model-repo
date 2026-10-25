@@ -285,8 +285,9 @@ def test_a_lab_encounter_is_not_applicable_on_every_page(canon):
     pages = [{**page(1, "telehealth visit"), "page_family": "Lab Report", "document": 1},
              {**page(2, "office visit"), "page_family": "Progress Note", "document": 1}]
     rows = classify_pages(pages, entries=canon)
-    # One page votes a setting: Not Applicable is set aside, however the lab pages weigh.
-    assert all((r["encounter_type"], r["decided_by"]) == ("outpatient_f2f", "vote") for r in rows)
+    # 2026-10-25 (user): the document's type (its first page's family) decides; a Progress
+    # Note page inside a lab document no longer makes it a visit.
+    assert all((r["encounter_type"], r["decided_by"]) == ("not_applicable", "not_applicable") for r in rows)
     only_labs = [{**page(n, "telehealth visit"), "page_family": "Lab Report", "document": 1} for n in (1, 2)]
     rows = classify_pages(only_labs, entries=canon)
     assert all((r["encounter_type"], r["encounter_label"]) == ("not_applicable", "Not Available") for r in rows)
@@ -344,11 +345,23 @@ def test_a_first_page_without_evidence_lets_the_pages_vote(canon):
     assert (row["encounter_type"], row["decided_by"]) == ("outpatient_tele", "vote")
 
 
-def test_a_lab_first_page_lets_the_pages_vote(canon):
+def test_a_lab_document_is_not_applicable_whatever_its_pages_vote(canon):
     pages = _doc({**page(1, ""), "page_family": "Lab Report"},
                  {**page(2, "hospital course"), "page_family": "Progress Note"})
     row = classify_pages(pages, entries=canon)[0]
-    assert (row["encounter_type"], row["decided_by"]) == ("inpatient", "vote")
+    assert (row["encounter_type"], row["decided_by"]) == ("not_applicable", "not_applicable")
+
+
+def test_discharge_summary_and_operative_note_are_always_inpatient(canon):
+    for family in ("Discharge Summary", "Operative Note"):
+        pages = _doc({**page(1, "telehealth visit"), "page_family": family},
+                     {**page(2, "office visit"), "page_family": "Progress Note"})
+        rows = classify_pages(pages, entries=canon)
+        assert all((r["encounter_type"], r["decided_by"]) == ("inpatient", "family") for r in rows)
+
+
+def test_an_emergency_note_is_not_hard_coded(canon):
+    assert "Emergency Note" not in canon.tier1
 
 
 def test_family_defaults_vote_when_a_page_has_no_evidence(canon):
