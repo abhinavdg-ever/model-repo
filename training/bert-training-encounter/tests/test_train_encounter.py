@@ -94,3 +94,11 @@ def test_the_page_target_reads_encounter_on_page_and_keeps_the_visit(tmp_path):
 
 def test_a_five_class_model_still_loads_its_label_space():
     assert enc.VISIT_CLASSES == enc.CLASSES[:5] and enc.NO_EVIDENCE not in enc.VISIT_CLASSES
+
+
+def test_no_evidence_pages_are_left_out_by_default(tmp_path):
+    rows = [{**page(F2F, "a", basis="inherited"), "encounter_on_page": NONE},
+            {**page(IP, "b"), "encounter_on_page": IP}]
+    records, _ = enc.load_records(write(tmp_path, rows), 20, target="page")
+    assert [enc.loss_weight(r, 0.5, enc.NO_EVIDENCE_WEIGHT) for r in records] == [0.0, 1.0]
+    assert [enc.loss_weight(r, 0.5, 1.0) for r in records] == [0.5, 1.0]  # trained as a class

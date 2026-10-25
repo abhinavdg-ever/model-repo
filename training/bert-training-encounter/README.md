@@ -6,8 +6,11 @@ alone: it imports nothing from `bert-training/`, `annotation-tool/` or `core-pip
 **Target** (`--target`, 2026-10-25 relabel):
 
 * `page` (default): `encounter_on_page`, the setting only when the page itself shows it,
-  else **No evidence on page** (a class of its own). The visit is applied to the whole
-  document afterwards; a page that says nothing abstains instead of guessing.
+  else **No evidence on page**. Those pages are **left out of training** by default
+  (`--no-evidence-weight 0`): trained as a class (`--no-evidence-weight 1`) they made the
+  first page-target run answer No evidence far too often. The model learns from pages that
+  show their setting; on a thin page its low confidence keeps it out of the pipeline's
+  vote, and the visit is applied to the whole document afterwards.
 * `visit`: `encounter_type`, the setting of the visit the page belongs to (the first
   run's target).
 

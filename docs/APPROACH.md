@@ -597,10 +597,13 @@ L2, because section tagging decides it):
 
 * Input: `Training/encounter/encounter_tags.jsonl`, 2,785 pages.
 * **Target [built 2026-10-25]:** `--target page` (default) learns `encounter_on_page`,
-  the setting only when the page itself shows it, else **No evidence on page**, a sixth
-  class (1,118 pages). The visit is then applied to the whole document, as the pipeline
-  does, and a page that says nothing abstains instead of guessing: in the vote (5.1) the
-  model's "No evidence on page" never votes. `--target visit` learns `encounter_type`
+  the setting only when the page itself shows it, else **No evidence on page** (1,118
+  pages). Trained as a class, that label won far too often (the user's first page-target
+  run), so those pages are **left out of training and of the page scores** by default
+  (`--no-evidence-weight 0`; 1 brings the class back). The model learns from the pages
+  that show their setting and always names one; on a thin page its confidence is low, so
+  the vote thresholds (5.1) keep it out, and the visit is applied to the whole document
+  afterwards, as the pipeline does. `--target visit` learns `encounter_type`
   (the first run's target). Page-level counts: Not Available 1,132, F2F 360, Inpatient
   125, Evisit 33, Home Visit 17: the two small classes are very small.
 * `train: false` rows (the client-default pages) are never learned; reported apart.

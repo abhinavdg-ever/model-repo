@@ -10,7 +10,10 @@ What it learns (``--target``):
 
 * ``page`` (default, 2026-10-25): ``encounter_on_page`` -- the setting only when the
   page itself shows it (a field, a statement, vitals with an exam, the page type),
-  else **No evidence on page**, a class of its own. Six classes: Inpatient, Outpatient
+  else **No evidence on page**. Those pages are left out by default
+  (``--no-evidence-weight 0``): trained as a class they made the model say No evidence
+  far too often. The model then learns from pages that show their setting, and on a
+  thin page its low confidence keeps it out of the pipeline's vote. Six classes: Inpatient, Outpatient
   (F2F), Outpatient (Evisit), Outpatient (Home Visit), Not Available, No evidence on
   page. The visit is applied to the whole document afterwards, as the pipeline does;
   a page that says nothing then abstains instead of guessing. Synthetic pages, which
@@ -75,6 +78,9 @@ NO_EVIDENCE = "No evidence on page"
 VISIT_CLASSES = CLASSES[:5]
 SMALL_CLASSES = ("Outpatient (Home Visit)", "Outpatient (Evisit)")
 BASIS_WEIGHT = {"inherited": 0.5}  # every other basis trains at 1
+# 2026-10-25 (user: the first page-target run said No evidence on page far too often):
+# pages that show no setting are left out by default; the model learns from pages that do.
+NO_EVIDENCE_WEIGHT = 0.0
 
 BASE_MODEL = "distilbert-base-uncased"
 MAX_LENGTH = 512
@@ -115,6 +121,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--min-chars", type=int, default=MIN_CHARS)
     p.add_argument("--target", choices=("page", "visit"), default="page",
                    help="page: encounter_on_page (No evidence on page is a class); visit: encounter_type")
+    p.add_argument("--no-evidence-weight", type=float, default=NO_EVIDENCE_WEIGHT,
+                   help="page target: loss weight of No evidence on page rows (0, the default, leaves them out "
+                        "of training and of the page scores; 1 trains it as a full class)")
     p.add_argument("--inherited-weight", type=float, default=BASIS_WEIGHT["inherited"],
                    help="loss weight of a label inherited from another page of the visit (0 leaves them out)")
     return p.parse_args(argv)
@@ -184,11 +193,13 @@ def _page_index(value: Any) -> int | None:
     return int(match.group(0)) if match else None
 
 
-def loss_weight(record: dict, inherited_weight: float) -> float:
-    """0 for a row that must not be learned; else the basis weight."""
+def loss_weight(record: dict, inherited_weight: float, no_evidence_weight: float = 1.0) -> float:
+    """0 for a row that must not be learned; else the basis weight, times
+    ``no_evidence_weight`` for a No evidence on page row."""
     if not record["train"]:
         return 0.0
-    return inherited_weight if record["basis"] == "inherited" else 1.0
+    weight = inherited_weight if record["basis"] == "inherited" else 1.0
+    return weight * no_evidence_weight if record["label"] == NO_EVIDENCE else weight
 
 
 # --- Split -------------------------------------------------------------------------
@@ -528,7 +539,7 @@ def main(argv: list[str] | None = None) -> int:
         mock, mock_short = load_records(args.with_mock, args.min_chars, synthetic=True, target=args.target)
         records += mock
         short += mock_short
-    weights = [loss_weight(r, args.inherited_weight) for r in records]
+    weights = [loss_weight(r, args.inherited_weight, args.no_evidence_weight) for r in records]
     labels = [CLASSES.index(r["label"]) for r in records]
     print(f"Pages: {len(records)} usable ({sum(r['synthetic'] for r in records)} synthetic, training only), "
           f"{short} left out with fewer than {args.min_chars} characters")
@@ -536,6 +547,10 @@ def main(argv: list[str] | None = None) -> int:
     print("  by basis: " + ", ".join(f"{b or '<none>'} {n}" for b, n in Counter(r["basis"] for r in records).most_common()))
     print(f"  not learned (train=false): {sum(not r['train'] for r in records)}; inherited labels at weight "
           f"{args.inherited_weight}")
+    no_evidence = sum(1 for r in records if r["label"] == NO_EVIDENCE)
+    if no_evidence:
+        print(f"  {NO_EVIDENCE}: {no_evidence} pages at weight {args.no_evidence_weight}"
+              + (" (left out of training and of the page scores)" if args.no_evidence_weight == 0 else ""))
 
     groups = assign_groups(records)
     sides = group_split(records, groups, args.val_fraction, args.test_fraction, args.seed)
@@ -588,7 +603,7 @@ def main(argv: list[str] | None = None) -> int:
         return float(loss.item())
 
     # Validation scores the learnable rows only (train=true); the default rows are reported apart.
-    val_ix = [i for i in split["val"] if records[i]["train"]]
+    val_ix = [i for i in split["val"] if weights[i] > 0]
     if args.check:
         batches = iter(train_loader)
         train_step(next(batches))
@@ -665,7 +680,8 @@ def evaluate(model, records, labels, weights, groups, sides, ids, pad, args, dev
                           "label": r["label"], "visit_label": r["visit_label"], "pred": CLASSES[k],
                           "confidence": round(p, 4),
                           **{f"p_{c}": round(v, 4) for c, v in zip(CLASSES, probs)}})
-    scored = [x for x in lines if x["split"] == side and x["train"]]
+    learned = {records[i]["image"] for i, w in enumerate(weights) if w > 0}
+    scored = [x for x in lines if x["split"] == side and x["image"] in learned]
     page = class_scores([CLASSES.index(x["label"]) for x in scored], [CLASSES.index(x["pred"]) for x in scored])
     visit = visit_scores([x for x in lines if x["split"] == side])
     defaults = [x for x in lines if not x["train"]]
@@ -680,7 +696,8 @@ def evaluate(model, records, labels, weights, groups, sides, ids, pad, args, dev
 
     header = list(lines[0]) if lines else ["image"]
     write_csv(output / "predictions.csv", header, [list(x.values()) for x in lines])
-    write_csv(output / "errors.csv", header, [list(x.values()) for x in lines if x["label"] != x["pred"] and x["train"]])
+    write_csv(output / "errors.csv", header,
+              [list(x.values()) for x in lines if x["label"] != x["pred"] and x["image"] in learned])
     for name, scores in (("pages", page), ("visits", visit)):
         write_csv(output / f"confusion_{name}.csv", ["true \\ predicted", *CLASSES],
                   [[c, *row] for c, row in zip(CLASSES, scores["confusion"])])
