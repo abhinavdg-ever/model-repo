@@ -440,8 +440,29 @@ export function resetUserPassword(body: { username: string; password: string }):
 
 export type OcrSearchSnippet = { before: string; match: string; after: string };
 export type OcrSearchPage = { page_number: number | null; page_name: string; hits: number; snippets: OcrSearchSnippet[] };
-export type OcrSearchChart = { chart: string; run: string; batch: string; hits: number; pages: OcrSearchPage[] };
-export type OcrSearchBatch = { run: string; batch: string; charts: number; pages: number; hits: number };
+/** A section header that matches: its page, its text and the match within it. */
+export type OcrSearchHeader = {
+  page_number: number | null;
+  page_name: string;
+  text: string;
+  hits: number;
+  snippet: OcrSearchSnippet;
+};
+export type OcrSearchChart = {
+  chart: string;
+  run: string;
+  batch: string;
+  /** Every page of the chart; null when the chart has no page_list rows. */
+  total_pages: number | null;
+  /** Word hits in the Tesseract text, and the pages they are on. */
+  hits: number;
+  pages: OcrSearchPage[];
+  /** Section headers that match, and how many pages they are on. */
+  header_hits: number;
+  header_pages: number;
+  headers: OcrSearchHeader[];
+};
+export type OcrSearchBatch = { run: string; batch: string; charts: number; pages: number; hits: number; header_hits: number };
 export type OcrSearchResult = {
   query: string;
   whole_word: boolean;
@@ -450,6 +471,7 @@ export type OcrSearchResult = {
   total_charts: number;
   total_pages: number;
   total_hits: number;
+  total_header_hits: number;
   truncated: boolean;
   max_pages: number;
 };

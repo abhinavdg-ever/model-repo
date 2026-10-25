@@ -6010,25 +6010,121 @@ input {
   font-size: 0.76rem;
 }
 
-.search-chart {
-  margin-bottom: 1.1rem;
-}
-
-.search-chart-head {
+.search-history {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.6rem;
-  margin-bottom: 0.3rem;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
 }
 
-.search-chart-head a {
+.search-history-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.74rem;
+  color: var(--muted);
+  margin-right: 0.2rem;
+}
+
+.search-history-chip {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.search-history-chip.is-active {
+  border-color: var(--brand-800);
+  box-shadow: 0 0 0 1px var(--brand-800) inset;
+}
+
+.search-history-open,
+.search-history-forget {
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.search-history-open {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.2rem 0.3rem 0.2rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.search-history-count {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.search-history-forget {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.45rem;
+  color: var(--muted);
+}
+
+.search-history-forget:hover {
+  color: #a33b32;
+}
+
+.search-table {
+  width: 100%;
+}
+
+.search-table .search-num {
+  text-align: right;
+  white-space: nowrap;
+  width: 1%;
+}
+
+.search-row {
+  cursor: pointer;
+}
+
+.search-row.is-open > td {
+  background: var(--neutral-50, #f7f6f2);
+}
+
+.search-chart-name a {
   font-weight: 600;
   color: var(--brand-800);
 }
 
-.search-chart-head .accuracy-note {
-  margin: 0;
+.search-expand {
+  display: inline-flex;
+  border: 0;
+  background: none;
+  padding: 0.1rem;
+  cursor: pointer;
+  color: inherit;
+}
+
+.search-detail > td {
+  background: var(--neutral-50, #f7f6f2);
+  padding-top: 0.2rem;
+}
+
+.search-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 1rem;
+}
+
+.search-detail-grid h3 {
+  font-size: 0.82rem;
+  margin: 0.3rem 0 0.4rem;
+}
+
+@media (max-width: 900px) {
+  .search-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .search-pages td:first-child,

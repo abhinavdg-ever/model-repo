@@ -31,8 +31,13 @@ def test_snippets_count_every_hit_and_show_a_few():
 
 
 class FakeOcr:
-    def __init__(self, rows):
-        self.rows, self.sql, self.params = rows, "", []
+    """Answers the search's queries by what they read: the Tesseract text, the stored
+    headers, the OCR JSON headers, and each chart's page count."""
+
+    def __init__(self, rows, headers=(), json_headers=(), page_counts=None):
+        self.answers = {"text": rows, "headers": list(headers), "json": list(json_headers),
+                        "count": list((page_counts or {}).items())}
+        self.sql, self.params, self.calls, self.last = "", [], [], "text"
 
     def cursor(self):
         return self
@@ -44,14 +49,18 @@ class FakeOcr:
         return False
 
     def execute(self, sql, params=()):
-        self.sql, self.params = sql, list(params)
+        self.last = ("count" if "count(p.id)" in sql else "json" if "FROM ocr_results o" in sql and "section_headers" in sql
+                     else "headers" if "additional_page_details a" in sql else "text")
+        self.calls.append((self.last, list(params)))
+        if self.last == "text":
+            self.sql, self.params = sql, list(params)
 
     def fetchall(self):
-        return self.rows
+        return self.answers[self.last]
 
 
-def _patch(monkeypatch, rows):
-    fake = FakeOcr(rows)
+def _patch(monkeypatch, rows, **answers):
+    fake = FakeOcr(rows, **answers)
 
     @contextmanager
     def connection(url, schema):
@@ -76,6 +85,40 @@ def test_results_group_by_batch_then_chart(monkeypatch):
     assert [(b["run"], b["batch"], b["charts"], b["pages"]) for b in found["batches"]] == [
         ("R1", "B1", 1, 2), ("Test", "Test", 1, 1)]
     assert (found["total_pages"], found["total_hits"], found["truncated"]) == (3, 4, False)
+
+
+def test_section_headers_and_page_counts(monkeypatch):
+    fake = _patch(
+        monkeypatch,
+        [("c1", "R1", "B1", 2, "2.jpg", "Assessment: stable")],
+        headers=[("c1", "R1", "B1", 2, "2.jpg", "ASSESSMENT AND PLAN"),
+                 ("c2", "R1", "B2", 5, "5.jpg", "Assessment"),
+                 ("c2", "R1", "B2", 5, "5.jpg", "assessment"),  # the same header twice: once
+                 ("c2", "R1", "B2", 6, "6.jpg", "Assessments")],  # not a whole-word match
+        json_headers=[("c3", None, None, 1, "1.jpg", "Assessment / Plan")],
+        page_counts={"c1": 12, "c2": 40, "c3": 3},
+    )
+    found = ocr_search.search_tesseract("db", "public", "assessment")
+    rows = [(c["chart"], c["total_pages"], len(c["pages"]), c["hits"], c["header_pages"], c["header_hits"])
+            for c in found["charts"]]
+    assert rows == [("c1", 12, 1, 1, 1, 1), ("c2", 40, 0, 0, 1, 1), ("c3", 3, 0, 0, 1, 1)]
+    assert found["charts"][0]["headers"][0]["snippet"]["match"] == "ASSESSMENT"
+    assert found["total_header_hits"] == 3
+    assert [kind for kind, _ in fake.calls] == ["text", "headers", "json", "count"]
+
+
+def test_a_broken_ocr_json_does_not_lose_the_rest(monkeypatch):
+    fake = _patch(monkeypatch, [("c1", "R1", "B1", 1, "1.jpg", "plan of care")], page_counts={"c1": 4})
+    real_execute = fake.execute
+
+    def execute(sql, params=()):
+        real_execute(sql, params)
+        if fake.last == "json":
+            raise ValueError("invalid input syntax for type json")
+
+    fake.execute = execute
+    found = ocr_search.search_tesseract("db", "public", "plan")
+    assert found["total_hits"] == 1 and found["charts"][0]["total_pages"] == 4
 
 
 def test_a_one_letter_query_is_refused():
