@@ -590,6 +590,14 @@ class TestEncounterSignals:
         assert gap(rows[1])["evidence"]["visual_join"]
         assert rows[0]["document_seq"] == rows[1]["document_seq"]
 
+    def test_a_visit_heading_after_a_left_column_on_the_same_line_counts(self):
+        # Two-column page: OCR joins the left column's words and the heading into one line.
+        rows = assign([bare(1), bare(2, "Current Medications Reason for Appointment")])
+        assert gap(rows[1])["evidence"]["visit_heading"]
+        # A one-word term ("cc") only at the start of a line.
+        rows = assign([bare(1), bare(2, "copies sent to the clinic cc")])
+        assert "visit_heading" not in gap(rows[1])["opening"]
+
     def test_a_visit_heading_low_on_the_page_does_not_count(self):
         body = "\n".join(["assessment stable"] * 6 + ["Reason for Visit: follow up"])
         rows = assign([bare(1), bare(2, body)])

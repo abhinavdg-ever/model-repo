@@ -236,7 +236,13 @@ def _build(data: dict[str, Any]) -> Rules:
         progress_note_families=tuple(final.get("progress_note_families") or ("Progress Note",)),
         review_long_run=int((data.get("review_triggers") or {}).get("long_run_without_pagination", 25)),
         visit_headings=tuple(
-            re.compile(rf"^\W*{re.escape(term)}\b", re.IGNORECASE)
+            # At the start of a line; a heading of two or more words also at its end, where a
+            # two-column page's OCR puts it after the left column's words on the same line.
+            re.compile(
+                rf"^\W*{re.escape(term)}\b"
+                + (rf"|\b{re.escape(term)}\W*$" if len(term.split()) > 1 else ""),
+                re.IGNORECASE,
+            )
             for term in (data.get("visit_headings") or {}).get("terms") or ()
         ),
         visit_heading_top=float((data.get("visit_headings") or {}).get("top_fraction", 0.33)),
