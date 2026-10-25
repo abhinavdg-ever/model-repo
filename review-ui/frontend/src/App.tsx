@@ -16,7 +16,7 @@ import { clearSession, initialsOf, readSession, writeSession, type Session } fro
 
 type Route =
   | { view: "landing" }
-  | { view: "folder"; folderId: string; mode: OutputMode; from?: ChartSource }
+  | { view: "folder"; folderId: string; mode: OutputMode; from?: ChartSource; page?: number }
   | { view: "file-viewer"; folderId?: string }
   | { view: "accuracy" }
   | { view: "manual-review" }
@@ -63,6 +63,7 @@ function parsePath(pathname: string, search: string): Route {
       folderId: decodeURIComponent(match[1]),
       mode: parseMode(params.get("mode")),
       from: parseFrom(params.get("from")),
+      page: Number(params.get("page")) > 0 ? Number(params.get("page")) : undefined,
     };
   }
   return { view: "landing" };
@@ -74,6 +75,7 @@ function pathFor(route: Route): string {
     const params = new URLSearchParams();
     if (route.mode === "imaging") params.set("mode", "imaging");
     if (route.from) params.set("from", route.from);
+    if (route.page) params.set("page", String(route.page));
     const qs = params.toString();
     return qs ? `${base}?${qs}` : base;
   }
@@ -255,8 +257,7 @@ export default function App() {
             route.view === "search" ? (
               <SearchView
                 onBack={() => navigate({ view: "landing" })}
-                onOpenChart={(folderId) => navigate({ view: "folder", folderId, mode: "imaging" })}
-                chartHref={(folderId) => pathFor({ view: "folder", folderId, mode: "imaging" })}
+                chartHref={(folderId, page) => pathFor({ view: "folder", folderId, mode: "imaging", page })}
               />
             ) : route.view === "users" ? (
               <UsersView onBack={() => navigate({ view: "landing" })} />
@@ -278,6 +279,7 @@ export default function App() {
             key={route.folderId}
             folderId={route.folderId}
             initialMode={route.mode}
+            initialPage={route.page}
             onBack={() =>
               navigate(route.from ? { view: route.from } : { view: "landing" })
             }

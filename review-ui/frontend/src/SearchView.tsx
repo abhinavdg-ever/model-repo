@@ -6,8 +6,8 @@ import { errorDetail, searchOcr, type OcrSearchChart, type OcrSearchResult, type
 type Props = {
   onBack: () => void;
   /** Open a chart in the viewer (imaging output). */
-  onOpenChart: (chart: string) => void;
-  chartHref: (chart: string) => string;
+  /** The chart's viewer, at ``page`` (its page_number) when given. */
+  chartHref: (chart: string, page?: number) => string;
 };
 
 /** One search: what was asked, and its answer while this tab is open. */
@@ -77,7 +77,7 @@ function Snippet({ s }: { s: OcrSearchSnippet }) {
 
 /** Admins only: find a word or phrase in every page's preliminary OCR (Tesseract) text
  * and in the pages' section headers, one table row per chart. */
-export default function SearchView({ onBack, onOpenChart, chartHref }: Props) {
+export default function SearchView({ onBack, chartHref }: Props) {
   const [history, setHistory] = useState<Searched[]>(readHistory);
   const [selected, setSelected] = useState<string | null>(() => history.find((h) => answers.has(h.id))?.id ?? null);
   const [query, setQuery] = useState(() => history.find((h) => h.id === selected)?.q ?? "");
@@ -156,18 +156,31 @@ export default function SearchView({ onBack, onOpenChart, chartHref }: Props) {
     });
   }
 
-  function chartLink(chart: string) {
+  // A chart or a page opens in a new tab, so the search and its open rows stay put. The
+  // chart opens at its first page with a hit (a word or a section header).
+  function chartLink(chart: OcrSearchChart) {
+    const hits = [...chart.pages, ...chart.headers]
+      .map((p) => p.page_number)
+      .filter((n): n is number => typeof n === "number");
+    const first = hits.length ? Math.min(...hits) : undefined;
     return (
       <a
-        href={chartHref(chart)}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-          e.preventDefault();
-          onOpenChart(chart);
-        }}
+        href={chartHref(chart.chart, first)}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={first ? `Open at page ${first}, the first hit, in a new tab` : "Open in a new tab"}
+        onClick={(e) => e.stopPropagation()}
       >
-        {chart}
+        {chart.chart}
+      </a>
+    );
+  }
+
+  function pageLink(chart: string, pageNumber: number | null | undefined, pageName: string) {
+    if (pageNumber == null) return <>{pageName}</>;
+    return (
+      <a href={chartHref(chart, pageNumber)} target="_blank" rel="noopener noreferrer" title={`Open page ${pageNumber} in a new tab`}>
+        {pageNumber}
       </a>
     );
   }
@@ -305,7 +318,8 @@ export default function SearchView({ onBack, onOpenChart, chartHref }: Props) {
                     chart={chart}
                     open={open.has(chart.chart)}
                     onToggle={() => toggle(chart.chart)}
-                    link={chartLink(chart.chart)}
+                    link={chartLink(chart)}
+                    pageLink={(n, name) => pageLink(chart.chart, n, name)}
                   />
                 ))}
               </tbody>
@@ -322,11 +336,13 @@ function ChartRows({
   open,
   onToggle,
   link,
+  pageLink,
 }: {
   chart: OcrSearchChart;
   open: boolean;
   onToggle: () => void;
   link: JSX.Element;
+  pageLink: (pageNumber: number | null | undefined, pageName: string) => JSX.Element;
 }) {
   return (
     <Fragment>
@@ -366,7 +382,7 @@ function ChartRows({
                     <tbody>
                       {chart.pages.map((page) => (
                         <tr key={page.page_name}>
-                          <td title={page.page_name}>{page.page_number ?? page.page_name}</td>
+                          <td title={page.page_name}>{pageLink(page.page_number, page.page_name)}</td>
                           <td>{page.hits}</td>
                           <td>
                             {page.snippets.map((s, i) => (
@@ -399,7 +415,7 @@ function ChartRows({
                     <tbody>
                       {chart.headers.map((h, i) => (
                         <tr key={`${h.page_name}|${i}`}>
-                          <td title={h.page_name}>{h.page_number ?? h.page_name}</td>
+                          <td title={h.page_name}>{pageLink(h.page_number, h.page_name)}</td>
                           <td className="search-snippet">
                             <Snippet s={h.snippet} />
                           </td>

@@ -64,6 +64,8 @@ import type { ChartRef } from "./chartSequence";
 type Props = {
   folderId: string;
   initialMode?: OutputMode;
+  /** The page number (page_number) to open at, e.g. from a Search result. */
+  initialPage?: number;
   onBack: () => void;
   /** The chart after this one in the list it was opened from; null at the end. */
   findNextChart?: () => Promise<ChartRef | null>;
@@ -222,6 +224,7 @@ function isOcrSkipMessage(text: string): boolean {
 export default function FolderViewer({
   folderId,
   initialMode = "ocr",
+  initialPage,
   onBack,
   findNextChart,
   onOpenNext,
@@ -397,7 +400,11 @@ export default function FolderViewer({
     setShowCorrected(false);
     getFolder(folderId)
       .then((data) => {
-        if (!cancelled) setFolder(data);
+        if (cancelled) return;
+        setFolder(data);
+        // Opened at a page (a Search result in a new tab): start there.
+        const at = initialPage ? data.pages.findIndex((p) => p.page_number === initialPage) : -1;
+        if (at > 0) setPageIndex(at);
       })
       .catch((err) => {
         if (!cancelled) {
