@@ -191,6 +191,25 @@ def fetch_chart_summaries_from_db(
     return out
 
 
+def quick_disk_status(folder_dir: Path) -> str:
+    """A workspace's status from what is on disk, without reading it: the final CSV means
+    imaging finished; other imaging CSVs, imaging in progress; OCR files, OCR done.
+    (A chart with no chart_list row -- a test-mode run -- has no other status, and
+    QUEUED charts are hidden from the list.)"""
+    imaging = folder_dir / "imaging"
+    try:
+        if (imaging / f"{folder_dir.name}_final.csv").is_file():
+            return "IMAGING_COMPLETED"
+        if imaging.is_dir() and any(p.suffix == ".csv" for p in imaging.iterdir()):
+            return "IMAGING_IN_PROGRESS"
+        ocr = folder_dir / "ocr"
+        if ocr.is_dir() and any(not p.name.startswith(".") for p in ocr.iterdir()):
+            return "COMPLETED"
+    except OSError:
+        pass
+    return "QUEUED"
+
+
 def list_disk_folder_names_light(data_root: Path) -> list[FolderSummary]:
     """Chart dirs on disk with a cheap page count — no OCR/imaging scan."""
     if not data_root.is_dir():
@@ -216,7 +235,7 @@ def list_disk_folder_names_light(data_root: Path) -> list[FolderSummary]:
                 page_count=quick_page_count(entry),
                 ocr_processed=0,
                 imaging_processed=0,
-                ocr_status="QUEUED",
+                ocr_status=quick_disk_status(entry),  # type: ignore[arg-type]
                 last_updated_at=mtime,
                 run_id=disk_run,
                 batch_id=disk_batch,

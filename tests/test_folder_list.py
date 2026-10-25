@@ -8,6 +8,7 @@ from app.services.folder_list import (
     FolderListParams,
     filter_sort_page,
     merge_db_and_disk,
+    list_disk_folder_names_light,
     quick_page_count,
 )
 
@@ -160,3 +161,18 @@ def test_chart_metadata_from_the_csvs(tmp_path):
     assert found == {
         "c1": {"project_scope": "ACA", "source_name": "Clinic A", "measure": "CBP", "rr_method": "Fax"}
     }
+
+
+def test_a_workspace_only_chart_takes_its_status_from_disk(tmp_path):
+    done = tmp_path / "chart_a-test"
+    (done / "imaging").mkdir(parents=True)
+    (done / "imaging" / "chart_a-test_final.csv").write_text("x", encoding="utf-8")
+    ocr_only = tmp_path / "chart_b"
+    (ocr_only / "ocr").mkdir(parents=True)
+    (ocr_only / "ocr" / "1.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "chart_c" / "pages").mkdir(parents=True)
+    status = {f.name: f.ocr_status for f in list_disk_folder_names_light(tmp_path)}
+    assert status == {"chart_a-test": "IMAGING_COMPLETED", "chart_b": "COMPLETED", "chart_c": "QUEUED"}
+    # Only the queued one is hidden from the list.
+    shown = filter_sort_page(list_disk_folder_names_light(tmp_path), FolderListParams())
+    assert sorted(f.name for f in shown.items) == ["chart_a-test", "chart_b"]
