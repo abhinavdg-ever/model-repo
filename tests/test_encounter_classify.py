@@ -375,7 +375,7 @@ def _model_page(n, family, answer, text=""):
     (("Outpatient (Home Visit)", 0.61), "", ("home", "model")),
     (("Outpatient (Home Visit)", 0.4), "caregiver present", ("home", "model")),
     (("Inpatient", 0.55), "", ("inpatient", "model")),                                # Inpatient alone at 0.5 now
-    (("Inpatient", 0.35), "patient admitted to the floor", ("inpatient", "model")),   # its keywords lower the bar
+    (("Inpatient", 0.35), "room 412, bed 2", ("inpatient", "model")),                 # its keywords lower the bar
     (("Inpatient", 0.35), "", ("outpatient_f2f", "family_default")),
     # The model's top answer is F2F, but it gives Evisit 0.3 and the page says video: Evisit.
     (("Outpatient (F2F)", 0.6, {"Outpatient (F2F)": 0.6, "Outpatient (Evisit)": 0.3}), "video",
@@ -468,3 +468,33 @@ def test_a_very_confident_model_beats_a_weak_f2f_phrase(canon, text, answer, exp
     log: list = []
     classify_pages(_doc(_model_page(1, "Progress Note", answer, text)), entries=canon, visit_log=log)
     assert (log[0]["votes"][0]["setting"], log[0]["votes"][0]["by"]) == expected
+
+
+
+def test_ambulatory_surgery_is_outpatient_and_an_admission_is_inpatient(canon):
+    """Encounter test pages ENC_03 and ENC_09 (2026-10-25)."""
+    asc = page(1, "AMBULATORY SURGERY CENTER operative report; discharged home same day", type_id="Operative Note")
+    assert one(canon, asc).setting == "outpatient_f2f"   # cancels the Operative Note page-type prior too
+    ed = page(1, "ED provider note. Disposition: admitted to medicine, accepting physician on call")
+    assert one(canon, ed).setting == "inpatient"
+
+
+def test_confidence_comes_from_the_evidence(canon):
+    # The first page decides on a tier 2 phrase: 0.80; another page with evidence disagreeing: x 0.8.
+    alone = classify_pages(_doc({**page(1, "telehealth visit"), "page_family": "Progress Note"}), entries=canon)[0]
+    assert alone["confidence"] == canon.confidence["tier2"]
+    split = classify_pages(_doc({**page(1, "telehealth visit"), "page_family": "Progress Note"},
+                                {**page(2, "hospital course"), "page_family": "Progress Note"}), entries=canon)[0]
+    assert split["confidence"] == pytest.approx(canon.confidence["tier2"] * 0.8)
+    # The first page decides on the model: its probability.
+    model = classify_pages(_doc(_model_page(1, "Progress Note", ("Inpatient", 0.66))), entries=canon)[0]
+    assert (model["decided_by"], model["confidence"]) == ("first_page", 0.66)
+    # Only family defaults vote: share 1 x 0.5.
+    guess = classify_pages(_doc({**page(1, ""), "page_family": "Progress Note"},
+                                {**page(2, ""), "page_family": "Progress Note"}), entries=canon)[0]
+    assert (guess["encounter_type"], guess["decided_by"], guess["confidence"]) == ("outpatient_f2f", "vote", 0.5)
+    # A vote: the winner's share x the mean confidence of its voters.
+    vote = classify_pages(_doc({**page(1, ""), "page_family": "Progress Note"},
+                               {**page(2, "telehealth visit"), "page_family": "Progress Note"},
+                               {**page(3, "video visit"), "page_family": "Progress Note"}), entries=canon)[0]
+    assert vote["confidence"] == pytest.approx(1.0 * canon.confidence["tier2"])

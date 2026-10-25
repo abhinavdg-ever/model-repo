@@ -71,6 +71,9 @@ class Negative:
     pattern: re.Pattern[str]
     cancels: frozenset[str]
     cancels_setting: str
+    # Also cancels page-type (tier 1) evidence of that setting: an ambulatory surgery
+    # centre makes an Operative Note an outpatient encounter (2026-10-25, user).
+    tier1: bool = False
 
 
 @dataclass(frozen=True)
@@ -104,6 +107,10 @@ class Canon:
     model_confirm_min: dict[str, float] = field(default_factory=dict)
     # A model answer at this confidence for one of these settings beats a tier 2 F2F phrase.
     model_override_min: float = 1.01
+    # A family default is a guess from the page type; the first page's confidence drops by
+    # this factor when another page with evidence disagrees.
+    family_default_confidence: float = 0.5
+    first_page_conflict_factor: float = 0.8
     model_override_settings: frozenset[str] = frozenset()
 
 
@@ -206,6 +213,7 @@ def _parse_canon(raw: dict[str, Any], *, check_page_types: bool = True) -> Canon
             pattern=_phrase_re(normalize_text(n["phrase"])),
             cancels=frozenset(normalize_text(c) for c in n.get("cancels") or []),
             cancels_setting=str(n.get("cancels_setting") or ""),
+            tier1=bool(n.get("tier1")),
         )
         for n in raw.get("negatives") or []
     )
@@ -236,6 +244,8 @@ def _parse_canon(raw: dict[str, Any], *, check_page_types: bool = True) -> Canon
         model_settings=dict((raw.get("model_vote") or {}).get("settings") or {}),
         model_min={k: float(v) for k, v in ((raw.get("model_vote") or {}).get("min_confidence") or {}).items()},
         model_confirm_min={k: float(v) for k, v in ((raw.get("model_vote") or {}).get("confirm_min") or {}).items()},
+        family_default_confidence=float((raw.get("vote") or {}).get("family_default_confidence", 0.5)),
+        first_page_conflict_factor=float((raw.get("vote") or {}).get("first_page_conflict_factor", 0.8)),
         model_override_min=float(((raw.get("model_vote") or {}).get("override_f2f_phrase") or {}).get("min_confidence", 1.01)),
         model_override_settings=frozenset(((raw.get("model_vote") or {}).get("override_f2f_phrase") or {}).get("settings") or ()),
         model_confirm={
@@ -374,8 +384,9 @@ def gather(pages: list[dict[str, Any]], canon: Canon) -> Evidence:
 
     evidence = Evidence(negatives_fired=list(fired), context=list(context))
     for finding in seen.values():
-        cancelled = finding.tier > 1 and any(
-            finding.source in neg.cancels or finding.setting == neg.cancels_setting
+        cancelled = any(
+            (finding.tier > 1 or neg.tier1)
+            and (finding.source in neg.cancels or finding.setting == neg.cancels_setting)
             for neg in fired.values()
         )
         (evidence.cancelled if cancelled else evidence.findings).append(finding)
@@ -446,6 +457,10 @@ class Vote:
     decided_by: str  # tier1 | tier2 | model | family_default | not_applicable | none
     matched_keyword: str
     evidence: Evidence
+    # How sure this page is of its setting (2026-10-25): tier 1 0.95, tier 2 0.80 (0.70 / 0.60
+    # with a conflict on the page), the model's probability, a family default 0.50, Not
+    # Applicable 1.0. The encounter's confidence is built from these (first_page_decision, tally).
+    confidence: float = 0.0
 
 
 F2F = "outpatient_f2f"
@@ -463,7 +478,7 @@ def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vot
     Visit or Inpatient."""
     family = str(page.get("page_family") or "").strip()
     if canon.applies_to and family and family.casefold() != "unknown" and family.casefold() not in canon.applies_to:
-        return Vote(canon.not_applicable, weight, "not_applicable", family, Evidence())
+        return Vote(canon.not_applicable, weight, "not_applicable", family, Evidence(), canon.not_applicable_confidence)
     evidence = gather([page], canon)
     own = decide(evidence, canon)
     model = page.get("encounter_model")
@@ -473,9 +488,9 @@ def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vot
         setting = canon.model_settings.get(model[0], "")
         if setting in canon.model_override_settings and model[1] >= canon.model_override_min:
             return Vote(setting, weight, "model", f"model {model[0]} {model[1]:.2f} over phrase {own.matched_keyword!r}",
-                        evidence)
+                        evidence, float(model[1]))
     if own.setting:
-        return Vote(own.setting, weight, own.decided_by, own.matched_keyword, evidence)
+        return Vote(own.setting, weight, own.decided_by, own.matched_keyword, evidence, own.confidence)
     if model:
         name, confidence = model[0], model[1]
         probs = model[2] if len(model) > 2 else {name: confidence}
@@ -487,13 +502,14 @@ def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vot
         for cls in sorted(canon.model_settings, key=lambda c: -float(probs.get(c, 0.0))):
             setting, p = canon.model_settings[cls], float(probs.get(cls, 0.0))
             if p >= canon.model_min.get(setting, 1.01):
-                return Vote(setting, weight, "model", f"model: {cls} {p:.2f}", evidence)
+                return Vote(setting, weight, "model", f"model: {cls} {p:.2f}", evidence, p)
             word = next((w for w, pattern in canon.model_confirm.get(setting, ())
                          if w in hay and pattern.search(hay)), None)
             if word and p >= canon.model_confirm_min.get(setting, 1.01):
-                return Vote(setting, weight, "model", f"keyword {word!r} + model: {cls} {p:.2f}", evidence)
+                return Vote(setting, weight, "model", f"keyword {word!r} + model: {cls} {p:.2f}", evidence, p)
     fallback = canon.family_defaults.get(family.casefold(), "")
-    return Vote(fallback, weight, "family_default" if fallback else "none", "", evidence)
+    return Vote(fallback, weight, "family_default" if fallback else "none", "", evidence,
+                canon.family_default_confidence if fallback else 0.0)
 
 
 # A vote from the page's own evidence, which lets the first page decide its encounter alone.
@@ -503,22 +519,25 @@ EVIDENCE = ("tier1", "tier2", "model")
 def first_page_decision(votes: list[Vote], canon: Canon) -> Optional[Decision]:
     """The encounter's first page decides when it has evidence of its own (a tier 1 page
     type, a tier 2 phrase, or the encounter model; 2026-10-25, user). None when it does
-    not (Not Applicable, its family's default, or nothing): then every page votes."""
+    not (Not Applicable, its family's default, or nothing): then the pages vote.
+
+    Confidence: the first page's own (tier 1 0.95, tier 2 0.80, the model's probability),
+    times ``first_page_conflict_factor`` (0.8) when another page with evidence of its own
+    says a different setting."""
     if not votes or votes[0].decided_by not in EVIDENCE or not votes[0].setting:
         return None
     first = votes[0]
-    confidence = canon.confidence.get(first.decided_by, canon.confidence.get("tier2", 0.8))
-    if first.decided_by == "model":
-        confidence = canon.confidence.get("tier2", 0.8)
-    others = {v.setting for v in votes[1:] if v.setting and v.setting != canon.not_applicable}
+    others = {v.setting for v in votes[1:] if v.decided_by in EVIDENCE and v.setting}
+    conflict = bool(others - {first.setting})
+    confidence = first.confidence * (canon.first_page_conflict_factor if conflict else 1.0)
     return Decision(
         setting=first.setting,
         decided_by="first_page",
-        confidence=confidence,
-        conflict=bool(others - {first.setting}),
+        confidence=round(confidence, 4),
+        conflict=conflict,
         matched_keyword=first.matched_keyword,
         reason=f"first page: {first.decided_by}",
-        contenders=tuple(sorted(others | {first.setting})) if others - {first.setting} else (),
+        contenders=tuple(sorted(others | {first.setting})) if conflict else (),
     )
 
 
@@ -528,7 +547,8 @@ def tally(votes: list[Vote], canon: Canon) -> Decision:
     otherwise the family defaults vote (Progress Note -> F2F). Not Applicable wins only
     when every vote is Not Applicable; otherwise those votes are set
     aside. A tie goes to the first page's vote, then the setting priority. Confidence = the
-    winner's share of the weight counted. No vote at all: the canon default (low confidence)."""
+    winner's share of the weight counted times the weighted mean confidence of the pages
+    that voted for it. No vote at all: the canon default (low confidence)."""
     if votes:
         votes[0].weight = canon.first_page_weight
     # Pages with evidence of their own vote; a family default (Progress Note -> F2F) is
@@ -549,10 +569,14 @@ def tally(votes: list[Vote], canon: Canon) -> Decision:
     opener = votes[0].setting
     winner = opener if opener in tied else min(tied, key=lambda s: canon.priority.get(s, 999))
     keyword = next((v.matched_keyword for v in votes if v.setting == winner and v.matched_keyword), "")
+    # Confidence: the winner's share of the weight times how sure its voters are (the
+    # weighted mean of their own confidences).
+    backers = [v for v in counted if v.setting == winner]
+    strength = sum(v.weight * v.confidence for v in backers) / max(1e-9, sum(v.weight for v in backers))
     return Decision(
         setting=winner,
         decided_by="vote",
-        confidence=round(best / sum(weights.values()), 4),
+        confidence=round(best / sum(weights.values()) * strength, 4),
         conflict=len(weights) > 1,
         matched_keyword=keyword,
         reason="; ".join(f"{s} {w:g}" for s, w in sorted(weights.items(), key=lambda kv: -kv[1])),

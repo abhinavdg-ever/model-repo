@@ -109,7 +109,20 @@
       "discharge date",
       "length of stay",
       "observation status",
-      "icu progress note"
+      "icu progress note",
+      "admitted to medicine",
+      "admitted to the hospital",
+      "admitted to hospital",
+      "admitted to the floor",
+      "admitted to icu",
+      "admitted to telemetry",
+      "admitted to step-down",
+      "admitted to stepdown",
+      "admit to medicine",
+      "accepting physician",
+      "accepting provider",
+      "accepted for admission",
+      "decision to admit"
     ],
     "home": [
       "skilled nurse visit",
@@ -169,7 +182,15 @@
       "pcp visit",
       "primary care visit",
       "urgent care visit",
-      "walk-in visit"
+      "walk-in visit",
+      "ambulatory surgery center",
+      "ambulatory surgery centre",
+      "ambulatory surgical center",
+      "outpatient surgery",
+      "same day surgery",
+      "same-day surgery",
+      "discharged home same day",
+      "discharged home the same day"
     ]
   },
   "tier3": {
@@ -284,6 +305,31 @@
     {
       "phrase": "left a message",
       "cancels_setting": "outpatient_tele"
+    },
+    {
+      "phrase": "ambulatory surgery center",
+      "cancels_setting": "inpatient",
+      "tier1": true
+    },
+    {
+      "phrase": "ambulatory surgery centre",
+      "cancels_setting": "inpatient",
+      "tier1": true
+    },
+    {
+      "phrase": "ambulatory surgical center",
+      "cancels_setting": "inpatient",
+      "tier1": true
+    },
+    {
+      "phrase": "discharged home same day",
+      "cancels_setting": "inpatient",
+      "tier1": true
+    },
+    {
+      "phrase": "discharged home the same day",
+      "cancels_setting": "inpatient",
+      "tier1": true
     }
   ],
   "vote": {
@@ -292,7 +338,10 @@
     "family_defaults": {
       "Progress Note": "outpatient_f2f",
       "Discharge Summary": "inpatient"
-    }
+    },
+    "family_default_confidence": 0.5,
+    "first_page_conflict_factor": 0.8,
+    "confidence_note": "2026-10-25: confidence. Each page's vote carries its own: tier 1 page type 0.95 (0.70 with a conflict on the page), tier 2 phrase 0.80 (0.60), the encounter model's probability for the setting, a family default 0.50, Not Applicable 1.0. The encounter's: the first page's own when it decides (x 0.8 when another page with evidence disagrees); for a vote, the winner's share of the weight x the weighted mean confidence of the pages that voted for it; no vote at all: default.confidence (0.3)."
   },
   "model_vote": {
     "note": "2026-10-25 (encounter model retrained on the page target, user: keywords must not block): the model votes for a page with no tier 1 / tier 2 evidence of its own, before its family default, for Evisit, Home Visit and Inpatient. A setting gets the vote when the model gives it >= min_confidence (0.5) -- its top answer or not -- or, with one of the setting's confirm words on the page, >= confirm_min (0.3): the keyword lowers the bar, it never blocks. Measured on the retrained model's held-out pages (val + test): Evisit 7 of 7 right at >= 0.3 (4 pages the rules miss), Home Visit 2 of 2, Inpatient 28 of 37 at >= 0.5 (21 right beyond the rules) and 32 of 43 with a keyword at >= 0.3. F2F and Not Available stay with the rules. Small samples: re-measure on new charts.",
@@ -381,5 +430,6 @@
       ],
       "note": "2026-10-25 (user): a model answer at very high confidence beats a weak page phrase. When the page's only evidence is a tier 2 phrase for F2F ('office visit', 'clinic note': template wording that also sits on telehealth and home visits) and the model says Evisit, Home Visit or Inpatient at >= 0.95, the model's setting wins (by model_override). Only F2F phrases are overridden: a phrase for any other setting ('inpatient', 'telehealth visit') stays. Held-out pages: fires on 4, right on 4; encounter test pages ENC_15 (house call with an 'Office Visit' footer) and ENC_14 (telehealth on an office template)."
     }
-  }
+  },
+  "negatives_note": "2026-10-25 (user, encounter test pages ENC_03 / ENC_09): an ambulatory surgery centre or a same-day discharge home cancels the inpatient evidence, the Operative Note page-type prior included ('tier1': true); 'admitted to medicine', 'accepting physician' and the like are inpatient statements."
 }
