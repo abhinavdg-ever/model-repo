@@ -1,0 +1,676 @@
+{
+  "version": 1,
+  "comment": "Curated keywords per taxonomy class (2026-10-25, user: one by one, very relevant, standalone words, L1 / L2 / L3; generic document wording, never names, users, facilities, diseases or filler). Keys are paths: 'L1', 'L1 > L2' or 'L1 > L2 > L3'. strong: rare words that on their own name the type -- used as the page's title (a heading in the first 12 lines) they pin the class at its level in the keyword vote. body: the words such a page typically carries. Applied to the keyword canon (page_canon.json) by page_classify/class_keywords.py, on the entry with exactly that path (a new entry named after the class when there is none); the keyword weights are then refitted, so the labelled pages decide how much each word counts.",
+  "classes": {
+    "Progress Note": {
+      "strong": [],
+      "body": ["hpi", "subjective", "objective", "assessment", "plan", "ros", "exam", "complaint", "presents", "interval", "followup", "counseled"]
+    },
+    "Progress Note > CC/HPI": {
+      "strong": [],
+      "body": ["complaint", "hpi", "presents", "onset", "duration", "illness", "reports", "denies", "history"]
+    },
+    "Progress Note > Visit Diagnosis": {
+      "strong": [],
+      "body": ["diagnosis", "diagnoses", "icd", "encounter", "primary", "secondary", "assessed"]
+    },
+    "Progress Note > Assessment and Plan": {
+      "strong": [],
+      "body": ["assessment", "plan", "continue", "recommend", "recommended", "followup", "monitor", "discussed", "counseled"]
+    },
+    "Progress Note > Summary": {
+      "strong": [],
+      "body": ["summary", "course", "hospitalization", "recap", "overview"]
+    },
+    "Progress Note > Problem List": {
+      "strong": [],
+      "body": ["problems", "problem", "resolved", "onset", "chronicity"]
+    },
+    "Progress Note > Medication List": {
+      "strong": [],
+      "body": ["medications", "allergies", "tablet", "capsule", "dose", "sig", "refills", "reconciliation"]
+    },
+    "Progress Note > Lab and Imaging Results": {
+      "strong": [],
+      "body": ["results", "reviewed", "labs", "imaging", "findings", "impression", "values"]
+    },
+    "Progress Note > Procedure List": {
+      "strong": [],
+      "body": ["procedure", "performed", "tolerated", "indication", "anesthetic", "consent"]
+    },
+    "Progress Note > Vitals": {
+      "strong": [],
+      "body": ["vitals", "bp", "pulse", "temperature", "respiration", "weight", "height", "bmi", "spo2"]
+    },
+    "Progress Note > Physical Exam": {
+      "strong": [],
+      "body": ["exam", "examination", "general", "heent", "neck", "lungs", "heart", "abdomen", "extremities", "neurological", "skin", "ros"]
+    },
+    "Progress Note > Questionnaire": {
+      "strong": [],
+      "body": ["questionnaire", "screening", "score", "phq", "gad", "audit", "responses"]
+    },
+    "Progress Note > Patient Instructions": {
+      "strong": [],
+      "body": ["instructions", "return", "followup", "call", "precautions", "education", "advised"]
+    },
+    "Progress Note > Signature": {
+      "strong": [],
+      "body": ["electronically", "signed", "attestation", "attest", "cosigned", "authenticated", "addendum"]
+    },
+
+    "Lab Report": {
+      "strong": [],
+      "body": ["specimen", "collected", "received", "reported", "reference", "range", "flag", "units", "accession", "laboratory", "resulted", "clia"]
+    },
+    "Lab Report > Lab Result": {
+      "strong": [],
+      "body": ["specimen", "collected", "reference", "range", "units", "flag", "accession", "fasting", "serum", "plasma"]
+    },
+    "Lab Report > Lab Result > Allergy Testing Report": {
+      "strong": ["allergen", "allergens"],
+      "body": ["ige", "allergen", "sensitization", "class", "kua", "panel"]
+    },
+    "Lab Report > Lab Result > Chemistry Report": {
+      "strong": ["cmp", "bmp"],
+      "body": ["sodium", "potassium", "chloride", "creatinine", "bun", "albumin", "bilirubin", "alt", "ast", "calcium", "egfr", "lipid", "cholesterol", "triglycerides"]
+    },
+    "Lab Report > Lab Result > FISH Report": {
+      "strong": ["fish"],
+      "body": ["hybridization", "probe", "probes", "nuclei", "signals", "fluorescence"]
+    },
+    "Lab Report > Lab Result > Genetic Test Report": {
+      "strong": ["genetic", "genomic"],
+      "body": ["variant", "variants", "gene", "genes", "mutation", "pathogenic", "genotype", "sequencing", "carrier"]
+    },
+    "Lab Report > Lab Result > Glucose Report": {
+      "strong": ["glucose"],
+      "body": ["glucose", "a1c", "hba1c", "fasting", "postprandial", "tolerance"]
+    },
+    "Lab Report > Lab Result > Hematology Report": {
+      "strong": ["cbc", "hematology"],
+      "body": ["wbc", "rbc", "hemoglobin", "hematocrit", "platelets", "mcv", "mch", "mchc", "rdw", "neutrophils", "lymphocytes", "differential"]
+    },
+    "Lab Report > Lab Result > Coagulation Report": {
+      "strong": ["coagulation", "inr"],
+      "body": ["inr", "prothrombin", "ptt", "aptt", "fibrinogen", "warfarin", "anticoagulation"]
+    },
+    "Lab Report > Lab Result > Laboratory Flow Sheet": {
+      "strong": ["flowsheet"],
+      "body": ["flowsheet", "trend", "trends", "cumulative"]
+    },
+    "Lab Report > Lab Result > Microbiology Report": {
+      "strong": ["microbiology", "culture"],
+      "body": ["culture", "organism", "organisms", "growth", "sensitivity", "susceptibility", "gram", "colonies", "isolated", "mic"]
+    },
+    "Lab Report > Lab Result > Urinalysis Report": {
+      "strong": ["urinalysis"],
+      "body": ["urine", "urinalysis", "specific", "gravity", "ketones", "leukocyte", "nitrite", "casts", "microscopic"]
+    },
+
+    "Lab Report > Radiology Report": {
+      "strong": ["radiology"],
+      "body": ["impression", "findings", "technique", "comparison", "contrast", "indication", "radiologist", "views", "dictated"]
+    },
+    "Lab Report > Radiology Report > Bone Mineral Density Report": {
+      "strong": ["dexa", "densitometry"],
+      "body": ["dexa", "densitometry", "tscore", "zscore", "bmd", "femoral", "lumbar", "frax"]
+    },
+    "Lab Report > Radiology Report > Brain MRI Report": {
+      "strong": [],
+      "body": ["brain", "flair", "diffusion", "ventricles", "intracranial", "parenchyma"]
+    },
+    "Lab Report > Radiology Report > CT Angiography Report": {
+      "strong": ["cta"],
+      "body": ["cta", "angiography", "arterial", "runoff", "aorta", "stenosis"]
+    },
+    "Lab Report > Radiology Report > CT Scan Report": {
+      "strong": [],
+      "body": ["ct", "computed", "tomography", "axial", "hounsfield", "reformats", "slices"]
+    },
+    "Lab Report > Radiology Report > MR Angiography Report": {
+      "strong": ["mra"],
+      "body": ["mra", "angiography", "magnetic", "resonance", "vessels"]
+    },
+    "Lab Report > Radiology Report > MRI Report": {
+      "strong": ["mri"],
+      "body": ["mri", "magnetic", "resonance", "weighted", "gadolinium", "sagittal", "coronal"]
+    },
+    "Lab Report > Radiology Report > Mammogram Report": {
+      "strong": ["mammogram", "mammography"],
+      "body": ["mammogram", "mammography", "birads", "breast", "tomosynthesis", "density", "screening"]
+    },
+    "Lab Report > Radiology Report > Nuclear Medicine Report": {
+      "strong": ["scintigraphy"],
+      "body": ["nuclear", "radiotracer", "technetium", "uptake", "scintigraphy", "spect", "pet"]
+    },
+    "Lab Report > Radiology Report > Ultrasound Report": {
+      "strong": ["ultrasound", "sonogram"],
+      "body": ["ultrasound", "sonogram", "sonographic", "echogenic", "doppler", "transducer"]
+    },
+    "Lab Report > Radiology Report > X-Ray Report": {
+      "strong": ["radiograph", "x-ray"],
+      "body": ["radiograph", "radiographs", "x-ray", "pa", "lateral", "views", "film"]
+    },
+
+    "Lab Report > Pathology Report": {
+      "strong": ["pathology"],
+      "body": ["specimen", "gross", "microscopic", "diagnosis", "pathologist", "tissue", "slides", "block"]
+    },
+    "Lab Report > Pathology Report > Biopsy Report": {
+      "strong": ["biopsy"],
+      "body": ["biopsy", "gross", "microscopic", "margins", "tissue", "fragments", "stain"]
+    },
+    "Lab Report > Pathology Report > Cytology Report": {
+      "strong": ["cytology"],
+      "body": ["cytology", "cytologic", "pap", "smear", "cervical", "adequacy", "cells"]
+    },
+    "Lab Report > Pathology Report > Cytometry Report": {
+      "strong": ["cytometry"],
+      "body": ["cytometry", "flow", "immunophenotyping", "cd", "markers", "gating"]
+    },
+    "Lab Report > Pathology Report > Molecular Diagnostics Report": {
+      "strong": ["molecular"],
+      "body": ["molecular", "pcr", "amplification", "assay", "detected", "mutation"]
+    },
+
+    "Lab Report > Diagnostic Study": {
+      "strong": [],
+      "body": ["study", "interpretation", "interpreting", "tracing", "recording", "monitoring", "performed", "technician"]
+    },
+    "Lab Report > Diagnostic Study > Ankle-Brachial Index Report": {
+      "strong": ["abi"],
+      "body": ["abi", "ankle", "brachial", "index", "pressures", "toe"]
+    },
+    "Lab Report > Diagnostic Study > Audiogram and Hearing Loss Report": {
+      "strong": ["audiogram", "audiology"],
+      "body": ["audiogram", "audiometry", "tympanometry", "thresholds", "hz", "db", "speech"]
+    },
+    "Lab Report > Diagnostic Study > Behavioral Assessment": {
+      "strong": [],
+      "body": ["behavioral", "cognitive", "testing", "inventory", "scores", "psychological"]
+    },
+    "Lab Report > Diagnostic Study > Bronchoscopy Report": {
+      "strong": ["bronchoscopy"],
+      "body": ["bronchoscopy", "bronchoscope", "bronchial", "lavage", "carina", "airways"]
+    },
+    "Lab Report > Diagnostic Study > Cardiac Catheterization Report": {
+      "strong": ["catheterization"],
+      "body": ["catheterization", "coronary", "angiography", "ventriculography", "lad", "lcx", "rca", "stent", "fluoroscopy"]
+    },
+    "Lab Report > Diagnostic Study > Carotid Duplex Report": {
+      "strong": [],
+      "body": ["carotid", "ica", "cca", "velocity", "velocities", "plaque", "duplex"]
+    },
+    "Lab Report > Diagnostic Study > Colonoscopy Report": {
+      "strong": ["colonoscopy"],
+      "body": ["colonoscopy", "cecum", "colon", "polyp", "polyps", "prep", "withdrawal", "terminal", "ileum"]
+    },
+    "Lab Report > Diagnostic Study > Corneal Topography": {
+      "strong": ["topography"],
+      "body": ["topography", "corneal", "keratometry", "astigmatism", "axial"]
+    },
+    "Lab Report > Diagnostic Study > Cystoscopy Report": {
+      "strong": ["cystoscopy"],
+      "body": ["cystoscopy", "cystoscope", "bladder", "urethra", "ureteral"]
+    },
+    "Lab Report > Diagnostic Study > Doppler Duplex Report": {
+      "strong": [],
+      "body": ["duplex", "doppler", "waveforms", "venous", "arterial", "velocity"]
+    },
+    "Lab Report > Diagnostic Study > Echocardiogram Report": {
+      "strong": ["echocardiogram", "echocardiography"],
+      "body": ["echocardiogram", "ejection", "fraction", "ventricle", "atrium", "valve", "lvef", "transthoracic", "transesophageal"]
+    },
+    "Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report": {
+      "strong": ["electrocardiogram", "ekg", "ecg"],
+      "body": ["ekg", "ecg", "rhythm", "rate", "pr", "qrs", "qt", "qtc", "axis", "sinus"]
+    },
+    "Lab Report > Diagnostic Study > Electroencephalogram Report": {
+      "strong": ["electroencephalogram", "eeg"],
+      "body": ["eeg", "electroencephalogram", "background", "alpha", "epileptiform", "photic"]
+    },
+    "Lab Report > Diagnostic Study > Electromyography and Nerve Conduction": {
+      "strong": ["electromyography", "emg"],
+      "body": ["emg", "ncs", "conduction", "latency", "amplitude", "motor", "sensory", "needle"]
+    },
+    "Lab Report > Diagnostic Study > Endoscopy Report": {
+      "strong": ["endoscopy"],
+      "body": ["endoscopy", "endoscope", "scope", "mucosa", "biopsies"]
+    },
+    "Lab Report > Diagnostic Study > Esophageal Manometry Report": {
+      "strong": ["manometry"],
+      "body": ["manometry", "sphincter", "peristalsis", "swallows", "pressure"]
+    },
+    "Lab Report > Diagnostic Study > Esophagogastroduodenoscopy (EGD) Report": {
+      "strong": ["esophagogastroduodenoscopy", "egd"],
+      "body": ["egd", "esophagus", "stomach", "duodenum", "antrum", "gastric"]
+    },
+    "Lab Report > Diagnostic Study > Extremity Doppler Report": {
+      "strong": [],
+      "body": ["extremity", "venous", "femoral", "popliteal", "doppler", "compressibility"]
+    },
+    "Lab Report > Diagnostic Study > Holter Monitor Report": {
+      "strong": ["holter"],
+      "body": ["holter", "beats", "pvc", "pac", "pauses", "hookup", "diary"]
+    },
+    "Lab Report > Diagnostic Study > Laryngoscopy Procedure Report": {
+      "strong": ["laryngoscopy"],
+      "body": ["laryngoscopy", "larynx", "vocal", "cords", "glottis", "epiglottis"]
+    },
+    "Lab Report > Diagnostic Study > Stress Test": {
+      "strong": [],
+      "body": ["stress", "treadmill", "bruce", "mets", "exercise", "protocol", "lexiscan", "regadenoson", "perfusion"]
+    },
+    "Lab Report > Diagnostic Study > Neurocognitive Screening Examination": {
+      "strong": [],
+      "body": ["neurocognitive", "cognitive", "moca", "mmse", "recall", "orientation", "clock"]
+    },
+    "Lab Report > Diagnostic Study > Optical Biometry (IOL Calculation)": {
+      "strong": ["biometry"],
+      "body": ["biometry", "iol", "axial", "length", "keratometry", "lens", "power"]
+    },
+    "Lab Report > Diagnostic Study > Optical Coherence Tomography Report": {
+      "strong": ["oct"],
+      "body": ["oct", "retinal", "thickness", "macula", "rnfl", "optic"]
+    },
+    "Lab Report > Diagnostic Study > Oximetry Report": {
+      "strong": ["oximetry"],
+      "body": ["oximetry", "saturation", "desaturation", "spo2", "overnight", "nadir"]
+    },
+    "Lab Report > Diagnostic Study > Pacemaker Device Report": {
+      "strong": ["pacemaker", "interrogation"],
+      "body": ["pacemaker", "interrogation", "lead", "leads", "battery", "pacing", "sensing", "impedance", "device"]
+    },
+    "Lab Report > Diagnostic Study > Plethysmography Report": {
+      "strong": ["plethysmography"],
+      "body": ["plethysmography", "volumes", "tlc", "rv", "frc"]
+    },
+    "Lab Report > Diagnostic Study > Pulmonary Function Test": {
+      "strong": ["spirometry"],
+      "body": ["spirometry", "fev1", "fvc", "dlco", "bronchodilator", "predicted"]
+    },
+    "Lab Report > Diagnostic Study > Sigmoidoscopy Report": {
+      "strong": ["sigmoidoscopy"],
+      "body": ["sigmoidoscopy", "sigmoid", "rectum", "flexible"]
+    },
+    "Lab Report > Diagnostic Study > Sleep Study Report": {
+      "strong": ["polysomnography", "polysomnogram"],
+      "body": ["polysomnography", "ahi", "apnea", "hypopnea", "arousal", "rem", "sleep"]
+    },
+    "Lab Report > Diagnostic Study > Split Night Study Report": {
+      "strong": [],
+      "body": ["split", "cpap", "titration", "diagnostic", "ahi"]
+    },
+    "Lab Report > Diagnostic Study > Sudoscan Report": {
+      "strong": ["sudoscan"],
+      "body": ["sudoscan", "sudomotor", "esc", "conductance"]
+    },
+    "Lab Report > Diagnostic Study > Telemetry Report": {
+      "strong": ["telemetry"],
+      "body": ["telemetry", "strips", "rhythm", "events", "monitoring"]
+    },
+    "Lab Report > Diagnostic Study > Titration Report": {
+      "strong": [],
+      "body": ["titration", "cpap", "bipap", "pressure", "mask", "leak"]
+    },
+    "Lab Report > Diagnostic Study > Videonystagmography Report": {
+      "strong": ["videonystagmography", "vng"],
+      "body": ["vng", "nystagmus", "caloric", "saccades", "oculomotor", "positional"]
+    },
+    "Lab Report > Diagnostic Study > Visual Field Report": {
+      "strong": ["perimetry"],
+      "body": ["perimetry", "visual", "field", "humphrey", "fixation", "deviation"]
+    },
+
+    "Operative Note": {
+      "strong": ["operative"],
+      "body": ["preoperative", "postoperative", "surgeon", "anesthesia", "incision", "procedure", "estimated", "specimens", "complications", "closure"]
+    },
+    "Operative Note > Surgery Report": {
+      "strong": [],
+      "body": ["surgeon", "assistant", "incision", "closure", "prepped", "draped", "sutures", "estimated", "specimens", "findings"]
+    },
+    "Operative Note > Procedure List": {
+      "strong": [],
+      "body": ["procedures", "cpt", "phase", "case", "scheduled"]
+    },
+    "Operative Note > Pre-operative": {
+      "strong": ["preoperative"],
+      "body": ["preoperative", "npo", "checklist", "clearance", "consent", "verified"]
+    },
+    "Operative Note > Post-operative": {
+      "strong": ["postoperative"],
+      "body": ["postoperative", "pacu", "recovery", "aldrete", "discharge", "dressing"]
+    },
+    "Operative Note > Anesthesia Record": {
+      "strong": ["anesthesia"],
+      "body": ["anesthesia", "induction", "airway", "intubation", "sedation", "asa", "anesthesiologist", "crna", "emergence"]
+    },
+    "Operative Note > Critical Care Record": {
+      "strong": [],
+      "body": ["icu", "ventilator", "fio2", "peep", "drips", "titrated", "sedation", "flowsheet"]
+    },
+    "Operative Note > Triage Report": {
+      "strong": ["triage"],
+      "body": ["triage", "acuity", "esi", "arrival", "chief", "mode"]
+    },
+    "Operative Note > Intra-operative Record": {
+      "strong": ["intraoperative"],
+      "body": ["intraoperative", "counts", "sponge", "needle", "circulator", "scrub", "positioning", "tourniquet", "cautery"]
+    },
+    "Operative Note > Implant Record": {
+      "strong": ["implant", "implants"],
+      "body": ["implant", "lot", "serial", "manufacturer", "catalog", "sticker", "device"]
+    },
+
+    "Procedure Note": {
+      "strong": [],
+      "body": ["procedure", "performed", "tolerated", "session", "treatment", "administered"]
+    },
+    "Procedure Note > Dialysis Record": {
+      "strong": ["dialysis", "hemodialysis"],
+      "body": ["dialysis", "hemodialysis", "dialyzer", "dialysate", "ultrafiltration", "access", "fistula", "treatment"]
+    },
+    "Procedure Note > Infusion and Chemotherapy": {
+      "strong": ["infusion", "chemotherapy"],
+      "body": ["infusion", "chemotherapy", "cycle", "premedication", "rate", "iv", "regimen", "administered"]
+    },
+    "Procedure Note > Radiation Therapy": {
+      "strong": [],
+      "body": ["radiation", "fraction", "fractions", "gy", "cgy", "dose", "simulation", "linac"]
+    },
+    "Procedure Note > Wound Care": {
+      "strong": [],
+      "body": ["wound", "debridement", "dressing", "granulation", "drainage", "measurements", "length", "width", "depth"]
+    },
+    "Procedure Note > Therapy Session": {
+      "strong": [],
+      "body": ["therapy", "therapist", "session", "goals", "exercises", "strengthening", "gait", "rehabilitation"]
+    },
+    "Procedure Note > Elastography": {
+      "strong": ["elastography", "fibroscan"],
+      "body": ["elastography", "fibroscan", "stiffness", "kpa", "cap"]
+    },
+    "Procedure Note > Injection Visit": {
+      "strong": [],
+      "body": ["injection", "injected", "site", "lot", "administered", "intramuscular", "subcutaneous"]
+    },
+    "Procedure Note > Knee Procedure": {
+      "strong": [],
+      "body": ["knee", "aspiration", "arthrocentesis", "intraarticular", "injection"]
+    },
+    "Procedure Note > Laser Procedure": {
+      "strong": [],
+      "body": ["laser", "yag", "slt", "capsulotomy", "trabeculoplasty", "shots"]
+    },
+    "Procedure Note > Lumbar Procedure": {
+      "strong": [],
+      "body": ["lumbar", "epidural", "facet", "fluoroscopy", "transforaminal", "needle"]
+    },
+    "Procedure Note > Office Procedure": {
+      "strong": [],
+      "body": ["procedure", "office", "anesthetic", "lidocaine", "sterile", "tolerated"]
+    },
+    "Procedure Note > Pathology Procedure": {
+      "strong": [],
+      "body": ["gross", "grossing", "cassettes", "sections", "fixed"]
+    },
+    "Procedure Note > Endoscopy (EGD)": {
+      "strong": [],
+      "body": ["egd", "endoscopy", "scope", "sedation", "esophagus"]
+    },
+    "Procedure Note > Cardiac Procedure": {
+      "strong": ["cardioversion"],
+      "body": ["cardioversion", "joules", "cath", "lab", "sheath", "fluoroscopy"]
+    },
+
+    "Discharge Summary": {
+      "strong": [],
+      "body": ["admission", "admitted", "discharge", "discharged", "hospital", "course", "disposition", "inpatient"]
+    },
+    "Discharge Summary > Depart/Discharge Note": {
+      "strong": [],
+      "body": ["discharge", "discharged", "hospital", "course", "disposition", "admission", "condition"]
+    },
+    "Discharge Summary > Discharge Instruction": {
+      "strong": [],
+      "body": ["instructions", "activity", "diet", "followup", "return", "symptoms", "home"]
+    },
+    "Discharge Summary > Discharge Medication": {
+      "strong": [],
+      "body": ["medications", "discharge", "continue", "stop", "new", "changed", "reconciliation"]
+    },
+    "Discharge Summary > Transfer of Care": {
+      "strong": [],
+      "body": ["transfer", "transferred", "handoff", "handover", "receiving", "accepting"]
+    },
+    "Discharge Summary > Interim Summary": {
+      "strong": [],
+      "body": ["interim", "summary", "hospital", "course"]
+    },
+    "Discharge Summary > Short Stay Summary": {
+      "strong": [],
+      "body": ["observation", "short", "stay"]
+    },
+    "Discharge Summary > Discharge Diagnosis": {
+      "strong": [],
+      "body": ["discharge", "diagnosis", "diagnoses", "principal", "secondary"]
+    },
+    "Discharge Summary > History and Physical": {
+      "strong": [],
+      "body": ["admission", "admitted", "admitting", "history", "physical", "inpatient", "observation"]
+    },
+    "Discharge Summary > Consultation Note": {
+      "strong": [],
+      "body": ["consultation", "consulted", "consult", "requesting", "inpatient", "recommendations"]
+    },
+
+    "Clinical Summary": {
+      "strong": [],
+      "body": ["summary", "ccd", "continuity", "transition", "care", "document"]
+    },
+    "Clinical Summary > Summary of Care (C-CDA)": {
+      "strong": ["ccd", "c-cda"],
+      "body": ["ccd", "c-cda", "transition", "continuity", "document", "generated"]
+    },
+    "Clinical Summary > After-Visit Summary": {
+      "strong": [],
+      "body": ["visit", "today", "instructions", "appointments", "upcoming", "portal"]
+    },
+
+    "Consent and Authorization": {
+      "strong": ["consent", "authorization"],
+      "body": ["consent", "authorize", "authorization", "disclose", "disclosure", "release", "revoke", "voluntary", "acknowledge", "witness", "guardian", "representative", "hereby"]
+    },
+    "Consent and Authorization > Consent for Treatment": {
+      "strong": [],
+      "body": ["treatment", "consent", "conditions", "voluntary", "examination"]
+    },
+    "Consent and Authorization > Surgical Consent": {
+      "strong": [],
+      "body": ["surgical", "operation", "risks", "benefits", "alternatives", "complications", "anesthesia"]
+    },
+    "Consent and Authorization > Transfusion Consent": {
+      "strong": ["transfusion"],
+      "body": ["transfusion", "blood", "products", "refuse", "risks"]
+    },
+    "Consent and Authorization > Immunization Consent": {
+      "strong": [],
+      "body": ["vaccine", "vaccination", "immunization", "vis", "consent"]
+    },
+    "Consent and Authorization > HIPAA and Privacy": {
+      "strong": ["hipaa"],
+      "body": ["hipaa", "privacy", "practices", "protected", "phi", "rights", "notice", "uses", "disclosures"]
+    },
+    "Consent and Authorization > Release of Information": {
+      "strong": [],
+      "body": ["release", "disclose", "recipient", "purpose", "expiration", "revoke", "redisclosure"]
+    },
+    "Consent and Authorization > Assignment of Benefits": {
+      "strong": [],
+      "body": ["assignment", "assign", "benefits", "insurance", "financial", "responsibility", "payment"]
+    },
+    "Consent and Authorization > General Consent": {
+      "strong": [],
+      "body": ["consent", "agree", "acknowledge", "policy", "policies"]
+    },
+    "Consent and Authorization > Prior Authorization": {
+      "strong": ["preauthorization", "precertification"],
+      "body": ["prior", "preauthorization", "precertification", "approved", "denied", "medical", "necessity"]
+    },
+    "Consent and Authorization > Referral Authorization": {
+      "strong": [],
+      "body": ["referral", "authorized", "visits", "approved", "valid", "units"]
+    },
+    "Consent and Authorization > General Authorization": {
+      "strong": [],
+      "body": ["authorize", "authorization", "permission", "behalf"]
+    },
+
+    "Demographics": {
+      "strong": ["demographics"],
+      "body": ["address", "phone", "dob", "sex", "marital", "race", "ethnicity", "language", "emergency", "contact", "employer", "guarantor"]
+    },
+    "Demographics > Patient Information": {
+      "strong": [],
+      "body": ["address", "phone", "dob", "emergency", "contact", "language", "preferred", "pharmacy"]
+    },
+    "Demographics > Face Sheet": {
+      "strong": [],
+      "body": ["face", "sheet", "admission", "account", "guarantor", "subscriber", "insurance", "admitting"]
+    },
+
+    "Immunization": {
+      "strong": ["immunization", "immunizations", "vaccination"],
+      "body": ["vaccine", "vaccines", "lot", "manufacturer", "administered", "dose", "booster", "series"]
+    },
+    "Immunization > Immunization Record": {
+      "strong": [],
+      "body": ["vaccine", "lot", "manufacturer", "administered", "site", "dose", "series", "due"]
+    },
+
+    "Medication Record": {
+      "strong": [],
+      "body": ["medications", "medication", "tablet", "capsule", "dose", "sig", "refills", "pharmacy", "prescribed"]
+    },
+    "Medication Record > Medication List": {
+      "strong": [],
+      "body": ["medications", "active", "tablet", "capsule", "dose", "frequency", "taking"]
+    },
+    "Medication Record > Prescription Page": {
+      "strong": ["prescription"],
+      "body": ["prescription", "rx", "dispense", "quantity", "refills", "substitution", "dea", "pharmacy"]
+    },
+    "Medication Record > Refill Record": {
+      "strong": [],
+      "body": ["refill", "refills", "renewal", "pharmacy", "approved"]
+    },
+    "Medication Record > Blood Transfusion Record": {
+      "strong": [],
+      "body": ["transfusion", "unit", "units", "blood", "crossmatch", "products", "reaction"]
+    },
+
+    "Order and Requisition": {
+      "strong": ["requisition"],
+      "body": ["order", "orders", "ordered", "requisition", "priority", "stat", "routine", "indication"]
+    },
+    "Order and Requisition > Physician Order": {
+      "strong": [],
+      "body": ["orders", "order", "ordered", "verbal", "telephone", "stat", "continue", "discontinue"]
+    },
+    "Order and Requisition > Laboratory Requisition": {
+      "strong": [],
+      "body": ["requisition", "tests", "collection", "fasting", "draw", "specimen", "bill"]
+    },
+    "Order and Requisition > Referral Order": {
+      "strong": [],
+      "body": ["referral", "referred", "referring", "specialist", "reason", "priority"]
+    },
+
+    "Problem List": {
+      "strong": [],
+      "body": ["problems", "problem", "active", "resolved", "onset", "icd"]
+    },
+    "Problem List > Problem List": {
+      "strong": [],
+      "body": ["problems", "active", "resolved", "onset", "noted"]
+    },
+    "Problem List > Diagnosis List/Index": {
+      "strong": [],
+      "body": ["diagnoses", "icd", "codes", "index"]
+    },
+
+    "Forms and Questionnaires": {
+      "strong": ["questionnaire"],
+      "body": ["questionnaire", "screening", "score", "assessment", "survey", "responses"]
+    },
+    "Forms and Questionnaires > Assessment": {
+      "strong": [],
+      "body": ["assessment", "functional", "adl", "iadl", "independent", "assistance", "fall", "risk"]
+    },
+    "Forms and Questionnaires > Questionnaire": {
+      "strong": [],
+      "body": ["questionnaire", "survey", "screening", "phq", "gad", "score", "responses"]
+    },
+
+    "Provider Letter": {
+      "strong": [],
+      "body": ["dear", "sincerely", "regards", "letter", "colleague", "thank"]
+    },
+    "Provider Letter > Referral Letter": {
+      "strong": [],
+      "body": ["referring", "referral", "evaluation", "kindly", "thank"]
+    },
+    "Provider Letter > Consultation Letter": {
+      "strong": [],
+      "body": ["consultation", "consulted", "recommendations", "thank", "opinion"]
+    },
+    "Provider Letter > Records Request": {
+      "strong": [],
+      "body": ["records", "request", "copies", "send", "subpoena", "attention"]
+    },
+
+    "Patient Communication": {
+      "strong": [],
+      "body": ["message", "messages", "call", "called", "phone", "portal", "voicemail", "callback"]
+    },
+    "Patient Communication > Patient Message": {
+      "strong": [],
+      "body": ["message", "portal", "reply", "replied", "sent", "inbox"]
+    },
+    "Patient Communication > Notice": {
+      "strong": [],
+      "body": ["notice", "notification", "notified", "informed"]
+    },
+    "Patient Communication > Patient Education Material": {
+      "strong": [],
+      "body": ["education", "learn", "information", "tips", "handout"]
+    },
+    "Patient Communication > Telephone Encounter": {
+      "strong": [],
+      "body": ["telephone", "phone", "called", "caller", "spoke", "voicemail", "callback", "advised"]
+    },
+
+    "Administrative": {
+      "strong": [],
+      "body": ["account", "billing", "insurance", "appointment", "registration", "charges", "payment"]
+    },
+    "Administrative > Appointment Record": {
+      "strong": [],
+      "body": ["appointment", "appointments", "scheduled", "rescheduled", "cancelled", "noshow", "arrived"]
+    },
+    "Administrative > Billing & Invoices": {
+      "strong": ["invoice", "statement"],
+      "body": ["invoice", "statement", "balance", "charges", "payment", "due", "adjustment", "insurance", "remittance"]
+    },
+    "Administrative > Patient Registration": {
+      "strong": ["registration"],
+      "body": ["registration", "guarantor", "subscriber", "employer", "emergency", "insurance"]
+    },
+    "Administrative > Superbill": {
+      "strong": ["superbill"],
+      "body": ["cpt", "icd", "modifier", "units", "fee", "charges", "encounter"]
+    }
+  }
+}

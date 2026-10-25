@@ -39,8 +39,22 @@
         "title_terms": [
           "Admission Record"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "hpi",
+          "subjective",
+          "objective",
+          "assessment",
+          "plan",
+          "ros",
+          "exam",
+          "complaint",
+          "presents",
+          "interval",
+          "followup",
+          "counseled"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -242,8 +256,14 @@
         "title_terms": [
           "Clinical Diagnosis List"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "diagnoses",
+          "icd",
+          "codes",
+          "index"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 14,
       "provenance": {
@@ -770,8 +790,18 @@
         "title_terms": [
           "Nutrition Assessment"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "assessment",
+          "functional",
+          "adl",
+          "iadl",
+          "independent",
+          "assistance",
+          "fall",
+          "risk"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 2,
       "provenance": {
@@ -1177,8 +1207,18 @@
         "title_terms": [
           "Perioperative Evaluation"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "preoperative",
+          "npo",
+          "checklist",
+          "clearance",
+          "consent",
+          "verified"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "preoperative"
+        ]
       },
       "pages": 5,
       "provenance": {
@@ -1473,9 +1513,15 @@
           "resolved problems",
           "onset date",
           "noted date",
-          "ICD-10"
+          "ICD-10",
+          "problems",
+          "active",
+          "resolved",
+          "onset",
+          "noted"
         ],
-        "ambiguous_terms": []
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 25,
       "provenance": {
@@ -2123,8 +2169,18 @@
         "title_terms": [
           "Ankle-Brachial Index Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "abi",
+          "ankle",
+          "brachial",
+          "index",
+          "pressures",
+          "toe"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "abi"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -2148,8 +2204,18 @@
         "title_terms": [
           "Bronchoscopy Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "bronchoscopy",
+          "bronchoscope",
+          "bronchial",
+          "lavage",
+          "carina",
+          "airways"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "bronchoscopy"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -2173,8 +2239,21 @@
         "title_terms": [
           "Cardiac Catheterization Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "catheterization",
+          "coronary",
+          "angiography",
+          "ventriculography",
+          "lad",
+          "lcx",
+          "rca",
+          "stent",
+          "fluoroscopy"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "catheterization"
+        ]
       },
       "pages": 11,
       "provenance": {
@@ -2235,8 +2314,17 @@
         "title_terms": [
           "Carotid Duplex Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "carotid",
+          "ica",
+          "cca",
+          "velocity",
+          "velocities",
+          "plaque",
+          "duplex"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 2,
       "provenance": {
@@ -2302,10 +2390,21 @@
           "polypectomy",
           "diverticulosis",
           "bowel prep",
-          "withdrawal time"
+          "withdrawal time",
+          "colonoscopy",
+          "cecum",
+          "colon",
+          "polyps",
+          "prep",
+          "withdrawal",
+          "terminal",
+          "ileum"
         ],
         "ambiguous_terms": [
           "biopsy"
+        ],
+        "strong_terms": [
+          "colonoscopy"
         ]
       },
       "pages": 0,
@@ -2361,12 +2460,21 @@
           "acetowhite",
           "transformation zone",
           "cervical biopsy",
-          "abnormal Pap"
+          "abnormal Pap",
+          "study",
+          "interpretation",
+          "interpreting",
+          "tracing",
+          "recording",
+          "monitoring",
+          "performed",
+          "technician"
         ],
         "ambiguous_terms": [
           "ECC",
           "CIN"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -2390,8 +2498,17 @@
         "title_terms": [
           "Cystoscopy Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "cystoscopy",
+          "cystoscope",
+          "bladder",
+          "urethra",
+          "ureteral"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "cystoscopy"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -2421,12 +2538,23 @@
           "LV hypertrophy",
           "valve regurgitation/stenosis",
           "diastolic dysfunction",
-          "wall motion"
+          "wall motion",
+          "ejection",
+          "fraction",
+          "ventricle",
+          "atrium",
+          "valve",
+          "lvef",
+          "transesophageal"
         ],
         "ambiguous_terms": [
           "TTE",
           "LVEF",
           "ejection fraction"
+        ],
+        "strong_terms": [
+          "echocardiogram",
+          "echocardiography"
         ]
       },
       "pages": 22,
@@ -2458,9 +2586,24 @@
           "25 mm/s",
           "10 mm/mV",
           "unconfirmed",
-          "machine read"
+          "machine read",
+          "ekg",
+          "ecg",
+          "rhythm",
+          "rate",
+          "pr",
+          "qrs",
+          "qt",
+          "qtc",
+          "axis",
+          "sinus"
         ],
-        "ambiguous_terms": []
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "electrocardiogram",
+          "ekg",
+          "ecg"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -2589,10 +2732,18 @@
           "spike and wave",
           "background rhythm",
           "seizure",
-          "photic stimulation"
+          "photic stimulation",
+          "eeg",
+          "background",
+          "alpha",
+          "photic"
         ],
         "ambiguous_terms": [
           "EEG"
+        ],
+        "strong_terms": [
+          "electroencephalogram",
+          "eeg"
         ]
       },
       "pages": 0,
@@ -2625,10 +2776,20 @@
           "amplitude",
           "latency",
           "radiculopathy",
-          "carpal tunnel"
+          "carpal tunnel",
+          "emg",
+          "ncs",
+          "conduction",
+          "motor",
+          "sensory",
+          "needle"
         ],
         "ambiguous_terms": [
           "EMG"
+        ],
+        "strong_terms": [
+          "electromyography",
+          "emg"
         ]
       },
       "pages": 0,
@@ -2683,10 +2844,17 @@
           "LES pressure",
           "peristalsis",
           "achalasia",
-          "motility"
+          "motility",
+          "manometry",
+          "sphincter",
+          "swallows",
+          "pressure"
         ],
         "ambiguous_terms": [
           "IRP"
+        ],
+        "strong_terms": [
+          "manometry"
         ]
       },
       "pages": 0,
@@ -2711,8 +2879,19 @@
         "title_terms": [
           "Esophagogastroduodenoscopy Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "egd",
+          "esophagus",
+          "stomach",
+          "duodenum",
+          "antrum",
+          "gastric"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "esophagogastroduodenoscopy",
+          "egd"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -2743,11 +2922,18 @@
           "flow",
           "color Doppler",
           "spectral",
-          "vascular ultrasound"
+          "vascular ultrasound",
+          "extremity",
+          "venous",
+          "femoral",
+          "popliteal",
+          "doppler",
+          "compressibility"
         ],
         "ambiguous_terms": [
           "Doppler"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -2868,8 +3054,19 @@
         "title_terms": [
           "Holter Monitor Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "holter",
+          "beats",
+          "pvc",
+          "pac",
+          "pauses",
+          "hookup",
+          "diary"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "holter"
+        ]
       },
       "pages": 11,
       "provenance": {
@@ -2932,11 +3129,18 @@
           "flexible fiberoptic",
           "vocal cords",
           "larynx",
-          "hoarseness"
+          "hoarseness",
+          "vocal",
+          "cords",
+          "glottis",
+          "epiglottis"
         ],
         "ambiguous_terms": [
           "ENT",
           "dysphagia"
+        ],
+        "strong_terms": [
+          "laryngoscopy"
         ]
       },
       "pages": 0,
@@ -2969,9 +3173,18 @@
           "add",
           "base curve",
           "diameter",
-          "IOL power"
+          "IOL power",
+          "biometry",
+          "iol",
+          "axial",
+          "length",
+          "keratometry",
+          "power"
         ],
-        "ambiguous_terms": []
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "biometry"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -3003,12 +3216,21 @@
           "Cardiolite",
           "reversible defect",
           "SPECT",
-          "gated EF"
+          "gated EF",
+          "stress",
+          "treadmill",
+          "bruce",
+          "mets",
+          "exercise",
+          "protocol",
+          "regadenoson",
+          "perfusion"
         ],
         "ambiguous_terms": [
           "MPI",
           "ischemia"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -3037,13 +3259,19 @@
           "cognitive screening",
           "MoCA",
           "SLUMS",
-          "memory"
+          "memory",
+          "cognitive",
+          "mmse",
+          "recall",
+          "orientation",
+          "clock"
         ],
         "ambiguous_terms": [
           "Mini-Cog",
           "dementia",
           "score /30"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -3067,8 +3295,18 @@
         "title_terms": [
           "Oximetry Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "oximetry",
+          "saturation",
+          "desaturation",
+          "spo2",
+          "overnight",
+          "nadir"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "oximetry"
+        ]
       },
       "pages": 3,
       "provenance": {
@@ -3126,8 +3364,22 @@
         "title_terms": [
           "Pacemaker Device Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "pacemaker",
+          "interrogation",
+          "lead",
+          "leads",
+          "battery",
+          "pacing",
+          "sensing",
+          "impedance",
+          "device"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "pacemaker",
+          "interrogation"
+        ]
       },
       "pages": 3,
       "provenance": {
@@ -3249,8 +3501,17 @@
         "title_terms": [
           "Plethysmography Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "plethysmography",
+          "volumes",
+          "tlc",
+          "rv",
+          "frc"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "plethysmography"
+        ]
       },
       "pages": 1,
       "provenance": {
@@ -3308,8 +3569,18 @@
         "title_terms": [
           "Pulmonary Function Test"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "spirometry",
+          "fev1",
+          "fvc",
+          "dlco",
+          "bronchodilator",
+          "predicted"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "spirometry"
+        ]
       },
       "pages": 5,
       "provenance": {
@@ -3370,8 +3641,16 @@
         "title_terms": [
           "Sigmoidoscopy Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "sigmoidoscopy",
+          "sigmoid",
+          "rectum",
+          "flexible"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "sigmoidoscopy"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -3399,13 +3678,24 @@
         "body_terms": [
           "obstructive sleep apnea",
           "sleep efficiency",
-          "desaturation nadir"
+          "desaturation nadir",
+          "polysomnography",
+          "ahi",
+          "apnea",
+          "hypopnea",
+          "arousal",
+          "rem",
+          "sleep"
         ],
         "ambiguous_terms": [
           "PSG",
           "AHI",
           "RDI",
           "REM"
+        ],
+        "strong_terms": [
+          "polysomnography",
+          "polysomnogram"
         ]
       },
       "pages": 0,
@@ -3521,8 +3811,15 @@
         "title_terms": [
           "Split Night Study Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "split",
+          "cpap",
+          "titration",
+          "diagnostic",
+          "ahi"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -3666,10 +3963,16 @@
           "electrochemical skin conductance",
           "sudomotor",
           "hands/feet",
-          "neuropathy risk"
+          "neuropathy risk",
+          "sudoscan",
+          "esc",
+          "conductance"
         ],
         "ambiguous_terms": [
           "ESC"
+        ],
+        "strong_terms": [
+          "sudoscan"
         ]
       },
       "pages": 0,
@@ -3701,11 +4004,15 @@
           "optimal pressure",
           "cm H2O",
           "residual AHI",
-          "mask"
+          "mask",
+          "cpap",
+          "pressure",
+          "leak"
         ],
         "ambiguous_terms": [
           "CPAP"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -3729,8 +4036,19 @@
         "title_terms": [
           "Videonystagmography Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "vng",
+          "nystagmus",
+          "caloric",
+          "saccades",
+          "oculomotor",
+          "positional"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "videonystagmography",
+          "vng"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -3754,8 +4072,18 @@
         "title_terms": [
           "Visual Field Interpretation"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "perimetry",
+          "visual",
+          "field",
+          "humphrey",
+          "fixation",
+          "deviation"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "perimetry"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -3873,8 +4201,17 @@
         "title_terms": [
           "Endoscopy Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "endoscopy",
+          "endoscope",
+          "scope",
+          "mucosa",
+          "biopsies"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "endoscopy"
+        ]
       },
       "pages": 9,
       "provenance": {
@@ -4007,12 +4344,21 @@
         "body_terms": [
           "allergen",
           "reaction",
-          "intolerance"
+          "intolerance",
+          "ige",
+          "sensitization",
+          "class",
+          "kua",
+          "panel"
         ],
         "ambiguous_terms": [
           "Allergies",
           "NKDA",
           "severity"
+        ],
+        "strong_terms": [
+          "allergen",
+          "allergens"
         ]
       },
       "pages": 0,
@@ -4122,8 +4468,27 @@
         "title_terms": [
           "Chemistry Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "sodium",
+          "potassium",
+          "chloride",
+          "creatinine",
+          "bun",
+          "albumin",
+          "bilirubin",
+          "alt",
+          "ast",
+          "calcium",
+          "egfr",
+          "lipid",
+          "cholesterol",
+          "triglycerides"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "cmp",
+          "bmp"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -4154,10 +4519,18 @@
           "BCR-ABL",
           "translocation",
           "amplification",
-          "nuclei scored"
+          "nuclei scored",
+          "hybridization",
+          "probes",
+          "nuclei",
+          "signals",
+          "fluorescence"
         ],
         "ambiguous_terms": [
           "FISH"
+        ],
+        "strong_terms": [
+          "fish"
         ]
       },
       "pages": 1,
@@ -4189,11 +4562,22 @@
           "heterozygous",
           "pharmacogenomic",
           "Myriad",
-          "Invitae"
+          "Invitae",
+          "variants",
+          "gene",
+          "genes",
+          "mutation",
+          "genotype",
+          "sequencing",
+          "carrier"
         ],
         "ambiguous_terms": [
           "mutation",
           "BRCA"
+        ],
+        "strong_terms": [
+          "genetic",
+          "genomic"
         ]
       },
       "pages": 1,
@@ -4218,8 +4602,18 @@
         "title_terms": [
           "Glucose Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "glucose",
+          "a1c",
+          "hba1c",
+          "fasting",
+          "postprandial",
+          "tolerance"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "glucose"
+        ]
       },
       "pages": 2,
       "provenance": {
@@ -4284,12 +4678,24 @@
           "hematocrit",
           "platelets",
           "differential",
-          "reference range"
+          "reference range",
+          "wbc",
+          "rbc",
+          "mcv",
+          "mch",
+          "mchc",
+          "rdw",
+          "neutrophils",
+          "lymphocytes"
         ],
         "ambiguous_terms": [
           "CBC",
           "WBC",
           "MCV"
+        ],
+        "strong_terms": [
+          "cbc",
+          "hematology"
         ]
       },
       "pages": 0,
@@ -4339,8 +4745,20 @@
         "title_terms": [
           "INR and Prothrombin Time"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "inr",
+          "prothrombin",
+          "ptt",
+          "aptt",
+          "fibrinogen",
+          "warfarin",
+          "anticoagulation"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "coagulation",
+          "inr"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -4364,8 +4782,16 @@
         "title_terms": [
           "Laboratory Flow Sheet"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "flowsheet",
+          "trend",
+          "trends",
+          "cumulative"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "flowsheet"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -4396,9 +4822,19 @@
           "organism",
           "gram stain",
           "colony count",
-          "urine/blood/wound culture"
+          "urine/blood/wound culture",
+          "organisms",
+          "growth",
+          "gram",
+          "colonies",
+          "isolated",
+          "mic"
         ],
-        "ambiguous_terms": []
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "microbiology",
+          "culture"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -4452,11 +4888,22 @@
           "specific gravity",
           "leukocyte esterase",
           "nitrite",
-          "protein"
+          "protein",
+          "urine",
+          "urinalysis",
+          "specific",
+          "gravity",
+          "ketones",
+          "leukocyte",
+          "casts",
+          "microscopic"
         ],
         "ambiguous_terms": [
           "UA",
           "microscopic"
+        ],
+        "strong_terms": [
+          "urinalysis"
         ]
       },
       "pages": 0,
@@ -4572,13 +5019,22 @@
         "body_terms": [
           "histology",
           "benign/malignant",
-          "margins"
+          "margins",
+          "biopsy",
+          "gross",
+          "microscopic",
+          "tissue",
+          "fragments",
+          "stain"
         ],
         "ambiguous_terms": [
           "Biopsy",
           "specimen",
           "carcinoma",
           "final diagnosis"
+        ],
+        "strong_terms": [
+          "biopsy"
         ]
       },
       "pages": 6,
@@ -4603,8 +5059,19 @@
         "title_terms": [
           "Cytology Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "cytology",
+          "cytologic",
+          "pap",
+          "smear",
+          "cervical",
+          "adequacy",
+          "cells"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "cytology"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -4628,8 +5095,18 @@
         "title_terms": [
           "Cytometry Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "cytometry",
+          "flow",
+          "immunophenotyping",
+          "cd",
+          "markers",
+          "gating"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "cytometry"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -4659,7 +5136,13 @@
           "cytopathology",
           "adequacy",
           "Bethesda",
-          "molecular diagnostics"
+          "molecular diagnostics",
+          "molecular",
+          "pcr",
+          "amplification",
+          "assay",
+          "detected",
+          "mutation"
         ],
         "ambiguous_terms": [
           "FNA",
@@ -4668,6 +5151,9 @@
           "NGS",
           "EGFR",
           "KRAS"
+        ],
+        "strong_terms": [
+          "molecular"
         ]
       },
       "pages": 0,
@@ -4802,13 +5288,25 @@
           "osteopenia",
           "osteoporosis",
           "femoral neck",
-          "lumbar spine"
+          "lumbar spine",
+          "dexa",
+          "densitometry",
+          "tscore",
+          "zscore",
+          "bmd",
+          "femoral",
+          "lumbar",
+          "frax"
         ],
         "ambiguous_terms": [
           "DEXA",
           "DXA",
           "BMD",
           "FRAX"
+        ],
+        "strong_terms": [
+          "dexa",
+          "densitometry"
         ]
       },
       "pages": 0,
@@ -4836,7 +5334,13 @@
         "body_terms": [
           "CT angiogram",
           "coronary CTA",
-          "calcium score"
+          "calcium score",
+          "cta",
+          "angiography",
+          "arterial",
+          "runoff",
+          "aorta",
+          "stenosis"
         ],
         "ambiguous_terms": [
           "CTA",
@@ -4844,6 +5348,9 @@
           "plaque",
           "contrast",
           "impression"
+        ],
+        "strong_terms": [
+          "cta"
         ]
       },
       "pages": 0,
@@ -4872,13 +5379,20 @@
           "CAT scan",
           "computed tomography",
           "axial images",
-          "Hounsfield"
+          "Hounsfield",
+          "ct",
+          "computed",
+          "tomography",
+          "axial",
+          "reformats",
+          "slices"
         ],
         "ambiguous_terms": [
           "CT",
           "contrast",
           "impression"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 30,
       "provenance": {
@@ -4960,8 +5474,17 @@
         "title_terms": [
           "MR Angiography Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "mra",
+          "angiography",
+          "magnetic",
+          "resonance",
+          "vessels"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "mra"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -4985,8 +5508,16 @@
         "title_terms": [
           "Brain MRI Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "brain",
+          "flair",
+          "diffusion",
+          "ventricles",
+          "intracranial",
+          "parenchyma"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 1,
       "provenance": {
@@ -5015,11 +5546,21 @@
           "MR head",
           "with/without contrast",
           "white matter",
-          "FLAIR"
+          "FLAIR",
+          "mri",
+          "magnetic",
+          "resonance",
+          "weighted",
+          "gadolinium",
+          "sagittal",
+          "coronal"
         ],
         "ambiguous_terms": [
           "infarct",
           "impression"
+        ],
+        "strong_terms": [
+          "mri"
         ]
       },
       "pages": 0,
@@ -5084,12 +5625,22 @@
           "comparison",
           "radiologist",
           "mammogram",
-          "BI-RADS"
+          "BI-RADS",
+          "mammography",
+          "birads",
+          "breast",
+          "tomosynthesis",
+          "density",
+          "screening"
         ],
         "ambiguous_terms": [
           "technique",
           "findings",
           "impression"
+        ],
+        "strong_terms": [
+          "mammogram",
+          "mammography"
         ]
       },
       "pages": 21,
@@ -5120,11 +5671,19 @@
           "Tc-99m",
           "uptake",
           "bone scan",
-          "thyroid scan"
+          "thyroid scan",
+          "nuclear",
+          "technetium",
+          "scintigraphy",
+          "spect",
+          "pet"
         ],
         "ambiguous_terms": [
           "HIDA",
           "PET"
+        ],
+        "strong_terms": [
+          "scintigraphy"
         ]
       },
       "pages": 2,
@@ -5183,8 +5742,19 @@
         "title_terms": [
           "Sonogram Report"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "ultrasound",
+          "sonogram",
+          "sonographic",
+          "echogenic",
+          "doppler",
+          "transducer"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "ultrasound",
+          "sonogram"
+        ]
       },
       "pages": 2,
       "provenance": {
@@ -5284,10 +5854,18 @@
           "AP / lateral",
           "PA and lateral",
           "fracture",
-          "infiltrate"
+          "infiltrate",
+          "radiographs",
+          "pa",
+          "lateral",
+          "film"
         ],
         "ambiguous_terms": [
           "CXR"
+        ],
+        "strong_terms": [
+          "radiograph",
+          "x-ray"
         ]
       },
       "pages": 0,
@@ -5342,11 +5920,17 @@
           "Phase I",
           "Phase II",
           "Aldrete score",
-          "discharge criteria met"
+          "discharge criteria met",
+          "procedures",
+          "cpt",
+          "phase",
+          "case",
+          "scheduled"
         ],
         "ambiguous_terms": [
           "PACU"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -5370,8 +5954,18 @@
         "title_terms": [
           "ICU Flow Sheet"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "icu",
+          "ventilator",
+          "fio2",
+          "peep",
+          "drips",
+          "titrated",
+          "sedation",
+          "flowsheet"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 1,
       "provenance": {
@@ -5501,12 +6095,23 @@
           "induction",
           "intubation",
           "anesthesiologist",
-          "Aldrete"
+          "Aldrete",
+          "surgeon",
+          "assistant",
+          "incision",
+          "closure",
+          "prepped",
+          "draped",
+          "sutures",
+          "estimated",
+          "specimens",
+          "findings"
         ],
         "ambiguous_terms": [
           "CRNA",
           "PACU"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -5635,10 +6240,19 @@
           "ESI level",
           "arrival mode",
           "triage time",
-          "triage nurse"
+          "triage nurse",
+          "triage",
+          "acuity",
+          "esi",
+          "arrival",
+          "chief",
+          "mode"
         ],
         "ambiguous_terms": [
           "acuity"
+        ],
+        "strong_terms": [
+          "triage"
         ]
       },
       "pages": 0,
@@ -5825,10 +6439,19 @@
           "UF goal",
           "Kt/V",
           "AV fistula",
-          "dialysate"
+          "dialysate",
+          "dialyzer",
+          "ultrafiltration",
+          "access",
+          "fistula",
+          "treatment"
         ],
         "ambiguous_terms": [
           "CAPD"
+        ],
+        "strong_terms": [
+          "dialysis",
+          "hemodialysis"
         ]
       },
       "pages": 0,
@@ -5878,8 +6501,18 @@
         "title_terms": [
           "Elastography"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "elastography",
+          "fibroscan",
+          "stiffness",
+          "kpa",
+          "cap"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "elastography",
+          "fibroscan"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -5909,10 +6542,19 @@
           "regimen",
           "infusion start/stop",
           "premedication",
-          "port accessed"
+          "port accessed",
+          "infusion",
+          "cycle",
+          "rate",
+          "iv",
+          "administered"
         ],
         "ambiguous_terms": [
           "dose"
+        ],
+        "strong_terms": [
+          "infusion",
+          "chemotherapy"
         ]
       },
       "pages": 0,
@@ -5972,8 +6614,17 @@
         "title_terms": [
           "Injection Visit"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "injection",
+          "injected",
+          "site",
+          "lot",
+          "administered",
+          "intramuscular",
+          "subcutaneous"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -5997,8 +6648,15 @@
         "title_terms": [
           "Knee Procedure"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "knee",
+          "aspiration",
+          "arthrocentesis",
+          "intraarticular",
+          "injection"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -6028,11 +6686,17 @@
           "photocoagulation",
           "laser settings",
           "spots",
-          "power"
+          "power",
+          "yag",
+          "slt",
+          "capsulotomy",
+          "trabeculoplasty",
+          "shots"
         ],
         "ambiguous_terms": [
           "SLT"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -6056,8 +6720,16 @@
         "title_terms": [
           "Lumbar Procedure"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "lumbar",
+          "epidural",
+          "facet",
+          "fluoroscopy",
+          "transforaminal",
+          "needle"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -6081,8 +6753,16 @@
         "title_terms": [
           "Office Procedure"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "procedure",
+          "office",
+          "anesthetic",
+          "lidocaine",
+          "sterile",
+          "tolerated"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -6106,8 +6786,15 @@
         "title_terms": [
           "Pathology Procedure"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "gross",
+          "grossing",
+          "cassettes",
+          "sections",
+          "fixed"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -6131,8 +6818,18 @@
         "title_terms": [
           "Radiation Therapy Record"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "radiation",
+          "fraction",
+          "fractions",
+          "gy",
+          "cgy",
+          "dose",
+          "simulation",
+          "linac"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 1,
       "provenance": {
@@ -6195,11 +6892,20 @@
           "L.Ac",
           "needles",
           "points",
-          "meridian"
+          "meridian",
+          "therapy",
+          "therapist",
+          "session",
+          "goals",
+          "exercises",
+          "strengthening",
+          "gait",
+          "rehabilitation"
         ],
         "ambiguous_terms": [
           "session"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -6424,9 +7130,18 @@
           "Silvadene",
           "grafting",
           "debridement",
-          "dressing change"
+          "dressing change",
+          "wound",
+          "dressing",
+          "granulation",
+          "drainage",
+          "measurements",
+          "length",
+          "width",
+          "depth"
         ],
-        "ambiguous_terms": []
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -6638,11 +7353,19 @@
         "body_terms": [
           "Depart",
           "departure",
-          "condition at departure"
+          "condition at departure",
+          "discharge",
+          "discharged",
+          "hospital",
+          "course",
+          "disposition",
+          "admission",
+          "condition"
         ],
         "ambiguous_terms": [
           "disposition"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 4,
       "provenance": {
@@ -6737,9 +7460,17 @@
           "follow-up appointment",
           "return to ED if",
           "discharge medications",
-          "medication reconciliation"
+          "medication reconciliation",
+          "instructions",
+          "activity",
+          "diet",
+          "followup",
+          "return",
+          "symptoms",
+          "home"
         ],
-        "ambiguous_terms": []
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 6,
       "provenance": {
@@ -6763,8 +7494,17 @@
         "title_terms": [
           "Discharge Medication"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "medications",
+          "discharge",
+          "continue",
+          "stop",
+          "new",
+          "changed",
+          "reconciliation"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -6791,9 +7531,14 @@
           "interval summary"
         ],
         "body_terms": [
-          "hospital course to date"
+          "hospital course to date",
+          "interim",
+          "summary",
+          "hospital",
+          "course"
         ],
-        "ambiguous_terms": []
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 1,
       "provenance": {
@@ -6822,9 +7567,12 @@
           "Short stay",
           "observation",
           "admit/discharge same day",
-          "brief hospital course"
+          "brief hospital course",
+          "short",
+          "stay"
         ],
-        "ambiguous_terms": []
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 3,
       "provenance": {
@@ -6853,9 +7601,16 @@
           "reason for transfer",
           "accepting physician",
           "hospital course",
-          "condition at transfer"
+          "condition at transfer",
+          "transfer",
+          "transferred",
+          "handoff",
+          "handover",
+          "receiving",
+          "accepting"
         ],
-        "ambiguous_terms": []
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 6,
       "provenance": {
@@ -6880,12 +7635,18 @@
           "Principal Diagnosis"
         ],
         "body_terms": [
-          "secondary diagnoses"
+          "secondary diagnoses",
+          "discharge",
+          "diagnosis",
+          "diagnoses",
+          "principal",
+          "secondary"
         ],
         "ambiguous_terms": [
           "primary diagnosis",
           "final diagnosis"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 2,
       "provenance": {
@@ -6913,11 +7674,20 @@
           "facesheet",
           "admit date",
           "admitting diagnosis",
-          "room / bed"
+          "room / bed",
+          "face",
+          "sheet",
+          "admission",
+          "account",
+          "guarantor",
+          "subscriber",
+          "insurance",
+          "admitting"
         ],
         "ambiguous_terms": [
           "attending"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 8,
       "provenance": {
@@ -6948,12 +7718,20 @@
           "guarantor",
           "emergency contact",
           "address",
-          "application"
+          "application",
+          "phone",
+          "dob",
+          "emergency",
+          "contact",
+          "language",
+          "preferred",
+          "pharmacy"
         ],
         "ambiguous_terms": [
           "DOB",
           "MRN"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 36,
       "provenance": {
@@ -7015,9 +7793,17 @@
           "Registration",
           "registered on",
           "responsible party",
-          "insurance card"
+          "insurance card",
+          "guarantor",
+          "subscriber",
+          "employer",
+          "emergency",
+          "insurance"
         ],
-        "ambiguous_terms": []
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "registration"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -7041,8 +7827,18 @@
         "title_terms": [
           "Immunization List"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "vaccine",
+          "lot",
+          "manufacturer",
+          "administered",
+          "site",
+          "dose",
+          "series",
+          "due"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 3,
       "provenance": {
@@ -7201,11 +7997,17 @@
           "crossmatch",
           "start/stop time",
           "transfusion reaction",
-          "two-nurse check"
+          "two-nurse check",
+          "unit",
+          "units",
+          "blood",
+          "products",
+          "reaction"
         ],
         "ambiguous_terms": [
           "PRBC"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -7234,12 +8036,20 @@
           "active meds",
           "sig",
           "start date",
-          "prescriber"
+          "prescriber",
+          "medications",
+          "active",
+          "tablet",
+          "capsule",
+          "dose",
+          "frequency",
+          "taking"
         ],
         "ambiguous_terms": [
           "dose",
           "frequency"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 30,
       "provenance": {
@@ -7325,8 +8135,20 @@
         "title_terms": [
           "Prescription Page"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "prescription",
+          "rx",
+          "dispense",
+          "quantity",
+          "refills",
+          "substitution",
+          "dea",
+          "pharmacy"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "prescription"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -7350,8 +8172,15 @@
         "title_terms": [
           "Refill Record"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "refill",
+          "refills",
+          "renewal",
+          "pharmacy",
+          "approved"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 2,
       "provenance": {
@@ -7410,8 +8239,17 @@
         "title_terms": [
           "Laboratory Requisition"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "requisition",
+          "tests",
+          "collection",
+          "fasting",
+          "draw",
+          "specimen",
+          "bill"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -7439,13 +8277,22 @@
         ],
         "body_terms": [
           "start / stop date",
-          "pharmacy verify"
+          "pharmacy verify",
+          "orders",
+          "order",
+          "ordered",
+          "verbal",
+          "telephone",
+          "stat",
+          "continue",
+          "discontinue"
         ],
         "ambiguous_terms": [
           "dose",
           "route",
           "frequency"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -7598,11 +8445,22 @@
         ],
         "body_terms": [
           "HIPAA",
-          "acknowledgment of receipt"
+          "acknowledgment of receipt",
+          "privacy",
+          "practices",
+          "protected",
+          "phi",
+          "rights",
+          "notice",
+          "uses",
+          "disclosures"
         ],
         "ambiguous_terms": [
           "notice of privacy practices",
           "signature"
+        ],
+        "strong_terms": [
+          "hipaa"
         ]
       },
       "pages": 10,
@@ -7627,8 +8485,15 @@
         "title_terms": [
           "Immunization Consent Form"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "vaccine",
+          "vaccination",
+          "immunization",
+          "vis",
+          "consent"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -7652,8 +8517,15 @@
         "title_terms": [
           "Patient Agreement Form"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "consent",
+          "agree",
+          "acknowledge",
+          "policy",
+          "policies"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -7677,8 +8549,17 @@
         "title_terms": [
           "Surgical Consent Form"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "surgical",
+          "operation",
+          "risks",
+          "benefits",
+          "alternatives",
+          "complications",
+          "anesthesia"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -7702,8 +8583,17 @@
         "title_terms": [
           "Transfusion Consent Form"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "transfusion",
+          "blood",
+          "products",
+          "refuse",
+          "risks"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "transfusion"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -7762,8 +8652,17 @@
         "title_terms": [
           "Assignment of Benefits"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "assignment",
+          "assign",
+          "benefits",
+          "insurance",
+          "financial",
+          "responsibility",
+          "payment"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -7787,8 +8686,20 @@
         "title_terms": [
           "Prior Authorization Request"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "prior",
+          "preauthorization",
+          "precertification",
+          "approved",
+          "denied",
+          "medical",
+          "necessity"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": [
+          "preauthorization",
+          "precertification"
+        ]
       },
       "pages": 0,
       "provenance": {
@@ -7818,11 +8729,18 @@
           "payer",
           "insurance verification",
           "units approved",
-          "effective dates"
+          "effective dates",
+          "referral",
+          "authorized",
+          "visits",
+          "approved",
+          "valid",
+          "units"
         ],
         "ambiguous_terms": [
           "approved/denied"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -7997,8 +8915,17 @@
         "title_terms": [
           "Release of Information Authorization"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "release",
+          "disclose",
+          "recipient",
+          "purpose",
+          "expiration",
+          "revoke",
+          "redisclosure"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -8022,8 +8949,14 @@
         "title_terms": [
           "Authorization Form"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "authorize",
+          "authorization",
+          "permission",
+          "behalf"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -8083,8 +9016,16 @@
         "title_terms": [
           "Standalone Patient Summary"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "problems",
+          "problem",
+          "active",
+          "resolved",
+          "onset",
+          "icd"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 23,
       "provenance": {
@@ -8372,11 +9313,19 @@
         ],
         "body_terms": [
           "yes / no",
-          "initials"
+          "initials",
+          "questionnaire",
+          "survey",
+          "screening",
+          "phq",
+          "gad",
+          "score",
+          "responses"
         ],
         "ambiguous_terms": [
           "completed"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 4,
       "provenance": {
@@ -8603,8 +9552,14 @@
         "title_terms": [
           "General Notice"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "notice",
+          "notification",
+          "notified",
+          "informed"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 4,
       "provenance": {
@@ -8665,9 +9620,15 @@
           "what is",
           "when to call your doctor",
           "follow up with",
-          "take as directed"
+          "take as directed",
+          "education",
+          "learn",
+          "information",
+          "tips",
+          "handout"
         ],
-        "ambiguous_terms": []
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -8723,11 +9684,18 @@
           "routed to",
           "patient communication",
           "memo",
-          "patient portal"
+          "patient portal",
+          "message",
+          "portal",
+          "reply",
+          "replied",
+          "sent",
+          "inbox"
         ],
         "ambiguous_terms": [
           "Message"
-        ]
+        ],
+        "strong_terms": []
       },
       "pages": 0,
       "provenance": {
@@ -9014,8 +9982,17 @@
         "title_terms": [
           "Appointment Note"
         ],
-        "body_terms": [],
-        "ambiguous_terms": []
+        "body_terms": [
+          "appointment",
+          "appointments",
+          "scheduled",
+          "rescheduled",
+          "cancelled",
+          "noshow",
+          "arrived"
+        ],
+        "ambiguous_terms": [],
+        "strong_terms": []
       },
       "pages": 3,
       "provenance": {
@@ -9083,11 +10060,22 @@
           "balance due",
           "claim",
           "statement",
-          "estimate"
+          "estimate",
+          "invoice",
+          "balance",
+          "payment",
+          "due",
+          "adjustment",
+          "insurance",
+          "remittance"
         ],
         "ambiguous_terms": [
           "CPT",
           "DRG"
+        ],
+        "strong_terms": [
+          "invoice",
+          "statement"
         ]
       },
       "pages": 0,
@@ -9213,7 +10201,11 @@
           "CPT",
           "ICD-10",
           "fee",
-          "charges"
+          "charges",
+          "icd",
+          "modifier",
+          "units",
+          "encounter"
         ],
         "ambiguous_terms": [
           "procedure code",
@@ -9252,7 +10244,13 @@
         "body_terms": [
           "please send",
           "copies of records",
-          "date range of records"
+          "date range of records",
+          "records",
+          "request",
+          "copies",
+          "send",
+          "subpoena",
+          "attention"
         ],
         "ambiguous_terms": [
           "request",
@@ -9264,6 +10262,1647 @@
         "path": "2026-10-25 (user): moved from axes_rules.title_paths",
         "lexicon": "axes_rules.records_request titles",
         "codeability": "taxonomy tag"
+      }
+    },
+    {
+      "page_type": "CC/HPI",
+      "family": "Progress Note",
+      "path": {
+        "L1": "Progress Note",
+        "L2": "CC/HPI",
+        "L3": ""
+      },
+      "codeability": "codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "complaint",
+          "hpi",
+          "presents",
+          "onset",
+          "duration",
+          "illness",
+          "reports",
+          "denies",
+          "history"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Progress Note > Visit Diagnosis",
+      "family": "Progress Note",
+      "path": {
+        "L1": "Progress Note",
+        "L2": "Visit Diagnosis",
+        "L3": ""
+      },
+      "codeability": "codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "diagnosis",
+          "diagnoses",
+          "icd",
+          "encounter",
+          "primary",
+          "secondary",
+          "assessed"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Assessment and Plan",
+      "family": "Progress Note",
+      "path": {
+        "L1": "Progress Note",
+        "L2": "Assessment and Plan",
+        "L3": ""
+      },
+      "codeability": "codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "assessment",
+          "plan",
+          "continue",
+          "recommend",
+          "recommended",
+          "followup",
+          "monitor",
+          "discussed",
+          "counseled"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Progress Note > Summary",
+      "family": "Progress Note",
+      "path": {
+        "L1": "Progress Note",
+        "L2": "Summary",
+        "L3": ""
+      },
+      "codeability": "codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "summary",
+          "course",
+          "hospitalization",
+          "recap",
+          "overview"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Progress Note > Problem List",
+      "family": "Progress Note",
+      "path": {
+        "L1": "Progress Note",
+        "L2": "Problem List",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "problems",
+          "problem",
+          "resolved",
+          "onset",
+          "chronicity"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Progress Note > Medication List",
+      "family": "Progress Note",
+      "path": {
+        "L1": "Progress Note",
+        "L2": "Medication List",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "medications",
+          "allergies",
+          "tablet",
+          "capsule",
+          "dose",
+          "sig",
+          "refills",
+          "reconciliation"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Lab and Imaging Results",
+      "family": "Progress Note",
+      "path": {
+        "L1": "Progress Note",
+        "L2": "Lab and Imaging Results",
+        "L3": ""
+      },
+      "codeability": "codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "results",
+          "reviewed",
+          "labs",
+          "imaging",
+          "findings",
+          "impression",
+          "values"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Procedure List",
+      "family": "Progress Note",
+      "path": {
+        "L1": "Progress Note",
+        "L2": "Procedure List",
+        "L3": ""
+      },
+      "codeability": "codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "procedure",
+          "performed",
+          "tolerated",
+          "indication",
+          "anesthetic",
+          "consent"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Vitals",
+      "family": "Progress Note",
+      "path": {
+        "L1": "Progress Note",
+        "L2": "Vitals",
+        "L3": ""
+      },
+      "codeability": "needs_review",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "vitals",
+          "bp",
+          "pulse",
+          "temperature",
+          "respiration",
+          "weight",
+          "height",
+          "bmi",
+          "spo2"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Physical Exam",
+      "family": "Progress Note",
+      "path": {
+        "L1": "Progress Note",
+        "L2": "Physical Exam",
+        "L3": ""
+      },
+      "codeability": "codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "exam",
+          "examination",
+          "general",
+          "heent",
+          "neck",
+          "lungs",
+          "heart",
+          "abdomen",
+          "extremities",
+          "neurological",
+          "skin",
+          "ros"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Progress Note > Questionnaire",
+      "family": "Progress Note",
+      "path": {
+        "L1": "Progress Note",
+        "L2": "Questionnaire",
+        "L3": ""
+      },
+      "codeability": "needs_review",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "questionnaire",
+          "screening",
+          "score",
+          "phq",
+          "gad",
+          "audit",
+          "responses"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Patient Instructions",
+      "family": "Progress Note",
+      "path": {
+        "L1": "Progress Note",
+        "L2": "Patient Instructions",
+        "L3": ""
+      },
+      "codeability": "codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "instructions",
+          "return",
+          "followup",
+          "call",
+          "precautions",
+          "education",
+          "advised"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Signature",
+      "family": "Progress Note",
+      "path": {
+        "L1": "Progress Note",
+        "L2": "Signature",
+        "L3": ""
+      },
+      "codeability": "codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "electronically",
+          "signed",
+          "attestation",
+          "attest",
+          "cosigned",
+          "authenticated",
+          "addendum"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Lab Report",
+      "family": "Lab Report",
+      "path": {
+        "L1": "Lab Report",
+        "L2": "",
+        "L3": ""
+      },
+      "codeability": "needs_review",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "specimen",
+          "collected",
+          "received",
+          "reported",
+          "reference",
+          "range",
+          "flag",
+          "units",
+          "accession",
+          "laboratory",
+          "resulted",
+          "clia"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Lab Result",
+      "family": "Lab Report",
+      "path": {
+        "L1": "Lab Report",
+        "L2": "Lab Result",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "specimen",
+          "collected",
+          "reference",
+          "range",
+          "units",
+          "flag",
+          "accession",
+          "fasting",
+          "serum",
+          "plasma"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Lab Report > Radiology Report",
+      "family": "Lab Report",
+      "path": {
+        "L1": "Lab Report",
+        "L2": "Radiology Report",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "radiology"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "impression",
+          "findings",
+          "technique",
+          "comparison",
+          "contrast",
+          "indication",
+          "radiologist",
+          "views",
+          "dictated"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Lab Report > Pathology Report",
+      "family": "Lab Report",
+      "path": {
+        "L1": "Lab Report",
+        "L2": "Pathology Report",
+        "L3": ""
+      },
+      "codeability": "codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "pathology"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "specimen",
+          "gross",
+          "microscopic",
+          "diagnosis",
+          "pathologist",
+          "tissue",
+          "slides",
+          "block"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Audiogram and Hearing Loss Report",
+      "family": "Lab Report",
+      "path": {
+        "L1": "Lab Report",
+        "L2": "Diagnostic Study",
+        "L3": "Audiogram and Hearing Loss Report"
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "audiogram",
+          "audiology"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "audiogram",
+          "audiometry",
+          "tympanometry",
+          "thresholds",
+          "hz",
+          "db",
+          "speech"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Behavioral Assessment",
+      "family": "Lab Report",
+      "path": {
+        "L1": "Lab Report",
+        "L2": "Diagnostic Study",
+        "L3": "Behavioral Assessment"
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "behavioral",
+          "cognitive",
+          "testing",
+          "inventory",
+          "scores",
+          "psychological"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Corneal Topography",
+      "family": "Lab Report",
+      "path": {
+        "L1": "Lab Report",
+        "L2": "Diagnostic Study",
+        "L3": "Corneal Topography"
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "topography"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "topography",
+          "corneal",
+          "keratometry",
+          "astigmatism",
+          "axial"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Doppler Duplex Report",
+      "family": "Lab Report",
+      "path": {
+        "L1": "Lab Report",
+        "L2": "Diagnostic Study",
+        "L3": "Doppler Duplex Report"
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "duplex",
+          "doppler",
+          "waveforms",
+          "venous",
+          "arterial",
+          "velocity"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Optical Coherence Tomography Report",
+      "family": "Lab Report",
+      "path": {
+        "L1": "Lab Report",
+        "L2": "Diagnostic Study",
+        "L3": "Optical Coherence Tomography Report"
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "oct"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "oct",
+          "retinal",
+          "thickness",
+          "macula",
+          "rnfl",
+          "optic"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Telemetry Report",
+      "family": "Lab Report",
+      "path": {
+        "L1": "Lab Report",
+        "L2": "Diagnostic Study",
+        "L3": "Telemetry Report"
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "telemetry"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "telemetry",
+          "strips",
+          "rhythm",
+          "events",
+          "monitoring"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Operative Note",
+      "family": "Operative Note",
+      "path": {
+        "L1": "Operative Note",
+        "L2": "",
+        "L3": ""
+      },
+      "codeability": "codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "operative"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "preoperative",
+          "postoperative",
+          "surgeon",
+          "anesthesia",
+          "incision",
+          "procedure",
+          "estimated",
+          "specimens",
+          "complications",
+          "closure"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Post-operative",
+      "family": "Operative Note",
+      "path": {
+        "L1": "Operative Note",
+        "L2": "Post-operative",
+        "L3": ""
+      },
+      "codeability": "needs_review",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "postoperative"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "postoperative",
+          "pacu",
+          "recovery",
+          "aldrete",
+          "discharge",
+          "dressing"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Anesthesia Record",
+      "family": "Operative Note",
+      "path": {
+        "L1": "Operative Note",
+        "L2": "Anesthesia Record",
+        "L3": ""
+      },
+      "codeability": "codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "anesthesia"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "anesthesia",
+          "induction",
+          "airway",
+          "intubation",
+          "sedation",
+          "asa",
+          "anesthesiologist",
+          "crna",
+          "emergence"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Intra-operative Record",
+      "family": "Operative Note",
+      "path": {
+        "L1": "Operative Note",
+        "L2": "Intra-operative Record",
+        "L3": ""
+      },
+      "codeability": "needs_review",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "intraoperative"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "intraoperative",
+          "counts",
+          "sponge",
+          "needle",
+          "circulator",
+          "scrub",
+          "positioning",
+          "tourniquet",
+          "cautery"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Implant Record",
+      "family": "Operative Note",
+      "path": {
+        "L1": "Operative Note",
+        "L2": "Implant Record",
+        "L3": ""
+      },
+      "codeability": "needs_review",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "implant",
+          "implants"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "implant",
+          "lot",
+          "serial",
+          "manufacturer",
+          "catalog",
+          "sticker",
+          "device"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Procedure Note (class words)",
+      "family": "Procedure Note",
+      "path": {
+        "L1": "Procedure Note",
+        "L2": "",
+        "L3": ""
+      },
+      "codeability": "codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "procedure",
+          "performed",
+          "tolerated",
+          "session",
+          "treatment",
+          "administered"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Endoscopy (EGD)",
+      "family": "Procedure Note",
+      "path": {
+        "L1": "Procedure Note",
+        "L2": "Endoscopy (EGD)",
+        "L3": ""
+      },
+      "codeability": "codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "egd",
+          "endoscopy",
+          "scope",
+          "sedation",
+          "esophagus"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Cardiac Procedure",
+      "family": "Procedure Note",
+      "path": {
+        "L1": "Procedure Note",
+        "L2": "Cardiac Procedure",
+        "L3": ""
+      },
+      "codeability": "codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "cardioversion"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "cardioversion",
+          "joules",
+          "cath",
+          "lab",
+          "sheath",
+          "fluoroscopy"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Discharge Summary (class words)",
+      "family": "Discharge Summary",
+      "path": {
+        "L1": "Discharge Summary",
+        "L2": "",
+        "L3": ""
+      },
+      "codeability": "discharge",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "admission",
+          "admitted",
+          "discharge",
+          "discharged",
+          "hospital",
+          "course",
+          "disposition",
+          "inpatient"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "History and Physical",
+      "family": "Discharge Summary",
+      "path": {
+        "L1": "Discharge Summary",
+        "L2": "History and Physical",
+        "L3": ""
+      },
+      "codeability": "discharge",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "admission",
+          "admitted",
+          "admitting",
+          "history",
+          "physical",
+          "inpatient",
+          "observation"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Consultation Note",
+      "family": "Discharge Summary",
+      "path": {
+        "L1": "Discharge Summary",
+        "L2": "Consultation Note",
+        "L3": ""
+      },
+      "codeability": "discharge",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "consultation",
+          "consulted",
+          "consult",
+          "requesting",
+          "inpatient",
+          "recommendations"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Clinical Summary (class words)",
+      "family": "Clinical Summary",
+      "path": {
+        "L1": "Clinical Summary",
+        "L2": "",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "summary",
+          "ccd",
+          "continuity",
+          "transition",
+          "care",
+          "document"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Summary of Care (C-CDA)",
+      "family": "Clinical Summary",
+      "path": {
+        "L1": "Clinical Summary",
+        "L2": "Summary of Care (C-CDA)",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "ccd",
+          "c-cda"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "ccd",
+          "c-cda",
+          "transition",
+          "continuity",
+          "document",
+          "generated"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "After-Visit Summary",
+      "family": "Clinical Summary",
+      "path": {
+        "L1": "Clinical Summary",
+        "L2": "After-Visit Summary",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "visit",
+          "today",
+          "instructions",
+          "appointments",
+          "upcoming",
+          "portal"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Consent and Authorization",
+      "family": "Consent and Authorization",
+      "path": {
+        "L1": "Consent and Authorization",
+        "L2": "",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "consent",
+          "authorization"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "consent",
+          "authorize",
+          "authorization",
+          "disclose",
+          "disclosure",
+          "release",
+          "revoke",
+          "voluntary",
+          "acknowledge",
+          "witness",
+          "guardian",
+          "representative",
+          "hereby"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Consent for Treatment",
+      "family": "Consent and Authorization",
+      "path": {
+        "L1": "Consent and Authorization",
+        "L2": "Consent for Treatment",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "treatment",
+          "consent",
+          "conditions",
+          "voluntary",
+          "examination"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Demographics",
+      "family": "Demographics",
+      "path": {
+        "L1": "Demographics",
+        "L2": "",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "demographics"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "address",
+          "phone",
+          "dob",
+          "sex",
+          "marital",
+          "race",
+          "ethnicity",
+          "language",
+          "emergency",
+          "contact",
+          "employer",
+          "guarantor"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Immunization",
+      "family": "Immunization",
+      "path": {
+        "L1": "Immunization",
+        "L2": "",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "immunization",
+          "immunizations",
+          "vaccination"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "vaccine",
+          "vaccines",
+          "lot",
+          "manufacturer",
+          "administered",
+          "dose",
+          "booster",
+          "series"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Medication Record",
+      "family": "Medication Record",
+      "path": {
+        "L1": "Medication Record",
+        "L2": "",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "medications",
+          "medication",
+          "tablet",
+          "capsule",
+          "dose",
+          "sig",
+          "refills",
+          "pharmacy",
+          "prescribed"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Order and Requisition",
+      "family": "Order and Requisition",
+      "path": {
+        "L1": "Order and Requisition",
+        "L2": "",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "requisition"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "order",
+          "orders",
+          "ordered",
+          "requisition",
+          "priority",
+          "stat",
+          "routine",
+          "indication"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Referral Order",
+      "family": "Order and Requisition",
+      "path": {
+        "L1": "Order and Requisition",
+        "L2": "Referral Order",
+        "L3": ""
+      },
+      "codeability": "needs_review",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "referral",
+          "referred",
+          "referring",
+          "specialist",
+          "reason",
+          "priority"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Forms and Questionnaires",
+      "family": "Forms and Questionnaires",
+      "path": {
+        "L1": "Forms and Questionnaires",
+        "L2": "",
+        "L3": ""
+      },
+      "codeability": "needs_review",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [
+          "questionnaire"
+        ],
+        "title_terms": [],
+        "body_terms": [
+          "questionnaire",
+          "screening",
+          "score",
+          "assessment",
+          "survey",
+          "responses"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Provider Letter (class words)",
+      "family": "Provider Letter",
+      "path": {
+        "L1": "Provider Letter",
+        "L2": "",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "dear",
+          "sincerely",
+          "regards",
+          "letter",
+          "colleague",
+          "thank"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Referral Letter",
+      "family": "Provider Letter",
+      "path": {
+        "L1": "Provider Letter",
+        "L2": "Referral Letter",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "referring",
+          "referral",
+          "evaluation",
+          "kindly",
+          "thank"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Consultation Letter",
+      "family": "Provider Letter",
+      "path": {
+        "L1": "Provider Letter",
+        "L2": "Consultation Letter",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "consultation",
+          "consulted",
+          "recommendations",
+          "thank",
+          "opinion"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Patient Communication",
+      "family": "Patient Communication",
+      "path": {
+        "L1": "Patient Communication",
+        "L2": "",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "message",
+          "messages",
+          "call",
+          "called",
+          "phone",
+          "portal",
+          "voicemail",
+          "callback"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Patient Communication > Telephone Encounter",
+      "family": "Patient Communication",
+      "path": {
+        "L1": "Patient Communication",
+        "L2": "Telephone Encounter",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "telephone",
+          "phone",
+          "called",
+          "caller",
+          "spoke",
+          "voicemail",
+          "callback",
+          "advised"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
+      }
+    },
+    {
+      "page_type": "Administrative",
+      "family": "Administrative",
+      "path": {
+        "L1": "Administrative",
+        "L2": "",
+        "L3": ""
+      },
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
+      "specialty": "",
+      "lexicon": {
+        "strong_terms": [],
+        "title_terms": [],
+        "body_terms": [
+          "account",
+          "billing",
+          "insurance",
+          "appointment",
+          "registration",
+          "charges",
+          "payment"
+        ],
+        "ambiguous_terms": []
+      },
+      "pages": 0,
+      "provenance": {
+        "path": "class_keywords.json",
+        "lexicon": "class_keywords.json"
       }
     }
   ],

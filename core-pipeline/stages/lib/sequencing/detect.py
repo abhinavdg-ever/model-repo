@@ -94,37 +94,54 @@ def fenced_order(features: list, markers: dict[str, ExplicitMarker], documents: 
                  window: int = WINDOW) -> tuple[list[str], set[str]]:
     """(page ids in the suggested order, pages held in place).
 
-    For now (2026-10-25, user) Main pages keep their scan order, except inside one
-    continuity document (encounter), where pages that confidently say "page n of m"
-    are put in page-number order: a page with a total in an explicit pattern ("Page 3
-    of 7", "Pg 3 of 7", "p. 3 of 7", "page 3/7") or read so by the key/value
-    extraction. Only pages of the same document and the same total change places,
-    taking their own scan positions in page-number order; nothing moves across
-    documents. Pages are held in scan order, and flagged, when two claim one number or
-    when one would move more than ``window`` places."""
+    Main pages keep their scan order, except pages that confidently say "page n of m":
+    a total in an explicit pattern ("Page 3 of 7", "Pg 3 of 7", "p. 3 of 7", "Page 3/7")
+    or read so by the key/value extraction. Pages with the same m are one family and
+    take the family's scan positions in page-number order; a page without a confident
+    "n of m" never moves. A family may span continuity documents (2026-10-25, user);
+    when its numbers repeat (two printouts of the same length) it splits back by
+    document. A page moves at most ``window`` places -- unless every Main page of the
+    documents it spans belongs to the family (the whole document is numbered n of m), so
+    a document scanned fully in reverse is put back in order. A family is held in scan
+    order, and flagged, when two of its pages claim one number or a page would move too
+    far."""
     ordered = sorted(features, key=lambda f: f.original_page_number)
     index = {f.page_id: i for i, f in enumerate(ordered)}
-    families: dict[tuple, list] = defaultdict(list)
+    pages_of: dict[Any, set[str]] = defaultdict(set)
+    for f in ordered:
+        pages_of[documents.get(f.page_id)].add(f.page_id)
+    families: dict[int, list] = defaultdict(list)
     for f in ordered:
         marker = markers.get(f.page_id)
         if marker is None or not marker.page_num or marker.total_pages is None:
             continue
         if marker.pattern not in _EXPLICIT_PATTERNS and marker.source != "extracted":
             continue
-        families[(documents.get(f.page_id), marker.total_pages)].append(f)
+        families[marker.total_pages].append(f)
+    groups: list[list] = []
+    for members in families.values():
+        numbers = [markers[f.page_id].page_num for f in members]
+        if len(set(numbers)) < len(numbers):
+            by_document: dict[Any, list] = defaultdict(list)
+            for f in members:
+                by_document[documents.get(f.page_id)].append(f)
+            groups.extend(by_document.values())
+        else:
+            groups.append(members)
 
     result = list(ordered)
     held: set[str] = set()
-    for members in families.values():
+    for members in groups:
         if len(members) < 2:
             continue
+        ids = {f.page_id for f in members}
+        whole = all(pages_of[documents.get(f.page_id)] <= ids for f in members)
         numbers = [markers[f.page_id].page_num for f in members]
         slots = sorted(index[f.page_id] for f in members)
         target = sorted(members, key=lambda f: (markers[f.page_id].page_num, f.original_page_number))
         moved = [f for slot, f in zip(slots, target) if slot != index[f.page_id]]
-        if len(set(numbers)) < len(numbers) or any(
-            abs(slot - index[f.page_id]) > window for slot, f in zip(slots, target)
-        ):
+        too_far = not whole and any(abs(slot - index[f.page_id]) > window for slot, f in zip(slots, target))
+        if len(set(numbers)) < len(numbers) or too_far:
             held.update(f.page_id for f in moved or members)
             continue
         for slot, f in zip(slots, target):

@@ -2,10 +2,10 @@
 
 Ported from advantmed-document-processing ``adapters/sequencing`` (explicit page
 markers, multi-stream split, header groups, optional cross-encoder continuation), with
-the order kept simple for now (2026-10-25, user; ``detect.fenced_order``): Main pages stay
-in scan order, except inside one continuity document (encounter), where pages that
-confidently say "page n of m" (same m) are put in page-number order, never more than 5
-places from their scan position. Nothing moves across documents.
+the order fenced (2026-10-25, user; ``detect.fenced_order``): Main pages stay in scan
+order, except pages that confidently say "page n of m" (same m), which are put in
+page-number order -- across continuity documents too -- at most 5 places from their scan
+position, with no limit when the whole document is numbered n of m.
 
 Writes DB + ``imaging/<chart>_sequencing.csv``.
 ``currentSequence`` = file/page order; ``actualSequence`` = suggested ``seq``.

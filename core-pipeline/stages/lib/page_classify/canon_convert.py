@@ -178,6 +178,8 @@ def convert_entry(entry: dict[str, Any], tax: dict[str, Any]) -> tuple[dict[str,
     """The entry with its path and specialty in the taxonomy's names, and what
     could not be resolved (empty when every level found its place)."""
     page_type = entry["page_type"]
+    if (entry.get("provenance") or {}).get("path") == "class_keywords.json":
+        return entry, []  # written in the taxonomy's names already (class_keywords.py)
     l1, l2, l3 = by_path = _by_path(tax, entry["path"])
     target = (_target(tax["placements"], page_type) or _target(tax["page_type_overrides"], page_type)
               or _target(tax["family_map"], page_type)) or {}

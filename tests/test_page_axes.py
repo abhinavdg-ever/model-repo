@@ -669,9 +669,11 @@ class TestKeywordCandidates:
         from stages.lib.page_classify.keyword_candidates import phrases
 
         every, title = phrases("SUPERBILL ENCOUNTER FORM\nvisit date 03/14/2024 of the\n")
-        assert {"superbill", "encounter form", "superbill encounter form", "visit date"} <= every
-        assert "form visit" not in every and "of the" not in every and not any(ch.isdigit() for p in every for ch in p)
+        assert {"superbill", "encounter", "form", "visit", "date"} <= every  # single words by default
+        assert "the" not in every and not any(ch.isdigit() for p in every for ch in p)
         assert "superbill" in title
+        longer, _ = phrases("SUPERBILL ENCOUNTER FORM\nvisit date\n", max_n=3)
+        assert "encounter form" in longer and "form visit" not in longer  # never across a line
 
     def test_only_approved_rows_go_to_the_entry_with_that_path(self):
         from stages.lib.page_classify.keyword_candidates import add_terms
@@ -690,25 +692,75 @@ class TestKeywordCandidates:
 
 
 class TestGenericCandidates:
-    """Only generic document wording is ever a candidate: no names, users or diseases."""
+    """Only single generic document words are ever candidates: no names, users, diseases or filler."""
 
     @pytest.fixture(scope="class")
     def vocab(self):
         from stages.lib.page_classify.keyword_candidates import document_vocabulary
 
-        return document_vocabulary(), document_vocabulary(field_words=False)
+        return document_vocabulary()
 
-    @pytest.mark.parametrize("phrase, ok", [
-        ("consent form", True),
-        ("date received", True),
-        ("mammo", True),                 # a page-type word alone
-        ("reported", False),             # a field word alone
-        ("jsmith printed", False),       # a user name is not document vocabulary
-        ("rectal cancer", False),        # a disease
-        ("notice of", False),            # a fragment
-        ("group group", False),          # a repeated word
+    @pytest.mark.parametrize("word, ok", [
+        ("consent", True),
+        ("disclosure", True),
+        ("urinalysis", True),
+        ("jsmith", False),        # a user name is not document vocabulary
+        ("cancer", False),        # a disease
+        ("anytime", False),       # filler
+        ("consent form", False),  # single words only
     ])
-    def test_the_filter(self, vocab, phrase, ok):
+    def test_the_filter(self, vocab, word, ok):
         from stages.lib.page_classify.keyword_candidates import generic
 
-        assert generic(phrase, *vocab) is ok
+        assert generic(word, vocab) is ok
+
+
+class TestClassKeywords:
+    """keyword-canon/class_keywords.json: curated words for every class (2026-10-25, user)."""
+
+    @staticmethod
+    def _classes():
+        import json
+
+        return json.loads((CORE / "stages" / "lib" / "keyword-canon" / "class_keywords.json").read_text(encoding="utf-8"))["classes"]
+
+    def test_every_key_is_a_taxonomy_path_and_every_class_has_words(self):
+        from stages.lib.page_classify import taxonomy
+
+        space = taxonomy.label_space()
+        paths = set(space["L1"]) | {f"{a} > {b}" for a, v in space["L2"].items() for b in v} | {
+            f"{p} > {x}" for p, v in space["L3"].items() for x in v}
+        classes = self._classes()
+        assert set(classes) <= paths
+        assert {p for p in paths if not p.endswith("Others")} <= set(classes)
+
+    def test_every_l1_has_at_least_five_words_and_all_are_single_words(self):
+        for key, words in self._classes().items():
+            every = words.get("strong", []) + words.get("body", [])
+            assert all(" " not in w for w in every), key
+            if " > " not in key:
+                assert len(every) >= 5, key
+
+    def test_no_filler_or_disease_word(self):
+        import json
+
+        vocab = json.loads((CORE / "stages" / "lib" / "keyword-canon" / "document_vocabulary.json").read_text(encoding="utf-8"))
+        banned = set(vocab["filler_words"]) | set(vocab["disease_words"])
+        used = {w for words in self._classes().values() for tier in words.values() for w in tier}
+        assert not used & banned, sorted(used & banned)
+
+    def test_canon_entry_names_are_unique(self):
+        """Entries are looked up by name: a repeated name silently replaces an entry."""
+        import json
+        from collections import Counter
+
+        canon = json.loads((CORE / "stages" / "lib" / "keyword-canon" / "page_canon.json").read_text(encoding="utf-8"))
+        repeated = [n for n, k in Counter(e["page_type"] for e in canon["page_types"]).items() if k > 1]
+        assert not repeated, repeated
+
+    def test_applying_twice_adds_nothing(self):
+        from stages.lib.page_classify.class_keywords import apply_keywords
+
+        canon = {"page_types": []}
+        first = apply_keywords(canon, self._classes())
+        assert first > 0 and apply_keywords(canon, self._classes()) == 0

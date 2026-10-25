@@ -128,10 +128,17 @@ def test_marked_pages_reorder_among_their_family_and_unmarked_pages_stay():
 
 
 def test_a_page_never_moves_more_than_five_places():
-    # Page 1 says 3 of 3 and page 9 says 1 of 3: the swap would move them 8 places.
+    # Page 1 says 3 of 3 and page 9 says 1 of 3, unnumbered pages between: an 8-place move.
     order, held = _order({1: _marker(3, 3), 5: _marker(2, 3), 9: _marker(1, 3)})
     assert order == [str(n) for n in range(1, 11)]
     assert held == {"1", "9"}
+
+
+def test_a_document_numbered_throughout_is_put_back_in_order_however_far():
+    # Pages 1-8 of document 1 say "Page 8 of 8" ... "Page 1 of 8": scanned in reverse.
+    reverse = {n: _marker(9 - n, 8) for n in range(1, 9)}
+    order, held = _order(reverse, documents={**{n: 1 for n in range(1, 9)}, 9: 2, 10: 2})
+    assert order == ["8", "7", "6", "5", "4", "3", "2", "1", "9", "10"] and not held
 
 
 def test_only_a_confident_page_n_of_m_moves_a_page():
@@ -144,9 +151,16 @@ def test_only_a_confident_page_n_of_m_moves_a_page():
     assert order[2:4] == ["4", "3"]
 
 
-def test_nothing_moves_across_documents():
+def test_a_confident_family_moves_across_documents():
     order, _ = _order({3: _marker(2, 2), 4: _marker(1, 2)}, documents={1: 1, 2: 1, 3: 1, 4: 2, 5: 2})
-    assert order[:5] == ["1", "2", "3", "4", "5"]
+    assert order[2:4] == ["4", "3"]
+
+
+def test_two_printouts_of_the_same_length_stay_in_their_documents():
+    # Two documents each numbered 1-2 of 2, the second scanned reversed: each sorts alone.
+    two = {1: _marker(1, 2), 2: _marker(2, 2), 3: _marker(2, 2), 4: _marker(1, 2)}
+    order, held = _order(two, documents={1: 1, 2: 1, 3: 2, 4: 2}, pages=4)
+    assert order == ["1", "2", "4", "3"] and not held
 
 
 def test_two_pages_claiming_one_number_hold_the_family():

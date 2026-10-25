@@ -8,22 +8,22 @@
 
 ``mine`` reads the training side of the split only (validation and test stay unseen),
 and proposes, at every level (L1; L2 under each L1, Progress Note's sections included;
-L3 under each L2), the 1- to 3-word phrases that
+L3 under each L2), the **single words** (2026-10-25, user: standalone words) that
 
-* are **generic document wording** (2026-10-25, user): every word but stop words is in
-  the document vocabulary -- the words of the canon's page-type titles, the taxonomy's
-  names, the section-header canon and a short list of form and field words, less
-  disease words (``document_vocabulary``). A person's or a user's name, a facility or a
-  disease can never be a candidate;
+* are **generic document words**: in ``keyword-canon/document_vocabulary.json`` (the
+  words of forms, sections and fields, by kind: consent and legal, billing, laboratory,
+  imaging, note sections, orders, medications, immunizations, demographics,
+  communication, hospital, operative, questionnaires) or in the canon's page-type titles,
+  the taxonomy's names or the section headers -- less the file's disease and filler
+  words ("any time", "please", "yes"). A person's or a user's name, a facility, a
+  disease or a filler word can never be a candidate;
 * sit on pages of at least ``--min-groups`` different charts (a stand-alone page is its
   own group);
 * point to one class: P(class | phrase) >= ``--min-precision`` and at least
   ``--min-lift`` times the class's share of pages;
 * are not in the canon already and are not only stop words or numbers;
 * appear **once** in the list: under the class they point to most precisely (the
-  broader level on a tie), not spread over several classes; the same words in another
-  order count as the same phrase, and within a class a phrase whose words sit inside
-  (or hold) a kept phrase's is left out.
+  broader level on a tie), not spread over several classes.
 
 Tier proposed: ``strong`` when nearly every page carrying the phrase is that class
 (>= 0.9) and it is in the first 12 lines of most of them, else ``body``.
@@ -58,21 +58,7 @@ a an and are as at be but by for from has have he her his i if in into is it its
 so than that the their them then there these they this to was we were which who will with you your
 """.split())
 WORD = re.compile(r"[a-z][a-z'&/-]*[a-z]|[a-z]")
-# Form and field words a page type is told by, beside the config files' words.
-GENERIC_WORDS = frozenset("""
-account acknowledge acknowledgement acknowledgment address admit admitted allergies amount answer answers approved
-attending attestation balance bed charge charges claim code codes collected comments completed contact copy
-coverage date dates department diagnosis dob dose effective electronically end facility fax findings form
-frequency given guardian hospital indication insurance interpretation location member name ordered ordering
-patient phone physician please print printed procedure provider range reason received reference referring
-reported reviewed room sent service signature signed source specimen start statement status sign time total
-units unit witness yes
-""".split())
-# Words of a disease or a condition, which name what the patient has, not what the page is.
-DISEASE_WORDS = frozenset("""
-abuse acute burn cancer cheddar chronic diabetes diabetic disease hypertension infection injury myocardial
-retinopathy substance tumor
-""".split())
+VOCABULARY_PATH = CANON_DIR / "document_vocabulary.json"
 
 
 def _words(text: str) -> list[list[str]]:
@@ -80,7 +66,7 @@ def _words(text: str) -> list[list[str]]:
     return [WORD.findall(line.lower()) for line in (text or "").splitlines()]
 
 
-def phrases(text: str, max_n: int = 3) -> tuple[frozenset[str], frozenset[str]]:
+def phrases(text: str, max_n: int = 1) -> tuple[frozenset[str], frozenset[str]]:
     """(every 1- to max_n-word phrase on the page, those in the title zone). A phrase
     never crosses a line, and none is stop words only."""
     every, title = set(), set()
@@ -88,7 +74,7 @@ def phrases(text: str, max_n: int = 3) -> tuple[frozenset[str], frozenset[str]]:
         for n in range(1, max_n + 1):
             for i in range(len(words) - n + 1):
                 gram = words[i:i + n]
-                if all(w in STOP for w in gram) or (n == 1 and len(gram[0]) < 4):
+                if all(w in STOP for w in gram) or (n == 1 and len(gram[0]) < 3):
                     continue
                 phrase = " ".join(gram)
                 every.add(phrase)
@@ -97,11 +83,13 @@ def phrases(text: str, max_n: int = 3) -> tuple[frozenset[str], frozenset[str]]:
     return frozenset(every), frozenset(title)
 
 
-def document_vocabulary(field_words: bool = True) -> frozenset[str]:
-    """The words a generic candidate may use: the canon's page-type titles and strong
-    terms, the taxonomy's L1 / L2 / L3 names, the section-header canon, and (with
-    ``field_words``) GENERIC_WORDS; less DISEASE_WORDS."""
-    words: set[str] = set(GENERIC_WORDS) if field_words else set()
+def document_vocabulary() -> frozenset[str]:
+    """The words a candidate may be: ``document_vocabulary.json`` (generic words of
+    forms, sections and fields, by kind) plus the words of the canon's page-type titles
+    and strong terms, the taxonomy's L1 / L2 / L3 names and the section headers; less
+    its disease words and filler words."""
+    config = json.loads(VOCABULARY_PATH.read_text(encoding="utf-8"))
+    words: set[str] = {w.lower() for kind in config["kinds"].values() for w in kind}
     canon = json.loads(CANON_PATH.read_text(encoding="utf-8"))
     for entry in canon["page_types"]:
         lexicon = entry.get("lexicon") or {}
@@ -126,21 +114,14 @@ def document_vocabulary(field_words: bool = True) -> frozenset[str]:
     headers = json.loads((CANON_DIR / "section_header_canon.json").read_text(encoding="utf-8"))
     for text in strings(headers):
         words.update(WORD.findall(text.lower()))
-    return frozenset(words - DISEASE_WORDS)
+    excluded = {w.lower() for w in config.get("disease_words", []) + config.get("filler_words", [])}
+    return frozenset(w for w in words - excluded - STOP if len(w) >= 3)
 
 
-def generic(phrase: str, vocabulary: frozenset[str], page_words: frozenset[str]) -> bool:
-    """Every word but stop words is document vocabulary; the phrase neither starts nor
-    ends with a stop word ("notice of" is a fragment) nor repeats a word ("group group",
-    a table's column run); a single word is a page-type or
-    section word (``page_words``), not only a field word ("source", "reported")."""
-    words = phrase.split()
-    content = [w for w in words if w not in STOP]
-    if not content or words[0] in STOP or words[-1] in STOP or len(set(words)) < len(words):
-        return False
-    if len(words) == 1 and words[0] not in page_words:
-        return False
-    return all(w in vocabulary for w in content)
+def generic(word: str, vocabulary: frozenset[str]) -> bool:
+    """A single generic document word: in the document vocabulary (2026-10-25, user:
+    standalone words, no names, no diseases, no filler such as "any time")."""
+    return " " not in word and word in vocabulary
 
 
 def _canon_terms() -> set[str]:
@@ -228,9 +209,9 @@ def mine(args: argparse.Namespace) -> int:
             every, title = phrases(row.get("text") or "")
             pages.append({"L1": row.get("L1") or "", "L2": row.get("L2") or "", "L3": row.get("L3") or "",
                           "group": _group(row), "phrases": every, "title": title})
-    vocabulary, page_words = document_vocabulary(), document_vocabulary(field_words=False)
+    vocabulary = document_vocabulary()
     for p in pages:
-        p["phrases"] = frozenset(x for x in p["phrases"] if generic(x, vocabulary, page_words))
+        p["phrases"] = frozenset(x for x in p["phrases"] if generic(x, vocabulary))
         p["title"] = p["title"] & p["phrases"]
     known = _canon_terms()
     out = _mine_level(pages, lambda p: p["L1"], known, "L1", "", args)

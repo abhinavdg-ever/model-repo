@@ -174,7 +174,21 @@ re-place the page; they are kept as rules because they need more than words:
   observation status) → Discharge Summary > History and Physical / Consultation Note.
 * **lab_guard**: below.
 
-**The keyword canon was updated (2026-10-25):** the strong tier; new entries Administrative >
+**Curated keywords per class (2026-10-25, user: "one by one, very relevant, standalone
+words, L3 too").** `keyword-canon/class_keywords.json` gives every L1, L2 and L3 of the
+taxonomy its own single words: **strong** words that on their own name the type
+(Superbill, Echocardiogram, Urinalysis, Colonoscopy, HIPAA ...; used as the page's title
+they pin the class) and **body** words the page typically carries (a consent: consent,
+authorize, disclose, disclosure, release, revoke, voluntary, witness, guardian ...; a
+chemistry report: sodium, potassium, creatinine, BUN ...). Generic document wording only:
+no names, users, facilities, diseases or filler words ("any time", "please"); every L1
+has at least five. `class_keywords.py` adds them to both copies of the canon (1,177
+words) and the weights are refitted, so the labelled pages decide how much each word
+counts. An earlier list mined automatically from the pages was dropped: frequency alone
+let user names through, and pairs of adjacent field labels ("name phone") are not
+keywords.
+
+**The keyword canon was also updated (2026-10-25):** the strong tier; new entries Administrative >
 Superbill and Provider Letter > Records Request (their titles moved from the rule
 table); "request for records" removed from Consent and Authorization > Referral
 Authorization (it named the wrong page type); and the note-section words (history of
@@ -679,6 +693,20 @@ L2 and L3 measured given the true parent, so every method is scored on the same 
 | Progress Note L2 | 0.339 (always "Others") | 0.246 | 0.246 |
 | Lab Report read as Progress Note | 4 / 94 | 0 / 94 | 4 / 94 |
 
+**With the curated class keywords** (same model answers; the relabelled pages of the second
+label pass, so the model-alone numbers move a little too):
+
+| | Validation: model alone | Validation: vote | Test: model alone | Test: vote |
+|---|---|---|---|---|
+| L1 | 0.725 | 0.727 | 0.638 | 0.633 |
+| L2, true L1 | 0.745 | **0.778** | 0.707 | **0.729** |
+| L3, true L2 | 0.522 | **0.598** | 0.456 | **0.574** |
+| Progress Note L2 | 0.130 | **0.296** | 0.357 | 0.303 |
+| Full path | 0.277 | **0.340** | 0.264 | 0.255 |
+
+The words now earn their place below L1: L2 +2 to 3 points, L3 +8 to 12. L1 stays the
+model's. The Progress Note L2 from keywords stays at the 0.2 minimum (user, 2026-10-25).
+
 On validation the vote is slightly ahead (L1 0.733 vs 0.725, L2 0.761 vs 0.748). **On
 average pages the canon's words add little to the model today:** the canon was written
 as a list of names, and most of its terms are common across page types. Where it
@@ -692,25 +720,21 @@ pages and 0 of 3 test pages; at the 0.2 minimum it beats "always Others" on vali
 
 ### 8.2 Waiting on the client [decide]
 
-* Five canon entries with no exact v29.2 home: Administration, Administrative Form and
-  Policy (now Administrative > Others); Pap and HPV Report and Pap smear report (now
-  Lab Report > Diagnostic Study; or Pathology Report > Cytology Report?).
+* **Five old page-type names with no exact home in v29.2.** The keyword list we
+  converted from v24 had five page types the new taxonomy has no slot for. I placed
+  them as below; confirm or move them:
+  * Administration, Administrative Form, Policy → **Administrative > Others** (fine as
+    is, unless you want a Policy page under Consent and Authorization > General Consent);
+  * Pap and HPV Report, Pap smear report → now **Lab Report > Diagnostic Study**; a Pap
+    smear is a cytology test, so **Lab Report > Pathology Report > Cytology Report** is
+    the better home (recommended).
 * A page only the Others step decided reads "Others / Others": acceptable?
 * More Final placements inside a Progress Note (3.2).
-* Which page types should strong terms pin (canon `strong_terms`), at which level?
-* The Progress Note L2 from keywords: keep it at the 0.2 minimum, raise it, or leave
-  Progress Note pages "Others" until the canon has section words that measure better?
-* Richer canon vocabulary **[mined, waiting for review]**: 165 candidate phrases from
-  the training side of the labelled pages (`keyword_candidates mine`; in
-  `training/bert-training/data/keyword_candidates.csv`, git-ignored). **Generic
-  document wording only** (user, 2026-10-25): every word is from the document
-  vocabulary (page-type titles, taxonomy names, section headers, form and field words,
-  less disease words), so no person's or user's name, facility or disease can appear;
-  no fragment (a phrase never starts or ends with a stop word) and no repeated word;
-  each phrase once, under the class it points to most precisely. Each sits on pages of
-  at least 5 charts and points to one class (≥ 60% of its pages, ≥ 3× the class's
-  share): L1 77, L2 72, L3 16; 29 proposed as strong. Mark the ones to keep,
-  `keyword_candidates apply`, then refit the weights.
+* **Strong words.** A strong word, used as a page's title, decides the type on its own,
+  even against a confident model. They are the `strong` lists in
+  `keyword-canon/class_keywords.json`: please look down those lists and strike any word
+  that can head a page of another type (a word like "assessment" must never be strong;
+  "superbill" or "colonoscopy" can).
 * Should `staging/page_classification.json` become what later stages read first?
 
 * Payer record-retrieval fax covers and EHR import covers as junk by rule.
@@ -793,17 +817,22 @@ the printed page number the key/value extraction found.
    scan order); a page with the same text as another claiming that number is a
    duplicate. Every stream after the first is flagged for review. Pages with no marker
    are orphans, ordered by step 4 (joined to the stream when there is only one).
-3. **Order: scan order, except confident "page n of m" inside one document [built
-   2026-10-25, user: "for now"].** Main pages keep their scan positions. Inside one
-   continuity document (encounter), pages that confidently say **"page n of m"** -- a
-   total in an explicit pattern ("Page 3 of 7", "Pg 3 of 7", "p. 3 of 7", "Page 3/7"),
-   or read so by the key/value extraction -- and share the same m are put in page-number
-   order, taking their own scan positions. Nothing moves across documents; a bare "3 of
-   7", a lone footer number or a header group never moves a page. A family stays in
-   scan order, and the pages that would have moved are flagged (`sequence_method`
-   `marker_held`, review), when two of its pages claim one number or when a page would
-   move more than **5 places**. `explicit_marker` when the total equals the Main page
-   count, otherwise `explicit_marker_reference` (confidence capped at 0.90).
+3. **Order: scan order, except confident "page n of m" [built 2026-10-25, user].**
+   Main pages keep their scan positions. Pages that confidently say **"page n of m"** -- a
+   total in an explicit pattern ("Page 3 of 7", "Pg 3 of 7", "p. 3 of 7", "Page 3/7"), or
+   read so by the key/value extraction -- and share the same m are one family and take
+   the family's scan positions in page-number order. A bare "3 of 7", a lone footer
+   number or a header group never moves a page.
+   * A family may span continuity documents (encounters); when its numbers repeat (two
+     printouts of the same length) it splits back by document.
+   * A page moves at most **5 places**, unless every Main page of the documents it spans
+     belongs to the family -- the whole document is numbered n of m -- and then the
+     family is put in order however far, so a document scanned fully in reverse is
+     reversed back.
+   * A family stays in scan order, and the pages that would have moved are flagged
+     (`sequence_method` `marker_held`, review), when two of its pages claim one number or
+     a page would move too far. `explicit_marker` when the total equals the Main page
+     count, otherwise `explicit_marker_reference` (confidence capped at 0.90).
 4. **Pages with no marker.**
    * *Cross-encoder continuation* (off: `SEQUENCING_CROSS_ENCODER=false` and the ONNX
      model is not in `artifacts/`). When on, it scores "page B continues page A" from
@@ -856,8 +885,7 @@ J page like the others.
   suggestion moving a break: measure on the ground-truth charts first.
 * The cross-encoder is off and its model is not in the repository. Ship it, or remove it.
 * Covers no longer move (the fences); confirm the client sheet keeps a fax cover where it was scanned.
-* The fence of 5 places: a document scanned fully in reverse (more than 6 pages) is held in scan order and flagged rather than reversed. Widen it inside a document whose pages all say "page n of m"?
-* Moves across documents, and from weaker evidence (bare "n of m", headers), are off for now.
+* Moves from weaker evidence (a bare "n of m", header groups) stay off.
 
 ---
 
@@ -2078,88 +2106,100 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 |---|---|---|---|---|---|---|---|---|
 | Administration | Administration | Administrative > Others | non_codeable |  |  | Administration, fax cover sheet | cover page, blank, office use only, scanned by, page count |  |
 | Appointments | Administration | Administrative > Appointment Record | non_codeable |  |  | Appointments, appointment summary | Appointment, appt, scheduled, rescheduled, cancelled, no show, check-in |  |
-| Superbill | Administrative | Administrative > Superbill | non_codeable |  | Superbill, Super Bill, Encounter Form |  | CPT, ICD-10, fee, charges | procedure code, diagnosis code |
+| Administrative | Administrative | Administrative | non_codeable |  |  |  | account, billing, insurance, appointment, registration, charges, payment |  |
+| Superbill | Administrative | Administrative > Superbill | non_codeable |  | Superbill, Super Bill, Encounter Form |  | CPT, ICD-10, fee, charges, icd, modifier, units, encounter | procedure code, diagnosis code |
 | Administrative Form | Administrative Record | Administrative > Others | non_codeable |  |  | Administrative Form |  |  |
 | Policy Page | Administrative Record | Consent and Authorization > General Consent | non_codeable |  |  | Policy Page |  |  |
 | Social Report | Administrative Record | Progress Note | non_codeable |  |  | Social Report |  |  |
-| Allergies Report | Allergies Report | Lab Report > Lab Result > Allergy Testing Report | non_codeable |  |  | Allergies Report, allergy list | allergen, reaction, intolerance | Allergies, NKDA, severity |
+| Allergies Report | Allergies Report | Lab Report > Lab Result > Allergy Testing Report | non_codeable |  | allergen, allergens | Allergies Report, allergy list | allergen, reaction, intolerance, ige, sensitization, class, kua, panel | Allergies, NKDA, severity |
 | Annual Assessments | Annual Assessments | Forms and Questionnaires > Assessment | needs_review |  |  | Annual Assessments, Annual Health Assessment, comprehensive assessment, health risk assessment (HRA), in-home assessment | review of systems, chronic conditions reviewed |  |
 | HouseCalls visit summary | Annual Assessments | Progress Note | codeable |  |  | HouseCalls visit summary, in-home assessment, health plan | HouseCalls, nurse practitioner, diagnoses confirmed |  |
 | Medicare annual wellness visit | Annual Assessments | Forms and Questionnaires > Assessment | needs_review |  |  | Medicare annual wellness visit, Annual Wellness Visit, personalized prevention plan | Medicare Annual Wellness, G0438, G0439, Welcome to Medicare | AWV, IPPE |
-| Appointment Note | Appointment Record | Administrative > Appointment Record | non_codeable |  |  | Appointment Note |  |  |
+| Appointment Note | Appointment Record | Administrative > Appointment Record | non_codeable |  |  | Appointment Note | appointment, appointments, scheduled, rescheduled, cancelled, noshow, arrived |  |
 | Annual Health Assessment | Assessment and Evaluation | Forms and Questionnaires > Assessment | codeable |  |  | Annual Health Assessment |  |  |
 | Functional Assessment | Assessment and Evaluation | Forms and Questionnaires > Assessment | codeable |  |  | Functional Assessment, activity evaluation, assessment form | functional status, ADLs, mobility, ambulation, fall risk, Barthel, Katz |  |
 | Medicare Annual Wellness Visit | Assessment and Evaluation | Forms and Questionnaires > Assessment | codeable |  |  | Medicare Annual Wellness Visit |  |  |
-| Nutrition Assessment | Assessment and Evaluation | Forms and Questionnaires > Assessment | codeable | Nutrition |  | Nutrition Assessment |  |  |
+| Nutrition Assessment | Assessment and Evaluation | Forms and Questionnaires > Assessment | codeable | Nutrition |  | Nutrition Assessment | assessment, functional, adl, iadl, independent, assistance, fall, risk |  |
 | Staying Healthy Assessment | Assessment and Evaluation | Forms and Questionnaires > Assessment | needs_review |  |  | Staying Healthy Assessment, health education behavior | IHEBA, Medi-Cal, PCP signature | SHA |
 | Referral Authorization | Authorization Form | Consent and Authorization > Referral Authorization | non_codeable |  |  | Referral Authorization |  |  |
 | Behavioral Health Note | Behavioral Health Note | Progress Note | codeable | Behavioral Health |  | Behavioral Health Note |  |  |
 | Initial Psychiatric Evaluation | Behavioral Health Note | Progress Note | codeable |  |  | Initial Psychiatric Evaluation |  |  |
 | Psychiatric Evaluation | Behavioral Health Note | Progress Note | codeable | Behavioral Health |  | Psychiatric Evaluation, mental status exam | psychiatric, DSM-5, mood, affect, suicidal ideation, psychotherapy session | MSE |
-| Billing / Invoice | Billing / Invoice | Administrative > Billing & Invoices | needs_review |  |  | Billing / Invoice, Billing, Invoice, coding summary | Superbill, charge ticket, charges, balance due, claim, statement, estimate | CPT, DRG |
+| Billing / Invoice | Billing / Invoice | Administrative > Billing & Invoices | needs_review |  | invoice, statement | Billing / Invoice, Billing, Invoice, coding summary | Superbill, charge ticket, charges, balance due, claim, statement, estimate, invoice, balance, payment, due, adjustment, insurance, remittance | CPT, DRG |
 | Invoice | Billing / Invoice | Administrative > Billing & Invoices | needs_review |  |  | Invoice, invoice number, records fee | amount due, copy fee, per page, remit to, tax ID |  |
 | Invoice Page | Billing Statement | Administrative > Billing & Invoices | needs_review |  |  | Invoice Page |  |  |
 | Cardiovascular Report | Cardiac Diagnostic Test | Lab Report > Diagnostic Study > Others | codeable |  |  | Cardiovascular Report |  |  |
-| Echocardiogram Report | Cardiac Diagnostic Test | Lab Report > Diagnostic Study > Echocardiogram Report | codeable | Cardiology |  | Echocardiogram Report | Echocardiogram, transthoracic, LV hypertrophy, valve regurgitation/stenosis, diastolic dysfunction, wall motion | TTE, LVEF, ejection fraction |
+| Echocardiogram Report | Cardiac Diagnostic Test | Lab Report > Diagnostic Study > Echocardiogram Report | codeable | Cardiology | echocardiogram, echocardiography | Echocardiogram Report | Echocardiogram, transthoracic, LV hypertrophy, valve regurgitation/stenosis, diastolic dysfunction, wall motion, ejection, fraction, ventricle, atrium, valve, lvef, transesophageal | TTE, LVEF, ejection fraction |
 | Electrocardiogram | Cardiac Diagnostic Test | Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report | codeable | Cardiology |  | Electrocardiogram |  |  |
 | Extremity Doppler Report | Cardiac Diagnostic Test | Lab Report > Diagnostic Study > Extremity Doppler Report | codeable | Cardiology |  | Extremity Doppler Report |  |  |
-| Pacemaker Device Report | Cardiac Diagnostic Test | Lab Report > Diagnostic Study > Pacemaker Device Report | codeable | Cardiology |  | Pacemaker Device Report |  |  |
+| Pacemaker Device Report | Cardiac Diagnostic Test | Lab Report > Diagnostic Study > Pacemaker Device Report | codeable | Cardiology | pacemaker, interrogation | Pacemaker Device Report | pacemaker, interrogation, lead, leads, battery, pacing, sensing, impedance, device |  |
 | Stress Test Report | Cardiac Diagnostic Test | Lab Report > Diagnostic Study > Stress Test | codeable | Cardiology |  | Stress Test Report |  |  |
 | Treadmill Report | Cardiac Diagnostic Test | Lab Report > Diagnostic Study > Stress Test | codeable | Cardiology |  | Treadmill Report |  |  |
-| CT Angiography | Cardiac Report | Lab Report > Radiology Report > CT Angiography Report | non_codeable | Cardiology |  | CT Angiography | CT angiogram, coronary CTA, calcium score | CTA, stenosis, plaque, contrast, impression |
+| CT Angiography | Cardiac Report | Lab Report > Radiology Report > CT Angiography Report | non_codeable | Cardiology | cta | CT Angiography | CT angiogram, coronary CTA, calcium score, cta, angiography, arterial, runoff, aorta, stenosis | CTA, stenosis, plaque, contrast, impression |
 | Cardiac Report | Cardiac Report | Lab Report > Diagnostic Study > Others | non_codeable |  |  | Cardiac Report, heart report, diagnostic report | Cardiovascular, cardiology, cardiology consultation, event monitor | CAD, CHF, ejection fraction |
 | Cardiac catheterization report | Cardiac Report | Lab Report > Diagnostic Study > Cardiac Catheterization Report | codeable | Cardiology |  | Cardiac catheterization report | Cardiac cath, left heart catheterization (LHC), coronary angiography, stent, LAD/RCA/LCx, stenosis %, LVEDP, cath lab | PCI, ejection fraction |
 | EKG Report (12-lead / routine) | Cardiac Report | Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report | codeable | Cardiology |  | EKG Report (12-lead / routine), EKG Report, Electrocardiogram Report | ECG 12 lead, EKG 12 lead, ECG routine, confirmed by, reviewed by | interpretation, impression |
 | Stress Test | Cardiac Report | Lab Report > Diagnostic Study > Stress Test | codeable | Cardiology |  | Stress Test, exercise tolerance test (ETT), Bruce protocol | treadmill, METs, target heart rate, ST depression | ischemia |
 | Treadmill report | Cardiac Report | Lab Report > Diagnostic Study > Stress Test | codeable | Cardiology |  | Treadmill report | Treadmill, Bruce, exercise time, METs, peak HR, ST changes |  |
+| After-Visit Summary | Clinical Summary | Clinical Summary > After-Visit Summary | non_codeable |  |  |  | visit, today, instructions, appointments, upcoming, portal |  |
 | Clinical Summary | Clinical Summary | Clinical Summary > Others | needs_review |  |  | Clinical Summary, Visit Summary, After Visit Summary, Patient Summary, chart summary, diagnosis list | Clinical Diagnoses | AVS, summary of care |
-| Assignment of Benefits | Consent and Authorization | Consent and Authorization > Assignment of Benefits | non_codeable |  |  | Assignment of Benefits |  |  |
-| Authorization Form | Consent and Authorization | Consent and Authorization > General Authorization | non_codeable |  |  | Authorization Form |  |  |
+| Clinical Summary (class words) | Clinical Summary | Clinical Summary | non_codeable |  |  |  | summary, ccd, continuity, transition, care, document |  |
+| Summary of Care (C-CDA) | Clinical Summary | Clinical Summary > Summary of Care (C-CDA) | non_codeable |  | ccd, c-cda |  | ccd, c-cda, transition, continuity, document, generated |  |
+| Assignment of Benefits | Consent and Authorization | Consent and Authorization > Assignment of Benefits | non_codeable |  |  | Assignment of Benefits | assignment, assign, benefits, insurance, financial, responsibility, payment |  |
+| Authorization Form | Consent and Authorization | Consent and Authorization > General Authorization | non_codeable |  |  | Authorization Form | authorize, authorization, permission, behalf |  |
 | Consent Form | Consent and Authorization | Consent and Authorization > General Consent | non_codeable |  |  | Consent Form, informed consent | Consent, I hereby authorize, risks and benefits, release of information, patient signature | authorization, witness |
-| HIPAA Form | Consent and Authorization | Consent and Authorization > HIPAA and Privacy | non_codeable |  |  | HIPAA Form, authorization to release PHI, privacy policy | HIPAA, acknowledgment of receipt | notice of privacy practices, signature |
-| Immunization Consent Form | Consent and Authorization | Consent and Authorization > Immunization Consent | non_codeable |  |  | Immunization Consent Form |  |  |
-| Patient Agreement Form | Consent and Authorization | Consent and Authorization > General Consent | non_codeable |  |  | Patient Agreement Form |  |  |
-| Prior Authorization Request | Consent and Authorization | Consent and Authorization > Prior Authorization | non_codeable |  |  | Prior Authorization Request |  |  |
-| Release of Information Authorization | Consent and Authorization | Consent and Authorization > Release of Information | non_codeable |  |  | Release of Information Authorization |  |  |
-| Surgical Consent Form | Consent and Authorization | Consent and Authorization > Surgical Consent | non_codeable |  |  | Surgical Consent Form |  |  |
-| Transfusion Consent Form | Consent and Authorization | Consent and Authorization > Transfusion Consent | non_codeable |  |  | Transfusion Consent Form |  |  |
-| Carotid Duplex Report | Diagnostic Study | Lab Report > Diagnostic Study > Carotid Duplex Report | non_codeable | Cardiology |  | Carotid Duplex Report |  |  |
-| Holter Monitor Report | Diagnostic Study | Lab Report > Diagnostic Study > Holter Monitor Report | non_codeable | Cardiology |  | Holter Monitor Report |  |  |
-| Plethysmography Report | Diagnostic Study | Lab Report > Diagnostic Study > Plethysmography Report | non_codeable | Cardiology |  | Plethysmography Report |  |  |
-| Pulmonary Function Test | Diagnostic Study | Lab Report > Diagnostic Study > Pulmonary Function Test | non_codeable | Pulmonology |  | Pulmonary Function Test |  |  |
+| Consent and Authorization | Consent and Authorization | Consent and Authorization | non_codeable |  | consent, authorization |  | consent, authorize, authorization, disclose, disclosure, release, revoke, voluntary, acknowledge, witness, guardian, representative, hereby |  |
+| Consent for Treatment | Consent and Authorization | Consent and Authorization > Consent for Treatment | non_codeable |  |  |  | treatment, consent, conditions, voluntary, examination |  |
+| HIPAA Form | Consent and Authorization | Consent and Authorization > HIPAA and Privacy | non_codeable |  | hipaa | HIPAA Form, authorization to release PHI, privacy policy | HIPAA, acknowledgment of receipt, privacy, practices, protected, phi, rights, notice, uses, disclosures | notice of privacy practices, signature |
+| Immunization Consent Form | Consent and Authorization | Consent and Authorization > Immunization Consent | non_codeable |  |  | Immunization Consent Form | vaccine, vaccination, immunization, vis, consent |  |
+| Patient Agreement Form | Consent and Authorization | Consent and Authorization > General Consent | non_codeable |  |  | Patient Agreement Form | consent, agree, acknowledge, policy, policies |  |
+| Prior Authorization Request | Consent and Authorization | Consent and Authorization > Prior Authorization | non_codeable |  | preauthorization, precertification | Prior Authorization Request | prior, preauthorization, precertification, approved, denied, medical, necessity |  |
+| Release of Information Authorization | Consent and Authorization | Consent and Authorization > Release of Information | non_codeable |  |  | Release of Information Authorization | release, disclose, recipient, purpose, expiration, revoke, redisclosure |  |
+| Surgical Consent Form | Consent and Authorization | Consent and Authorization > Surgical Consent | non_codeable |  |  | Surgical Consent Form | surgical, operation, risks, benefits, alternatives, complications, anesthesia |  |
+| Transfusion Consent Form | Consent and Authorization | Consent and Authorization > Transfusion Consent | non_codeable |  | transfusion | Transfusion Consent Form | transfusion, blood, products, refuse, risks |  |
+| Demographics | Demographics | Demographics | non_codeable |  | demographics |  | address, phone, dob, sex, marital, race, ethnicity, language, emergency, contact, employer, guarantor |  |
+| Carotid Duplex Report | Diagnostic Study | Lab Report > Diagnostic Study > Carotid Duplex Report | non_codeable | Cardiology |  | Carotid Duplex Report | carotid, ica, cca, velocity, velocities, plaque, duplex |  |
+| Holter Monitor Report | Diagnostic Study | Lab Report > Diagnostic Study > Holter Monitor Report | non_codeable | Cardiology | holter | Holter Monitor Report | holter, beats, pvc, pac, pauses, hookup, diary |  |
+| Plethysmography Report | Diagnostic Study | Lab Report > Diagnostic Study > Plethysmography Report | non_codeable | Cardiology | plethysmography | Plethysmography Report | plethysmography, volumes, tlc, rv, frc |  |
+| Pulmonary Function Test | Diagnostic Study | Lab Report > Diagnostic Study > Pulmonary Function Test | non_codeable | Pulmonology | spirometry | Pulmonary Function Test | spirometry, fev1, fvc, dlco, bronchodilator, predicted |  |
 | Dialysis Treatment Record | Dialysis Record | Procedure Note > Dialysis Record | codeable | Dialysis |  | Dialysis Treatment Record |  |  |
-| Discharge Instructions | Discharge Instructions | Discharge Summary > Discharge Instruction | discharge |  |  | Discharge Instructions | home care, follow-up appointment, return to ED if, discharge medications, medication reconciliation |  |
-| Depart Note | Discharge Summary | Discharge Summary > Depart/Discharge Note | discharge |  |  | Depart Note, Depart Summary | Depart, departure, condition at departure | disposition |
-| Discharge Medication | Discharge Summary | Discharge Summary > Discharge Medication | discharge |  |  | Discharge Medication |  |  |
+| Discharge Instructions | Discharge Instructions | Discharge Summary > Discharge Instruction | discharge |  |  | Discharge Instructions | home care, follow-up appointment, return to ED if, discharge medications, medication reconciliation, instructions, activity, diet, followup, return, symptoms, home |  |
+| Consultation Note | Discharge Summary | Discharge Summary > Consultation Note | discharge |  |  |  | consultation, consulted, consult, requesting, inpatient, recommendations |  |
+| Depart Note | Discharge Summary | Discharge Summary > Depart/Discharge Note | discharge |  |  | Depart Note, Depart Summary | Depart, departure, condition at departure, discharge, discharged, hospital, course, disposition, admission, condition | disposition |
+| Discharge Medication | Discharge Summary | Discharge Summary > Discharge Medication | discharge |  |  | Discharge Medication | medications, discharge, continue, stop, new, changed, reconciliation |  |
 | Discharge Summary | Discharge Summary | Discharge Summary > Depart/Discharge Note | discharge |  |  | Discharge Summary, Discharge Note | admission date, discharge date, hospital course, discharge diagnosis, condition at discharge, Transition of Care, Transfer of Care, Resumen de alta |  |
+| Discharge Summary (class words) | Discharge Summary | Discharge Summary | discharge |  |  |  | admission, admitted, discharge, discharged, hospital, course, disposition, inpatient |  |
 | Final Case Summary | Discharge Summary | Discharge Summary > Depart/Discharge Note | discharge |  |  | Final Case Summary | case closed, outcome | summary of care, final diagnosis |
-| Principal Diagnosis | Discharge Summary | Discharge Summary > Discharge Diagnosis | discharge |  |  | Principal Diagnosis | secondary diagnoses | primary diagnosis, final diagnosis |
-| Short Stay Summary | Discharge Summary | Discharge Summary > Short Stay Summary | discharge |  |  | Short Stay Summary, short stay record | Short stay, observation, admit/discharge same day, brief hospital course |  |
-| ECG Graph | EKG / ECG Tracing | Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report | codeable | Cardiology |  | ECG Graph, EKG graph | tracing, rhythm strip, 25 mm/s, 10 mm/mV, unconfirmed, machine read |  |
+| History and Physical | Discharge Summary | Discharge Summary > History and Physical | discharge |  |  |  | admission, admitted, admitting, history, physical, inpatient, observation |  |
+| Principal Diagnosis | Discharge Summary | Discharge Summary > Discharge Diagnosis | discharge |  |  | Principal Diagnosis | secondary diagnoses, discharge, diagnosis, diagnoses, principal, secondary | primary diagnosis, final diagnosis |
+| Short Stay Summary | Discharge Summary | Discharge Summary > Short Stay Summary | discharge |  |  | Short Stay Summary, short stay record | Short stay, observation, admit/discharge same day, brief hospital course, short, stay |  |
+| ECG Graph | EKG / ECG Tracing | Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report | codeable | Cardiology | electrocardiogram, ekg, ecg | ECG Graph, EKG graph | tracing, rhythm strip, 25 mm/s, 10 mm/mV, unconfirmed, machine read, ekg, ecg, rhythm, rate, pr, qrs, qt, qtc, axis, sinus |  |
 | EKG / ECG Tracing | EKG / ECG Tracing | Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report | codeable | Cardiology |  | EKG / ECG Tracing, ECG Tracing | tracing, rhythm strip, telemetry, rate | EKG, ECG, QRS, QTc |
 | Holter monitor report | EKG / ECG Tracing | Lab Report > Diagnostic Study > Holter Monitor Report | non_codeable | Cardiology |  | Holter monitor report | Holter, 24-hour monitor, ambulatory ECG, PVCs, PACs, pauses, min/max heart rate, total beats |  |
 | Audiology / hearing report | ENT Note | Progress Note | codeable |  |  | Audiology / hearing report, Audiology, hearing report | audiogram, hearing loss, sensorineural, dB HL, tympanometry, speech discrimination, hearing aid |  |
 | ENT Note | ENT Note | Progress Note | codeable | Audiology |  | ENT Note | otolaryngology, ear, nose, throat, sinus, hearing | ENT |
-| Laryngoscopy report | ENT Note | Lab Report > Diagnostic Study > Laryngoscopy Procedure Report | codeable | Audiology |  | Laryngoscopy report | Laryngoscopy, flexible fiberoptic, vocal cords, larynx, hoarseness | ENT, dysphagia |
+| Laryngoscopy report | ENT Note | Lab Report > Diagnostic Study > Laryngoscopy Procedure Report | codeable | Audiology | laryngoscopy | Laryngoscopy report | Laryngoscopy, flexible fiberoptic, vocal cords, larynx, hoarseness, vocal, cords, glottis, epiglottis | ENT, dysphagia |
 | Videonystagmography (VNG) | ENT Note | Progress Note | codeable |  |  | Videonystagmography (VNG), Videonystagmography | nystagmus, caloric, vestibular, vertigo, Dix-Hallpike | VNG, BPPV |
 | Emergency Department Note | Emergency Department Note | Progress Note | codeable | Emergency |  | Emergency Department Note |  |  |
 | EMS / ambulance report | Emergency Note | Progress Note | codeable | Emergency |  | EMS / ambulance report, ambulance report, run report, Patient Care Report | ambulance, paramedic, dispatch, scene, transport | EMS, PCR, EMT |
 | Emergency Note | Emergency Note | Progress Note | codeable | Emergency |  | Emergency Note, ED Note, ER visit, ED provider note | Emergency Department, ED course, arrival time | MDM, disposition |
 | Urgent care note | Emergency Note | Progress Note | codeable | Emergency |  | Urgent care note, acute visit | Urgent Care, walk-in, rapid strep/flu, discharged home | chief complaint |
 | Colonoscopy Report | Endoscopy Report | Lab Report > Diagnostic Study > Colonoscopy Report | codeable | Gastroenterology |  | Colonoscopy Report |  |  |
-| Endoscopy Report | Endoscopy Report | Lab Report > Diagnostic Study > Endoscopy Report | codeable | Gastroenterology |  | Endoscopy Report |  |  |
+| Endoscopy Report | Endoscopy Report | Lab Report > Diagnostic Study > Endoscopy Report | codeable | Gastroenterology | endoscopy | Endoscopy Report | endoscopy, endoscope, scope, mucosa, biopsies |  |
 | Eye Examination Report | Eye Examination | Progress Note | codeable | Ophthalmology |  | Eye Examination Report |  |  |
 | Visual Evaluation | Eye Examination | Progress Note | codeable | Ophthalmology |  | Visual Evaluation | vision, visual function | acuity |
-| ICU Flow Sheet | Flow Sheet | Operative Note > Critical Care Record | codeable | Critical Care |  | ICU Flow Sheet |  |  |
+| ICU Flow Sheet | Flow Sheet | Operative Note > Critical Care Record | codeable | Critical Care |  | ICU Flow Sheet | icu, ventilator, fio2, peep, drips, titrated, sedation, flowsheet |  |
 | Forms | Forms | Forms and Questionnaires > Questionnaire | needs_review |  |  | Forms, intake form, patient history form, pre-op checklist | agreement, acknowledgment, pre-admission testing, health maintenance | Form, screening, signature |
 | Mini-Mental State Exam | Forms | Forms and Questionnaires > Questionnaire | needs_review |  |  | Mini-Mental State Exam | Mini-Mental, Folstein, orientation, recall, clock drawing, 3-word recall | MMSE, score /30, Mini-Cog |
+| Forms and Questionnaires | Forms and Questionnaires | Forms and Questionnaires | needs_review |  | questionnaire |  | questionnaire, screening, score, assessment, survey, responses |  |
 | ADL/IADL flow sheet | Functional Assessment | Forms and Questionnaires > Assessment | needs_review |  |  | ADL/IADL flow sheet, flow sheet | bathing, toileting, feeding, transfers, independent/assist/dependent | ADL, IADL, dressing |
-| Colonoscopy / sigmoidoscopy report | Gastroenterology / GI | Lab Report > Diagnostic Study > Colonoscopy Report | codeable | Gastroenterology |  | Colonoscopy / sigmoidoscopy report, Colonoscopy, sigmoidoscopy report | flexible sigmoidoscopy, cecum reached, polyp, polypectomy, diverticulosis, bowel prep, withdrawal time | biopsy |
+| Colonoscopy / sigmoidoscopy report | Gastroenterology / GI | Lab Report > Diagnostic Study > Colonoscopy Report | codeable | Gastroenterology | colonoscopy | Colonoscopy / sigmoidoscopy report, Colonoscopy, sigmoidoscopy report | flexible sigmoidoscopy, cecum reached, polyp, polypectomy, diverticulosis, bowel prep, withdrawal time, colonoscopy, cecum, colon, polyps, prep, withdrawal, terminal, ileum | biopsy |
 | Endoscopy report | Gastroenterology / GI | Lab Report > Diagnostic Study > Others | non_codeable |  |  | Endoscopy report | Endoscopy, esophagogastroduodenoscopy, upper GI endoscopy, scope, biopsy taken, sedation, endoscopist | EGD, findings |
-| Esophageal manometry | Gastroenterology / GI | Lab Report > Diagnostic Study > Esophageal Manometry Report | non_codeable | Gastroenterology |  | Esophageal manometry | high-resolution manometry, LES pressure, peristalsis, achalasia, motility | IRP |
+| Esophageal manometry | Gastroenterology / GI | Lab Report > Diagnostic Study > Esophageal Manometry Report | non_codeable | Gastroenterology | manometry | Esophageal manometry | high-resolution manometry, LES pressure, peristalsis, achalasia, motility, manometry, sphincter, swallows, pressure | IRP |
 | Gastroenterology / GI | Gastroenterology / GI | Lab Report > Diagnostic Study > Others | non_codeable |  |  | Gastroenterology / GI, Gastroenterology, GI report | cirrhosis, H. pylori, hepatology | GI, GERD |
 | Growth chart | Growth chart | Forms and Questionnaires > Questionnaire | needs_review |  |  | Growth chart | percentile, stature-for-age, length-for-age, weight-for-age, head circumference-for-age, BMI-for-age | CDC, WHO |
 | ICU Note | ICU Note | Operative Note > Critical Care Record | codeable |  |  | ICU Note, ICU flow sheet | Critical care, critical care time, intubated, vasopressors, hourly vitals | ICU, I&O |
+| Immunization | Immunization | Immunization | non_codeable |  | immunization, immunizations, vaccination |  | vaccine, vaccines, lot, manufacturer, administered, dose, booster, series |  |
 | Immunization list | Immunizations | Immunization > Immunization Record | non_codeable |  |  | Immunization list | Immunization, vaccine, flu shot, influenza, Prevnar, Tdap, lot number, date given, site | VIS |
 | Immunizations | Immunizations | Immunization > Immunization Record | non_codeable |  |  | Immunizations | vaccine, immunization, lot number, date given |  |
 | Vaccine Record | Immunizations | Immunization > Immunization Record | non_codeable |  |  | Vaccine Record, Vaccine administration record | lot number, expiration, site, administered by, VIS date | VAR, manufacturer, route |
@@ -2167,61 +2207,72 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Device implant log | Implants | Operative Note > Others | codeable |  |  | Device implant log, Implant log | device, serial, lot, expiry, implanted by | UDI |
 | Implants | Implants | Operative Note > Others | codeable |  |  | Implants | Implant, lot/serial number, model, prosthesis, pacemaker, joint | manufacturer, IOL |
 | Pacemaker Report | Implants | Lab Report > Diagnostic Study > Pacemaker Device Report | codeable | Cardiology |  | Pacemaker Report | Pacemaker, device interrogation, device clinic, battery, lead impedance, % paced, remote monitoring, programmer | ICD |
-| Radiation Therapy Record | Infusion Therapy Record | Procedure Note > Radiation Therapy | codeable | Oncology |  | Radiation Therapy Record |  |  |
-| Interim Summary | Interim Summary | Discharge Summary > Interim Summary | discharge |  |  | Interim Summary, Interim Note, interval summary | hospital course to date |  |
-| Ankle-Brachial Index Report | Lab Report | Lab Report > Diagnostic Study > Ankle-Brachial Index Report | non_codeable | Cardiology |  | Ankle-Brachial Index Report |  |  |
-| Bronchoscopy Report | Lab Report | Lab Report > Diagnostic Study > Bronchoscopy Report | non_codeable | Pulmonology |  | Bronchoscopy Report |  |  |
-| Chemistry Report | Lab Report | Lab Report > Lab Result > Chemistry Report | non_codeable |  |  | Chemistry Report |  |  |
-| Cystoscopy Report | Lab Report | Lab Report > Diagnostic Study > Cystoscopy Report | non_codeable | Urology |  | Cystoscopy Report |  |  |
-| Cytology Report | Lab Report | Lab Report > Pathology Report > Cytology Report | codeable | Pathology |  | Cytology Report |  |  |
-| Cytometry Report | Lab Report | Lab Report > Pathology Report > Cytometry Report | codeable | Pathology |  | Cytometry Report |  |  |
-| Esophagogastroduodenoscopy Report | Lab Report | Lab Report > Diagnostic Study > Esophagogastroduodenoscopy (EGD) Report | non_codeable | Gastroenterology |  | Esophagogastroduodenoscopy Report |  |  |
-| INR and Prothrombin Time | Lab Report | Lab Report > Lab Result > Coagulation Report | non_codeable |  |  | INR and Prothrombin Time |  |  |
-| Laboratory Flow Sheet | Lab Report | Lab Report > Lab Result > Laboratory Flow Sheet | non_codeable |  |  | Laboratory Flow Sheet |  |  |
-| MR Angiography Report | Lab Report | Lab Report > Radiology Report > MR Angiography Report | non_codeable | Neurology |  | MR Angiography Report |  |  |
-| Sigmoidoscopy Report | Lab Report | Lab Report > Diagnostic Study > Sigmoidoscopy Report | non_codeable | Gastroenterology |  | Sigmoidoscopy Report |  |  |
-| Split Night Study Report | Lab Report | Lab Report > Diagnostic Study > Split Night Study Report | codeable | Sleep Study |  | Split Night Study Report |  |  |
-| Videonystagmography Report | Lab Report | Lab Report > Diagnostic Study > Videonystagmography Report | codeable | Neurology |  | Videonystagmography Report |  |  |
-| Visual Field Interpretation | Lab Report | Lab Report > Diagnostic Study > Visual Field Report | codeable | Ophthalmology |  | Visual Field Interpretation |  |  |
+| Radiation Therapy Record | Infusion Therapy Record | Procedure Note > Radiation Therapy | codeable | Oncology |  | Radiation Therapy Record | radiation, fraction, fractions, gy, cgy, dose, simulation, linac |  |
+| Interim Summary | Interim Summary | Discharge Summary > Interim Summary | discharge |  |  | Interim Summary, Interim Note, interval summary | hospital course to date, interim, summary, hospital, course |  |
+| Ankle-Brachial Index Report | Lab Report | Lab Report > Diagnostic Study > Ankle-Brachial Index Report | non_codeable | Cardiology | abi | Ankle-Brachial Index Report | abi, ankle, brachial, index, pressures, toe |  |
+| Audiogram and Hearing Loss Report | Lab Report | Lab Report > Diagnostic Study > Audiogram and Hearing Loss Report | non_codeable |  | audiogram, audiology |  | audiogram, audiometry, tympanometry, thresholds, hz, db, speech |  |
+| Behavioral Assessment | Lab Report | Lab Report > Diagnostic Study > Behavioral Assessment | non_codeable |  |  |  | behavioral, cognitive, testing, inventory, scores, psychological |  |
+| Bronchoscopy Report | Lab Report | Lab Report > Diagnostic Study > Bronchoscopy Report | non_codeable | Pulmonology | bronchoscopy | Bronchoscopy Report | bronchoscopy, bronchoscope, bronchial, lavage, carina, airways |  |
+| Chemistry Report | Lab Report | Lab Report > Lab Result > Chemistry Report | non_codeable |  | cmp, bmp | Chemistry Report | sodium, potassium, chloride, creatinine, bun, albumin, bilirubin, alt, ast, calcium, egfr, lipid, cholesterol, triglycerides |  |
+| Corneal Topography | Lab Report | Lab Report > Diagnostic Study > Corneal Topography | non_codeable |  | topography |  | topography, corneal, keratometry, astigmatism, axial |  |
+| Cystoscopy Report | Lab Report | Lab Report > Diagnostic Study > Cystoscopy Report | non_codeable | Urology | cystoscopy | Cystoscopy Report | cystoscopy, cystoscope, bladder, urethra, ureteral |  |
+| Cytology Report | Lab Report | Lab Report > Pathology Report > Cytology Report | codeable | Pathology | cytology | Cytology Report | cytology, cytologic, pap, smear, cervical, adequacy, cells |  |
+| Cytometry Report | Lab Report | Lab Report > Pathology Report > Cytometry Report | codeable | Pathology | cytometry | Cytometry Report | cytometry, flow, immunophenotyping, cd, markers, gating |  |
+| Doppler Duplex Report | Lab Report | Lab Report > Diagnostic Study > Doppler Duplex Report | non_codeable |  |  |  | duplex, doppler, waveforms, venous, arterial, velocity |  |
+| Esophagogastroduodenoscopy Report | Lab Report | Lab Report > Diagnostic Study > Esophagogastroduodenoscopy (EGD) Report | non_codeable | Gastroenterology | esophagogastroduodenoscopy, egd | Esophagogastroduodenoscopy Report | egd, esophagus, stomach, duodenum, antrum, gastric |  |
+| INR and Prothrombin Time | Lab Report | Lab Report > Lab Result > Coagulation Report | non_codeable |  | coagulation, inr | INR and Prothrombin Time | inr, prothrombin, ptt, aptt, fibrinogen, warfarin, anticoagulation |  |
+| Lab Report | Lab Report | Lab Report | needs_review |  |  |  | specimen, collected, received, reported, reference, range, flag, units, accession, laboratory, resulted, clia |  |
+| Lab Report > Pathology Report | Lab Report | Lab Report > Pathology Report | codeable |  | pathology |  | specimen, gross, microscopic, diagnosis, pathologist, tissue, slides, block |  |
+| Lab Report > Radiology Report | Lab Report | Lab Report > Radiology Report | non_codeable |  | radiology |  | impression, findings, technique, comparison, contrast, indication, radiologist, views, dictated |  |
+| Lab Result | Lab Report | Lab Report > Lab Result | non_codeable |  |  |  | specimen, collected, reference, range, units, flag, accession, fasting, serum, plasma |  |
+| Laboratory Flow Sheet | Lab Report | Lab Report > Lab Result > Laboratory Flow Sheet | non_codeable |  | flowsheet | Laboratory Flow Sheet | flowsheet, trend, trends, cumulative |  |
+| MR Angiography Report | Lab Report | Lab Report > Radiology Report > MR Angiography Report | non_codeable | Neurology | mra | MR Angiography Report | mra, angiography, magnetic, resonance, vessels |  |
+| Optical Coherence Tomography Report | Lab Report | Lab Report > Diagnostic Study > Optical Coherence Tomography Report | non_codeable |  | oct |  | oct, retinal, thickness, macula, rnfl, optic |  |
+| Sigmoidoscopy Report | Lab Report | Lab Report > Diagnostic Study > Sigmoidoscopy Report | non_codeable | Gastroenterology | sigmoidoscopy | Sigmoidoscopy Report | sigmoidoscopy, sigmoid, rectum, flexible |  |
+| Split Night Study Report | Lab Report | Lab Report > Diagnostic Study > Split Night Study Report | codeable | Sleep Study |  | Split Night Study Report | split, cpap, titration, diagnostic, ahi |  |
+| Telemetry Report | Lab Report | Lab Report > Diagnostic Study > Telemetry Report | non_codeable |  | telemetry |  | telemetry, strips, rhythm, events, monitoring |  |
+| Videonystagmography Report | Lab Report | Lab Report > Diagnostic Study > Videonystagmography Report | codeable | Neurology | videonystagmography, vng | Videonystagmography Report | vng, nystagmus, caloric, saccades, oculomotor, positional |  |
+| Visual Field Interpretation | Lab Report | Lab Report > Diagnostic Study > Visual Field Report | codeable | Ophthalmology | perimetry | Visual Field Interpretation | perimetry, visual, field, humphrey, fixation, deviation |  |
 | Allergy testing report | Laboratory Data | Lab Report > Lab Result > Allergy Testing Report | non_codeable |  |  | Allergy testing report | Allergy testing, skin prick, intradermal, wheal/flare, allergen panel, histamine control | IgE, RAST |
 | Chemistry | Laboratory Data | Lab Report > Lab Result > Others | non_codeable |  |  | Chemistry | sodium, potassium, AST/ALT, reference range, H/L flags, collected, resulted | BMP, CMP, creatinine, BUN |
 | Glucose report | Laboratory Data | Lab Report > Lab Result > Glucose Report | non_codeable |  |  | Glucose report, glucose log | Blood glucose, fingerstick, glucometer, Dexcom, Libre, time in range | FSBS, CGM |
-| Hematology | Laboratory Data | Lab Report > Lab Result > Hematology Report | non_codeable |  |  | Hematology | hemoglobin, hematocrit, platelets, differential, reference range | CBC, WBC, MCV |
+| Hematology | Laboratory Data | Lab Report > Lab Result > Hematology Report | non_codeable |  | cbc, hematology | Hematology | hemoglobin, hematocrit, platelets, differential, reference range, wbc, rbc, mcv, mch, mchc, rdw, neutrophils, lymphocytes | CBC, WBC, MCV |
 | Laboratory Data | Laboratory Data | Progress Note | non_codeable |  |  | Laboratory Data, lab results, lab flow sheet, lab requisition | reference range, abnormal flag, collected, resulted, prothrombin time | result, units, INR |
-| Microbiology | Laboratory Data | Lab Report > Lab Result > Microbiology Report | non_codeable |  |  | Microbiology | culture, sensitivity, susceptibility, organism, gram stain, colony count, urine/blood/wound culture |  |
-| Urinalysis | Laboratory Data | Lab Report > Lab Result > Urinalysis Report | non_codeable |  |  | Urinalysis | urine dipstick, specific gravity, leukocyte esterase, nitrite, protein | UA, microscopic |
+| Microbiology | Laboratory Data | Lab Report > Lab Result > Microbiology Report | non_codeable |  | microbiology, culture | Microbiology | culture, sensitivity, susceptibility, organism, gram stain, colony count, urine/blood/wound culture, organisms, growth, gram, colonies, isolated, mic |  |
+| Urinalysis | Laboratory Data | Lab Report > Lab Result > Urinalysis Report | non_codeable |  | urinalysis | Urinalysis | urine dipstick, specific gravity, leukocyte esterase, nitrite, protein, urine, urinalysis, specific, gravity, ketones, leukocyte, casts, microscopic | UA, microscopic |
 | Allergy List | Laboratory Report | Lab Report > Lab Result > Allergy Testing Report | non_codeable |  |  | Allergy List |  |  |
 | Allergy Testing Report | Laboratory Report | Lab Report > Lab Result > Allergy Testing Report | non_codeable | Pulmonology |  | Allergy Testing Report |  |  |
-| FISH Report | Laboratory Report | Lab Report > Lab Result > FISH Report | non_codeable | Pathology |  | FISH Report | fluorescence in situ hybridization, probe, HER2, BCR-ABL, translocation, amplification, nuclei scored | FISH |
-| Genetic Test Report | Laboratory Report | Lab Report > Lab Result > Genetic Test Report | non_codeable | Pathology |  | Genetic Test Report, Genetic test | variant, pathogenic, heterozygous, pharmacogenomic, Myriad, Invitae | mutation, BRCA |
-| Glucose Report | Laboratory Report | Lab Report > Lab Result > Glucose Report | non_codeable |  |  | Glucose Report |  |  |
+| FISH Report | Laboratory Report | Lab Report > Lab Result > FISH Report | non_codeable | Pathology | fish | FISH Report | fluorescence in situ hybridization, probe, HER2, BCR-ABL, translocation, amplification, nuclei scored, hybridization, probes, nuclei, signals, fluorescence | FISH |
+| Genetic Test Report | Laboratory Report | Lab Report > Lab Result > Genetic Test Report | non_codeable | Pathology | genetic, genomic | Genetic Test Report, Genetic test | variant, pathogenic, heterozygous, pharmacogenomic, Myriad, Invitae, variants, gene, genes, mutation, genotype, sequencing, carrier | mutation, BRCA |
+| Glucose Report | Laboratory Report | Lab Report > Lab Result > Glucose Report | non_codeable |  | glucose | Glucose Report | glucose, a1c, hba1c, fasting, postprandial, tolerance |  |
 | Hematology Report | Laboratory Report | Lab Report > Lab Result > Hematology Report | non_codeable |  |  | Hematology Report |  |  |
 | Laboratory Result | Laboratory Report | Lab Report > Lab Result > Others | non_codeable |  |  | Laboratory Result |  |  |
 | Microbiology Report | Laboratory Report | Lab Report > Lab Result > Microbiology Report | non_codeable |  |  | Microbiology Report |  |  |
 | Urinalysis Report | Laboratory Report | Lab Report > Lab Result > Urinalysis Report | non_codeable |  |  | Urinalysis Report |  |  |
 | Prescription / Rx page | Medication List | Medication Record > Medication List | non_codeable |  |  | Prescription / Rx page, Prescription, Rx page | sig, dispense, refills, DEA number, e-prescribed, pharmacy | Rx, DAW |
 | Refill record | Medication List | Medication Record > Refill Record | non_codeable |  |  | Refill record | Refill, refill request, pharmacy, last filled, quantity, refills remaining, e-prescribe | approved/denied |
-| Immunization List | Medication Record | Immunization > Immunization Record | non_codeable |  |  | Immunization List |  |  |
+| Immunization List | Medication Record | Immunization > Immunization Record | non_codeable |  |  | Immunization List | vaccine, lot, manufacturer, administered, site, dose, series, due |  |
 | Immunization Record | Medication Record | Immunization > Immunization Record | non_codeable |  |  | Immunization Record |  |  |
-| Medication List | Medication Record | Medication Record > Medication List | non_codeable |  |  | Medication List | current medications, active meds, sig, start date, prescriber | dose, frequency |
+| Medication List | Medication Record | Medication Record > Medication List | non_codeable |  |  | Medication List | current medications, active meds, sig, start date, prescriber, medications, active, tablet, capsule, dose, frequency, taking | dose, frequency |
 | Medication Reconciliation | Medication Record | Medication Record > Medication List | non_codeable |  |  | Medication Reconciliation |  |  |
-| Prescription Page | Medication Record | Medication Record > Prescription Page | non_codeable |  |  | Prescription Page |  |  |
-| Refill Record | Medication Record | Medication Record > Refill Record | non_codeable |  |  | Refill Record |  |  |
+| Medication Record | Medication Record | Medication Record | non_codeable |  |  |  | medications, medication, tablet, capsule, dose, sig, refills, pharmacy, prescribed |  |
+| Prescription Page | Medication Record | Medication Record > Prescription Page | non_codeable |  | prescription | Prescription Page | prescription, rx, dispense, quantity, refills, substitution, dea, pharmacy |  |
+| Refill Record | Medication Record | Medication Record > Refill Record | non_codeable |  |  | Refill Record | refill, refills, renewal, pharmacy, approved |  |
 | Ambulatory Correspondence | Messages | Provider Letter > Others | non_codeable |  |  | Ambulatory Correspondence, AMB Correspondence, outside correspondence | correspondence, fax cover, received from, scanned document |  |
 | Letter | Messages | Provider Letter > Others | non_codeable |  |  | Letter | Dear Dr., Thank you for referring, I had the pleasure of seeing, Re:, Sincerely, cc:, letterhead |  |
-| Messages | Messages | Patient Communication > Patient Message | non_codeable |  |  | Messages, note to provider, staff message, web encounter | routed to, patient communication, memo, patient portal | Message |
+| Messages | Messages | Patient Communication > Patient Message | non_codeable |  |  | Messages, note to provider, staff message, web encounter | routed to, patient communication, memo, patient portal, message, portal, reply, replied, sent, inbox | Message |
 | Notice | Messages | Patient Communication > Notice | non_codeable |  |  | Notice, advance beneficiary notice, notice of non-coverage, discharge notice, notification of discharge |  | notice of privacy practices, ABN |
 | Notification | Messages | Patient Communication > Patient Message | non_codeable |  |  | Notification, result notification | alert, reminder, notified, auto-generated |  |
-| Dialysis Note | Nephrology | Procedure Note > Dialysis Record | codeable |  |  | Dialysis Note, HD flow sheet | Dialysis, hemodialysis, peritoneal dialysis, dry weight, UF goal, Kt/V, AV fistula, dialysate | CAPD |
+| Dialysis Note | Nephrology | Procedure Note > Dialysis Record | codeable |  | dialysis, hemodialysis | Dialysis Note, HD flow sheet | Dialysis, hemodialysis, peritoneal dialysis, dry weight, UF goal, Kt/V, AV fistula, dialysate, dialyzer, ultrafiltration, access, fistula, treatment | CAPD |
 | Nephrology | Nephrology | Progress Note | codeable |  |  | Nephrology | CKD stage, proteinuria, dialysis access, fistula, renal | eGFR, creatinine, ESRD |
 | Electromyography Report | Neurodiagnostic Test | Lab Report > Diagnostic Study > Electromyography and Nerve Conduction | codeable | Neurology |  | Electromyography Report |  |  |
 | DPN results | Neurology | Lab Report > Diagnostic Study > Others | non_codeable | Neurology |  | DPN results | diabetic peripheral neuropathy, DPNCheck, sural, monofilament | DPN, severity |
-| EEG / neurophysiology report | Neurology | Lab Report > Diagnostic Study > Electroencephalogram Report | codeable | Neurology |  | EEG / neurophysiology report, neurophysiology report | electroencephalogram, neurophysiology, epileptiform, spike and wave, background rhythm, seizure, photic stimulation | EEG |
-| EMG report | Neurology | Lab Report > Diagnostic Study > Electromyography and Nerve Conduction | non_codeable | Neurology |  | EMG report | electromyography, NCV / NCS, nerve conduction, sural nerve, amplitude, latency, radiculopathy, carpal tunnel | EMG |
+| EEG / neurophysiology report | Neurology | Lab Report > Diagnostic Study > Electroencephalogram Report | codeable | Neurology | electroencephalogram, eeg | EEG / neurophysiology report, neurophysiology report | electroencephalogram, neurophysiology, epileptiform, spike and wave, background rhythm, seizure, photic stimulation, eeg, background, alpha, photic | EEG |
+| EMG report | Neurology | Lab Report > Diagnostic Study > Electromyography and Nerve Conduction | non_codeable | Neurology | electromyography, emg | EMG report | electromyography, NCV / NCS, nerve conduction, sural nerve, amplitude, latency, radiculopathy, carpal tunnel, emg, ncs, conduction, motor, sensory, needle | EMG |
 | Neurology | Neurology | Progress Note | codeable | Neurology |  | Neurology, neurological exam | cranial nerves, reflexes, seizure, stroke/CVA, neuropathy, Parkinson's | dementia, EMG |
-| Sudoscan | Neurology | Lab Report > Diagnostic Study > Sudoscan Report | codeable | Neurology |  | Sudoscan | electrochemical skin conductance, sudomotor, hands/feet, neuropathy risk | ESC |
-| Myocardial perfusion imaging | Nuclear Medicine Report | Lab Report > Diagnostic Study > Stress Test | codeable | Cardiology |  | Myocardial perfusion imaging | Myocardial perfusion, nuclear stress, Lexiscan, sestamibi, Cardiolite, reversible defect, SPECT, gated EF | MPI, ischemia |
-| Nuclear Medicine Report | Nuclear Medicine Report | Lab Report > Radiology Report > Nuclear Medicine Report | codeable | Radiology |  | Nuclear Medicine Report | Nuclear medicine, radiotracer, Tc-99m, uptake, bone scan, thyroid scan | HIDA, PET |
+| Sudoscan | Neurology | Lab Report > Diagnostic Study > Sudoscan Report | codeable | Neurology | sudoscan | Sudoscan | electrochemical skin conductance, sudomotor, hands/feet, neuropathy risk, sudoscan, esc, conductance | ESC |
+| Myocardial perfusion imaging | Nuclear Medicine Report | Lab Report > Diagnostic Study > Stress Test | codeable | Cardiology |  | Myocardial perfusion imaging | Myocardial perfusion, nuclear stress, Lexiscan, sestamibi, Cardiolite, reversible defect, SPECT, gated EF, stress, treadmill, bruce, mets, exercise, protocol, regadenoson, perfusion | MPI, ischemia |
+| Nuclear Medicine Report | Nuclear Medicine Report | Lab Report > Radiology Report > Nuclear Medicine Report | codeable | Radiology | scintigraphy | Nuclear Medicine Report | Nuclear medicine, radiotracer, Tc-99m, uptake, bone scan, thyroid scan, nuclear, technetium, scintigraphy, spect, pet | HIDA, PET |
 | SPECT report | Nuclear Medicine Report | Lab Report > Radiology Report > Nuclear Medicine Report | codeable | Radiology |  | SPECT report | SPECT, perfusion, gated, tracer, defect | ischemia, infarct |
 | Nurses Notes | Nursing Note | Progress Note | codeable | Nursing |  | Nurses Notes |  |  |
 | Nursing Note | Nursing Note | Progress Note | non_codeable | Nursing |  | Nursing Note, Nurse's note, nursing chart, home health visit, skilled nursing visit | vital signs, flowsheet | RN, LPN |
@@ -2229,7 +2280,7 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Pap and HPV Report | Obstetric and Gynecologic Record | Lab Report > Diagnostic Study | codeable | Obstetrics and Gynecology |  | Pap and HPV Report |  |  |
 | Prenatal Record | Obstetric and Gynecologic Record | Progress Note | codeable | Obstetrics and Gynecology |  | Prenatal Record |  |  |
 | Antepartum record | Obstetrics & Women's Health | Progress Note | codeable |  |  | Antepartum record, antepartum visit, NST (non-stress test) | gestational age, fetal heart tones, prenatal labs reviewed, high-risk pregnancy | EDD |
-| Colposcopy exam | Obstetrics & Women's Health | Lab Report > Diagnostic Study | codeable | Obstetrics and Gynecology |  | Colposcopy exam | Colposcopy, cervix, acetowhite, transformation zone, cervical biopsy, abnormal Pap | ECC, CIN |
+| Colposcopy exam | Obstetrics & Women's Health | Lab Report > Diagnostic Study | codeable | Obstetrics and Gynecology |  | Colposcopy exam | Colposcopy, cervix, acetowhite, transformation zone, cervical biopsy, abnormal Pap, study, interpretation, interpreting, tracing, recording, monitoring, performed, technician | ECC, CIN |
 | Obstetrics & Women's Health | Obstetrics & Women's Health | Progress Note | codeable |  |  | Obstetrics & Women's Health | pregnancy, gravida / para, cervix | OB, GYN, EDD, LMP |
 | Pap smear report | Obstetrics & Women's Health | Lab Report > Diagnostic Study | codeable | Obstetrics and Gynecology |  | Pap smear report | Pap smear, cervical cytology, ThinPrep, ASC-US, high-risk HPV, co-testing | NILM, LSIL, HSIL, HPV |
 | Postpartum visit / exam | Obstetrics & Women's Health | Progress Note | codeable | Obstetrics and Gynecology |  | Postpartum visit / exam, Postpartum visit, PP exam | 6-week check, delivery date, lochia, breastfeeding/lactation, incision/perineum, contraception counseling, s/p NSVD or C-section | EPDS |
@@ -2238,30 +2289,37 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Occupational health record | Occupational & Physical Exams | Progress Note | codeable | Occupational Health |  | Occupational health record | Occupational health, employee health, work status, restrictions, DOT physical | employer |
 | Sports physical exam | Occupational & Physical Exams | Progress Note | codeable | Primary Care |  | Sports physical exam, musculoskeletal exam | Sports physical, pre-participation, cleared for sports | PPE |
 | Work injury evaluation | Occupational & Physical Exams | Progress Note | codeable | Occupational Health |  | Work injury evaluation | Work injury, workers' comp, date of injury (DOI), mechanism, work restrictions | MMI |
-| Blood transfusion record | Oncology | Medication Record > Blood Transfusion Record | codeable |  |  | Blood transfusion record | Transfusion, unit number, blood type, crossmatch, start/stop time, transfusion reaction, two-nurse check | PRBC |
-| Chemotherapy administration record | Oncology | Procedure Note > Infusion and Chemotherapy | codeable | Oncology |  | Chemotherapy administration record | Chemotherapy, cycle/day (C1D1), regimen, infusion start/stop, premedication, port accessed | dose |
+| Blood transfusion record | Oncology | Medication Record > Blood Transfusion Record | codeable |  |  | Blood transfusion record | Transfusion, unit number, blood type, crossmatch, start/stop time, transfusion reaction, two-nurse check, unit, units, blood, products, reaction | PRBC |
+| Chemotherapy administration record | Oncology | Procedure Note > Infusion and Chemotherapy | codeable | Oncology | infusion, chemotherapy | Chemotherapy administration record | Chemotherapy, cycle/day (C1D1), regimen, infusion start/stop, premedication, port accessed, infusion, cycle, rate, iv, administered | dose |
 | Infusion therapy note | Oncology | Procedure Note > Infusion and Chemotherapy | codeable | Infusion |  | Infusion therapy note | Infusion, Remicade, iron infusion, start/stop time, PICC/port | IV, IVIG, tolerated well |
 | Oncology | Oncology | Progress Note | codeable |  |  | Oncology | hematology/oncology, malignant neoplasm, staging/TNM, metastatic, chemotherapy cycle, tumor markers | carcinoma, ECOG |
 | Radiation therapy record | Oncology | Procedure Note > Radiation Therapy | codeable |  |  | Radiation therapy record | Radiation therapy, fractions, Gy/cGy, treatment site, radiation oncologist, simulation | XRT |
+| Anesthesia Record | Operative Note | Operative Note > Anesthesia Record | codeable |  | anesthesia |  | anesthesia, induction, airway, intubation, sedation, asa, anesthesiologist, crna, emergence |  |
+| Implant Record | Operative Note | Operative Note > Implant Record | needs_review |  | implant, implants |  | implant, lot, serial, manufacturer, catalog, sticker, device |  |
+| Intra-operative Record | Operative Note | Operative Note > Intra-operative Record | needs_review |  | intraoperative |  | intraoperative, counts, sponge, needle, circulator, scrub, positioning, tourniquet, cautery |  |
+| Operative Note | Operative Note | Operative Note | codeable |  | operative |  | preoperative, postoperative, surgeon, anesthesia, incision, procedure, estimated, specimens, complications, closure |  |
+| Post-operative | Operative Note | Operative Note > Post-operative | needs_review |  | postoperative |  | postoperative, pacu, recovery, aldrete, discharge, dressing |  |
 | Procedure | Operative Note | Operative Note > Procedure List | codeable |  |  | Procedure |  |  |
-| Anaesthesia Report | Operative Report | Operative Note > Surgery Report | codeable |  |  | Anaesthesia Report, Anesthesia Record, pre-anesthesia evaluation | post-anesthesia, ASA class, Mallampati, airway, induction, intubation, anesthesiologist, Aldrete | CRNA, PACU |
+| Anaesthesia Report | Operative Report | Operative Note > Surgery Report | codeable |  |  | Anaesthesia Report, Anesthesia Record, pre-anesthesia evaluation | post-anesthesia, ASA class, Mallampati, airway, induction, intubation, anesthesiologist, Aldrete, surgeon, assistant, incision, closure, prepped, draped, sutures, estimated, specimens, findings | CRNA, PACU |
 | Operation Note | Operative Report | Operative Note > Surgery Report | codeable |  |  | Operation Note, Operative Note, Op Note, brief op note | complications | procedure, findings, disposition |
 | Operation Summary | Operative Report | Operative Note > Surgery Report | codeable | Surgery |  | Operation Summary, OR summary, case summary | in / out times, surgeon, wound class |  |
 | Operative Report | Operative Report | Operative Note > Surgery Report | codeable |  |  | Operative Report, intraoperative record | preoperative diagnosis, postoperative diagnosis, procedure performed, surgeon, specimens | EBL, findings |
-| Phase Record | Operative Report | Operative Note > Procedure List | codeable | Anesthesia |  | Phase Record, recovery record | Phase I, Phase II, Aldrete score, discharge criteria met | PACU |
+| Phase Record | Operative Report | Operative Note > Procedure List | codeable | Anesthesia |  | Phase Record, recovery record | Phase I, Phase II, Aldrete score, discharge criteria met, procedures, cpt, phase, case, scheduled | PACU |
 | Post Operative Followup Note | Operative Report | Progress Note | codeable | Surgery |  | Post Operative Followup Note, postoperative visit | Post-op, s/p, incision healing, sutures removed, global period | POD |
 | Pre Operative Evaluation | Operative Report | Progress Note | codeable |  |  | Pre Operative Evaluation, Preoperative evaluation | pre-op clearance, surgical risk, cleared for surgery, planned procedure | RCRI |
 | Triage Report | Operative Report | Operative Note > Triage Report | codeable | Emergency |  | Triage Report |  |  |
 | Fundus photography | Ophthalmology Note | Lab Report > Diagnostic Study | codeable | Ophthalmology |  | Fundus photography | Fundus photo, retinal imaging, optic disc, macula, retinopathy, drusen | interpretation |
-| Laser procedure report | Ophthalmology Note | Procedure Note > Laser Procedure | codeable | Ophthalmology |  | Laser procedure report | Laser, YAG capsulotomy, photocoagulation, laser settings, spots, power | SLT |
-| Lens Parameters | Ophthalmology Note | Lab Report > Diagnostic Study > Optical Biometry (IOL Calculation) | codeable | Ophthalmology |  | Lens Parameters | Lens, sphere, cylinder, axis, add, base curve, diameter, IOL power |  |
+| Laser procedure report | Ophthalmology Note | Procedure Note > Laser Procedure | codeable | Ophthalmology |  | Laser procedure report | Laser, YAG capsulotomy, photocoagulation, laser settings, spots, power, yag, slt, capsulotomy, trabeculoplasty, shots | SLT |
+| Lens Parameters | Ophthalmology Note | Lab Report > Diagnostic Study > Optical Biometry (IOL Calculation) | codeable | Ophthalmology | biometry | Lens Parameters | Lens, sphere, cylinder, axis, add, base curve, diameter, IOL power, biometry, iol, axial, length, keratometry, power |  |
 | Ophthalmology Note | Ophthalmology Note | Progress Note | codeable |  |  | Ophthalmology Note, ocular history | Ophthalmology, anterior segment, posterior segment, macula, glaucoma, cataract, visual field | IOP, OCT |
 | Optometry note | Ophthalmology Note | Progress Note | codeable | Ophthalmology |  | Optometry note, dilated exam | Optometry, O.D. (Doctor of Optometry), visual field, Humphrey, retinopathy, background/proliferative, refraction, spectacle Rx |  |
 | Retinal / Eye Report | Ophthalmology Note | Progress Note | codeable |  |  | Retinal / Eye Report, Retinal, Eye Report, dilated fundus exam | visual acuity, retina, intravitreal injection, Eylea, Avastin, laser photocoagulation | OD, OS, OU, IOP |
-| Laboratory Requisition | Order and Requisition | Order and Requisition > Laboratory Requisition | non_codeable |  |  | Laboratory Requisition |  |  |
+| Laboratory Requisition | Order and Requisition | Order and Requisition > Laboratory Requisition | non_codeable |  |  | Laboratory Requisition | requisition, tests, collection, fasting, draw, specimen, bill |  |
+| Order and Requisition | Order and Requisition | Order and Requisition | non_codeable |  | requisition |  | order, orders, ordered, requisition, priority, stat, routine, indication |  |
 | Physician Order | Order and Requisition | Order and Requisition > Physician Order | non_codeable |  |  | Physician Order |  |  |
 | Referral Authorization Form | Order and Requisition | Consent and Authorization > Referral Authorization | non_codeable |  |  | Referral Authorization Form |  |  |
-| Medication Orders | Orders | Order and Requisition > Physician Order | non_codeable |  |  | Medication Orders, Medication Order, med order | start / stop date, pharmacy verify | dose, route, frequency |
+| Referral Order | Order and Requisition | Order and Requisition > Referral Order | needs_review |  |  |  | referral, referred, referring, specialist, reason, priority |  |
+| Medication Orders | Orders | Order and Requisition > Physician Order | non_codeable |  |  | Medication Orders, Medication Order, med order | start / stop date, pharmacy verify, orders, order, ordered, verbal, telephone, stat, continue, discontinue | dose, route, frequency |
 | Orders | Orders | Order and Requisition > Physician Order | non_codeable |  |  | Orders, order date, order status, standing order, physician order, verbal order, order note | ordered by | Order |
 | Post Operative Orders | Orders | Order and Requisition > Physician Order | non_codeable |  |  | Post Operative Orders, Post-operative orders, post-op orders, PACU orders | advance diet, activity, DVT prophylaxis |  |
 | Pre Operative Orders | Orders | Forms and Questionnaires > Others | needs_review |  |  | Pre Operative Orders, Pre-operative orders, pre-op orders | NPO after midnight, pre-op antibiotics, type and screen |  |
@@ -2271,65 +2329,86 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Index Page | Page Artefact | Others | non_codeable |  |  | Index Page, encounter index, encounter list, document list | Index, procedure index, table of contents, page range |  |
 | Signature Page | Page Artefact | Progress Note | non_codeable |  |  | Signature Page |  |  |
 | Pain & Palliative Note | Pain & Palliative Note | Progress Note | codeable | Palliative Care |  | Pain & Palliative Note | pain management, chronic pain, epidural steroid injection, nerve block, palliative care, goals of care, code status, hospice, comfort care | pain scale |
-| Biopsy Report | Pathology Report | Lab Report > Pathology Report > Biopsy Report | codeable | Pathology |  | Biopsy Report | histology, benign/malignant, margins | Biopsy, specimen, carcinoma, final diagnosis |
-| Cytology / molecular report | Pathology Report | Lab Report > Pathology Report > Molecular Diagnostics Report | codeable | Pathology |  | Cytology / molecular report, Cytology, molecular report | cytopathology, adequacy, Bethesda, molecular diagnostics | FNA, PCR, mutation, NGS, EGFR, KRAS |
+| Biopsy Report | Pathology Report | Lab Report > Pathology Report > Biopsy Report | codeable | Pathology | biopsy | Biopsy Report | histology, benign/malignant, margins, biopsy, gross, microscopic, tissue, fragments, stain | Biopsy, specimen, carcinoma, final diagnosis |
+| Cytology / molecular report | Pathology Report | Lab Report > Pathology Report > Molecular Diagnostics Report | codeable | Pathology | molecular | Cytology / molecular report, Cytology, molecular report | cytopathology, adequacy, Bethesda, molecular diagnostics, molecular, pcr, amplification, assay, detected, mutation | FNA, PCR, mutation, NGS, EGFR, KRAS |
 | Mohs surgery report | Pathology Report | Lab Report > Pathology Report > Others | non_codeable | Dermatology |  | Mohs surgery report | Mohs, stages, margins clear, basal cell, squamous cell, defect size, repair |  |
 | Pathology Report | Pathology Report | Lab Report > Pathology Report > Others | codeable | Pathology |  | Pathology Report | Pathology, surgical pathology, gross description, margins, pathologist, flow cytometry | specimen, microscopic, final diagnosis |
 | Tissue Report | Pathology Report | Lab Report > Pathology Report > Others | non_codeable |  |  | Tissue Report, Tissue examination | gross, pathologist | microscopic, specimen, diagnosis |
-| General Notice | Patient Communication | Patient Communication > Notice | non_codeable |  |  | General Notice |  |  |
+| General Notice | Patient Communication | Patient Communication > Notice | non_codeable |  |  | General Notice | notice, notification, notified, informed |  |
+| Patient Communication | Patient Communication | Patient Communication | non_codeable |  |  |  | message, messages, call, called, phone, portal, voicemail, callback |  |
+| Patient Communication > Telephone Encounter | Patient Communication | Patient Communication > Telephone Encounter | non_codeable |  |  |  | telephone, phone, called, caller, spoke, voicemail, callback, advised |  |
 | Patient Education Material | Patient Communication | Patient Communication > Patient Education Material | non_codeable |  |  | Patient Education Material |  |  |
 | Telephone Message | Patient Communication | Patient Communication > Patient Message | non_codeable |  |  | Telephone Message |  |  |
-| Face Sheet | Patient Demographics | Demographics > Face Sheet | codeable |  |  | Face Sheet | facesheet, admit date, admitting diagnosis, room / bed | attending |
-| Patient Demographics | Patient Demographics | Demographics > Patient Information | codeable |  |  | Patient Demographics, admission record | Demographics, insurance, guarantor, emergency contact, address, application | DOB, MRN |
+| Face Sheet | Patient Demographics | Demographics > Face Sheet | codeable |  |  | Face Sheet | facesheet, admit date, admitting diagnosis, room / bed, face, sheet, admission, account, guarantor, subscriber, insurance, admitting | attending |
+| Patient Demographics | Patient Demographics | Demographics > Patient Information | codeable |  |  | Patient Demographics, admission record | Demographics, insurance, guarantor, emergency contact, address, application, phone, dob, emergency, contact, language, preferred, pharmacy | DOB, MRN |
 | Patient Information | Patient Demographics | Demographics > Patient Information | codeable |  |  | Patient Information | patient details, contact information, preferred language, marital status | employer |
-| Patient Registration | Patient Demographics | Administrative > Patient Registration | codeable |  |  | Patient Registration, registration form, new patient registration | Registration, registered on, responsible party, insurance card |  |
-| Patient Education | Patient Education | Patient Communication > Patient Education Material | non_codeable |  |  | Patient Education, patient instructions | what is, when to call your doctor, follow up with, take as directed |  |
-| Perioperative Evaluation | Perioperative Evaluation | Operative Note > Pre-operative | codeable |  |  | Perioperative Evaluation |  |  |
+| Patient Registration | Patient Demographics | Administrative > Patient Registration | codeable |  | registration | Patient Registration, registration form, new patient registration | Registration, registered on, responsible party, insurance card, guarantor, subscriber, employer, emergency, insurance |  |
+| Patient Education | Patient Education | Patient Communication > Patient Education Material | non_codeable |  |  | Patient Education, patient instructions | what is, when to call your doctor, follow up with, take as directed, education, learn, information, tips, handout |  |
+| Perioperative Evaluation | Perioperative Evaluation | Operative Note > Pre-operative | codeable |  | preoperative | Perioperative Evaluation | preoperative, npo, checklist, clearance, consent, verified |  |
 | Plan of Care | Plan of Care | Progress Note | codeable |  |  | Plan of Care | CMS-485, frequency/duration, certification period | POC, goals, interventions |
 | Policy | Policy | Administrative > Others | non_codeable |  |  | Policy, office policy, office policies, financial policy, payment policy, no-show policy, cancellation policy, appointment policy, policy pages | patient rights and responsibilities |  |
-| Clinical Diagnosis List | Problem List | Problem List > Diagnosis List/Index | non_codeable |  |  | Clinical Diagnosis List |  |  |
-| Problem List | Problem List | Problem List > Problem List | non_codeable |  |  | Problem List | active problems, resolved problems, onset date, noted date, ICD-10 |  |
-| Standalone Patient Summary | Problem List | Problem List | needs_review |  |  | Standalone Patient Summary |  |  |
-| Cardiac Catheterization Report | Procedure Note | Lab Report > Diagnostic Study > Cardiac Catheterization Report | codeable | Cardiology |  | Cardiac Catheterization Report |  |  |
-| Elastography | Procedure Note | Procedure Note > Elastography | codeable |  |  | Elastography |  |  |
-| Injection Visit | Procedure Note | Procedure Note > Injection Visit | codeable |  |  | Injection Visit |  |  |
-| Knee Procedure | Procedure Note | Procedure Note > Knee Procedure | codeable |  |  | Knee Procedure |  |  |
-| Lumbar Procedure | Procedure Note | Procedure Note > Lumbar Procedure | codeable |  |  | Lumbar Procedure |  |  |
-| Office Procedure | Procedure Note | Procedure Note > Office Procedure | codeable |  |  | Office Procedure |  |  |
-| Pathology Procedure | Procedure Note | Procedure Note > Pathology Procedure | codeable |  |  | Pathology Procedure |  |  |
+| Clinical Diagnosis List | Problem List | Problem List > Diagnosis List/Index | non_codeable |  |  | Clinical Diagnosis List | diagnoses, icd, codes, index |  |
+| Problem List | Problem List | Problem List > Problem List | non_codeable |  |  | Problem List | active problems, resolved problems, onset date, noted date, ICD-10, problems, active, resolved, onset, noted |  |
+| Standalone Patient Summary | Problem List | Problem List | needs_review |  |  | Standalone Patient Summary | problems, problem, active, resolved, onset, icd |  |
+| Cardiac Catheterization Report | Procedure Note | Lab Report > Diagnostic Study > Cardiac Catheterization Report | codeable | Cardiology | catheterization | Cardiac Catheterization Report | catheterization, coronary, angiography, ventriculography, lad, lcx, rca, stent, fluoroscopy |  |
+| Cardiac Procedure | Procedure Note | Procedure Note > Cardiac Procedure | codeable |  | cardioversion |  | cardioversion, joules, cath, lab, sheath, fluoroscopy |  |
+| Elastography | Procedure Note | Procedure Note > Elastography | codeable |  | elastography, fibroscan | Elastography | elastography, fibroscan, stiffness, kpa, cap |  |
+| Endoscopy (EGD) | Procedure Note | Procedure Note > Endoscopy (EGD) | codeable |  |  |  | egd, endoscopy, scope, sedation, esophagus |  |
+| Injection Visit | Procedure Note | Procedure Note > Injection Visit | codeable |  |  | Injection Visit | injection, injected, site, lot, administered, intramuscular, subcutaneous |  |
+| Knee Procedure | Procedure Note | Procedure Note > Knee Procedure | codeable |  |  | Knee Procedure | knee, aspiration, arthrocentesis, intraarticular, injection |  |
+| Lumbar Procedure | Procedure Note | Procedure Note > Lumbar Procedure | codeable |  |  | Lumbar Procedure | lumbar, epidural, facet, fluoroscopy, transforaminal, needle |  |
+| Office Procedure | Procedure Note | Procedure Note > Office Procedure | codeable |  |  | Office Procedure | procedure, office, anesthetic, lidocaine, sterile, tolerated |  |
+| Pathology Procedure | Procedure Note | Procedure Note > Pathology Procedure | codeable |  |  | Pathology Procedure | gross, grossing, cassettes, sections, fixed |  |
 | Procedure Note | Procedure Note | Procedure Note > Others | codeable |  |  | Procedure Note | indication, time-out, local anesthesia, complications: none | technique, tolerated well |
-| Admission Record | Progress Note | Progress Note | needs_review |  |  | Admission Record |  |  |
+| Procedure Note (class words) | Procedure Note | Procedure Note | codeable |  |  |  | procedure, performed, tolerated, session, treatment, administered |  |
+| Admission Record | Progress Note | Progress Note | needs_review |  |  | Admission Record | hpi, subjective, objective, assessment, plan, ros, exam, complaint, presents, interval, followup, counseled |  |
+| Assessment and Plan | Progress Note | Progress Note > Assessment and Plan | codeable |  |  |  | assessment, plan, continue, recommend, recommended, followup, monitor, discussed, counseled |  |
+| CC/HPI | Progress Note | Progress Note > CC/HPI | codeable |  |  |  | complaint, hpi, presents, onset, duration, illness, reports, denies, history |  |
 | F2F Evaluation Note | Progress Note | Progress Note | codeable |  |  | F2F Evaluation Note, F2F encounter | Face-to-face, home health certification, clinical findings support | DME |
+| Lab and Imaging Results | Progress Note | Progress Note > Lab and Imaging Results | codeable |  |  |  | results, reviewed, labs, imaging, findings, impression, values |  |
 | Office Visit | Progress Note | Progress Note | codeable |  |  | Office Visit, return visit, initial visit | f/u | OV, follow-up, RTC, new patient |
 | Office Visit Note | Progress Note | Progress Note | codeable |  |  | Office Visit Note | history of present illness, HPI, review of systems, ROS, physical exam, physical examination, assessment and plan, assessment & plan, impression and plan, interval history, subjective, objective, chief complaint, reason for visit |  |
+| Patient Instructions | Progress Note | Progress Note > Patient Instructions | codeable |  |  |  | instructions, return, followup, call, precautions, education, advised |  |
+| Physical Exam | Progress Note | Progress Note > Physical Exam | codeable |  |  |  | exam, examination, general, heent, neck, lungs, heart, abdomen, extremities, neurological, skin, ros |  |
 | Physician Note | Progress Note | Progress Note | codeable |  |  | Physician Note | electronically signed by | MD, DO, attending, assessment, plan |
+| Procedure List | Progress Note | Progress Note > Procedure List | codeable |  |  |  | procedure, performed, tolerated, indication, anesthetic, consent |  |
 | Progress Note | Progress Note | Progress Note | codeable |  |  | Progress Note, History & Physical | Subjective, Objective, Consultation, reason for consult, established patient | SOAP, Assessment, Plan, Chief Complaint, HPI, H&P, encounter, follow-up, interval history |
+| Progress Note > Medication List | Progress Note | Progress Note > Medication List | non_codeable |  |  |  | medications, allergies, tablet, capsule, dose, sig, refills, reconciliation |  |
+| Progress Note > Problem List | Progress Note | Progress Note > Problem List | non_codeable |  |  |  | problems, problem, resolved, onset, chronicity |  |
+| Progress Note > Questionnaire | Progress Note | Progress Note > Questionnaire | needs_review |  |  |  | questionnaire, screening, score, phq, gad, audit, responses |  |
+| Progress Note > Summary | Progress Note | Progress Note > Summary | codeable |  |  |  | summary, course, hospitalization, recap, overview |  |
+| Progress Note > Visit Diagnosis | Progress Note | Progress Note > Visit Diagnosis | codeable |  |  |  | diagnosis, diagnoses, icd, encounter, primary, secondary, assessed |  |
+| Signature | Progress Note | Progress Note > Signature | codeable |  |  |  | electronically, signed, attestation, attest, cosigned, authenticated, addendum |  |
 | Signature page | Progress Note | Progress Note | codeable |  |  | Signature page | signed by, electronically signed, date/time signed | Signature, witness |
 | Social History | Progress Note | Progress Note | codeable |  |  | Social History | social work, psychosocial, living situation, tobacco, alcohol, caregiver, support system |  |
 | Summary | Progress Note | Progress Note | codeable |  |  | Summary, encounter summary, summary of visit |  | summary of care |
 | Visit Diagnosis | Progress Note | Progress Note | codeable |  |  | Visit Diagnosis, Visit Diagnoses, encounter diagnoses, diagnoses this visit, diagnosis associated with visit | ICD-10 | primary diagnosis |
+| Vitals | Progress Note | Progress Note > Vitals | needs_review |  |  |  | vitals, bp, pulse, temperature, respiration, weight, height, bmi, spo2 |  |
+| Consultation Letter | Provider Letter | Provider Letter > Consultation Letter | non_codeable |  |  |  | consultation, consulted, recommendations, thank, opinion |  |
 | Provider Letter | Provider Letter | Provider Letter > Others | codeable |  |  | Provider Letter |  |  |
-| Records Request | Provider Letter | Provider Letter > Records Request | non_codeable |  | Medical Records Request, Medical Record Request, Request for Medical Records, Request for Records, Records Request, Record Request, Request for Copies of Medical Records |  | please send, copies of records, date range of records | request, records |
+| Provider Letter (class words) | Provider Letter | Provider Letter | non_codeable |  |  |  | dear, sincerely, regards, letter, colleague, thank |  |
+| Records Request | Provider Letter | Provider Letter > Records Request | non_codeable |  | Medical Records Request, Medical Record Request, Request for Medical Records, Request for Records, Records Request, Record Request, Request for Copies of Medical Records |  | please send, copies of records, date range of records, records, request, copies, send, subpoena, attention | request, records |
+| Referral Letter | Provider Letter | Provider Letter > Referral Letter | non_codeable |  |  |  | referring, referral, evaluation, kindly, thank |  |
 | Behavioral health note | Psychiatric Evaluation | Progress Note | codeable |  |  | Behavioral health note, client note | Behavioral health, counselor, presenting problem, GAD-7, mood | PHQ-9 |
 | Group Therapy Note | Psychiatric Evaluation | Progress Note | codeable |  |  | Group Therapy Note | Group therapy, group session, 90853, participation, topic, facilitator |  |
 | Initial psychiatric evaluation | Psychiatric Evaluation | Progress Note | codeable |  |  | Initial psychiatric evaluation, psychiatric history | psychiatric intake, diagnostic impression, DSM-5 | new patient |
-| Neurocognitive screening exam | Psychiatric Evaluation | Lab Report > Diagnostic Study > Neurocognitive Screening Examination | codeable | Neurology |  | Neurocognitive screening exam | Neurocognitive, cognitive screening, MoCA, SLUMS, memory | Mini-Cog, dementia, score /30 |
+| Neurocognitive screening exam | Psychiatric Evaluation | Lab Report > Diagnostic Study > Neurocognitive Screening Examination | codeable | Neurology |  | Neurocognitive screening exam | Neurocognitive, cognitive screening, MoCA, SLUMS, memory, cognitive, mmse, recall, orientation, clock | Mini-Cog, dementia, score /30 |
 | Psychiatric Note | Psychiatric Evaluation | Progress Note | codeable |  |  | Psychiatric Note, Psychiatric progress note | psychiatry follow-up, medication management, mental status | interval history |
 | Substance use treatment record | Psychiatric Evaluation | Progress Note | codeable | Behavioral Health |  | Substance use treatment record | Substance use disorder, alcohol dependence, opioid use disorder, Suboxone, methadone, detox, relapse | SUD, MAT |
-| Bone Density (DEXA) Report | Radiology Report | Lab Report > Radiology Report > Bone Mineral Density Report | non_codeable |  |  | Bone Density (DEXA) Report, Bone Density Report | bone mineral density, T-score, Z-score, osteopenia, osteoporosis, femoral neck, lumbar spine | DEXA, DXA, BMD, FRAX |
-| Brain MRI Report | Radiology Report | Lab Report > Radiology Report > Brain MRI Report | non_codeable | Neurology |  | Brain MRI Report |  |  |
-| CT Scan Report | Radiology Report | Lab Report > Radiology Report > CT Scan Report | non_codeable |  |  | CT Scan Report | CAT scan, computed tomography, axial images, Hounsfield | CT, contrast, impression |
-| MR brain report | Radiology Report | Lab Report > Radiology Report > MRI Report | non_codeable |  |  | MR brain report | MRI brain, MR head, with/without contrast, white matter, FLAIR | infarct, impression |
+| Bone Density (DEXA) Report | Radiology Report | Lab Report > Radiology Report > Bone Mineral Density Report | non_codeable |  | dexa, densitometry | Bone Density (DEXA) Report, Bone Density Report | bone mineral density, T-score, Z-score, osteopenia, osteoporosis, femoral neck, lumbar spine, dexa, densitometry, tscore, zscore, bmd, femoral, lumbar, frax | DEXA, DXA, BMD, FRAX |
+| Brain MRI Report | Radiology Report | Lab Report > Radiology Report > Brain MRI Report | non_codeable | Neurology |  | Brain MRI Report | brain, flair, diffusion, ventricles, intracranial, parenchyma |  |
+| CT Scan Report | Radiology Report | Lab Report > Radiology Report > CT Scan Report | non_codeable |  |  | CT Scan Report | CAT scan, computed tomography, axial images, Hounsfield, ct, computed, tomography, axial, reformats, slices | CT, contrast, impression |
+| MR brain report | Radiology Report | Lab Report > Radiology Report > MRI Report | non_codeable |  | mri | MR brain report | MRI brain, MR head, with/without contrast, white matter, FLAIR, mri, magnetic, resonance, weighted, gadolinium, sagittal, coronal | infarct, impression |
 | MRI Report | Radiology Report | Lab Report > Radiology Report > MRI Report | non_codeable |  |  | MRI Report | magnetic resonance, T1/T2, gadolinium, radiologist | MRI, impression |
-| Radiology Report | Radiology Report | Lab Report > Radiology Report > Mammogram Report | non_codeable |  |  | Radiology Report, imaging report | Radiology, exam, comparison, radiologist, mammogram, BI-RADS | technique, findings, impression |
-| Sonogram Report | Radiology Report | Lab Report > Radiology Report > Ultrasound Report | non_codeable |  |  | Sonogram Report |  |  |
+| Radiology Report | Radiology Report | Lab Report > Radiology Report > Mammogram Report | non_codeable |  | mammogram, mammography | Radiology Report, imaging report | Radiology, exam, comparison, radiologist, mammogram, BI-RADS, mammography, birads, breast, tomosynthesis, density, screening | technique, findings, impression |
+| Sonogram Report | Radiology Report | Lab Report > Radiology Report > Ultrasound Report | non_codeable |  | ultrasound, sonogram | Sonogram Report | ultrasound, sonogram, sonographic, echogenic, doppler, transducer |  |
 | Sonogram report | Radiology Report | Lab Report > Radiology Report > Ultrasound Report | non_codeable |  |  | Sonogram report | Sonogram, sonography, ultrasound, echogenic, transducer, sonographer | impression |
 | Tomography | Radiology Report | Lab Report > Radiology Report > CT Scan Report | non_codeable |  |  | Tomography | computed tomography, slices, axial | CT, contrast, impression |
 | Tomography Report | Radiology Report | Lab Report > Radiology Report > CT Scan Report | non_codeable |  |  | Tomography Report |  |  |
 | Ultrasound Report | Radiology Report | Lab Report > Radiology Report > Ultrasound Report | non_codeable |  |  | Ultrasound Report | Ultrasound, sonographic, echogenicity, abdomen/pelvis/thyroid/renal | US, Doppler, impression |
-| X Ray Report | Radiology Report | Lab Report > Radiology Report > X-Ray Report | non_codeable |  |  | X Ray Report | X-ray, radiograph, chest X-ray, views, AP / lateral, PA and lateral, fracture, infiltrate | CXR |
+| X Ray Report | Radiology Report | Lab Report > Radiology Report > X-Ray Report | non_codeable |  | radiograph, x-ray | X Ray Report | X-ray, radiograph, chest X-ray, views, AP / lateral, PA and lateral, fracture, infiltrate, radiographs, pa, lateral, film | CXR |
 | X-Ray Report | Radiology Report | Lab Report > Radiology Report > X-Ray Report | non_codeable |  |  | X-Ray Report |  |  |
-| Insurance Authorization Form | Referral & Authorization | Consent and Authorization > Referral Authorization | non_codeable |  |  | Insurance Authorization Form, Prior authorization | auth number, payer, insurance verification, units approved, effective dates | approved/denied |
+| Insurance Authorization Form | Referral & Authorization | Consent and Authorization > Referral Authorization | non_codeable |  |  | Insurance Authorization Form, Prior authorization | auth number, payer, insurance verification, units approved, effective dates, referral, authorized, visits, approved, valid, units | approved/denied |
 | Referral & Authorization | Referral & Authorization | Consent and Authorization > Referral Authorization | non_codeable |  |  | Referral & Authorization | auth number, approved, valid from / to | referral, authorization, request |
 | Referral Request | Referral & Authorization | Consent and Authorization > Referral Authorization | non_codeable |  |  | Referral Request, referral order, reason for referral | refer to, referred to, priority, referring provider | Referral |
 | Referral authorization form | Referral & Authorization | Consent and Authorization > Referral Authorization | non_codeable |  |  | Referral authorization form, authorization number, diagnosis for referral | referred to, referring provider, number of visits approved, valid from/to | Referral |
@@ -2337,12 +2416,12 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Pulmonary function test / spirometry | Respiratory | Lab Report > Diagnostic Study > Pulmonary Function Test | non_codeable |  |  | Pulmonary function test / spirometry, Pulmonary function test, spirometry | FEV1, FEV1/FVC, % predicted, bronchodilator response, obstructive/restrictive | PFT, FVC, DLCO |
 | Respiratory | Respiratory | Progress Note | codeable | Pulmonology |  | Respiratory | Respiratory therapy, nebulizer, albuterol, oxygen L/min, BiPAP/CPAP, breath sounds | RT, COPD |
 | Ventilator management record | Respiratory | Operative Note > Critical Care Record | codeable | Critical Care |  | Ventilator management record | Ventilator, vent settings, FiO2, tidal volume, AC/SIMV, weaning, extubation, tracheostomy | PEEP |
-| Checklist | Screening and Checklist | Forms and Questionnaires > Questionnaire | needs_review |  |  | Checklist, check list, preventive health checklist | yes / no, initials | completed |
+| Checklist | Screening and Checklist | Forms and Questionnaires > Questionnaire | needs_review |  |  | Checklist, check list, preventive health checklist | yes / no, initials, questionnaire, survey, screening, phq, gad, score, responses | completed |
 | Growth Chart | Screening and Checklist | Forms and Questionnaires > Assessment | non_codeable |  |  | Growth Chart |  |  |
 | Questionnaire | Screening and Checklist | Forms and Questionnaires > Questionnaire | needs_review |  |  | Questionnaire, intake form, health history form | patient-completed, please circle, yes/no | PHQ-9 |
-| CPAP / BiPAP titration report | Sleep Study | Lab Report > Diagnostic Study > Titration Report | codeable | Sleep Study |  | CPAP / BiPAP titration report, BiPAP titration report | Titration, BiPAP, optimal pressure, cm H2O, residual AHI, mask | CPAP |
-| Oximetry Report | Sleep Study | Lab Report > Diagnostic Study > Oximetry Report | codeable | Sleep Study |  | Oximetry Report |  |  |
-| Polysomnography | Sleep Study | Lab Report > Diagnostic Study > Sleep Study Report | codeable | Sleep Study |  | Polysomnography, sleep study | obstructive sleep apnea, sleep efficiency, desaturation nadir | PSG, AHI, RDI, REM |
+| CPAP / BiPAP titration report | Sleep Study | Lab Report > Diagnostic Study > Titration Report | codeable | Sleep Study |  | CPAP / BiPAP titration report, BiPAP titration report | Titration, BiPAP, optimal pressure, cm H2O, residual AHI, mask, cpap, pressure, leak | CPAP |
+| Oximetry Report | Sleep Study | Lab Report > Diagnostic Study > Oximetry Report | codeable | Sleep Study | oximetry | Oximetry Report | oximetry, saturation, desaturation, spo2, overnight, nadir |  |
+| Polysomnography | Sleep Study | Lab Report > Diagnostic Study > Sleep Study Report | codeable | Sleep Study | polysomnography, polysomnogram | Polysomnography, sleep study | obstructive sleep apnea, sleep efficiency, desaturation nadir, polysomnography, ahi, apnea, hypopnea, arousal, rem, sleep | PSG, AHI, RDI, REM |
 | Sleep Study | Sleep Study | Lab Report > Diagnostic Study > Sleep Study Report | codeable | Sleep Study |  | Sleep Study | sleep clinic, sleep medicine, apnea, CPAP compliance, Epworth, sleep efficiency | AHI |
 | Sleep Study Report | Sleep Study | Lab Report > Diagnostic Study > Sleep Study Report | codeable | Sleep Study |  | Sleep Study Report |  |  |
 | Split-night sleep study | Sleep Study | Lab Report > Diagnostic Study > Sleep Study Report | codeable | Sleep Study |  | Split-night sleep study | Split night, diagnostic portion, titration portion, CPAP pressure | AHI |
@@ -2351,7 +2430,7 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Oncology Note | Specialty Note | Progress Note | codeable | Oncology |  | Oncology Note |  |  |
 | Phone Note | Telephone Encounter | Progress Note | non_codeable |  |  | Phone Note, telephone note | spoke with patient, pt called, advised, call documented |  |
 | Telephone Encounter | Telephone Encounter | Progress Note | codeable |  |  | Telephone Encounter, phone visit, telephone message, message taken by | call back number, triage call, nurse triage |  |
-| Acupuncture treatment record | Therapy | Procedure Note > Therapy Session | codeable |  |  | Acupuncture treatment record | Acupuncture, L.Ac, needles, points, meridian | session |
+| Acupuncture treatment record | Therapy | Procedure Note > Therapy Session | codeable |  |  | Acupuncture treatment record | Acupuncture, L.Ac, needles, points, meridian, therapy, therapist, session, goals, exercises, strengthening, gait, rehabilitation | session |
 | Chiropractic treatment note | Therapy | Procedure Note > Therapy Session | codeable | Orthopedics |  | Chiropractic treatment note | Chiropractic, D.C., subluxation, spinal manipulation, adjustment, cervical/lumbar |  |
 | Occupational Therapy | Therapy | Procedure Note > Therapy Session | codeable | Rehabilitation |  | Occupational Therapy, OT daily note | OTR/L, ADL training, fine motor, splint | OT, upper extremity |
 | Physical Therapy | Therapy | Procedure Note > Therapy Session | codeable |  |  | Physical Therapy | strength 4/5, gait training, therapeutic exercise | PT, DPT, ROM, plan of care, goals |
@@ -2359,15 +2438,15 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Speech therapy note | Therapy | Procedure Note > Therapy Session | codeable | Rehabilitation |  | Speech therapy note, swallow evaluation | Speech therapy, aphasia, cognitive-linguistic, dysarthria | SLP, dysphagia |
 | Therapy | Therapy | Procedure Note > Therapy Session | codeable | Rehabilitation |  | Therapy, daily treatment note | therapist, treatment rendered, minutes, progress toward goals, cardiac rehab | units |
 | Physical Therapy Note | Therapy Note | Procedure Note > Therapy Session | codeable | Rehabilitation |  | Physical Therapy Note |  |  |
-| Transfer Summary | Transfer of Care Summary | Discharge Summary > Transfer of Care | discharge |  |  | Transfer Summary | transferred to, reason for transfer, accepting physician, hospital course, condition at transfer |  |
-| ED Triage | Triage Note | Operative Note > Triage Report | non_codeable |  |  | ED Triage | emergency triage, ESI level, arrival mode, triage time, triage nurse | acuity |
+| Transfer Summary | Transfer of Care Summary | Discharge Summary > Transfer of Care | discharge |  |  | Transfer Summary | transferred to, reason for transfer, accepting physician, hospital course, condition at transfer, transfer, transferred, handoff, handover, receiving, accepting |  |
+| ED Triage | Triage Note | Operative Note > Triage Report | non_codeable |  | triage | ED Triage | emergency triage, ESI level, arrival mode, triage time, triage nurse, triage, acuity, esi, arrival, chief, mode | acuity |
 | Triage Note | Triage Note | Operative Note > Triage Report | non_codeable | Emergency |  | Triage Note | Triage, ESI level, arrival mode | acuity, chief complaint, vitals, pain scale |
 | Carotid duplex | Vascular Studies | Lab Report > Diagnostic Study > Carotid Duplex Report | non_codeable |  |  | Carotid duplex | carotid Doppler, % stenosis, peak systolic velocity | ICA, CCA, plaque |
-| Doppler-duplex | Vascular Studies | Lab Report > Diagnostic Study > Extremity Doppler Report | codeable | Cardiology |  | Doppler-duplex | duplex, velocity, waveform, flow, color Doppler, spectral, vascular ultrasound | Doppler |
+| Doppler-duplex | Vascular Studies | Lab Report > Diagnostic Study > Extremity Doppler Report | codeable | Cardiology |  | Doppler-duplex | duplex, velocity, waveform, flow, color Doppler, spectral, vascular ultrasound, extremity, venous, femoral, popliteal, doppler, compressibility | Doppler |
 | Lower / upper extremity Doppler-duplex | Vascular Studies | Lab Report > Diagnostic Study > Extremity Doppler Report | codeable | Cardiology |  | Lower / upper extremity Doppler-duplex, upper extremity Doppler-duplex | Lower extremity, venous duplex, arterial Doppler, waveform, reflux, vascular lab | upper extremity, DVT, PAD, stenosis |
 | Plethysmography report | Vascular Studies | Lab Report > Diagnostic Study > Plethysmography Report | non_codeable |  |  | Plethysmography report | Plethysmography, pulse volume recording, segmental pressures, waveforms, body box, lung volumes | PVR |
 | Vascular Studies | Vascular Studies | Lab Report > Diagnostic Study > Others | non_codeable | Cardiology |  | Vascular Studies | vascular lab, arterial, venous, waveform, velocity, ankle-brachial index | stenosis, ABI |
-| Burn treatment record | Wound & Infection Care | Procedure Note > Wound Care | codeable | Wound Care |  | Burn treatment record | Burn, % TBSA, degree/thickness, Silvadene, grafting, debridement, dressing change |  |
+| Burn treatment record | Wound & Infection Care | Procedure Note > Wound Care | codeable | Wound Care |  | Burn treatment record | Burn, % TBSA, degree/thickness, Silvadene, grafting, debridement, dressing change, wound, dressing, granulation, drainage, measurements, length, width, depth |  |
 | Infection control note | Wound & Infection Care | Procedure Note > Wound Care | codeable |  |  | Infection control note | Infection control, isolation, C. diff, contact precautions, culture positive, antibiotic | MRSA |
 | Wound & Infection Care | Wound & Infection Care | Procedure Note > Wound Care | codeable | Wound Care |  | Wound & Infection Care | wound, ulcer, infection, isolation | dressing |
 | Wound care note | Wound & Infection Care | Procedure Note > Wound Care | codeable |  |  | Wound care note | Wound care, pressure ulcer stage, diabetic foot ulcer, measurements (L x W x D), debridement, drainage, granulation | dressing |
