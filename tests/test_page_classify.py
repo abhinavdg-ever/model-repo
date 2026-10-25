@@ -248,6 +248,37 @@ class TestAgreedPageType:
             PN, "Lab and Imaging Results", "embedded_same_page", "Codable")  # the Final type's tag
 
 
+CONSENT = "Consent and Authorization"
+
+
+class TestLastPagePackets:
+    """A short packet ending in a consent page is consent on every page (2026-10-25, user)."""
+
+    def test_a_consent_packet_takes_its_last_pages_l1(self):
+        doc = [fp(1, "Administrative", "Others", family="Administrative", seq=1),
+               fp(2, "Demographics", "Patient Information", family="Demographics", seq=2, link="strong"),
+               fp(3, CONSENT, "General Consent", family=CONSENT, seq=3, link="strong")]
+        finals = [decide_final(p, doc) for p in doc]
+        assert [f.page_type for f in finals] == [CONSENT] * 3
+        assert finals[0].continuation_rule == "agreed_last_page"
+        assert finals[2].page_subtype == "General Consent"
+
+    def test_more_than_four_pages_is_the_first_pages_document_again(self):
+        doc = [fp(n, PN, seq=n) for n in range(1, 5)] + [fp(5, CONSENT, "General Consent", family=CONSENT, seq=5)]
+        assert decide_final(doc[0], doc).page_type == PN
+
+    def test_short_documents_before_a_consent_page_join_its_packet(self):
+        from stages.lib.page_classify.arbitration import packets
+
+        notice = [fp(1, "Administrative", "Others", family="Administrative")]
+        intake = [fp(2, "Forms and Questionnaires", "Questionnaire", family="Forms and Questionnaires")]
+        note = [fp(3, PN)]
+        consent = [fp(4, CONSENT, "General Consent", family=CONSENT)]
+        assert [[p.page_id for p in d] for d in packets([notice, intake, consent])] == [[1, 2, 4]]
+        # A Progress Note page is not part of a consent packet: it stops the joining.
+        assert [[p.page_id for p in d] for d in packets([notice, note, consent])] == [[1], [3], [4]]
+
+
 class TestOthersPages:
     """A page neither the model nor the canon was sure of (L1 Others) takes its
     document's L1 in Final."""

@@ -1,14 +1,16 @@
 """Detect-only sequencing (suggested order; does not reorder files on disk).
 
-Ported from advantmed-document-processing ``adapters/sequencing/detect.py``.
+Ported from advantmed-document-processing ``adapters/sequencing/detect.py``. The engine
+finds each page's printed page number, its method and confidence; the order itself is
+``fenced_order`` (2026-10-25, user).
 """
 from __future__ import annotations
 
 import logging
-from typing import Any
+from collections import defaultdict
+from typing import Any, Optional
 
-from .engine.cover_order import reorder_cover_pages_last
-from .engine.marker_detector import detect_markers
+from .engine.marker_detector import _EXPLICIT_PATTERNS, detect_markers
 from .engine.scorer import clamp_confidence
 from .engine.sequence_builder import build_sequence
 from .engine.stream_detector import detect_streams
@@ -26,10 +28,12 @@ def compute_sequence_assignments(
     """Return per-page suggested sequencing fields keyed by page_id (str).
 
     Each input page dict needs: page_id, page_number, text.
-    Optional: is_classified (blank/junk/duplicate → excluded from main order).
+    Optional: is_classified (blank/junk/duplicate → excluded from main order), document
+    (its continuity document: pages move within it, see ``fenced_order``).
     """
     if not pages:
         return []
+    documents = {str(p["page_id"]): p.get("document") for p in pages}
 
     features = features_from_pages(pages)
     markers = detect_markers(features, doc_page_count=len(pages))
@@ -50,12 +54,13 @@ def compute_sequence_assignments(
             cross_encoder_enabled=cross_encoder_enabled,
         )
 
-    assignments = reorder_cover_pages_last(assignments, features)
-    for position, assignment in enumerate(
-        sorted(assignments, key=lambda a: a.sequence_position or a.original_page_number),
-        start=1,
-    ):
-        assignment.sequence_position = position
+    order, held = fenced_order(features, markers, documents)
+    position_of = {pid: n for n, pid in enumerate(order, start=1)}
+    for assignment in assignments:
+        assignment.sequence_position = position_of.get(assignment.page_id, assignment.sequence_position)
+        if assignment.page_id in held:
+            assignment.sequence_method = "marker_held"
+            assignment.sequence_review_flag = True
 
     out: list[dict[str, Any]] = []
     for a in assignments:
@@ -80,6 +85,51 @@ def compute_sequence_assignments(
             }
         )
     return out
+
+
+WINDOW = 5  # the farthest a page moves from its scan position (2026-10-25, user)
+
+
+def fenced_order(features: list, markers: dict[str, ExplicitMarker], documents: dict[str, Optional[int]],
+                 window: int = WINDOW) -> tuple[list[str], set[str]]:
+    """(page ids in the suggested order, pages held in place).
+
+    For now (2026-10-25, user) Main pages keep their scan order, except inside one
+    continuity document (encounter), where pages that confidently say "page n of m"
+    are put in page-number order: a page with a total in an explicit pattern ("Page 3
+    of 7", "Pg 3 of 7", "p. 3 of 7", "page 3/7") or read so by the key/value
+    extraction. Only pages of the same document and the same total change places,
+    taking their own scan positions in page-number order; nothing moves across
+    documents. Pages are held in scan order, and flagged, when two claim one number or
+    when one would move more than ``window`` places."""
+    ordered = sorted(features, key=lambda f: f.original_page_number)
+    index = {f.page_id: i for i, f in enumerate(ordered)}
+    families: dict[tuple, list] = defaultdict(list)
+    for f in ordered:
+        marker = markers.get(f.page_id)
+        if marker is None or not marker.page_num or marker.total_pages is None:
+            continue
+        if marker.pattern not in _EXPLICIT_PATTERNS and marker.source != "extracted":
+            continue
+        families[(documents.get(f.page_id), marker.total_pages)].append(f)
+
+    result = list(ordered)
+    held: set[str] = set()
+    for members in families.values():
+        if len(members) < 2:
+            continue
+        numbers = [markers[f.page_id].page_num for f in members]
+        slots = sorted(index[f.page_id] for f in members)
+        target = sorted(members, key=lambda f: (markers[f.page_id].page_num, f.original_page_number))
+        moved = [f for slot, f in zip(slots, target) if slot != index[f.page_id]]
+        if len(set(numbers)) < len(numbers) or any(
+            abs(slot - index[f.page_id]) > window for slot, f in zip(slots, target)
+        ):
+            held.update(f.page_id for f in moved or members)
+            continue
+        for slot, f in zip(slots, target):
+            result[slot] = f
+    return [f.page_id for f in result], held
 
 
 def _sequence_multi_stream(

@@ -687,3 +687,28 @@ class TestKeywordCandidates:
         new = canon["page_types"][1]
         assert (new["page_type"], new["path"], new["lexicon"]["strong_terms"]) == (
             LIR, {"L1": PN, "L2": LIR, "L3": ""}, ["imaging reviewed"])
+
+
+class TestGenericCandidates:
+    """Only generic document wording is ever a candidate: no names, users or diseases."""
+
+    @pytest.fixture(scope="class")
+    def vocab(self):
+        from stages.lib.page_classify.keyword_candidates import document_vocabulary
+
+        return document_vocabulary(), document_vocabulary(field_words=False)
+
+    @pytest.mark.parametrize("phrase, ok", [
+        ("consent form", True),
+        ("date received", True),
+        ("mammo", True),                 # a page-type word alone
+        ("reported", False),             # a field word alone
+        ("jsmith printed", False),       # a user name is not document vocabulary
+        ("rectal cancer", False),        # a disease
+        ("notice of", False),            # a fragment
+        ("group group", False),          # a repeated word
+    ])
+    def test_the_filter(self, vocab, phrase, ok):
+        from stages.lib.page_classify.keyword_candidates import generic
+
+        assert generic(phrase, *vocab) is ok

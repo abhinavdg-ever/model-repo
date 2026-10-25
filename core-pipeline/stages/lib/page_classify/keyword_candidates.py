@@ -10,18 +10,26 @@
 and proposes, at every level (L1; L2 under each L1, Progress Note's sections included;
 L3 under each L2), the 1- to 3-word phrases that
 
+* are **generic document wording** (2026-10-25, user): every word but stop words is in
+  the document vocabulary -- the words of the canon's page-type titles, the taxonomy's
+  names, the section-header canon and a short list of form and field words, less
+  disease words (``document_vocabulary``). A person's or a user's name, a facility or a
+  disease can never be a candidate;
 * sit on pages of at least ``--min-groups`` different charts (a stand-alone page is its
-  own group), so a phrase from one patient's record never qualifies;
+  own group);
 * point to one class: P(class | phrase) >= ``--min-precision`` and at least
   ``--min-lift`` times the class's share of pages;
-* are not in the canon already and are not only stop words or numbers.
+* are not in the canon already and are not only stop words or numbers;
+* appear **once** in the list: under the class they point to most precisely (the
+  broader level on a tie), not spread over several classes; the same words in another
+  order count as the same phrase, and within a class a phrase whose words sit inside
+  (or hold) a kept phrase's is left out.
 
 Tier proposed: ``strong`` when nearly every page carrying the phrase is that class
 (>= 0.9) and it is in the first 12 lines of most of them, else ``body``.
 
-The phrases come from patient pages: the CSV belongs beside the training data (which is
-git-ignored) and must be read before anything is approved -- a provider's or a
-practice's name can pass the chart filter. Nothing is printed but counts. ``apply``
+The CSV belongs beside the training data (git-ignored) and is still read before anything
+is approved. Nothing is printed but counts. ``apply``
 adds only rows marked y, to the canon entry with exactly that path (a new entry named
 after the class when there is none), in both copies of ``page_canon.json``.
 """
@@ -50,6 +58,21 @@ a an and are as at be but by for from has have he her his i if in into is it its
 so than that the their them then there these they this to was we were which who will with you your
 """.split())
 WORD = re.compile(r"[a-z][a-z'&/-]*[a-z]|[a-z]")
+# Form and field words a page type is told by, beside the config files' words.
+GENERIC_WORDS = frozenset("""
+account acknowledge acknowledgement acknowledgment address admit admitted allergies amount answer answers approved
+attending attestation balance bed charge charges claim code codes collected comments completed contact copy
+coverage date dates department diagnosis dob dose effective electronically end facility fax findings form
+frequency given guardian hospital indication insurance interpretation location member name ordered ordering
+patient phone physician please print printed procedure provider range reason received reference referring
+reported reviewed room sent service signature signed source specimen start statement status sign time total
+units unit witness yes
+""".split())
+# Words of a disease or a condition, which name what the patient has, not what the page is.
+DISEASE_WORDS = frozenset("""
+abuse acute burn cancer cheddar chronic diabetes diabetic disease hypertension infection injury myocardial
+retinopathy substance tumor
+""".split())
 
 
 def _words(text: str) -> list[list[str]]:
@@ -72,6 +95,52 @@ def phrases(text: str, max_n: int = 3) -> tuple[frozenset[str], frozenset[str]]:
                 if number < TITLE_LINES:
                     title.add(phrase)
     return frozenset(every), frozenset(title)
+
+
+def document_vocabulary(field_words: bool = True) -> frozenset[str]:
+    """The words a generic candidate may use: the canon's page-type titles and strong
+    terms, the taxonomy's L1 / L2 / L3 names, the section-header canon, and (with
+    ``field_words``) GENERIC_WORDS; less DISEASE_WORDS."""
+    words: set[str] = set(GENERIC_WORDS) if field_words else set()
+    canon = json.loads(CANON_PATH.read_text(encoding="utf-8"))
+    for entry in canon["page_types"]:
+        lexicon = entry.get("lexicon") or {}
+        for term in (lexicon.get("title_terms") or []) + (lexicon.get("strong_terms") or []):
+            words.update(WORD.findall(str(term).lower()))
+    space = json.loads((CANON_DIR / "page_taxonomy.json").read_text(encoding="utf-8"))["label_space"]
+    names = [*space["L1"], *(n for v in space["L2"].values() for n in v), *(n for v in space["L3"].values() for n in v)]
+    for name in names:
+        words.update(WORD.findall(name.lower()))
+
+    def strings(node: Any) -> Iterable[str]:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                yield key
+                yield from strings(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from strings(value)
+        elif isinstance(node, str) and len(node) < 60:
+            yield node
+
+    headers = json.loads((CANON_DIR / "section_header_canon.json").read_text(encoding="utf-8"))
+    for text in strings(headers):
+        words.update(WORD.findall(text.lower()))
+    return frozenset(words - DISEASE_WORDS)
+
+
+def generic(phrase: str, vocabulary: frozenset[str], page_words: frozenset[str]) -> bool:
+    """Every word but stop words is document vocabulary; the phrase neither starts nor
+    ends with a stop word ("notice of" is a fragment) nor repeats a word ("group group",
+    a table's column run); a single word is a page-type or
+    section word (``page_words``), not only a field word ("source", "reported")."""
+    words = phrase.split()
+    content = [w for w in words if w not in STOP]
+    if not content or words[0] in STOP or words[-1] in STOP or len(set(words)) < len(words):
+        return False
+    if len(words) == 1 and words[0] not in page_words:
+        return False
+    return all(w in vocabulary for w in content)
 
 
 def _canon_terms() -> set[str]:
@@ -124,11 +193,28 @@ def _mine_level(pages: list[dict[str, Any]], key, known: set[str], level: str, p
     # The best per class: precise first, then frequent.
     out.sort(key=lambda r: (r[2], -r[8] * math.log(1 + r[5])))
     kept, per = [], Counter()
+    seen: dict[str, list[frozenset[str]]] = defaultdict(list)
     for r in out:
-        if per[r[2]] < args.per_class:
-            per[r[2]] += 1
-            kept.append(r)
+        words = frozenset(r[3].split()) - STOP
+        # One cue once: not a phrase whose words sit inside a kept one, or hold one.
+        if per[r[2]] >= args.per_class or any(words <= w or w <= words for w in seen[r[2]]):
+            continue
+        per[r[2]] += 1
+        seen[r[2]].append(words)
+        kept.append(r)
     return kept
+
+
+def once_each(rows: list[list[Any]]) -> list[list[Any]]:
+    """Each phrase once (2026-10-25, user: no word spread over several classes): the row
+    of its highest precision; on a tie the broader level (L1, then L2, then L3)."""
+    best: dict[frozenset[str], list[Any]] = {}
+    for row in rows:
+        key = frozenset(row[3].split()) - STOP  # the same words in any order are one phrase
+        kept = best.get(key)
+        if kept is None or (row[8], -int(row[0][1])) > (kept[8], -int(kept[0][1])):
+            best[key] = row
+    return [row for row in rows if best[frozenset(row[3].split()) - STOP] is row]
 
 
 def mine(args: argparse.Namespace) -> int:
@@ -142,6 +228,10 @@ def mine(args: argparse.Namespace) -> int:
             every, title = phrases(row.get("text") or "")
             pages.append({"L1": row.get("L1") or "", "L2": row.get("L2") or "", "L3": row.get("L3") or "",
                           "group": _group(row), "phrases": every, "title": title})
+    vocabulary, page_words = document_vocabulary(), document_vocabulary(field_words=False)
+    for p in pages:
+        p["phrases"] = frozenset(x for x in p["phrases"] if generic(x, vocabulary, page_words))
+        p["title"] = p["title"] & p["phrases"]
     known = _canon_terms()
     out = _mine_level(pages, lambda p: p["L1"], known, "L1", "", args)
     for l1 in sorted({p["L1"] for p in pages}):
@@ -150,6 +240,7 @@ def mine(args: argparse.Namespace) -> int:
         for l2 in sorted({p["L2"] for p in under if p["L2"]}):
             out += _mine_level([p for p in under if p["L2"] == l2], lambda p: p["L3"] or None, known, "L3",
                                f"{l1}{SEP}{l2}", args)
+    out = once_each(out)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
@@ -159,7 +250,7 @@ def mine(args: argparse.Namespace) -> int:
     print(f"{len(pages)} training pages read; {len(out)} candidates "
           f"({', '.join(f'{lvl} {n}' for lvl, n in sorted(by_level.items()))}; "
           f"{sum(1 for r in out if r[4] == 'strong')} proposed strong) written to {args.out}")
-    print("Read every row before approving it: the phrases come from patient pages.")
+    print(f"Only generic document wording: {len(vocabulary)} vocabulary words. Read the rows before approving.")
     return 0
 
 

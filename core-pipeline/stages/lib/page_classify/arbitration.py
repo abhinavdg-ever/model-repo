@@ -33,6 +33,12 @@ pages; each page keeps its own names below it.
   Progress Note > Lab and Imaging Results, Codable. A page with no Final L1 (Others,
   Unknown) keeps its own.
 
+  Short packets decided by their last page (``last_page_documents``, 2026-10-25, user):
+  a document of at most ``max_pages`` pages whose last page is a listed L1 (Consent and
+  Authorization: notice / intake pages, then the signed consent) takes that L1 on every
+  page; before that, ``packets`` joins such a document with the short documents right
+  before it whose pages are all of the listed ``joins`` L1s.
+
   A page in no document (or a one-page document) keeps its own answer, except
   embedded_same_page: a page of an ``embedded_families`` L1 (Lab Report)
   headed by a Progress Note title → Progress Note / its placement there.
@@ -213,12 +219,37 @@ def _keep(page: FinalPage, rule: str, review: bool, document_tag: Optional[str] 
     )
 
 
+def _last_page_rules() -> dict[str, Any]:
+    return (_ARBITRATION.get().get("last_page_documents") or {}).get("families") or {}
+
+
+def packets(documents: Sequence[Sequence[FinalPage]]) -> list[list[FinalPage]]:
+    """The documents for the Final page type, in chart order: a document whose last page
+    is a ``last_page_documents`` L1 absorbs the documents right before it while the
+    packet stays within ``max_pages`` and their pages are all of the ``joins`` L1s."""
+    rules = _last_page_rules()
+    out: list[list[FinalPage]] = []
+    for document in documents:
+        merged = list(document)
+        rule = rules.get(_family(merged[-1]) or "") if merged else None
+        while rule and out and len(out[-1]) + len(merged) <= int(rule["max_pages"]) and all(
+            _family(p) in rule.get("joins", ()) for p in out[-1]
+        ):
+            merged = out.pop() + merged
+        out.append(merged)
+    return out
+
+
 def agree_document_type(document: Sequence[FinalPage]) -> tuple[Optional[str], str]:
-    """The family (L1) a document's pages agree on, and why: first_page (the
-    first page's, whenever it has one) / vote (``(None, "")`` for no
-    document)."""
+    """The family (L1) a document's pages agree on, and why: last_page (a short packet
+    ending in a ``last_page_documents`` L1) / first_page (the first page's, whenever it
+    has one) / vote (``(None, "")`` for no document)."""
     if not document:
         return None, ""
+    last = _family(document[-1])
+    rule = _last_page_rules().get(last or "")
+    if rule and len(document) <= int(rule["max_pages"]):
+        return last, "last_page"
     first = _family(document[0])
     if _agreeable(first):
         return first, "first_page"
@@ -252,6 +283,8 @@ def decide_final(
         if agreed is None:
             return _keep(page, "agreed", False)
         opener = next((p for p in document if _family(p) == agreed), document[0])
+        if basis == "last_page":
+            opener = document[-1]
         document_tag = final_tag(opener.page_type, opener.page_subtype)
         if _family(page) == agreed:
             return _keep(page, "agreed", False, document_tag if page is not opener else None)

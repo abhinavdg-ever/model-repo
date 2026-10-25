@@ -2311,14 +2311,15 @@ function normalizeSequence(value: string | number | null | undefined): string {
 /** Two series: Main pages 1, 2, 3 …; blank / junk pages J1, J2, J3 …. */
 const SEQUENCE_VALUE = /^J?[1-9]\d*$/;
 
-/** A duplicate (≥ 98%): the only page with no sequence at all. */
-function isSkippedDuplicate(page: ImagingPageResult): boolean {
-  return isCompleteDuplicate(page.isDuplicate, page.pageTypeConfidence);
+/** A page in the J series: blank, junk, or a complete duplicate (≥ 98%; 2026-10-25,
+ * user: duplicates are junk for sequencing too). */
+function isJunkSequencePage(page: ImagingPageResult): boolean {
+  return isBlankJunkPage(page) || isCompleteDuplicate(page.isDuplicate, page.pageTypeConfidence);
 }
 
 /** The Algo. Sequence of every page, in page order: Main pages (partial duplicates
- * included) keep the sequencing stage's number; blank / junk pages are J1, J2 … in page
- * order; a duplicate is Skipped. */
+ * included) keep the sequencing stage's number; blank / junk pages and complete
+ * duplicates are J1, J2 … in page order. */
 function algoSequences(
   pages: ImagingPageResult[],
   processed: boolean,
@@ -2326,15 +2327,14 @@ function algoSequences(
   const out = new Map<number, string>();
   let junk = 0;
   for (const page of [...pages].sort((a, b) => a.pageNumber - b.pageNumber)) {
-    if (isSkippedDuplicate(page)) out.set(page.pageNumber, SKIPPED);
-    else if (isBlankJunkPage(page)) out.set(page.pageNumber, `J${(junk += 1)}`);
+    if (isJunkSequencePage(page)) out.set(page.pageNumber, `J${(junk += 1)}`);
     else out.set(page.pageNumber, fmt(page.actualSequence, processed));
   }
   return out;
 }
 
 /** Original order as ground truth: Main pages renumbered 1, 2, 3 … and blank / junk
- * pages J1, J2 … in page order; a duplicate stays blank. */
+ * pages and complete duplicates J1, J2 … in page order. */
 function originalSequences(pages: ImagingPageResult[]): Map<number, string> {
   const out = new Map<number, string>();
   let main = 0;
@@ -2343,8 +2343,7 @@ function originalSequences(pages: ImagingPageResult[]): Map<number, string> {
     (a, b) => (a.currentSequence ?? a.pageNumber) - (b.currentSequence ?? b.pageNumber),
   );
   for (const page of ordered) {
-    if (isSkippedDuplicate(page)) out.set(page.pageNumber, "");
-    else if (isBlankJunkPage(page)) out.set(page.pageNumber, `J${(junk += 1)}`);
+    if (isJunkSequencePage(page)) out.set(page.pageNumber, `J${(junk += 1)}`);
     else out.set(page.pageNumber, String((main += 1)));
   }
   return out;
@@ -2407,7 +2406,7 @@ function sequenceBreaks(
   truth: (page: ImagingPageResult) => number | null,
 ): { breaks: Set<number>; compared: number } {
   const both = pages.filter(
-    (p) => !isBlankJunkPage(p) && sequenceNumber(p.actualSequence) != null && truth(p) != null,
+    (p) => !isJunkSequencePage(p) && sequenceNumber(p.actualSequence) != null && truth(p) != null,
   );
   const rank = new Map(
     [...both]
@@ -2482,9 +2481,9 @@ function SequencingTable({
   /** A J page agrees when the Algo. also has it blank / junk; a Main page by its breaks. */
   const verdict = (p: ImagingPageResult): "match" | "break" | "mismatch" | null => {
     const value = shown(p);
-    if (editing || isSkippedDuplicate(p) || !SEQUENCE_VALUE.test(value)) return null;
+    if (editing || !SEQUENCE_VALUE.test(value)) return null;
     const gtJunk = value.startsWith("J");
-    if (gtJunk !== isBlankJunkPage(p)) return "mismatch";
+    if (gtJunk !== isJunkSequencePage(p)) return "mismatch";
     if (gtJunk) return "match";
     if (sequenceNumber(p.actualSequence) == null) return null;
     return breaks.has(p.pageNumber) ? "break" : "match";
@@ -2495,7 +2494,7 @@ function SequencingTable({
   const marks = editing
     ? []
     : pages
-        .filter((p) => !shown(p).startsWith("J") && !isBlankJunkPage(p))
+        .filter((p) => !shown(p).startsWith("J") && !isJunkSequencePage(p))
         .map(verdict)
         .filter((mark) => mark != null);
   const wrong = marks.filter((mark) => mark !== "match").length;
@@ -2622,9 +2621,9 @@ function SequencingTable({
                     {mark === "mismatch" ? (
                       <span
                         className="cmp-mismatch sequence-break-mark"
-                        title={isBlankJunkPage(p) ? "Blank / junk in the Algo., Main in the ground truth" : "Main in the Algo., blank / junk in the ground truth"}
+                        title={isJunkSequencePage(p) ? "Blank / junk in the Algo., Main in the ground truth" : "Main in the Algo., blank / junk in the ground truth"}
                       >
-                        {" "}✗ {isBlankJunkPage(p) ? "Junk in Algo." : "Main in Algo."}
+                        {" "}✗ {isJunkSequencePage(p) ? "Junk in Algo." : "Main in Algo."}
                       </span>
                     ) : null}
                   </>

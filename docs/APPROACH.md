@@ -228,7 +228,14 @@ Run on continuity's documents, in this order:
 
 1. **The document's L1.** The first page's Extracted L1; if the first page is Others,
    the weighted vote of the pages' L1s (weight = confidence) when one L1 holds the
-   majority.
+   majority. **Except a short packet decided by its last page [built 2026-10-25, user]**
+   (`page_arbitration.json` → `last_page_documents`): a document of at most **4 pages**
+   whose **last page is Consent and Authorization** (notice or intake pages, then the
+   signed consent) is consent on every page (`agreed_last_page`). Before that, such a
+   document absorbs the short documents right before it when their pages are all
+   consent, administrative, demographics or forms pages and the packet stays within
+   4 pages (continuity may have split the notice from its signature page). This joining
+   is for the page type only: DOS and encounter type keep continuity's documents.
 2. **Every page under that L1.** A page whose Extracted L1 differs takes the best L2 the
    model gives **under the document's L1** (`by_L1`, already computed for every L1), or
    the canon's best match under it, else **"L1 / Others"**.
@@ -693,13 +700,17 @@ pages and 0 of 3 test pages; at the 0.2 minimum it beats "always Others" on vali
 * Which page types should strong terms pin (canon `strong_terms`), at which level?
 * The Progress Note L2 from keywords: keep it at the 0.2 minimum, raise it, or leave
   Progress Note pages "Others" until the canon has section words that measure better?
-* Richer canon vocabulary **[mined, waiting for review]**: 576 candidate phrases from
+* Richer canon vocabulary **[mined, waiting for review]**: 165 candidate phrases from
   the training side of the labelled pages (`keyword_candidates mine`; in
-  `training/bert-training/data/keyword_candidates.csv`, git-ignored): each on pages of at
-  least 5 charts, pointing to one class (≥ 60% of its pages, ≥ 3× the class's share), not
-  already in the canon; 162 for L1, 272 for L2 (105 of them Progress Note sections), 142
-  for L3; 138 proposed as strong. Mark the ones to keep, `keyword_candidates apply`, then
-  refit the weights.
+  `training/bert-training/data/keyword_candidates.csv`, git-ignored). **Generic
+  document wording only** (user, 2026-10-25): every word is from the document
+  vocabulary (page-type titles, taxonomy names, section headers, form and field words,
+  less disease words), so no person's or user's name, facility or disease can appear;
+  no fragment (a phrase never starts or ends with a stop word) and no repeated word;
+  each phrase once, under the class it points to most precisely. Each sits on pages of
+  at least 5 charts and points to one class (≥ 60% of its pages, ≥ 3× the class's
+  share): L1 77, L2 72, L3 16; 29 proposed as strong. Mark the ones to keep,
+  `keyword_candidates apply`, then refit the weights.
 * Should `staging/page_classification.json` become what later stages read first?
 
 * Payer record-retrieval fax covers and EHR import covers as junk by rule.
@@ -743,10 +754,11 @@ encounter type and before `imaging_final` (stage `page_sequencing`; code in
 |---|---|---|
 | Main (not blank, junk or duplicate) | **1, 2, 3 …**, ordered by the steps in 9.2 | `seq` = the number |
 | Blank or junk | **J1, J2, J3 …** in scan order | `seq` NULL, `sequence_method` `blank_junk`; the CSV says `J1` |
-| Duplicate (≥ 98%, "Duplicate (To Page N)") | none: skipped | `seq` NULL, `sequence_method` `duplicate` |
+| Duplicate (≥ 98%, "Duplicate (To Page N)") | **J series too** (2026-10-25, user): numbered with the blank and junk pages in scan order | as blank / junk |
 
-Blank and junk pages never enter the ordering, so they cannot push a Main page out of
-place, and the Main series always runs 1 to the number of Main pages with no gaps. The
+Blank, junk and duplicate pages never enter the ordering, so they cannot push a Main
+page out of place, and the Main series always runs 1 to the number of Main pages with
+no gaps. The
 ground truth (`page_ground_truth.page_sequence`, text) uses the same two series: "3" for
 a Main page, "J2" for a blank / junk one. A client sheet that numbers every page
 1, 2, 3 … is converted on display: pages whose ground truth is blank, junk or an invoice
@@ -781,14 +793,17 @@ the printed page number the key/value extraction found.
    scan order); a page with the same text as another claiming that number is a
    duplicate. Every stream after the first is flagged for review. Pages with no marker
    are orphans, ordered by step 4 (joined to the stream when there is only one).
-3. **Order by markers.** Inside a stream, marked pages are reordered **within the
-   scan positions they already hold**: the set of positions marked pages occupy stays
-   the same, and they fill it in ascending marker number. Unmarked pages keep their
-   scan position. (Marker numbers and scan positions are different scales, so the two
-   are never sorted together.) Two marked pages with the same number, or markers with
-   different totals, are conflicts: they keep scan order and are flagged.
-   `explicit_marker` when the total equals the Main page count, otherwise
-   `explicit_marker_reference` (confidence capped at 0.90).
+3. **Order: scan order, except confident "page n of m" inside one document [built
+   2026-10-25, user: "for now"].** Main pages keep their scan positions. Inside one
+   continuity document (encounter), pages that confidently say **"page n of m"** -- a
+   total in an explicit pattern ("Page 3 of 7", "Pg 3 of 7", "p. 3 of 7", "Page 3/7"),
+   or read so by the key/value extraction -- and share the same m are put in page-number
+   order, taking their own scan positions. Nothing moves across documents; a bare "3 of
+   7", a lone footer number or a header group never moves a page. A family stays in
+   scan order, and the pages that would have moved are flagged (`sequence_method`
+   `marker_held`, review), when two of its pages claim one number or when a page would
+   move more than **5 places**. `explicit_marker` when the total equals the Main page
+   count, otherwise `explicit_marker_reference` (confidence capped at 0.90).
 4. **Pages with no marker.**
    * *Cross-encoder continuation* (off: `SEQUENCING_CROSS_ENCODER=false` and the ONNX
      model is not in `artifacts/`). When on, it scores "page B continues page A" from
@@ -800,10 +815,11 @@ the printed page number the key/value extraction found.
      more than 70% (Jaccard) are one group: confidence 0.90 if a page in the group has
      a marker, else 0.75. They keep scan order.
    * *Scan order.* Anything left: `original_order`, confidence 0.30, flagged.
-5. **Cover pages last.** A fax cover, transmittal or "records from" sheet on scan page 1
-   (cover wording, or "fax / cover / enclosure" on a page under 80 words) moves to the
-   end of the Main series. A near-blank page (≤ 12 words and ≤ 80 characters) that the
-   blank / junk stage called Main is placed after the other Main pages.
+5. **No long moves.** Since the fences (2026-10-25), a fax cover on page 1 is no longer
+   sent to the end and a near-blank Main page is no longer moved after the others: both
+   keep their scan positions (a fax cover is usually junk already, J series). The stream
+   split (step 2) still finds parallel printouts and flags them, but no longer moves a
+   page further than the fences allow.
 6. Main pages are renumbered 1 … n in the resulting order.
 
 ### 9.3 What is stored
@@ -812,7 +828,7 @@ the printed page number the key/value extraction found.
 |---|---|---|
 | scan order | `original_page_number` | `current_sequence` |
 | suggested order | `seq` (Main only) | `actual_sequence` (`3`, `J2`, or empty) |
-| how | `sequence_method`: `explicit_marker`, `explicit_marker_reference`, `cross_encoder`, `header_group`, `original_order`, `blank_junk`, `duplicate` | `sequence_method` |
+| how | `sequence_method`: `explicit_marker`, `explicit_marker_reference`, `marker_held`, `cross_encoder`, `header_group`, `original_order`, `blank_junk` | `sequence_method` |
 | how sure | `confidence` | `confidence` |
 | look at it | `review_flag` | `review_flag` (y / n), plus `stream_id` and `ocr_source` |
 
@@ -829,7 +845,8 @@ misplaced page costs one, not every page after it.
 
 J pages are marked (✓ when the pipeline also has the page as blank / junk, ✗ when not)
 but **not counted**: a page that is J on one side and Main on the other is a blank /
-junk error, and it is scored by Blank / Junk accuracy, not here. Duplicates are skipped.
+junk error, and it is scored by Blank / Junk accuracy, not here. A complete duplicate is a
+J page like the others.
 
 ### 9.5 Open points [decide]
 
@@ -838,7 +855,9 @@ junk error, and it is scored by Blank / Junk accuracy, not here. Duplicates are 
   letting continuity read the suggested order would fix that, at the cost of a wrong
   suggestion moving a break: measure on the ground-truth charts first.
 * The cross-encoder is off and its model is not in the repository. Ship it, or remove it.
-* Covers go last; the client sheet may want them first.
+* Covers no longer move (the fences); confirm the client sheet keeps a fax cover where it was scanned.
+* The fence of 5 places: a document scanned fully in reverse (more than 6 pages) is held in scan order and flagged rather than reversed. Widen it inside a document whose pages all say "page n of m"?
+* Moves across documents, and from weaker evidence (bare "n of m", headers), are off for now.
 
 ---
 

@@ -28,6 +28,20 @@
     "comment": "Across a continuity document every page takes the first page's L1 (sub-types stay per page). Only when the first page is Unknown or Others (neither the model nor the canon was sure), a vote of the pages' L1s weighted by page-type confidence decides, Others pages left out. The vote counts only when one L1 holds at least vote_min_share of the weight; below that the pages keep their own types and are flagged for review (no_agreement). An Others page then takes the document's L1 with the L2 the page classifier gave it there (under_l1), else <L1> / Others.",
     "vote_min_share": 0.6
   },
+  "last_page_documents": {
+    "comment": "2026-10-25 (user): a short packet whose LAST page is one of these L1s takes that L1 on every page (a consent: notice / intake pages, then the signed consent page). Post-processing for the Final page type only (DOS and encounter keep continuity's documents): 1. a document whose last page is a listed L1 absorbs the documents right before it while the packet stays within max_pages and their pages are all of the joins L1s; 2. in a document of at most max_pages pages ending in a listed L1, every page takes that L1 (continuation_rule agreed_last_page); its L2 is the one the page classifier gave it there (under_l1), else its own name when that L1 has it, else Others.",
+    "families": {
+      "Consent and Authorization": {
+        "max_pages": 4,
+        "joins": [
+          "Consent and Authorization",
+          "Administrative",
+          "Demographics",
+          "Forms and Questionnaires"
+        ]
+      }
+    }
+  },
   "level_3_continuation": {
     "what": "On the continuity stage's documents (continuity_canon.json), in imaging_final: every page of a document takes its first page's L1; a page of another L1 is re-placed under it (final_placement, under_l1, else Others). Only when the first page is Unknown / Others does a confidence-weighted vote decide (document_agreement). A page in no multi-page document keeps its own type, except embedded_same_page (a page of an embedded_families L1 with a Progress Note title on it).",
     "code": "page_classify/arbitration.py: agree_document_type, decide_final"

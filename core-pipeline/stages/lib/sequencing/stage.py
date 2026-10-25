@@ -1,16 +1,19 @@
 """Stage: page sequencing (suggested order; does not reorder files).
 
-Ported from advantmed-document-processing ``adapters/sequencing``:
-explicit page markers → multi-stream split → header groups → optional
-cross-encoder continuation → cover pages last.
+Ported from advantmed-document-processing ``adapters/sequencing`` (explicit page
+markers, multi-stream split, header groups, optional cross-encoder continuation), with
+the order kept simple for now (2026-10-25, user; ``detect.fenced_order``): Main pages stay
+in scan order, except inside one continuity document (encounter), where pages that
+confidently say "page n of m" (same m) are put in page-number order, never more than 5
+places from their scan position. Nothing moves across documents.
 
 Writes DB + ``imaging/<chart>_sequencing.csv``.
 ``currentSequence`` = file/page order; ``actualSequence`` = suggested ``seq``.
 
 Two series: Main pages are ordered 1, 2, 3 …; blank / junk pages are left out of the
 ordering and numbered J1, J2 … in page order (``seq`` NULL, ``sequence_method``
-``blank_junk``; the CSV says ``J1``). A duplicate has no sequence. Accuracy compares
-Main pages with Main pages only.
+``blank_junk``; the CSV says ``J1``). A complete duplicate is in the J series too
+(2026-10-25, user). Accuracy compares Main pages with Main pages only.
 """
 from __future__ import annotations
 
@@ -22,6 +25,7 @@ from db import (
     connect,
     get_additional_page_details_map,
     get_blank_junk_flags,
+    get_continuity_map,
     get_ocr_texts,
     get_quality_map,
     upsert_sequencing,
@@ -92,12 +96,11 @@ def _printed_marker(details: Optional[dict[str, Any]]) -> Optional[Any]:
 
 
 def junk_sequences(pages: list[dict[str, Any]], verdicts: dict[int, str]) -> dict[int, int]:
-    """Blank / junk page id → its J number (1, 2, 3 … in page order). Main pages and
-    duplicates are not in it."""
+    """Blank / junk / duplicate page id → its J number (1, 2, 3 … in page order). Main
+    pages are not in it."""
     out: dict[int, int] = {}
     for page in sorted(pages, key=lambda p: int(p.get("page_number") or 0)):
-        verdict = verdicts.get(page["id"], "not_blank_junk")
-        if verdict in BJ_EXCLUDE and verdict != "duplicate":
+        if verdicts.get(page["id"], "not_blank_junk") in BJ_EXCLUDE:
             out[page["id"]] = len(out) + 1
     return out
 
@@ -119,9 +122,10 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             final2 = get_ocr_texts(conn, chart_id, "azuredocintel")
             quality = get_quality_map(conn, chart_id)
             details = get_additional_page_details_map(conn, chart_id)
+            continuity = get_continuity_map(conn, chart_id)
 
-        # Main pages are ordered together (order is chart-global); blank / junk pages
-        # get J1, J2 … in page order and a duplicate gets nothing.
+        # Main pages are ordered together, fenced by marker family, distance and
+        # continuity document; blank / junk / duplicate pages get J1, J2 … in page order.
         seq_inputs: list[dict[str, Any]] = []
         sources: dict[int, str] = {}
         junk_seq = junk_sequences(ctx.pages, bj)
@@ -145,6 +149,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     ),
                     "is_classified": False,
                     "page_marker": _printed_marker(details.get(page_id)),
+                    "document": (continuity.get(page_id) or {}).get("document_seq"),
                 }
             )
 
@@ -167,8 +172,6 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 shown: Any = actual if actual is not None else ""
                 if page_id in junk_seq:
                     method, shown = "blank_junk", f"J{junk_seq[page_id]}"
-                elif bj.get(page_id) == "duplicate":
-                    method = "duplicate"
 
                 if page_id in todo or force:
                     upsert_sequencing(

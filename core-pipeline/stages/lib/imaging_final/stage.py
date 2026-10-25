@@ -49,7 +49,7 @@ from db.paths import imaging_csv, write_csv
 from stages._support import mark_completed, stage_run
 from stages.lib.continuity.engine import document_finals
 from stages.lib.page_classify import axes
-from stages.lib.page_classify.arbitration import FinalPage, decide_final
+from stages.lib.page_classify.arbitration import FinalPage, decide_final, packets
 from stages.lib.page_classify.taxonomy import CATEGORY
 
 logger = logging.getLogger(__name__)
@@ -200,12 +200,10 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         )
         documents = _documents(ctx.pages, continuity, junk_pages)
         carried: dict[int, dict[str, Any]] = {}
-        document_of: dict[int, list[int]] = {}
         for document_pages in documents.values():
             finals = document_finals([own[pid] for pid in document_pages])
             for pid in document_pages:
                 carried[pid] = finals
-                document_of[pid] = document_pages
         specialty_of = encounter_specialties(documents, classification)
         final_pages = {
             page["id"]: _final_page(
@@ -213,6 +211,13 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             )
             for page in ctx.pages
         }
+        # The page type's documents: continuity's, with short packets decided by their
+        # last page joined (a consent's notice pages and its signed page). DOS and
+        # encounter type keep continuity's documents.
+        type_document_of: dict[int, list[int]] = {}
+        for packet in packets([[final_pages[pid] for pid in pages] for _, pages in sorted(documents.items())]):
+            for p in packet:
+                type_document_of[p.page_id] = [q.page_id for q in packet]
 
         rows: dict[int, dict[str, Any]] = {}
         # Every row first: a duplicate copies its reference page's, which can
@@ -227,7 +232,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
             # The page type is agreed across the document; the sub-type stays the page's.
             verdict = decide_final(
                 final_pages[page_id],
-                [final_pages[pid] for pid in document_of.get(page_id, [])] or None,
+                [final_pages[pid] for pid in type_document_of.get(page_id, [])] or None,
             )
             # DOS and encounter type: the document's (first dated page / first page) when
             # the page belongs to one, else its own.
