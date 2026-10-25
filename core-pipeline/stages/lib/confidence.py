@@ -116,6 +116,18 @@ def under_bar(p: float, bar: float, *, module: str = "") -> Optional[float]:
     return score(_clip(p) / max(1e-9, float(bar)) * line, module=module)
 
 
+def absent(candidate_scores: Iterable[Optional[float]], *reasons: str, module: str = "") -> Optional[float]:
+    """How sure "not found" is (2026-10-25, user: a field not found still has a
+    confidence). Something was found and turned down: 1 - the best rejected candidate's
+    probability (a near miss at 0.7 reads 0.3, flagged). Nothing found at all: 1.0 x
+    ``no_model`` (no model scored the absence). ``reasons``: the page's own doubts
+    (handwritten, thin text: the OCR may have missed it)."""
+    scores = [_clip(s) for s in candidate_scores if s is not None]
+    if scores:
+        return score(1.0 - max(scores), *reasons, module=module)
+    return score(1.0, "no_model", *reasons, module=module)
+
+
 def page_reasons(text: Optional[str] = None, printed_or_handwritten: Optional[str] = None) -> tuple[str, ...]:
     """Doubt that comes from the page itself: handwritten, or nearly no text."""
     out = []

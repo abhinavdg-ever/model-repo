@@ -132,6 +132,13 @@ def _confidence(hits: list[dict]) -> float | None:
     return max(scores) if scores else None
 
 
+def _number(value: object) -> float | None:
+    try:
+        return float(value) if value is not None else None  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
 def _page_fields(page: dict | None) -> dict:
     fields = (page or {}).get("fields") if isinstance(page, dict) else None
     return fields if isinstance(fields, dict) else {}
@@ -157,6 +164,9 @@ def credentials_text(page: dict | None) -> str:
 
 def field_rows(page: dict | None) -> list[ExtractionFieldRow]:
     fields = _page_fields(page)
+    # How sure "not found" is, per field with nothing accepted (the pipeline's staging).
+    absent = (page or {}).get("absent") if isinstance(page, dict) else None
+    absent = absent if isinstance(absent, dict) else {}
     rows: list[ExtractionFieldRow] = []
     credential_rows = _credential_rows(fields)
     providers = _providers(credential_rows)
@@ -181,7 +191,7 @@ def field_rows(page: dict | None) -> list[ExtractionFieldRow]:
                 label=label,
                 extracted=extracted,
                 processed=extracted,
-                confidence=_confidence(chosen),
+                confidence=_confidence(chosen) if extracted else _number(absent.get(field_id)),
                 ground_truth="",
             )
         )

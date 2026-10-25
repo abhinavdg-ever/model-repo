@@ -134,6 +134,7 @@ def extraction_fields_of(staged_page: Optional[staging.StagedPage], model_versio
         "height": staged_page.height,
         "model_version": model_version,
         "fields": staged_page.fields,
+        "absent": staged_page.absent,
     }
 
 
@@ -393,11 +394,15 @@ def page_signature(staged_page: Optional[staging.StagedPage]) -> dict[str, Any]:
     if staged_page is None:
         return signature_fields(None)
     # Every row: signature_fields counts the accepted ones and those scored above 0.7.
-    return signature_fields(
+    fields = signature_fields(
         staged_page.rows("electronic_signature"),
         staged_page.rows("provider_name"),
         staged_page.rows("provider_credentials"),
     )
+    if fields.get("confidence") is None:
+        # No signature and no provider: how sure the page has none (2026-10-25, user).
+        fields["confidence"] = staged_page.absent.get("electronic_signature")
+    return fields
 
 
 def _provider_rows(staged_page: Optional[staging.StagedPage]) -> list[dict[str, Any]]:

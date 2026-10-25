@@ -127,14 +127,15 @@ def _iso_dob(value: Optional[str]) -> Optional[str]:
     return None
 
 
-def _page_confidence(page: Any) -> Optional[float]:
+def _page_confidence(page: Any, absent: Optional[float] = None) -> Optional[float]:
     """How sure the page's member status is (stages/lib/confidence.py). Each identifier
     read off the page (name, DOB, member ID) is evidence -- ``field_support.rule`` when
     the rules read it, ``field_support.ner`` when NER did -- combined as independent
     evidence, 1 - product(1 - support): a name and a DOB by the rules read 0.84, all
     three 0.94, a name by NER alone 0.40. Verified and wrong member: that. Not verified
-    with identifiers that match nobody: that x ``fallback``. Nothing read: no
-    confidence (nothing was decided)."""
+    with identifiers that match nobody: that x ``fallback``. Nothing read: ``absent``,
+    how sure the extraction is that the page names no member (the weakest of its name,
+    DOB and member ID "not found"; 2026-10-25, user), else no confidence."""
     support = conf.settings_for("member", {"field_support": {"rule": 0.6, "ner": 0.4}})["field_support"]
     found = [
         float(support["rule"] if source == "rule based" else support["ner"])
@@ -148,7 +149,7 @@ def _page_confidence(page: Any) -> Optional[float]:
     if page.db_page_status == "wrong_member" and not found:
         found = [float(support["ner"])]  # another person's name in a patient-name sentence
     if not found:
-        return None
+        return absent
     doubt = 1.0
     for s in found:
         doubt *= 1.0 - s
@@ -489,6 +490,15 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
         )
 
         by_page_no = {p["page_no"]: p["_page_id"] for p in engine_pages}
+
+        def _absent(page_name: str) -> Optional[float]:
+            """The weakest "not found" of the page's name, DOB and member ID."""
+            staged_page = staged.page(page_name)
+            values = [
+                staged_page.absent.get(field_id)
+                for field_id in ("name", "dob", "member_id")
+            ] if staged_page is not None else []
+            return min((v for v in values if v is not None), default=None)
         provided_dob = manifest.get("member_dob")
         if isinstance(provided_dob, date):
             provided_dob = provided_dob.isoformat()
@@ -522,7 +532,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         ner_key_source_member_id=_clean(page.ner_key_source_member_id),
                         page_status=page.db_page_status,
                         page_verified=page.page_verified,
-                        confidence=_page_confidence(page),
+                        confidence=_page_confidence(page, _absent(page.page_name)),
                         provided_name=manifest.get("member_name"),
                         provided_dob=provided_dob,
                         provided_external_member_id=manifest.get("external_member_id"),
@@ -552,7 +562,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         "ner_key_source_member_id": page.ner_key_source_member_id,
                         "page_status": page.db_page_status,
                         "page_verified": page.page_verified,
-                        "confidence": _page_confidence(page),
+                        "confidence": _page_confidence(page, _absent(page.page_name)),
                         "provided_name": manifest.get("member_name") or "",
                         "provided_dob": provided_dob or "",
                         "provided_external_member_id": manifest.get("external_member_id") or "",

@@ -2814,5 +2814,6 @@ def test_extraction_fields_carry_the_whole_staged_page():
 
     page = staging.StagedPage("1.jpg", {"width": 10, "height": 20, "fields": {"name": [{"value": "x"}]}})
     assert extraction_fields_of(page, "v002") == {
-        "width": 10, "height": 20, "model_version": "v002", "fields": {"name": [{"value": "x"}]}}
+        "width": 10, "height": 20, "model_version": "v002", "fields": {"name": [{"value": "x"}]},
+        "absent": {"name": 0.85}}  # an unaccepted row with no score: nothing found
     assert extraction_fields_of(None) == {} and extraction_fields_of(staging.StagedPage("2.jpg", {})) == {}

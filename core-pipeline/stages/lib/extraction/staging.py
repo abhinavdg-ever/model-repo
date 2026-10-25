@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator, Optional
 
 from config import staging_dir
+from stages.lib import confidence as conf
 
 from .util.geometry import Box
 
@@ -78,14 +79,14 @@ def hit_record(hit: Any) -> dict[str, Any]:
 def build(chart_name: str, result: "DocumentResult", model_version: str) -> dict[str, Any]:
     pages: dict[str, Any] = {}
     for page in result.pages:
+        fields = {field_id: [hit_record(hit) for hit in hits] for field_id, hits in page.rows.items()}
+        text = " ".join(word.content or "" for word in page.words)
         pages[str(page.page.get("fileName") or "")] = {
             "page_number": page.page.get("pageNumber"),
             "width": page.page_w,
             "height": page.page_h,
-            "fields": {
-                field_id: [hit_record(hit) for hit in hits]
-                for field_id, hits in page.rows.items()
-            },
+            "fields": fields,
+            "absent": absent_confidences(fields, conf.page_reasons(text) if page.words else ()),
         }
     return {
         "version": SCHEMA_VERSION,
@@ -94,6 +95,28 @@ def build(chart_name: str, result: "DocumentResult", model_version: str) -> dict
         "extracted_at": datetime.now(timezone.utc).isoformat(),
         "pages": pages,
     }
+
+
+def absent_confidences(fields: dict[str, list[dict[str, Any]]], reasons: tuple[str, ...] = ()) -> dict[str, float]:
+    """Each field the page has no accepted row for: how sure "not found" is
+    (``confidence.absent``) from the candidates it turned down (their model probability,
+    else their rule score)."""
+    out: dict[str, float] = {}
+    for field_id, rows in fields.items():
+        if any(row.get("accepted") for row in rows):
+            continue
+        scores = [_number(row.get("model_score", row.get("score"))) for row in rows]
+        value = conf.absent(scores, *reasons, module="extraction")
+        if value is not None:
+            out[field_id] = value
+    return out
+
+
+def _number(value: Any) -> Optional[float]:
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def write(chart_name: str, payload: dict[str, Any]) -> Path:
@@ -140,6 +163,11 @@ class StagedPage:
         self.width = data.get("width")
         self.height = data.get("height")
         self.fields: dict[str, list[dict[str, Any]]] = data.get("fields") or {}
+        # How sure "not found" is, per field with no accepted row (absent_confidences).
+        # Staging written before it existed: from the candidates alone.
+        self.absent: dict[str, float] = (
+            data["absent"] if isinstance(data.get("absent"), dict) else absent_confidences(self.fields)
+        )
 
     def rows(self, field_id: str) -> list[dict[str, Any]]:
         return self.fields.get(field_id) or []

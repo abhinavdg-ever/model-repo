@@ -79,3 +79,28 @@ def test_final_values_take_the_deciding_pages_confidence_and_flag_the_low_ones()
                    "encounter_type": 0.68, "member": 0.84, "blank_junk": 0.42, "handwriting": 0.97}
     # A page kept Main on a weak verdict is flagged too.
     assert review_fields(out) == ["blank_junk", "specialty"]
+
+
+def test_not_found_has_a_confidence():
+    # Nothing found at all: 1.0 x no_model; on a handwritten page x handwritten too.
+    assert conf.absent([]) == pytest.approx(0.85)
+    assert conf.absent([], "handwritten") == pytest.approx(0.765)
+    # A candidate turned down: 1 - its probability (a near miss is flagged).
+    assert conf.absent([0.7, 0.2]) == pytest.approx(0.3) and conf.needs_review(conf.absent([0.7]))
+    assert conf.absent([0.1, None]) == pytest.approx(0.9)
+
+
+def test_staging_gives_each_field_without_an_accepted_row_its_absence():
+    from stages.lib.extraction.staging import StagedPage, absent_confidences
+
+    fields = {"name": [{"accepted": True, "model_score": 0.9}],
+              "dob": [{"accepted": False, "model_score": 0.4}], "member_id": []}
+    assert absent_confidences(fields) == {"dob": pytest.approx(0.6), "member_id": pytest.approx(0.85)}
+    # Staging written before the absence existed works it out on read.
+    assert StagedPage("1.jpg", {"fields": fields}).absent == absent_confidences(fields)
+
+
+def test_a_page_with_no_member_read_takes_the_absence():
+    from stages.lib.member.stage import _page_confidence
+
+    assert _page_confidence(_member_page("not_verified"), 0.6) == 0.6
