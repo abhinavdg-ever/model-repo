@@ -6,8 +6,9 @@ records ``users.last_login_at / _ip / _user_agent``, bumps ``login_count`` and a
 ``user_login`` row. The session token is ``<payload>.<HMAC-SHA256>`` with the user's id,
 username, name and expiry, signed with ``AUTH_SECRET``; no session table.
 
-Without a database, the single LOGIN_USERNAME / LOGIN_PASSWORD account (when both are set)
-signs in, with no user id.
+The LOGIN_USERNAME / LOGIN_PASSWORD account from review-ui/.env (when both are set) signs
+in with or without a database, as an admin with no user id: a local sign-in that needs no
+users row. Its sign-ins are not recorded.
 """
 
 from __future__ import annotations
@@ -136,13 +137,15 @@ def authenticate(
     username = (username or "").strip()
     if not username or not password:
         return None
+    if (
+        settings.login_username
+        and settings.login_password
+        and hmac.compare_digest(username, settings.login_username)
+        and hmac.compare_digest(password, settings.login_password)
+    ):
+        return SignedInUser(id=None, username=username, name=username, role="admin")
     if not database_url_usable(settings.database_url):
-        ok = (
-            bool(settings.login_username and settings.login_password)
-            and hmac.compare_digest(username, settings.login_username)
-            and hmac.compare_digest(password, settings.login_password)
-        )
-        return SignedInUser(id=None, username=username, name=username, role="admin") if ok else None
+        return None
 
     with connection(settings.database_url, settings.db_schema) as conn:
         with conn.cursor() as cur:

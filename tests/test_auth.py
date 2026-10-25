@@ -53,6 +53,17 @@ def test_without_a_database_only_the_configured_account_signs_in() -> None:
     assert auth.authenticate(on, "local-admin", "nope", ip_address=None, user_agent=None) is None
 
 
+def test_the_configured_account_signs_in_without_touching_the_database(monkeypatch) -> None:
+    def no_db(*a, **k):
+        raise AssertionError("the configured account must not query users")
+
+    monkeypatch.setattr(auth, "connection", no_db)
+    s = Settings(database_url="postgresql://u:p@db.invalid/x", auth_secret="t",
+                 login_username="local-admin", login_password="local-pass-123")
+    user = auth.authenticate(s, "local-admin", "local-pass-123", ip_address=None, user_agent=None)
+    assert user is not None and user.id is None and user.role == "admin"
+
+
 def test_saving_ground_truth_needs_a_signed_in_user(monkeypatch) -> None:
     from fastapi.testclient import TestClient
 

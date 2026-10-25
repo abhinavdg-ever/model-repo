@@ -76,8 +76,8 @@ class Settings(BaseSettings):
 
     # Sign-in (app/services/auth.py). AUTH_SECRET signs the session token; set it in
     # review-ui/.env so sign-ins survive a restart (empty = a new random secret each start).
-    # Users live in the users table. With no database, one account from LOGIN_USERNAME /
-    # LOGIN_PASSWORD signs in instead; both empty (the default) = no such account.
+    # Users live in the users table. One account from LOGIN_USERNAME / LOGIN_PASSWORD also
+    # signs in, with or without a database; both empty (the default) = no such account.
     auth_secret: str = ""
     auth_session_hours: float = 12.0
     login_username: str = ""
