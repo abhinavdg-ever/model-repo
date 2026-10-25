@@ -60,8 +60,9 @@ def test_validate_names_bad_labels():
     bad = [rec("Nope"), rec("Result", "HIPAA"), rec("Result", "Lab", "MRI"), rec("Note", "HPI", specialty="Dentistry"),
            rec("Note", "HPI", codeability="maybe")]
     problems = "\n".join(ax.validate(bad, TAX))
-    for name in ("'Nope'", "Result > HIPAA", "Result > Lab > MRI", "Dentistry", "maybe"):
+    for name in ("'Nope'", "Result > HIPAA", "Result > Lab > MRI", "Dentistry"):
         assert name in problems
+    assert "maybe" not in problems  # codeability is not learned, so not checked
     assert ax.validate(records(), TAX) == []
 
 
@@ -88,7 +89,7 @@ def test_targets_and_exclusions(space):
     assert t["L2"] == ax.IGNORE and why["L2"] == "rare L2" and why["L3"] == "L2 has no named L3"
     t, why = ax.encode_targets(rec("Consent", "HIPAA", specialty="Others"), space)
     assert t["specialty"] == ax.IGNORE and why["specialty"] == "rare specialty"
-    assert t["codeability"] == 0
+    assert "codeability" not in t and "codeability" not in space  # not learned (2026-10-25)
 
 
 def test_masks(space):
@@ -197,7 +198,7 @@ def test_forward_backward_mask_and_reload(space, tiny_encoder, tmp_path):
     model = ax.build_model(str(tiny_encoder), space, 0.0)
     logits = model(batch["input_ids"], batch["attention_mask"])
     assert {h: logits[h].shape[-1] for h in ax.HEADS} == {
-        "L1": 4, "L2": 3, "L3": 3, "specialty": 3, "codeability": 4}
+        "L1": 4, "L2": 3, "L3": 3, "specialty": 3}
     masked = ax.masked_l2(logits, model, batch["L1"])
     assert (masked[1, 2] == ax.MASKED) and (masked[1, :2] != ax.MASKED).all()  # Result: no Consent > HIPAA
     loss_fns = {h: torch.nn.CrossEntropyLoss(weight=ax.class_weights(targets, h, len(space[h])),
@@ -347,3 +348,41 @@ def test_top_paths_rank_whole_paths():
     # The default keeps 5: Result > Lab > BMP (0.12) is Result's third, still allowed.
     assert [x["path"] for x in ax.top_paths([0.6, 0.25, 0.15], l2_given, l3_given, space)][3:] == [
         "Flat", "Result > Lab > BMP"]
+
+
+def test_label_split_spreads_rare_labels_and_keeps_the_rarest_in_train():
+    # 12 charts: L1 A everywhere; label "X" in 4 charts, label "Y" in 1 chart only.
+    labels, groups = [], []
+    for g in range(12):
+        labs = ["L1:A"] + (["L2:X"] if g < 4 else []) + (["L2:Y"] if g == 11 else [])
+        labels += [labs, labs]
+        groups += [f"chart:{g}"] * 2
+    sides = ax.label_split(labels, groups, 0.25, 0.25, seed=1, min_eval_groups=3)
+    by_group = {g: s for g, s in zip(groups, sides)}
+    assert len(set(by_group.values())) == 3                       # every side used
+    assert all(sides[i] == sides[i + 1] for i in range(0, len(sides), 2))  # groups stay whole
+    assert by_group["chart:11"] == "train"                        # Y is in 1 group: train only
+    x_sides = {by_group[f"chart:{g}"] for g in range(4)}
+    assert "train" in x_sides and len(x_sides) >= 2               # X reaches evaluation too
+
+
+def test_repeat_factors_lift_small_classes_only(space):
+    targets = [ax.encode_targets(r, space)[0] for r in records()]
+    repeat = ax.repeat_factors(targets, space, threshold=4, max_repeat=4.0)
+    assert len(repeat) == len(targets) and all(1.0 <= r <= 4.0 for r in repeat)
+    note = records().index(next(r for r in records() if r["L1"] == "Note"))
+    assert repeat[note] == pytest.approx(1.0)  # Note has 4 pages: not small
+    assert max(repeat) > 1.0
+    assert ax.repeat_factors(targets, space, threshold=0, max_repeat=4.0) == [1.0] * len(targets)
+
+
+def test_class_weight_modes(space):
+    pytest.importorskip("torch")
+    targets = [ax.encode_targets(r, space)[0] for r in records()]
+    balanced = ax.class_weights(targets, "L1", len(space["L1"]), "balanced")
+    soft = ax.class_weights(targets, "L1", len(space["L1"]), "sqrt")
+    assert soft.tolist() == pytest.approx([w ** 0.5 for w in balanced.tolist()])
+    assert ax.class_weights(targets, "L1", len(space["L1"]), "none").tolist() == [1.0] * len(space["L1"])
+    # Repeats count as pages: doubling every page leaves the weights alone.
+    assert ax.class_weights(targets, "L1", len(space["L1"]), "balanced", [2.0] * len(targets)).tolist() == \
+        pytest.approx(balanced.tolist())

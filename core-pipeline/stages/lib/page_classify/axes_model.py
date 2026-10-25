@@ -23,7 +23,9 @@ DROPOUT = 0.1
 ROUTE_MODEL = 0.50
 ROUTE_MARGIN = 0.10
 ROUTE_CANON = 0.25
-HEADS = ("L1", "L2", "L3", "specialty", "codeability")
+HEADS = ("L1", "L2", "L3", "specialty")
+# A model trained before 2026-10-25 also has a codeability head; it still loads.
+LEGACY_HEADS = (*HEADS, "codeability")
 MASKED = -1e4  # not -inf: a fully masked row stays finite under mixed precision
 SEP = " > "
 TOP_PATHS = 5  # whole paths kept per page (``paths``)
@@ -58,6 +60,12 @@ def encode_texts(tokenizer, texts: list[str], max_length: int, head_fraction: fl
     return [head_tail(ids, max_length, head_fraction, cls_id, sep_id) for ids in raw]
 
 
+def model_heads(space: dict[str, Any]) -> tuple[str, ...]:
+    """The heads a label space has: the four, plus codeability for a model trained
+    before 2026-10-25."""
+    return tuple(h for h in LEGACY_HEADS if h in space)
+
+
 def build_model(encoder_source: str, space: dict[str, Any], dropout: float = DROPOUT):
     """Encoder plus one linear head per axis on the first token's hidden state."""
     import torch
@@ -71,7 +79,7 @@ def build_model(encoder_source: str, space: dict[str, Any], dropout: float = DRO
             config = self.encoder.config
             hidden = getattr(config, "hidden_size", None) or getattr(config, "dim")
             self.dropout = nn.Dropout(dropout)
-            self.heads = nn.ModuleDict({h: nn.Linear(hidden, max(1, len(space[h]))) for h in HEADS})
+            self.heads = nn.ModuleDict({h: nn.Linear(hidden, max(1, len(space[h]))) for h in model_heads(space)})
             l2, l3 = mask_rows(space)
             self.register_buffer("l2_mask", _bool_matrix(torch, l2, len(space["L1"]), len(space["L2"])),
                                  persistent=False)
@@ -81,7 +89,7 @@ def build_model(encoder_source: str, space: dict[str, Any], dropout: float = DRO
         def forward(self, input_ids, attention_mask):
             hidden = self.encoder(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state[:, 0]
             hidden = self.dropout(hidden)
-            return {h: self.heads[h](hidden).float() for h in HEADS}
+            return {h: head(hidden).float() for h, head in self.heads.items()}
 
     return PageAxesModel()
 
@@ -122,7 +130,7 @@ def decode(logits, model, space: dict[str, Any], top_k: int = 3) -> list[dict[st
     l2_idx = l2_prob.argmax(-1) if l2_prob is not None else None
     l3_prob = torch.softmax(masked_l3(logits, model, l2_idx), -1) if space["L3"] and l2_idx is not None else None
     spec_prob = torch.softmax(logits["specialty"], -1) if space["specialty"] else None
-    code_prob = torch.softmax(logits["codeability"], -1)
+    code_prob = torch.softmax(logits["codeability"], -1) if "codeability" in logits else None
     by_l1 = _best_under_every_l1(logits, model, space, l1_prob.shape[0]) if l2_prob is not None else []
     l2_given, l3_given = path_probabilities(logits, model, space)
     out = []
@@ -146,8 +154,9 @@ def decode(logits, model, space: dict[str, Any], top_k: int = 3) -> list[dict[st
             row["specialty"], row["specialty_confidence"] = row["specialty_top"][0]
         else:
             row["specialty"], row["specialty_confidence"], row["specialty_top"] = None, None, []
-        j = int(code_prob[i].argmax())
-        row["codeability"], row["codeability_confidence"] = space["codeability"][j], float(code_prob[i, j])
+        if code_prob is not None:  # a model trained before 2026-10-25
+            j = int(code_prob[i].argmax())
+            row["codeability"], row["codeability_confidence"] = space["codeability"][j], float(code_prob[i, j])
         row["path"] = " > ".join(x for x in (row["L1"], row["L2"], row["L3"]) if x)
         row["paths"] = top_paths(l1_prob[i].tolist(), None if l2_given is None else l2_given[i].tolist(),
                                  None if l3_given is None else l3_given[i].tolist(), space)

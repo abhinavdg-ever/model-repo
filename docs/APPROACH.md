@@ -200,9 +200,9 @@ Extracted path is Lab Report > Lab Result:
 
 **Specialty [built 2026-10-25].** Extracted, per page, in this order:
 
-1. the model's, when it clears a strict gate: ≥ `specialty_min` (0.70), ≥
-   `specialty_lead` (0.20) ahead of the second, trained on ≥ 10 pages, and not Unknown
-   or Others;
+1. the model's, when it clears its gate: ≥ `specialty_min` (**0.50**), ≥
+   `specialty_lead` (**0.10**) ahead of the second (both set by the user, 2026-10-25),
+   trained on ≥ 10 pages, and not Unknown or Others;
 2. the **specialty keywords** (`keyword-canon/specialty_canon.json`, a copy of
    appendix F): a letterhead term in the page's top 18% of lines scores 6, a body term
    (or a letterhead term lower down) 1, each once; the best needs ≥ 6 and a lead of 3
@@ -274,10 +274,10 @@ inpatient status).
    Codable; an L1 alone reads its Others L2. A path tagged needs_review (Operative Note >
    Post-operative, Progress Note > Vitals, ...) takes the document's codability, the
    Final tag of its first page, when that is decided; otherwise it is Non-Codable and
-   flagged for review. One exception, kept from 2026-10-24: a page re-placed into a
-   Progress Note that is itself a Lab Result or Medication Record / List stays
-   Non-Codable, although Progress Note > Lab and Imaging Results is tagged Codable
-   **[decide: keep this exception?]**. A page with no Final L1 (Others) keeps its own.
+   flagged for review. **No exceptions** (user, 2026-10-25): a lab page re-placed into a
+   Progress Note is Progress Note > Lab and Imaging Results and Codable, as that type is
+   tagged; a medication page placed there is Progress Note > Medication List,
+   Non-Codable by its own tag. A page with no Final L1 (Others) keeps its own.
 
 Extracted is never overwritten: a reviewer and the accuracy report see both.
 
@@ -437,7 +437,8 @@ Five values: **Inpatient**, **Outpatient (F2F)**, **Outpatient (Evisit)**, **Out
   visit"), negatives that cancel a match. A page whose L1 family does not take an
   encounter votes Not Applicable; a page decided Others votes its own evidence.
 * **The encounter model** (`models/encounter/`, trained by
-  `training/bert-training-encounter`): one head over the five values. It is asked only
+  `training/bert-training-encounter`): one head over the five values (six once retrained
+  on the page target: its "No evidence on page" never votes, 7.2). It is asked only
   for a page with **no tier 1 / tier 2 evidence** of its own, and its answer counts only
   for the classes and confidences in `encounter_canon.json` → `model_vote`:
 
@@ -541,33 +542,53 @@ L2, because section tagging decides it):
 
 ### 7.1 Page axes (`training/bert-training`)
 
-* Input: `Training/processed/training_data.jsonl`, 2,750 pages (2,033 from 100 real
-  charts), every page reviewed (`claude-reviewed` or human). Optional: 25 synthetic pages
-  (`--with-mock`), **training split only**.
+* Input: `Training/processed/training_data.jsonl`, **2,785 pages after the second label
+  pass of 2026-10-25** (364 pages' L1 / L2 / L3 changed against one set of definitions;
+  11 junk pages removed). Specialty is now **page-level**: only what the page itself shows
+  (786 pages changed; Unknown, 1,283 pages, means "no specialty on this page"). The 25
+  synthetic pages (`--with-mock`) train, never score; the notebook adds them by default.
+* **Four heads: L1, L2, L3, specialty.** Codeability is no longer learned (user,
+  2026-10-25): the pipeline reads it from the taxonomy tag of the Final page type
+  (3.2 step 7). A model trained before then still has the fifth head and still loads.
 * Classes come from the taxonomy and the data, never from code: an L1 trains with ≥ 11
   pages, an L2 / L3 / specialty with ≥ 3; rarer ones fold (L1 → OTHER, L3 → Others) and
-  are left to the canon. Today: 16 L1, 52 L2 (59 with the mock pages), 37 L3, 28 specialties.
-* Split by chart (the leading number of `chart_id`), 70 / 15 / 15, classes balanced as far
-  as whole charts allow. Pages under 20 characters are left out and counted.
+  are left to the keyword vote. With the new labels and the mock pages: 16 L1, 62 L2,
+  38 L3, 29 specialties.
+* **Small classes [built 2026-10-25]** (from the Claude Cowork pack's patch, ported):
+  * the split spreads every label, not only L1 (`--split labels`): groups (charts) with
+    the rarest labels are placed first, each on the side that most lacks its labels; a
+    label in fewer than 3 groups stays in train; `split_report.csv` lists pages per side
+    per class;
+  * classes with fewer than 30 training pages are oversampled (repeat-factor sampling:
+    a page repeats √(30 / pages of its rarest class) times, at most 4; today about 950
+    training pages repeat, about 2,670 samples per epoch from 2,030 pages);
+  * loss weights are the square root of inverse frequency over the pages as sampled.
 * **20 epochs**; the best epoch by validation macro F1 of L1, L2 and L3 is kept.
-* Reported: per-class recall, the **Lab Report ↔ Progress Note confusion in both
-  directions** on its own line, full-path accuracy, hierarchical P/R, the routes, and
-  `check_test_pages.py` on 12 synthetic test pages (fails if a Lab Report test page
-  comes back Progress Note).
-* Progress Note > Lab and Imaging Results and > Medication List are not merged,
-  upsampled or re-weighted.
-* Specialty Unknown (49% of pages) is trained as a class by default (the head can say
-  "don't know"); `--specialty-unknown ignore` leaves it out of the loss **[decide]**.
+* Reported: per-class recall (the notebook prints L1 recall of Administrative, Provider
+  Letter, Problem List and Immunization), the **Lab Report ↔ Progress Note confusion in
+  both directions**, full-path accuracy, hierarchical P/R, the routes, and
+  `check_test_pages.py` on the pack's synthetic test pages (fails if a Lab Report test
+  page comes back Progress Note).
+* **Baseline to beat** (from the pack): TF-IDF + logistic regression, cross-validated by
+  chart on the new labels, macro F1 0.65 for L1, 0.36 for L1 > L2, 0.36 for specialty.
 
 ### 7.2 Encounter (`training/bert-training-encounter`)
 
-* Input: `Training/encounter/encounter_tags.jsonl`, 2,750 pages, five classes.
-* `train: false` rows (the 21 client-default pages) are never learned; reported apart.
-* Inherited labels at weight 0.5; class-weighted loss and macro-F1 selection so Home
-  Visit (51) and Evisit (120) count.
+* Input: `Training/encounter/encounter_tags.jsonl`, 2,785 pages.
+* **Target [built 2026-10-25]:** `--target page` (default) learns `encounter_on_page`,
+  the setting only when the page itself shows it, else **No evidence on page**, a sixth
+  class (1,118 pages). The visit is then applied to the whole document, as the pipeline
+  does, and a page that says nothing abstains instead of guessing: in the vote (5.1) the
+  model's "No evidence on page" never votes. `--target visit` learns `encounter_type`
+  (the first run's target). Page-level counts: Not Available 1,132, F2F 360, Inpatient
+  125, Evisit 33, Home Visit 17: the two small classes are very small.
+* `train: false` rows (the client-default pages) are never learned; reported apart.
+* Inherited labels at weight 0.5; class-weighted loss and macro-F1 selection.
 * Split by chart; synthetic pages training only; **20 epochs**.
-* Reported per class, page by page **and visit by visit** with the pipeline's vote
-  (first page ×2, Not Available only when unanimous), and by label basis.
+* Reported per class, page by page **and visit by visit** (the visit's truth is
+  `encounter_type`; pages with no evidence abstain), by label basis, and on the pack's
+  22 encounter test pages (`check_encounter_tests.py`; ENC_22, the client default, is
+  reported, not scored).
 
 ### 7.3 Which OCR text the models see
 
@@ -672,18 +693,19 @@ pages and 0 of 3 test pages; at the 0.2 minimum it beats "always Others" on vali
 * Which page types should strong terms pin (canon `strong_terms`), at which level?
 * The Progress Note L2 from keywords: keep it at the 0.2 minimum, raise it, or leave
   Progress Note pages "Others" until the canon has section words that measure better?
-* Richer canon vocabulary: candidate terms mined from the labelled pages (only words
-  seen across many charts, reviewed by a person before they enter the canon).
-* Inside a Progress Note, a lab or medication page stays Non-Codable although its Final
-  type (Progress Note > Lab and Imaging Results) is tagged Codable: keep the exception?
+* Richer canon vocabulary **[mined, waiting for review]**: 576 candidate phrases from
+  the training side of the labelled pages (`keyword_candidates mine`; in
+  `training/bert-training/data/keyword_candidates.csv`, git-ignored): each on pages of at
+  least 5 charts, pointing to one class (≥ 60% of its pages, ≥ 3× the class's share), not
+  already in the canon; 162 for L1, 272 for L2 (105 of them Progress Note sections), 142
+  for L3; 138 proposed as strong. Mark the ones to keep, `keyword_candidates apply`, then
+  refit the weights.
 * Should `staging/page_classification.json` become what later stages read first?
 
 * Payer record-retrieval fax covers and EHR import covers as junk by rule.
 * Records Request defined by purpose (letter, fax or note).
 * "Surgery center" / "ambulatory surgery" wording → Outpatient (F2F).
 * Surgery scheduling forms as Administrative > Appointment Record.
-* Specialty Unknown: trained as a class, or masked out of the loss (the pipeline shows
-  General either way).
 
 ### 8.3 Build order
 
@@ -696,10 +718,14 @@ pages and 0 of 3 test pages; at the 0.2 minimum it beats "always Others" on vali
 3. **[built 2026-10-25]** the model and the keyword canon vote at every level (3.1):
    learned per-level term weights, strong terms, minimum 0.2, every candidate path kept;
    Final codability from the Final type (3.2 step 7).
-4. **[to build]** encounter Extracted before continuity.
-5. **[to build]** continuity signals 4.2, 4.3, 4.4; measured (4.5) before their weights
+4. **[built 2026-10-25]** the trainers for the relabelled data: page axes with four
+   heads and the small-class split / oversampling / weights; encounter on the page-level
+   target; specialty gate 0.5 / 0.1; codability from the Final type with no exception.
+   **Next: retrain both on Colab** (`docs/NEXT_STEPS_TRAINING.md`).
+5. **[to build]** encounter Extracted before continuity.
+6. **[to build]** continuity signals 4.2, 4.3, 4.4; measured (4.5) before their weights
    are trusted.
-6. **[to build]** the client default (5.2 step 4) and the encounter split (5.3).
+7. **[to build]** the client default (5.2 step 4) and the encounter split (5.3).
 
 ---
 

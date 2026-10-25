@@ -16,8 +16,12 @@ import math
 from pathlib import Path
 
 LABEL_VERSION = "encounter-v1"
-CLASSES = ["Inpatient", "Outpatient (F2F)", "Outpatient (Evisit)", "Outpatient (Home Visit)", "Not Available"]
+CLASSES = ["Inpatient", "Outpatient (F2F)", "Outpatient (Evisit)", "Outpatient (Home Visit)", "Not Available",
+           "No evidence on page"]
 NOT_AVAILABLE = "Not Available"
+NO_EVIDENCE = "No evidence on page"
+# The five classes of a model trained on the visit target before 2026-10-25; it still loads.
+VISIT_CLASSES = CLASSES[:5]
 MAX_LENGTH = 512
 HEAD_FRACTION = 0.85  # of the token budget kept from the start; the rest from the end
 DROPOUT = 0.1
@@ -44,7 +48,7 @@ def encode_texts(tokenizer, texts: list[str], max_length: int, head_fraction: fl
     return [head_tail(ids, max_length, head_fraction, cls_id, sep_id) for ids in raw]
 
 
-def build_model(encoder_source: str, dropout: float = DROPOUT):
+def build_model(encoder_source: str, dropout: float = DROPOUT, n_classes: int = len(CLASSES)):
     """Encoder plus one linear head on the first token's hidden state."""
     from torch import nn
     from transformers import AutoModel
@@ -56,7 +60,7 @@ def build_model(encoder_source: str, dropout: float = DROPOUT):
             config = self.encoder.config
             hidden = getattr(config, "hidden_size", None) or getattr(config, "dim")
             self.dropout = nn.Dropout(dropout)
-            self.head = nn.Linear(hidden, len(CLASSES))
+            self.head = nn.Linear(hidden, n_classes)
 
         def forward(self, input_ids, attention_mask):
             hidden = self.encoder(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state[:, 0]
@@ -71,9 +75,10 @@ def load_model(folder: Path, device=None):
     from transformers import AutoTokenizer
 
     space = json.loads((folder / "label_space.json").read_text(encoding="utf-8"))
-    if space.get("classes") != CLASSES:
-        raise SystemExit(f"{folder} was trained on classes {space.get('classes')}, not {CLASSES}")
-    model = build_model(str(folder / "encoder"), space.get("dropout", DROPOUT))
+    classes = space.get("classes")
+    if classes not in (CLASSES, VISIT_CLASSES):
+        raise SystemExit(f"{folder} was trained on classes {classes}, not {CLASSES}")
+    model = build_model(str(folder / "encoder"), space.get("dropout", DROPOUT), len(classes))
     model.head.load_state_dict(torch.load(folder / "head.pt", map_location="cpu", weights_only=True))
     model.to(device or "cpu").eval()
     return model, AutoTokenizer.from_pretrained(folder / "encoder"), space

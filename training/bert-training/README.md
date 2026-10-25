@@ -1,7 +1,9 @@
 # Page-axes training
 
-Trains the page-axes model the pipeline loads: one DistilBERT encoder, five heads
-(L1, L2, L3, specialty, codeability) over `taxonomy.json` (v29.2). Stands alone: it
+Trains the page-axes model the pipeline loads: one DistilBERT encoder, four heads
+(L1, L2, L3, specialty) over `taxonomy.json` (v29.2). Codeability is not learned
+(2026-10-25): the pipeline reads it from the taxonomy tag of the Final page type. A
+model trained before then still has a codeability head and still loads. Stands alone: it
 imports nothing from `annotation-tool/` or `core-pipeline/`.
 
 | File | |
@@ -64,10 +66,10 @@ step 1.
 
 On Colab the notebook installs `requirements.txt` itself.
 
-## Page axes (taxonomy v29.2): L1, L2, L3, specialty, codeability
+## Page axes (taxonomy v29.2): L1, L2, L3, specialty
 
 `train_axes.py` replaces the single `model_type` head with one encoder and
-five heads over `taxonomy.json`, **v29.2** since 2026-10-25: 17 L1 (Clinical
+four heads over `taxonomy.json`, **v29.2** since 2026-10-25: 17 L1 (Clinical
 Summary and Provider Letter new, `Lab Report/Result` renamed `Lab Report`), the
 renamed and new L2/L3s, and the page-essence rule. It is the pack's file, copied
 as is. The rules version (context rules, overrides, merges)
@@ -77,8 +79,7 @@ is `training/taxonomy/rules/taxonomy_rules.json`. No page type name is in the co
                       ┌─ L1           folded: thin L1s become OTHER
 text ─ DistilBERT ────┼─ L2           masked by L1; not trained under Progress Note
         [CLS]         ├─ L3           masked by L2; only under the Lab Report buckets
-                      ├─ specialty
-                      └─ codeability
+                      └─ specialty    Unknown (no specialty on the page) is a class
 ```
 
 ### On Colab (the usual way)
@@ -122,8 +123,13 @@ python predict_axes.py --jsonl pages.jsonl --out predictions.csv     # no text i
 | `--select-heads` | `L1,L2,L3` | mean validation macro F1 of these picks the best epoch |
 | `--route-model` / `--route-canon` | 0.5 / 0.25 | the abstention thresholds |
 | `--epochs` | 20 | the best epoch (by validation) is what is kept |
-| `--with-mock [JSONL]` | off | add synthetic pages; they are always in the training split |
-| `--specialty-unknown` | `train` | `ignore` leaves `Unknown` (not determined, ~49% of pages) out of the specialty loss |
+| `--with-mock [JSONL]` | off (on in the notebook) | add synthetic pages; they are always in the training split |
+| `--specialty-unknown` | `train` | keep `train`: since the 2026-10-25 relabel Unknown means "no specialty on this page", which a page model can learn |
+| `--split` | `labels` | spread every L1, L2, L3 and specialty over train / val / test (whole charts); `l1` is the old L1-only split |
+| `--min-eval-groups` | 3 | a label in fewer groups than this stays in train (too rare to evaluate) |
+| `--oversample` | 30 | repeat training pages of classes with fewer training pages than this: sqrt(30 / pages) times, at most `--max-repeat`; 0 turns it off |
+| `--max-repeat` | 4 | the most a page repeats per epoch |
+| `--class-weight` | `sqrt` | softened inverse-frequency loss weights (oversampling already does most of the work); `balanced` is the old weighting, `none` turns it off |
 
 ### The Lab Report <-> Progress Note line
 
@@ -149,14 +155,11 @@ non-zero if any Lab Report test page comes back Progress Note.
 * **L3** — only under the four Lab Report/Result L2s. 93 pages there have a
   blank L3, which is a missing label: they are left out until tagged in the
   annotation tool.
-* **specialty** — weak: about half the pages are `Unknown`, which means *not
-  determined*. By default `Unknown` is trained as a class (so the head learns to
-  say "don't know"); `--specialty-unknown ignore` leaves it out of the loss, so the
-  head always names a specialty and the pipeline's confidence floor decides. Keep
-  the keyword detector and document inheritance in front of it either way.
-* **codeability** — trainable, but its label mostly comes from a rule, so the
-  model partly learns to imitate the canon tag. `metrics_summary.json` counts
-  where model and rule disagree; `errors.csv` lists them.
+* **specialty** — page-level since the 2026-10-25 relabel: a letterhead on page 1
+  is no longer copied to every page, so `Unknown` (1,283 pages) means "no specialty
+  on this page" and is trained as a class. The pipeline asserts a specialty at
+  >= 0.5 with a lead of >= 0.1 over the next, else the specialty keywords, else
+  General; the encounter's first page decides for the whole encounter.
 
 The run prints, per head, how many pages train it and why the rest are left out.
 
@@ -170,17 +173,19 @@ split leaks them and flatters the model. A group is:
 * any page without a `chart_id` (phone photos, sample files, about 70% of
   pages today) — on its own.
 
-Test is picked first, then validation, balancing L1 as far as whole groups
-allow; every class keeps at least one training page. `split.csv` lists where
-each page went. With today's data a few small L1s miss validation or test
-entirely; the per-class tables then show them with no support.
+`--split labels` (the default) places groups holding the rarest labels first, each on
+the side that most lacks its labels, so small L2s, L3s and specialties reach validation
+and test too, not only every L1; a label in fewer than `--min-eval-groups` groups stays
+in train. `split.csv` lists where each page went and `split_report.csv` the pages per
+side for every class. `--split l1` is the old L1-only split.
 
 ### Output folder (`output/page-axes/`)
 
 | File | |
 |---|---|
-| `encoder/`, `heads.pt`, `label_space.json` | the model: encoder + tokenizer, the five heads, every class list, fold and mask. All `predict_axes.py` needs |
-| `metrics_summary.json` | macro F1 per head, full-path accuracy, hierarchical precision / recall, routes, codeability disagreements — on test |
+| `encoder/`, `heads.pt`, `label_space.json` | the model: encoder + tokenizer, the four heads, every class list, fold and mask. All `predict_axes.py` needs |
+| `metrics_summary.json` | macro F1 per head, full-path accuracy, hierarchical precision / recall, routes — on test |
+| `split_report.csv` | pages per side (train / val / test / mock) for every class |
 | `category_wise_metrics.csv` | head, class, precision, recall, F1, support, training pages |
 | `confusion/L1.csv`, `confusion/L2_<l1>.csv` | L1 confusion, and L2 within each L1 |
 | `errors.csv`, `predictions_val.csv`, `predictions_test.csv` | gold and predicted per head, L1 confidence and top 3, route; no text |

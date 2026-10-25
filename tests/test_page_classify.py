@@ -149,8 +149,9 @@ class TestAgreedPageType:
                lab(3, seq=3, link="strong")]
         path, chem = decide_final(doc[1], doc), decide_final(doc[2], doc)
         assert (path.page_type, path.page_subtype, path.source) == (PN, "Lab and Imaging Results", "continuation")
-        assert (chem.page_type, chem.page_subtype, chem.codability) == (PN, "Lab and Imaging Results", "Non-Codable")
-        assert path.codability == "Codable"  # only a Lab Result page stays Non-Codable
+        # Codability is the Final type's (2026-10-25, user): Lab and Imaging Results is Codable.
+        assert (chem.page_type, chem.page_subtype, chem.codability) == (PN, "Lab and Imaging Results", "Codable")
+        assert path.codability == "Codable"
 
     def test_a_medication_list_inside_a_progress_note_is_progress_note_medication_list(self):
         doc = [fp(1, PN, seq=1),
@@ -244,9 +245,7 @@ class TestAgreedPageType:
         page = lab(5, title=PN)
         final = decide_final(page, None)
         assert (final.page_type, final.page_subtype, final.continuation_rule, final.codability) == (
-            PN, "Lab and Imaging Results", "embedded_same_page", "Non-Codable")
-        rad = lab(6, "Radiology Report", "CT Scan Report", title=PN)
-        assert decide_final(rad, None).codability == "Codable"
+            PN, "Lab and Imaging Results", "embedded_same_page", "Codable")  # the Final type's tag
 
 
 class TestOthersPages:

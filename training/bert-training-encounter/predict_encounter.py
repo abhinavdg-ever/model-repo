@@ -60,8 +60,9 @@ class EncounterClassifier:
         out = []
         for row in probs:
             k = max(range(len(row)), key=row.__getitem__)
-            out.append({"encounter_type": enc.CLASSES[k], "confidence": row[k],
-                        "probabilities": dict(zip(enc.CLASSES, row))})
+            classes = self.space["classes"]
+            out.append({"encounter_type": classes[k], "confidence": row[k],
+                        "probabilities": dict(zip(classes, row))})
         return out
 
     def predict(self, text: str) -> dict:
@@ -82,7 +83,7 @@ def predict_jsonl(clf: EncounterClassifier, source: Path, out: Path, batch: int 
         chunk = pages[start:start + batch]
         for page, r in zip(chunk, clf.predict_many([str(p.get("text") or "") for p in chunk])):
             lines.append([str(page.get("image") or ""), r["encounter_type"], round(r["confidence"], 4),
-                          *[round(r["probabilities"][c], 4) for c in enc.CLASSES]])
+                          *[round(r["probabilities"].get(c, 0.0), 4) for c in enc.CLASSES]])
     enc.write_csv(out, COLUMNS, lines)
     return len(lines)
 

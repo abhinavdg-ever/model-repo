@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Try the page-axes model: L1 (with its top 3), L2, L3, specialty and
-codeability for a page's text, with a confidence each and a route.
+"""Try the page-axes model: L1 (with its top 3), L2, L3 and specialty for a page's
+text, with a confidence each and a route.
 
     python predict_axes.py --text "OPERATIVE REPORT ..."
     python predict_axes.py --file page.txt
@@ -33,7 +33,7 @@ import train_axes as axes
 
 DEFAULT_MODEL = axes.DEFAULT_OUTPUT
 COLUMNS = ["image", "path", "paths", "route", "L1", "L1_confidence", "L1_top3", "L2", "L2_confidence", "L3",
-           "L3_confidence", "specialty", "specialty_confidence", "codeability", "codeability_confidence"]
+           "L3_confidence", "specialty", "specialty_confidence"]
 
 
 class AxesClassifier:
@@ -68,14 +68,14 @@ class AxesClassifier:
         return rows
 
     def predict(self, text: str) -> dict:
-        """{L1, L1_confidence, L1_top, L2, L3, specialty, codeability (+ confidences), path, route}."""
+        """{L1, L1_confidence, L1_top, L2, L3, specialty (+ confidences), path, route}."""
         return self.predict_many([text])[0]
 
     def show(self, text: str) -> dict:
         r = self.predict(text)
         print(f"{len((text or '').split())} words in. Route: {r['route']}")
         print("  L1 top 3: " + ", ".join(f"{n} {p:.1%}" for n, p in r["L1_top"]))
-        for head in ("L2", "L3", "specialty", "codeability"):
+        for head in ("L2", "L3", "specialty"):
             value, confidence = r[head], r[f"{head}_confidence"]
             print(f"  {head:<12} {value or '—'}" + (f"  ({confidence:.1%})" if confidence is not None else ""))
         if r["L1"] == self.space["section_L1"]:
@@ -91,8 +91,7 @@ def _cells(image: str, r: dict) -> list:
     rounded = lambda v: "" if v is None else round(v, 4)  # noqa: E731
     return [image, r["path"], "; ".join(f"{x['path']} {x['score']:.2f}" for x in r["paths"]), r["route"], r["L1"], rounded(r["L1_confidence"]),
             "; ".join(f"{n} {p:.2f}" for n, p in r["L1_top"]), r["L2"] or "", rounded(r["L2_confidence"]),
-            r["L3"] or "", rounded(r["L3_confidence"]), r["specialty"] or "", rounded(r["specialty_confidence"]),
-            r["codeability"], rounded(r["codeability_confidence"])]
+            r["L3"] or "", rounded(r["L3_confidence"]), r["specialty"] or "", rounded(r["specialty_confidence"])]
 
 
 def predict_jsonl(clf: AxesClassifier, source: Path, out: Path, batch: int = 16) -> int:

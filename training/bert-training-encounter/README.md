@@ -1,16 +1,24 @@
 # Encounter-type training
 
-Trains a page-level encounter-type model: one DistilBERT encoder, one head over five
-classes. Stands alone: it imports nothing from `bert-training/`, `annotation-tool/` or
-`core-pipeline/`.
+Trains a page-level encounter-type model: one DistilBERT encoder, one head. Stands
+alone: it imports nothing from `bert-training/`, `annotation-tool/` or `core-pipeline/`.
 
-| Class | Pages (2026-10-25) |
-|---|---|
-| Outpatient (F2F) | 1,227 |
-| Not Available | 1,118 |
-| Inpatient | 234 |
-| Outpatient (Evisit) | 120 |
-| Outpatient (Home Visit) | 51 |
+**Target** (`--target`, 2026-10-25 relabel):
+
+* `page` (default): `encounter_on_page`, the setting only when the page itself shows it,
+  else **No evidence on page** (a class of its own). The visit is applied to the whole
+  document afterwards; a page that says nothing abstains instead of guessing.
+* `visit`: `encounter_type`, the setting of the visit the page belongs to (the first
+  run's target).
+
+| Class | `encounter_on_page` | `encounter_type` |
+|---|---|---|
+| Not Available | 1,132 | 1,132 |
+| No evidence on page | 1,118 | — |
+| Outpatient (F2F) | 360 | 1,242 |
+| Inpatient | 125 | 241 |
+| Outpatient (Evisit) | 33 | 119 |
+| Outpatient (Home Visit) | 17 | 51 |
 
 | File | |
 |---|---|
@@ -18,6 +26,7 @@ classes. Stands alone: it imports nothing from `bert-training/`, `annotation-too
 | `predict_encounter.py` | inference on text or a JSONL file |
 | `encounter.ipynb` | Colab (or a PC) notebook that runs the above |
 | `requirements.txt` | the same as `bert-training/` |
+| `encounter_test_pages.jsonl`, `check_encounter_tests.py`, `ENCOUNTER_TEST_PAGES.md` | 22 made-up pages with the expected setting (from the Claude Cowork pack) |
 | `data/encounter_tags.jsonl` | input: a copy of `Training/encounter/encounter_tags.jsonl` |
 | `data/mock_pages.jsonl` | optional input (`--with-mock`): `Training/mock/mock_pages.jsonl` |
 | `output/encounter/` | output: the best epoch |

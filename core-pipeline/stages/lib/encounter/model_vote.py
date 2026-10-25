@@ -3,7 +3,8 @@
 The model is the folder ``train_encounter.py`` writes (``encoder/``, ``head.pt``,
 ``label_space.json``) in ``ENCOUNTER_MODEL_DIR`` (default ``models/encounter/``). Its
 answer counts only where the rules found no evidence on the page, and only for the
-classes and confidences ``encounter_canon.json`` → ``model_vote`` lists.
+classes and confidences ``encounter_canon.json`` → ``model_vote`` lists. A model trained
+on the page target (2026-10-25) can answer "No evidence on page": that never votes.
 
 * No folder, or no transformers / torch: no page gets a model answer and the rules
   decide alone (``/health`` → ``encounter_model.ready`` false). A degraded run shows in
@@ -97,7 +98,7 @@ def predict(texts: list[str]) -> list[Optional[tuple[str, float]]]:
             probs = torch.softmax(loaded["model"](input_ids, mask), -1).tolist()
         for i, row in zip(chunk, probs):
             k = max(range(len(row)), key=row.__getitem__)
-            out[i] = (encounter_model.CLASSES[k], round(float(row[k]), 4))
+            out[i] = (space["classes"][k], round(float(row[k]), 4))
     return out
 
 

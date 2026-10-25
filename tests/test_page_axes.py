@@ -241,8 +241,8 @@ class TestSpecialty:
         assert (result.specialty, result.specialty_confidence, result.sources[3]) == ("Cardiology", 0.85, "model")
 
     @pytest.mark.parametrize("top", [
-        (("Cardiology", 0.65), ("Unknown", 0.05)),   # below 0.70
-        (("Cardiology", 0.75), ("Nursing", 0.60)),   # lead below 0.20
+        (("Cardiology", 0.45), ("Unknown", 0.05)),   # below 0.50
+        (("Cardiology", 0.55), ("Nursing", 0.48)),   # lead below 0.10
         (("Audiology", 0.95), ("Unknown", 0.01)),    # 5 training pages, needs 10
     ])
     def test_unsure_or_undertrained_specialty_is_not_asserted(self, top):
@@ -660,3 +660,30 @@ class TestEncounterSpecialty:
 
         out = encounter_specialties({1: [1, 2], 2: [3]}, self._rows(None, "Cardiology", "Unknown"))
         assert out == {1: "General", 2: "General", 3: "General"}
+
+
+class TestKeywordCandidates:
+    """keyword_candidates: phrases mined from labelled pages, added to the canon only when approved."""
+
+    def test_phrases_stay_on_their_line_and_skip_stop_words_and_numbers(self):
+        from stages.lib.page_classify.keyword_candidates import phrases
+
+        every, title = phrases("SUPERBILL ENCOUNTER FORM\nvisit date 03/14/2024 of the\n")
+        assert {"superbill", "encounter form", "superbill encounter form", "visit date"} <= every
+        assert "form visit" not in every and "of the" not in every and not any(ch.isdigit() for p in every for ch in p)
+        assert "superbill" in title
+
+    def test_only_approved_rows_go_to_the_entry_with_that_path(self):
+        from stages.lib.page_classify.keyword_candidates import add_terms
+
+        canon = {"page_types": [{"page_type": "CT Scan Report", "path": {"L1": LAB, "L2": RAD, "L3": "CT Scan Report"},
+                                 "lexicon": {"body_terms": ["axial images"]}}]}
+        rows = [{"level": "L3", "parent": f"{LAB} > {RAD}", "class": "CT Scan Report", "phrase": "ct protocol", "tier": "body"},
+                {"level": "L3", "parent": f"{LAB} > {RAD}", "class": "CT Scan Report", "phrase": "Axial Images", "tier": "body"},
+                {"level": "L2", "parent": PN, "class": LIR, "phrase": "imaging reviewed", "tier": "strong"}]
+        assert add_terms(canon, rows) == 2  # the existing term is not added twice
+        ct = canon["page_types"][0]["lexicon"]["body_terms"]
+        assert ct == ["axial images", "ct protocol"]
+        new = canon["page_types"][1]
+        assert (new["page_type"], new["path"], new["lexicon"]["strong_terms"]) == (
+            LIR, {"L1": PN, "L2": LIR, "L3": ""}, ["imaging reviewed"])

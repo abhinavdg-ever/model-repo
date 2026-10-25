@@ -10,7 +10,7 @@
     "keyword_body_cap": 0.6
   },
   "inside_progress_note": {
-    "comment": "Final rules (imaging_final, arbitration.decide_final). A page whose Final family becomes the section L1 (Progress Note) — continuing a Progress Note document, or embedded_families on a page headed by a Progress Note title — takes the document's codability, except a page carrying one of non_codeable_names (any of its canon page type / L3 / L2 / L1), which stays Non-Codable. Its Final L2 is final_placement['Progress Note'][its own L1] (Lab Report -> Lab and Imaging Results), else Others.",
+    "comment": "Final rules (imaging_final, arbitration.decide_final). A page whose Final family becomes the section L1 (Progress Note) -- continuing a Progress Note document, or an embedded_families page headed by a Progress Note title -- takes its Final L2 from final_placement['Progress Note'][its own L1] (Lab Report -> Lab and Imaging Results), else Others. Its codability is its Final type's tag like every page (2026-10-25, user: no exception for lab or medication pages). non_codeable_names is no longer read.",
     "non_codeable_names": [
       "Lab Result",
       "Medication Record",
@@ -56,7 +56,7 @@
     "continuation_rule"
   ],
   "axes": {
-    "comment": "The page axes, the Extracted page type: page_classification.page_type / page_subtype (L1 / Others, L1 / L2, or 'L1 (L2)' / L3), the category, and the whole answer in page_classification.axes (and staging/page_classification.json). At every level (L1; L2 under the L1; L3 under the L2) the page-axes model and the keyword canon vote and the winner takes it (page_classify/keyword_vote.py; its settings -- the keywords' share, full evidence and the minimum vote per level, 0.2 -- and the learned term weights are in keyword-canon/page_keyword_weights.json). Below the minimum: L1 Others (decided_by others), L1 / Others, or L3 Others. The section L1's (Progress Note) L2 is the keywords' alone. axes.paths keeps the vote's best whole paths for the Final step; axes.model_paths the model's own. Then axes_rules (lab guard, hospital stay, clinical summary) may re-place the page. Specialty: the model's when not one of specialty_not_asserted, >= specialty_min, ahead of the second by >= specialty_lead, trained on >= specialty_min_train_pages pages; else the specialty keywords (specialty_canon.json); else the canon entry's; else specialty_fallback (General), never Unknown. In Final, only the first page of the encounter (continuity document) decides its specialty. Codeability here is the page's own, from the canon entry behind the decided path; the Final codability is the Final type's (decide_final). route / route_model / route_margin / route_canon are reported only (axes.route). canon_min and l3_canon_min are the keyword canon's own thresholds where it answers alone (canon_match). taxonomy_version: the model folder's label_space.json must carry it, else the model is refused and the keywords decide.",
+    "comment": "The page axes, the Extracted page type: page_classification.page_type / page_subtype (L1 / Others, L1 / L2, or 'L1 (L2)' / L3), the category, and the whole answer in page_classification.axes (and staging/page_classification.json). At every level (L1; L2 under the L1; L3 under the L2) the page-axes model and the keyword canon vote and the winner takes it (page_classify/keyword_vote.py; its settings -- the keywords' share, full evidence and the minimum vote per level, 0.2 -- and the learned term weights are in keyword-canon/page_keyword_weights.json). Below the minimum: L1 Others (decided_by others), L1 / Others, or L3 Others. The section L1's (Progress Note) L2 is the keywords' alone. axes.paths keeps the vote's best whole paths for the Final step; axes.model_paths the model's own. Then axes_rules (lab guard, hospital stay, clinical summary) may re-place the page. Specialty: the model's when not one of specialty_not_asserted, >= specialty_min (0.5), ahead of the second by >= specialty_lead (0.1; 2026-10-25, user), trained on >= specialty_min_train_pages pages; else the specialty keywords (specialty_canon.json); else the canon entry's; else specialty_fallback (General), never Unknown. In Final, only the first page of the encounter (continuity document) decides its specialty. Codeability here is the page's own, from the canon entry behind the decided path; the Final codability is the Final type's (decide_final). route / route_model / route_margin / route_canon are reported only (axes.route). canon_min and l3_canon_min are the keyword canon's own thresholds where it answers alone (canon_match). taxonomy_version: the model folder's label_space.json must carry it, else the model is refused and the keywords decide.",
     "taxonomy_version": "v29.2",
     "section_L1": "Progress Note",
     "route_model": 0.4,
@@ -64,8 +64,8 @@
     "route_canon": 0.25,
     "canon_min": 0.5,
     "l3_canon_min": 0.5,
-    "specialty_min": 0.7,
-    "specialty_lead": 0.2,
+    "specialty_min": 0.5,
+    "specialty_lead": 0.1,
     "specialty_min_train_pages": 10,
     "specialty_not_asserted": [
       "Unknown",

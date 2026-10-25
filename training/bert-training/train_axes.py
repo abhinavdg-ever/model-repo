@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Train the page-axes model: one encoder, five heads (L1, L2, L3, specialty,
-codeability) over the v29.2 taxonomy.
+"""Train the page-axes model: one encoder, four heads (L1, L2, L3, specialty) over
+the v29.2 taxonomy. Codeability is not learned (2026-10-25, user): the pipeline reads
+it from the taxonomy tag of the Final page type.
 
 Input is ``training_data.jsonl`` (one page per line: ``text`` plus the labels
-``L1``, ``L2``, ``L3``, ``specialty``, ``codeability``, and ``chart_id``), a copy
+``L1``, ``L2``, ``L3``, ``specialty`` and ``chart_id``), a copy
 of ``Training/processed/training_data.jsonl``. Every name comes from
 ``taxonomy.json`` beside this file (v29.2, from the 2026-10-25 Claude Code
 pack); nothing here knows a page type. Output, by default ``output/page-axes``,
@@ -28,8 +29,21 @@ How the label space is built (all thresholds are options):
   label and is left out of the loss. Rare L3s fold into the fallback (Others)
   under the same parent.
 * specialty — values with at least ``--min-specialty-pages`` pages; rarer ones
-  are left out of the loss.
-* codeability — the four values from the taxonomy rules.
+  are left out of the loss. Unknown (no specialty on the page) is a class.
+
+Small classes (2026-10-25, from the Claude Cowork pack's patch):
+
+* ``--split labels`` (default) places whole groups (charts) on train / val / test so
+  that every L1, L2 pair, L3 and specialty is spread, not only every L1. A label found
+  in fewer than ``--min-eval-groups`` groups stays in train (too rare to evaluate
+  without losing it from training). ``--split l1`` is the old split.
+* ``--oversample N`` (default 30) repeats training pages of classes with fewer than N
+  training pages (repeat-factor sampling: a page repeats sqrt(N / pages of its rarest
+  class) times, at most ``--max-repeat``). 0 turns it off.
+* ``--class-weight sqrt`` (default) softens the inverse-frequency loss weights, since
+  oversampling already corrects most of the imbalance; ``balanced`` is the old
+  weighting, ``none`` turns it off. Weights count the pages as sampled.
+* ``split_report.csv`` lists pages per side for every class.
 
 Synthetic pages (``--with-mock``, or ``synthetic: true`` in the data) are always
 in the training split, never validation or test, so every score is a real-page
@@ -93,7 +107,14 @@ SELECT_HEADS = ("L1", "L2", "L3")
 LAB_L1 = "Lab Report"
 NOTE_L1 = "Progress Note"
 
-HEADS = ("L1", "L2", "L3", "specialty", "codeability")
+HEADS = ("L1", "L2", "L3", "specialty")
+# A model trained before 2026-10-25 also has a codeability head; it still loads.
+LEGACY_HEADS = (*HEADS, "codeability")
+SPLIT = "labels"
+MIN_EVAL_GROUPS = 3
+OVERSAMPLE_PAGES = 30
+MAX_REPEAT = 4.0
+CLASS_WEIGHT = "sqrt"
 IGNORE = -100
 MASKED = -1e4  # not -inf: a fully masked row stays finite under mixed precision
 SEP = " > "
@@ -132,6 +153,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--other-l1", default=OTHER_L1, help="name of the folded L1 class")
     p.add_argument("--route-model", type=float, default=ROUTE_MODEL)
     p.add_argument("--route-canon", type=float, default=ROUTE_CANON)
+    p.add_argument("--split", choices=("labels", "l1"), default=SPLIT,
+                   help="labels: spread every L1, L2, L3 and specialty over the sides; l1: the old L1-only split")
+    p.add_argument("--min-eval-groups", type=int, default=MIN_EVAL_GROUPS,
+                   help="a label in fewer groups (charts / stand-alone pages) than this stays in train")
+    p.add_argument("--oversample", type=int, default=OVERSAMPLE_PAGES,
+                   help="repeat training pages of classes with fewer training pages than this (0: off)")
+    p.add_argument("--max-repeat", type=float, default=MAX_REPEAT)
+    p.add_argument("--class-weight", choices=("sqrt", "balanced", "none"), default=CLASS_WEIGHT)
     p.add_argument("--select-heads", default=",".join(SELECT_HEADS),
                    help="heads whose mean validation macro F1 picks the best epoch")
     return p.parse_args(argv)
@@ -156,7 +185,6 @@ def validate(records: list[dict], taxonomy: dict[str, Any]) -> list[str]:
     l2s = {a: {x["name"] for x in v} for a, v in taxonomy["L2"].items()}
     l3s = {parent: {x["name"] for x in v} for parent, v in taxonomy["L3"].items()}
     specialties = {x["name"] for x in taxonomy["specialty"]}
-    codeability = set(taxonomy["rules"]["codeability_values"])
     bad: dict[str, Counter] = defaultdict(Counter)
     for r in records:
         a, b, c = r["L1"], r["L2"], r["L3"]
@@ -168,8 +196,6 @@ def validate(records: list[dict], taxonomy: dict[str, Any]) -> list[str]:
             bad["L3 not under its L2"][f"{a}{SEP}{b}{SEP}{c}"] += 1
         if r["specialty"] and r["specialty"] not in specialties:
             bad["specialty not in taxonomy"][r["specialty"]] += 1
-        if r["codeability"] not in codeability:
-            bad["codeability not a codeability value"][r["codeability"] or "<empty>"] += 1
     return [f"{what} ({sum(c.values())}): " + ", ".join(f"{n!r} ({k})" for n, k in sorted(c.items()))
             for what, c in bad.items()]
 
@@ -261,7 +287,6 @@ def build_label_space(records: list[dict], taxonomy: dict[str, Any], *, min_l1: 
         "L3_parents": l3_parents,
         "L3_by_L2": l3_by_l2,
         "specialty": specialty,
-        "codeability": list(rules["codeability_values"]),
     }
 
 
@@ -302,7 +327,6 @@ def encode_targets(record: dict, space: dict[str, Any]) -> tuple[dict[str, int],
     if targets["specialty"] == IGNORE:
         why["specialty"] = ("Unknown specialty" if record["specialty"] == UNKNOWN_SPECIALTY
                             else "rare specialty" if record["specialty"] else "blank specialty")
-    targets["codeability"] = index["codeability"].get(record["codeability"], IGNORE)
     return targets, why
 
 
@@ -461,6 +485,80 @@ def split_real_pages(records: list[dict], labels: list[str], groups: list[str], 
     return sides
 
 
+def page_labels(target: dict[str, int], space: dict[str, Any]) -> list[str]:
+    """The classes one page trains, as 'head:name' strings."""
+    return [f"{h}:{space[h][target[h]]}" for h in HEADS if target[h] != IGNORE]
+
+
+def label_split(labels: list[list[str]], groups: list[str], val_fraction: float, test_fraction: float,
+                seed: int, min_eval_groups: int = MIN_EVAL_GROUPS) -> list[str]:
+    """'train' / 'val' / 'test' per record, whole groups only, spreading every label
+    (L1, L2, L3, specialty) and not just L1. Groups holding the rarest labels are
+    placed first; each goes to the side that most lacks its labels (weighted by
+    1 / label size, so rare labels decide). A group with a label seen in fewer than
+    ``min_eval_groups`` groups goes to train."""
+    by_group: dict[str, Counter] = {}
+    for labs, g in zip(labels, groups):
+        by_group.setdefault(g, Counter()).update(labs)
+    totals = Counter(lab for labs in labels for lab in labs)
+    n_groups = Counter(lab for counts in by_group.values() for lab in counts)
+    fraction = {"train": 1.0 - val_fraction - test_fraction, "val": val_fraction, "test": test_fraction}
+    sides = [s for s in ("train", "test", "val") if fraction[s] > 0]
+    have = {s: Counter() for s in sides}
+    order = list(by_group)
+    random.Random(seed).shuffle(order)
+    order.sort(key=lambda g: (min((totals[lab] for lab in by_group[g]), default=0), -sum(by_group[g].values())))
+    side_of: dict[str, str] = {}
+    for g in order:
+        counts = by_group[g]
+        if not counts or any(n_groups[lab] < min_eval_groups for lab in counts):
+            choice = "train"
+        else:
+            def need(side: str) -> float:
+                return sum((fraction[side] * totals[lab] - have[side][lab] - 0.5 * n) / totals[lab]
+                           for lab, n in counts.items())
+            choice = max(sides, key=lambda side: (need(side), side == "train"))
+        side_of[g] = choice
+        have[choice].update(counts)
+    return [side_of[g] for g in groups]
+
+
+def split_by_labels(records: list[dict], labels: list[list[str]], groups: list[str], val_fraction: float,
+                    test_fraction: float, seed: int, min_eval_groups: int) -> list[str]:
+    """``label_split`` over the real pages; a synthetic page is always 'train'."""
+    real = [i for i, r in enumerate(records) if not r.get("synthetic")]
+    sides = ["train"] * len(records)
+    for i, side in zip(real, label_split([labels[i] for i in real], [groups[i] for i in real],
+                                         val_fraction, test_fraction, seed, min_eval_groups)):
+        sides[i] = side
+    return sides
+
+
+def repeat_factors(targets: list[dict[str, int]], space: dict[str, Any], threshold: int,
+                   max_repeat: float) -> list[float]:
+    """Repeat-factor sampling: per training page, the max over its classes of
+    sqrt(threshold / training pages of that class), at least 1, at most max_repeat."""
+    if threshold <= 0:
+        return [1.0] * len(targets)
+    labs = [page_labels(t, space) for t in targets]
+    count = Counter(lab for ls in labs for lab in ls)
+    return [min(max_repeat, max([1.0] + [math.sqrt(threshold / count[lab]) for lab in ls])) for ls in labs]
+
+
+def write_split_report(path: Path, labels: list[list[str]], sides: list[str]) -> None:
+    """Pages per side for every class; 'mock' counts synthetic training pages."""
+    per: dict[str, Counter] = defaultdict(Counter)
+    for labs, side in zip(labels, sides):
+        for lab in labs:
+            per[lab][side] += 1
+    rows = []
+    for lab, c in sorted(per.items(), key=lambda kv: (kv[0].split(":")[0], sum(kv[1].values()))):
+        head, name = lab.split(":", 1)
+        rows.append([head, name, c["train"], c["val"], c["test"], c["mock"],
+                     "train only (too few groups to evaluate)" if not (c["val"] or c["test"]) else ""])
+    write_csv(path, ["head", "class", "train", "val", "test", "mock_in_train", "note"], rows)
+
+
 def lab_note_confusion(confusion: list[list[int]], l1_classes: list[str]) -> dict[str, Any] | None:
     """Lab Report pages called Progress Note and the reverse, from an L1 confusion
     matrix (rows = truth). None when either class is not trained."""
@@ -506,6 +604,12 @@ def encode_texts(tokenizer, texts: list[str], max_length: int, head_fraction: fl
 # --- Model ------------------------------------------------------------------------------------
 
 
+def model_heads(space: dict[str, Any]) -> tuple[str, ...]:
+    """The heads a label space has: the four, plus codeability for a model trained
+    before 2026-10-25."""
+    return tuple(h for h in LEGACY_HEADS if h in space)
+
+
 def build_model(encoder_source: str, space: dict[str, Any], dropout: float = DROPOUT):
     """Encoder plus one linear head per axis on the first token's hidden state."""
     import torch
@@ -519,7 +623,7 @@ def build_model(encoder_source: str, space: dict[str, Any], dropout: float = DRO
             config = self.encoder.config
             hidden = getattr(config, "hidden_size", None) or getattr(config, "dim")
             self.dropout = nn.Dropout(dropout)
-            self.heads = nn.ModuleDict({h: nn.Linear(hidden, max(1, len(space[h]))) for h in HEADS})
+            self.heads = nn.ModuleDict({h: nn.Linear(hidden, max(1, len(space[h]))) for h in model_heads(space)})
             l2, l3 = mask_rows(space)
             self.register_buffer("l2_mask", _bool_matrix(torch, l2, len(space["L1"]), len(space["L2"])),
                                  persistent=False)
@@ -529,7 +633,7 @@ def build_model(encoder_source: str, space: dict[str, Any], dropout: float = DRO
         def forward(self, input_ids, attention_mask):
             hidden = self.encoder(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state[:, 0]
             hidden = self.dropout(hidden)
-            return {h: self.heads[h](hidden).float() for h in HEADS}
+            return {h: head(hidden).float() for h, head in self.heads.items()}
 
     return PageAxesModel()
 
@@ -610,7 +714,7 @@ def decode(logits, model, space: dict[str, Any], top_k: int = 3) -> list[dict[st
     l2_idx = l2_prob.argmax(-1) if l2_prob is not None else None
     l3_prob = torch.softmax(masked_l3(logits, model, l2_idx), -1) if space["L3"] and l2_idx is not None else None
     spec_prob = torch.softmax(logits["specialty"], -1) if space["specialty"] else None
-    code_prob = torch.softmax(logits["codeability"], -1)
+    code_prob = torch.softmax(logits["codeability"], -1) if "codeability" in logits else None
     by_l1 = _best_under_every_l1(logits, model, space, l1_prob.shape[0]) if l2_prob is not None else []
     l2_given, l3_given = path_probabilities(logits, model, space)
     out = []
@@ -634,8 +738,9 @@ def decode(logits, model, space: dict[str, Any], top_k: int = 3) -> list[dict[st
             row["specialty"], row["specialty_confidence"] = row["specialty_top"][0]
         else:
             row["specialty"], row["specialty_confidence"], row["specialty_top"] = None, None, []
-        j = int(code_prob[i].argmax())
-        row["codeability"], row["codeability_confidence"] = space["codeability"][j], float(code_prob[i, j])
+        if code_prob is not None:  # a model trained before 2026-10-25
+            j = int(code_prob[i].argmax())
+            row["codeability"], row["codeability_confidence"] = space["codeability"][j], float(code_prob[i, j])
         row["path"] = " > ".join(x for x in (row["L1"], row["L2"], row["L3"]) if x)
         row["paths"] = top_paths(l1_prob[i].tolist(), None if l2_given is None else l2_given[i].tolist(),
                                  None if l3_given is None else l3_given[i].tolist(), space)
@@ -789,11 +894,28 @@ def seed_everything(seed: int) -> None:
 
 
 def make_loader(ids: list[list[int]], targets: list[dict[str, int]], pad_id: int, batch_size: int,
-                shuffle: bool, seed: int):
+                shuffle: bool, seed: int, repeat: list[float] | None = None):
     import torch
-    from torch.utils.data import DataLoader
+    from torch.utils.data import DataLoader, Sampler
 
     items = list(range(len(ids)))
+
+    class RepeatSampler(Sampler):
+        """Each epoch: page i appears floor(r_i) times, plus once more with
+        probability r_i - floor(r_i); then shuffled."""
+
+        def __init__(self) -> None:
+            self.rng = random.Random(seed)
+
+        def __iter__(self):
+            out = []
+            for i, r in enumerate(repeat):
+                out += [i] * (int(r) + (self.rng.random() < r - int(r)))
+            self.rng.shuffle(out)
+            return iter(out)
+
+        def __len__(self) -> int:
+            return int(round(sum(repeat)))
 
     def collate(batch):
         width = max(len(ids[i]) for i in batch)
@@ -804,16 +926,32 @@ def make_loader(ids: list[list[int]], targets: list[dict[str, int]], pad_id: int
             **{h: torch.tensor([targets[i][h] for i in batch]) for h in HEADS},
         }
 
+    if repeat is not None and any(r > 1 for r in repeat):
+        return DataLoader(items, batch_size=batch_size, sampler=RepeatSampler(), collate_fn=collate,
+                          num_workers=0)
     return DataLoader(items, batch_size=batch_size, shuffle=shuffle, collate_fn=collate, num_workers=0,
                       generator=torch.Generator().manual_seed(seed))
 
 
-def class_weights(targets: list[dict[str, int]], head: str, k: int):
+def class_weights(targets: list[dict[str, int]], head: str, k: int, mode: str = "balanced",
+                  repeat: list[float] | None = None):
+    """Inverse-frequency loss weights over the pages as sampled (repeats counted);
+    "sqrt" softens them, "none" turns them off."""
     import torch
 
-    counts = Counter(t[head] for t in targets if t[head] != IGNORE)
+    k = max(1, k)
+    if mode == "none":
+        return torch.ones(k)
+    repeat = repeat or [1.0] * len(targets)
+    counts: Counter = Counter()
+    for t, r in zip(targets, repeat):
+        if t[head] != IGNORE:
+            counts[t[head]] += r
     n = sum(counts.values())
-    return torch.tensor([n / (max(1, k) * max(1, counts[c])) for c in range(max(1, k))], dtype=torch.float)
+    w = [n / (k * max(1.0, counts[c])) for c in range(k)]
+    if mode == "sqrt":
+        w = [math.sqrt(x) for x in w]
+    return torch.tensor(w, dtype=torch.float)
 
 
 def run_eval(model, loader, space, device) -> tuple[list[dict], dict[str, list[int]]]:
@@ -887,15 +1025,23 @@ def main(argv: list[str] | None = None) -> int:
     folded = sorted(a for a in space["L1_fold"] if any(r["L1"] == a for r in records))
     print(f"Heads: L1 {len(space['L1'])} classes ({len(folded)} folded into {args.other_l1}: "
           f"{', '.join(folded) or 'none'}), L2 {len(space['L2'])}, L3 {len(space['L3'])}, "
-          f"specialty {len(space['specialty'])}, codeability {len(space['codeability'])}")
+          f"specialty {len(space['specialty'])}")
     for h in HEADS:
         trained = sum(1 for t in targets if t[h] != IGNORE)
         reasons = "; ".join(f"{why}: {n}" for (head, why), n in sorted(excluded.items()) if head == h)
         print(f"  {h:<12} {trained} pages train this head" + (f"  (left out — {reasons})" if reasons else ""))
 
     groups = assign_groups(records)
-    l1_labels = [space["L1"][t["L1"]] for t in targets]
-    sides = split_real_pages(records, l1_labels, groups, args.val_fraction, args.test_fraction, args.seed)
+    labels = [page_labels(t, space) for t in targets]
+    if args.split == "l1":
+        l1_labels = [space["L1"][t["L1"]] for t in targets]
+        sides = split_real_pages(records, l1_labels, groups, args.val_fraction, args.test_fraction, args.seed)
+    else:
+        sides = split_by_labels(records, labels, groups, args.val_fraction, args.test_fraction, args.seed,
+                                args.min_eval_groups)
+    if not args.check:
+        write_split_report(output / "split_report.csv", labels,
+                           ["mock" if r.get("synthetic") else s for r, s in zip(records, sides)])
     split = {s: [i for i, side in enumerate(sides) if side == s] for s in ("train", "val", "test")}
     print("Split by group: " + ", ".join(
         f"{s} {len(ix)} pages / {len({groups[i] for i in ix})} groups" for s, ix in split.items()))
@@ -910,15 +1056,22 @@ def main(argv: list[str] | None = None) -> int:
     model = build_model(args.base_model, space, args.dropout).to(device)
     pad = tokenizer.pad_token_id or 0
 
+    train_targets = [targets[i] for i in split["train"]]
+    repeat = repeat_factors(train_targets, space, args.oversample, args.max_repeat)
+    if args.oversample > 0:
+        print(f"Oversampling: {sum(1 for r in repeat if r > 1)} training pages repeat (classes under "
+              f"{args.oversample} training pages); about {sum(repeat):.0f} samples per epoch "
+              f"from {len(repeat)} pages")
+
     def loader(side: str, shuffle: bool):
         return make_loader([ids[i] for i in split[side]], [targets[i] for i in split[side]], pad,
-                           args.batch_size, shuffle, args.seed)
+                           args.batch_size, shuffle, args.seed, repeat if side == "train" else None)
 
     train_loader = loader("train", True)
     val_loader = loader("val", False)
-    train_targets = [targets[i] for i in split["train"]]
-    loss_fns = {h: torch.nn.CrossEntropyLoss(weight=class_weights(train_targets, h, len(space[h])).to(device),
-                                             ignore_index=IGNORE) for h in HEADS}
+    loss_fns = {h: torch.nn.CrossEntropyLoss(
+        weight=class_weights(train_targets, h, len(space[h]), args.class_weight, repeat).to(device),
+        ignore_index=IGNORE) for h in HEADS}
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
     total_steps = max(1, len(train_loader) * args.epochs)
     scheduler = get_linear_schedule_with_warmup(optimizer, max(1, int(WARMUP_FRACTION * total_steps)),
@@ -1038,7 +1191,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {h:<12} macro F1 {summary['macro_f1'][h]:.3f}  ({summary['head_pages'][h]} pages)")
     print(f"  full-path accuracy {summary['full_path_accuracy']:.3f}, hierarchical P {summary['hierarchical_precision']:.3f}"
           f" R {summary['hierarchical_recall']:.3f}  ({summary['path_note']})")
-    print(f"  routes: {summary['routes']}; codeability model≠rule on {summary['codeability_disagreements']} pages")
+    print(f"  routes: {summary['routes']}")
     print("  per-class recall (L1): " + ", ".join(
         f"{name} {report['scores']['L1']['recall'][c]:.2f} ({report['scores']['L1']['support'][c]})"
         for c, name in enumerate(saved_space["L1"])))
@@ -1082,8 +1235,6 @@ def evaluate_saved(model, space, records, targets, groups, sides, ids, pad, args
                      "the model's); L3 only under L2s with named L3s. Per-head L2/L3 scores assume the "
                      "correct parent; the path scores use the predicted chain.",
         "routes": dict(Counter(r["route"] for r in rows)),
-        "codeability_disagreements": sum(1 for r in rows
-                                         if r["codeability"] != records[r["record"]]["codeability"]),
         "lab_note_confusion": lab_note_confusion(scores["L1"]["confusion"], space["L1"]),
     }
     return {"summary": summary, "scores": scores, "rows": per_side, "gold": gold, "pred": pred,
@@ -1118,7 +1269,7 @@ def write_outputs(output: Path, report, space, records, targets, split) -> None:
     header = ["image", "split", "group", "route", "L1_confidence", "L1_top3", "path_correct"]
     for h in HEADS:
         header += [f"gold_{h}", f"pred_{h}"]
-    header += ["L2_confidence", "L3_confidence", "specialty_confidence", "codeability_confidence", "specialty_top3"]
+    header += ["L2_confidence", "L3_confidence", "specialty_confidence", "specialty_top3"]
     errors = []
     for side, rows in report["rows"].items():
         lines = []
@@ -1131,13 +1282,12 @@ def write_outputs(output: Path, report, space, records, targets, split) -> None:
             line = [rec["image"], side, r["group"], r["route"], round(r["L1_confidence"], 4),
                     "; ".join(f"{n} {v:.2f}" for n, v in r["L1_top"]), "y" if correct else "n",
                     gold_l1, r["L1"], rec["L2"], r["L2"] or "", rec["L3"], r["L3"] or "",
-                    rec["specialty"], r["specialty"] or "", rec["codeability"], r["codeability"],
+                    rec["specialty"], r["specialty"] or "",
                     _round(r["L2_confidence"]), _round(r["L3_confidence"]), _round(r["specialty_confidence"]),
-                    _round(r["codeability_confidence"]),
                     "; ".join(f"{n} {v:.2f}" for n, v in r["specialty_top"])]
             lines.append(line)
             wrong_spec = targets[r["record"]]["specialty"] != IGNORE and rec["specialty"] != r["specialty"]
-            if not correct or wrong_spec or rec["codeability"] != r["codeability"]:
+            if not correct or wrong_spec:
                 errors.append(line)
         write_csv(output / f"predictions_{side}.csv", header, lines)
     write_csv(output / "errors.csv", header, errors)

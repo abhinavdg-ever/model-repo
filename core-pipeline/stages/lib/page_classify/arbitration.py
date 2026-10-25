@@ -29,9 +29,9 @@ pages; each page keeps its own names below it.
   ``page_taxonomy.json`` → ``codeability`` (its deepest level's; an L1 alone reads its
   Others L2). A path tagged needs_review takes the document's codability (its first
   page's Final tag) when that is decided, else stays Non-Codable flagged for review.
-  One exception, kept from 2026-10-24: a page re-placed into a Progress Note that
-  carries an ``inside_progress_note.non_codeable_names`` name (Lab Result, Medication
-  Record…) stays Non-Codable. A page with no Final L1 (Others, Unknown) keeps its own.
+  No exceptions (2026-10-25, user): a lab page re-placed into a Progress Note is
+  Progress Note > Lab and Imaging Results, Codable. A page with no Final L1 (Others,
+  Unknown) keeps its own.
 
   A page in no document (or a one-page document) keeps its own answer, except
   embedded_same_page: a page of an ``embedded_families`` L1 (Lab Report)
@@ -137,11 +137,6 @@ def _section_l1() -> str:
     return (_ARBITRATION.get().get("axes") or {}).get("section_L1", tax.PROGRESS_NOTE)
 
 
-def _inside_note_non_codable(page: FinalPage) -> bool:
-    listed = set(_note_rules().get("non_codeable_names") or ())
-    return any(name in listed for name in (page.names or (page.page_subtype, page.page_type)))
-
-
 _CATEGORY_OF_TAG = {"codeable": "codeable", "non_codeable": "non_codeable", "discharge": "discharge_summary"}
 
 
@@ -165,11 +160,7 @@ def _final_codability(page: FinalPage, page_type: Optional[str], page_subtype: O
                       document_tag: Optional[str] = None) -> tuple[Optional[str], bool]:
     """(codability label, needs review) of a page whose Final type is ``page_type`` /
     ``page_subtype``: the Final path's tag; needs_review takes ``document_tag`` when that
-    is decided. A page re-placed into a Progress Note that carries a non_codeable_names
-    name stays Non-Codable. No Final L1: the page's own category."""
-    l1 = path_of(page_type, page_subtype)[0]
-    if l1 == _section_l1() and _family(page) != l1 and _inside_note_non_codable(page):
-        return CODABILITY_OF["non_codeable"], False
+    is decided. No Final L1: the page's own category."""
     tag = final_tag(page_type, page_subtype)
     if tag is None:
         return CODABILITY_OF.get(page.category or ""), False

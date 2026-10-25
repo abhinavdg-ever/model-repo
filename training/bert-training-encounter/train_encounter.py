@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
-"""Train the encounter-type model: one encoder, one head over five classes
-(Inpatient, Outpatient (F2F), Outpatient (Evisit), Outpatient (Home Visit),
-Not Available), one page at a time.
+"""Train the encounter-type model: one encoder, one head, one page at a time.
 
 Input is ``encounter_tags.jsonl`` (a copy of ``Training/encounter/encounter_tags.jsonl``:
-one page per line, ``text``, ``encounter_type``, ``basis``, ``train``, ``visit``,
-``chart_id``, ``page_index``). Output, by default ``output/encounter``, always holds
-the best epoch by validation macro F1.
+one page per line, ``text``, ``encounter_type``, ``encounter_on_page``, ``basis``,
+``train``, ``visit``, ``chart_id``, ``page_index``). Output, by default
+``output/encounter``, always holds the best epoch by validation macro F1.
+
+What it learns (``--target``):
+
+* ``page`` (default, 2026-10-25): ``encounter_on_page`` -- the setting only when the
+  page itself shows it (a field, a statement, vitals with an exam, the page type),
+  else **No evidence on page**, a class of its own. Six classes: Inpatient, Outpatient
+  (F2F), Outpatient (Evisit), Outpatient (Home Visit), Not Available, No evidence on
+  page. The visit is applied to the whole document afterwards, as the pipeline does;
+  a page that says nothing then abstains instead of guessing. Synthetic pages, which
+  have no page-level column, use ``encounter_type``.
+* ``visit``: ``encounter_type`` -- the setting of the visit the page belongs to (the
+  first run's target; five classes, No evidence on page never used).
 
     python train_encounter.py --check          # two steps and a time estimate; saves nothing
     python train_encounter.py                  # a run: 20 epochs
@@ -57,8 +67,12 @@ os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 
 LABEL_VERSION = "encounter-v1"
-CLASSES = ["Inpatient", "Outpatient (F2F)", "Outpatient (Evisit)", "Outpatient (Home Visit)", "Not Available"]
+CLASSES = ["Inpatient", "Outpatient (F2F)", "Outpatient (Evisit)", "Outpatient (Home Visit)", "Not Available",
+           "No evidence on page"]
 NOT_AVAILABLE = "Not Available"
+NO_EVIDENCE = "No evidence on page"
+# The five classes of a model trained on the visit target before 2026-10-25; it still loads.
+VISIT_CLASSES = CLASSES[:5]
 SMALL_CLASSES = ("Outpatient (Home Visit)", "Outpatient (Evisit)")
 BASIS_WEIGHT = {"inherited": 0.5}  # every other basis trains at 1
 
@@ -99,6 +113,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--val-fraction", type=float, default=VAL_FRACTION)
     p.add_argument("--test-fraction", type=float, default=TEST_FRACTION, help="0 disables the test split")
     p.add_argument("--min-chars", type=int, default=MIN_CHARS)
+    p.add_argument("--target", choices=("page", "visit"), default="page",
+                   help="page: encounter_on_page (No evidence on page is a class); visit: encounter_type")
     p.add_argument("--inherited-weight", type=float, default=BASIS_WEIGHT["inherited"],
                    help="loss weight of a label inherited from another page of the visit (0 leaves them out)")
     return p.parse_args(argv)
@@ -117,9 +133,12 @@ def _truthy(value: Any) -> bool:
     return str(value).strip().lower() not in ("false", "0", "no", "n", "")
 
 
-def load_records(path: Path, min_chars: int, synthetic: bool = False) -> tuple[list[dict], int]:
-    """Usable pages and how many were left out for having almost no text. A label
-    outside CLASSES stops the run with the names and counts."""
+def load_records(path: Path, min_chars: int, synthetic: bool = False,
+                 target: str = "visit") -> tuple[list[dict], int]:
+    """Usable pages and how many were left out for having almost no text. ``label``
+    is the target (``encounter_on_page`` for "page", where the row has it; else
+    ``encounter_type``); ``visit_label`` is always ``encounter_type``. A label outside
+    CLASSES stops the run with the names and counts."""
     if not path.is_file():
         raise SystemExit(f"No training file at {path}")
     records, short, bad = [], 0, Counter()
@@ -131,8 +150,10 @@ def load_records(path: Path, min_chars: int, synthetic: bool = False) -> tuple[l
                 row = json.loads(line)
             except json.JSONDecodeError as exc:
                 raise SystemExit(f"{path.name} line {number} is not JSON ({exc.msg})") from None
-            label = _clean(row.get("encounter_type"))
-            if label not in CLASSES:
+            visit_label = _clean(row.get("encounter_type"))
+            label = _clean(row.get("encounter_on_page")) if target == "page" else ""
+            label = label or visit_label
+            if label not in CLASSES or visit_label not in CLASSES:
                 bad[label or "<empty>"] += 1
                 continue
             text = str(row.get("text") or "")
@@ -144,6 +165,7 @@ def load_records(path: Path, min_chars: int, synthetic: bool = False) -> tuple[l
                 "image": str(row.get("image") or f"line-{number}"),
                 "text": text,
                 "label": label,
+                "visit_label": visit_label,
                 "basis": _clean(row.get("basis")) or ("mock" if is_synthetic else ""),
                 "train": _truthy(row.get("train", True)),
                 "visit": _clean(row.get("visit")),
@@ -265,9 +287,12 @@ def class_scores(truth: list[int], preds: list[int], k: int = len(CLASSES)) -> d
 def document_vote(votes: list[tuple[int | None, str]]) -> str:
     """The pipeline's document rule over (page index, encounter type) votes: every
     page votes, the first page twice; Not Available wins only when every vote is Not
-    Available. A tie goes to the first page's vote, then to CLASSES order."""
+    Available. A page with No evidence on page abstains; with no vote left the visit
+    is No evidence on page (the pipeline then takes the family default). A tie goes to
+    the first page's vote, then to CLASSES order."""
+    votes = [v for v in votes if v[1] != NO_EVIDENCE]
     if not votes:
-        return NOT_AVAILABLE
+        return NO_EVIDENCE
     ordered = sorted(votes, key=lambda v: (v[0] is None, v[0] or 0))
     tally = Counter()
     for n, (_, label) in enumerate(ordered):
@@ -280,16 +305,16 @@ def document_vote(votes: list[tuple[int | None, str]]) -> str:
 
 
 def visit_scores(rows: list[dict]) -> dict[str, Any]:
-    """Visit-level agreement: the gold visit label is the document vote over the gold
-    labels, the predicted one over the predicted labels. Pages without a visit are
-    left out."""
+    """Visit-level agreement: the gold visit label is the document vote over the
+    pages' visit labels (``encounter_type``), the predicted one over the predicted
+    labels. Pages without a visit are left out."""
     by_visit: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
         if r["visit"]:
             by_visit[r["visit"]].append(r)
     gold, pred = [], []
     for pages in by_visit.values():
-        gold.append(CLASSES.index(document_vote([(p["page_index"], p["label"]) for p in pages])))
+        gold.append(CLASSES.index(document_vote([(p["page_index"], p["visit_label"]) for p in pages])))
         pred.append(CLASSES.index(document_vote([(p["page_index"], p["pred"]) for p in pages])))
     return class_scores(gold, pred)
 
@@ -330,7 +355,7 @@ def encode_texts(tokenizer, texts: list[str], max_length: int, head_fraction: fl
 # --- Model ------------------------------------------------------------------------------
 
 
-def build_model(encoder_source: str, dropout: float = DROPOUT):
+def build_model(encoder_source: str, dropout: float = DROPOUT, n_classes: int = len(CLASSES)):
     """Encoder plus one linear head on the first token's hidden state."""
     from torch import nn
     from transformers import AutoModel
@@ -342,7 +367,7 @@ def build_model(encoder_source: str, dropout: float = DROPOUT):
             config = self.encoder.config
             hidden = getattr(config, "hidden_size", None) or getattr(config, "dim")
             self.dropout = nn.Dropout(dropout)
-            self.head = nn.Linear(hidden, len(CLASSES))
+            self.head = nn.Linear(hidden, n_classes)
 
         def forward(self, input_ids, attention_mask):
             hidden = self.encoder(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state[:, 0]
@@ -369,9 +394,10 @@ def load_model(folder: Path, device=None):
     from transformers import AutoTokenizer
 
     space = json.loads((folder / "label_space.json").read_text(encoding="utf-8"))
-    if space.get("classes") != CLASSES:
-        raise SystemExit(f"{folder} was trained on classes {space.get('classes')}, not {CLASSES}")
-    model = build_model(str(folder / "encoder"), space.get("dropout", DROPOUT))
+    classes = space.get("classes")
+    if classes not in (CLASSES, VISIT_CLASSES):
+        raise SystemExit(f"{folder} was trained on classes {classes}, not {CLASSES}")
+    model = build_model(str(folder / "encoder"), space.get("dropout", DROPOUT), len(classes))
     model.head.load_state_dict(torch.load(folder / "head.pt", map_location="cpu", weights_only=True))
     model.to(device or "cpu").eval()
     return model, AutoTokenizer.from_pretrained(folder / "encoder"), space
@@ -497,9 +523,9 @@ def main(argv: list[str] | None = None) -> int:
         environment["gpu"] = torch.cuda.get_device_name(device)
     print("Environment: " + ", ".join(f"{k} {v}" for k, v in environment.items()), flush=True)
 
-    records, short = load_records(args.data, args.min_chars)
+    records, short = load_records(args.data, args.min_chars, target=args.target)
     if args.with_mock is not None:
-        mock, mock_short = load_records(args.with_mock, args.min_chars, synthetic=True)
+        mock, mock_short = load_records(args.with_mock, args.min_chars, synthetic=True, target=args.target)
         records += mock
         short += mock_short
     weights = [loss_weight(r, args.inherited_weight) for r in records]
@@ -577,7 +603,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     settings = {k: getattr(args, k) for k in ("base_model", "max_length", "head_fraction", "dropout",
-                                              "inherited_weight")}
+                                              "inherited_weight", "target")}
     settings["train_pages"] = dict(Counter(CLASSES[labels[i]] for i in train_ix))
     config = {"data": str(args.data.resolve()), "output": str(output), "environment": environment,
               "settings": {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()},
@@ -636,7 +662,8 @@ def evaluate(model, records, labels, weights, groups, sides, ids, pad, args, dev
             r = records[i]
             lines.append({"image": r["image"], "split": s, "group": groups[i], "visit": r["visit"],
                           "page_index": r["page_index"], "basis": r["basis"], "train": r["train"],
-                          "label": r["label"], "pred": CLASSES[k], "confidence": round(p, 4),
+                          "label": r["label"], "visit_label": r["visit_label"], "pred": CLASSES[k],
+                          "confidence": round(p, 4),
                           **{f"p_{c}": round(v, 4) for c, v in zip(CLASSES, probs)}})
     scored = [x for x in lines if x["split"] == side and x["train"]]
     page = class_scores([CLASSES.index(x["label"]) for x in scored], [CLASSES.index(x["pred"]) for x in scored])

@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import train_encounter as enc  # noqa: E402
 
-IP, F2F, EV, HV, NA = enc.CLASSES
+IP, F2F, EV, HV, NA, NONE = enc.CLASSES
 
 
 def page(label, image, chart_id="", basis="stated", train=True, visit="", page_index=1, text="plenty of page text for the minimum"):
@@ -60,16 +60,18 @@ def test_document_vote_follows_the_pipeline_rule():
     assert enc.document_vote([(1, IP), (2, F2F), (3, F2F)]) == IP  # 2 vs 2: a tie goes to the first page
     assert enc.document_vote([(1, IP), (2, F2F), (3, F2F), (4, F2F)]) == F2F
     assert enc.document_vote([(1, NA), (2, F2F)]) == F2F  # NA is set aside once a real vote exists
-    assert enc.document_vote([]) == NA
+    assert enc.document_vote([]) == NONE
+    assert enc.document_vote([(1, NONE), (2, F2F), (3, NONE)]) == F2F  # no evidence abstains
+    assert enc.document_vote([(1, NONE), (2, NONE)]) == NONE
 
 
 def test_class_scores_and_visit_scores():
     s = enc.class_scores([0, 0, 1, 4], [0, 1, 1, 4])
     assert s["recall"][0] == 0.5 and s["confusion"][0][1] == 1
-    rows = [{"visit": "v1", "page_index": 1, "label": F2F, "pred": F2F},
-            {"visit": "v1", "page_index": 2, "label": F2F, "pred": NA},
-            {"visit": "v2", "page_index": 1, "label": IP, "pred": F2F},
-            {"visit": "", "page_index": 1, "label": NA, "pred": NA}]
+    rows = [{"visit": "v1", "page_index": 1, "visit_label": F2F, "pred": F2F},
+            {"visit": "v1", "page_index": 2, "visit_label": F2F, "pred": NA},
+            {"visit": "v2", "page_index": 1, "visit_label": IP, "pred": F2F},
+            {"visit": "", "page_index": 1, "visit_label": NA, "pred": NA}]
     v = enc.visit_scores(rows)
     assert v["n"] == 2 and v["accuracy"] == 0.5
 
@@ -79,3 +81,16 @@ def test_head_tail_keeps_start_and_end():
     out = enc.head_tail(ids, 12, 0.8, 101, 102)
     assert out[0] == 101 and out[-1] == 102 and len(out) == 12
     assert out[1:9] == list(range(8)) and out[9:11] == [98, 99]
+
+
+def test_the_page_target_reads_encounter_on_page_and_keeps_the_visit(tmp_path):
+    rows = [{**page(F2F, "a"), "encounter_on_page": NONE}, {**page(IP, "b"), "encounter_on_page": IP},
+            page(EV, "c")]  # a synthetic-style row with no page-level column
+    records, _ = enc.load_records(write(tmp_path, rows), 20, target="page")
+    assert [(r["label"], r["visit_label"]) for r in records] == [(NONE, F2F), (IP, IP), (EV, EV)]
+    visit, _ = enc.load_records(write(tmp_path, rows), 20, target="visit")
+    assert [r["label"] for r in visit] == [F2F, IP, EV]
+
+
+def test_a_five_class_model_still_loads_its_label_space():
+    assert enc.VISIT_CLASSES == enc.CLASSES[:5] and enc.NO_EVIDENCE not in enc.VISIT_CLASSES
