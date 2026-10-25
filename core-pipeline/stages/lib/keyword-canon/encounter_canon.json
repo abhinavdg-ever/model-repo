@@ -295,16 +295,16 @@
     }
   },
   "model_vote": {
-    "note": "2026-10-25: the encounter model (models/encounter/) votes for a page with no tier 1 / tier 2 evidence of its own, before its family default, only for these classes at these confidences. Measured on the model's held-out pages: Evisit right 85% at >= 0.6, Home Visit 2 of 2, Inpatient 73% at 0.6 and 81% at 0.7; F2F only ~60% at any confidence, so F2F stays with the rules (the family default). Small samples (8-17 pages per class): measure again on new charts.",
+    "note": "2026-10-25 (encounter model retrained on the page target, user: keywords must not block): the model votes for a page with no tier 1 / tier 2 evidence of its own, before its family default, for Evisit, Home Visit and Inpatient. A setting gets the vote when the model gives it >= min_confidence (0.5) -- its top answer or not -- or, with one of the setting's confirm words on the page, >= confirm_min (0.3): the keyword lowers the bar, it never blocks. Measured on the retrained model's held-out pages (val + test): Evisit 7 of 7 right at >= 0.3 (4 pages the rules miss), Home Visit 2 of 2, Inpatient 28 of 37 at >= 0.5 (21 right beyond the rules) and 32 of 43 with a keyword at >= 0.3. F2F and Not Available stay with the rules. Small samples: re-measure on new charts.",
     "settings": {
       "Outpatient (Evisit)": "outpatient_tele",
       "Outpatient (Home Visit)": "home",
       "Inpatient": "inpatient"
     },
     "min_confidence": {
-      "outpatient_tele": 0.6,
-      "home": 0.6,
-      "inpatient": 0.7
+      "outpatient_tele": 0.5,
+      "home": 0.5,
+      "inpatient": 0.5
     },
     "confirm": {
       "outpatient_tele": [
@@ -345,12 +345,32 @@
         "home health",
         "domiciliary",
         "private residence"
+      ],
+      "inpatient": [
+        "admitted",
+        "admission",
+        "inpatient",
+        "hospital day",
+        "hospitalist",
+        "room",
+        "bed",
+        "observation",
+        "icu",
+        "intensive care",
+        "nursing unit",
+        "ward",
+        "rounds",
+        "telemetry",
+        "length of stay",
+        "hospital course",
+        "discharge planning"
       ]
     },
-    "confirm_note": "2026-10-25 (user): for Evisit and Home Visit the keywords rule and the model confirms, because the model leans against these two classes. A vote for one of them needs one of its confirm words on the page (whole words, case-insensitive) AND the model giving that setting >= confirm_min (0.3) probability -- its top answer or not; with no confirm word the model's Evisit / Home Visit never votes. The confirm words are cues too common to decide alone (a phone number, 'discharged home'); the full statements (tier2: 'telehealth visit', 'home visit') decide without the model.",
+    "confirm_note": "The confirm words lower the model's bar to confirm_min; they never block a model vote (2026-10-25, user).",
     "confirm_min": {
       "outpatient_tele": 0.3,
-      "home": 0.3
+      "home": 0.3,
+      "inpatient": 0.3
     }
   }
 }

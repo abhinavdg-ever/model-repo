@@ -97,8 +97,8 @@ class Canon:
     # confidence each setting needs. A page with tier 1 / tier 2 evidence never asks it.
     model_settings: dict[str, str] = field(default_factory=dict)
     model_min: dict[str, float] = field(default_factory=dict)
-    # Settings whose model vote needs a confirming keyword on the page (2026-10-25, user:
-    # Evisit and Home Visit): setting -> (word, pattern) pairs.
+    # Confirm words per setting (2026-10-25, user): with one on the page the model's bar
+    # drops to model_confirm_min; they never block. setting -> (word, pattern) pairs.
     model_confirm: dict[str, tuple[tuple[str, re.Pattern[str]], ...]] = field(default_factory=dict)
     # With a confirming keyword, the model need only agree at this confidence.
     model_confirm_min: dict[str, float] = field(default_factory=dict)
@@ -444,9 +444,9 @@ def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vot
     """The page's own setting: Not Applicable for a family encounter type does not apply
     to (a lab report), else its strongest evidence (tier 1, then tier 2), else the
     encounter model's answer (``page["encounter_model"]``: class, confidence) when the
-    canon's ``model_vote`` takes that class at that confidence -- for Evisit and Home Visit a
-    confirming keyword on the page rules and the model need only give that setting
-    ``confirm_min`` (0.3), top answer or not (``model_vote.confirm``) --, else its family's default
+    canon's ``model_vote`` takes: a setting's probability at ``min_confidence``, or at
+    ``confirm_min`` with one of its confirm words on the page (the keyword lowers the bar,
+    never blocks), else its family's default
     (Progress Note -> Outpatient F2F, Discharge Summary -> Inpatient)."""
     family = str(page.get("page_family") or "").strip()
     if canon.applies_to and family and family.casefold() != "unknown" and family.casefold() not in canon.applies_to:
@@ -459,21 +459,19 @@ def page_vote(page: dict[str, Any], canon: Canon, *, weight: float = 1.0) -> Vot
     if model:
         name, confidence = model[0], model[1]
         probs = model[2] if len(model) > 2 else {name: confidence}
-        setting = canon.model_settings.get(name, "")
-        if setting and setting not in canon.model_confirm and confidence >= canon.model_min.get(setting, 1.01):
-            return Vote(setting, weight, "model", f"model: {name} {confidence:.2f}", evidence)
-        # Evisit / Home Visit: the keyword rules, the model need only not rule it out -- that
-        # setting at >= confirm_min, top answer or not, since the model leans against these
-        # two (2026-10-25, user).
         hay = normalize_text(str(page.get("text") or ""))
-        for cls, cls_setting in canon.model_settings.items():
-            confirm = canon.model_confirm.get(cls_setting)
-            if not confirm:
-                continue
-            word = next((w for w, pattern in confirm if w in hay and pattern.search(hay)), None)
-            p = float(probs.get(cls, 0.0))
-            if word and p >= canon.model_confirm_min.get(cls_setting, 1.01):
-                return Vote(cls_setting, weight, "model", f"keyword {word!r} + model: {cls} {p:.2f}", evidence)
+        # Each setting the model may vote: its probability (top answer or not) at
+        # min_confidence, or at confirm_min with one of its confirm words on the page --
+        # the keyword lowers the bar and never blocks (2026-10-25, user). The most
+        # probable qualifying setting votes.
+        for cls in sorted(canon.model_settings, key=lambda c: -float(probs.get(c, 0.0))):
+            setting, p = canon.model_settings[cls], float(probs.get(cls, 0.0))
+            if p >= canon.model_min.get(setting, 1.01):
+                return Vote(setting, weight, "model", f"model: {cls} {p:.2f}", evidence)
+            word = next((w for w, pattern in canon.model_confirm.get(setting, ())
+                         if w in hay and pattern.search(hay)), None)
+            if word and p >= canon.model_confirm_min.get(setting, 1.01):
+                return Vote(setting, weight, "model", f"keyword {word!r} + model: {cls} {p:.2f}", evidence)
     fallback = canon.family_defaults.get(family.casefold(), "")
     return Vote(fallback, weight, "family_default" if fallback else "none", "", evidence)
 

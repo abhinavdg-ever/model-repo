@@ -368,25 +368,26 @@ def _model_page(n, family, answer, text=""):
 
 
 @pytest.mark.parametrize("answer, text, expected", [
-    (("Outpatient (Evisit)", 0.85), "seen on video today", ("outpatient_tele", "model")),
-    (("Outpatient (Evisit)", 0.85), "", ("outpatient_f2f", "family_default")),          # no confirming keyword
-    (("Outpatient (Home Visit)", 0.61), "caregiver present", ("home", "model")),
-    (("Outpatient (Home Visit)", 0.61), "seen today", ("outpatient_f2f", "family_default")),
-    (("Inpatient", 0.72), "", ("inpatient", "model")),                                # Inpatient needs no keyword
-    (("Inpatient", 0.65), "", ("outpatient_f2f", "family_default")),                  # Inpatient needs 0.7
-    (("Outpatient (Evisit)", 0.35), "video", ("outpatient_tele", "model")),          # keyword rules, model agrees
-    (("Outpatient (Evisit)", 0.25), "video", ("outpatient_f2f", "family_default")),   # model below 0.3
+    (("Outpatient (Evisit)", 0.85), "", ("outpatient_tele", "model")),               # alone at >= 0.5
+    (("Outpatient (Evisit)", 0.35), "seen on video", ("outpatient_tele", "model")),  # a keyword lowers the bar to 0.3
+    (("Outpatient (Evisit)", 0.35), "", ("outpatient_f2f", "family_default")),       # 0.35 alone is not enough
+    (("Outpatient (Evisit)", 0.25), "video", ("outpatient_f2f", "family_default")),  # below 0.3 even with one
+    (("Outpatient (Home Visit)", 0.61), "", ("home", "model")),
+    (("Outpatient (Home Visit)", 0.4), "caregiver present", ("home", "model")),
+    (("Inpatient", 0.55), "", ("inpatient", "model")),                                # Inpatient alone at 0.5 now
+    (("Inpatient", 0.35), "patient admitted to the floor", ("inpatient", "model")),   # its keywords lower the bar
+    (("Inpatient", 0.35), "", ("outpatient_f2f", "family_default")),
     # The model's top answer is F2F, but it gives Evisit 0.3 and the page says video: Evisit.
     (("Outpatient (F2F)", 0.6, {"Outpatient (F2F)": 0.6, "Outpatient (Evisit)": 0.3}), "video",
      ("outpatient_tele", "model")),
-    (("Outpatient (F2F)", 0.6, {"Outpatient (F2F)": 0.6, "Outpatient (Evisit)": 0.3}), "",
-     ("outpatient_f2f", "family_default")),                                           # no keyword: no vote
     (("Outpatient (F2F)", 0.99), "", ("outpatient_f2f", "family_default")),           # F2F stays with the rules
     (("Not Available", 0.99), "", ("outpatient_f2f", "family_default")),
+    (("No evidence on page", 0.9), "video", ("outpatient_f2f", "family_default")),   # never votes
     (None, "video", ("outpatient_f2f", "family_default")),                            # no model
 ])
 def test_the_model_votes_only_where_the_rules_found_nothing(canon, answer, text, expected):
-    """Evisit and Home Visit: a confirming keyword rules, the model gives the setting >= 0.3 (2026-10-25, user)."""
+    """A setting's probability at 0.5, or at 0.3 with one of its keywords: the keyword lowers
+    the bar and never blocks (2026-10-25, user)."""
     log: list = []
     classify_pages(_doc(_model_page(1, "Progress Note", answer, text)), entries=canon, visit_log=log)
     assert (log[0]["votes"][0]["setting"], log[0]["votes"][0]["by"]) == expected

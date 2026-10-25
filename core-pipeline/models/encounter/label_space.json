@@ -5,18 +5,20 @@
     "Outpatient (F2F)",
     "Outpatient (Evisit)",
     "Outpatient (Home Visit)",
-    "Not Available"
+    "Not Available",
+    "No evidence on page"
   ],
   "base_model": "distilbert-base-uncased",
   "max_length": 512,
   "head_fraction": 0.85,
   "dropout": 0.1,
   "inherited_weight": 0.5,
+  "target": "page",
   "train_pages": {
-    "Not Available": 783,
-    "Outpatient (F2F)": 842,
-    "Outpatient (Evisit)": 50,
-    "Inpatient": 143,
-    "Outpatient (Home Visit)": 32
+    "Outpatient (F2F)": 256,
+    "Not Available": 791,
+    "Inpatient": 60,
+    "Outpatient (Evisit)": 64,
+    "Outpatient (Home Visit)": 53
   }
 }

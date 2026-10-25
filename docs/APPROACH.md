@@ -443,8 +443,8 @@ Five values: **Inpatient**, **Outpatient (F2F)**, **Outpatient (Evisit)**, **Out
           rules: tier 1 page type, tier 2 phrases, negatives ──found──▶ that setting (by tier1 / tier2)
             │nothing
             ▼
-          Evisit / Home Visit: a confirming keyword on the page AND the model giving it ≥ 0.30?
-          Inpatient: the model ≥ 0.70? ──yes──▶ that setting (by model)
+          Evisit / Home Visit / Inpatient: the model gives it ≥ 0.50, or ≥ 0.30 with one of
+          its keywords on the page? ──yes──▶ that setting (by model)
             │no (or F2F, or Not Available, or no model)
             ▼
           family default: Progress Note → F2F, Discharge Summary → Inpatient ──▶ (by family_default)
@@ -464,33 +464,26 @@ Five values: **Inpatient**, **Outpatient (F2F)**, **Outpatient (Evisit)**, **Out
   for a page with **no tier 1 / tier 2 evidence** of its own, and its answer counts only
   for the classes and confidences in `encounter_canon.json` → `model_vote`:
 
-  **Evisit and Home Visit: the keyword rules, the model confirms [built 2026-10-25,
-  user].** The model leans against these two classes (few training pages), so it is not
-  asked to be confident about them. A vote needs a **confirming keyword** on the page
-  (`model_vote.confirm`) **and** the model giving that setting **≥ 0.30** probability
-  (`confirm_min`), whether or not it is the model's top answer:
+  **The vote, with the retrained model (2026-10-25, user: keywords must not block).** For
+  Evisit, Home Visit and Inpatient the model votes when it gives the setting **≥ 0.50**
+  (its top answer or not), or **≥ 0.30 with one of the setting's keywords on the page**
+  (`model_vote.confirm`): a keyword lowers the bar; it never blocks. F2F and Not Available
+  stay with the rules; "No evidence on page" never votes.
 
-  | Setting | Confirming keywords (whole words) |
+  | Setting | Keywords that lower the bar to 0.30 (whole words) |
   |---|---|
   | Outpatient (Tele) / Evisit | video, camera, telephone, phone call, audio, virtual, remote, portal, MyChart, Zoom, Doxy, POS 02, POS 10, place of service 02 / 10, modifier 95, patient located, provider located, consent for telehealth, two-way, audiovisual |
   | Home | home, residence, homebound, caregiver, assisted living, apartment, POS 12, place of service 12, in the home, house call, family member present, home health, domiciliary, private residence |
+  | Inpatient | admitted, admission, inpatient, hospital day, hospitalist, room, bed, observation, ICU, intensive care, nursing unit, ward, rounds, telemetry, length of stay, hospital course, discharge planning |
 
-  Without a confirming keyword the model's Evisit or Home Visit never votes. The words are
-  cues too common to decide alone (a phone number, "discharged home"), which is why the
-  model must back them; the full statements ("telehealth visit", "home visit", tier 2)
-  decide without the model.
-
-  | Model says | Votes | Needs |
-  |---|---|---|
-  | Outpatient (Evisit) | Outpatient (Tele) | a confirming keyword + Evisit ≥ 0.30 |
-  | Outpatient (Home Visit) | Home | a confirming keyword + Home Visit ≥ 0.30 |
-  | Inpatient | Inpatient | ≥ 0.70 (81% right on held-out pages, 16 pages) |
-  | Outpatient (F2F) | not used | the family default does as well |
-  | Not Available | not used | the family rule decides it |
-
-  With the installed (first-run) model, the rules and this vote get **14 of 21** scored
-  encounter test pages right (Not Available 4/4, F2F 4/5, Evisit 3/4, Inpatient 2/5, Home
-  Visit 1/3): the baseline for the retrained model.
+  Measured on the retrained model's held-out pages (validation + test, pages with a
+  setting): Evisit 7 of 7 right at ≥ 0.30, 4 of them pages the rules miss (a keyword
+  requirement had blocked 3 of those 4); Home Visit 2 of 2; Inpatient 28 of 37 right at
+  ≥ 0.50 (21 right beyond the rules) and 32 of 43 with a keyword at ≥ 0.30. On the 22
+  encounter test pages the rules with this vote get **17 of 21** (Inpatient 4/5, Not
+  Available 4/4, Evisit 3/4, F2F 4/5, Home Visit 2/3), against 14 with the first model;
+  the model alone gets 16 (it finds all 3 Home Visit pages; the rules let a page phrase
+  outrank it on one).
 
   The samples are small; measure again on new charts before lowering a threshold. Each
   vote records `by: model` and the model's class and confidence in the encounter log
@@ -539,15 +532,16 @@ Every page of the range carries the encounter's Final value; its Extracted value
 
 ### 5.4 How good is it today
 
-The rules engine against the 2,750 tagged training pages (section 8.1): 0.81 of pages
-right, but **Evisit recall 0.07 and Home Visit 0.04**: the Progress Note default (F2F)
-wins whenever the page does not say the modality in the engine's words. The encounter
-model (Colab, 2026-10-25, best epoch 4) on its held-out charts: page accuracy 0.60,
-macro F1 0.51; recall Inpatient 0.56, F2F 0.45, Evisit 0.43, Home Visit 0.18, Not
-Available 0.85; visits 0.66 (35 visits). Alone it is weaker than the rules, but where it
-is sure of Evisit, Home Visit or Inpatient it is mostly right, and those are exactly the
-rules' blind spots: hence the vote in 5.1 rather than replacing the rules. The client
-default (5.2 step 4) is still to build.
+The rules engine against the tagged training pages (section 8.1): 0.81 of pages right,
+but **Evisit recall 0.07 and Home Visit 0.04**: the Progress Note default (F2F) wins
+whenever the page does not say the modality in the engine's words. The **retrained
+encounter model** (Colab, 2026-10-25; page target, No-evidence pages left out, Evisit /
+Home Visit balanced with oversampling and 80 synthetic pages; best epoch 9) on its
+held-out test pages: page accuracy **0.76**, macro F1 0.64; Evisit precision 1.00
+(recall 3/5), Home Visit precision 1.00 (1/3), Inpatient precision 0.77 (recall 0.40),
+F2F 0.47 / 0.57, Not Available recall 0.94; visits 0.71 (51 visits). The first model (visit
+target): page accuracy 0.60. The vote in 5.1 uses it where the rules have no evidence.
+The client default (5.2 step 4) is still to build.
 
 ---
 
