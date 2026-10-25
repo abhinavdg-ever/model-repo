@@ -89,6 +89,20 @@ def _merges(table: dict[str, Any]) -> dict[str, Any]:
     return clean(table)
 
 
+def codeability_table(space: dict[str, Any]) -> dict[str, str]:
+    """Every "L1 > L2" and "L1 > L2 > L3" with its codeability tag (codeable,
+    non_codeable, discharge, needs_review) from the trainer's taxonomy file. The Final
+    codability is the tag of the Final path (arbitration.decide_final)."""
+    out: dict[str, str] = {}
+    for l1, items in space["L2"].items():
+        for x in items:
+            out[f"{l1} > {x['name']}"] = x["codeability"]
+    for parent, items in space["L3"].items():
+        for x in items:
+            out[f"{parent} > {x['name']}"] = x["codeability"]
+    return out
+
+
 def build_taxonomy(rules: dict[str, Any], space: dict[str, Any], names: dict[str, Any]) -> dict[str, Any]:
     """``page_taxonomy.json`` from the training files: the label space (``space``,
     the trainer's taxonomy file), the rules taxonomy's tables and the name map."""
@@ -101,7 +115,8 @@ def build_taxonomy(rules: dict[str, Any], space: dict[str, Any], names: dict[str
             "come from the rules taxonomy, name_map from the training name map. Copied by "
             "`python -m stages.lib.page_classify.canon_convert --refresh-taxonomy`; legacy_L1, legacy_L3 and "
             "placements are that script's hand tables. canon_convert reads the tables to put page_canon.json in "
-            "these names; the pipeline reads label_space (page_classify/taxonomy.py)."
+            "these names; the pipeline reads label_space (page_classify/taxonomy.py) and codeability (the tag of each "
+            "L1 > L2 and L1 > L2 > L3, which the Final codability reads)."
         ),
         "label_space": {
             "L1": [x["name"] for x in space["L1"]],
@@ -109,6 +124,7 @@ def build_taxonomy(rules: dict[str, Any], space: dict[str, Any], names: dict[str
             "L3": {parent: [x["name"] for x in items] for parent, items in space["L3"].items()},
             "specialty": [x["name"] for x in space["specialty"]],
         },
+        "codeability": codeability_table(space),
         "legacy_L1": LEGACY_L1,
         "legacy_L3": LEGACY_L3,
         "placements": PLACEMENTS,

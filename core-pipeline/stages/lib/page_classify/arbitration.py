@@ -24,11 +24,14 @@ pages; each page keeps its own names below it.
   under that L1 (``under_l1``), else its own name when that L1 has it, else
   Others. An Others page is placed the same way. Never L1 / L1.
 
-  Codability comes from the canon (the page's own category). A page that takes
-  the agreed family, or whose own canon rule is ``context``, takes the
-  document's codability — its first page of that family — except that inside
-  a Progress Note a page carrying an ``inside_progress_note.non_codeable_names``
-  name (Lab Result, Medication Record…) stays Non-Codable.
+  Codability comes from the **Final** page type, never from the page's own
+  (Extracted) answer (2026-10-25, user): the codeability tag of the Final path in
+  ``page_taxonomy.json`` → ``codeability`` (its deepest level's; an L1 alone reads its
+  Others L2). A path tagged needs_review takes the document's codability (its first
+  page's Final tag) when that is decided, else stays Non-Codable flagged for review.
+  One exception, kept from 2026-10-24: a page re-placed into a Progress Note that
+  carries an ``inside_progress_note.non_codeable_names`` name (Lab Result, Medication
+  Record…) stays Non-Codable. A page with no Final L1 (Others, Unknown) keeps its own.
 
   A page in no document (or a one-page document) keeps its own answer, except
   embedded_same_page: a page of an ``embedded_families`` L1 (Lab Report)
@@ -36,6 +39,7 @@ pages; each page keeps its own names below it.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
 
@@ -138,11 +142,42 @@ def _inside_note_non_codable(page: FinalPage) -> bool:
     return any(name in listed for name in (page.names or (page.page_subtype, page.page_type)))
 
 
-def _codability_in(agreed: str, page: FinalPage, document_codability: Optional[str]) -> Optional[str]:
-    """A page bound into a document of the ``agreed`` family."""
-    if agreed == _section_l1() and _inside_note_non_codable(page):
-        return CODABILITY_OF["non_codeable"]
-    return document_codability
+_CATEGORY_OF_TAG = {"codeable": "codeable", "non_codeable": "non_codeable", "discharge": "discharge_summary"}
+
+
+def path_of(page_type: Optional[str], page_subtype: Optional[str]) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """(L1, L2, L3) from ``page_type`` / ``page_subtype`` as written: "L1 (L2)" / L3 or
+    L1 / L2."""
+    if not _known(page_type):
+        return None, None, None
+    found = re.fullmatch(r"(.+?) \((.+)\)", page_type or "")
+    if found:
+        return found.group(1), found.group(2), page_subtype or None
+    return page_type, page_subtype or None, None
+
+
+def final_tag(page_type: Optional[str], page_subtype: Optional[str]) -> Optional[str]:
+    """The codeability tag of a Final page type; None when it has no L1."""
+    return tax.codeability_of(*path_of(page_type, page_subtype))
+
+
+def _final_codability(page: FinalPage, page_type: Optional[str], page_subtype: Optional[str],
+                      document_tag: Optional[str] = None) -> tuple[Optional[str], bool]:
+    """(codability label, needs review) of a page whose Final type is ``page_type`` /
+    ``page_subtype``: the Final path's tag; needs_review takes ``document_tag`` when that
+    is decided. A page re-placed into a Progress Note that carries a non_codeable_names
+    name stays Non-Codable. No Final L1: the page's own category."""
+    l1 = path_of(page_type, page_subtype)[0]
+    if l1 == _section_l1() and _family(page) != l1 and _inside_note_non_codable(page):
+        return CODABILITY_OF["non_codeable"], False
+    tag = final_tag(page_type, page_subtype)
+    if tag is None:
+        return CODABILITY_OF.get(page.category or ""), False
+    if tag == "needs_review" and document_tag in _CATEGORY_OF_TAG:
+        tag = document_tag
+    if tag == "needs_review":
+        return CODABILITY_OF["non_codeable"], True
+    return CODABILITY_OF[_CATEGORY_OF_TAG[tag]], False
 
 
 def _names_under(agreed: str, page: FinalPage) -> tuple[str, str]:
@@ -171,17 +206,19 @@ def _names_under(agreed: str, page: FinalPage) -> tuple[str, str]:
     return agreed, next((name for name in own if name and name in permitted), OTHERS)
 
 
-def _keep(page: FinalPage, rule: str, review: bool, codability: Optional[str] = None) -> FinalResult:
+def _keep(page: FinalPage, rule: str, review: bool, document_tag: Optional[str] = None) -> FinalResult:
     # An L1 is never its own sub-type (rows written before page_names said Others).
     repeated = _known(page.page_type) and page.page_subtype == page.page_type
+    subtype = OTHERS if repeated else page.page_subtype
+    codability, unsure = _final_codability(page, page.page_type, subtype, document_tag)
     return FinalResult(
         page_type=page.page_type,
-        page_subtype=OTHERS if repeated else page.page_subtype,
+        page_subtype=subtype,
         model_type=page.model_type,
-        codability=codability or CODABILITY_OF.get(page.category or ""),
+        codability=codability,
         source="page",
         continuation_rule=rule,
-        needs_review=review,
+        needs_review=review or unsure,
     )
 
 
@@ -224,30 +261,31 @@ def decide_final(
         if agreed is None:
             return _keep(page, "agreed", False)
         opener = next((p for p in document if _family(p) == agreed), document[0])
-        document_codability = CODABILITY_OF.get(opener.category or "")
+        document_tag = final_tag(opener.page_type, opener.page_subtype)
         if _family(page) == agreed:
-            context = page.codeability_rule == "context" and page is not opener
-            return _keep(page, "agreed", False,
-                         _codability_in(agreed, page, document_codability) if context else None)
+            return _keep(page, "agreed", False, document_tag if page is not opener else None)
         page_type, page_subtype = _names_under(agreed, page)
+        codability, unsure = _final_codability(page, page_type, page_subtype, document_tag)
         return FinalResult(
             page_type=page_type,
             page_subtype=page_subtype,
             model_type=page.model_type,
-            codability=_codability_in(agreed, page, document_codability),
+            codability=codability,
             source="continuation",
             continuation_rule=f"agreed_{basis}",
-            needs_review=basis == "vote" or page.link_strength == "weak",
+            needs_review=basis == "vote" or page.link_strength == "weak" or unsure,
         )
     section = _section_l1()
     if _family(page) in set(_note_rules().get("embedded_families") or ()) and page.title_l1 == section:
+        page_subtype = _names_under(section, page)[1]
+        codability, unsure = _final_codability(page, section, page_subtype)
         return FinalResult(
             page_type=section,
-            page_subtype=_names_under(section, page)[1],
+            page_subtype=page_subtype,
             model_type=page.model_type,
-            codability=_codability_in(section, page, CODABILITY_OF["codeable"]),
+            codability=codability,
             source="embedded",
             continuation_rule="embedded_same_page",
-            needs_review=False,
+            needs_review=unsure,
         )
     return _keep(page, "no_change", False)

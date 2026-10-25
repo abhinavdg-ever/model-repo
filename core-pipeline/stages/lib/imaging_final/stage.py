@@ -258,7 +258,10 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 ),
                 "page_type_source": verdict.source if verdict.page_type or verdict.page_subtype else None,
                 "continuation_rule": verdict.continuation_rule,
-                "needs_review": bool(verdict.needs_review or kind.get("needs_review")),
+                # Codability is the Final type's (verdict); the Extracted row's flag counts
+                # only for a page type nobody was sure of, not for its own codability.
+                "needs_review": bool(verdict.needs_review or (
+                    kind.get("needs_review") and axes.decided_by_of(kind) in (None, axes.BY_OTHERS))),
                 "dos_from": dates["dos_from"],
                 "dos_to": dates["dos_to"],
                 "dos_source": dos_origin if dates["dos_from"] else None,

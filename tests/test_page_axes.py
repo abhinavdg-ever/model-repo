@@ -540,6 +540,17 @@ class TestStaging:
 # --- the converted canon ------------------------------------------------------------
 
 
+class TestCodeabilityTable:
+    def test_the_pipeline_tags_are_the_training_taxonomys(self):
+        import json
+
+        from stages.lib.page_classify.canon_convert import codeability_table
+
+        space = json.loads((REPO / "training" / "taxonomy" / "taxonomy.json").read_text(encoding="utf-8"))
+        pipeline = json.loads((CORE / "stages" / "lib" / "keyword-canon" / "page_taxonomy.json").read_text(encoding="utf-8"))
+        assert pipeline["codeability"] == codeability_table(space)
+
+
 class TestSpecialtyLexicon:
     def test_the_pipeline_copy_is_the_training_lexicon(self):
         import json

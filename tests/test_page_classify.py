@@ -9,6 +9,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[1]
 CORE = REPO / "core-pipeline"
 if str(CORE) not in sys.path:
@@ -173,12 +175,36 @@ class TestAgreedPageType:
         final = decide_final(doc[1], doc)
         assert (final.page_type, final.page_subtype) == ("Medication Record", "Prescription Page")
 
-    def test_a_context_page_takes_its_documents_codability(self):
-        doc = [fp(1, "Problem List", seq=1, category="codeable"),
-               fp(2, "Problem List", "Others", category="non_codeable", rule="context", seq=2, link="strong")]
-        assert decide_final(doc[1], doc).codability == "Codable"
-        alone = fp(5, "Problem List", "Others", category="non_codeable", rule="context")
-        assert decide_final(alone, None).codability == "Non-Codable"
+    def test_codability_is_the_final_types_not_the_pages_own(self):
+        # The page's own (Extracted) category says Non-Codable; its Final type,
+        # Operative Note > Surgery Report, is codeable.
+        doc = [fp(1, "Operative Note", "Surgery Report", seq=1, category="non_codeable"),
+               fp(2, "Procedure Note", "Others", family="Procedure Note", seq=2, link="strong",
+                  category="non_codeable")]
+        finals = [decide_final(p, doc) for p in doc]
+        assert [f.codability for f in finals] == ["Codable", "Codable"]  # Intra-operative Record: the document's
+
+    def test_a_needs_review_path_takes_its_documents_codability(self):
+        doc = [fp(1, "Operative Note", "Surgery Report", seq=1),
+               fp(2, "Operative Note", "Post-operative", seq=2, link="strong", category="non_codeable")]
+        final = decide_final(doc[1], doc)
+        assert (final.codability, final.needs_review) == ("Codable", False)
+        alone = decide_final(fp(5, "Operative Note", "Post-operative", category="codeable"), None)
+        assert (alone.codability, alone.needs_review) == ("Non-Codable", True)
+
+    @pytest.mark.parametrize("page_type, page_subtype, codability", [
+        (f"{LAB} (Pathology Report)", "Biopsy Report", "Non-Codable"),  # the L3 decides
+        (LAB, "Pathology Report", "Codable"),                          # no L3: the L2's tag
+        ("Discharge Summary", "Others", "Discharge"),
+        ("Demographics", "Patient Information", "Codable"),
+        ("Administrative", "Others", "Non-Codable"),
+    ])
+    def test_a_page_alone_reads_its_types_tag(self, page_type, page_subtype, codability):
+        page = fp(1, page_type, page_subtype, family=page_type.split(" (")[0], category="needs_review")
+        assert decide_final(page, None).codability == codability
+
+    def test_a_page_with_no_final_l1_keeps_its_own(self):
+        assert decide_final(fp(1, "Others", "Others", category="non_codeable"), None).codability == "Non-Codable"
 
     def test_the_first_pages_family_wins_even_outvoted(self):
         doc = [fp(1, "Problem List", seq=1, conf=0.40),

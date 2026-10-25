@@ -226,8 +226,9 @@ Final: **only the first page of the encounter (the continuity document) decides*
 every page of it takes that specialty, so it never changes midway. A first page with
 none gives General, whatever the later pages say.
 
-**Codeability.** From the canon entry behind the decided path; a `context` rule leaves
-`needs_review` for the Final step to settle from the document.
+**Codeability (Extracted).** From the canon entry behind the decided path; a `context`
+rule leaves `needs_review`. This is the page's own view only: the codability the client
+gets is the **Final** one (3.2, step 6), read from the Final page type.
 
 **Progress Note L2.** Section tagging (`sections.json`, appendix G) names the content
 sections on the page; the dominant one is the L2.
@@ -275,8 +276,19 @@ Administrative > Superbill by title only (invoices carry codes too); Discharge S
 History and Physical / Consultation Note for an H&P or consult page with hospital-stay
 evidence on the page (admission date, room / bed, admitting physician, observation or
 inpatient status).
-6. **Specialty** from the document's first page (General when it has none); **codeability** context
-   rules settled from the document.
+6. **Specialty** from the document's first page (General when it has none).
+7. **Codability from the Final page type [built 2026-10-25]**, never from the page's
+   own (Extracted) score: the codeability tag of the Final path in the taxonomy
+   (`page_taxonomy.json` → `codeability`, copied from the training taxonomy; appendix
+   A lists every tag). The deepest level decides: Lab Report (Pathology Report) /
+   Biopsy Report is Non-Codable (the L3's tag) although Pathology Report alone is
+   Codable; an L1 alone reads its Others L2. A path tagged needs_review (Operative Note >
+   Post-operative, Progress Note > Vitals, ...) takes the document's codability, the
+   Final tag of its first page, when that is decided; otherwise it is Non-Codable and
+   flagged for review. One exception, kept from 2026-10-24: a page re-placed into a
+   Progress Note that is itself a Lab Result or Medication Record / List stays
+   Non-Codable, although Progress Note > Lab and Imaging Results is tagged Codable
+   **[decide: keep this exception?]**. A page with no Final L1 (Others) keeps its own.
 
 Extracted is never overwritten: a reviewer and the accuracy report see both.
 
@@ -648,6 +660,8 @@ pass, no Lab Report page comes back as a Progress Note.
 * A page only the Others step decided reads "Others / Others": acceptable?
 * More Final placements inside a Progress Note (3.2).
 * More `title_paths` rows: which page types should a title pin, at which level?
+* Inside a Progress Note, a lab or medication page stays Non-Codable although its Final
+  type (Progress Note > Lab and Imaging Results) is tagged Codable: keep the exception?
 * Should `staging/page_classification.json` become what later stages read first?
 
 * Payer record-retrieval fax covers and EHR import covers as junk by rule.
