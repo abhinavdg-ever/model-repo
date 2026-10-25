@@ -167,7 +167,8 @@ def final_confidences(
     another L1; specialty from the encounter's first page; DOS from the document's dated
     page (none for a default date: a business rule, nothing to doubt); encounter type
     from the encounter's first page; member, provider, blank/junk and handwriting from
-    the page itself. Values with no confidence are left out."""
+    the page itself (blank/junk: every page's verdict, Main too). Values with no
+    confidence are left out."""
     out: dict[str, Optional[float]] = {}
     if page_type:
         kind = classification.get(decider) or {}
@@ -186,8 +187,8 @@ def final_confidences(
     out["encounter_type"] = _number((encounters.get(encounter_page) or {}).get("confidence"))
     out["member"] = _number((members.get(page_id) or {}).get("confidence"))
     out["provider"] = provider_confidence
-    if (blank_junk.get(page_id) or {}).get("blank_junk_flag") in ("blank", "junk", "duplicate"):
-        out["blank_junk"] = _number((blank_junk.get(page_id) or {}).get("confidence"))
+    # Every page's verdict, Main included: a page kept Main on a weak verdict is flagged too.
+    out["blank_junk"] = _number((blank_junk.get(page_id) or {}).get("confidence"))
     out["handwriting"] = _number((quality.get(page_id) or {}).get("hw_confidence"))
     return {k: round(v, 4) for k, v in out.items() if v is not None}
 

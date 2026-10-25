@@ -1047,7 +1047,7 @@ just under 50% — every such value is flagged, and a lower probability reads lo
 | Final (`imaging_final`) | page type, codability | the deciding page's page-type confidence (the document's first page; the page's own when it kept its type) | — | another page of the document sure (≥ 80%) of another L1: × conflict |
 | | specialty, encounter type | the encounter's first page's | — | — |
 | | DOS | the document's dated page's | — | a stand-alone non-visit document's default date: none (a business rule) |
-| | member, provider, blank/junk, handwriting | the page's own | — | — |
+| | member, provider, blank/junk (every page, Main too), handwriting | the page's own | — | — |
 
 `imaging_final.confidences` holds each Final value's confidence and `review_fields`
 the ones below 50%. `needs_review` is set when any is, as well as for a page type nobody
@@ -1080,8 +1080,9 @@ Duplicates:
   verdict; review-ui's Duplicate row reads it (50% at 95% similarity).
 * A duplicate's **page type** is its original's, and so is that page type's confidence.
 
-In `imaging_final.confidences`, `blank_junk` is stored for pages that came out Blank,
-Junk or Duplicate. review-ui's Blank/Junk row shows the blank/junk confidence, not the
+In `imaging_final.confidences`, `blank_junk` is stored for every page, Main included:
+a page kept Main on a weak verdict (kept as handwritten at p(keep) 0.4) lands in
+`review_fields` like any other value under 50%. review-ui's Blank/Junk row shows the blank/junk confidence, not the
 page type's.
 
 ### 10.4 Worked examples
@@ -1106,9 +1107,6 @@ page type's.
 * The penalties are first settings (user, 2026-10-25). Re-weigh them with the
   calibration: if passable values are right 95% of the time, the penalties are too
   harsh.
-* A page that came out **Main** with a weak verdict (kept as handwritten at p(keep)
-  0.4) is not yet listed in `imaging_final.review_fields`: its number is in
-  `blank_junk_classification` only.
 * Orientation, tilt and mirroring still store no confidence (Tesseract's OSD value is
   open-ended and is not kept).
 

@@ -72,9 +72,10 @@ def test_final_values_take_the_deciding_pages_confidence_and_flag_the_low_ones()
         2, page_type="Progress Note", decider=1, type_pages=[1, 2], specialty_page=1, dos_page=1,
         encounter_page=1, classification=classification, dos={1: {"confidence": 0.91}},
         encounters={1: {"confidence": 0.68}}, members={2: {"confidence": 0.84}}, provider_confidence=None,
-        blank_junk={}, quality={2: {"hw_confidence": 0.97}},
+        blank_junk={2: {"blank_junk_flag": "not_blank_junk", "confidence": 0.42}}, quality={2: {"hw_confidence": 0.97}},
     )
     # Page 2 is sure it is a Lab Report: the document's Progress Note reads 0.9 x conflict.
     assert out == {"page_type": 0.72, "codability": 0.72, "specialty": 0.4, "dos": 0.91,
-                   "encounter_type": 0.68, "member": 0.84, "handwriting": 0.97}
-    assert review_fields(out) == ["specialty"]
+                   "encounter_type": 0.68, "member": 0.84, "blank_junk": 0.42, "handwriting": 0.97}
+    # A page kept Main on a weak verdict is flagged too.
+    assert review_fields(out) == ["blank_junk", "specialty"]
