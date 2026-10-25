@@ -704,36 +704,6 @@ CREATE TRIGGER trg_page_classification_updated_at
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 
--- The encounter grouping (encounter_type stage, 2026-10-25): one row per encounter, its
--- pages, page family, DOS and the one decision its pages carry, as staged in
--- <chart>/staging/continuity.json "encounters". review-ui's Doc Summary reads it.
-CREATE TABLE encounter_results (
-    id                BIGSERIAL PRIMARY KEY,
-    chart_id          BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
-    seq               INT NOT NULL,
-    document_seq      INT,
-    page_family       VARCHAR(100),
-    pages             JSONB NOT NULL DEFAULT '[]'::jsonb,
-    dos_from          VARCHAR(20),
-    dos_to            VARCHAR(20),
-    encounter_type    VARCHAR(30),
-    encounter_label   VARCHAR(60),
-    confidence        NUMERIC(5,4),
-    decided_by        VARCHAR(40),
-    reason            TEXT,
-    matched_keyword   VARCHAR(200),
-    conflict          BOOLEAN NOT NULL DEFAULT FALSE,
-    contenders        JSONB NOT NULL DEFAULT '[]'::jsonb,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (chart_id, seq)
-);
-CREATE INDEX idx_encounter_results_chart_id ON encounter_results(chart_id);
-
-CREATE TRIGGER trg_encounter_results_updated_at
-    BEFORE UPDATE ON encounter_results
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
 -- Encounter type: one label for all pages that share a page-level DOS.
 CREATE TABLE encounter_type_results (
     id                BIGSERIAL PRIMARY KEY,
@@ -749,6 +719,14 @@ CREATE TABLE encounter_type_results (
                       )),
     confidence        NUMERIC(5,4),
     matched_keyword   VARCHAR(200),
+    -- The encounter the page belongs to and how its setting was decided (2026-10-25):
+    -- every page of an encounter carries the same values, so review-ui's Doc Summary
+    -- groups the pages by encounter_seq (the encounter log in staging/continuity.json).
+    encounter_seq     INT,
+    decided_by        VARCHAR(40),
+    reason            TEXT,
+    conflict          BOOLEAN NOT NULL DEFAULT FALSE,
+    contenders        JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (page_id)

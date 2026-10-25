@@ -671,7 +671,7 @@ def classify_pages(
     canon = entries if entries is not None else load_canon()
     rows: list[dict[str, Any]] = []
 
-    for visit in group_visits(list(pages)):
+    for encounter_seq, visit in enumerate(group_visits(list(pages)), start=1):
         first = visit[0]
         family = encounter_family(visit)
         votes = [page_vote(page, canon) for page in visit]
@@ -714,13 +714,15 @@ def classify_pages(
                     "decided_by": decision.decided_by,
                     "reason": decision.reason,
                     "conflict": decision.conflict,
+                    "encounter_seq": encounter_seq,
+                    "contenders": list(decision.contenders),
                 }
             )
 
         if visit_log is not None:
             visit_log.append(
                 {
-                    "seq": len(visit_log) + 1,
+                    "seq": encounter_seq,
                     "document": first.get("document"),
                     "page_family": family,
                     "first_page": first.get("page_name"),

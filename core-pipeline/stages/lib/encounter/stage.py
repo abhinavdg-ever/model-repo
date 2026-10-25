@@ -37,7 +37,6 @@ from db import (
     get_page_classification_map,
     get_ocr_texts,
     get_quality_map,
-    replace_encounter_results,
     upsert_encounter,
 )
 from db.paths import imaging_csv, write_csv
@@ -240,6 +239,11 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         encounter_type=et,
                         confidence=float(row["confidence"]),
                         matched_keyword=row["matched_keyword"] or None,
+                        encounter_seq=row.get("encounter_seq"),
+                        decided_by=row.get("decided_by"),
+                        reason=row.get("reason"),
+                        conflict=bool(row.get("conflict")),
+                        contenders=row.get("contenders") or (),
                     )
                 else:
                     unresolved.append(page_id)
@@ -264,8 +268,6 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                     }
                 )
             delete_encounter(conn, chart_id, unresolved)
-            # The grouping itself, for review-ui's Production Mode (as staged below).
-            replace_encounter_results(conn, chart_id, visit_log)
 
         path = write_csv(
             imaging_csv(ctx.chart_name, "encounter"), ENCOUNTER_COLS, csv_rows

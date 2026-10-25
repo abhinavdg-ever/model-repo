@@ -1261,16 +1261,33 @@ def upsert_encounter(
     encounter_type: str,
     confidence: Optional[float] = None,
     matched_keyword: Optional[str] = None,
+    encounter_seq: Optional[int] = None,
+    decided_by: Optional[str] = None,
+    reason: Optional[str] = None,
+    conflict: bool = False,
+    contenders: Sequence[str] = (),
 ) -> None:
+    """One page's encounter type, with the encounter it belongs to and how that
+    encounter's setting was decided (the same on every page of the encounter)."""
+    global _encounter_columns_ready
+    if not _encounter_columns_ready:
+        conn.execute(_ADD_ENCOUNTER_COLUMNS)
+        _encounter_columns_ready = True
     conn.execute(
         """
         INSERT INTO encounter_type_results (
-            chart_id, page_id, encounter_type, confidence, matched_keyword
-        ) VALUES (%s, %s, %s, %s, %s)
+            chart_id, page_id, encounter_type, confidence, matched_keyword,
+            encounter_seq, decided_by, reason, conflict, contenders
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
         ON CONFLICT (page_id) DO UPDATE SET
             encounter_type  = EXCLUDED.encounter_type,
             confidence      = EXCLUDED.confidence,
             matched_keyword = EXCLUDED.matched_keyword,
+            encounter_seq   = EXCLUDED.encounter_seq,
+            decided_by      = EXCLUDED.decided_by,
+            reason          = EXCLUDED.reason,
+            conflict        = EXCLUDED.conflict,
+            contenders      = EXCLUDED.contenders,
             updated_at      = now()
         """,
         (
@@ -1279,8 +1296,26 @@ def upsert_encounter(
             encounter_type,
             confidence,
             (matched_keyword or "")[:200] or None,
+            encounter_seq,
+            (decided_by or "")[:40] or None,
+            reason or None,
+            bool(conflict),
+            json.dumps(list(contenders or [])),
         ),
     )
+
+
+# The encounter columns (schema/changes_2026-10-25.sql), added on first write so a database
+# that has not run the file still gets them.
+_ADD_ENCOUNTER_COLUMNS = (
+    "ALTER TABLE encounter_type_results "
+    "ADD COLUMN IF NOT EXISTS encounter_seq INT, "
+    "ADD COLUMN IF NOT EXISTS decided_by VARCHAR(40), "
+    "ADD COLUMN IF NOT EXISTS reason TEXT, "
+    "ADD COLUMN IF NOT EXISTS conflict BOOLEAN NOT NULL DEFAULT FALSE, "
+    "ADD COLUMN IF NOT EXISTS contenders JSONB NOT NULL DEFAULT '[]'::jsonb"
+)
+_encounter_columns_ready = False
 
 
 @_dispatch
@@ -1648,73 +1683,6 @@ def upsert_continuity(conn: Any, *, chart_id: int, page_id: int, row: dict[str, 
 
 
 _continuity_label_ready = False
-
-# The encounter grouping table (schema/changes_2026-10-25.sql), created on first write so
-# a database that has not run the file still gets it.
-_CREATE_ENCOUNTER_RESULTS = """
-CREATE TABLE IF NOT EXISTS encounter_results (
-    id                BIGSERIAL PRIMARY KEY,
-    chart_id          BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
-    seq               INT NOT NULL,
-    document_seq      INT,
-    page_family       VARCHAR(100),
-    pages             JSONB NOT NULL DEFAULT '[]'::jsonb,
-    dos_from          VARCHAR(20),
-    dos_to            VARCHAR(20),
-    encounter_type    VARCHAR(30),
-    encounter_label   VARCHAR(60),
-    confidence        NUMERIC(5,4),
-    decided_by        VARCHAR(40),
-    reason            TEXT,
-    matched_keyword   VARCHAR(200),
-    conflict          BOOLEAN NOT NULL DEFAULT FALSE,
-    contenders        JSONB NOT NULL DEFAULT '[]'::jsonb,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (chart_id, seq)
-);
-CREATE INDEX IF NOT EXISTS idx_encounter_results_chart_id ON encounter_results(chart_id);
-"""
-_encounter_results_ready = False
-
-
-@_dispatch
-def replace_encounter_results(conn: Any, chart_id: int, encounters: Sequence[dict[str, Any]]) -> None:
-    """The chart's encounter grouping (encounter_type stage): its rows replaced by
-    ``encounters``, one per encounter, as staged in continuity.json."""
-    global _encounter_results_ready
-    if not _encounter_results_ready:
-        conn.execute(_CREATE_ENCOUNTER_RESULTS)
-        _encounter_results_ready = True
-    conn.execute("DELETE FROM encounter_results WHERE chart_id = %s", (chart_id,))
-    for item in encounters:
-        conn.execute(
-            """
-            INSERT INTO encounter_results (
-                chart_id, seq, document_seq, page_family, pages, dos_from, dos_to,
-                encounter_type, encounter_label, confidence, decided_by, reason,
-                matched_keyword, conflict, contenders
-            ) VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-            """,
-            (
-                chart_id,
-                int(item["seq"]),
-                item.get("document"),
-                (item.get("page_family") or "")[:100] or None,
-                json.dumps(list(item.get("pages") or []), default=str),
-                (item.get("dos_from") or "")[:20] or None,
-                (item.get("dos_to") or "")[:20] or None,
-                (item.get("encounter_type") or "")[:30] or None,
-                (item.get("encounter_label") or "")[:60] or None,
-                item.get("confidence"),
-                (item.get("decided_by") or "")[:40] or None,
-                item.get("reason") or None,
-                (item.get("matched_keyword") or "")[:200] or None,
-                bool(item.get("conflict")),
-                json.dumps(list(item.get("contenders") or []), default=str),
-            ),
-        )
-
 
 # ---------------------------------------------------------------------------
 # Member extraction + verification

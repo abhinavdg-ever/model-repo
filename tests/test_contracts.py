@@ -2789,15 +2789,23 @@ class TestNoModelWeightsInGit:
 
 
 def test_encounter_grouping_is_written_for_production_mode():
-    """The encounter stage writes its grouping (staged in continuity.json) to encounter_results,
-    so review-ui's Production Mode has it without the chart workspace."""
+    """Every page's encounter_type_results row carries its encounter (encounter_seq) and the
+    encounter's decision, so review-ui's Production Mode groups pages without the workspace."""
+    from db import upsert_encounter
     from db.memory_store import MemoryStore
-    from db import replace_encounter_results
+    from stages.lib.encounter.encounter_classify import classify_pages
 
+    rows = classify_pages([
+        {"page_id": 1, "page_name": "1.jpg", "page_number": 1, "text": "", "document": 1, "page_family": "Lab Report"},
+        {"page_id": 2, "page_name": "2.jpg", "page_number": 2, "text": "", "document": 2, "page_family": "Discharge Summary"},
+    ])
+    assert [(r["encounter_seq"], r["decided_by"]) for r in rows] == [(1, "not_applicable"), (2, "family")]
     store = MemoryStore()
-    replace_encounter_results(store, 3, [{"seq": 1, "pages": ["1.jpg", "2.jpg"], "encounter_type": "inpatient"}])
-    replace_encounter_results(store, 3, [{"seq": 1, "pages": ["1.jpg"]}])  # a re-run replaces
-    assert store.encounter_results[3] == [{"seq": 1, "pages": ["1.jpg"]}]
+    row = rows[1]
+    upsert_encounter(store, chart_id=3, page_id=2, encounter_type=row["encounter_type"], confidence=row["confidence"],
+                     encounter_seq=row["encounter_seq"], decided_by=row["decided_by"], reason=row["reason"],
+                     conflict=row["conflict"], contenders=row["contenders"])
+    assert store.encounters[2]["encounter_seq"] == 2 and store.encounters[2]["decided_by"] == "family"
 
 
 def test_extraction_fields_carry_the_whole_staged_page():

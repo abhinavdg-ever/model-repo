@@ -1415,7 +1415,7 @@ def get_folder_imaging(
                 )
             }
         )
-    # The encounter grouping: Production Mode from encounter_results, Local Mode from the
+    # The encounter grouping: Production Mode from encounter_type_results, Local Mode from the
     # chart workspace's staging file.
     if not doc.encounters:
         encounters = (

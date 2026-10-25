@@ -318,7 +318,10 @@ Evidence comes from three places:
   (+2), "page N of N" (+3), how full the page is (−2 … +2), "continued" (−3);
 * **opening** — the later page alone: a title (+3), a visit heading such as Reason for
   Visit / Chief Complaint / HPI in the top band (+3, a break by itself unless printed
-  page N of M runs on), where its text starts (±2);
+  page N of M runs on), where its text starts (±2). The heading counts at the start of
+  a line, and a heading of two or more words also at its end: on a two-column page the
+  OCR joins the left column's words and the right column's heading into one line
+  (2026-10-25; a follow-up visit had joined the lab report before it);
 * **pair** — the two together: different date of service (+5, decisive) or the same
   (−5), page numbers running on (−5, decisive), sections in order (−3), the same visit
   number (−3), the same header or footer line, wording across the gap, page type change
@@ -513,7 +516,21 @@ Five values: **Inpatient**, **Outpatient (F2F)**, **Outpatient (Evisit)**, **Out
 The **encounter range** is the continuity document: from its New page through its
 Continue pages to its Last page.
 
-**The first page decides [built 2026-10-25, user]** when it has evidence of its own: a
+**The document's type decides first [built 2026-10-25, user]**: the encounter's family
+(its first page's L1, the document's Final type) settles it outright when
+
+* it is **always one setting**: Discharge Summary and Operative Note are **Inpatient**
+  whatever the pages say (`applies_to.always` in `encounter_canon.json`;
+  `decided_by = family`);
+* it is a family encounter type **does not apply to** (a lab report, an order, a form):
+  **Not Available** for the whole encounter, even when one of its pages reads like a
+  visit (`decided_by = not_applicable`).
+
+Encounter type applies to Progress Note, Discharge Summary and Operative Note. An
+**Emergency Note is not hard-coded** (it was Inpatient): its pages' evidence and the
+model decide, as for any Progress Note.
+
+**Then the first page decides [built 2026-10-25, user]** when it has evidence of its own: a
 tier 1 page type, a tier 2 phrase, or the encounter model's confident answer
 (`decided_by = first_page`; conflict flagged when another page says otherwise). Only when
 the first page cannot decide (it is a lab or other non-encounter page, or carries only
@@ -523,8 +540,8 @@ when no page has any** (user, 2026-10-25). A lab or other non-encounter page rea
 **Not Available**.
 
 1. The first page still counts **twice**.
-2. **Not Available wins only when every vote is Not Available**: one page voting a
-   setting sets the Not Available votes aside.
+2. Inside a Progress Note document, a page voting Not Available (a lab page in the
+   visit) is set aside when another page votes a setting.
 3. Otherwise the weighted majority wins; a tie goes to the first page's vote.
    Confidence = the winner's share of the weight x the mean confidence of its voters
    (section 10).
@@ -568,9 +585,17 @@ The client default (5.2 step 4) is still to build.
 | `staging/page_classification.json` **[built]** | the same per page, beside the other staging files (Postgres stays the source the later stages read) |
 | `staging/blank_junk.json`, `staging/extraction.json` | blank / junk / duplicate verdicts; key-value extraction, signatures |
 | `staging/continuity.json`, `page_continuity_results` | per gap: score, signals, decision; per page: document, tag; Final page type, DOS, encounter |
-| `encounter_type_results` | per page: Extracted setting, basis, evidence; per encounter: Final setting, confidence, decided_by. Each page's vote, including `by: model` with the model's class and confidence, is in the encounter log in `staging/continuity.json` |
+| `encounter_type_results` | per page: the encounter's Final setting, confidence and keyword, and **[built 2026-10-25]** the encounter it belongs to (`encounter_seq`) with how its setting was decided (`decided_by`, `reason`, `conflict`, `contenders`), the same on every page of the encounter; review-ui's Doc Summary groups the pages by `encounter_seq`. Each page's vote, including `by: model` with the model's class and confidence, is in the encounter log in `staging/continuity.json` |
 | `page_sequencing_results`, `imaging/<chart>_sequencing.csv` | per page: suggested order (`seq`), method, confidence, review flag (section 9) |
 | `imaging_final` | every field's Final value; `confidences` (each Final value's, section 10) and `review_fields` (those below 50%) |
+| `additional_page_details.extraction_fields` **[built 2026-10-25]** | every field the extraction staged for the page (member, DOS, provider, signature, page number, headings), as in `staging/extraction.json` |
+| `page_continuity_results.label` **[built 2026-10-25]** | the continuity label as shown ("Continue? (Doc 3)", "New (Junk 4)") |
+
+**Production Mode reads Postgres only** (2026-10-25): review-ui's Extraction tab, the
+encounter grouping (Doc Summary, from `encounter_type_results.encounter_seq`), the continuity labels and the per-page provider rows
+come from the tables above, never from the chart workspace. Local Mode still reads the
+staging files and CSVs. The writers add the new columns and table on first write;
+`schema/changes_2026-10-25.sql` adds them up front.
 
 A `staging/page_classification.json` entry (made-up values; Progress Note has no model
 L2, because section tagging decides it):
@@ -1090,11 +1115,11 @@ just under 50% — every such value is flagged, and a lower probability reads lo
 | Blank / junk | Main / Blank / Junk | DistilBERT's p(keep) for Main, p(junk) otherwise | R4 (signature) and R6 (short page) back it at 0.95 | DistilBERT saying the other side (≥ 0.5): × keywords_disagree; a junk verdict for review (p(junk) under `junk_at`): under its bar; DistilBERT missing: 0.5 × degraded. R1–R3 (empty, placeholder, Visual: no text to read) keep the rule's strength |
 | | Duplicate | the word-overlap similarity | — | a partial duplicate keeps its own verdict's confidence; the similarity is `duplicate_confidence` |
 | Page type (Extracted) | L1, L2, L3 | the model's probability (L2, L3 given the parent) | the keyword vote's share for the class × its strength; a strong title pin or a page rule fully | keywords pointing elsewhere (their strength ≥ half): × keywords_disagree; a page rule against the model's favourite: × keywords_disagree; Others: the model's p(OTHER) (else 1 − its best) × fallback |
-| | Page type | the product of its named levels (the chance the whole path is right) | — | no model: × no_model once; handwritten / thin page: × handwritten / thin_text. Stored in `page_classification.confidence`; below 50% the page needs review |
+| | Page type | the product of its named levels **except the deepest (the subtype)**, which keeps its own confidence and does not flag the page (2026-10-25, user: fewer flags) | — | no model: × no_model once; handwritten / thin page: × handwritten / thin_text. Stored in `page_classification.confidence`; below 50% the page needs review |
 | | Specialty | the model's probability | the specialty keywords (or the canon entry) naming it | keywords naming another: × keywords_disagree; model says Unknown: the keywords' own; General: (1 − the best named) × fallback |
-| | Codability | the page type's confidence | — | — (it is a function of the page type) |
+| | Codability | the L1's confidence: the family settles codability for nearly every type (a Progress Note's subtypes are all codeable) (2026-10-25) | — | no model: × no_model |
 | Encounter | each page's vote | the encounter model's probability for the setting, normalised over the settings ("No evidence on page" left out) | the keyword evidence: tier 1 page type 1.0, tier 2 phrase 0.8 (0.8 / 0.6 with a conflict on the page), a confirm word 0.5 | the model's own answer (≥ 0.5) another setting, or the model overruling a phrase: × keywords_disagree; a family default: × fallback; no model answer: support × no_model |
-| | the encounter | the first page's vote when it decides | — | another page with evidence disagreeing: × conflict. A vote: the winner's share of the weight × its voters' mean confidence. Nothing voted: the model's p(F2F) × fallback |
+| | the encounter | the document's type when it decides (always Inpatient / Not Available): the first page's model probability for it, fully backed; else the first page's vote when it decides | — | another page with evidence disagreeing: × conflict. A vote: the winner's share of the weight × its voters' mean confidence. Nothing voted: the model's p(F2F) × fallback |
 | DOS | key/value date | the extraction model's score | the rules' score when the rules read the date too | rules only: × no_model; another date of the same priority group within 80% of its score: × conflict; an admit / discharge pair: the weaker side |
 | | edge label / dictation | the label's strength (0.8 / 0.5) | — | × no_model (edge 0.68); dictation × fallback too (0.26); no date: no confidence |
 | Member | each page's status | each identifier read (name, DOB, member ID): the rules' reading 0.6, NER's 0.4, combined as independent evidence (1 − Π(1 − s)) | — | not verified with identifiers that match nobody: × fallback; nothing read: no confidence |
@@ -1102,7 +1127,7 @@ just under 50% — every such value is flagged, and a lower probability reads lo
 | Provider / page number | signature, name, credentials | the extraction model's score | the rules' score when they accepted the row too | the rules rejected what the model accepted: × keywords_disagree; rules only: × no_model; name or credentials from outside the signature × 0.75; several signers × 0.9 each, the page the average |
 | Continuity | each gap | the score's own certainty: \|2·sigmoid((score − b) / a) − 1\| when the score points the way the gap was decided | a decisive signal or rule (a different date, demographics, a visit heading, a Visual page) holds it at ≥ 0.90 | sub-scores or decisive signals disagreeing, a pattern A / B: × conflict; a rule against the score: 0.9 × keywords_disagree; a final-pass split / merge reversing it: (1 − its confidence) / 2 backed by the rule, × overturned. `confidence_level` is the band |
 | Sequencing | each Main page's place | a "page n of m" family's page: its marker's confidence | — | held (two pages claim one number, or too far): × conflict × fallback; any other page stays in scan order: the share of the chart's numbered pages that were already in place (at least 3), else 1.0 × fallback. J pages: none (nothing decided) |
-| Final (`imaging_final`) | page type, codability | the deciding page's page-type confidence (the document's first page; the page's own when it kept its type) | — | another page of the document sure (≥ 80%) of another L1: × conflict |
+| Final (`imaging_final`) | page type, codability | the deciding page's page-type and codability confidences (the document's first page; the page's own when it kept its type); codability carries the page's handwritten / thin-text doubt too | — | another page of the document sure (≥ 80%) of another L1: × conflict |
 | | specialty, encounter type | the encounter's first page's | — | — |
 | | DOS | the document's dated page's | — | a stand-alone non-visit document's default date: none (a business rule) |
 | | member, provider, blank/junk (every page, Main too), handwriting | the page's own | — | — |
@@ -1167,6 +1192,14 @@ page type's.
   harsh.
 * Orientation, tilt and mirroring still store no confidence (Tesseract's OSD value is
   open-ended and is not kept).
+
+## 11. Test-chart review (2026-10-25)
+
+<!-- review:start -->
+Seven test charts (`Training/Test Charts`, 161 pages, phone photos of screens) ran the
+whole chain in test mode. They have no ground truth, so they were judged by consistency
+and by reading a sample of pages (results to follow below).
+<!-- review:end -->
 
 ---
 

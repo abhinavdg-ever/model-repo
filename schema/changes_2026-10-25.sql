@@ -22,34 +22,17 @@ ALTER TABLE additional_page_details
 --    b. page_continuity_results.label: the continuity label as shown ('Continue? (Doc 3)').
 ALTER TABLE page_continuity_results ADD COLUMN IF NOT EXISTS label VARCHAR(60);
 
---    c. encounter_results: the encounter grouping (Doc Summary), one row per encounter.
-CREATE TABLE IF NOT EXISTS encounter_results (
-    id                BIGSERIAL PRIMARY KEY,
-    chart_id          BIGINT NOT NULL REFERENCES chart_list(id) ON DELETE CASCADE,
-    seq               INT NOT NULL,
-    document_seq      INT,
-    page_family       VARCHAR(100),
-    pages             JSONB NOT NULL DEFAULT '[]'::jsonb,
-    dos_from          VARCHAR(20),
-    dos_to            VARCHAR(20),
-    encounter_type    VARCHAR(30),
-    encounter_label   VARCHAR(60),
-    confidence        NUMERIC(5,4),
-    decided_by        VARCHAR(40),
-    reason            TEXT,
-    matched_keyword   VARCHAR(200),
-    conflict          BOOLEAN NOT NULL DEFAULT FALSE,
-    contenders        JSONB NOT NULL DEFAULT '[]'::jsonb,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (chart_id, seq)
-);
-CREATE INDEX IF NOT EXISTS idx_encounter_results_chart_id ON encounter_results(chart_id);
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_encounter_results_updated_at') THEN
-        CREATE TRIGGER trg_encounter_results_updated_at
-            BEFORE UPDATE ON encounter_results
-            FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-    END IF;
-END $$;
+--    c. encounter_type_results: the encounter each page belongs to and how its setting was
+--       decided; every page of an encounter carries the same values, and review-ui's Doc
+--       Summary groups the pages by encounter_seq.
+ALTER TABLE encounter_type_results
+    ADD COLUMN IF NOT EXISTS encounter_seq INT,
+    ADD COLUMN IF NOT EXISTS decided_by VARCHAR(40),
+    ADD COLUMN IF NOT EXISTS reason TEXT,
+    ADD COLUMN IF NOT EXISTS conflict BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS contenders JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+--    d. encounter_results, a separate per-encounter table this file created for a few
+--       hours on 2026-10-25, merged into encounter_type_results above (user). Nothing
+--       read it yet; dropped where an earlier copy of this file created it.
+DROP TABLE IF EXISTS encounter_results;
