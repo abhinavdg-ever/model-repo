@@ -5,7 +5,7 @@ DistilBERT and the keyword canon vote (R9). Words, weights, thresholds and the
 short-page geometry live in `../keyword-canon/blank_junk_context_canon.json`. The method, with
 worked examples, is `docs/BLANK_JUNK_LOGIC.md`; the summary is `docs/LOGIC.md` §3.
 
-Duplicates: Main pages only (never blank or junk), against a neighbour within ±25 pages.
+Duplicates: Main pages only (never blank or junk), against the pages after it, up to 25 pages or 10% of the chart, whichever is more (each pair once).
 Pages are compared on their distinct
 words as read. Duplicate: lengths within 10% and (contained, overlap ≥ 98%, or < 8 distinct
 words different); partial: overlap 95–98% or < 15 different; the later page is the
@@ -28,7 +28,7 @@ calls either; they remain for the standalone script below.
 | **Record Request/Transmittal** | Yes (Junk) | Record Request/Transmittal | request letter; records↔request (any order); attached; transmittal/transmitted; Urgent Request for Records; Your Records requested |
 | **Instructions** | Yes (Junk) | Instructions | “what to send”, provide documentation, please send, … |
 | **Others** | Yes (Junk) | Others | Table of contents; **&lt; 20 words** and not a signature page; **gibberish Tesseract OCR** (many no-vowel tokens / junk symbols) |
-| **Duplicate** | Yes (Junk) | the original's | Main pages only: distinct-word overlap ≥ 98% with a ±25 neighbor, or its words all on it; pages under 300 chars never compared; longer (or earlier) page kept. 95–98% is Partial: the page stays Main |
+| **Duplicate** | Yes (Junk) | the original's | Main pages only: distinct-word overlap ≥ 98% with a page within 25 pages or 10% of the chart (whichever is more), or its words all on it; pages under 300 chars never compared; longer (or earlier) page kept. 95–98% is Partial: the page stays Main |
 | **Main** | No | Not Available | Everything else |
 
 ### Priority order

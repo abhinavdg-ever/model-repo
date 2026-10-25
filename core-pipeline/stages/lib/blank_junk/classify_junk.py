@@ -50,7 +50,7 @@ from classify import (  # noqa: E402
     CODE_BLANK,
     CODE_DUPLICATE,
     CODE_MAIN,
-    DUPLICATE_NEIGHBOR_WINDOW,
+    duplicate_window,
     DUPLICATE_SIMILARITY_THRESHOLD,
     JUNK_CODES,
     classification_confidence,
@@ -260,12 +260,13 @@ def classify_folder(
             return j, i
         return (i, j) if i <= j else (j, i)
 
+    window = duplicate_window(n)
+    comparable = [_comparable(i) for i in range(n)]
     for i in range(n):
-        if not _comparable(i):
+        if not comparable[i]:
             continue
-        for offset in range(1, DUPLICATE_NEIGHBOR_WINDOW + 1):
-            j = i + offset
-            if j >= n or not _comparable(j):
+        for j in range(i + 1, min(n, i + window + 1)):
+            if not comparable[j]:
                 continue
             sim = text_similarity(texts[i], texts[j])
             if sim < DUPLICATE_SIMILARITY_THRESHOLD:
@@ -294,7 +295,7 @@ def classify_folder(
         reasons[dup_i] = (
             f"duplicate_of_page:{pending[orig_i]['page_name']} "
             f"(similarity={sim:.4f} ≥{DUPLICATE_SIMILARITY_THRESHOLD:.0%} within ±"
-            f"{DUPLICATE_NEIGHBOR_WINDOW})"
+            f"{window} pages)"
         )
 
     rows: list[dict[str, str]] = []

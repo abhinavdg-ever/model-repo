@@ -1,6 +1,6 @@
 """Blank/junk duplicate scoping and DOS date handling.
 
-Duplicate detection runs after the model, among Main pages only: ±25 neighbors,
+Duplicate detection runs after the model, among Main pages only: 25 pages or 10% of the chart ahead,
 similarity = the average of the character match and the word match. ≥ 98% (or one
 page's text wholly contained in the other's) is a duplicate; [95%, 98%) a partial
 duplicate, which stays Main. Blank / junk / short pages are excluded from
@@ -84,6 +84,20 @@ class TestDuplicateScope:
         flags = {r["page_id"]: r["flag"] for r in rows}
         assert flags[1] == "not_blank_junk"
         assert flags[27] == "not_blank_junk"
+
+    def test_the_window_grows_with_the_chart(self):
+        from stages.lib.blank_junk.classify import duplicate_window
+
+        assert [duplicate_window(n) for n in (1, 10, 26, 100, 250, 251, 400, 1000)] == [0, 9, 25, 25, 25, 26, 40, 100]
+
+    def test_a_long_chart_compares_pages_ten_percent_apart(self):
+        # 300 pages: the window is 30, so pages 1 and 31 (30 apart) are compared.
+        pages = [page(i, i) for i in range(1, 301)]
+        texts = {i: f"Unrelated progress note number {i} with its own findings. " * 6 for i in range(1, 301)}
+        texts[1] = texts[31] = _body()
+        rows = _classify(pages, texts, set(range(1, 301)))
+        flags = {r["page_id"]: r["flag"] for r in rows}
+        assert flags[31] == "duplicate"
 
     def test_pages_twenty_five_apart_are_compared(self):
         pages = [page(i, i) for i in range(1, 27)]

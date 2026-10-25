@@ -21,7 +21,8 @@ key/value extraction's ``extraction.json`` (not the database).
 
 Duplicate detection (after the verdict, among Main pages only -- never blank or junk):
 
-* Compare each comparable page only to neighbors **±25** in page order.
+* Compare each comparable page with the pages after it, up to 25 pages or 10% of the
+  chart, whichever is more (``classify.duplicate_window``); each pair once.
 * Pages are compared on their distinct words, everything on the page included
   (``classify.word_overlap``, 2026-10-22, user): the **overlap** is shared distinct
   words / all distinct words of the two pages; **contained** is the share of the
@@ -96,7 +97,7 @@ from classify import (  # noqa: E402
     CODE_DUPLICATE,
     CODE_JUNK,
     CODE_MAIN,
-    DUPLICATE_NEIGHBOR_WINDOW,
+    duplicate_window,
     DUPLICATE_PARTIAL_THRESHOLD,
     DUPLICATE_SIMILARITY_THRESHOLD,
     JUNK_CODES,
@@ -265,7 +266,7 @@ def _classify(
 
     ``inputs`` carries each page's method.PageInputs without the model scores, which
     are added here. Duplicates are checked only after the verdict, between Main pages
-    within ±``DUPLICATE_NEIGHBOR_WINDOW`` in page order that are at least
+    within ``duplicate_window`` pages of each other that are at least
     ``DUPLICATE_MIN_CHARS`` long, on their distinct words (see the module docstring for
     the duplicate / partial rules).
 
@@ -304,7 +305,8 @@ def _classify(
             return by_id[page_id]["code"] == CODE_MAIN
         return page_id in prior
 
-    # Phase 2 — each comparable page against the next ±window comparable pages.
+    # Phase 2 — each comparable page against the comparable pages up to ``window``
+    # after it: each pair once. Comparability and lengths are worked out once per page.
     dup_of: dict[int, int] = {}
     dup_sim: dict[int, float] = {}
     dup_contained: dict[int, bool] = {}
@@ -335,17 +337,18 @@ def _classify(
             }
 
     n = len(pages)
+    window = duplicate_window(n)
+    comparable = [_comparable(page["id"]) for page in pages]
+    length = {page["id"]: duplicate_char_count(texts.get(page["id"]) or "")
+              for page, ok in zip(pages, comparable) if ok}
     for i, page in enumerate(pages):
         pid = page["id"]
-        if not _comparable(pid):
+        if not comparable[i]:
             continue
-        for offset in range(1, DUPLICATE_NEIGHBOR_WINDOW + 1):
-            j = i + offset
-            if j >= n:
-                break
-            nid = pages[j]["id"]
-            if not _comparable(nid):
+        for j in range(i + 1, min(n, i + window + 1)):
+            if not comparable[j]:
                 continue
+            nid = pages[j]["id"]
             words = word_overlap(texts.get(pid) or "", texts.get(nid) or "")
             is_contained = words.contained >= rules["contained_at"]
             # A contained pair scores 1.0; otherwise its overlap.
@@ -359,8 +362,7 @@ def _classify(
             counts = words.overlap >= rules["count_rule_min_overlap"]
             # A duplicate is about as long as its original (2026-10-22, user): a page
             # inside a much longer one is a partial at most.
-            len_a = duplicate_char_count(texts.get(pid) or "")
-            len_b = duplicate_char_count(texts.get(nid) or "")
+            len_a, len_b = length[pid], length[nid]
             similar_length = min(len_a, len_b) >= rules["duplicate_min_length_ratio"] * max(len_a, len_b)
             if similar_length and (
                 is_contained
@@ -416,7 +418,7 @@ def _classify(
         ) + f", {pair_words.get(dup_id, 0)} distinct words different"
         reason = (
             f"duplicate_of_page_id:{orig_id} "
-            f"({match} within ±{DUPLICATE_NEIGHBOR_WINDOW})"
+            f"({match} within {window} pages)"
         )
         page = page_by_id[dup_id]
         earlier = (by_id.get(dup_id) or {}).get("votes")
@@ -442,7 +444,7 @@ def _classify(
         note = (
             f"partial_duplicate_of_page_id:{orig_id} (overlap={sim:.4f}, "
             f"{pair_words.get(page_id, 0)} distinct words different "
-            f"within ±{DUPLICATE_NEIGHBOR_WINDOW})"
+            f"within {window} pages)"
         )
         own = by_id.get(page_id) or {}
         earlier = own.get("votes")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 from dataclasses import dataclass
 from functools import lru_cache
@@ -69,7 +70,18 @@ DUPLICATE_PARTIAL_THRESHOLD = 0.95
 # Pages shorter than this (whitespace-stripped characters, ~50 words) are never
 # compared: a short page shares or sits inside too much unrelated text.
 DUPLICATE_MIN_CHARS = 300
-DUPLICATE_NEIGHBOR_WINDOW = 25  # 2026-10-21 (user): was 10 (5 before 2026-10-20)
+# How far ahead each page is compared (2026-10-25, user): 25 pages or 10% of the
+# chart, whichever is more, never past the chart's end. Each pair is compared once,
+# looking forward (was a fixed 25; 10 and 5 before).
+DUPLICATE_NEIGHBOR_MIN = 25
+DUPLICATE_NEIGHBOR_SHARE = 0.10
+
+
+def duplicate_window(page_count: int) -> int:
+    """Pages ahead of each page that it is compared with."""
+    wanted = max(DUPLICATE_NEIGHBOR_MIN, math.ceil(DUPLICATE_NEIGHBOR_SHARE * page_count))
+    return max(0, min(wanted, page_count - 1))
+
 
 DEFAULT_SETTINGS = {
     "blank_detection": True,
@@ -153,7 +165,7 @@ def text_is_comparable(text: str) -> bool:
 @lru_cache(maxsize=4096)
 def unique_words(text: str) -> frozenset[str]:
     """A page's distinct words, lower-cased, everything on the page included (headers,
-    footers and all). Each page meets up to 2 x ±window neighbors, so it is cached."""
+    footers and all). Each page meets up to 2 x window neighbors, so it is cached."""
     return frozenset(re.findall(r"\w+", (text or "").lower()))
 
 
