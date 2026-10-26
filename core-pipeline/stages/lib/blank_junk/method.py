@@ -32,7 +32,8 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
     handwritten     a page more than 30% handwritten is never junked by R5: Main for review
 
 After the ladder (``post_process``, 2026-10-26, user):
-  DOS kept         pass 2: a page with a DOS extracted (kv_extract) is never junk -> Main
+  content kept     pass 2: a page with a DOS, an Electronic Signature or provider details
+                   (name / credentials) extracted by kv_extract is never junk -> Main
 
 So junk is decided in pass 1 by R1-R3 and DistilBERT's sure calls (p(junk) > 0.95); the rest
 of its junk calls wait for the Final OCR.
@@ -432,6 +433,7 @@ class PageInputs:
     signed: bool = False  # Electronic Signature present (kv_extract, provider_signature.csv)
     signature_known: bool = False  # the KV signature output was there to read
     dated: bool = False  # a DOS extracted on the page (kv_extract's selected DOS); pass 2
+    provider: bool = False  # provider details extracted (kv_extract's provider name / credentials); pass 2
     no_ink: bool = False  # the HW stage found no ink (blank_page / faint_marks_only)
     body_ink: Optional[bool] = None  # ink below the short-page band; None = not measured
     body_ink_fraction: Optional[float] = None  # the share of that band that is ink
@@ -677,14 +679,18 @@ DOS_KEEP_REASON = "DOS extracted on the page -> Main (a dated page is never junk
 
 
 def post_process(verdict: Verdict, inputs: PageInputs) -> Verdict:
-    """Rules after the ladder (2026-10-26, user): in pass 2 a page with a DOS extracted
-    (kv_extract's selected DOS) is never junk, whatever rule junked it. Blank stays Blank."""
-    if inputs.pass_no == 2 and inputs.dated and verdict.code not in (CODE_MAIN, CODE_BLANK):
-        verdict.votes["dos_kept"] = verdict.reason
-        verdict.votes["rule"] = "DOS"
-        bert = inputs.bert or {}
-        p_keep = float(bert["p_keep"]) if bert else None
-        p_junk = float(bert["p_junk"]) if bert else None
-        return Verdict(CODE_MAIN, rule_confidence(CODE_MAIN, "DOS", p_keep, p_junk), "DOS",
-                       f"{verdict.reason}; {DOS_KEEP_REASON}", verdict.votes)
-    return verdict
+    """Rules after the ladder (2026-10-26, user): in pass 2 a page with a DOS, an Electronic
+    Signature or provider details (name / credentials) extracted by kv_extract is never
+    junk, whatever rule junked it (R4's p(junk) overrule included). Blank stays Blank."""
+    found = [name for name, hit in (("DOS", inputs.dated), ("Provider Signature", inputs.signed),
+                                     ("provider details", inputs.provider)) if hit]
+    if inputs.pass_no != 2 or not found or verdict.code in (CODE_MAIN, CODE_BLANK):
+        return verdict
+    verdict.votes["content_kept"] = verdict.reason
+    verdict.votes["rule"] = "DOS"
+    bert = inputs.bert or {}
+    p_keep = float(bert["p_keep"]) if bert else None
+    p_junk = float(bert["p_junk"]) if bert else None
+    reason = DOS_KEEP_REASON if found == ["DOS"] else f"{' / '.join(found)} extracted on the page -> Main (never junk)"
+    return Verdict(CODE_MAIN, rule_confidence(CODE_MAIN, "DOS", p_keep, p_junk), "DOS",
+                   f"{verdict.reason}; {reason}", verdict.votes)

@@ -968,16 +968,32 @@ class TestWordOverlap:
 
 
 
-class TestSignaturePageIsNeverADuplicate:
-    """2026-10-26 (user): a signature page is not compared, so never a duplicate."""
+class TestSignaturePageApartIsNotADuplicate:
+    """2026-10-26 (user): a signature / ending page with other notes between it and its
+    look-alike is not a duplicate; side by side it still is."""
 
-    def test_signed_by_kv_extract(self):
+    def _other(self) -> str:
+        return "Radiology report impression findings unremarkable chest film comparison prior. " * 6
+
+    def test_signed_pages_apart_are_not_duplicates(self):
         body = _body()
-        rows = _classify([page(1, 1), page(2, 2)], {1: body, 2: body}, {1, 2}, signed_ids={2})
-        assert {r["page_id"]: r["flag"] for r in rows} == {1: "not_blank_junk", 2: "not_blank_junk"}
-        assert all(r["duplicate_of"] is None for r in rows)
-
-    def test_signature_wording_on_the_page(self):
-        body = _body() + " Electronically signed by the attending."
-        rows = _classify([page(1, 1), page(2, 2)], {1: body, 2: body}, {1, 2})
+        pages = [page(1, 1), page(2, 2), page(3, 3)]
+        rows = _classify(pages, {1: body, 2: self._other(), 3: body}, {1, 2, 3}, signed_ids={3})
         assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)
+
+    def test_signature_wording_apart(self):
+        body = _body() + " Electronically signed by the attending."
+        pages = [page(1, 1), page(2, 2), page(3, 3)]
+        rows = _classify(pages, {1: body, 2: self._other(), 3: body}, {1, 2, 3})
+        assert all(r["flag"] == "not_blank_junk" for r in rows)
+
+    def test_side_by_side_still_a_duplicate(self):
+        body = _body() + " Electronically signed by the attending."
+        rows = _classify([page(1, 1), page(2, 2)], {1: body, 2: body}, {1, 2}, signed_ids={2})
+        assert {r["page_id"]: r["flag"] for r in rows}[2] == "duplicate"
+
+    def test_other_pages_apart_still_duplicates(self):
+        body = _body()
+        pages = [page(1, 1), page(2, 2), page(3, 3)]
+        rows = _classify(pages, {1: body, 2: self._other(), 3: body}, {1, 2, 3})
+        assert {r["page_id"]: r["flag"] for r in rows}[3] == "duplicate"

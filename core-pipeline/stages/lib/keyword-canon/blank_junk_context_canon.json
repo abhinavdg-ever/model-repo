@@ -38,9 +38,13 @@
       "signed by",
       "date/time signed",
       "cosigned",
-      "attestation"
+      "attestation",
+      "end of report",
+      "end of note",
+      "end of document",
+      "end of encounter"
     ],
-    "signature_note": "2026-10-26 (user): a signature page is never a duplicate (nor a partial): it is not compared. A signature page = kv_extract's Electronic Signature (pass 2), or any signature_terms on the page (either pass)."
+    "signature_note": "2026-10-26 (user): a signature or ending page standing apart is not a duplicate: a pair with one (kv_extract's Electronic Signature in pass 2, or any signature_terms on the page) is skipped when a Main page lies between them (other notes, other DOSs). Side by side they still compare."
   },
   "short_page": {
     "note": "Short page rule R6, pass 2, after R4 (signature) and before R5 (DistilBERT); restored 2026-10-21. Content that ends within the top 'top_fraction' (15%) of the page height, footer band and running stamps left out, with less than body_ink_max_fraction ink below -> JUNK / Others (confidence 0.95). Not when DistilBERT p(keep) > skip_keep_above (0.90), when the word boxes or the image cannot be read, or when R4 kept the page (docs/BLANK_JUNK_LOGIC.md).",
@@ -807,5 +811,5 @@
     "min_handwritten_area_pct": 30
   },
   "note_confidence": "Confidence is the evidence for the verdict (docs/BLANK_JUNK_LOGIC.md), not a fixed number: DistilBERT's probability (when it scored the page), the keyword score (junk / 10, or clinical-or-demographic / 10) and, for R3 and R6-R8, the rule's own value. Signals that agree combine as 1 - product(1 - p); a disagreement is averaged. R1, R2 and R4 (signature) keep fixed values. There is no cap: a contested call comes out low by itself, so filter on low confidence to review.",
-  "dos_keep_note": "2026-10-26 (user), post-processing after the ladder in pass 2: a page with a DOS extracted (kv_extract's selected DOS) is never junk -> Main. Duplicates and Blank are not changed."
+  "dos_keep_note": "2026-10-26 (user), post-processing after the ladder in pass 2: a page with a DOS, an Electronic Signature or provider details (name / credentials) extracted by kv_extract is never junk -> Main. Duplicates and Blank are not changed."
 }
