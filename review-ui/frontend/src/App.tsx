@@ -235,11 +235,11 @@ export default function App() {
         ) : route.view === "manual-review" ? (
           <ManualReviewView
             onBack={() => navigate({ view: "landing" })}
-            onOpenChart={(folderId) =>
-              navigate({ view: "folder", folderId, mode: "imaging", from: "manual-review" })
+            onOpenChart={(folderId, page) =>
+              navigate({ view: "folder", folderId, mode: "imaging", from: "manual-review", page })
             }
-            chartHref={(folderId) =>
-              pathFor({ view: "folder", folderId, mode: "imaging", from: "manual-review" })
+            chartHref={(folderId, page) =>
+              pathFor({ view: "folder", folderId, mode: "imaging", from: "manual-review", page })
             }
           />
         ) : route.view === "accuracy" ? (

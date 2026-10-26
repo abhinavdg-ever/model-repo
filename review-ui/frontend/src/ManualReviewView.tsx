@@ -35,9 +35,16 @@ import { useViewState } from "./viewState";
 
 type Props = {
   onBack: () => void;
-  onOpenChart: (folderId: string) => void;
-  chartHref: (folderId: string) => string;
+  /** ``page``: open the chart on that page (the row's), not its first. */
+  onOpenChart: (folderId: string, page?: number) => void;
+  chartHref: (folderId: string, page?: number) => string;
 };
+
+/** A row's page number as the viewer takes it; none when it is not a single page. */
+function rowPage(pageNumber: string): number | undefined {
+  const page = Number(String(pageNumber).trim());
+  return Number.isInteger(page) && page > 0 ? page : undefined;
+}
 
 const ROWS_PER_PAGE = 10;
 const ACCEPT = ".xlsx,.xls,.csv";
@@ -981,13 +988,13 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                             <th scope="rowgroup" rowSpan={span}>
                               <a
                                 className="accuracy-chart-link"
-                                href={chartHref(row.pdfId)}
+                                href={chartHref(row.pdfId, rowPage(row.pageNumber))}
                                 onClick={(event) => {
                                   // Cmd / Ctrl / Shift / middle click keep the browser's new-tab behaviour.
                                   if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
                                   event.preventDefault();
                                   saveChartOrder("manual-review", chartOrder);
-                                  onOpenChart(row.pdfId);
+                                  onOpenChart(row.pdfId, rowPage(row.pageNumber));
                                 }}
                               >
                                 {row.pdfId}
@@ -996,11 +1003,11 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                                 type="button"
                                 className="accuracy-chart-newtab"
                                 title="Open in new tab"
-                                aria-label={`Open ${row.pdfId} in a new tab`}
+                                aria-label={`Open ${row.pdfId} page ${row.pageNumber} in a new tab`}
                                 // window.open (not a target=_blank link) so the new tab keeps this tab's sign-in.
                                 onClick={() => {
                                   saveChartOrder("manual-review", chartOrder);
-                                  window.open(chartHref(row.pdfId), "_blank");
+                                  window.open(chartHref(row.pdfId, rowPage(row.pageNumber)), "_blank");
                                 }}
                               >
                                 <ExternalLink size={12} aria-hidden="true" />
