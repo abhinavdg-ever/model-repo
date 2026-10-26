@@ -42,8 +42,8 @@ Duplicate detection (after the verdict, among Main pages only -- never blank or 
 * A signature or ending page (kv_extract's Electronic Signature in pass 2, or
   ``duplicates.signature_terms`` on the page) is not a duplicate of a look-alike with a
   Main page between them -- other notes, other DOSs (2026-10-26, user).
-* Two pages whose kv_extract DOS share no date are not duplicates or partials, however
-  alike their words (2026-10-26, user).
+* Two pages whose kv_extract DOS differ in any date are not duplicates or partials,
+  however alike their words (2026-10-26, user).
 * Pass 1 marks only exact copies: the same distinct words, lengths within 10%. Every
   other rule above (98%, contained, word counts, partials, DOS, signature pages) runs in
   pass 2 only (2026-10-26, user).
@@ -291,7 +291,7 @@ def _classify(
     (another note, another DOS; 2026-10-26, user). Next to each other they still compare.
 
     ``dos_by_id`` (pass 2: kv_extract's selected DOS per page): two pages that both have
-    a DOS and share none are never duplicates or partials (2026-10-26, user).
+    a DOS that differ in any date are never duplicates or partials (2026-10-26, user).
 
     ``exact_only`` (pass 1): only exact copies -- the same distinct words, lengths within
     10% -- are duplicates; no partials. The rest waits for pass 2 (2026-10-26, user).
@@ -386,8 +386,8 @@ def _classify(
             ):
                 continue  # a signature / ending page apart from its look-alike
             dates_a, dates_b = (dos_by_id or {}).get(pid), (dos_by_id or {}).get(nid)
-            if dates_a and dates_b and not dates_a & dates_b:
-                continue  # different dates of service: different visits
+            if dates_a and dates_b and dates_a != dates_b:
+                continue  # different dates of service: different visits (any date differs)
             words = word_overlap(texts.get(pid) or "", texts.get(nid) or "")
             is_contained = words.contained >= rules["contained_at"]
             # A contained pair scores 1.0; otherwise its overlap.

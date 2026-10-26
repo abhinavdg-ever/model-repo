@@ -1030,6 +1030,12 @@ class TestDifferentDosIsNotADuplicate:
         rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2}, dos_by_id=dos)
         assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)
 
+    def test_any_different_date_is_not_a_duplicate(self):
+        texts = {1: _words(), 2: _words(swap="changed")}
+        dos = {1: frozenset({"2024-03-15"}), 2: frozenset({"2024-03-15", "2024-04-02"})}
+        rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2}, dos_by_id=dos)
+        assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)
+
     def test_same_date_or_one_undated_still_duplicates(self):
         texts = {1: _words(), 2: _words(swap="changed")}
         for dos in ({1: frozenset({"2024-03-15"}), 2: frozenset({"2024-03-15"})},
