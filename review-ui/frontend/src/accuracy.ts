@@ -373,7 +373,10 @@ function pageScores(
 
   const truth = page.groundTruth ? blankJunkTruth(page.groundTruth) : null;
   const blankOrJunk = (truth ?? "").toLowerCase().startsWith("yes");
-  const pipelineBlankJunk = (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
+  // A duplicate carries its original's values (withDuplicateValues) and is scored on
+  // them: only true blank / junk pages have no content (2026-10-26, user).
+  const pipelineBlankJunk =
+    page.isDuplicate !== true && (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
 
   // DOS on every page, Match or No Match. A page the ground truth calls blank / junk has no
   // date (Not Found). A labelled date matches when the Final or the Extracted DOS equals it

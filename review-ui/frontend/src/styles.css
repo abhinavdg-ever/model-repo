@@ -1825,10 +1825,11 @@ input {
   --mark-wash: rgba(192, 57, 43, 0.2);
 }
 
+/* Duplicate: its own colour (blue, dashed), apart from the blank / junk greens. */
 .filmstrip-thumb.mark-duplicate {
-  --mark-border: var(--brand-800);
+  --mark-border: #2f6fb0;
   --mark-style: dashed;
-  --mark-wash: rgba(44, 70, 32, 0.22); /* brand-800 */
+  --mark-wash: rgba(47, 111, 176, 0.2);
 }
 
 .filmstrip-thumb.mark-blank-junk::after,
@@ -5481,6 +5482,12 @@ input {
 .key-bj-truth {
   border-color: var(--status-error-fg);
   background: rgba(192, 57, 43, 0.2);
+}
+
+.key-duplicate {
+  border-color: #2f6fb0;
+  border-style: dashed;
+  background: rgba(47, 111, 176, 0.2);
 }
 
 /* Show Corrected Images: a bar along the thumbnail's foot (beside any Blank/Junk or

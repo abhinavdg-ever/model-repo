@@ -220,6 +220,9 @@ export type ImagingPageResult = {
   duplicateConfidence?: number | null;
   /** Page file this page was marked a duplicate of, e.g. "4.png". */
   duplicateOf?: string | null;
+  /** A duplicate's content values (member, DOS, page type, provider ...) are its
+   * original's (``withDuplicateValues``): the original's file name. */
+  valuesFrom?: string | null;
   /** Blank/Main/Duplicate → Not Available; Invoice|Cover → type */
   pageType: string | null;
   pageTypeConfidence: number | null;
@@ -583,7 +586,42 @@ export function getFolderOcr(folderId: string, kind: OcrKind): Promise<OcrTextRe
 }
 
 export function getFolderImaging(folderId: string): Promise<ImagingDocumentResponse> {
-  return api(`/api/folders/${encodeURIComponent(folderId)}/imaging${groundTruthQuery()}`);
+  return api<ImagingDocumentResponse>(`/api/folders/${encodeURIComponent(folderId)}/imaging${groundTruthQuery()}`)
+    .then(withDuplicateValues);
+}
+
+/** What a duplicate takes from its original: every content value. Its own image values
+ * (quality, orientation, handwriting), blank / junk and duplicate status, sequence and
+ * ground truth stay its own. */
+const DUPLICATE_COPIED: (keyof ImagingPageResult)[] = [
+  "memberName", "memberDob", "memberId", "memberConfidence",
+  "encounterType", "encounterConfidence",
+  "dosFrom", "dosTo", "dosConfidence", "docDosFrom", "docDosTo", "dosMatch", "finalDos",
+  "finalDosFrom", "finalDosTo", "finalPageType", "finalCodeable", "finalSpecialty",
+  "pageType", "pageTypeConfidence", "subtypeConfidence", "specialty", "specialtyConfidence",
+  "pageTypeSemantic", "isCodeable",
+  "providerName", "providerCredentials", "providerSignature", "providerSignatureConfidence", "providerSigners",
+];
+
+/** 2026-10-26 (user): a duplicate page shows, and is scored on, its original's values
+ * (the stages after blank / junk skip duplicates, so it has none of its own). */
+export function withDuplicateValues(doc: ImagingDocumentResponse): ImagingDocumentResponse {
+  const byName = new Map(doc.pages.map((page) => [page.fileName, page]));
+  let changed = false;
+  const pages = doc.pages.map((page) => {
+    const original = page.isDuplicate === true && page.duplicateOf ? byName.get(page.duplicateOf) : undefined;
+    if (!original || original === page) return page;
+    changed = true;
+    const copied: Partial<ImagingPageResult> = { valuesFrom: original.fileName };
+    for (const key of DUPLICATE_COPIED) (copied as Record<string, unknown>)[key] = original[key];
+    const own = page.finalConfidences ?? {};
+    copied.finalConfidences = {
+      ...(original.finalConfidences ?? {}),
+      ...Object.fromEntries(Object.entries(own).filter(([k]) => k === "blank_junk" || k === "handwriting")),
+    };
+    return { ...page, ...copied };
+  });
+  return changed ? { ...doc, pages } : doc;
 }
 
 export type AccuracyChartPayload = {
@@ -606,7 +644,12 @@ export type AccuracyChartPayload = {
 export function getAccuracyReport(fresh = false): Promise<{ charts: AccuracyChartPayload[] }> {
   const query = groundTruthQuery();
   const refresh = fresh ? `${query ? "&" : "?"}refresh=true` : "";
-  return api(`/api/accuracy${query}${refresh}`);
+  return api<{ charts: AccuracyChartPayload[] }>(`/api/accuracy${query}${refresh}`).then((report) => ({
+    ...report,
+    charts: report.charts.map((chart) =>
+      chart.document ? { ...chart, document: withDuplicateValues(chart.document) } : chart,
+    ),
+  }));
 }
 
 

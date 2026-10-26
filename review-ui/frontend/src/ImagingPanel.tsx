@@ -194,11 +194,12 @@ function finalDosValue(
   return date;
 }
 
-/** Blank / junk / duplicate — downstream member/DOS/encounter metrics were skipped. */
+/** Blank / junk — downstream member/DOS/encounter metrics were skipped. A duplicate is
+ * not: it shows its original's values (withDuplicateValues, 2026-10-26, user). */
 function isBlankJunkPage(page: ImagingPageResult): boolean {
+  if (page.isDuplicate === true) return false;
   const bj = (page.blankOrJunk || "").trim().toLowerCase();
   if (bj.startsWith("yes")) return true;
-  if (page.isDuplicate === true) return true;
   const pt = (page.pageType || "").trim().toLowerCase();
   return pt === "blank" || pt === "duplicate";
 }
@@ -1386,8 +1387,9 @@ function dosCompareRow(
       noValue(page.groundTruth?.dosTo),
     // A blank / junk page (by the ground truth or the pipeline) has no DOS to score, as in
     // the accuracy report: no tick or cross, even when the ground truth gives a date.
+    // A duplicate is scored on its original's DOS.
     noMark:
-      (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes") ||
+      (page.isDuplicate !== true && (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes")) ||
       (page.groundTruth ? (blankJunkTruth(page.groundTruth) ?? "").toLowerCase().startsWith("yes") : false),
   };
 }

@@ -505,7 +505,11 @@ export default function FolderViewer({
 
   function pageMarkClass(imaging: ImagingPageResult | null): string {
     const marks: string[] = [];
-    if (highlightBlankJunk) {
+    // A duplicate has its own colour under either highlight; Blank/Junk marks only true
+    // blank / junk pages (2026-10-26, user).
+    const duplicate = imaging?.isDuplicate === true;
+    if ((highlightBlankJunk || highlightDuplicate) && duplicate) marks.push("mark-duplicate");
+    if (highlightBlankJunk && !duplicate) {
       // Both the pipeline and the ground truth: green. The pipeline only: amber. The
       // ground truth only (a blank / junk page the pipeline missed): red.
       const ours = isBlankOrJunkYes(imaging);
@@ -514,7 +518,6 @@ export default function FolderViewer({
       else if (ours) marks.push("mark-blank-junk mark-bj-ours");
       else if (truth) marks.push("mark-blank-junk mark-bj-truth");
     }
-    if (highlightDuplicate && imaging?.isDuplicate === true) marks.push("mark-duplicate");
     // Show Corrected Images: the pages stage 1 corrected, an orientation fix darker than a tilt.
     const corrected = showCorrected ? correctionKind(imaging) : null;
     if (corrected) marks.push(corrected === "orientation" ? "mark-corrected mark-orient" : "mark-corrected mark-tilt");
@@ -1366,6 +1369,7 @@ export default function FolderViewer({
                           <span><i className="key-swatch key-bj-both" /> Pipeline + ground truth</span>
                           <span><i className="key-swatch key-bj-ours" /> Pipeline only</span>
                           <span><i className="key-swatch key-bj-truth" /> Ground truth only</span>
+                          <span><i className="key-swatch key-duplicate" /> Duplicate</span>
                         </div>
                       ) : null}
                       <label>
@@ -1376,6 +1380,11 @@ export default function FolderViewer({
                         />
                         Highlight Duplicate
                       </label>
+                      {highlightDuplicate ? (
+                        <div className="viewer-menu-key" aria-label="Duplicate highlight colour">
+                          <span><i className="key-swatch key-duplicate" /> Duplicate</span>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
