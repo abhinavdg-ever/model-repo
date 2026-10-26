@@ -31,6 +31,8 @@ import {
   spellCodeable,
   type GtBit,
   GT_PAGE_TYPE_LABELS,
+  PAGE_L1_CHOICES,
+  pageL2Choices,
 } from "./groundTruth";
 import { PAGE_SUBTYPE_CHOICES, PAGE_TYPE_CHOICES } from "./reviewChoices";
 import {
@@ -426,6 +428,9 @@ type CompareRow = {
   fixedNa?: boolean;
   /** A ground-truth cell that only reads this (no entry yet), e.g. "Not Available". */
   fixedText?: string;
+  /** Page Subtype: the L2s of the L1 in this row's ground truth, for reference (not saved);
+   * ``fixedText`` until one of our L1s is there. */
+  l2Of?: string;
   /** This row has no ground-truth cell. */
   noGroundTruth?: boolean;
   /** Show the value, but not a tick or cross. */
@@ -537,8 +542,8 @@ const ENTRY_RULES: Record<string, EntryRule> = {
   mirrored: { choices: YES_NO_CHOICES },
   blank_junk: { choices: BLANK_JUNK_CHOICES },
   duplicate: { choices: DUPLICATE_CHOICES },
-  // The menu offers the client labels; a label saved before them still validates.
-  page_type: { choices: [...GT_PAGE_TYPE_LABELS, ...PAGE_TYPE_AND_SUBTYPE_CHOICES] },
+  // The menu offers our L1s; a client label or older name saved before still validates.
+  page_type: { choices: [...PAGE_L1_CHOICES, ...GT_PAGE_TYPE_LABELS, ...PAGE_TYPE_AND_SUBTYPE_CHOICES] },
   codeable: { choices: CODEABLE_CHOICES },
   visibility: { choices: VISIBILITY_CHOICES },
   dos_from: { kind: "date" },
@@ -861,6 +866,9 @@ function CompareSection({
                 className={compact ? (row.gtRowSpan ? "gt-merged" : undefined) : `gt-shade${row.gtRowSpan ? " gt-merged" : ""}`}
                 rowSpan={row.gtRowSpan}
               >
+                {row.l2Of && pageL2Choices(values[row.l2Of]).length > 0 ? (
+                  <SubtypeReference key={values[row.l2Of]} l1={values[row.l2Of] ?? ""} readOnly={compact} />
+                ) : (
                 <GroundTruthCell
                   row={row}
                   readOnly={compact}
@@ -875,6 +883,7 @@ function CompareSection({
                   onDraft={onDraft}
                   onStartEdit={() => onStartEdit(row.id)}
                 />
+                )}
               </td>
               </>
               )}
@@ -1158,6 +1167,37 @@ function ChoiceMenu({
       ) : null}
       {invalid ? <span className="imaging-gt-hint">{invalid}</span> : null}
     </div>
+  );
+}
+
+/** Page Subtype once an L1 is in Page Type: that L1's L2s to pick from, for reference.
+ * Not saved -- there is no subtype ground truth yet (2026-10-26, user). */
+function SubtypeReference({ l1, readOnly }: { l1: string; readOnly: boolean }) {
+  const [choice, setChoice] = useState("");
+  const options = pageL2Choices(l1);
+  if (readOnly) {
+    return (
+      <span className="imaging-gt-slot">
+        <span className="imaging-gt-copied">{NOT_AVAILABLE_ENTRY}</span>
+      </span>
+    );
+  }
+  return (
+    <span className="imaging-gt-slot">
+      <select
+        aria-label={`Page Subtype under ${l1} (not saved)`}
+        title="The L2s of the Page Type picked, for reference: not saved yet"
+        value={choice}
+        onChange={(event) => setChoice(event.target.value)}
+      >
+        <option value="">{NOT_AVAILABLE_ENTRY}</option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </span>
   );
 }
 
@@ -1693,13 +1733,14 @@ function PageDetails({
               id: "page_type",
               label: "Page Type",
               truth: bits.pageType,
-              choices: GT_PAGE_TYPE_LABELS,
+              choices: PAGE_L1_CHOICES,
               key: true,
             }),
             processed: fmtPageType(finalParts.family, pageTypeKnown),
-            // The client's page-type label (gtPageTypeCanon.json), scored with the
-            // accuracy report's rules: the better of Final and Extracted. It covers
-            // the subtype too; Page Subtype and Specialty have no entry yet.
+            // Our L1 (an older client label still scores, gtPageTypeCanon.json), with
+            // the accuracy report's rules: the better of Final and Extracted. Page
+            // Subtype lists the L2s of the L1 picked, not saved yet; Specialty has no
+            // entry yet (2026-10-26, user).
             compare: (truth: string) => {
               if (!truth.trim() || !pageTypeKnown) return null;
               const final = pageTypeVerdict(truth, finalParts.family, finalParts.subtype, page.pageTypeSemantic);
@@ -1716,6 +1757,7 @@ function PageDetails({
               fixedText: NOT_AVAILABLE_ENTRY,
             }),
             processed: fmtPageType(finalParts.subtype, pageTypeKnown),
+            l2Of: "page_type",
           },
           {
             ...sameValue(fmt(page.specialty, pageTypeKnown), fmtConfidence(finalOr(page, "specialty", page.specialtyConfidence), pageTypeKnown), {

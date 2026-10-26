@@ -6,6 +6,7 @@
 */
 
 import gtPageTypeCanon from "./gtPageTypeCanon.json";
+import pageTaxonomy from "./pageTaxonomy.json";
 import pageTypeAccept from "./pageTypeAccept.json";
 
 export type MatchMark = "match" | "partial" | "mismatch" | "unknown";
@@ -308,6 +309,19 @@ export const GT_PAGE_TYPE_LABELS: readonly string[] = Object.values(GT_CANON)
   .map((entry) => entry.label)
   .sort((a, b) => a.localeCompare(b));
 
+/** Our L1s, the Page Type ground-truth options, and the L2s under each, which Page
+ * Subtype offers once an L1 is picked (pageTaxonomy.json; 2026-10-26, user). */
+export const PAGE_L1_CHOICES: readonly string[] = pageTaxonomy.L1;
+const PAGE_L2 = pageTaxonomy.L2 as Record<string, string[]>;
+const OUR_L1 = new Set(PAGE_L1_CHOICES.map((name) => acceptKey(name)).filter((name) => name !== "others"));
+
+/** The L2s of the L1 named ``l1`` (any spelling); none when it is not one of ours. */
+export function pageL2Choices(l1: string | null | undefined): readonly string[] {
+  const key = acceptKey(text(l1));
+  const name = PAGE_L1_CHOICES.find((candidate) => acceptKey(candidate) === key);
+  return name ? PAGE_L2[name] ?? [] : [];
+}
+
 /** Our path, L1 first, from a composed page type split by ``splitPageType``:
  * ("Lab Report", "Diagnostic Study) (Echocardiogram Report") -> the three levels,
  * folded with ``acceptKey``; "Others" is dropped. */
@@ -372,11 +386,16 @@ function pageTypeMark(
         value && value !== "yet to process" && value !== "skipped" && value !== "not found",
     );
   if (actuals.length === 0) return bit(shown, "unknown");
+  // One of our L1s as the label: a match when our L1 is it, else as below (the canon, where
+  // an L1 name may also be a client label), the better of the two.
+  const ownPath = ourPath(pipeline[0], pipeline[1]);
+  if (ownPath.length > 0 && names.some((name) => OUR_L1.has(acceptKey(name)) && acceptKey(name) === ownPath[0])) {
+    return bit(shown, "match");
+  }
   const mapped = names.filter((name) => GT_CANON[acceptKey(name)]);
   if (mapped.length === names.length) {
-    const path = ourPath(pipeline[0], pipeline[1]);
     const marks = mapped
-      .map((name) => canonMark(GT_CANON[acceptKey(name)], path))
+      .map((name) => canonMark(GT_CANON[acceptKey(name)], ownPath))
       .filter((mark): mark is MatchMark => mark !== null);
     if (marks.length === 0) return [];
     return bit(shown, marks.reduce((best, mark) => (MARK_RANK[mark] > MARK_RANK[best] ? mark : best)));
