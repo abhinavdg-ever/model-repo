@@ -100,6 +100,11 @@ def _totals(result: dict) -> dict[str, Any]:
     return {
         "matchedCount": int(result["matched_count"]),
         "unvalidatedCount": int(result["unvalidated_count"]),
+        "excludedCount": int(result["excluded_count"]),
+        "evaluatedCount": int(result["evaluated_count"]),
+        "evaluatedAccuracyRate": (
+            None if result["evaluated_accuracy_rate"] is None else float(result["evaluated_accuracy_rate"])
+        ),
         "groundCharts": int(result["total_unique_ground_charts"]),
         "systemCharts": int(result["total_unique_system_charts"]),
         "chartsCompared": int(result["total_unique_charts_compared"]),
@@ -192,7 +197,7 @@ def stream(
     system_charts: set[str] = set()
     counts = {
         "groundCount": 0, "systemCount": 0, "correctCount": 0, "errorCount": 0,
-        "missingCount": 0, "extraCount": 0, "unvalidatedCount": 0,
+        "missingCount": 0, "extraCount": 0, "unvalidatedCount": 0, "excludedCount": 0,
     }
     for pdf_id in pdf_ids:
         try:
@@ -214,6 +219,7 @@ def stream(
         counts["correctCount"] += sum(1 for row in rows if row["Status"] == "CORRECT")
         counts["errorCount"] += sum(1 for row in rows if row["Status"] == "ERROR")
         counts["unvalidatedCount"] += sum(1 for row in rows if row["Status"] == "UNVALIDATED")
+        counts["excludedCount"] += sum(1 for row in rows if row["Status"] == "EXCLUDED")
         counts["missingCount"] += missing
         counts["extraCount"] += extra
         try:

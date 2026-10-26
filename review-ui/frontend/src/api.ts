@@ -769,8 +769,9 @@ export function blobPageImageUrl(folderId: string, pageNumber: number): string {
 }
 
 /** UNVALIDATED: matched on PDF ID + Page Number with no field to compare --
- * not evidence the fields agree. */
-export type ManualReviewStatus = "CORRECT" | "ERROR" | "MISSING" | "EXTRA" | "UNVALIDATED";
+ * not evidence the fields agree. EXCLUDED: both sides call the page Blank, or both
+ * Junk -- matched, not evaluated. */
+export type ManualReviewStatus = "CORRECT" | "ERROR" | "MISSING" | "EXTRA" | "UNVALIDATED" | "EXCLUDED";
 
 export type ManualReviewRow = {
   pdfId: string;
@@ -790,8 +791,13 @@ export type ManualReviewResult = {
   missingCount: number;
   extraCount: number;
   unvalidatedCount: number;
-  /** CORRECT + ERROR + UNVALIDATED. Set once the comparison is done. */
+  /** Blank/Blank + Junk/Junk pages: matched, not evaluated. */
+  excludedCount?: number;
+  /** CORRECT + ERROR + UNVALIDATED + EXCLUDED. Set once the comparison is done. */
   matchedCount?: number;
+  /** Matched minus EXCLUDED, and CORRECT / that. Set once the comparison is done. */
+  evaluatedCount?: number;
+  evaluatedAccuracyRate?: number | null;
   /** Distinct PDF IDs. Set once the comparison is done. */
   groundCharts?: number;
   systemCharts?: number;

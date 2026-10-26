@@ -107,6 +107,35 @@ def build_missing_result(gt_row, fields=None):
     return row
 
 
+EXCLUDED_REASON = (
+    "Excluded from evaluation: Ground Truth and Algo Generated both call the page {kind}."
+)
+
+
+def build_excluded_result(gt_row, kind, fields=None):
+    """
+    A matched pair both sides call Blank (or both call Junk): status EXCLUDED, its
+    fields not compared -- shown as the ground truth has them.
+    """
+
+    if fields is None:
+        fields = ACTIVE_COMPARISON_FIELDS
+
+    row = {
+        "PDF ID": _raw_value(gt_row, "PDF ID"),
+        "Page Number": _raw_value(gt_row, "Page Number"),
+    }
+
+    for field_name in fields:
+        row[field_name] = _field_value(gt_row, field_name)
+
+    row["Status"] = "EXCLUDED"
+    row["Reason"] = EXCLUDED_REASON.format(kind=kind.capitalize())
+    row["Excluded As"] = kind
+
+    return row
+
+
 def build_extra_result(system_row, fields=None):
     """
     Build a result row for a Algo Generated record that has
@@ -171,6 +200,13 @@ def build_summary(
     missing_count = int((df["Status"] == "MISSING").sum())
     extra_count = int((df["Status"] == "EXTRA").sum())
     unvalidated_count = int((df["Status"] == "UNVALIDATED").sum())
+    excluded = df[df["Status"] == "EXCLUDED"]
+    excluded_kind = excluded["Excluded As"] if "Excluded As" in excluded.columns else pd.Series(dtype=str)
+    excluded_blank_count = int((excluded_kind == "blank").sum())
+    excluded_junk_count = int((excluded_kind == "junk").sum())
+    # Matched pages actually evaluated: Blank/Blank and Junk/Junk pages are matched but
+    # never compared.
+    evaluated_count = correct_count + error_count + unvalidated_count
 
     # ---------------------------------------------------------
     # Match Percentage
@@ -256,6 +292,29 @@ def build_summary(
             "Percentage": unvalidated_percentage,
         },
         {
+            "Metric": "Excluded (Blank/Blank)",
+            "Count": excluded_blank_count,
+            "Percentage": round(excluded_blank_count / ground_count * 100, 2) if ground_count else 0.0,
+        },
+        {
+            "Metric": "Excluded (Junk/Junk)",
+            "Count": excluded_junk_count,
+            "Percentage": round(excluded_junk_count / ground_count * 100, 2) if ground_count else 0.0,
+        },
+        {
+            "Metric": "Evaluated Matched Records",
+            "Count": evaluated_count,
+            "Percentage": round(evaluated_count / ground_count * 100, 2) if ground_count else 0.0,
+        },
+        {
+            "Metric": "Evaluated Accuracy Rate",
+            "Count": correct_count,
+            "Percentage": (
+                "N/A" if not fields_were_compared or not evaluated_count
+                else round(correct_count / evaluated_count * 100, 2)
+            ),
+        },
+        {
             "Metric": "Match Percentage",
             "Count": correct_count,
             "Percentage": match_percentage_display,
@@ -327,6 +386,26 @@ def build_exempted_columns_df(exempted_columns):
 
 
 # =============================================================
+EXCLUDED_RECORD_COLUMNS = ["PDF ID", "Page Number", "Excluded As", "Exclusion Reason"]
+
+
+def build_excluded_records_df(result_rows):
+    """The pages excluded from evaluation (Blank/Blank, Junk/Junk), for their own sheet."""
+
+    rows = [
+        {
+            "PDF ID": row.get("PDF ID", ""),
+            "Page Number": row.get("Page Number", ""),
+            "Excluded As": str(row.get("Excluded As", "")).capitalize(),
+            "Exclusion Reason": row.get("Reason", ""),
+        }
+        for row in result_rows
+        if row.get("Status") == "EXCLUDED"
+    ]
+
+    return pd.DataFrame(rows, columns=EXCLUDED_RECORD_COLUMNS)
+
+
 # EXCEL WRITER
 # =============================================================
 
@@ -367,6 +446,7 @@ def write_report(
     results_df = results_df[result_columns]
 
     exempted_df = build_exempted_columns_df(exempted_columns)
+    excluded_df = build_excluded_records_df(result_rows)
 
     # ---------------------------------------------------------
     # Write workbook
@@ -389,6 +469,12 @@ def write_report(
         exempted_df.to_excel(
             writer,
             sheet_name="Exempted Columns",
+            index=False,
+        )
+
+        excluded_df.to_excel(
+            writer,
+            sheet_name="Excluded Records",
             index=False,
         )
 

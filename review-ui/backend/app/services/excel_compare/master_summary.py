@@ -387,7 +387,7 @@ def _chart_rows(result_rows):
     entries = []
 
     for pdf_id, counts in charts.items():
-        ground_pages = sum(counts[s] for s in ("CORRECT", "ERROR", "MISSING", "UNVALIDATED"))
+        ground_pages = sum(counts[s] for s in ("CORRECT", "ERROR", "MISSING", "UNVALIDATED", "EXCLUDED"))
         rate = round(counts["CORRECT"] / ground_pages * 100, 2) if ground_pages else None
         entries.append({
             "pdf_id": pdf_id,
@@ -508,6 +508,7 @@ def build_master_summary_pdf(
         ("Missing", str(r["missing_count"]), FAIR_COLOR),
         ("Extra", str(r["extra_count"]), NEUTRAL_COLOR),
         ("Unvalidated", str(r.get("unvalidated_count", 0)), MUTED_COLOR),
+        ("Excluded", str(r.get("excluded_count", 0)), MUTED_COLOR),
     ], styles, value_style="CountValue"))
 
     unvalidated_count = r.get("unvalidated_count", 0)
@@ -541,11 +542,19 @@ def build_master_summary_pdf(
         count_row("Ground Truth pages", ground_count, "Rows in the ground truth"),
         count_row("Algo Generated pages", r["system_count"],
                   "Algo rows for pages the ground truth lists"),
-        count_row("Matched", matched_count, "Pages in both (CORRECT + ERROR + UNVALIDATED)"),
+        count_row("Matched", matched_count, "Pages in both (CORRECT + ERROR + UNVALIDATED + EXCLUDED)"),
         count_row("CORRECT", r["correct_count"], "Matched; every compared field agreed"),
         count_row("ERROR", r["error_count"], "Matched; one or more fields disagreed"),
         count_row("UNVALIDATED", unvalidated_count,
                   "Matched with no field to compare -- not evidence of agreement"),
+        count_row("EXCLUDED (Blank/Blank)", r.get("excluded_blank_count", 0),
+                  "Matched; both sides call the page Blank -- not evaluated"),
+        count_row("EXCLUDED (Junk/Junk)", r.get("excluded_junk_count", 0),
+                  "Matched; both sides call the page Junk -- not evaluated"),
+        count_row("Evaluated Matched Records", r.get("evaluated_count", matched_count),
+                  "Matched minus EXCLUDED -- the denominator of the field-wise accuracy"),
+        count_row("Evaluated Accuracy Rate", _pct_text(r.get("evaluated_accuracy_rate")),
+                  "CORRECT / Evaluated Matched Records (N/A when nothing was compared)"),
         count_row("MISSING", r["missing_count"], "Ground truth pages with no algo row"),
         count_row("EXTRA", r["extra_count"],
                   "Algo pages with no ground truth row (not in the discrepancy rate)"),
@@ -627,7 +636,7 @@ def build_master_summary_pdf(
         rows = [["Field", "Mismatches", "Accuracy", ""]]
         for entry in field_error_summary:
             accuracy = (
-                round(100.0 - entry["error_percentage"], 2) if matched_count else None
+                round(100.0 - entry["error_percentage"], 2) if r.get("evaluated_count", matched_count) else None
             )
             rows.append([
                 escape(entry["field"]),
@@ -645,8 +654,9 @@ def build_master_summary_pdf(
     _section(
         elements, styles,
         "3. Field-wise Accuracy",
-        "Every compared field, most mismatches first. Accuracy = matched pages that "
-        "agreed on the field / matched pages. A page with several mismatched fields "
+        "Every compared field, most mismatches first. Accuracy = evaluated pages that "
+        "agreed on the field / Evaluated Matched Records (Blank/Blank and Junk/Junk "
+        "pages are not evaluated). A page with several mismatched fields "
         "counts once per field, so mismatches can add up to more than ERROR.",
         field_table,
         "No fields were compared this run.",
@@ -661,7 +671,8 @@ def build_master_summary_pdf(
     pattern_note = (
         "Identical disagreements grouped: each line is one field where the ground truth "
         "said one thing and the algo another, with how many pages and which. Fixing a "
-        "line at the top fixes every page it lists. Dates read MM/DD/YYYY on both sides."
+        "line at the top fixes every page it lists. Dates read MM/DD/YYYY on both sides. "
+        "A \"-\" is a display placeholder for a blank cell; it does not imply a value."
     )
 
     if len(patterns) > MAX_PATTERNS:

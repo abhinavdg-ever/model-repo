@@ -1,3 +1,5 @@
+import re
+
 import pandas as pd
 
 from .normalizer import (
@@ -115,6 +117,16 @@ IDENTIFIER_FIELDS = {
 }
 
 
+# Free-text category labels: a plural or a one-letter typo is the same label
+# (2026-10-26, from the standalone ExcelCompare; its whole-phrase subset rule was not
+# taken: "Note" would match "Operative Note").
+TEXT_CLASSIFICATION_FIELDS = {
+    "Page Type",
+    "Page Subtype",
+}
+
+BLANK_OR_JUNK_FIELD = "Is Blank or Junk?"
+
 UNVALIDATED_REASON = (
     "No comparison fields were available for this record. PDF ID + "
     "Page Number were matched, but no field-level validation was "
@@ -163,6 +175,110 @@ def normalize_field_value(field_name, value):
     return clean_text(value)
 
 
+# Values with no content: never matched as a plural or typo of real text.
+_BLANK_LIKE_TEXT_VALUES = {"", "-", "--", "n/a", "na"}
+_WORD_TOKEN_RE = re.compile(r"[a-z0-9]+")
+# A typo is only forgiven on words this long or longer ("ED" vs "ID" never is).
+_MIN_TYPO_TOLERANT_TOKEN_LENGTH = 5
+
+
+def _is_one_edit_away(token_a, token_b):
+    """Exactly one inserted, deleted or substituted character."""
+
+    len_a, len_b = len(token_a), len(token_b)
+
+    if abs(len_a - len_b) > 1:
+        return False
+
+    if len_a == len_b:
+        return sum(1 for x, y in zip(token_a, token_b) if x != y) == 1
+
+    shorter, longer = (token_a, token_b) if len_a < len_b else (token_b, token_a)
+    i = j = 0
+    skipped = False
+
+    while i < len(shorter) and j < len(longer):
+        if shorter[i] == longer[j]:
+            i += 1
+            j += 1
+            continue
+        if skipped:
+            return False
+        skipped = True
+        j += 1
+
+    return True
+
+
+def _tokens_equivalent(token_a, token_b):
+
+    if token_a == token_b:
+        return True
+
+    if min(len(token_a), len(token_b)) < _MIN_TYPO_TOLERANT_TOKEN_LENGTH:
+        return False
+
+    return _is_one_edit_away(token_a, token_b)
+
+
+def compare_text_classification(gt_raw, system_raw):
+    """
+    Page Type / Page Subtype: equal after clean_text; else, when neither side is
+    blank-like, the same label with or without a trailing "s" ("Procedure Note" /
+    "Procedure Notes"), or the same words where a word of 5+ letters may differ by
+    one character ("Imaging" / "Imahing"). Unrelated labels never match. Symmetric.
+    """
+
+    gt_clean = clean_text(gt_raw)
+    system_clean = clean_text(system_raw)
+
+    if gt_clean == system_clean:
+        return True
+
+    if gt_clean in _BLANK_LIKE_TEXT_VALUES or system_clean in _BLANK_LIKE_TEXT_VALUES:
+        return False
+
+    gt_tokens = _WORD_TOKEN_RE.findall(gt_clean)
+    system_tokens = _WORD_TOKEN_RE.findall(system_clean)
+
+    if not gt_tokens or not system_tokens:
+        return False
+
+    gt_norm, system_norm = " ".join(gt_tokens), " ".join(system_tokens)
+
+    if gt_norm == system_norm or gt_norm + "s" == system_norm or system_norm + "s" == gt_norm:
+        return True
+
+    return len(gt_tokens) == len(system_tokens) and all(
+        _tokens_equivalent(a, b) for a, b in zip(gt_tokens, system_tokens)
+    )
+
+
+def classify_blank_or_junk(row):
+    """
+    "blank" / "junk" / None from Is Blank or Junk?: "Yes (Blank)" or "Blank" is blank,
+    "Yes (Junk)" or "Junk" is junk. A plain "Yes", "No", "-", N/A or an empty cell is
+    neither -- nothing is guessed.
+    """
+
+    text = clean_text(_raw_value(row, BLANK_OR_JUNK_FIELD))
+    match = re.fullmatch(r"(?:yes\s*\(\s*)?(blank|junk)\s*\)?", text)
+
+    return match.group(1) if match else None
+
+
+def mutual_blank_or_junk(gt_row, system_row):
+    """
+    "blank" or "junk" when both sides call the page the same one of them (2026-10-26,
+    from the standalone ExcelCompare): such a page is excluded from field-level
+    evaluation. Blank vs Junk, or either side neither, is evaluated as usual.
+    """
+
+    gt_class = classify_blank_or_junk(gt_row)
+
+    return gt_class if gt_class is not None and gt_class == classify_blank_or_junk(system_row) else None
+
+
 def compare_fields(gt_row, system_row, fields_to_compare=None):
     """
     Compare a matched Ground Truth row against its System
@@ -203,6 +319,8 @@ def compare_fields(gt_row, system_row, fields_to_compare=None):
             is_match = (presence == "yes") == has_value(system_raw)
         elif field_name in CREDENTIAL_FIELDS:
             is_match = credentials_match(gt_raw, system_raw)
+        elif field_name in TEXT_CLASSIFICATION_FIELDS:
+            is_match = compare_text_classification(gt_raw, system_raw)
         else:
             is_match = gt_normalized == system_normalized
 

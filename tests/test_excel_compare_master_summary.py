@@ -526,3 +526,13 @@ def test_local_mode_reads_duplicate_scores_from_blank_junk_json(tmp_path):
     assert by["#2"]["duplicateConfidence"] == 0.72
     assert "3.jpg" not in by  # below 70%: not listed
     assert index_duplicate_scores(tmp_path / "missing.json") == {}
+
+
+def test_master_summary_shows_excluded_and_evaluated_pages():
+    from app.services.excel_compare.master_summary import build_master_summary_pdf
+
+    row = {"PDF ID": "100", "Page Number": 1, "Is Blank or Junk?": "Yes (Blank)"}
+    result = compare_files(_upload(pd.DataFrame([row]), "qa.csv"), _upload(pd.DataFrame([row]), "algo.csv"))
+    text = " ".join(_pdf_text(build_master_summary_pdf(result)).split())
+    assert "EXCLUDED (Blank/Blank) 1" in text and "Evaluated Accuracy Rate N/A" in text
+    assert "display placeholder" in text

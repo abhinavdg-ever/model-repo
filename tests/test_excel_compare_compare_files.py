@@ -361,3 +361,54 @@ def test_missing_pdf_id_column_raises_clear_error():
 
         with pytest.raises(ValueError, match="Ground Truth file is missing"):
             compare_files(ground_path, system_path)
+
+
+# --- 2026-10-26: from the standalone ExcelCompare (adapted) -------------------------
+
+def _compare(ground_rows, system_rows):
+    return compare_files(
+        FakeUploadedFile("ground.xlsx", pd.DataFrame(ground_rows)),
+        FakeUploadedFile("system.xlsx", pd.DataFrame(system_rows)),
+    )
+
+
+def test_blank_blank_and_junk_junk_pages_are_excluded_not_evaluated():
+    ground = [
+        build_row("100", 1, **{"Is Blank or Junk?": "Yes (Blank)", "Page Type": "Others"}),
+        build_row("100", 2, **{"Is Blank or Junk?": "Junk"}),
+        build_row("100", 3),
+    ]
+    system = [
+        build_row("100", 1, **{"Is Blank or Junk?": "Yes (Blank)", "Page Type": "Blank"}),
+        build_row("100", 2, **{"Is Blank or Junk?": "Yes (Junk)", "DOS From": "2020-01-01"}),
+        build_row("100", 3, **{"DOS From": "2020-01-01"}),
+    ]
+    result = _compare(ground, system)
+    statuses = {int(row["Page Number"]): row["Status"] for row in result["result_rows"]}
+    assert statuses == {1: "EXCLUDED", 2: "EXCLUDED", 3: "ERROR"}
+    assert result["excluded_blank_count"] == 1 and result["excluded_junk_count"] == 1
+    assert result["matched_count"] == 3 and result["evaluated_count"] == 1
+    assert result["evaluated_accuracy_rate"] == 0.0
+    # The field breakdown is over evaluated pages only.
+    dos = next(e for e in result["field_error_summary"] if e["field"] == "DOS From")
+    assert dos["error_count"] == 1 and dos["error_percentage"] == 100.0
+    metrics = set(result["summary_df"]["Metric"])
+    assert {"Excluded (Blank/Blank)", "Excluded (Junk/Junk)", "Evaluated Accuracy Rate"} <= metrics
+
+
+def test_blank_vs_junk_or_plain_yes_is_still_evaluated():
+    ground = [build_row("100", 1, **{"Is Blank or Junk?": "Yes (Blank)"}),
+              build_row("100", 2, **{"Is Blank or Junk?": "Yes"})]
+    system = [build_row("100", 1, **{"Is Blank or Junk?": "Yes (Junk)"}),
+              build_row("100", 2, **{"Is Blank or Junk?": "Yes (Junk)"})]
+    result = _compare(ground, system)
+    assert {row["Status"] for row in result["result_rows"]} <= {"CORRECT", "ERROR"}
+    assert result["excluded_count"] == 0
+
+
+def test_page_type_plural_and_typo_match_but_unrelated_labels_do_not():
+    from app.services.excel_compare.field_comparator import compare_text_classification as same
+
+    assert same("Procedure Note", "Procedure Notes") and same("Imaging Report", "Imahing Report")
+    assert not same("Imaging Report", "Billing Report") and not same("Note", "Operative Note")
+    assert not same("ED", "ID") and not same("-", "N/A") and same("", "")

@@ -48,6 +48,7 @@ const STATUS_CLASS: Record<ManualReviewStatus, string> = {
   MISSING: "status-pill status-imaging",
   EXTRA: "status-pill status-progress",
   UNVALIDATED: "status-pill status-queued",
+  EXCLUDED: "status-pill status-queued",
 };
 
 type Filter = "ALL" | ManualReviewStatus;
@@ -452,6 +453,7 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
               missingCount: 0,
               extraCount: 0,
               unvalidatedCount: 0,
+              excludedCount: 0,
               fields: event.fields,
               exemptedColumns: event.exemptedColumns,
               summary: [],
@@ -571,6 +573,9 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
         { id: "CORRECT", label: "Correct", count: statusCount("CORRECT") },
         ...(statusCount("UNVALIDATED") > 0
           ? [{ id: "UNVALIDATED" as const, label: "Unvalidated", count: statusCount("UNVALIDATED") }]
+          : []),
+        ...(statusCount("EXCLUDED") > 0
+          ? [{ id: "EXCLUDED" as const, label: "Excluded (Blank/Junk)", count: statusCount("EXCLUDED") }]
           : []),
       ]
     : [];
@@ -745,8 +750,14 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                     [
                       "matched",
                       result.matchedCount ??
-                        result.correctCount + result.errorCount + result.unvalidatedCount,
+                        result.correctCount + result.errorCount + result.unvalidatedCount + (result.excludedCount ?? 0),
                     ],
+                    ...((result.excludedCount ?? 0) > 0
+                      ? [
+                          ["excluded (blank/junk)", result.excludedCount ?? 0],
+                          ["evaluated", result.evaluatedCount ?? result.correctCount + result.errorCount + result.unvalidatedCount],
+                        ]
+                      : []),
                   ],
                 },
                 ...(result.groundCharts !== undefined
@@ -776,6 +787,9 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                   label: "Rates",
                   items: [
                     ["exact match rate", percent(rate("Match Percentage"))],
+                    ...((result.excludedCount ?? 0) > 0
+                      ? [["evaluated accuracy", percent(rate("Evaluated Accuracy Rate"))]]
+                      : []),
                     [
                       "discrepancy rate",
                       percent(rate("Overall Disparity Rate")),
@@ -838,7 +852,8 @@ export default function ManualReviewView({ onBack, onOpenChart, chartHref }: Pro
                 <span className="excel-compare-stat-group-label">By field</span>
                 <ul>
                   {result.fieldErrors.map((entry) => {
-                    // Accuracy = matched pages that agreed on the field, as in the Master Summary.
+                    // Accuracy = evaluated pages (Blank/Blank and Junk/Junk left out) that agreed
+                    // on the field, as in the Master Summary.
                     const accuracy = 100 - entry.percentage;
                     const tone = accuracy >= 95 ? "good" : accuracy >= 80 ? "fair" : "poor";
                     return (

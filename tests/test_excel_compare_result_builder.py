@@ -233,3 +233,14 @@ def test_write_report_defaults_to_active_comparison_fields():
         )
 
         assert list(written.columns) == expected_columns
+
+
+def test_write_report_has_an_excluded_records_sheet():
+    from app.services.excel_compare.result_builder import build_excluded_result, build_summary, write_report
+
+    row = build_excluded_result(pd.Series({"PDF ID": "100", "Page Number": "1"}), "junk", [])
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "r.xlsx"
+        write_report(path, [row], build_summary(1, 1, [row]), [])
+        sheet = pd.read_excel(path, sheet_name="Excluded Records")
+    assert list(sheet["Excluded As"]) == ["Junk"] and "both call the page Junk" in sheet["Exclusion Reason"][0]

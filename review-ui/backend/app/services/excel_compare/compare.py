@@ -8,10 +8,12 @@ from .field_comparator import (
     compare_fields,
     determine_status,
     build_reason,
+    mutual_blank_or_junk,
 )
 
 from .result_builder import (
     build_associated_result,
+    build_excluded_result,
     build_missing_result,
     build_extra_result,
     build_summary,
@@ -197,6 +199,14 @@ def compare_frames(ground, system, fields_to_compare):
         gt_row = ground.loc[gt_index]
         system_row = system.loc[system_index]
 
+        # Both sides call the page Blank (or both Junk): matched, not evaluated.
+        kind = mutual_blank_or_junk(gt_row, system_row)
+        if kind:
+            row = build_excluded_result(gt_row, kind, fields_to_compare)
+            row["Mismatched"], row["Evidence"] = [], []
+            result_rows.append(row)
+            continue
+
         field_results = compare_fields(gt_row, system_row, fields_to_compare)
         status = determine_status(field_results)
         reason = build_reason(status, field_results)
@@ -255,7 +265,11 @@ def summarize(
 
     Rates:
       Exact Match Rate       = CORRECT / Total Ground Truth
-      Overall Match %        = Matched (CORRECT+ERROR+UNVALIDATED) / Total Ground Truth
+      Overall Match %        = Matched (CORRECT+ERROR+UNVALIDATED+EXCLUDED) / Total Ground Truth
+      Evaluated Accuracy     = CORRECT / Evaluated (CORRECT+ERROR+UNVALIDATED)
+
+    EXCLUDED pages (both sides Blank, or both Junk) are matched but never evaluated:
+    the field breakdown's percentages are of the evaluated pages.
       Overall Discrepancy %  = (ERROR + MISSING) / Total Ground Truth
       Extra Rate             = EXTRA / Total Algo Generated
 
@@ -279,7 +293,12 @@ def summarize(
     missing_count = count("MISSING")
     extra_count = count("EXTRA")
     unvalidated_count = count("UNVALIDATED")
-    matched_count = correct_count + error_count + unvalidated_count
+    excluded_count = count("EXCLUDED")
+    excluded_blank_count = sum(
+        1 for row in result_rows if row["Status"] == "EXCLUDED" and row.get("Excluded As") == "blank"
+    )
+    evaluated_count = correct_count + error_count + unvalidated_count
+    matched_count = evaluated_count + excluded_count
 
     fields_were_compared = bool(fields_to_compare)
 
@@ -310,7 +329,7 @@ def summarize(
                 "field": field_name,
                 "error_count": errors,
                 "error_percentage": (
-                    round(errors / matched_count * 100, 2) if matched_count else 0.0
+                    round(errors / evaluated_count * 100, 2) if evaluated_count else 0.0
                 ),
             }
             for field_name, errors in field_error_counts.items()
@@ -339,6 +358,13 @@ def summarize(
         "missing_count": missing_count,
         "extra_count": extra_count,
         "unvalidated_count": unvalidated_count,
+        "excluded_count": excluded_count,
+        "excluded_blank_count": excluded_blank_count,
+        "excluded_junk_count": excluded_count - excluded_blank_count,
+        "evaluated_count": evaluated_count,
+        "evaluated_accuracy_rate": (
+            _safe_rate(correct_count, evaluated_count) if fields_were_compared and evaluated_count else None
+        ),
         "exact_match_rate": (
             _safe_rate(correct_count, ground_count) if fields_were_compared else None
         ),
