@@ -1894,11 +1894,10 @@ function documentRows(pages: ImagingPageResult[], encounters: StagedEncounter[] 
   return rows.sort((a, b) => a.startPage - b.startPage);
 }
 
-function fmtDocumentDos(from: string | null, to: string | null): string {
-  if (!from && !to) return NOT_FOUND;
-  const start = displayIsoDates(from ?? to ?? "");
-  const end = displayIsoDates(to ?? from ?? "");
-  return start === end ? start : `${start} – ${end}`;
+/** An encounter's DOS From / DOS To: a one-day visit has To = From. */
+function fmtDocumentDos(from: string | null, to: string | null, side: "from" | "to"): string {
+  const value = side === "from" ? from ?? to : to ?? from;
+  return value ? displayIsoDates(value) : NOT_FOUND;
 }
 
 function DocumentsTable({
@@ -1931,7 +1930,8 @@ function DocumentsTable({
           <th scope="col">End Page</th>
           <th scope="col">Page Type</th>
           <th scope="col">Encounter Type</th>
-          <th scope="col">DOS</th>
+          <th scope="col">DOS From</th>
+          <th scope="col">DOS To</th>
         </tr>
       </thead>
       <tbody>
@@ -1943,9 +1943,11 @@ function DocumentsTable({
             <td>{row.junk ? "Junk" : fmtPageType(row.pageType, typeKnown)}</td>
             {/* A junk group is no visit: no encounter type and no DOS to find. */}
             <td>{row.junk ? SKIPPED : fmt(row.encounterType, encounterKnown)}</td>
-            <td>
-              {row.junk ? SKIPPED : sections.dos ? fmtDocumentDos(row.dosFrom, row.dosTo) : YET_TO_PROCESS}
-            </td>
+            {(["from", "to"] as const).map((side) => (
+              <td key={side}>
+                {row.junk ? SKIPPED : sections.dos ? fmtDocumentDos(row.dosFrom, row.dosTo, side) : YET_TO_PROCESS}
+              </td>
+            ))}
           </tr>
         ))}
       </tbody>
