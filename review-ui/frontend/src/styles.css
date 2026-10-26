@@ -3455,7 +3455,7 @@ input {
   min-width: 0;
 }
 .accuracy-donuts > .accuracy-overall-card {
-  flex: 1.55 1 15rem;
+  flex: 1.4 1 13.5rem;
 }
 
 .accuracy-donut-card {
@@ -3629,6 +3629,39 @@ input {
   gap: 0.4rem;
   /* Room for the card's ⓘ at the top right. */
   padding: 0.5rem 0.9rem 0 0;
+}
+/* Good / Fair / Bad under a dashed rule, at the card's foot like the "= Yes" boxes. */
+.accuracy-overall-bands {
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.25rem;
+  margin-top: auto;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--border);
+}
+.accuracy-overall-band {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  padding: 0.2rem 0.15rem;
+  border-radius: 10px;
+  font-size: 0.62rem;
+  line-height: 1.25;
+}
+.accuracy-overall-band strong {
+  font-size: 0.82rem;
+}
+.accuracy-overall-band small {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+.accuracy-band-good { background: #eef5ec; color: var(--status-success-fg); }
+.accuracy-band-fair { background: #f8f1e3; color: var(--status-warning-fg); }
+.accuracy-band-bad { background: var(--status-error-bg); color: var(--status-error-fg); }
+.accuracy-overall-card > figcaption {
+  margin-bottom: 0.45rem;
 }
 .accuracy-overall-donut {
   flex: none;

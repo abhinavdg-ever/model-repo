@@ -43,6 +43,8 @@ import {
   formatF1,
   formatPrecision,
   formatRecall,
+  bandCounts,
+  MATCH_BANDS,
   matchBand,
   matchCounts,
   OVERALL_STREAMS,
@@ -280,7 +282,7 @@ function RatesGrid({ rates, compact = false }: { rates: ClassRates; compact?: bo
         ["Precision", formatPrecision(rates)],
         ["Recall", formatRecall(rates)],
         // The table's narrow cells say "Cred M%"; the donut card spells it out.
-        hasCredMatch(rates) ? [compact ? "Cred M%" : "Cred. Match", formatCredMatch(rates)] : ["F1", formatF1(rates)],
+        hasCredMatch(rates) ? [compact ? "Cred M%" : "Cred. M", formatCredMatch(rates)] : ["F1", formatF1(rates)],
       ].map(([name, value]) => (
         <div key={name}>
           <dt>{name}</dt>
@@ -336,7 +338,7 @@ const RATES_INFO =
   "Precision = TP / (TP + FP): share of the pipeline's Class 1 calls that were right. " +
   "Recall = TP / (TP + FN): share of the real Class 1 pages the pipeline caught. " +
   "F1 = 2 × Precision × Recall / (Precision + Recall). " +
-  "Provider Signature shows Cred. Match instead of F1: of the pages the ground truth gives credentials for, the share whose credentials match the ground truth's. " +
+  "Provider Signature shows Cred. M (credentials match) instead of F1: of the pages the ground truth gives credentials for, the share whose credentials match the ground truth's. " +
   "These matter because Class 1 pages are rare: the overall accuracy can be high while they are missed.";
 
 function Donut({
@@ -386,7 +388,7 @@ function Donut({
   });
   return (
     <figure className="accuracy-donut-card">
-      <svg className="accuracy-donut" viewBox="0 0 100 100" role="img" aria-label={rates ? `${label} ${percentLabel(tally)}. ${formatDistribution(tally, binary)}. Precision ${formatPrecision(rates)}. Recall ${formatRecall(rates)}. ${hasCredMatch(rates) ? `Cred. Match ${formatCredMatch(rates)}` : `F1 ${formatF1(rates)}`}` : `${label} ${percentLabel(tally)}. ${formatDistribution(tally, binary)}`}>
+      <svg className="accuracy-donut" viewBox="0 0 100 100" role="img" aria-label={rates ? `${label} ${percentLabel(tally)}. ${formatDistribution(tally, binary)}. Precision ${formatPrecision(rates)}. Recall ${formatRecall(rates)}. ${hasCredMatch(rates) ? `Cred. M ${formatCredMatch(rates)}` : `F1 ${formatF1(rates)}`}` : `${label} ${percentLabel(tally)}. ${formatDistribution(tally, binary)}`}>
         <circle className="accuracy-donut-track" cx="50" cy="50" r={radius} />
         {arcs}
         <text className="accuracy-donut-pct" x="50" y={tally.scored > 0 ? 51 : 54}>
@@ -441,6 +443,7 @@ function OverallDonut({ tally }: { tally: Tally }) {
   const circumference = 2 * Math.PI * radius;
   const counts = matchCounts(tally);
   const total = tally.scored;
+  const bands = bandCounts(tally);
   let offset = 0;
   const slices = counts.flatMap(([k, pages]) => {
     if (total === 0 || pages === 0) return [];
@@ -516,6 +519,17 @@ function OverallDonut({ tally }: { tally: Tally }) {
         </table>
       </div>
       <figcaption>Overall</figcaption>
+      <div className="accuracy-overall-bands">
+        {MATCH_BANDS.map((item) => (
+          <div key={item.id} className={`accuracy-overall-band accuracy-band-${item.id}`} title={`${item.label}: ${item.min}–${item.max} of ${OVERALL_STREAMS} matching`}>
+            <span>
+              {item.label} ({item.min}–{item.max})
+            </span>
+            <strong>{pct(bands[item.id], total)}</strong>
+            <small>{bands[item.id].toLocaleString()} pages</small>
+          </div>
+        ))}
+      </div>
     </figure>
   );
 }
@@ -558,7 +572,7 @@ const RATE_MEASURES = [
   { key: "precision", label: "Precision", percent: precisionPercent },
   { key: "recall", label: "Recall", percent: recallPercent },
   { key: "f1", label: "F1", percent: f1Percent },
-  { key: "credMatch", label: "Cred. Match", percent: credMatchPercent },
+  { key: "credMatch", label: "Cred. M", percent: credMatchPercent },
 ] as const;
 
 /** The rate measures a column offers: F1, or Cred. Match on Provider Signature. */
@@ -716,7 +730,7 @@ function ColumnFilter({
   label: string;
   column: ScoreColumn;
   value: ColumnRanges | undefined;
-  /** Set on a column with a Class Yes block ("Member & DOB = Yes"): also filter on its
+  /** Set on a column with a Class Yes block ("Name & DOB = Yes"): also filter on its
    * Precision, Recall and F1. */
   classLabel?: string;
   onChange: (value: ColumnRanges | undefined) => void;
@@ -1108,7 +1122,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
               : undefined;
   const ratesLabelFor = (id: MetricId) =>
     id === "member"
-      ? "Member & DOB = Yes"
+      ? "Name & DOB = Yes"
       : id === "orientation"
         ? "Rotated (not 0°) = Yes"
         : id === "signature"

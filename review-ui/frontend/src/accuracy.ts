@@ -41,7 +41,7 @@ export const METRICS: {
     id: "member",
     label: "Member Verification",
     binary: true,
-    rule: "Name and DOB presence labels against what the pipeline found (or did not find): both right = Match, else No Match. Not Available = a page whose Name or DOB label is NA / Not Available (or missing), or one the member stage did not judge (blank / junk); it is counted, not scored. Member ID is not scored (no ground truth). Under Member & DOB = Yes (cases = pages the ground truth has both on): Precision, Recall and F1",
+    rule: "Name and DOB presence labels against what the pipeline found (or did not find): both right = Match, else No Match. Not Available = a page whose Name or DOB label is NA / Not Available (or missing), or one the member stage did not judge (blank / junk); it is counted, not scored. Member ID is not scored (no ground truth). Under Name & DOB = Yes (cases = pages the ground truth has both on): Precision, Recall and F1",
   },
   {
     id: "dos",
@@ -71,7 +71,7 @@ export const METRICS: {
     id: "signature",
     label: "Provider Signature",
     binary: true,
-    rule: "Every labelled page, Match or No Match: the ground truth's Provider Signature (Yes / No; credentials in the label mean Yes; NA / blank is No) equals whether the pipeline found an electronic signature. Under Signature = Yes (cases = pages the ground truth or the pipeline calls signed): Precision = of the pages the pipeline called signed, the share signed; Recall = of the pages the ground truth calls signed, the share found; Cred. Match = of the pages the ground truth gives credentials, the share whose credentials match the ground truth's (any one credential shared: MD, DO, NP…; punctuation, order and separators ignored)",
+    rule: "Every labelled page, Match or No Match: the ground truth's Provider Signature (Yes / No; credentials in the label mean Yes; NA / blank is No) equals whether the pipeline found an electronic signature. Under Signature = Yes (cases = pages the ground truth or the pipeline calls signed): Precision = of the pages the pipeline called signed, the share signed; Recall = of the pages the ground truth calls signed, the share found; Cred. M (credentials match) = of the pages the ground truth gives credentials, the share whose credentials match the ground truth's (any one credential shared: MD, DO, NP…; punctuation, order and separators ignored)",
   },
   {
     id: "orientation",
