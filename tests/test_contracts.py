@@ -2735,21 +2735,17 @@ class TestCredentialListCopy:
 
 
 class TestNoModelWeightsInGit:
-    """Model weights are copied onto each host, never committed -- except the
-    page-axes and encounter encoders, which are in git LFS since 2026-10-25 (user:
-    pushed to the public repo knowing they were trained on chart text). Small files
-    that ship on purpose (tfidf_flat.joblib, image_type_classification.pkl,
-    configs, tokenizers) are not weights in this sense."""
+    """Model weights are copied onto each host, never committed. The page-axes and
+    encounter encoders were in git LFS from 2026-10-25 and were taken out on 2026-10-26
+    (user). Small files that ship on purpose (tfidf_flat.joblib,
+    image_type_classification.pkl, configs, tokenizers) are not weights in this sense."""
 
     WEIGHT_SUFFIXES = (".safetensors", ".pt", ".pth", ".bin", ".onnx", ".h5", ".ckpt", ".ot", ".gguf")
     # Small on purpose: the page-axes heads (280 KB) and the encounter head (17 KB).
     # The encoders they sit on (encoder/model.safetensors, 265 MB each) are never committed.
     ALLOWED = {"core-pipeline/models/page-family/page-axes/heads.pt", "core-pipeline/models/encounter/head.pt"}
-    # In git LFS (the repository holds a pointer): exactly these two encoders.
-    LFS = {
-        "core-pipeline/models/page-family/page-axes/encoder/model.safetensors",
-        "core-pipeline/models/encounter/encoder/model.safetensors",
-    }
+    # Nothing in git LFS (2026-10-26, user).
+    LFS: set[str] = set()
     MAX_TRACKED_BYTES = 20 * 1024 * 1024
 
     @staticmethod
@@ -2780,7 +2776,7 @@ class TestNoModelWeightsInGit:
         ]
         assert not large, f"files over 20 MB tracked in git: {large}"
 
-    def test_git_lfs_holds_only_the_two_encoders(self):
+    def test_nothing_is_in_git_lfs(self):
         attributes = REPO_ROOT / ".gitattributes"
         text = attributes.read_text(encoding="utf-8") if attributes.is_file() else ""
         rules = {ln.split()[0] for ln in text.splitlines() if "filter=lfs" in ln and not ln.lstrip().startswith("#")}

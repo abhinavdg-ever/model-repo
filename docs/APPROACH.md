@@ -749,10 +749,9 @@ section 8.
    `core-pipeline/models/page-family/page-axes/`, and the encounter run's `encoder/`,
    `head.pt`, `label_space.json` into `core-pipeline/models/encounter/`. The two
    `encoder/model.safetensors` files (page axes 433 MB, Bio_ClinicalBERT; encounter
-   265 MB, DistilBERT) are in **git LFS** since 2026-10-25 (user): on each host,
-   `git lfs install` once, then `git lfs pull` after `git pull`. Without git-lfs the
-   file is a ~130-byte pointer and `/health` says so. A new model: copy it over the
-   file, commit and push (each version adds to the LFS storage quota). `/health` → `page_axes_model` and `encounter_model` say whether each loaded.
+   265 MB, DistilBERT) are **not in git** (taken out of git LFS on 2026-10-26, user):
+   copy them onto each host like the other weights (scp into `core-pipeline/models/`).
+   A missing encoder is named by `/health`. `/health` → `page_axes_model` and `encounter_model` say whether each loaded.
 3. `page_arbitration.json` → `axes.taxonomy_version` is `v29.2`; a model trained on
    another taxonomy is refused at load and the canon decides (visible in `/health`).
 4. Refit the keyword weights on the run's split and re-tune the vote (8.1):
