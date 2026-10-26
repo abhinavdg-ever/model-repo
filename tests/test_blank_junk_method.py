@@ -315,17 +315,12 @@ class TestShortPage:
 
 
 class TestPostProcess:
-    """2026-10-26 (user): a page with a DOS, a signature or provider details is never junk."""
+    """2026-10-26 (user): a page with a signature or provider details is never junk; a DOS
+    alone does not keep it (removed the same day)."""
 
-    def test_a_dated_page_the_ladder_junked_is_kept(self):
-        inputs = PageInputs(text=JUNK_TEXT, pass_no=2, bert=bert(0.99), dated=True)
-        verdict = method.post_process(decide(inputs), inputs)
-        assert verdict.code == classify.CODE_MAIN and verdict.rule == "DOS"
-        assert "content_kept" in verdict.votes and 0 < verdict.confidence <= 1
-
-    def test_undated_junk_and_pass_1_are_unchanged(self):
+    def test_plain_junk_and_pass_1_are_unchanged(self):
         for inputs in (PageInputs(text=JUNK_TEXT, pass_no=2, bert=bert(0.99)),
-                       PageInputs(text=JUNK_TEXT, pass_no=1, bert=bert(0.99), dated=True)):
+                       PageInputs(text=JUNK_TEXT, pass_no=1, bert=bert(0.99), signed=True)):
             verdict = decide(inputs)
             assert method.post_process(verdict, inputs) is verdict
 

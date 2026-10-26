@@ -813,5 +813,5 @@
     "min_handwritten_area_pct": 30
   },
   "note_confidence": "Confidence is the evidence for the verdict (docs/BLANK_JUNK_LOGIC.md), not a fixed number: DistilBERT's probability (when it scored the page), the keyword score (junk / 10, or clinical-or-demographic / 10) and, for R3 and R6-R8, the rule's own value. Signals that agree combine as 1 - product(1 - p); a disagreement is averaged. R1, R2 and R4 (signature) keep fixed values. There is no cap: a contested call comes out low by itself, so filter on low confidence to review.",
-  "dos_keep_note": "2026-10-26 (user), post-processing after the ladder in pass 2: a page with a DOS, an Electronic Signature or provider details (name / credentials) extracted by kv_extract is never junk -> Main. Duplicates and Blank are not changed."
+  "dos_keep_note": "2026-10-26 (user), post-processing after the ladder in pass 2: a page with an Electronic Signature or provider details (name / credentials) extracted by kv_extract is never junk -> Main. Duplicates and Blank are not changed. A DOS alone no longer keeps a page (removed the same day, user: it caught every date)."
 }

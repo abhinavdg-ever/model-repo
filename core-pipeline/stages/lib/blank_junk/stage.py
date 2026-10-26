@@ -659,7 +659,6 @@ def _page_inputs(
 ) -> dict[int, "method.PageInputs"]:
     """Everything method.decide needs per page except the text and the model scores."""
     signed: set[str] = set()
-    dated: set[str] = set()
     with_provider: set[str] = set()
     signature_known = False
     if pass_no == 2:
@@ -668,7 +667,6 @@ def _page_inputs(
 
         signed = signed_page_names(ctx.chart_name)
         signature_known = imaging_csv(ctx.chart_name, "provider_signature").is_file()
-        dated = extracted_page_names(ctx.chart_name, "dos")
         with_provider = extracted_page_names(ctx.chart_name, "provider_name", "provider_credentials")
     top = float(method.canon().raw["short_page"]["top_fraction"])
     out: dict[int, method.PageInputs] = {}
@@ -686,7 +684,6 @@ def _page_inputs(
             hw_area_pct=float(area) if area is not None else None,
             signed=page["page_name"] in signed,
             signature_known=signature_known,
-            dated=page["page_name"] in dated,
             provider=page["page_name"] in with_provider,
             no_ink=str(q.get("hw_method") or "") in NO_INK_METHODS,
         )
