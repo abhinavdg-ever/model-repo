@@ -125,11 +125,14 @@ def clean_label(value: str | None) -> str | None:
 
 
 def yes_no_label(value: str | None) -> str | None:
-    """Member name, DOB, member id, and provider signature are only Yes or No."""
+    """Member name, DOB, member id, and provider signature are only Yes or No, or
+    Skipped (the pipeline rightly skipped the page; 2026-10-26, user)."""
     text = clean_label(value)
     if text is None:
         return None
     folded = text.casefold()
+    if folded == "skipped":
+        return "Skipped"
     if folded in {"yes", "y", "true"}:
         return "Yes"
     if folded in {"no", "n", "false"}:

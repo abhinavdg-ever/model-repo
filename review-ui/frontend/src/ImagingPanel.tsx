@@ -33,6 +33,7 @@ import {
 } from "./groundTruth";
 import { PAGE_SUBTYPE_CHOICES, PAGE_TYPE_CHOICES } from "./reviewChoices";
 import {
+  ENCOUNTER_TYPE_CHOICES,
   EncounterReviewEditor,
   type EncounterSeed,
 } from "./ReviewTables";
@@ -464,7 +465,7 @@ function blankJunkCompare(extracted: string, final: string) {
 /** The merged Page Type / Page Subtype ground truth takes either kind of name. */
 const PAGE_TYPE_AND_SUBTYPE_CHOICES = [...new Set([...PAGE_TYPE_CHOICES, ...PAGE_SUBTYPE_CHOICES])];
 const DUPLICATE_CHOICES = ["Yes", "Partial", "No"] as const;
-const CODEABLE_CHOICES = ["Codable", "Non-Codable", "Discharge"] as const;
+const CODEABLE_CHOICES = ["Codable", "Non-Codable", "Discharge", "Not Sure"] as const;
 const TYPE_CHOICES = ["Printed", "Handwritten", "Form", "Visual", "Blank"] as const;
 
 /** Page type; a page classified before document type existed shows its old label. */
@@ -475,7 +476,10 @@ const YES_NO_CHOICES = ["Yes", "No"] as const;
 const VISIBILITY_CHOICES = ["Visible", "Not visible"] as const;
 // An empty ground-truth cell reads "Not Found"; typing it (or NA) clears the cell.
 const CLEARED_ENTRY = new Set(["", "na", "n/a", "not found"]);
-const PLACEHOLDER_ENTRY = new Set(["yet to process", "skipped", "not available"]);
+const PLACEHOLDER_ENTRY = new Set(["yet to process", "not available"]);
+/** A ground truth every Page Details cell takes (2026-10-26, user): the pipeline rightly
+ * skipped the field on this page (a blank page has no DOS, a junk page no provider). */
+const SKIPPED_ENTRY = "Skipped";
 
 function exactOption(value: string, options: readonly string[]): string | null {
   const folded = value.trim().toLowerCase();
@@ -541,6 +545,7 @@ const ENTRY_RULES: Record<string, EntryRule> = {
 /** A listed choice, a real date, angle, or percent. Blank clears the cell. */
 function normalizeEntry(id: string, value: string): string | null {
   if (CLEARED_ENTRY.has(value.trim().toLowerCase())) return "";
+  if (value.trim().toLowerCase() === "skipped") return SKIPPED_ENTRY;
   const rule = ENTRY_RULES[id];
   if (!rule) return value.trim();
   if (rule.presence) return exactOption(value, YES_NO_CHOICES);
@@ -721,6 +726,8 @@ function groundTruthMark(
   truth: string,
   presence = false,
 ): "match" | "mismatch" | null {
+  const skipped = (raw: string) => raw.trim().toLowerCase() === "skipped";
+  if (skipped(truth)) return skipped(processed) ? "match" : "mismatch";
   if (presence) {
     const side = yesNo(truth);
     if (!side) return null;
@@ -742,9 +749,10 @@ function enteredMark(
   truth: string,
   presence: boolean,
 ): "match" | "partial" | "mismatch" | null {
+  // Either the Final or the Extracted value matching is a match (2026-10-26, user).
   const againstFinal = groundTruthMark(final, truth, presence);
   if (againstFinal !== "mismatch") return againstFinal;
-  return groundTruthMark(extracted, truth, presence) === "match" ? "partial" : "mismatch";
+  return groundTruthMark(extracted, truth, presence) === "match" ? "match" : "mismatch";
 }
 
 function CompareSection({
@@ -1003,30 +1011,18 @@ function GroundTruthCell({
     );
   }
 
-  if (row.presence || row.choices) {
-    const options = row.presence ? ["Yes", "No"] : row.choices ?? [];
-    const known = stored && !options.includes(stored) ? [stored, ...options] : options;
-    return (
-      <span className="imaging-gt-slot is-editing">
-        <ChoiceMenu
-          fieldId={row.id}
-          label={row.label}
-          value={spellCodeable(stored)}
-          options={known}
-          onCommit={onCommit}
-          onCancel={onCancel}
-          onDraft={onDraft}
-        />
-      </span>
-    );
-  }
-  const draft = stored || (offer ? copied : "");
+  // Every cell: its listed values (none for a date, angle or name) and Skipped.
+  const listed = row.presence ? ["Yes", "No"] : row.choices ?? [];
+  const options = [...listed.filter((option) => option !== SKIPPED_ENTRY), SKIPPED_ENTRY];
+  const known = stored && !options.includes(stored) ? [stored, ...options] : options;
+  const draft = row.presence || row.choices ? spellCodeable(stored) : stored || (offer ? copied : "");
   return (
     <span className="imaging-gt-slot is-editing">
-      <TextTruth
+      <ChoiceMenu
         fieldId={row.id}
         label={row.label}
         value={draft}
+        options={known}
         onCommit={onCommit}
         onCancel={onCancel}
         onDraft={onDraft}
@@ -1056,10 +1052,11 @@ function ChoiceMenu({
   const [typed, setTyped] = useState(false);
   const [invalid, setInvalid] = useState<string | null>(null);
   const folded = text.trim().toLowerCase();
+  // Every value on opening; typing narrows them.
   const recos =
-    typed && folded.length >= 2
+    typed && folded.length >= 1
       ? options.filter((option) => option.toLowerCase().includes(folded))
-      : [];
+      : options;
   function commit() {
     const next = normalizeEntry(fieldId, text);
     if (next == null) {
@@ -1137,65 +1134,6 @@ function CellSaveButton({ label, onSave }: { label: string; onSave: () => void }
     >
       <Save size={12} strokeWidth={2.4} aria-hidden="true" />
     </button>
-  );
-}
-
-function TextTruth({
-  fieldId,
-  label,
-  value,
-  onCommit,
-  onCancel,
-  onDraft,
-}: {
-  fieldId: string;
-  label: string;
-  value: string;
-  onCommit: (value: string) => void;
-  onCancel: () => void;
-  onDraft: (value: string) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  const [invalid, setInvalid] = useState<string | null>(null);
-  function commit() {
-    const next = normalizeEntry(fieldId, draft);
-    if (next == null) {
-      setInvalid(entryHint(fieldId));
-      return;
-    }
-    onCommit(next);
-  }
-  return (
-    <span className="imaging-gt-picker">
-      <span className="imaging-gt-entry">
-        <input
-          aria-label={`${label} ground truth`}
-          aria-invalid={invalid ? true : undefined}
-          value={draft}
-          placeholder={NOT_FOUND}
-          autoFocus
-          onChange={(event) => {
-            setDraft(event.target.value);
-            setInvalid(null);
-            onDraft(event.target.value);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              event.stopPropagation();
-              onCancel();
-              return;
-            }
-            if (event.key === "Enter") {
-              event.preventDefault();
-              commit();
-            }
-          }}
-        />
-        {draft !== value ? <CellSaveButton label={label} onSave={commit} /> : null}
-      </span>
-      {invalid ? <span className="imaging-gt-hint">{invalid}</span> : null}
-    </span>
   );
 }
 
@@ -1681,6 +1619,7 @@ function PageDetails({
             id: "encounter",
             label: "Encounter Type",
             fixedNa: true,
+            choices: ENCOUNTER_TYPE_CHOICES,
           }),
           dosCompareRow(page, "from", sections.dos, skipped, bits.dosFrom),
           dosCompareRow(page, "to", sections.dos, skipped, bits.dosTo),
@@ -2440,6 +2379,40 @@ function groundTruthSequences(pages: ImagingPageResult[]): Map<number, string> {
   return out;
 }
 
+/** The ground-truth sequences after one page's entry, renumbered (2026-10-26, user):
+ * entering 2 puts the page 2nd in its series (Main 1, 2, 3 … or J1, J2 …) and the
+ * pages from 2 on move down one; clearing a page closes the gap (the rest move up one);
+ * moving a page between Main and J renumbers both. A value that is not a sequence
+ * leaves every other page as it is. */
+function reflowSequences(
+  draft: Record<number, string>,
+  pageNumber: number,
+  entered: string,
+): Record<number, string> {
+  const value = normalizeSequence(entered);
+  if (value !== "" && !SEQUENCE_VALUE.test(value)) return { ...draft, [pageNumber]: entered };
+  const series: Record<"" | "J", [number, number][]> = { "": [], J: [] };
+  for (const [key, raw] of Object.entries(draft)) {
+    const page = Number(key);
+    const current = normalizeSequence(raw);
+    if (page === pageNumber || !SEQUENCE_VALUE.test(current)) continue;
+    const prefix = current.startsWith("J") ? "J" : "";
+    series[prefix].push([Number(current.slice(prefix.length)), page]);
+  }
+  const out: Record<number, string> = { ...draft, [pageNumber]: value };
+  for (const prefix of ["", "J"] as const) {
+    const ordered = series[prefix].sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, page]) => page);
+    if (value && (value.startsWith("J") ? "J" : "") === prefix) {
+      const at = Math.min(Number(value.slice(prefix.length)), ordered.length + 1) - 1;
+      ordered.splice(at, 0, pageNumber);
+    }
+    ordered.forEach((page, i) => {
+      out[page] = `${prefix}${i + 1}`;
+    });
+  }
+  return out;
+}
+
 /** What is wrong with one series of sequences: each must run 1, 2, 3 … with no gap or
  * repeat. ``prefix`` is "" for Main pages, "J" for blank / junk. */
 function seriesProblem(values: string[], prefix: "" | "J"): string | null {
@@ -2671,6 +2644,13 @@ function SequencingTable({
                     onChange={(e) =>
                       setDraft((values) => ({ ...values, [p.pageNumber]: e.target.value }))
                     }
+                    // Enter renumbers the rest of the series around this entry.
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      const entered = e.currentTarget.value;
+                      setDraft((values) => reflowSequences(values, p.pageNumber, entered));
+                    }}
                   />
                 ) : (
                   <>
