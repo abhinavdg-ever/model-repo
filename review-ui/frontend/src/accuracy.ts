@@ -47,7 +47,7 @@ export const METRICS: {
     id: "dos",
     label: "DOS",
     binary: true,
-    rule: "Every page is compared, except a blank / junk page (by the ground truth or the pipeline) and one where the ground truth has no date and the pipeline shows the 2222-02-02 placeholder (neither is scored). Labelled dates (From, To) both match the Final DOS or both match the Extracted DOS: Match; else No Match. A page whose DOS label is blank / NA / Not Available expects no date: no Extracted DOS is a Match (a Final DOS carried from the document's first page does not count), an Extracted DOS is a No Match. Under Date = Yes (cases = pages the ground truth dates): Precision = of the pages the pipeline dated, the share right; Recall = of the cases, the share found",
+    rule: "Every page is compared, except a blank / junk page (by the ground truth or the pipeline) and one where the ground truth has no date and the pipeline shows the 2222-02-02 placeholder (neither is scored). Labelled dates (From, To) both match the Final DOS or both match the Extracted DOS: Match; else No Match. A page whose DOS label is blank / NA / Not Available expects no date: the Extracted or the Final DOS being empty is a Match (either side matching counts), both dated is a No Match. Under Date = Yes (cases = pages the ground truth dates): Precision = of the pages the pipeline dated, the share right; Recall = of the cases, the share found",
   },
   {
     id: "blankJunk",
@@ -377,8 +377,8 @@ function pageScores(
 
   // DOS on every page, Match or No Match. A page the ground truth calls blank / junk has no
   // date (Not Found). A labelled date matches when the Final or the Extracted DOS equals it
-  // (From and To). No date in the ground truth matches no Extracted DOS: a continuation
-  // page's Final DOS comes from its document's first page and does not count against it.
+  // (From and To). No date in the ground truth matches when the Extracted or the Final DOS is
+  // empty (either side matching is a Match).
   // The 2222-02-02 placeholder is no date.
   const pipelineDated = Boolean(finalFrom || finalTo);
   const extractedDated = Boolean(pipelineDate(page.dosFrom) || pipelineDate(page.dosTo));
@@ -389,7 +389,8 @@ function pageScores(
         predicted: pipelineDated || extractedDated,
         verdict: dosVerdict(finalBits) === "yes" || dosVerdict(bits) === "yes" ? "yes" : "no",
       }
-    : { expected: false, predicted: extractedDated, verdict: extractedDated ? "no" : "yes" };
+    : // Either undated (Final or Extracted) is a Match.
+      { expected: false, predicted: extractedDated && pipelineDated, verdict: extractedDated && pipelineDated ? "no" : "yes" };
   const dos = dosCall.verdict;
 
   const single = (field: GtBit[]): Verdict | null => (labeled(field) ? grade(field) : null);

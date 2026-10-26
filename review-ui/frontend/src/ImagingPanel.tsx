@@ -1265,8 +1265,40 @@ function GtCell({ text, bits }: { text: string; bits: GtBit[] }) {
   );
 }
 
+const MARK_RANK: Record<string, number> = { match: 3, partial: 2, mismatch: 1, unknown: 0 };
+
+/** The better-marked of two scorings of one ground-truth field (Final, Extracted). */
+function better(a: GtBit[], b: GtBit[]): GtBit[] {
+  if (a.length === 0) return b;
+  if (b.length === 0) return a;
+  return (MARK_RANK[b[0].mark] ?? 0) > (MARK_RANK[a[0].mark] ?? 0) ? b : a;
+}
+
+/** Ground-truth marks for a page: DOS and codability match when either the Final or the
+ * Extracted value does (as in the accuracy report). */
 function pageBits(page: ImagingPageResult, sections: ImagingSectionsProcessed) {
-  return groundTruthBits({
+  const bits = extractedBits(page, sections);
+  if (!page.finalDosFrom && !page.finalDosTo && !page.finalCodeable) return bits;
+  const finalBits = groundTruthBits({
+    ...extractedInput(page, sections),
+    dosFrom: page.finalDosFrom || page.dosFrom,
+    dosTo: page.finalDosTo || page.finalDosFrom || page.dosTo,
+    isCodeable: page.finalCodeable || page.isCodeable,
+  });
+  return {
+    ...bits,
+    dosFrom: better(bits.dosFrom, finalBits.dosFrom),
+    dosTo: better(bits.dosTo, finalBits.dosTo),
+    codeable: better(bits.codeable, finalBits.codeable),
+  };
+}
+
+function extractedBits(page: ImagingPageResult, sections: ImagingSectionsProcessed) {
+  return groundTruthBits(extractedInput(page, sections));
+}
+
+function extractedInput(page: ImagingPageResult, sections: ImagingSectionsProcessed) {
+  return {
     gt: page.groundTruth,
     memberName: page.memberName,
     memberDob: page.memberDob,
@@ -1287,7 +1319,7 @@ function pageBits(page: ImagingPageResult, sections: ImagingSectionsProcessed) {
       (page.isCodeable != null && String(page.isCodeable).trim() !== ""),
     actualSequence: page.actualSequence,
     sequenceKnown: Boolean(sections.sequencing),
-  });
+  };
 }
 
 function ValueWithNote({ value, note }: { value: string; note?: string }) {
