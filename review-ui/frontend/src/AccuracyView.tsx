@@ -436,7 +436,8 @@ function pct(count: number, total: number): string {
 }
 
 /** Overall: one ring split by how many of the seven streams match (7 .. 0), each
- * slice labelled with its k and its pages and share on hover; Good / Fair / Bad below. */
+ * slice labelled with its k, its pages and share on hover; Good / Fair / Bad below.
+ * One column wide, like the other cards. */
 function OverallDonut({ tally }: { tally: Tally }) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
@@ -496,27 +497,6 @@ function OverallDonut({ tally }: { tally: Tally }) {
             </text>
           ) : null}
         </svg>
-        <table className="accuracy-overall-legend">
-          <thead>
-            <tr>
-              <th scope="col">Matching</th>
-              <th scope="col">Pages</th>
-              <th scope="col">%</th>
-            </tr>
-          </thead>
-          <tbody>
-            {counts.map(([k, pages]) => (
-              <tr key={k} title={`${k}/${OVERALL_STREAMS} matching: ${pages.toLocaleString()} pages (${pct(pages, total)})`}>
-                <td>
-                  <span className={`accuracy-overall-chip accuracy-match-${matchBand(k)} accuracy-match-k${k}`} aria-hidden="true" />
-                  {k}/{OVERALL_STREAMS}
-                </td>
-                <td>{pages.toLocaleString()}</td>
-                <td>{pct(pages, total)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
       <figcaption>Overall</figcaption>
       <p className="accuracy-distribution">
