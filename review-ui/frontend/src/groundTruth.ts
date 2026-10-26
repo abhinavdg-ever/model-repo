@@ -296,11 +296,17 @@ function modelTypeOf(pageType: string | null | undefined, pageSubtype: string | 
   return family.toLowerCase() === "progress note" && sub ? sub : family;
 }
 
-type GtCanonEntry = { status: "mapped" | "ambiguous" | "exclude"; full: string[]; partial: string[] };
+type GtCanonEntry = { label: string; status: "mapped" | "ambiguous" | "exclude"; full: string[]; partial: string[] };
 
 /** The client's GT page-type labels mapped to our v29.2 paths (``gtPageTypeCanon.json``,
  * built by training/taxonomy/build_gt_mapping.py), keyed by ``acceptKey``. */
 const GT_CANON = (gtPageTypeCanon as { labels: Record<string, GtCanonEntry> }).labels;
+
+/** Every client GT page-type label the canon scores, A to Z: the Page Type ground-truth
+ * options (2026-10-26, user). */
+export const GT_PAGE_TYPE_LABELS: readonly string[] = Object.values(GT_CANON)
+  .map((entry) => entry.label)
+  .sort((a, b) => a.localeCompare(b));
 
 /** Our path, L1 first, from a composed page type split by ``splitPageType``:
  * ("Lab Report", "Diagnostic Study) (Echocardiogram Report") -> the three levels,

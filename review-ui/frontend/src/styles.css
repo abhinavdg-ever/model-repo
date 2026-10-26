@@ -2496,6 +2496,38 @@ input {
   color: var(--brand-800);
 }
 
+/* A short list (under 10 options) and a date's "no value" entries: every option shown
+   under the input, in the flow of the cell (2026-10-26, user). */
+.imaging-gt-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  margin-top: 0.25rem;
+}
+
+.imaging-gt-options button {
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.imaging-gt-options button:hover,
+.imaging-gt-options button.is-active {
+  border-color: var(--brand-800);
+  background: var(--neutral-100);
+  color: var(--brand-800);
+}
+
+.imaging-gt-entry input[type="date"] {
+  font: inherit;
+}
+
 .imaging-gt-menu button.is-optional {
   color: var(--muted);
   opacity: 0.72;

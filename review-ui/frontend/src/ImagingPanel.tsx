@@ -30,6 +30,7 @@ import {
   pageTypeVerdict,
   spellCodeable,
   type GtBit,
+  GT_PAGE_TYPE_LABELS,
 } from "./groundTruth";
 import { PAGE_SUBTYPE_CHOICES, PAGE_TYPE_CHOICES } from "./reviewChoices";
 import {
@@ -423,6 +424,8 @@ type CompareRow = {
   presence?: boolean;
   /** Shown as Not Found. The stored value is kept and used elsewhere. */
   fixedNa?: boolean;
+  /** A ground-truth cell that only reads this (no entry yet), e.g. "Not Available". */
+  fixedText?: string;
   /** This row has no ground-truth cell. */
   noGroundTruth?: boolean;
   /** Show the value, but not a tick or cross. */
@@ -475,8 +478,13 @@ function pageTypeOf(page: ImagingPageResult): string | null {
 const YES_NO_CHOICES = ["Yes", "No"] as const;
 const VISIBILITY_CHOICES = ["Visible", "Not visible"] as const;
 // An empty ground-truth cell reads "Not Found"; typing it (or NA) clears the cell.
-const CLEARED_ENTRY = new Set(["", "na", "n/a", "not found"]);
-const PLACEHOLDER_ENTRY = new Set(["yet to process", "not available"]);
+const CLEARED_ENTRY = new Set(["", "na", "n/a", "not found", "not available"]);
+const PLACEHOLDER_ENTRY = new Set(["yet to process"]);
+const NOT_AVAILABLE_ENTRY = "Not Available";
+const ORIENTATION_CHOICES = ["0°", "90°", "180°", "270°"] as const;
+/** Lists shorter than this show every option under the input; longer ones drop down
+ * and narrow as you type (2026-10-26, user). */
+const INLINE_OPTIONS_BELOW = 10;
 /** A ground truth every Page Details cell takes (2026-10-26, user): the pipeline rightly
  * skipped the field on this page (a blank page has no DOS, a junk page no provider). */
 const SKIPPED_ENTRY = "Skipped";
@@ -529,8 +537,8 @@ const ENTRY_RULES: Record<string, EntryRule> = {
   mirrored: { choices: YES_NO_CHOICES },
   blank_junk: { choices: BLANK_JUNK_CHOICES },
   duplicate: { choices: DUPLICATE_CHOICES },
-  page_type: { choices: PAGE_TYPE_CHOICES },
-  page_subtype: { choices: PAGE_SUBTYPE_CHOICES },
+  // The menu offers the client labels; a label saved before them still validates.
+  page_type: { choices: [...GT_PAGE_TYPE_LABELS, ...PAGE_TYPE_AND_SUBTYPE_CHOICES] },
   codeable: { choices: CODEABLE_CHOICES },
   visibility: { choices: VISIBILITY_CHOICES },
   dos_from: { kind: "date" },
@@ -907,10 +915,10 @@ function GroundTruthCell({
   onStartEdit: () => void;
 }) {
   if (row.noGroundTruth) return <span className="imaging-gt-slot" />;
-  if (row.fixedNa) {
+  if (row.fixedNa || row.fixedText) {
     return (
       <span className="imaging-gt-slot">
-        <span className="imaging-gt-copied">{NOT_FOUND}</span>
+        <span className="imaging-gt-copied">{row.fixedText ?? NOT_FOUND}</span>
       </span>
     );
   }
@@ -1011,9 +1019,19 @@ function GroundTruthCell({
     );
   }
 
-  // Every cell: its listed values (none for a date, angle or name) and Skipped.
-  const listed = row.presence ? ["Yes", "No"] : row.choices ?? [];
-  const options = [...listed.filter((option) => option !== SKIPPED_ENTRY), SKIPPED_ENTRY];
+  // Every cell: its listed values, then the "no value" entries that fit it -- Not Found
+  // for a date or a name, Not Available for a page type -- and Skipped (2026-10-26, user).
+  const kind = ENTRY_RULES[row.id]?.kind;
+  const listed = row.presence
+    ? ["Yes", "No"]
+    : row.choices ?? (kind === "degrees" ? ORIENTATION_CHOICES : []);
+  const none =
+    kind === "date" || kind === "text" ? [NOT_FOUND] : row.id === "page_type" ? [NOT_AVAILABLE_ENTRY] : [];
+  const values = listed.filter((option) => option !== SKIPPED_ENTRY && !none.includes(option));
+  const extras = [...none, SKIPPED_ENTRY];
+  // A long list puts them first, so they are not lost under its values.
+  const options =
+    values.length + extras.length < INLINE_OPTIONS_BELOW ? [...values, ...extras] : [...extras, ...values];
   const known = stored && !options.includes(stored) ? [stored, ...options] : options;
   const draft = row.presence || row.choices ? spellCodeable(stored) : stored || (offer ? copied : "");
   return (
@@ -1048,15 +1066,26 @@ function ChoiceMenu({
   onCancel: () => void;
   onDraft: (value: string) => void;
 }) {
-  const [text, setText] = useState(value);
+  const isDate = ENTRY_RULES[fieldId]?.kind === "date";
+  // A date cell holds YYYY-MM-DD for the date chooser; a "no value" entry stays as typed.
+  const initial = isDate ? (canonicalDate(value) ?? (options.includes(value) ? value : "")) : value;
+  const [text, setText] = useState(initial);
   const [typed, setTyped] = useState(false);
   const [invalid, setInvalid] = useState<string | null>(null);
   const folded = text.trim().toLowerCase();
-  // Every value on opening; typing narrows them.
+  // A short list shows every option under the input; a long one every value on opening,
+  // narrowed by typing.
+  const inline = isDate || options.length < INLINE_OPTIONS_BELOW;
   const recos =
-    typed && folded.length >= 1
+    !inline && typed && folded.length >= 1
       ? options.filter((option) => option.toLowerCase().includes(folded))
       : options;
+  const pick = (option: string) => {
+    setText(option);
+    setTyped(false);
+    setInvalid(null);
+    onDraft(option);
+  };
   function commit() {
     const next = normalizeEntry(fieldId, text);
     if (next == null) {
@@ -1083,6 +1112,7 @@ function ChoiceMenu({
         <input
           aria-label={`${label} ground truth`}
           aria-invalid={invalid ? true : undefined}
+          type={isDate && !options.includes(text) ? "date" : "text"}
           value={text}
           placeholder={NOT_FOUND}
           autoFocus
@@ -1093,22 +1123,33 @@ function ChoiceMenu({
             onDraft(event.target.value);
           }}
         />
-        {text !== value ? <CellSaveButton label={label} onSave={commit} /> : null}
+        {text !== initial ? <CellSaveButton label={label} onSave={commit} /> : null}
       </span>
-      {recos.length > 0 ? (
+      {recos.length > 0 && inline ? (
+        <div className="imaging-gt-options" role="listbox" aria-label={label}>
+          {isDate && options.includes(text) ? (
+            <button type="button" role="option" aria-selected={false} onClick={() => pick("")}>
+              Pick a date
+            </button>
+          ) : null}
+          {recos.map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="option"
+              aria-selected={option === text}
+              className={option === text ? "is-active" : undefined}
+              onClick={() => pick(option)}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      ) : recos.length > 0 ? (
         <ul className="imaging-gt-menu" role="listbox" aria-label={label}>
           {recos.map((option) => (
             <li key={option}>
-              <button
-                type="button"
-                role="option"
-                onClick={() => {
-                  setText(option);
-                  setTyped(false);
-                  setInvalid(null);
-                  onDraft(option);
-                }}
-              >
+              <button type="button" role="option" onClick={() => pick(option)}>
                 {option}
               </button>
             </li>
@@ -1281,6 +1322,7 @@ function sameValue(
     choices: extra.choices,
     presence: extra.presence,
     fixedNa: extra.fixedNa,
+    fixedText: extra.fixedText,
     noGroundTruth: extra.noGroundTruth,
     noMark: extra.noMark,
     key: extra.key,
@@ -1651,14 +1693,13 @@ function PageDetails({
               id: "page_type",
               label: "Page Type",
               truth: bits.pageType,
-              choices: PAGE_TYPE_AND_SUBTYPE_CHOICES,
+              choices: GT_PAGE_TYPE_LABELS,
               key: true,
             }),
             processed: fmtPageType(finalParts.family, pageTypeKnown),
-            // One ground-truth label for Page Type and Page Subtype, scored with
-            // the accuracy report's rules (gtPageTypeCanon.json): the better of
-            // Final and Extracted.
-            gtRowSpan: 2,
+            // The client's page-type label (gtPageTypeCanon.json), scored with the
+            // accuracy report's rules: the better of Final and Extracted. It covers
+            // the subtype too; Page Subtype and Specialty have no entry yet.
             compare: (truth: string) => {
               if (!truth.trim() || !pageTypeKnown) return null;
               const final = pageTypeVerdict(truth, finalParts.family, finalParts.subtype, page.pageTypeSemantic);
@@ -1672,18 +1713,15 @@ function PageDetails({
             ...sameValue(fmtPageType(pageParts.subtype, pageTypeKnown), fmtConfidence(page.subtypeConfidence, pageTypeKnown), {
               id: "page_subtype",
               label: "Page Subtype",
-              truth: bits.pageType,
-              choices: PAGE_SUBTYPE_CHOICES,
-              key: true,
+              fixedText: NOT_AVAILABLE_ENTRY,
             }),
             processed: fmtPageType(finalParts.subtype, pageTypeKnown),
-            gtHidden: true,
           },
           {
             ...sameValue(fmt(page.specialty, pageTypeKnown), fmtConfidence(finalOr(page, "specialty", page.specialtyConfidence), pageTypeKnown), {
               id: "specialty",
               label: "Specialty",
-              noGroundTruth: true,
+              fixedText: NOT_AVAILABLE_ENTRY,
             }),
             processed: fmt(page.finalSpecialty ?? page.specialty, pageTypeKnown),
           },
