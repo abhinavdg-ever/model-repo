@@ -3660,7 +3660,13 @@ input {
 .accuracy-band-good { background: #eef5ec; color: var(--status-success-fg); }
 .accuracy-band-fair { background: #f8f1e3; color: var(--status-warning-fg); }
 .accuracy-band-bad { background: var(--status-error-bg); color: var(--status-error-fg); }
-.accuracy-overall-card > figcaption {
+/* "Overall" sits under the donut, the 0..7 table beside them. */
+.accuracy-overall-ring {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.accuracy-overall-body {
   margin-bottom: 0.45rem;
 }
 .accuracy-overall-donut {

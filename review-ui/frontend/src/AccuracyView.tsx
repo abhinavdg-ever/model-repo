@@ -460,6 +460,7 @@ function OverallDonut({ tally }: { tally: Tally }) {
         text={[...ruleSections("Overall", OVERALL_RULE), { title: "Accuracy score", lines: sentences(OVERALL_SCORE_INFO) }]}
       />
       <div className="accuracy-overall-body">
+        <div className="accuracy-overall-ring">
         <svg
           className="accuracy-donut accuracy-overall-donut"
           viewBox="0 0 100 100"
@@ -496,6 +497,8 @@ function OverallDonut({ tally }: { tally: Tally }) {
             </text>
           ) : null}
         </svg>
+          <figcaption>Overall</figcaption>
+        </div>
         <table className="accuracy-overall-legend">
           <thead>
             <tr>
@@ -518,7 +521,6 @@ function OverallDonut({ tally }: { tally: Tally }) {
           </tbody>
         </table>
       </div>
-      <figcaption>Overall</figcaption>
       <div className="accuracy-overall-bands">
         {MATCH_BANDS.map((item) => (
           <div key={item.id} className={`accuracy-overall-band accuracy-band-${item.id}`} title={`${item.label}: ${item.min}–${item.max} of ${OVERALL_STREAMS} matching`}>
