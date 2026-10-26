@@ -5,6 +5,7 @@
     X    = both sides have a value and nothing lines up
 */
 
+import gtPageTypeCanon from "./gtPageTypeCanon.json";
 import pageTypeAccept from "./pageTypeAccept.json";
 
 export type MatchMark = "match" | "partial" | "mismatch" | "unknown";
@@ -295,7 +296,46 @@ function modelTypeOf(pageType: string | null | undefined, pageSubtype: string | 
   return family.toLowerCase() === "progress note" && sub ? sub : family;
 }
 
+type GtCanonEntry = { status: "mapped" | "ambiguous" | "exclude"; full: string[]; partial: string[] };
+
+/** The client's GT page-type labels mapped to our v29.2 paths (``gtPageTypeCanon.json``,
+ * built by training/taxonomy/build_gt_mapping.py), keyed by ``acceptKey``. */
+const GT_CANON = (gtPageTypeCanon as { labels: Record<string, GtCanonEntry> }).labels;
+
+/** Our path, L1 first, from a composed page type split by ``splitPageType``:
+ * ("Lab Report", "Diagnostic Study) (Echocardiogram Report") -> the three levels,
+ * folded with ``acceptKey``; "Others" is dropped. */
+function ourPath(pageType: string | null | undefined, pageSubtype: string | null | undefined): string[] {
+  const family = text(pageType);
+  const sub = text(pageSubtype);
+  const levels = [family, ...(sub && sub !== family ? sub.split(/\)\s+\(/) : [])];
+  return levels.map((level) => acceptKey(level)).filter((level) => level && level !== "others");
+}
+
+function startsWith(path: string[], target: string): boolean {
+  const levels = target.split(">").map((level) => acceptKey(level));
+  return levels.length <= path.length && levels.every((level, index) => level === path[index]);
+}
+
+/** One GT label against our path with the canon: full when a full target is a prefix of
+ * our path; partial when a partial target is, or our L1 is a full target's L1 (we stop
+ * above the GT level, a sibling L3, another L2); else a miss. null: not scored. */
+function canonMark(entry: GtCanonEntry, path: string[]): MatchMark | null {
+  if (entry.status === "exclude") return null;
+  if (path.length === 0) return "unknown";
+  if (entry.full.some((target) => startsWith(path, target))) return "match";
+  const sameL1 = entry.full.some((target) => acceptKey(target.split(">")[0]) === path[0]);
+  if (sameL1 || entry.partial.some((target) => startsWith(path, target))) return "partial";
+  return "mismatch";
+}
+
+const MARK_RANK: Record<MatchMark, number> = { match: 3, partial: 2, mismatch: 1, unknown: 0 };
+
 /**
+ * GT labels in the canon (gtPageTypeCanon.json) are scored with it (``canonMark``);
+ * excluded ones (cover / index / fax / blank, NA ...) are not scored. A label not in
+ * the canon falls back to the checks below.
+ *
  * Checked against the predicted model type (the sub-type inside Progress Note,
  * else the page type), in order, the first that applies:
  *   match    a ground-truth name agrees with the model type (same name, or one
@@ -326,6 +366,15 @@ function pageTypeMark(
         value && value !== "yet to process" && value !== "skipped" && value !== "not found",
     );
   if (actuals.length === 0) return bit(shown, "unknown");
+  const mapped = names.filter((name) => GT_CANON[acceptKey(name)]);
+  if (mapped.length === names.length) {
+    const path = ourPath(pipeline[0], pipeline[1]);
+    const marks = mapped
+      .map((name) => canonMark(GT_CANON[acceptKey(name)], path))
+      .filter((mark): mark is MatchMark => mark !== null);
+    if (marks.length === 0) return [];
+    return bit(shown, marks.reduce((best, mark) => (MARK_RANK[mark] > MARK_RANK[best] ? mark : best)));
+  }
   const expected = names.map((name) => fold(name));
   if (expected.some((name) => name === "accept")) {
     const junk = actuals.some((actual) => JUNK_PAGE.some((word) => actual.includes(word)));

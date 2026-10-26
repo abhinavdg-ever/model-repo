@@ -1682,17 +1682,17 @@ function PageDetails({
               key: true,
             }),
             processed: fmtPageType(finalParts.family, pageTypeKnown),
-            // One ground-truth label for Page Type and Page Subtype: scored
-            // against Final type/sub-type, then Extracted (May be), with the
-            // accuracy report's rules (accepted / broader / close labels).
+            // One ground-truth label for Page Type and Page Subtype, scored with
+            // the accuracy report's rules (gtPageTypeCanon.json): the better of
+            // Final and Extracted.
             gtRowSpan: 2,
             compare: (truth: string) => {
               if (!truth.trim() || !pageTypeKnown) return null;
               const final = pageTypeVerdict(truth, finalParts.family, finalParts.subtype, page.pageTypeSemantic);
-              if (final === "unknown") return null;
-              if (final !== "mismatch") return final;
               const own = pageTypeVerdict(truth, pageParts.family, pageParts.subtype, page.pageTypeSemantic);
-              return own === "match" || own === "partial" ? "partial" : "mismatch";
+              if (final === "match" || own === "match") return "match";
+              if (final === "partial" || own === "partial") return "partial";
+              return final === "mismatch" || own === "mismatch" ? "mismatch" : null;
             },
           },
           {

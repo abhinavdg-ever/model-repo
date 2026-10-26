@@ -1,0 +1,918 @@
+gt_label,standard_name,status,match,l1,l2,l3,note
+Anknowledgement Form,Acknowledgement Form,mapped,full,Consent and Authorization,HIPAA and Privacy,,
+Anknowledgement Form,Acknowledgement Form,mapped,full,Consent and Authorization,General Consent,,
+Anknowledgement Form,Acknowledgement Form,mapped,partial,Consent and Authorization,,,
+Anknowledgement Form,Acknowledgement Form,mapped,partial,Progress Note,Signature,,
+Administrative Form,Administrative Form,mapped,full,Administrative,Others,,
+Administrative Form,Administrative Form,mapped,full,Administrative,Patient Registration,,
+Administrative Form,Administrative Form,mapped,partial,Administrative,,,
+Admission page,Admission Record,mapped,full,Demographics,Face Sheet,,"A hospital admission record (patient, insurance, admission data) is a Face Sheet in v29.2."
+Admission page,Admission Record,mapped,partial,Demographics,,,"A hospital admission record (patient, insurance, admission data) is a Face Sheet in v29.2."
+Admission page,Admission Record,mapped,partial,Discharge Summary,History and Physical,,"A hospital admission record (patient, insurance, admission data) is a Face Sheet in v29.2."
+Admission page,Admission Record,mapped,partial,Administrative,Patient Registration,,"A hospital admission record (patient, insurance, admission data) is a Face Sheet in v29.2."
+Admission Record,Admission Record,mapped,full,Demographics,Face Sheet,,"A hospital admission record (patient, insurance, admission data) is a Face Sheet in v29.2."
+Admission Record,Admission Record,mapped,partial,Demographics,,,"A hospital admission record (patient, insurance, admission data) is a Face Sheet in v29.2."
+Admission Record,Admission Record,mapped,partial,Discharge Summary,History and Physical,,"A hospital admission record (patient, insurance, admission data) is a Face Sheet in v29.2."
+Admission Record,Admission Record,mapped,partial,Administrative,Patient Registration,,"A hospital admission record (patient, insurance, admission data) is a Face Sheet in v29.2."
+After visit Summary,After-Visit Summary,mapped,full,Clinical Summary,After-Visit Summary,,
+After visit Summary,After-Visit Summary,mapped,partial,Clinical Summary,,,
+After visit Summary,After-Visit Summary,mapped,partial,Progress Note,Summary,,
+After visit Summary,After-Visit Summary,mapped,partial,Discharge Summary,Discharge Instruction,,
+Visit Summary,After-Visit Summary,mapped,full,Clinical Summary,After-Visit Summary,,
+Visit Summary,After-Visit Summary,mapped,partial,Clinical Summary,,,
+Visit Summary,After-Visit Summary,mapped,partial,Progress Note,Summary,,
+Visit Summary,After-Visit Summary,mapped,partial,Discharge Summary,Discharge Instruction,,
+Agreement Form,Agreement Form,mapped,full,Consent and Authorization,General Consent,,
+Agreement Form,Agreement Form,mapped,full,Consent and Authorization,Assignment of Benefits,,
+Agreement Form,Agreement Form,mapped,full,Consent and Authorization,Consent for Treatment,,
+Agreement Form,Agreement Form,mapped,partial,Consent and Authorization,,,
+Patient Agreement Form,Agreement Form,mapped,full,Consent and Authorization,General Consent,,
+Patient Agreement Form,Agreement Form,mapped,full,Consent and Authorization,Assignment of Benefits,,
+Patient Agreement Form,Agreement Form,mapped,full,Consent and Authorization,Consent for Treatment,,
+Patient Agreement Form,Agreement Form,mapped,partial,Consent and Authorization,,,
+Allergies,Allergy List,mapped,full,Medication Record,Others,,No allergy class in v29.2; allergy lists sit with medication pages or the note.
+Allergies,Allergy List,mapped,full,Progress Note,Others,,No allergy class in v29.2; allergy lists sit with medication pages or the note.
+Allergies,Allergy List,mapped,partial,Medication Record,,,No allergy class in v29.2; allergy lists sit with medication pages or the note.
+Allergies,Allergy List,mapped,partial,Progress Note,,,No allergy class in v29.2; allergy lists sit with medication pages or the note.
+Allergy list,Allergy List,mapped,full,Medication Record,Others,,No allergy class in v29.2; allergy lists sit with medication pages or the note.
+Allergy list,Allergy List,mapped,full,Progress Note,Others,,No allergy class in v29.2; allergy lists sit with medication pages or the note.
+Allergy list,Allergy List,mapped,partial,Medication Record,,,No allergy class in v29.2; allergy lists sit with medication pages or the note.
+Allergy list,Allergy List,mapped,partial,Progress Note,,,No allergy class in v29.2; allergy lists sit with medication pages or the note.
+Anesthesia Evaluation,Anesthesia,mapped,full,Operative Note,Anesthesia Record,,
+Anesthesia Evaluation,Anesthesia,mapped,partial,Operative Note,,,
+Anesthesia Evaluation,Anesthesia,mapped,partial,Operative Note,Pre-operative,,
+Anethesia Report,Anesthesia,mapped,full,Operative Note,Anesthesia Record,,
+Anethesia Report,Anesthesia,mapped,partial,Operative Note,,,
+Anethesia Report,Anesthesia,mapped,partial,Operative Note,Pre-operative,,
+Appointmet,Appointment,mapped,full,Administrative,Appointment Record,,
+Appointmet,Appointment,mapped,partial,Administrative,,,
+Appoitment,Appointment,mapped,full,Administrative,Appointment Record,,
+Appoitment,Appointment,mapped,partial,Administrative,,,
+Assesment Form,Assessment Form,mapped,full,Forms and Questionnaires,Assessment,,
+Assesment Form,Assessment Form,mapped,partial,Forms and Questionnaires,,,
+Assesment Form,Assessment Form,mapped,partial,Progress Note,Questionnaire,,
+Assesment Form,Assessment Form,mapped,partial,Progress Note,Physical Exam,,
+Assessment,Assessment Form,mapped,full,Forms and Questionnaires,Assessment,,
+Assessment,Assessment Form,mapped,partial,Forms and Questionnaires,,,
+Assessment,Assessment Form,mapped,partial,Progress Note,Questionnaire,,
+Assessment,Assessment Form,mapped,partial,Progress Note,Physical Exam,,
+Assessment Data,Assessment Form,mapped,full,Forms and Questionnaires,Assessment,,
+Assessment Data,Assessment Form,mapped,partial,Forms and Questionnaires,,,
+Assessment Data,Assessment Form,mapped,partial,Progress Note,Questionnaire,,
+Assessment Data,Assessment Form,mapped,partial,Progress Note,Physical Exam,,
+Fuctional Status,Assessment Form,mapped,full,Forms and Questionnaires,Assessment,,
+Fuctional Status,Assessment Form,mapped,partial,Forms and Questionnaires,,,
+Fuctional Status,Assessment Form,mapped,partial,Progress Note,Questionnaire,,
+Fuctional Status,Assessment Form,mapped,partial,Progress Note,Physical Exam,,
+Fuctional Staus,Assessment Form,mapped,full,Forms and Questionnaires,Assessment,,
+Fuctional Staus,Assessment Form,mapped,partial,Forms and Questionnaires,,,
+Fuctional Staus,Assessment Form,mapped,partial,Progress Note,Questionnaire,,
+Fuctional Staus,Assessment Form,mapped,partial,Progress Note,Physical Exam,,
+Functional Status,Assessment Form,mapped,full,Forms and Questionnaires,Assessment,,
+Functional Status,Assessment Form,mapped,partial,Forms and Questionnaires,,,
+Functional Status,Assessment Form,mapped,partial,Progress Note,Questionnaire,,
+Functional Status,Assessment Form,mapped,partial,Progress Note,Physical Exam,,
+Pain Data,Assessment Form,mapped,full,Forms and Questionnaires,Assessment,,
+Pain Data,Assessment Form,mapped,partial,Forms and Questionnaires,,,
+Pain Data,Assessment Form,mapped,partial,Progress Note,Questionnaire,,
+Pain Data,Assessment Form,mapped,partial,Progress Note,Physical Exam,,
+Audiogram Report,Audiogram Report,mapped,full,Lab Report,Diagnostic Study,Audiogram and Hearing Loss Report,
+Audiogram Report,Audiogram Report,mapped,partial,Lab Report,Diagnostic Study,,
+Authorization page,Authorization,mapped,full,Consent and Authorization,Prior Authorization,,
+Authorization page,Authorization,mapped,full,Consent and Authorization,Referral Authorization,,
+Authorization page,Authorization,mapped,full,Consent and Authorization,General Authorization,,
+Authorization page,Authorization,mapped,full,Consent and Authorization,Release of Information,,
+Authorization page,Authorization,mapped,partial,Consent and Authorization,,,
+Biling Page,Billing / Invoice,mapped,full,Administrative,Billing & Invoices,,
+Biling Page,Billing / Invoice,mapped,partial,Administrative,,,
+Biling Page,Billing / Invoice,mapped,partial,Administrative,Superbill,,
+Biling Pages,Billing / Invoice,mapped,full,Administrative,Billing & Invoices,,
+Biling Pages,Billing / Invoice,mapped,partial,Administrative,,,
+Biling Pages,Billing / Invoice,mapped,partial,Administrative,Superbill,,
+Billing notice,Billing / Invoice,mapped,full,Administrative,Billing & Invoices,,
+Billing notice,Billing / Invoice,mapped,partial,Administrative,,,
+Billing notice,Billing / Invoice,mapped,partial,Administrative,Superbill,,
+Estimate page,Billing / Invoice,mapped,full,Administrative,Billing & Invoices,,
+Estimate page,Billing / Invoice,mapped,partial,Administrative,,,
+Estimate page,Billing / Invoice,mapped,partial,Administrative,Superbill,,
+Inovoice Page,Billing / Invoice,mapped,full,Administrative,Billing & Invoices,,
+Inovoice Page,Billing / Invoice,mapped,partial,Administrative,,,
+Inovoice Page,Billing / Invoice,mapped,partial,Administrative,Superbill,,
+Invoice,Billing / Invoice,mapped,full,Administrative,Billing & Invoices,,
+Invoice,Billing / Invoice,mapped,partial,Administrative,,,
+Invoice,Billing / Invoice,mapped,partial,Administrative,Superbill,,
+Invoice Page,Billing / Invoice,mapped,full,Administrative,Billing & Invoices,,
+Invoice Page,Billing / Invoice,mapped,partial,Administrative,,,
+Invoice Page,Billing / Invoice,mapped,partial,Administrative,Superbill,,
+biopsy Report,Biopsy Report,mapped,full,Lab Report,Pathology Report,Biopsy Report,
+biopsy Report,Biopsy Report,mapped,partial,Lab Report,Pathology Report,,
+Bone density Report,Bone Density Report,mapped,full,Lab Report,Radiology Report,Bone Mineral Density Report,
+Bone density Report,Bone Density Report,mapped,partial,Lab Report,Radiology Report,,
+Cardiac catheterization Report,Cardiac Catheterization Report,mapped,full,Lab Report,Diagnostic Study,Cardiac Catheterization Report,
+Cardiac catheterization Report,Cardiac Catheterization Report,mapped,partial,Lab Report,Diagnostic Study,,
+Cardiac catheterization Report,Cardiac Catheterization Report,mapped,partial,Procedure Note,Cardiac Procedure,,
+Charges,Charges,mapped,full,Administrative,Superbill,,
+Charges,Charges,mapped,full,Administrative,Billing & Invoices,,
+Charges,Charges,mapped,partial,Administrative,,,
+Check list,Checklist,ambiguous,full,Operative Note,Pre-operative,,Usually a pre-op / procedure checklist.
+Check list,Checklist,ambiguous,partial,Operative Note,,,Usually a pre-op / procedure checklist.
+Check list,Checklist,ambiguous,partial,Forms and Questionnaires,Others,,Usually a pre-op / procedure checklist.
+Chest Single,Chest X-ray (single view),mapped,full,Lab Report,Radiology Report,X-Ray Report,
+Chest Single,Chest X-ray (single view),mapped,partial,Lab Report,Radiology Report,,
+Clarification Form,Clarification Form,mapped,full,Administrative,Others,,Coding / documentation query to the provider.
+Clarification Form,Clarification Form,mapped,full,Provider Letter,Others,,Coding / documentation query to the provider.
+Clarification Form,Clarification Form,mapped,partial,Administrative,,,Coding / documentation query to the provider.
+Clarification Form,Clarification Form,mapped,partial,Provider Letter,,,Coding / documentation query to the provider.
+Chart Summary,Clinical Summary,mapped,full,Clinical Summary,,,
+Chart Summary,Clinical Summary,mapped,partial,Progress Note,Summary,,
+Clinical Summary,Clinical Summary,mapped,full,Clinical Summary,,,
+Clinical Summary,Clinical Summary,mapped,partial,Progress Note,Summary,,
+Patient clinical summary,Clinical Summary,mapped,full,Clinical Summary,,,
+Patient clinical summary,Clinical Summary,mapped,partial,Progress Note,Summary,,
+Patient Summary,Clinical Summary,mapped,full,Clinical Summary,,,
+Patient Summary,Clinical Summary,mapped,partial,Progress Note,Summary,,
+Clock Drawing,Cognitive Screening (Mini-Cog / Clock),mapped,full,Forms and Questionnaires,Assessment,,
+Clock Drawing,Cognitive Screening (Mini-Cog / Clock),mapped,full,Lab Report,Diagnostic Study,Neurocognitive Screening Examination,
+Clock Drawing,Cognitive Screening (Mini-Cog / Clock),mapped,partial,Progress Note,Questionnaire,,
+Clock Drawing,Cognitive Screening (Mini-Cog / Clock),mapped,partial,Forms and Questionnaires,,,
+Clock drawing page,Cognitive Screening (Mini-Cog / Clock),mapped,full,Forms and Questionnaires,Assessment,,
+Clock drawing page,Cognitive Screening (Mini-Cog / Clock),mapped,full,Lab Report,Diagnostic Study,Neurocognitive Screening Examination,
+Clock drawing page,Cognitive Screening (Mini-Cog / Clock),mapped,partial,Progress Note,Questionnaire,,
+Clock drawing page,Cognitive Screening (Mini-Cog / Clock),mapped,partial,Forms and Questionnaires,,,
+MiniClog,Cognitive Screening (Mini-Cog / Clock),mapped,full,Forms and Questionnaires,Assessment,,
+MiniClog,Cognitive Screening (Mini-Cog / Clock),mapped,full,Lab Report,Diagnostic Study,Neurocognitive Screening Examination,
+MiniClog,Cognitive Screening (Mini-Cog / Clock),mapped,partial,Progress Note,Questionnaire,,
+MiniClog,Cognitive Screening (Mini-Cog / Clock),mapped,partial,Forms and Questionnaires,,,
+Minicog Instruction Page,Cognitive Screening (Mini-Cog / Clock),mapped,full,Forms and Questionnaires,Assessment,,
+Minicog Instruction Page,Cognitive Screening (Mini-Cog / Clock),mapped,full,Lab Report,Diagnostic Study,Neurocognitive Screening Examination,
+Minicog Instruction Page,Cognitive Screening (Mini-Cog / Clock),mapped,partial,Progress Note,Questionnaire,,
+Minicog Instruction Page,Cognitive Screening (Mini-Cog / Clock),mapped,partial,Forms and Questionnaires,,,
+Colonoscopy,Colonoscopy Report,mapped,full,Lab Report,Diagnostic Study,Colonoscopy Report,
+Colonoscopy,Colonoscopy Report,mapped,partial,Lab Report,Diagnostic Study,,
+Colonoscopy,Colonoscopy Report,mapped,partial,Lab Report,Diagnostic Study,Endoscopy Report,
+Colonoscopy,Colonoscopy Report,mapped,partial,Lab Report,Diagnostic Study,Sigmoidoscopy Report,
+Colonoscopy Report,Colonoscopy Report,mapped,full,Lab Report,Diagnostic Study,Colonoscopy Report,
+Colonoscopy Report,Colonoscopy Report,mapped,partial,Lab Report,Diagnostic Study,,
+Colonoscopy Report,Colonoscopy Report,mapped,partial,Lab Report,Diagnostic Study,Endoscopy Report,
+Colonoscopy Report,Colonoscopy Report,mapped,partial,Lab Report,Diagnostic Study,Sigmoidoscopy Report,
+concern page,Concern,mapped,full,Patient Communication,Others,,Patient concern / grievance.
+concern page,Concern,mapped,partial,Patient Communication,,,Patient concern / grievance.
+Consent Form,Consent,mapped,full,Consent and Authorization,,,Any Consent and Authorization L2 counts (GT has no sub-type).
+Consent Page,Consent,mapped,full,Consent and Authorization,,,Any Consent and Authorization L2 counts (GT has no sub-type).
+Consent for tretment,Consent for Treatment,mapped,full,Consent and Authorization,Consent for Treatment,,
+Consent for tretment,Consent for Treatment,mapped,partial,Consent and Authorization,,,
+cardiology consultation,Consultation,mapped,full,Discharge Summary,Consultation Note,,Inpatient consult = Discharge Summary > Consultation Note; outpatient consult visit = Progress Note; consult letter = Provider Letter.
+cardiology consultation,Consultation,mapped,full,Provider Letter,Consultation Letter,,Inpatient consult = Discharge Summary > Consultation Note; outpatient consult visit = Progress Note; consult letter = Provider Letter.
+cardiology consultation,Consultation,mapped,full,Progress Note,,,Inpatient consult = Discharge Summary > Consultation Note; outpatient consult visit = Progress Note; consult letter = Provider Letter.
+CT Angio,CT Angiography Report,mapped,full,Lab Report,Radiology Report,CT Angiography Report,
+CT Angio,CT Angiography Report,mapped,partial,Lab Report,Radiology Report,,
+CT Angio,CT Angiography Report,mapped,partial,Lab Report,Radiology Report,CT Scan Report,
+CT Angiogram,CT Angiography Report,mapped,full,Lab Report,Radiology Report,CT Angiography Report,
+CT Angiogram,CT Angiography Report,mapped,partial,Lab Report,Radiology Report,,
+CT Angiogram,CT Angiography Report,mapped,partial,Lab Report,Radiology Report,CT Scan Report,
+CT Angiography Report,CT Angiography Report,mapped,full,Lab Report,Radiology Report,CT Angiography Report,
+CT Angiography Report,CT Angiography Report,mapped,partial,Lab Report,Radiology Report,,
+CT Angiography Report,CT Angiography Report,mapped,partial,Lab Report,Radiology Report,CT Scan Report,
+CTA Heart Report,CT Angiography Report,mapped,full,Lab Report,Radiology Report,CT Angiography Report,
+CTA Heart Report,CT Angiography Report,mapped,partial,Lab Report,Radiology Report,,
+CTA Heart Report,CT Angiography Report,mapped,partial,Lab Report,Radiology Report,CT Scan Report,
+CTA Report,CT Angiography Report,mapped,full,Lab Report,Radiology Report,CT Angiography Report,
+CTA Report,CT Angiography Report,mapped,partial,Lab Report,Radiology Report,,
+CTA Report,CT Angiography Report,mapped,partial,Lab Report,Radiology Report,CT Scan Report,
+CT Chest,CT Chest,mapped,full,Lab Report,Radiology Report,CT Scan Report,
+CT Chest,CT Chest,mapped,partial,Lab Report,Radiology Report,,
+CT Chest,CT Chest,mapped,partial,Lab Report,Radiology Report,CT Angiography Report,
+Demographic,Demographics,mapped,full,Demographics,,,
+Demographic,Demographics,mapped,partial,Administrative,Patient Registration,,
+Personnel Name History,Demographics,mapped,full,Demographics,,,
+Personnel Name History,Demographics,mapped,partial,Administrative,Patient Registration,,
+Diagnosis Code,Diagnosis Code,mapped,full,Progress Note,Visit Diagnosis,,A coded diagnosis list; on a billing form it is a Superbill.
+Diagnosis Code,Diagnosis Code,mapped,partial,Progress Note,,,A coded diagnosis list; on a billing form it is a Superbill.
+Diagnosis Code,Diagnosis Code,mapped,partial,Administrative,Superbill,,A coded diagnosis list; on a billing form it is a Superbill.
+Diagnosis Code,Diagnosis Code,mapped,partial,Problem List,,,A coded diagnosis list; on a billing form it is a Superbill.
+Diagnostic Report,Diagnostic Report,mapped,full,Lab Report,Diagnostic Study,,
+Diagnostic Report,Diagnostic Report,mapped,partial,Lab Report,,,
+Diagnostic studies,Diagnostic Report,mapped,full,Lab Report,Diagnostic Study,,
+Diagnostic studies,Diagnostic Report,mapped,partial,Lab Report,,,
+DisCharge Form,Discharge Form,mapped,full,Discharge Summary,Depart/Discharge Note,,
+DisCharge Form,Discharge Form,mapped,full,Discharge Summary,Discharge Instruction,,
+DisCharge Form,Discharge Form,mapped,partial,Discharge Summary,,,
+Dis Instruction,Discharge Instruction,mapped,full,Discharge Summary,Discharge Instruction,,
+Dis Instruction,Discharge Instruction,mapped,partial,Discharge Summary,,,
+Dis Instruction,Discharge Instruction,mapped,partial,Progress Note,Patient Instructions,,
+Dis Instruction,Discharge Instruction,mapped,partial,Clinical Summary,After-Visit Summary,,
+Dis Instruction,Discharge Instruction,mapped,partial,Patient Communication,Patient Education Material,,
+Discharge Instrucion,Discharge Instruction,mapped,full,Discharge Summary,Discharge Instruction,,
+Discharge Instrucion,Discharge Instruction,mapped,partial,Discharge Summary,,,
+Discharge Instrucion,Discharge Instruction,mapped,partial,Progress Note,Patient Instructions,,
+Discharge Instrucion,Discharge Instruction,mapped,partial,Clinical Summary,After-Visit Summary,,
+Discharge Instrucion,Discharge Instruction,mapped,partial,Patient Communication,Patient Education Material,,
+Discharge Instruction,Discharge Instruction,mapped,full,Discharge Summary,Discharge Instruction,,
+Discharge Instruction,Discharge Instruction,mapped,partial,Discharge Summary,,,
+Discharge Instruction,Discharge Instruction,mapped,partial,Progress Note,Patient Instructions,,
+Discharge Instruction,Discharge Instruction,mapped,partial,Clinical Summary,After-Visit Summary,,
+Discharge Instruction,Discharge Instruction,mapped,partial,Patient Communication,Patient Education Material,,
+Discharge Instructions,Discharge Instruction,mapped,full,Discharge Summary,Discharge Instruction,,
+Discharge Instructions,Discharge Instruction,mapped,partial,Discharge Summary,,,
+Discharge Instructions,Discharge Instruction,mapped,partial,Progress Note,Patient Instructions,,
+Discharge Instructions,Discharge Instruction,mapped,partial,Clinical Summary,After-Visit Summary,,
+Discharge Instructions,Discharge Instruction,mapped,partial,Patient Communication,Patient Education Material,,
+Discharge Instucion,Discharge Instruction,mapped,full,Discharge Summary,Discharge Instruction,,
+Discharge Instucion,Discharge Instruction,mapped,partial,Discharge Summary,,,
+Discharge Instucion,Discharge Instruction,mapped,partial,Progress Note,Patient Instructions,,
+Discharge Instucion,Discharge Instruction,mapped,partial,Clinical Summary,After-Visit Summary,,
+Discharge Instucion,Discharge Instruction,mapped,partial,Patient Communication,Patient Education Material,,
+Discharge Notification,Discharge Notification,mapped,full,Patient Communication,Notice,,e.g. Medicare discharge notice to the patient.
+Discharge Notification,Discharge Notification,mapped,partial,Discharge Summary,,,e.g. Medicare discharge notice to the patient.
+Discharge Notification,Discharge Notification,mapped,partial,Consent and Authorization,,,e.g. Medicare discharge notice to the patient.
+Depart Summary,Discharge Summary / Note,mapped,full,Discharge Summary,Depart/Discharge Note,,
+Depart Summary,Discharge Summary / Note,mapped,partial,Discharge Summary,,,
+Dis Record,Discharge Summary / Note,mapped,full,Discharge Summary,Depart/Discharge Note,,
+Dis Record,Discharge Summary / Note,mapped,partial,Discharge Summary,,,
+Discharge Note,Discharge Summary / Note,mapped,full,Discharge Summary,Depart/Discharge Note,,
+Discharge Note,Discharge Summary / Note,mapped,partial,Discharge Summary,,,
+Discharge Record,Discharge Summary / Note,mapped,full,Discharge Summary,Depart/Discharge Note,,
+Discharge Record,Discharge Summary / Note,mapped,partial,Discharge Summary,,,
+Discharge summary,Discharge Summary / Note,mapped,full,Discharge Summary,Depart/Discharge Note,,
+Discharge summary,Discharge Summary / Note,mapped,partial,Discharge Summary,,,
+Discharhe note,Discharge Summary / Note,mapped,full,Discharge Summary,Depart/Discharge Note,,
+Discharhe note,Discharge Summary / Note,mapped,partial,Discharge Summary,,,
+Dispositon summary,Discharge Summary / Note,mapped,full,Discharge Summary,Depart/Discharge Note,,
+Dispositon summary,Discharge Summary / Note,mapped,partial,Discharge Summary,,,
+Echo Report,Echocardiogram Report,mapped,full,Lab Report,Diagnostic Study,Echocardiogram Report,
+Echo Report,Echocardiogram Report,mapped,partial,Lab Report,Diagnostic Study,,
+Echocardiogram Report,Echocardiogram Report,mapped,full,Lab Report,Diagnostic Study,Echocardiogram Report,
+Echocardiogram Report,Echocardiogram Report,mapped,partial,Lab Report,Diagnostic Study,,
+Eco Report,Echocardiogram Report,mapped,full,Lab Report,Diagnostic Study,Echocardiogram Report,
+Eco Report,Echocardiogram Report,mapped,partial,Lab Report,Diagnostic Study,,
+Ecocardigram Report,Echocardiogram Report,mapped,full,Lab Report,Diagnostic Study,Echocardiogram Report,
+Ecocardigram Report,Echocardiogram Report,mapped,partial,Lab Report,Diagnostic Study,,
+ED Document,ED Document,ambiguous,full,Operative Note,Triage Report,,ED physician notes are Progress Note; ED triage/nursing is Triage Report.
+ED Document,ED Document,ambiguous,full,Progress Note,,,ED physician notes are Progress Note; ED triage/nursing is Triage Report.
+ED Document,ED Document,ambiguous,partial,Discharge Summary,,,ED physician notes are Progress Note; ED triage/nursing is Triage Report.
+ED Document,ED Document,ambiguous,partial,Operative Note,,,ED physician notes are Progress Note; ED triage/nursing is Triage Report.
+EED Document,ED Document,ambiguous,full,Operative Note,Triage Report,,ED physician notes are Progress Note; ED triage/nursing is Triage Report.
+EED Document,ED Document,ambiguous,full,Progress Note,,,ED physician notes are Progress Note; ED triage/nursing is Triage Report.
+EED Document,ED Document,ambiguous,partial,Discharge Summary,,,ED physician notes are Progress Note; ED triage/nursing is Triage Report.
+EED Document,ED Document,ambiguous,partial,Operative Note,,,ED physician notes are Progress Note; ED triage/nursing is Triage Report.
+ED Triage,ED Triage,mapped,full,Operative Note,Triage Report,,
+ED Triage,ED Triage,mapped,partial,Operative Note,,,
+ED Triage,ED Triage,mapped,partial,Progress Note,,,
+Triage note,ED Triage,mapped,full,Operative Note,Triage Report,,
+Triage note,ED Triage,mapped,partial,Operative Note,,,
+Triage note,ED Triage,mapped,partial,Progress Note,,,
+EGD Procedure,EGD Report,mapped,full,Lab Report,Diagnostic Study,Esophagogastroduodenoscopy (EGD) Report,v29.2 has EGD in two places (Diagnostic Study L3 and Procedure Note L2): both count.
+EGD Procedure,EGD Report,mapped,full,Procedure Note,Endoscopy (EGD),,v29.2 has EGD in two places (Diagnostic Study L3 and Procedure Note L2): both count.
+EGD Procedure,EGD Report,mapped,partial,Lab Report,Diagnostic Study,,v29.2 has EGD in two places (Diagnostic Study L3 and Procedure Note L2): both count.
+EGD Procedure,EGD Report,mapped,partial,Lab Report,Diagnostic Study,Endoscopy Report,v29.2 has EGD in two places (Diagnostic Study L3 and Procedure Note L2): both count.
+EGD Report,EGD Report,mapped,full,Lab Report,Diagnostic Study,Esophagogastroduodenoscopy (EGD) Report,v29.2 has EGD in two places (Diagnostic Study L3 and Procedure Note L2): both count.
+EGD Report,EGD Report,mapped,full,Procedure Note,Endoscopy (EGD),,v29.2 has EGD in two places (Diagnostic Study L3 and Procedure Note L2): both count.
+EGD Report,EGD Report,mapped,partial,Lab Report,Diagnostic Study,,v29.2 has EGD in two places (Diagnostic Study L3 and Procedure Note L2): both count.
+EGD Report,EGD Report,mapped,partial,Lab Report,Diagnostic Study,Endoscopy Report,v29.2 has EGD in two places (Diagnostic Study L3 and Procedure Note L2): both count.
+Upper GI Endoscopy,EGD Report,mapped,full,Lab Report,Diagnostic Study,Esophagogastroduodenoscopy (EGD) Report,v29.2 has EGD in two places (Diagnostic Study L3 and Procedure Note L2): both count.
+Upper GI Endoscopy,EGD Report,mapped,full,Procedure Note,Endoscopy (EGD),,v29.2 has EGD in two places (Diagnostic Study L3 and Procedure Note L2): both count.
+Upper GI Endoscopy,EGD Report,mapped,partial,Lab Report,Diagnostic Study,,v29.2 has EGD in two places (Diagnostic Study L3 and Procedure Note L2): both count.
+Upper GI Endoscopy,EGD Report,mapped,partial,Lab Report,Diagnostic Study,Endoscopy Report,v29.2 has EGD in two places (Diagnostic Study L3 and Procedure Note L2): both count.
+ECG 12 lead,EKG / ECG Report,mapped,full,Lab Report,Diagnostic Study,Electrocardiogram (EKG/ECG) Report,
+ECG 12 lead,EKG / ECG Report,mapped,partial,Lab Report,Diagnostic Study,,
+ECG 12 lead,EKG / ECG Report,mapped,partial,Lab Report,Diagnostic Study,Holter Monitor Report,
+ECG Routine,EKG / ECG Report,mapped,full,Lab Report,Diagnostic Study,Electrocardiogram (EKG/ECG) Report,
+ECG Routine,EKG / ECG Report,mapped,partial,Lab Report,Diagnostic Study,,
+ECG Routine,EKG / ECG Report,mapped,partial,Lab Report,Diagnostic Study,Holter Monitor Report,
+EKG 12 lead,EKG / ECG Report,mapped,full,Lab Report,Diagnostic Study,Electrocardiogram (EKG/ECG) Report,
+EKG 12 lead,EKG / ECG Report,mapped,partial,Lab Report,Diagnostic Study,,
+EKG 12 lead,EKG / ECG Report,mapped,partial,Lab Report,Diagnostic Study,Holter Monitor Report,
+EKG Report,EKG / ECG Report,mapped,full,Lab Report,Diagnostic Study,Electrocardiogram (EKG/ECG) Report,
+EKG Report,EKG / ECG Report,mapped,partial,Lab Report,Diagnostic Study,,
+EKG Report,EKG / ECG Report,mapped,partial,Lab Report,Diagnostic Study,Holter Monitor Report,
+Electrocadiogram Report,EKG / ECG Report,mapped,full,Lab Report,Diagnostic Study,Electrocardiogram (EKG/ECG) Report,
+Electrocadiogram Report,EKG / ECG Report,mapped,partial,Lab Report,Diagnostic Study,,
+Electrocadiogram Report,EKG / ECG Report,mapped,partial,Lab Report,Diagnostic Study,Holter Monitor Report,
+EKG Graph,EKG Graph (tracing),mapped,full,Lab Report,Diagnostic Study,Electrocardiogram (EKG/ECG) Report,Tracings with no written reading were removed from our training as junk in pass 2; expect misses or Others here.
+EKG Graph,EKG Graph (tracing),mapped,partial,Lab Report,Diagnostic Study,,Tracings with no written reading were removed from our training as junk in pass 2; expect misses or Others here.
+EKG Graphs,EKG Graph (tracing),mapped,full,Lab Report,Diagnostic Study,Electrocardiogram (EKG/ECG) Report,Tracings with no written reading were removed from our training as junk in pass 2; expect misses or Others here.
+EKG Graphs,EKG Graph (tracing),mapped,partial,Lab Report,Diagnostic Study,,Tracings with no written reading were removed from our training as junk in pass 2; expect misses or Others here.
+Elastogrphy Procedures,Elastography,mapped,full,Procedure Note,Elastography,,
+Elastogrphy Procedures,Elastography,mapped,partial,Procedure Note,,,
+Elastogrphy Procedures,Elastography,mapped,partial,Lab Report,Radiology Report,,
+Encounter details,Encounter Details,ambiguous,full,Clinical Summary,Others,,
+Encounter details,Encounter Details,ambiguous,full,Demographics,Face Sheet,,
+Encounter details,Encounter Details,ambiguous,partial,Administrative,,,
+Encounter details,Encounter Details,ambiguous,partial,Demographics,,,
+Encounter Detalis,Encounter Details,ambiguous,full,Clinical Summary,Others,,
+Encounter Detalis,Encounter Details,ambiguous,full,Demographics,Face Sheet,,
+Encounter Detalis,Encounter Details,ambiguous,partial,Administrative,,,
+Encounter Detalis,Encounter Details,ambiguous,partial,Demographics,,,
+Encounter Index,Encounter List / Index,mapped,full,Administrative,Appointment Record,,
+Encounter Index,Encounter List / Index,mapped,full,Clinical Summary,Others,,
+Encounter Index,Encounter List / Index,mapped,partial,Administrative,,,
+Encounter Index,Encounter List / Index,mapped,partial,Clinical Summary,,,
+Encounter list,Encounter List / Index,mapped,full,Administrative,Appointment Record,,
+Encounter list,Encounter List / Index,mapped,full,Clinical Summary,Others,,
+Encounter list,Encounter List / Index,mapped,partial,Administrative,,,
+Encounter list,Encounter List / Index,mapped,partial,Clinical Summary,,,
+Endoscopy Report,Endoscopy / GI Report,mapped,full,Lab Report,Diagnostic Study,Endoscopy Report,
+Endoscopy Report,Endoscopy / GI Report,mapped,full,Lab Report,Diagnostic Study,Colonoscopy Report,
+Endoscopy Report,Endoscopy / GI Report,mapped,full,Lab Report,Diagnostic Study,Esophagogastroduodenoscopy (EGD) Report,
+Endoscopy Report,Endoscopy / GI Report,mapped,full,Procedure Note,Endoscopy (EGD),,
+Endoscopy Report,Endoscopy / GI Report,mapped,partial,Lab Report,Diagnostic Study,,
+GI Endoscopy,Endoscopy / GI Report,mapped,full,Lab Report,Diagnostic Study,Endoscopy Report,
+GI Endoscopy,Endoscopy / GI Report,mapped,full,Lab Report,Diagnostic Study,Colonoscopy Report,
+GI Endoscopy,Endoscopy / GI Report,mapped,full,Lab Report,Diagnostic Study,Esophagogastroduodenoscopy (EGD) Report,
+GI Endoscopy,Endoscopy / GI Report,mapped,full,Procedure Note,Endoscopy (EGD),,
+GI Endoscopy,Endoscopy / GI Report,mapped,partial,Lab Report,Diagnostic Study,,
+GI Report,Endoscopy / GI Report,mapped,full,Lab Report,Diagnostic Study,Endoscopy Report,
+GI Report,Endoscopy / GI Report,mapped,full,Lab Report,Diagnostic Study,Colonoscopy Report,
+GI Report,Endoscopy / GI Report,mapped,full,Lab Report,Diagnostic Study,Esophagogastroduodenoscopy (EGD) Report,
+GI Report,Endoscopy / GI Report,mapped,full,Procedure Note,Endoscopy (EGD),,
+GI Report,Endoscopy / GI Report,mapped,partial,Lab Report,Diagnostic Study,,
+Flow cytometry,Flow Cytometry,mapped,full,Lab Report,Pathology Report,Cytometry Report,
+Flow cytometry,Flow Cytometry,mapped,partial,Lab Report,Pathology Report,,
+Flow cytometry,Flow Cytometry,mapped,partial,Lab Report,Lab Result,Hematology Report,
+Flowsheet,Flowsheet,ambiguous,full,Progress Note,Vitals,,Generic; depends on what is charted.
+Flowsheet,Flowsheet,ambiguous,full,Lab Report,Lab Result,Laboratory Flow Sheet,Generic; depends on what is charted.
+Flowsheet,Flowsheet,ambiguous,partial,Operative Note,Critical Care Record,,Generic; depends on what is charted.
+Flowsheet,Flowsheet,ambiguous,partial,Forms and Questionnaires,Assessment,,Generic; depends on what is charted.
+Flowsheet,Flowsheet,ambiguous,partial,Progress Note,,,Generic; depends on what is charted.
+Form,Generic Form,ambiguous,full,Forms and Questionnaires,,,Too generic to score strictly.
+Form,Generic Form,ambiguous,full,Administrative,Others,,Too generic to score strictly.
+Form,Generic Form,ambiguous,partial,Consent and Authorization,,,Too generic to score strictly.
+Form,Generic Form,ambiguous,partial,Demographics,,,Too generic to score strictly.
+Form Note,Generic Form,ambiguous,full,Forms and Questionnaires,,,Too generic to score strictly.
+Form Note,Generic Form,ambiguous,full,Administrative,Others,,Too generic to score strictly.
+Form Note,Generic Form,ambiguous,partial,Consent and Authorization,,,Too generic to score strictly.
+Form Note,Generic Form,ambiguous,partial,Demographics,,,Too generic to score strictly.
+Patient Form,Generic Form,ambiguous,full,Forms and Questionnaires,,,Too generic to score strictly.
+Patient Form,Generic Form,ambiguous,full,Administrative,Others,,Too generic to score strictly.
+Patient Form,Generic Form,ambiguous,partial,Consent and Authorization,,,Too generic to score strictly.
+Patient Form,Generic Form,ambiguous,partial,Demographics,,,Too generic to score strictly.
+Growth chart,Growth Chart,mapped,full,Forms and Questionnaires,Assessment,,Growth charts were moved to Forms and Questionnaires > Assessment in label pass 2.
+Growth chart,Growth Chart,mapped,partial,Progress Note,Vitals,,Growth charts were moved to Forms and Questionnaires > Assessment in label pass 2.
+Heart Report,Heart Report,ambiguous,full,Lab Report,Diagnostic Study,Echocardiogram Report,Unspecified cardiac study.
+Heart Report,Heart Report,ambiguous,full,Lab Report,Diagnostic Study,Electrocardiogram (EKG/ECG) Report,Unspecified cardiac study.
+Heart Report,Heart Report,ambiguous,full,Lab Report,Diagnostic Study,Stress Test,Unspecified cardiac study.
+Heart Report,Heart Report,ambiguous,full,Lab Report,Diagnostic Study,Holter Monitor Report,Unspecified cardiac study.
+Heart Report,Heart Report,ambiguous,full,Lab Report,Diagnostic Study,Cardiac Catheterization Report,Unspecified cardiac study.
+Heart Report,Heart Report,ambiguous,partial,Lab Report,Diagnostic Study,,Unspecified cardiac study.
+Heart Report,Heart Report,ambiguous,partial,Lab Report,Radiology Report,CT Angiography Report,Unspecified cardiac study.
+Patinet History,History (Social / Patient),mapped,full,Progress Note,Others,,History-only continuation pages are PN > Others in our rules.
+Patinet History,History (Social / Patient),mapped,partial,Progress Note,,,History-only continuation pages are PN > Others in our rules.
+Social History,History (Social / Patient),mapped,full,Progress Note,Others,,History-only continuation pages are PN > Others in our rules.
+Social History,History (Social / Patient),mapped,partial,Progress Note,,,History-only continuation pages are PN > Others in our rules.
+Holter Report,Holter Report,mapped,full,Lab Report,Diagnostic Study,Holter Monitor Report,
+Holter Report,Holter Report,mapped,partial,Lab Report,Diagnostic Study,,
+Immunization,Immunization,mapped,full,Immunization,Immunization Record,,
+Immunization,Immunization,mapped,partial,Immunization,,,
+Immunization,Immunization,mapped,partial,Consent and Authorization,Immunization Consent,,
+Vaccine Page,Immunization,mapped,full,Immunization,Immunization Record,,
+Vaccine Page,Immunization,mapped,partial,Immunization,,,
+Vaccine Page,Immunization,mapped,partial,Consent and Authorization,Immunization Consent,,
+Blank Format,Index / Cover / Fax / Blank,exclude,not scored,,,,Our training drops these as junk (blank-junk stage). Exclude from page-type accuracy or score against blank/junk.
+Blank page,Index / Cover / Fax / Blank,exclude,not scored,,,,Our training drops these as junk (blank-junk stage). Exclude from page-type accuracy or score against blank/junk.
+Cover page,Index / Cover / Fax / Blank,exclude,not scored,,,,Our training drops these as junk (blank-junk stage). Exclude from page-type accuracy or score against blank/junk.
+Document page,Index / Cover / Fax / Blank,exclude,not scored,,,,Our training drops these as junk (blank-junk stage). Exclude from page-type accuracy or score against blank/junk.
+Fax page,Index / Cover / Fax / Blank,exclude,not scored,,,,Our training drops these as junk (blank-junk stage). Exclude from page-type accuracy or score against blank/junk.
+Index data,Index / Cover / Fax / Blank,exclude,not scored,,,,Our training drops these as junk (blank-junk stage). Exclude from page-type accuracy or score against blank/junk.
+Index page,Index / Cover / Fax / Blank,exclude,not scored,,,,Our training drops these as junk (blank-junk stage). Exclude from page-type accuracy or score against blank/junk.
+Information Page,Information Page,ambiguous,full,Demographics,,,Patient information (demographics) vs information leaflet.
+Information Page,Information Page,ambiguous,full,Patient Communication,Patient Education Material,,Patient information (demographics) vs information leaflet.
+Information Page,Information Page,ambiguous,partial,Administrative,,,Patient information (demographics) vs information leaflet.
+Information Page,Information Page,ambiguous,partial,Consent and Authorization,,,Patient information (demographics) vs information leaflet.
+Information pages,Information Page,ambiguous,full,Demographics,,,Patient information (demographics) vs information leaflet.
+Information pages,Information Page,ambiguous,full,Patient Communication,Patient Education Material,,Patient information (demographics) vs information leaflet.
+Information pages,Information Page,ambiguous,partial,Administrative,,,Patient information (demographics) vs information leaflet.
+Information pages,Information Page,ambiguous,partial,Consent and Authorization,,,Patient information (demographics) vs information leaflet.
+Inpatient Evaluation,Inpatient Evaluation,mapped,full,Discharge Summary,History and Physical,,
+Inpatient Evaluation,Inpatient Evaluation,mapped,full,Discharge Summary,Consultation Note,,
+Inpatient Evaluation,Inpatient Evaluation,mapped,partial,Progress Note,,,
+Intake form,Intake Form,mapped,full,Administrative,Patient Registration,,
+Intake form,Intake Form,mapped,full,Forms and Questionnaires,Questionnaire,,
+Intake form,Intake Form,mapped,partial,Demographics,,,
+Intake form,Intake Form,mapped,partial,Forms and Questionnaires,,,
+Intra Opeative Record,Intra-operative Record,mapped,full,Operative Note,Intra-operative Record,,
+Intra Opeative Record,Intra-operative Record,mapped,partial,Operative Note,,,
+Intraop record,Intra-operative Record,mapped,full,Operative Note,Intra-operative Record,,
+Intraop record,Intra-operative Record,mapped,partial,Operative Note,,,
+Intraoperative report,Intra-operative Record,mapped,full,Operative Note,Intra-operative Record,,
+Intraoperative report,Intra-operative Record,mapped,partial,Operative Note,,,
+Knee Procedure Note,Knee Procedure,mapped,full,Procedure Note,Knee Procedure,,
+Knee Procedure Note,Knee Procedure,mapped,partial,Procedure Note,,,
+Lab,Lab Result,mapped,full,Lab Report,Lab Result,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab,Lab Result,mapped,partial,Lab Report,,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab,Lab Result,mapped,partial,Progress Note,Lab and Imaging Results,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab History,Lab Result,mapped,full,Lab Report,Lab Result,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab History,Lab Result,mapped,partial,Lab Report,,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab History,Lab Result,mapped,partial,Progress Note,Lab and Imaging Results,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab Reference,Lab Result,mapped,full,Lab Report,Lab Result,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab Reference,Lab Result,mapped,partial,Lab Report,,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab Reference,Lab Result,mapped,partial,Progress Note,Lab and Imaging Results,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab Report,Lab Result,mapped,full,Lab Report,Lab Result,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab Report,Lab Result,mapped,partial,Lab Report,,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab Report,Lab Result,mapped,partial,Progress Note,Lab and Imaging Results,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab Result,Lab Result,mapped,full,Lab Report,Lab Result,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab Result,Lab Result,mapped,partial,Lab Report,,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab Result,Lab Result,mapped,partial,Progress Note,Lab and Imaging Results,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab Results,Lab Result,mapped,full,Lab Report,Lab Result,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab Results,Lab Result,mapped,partial,Lab Report,,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Lab Results,Lab Result,mapped,partial,Progress Note,Lab and Imaging Results,,Any L3 under Lab Result is a full match (GT has no L3 for labs).
+Laser Report,Laser Procedure,mapped,full,Procedure Note,Laser Procedure,,
+Laser Report,Laser Procedure,mapped,partial,Procedure Note,,,
+Letter,Letter,mapped,full,Provider Letter,,,
+Letter,Letter,mapped,partial,Patient Communication,,,
+Log,Log,ambiguous,full,Administrative,Others,,Signature logs / record logs.
+Log,Log,ambiguous,partial,Administrative,,,Signature logs / record logs.
+Log page,Log,ambiguous,full,Administrative,Others,,Signature logs / record logs.
+Log page,Log,ambiguous,partial,Administrative,,,Signature logs / record logs.
+Lumber Procedure,Lumbar Procedure,mapped,full,Procedure Note,Lumbar Procedure,,
+Lumber Procedure,Lumbar Procedure,mapped,partial,Procedure Note,,,
+Medication,Medication List,mapped,full,Medication Record,Medication List,,
+Medication,Medication List,mapped,full,Progress Note,Medication List,,
+Medication,Medication List,mapped,partial,Medication Record,,,
+Medication,Medication List,mapped,partial,Discharge Summary,Discharge Medication,,
+Medication Page,Medication List,mapped,full,Medication Record,Medication List,,
+Medication Page,Medication List,mapped,full,Progress Note,Medication List,,
+Medication Page,Medication List,mapped,partial,Medication Record,,,
+Medication Page,Medication List,mapped,partial,Discharge Summary,Discharge Medication,,
+Medications,Medication List,mapped,full,Medication Record,Medication List,,
+Medications,Medication List,mapped,full,Progress Note,Medication List,,
+Medications,Medication List,mapped,partial,Medication Record,,,
+Medications,Medication List,mapped,partial,Discharge Summary,Discharge Medication,,
+Medication Order,Medication Order,mapped,full,Medication Record,Prescription Page,,
+Medication Order,Medication Order,mapped,full,Order and Requisition,Physician Order,,
+Medication Order,Medication Order,mapped,partial,Medication Record,,,
+Medication Order,Medication Order,mapped,partial,Order and Requisition,,,
+Medication Reconciliation,Medication Reconciliation,mapped,full,Medication Record,Medication List,,
+Medication Reconciliation,Medication Reconciliation,mapped,full,Progress Note,Medication List,,
+Medication Reconciliation,Medication Reconciliation,mapped,full,Discharge Summary,Discharge Medication,,
+Medication Reconciliation,Medication Reconciliation,mapped,partial,Medication Record,,,
+Memo,Memo,ambiguous,full,Provider Letter,Others,,
+Memo,Memo,ambiguous,full,Patient Communication,Others,,
+Memo,Memo,ambiguous,partial,Provider Letter,,,
+Memo,Memo,ambiguous,partial,Patient Communication,,,
+Memo Record,Memo,ambiguous,full,Provider Letter,Others,,
+Memo Record,Memo,ambiguous,full,Patient Communication,Others,,
+Memo Record,Memo,ambiguous,partial,Provider Letter,,,
+Memo Record,Memo,ambiguous,partial,Patient Communication,,,
+MESSAGE,Message,mapped,full,Patient Communication,Patient Message,,
+MESSAGE,Message,mapped,full,Patient Communication,Telephone Encounter,,
+MESSAGE,Message,mapped,partial,Patient Communication,,,
+Message Page,Message,mapped,full,Patient Communication,Patient Message,,
+Message Page,Message,mapped,full,Patient Communication,Telephone Encounter,,
+Message Page,Message,mapped,partial,Patient Communication,,,
+Messages,Message,mapped,full,Patient Communication,Patient Message,,
+Messages,Message,mapped,full,Patient Communication,Telephone Encounter,,
+Messages,Message,mapped,partial,Patient Communication,,,
+Messages page,Message,mapped,full,Patient Communication,Patient Message,,
+Messages page,Message,mapped,full,Patient Communication,Telephone Encounter,,
+Messages page,Message,mapped,partial,Patient Communication,,,
+Do Not Use,Not a page type,exclude,not scored,,,,Placeholder / column header / workflow value. Exclude from accuracy.
+Encounter Type,Not a page type,exclude,not scored,,,,Placeholder / column header / workflow value. Exclude from accuracy.
+First Choice,Not a page type,exclude,not scored,,,,Placeholder / column header / workflow value. Exclude from accuracy.
+Misc,Not a page type,exclude,not scored,,,,Placeholder / column header / workflow value. Exclude from accuracy.
+NA,Not a page type,exclude,not scored,,,,Placeholder / column header / workflow value. Exclude from accuracy.
+Notice,Notice,mapped,full,Patient Communication,Notice,,
+Notice,Notice,mapped,partial,Patient Communication,,,
+Notice,Notice,mapped,partial,Consent and Authorization,HIPAA and Privacy,,
+Nurshing Chart,Nursing Note,ambiguous,full,Progress Note,,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nurshing Chart,Nursing Note,ambiguous,full,Operative Note,Pre-operative,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nurshing Chart,Nursing Note,ambiguous,full,Operative Note,Intra-operative Record,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nurshing Chart,Nursing Note,ambiguous,full,Operative Note,Post-operative,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nurshing Chart,Nursing Note,ambiguous,partial,Discharge Summary,,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nurshing Chart,Nursing Note,ambiguous,partial,Operative Note,Critical Care Record,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nursing Note,Nursing Note,ambiguous,full,Progress Note,,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nursing Note,Nursing Note,ambiguous,full,Operative Note,Pre-operative,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nursing Note,Nursing Note,ambiguous,full,Operative Note,Intra-operative Record,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nursing Note,Nursing Note,ambiguous,full,Operative Note,Post-operative,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nursing Note,Nursing Note,ambiguous,partial,Discharge Summary,,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nursing Note,Nursing Note,ambiguous,partial,Operative Note,Critical Care Record,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nursing Notes,Nursing Note,ambiguous,full,Progress Note,,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nursing Notes,Nursing Note,ambiguous,full,Operative Note,Pre-operative,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nursing Notes,Nursing Note,ambiguous,full,Operative Note,Intra-operative Record,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nursing Notes,Nursing Note,ambiguous,full,Operative Note,Post-operative,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nursing Notes,Nursing Note,ambiguous,partial,Discharge Summary,,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+Nursing Notes,Nursing Note,ambiguous,partial,Operative Note,Critical Care Record,,No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post.
+OCT Report,OCT Report,mapped,full,Lab Report,Diagnostic Study,Optical Coherence Tomography Report,
+OCT Report,OCT Report,mapped,partial,Lab Report,Diagnostic Study,,
+Office Procedure Report,Office Procedure,mapped,full,Procedure Note,Office Procedure,,
+Office Procedure Report,Office Procedure,mapped,partial,Procedure Note,,,
+Office Procedure Report,Office Procedure,mapped,partial,Progress Note,Procedure List,,
+OP Note,Operative Report,mapped,full,Operative Note,Surgery Report,,
+OP Note,Operative Report,mapped,partial,Operative Note,,,
+operation Note,Operative Report,mapped,full,Operative Note,Surgery Report,,
+operation Note,Operative Report,mapped,partial,Operative Note,,,
+Operative Note,Operative Report,mapped,full,Operative Note,Surgery Report,,
+Operative Note,Operative Report,mapped,partial,Operative Note,,,
+Operative Report,Operative Report,mapped,full,Operative Note,Surgery Report,,
+Operative Report,Operative Report,mapped,partial,Operative Note,,,
+Operative Visit,Operative Visit,ambiguous,full,Operative Note,,,Unclear page type.
+Operative Visit,Operative Visit,ambiguous,partial,Progress Note,,,Unclear page type.
+OD Data,Ophthalmology Data,ambiguous,full,Lab Report,Diagnostic Study,Optical Coherence Tomography Report,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+OD Data,Ophthalmology Data,ambiguous,full,Lab Report,Diagnostic Study,Visual Field Report,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+OD Data,Ophthalmology Data,ambiguous,full,Lab Report,Diagnostic Study,Corneal Topography,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+OD Data,Ophthalmology Data,ambiguous,full,Lab Report,Diagnostic Study,Optical Biometry (IOL Calculation),"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+OD Data,Ophthalmology Data,ambiguous,full,Progress Note,Physical Exam,,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+OD Data,Ophthalmology Data,ambiguous,partial,Lab Report,Diagnostic Study,,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+OD Data,Ophthalmology Data,ambiguous,partial,Progress Note,,,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+OD-OS Page,Ophthalmology Data,ambiguous,full,Lab Report,Diagnostic Study,Optical Coherence Tomography Report,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+OD-OS Page,Ophthalmology Data,ambiguous,full,Lab Report,Diagnostic Study,Visual Field Report,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+OD-OS Page,Ophthalmology Data,ambiguous,full,Lab Report,Diagnostic Study,Corneal Topography,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+OD-OS Page,Ophthalmology Data,ambiguous,full,Lab Report,Diagnostic Study,Optical Biometry (IOL Calculation),"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+OD-OS Page,Ophthalmology Data,ambiguous,full,Progress Note,Physical Exam,,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+OD-OS Page,Ophthalmology Data,ambiguous,partial,Lab Report,Diagnostic Study,,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+OD-OS Page,Ophthalmology Data,ambiguous,partial,Progress Note,,,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+Ophthalmolgy Data,Ophthalmology Data,ambiguous,full,Lab Report,Diagnostic Study,Optical Coherence Tomography Report,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+Ophthalmolgy Data,Ophthalmology Data,ambiguous,full,Lab Report,Diagnostic Study,Visual Field Report,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+Ophthalmolgy Data,Ophthalmology Data,ambiguous,full,Lab Report,Diagnostic Study,Corneal Topography,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+Ophthalmolgy Data,Ophthalmology Data,ambiguous,full,Lab Report,Diagnostic Study,Optical Biometry (IOL Calculation),"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+Ophthalmolgy Data,Ophthalmology Data,ambiguous,full,Progress Note,Physical Exam,,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+Ophthalmolgy Data,Ophthalmology Data,ambiguous,partial,Lab Report,Diagnostic Study,,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+Ophthalmolgy Data,Ophthalmology Data,ambiguous,partial,Progress Note,,,"Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+OR summary,OR Summary,mapped,full,Operative Note,Surgery Report,,
+OR summary,OR Summary,mapped,full,Operative Note,Intra-operative Record,,
+OR summary,OR Summary,mapped,partial,Operative Note,,,
+Order,Order,mapped,full,Order and Requisition,,,
+Order,Order,mapped,partial,Operative Note,Pre-operative,,
+Order,Order,mapped,partial,Operative Note,Post-operative,,
+Order,Order,mapped,partial,Medication Record,Prescription Page,,
+Order Note,Order,mapped,full,Order and Requisition,,,
+Order Note,Order,mapped,partial,Operative Note,Pre-operative,,
+Order Note,Order,mapped,partial,Operative Note,Post-operative,,
+Order Note,Order,mapped,partial,Medication Record,Prescription Page,,
+Order Page,Order,mapped,full,Order and Requisition,,,
+Order Page,Order,mapped,partial,Operative Note,Pre-operative,,
+Order Page,Order,mapped,partial,Operative Note,Post-operative,,
+Order Page,Order,mapped,partial,Medication Record,Prescription Page,,
+Order Pages,Order,mapped,full,Order and Requisition,,,
+Order Pages,Order,mapped,partial,Operative Note,Pre-operative,,
+Order Pages,Order,mapped,partial,Operative Note,Post-operative,,
+Order Pages,Order,mapped,partial,Medication Record,Prescription Page,,
+Orders,Order,mapped,full,Order and Requisition,,,
+Orders,Order,mapped,partial,Operative Note,Pre-operative,,
+Orders,Order,mapped,partial,Operative Note,Post-operative,,
+Orders,Order,mapped,partial,Medication Record,Prescription Page,,
+Pathology Procedure,Pathology Procedure,mapped,full,Procedure Note,Pathology Procedure,,
+Pathology Procedure,Pathology Procedure,mapped,partial,Lab Report,Pathology Report,,
+Pathology Procedure,Pathology Procedure,mapped,partial,Procedure Note,,,
+Pathology,Pathology Report,mapped,full,Lab Report,Pathology Report,,
+Pathology,Pathology Report,mapped,partial,Lab Report,,,
+Pathology Report,Pathology Report,mapped,full,Lab Report,Pathology Report,,
+Pathology Report,Pathology Report,mapped,partial,Lab Report,,,
+Path Request,Pathology Request,mapped,full,Order and Requisition,Laboratory Requisition,,
+Path Request,Pathology Request,mapped,partial,Order and Requisition,,,
+Path Request,Pathology Request,mapped,partial,Lab Report,Pathology Report,,
+Communication,Patient Communication,mapped,full,Patient Communication,,,
+Communication,Patient Communication,mapped,partial,Provider Letter,,,
+Communication Page,Patient Communication,mapped,full,Patient Communication,,,
+Communication Page,Patient Communication,mapped,partial,Provider Letter,,,
+Patient Communication,Patient Communication,mapped,full,Patient Communication,,,
+Patient Communication,Patient Communication,mapped,partial,Provider Letter,,,
+Patient communication page,Patient Communication,mapped,full,Patient Communication,,,
+Patient communication page,Patient Communication,mapped,partial,Provider Letter,,,
+PatientCommunucation,Patient Communication,mapped,full,Patient Communication,,,
+PatientCommunucation,Patient Communication,mapped,partial,Provider Letter,,,
+Patirnt Communication,Patient Communication,mapped,full,Patient Communication,,,
+Patirnt Communication,Patient Communication,mapped,partial,Provider Letter,,,
+Patient Education,Patient Education,mapped,full,Patient Communication,Patient Education Material,,
+Patient Education,Patient Education,mapped,partial,Patient Communication,,,
+Patient Education,Patient Education,mapped,partial,Progress Note,Patient Instructions,,
+Patient Education,Patient Education,mapped,partial,Clinical Summary,After-Visit Summary,,
+Patient Education,Patient Education,mapped,partial,Discharge Summary,Discharge Instruction,,
+Instrucion Page,Patient Instruction,mapped,full,Progress Note,Patient Instructions,,
+Instrucion Page,Patient Instruction,mapped,full,Patient Communication,Patient Education Material,,
+Instrucion Page,Patient Instruction,mapped,partial,Discharge Summary,Discharge Instruction,,
+Instrucion Page,Patient Instruction,mapped,partial,Clinical Summary,After-Visit Summary,,
+Instrucion Page,Patient Instruction,mapped,partial,Patient Communication,,,
+Instruction Page,Patient Instruction,mapped,full,Progress Note,Patient Instructions,,
+Instruction Page,Patient Instruction,mapped,full,Patient Communication,Patient Education Material,,
+Instruction Page,Patient Instruction,mapped,partial,Discharge Summary,Discharge Instruction,,
+Instruction Page,Patient Instruction,mapped,partial,Clinical Summary,After-Visit Summary,,
+Instruction Page,Patient Instruction,mapped,partial,Patient Communication,,,
+Patient Insruction,Patient Instruction,mapped,full,Progress Note,Patient Instructions,,
+Patient Insruction,Patient Instruction,mapped,full,Patient Communication,Patient Education Material,,
+Patient Insruction,Patient Instruction,mapped,partial,Discharge Summary,Discharge Instruction,,
+Patient Insruction,Patient Instruction,mapped,partial,Clinical Summary,After-Visit Summary,,
+Patient Insruction,Patient Instruction,mapped,partial,Patient Communication,,,
+Patient Instruction,Patient Instruction,mapped,full,Progress Note,Patient Instructions,,
+Patient Instruction,Patient Instruction,mapped,full,Patient Communication,Patient Education Material,,
+Patient Instruction,Patient Instruction,mapped,partial,Discharge Summary,Discharge Instruction,,
+Patient Instruction,Patient Instruction,mapped,partial,Clinical Summary,After-Visit Summary,,
+Patient Instruction,Patient Instruction,mapped,partial,Patient Communication,,,
+Phase Record,Phase Record (PACU),mapped,full,Operative Note,Post-operative,,
+Phase Record,Phase Record (PACU),mapped,partial,Operative Note,,,
+Physical Therapy Evaluation,Physical Therapy Evaluation,mapped,full,Procedure Note,Therapy Session,,
+Physical Therapy Evaluation,Physical Therapy Evaluation,mapped,partial,Procedure Note,,,
+Physical Therapy Evaluation,Physical Therapy Evaluation,mapped,partial,Progress Note,,,
+Physical Therapy Evaluation,Physical Therapy Evaluation,mapped,partial,Forms and Questionnaires,Assessment,,
+Evaluation,Physician / Initial Evaluation,ambiguous,full,Progress Note,,,Usually a first-visit note; a scored form is an Assessment.
+Evaluation,Physician / Initial Evaluation,ambiguous,full,Forms and Questionnaires,Assessment,,Usually a first-visit note; a scored form is an Assessment.
+Evaluation,Physician / Initial Evaluation,ambiguous,partial,Discharge Summary,History and Physical,,Usually a first-visit note; a scored form is an Assessment.
+Evaluation,Physician / Initial Evaluation,ambiguous,partial,Discharge Summary,Consultation Note,,Usually a first-visit note; a scored form is an Assessment.
+Intial Assessment,Physician / Initial Evaluation,ambiguous,full,Progress Note,,,Usually a first-visit note; a scored form is an Assessment.
+Intial Assessment,Physician / Initial Evaluation,ambiguous,full,Forms and Questionnaires,Assessment,,Usually a first-visit note; a scored form is an Assessment.
+Intial Assessment,Physician / Initial Evaluation,ambiguous,partial,Discharge Summary,History and Physical,,Usually a first-visit note; a scored form is an Assessment.
+Intial Assessment,Physician / Initial Evaluation,ambiguous,partial,Discharge Summary,Consultation Note,,Usually a first-visit note; a scored form is an Assessment.
+Intial Evaluation,Physician / Initial Evaluation,ambiguous,full,Progress Note,,,Usually a first-visit note; a scored form is an Assessment.
+Intial Evaluation,Physician / Initial Evaluation,ambiguous,full,Forms and Questionnaires,Assessment,,Usually a first-visit note; a scored form is an Assessment.
+Intial Evaluation,Physician / Initial Evaluation,ambiguous,partial,Discharge Summary,History and Physical,,Usually a first-visit note; a scored form is an Assessment.
+Intial Evaluation,Physician / Initial Evaluation,ambiguous,partial,Discharge Summary,Consultation Note,,Usually a first-visit note; a scored form is an Assessment.
+Care Plan,Plan of Care,mapped,full,Progress Note,Assessment and Plan,,Home-health care plans (e.g. CMS-485) may land in Forms and Questionnaires > Assessment.
+Care Plan,Plan of Care,mapped,partial,Progress Note,,,Home-health care plans (e.g. CMS-485) may land in Forms and Questionnaires > Assessment.
+Care Plan,Plan of Care,mapped,partial,Forms and Questionnaires,Assessment,,Home-health care plans (e.g. CMS-485) may land in Forms and Questionnaires > Assessment.
+Care Plan,Plan of Care,mapped,partial,Progress Note,Patient Instructions,,Home-health care plans (e.g. CMS-485) may land in Forms and Questionnaires > Assessment.
+Plan of Care,Plan of Care,mapped,full,Progress Note,Assessment and Plan,,Home-health care plans (e.g. CMS-485) may land in Forms and Questionnaires > Assessment.
+Plan of Care,Plan of Care,mapped,partial,Progress Note,,,Home-health care plans (e.g. CMS-485) may land in Forms and Questionnaires > Assessment.
+Plan of Care,Plan of Care,mapped,partial,Forms and Questionnaires,Assessment,,Home-health care plans (e.g. CMS-485) may land in Forms and Questionnaires > Assessment.
+Plan of Care,Plan of Care,mapped,partial,Progress Note,Patient Instructions,,Home-health care plans (e.g. CMS-485) may land in Forms and Questionnaires > Assessment.
+Policy,Policy,mapped,full,Consent and Authorization,HIPAA and Privacy,,
+Policy,Policy,mapped,full,Consent and Authorization,General Consent,,
+Policy,Policy,mapped,partial,Consent and Authorization,,,
+Policy,Policy,mapped,partial,Patient Communication,Notice,,
+Policy Pages,Policy,mapped,full,Consent and Authorization,HIPAA and Privacy,,
+Policy Pages,Policy,mapped,full,Consent and Authorization,General Consent,,
+Policy Pages,Policy,mapped,partial,Consent and Authorization,,,
+Policy Pages,Policy,mapped,partial,Patient Communication,Notice,,
+Postoperative call,Post-operative Call,mapped,full,Patient Communication,Telephone Encounter,,
+Postoperative call,Post-operative Call,mapped,partial,Operative Note,Post-operative,,
+Postoperative call,Post-operative Call,mapped,partial,Patient Communication,,,
+post Operative Orders,Post-operative Orders,mapped,full,Operative Note,Post-operative,,
+post Operative Orders,Post-operative Orders,mapped,full,Order and Requisition,Physician Order,,
+post Operative Orders,Post-operative Orders,mapped,partial,Operative Note,,,
+post Operative Orders,Post-operative Orders,mapped,partial,Order and Requisition,,,
+PAT record,Pre-operative,mapped,full,Operative Note,Pre-operative,,
+PAT record,Pre-operative,mapped,partial,Operative Note,,,
+PAT record,Pre-operative,mapped,partial,Discharge Summary,History and Physical,,
+PAT record,Pre-operative,mapped,partial,Lab Report,Lab Result,,
+Pre admission Testing,Pre-operative,mapped,full,Operative Note,Pre-operative,,
+Pre admission Testing,Pre-operative,mapped,partial,Operative Note,,,
+Pre admission Testing,Pre-operative,mapped,partial,Discharge Summary,History and Physical,,
+Pre admission Testing,Pre-operative,mapped,partial,Lab Report,Lab Result,,
+Pre Op Form,Pre-operative,mapped,full,Operative Note,Pre-operative,,
+Pre Op Form,Pre-operative,mapped,partial,Operative Note,,,
+Pre Op Form,Pre-operative,mapped,partial,Discharge Summary,History and Physical,,
+Pre Op Form,Pre-operative,mapped,partial,Lab Report,Lab Result,,
+Pre Op Record,Pre-operative,mapped,full,Operative Note,Pre-operative,,
+Pre Op Record,Pre-operative,mapped,partial,Operative Note,,,
+Pre Op Record,Pre-operative,mapped,partial,Discharge Summary,History and Physical,,
+Pre Op Record,Pre-operative,mapped,partial,Lab Report,Lab Result,,
+Pre Op Testing,Pre-operative,mapped,full,Operative Note,Pre-operative,,
+Pre Op Testing,Pre-operative,mapped,partial,Operative Note,,,
+Pre Op Testing,Pre-operative,mapped,partial,Discharge Summary,History and Physical,,
+Pre Op Testing,Pre-operative,mapped,partial,Lab Report,Lab Result,,
+Pre Operative,Pre-operative,mapped,full,Operative Note,Pre-operative,,
+Pre Operative,Pre-operative,mapped,partial,Operative Note,,,
+Pre Operative,Pre-operative,mapped,partial,Discharge Summary,History and Physical,,
+Pre Operative,Pre-operative,mapped,partial,Lab Report,Lab Result,,
+Pre operative report,Pre-operative,mapped,full,Operative Note,Pre-operative,,
+Pre operative report,Pre-operative,mapped,partial,Operative Note,,,
+Pre operative report,Pre-operative,mapped,partial,Discharge Summary,History and Physical,,
+Pre operative report,Pre-operative,mapped,partial,Lab Report,Lab Result,,
+Preoprative Assesment,Pre-operative,mapped,full,Operative Note,Pre-operative,,
+Preoprative Assesment,Pre-operative,mapped,partial,Operative Note,,,
+Preoprative Assesment,Pre-operative,mapped,partial,Discharge Summary,History and Physical,,
+Preoprative Assesment,Pre-operative,mapped,partial,Lab Report,Lab Result,,
+preoperative Order,Pre-operative Orders,mapped,full,Operative Note,Pre-operative,,
+preoperative Order,Pre-operative Orders,mapped,full,Order and Requisition,Physician Order,,
+preoperative Order,Pre-operative Orders,mapped,partial,Operative Note,,,
+preoperative Order,Pre-operative Orders,mapped,partial,Order and Requisition,,,
+Prescription,Prescription,mapped,full,Medication Record,Prescription Page,,
+Prescription,Prescription,mapped,partial,Medication Record,,,
+Prescription,Prescription,mapped,partial,Order and Requisition,Physician Order,,
+Prescription Page,Prescription,mapped,full,Medication Record,Prescription Page,,
+Prescription Page,Prescription,mapped,partial,Medication Record,,,
+Prescription Page,Prescription,mapped,partial,Order and Requisition,Physician Order,,
+Problem,Problem List,mapped,full,Problem List,Problem List,,
+Problem,Problem List,mapped,full,Progress Note,Problem List,,
+Problem,Problem List,mapped,partial,Problem List,,,
+Problem,Problem List,mapped,partial,Progress Note,Visit Diagnosis,,
+Problem List,Problem List,mapped,full,Problem List,Problem List,,
+Problem List,Problem List,mapped,full,Progress Note,Problem List,,
+Problem List,Problem List,mapped,partial,Problem List,,,
+Problem List,Problem List,mapped,partial,Progress Note,Visit Diagnosis,,
+Problem list Page,Problem List,mapped,full,Problem List,Problem List,,
+Problem list Page,Problem List,mapped,full,Progress Note,Problem List,,
+Problem list Page,Problem List,mapped,partial,Problem List,,,
+Problem list Page,Problem List,mapped,partial,Progress Note,Visit Diagnosis,,
+Problems,Problem List,mapped,full,Problem List,Problem List,,
+Problems,Problem List,mapped,full,Progress Note,Problem List,,
+Problems,Problem List,mapped,partial,Problem List,,,
+Problems,Problem List,mapped,partial,Progress Note,Visit Diagnosis,,
+Procedure Index,Procedure Index,mapped,full,Operative Note,Procedure List,,
+Procedure Index,Procedure Index,mapped,full,Progress Note,Procedure List,,
+Procedure Index,Procedure Index,mapped,partial,Operative Note,,,
+Procedure Index page,Procedure Index,mapped,full,Operative Note,Procedure List,,
+Procedure Index page,Procedure Index,mapped,full,Progress Note,Procedure List,,
+Procedure Index page,Procedure Index,mapped,partial,Operative Note,,,
+Procedure,Procedure Note,mapped,full,Procedure Note,,,
+Procedure,Procedure Note,mapped,partial,Operative Note,,,
+Procedure,Procedure Note,mapped,partial,Lab Report,Diagnostic Study,,
+Procedure,Procedure Note,mapped,partial,Progress Note,Procedure List,,
+Procedure Note,Procedure Note,mapped,full,Procedure Note,,,
+Procedure Note,Procedure Note,mapped,partial,Operative Note,,,
+Procedure Note,Procedure Note,mapped,partial,Lab Report,Diagnostic Study,,
+Procedure Note,Procedure Note,mapped,partial,Progress Note,Procedure List,,
+Procedure report,Procedure Note,mapped,full,Procedure Note,,,
+Procedure report,Procedure Note,mapped,partial,Operative Note,,,
+Procedure report,Procedure Note,mapped,partial,Lab Report,Diagnostic Study,,
+Procedure report,Procedure Note,mapped,partial,Progress Note,Procedure List,,
+Procedures,Procedure Note,mapped,full,Procedure Note,,,
+Procedures,Procedure Note,mapped,partial,Operative Note,,,
+Procedures,Procedure Note,mapped,partial,Lab Report,Diagnostic Study,,
+Procedures,Procedure Note,mapped,partial,Progress Note,Procedure List,,
+Clinical Documentation,Progress Note,mapped,full,Progress Note,,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Clinical Documentation,Progress Note,mapped,partial,Discharge Summary,History and Physical,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Clinical Documentation,Progress Note,mapped,partial,Discharge Summary,Consultation Note,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Clinical Documentation,Progress Note,mapped,partial,Clinical Summary,After-Visit Summary,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Patient chart report,Progress Note,mapped,full,Progress Note,,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Patient chart report,Progress Note,mapped,partial,Discharge Summary,History and Physical,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Patient chart report,Progress Note,mapped,partial,Discharge Summary,Consultation Note,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Patient chart report,Progress Note,mapped,partial,Clinical Summary,After-Visit Summary,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Physician Chart,Progress Note,mapped,full,Progress Note,,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Physician Chart,Progress Note,mapped,partial,Discharge Summary,History and Physical,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Physician Chart,Progress Note,mapped,partial,Discharge Summary,Consultation Note,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Physician Chart,Progress Note,mapped,partial,Clinical Summary,After-Visit Summary,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Pogress Notes,Progress Note,mapped,full,Progress Note,,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Pogress Notes,Progress Note,mapped,partial,Discharge Summary,History and Physical,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Pogress Notes,Progress Note,mapped,partial,Discharge Summary,Consultation Note,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Pogress Notes,Progress Note,mapped,partial,Clinical Summary,After-Visit Summary,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Progress note,Progress Note,mapped,full,Progress Note,,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Progress note,Progress Note,mapped,partial,Discharge Summary,History and Physical,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Progress note,Progress Note,mapped,partial,Discharge Summary,Consultation Note,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Progress note,Progress Note,mapped,partial,Clinical Summary,After-Visit Summary,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Progress Notes,Progress Note,mapped,full,Progress Note,,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Progress Notes,Progress Note,mapped,partial,Discharge Summary,History and Physical,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Progress Notes,Progress Note,mapped,partial,Discharge Summary,Consultation Note,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Progress Notes,Progress Note,mapped,partial,Clinical Summary,After-Visit Summary,,"GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+Psychiatric Evaluation,Psychiatric Evaluation,mapped,full,Progress Note,,,
+Psychiatric Evaluation,Psychiatric Evaluation,mapped,partial,Forms and Questionnaires,Assessment,,
+Psychiatric Evaluation,Psychiatric Evaluation,mapped,partial,Discharge Summary,Consultation Note,,
+Questionnaire,Questionnaire,mapped,full,Forms and Questionnaires,Questionnaire,,
+Questionnaire,Questionnaire,mapped,full,Progress Note,Questionnaire,,
+Questionnaire,Questionnaire,mapped,partial,Forms and Questionnaires,,,
+Questionnaire Page,Questionnaire,mapped,full,Forms and Questionnaires,Questionnaire,,
+Questionnaire Page,Questionnaire,mapped,full,Progress Note,Questionnaire,,
+Questionnaire Page,Questionnaire,mapped,partial,Forms and Questionnaires,,,
+Questionnaires,Questionnaire,mapped,full,Forms and Questionnaires,Questionnaire,,
+Questionnaires,Questionnaire,mapped,full,Progress Note,Questionnaire,,
+Questionnaires,Questionnaire,mapped,partial,Forms and Questionnaires,,,
+Questionnarie,Questionnaire,mapped,full,Forms and Questionnaires,Questionnaire,,
+Questionnarie,Questionnaire,mapped,full,Progress Note,Questionnaire,,
+Questionnarie,Questionnaire,mapped,partial,Forms and Questionnaires,,,
+Screening,Questionnaire,mapped,full,Forms and Questionnaires,Questionnaire,,
+Screening,Questionnaire,mapped,full,Progress Note,Questionnaire,,
+Screening,Questionnaire,mapped,partial,Forms and Questionnaires,,,
+imaganig report,Radiology Report,mapped,full,Lab Report,Radiology Report,,
+imaganig report,Radiology Report,mapped,partial,Lab Report,,,
+imaganig report,Radiology Report,mapped,partial,Progress Note,Lab and Imaging Results,,
+Imaging Report,Radiology Report,mapped,full,Lab Report,Radiology Report,,
+Imaging Report,Radiology Report,mapped,partial,Lab Report,,,
+Imaging Report,Radiology Report,mapped,partial,Progress Note,Lab and Imaging Results,,
+Radiology,Radiology Report,mapped,full,Lab Report,Radiology Report,,
+Radiology,Radiology Report,mapped,partial,Lab Report,,,
+Radiology,Radiology Report,mapped,partial,Progress Note,Lab and Imaging Results,,
+Radiology Report,Radiology Report,mapped,full,Lab Report,Radiology Report,,
+Radiology Report,Radiology Report,mapped,partial,Lab Report,,,
+Radiology Report,Radiology Report,mapped,partial,Progress Note,Lab and Imaging Results,,
+Medical Record Request,Records Request,mapped,full,Provider Letter,Records Request,,
+Medical Record Request,Records Request,mapped,partial,Provider Letter,,,
+Medical Record Request,Records Request,mapped,partial,Consent and Authorization,Release of Information,,
+Request,Records Request,mapped,full,Provider Letter,Records Request,,
+Request,Records Request,mapped,partial,Provider Letter,,,
+Request,Records Request,mapped,partial,Consent and Authorization,Release of Information,,
+Request Page,Records Request,mapped,full,Provider Letter,Records Request,,
+Request Page,Records Request,mapped,partial,Provider Letter,,,
+Request Page,Records Request,mapped,partial,Consent and Authorization,Release of Information,,
+Referral,Referral (unspecified),mapped,full,Order and Requisition,Referral Order,,
+Referral,Referral (unspecified),mapped,full,Provider Letter,Referral Letter,,
+Referral,Referral (unspecified),mapped,full,Consent and Authorization,Referral Authorization,,
+Referral,Referral (unspecified),mapped,partial,Order and Requisition,,,
+Referral,Referral (unspecified),mapped,partial,Provider Letter,,,
+Refferal,Referral (unspecified),mapped,full,Order and Requisition,Referral Order,,
+Refferal,Referral (unspecified),mapped,full,Provider Letter,Referral Letter,,
+Refferal,Referral (unspecified),mapped,full,Consent and Authorization,Referral Authorization,,
+Refferal,Referral (unspecified),mapped,partial,Order and Requisition,,,
+Refferal,Referral (unspecified),mapped,partial,Provider Letter,,,
+Referral note,Referral Note,mapped,full,Provider Letter,Referral Letter,,
+Referral note,Referral Note,mapped,full,Order and Requisition,Referral Order,,
+Referral note,Referral Note,mapped,partial,Provider Letter,,,
+Referral note,Referral Note,mapped,partial,Order and Requisition,,,
+Referral Order,Referral Order,mapped,full,Order and Requisition,Referral Order,,
+Referral Order,Referral Order,mapped,partial,Order and Requisition,,,
+Referral Order,Referral Order,mapped,partial,Provider Letter,Referral Letter,,
+Referral Order,Referral Order,mapped,partial,Consent and Authorization,Referral Authorization,,
+Refferal Order,Referral Order,mapped,full,Order and Requisition,Referral Order,,
+Refferal Order,Referral Order,mapped,partial,Order and Requisition,,,
+Refferal Order,Referral Order,mapped,partial,Provider Letter,Referral Letter,,
+Refferal Order,Referral Order,mapped,partial,Consent and Authorization,Referral Authorization,,
+Refferal Order Pages,Referral Order,mapped,full,Order and Requisition,Referral Order,,
+Refferal Order Pages,Referral Order,mapped,partial,Order and Requisition,,,
+Refferal Order Pages,Referral Order,mapped,partial,Provider Letter,Referral Letter,,
+Refferal Order Pages,Referral Order,mapped,partial,Consent and Authorization,Referral Authorization,,
+Requisition page,Requisition,mapped,full,Order and Requisition,Laboratory Requisition,,
+Requisition page,Requisition,mapped,partial,Order and Requisition,,,
+Signature page,Signature Page,mapped,full,Progress Note,Signature,,Our training drops signature-only pages as junk; attestation pages are PN > Signature.
+Signature page,Signature Page,mapped,partial,Progress Note,,,Our training drops signature-only pages as junk; attestation pages are PN > Signature.
+Signature page,Signature Page,mapped,partial,Consent and Authorization,,,Our training drops signature-only pages as junk; attestation pages are PN > Signature.
+Stress Report,Stress Test Report,mapped,full,Lab Report,Diagnostic Study,Stress Test,
+Stress Report,Stress Test Report,mapped,partial,Lab Report,Diagnostic Study,,
+Stress Test Report,Stress Test Report,mapped,full,Lab Report,Diagnostic Study,Stress Test,
+Stress Test Report,Stress Test Report,mapped,partial,Lab Report,Diagnostic Study,,
+Summary,Summary,ambiguous,full,Progress Note,Summary,,Ambiguous in GT: a note section or a clinical-summary printout. Ask the GT team to split.
+Summary,Summary,ambiguous,full,Clinical Summary,,,Ambiguous in GT: a note section or a clinical-summary printout. Ask the GT team to split.
+Summary,Summary,ambiguous,partial,Discharge Summary,Depart/Discharge Note,,Ambiguous in GT: a note section or a clinical-summary printout. Ask the GT team to split.
+Summary,Summary,ambiguous,partial,Discharge Summary,Short Stay Summary,,Ambiguous in GT: a note section or a clinical-summary printout. Ask the GT team to split.
+Summary,Summary,ambiguous,partial,Discharge Summary,Interim Summary,,Ambiguous in GT: a note section or a clinical-summary printout. Ask the GT team to split.
+Codding summary,Superbill / Coding Summary,mapped,full,Administrative,Superbill,,
+Codding summary,Superbill / Coding Summary,mapped,partial,Administrative,,,
+Codding summary,Superbill / Coding Summary,mapped,partial,Progress Note,Visit Diagnosis,,
+Coding Summary,Superbill / Coding Summary,mapped,full,Administrative,Superbill,,
+Coding Summary,Superbill / Coding Summary,mapped,partial,Administrative,,,
+Coding Summary,Superbill / Coding Summary,mapped,partial,Progress Note,Visit Diagnosis,,
+Superbill,Superbill / Coding Summary,mapped,full,Administrative,Superbill,,
+Superbill,Superbill / Coding Summary,mapped,partial,Administrative,,,
+Superbill,Superbill / Coding Summary,mapped,partial,Progress Note,Visit Diagnosis,,
+Telemetry,Telemetry,mapped,full,Lab Report,Diagnostic Study,Telemetry Report,
+Telemetry,Telemetry,mapped,partial,Lab Report,Diagnostic Study,,
+Telemetry Data,Telemetry,mapped,full,Lab Report,Diagnostic Study,Telemetry Report,
+Telemetry Data,Telemetry,mapped,partial,Lab Report,Diagnostic Study,,
+Call,Telephone Encounter,mapped,full,Patient Communication,Telephone Encounter,,
+Call,Telephone Encounter,mapped,partial,Patient Communication,,,
+Call,Telephone Encounter,mapped,partial,Patient Communication,Patient Message,,
+Call note,Telephone Encounter,mapped,full,Patient Communication,Telephone Encounter,,
+Call note,Telephone Encounter,mapped,partial,Patient Communication,,,
+Call note,Telephone Encounter,mapped,partial,Patient Communication,Patient Message,,
+Follow up call,Telephone Encounter,mapped,full,Patient Communication,Telephone Encounter,,
+Follow up call,Telephone Encounter,mapped,partial,Patient Communication,,,
+Follow up call,Telephone Encounter,mapped,partial,Patient Communication,Patient Message,,
+Phone call,Telephone Encounter,mapped,full,Patient Communication,Telephone Encounter,,
+Phone call,Telephone Encounter,mapped,partial,Patient Communication,,,
+Phone call,Telephone Encounter,mapped,partial,Patient Communication,Patient Message,,
+Phone Note,Telephone Encounter,mapped,full,Patient Communication,Telephone Encounter,,
+Phone Note,Telephone Encounter,mapped,partial,Patient Communication,,,
+Phone Note,Telephone Encounter,mapped,partial,Patient Communication,Patient Message,,
+Telephone Encounter,Telephone Encounter,mapped,full,Patient Communication,Telephone Encounter,,
+Telephone Encounter,Telephone Encounter,mapped,partial,Patient Communication,,,
+Telephone Encounter,Telephone Encounter,mapped,partial,Patient Communication,Patient Message,,
+Testing Form,Testing Form,ambiguous,full,Order and Requisition,Laboratory Requisition,,
+Testing Form,Testing Form,ambiguous,full,Forms and Questionnaires,Assessment,,
+Testing Form,Testing Form,ambiguous,partial,Order and Requisition,,,
+Testing Form,Testing Form,ambiguous,partial,Forms and Questionnaires,,,
+Transfer Form,Transfer of Care,mapped,full,Discharge Summary,Transfer of Care,,
+Transfer Form,Transfer of Care,mapped,partial,Discharge Summary,,,
+Transfer Form,Transfer of Care,mapped,partial,Clinical Summary,Summary of Care (C-CDA),,
+Transfer Of care note,Transfer of Care,mapped,full,Discharge Summary,Transfer of Care,,
+Transfer Of care note,Transfer of Care,mapped,partial,Discharge Summary,,,
+Transfer Of care note,Transfer of Care,mapped,partial,Clinical Summary,Summary of Care (C-CDA),,
+Transition of care summary,Transition of Care Summary,mapped,full,Clinical Summary,Summary of Care (C-CDA),,
+Transition of care summary,Transition of Care Summary,mapped,partial,Clinical Summary,,,
+Transition of care summary,Transition of Care Summary,mapped,partial,Discharge Summary,Transfer of Care,,
+Transition of Summary,Transition of Care Summary,mapped,full,Clinical Summary,Summary of Care (C-CDA),,
+Transition of Summary,Transition of Care Summary,mapped,partial,Clinical Summary,,,
+Transition of Summary,Transition of Care Summary,mapped,partial,Discharge Summary,Transfer of Care,,
+clinical daignoses,Visit Diagnoses,mapped,full,Progress Note,Visit Diagnosis,,
+clinical daignoses,Visit Diagnoses,mapped,partial,Progress Note,,,
+clinical daignoses,Visit Diagnoses,mapped,partial,Discharge Summary,Discharge Diagnosis,,
+clinical daignoses,Visit Diagnoses,mapped,partial,Problem List,Diagnosis List/Index,,
+clinical daignoses,Visit Diagnoses,mapped,partial,Problem List,,,
+Clinical diagnoses,Visit Diagnoses,mapped,full,Progress Note,Visit Diagnosis,,
+Clinical diagnoses,Visit Diagnoses,mapped,partial,Progress Note,,,
+Clinical diagnoses,Visit Diagnoses,mapped,partial,Discharge Summary,Discharge Diagnosis,,
+Clinical diagnoses,Visit Diagnoses,mapped,partial,Problem List,Diagnosis List/Index,,
+Clinical diagnoses,Visit Diagnoses,mapped,partial,Problem List,,,
+Diagnoses Page,Visit Diagnoses,mapped,full,Progress Note,Visit Diagnosis,,
+Diagnoses Page,Visit Diagnoses,mapped,partial,Progress Note,,,
+Diagnoses Page,Visit Diagnoses,mapped,partial,Discharge Summary,Discharge Diagnosis,,
+Diagnoses Page,Visit Diagnoses,mapped,partial,Problem List,Diagnosis List/Index,,
+Diagnoses Page,Visit Diagnoses,mapped,partial,Problem List,,,
+Diagnosis Page,Visit Diagnoses,mapped,full,Progress Note,Visit Diagnosis,,
+Diagnosis Page,Visit Diagnoses,mapped,partial,Progress Note,,,
+Diagnosis Page,Visit Diagnoses,mapped,partial,Discharge Summary,Discharge Diagnosis,,
+Diagnosis Page,Visit Diagnoses,mapped,partial,Problem List,Diagnosis List/Index,,
+Diagnosis Page,Visit Diagnoses,mapped,partial,Problem List,,,
+Visit Diagnoses,Visit Diagnoses,mapped,full,Progress Note,Visit Diagnosis,,
+Visit Diagnoses,Visit Diagnoses,mapped,partial,Progress Note,,,
+Visit Diagnoses,Visit Diagnoses,mapped,partial,Discharge Summary,Discharge Diagnosis,,
+Visit Diagnoses,Visit Diagnoses,mapped,partial,Problem List,Diagnosis List/Index,,
+Visit Diagnoses,Visit Diagnoses,mapped,partial,Problem List,,,
+"Visit Diagnoses,Summary",Visit Diagnoses + Summary,mapped,full,Progress Note,Visit Diagnosis,,GT gives two sections for one page: either one is a full match.
+"Visit Diagnoses,Summary",Visit Diagnoses + Summary,mapped,full,Progress Note,Summary,,GT gives two sections for one page: either one is a full match.
+"Visit Diagnoses,Summary",Visit Diagnoses + Summary,mapped,partial,Progress Note,,,GT gives two sections for one page: either one is a full match.
+Measurement Data,Vitals,mapped,full,Progress Note,Vitals,,EHR flowsheet data pages (measurement / vital sign data) are vitals.
+Measurement Data,Vitals,mapped,partial,Progress Note,,,EHR flowsheet data pages (measurement / vital sign data) are vitals.
+Measurement Data,Vitals,mapped,partial,Forms and Questionnaires,Assessment,,EHR flowsheet data pages (measurement / vital sign data) are vitals.
+Vital,Vitals,mapped,full,Progress Note,Vitals,,EHR flowsheet data pages (measurement / vital sign data) are vitals.
+Vital,Vitals,mapped,partial,Progress Note,,,EHR flowsheet data pages (measurement / vital sign data) are vitals.
+Vital,Vitals,mapped,partial,Forms and Questionnaires,Assessment,,EHR flowsheet data pages (measurement / vital sign data) are vitals.
+Vital Page,Vitals,mapped,full,Progress Note,Vitals,,EHR flowsheet data pages (measurement / vital sign data) are vitals.
+Vital Page,Vitals,mapped,partial,Progress Note,,,EHR flowsheet data pages (measurement / vital sign data) are vitals.
+Vital Page,Vitals,mapped,partial,Forms and Questionnaires,Assessment,,EHR flowsheet data pages (measurement / vital sign data) are vitals.
+Vital Sign Data,Vitals,mapped,full,Progress Note,Vitals,,EHR flowsheet data pages (measurement / vital sign data) are vitals.
+Vital Sign Data,Vitals,mapped,partial,Progress Note,,,EHR flowsheet data pages (measurement / vital sign data) are vitals.
+Vital Sign Data,Vitals,mapped,partial,Forms and Questionnaires,Assessment,,EHR flowsheet data pages (measurement / vital sign data) are vitals.
+Vital signs,Vitals,mapped,full,Progress Note,Vitals,,EHR flowsheet data pages (measurement / vital sign data) are vitals.
+Vital signs,Vitals,mapped,partial,Progress Note,,,EHR flowsheet data pages (measurement / vital sign data) are vitals.
+Vital signs,Vitals,mapped,partial,Forms and Questionnaires,Assessment,,EHR flowsheet data pages (measurement / vital sign data) are vitals.
+Web Encounter,Web Encounter,mapped,full,Patient Communication,Patient Message,,A portal message is Patient Message; an e-visit with assessment and plan is a Progress Note.
+Web Encounter,Web Encounter,mapped,full,Progress Note,,,A portal message is Patient Message; an e-visit with assessment and plan is a Progress Note.
+Web Encounter,Web Encounter,mapped,partial,Patient Communication,Telephone Encounter,,A portal message is Patient Message; an e-visit with assessment and plan is a Progress Note.
+Wound treatment,Wound Care,mapped,full,Procedure Note,Wound Care,,
+Wound treatment,Wound Care,mapped,partial,Procedure Note,,,

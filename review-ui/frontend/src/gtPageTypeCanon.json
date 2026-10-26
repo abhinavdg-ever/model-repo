@@ -1,0 +1,3507 @@
+{
+  "comment": "Client ground-truth page-type labels -> our v29.2 paths (L1 > L2 > L3). Key = the GT label lower-cased with everything but letters and digits removed. Our path is L1 > L2 > L3 (Others dropped). FULL (1): a 'full' target is a prefix of our path. PARTIAL (0.5): a 'partial' target is a prefix of our path, or our L1 is the L1 of a 'full' target (our path stops above the GT level, a sibling L3, or another L2 under the same L1). MISS (0) otherwise. 'exclude' labels (cover / index / fax / blank pages, NA, Misc ...) are not page types and are not scored. A page scores the better of Extracted and Final. Built by training/taxonomy/build_gt_mapping.py from GT_mapping_v29_2.xlsx; docs/gt_page_type_mapping.csv is the same mapping as a table.",
+  "version": "v29.2",
+  "labels": {
+    "administrativeform": {
+      "label": "Administrative Form",
+      "standard": "Administrative Form",
+      "status": "mapped",
+      "full": [
+        "Administrative > Others",
+        "Administrative > Patient Registration"
+      ],
+      "partial": [
+        "Administrative"
+      ]
+    },
+    "admissionpage": {
+      "label": "Admission page",
+      "standard": "Admission Record",
+      "status": "mapped",
+      "full": [
+        "Demographics > Face Sheet"
+      ],
+      "partial": [
+        "Demographics",
+        "Discharge Summary > History and Physical",
+        "Administrative > Patient Registration"
+      ],
+      "note": "A hospital admission record (patient, insurance, admission data) is a Face Sheet in v29.2."
+    },
+    "admissionrecord": {
+      "label": "Admission Record",
+      "standard": "Admission Record",
+      "status": "mapped",
+      "full": [
+        "Demographics > Face Sheet"
+      ],
+      "partial": [
+        "Demographics",
+        "Discharge Summary > History and Physical",
+        "Administrative > Patient Registration"
+      ],
+      "note": "A hospital admission record (patient, insurance, admission data) is a Face Sheet in v29.2."
+    },
+    "aftervisitsummary": {
+      "label": "After visit Summary",
+      "standard": "After-Visit Summary",
+      "status": "mapped",
+      "full": [
+        "Clinical Summary > After-Visit Summary"
+      ],
+      "partial": [
+        "Clinical Summary",
+        "Progress Note > Summary",
+        "Discharge Summary > Discharge Instruction"
+      ]
+    },
+    "agreementform": {
+      "label": "Agreement Form",
+      "standard": "Agreement Form",
+      "status": "mapped",
+      "full": [
+        "Consent and Authorization > General Consent",
+        "Consent and Authorization > Assignment of Benefits",
+        "Consent and Authorization > Consent for Treatment"
+      ],
+      "partial": [
+        "Consent and Authorization"
+      ]
+    },
+    "allergies": {
+      "label": "Allergies",
+      "standard": "Allergy List",
+      "status": "mapped",
+      "full": [
+        "Medication Record > Others",
+        "Progress Note > Others"
+      ],
+      "partial": [
+        "Medication Record",
+        "Progress Note"
+      ],
+      "note": "No allergy class in v29.2; allergy lists sit with medication pages or the note."
+    },
+    "allergylist": {
+      "label": "Allergy list",
+      "standard": "Allergy List",
+      "status": "mapped",
+      "full": [
+        "Medication Record > Others",
+        "Progress Note > Others"
+      ],
+      "partial": [
+        "Medication Record",
+        "Progress Note"
+      ],
+      "note": "No allergy class in v29.2; allergy lists sit with medication pages or the note."
+    },
+    "anesthesiaevaluation": {
+      "label": "Anesthesia Evaluation",
+      "standard": "Anesthesia",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Anesthesia Record"
+      ],
+      "partial": [
+        "Operative Note",
+        "Operative Note > Pre-operative"
+      ]
+    },
+    "anethesiareport": {
+      "label": "Anethesia Report",
+      "standard": "Anesthesia",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Anesthesia Record"
+      ],
+      "partial": [
+        "Operative Note",
+        "Operative Note > Pre-operative"
+      ]
+    },
+    "anknowledgementform": {
+      "label": "Anknowledgement Form",
+      "standard": "Acknowledgement Form",
+      "status": "mapped",
+      "full": [
+        "Consent and Authorization > HIPAA and Privacy",
+        "Consent and Authorization > General Consent"
+      ],
+      "partial": [
+        "Consent and Authorization",
+        "Progress Note > Signature"
+      ]
+    },
+    "appointmet": {
+      "label": "Appointmet",
+      "standard": "Appointment",
+      "status": "mapped",
+      "full": [
+        "Administrative > Appointment Record"
+      ],
+      "partial": [
+        "Administrative"
+      ]
+    },
+    "appoitment": {
+      "label": "Appoitment",
+      "standard": "Appointment",
+      "status": "mapped",
+      "full": [
+        "Administrative > Appointment Record"
+      ],
+      "partial": [
+        "Administrative"
+      ]
+    },
+    "assesmentform": {
+      "label": "Assesment Form",
+      "standard": "Assessment Form",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Assessment"
+      ],
+      "partial": [
+        "Forms and Questionnaires",
+        "Progress Note > Questionnaire",
+        "Progress Note > Physical Exam"
+      ]
+    },
+    "assessment": {
+      "label": "Assessment",
+      "standard": "Assessment Form",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Assessment"
+      ],
+      "partial": [
+        "Forms and Questionnaires",
+        "Progress Note > Questionnaire",
+        "Progress Note > Physical Exam"
+      ]
+    },
+    "assessmentdata": {
+      "label": "Assessment Data",
+      "standard": "Assessment Form",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Assessment"
+      ],
+      "partial": [
+        "Forms and Questionnaires",
+        "Progress Note > Questionnaire",
+        "Progress Note > Physical Exam"
+      ]
+    },
+    "audiogramreport": {
+      "label": "Audiogram Report",
+      "standard": "Audiogram Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Audiogram and Hearing Loss Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ]
+    },
+    "authorizationpage": {
+      "label": "Authorization page",
+      "standard": "Authorization",
+      "status": "mapped",
+      "full": [
+        "Consent and Authorization > Prior Authorization",
+        "Consent and Authorization > Referral Authorization",
+        "Consent and Authorization > General Authorization",
+        "Consent and Authorization > Release of Information"
+      ],
+      "partial": [
+        "Consent and Authorization"
+      ]
+    },
+    "bilingpage": {
+      "label": "Biling Page",
+      "standard": "Billing / Invoice",
+      "status": "mapped",
+      "full": [
+        "Administrative > Billing & Invoices"
+      ],
+      "partial": [
+        "Administrative",
+        "Administrative > Superbill"
+      ]
+    },
+    "bilingpages": {
+      "label": "Biling Pages",
+      "standard": "Billing / Invoice",
+      "status": "mapped",
+      "full": [
+        "Administrative > Billing & Invoices"
+      ],
+      "partial": [
+        "Administrative",
+        "Administrative > Superbill"
+      ]
+    },
+    "billingnotice": {
+      "label": "Billing notice",
+      "standard": "Billing / Invoice",
+      "status": "mapped",
+      "full": [
+        "Administrative > Billing & Invoices"
+      ],
+      "partial": [
+        "Administrative",
+        "Administrative > Superbill"
+      ]
+    },
+    "biopsyreport": {
+      "label": "biopsy Report",
+      "standard": "Biopsy Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Pathology Report > Biopsy Report"
+      ],
+      "partial": [
+        "Lab Report > Pathology Report"
+      ]
+    },
+    "blankformat": {
+      "label": "Blank Format",
+      "standard": "Index / Cover / Fax / Blank",
+      "status": "exclude",
+      "full": [],
+      "partial": [],
+      "note": "Our training drops these as junk (blank-junk stage). Exclude from page-type accuracy or score against blank/junk."
+    },
+    "blankpage": {
+      "label": "Blank page",
+      "standard": "Index / Cover / Fax / Blank",
+      "status": "exclude",
+      "full": [],
+      "partial": [],
+      "note": "Our training drops these as junk (blank-junk stage). Exclude from page-type accuracy or score against blank/junk."
+    },
+    "bonedensityreport": {
+      "label": "Bone density Report",
+      "standard": "Bone Density Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Radiology Report > Bone Mineral Density Report"
+      ],
+      "partial": [
+        "Lab Report > Radiology Report"
+      ]
+    },
+    "call": {
+      "label": "Call",
+      "standard": "Telephone Encounter",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Telephone Encounter"
+      ],
+      "partial": [
+        "Patient Communication",
+        "Patient Communication > Patient Message"
+      ]
+    },
+    "callnote": {
+      "label": "Call note",
+      "standard": "Telephone Encounter",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Telephone Encounter"
+      ],
+      "partial": [
+        "Patient Communication",
+        "Patient Communication > Patient Message"
+      ]
+    },
+    "cardiaccatheterizationreport": {
+      "label": "Cardiac catheterization Report",
+      "standard": "Cardiac Catheterization Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Cardiac Catheterization Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study",
+        "Procedure Note > Cardiac Procedure"
+      ]
+    },
+    "cardiologyconsultation": {
+      "label": "cardiology consultation",
+      "standard": "Consultation",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Consultation Note",
+        "Provider Letter > Consultation Letter",
+        "Progress Note"
+      ],
+      "partial": [],
+      "note": "Inpatient consult = Discharge Summary > Consultation Note; outpatient consult visit = Progress Note; consult letter = Provider Letter."
+    },
+    "careplan": {
+      "label": "Care Plan",
+      "standard": "Plan of Care",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Assessment and Plan"
+      ],
+      "partial": [
+        "Progress Note",
+        "Forms and Questionnaires > Assessment",
+        "Progress Note > Patient Instructions"
+      ],
+      "note": "Home-health care plans (e.g. CMS-485) may land in Forms and Questionnaires > Assessment."
+    },
+    "charges": {
+      "label": "Charges",
+      "standard": "Charges",
+      "status": "mapped",
+      "full": [
+        "Administrative > Superbill",
+        "Administrative > Billing & Invoices"
+      ],
+      "partial": [
+        "Administrative"
+      ]
+    },
+    "chartsummary": {
+      "label": "Chart Summary",
+      "standard": "Clinical Summary",
+      "status": "mapped",
+      "full": [
+        "Clinical Summary"
+      ],
+      "partial": [
+        "Progress Note > Summary"
+      ]
+    },
+    "checklist": {
+      "label": "Check list",
+      "standard": "Checklist",
+      "status": "ambiguous",
+      "full": [
+        "Operative Note > Pre-operative"
+      ],
+      "partial": [
+        "Operative Note",
+        "Forms and Questionnaires > Others"
+      ],
+      "note": "Usually a pre-op / procedure checklist."
+    },
+    "chestsingle": {
+      "label": "Chest Single",
+      "standard": "Chest X-ray (single view)",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Radiology Report > X-Ray Report"
+      ],
+      "partial": [
+        "Lab Report > Radiology Report"
+      ]
+    },
+    "clarificationform": {
+      "label": "Clarification Form",
+      "standard": "Clarification Form",
+      "status": "mapped",
+      "full": [
+        "Administrative > Others",
+        "Provider Letter > Others"
+      ],
+      "partial": [
+        "Administrative",
+        "Provider Letter"
+      ],
+      "note": "Coding / documentation query to the provider."
+    },
+    "clinicaldaignoses": {
+      "label": "clinical daignoses",
+      "standard": "Visit Diagnoses",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Visit Diagnosis"
+      ],
+      "partial": [
+        "Progress Note",
+        "Discharge Summary > Discharge Diagnosis",
+        "Problem List > Diagnosis List/Index",
+        "Problem List"
+      ]
+    },
+    "clinicaldiagnoses": {
+      "label": "Clinical diagnoses",
+      "standard": "Visit Diagnoses",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Visit Diagnosis"
+      ],
+      "partial": [
+        "Progress Note",
+        "Discharge Summary > Discharge Diagnosis",
+        "Problem List > Diagnosis List/Index",
+        "Problem List"
+      ]
+    },
+    "clinicaldocumentation": {
+      "label": "Clinical Documentation",
+      "standard": "Progress Note",
+      "status": "mapped",
+      "full": [
+        "Progress Note"
+      ],
+      "partial": [
+        "Discharge Summary > History and Physical",
+        "Discharge Summary > Consultation Note",
+        "Clinical Summary > After-Visit Summary"
+      ],
+      "note": "GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+    },
+    "clinicalsummary": {
+      "label": "Clinical Summary",
+      "standard": "Clinical Summary",
+      "status": "mapped",
+      "full": [
+        "Clinical Summary"
+      ],
+      "partial": [
+        "Progress Note > Summary"
+      ]
+    },
+    "clockdrawing": {
+      "label": "Clock Drawing",
+      "standard": "Cognitive Screening (Mini-Cog / Clock)",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Assessment",
+        "Lab Report > Diagnostic Study > Neurocognitive Screening Examination"
+      ],
+      "partial": [
+        "Progress Note > Questionnaire",
+        "Forms and Questionnaires"
+      ]
+    },
+    "clockdrawingpage": {
+      "label": "Clock drawing page",
+      "standard": "Cognitive Screening (Mini-Cog / Clock)",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Assessment",
+        "Lab Report > Diagnostic Study > Neurocognitive Screening Examination"
+      ],
+      "partial": [
+        "Progress Note > Questionnaire",
+        "Forms and Questionnaires"
+      ]
+    },
+    "coddingsummary": {
+      "label": "Codding summary",
+      "standard": "Superbill / Coding Summary",
+      "status": "mapped",
+      "full": [
+        "Administrative > Superbill"
+      ],
+      "partial": [
+        "Administrative",
+        "Progress Note > Visit Diagnosis"
+      ]
+    },
+    "codingsummary": {
+      "label": "Coding Summary",
+      "standard": "Superbill / Coding Summary",
+      "status": "mapped",
+      "full": [
+        "Administrative > Superbill"
+      ],
+      "partial": [
+        "Administrative",
+        "Progress Note > Visit Diagnosis"
+      ]
+    },
+    "colonoscopy": {
+      "label": "Colonoscopy",
+      "standard": "Colonoscopy Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Colonoscopy Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study",
+        "Lab Report > Diagnostic Study > Endoscopy Report",
+        "Lab Report > Diagnostic Study > Sigmoidoscopy Report"
+      ]
+    },
+    "colonoscopyreport": {
+      "label": "Colonoscopy Report",
+      "standard": "Colonoscopy Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Colonoscopy Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study",
+        "Lab Report > Diagnostic Study > Endoscopy Report",
+        "Lab Report > Diagnostic Study > Sigmoidoscopy Report"
+      ]
+    },
+    "communication": {
+      "label": "Communication",
+      "standard": "Patient Communication",
+      "status": "mapped",
+      "full": [
+        "Patient Communication"
+      ],
+      "partial": [
+        "Provider Letter"
+      ]
+    },
+    "communicationpage": {
+      "label": "Communication Page",
+      "standard": "Patient Communication",
+      "status": "mapped",
+      "full": [
+        "Patient Communication"
+      ],
+      "partial": [
+        "Provider Letter"
+      ]
+    },
+    "concernpage": {
+      "label": "concern page",
+      "standard": "Concern",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Others"
+      ],
+      "partial": [
+        "Patient Communication"
+      ],
+      "note": "Patient concern / grievance."
+    },
+    "consentform": {
+      "label": "Consent Form",
+      "standard": "Consent",
+      "status": "mapped",
+      "full": [
+        "Consent and Authorization"
+      ],
+      "partial": [],
+      "note": "Any Consent and Authorization L2 counts (GT has no sub-type)."
+    },
+    "consentfortretment": {
+      "label": "Consent for tretment",
+      "standard": "Consent for Treatment",
+      "status": "mapped",
+      "full": [
+        "Consent and Authorization > Consent for Treatment"
+      ],
+      "partial": [
+        "Consent and Authorization"
+      ]
+    },
+    "consentpage": {
+      "label": "Consent Page",
+      "standard": "Consent",
+      "status": "mapped",
+      "full": [
+        "Consent and Authorization"
+      ],
+      "partial": [],
+      "note": "Any Consent and Authorization L2 counts (GT has no sub-type)."
+    },
+    "coverpage": {
+      "label": "Cover page",
+      "standard": "Index / Cover / Fax / Blank",
+      "status": "exclude",
+      "full": [],
+      "partial": [],
+      "note": "Our training drops these as junk (blank-junk stage). Exclude from page-type accuracy or score against blank/junk."
+    },
+    "ctaheartreport": {
+      "label": "CTA Heart Report",
+      "standard": "CT Angiography Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Radiology Report > CT Angiography Report"
+      ],
+      "partial": [
+        "Lab Report > Radiology Report",
+        "Lab Report > Radiology Report > CT Scan Report"
+      ]
+    },
+    "ctangio": {
+      "label": "CT Angio",
+      "standard": "CT Angiography Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Radiology Report > CT Angiography Report"
+      ],
+      "partial": [
+        "Lab Report > Radiology Report",
+        "Lab Report > Radiology Report > CT Scan Report"
+      ]
+    },
+    "ctangiogram": {
+      "label": "CT Angiogram",
+      "standard": "CT Angiography Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Radiology Report > CT Angiography Report"
+      ],
+      "partial": [
+        "Lab Report > Radiology Report",
+        "Lab Report > Radiology Report > CT Scan Report"
+      ]
+    },
+    "ctangiographyreport": {
+      "label": "CT Angiography Report",
+      "standard": "CT Angiography Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Radiology Report > CT Angiography Report"
+      ],
+      "partial": [
+        "Lab Report > Radiology Report",
+        "Lab Report > Radiology Report > CT Scan Report"
+      ]
+    },
+    "ctareport": {
+      "label": "CTA Report",
+      "standard": "CT Angiography Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Radiology Report > CT Angiography Report"
+      ],
+      "partial": [
+        "Lab Report > Radiology Report",
+        "Lab Report > Radiology Report > CT Scan Report"
+      ]
+    },
+    "ctchest": {
+      "label": "CT Chest",
+      "standard": "CT Chest",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Radiology Report > CT Scan Report"
+      ],
+      "partial": [
+        "Lab Report > Radiology Report",
+        "Lab Report > Radiology Report > CT Angiography Report"
+      ]
+    },
+    "demographic": {
+      "label": "Demographic",
+      "standard": "Demographics",
+      "status": "mapped",
+      "full": [
+        "Demographics"
+      ],
+      "partial": [
+        "Administrative > Patient Registration"
+      ]
+    },
+    "departsummary": {
+      "label": "Depart Summary",
+      "standard": "Discharge Summary / Note",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Depart/Discharge Note"
+      ],
+      "partial": [
+        "Discharge Summary"
+      ]
+    },
+    "diagnosespage": {
+      "label": "Diagnoses Page",
+      "standard": "Visit Diagnoses",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Visit Diagnosis"
+      ],
+      "partial": [
+        "Progress Note",
+        "Discharge Summary > Discharge Diagnosis",
+        "Problem List > Diagnosis List/Index",
+        "Problem List"
+      ]
+    },
+    "diagnosiscode": {
+      "label": "Diagnosis Code",
+      "standard": "Diagnosis Code",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Visit Diagnosis"
+      ],
+      "partial": [
+        "Progress Note",
+        "Administrative > Superbill",
+        "Problem List"
+      ],
+      "note": "A coded diagnosis list; on a billing form it is a Superbill."
+    },
+    "diagnosispage": {
+      "label": "Diagnosis Page",
+      "standard": "Visit Diagnoses",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Visit Diagnosis"
+      ],
+      "partial": [
+        "Progress Note",
+        "Discharge Summary > Discharge Diagnosis",
+        "Problem List > Diagnosis List/Index",
+        "Problem List"
+      ]
+    },
+    "diagnosticreport": {
+      "label": "Diagnostic Report",
+      "standard": "Diagnostic Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study"
+      ],
+      "partial": [
+        "Lab Report"
+      ]
+    },
+    "diagnosticstudies": {
+      "label": "Diagnostic studies",
+      "standard": "Diagnostic Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study"
+      ],
+      "partial": [
+        "Lab Report"
+      ]
+    },
+    "dischargeform": {
+      "label": "DisCharge Form",
+      "standard": "Discharge Form",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Depart/Discharge Note",
+        "Discharge Summary > Discharge Instruction"
+      ],
+      "partial": [
+        "Discharge Summary"
+      ]
+    },
+    "dischargeinstrucion": {
+      "label": "Discharge Instrucion",
+      "standard": "Discharge Instruction",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Discharge Instruction"
+      ],
+      "partial": [
+        "Discharge Summary",
+        "Progress Note > Patient Instructions",
+        "Clinical Summary > After-Visit Summary",
+        "Patient Communication > Patient Education Material"
+      ]
+    },
+    "dischargeinstruction": {
+      "label": "Discharge Instruction",
+      "standard": "Discharge Instruction",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Discharge Instruction"
+      ],
+      "partial": [
+        "Discharge Summary",
+        "Progress Note > Patient Instructions",
+        "Clinical Summary > After-Visit Summary",
+        "Patient Communication > Patient Education Material"
+      ]
+    },
+    "dischargeinstructions": {
+      "label": "Discharge Instructions",
+      "standard": "Discharge Instruction",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Discharge Instruction"
+      ],
+      "partial": [
+        "Discharge Summary",
+        "Progress Note > Patient Instructions",
+        "Clinical Summary > After-Visit Summary",
+        "Patient Communication > Patient Education Material"
+      ]
+    },
+    "dischargeinstucion": {
+      "label": "Discharge Instucion",
+      "standard": "Discharge Instruction",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Discharge Instruction"
+      ],
+      "partial": [
+        "Discharge Summary",
+        "Progress Note > Patient Instructions",
+        "Clinical Summary > After-Visit Summary",
+        "Patient Communication > Patient Education Material"
+      ]
+    },
+    "dischargenote": {
+      "label": "Discharge Note",
+      "standard": "Discharge Summary / Note",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Depart/Discharge Note"
+      ],
+      "partial": [
+        "Discharge Summary"
+      ]
+    },
+    "dischargenotification": {
+      "label": "Discharge Notification",
+      "standard": "Discharge Notification",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Notice"
+      ],
+      "partial": [
+        "Discharge Summary",
+        "Consent and Authorization"
+      ],
+      "note": "e.g. Medicare discharge notice to the patient."
+    },
+    "dischargerecord": {
+      "label": "Discharge Record",
+      "standard": "Discharge Summary / Note",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Depart/Discharge Note"
+      ],
+      "partial": [
+        "Discharge Summary"
+      ]
+    },
+    "dischargesummary": {
+      "label": "Discharge summary",
+      "standard": "Discharge Summary / Note",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Depart/Discharge Note"
+      ],
+      "partial": [
+        "Discharge Summary"
+      ]
+    },
+    "discharhenote": {
+      "label": "Discharhe note",
+      "standard": "Discharge Summary / Note",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Depart/Discharge Note"
+      ],
+      "partial": [
+        "Discharge Summary"
+      ]
+    },
+    "disinstruction": {
+      "label": "Dis Instruction",
+      "standard": "Discharge Instruction",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Discharge Instruction"
+      ],
+      "partial": [
+        "Discharge Summary",
+        "Progress Note > Patient Instructions",
+        "Clinical Summary > After-Visit Summary",
+        "Patient Communication > Patient Education Material"
+      ]
+    },
+    "dispositonsummary": {
+      "label": "Dispositon summary",
+      "standard": "Discharge Summary / Note",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Depart/Discharge Note"
+      ],
+      "partial": [
+        "Discharge Summary"
+      ]
+    },
+    "disrecord": {
+      "label": "Dis Record",
+      "standard": "Discharge Summary / Note",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Depart/Discharge Note"
+      ],
+      "partial": [
+        "Discharge Summary"
+      ]
+    },
+    "documentpage": {
+      "label": "Document page",
+      "standard": "Index / Cover / Fax / Blank",
+      "status": "exclude",
+      "full": [],
+      "partial": [],
+      "note": "Our training drops these as junk (blank-junk stage). Exclude from page-type accuracy or score against blank/junk."
+    },
+    "donotuse": {
+      "label": "Do Not Use",
+      "standard": "Not a page type",
+      "status": "exclude",
+      "full": [],
+      "partial": [],
+      "note": "Placeholder / column header / workflow value. Exclude from accuracy."
+    },
+    "ecg12lead": {
+      "label": "ECG 12 lead",
+      "standard": "EKG / ECG Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study",
+        "Lab Report > Diagnostic Study > Holter Monitor Report"
+      ]
+    },
+    "ecgroutine": {
+      "label": "ECG Routine",
+      "standard": "EKG / ECG Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study",
+        "Lab Report > Diagnostic Study > Holter Monitor Report"
+      ]
+    },
+    "echocardiogramreport": {
+      "label": "Echocardiogram Report",
+      "standard": "Echocardiogram Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Echocardiogram Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ]
+    },
+    "echoreport": {
+      "label": "Echo Report",
+      "standard": "Echocardiogram Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Echocardiogram Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ]
+    },
+    "ecocardigramreport": {
+      "label": "Ecocardigram Report",
+      "standard": "Echocardiogram Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Echocardiogram Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ]
+    },
+    "ecoreport": {
+      "label": "Eco Report",
+      "standard": "Echocardiogram Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Echocardiogram Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ]
+    },
+    "eddocument": {
+      "label": "ED Document",
+      "standard": "ED Document",
+      "status": "ambiguous",
+      "full": [
+        "Operative Note > Triage Report",
+        "Progress Note"
+      ],
+      "partial": [
+        "Discharge Summary",
+        "Operative Note"
+      ],
+      "note": "ED physician notes are Progress Note; ED triage/nursing is Triage Report."
+    },
+    "edtriage": {
+      "label": "ED Triage",
+      "standard": "ED Triage",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Triage Report"
+      ],
+      "partial": [
+        "Operative Note",
+        "Progress Note"
+      ]
+    },
+    "eeddocument": {
+      "label": "EED Document",
+      "standard": "ED Document",
+      "status": "ambiguous",
+      "full": [
+        "Operative Note > Triage Report",
+        "Progress Note"
+      ],
+      "partial": [
+        "Discharge Summary",
+        "Operative Note"
+      ],
+      "note": "ED physician notes are Progress Note; ED triage/nursing is Triage Report."
+    },
+    "egdprocedure": {
+      "label": "EGD Procedure",
+      "standard": "EGD Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Esophagogastroduodenoscopy (EGD) Report",
+        "Procedure Note > Endoscopy (EGD)"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study",
+        "Lab Report > Diagnostic Study > Endoscopy Report"
+      ],
+      "note": "v29.2 has EGD in two places (Diagnostic Study L3 and Procedure Note L2): both count."
+    },
+    "egdreport": {
+      "label": "EGD Report",
+      "standard": "EGD Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Esophagogastroduodenoscopy (EGD) Report",
+        "Procedure Note > Endoscopy (EGD)"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study",
+        "Lab Report > Diagnostic Study > Endoscopy Report"
+      ],
+      "note": "v29.2 has EGD in two places (Diagnostic Study L3 and Procedure Note L2): both count."
+    },
+    "ekg12lead": {
+      "label": "EKG 12 lead",
+      "standard": "EKG / ECG Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study",
+        "Lab Report > Diagnostic Study > Holter Monitor Report"
+      ]
+    },
+    "ekggraph": {
+      "label": "EKG Graph",
+      "standard": "EKG Graph (tracing)",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ],
+      "note": "Tracings with no written reading were removed from our training as junk in pass 2; expect misses or Others here."
+    },
+    "ekggraphs": {
+      "label": "EKG Graphs",
+      "standard": "EKG Graph (tracing)",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ],
+      "note": "Tracings with no written reading were removed from our training as junk in pass 2; expect misses or Others here."
+    },
+    "ekgreport": {
+      "label": "EKG Report",
+      "standard": "EKG / ECG Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study",
+        "Lab Report > Diagnostic Study > Holter Monitor Report"
+      ]
+    },
+    "elastogrphyprocedures": {
+      "label": "Elastogrphy Procedures",
+      "standard": "Elastography",
+      "status": "mapped",
+      "full": [
+        "Procedure Note > Elastography"
+      ],
+      "partial": [
+        "Procedure Note",
+        "Lab Report > Radiology Report"
+      ]
+    },
+    "electrocadiogramreport": {
+      "label": "Electrocadiogram Report",
+      "standard": "EKG / ECG Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study",
+        "Lab Report > Diagnostic Study > Holter Monitor Report"
+      ]
+    },
+    "encounterdetails": {
+      "label": "Encounter details",
+      "standard": "Encounter Details",
+      "status": "ambiguous",
+      "full": [
+        "Clinical Summary > Others",
+        "Demographics > Face Sheet"
+      ],
+      "partial": [
+        "Administrative",
+        "Demographics"
+      ]
+    },
+    "encounterdetalis": {
+      "label": "Encounter Detalis",
+      "standard": "Encounter Details",
+      "status": "ambiguous",
+      "full": [
+        "Clinical Summary > Others",
+        "Demographics > Face Sheet"
+      ],
+      "partial": [
+        "Administrative",
+        "Demographics"
+      ]
+    },
+    "encounterindex": {
+      "label": "Encounter Index",
+      "standard": "Encounter List / Index",
+      "status": "mapped",
+      "full": [
+        "Administrative > Appointment Record",
+        "Clinical Summary > Others"
+      ],
+      "partial": [
+        "Administrative",
+        "Clinical Summary"
+      ]
+    },
+    "encounterlist": {
+      "label": "Encounter list",
+      "standard": "Encounter List / Index",
+      "status": "mapped",
+      "full": [
+        "Administrative > Appointment Record",
+        "Clinical Summary > Others"
+      ],
+      "partial": [
+        "Administrative",
+        "Clinical Summary"
+      ]
+    },
+    "encountertype": {
+      "label": "Encounter Type",
+      "standard": "Not a page type",
+      "status": "exclude",
+      "full": [],
+      "partial": [],
+      "note": "Placeholder / column header / workflow value. Exclude from accuracy."
+    },
+    "endoscopyreport": {
+      "label": "Endoscopy Report",
+      "standard": "Endoscopy / GI Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Endoscopy Report",
+        "Lab Report > Diagnostic Study > Colonoscopy Report",
+        "Lab Report > Diagnostic Study > Esophagogastroduodenoscopy (EGD) Report",
+        "Procedure Note > Endoscopy (EGD)"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ]
+    },
+    "estimatepage": {
+      "label": "Estimate page",
+      "standard": "Billing / Invoice",
+      "status": "mapped",
+      "full": [
+        "Administrative > Billing & Invoices"
+      ],
+      "partial": [
+        "Administrative",
+        "Administrative > Superbill"
+      ]
+    },
+    "evaluation": {
+      "label": "Evaluation",
+      "standard": "Physician / Initial Evaluation",
+      "status": "ambiguous",
+      "full": [
+        "Progress Note",
+        "Forms and Questionnaires > Assessment"
+      ],
+      "partial": [
+        "Discharge Summary > History and Physical",
+        "Discharge Summary > Consultation Note"
+      ],
+      "note": "Usually a first-visit note; a scored form is an Assessment."
+    },
+    "faxpage": {
+      "label": "Fax page",
+      "standard": "Index / Cover / Fax / Blank",
+      "status": "exclude",
+      "full": [],
+      "partial": [],
+      "note": "Our training drops these as junk (blank-junk stage). Exclude from page-type accuracy or score against blank/junk."
+    },
+    "firstchoice": {
+      "label": "First Choice",
+      "standard": "Not a page type",
+      "status": "exclude",
+      "full": [],
+      "partial": [],
+      "note": "Placeholder / column header / workflow value. Exclude from accuracy."
+    },
+    "flowcytometry": {
+      "label": "Flow cytometry",
+      "standard": "Flow Cytometry",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Pathology Report > Cytometry Report"
+      ],
+      "partial": [
+        "Lab Report > Pathology Report",
+        "Lab Report > Lab Result > Hematology Report"
+      ]
+    },
+    "flowsheet": {
+      "label": "Flowsheet",
+      "standard": "Flowsheet",
+      "status": "ambiguous",
+      "full": [
+        "Progress Note > Vitals",
+        "Lab Report > Lab Result > Laboratory Flow Sheet"
+      ],
+      "partial": [
+        "Operative Note > Critical Care Record",
+        "Forms and Questionnaires > Assessment",
+        "Progress Note"
+      ],
+      "note": "Generic; depends on what is charted."
+    },
+    "followupcall": {
+      "label": "Follow up call",
+      "standard": "Telephone Encounter",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Telephone Encounter"
+      ],
+      "partial": [
+        "Patient Communication",
+        "Patient Communication > Patient Message"
+      ]
+    },
+    "form": {
+      "label": "Form",
+      "standard": "Generic Form",
+      "status": "ambiguous",
+      "full": [
+        "Forms and Questionnaires",
+        "Administrative > Others"
+      ],
+      "partial": [
+        "Consent and Authorization",
+        "Demographics"
+      ],
+      "note": "Too generic to score strictly."
+    },
+    "formnote": {
+      "label": "Form Note",
+      "standard": "Generic Form",
+      "status": "ambiguous",
+      "full": [
+        "Forms and Questionnaires",
+        "Administrative > Others"
+      ],
+      "partial": [
+        "Consent and Authorization",
+        "Demographics"
+      ],
+      "note": "Too generic to score strictly."
+    },
+    "fuctionalstatus": {
+      "label": "Fuctional Status",
+      "standard": "Assessment Form",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Assessment"
+      ],
+      "partial": [
+        "Forms and Questionnaires",
+        "Progress Note > Questionnaire",
+        "Progress Note > Physical Exam"
+      ]
+    },
+    "fuctionalstaus": {
+      "label": "Fuctional Staus",
+      "standard": "Assessment Form",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Assessment"
+      ],
+      "partial": [
+        "Forms and Questionnaires",
+        "Progress Note > Questionnaire",
+        "Progress Note > Physical Exam"
+      ]
+    },
+    "functionalstatus": {
+      "label": "Functional Status",
+      "standard": "Assessment Form",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Assessment"
+      ],
+      "partial": [
+        "Forms and Questionnaires",
+        "Progress Note > Questionnaire",
+        "Progress Note > Physical Exam"
+      ]
+    },
+    "giendoscopy": {
+      "label": "GI Endoscopy",
+      "standard": "Endoscopy / GI Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Endoscopy Report",
+        "Lab Report > Diagnostic Study > Colonoscopy Report",
+        "Lab Report > Diagnostic Study > Esophagogastroduodenoscopy (EGD) Report",
+        "Procedure Note > Endoscopy (EGD)"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ]
+    },
+    "gireport": {
+      "label": "GI Report",
+      "standard": "Endoscopy / GI Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Endoscopy Report",
+        "Lab Report > Diagnostic Study > Colonoscopy Report",
+        "Lab Report > Diagnostic Study > Esophagogastroduodenoscopy (EGD) Report",
+        "Procedure Note > Endoscopy (EGD)"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ]
+    },
+    "growthchart": {
+      "label": "Growth chart",
+      "standard": "Growth Chart",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Assessment"
+      ],
+      "partial": [
+        "Progress Note > Vitals"
+      ],
+      "note": "Growth charts were moved to Forms and Questionnaires > Assessment in label pass 2."
+    },
+    "heartreport": {
+      "label": "Heart Report",
+      "standard": "Heart Report",
+      "status": "ambiguous",
+      "full": [
+        "Lab Report > Diagnostic Study > Echocardiogram Report",
+        "Lab Report > Diagnostic Study > Electrocardiogram (EKG/ECG) Report",
+        "Lab Report > Diagnostic Study > Stress Test",
+        "Lab Report > Diagnostic Study > Holter Monitor Report",
+        "Lab Report > Diagnostic Study > Cardiac Catheterization Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study",
+        "Lab Report > Radiology Report > CT Angiography Report"
+      ],
+      "note": "Unspecified cardiac study."
+    },
+    "holterreport": {
+      "label": "Holter Report",
+      "standard": "Holter Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Holter Monitor Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ]
+    },
+    "imaganigreport": {
+      "label": "imaganig report",
+      "standard": "Radiology Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Radiology Report"
+      ],
+      "partial": [
+        "Lab Report",
+        "Progress Note > Lab and Imaging Results"
+      ]
+    },
+    "imagingreport": {
+      "label": "Imaging Report",
+      "standard": "Radiology Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Radiology Report"
+      ],
+      "partial": [
+        "Lab Report",
+        "Progress Note > Lab and Imaging Results"
+      ]
+    },
+    "immunization": {
+      "label": "Immunization",
+      "standard": "Immunization",
+      "status": "mapped",
+      "full": [
+        "Immunization > Immunization Record"
+      ],
+      "partial": [
+        "Immunization",
+        "Consent and Authorization > Immunization Consent"
+      ]
+    },
+    "indexdata": {
+      "label": "Index data",
+      "standard": "Index / Cover / Fax / Blank",
+      "status": "exclude",
+      "full": [],
+      "partial": [],
+      "note": "Our training drops these as junk (blank-junk stage). Exclude from page-type accuracy or score against blank/junk."
+    },
+    "indexpage": {
+      "label": "Index page",
+      "standard": "Index / Cover / Fax / Blank",
+      "status": "exclude",
+      "full": [],
+      "partial": [],
+      "note": "Our training drops these as junk (blank-junk stage). Exclude from page-type accuracy or score against blank/junk."
+    },
+    "informationpage": {
+      "label": "Information Page",
+      "standard": "Information Page",
+      "status": "ambiguous",
+      "full": [
+        "Demographics",
+        "Patient Communication > Patient Education Material"
+      ],
+      "partial": [
+        "Administrative",
+        "Consent and Authorization"
+      ],
+      "note": "Patient information (demographics) vs information leaflet."
+    },
+    "informationpages": {
+      "label": "Information pages",
+      "standard": "Information Page",
+      "status": "ambiguous",
+      "full": [
+        "Demographics",
+        "Patient Communication > Patient Education Material"
+      ],
+      "partial": [
+        "Administrative",
+        "Consent and Authorization"
+      ],
+      "note": "Patient information (demographics) vs information leaflet."
+    },
+    "inovoicepage": {
+      "label": "Inovoice Page",
+      "standard": "Billing / Invoice",
+      "status": "mapped",
+      "full": [
+        "Administrative > Billing & Invoices"
+      ],
+      "partial": [
+        "Administrative",
+        "Administrative > Superbill"
+      ]
+    },
+    "inpatientevaluation": {
+      "label": "Inpatient Evaluation",
+      "standard": "Inpatient Evaluation",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > History and Physical",
+        "Discharge Summary > Consultation Note"
+      ],
+      "partial": [
+        "Progress Note"
+      ]
+    },
+    "instrucionpage": {
+      "label": "Instrucion Page",
+      "standard": "Patient Instruction",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Patient Instructions",
+        "Patient Communication > Patient Education Material"
+      ],
+      "partial": [
+        "Discharge Summary > Discharge Instruction",
+        "Clinical Summary > After-Visit Summary",
+        "Patient Communication"
+      ]
+    },
+    "instructionpage": {
+      "label": "Instruction Page",
+      "standard": "Patient Instruction",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Patient Instructions",
+        "Patient Communication > Patient Education Material"
+      ],
+      "partial": [
+        "Discharge Summary > Discharge Instruction",
+        "Clinical Summary > After-Visit Summary",
+        "Patient Communication"
+      ]
+    },
+    "intakeform": {
+      "label": "Intake form",
+      "standard": "Intake Form",
+      "status": "mapped",
+      "full": [
+        "Administrative > Patient Registration",
+        "Forms and Questionnaires > Questionnaire"
+      ],
+      "partial": [
+        "Demographics",
+        "Forms and Questionnaires"
+      ]
+    },
+    "intialassessment": {
+      "label": "Intial Assessment",
+      "standard": "Physician / Initial Evaluation",
+      "status": "ambiguous",
+      "full": [
+        "Progress Note",
+        "Forms and Questionnaires > Assessment"
+      ],
+      "partial": [
+        "Discharge Summary > History and Physical",
+        "Discharge Summary > Consultation Note"
+      ],
+      "note": "Usually a first-visit note; a scored form is an Assessment."
+    },
+    "intialevaluation": {
+      "label": "Intial Evaluation",
+      "standard": "Physician / Initial Evaluation",
+      "status": "ambiguous",
+      "full": [
+        "Progress Note",
+        "Forms and Questionnaires > Assessment"
+      ],
+      "partial": [
+        "Discharge Summary > History and Physical",
+        "Discharge Summary > Consultation Note"
+      ],
+      "note": "Usually a first-visit note; a scored form is an Assessment."
+    },
+    "intraopeativerecord": {
+      "label": "Intra Opeative Record",
+      "standard": "Intra-operative Record",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Intra-operative Record"
+      ],
+      "partial": [
+        "Operative Note"
+      ]
+    },
+    "intraoperativereport": {
+      "label": "Intraoperative report",
+      "standard": "Intra-operative Record",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Intra-operative Record"
+      ],
+      "partial": [
+        "Operative Note"
+      ]
+    },
+    "intraoprecord": {
+      "label": "Intraop record",
+      "standard": "Intra-operative Record",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Intra-operative Record"
+      ],
+      "partial": [
+        "Operative Note"
+      ]
+    },
+    "invoice": {
+      "label": "Invoice",
+      "standard": "Billing / Invoice",
+      "status": "mapped",
+      "full": [
+        "Administrative > Billing & Invoices"
+      ],
+      "partial": [
+        "Administrative",
+        "Administrative > Superbill"
+      ]
+    },
+    "invoicepage": {
+      "label": "Invoice Page",
+      "standard": "Billing / Invoice",
+      "status": "mapped",
+      "full": [
+        "Administrative > Billing & Invoices"
+      ],
+      "partial": [
+        "Administrative",
+        "Administrative > Superbill"
+      ]
+    },
+    "kneeprocedurenote": {
+      "label": "Knee Procedure Note",
+      "standard": "Knee Procedure",
+      "status": "mapped",
+      "full": [
+        "Procedure Note > Knee Procedure"
+      ],
+      "partial": [
+        "Procedure Note"
+      ]
+    },
+    "lab": {
+      "label": "Lab",
+      "standard": "Lab Result",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Lab Result"
+      ],
+      "partial": [
+        "Lab Report",
+        "Progress Note > Lab and Imaging Results"
+      ],
+      "note": "Any L3 under Lab Result is a full match (GT has no L3 for labs)."
+    },
+    "labhistory": {
+      "label": "Lab History",
+      "standard": "Lab Result",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Lab Result"
+      ],
+      "partial": [
+        "Lab Report",
+        "Progress Note > Lab and Imaging Results"
+      ],
+      "note": "Any L3 under Lab Result is a full match (GT has no L3 for labs)."
+    },
+    "labreference": {
+      "label": "Lab Reference",
+      "standard": "Lab Result",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Lab Result"
+      ],
+      "partial": [
+        "Lab Report",
+        "Progress Note > Lab and Imaging Results"
+      ],
+      "note": "Any L3 under Lab Result is a full match (GT has no L3 for labs)."
+    },
+    "labreport": {
+      "label": "Lab Report",
+      "standard": "Lab Result",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Lab Result"
+      ],
+      "partial": [
+        "Lab Report",
+        "Progress Note > Lab and Imaging Results"
+      ],
+      "note": "Any L3 under Lab Result is a full match (GT has no L3 for labs)."
+    },
+    "labresult": {
+      "label": "Lab Result",
+      "standard": "Lab Result",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Lab Result"
+      ],
+      "partial": [
+        "Lab Report",
+        "Progress Note > Lab and Imaging Results"
+      ],
+      "note": "Any L3 under Lab Result is a full match (GT has no L3 for labs)."
+    },
+    "labresults": {
+      "label": "Lab Results",
+      "standard": "Lab Result",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Lab Result"
+      ],
+      "partial": [
+        "Lab Report",
+        "Progress Note > Lab and Imaging Results"
+      ],
+      "note": "Any L3 under Lab Result is a full match (GT has no L3 for labs)."
+    },
+    "laserreport": {
+      "label": "Laser Report",
+      "standard": "Laser Procedure",
+      "status": "mapped",
+      "full": [
+        "Procedure Note > Laser Procedure"
+      ],
+      "partial": [
+        "Procedure Note"
+      ]
+    },
+    "letter": {
+      "label": "Letter",
+      "standard": "Letter",
+      "status": "mapped",
+      "full": [
+        "Provider Letter"
+      ],
+      "partial": [
+        "Patient Communication"
+      ]
+    },
+    "log": {
+      "label": "Log",
+      "standard": "Log",
+      "status": "ambiguous",
+      "full": [
+        "Administrative > Others"
+      ],
+      "partial": [
+        "Administrative"
+      ],
+      "note": "Signature logs / record logs."
+    },
+    "logpage": {
+      "label": "Log page",
+      "standard": "Log",
+      "status": "ambiguous",
+      "full": [
+        "Administrative > Others"
+      ],
+      "partial": [
+        "Administrative"
+      ],
+      "note": "Signature logs / record logs."
+    },
+    "lumberprocedure": {
+      "label": "Lumber Procedure",
+      "standard": "Lumbar Procedure",
+      "status": "mapped",
+      "full": [
+        "Procedure Note > Lumbar Procedure"
+      ],
+      "partial": [
+        "Procedure Note"
+      ]
+    },
+    "measurementdata": {
+      "label": "Measurement Data",
+      "standard": "Vitals",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Vitals"
+      ],
+      "partial": [
+        "Progress Note",
+        "Forms and Questionnaires > Assessment"
+      ],
+      "note": "EHR flowsheet data pages (measurement / vital sign data) are vitals."
+    },
+    "medicalrecordrequest": {
+      "label": "Medical Record Request",
+      "standard": "Records Request",
+      "status": "mapped",
+      "full": [
+        "Provider Letter > Records Request"
+      ],
+      "partial": [
+        "Provider Letter",
+        "Consent and Authorization > Release of Information"
+      ]
+    },
+    "medication": {
+      "label": "Medication",
+      "standard": "Medication List",
+      "status": "mapped",
+      "full": [
+        "Medication Record > Medication List",
+        "Progress Note > Medication List"
+      ],
+      "partial": [
+        "Medication Record",
+        "Discharge Summary > Discharge Medication"
+      ]
+    },
+    "medicationorder": {
+      "label": "Medication Order",
+      "standard": "Medication Order",
+      "status": "mapped",
+      "full": [
+        "Medication Record > Prescription Page",
+        "Order and Requisition > Physician Order"
+      ],
+      "partial": [
+        "Medication Record",
+        "Order and Requisition"
+      ]
+    },
+    "medicationpage": {
+      "label": "Medication Page",
+      "standard": "Medication List",
+      "status": "mapped",
+      "full": [
+        "Medication Record > Medication List",
+        "Progress Note > Medication List"
+      ],
+      "partial": [
+        "Medication Record",
+        "Discharge Summary > Discharge Medication"
+      ]
+    },
+    "medicationreconciliation": {
+      "label": "Medication Reconciliation",
+      "standard": "Medication Reconciliation",
+      "status": "mapped",
+      "full": [
+        "Medication Record > Medication List",
+        "Progress Note > Medication List",
+        "Discharge Summary > Discharge Medication"
+      ],
+      "partial": [
+        "Medication Record"
+      ]
+    },
+    "medications": {
+      "label": "Medications",
+      "standard": "Medication List",
+      "status": "mapped",
+      "full": [
+        "Medication Record > Medication List",
+        "Progress Note > Medication List"
+      ],
+      "partial": [
+        "Medication Record",
+        "Discharge Summary > Discharge Medication"
+      ]
+    },
+    "memo": {
+      "label": "Memo",
+      "standard": "Memo",
+      "status": "ambiguous",
+      "full": [
+        "Provider Letter > Others",
+        "Patient Communication > Others"
+      ],
+      "partial": [
+        "Provider Letter",
+        "Patient Communication"
+      ]
+    },
+    "memorecord": {
+      "label": "Memo Record",
+      "standard": "Memo",
+      "status": "ambiguous",
+      "full": [
+        "Provider Letter > Others",
+        "Patient Communication > Others"
+      ],
+      "partial": [
+        "Provider Letter",
+        "Patient Communication"
+      ]
+    },
+    "message": {
+      "label": "MESSAGE",
+      "standard": "Message",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Patient Message",
+        "Patient Communication > Telephone Encounter"
+      ],
+      "partial": [
+        "Patient Communication"
+      ]
+    },
+    "messagepage": {
+      "label": "Message Page",
+      "standard": "Message",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Patient Message",
+        "Patient Communication > Telephone Encounter"
+      ],
+      "partial": [
+        "Patient Communication"
+      ]
+    },
+    "messages": {
+      "label": "Messages",
+      "standard": "Message",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Patient Message",
+        "Patient Communication > Telephone Encounter"
+      ],
+      "partial": [
+        "Patient Communication"
+      ]
+    },
+    "messagespage": {
+      "label": "Messages page",
+      "standard": "Message",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Patient Message",
+        "Patient Communication > Telephone Encounter"
+      ],
+      "partial": [
+        "Patient Communication"
+      ]
+    },
+    "miniclog": {
+      "label": "MiniClog",
+      "standard": "Cognitive Screening (Mini-Cog / Clock)",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Assessment",
+        "Lab Report > Diagnostic Study > Neurocognitive Screening Examination"
+      ],
+      "partial": [
+        "Progress Note > Questionnaire",
+        "Forms and Questionnaires"
+      ]
+    },
+    "minicoginstructionpage": {
+      "label": "Minicog Instruction Page",
+      "standard": "Cognitive Screening (Mini-Cog / Clock)",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Assessment",
+        "Lab Report > Diagnostic Study > Neurocognitive Screening Examination"
+      ],
+      "partial": [
+        "Progress Note > Questionnaire",
+        "Forms and Questionnaires"
+      ]
+    },
+    "misc": {
+      "label": "Misc",
+      "standard": "Not a page type",
+      "status": "exclude",
+      "full": [],
+      "partial": [],
+      "note": "Placeholder / column header / workflow value. Exclude from accuracy."
+    },
+    "na": {
+      "label": "NA",
+      "standard": "Not a page type",
+      "status": "exclude",
+      "full": [],
+      "partial": [],
+      "note": "Placeholder / column header / workflow value. Exclude from accuracy."
+    },
+    "notice": {
+      "label": "Notice",
+      "standard": "Notice",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Notice"
+      ],
+      "partial": [
+        "Patient Communication",
+        "Consent and Authorization > HIPAA and Privacy"
+      ]
+    },
+    "nurshingchart": {
+      "label": "Nurshing Chart",
+      "standard": "Nursing Note",
+      "status": "ambiguous",
+      "full": [
+        "Progress Note",
+        "Operative Note > Pre-operative",
+        "Operative Note > Intra-operative Record",
+        "Operative Note > Post-operative"
+      ],
+      "partial": [
+        "Discharge Summary",
+        "Operative Note > Critical Care Record"
+      ],
+      "note": "No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post."
+    },
+    "nursingnote": {
+      "label": "Nursing Note",
+      "standard": "Nursing Note",
+      "status": "ambiguous",
+      "full": [
+        "Progress Note",
+        "Operative Note > Pre-operative",
+        "Operative Note > Intra-operative Record",
+        "Operative Note > Post-operative"
+      ],
+      "partial": [
+        "Discharge Summary",
+        "Operative Note > Critical Care Record"
+      ],
+      "note": "No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post."
+    },
+    "nursingnotes": {
+      "label": "Nursing Notes",
+      "standard": "Nursing Note",
+      "status": "ambiguous",
+      "full": [
+        "Progress Note",
+        "Operative Note > Pre-operative",
+        "Operative Note > Intra-operative Record",
+        "Operative Note > Post-operative"
+      ],
+      "partial": [
+        "Discharge Summary",
+        "Operative Note > Critical Care Record"
+      ],
+      "note": "No nursing-note class: nursing visit notes are Progress Note; procedure-day nursing records are Operative Note pre/intra/post."
+    },
+    "octreport": {
+      "label": "OCT Report",
+      "standard": "OCT Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Optical Coherence Tomography Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ]
+    },
+    "oddata": {
+      "label": "OD Data",
+      "standard": "Ophthalmology Data",
+      "status": "ambiguous",
+      "full": [
+        "Lab Report > Diagnostic Study > Optical Coherence Tomography Report",
+        "Lab Report > Diagnostic Study > Visual Field Report",
+        "Lab Report > Diagnostic Study > Corneal Topography",
+        "Lab Report > Diagnostic Study > Optical Biometry (IOL Calculation)",
+        "Progress Note > Physical Exam"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study",
+        "Progress Note"
+      ],
+      "note": "Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+    },
+    "odospage": {
+      "label": "OD-OS Page",
+      "standard": "Ophthalmology Data",
+      "status": "ambiguous",
+      "full": [
+        "Lab Report > Diagnostic Study > Optical Coherence Tomography Report",
+        "Lab Report > Diagnostic Study > Visual Field Report",
+        "Lab Report > Diagnostic Study > Corneal Topography",
+        "Lab Report > Diagnostic Study > Optical Biometry (IOL Calculation)",
+        "Progress Note > Physical Exam"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study",
+        "Progress Note"
+      ],
+      "note": "Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+    },
+    "officeprocedurereport": {
+      "label": "Office Procedure Report",
+      "standard": "Office Procedure",
+      "status": "mapped",
+      "full": [
+        "Procedure Note > Office Procedure"
+      ],
+      "partial": [
+        "Procedure Note",
+        "Progress Note > Procedure List"
+      ]
+    },
+    "operationnote": {
+      "label": "operation Note",
+      "standard": "Operative Report",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Surgery Report"
+      ],
+      "partial": [
+        "Operative Note"
+      ]
+    },
+    "operativenote": {
+      "label": "Operative Note",
+      "standard": "Operative Report",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Surgery Report"
+      ],
+      "partial": [
+        "Operative Note"
+      ]
+    },
+    "operativereport": {
+      "label": "Operative Report",
+      "standard": "Operative Report",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Surgery Report"
+      ],
+      "partial": [
+        "Operative Note"
+      ]
+    },
+    "operativevisit": {
+      "label": "Operative Visit",
+      "standard": "Operative Visit",
+      "status": "ambiguous",
+      "full": [
+        "Operative Note"
+      ],
+      "partial": [
+        "Progress Note"
+      ],
+      "note": "Unclear page type."
+    },
+    "ophthalmolgydata": {
+      "label": "Ophthalmolgy Data",
+      "standard": "Ophthalmology Data",
+      "status": "ambiguous",
+      "full": [
+        "Lab Report > Diagnostic Study > Optical Coherence Tomography Report",
+        "Lab Report > Diagnostic Study > Visual Field Report",
+        "Lab Report > Diagnostic Study > Corneal Topography",
+        "Lab Report > Diagnostic Study > Optical Biometry (IOL Calculation)",
+        "Progress Note > Physical Exam"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study",
+        "Progress Note"
+      ],
+      "note": "Eye measurement pages: an eye study if it is one, else the eye exam section of the note."
+    },
+    "opnote": {
+      "label": "OP Note",
+      "standard": "Operative Report",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Surgery Report"
+      ],
+      "partial": [
+        "Operative Note"
+      ]
+    },
+    "order": {
+      "label": "Order",
+      "standard": "Order",
+      "status": "mapped",
+      "full": [
+        "Order and Requisition"
+      ],
+      "partial": [
+        "Operative Note > Pre-operative",
+        "Operative Note > Post-operative",
+        "Medication Record > Prescription Page"
+      ]
+    },
+    "ordernote": {
+      "label": "Order Note",
+      "standard": "Order",
+      "status": "mapped",
+      "full": [
+        "Order and Requisition"
+      ],
+      "partial": [
+        "Operative Note > Pre-operative",
+        "Operative Note > Post-operative",
+        "Medication Record > Prescription Page"
+      ]
+    },
+    "orderpage": {
+      "label": "Order Page",
+      "standard": "Order",
+      "status": "mapped",
+      "full": [
+        "Order and Requisition"
+      ],
+      "partial": [
+        "Operative Note > Pre-operative",
+        "Operative Note > Post-operative",
+        "Medication Record > Prescription Page"
+      ]
+    },
+    "orderpages": {
+      "label": "Order Pages",
+      "standard": "Order",
+      "status": "mapped",
+      "full": [
+        "Order and Requisition"
+      ],
+      "partial": [
+        "Operative Note > Pre-operative",
+        "Operative Note > Post-operative",
+        "Medication Record > Prescription Page"
+      ]
+    },
+    "orders": {
+      "label": "Orders",
+      "standard": "Order",
+      "status": "mapped",
+      "full": [
+        "Order and Requisition"
+      ],
+      "partial": [
+        "Operative Note > Pre-operative",
+        "Operative Note > Post-operative",
+        "Medication Record > Prescription Page"
+      ]
+    },
+    "orsummary": {
+      "label": "OR summary",
+      "standard": "OR Summary",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Surgery Report",
+        "Operative Note > Intra-operative Record"
+      ],
+      "partial": [
+        "Operative Note"
+      ]
+    },
+    "paindata": {
+      "label": "Pain Data",
+      "standard": "Assessment Form",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Assessment"
+      ],
+      "partial": [
+        "Forms and Questionnaires",
+        "Progress Note > Questionnaire",
+        "Progress Note > Physical Exam"
+      ]
+    },
+    "pathology": {
+      "label": "Pathology",
+      "standard": "Pathology Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Pathology Report"
+      ],
+      "partial": [
+        "Lab Report"
+      ]
+    },
+    "pathologyprocedure": {
+      "label": "Pathology Procedure",
+      "standard": "Pathology Procedure",
+      "status": "mapped",
+      "full": [
+        "Procedure Note > Pathology Procedure"
+      ],
+      "partial": [
+        "Lab Report > Pathology Report",
+        "Procedure Note"
+      ]
+    },
+    "pathologyreport": {
+      "label": "Pathology Report",
+      "standard": "Pathology Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Pathology Report"
+      ],
+      "partial": [
+        "Lab Report"
+      ]
+    },
+    "pathrequest": {
+      "label": "Path Request",
+      "standard": "Pathology Request",
+      "status": "mapped",
+      "full": [
+        "Order and Requisition > Laboratory Requisition"
+      ],
+      "partial": [
+        "Order and Requisition",
+        "Lab Report > Pathology Report"
+      ]
+    },
+    "patientagreementform": {
+      "label": "Patient Agreement Form",
+      "standard": "Agreement Form",
+      "status": "mapped",
+      "full": [
+        "Consent and Authorization > General Consent",
+        "Consent and Authorization > Assignment of Benefits",
+        "Consent and Authorization > Consent for Treatment"
+      ],
+      "partial": [
+        "Consent and Authorization"
+      ]
+    },
+    "patientchartreport": {
+      "label": "Patient chart report",
+      "standard": "Progress Note",
+      "status": "mapped",
+      "full": [
+        "Progress Note"
+      ],
+      "partial": [
+        "Discharge Summary > History and Physical",
+        "Discharge Summary > Consultation Note",
+        "Clinical Summary > After-Visit Summary"
+      ],
+      "note": "GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+    },
+    "patientclinicalsummary": {
+      "label": "Patient clinical summary",
+      "standard": "Clinical Summary",
+      "status": "mapped",
+      "full": [
+        "Clinical Summary"
+      ],
+      "partial": [
+        "Progress Note > Summary"
+      ]
+    },
+    "patientcommunication": {
+      "label": "Patient Communication",
+      "standard": "Patient Communication",
+      "status": "mapped",
+      "full": [
+        "Patient Communication"
+      ],
+      "partial": [
+        "Provider Letter"
+      ]
+    },
+    "patientcommunicationpage": {
+      "label": "Patient communication page",
+      "standard": "Patient Communication",
+      "status": "mapped",
+      "full": [
+        "Patient Communication"
+      ],
+      "partial": [
+        "Provider Letter"
+      ]
+    },
+    "patientcommunucation": {
+      "label": "PatientCommunucation",
+      "standard": "Patient Communication",
+      "status": "mapped",
+      "full": [
+        "Patient Communication"
+      ],
+      "partial": [
+        "Provider Letter"
+      ]
+    },
+    "patienteducation": {
+      "label": "Patient Education",
+      "standard": "Patient Education",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Patient Education Material"
+      ],
+      "partial": [
+        "Patient Communication",
+        "Progress Note > Patient Instructions",
+        "Clinical Summary > After-Visit Summary",
+        "Discharge Summary > Discharge Instruction"
+      ]
+    },
+    "patientform": {
+      "label": "Patient Form",
+      "standard": "Generic Form",
+      "status": "ambiguous",
+      "full": [
+        "Forms and Questionnaires",
+        "Administrative > Others"
+      ],
+      "partial": [
+        "Consent and Authorization",
+        "Demographics"
+      ],
+      "note": "Too generic to score strictly."
+    },
+    "patientinsruction": {
+      "label": "Patient Insruction",
+      "standard": "Patient Instruction",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Patient Instructions",
+        "Patient Communication > Patient Education Material"
+      ],
+      "partial": [
+        "Discharge Summary > Discharge Instruction",
+        "Clinical Summary > After-Visit Summary",
+        "Patient Communication"
+      ]
+    },
+    "patientinstruction": {
+      "label": "Patient Instruction",
+      "standard": "Patient Instruction",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Patient Instructions",
+        "Patient Communication > Patient Education Material"
+      ],
+      "partial": [
+        "Discharge Summary > Discharge Instruction",
+        "Clinical Summary > After-Visit Summary",
+        "Patient Communication"
+      ]
+    },
+    "patientsummary": {
+      "label": "Patient Summary",
+      "standard": "Clinical Summary",
+      "status": "mapped",
+      "full": [
+        "Clinical Summary"
+      ],
+      "partial": [
+        "Progress Note > Summary"
+      ]
+    },
+    "patinethistory": {
+      "label": "Patinet History",
+      "standard": "History (Social / Patient)",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Others"
+      ],
+      "partial": [
+        "Progress Note"
+      ],
+      "note": "History-only continuation pages are PN > Others in our rules."
+    },
+    "patirntcommunication": {
+      "label": "Patirnt Communication",
+      "standard": "Patient Communication",
+      "status": "mapped",
+      "full": [
+        "Patient Communication"
+      ],
+      "partial": [
+        "Provider Letter"
+      ]
+    },
+    "patrecord": {
+      "label": "PAT record",
+      "standard": "Pre-operative",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Pre-operative"
+      ],
+      "partial": [
+        "Operative Note",
+        "Discharge Summary > History and Physical",
+        "Lab Report > Lab Result"
+      ]
+    },
+    "personnelnamehistory": {
+      "label": "Personnel Name History",
+      "standard": "Demographics",
+      "status": "mapped",
+      "full": [
+        "Demographics"
+      ],
+      "partial": [
+        "Administrative > Patient Registration"
+      ]
+    },
+    "phaserecord": {
+      "label": "Phase Record",
+      "standard": "Phase Record (PACU)",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Post-operative"
+      ],
+      "partial": [
+        "Operative Note"
+      ]
+    },
+    "phonecall": {
+      "label": "Phone call",
+      "standard": "Telephone Encounter",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Telephone Encounter"
+      ],
+      "partial": [
+        "Patient Communication",
+        "Patient Communication > Patient Message"
+      ]
+    },
+    "phonenote": {
+      "label": "Phone Note",
+      "standard": "Telephone Encounter",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Telephone Encounter"
+      ],
+      "partial": [
+        "Patient Communication",
+        "Patient Communication > Patient Message"
+      ]
+    },
+    "physicaltherapyevaluation": {
+      "label": "Physical Therapy Evaluation",
+      "standard": "Physical Therapy Evaluation",
+      "status": "mapped",
+      "full": [
+        "Procedure Note > Therapy Session"
+      ],
+      "partial": [
+        "Procedure Note",
+        "Progress Note",
+        "Forms and Questionnaires > Assessment"
+      ]
+    },
+    "physicianchart": {
+      "label": "Physician Chart",
+      "standard": "Progress Note",
+      "status": "mapped",
+      "full": [
+        "Progress Note"
+      ],
+      "partial": [
+        "Discharge Summary > History and Physical",
+        "Discharge Summary > Consultation Note",
+        "Clinical Summary > After-Visit Summary"
+      ],
+      "note": "GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+    },
+    "planofcare": {
+      "label": "Plan of Care",
+      "standard": "Plan of Care",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Assessment and Plan"
+      ],
+      "partial": [
+        "Progress Note",
+        "Forms and Questionnaires > Assessment",
+        "Progress Note > Patient Instructions"
+      ],
+      "note": "Home-health care plans (e.g. CMS-485) may land in Forms and Questionnaires > Assessment."
+    },
+    "pogressnotes": {
+      "label": "Pogress Notes",
+      "standard": "Progress Note",
+      "status": "mapped",
+      "full": [
+        "Progress Note"
+      ],
+      "partial": [
+        "Discharge Summary > History and Physical",
+        "Discharge Summary > Consultation Note",
+        "Clinical Summary > After-Visit Summary"
+      ],
+      "note": "GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+    },
+    "policy": {
+      "label": "Policy",
+      "standard": "Policy",
+      "status": "mapped",
+      "full": [
+        "Consent and Authorization > HIPAA and Privacy",
+        "Consent and Authorization > General Consent"
+      ],
+      "partial": [
+        "Consent and Authorization",
+        "Patient Communication > Notice"
+      ]
+    },
+    "policypages": {
+      "label": "Policy Pages",
+      "standard": "Policy",
+      "status": "mapped",
+      "full": [
+        "Consent and Authorization > HIPAA and Privacy",
+        "Consent and Authorization > General Consent"
+      ],
+      "partial": [
+        "Consent and Authorization",
+        "Patient Communication > Notice"
+      ]
+    },
+    "postoperativecall": {
+      "label": "Postoperative call",
+      "standard": "Post-operative Call",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Telephone Encounter"
+      ],
+      "partial": [
+        "Operative Note > Post-operative",
+        "Patient Communication"
+      ]
+    },
+    "postoperativeorders": {
+      "label": "post Operative Orders",
+      "standard": "Post-operative Orders",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Post-operative",
+        "Order and Requisition > Physician Order"
+      ],
+      "partial": [
+        "Operative Note",
+        "Order and Requisition"
+      ]
+    },
+    "preadmissiontesting": {
+      "label": "Pre admission Testing",
+      "standard": "Pre-operative",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Pre-operative"
+      ],
+      "partial": [
+        "Operative Note",
+        "Discharge Summary > History and Physical",
+        "Lab Report > Lab Result"
+      ]
+    },
+    "preoperative": {
+      "label": "Pre Operative",
+      "standard": "Pre-operative",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Pre-operative"
+      ],
+      "partial": [
+        "Operative Note",
+        "Discharge Summary > History and Physical",
+        "Lab Report > Lab Result"
+      ]
+    },
+    "preoperativeorder": {
+      "label": "preoperative Order",
+      "standard": "Pre-operative Orders",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Pre-operative",
+        "Order and Requisition > Physician Order"
+      ],
+      "partial": [
+        "Operative Note",
+        "Order and Requisition"
+      ]
+    },
+    "preoperativereport": {
+      "label": "Pre operative report",
+      "standard": "Pre-operative",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Pre-operative"
+      ],
+      "partial": [
+        "Operative Note",
+        "Discharge Summary > History and Physical",
+        "Lab Report > Lab Result"
+      ]
+    },
+    "preopform": {
+      "label": "Pre Op Form",
+      "standard": "Pre-operative",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Pre-operative"
+      ],
+      "partial": [
+        "Operative Note",
+        "Discharge Summary > History and Physical",
+        "Lab Report > Lab Result"
+      ]
+    },
+    "preoprativeassesment": {
+      "label": "Preoprative Assesment",
+      "standard": "Pre-operative",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Pre-operative"
+      ],
+      "partial": [
+        "Operative Note",
+        "Discharge Summary > History and Physical",
+        "Lab Report > Lab Result"
+      ]
+    },
+    "preoprecord": {
+      "label": "Pre Op Record",
+      "standard": "Pre-operative",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Pre-operative"
+      ],
+      "partial": [
+        "Operative Note",
+        "Discharge Summary > History and Physical",
+        "Lab Report > Lab Result"
+      ]
+    },
+    "preoptesting": {
+      "label": "Pre Op Testing",
+      "standard": "Pre-operative",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Pre-operative"
+      ],
+      "partial": [
+        "Operative Note",
+        "Discharge Summary > History and Physical",
+        "Lab Report > Lab Result"
+      ]
+    },
+    "prescription": {
+      "label": "Prescription",
+      "standard": "Prescription",
+      "status": "mapped",
+      "full": [
+        "Medication Record > Prescription Page"
+      ],
+      "partial": [
+        "Medication Record",
+        "Order and Requisition > Physician Order"
+      ]
+    },
+    "prescriptionpage": {
+      "label": "Prescription Page",
+      "standard": "Prescription",
+      "status": "mapped",
+      "full": [
+        "Medication Record > Prescription Page"
+      ],
+      "partial": [
+        "Medication Record",
+        "Order and Requisition > Physician Order"
+      ]
+    },
+    "problem": {
+      "label": "Problem",
+      "standard": "Problem List",
+      "status": "mapped",
+      "full": [
+        "Problem List > Problem List",
+        "Progress Note > Problem List"
+      ],
+      "partial": [
+        "Problem List",
+        "Progress Note > Visit Diagnosis"
+      ]
+    },
+    "problemlist": {
+      "label": "Problem List",
+      "standard": "Problem List",
+      "status": "mapped",
+      "full": [
+        "Problem List > Problem List",
+        "Progress Note > Problem List"
+      ],
+      "partial": [
+        "Problem List",
+        "Progress Note > Visit Diagnosis"
+      ]
+    },
+    "problemlistpage": {
+      "label": "Problem list Page",
+      "standard": "Problem List",
+      "status": "mapped",
+      "full": [
+        "Problem List > Problem List",
+        "Progress Note > Problem List"
+      ],
+      "partial": [
+        "Problem List",
+        "Progress Note > Visit Diagnosis"
+      ]
+    },
+    "problems": {
+      "label": "Problems",
+      "standard": "Problem List",
+      "status": "mapped",
+      "full": [
+        "Problem List > Problem List",
+        "Progress Note > Problem List"
+      ],
+      "partial": [
+        "Problem List",
+        "Progress Note > Visit Diagnosis"
+      ]
+    },
+    "procedure": {
+      "label": "Procedure",
+      "standard": "Procedure Note",
+      "status": "mapped",
+      "full": [
+        "Procedure Note"
+      ],
+      "partial": [
+        "Operative Note",
+        "Lab Report > Diagnostic Study",
+        "Progress Note > Procedure List"
+      ]
+    },
+    "procedureindex": {
+      "label": "Procedure Index",
+      "standard": "Procedure Index",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Procedure List",
+        "Progress Note > Procedure List"
+      ],
+      "partial": [
+        "Operative Note"
+      ]
+    },
+    "procedureindexpage": {
+      "label": "Procedure Index page",
+      "standard": "Procedure Index",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Procedure List",
+        "Progress Note > Procedure List"
+      ],
+      "partial": [
+        "Operative Note"
+      ]
+    },
+    "procedurenote": {
+      "label": "Procedure Note",
+      "standard": "Procedure Note",
+      "status": "mapped",
+      "full": [
+        "Procedure Note"
+      ],
+      "partial": [
+        "Operative Note",
+        "Lab Report > Diagnostic Study",
+        "Progress Note > Procedure List"
+      ]
+    },
+    "procedurereport": {
+      "label": "Procedure report",
+      "standard": "Procedure Note",
+      "status": "mapped",
+      "full": [
+        "Procedure Note"
+      ],
+      "partial": [
+        "Operative Note",
+        "Lab Report > Diagnostic Study",
+        "Progress Note > Procedure List"
+      ]
+    },
+    "procedures": {
+      "label": "Procedures",
+      "standard": "Procedure Note",
+      "status": "mapped",
+      "full": [
+        "Procedure Note"
+      ],
+      "partial": [
+        "Operative Note",
+        "Lab Report > Diagnostic Study",
+        "Progress Note > Procedure List"
+      ]
+    },
+    "progressnote": {
+      "label": "Progress note",
+      "standard": "Progress Note",
+      "status": "mapped",
+      "full": [
+        "Progress Note"
+      ],
+      "partial": [
+        "Discharge Summary > History and Physical",
+        "Discharge Summary > Consultation Note",
+        "Clinical Summary > After-Visit Summary"
+      ],
+      "note": "GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+    },
+    "progressnotes": {
+      "label": "Progress Notes",
+      "standard": "Progress Note",
+      "status": "mapped",
+      "full": [
+        "Progress Note"
+      ],
+      "partial": [
+        "Discharge Summary > History and Physical",
+        "Discharge Summary > Consultation Note",
+        "Clinical Summary > After-Visit Summary"
+      ],
+      "note": "GT names the page family only; any Progress Note section is a full match. Our PN L2 comes from section tagging, not the model."
+    },
+    "psychiatricevaluation": {
+      "label": "Psychiatric Evaluation",
+      "standard": "Psychiatric Evaluation",
+      "status": "mapped",
+      "full": [
+        "Progress Note"
+      ],
+      "partial": [
+        "Forms and Questionnaires > Assessment",
+        "Discharge Summary > Consultation Note"
+      ]
+    },
+    "questionnaire": {
+      "label": "Questionnaire",
+      "standard": "Questionnaire",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Questionnaire",
+        "Progress Note > Questionnaire"
+      ],
+      "partial": [
+        "Forms and Questionnaires"
+      ]
+    },
+    "questionnairepage": {
+      "label": "Questionnaire Page",
+      "standard": "Questionnaire",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Questionnaire",
+        "Progress Note > Questionnaire"
+      ],
+      "partial": [
+        "Forms and Questionnaires"
+      ]
+    },
+    "questionnaires": {
+      "label": "Questionnaires",
+      "standard": "Questionnaire",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Questionnaire",
+        "Progress Note > Questionnaire"
+      ],
+      "partial": [
+        "Forms and Questionnaires"
+      ]
+    },
+    "questionnarie": {
+      "label": "Questionnarie",
+      "standard": "Questionnaire",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Questionnaire",
+        "Progress Note > Questionnaire"
+      ],
+      "partial": [
+        "Forms and Questionnaires"
+      ]
+    },
+    "radiology": {
+      "label": "Radiology",
+      "standard": "Radiology Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Radiology Report"
+      ],
+      "partial": [
+        "Lab Report",
+        "Progress Note > Lab and Imaging Results"
+      ]
+    },
+    "radiologyreport": {
+      "label": "Radiology Report",
+      "standard": "Radiology Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Radiology Report"
+      ],
+      "partial": [
+        "Lab Report",
+        "Progress Note > Lab and Imaging Results"
+      ]
+    },
+    "referral": {
+      "label": "Referral",
+      "standard": "Referral (unspecified)",
+      "status": "mapped",
+      "full": [
+        "Order and Requisition > Referral Order",
+        "Provider Letter > Referral Letter",
+        "Consent and Authorization > Referral Authorization"
+      ],
+      "partial": [
+        "Order and Requisition",
+        "Provider Letter"
+      ]
+    },
+    "referralnote": {
+      "label": "Referral note",
+      "standard": "Referral Note",
+      "status": "mapped",
+      "full": [
+        "Provider Letter > Referral Letter",
+        "Order and Requisition > Referral Order"
+      ],
+      "partial": [
+        "Provider Letter",
+        "Order and Requisition"
+      ]
+    },
+    "referralorder": {
+      "label": "Referral Order",
+      "standard": "Referral Order",
+      "status": "mapped",
+      "full": [
+        "Order and Requisition > Referral Order"
+      ],
+      "partial": [
+        "Order and Requisition",
+        "Provider Letter > Referral Letter",
+        "Consent and Authorization > Referral Authorization"
+      ]
+    },
+    "refferal": {
+      "label": "Refferal",
+      "standard": "Referral (unspecified)",
+      "status": "mapped",
+      "full": [
+        "Order and Requisition > Referral Order",
+        "Provider Letter > Referral Letter",
+        "Consent and Authorization > Referral Authorization"
+      ],
+      "partial": [
+        "Order and Requisition",
+        "Provider Letter"
+      ]
+    },
+    "refferalorder": {
+      "label": "Refferal Order",
+      "standard": "Referral Order",
+      "status": "mapped",
+      "full": [
+        "Order and Requisition > Referral Order"
+      ],
+      "partial": [
+        "Order and Requisition",
+        "Provider Letter > Referral Letter",
+        "Consent and Authorization > Referral Authorization"
+      ]
+    },
+    "refferalorderpages": {
+      "label": "Refferal Order Pages",
+      "standard": "Referral Order",
+      "status": "mapped",
+      "full": [
+        "Order and Requisition > Referral Order"
+      ],
+      "partial": [
+        "Order and Requisition",
+        "Provider Letter > Referral Letter",
+        "Consent and Authorization > Referral Authorization"
+      ]
+    },
+    "request": {
+      "label": "Request",
+      "standard": "Records Request",
+      "status": "mapped",
+      "full": [
+        "Provider Letter > Records Request"
+      ],
+      "partial": [
+        "Provider Letter",
+        "Consent and Authorization > Release of Information"
+      ]
+    },
+    "requestpage": {
+      "label": "Request Page",
+      "standard": "Records Request",
+      "status": "mapped",
+      "full": [
+        "Provider Letter > Records Request"
+      ],
+      "partial": [
+        "Provider Letter",
+        "Consent and Authorization > Release of Information"
+      ]
+    },
+    "requisitionpage": {
+      "label": "Requisition page",
+      "standard": "Requisition",
+      "status": "mapped",
+      "full": [
+        "Order and Requisition > Laboratory Requisition"
+      ],
+      "partial": [
+        "Order and Requisition"
+      ]
+    },
+    "screening": {
+      "label": "Screening",
+      "standard": "Questionnaire",
+      "status": "mapped",
+      "full": [
+        "Forms and Questionnaires > Questionnaire",
+        "Progress Note > Questionnaire"
+      ],
+      "partial": [
+        "Forms and Questionnaires"
+      ]
+    },
+    "signaturepage": {
+      "label": "Signature page",
+      "standard": "Signature Page",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Signature"
+      ],
+      "partial": [
+        "Progress Note",
+        "Consent and Authorization"
+      ],
+      "note": "Our training drops signature-only pages as junk; attestation pages are PN > Signature."
+    },
+    "socialhistory": {
+      "label": "Social History",
+      "standard": "History (Social / Patient)",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Others"
+      ],
+      "partial": [
+        "Progress Note"
+      ],
+      "note": "History-only continuation pages are PN > Others in our rules."
+    },
+    "stressreport": {
+      "label": "Stress Report",
+      "standard": "Stress Test Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Stress Test"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ]
+    },
+    "stresstestreport": {
+      "label": "Stress Test Report",
+      "standard": "Stress Test Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Stress Test"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ]
+    },
+    "summary": {
+      "label": "Summary",
+      "standard": "Summary",
+      "status": "ambiguous",
+      "full": [
+        "Progress Note > Summary",
+        "Clinical Summary"
+      ],
+      "partial": [
+        "Discharge Summary > Depart/Discharge Note",
+        "Discharge Summary > Short Stay Summary",
+        "Discharge Summary > Interim Summary"
+      ],
+      "note": "Ambiguous in GT: a note section or a clinical-summary printout. Ask the GT team to split."
+    },
+    "superbill": {
+      "label": "Superbill",
+      "standard": "Superbill / Coding Summary",
+      "status": "mapped",
+      "full": [
+        "Administrative > Superbill"
+      ],
+      "partial": [
+        "Administrative",
+        "Progress Note > Visit Diagnosis"
+      ]
+    },
+    "telemetry": {
+      "label": "Telemetry",
+      "standard": "Telemetry",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Telemetry Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ]
+    },
+    "telemetrydata": {
+      "label": "Telemetry Data",
+      "standard": "Telemetry",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Telemetry Report"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study"
+      ]
+    },
+    "telephoneencounter": {
+      "label": "Telephone Encounter",
+      "standard": "Telephone Encounter",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Telephone Encounter"
+      ],
+      "partial": [
+        "Patient Communication",
+        "Patient Communication > Patient Message"
+      ]
+    },
+    "testingform": {
+      "label": "Testing Form",
+      "standard": "Testing Form",
+      "status": "ambiguous",
+      "full": [
+        "Order and Requisition > Laboratory Requisition",
+        "Forms and Questionnaires > Assessment"
+      ],
+      "partial": [
+        "Order and Requisition",
+        "Forms and Questionnaires"
+      ]
+    },
+    "transferform": {
+      "label": "Transfer Form",
+      "standard": "Transfer of Care",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Transfer of Care"
+      ],
+      "partial": [
+        "Discharge Summary",
+        "Clinical Summary > Summary of Care (C-CDA)"
+      ]
+    },
+    "transferofcarenote": {
+      "label": "Transfer Of care note",
+      "standard": "Transfer of Care",
+      "status": "mapped",
+      "full": [
+        "Discharge Summary > Transfer of Care"
+      ],
+      "partial": [
+        "Discharge Summary",
+        "Clinical Summary > Summary of Care (C-CDA)"
+      ]
+    },
+    "transitionofcaresummary": {
+      "label": "Transition of care summary",
+      "standard": "Transition of Care Summary",
+      "status": "mapped",
+      "full": [
+        "Clinical Summary > Summary of Care (C-CDA)"
+      ],
+      "partial": [
+        "Clinical Summary",
+        "Discharge Summary > Transfer of Care"
+      ]
+    },
+    "transitionofsummary": {
+      "label": "Transition of Summary",
+      "standard": "Transition of Care Summary",
+      "status": "mapped",
+      "full": [
+        "Clinical Summary > Summary of Care (C-CDA)"
+      ],
+      "partial": [
+        "Clinical Summary",
+        "Discharge Summary > Transfer of Care"
+      ]
+    },
+    "triagenote": {
+      "label": "Triage note",
+      "standard": "ED Triage",
+      "status": "mapped",
+      "full": [
+        "Operative Note > Triage Report"
+      ],
+      "partial": [
+        "Operative Note",
+        "Progress Note"
+      ]
+    },
+    "uppergiendoscopy": {
+      "label": "Upper GI Endoscopy",
+      "standard": "EGD Report",
+      "status": "mapped",
+      "full": [
+        "Lab Report > Diagnostic Study > Esophagogastroduodenoscopy (EGD) Report",
+        "Procedure Note > Endoscopy (EGD)"
+      ],
+      "partial": [
+        "Lab Report > Diagnostic Study",
+        "Lab Report > Diagnostic Study > Endoscopy Report"
+      ],
+      "note": "v29.2 has EGD in two places (Diagnostic Study L3 and Procedure Note L2): both count."
+    },
+    "vaccinepage": {
+      "label": "Vaccine Page",
+      "standard": "Immunization",
+      "status": "mapped",
+      "full": [
+        "Immunization > Immunization Record"
+      ],
+      "partial": [
+        "Immunization",
+        "Consent and Authorization > Immunization Consent"
+      ]
+    },
+    "visitdiagnoses": {
+      "label": "Visit Diagnoses",
+      "standard": "Visit Diagnoses",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Visit Diagnosis"
+      ],
+      "partial": [
+        "Progress Note",
+        "Discharge Summary > Discharge Diagnosis",
+        "Problem List > Diagnosis List/Index",
+        "Problem List"
+      ]
+    },
+    "visitdiagnosessummary": {
+      "label": "Visit Diagnoses,Summary",
+      "standard": "Visit Diagnoses + Summary",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Visit Diagnosis",
+        "Progress Note > Summary"
+      ],
+      "partial": [
+        "Progress Note"
+      ],
+      "note": "GT gives two sections for one page: either one is a full match."
+    },
+    "visitsummary": {
+      "label": "Visit Summary",
+      "standard": "After-Visit Summary",
+      "status": "mapped",
+      "full": [
+        "Clinical Summary > After-Visit Summary"
+      ],
+      "partial": [
+        "Clinical Summary",
+        "Progress Note > Summary",
+        "Discharge Summary > Discharge Instruction"
+      ]
+    },
+    "vital": {
+      "label": "Vital",
+      "standard": "Vitals",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Vitals"
+      ],
+      "partial": [
+        "Progress Note",
+        "Forms and Questionnaires > Assessment"
+      ],
+      "note": "EHR flowsheet data pages (measurement / vital sign data) are vitals."
+    },
+    "vitalpage": {
+      "label": "Vital Page",
+      "standard": "Vitals",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Vitals"
+      ],
+      "partial": [
+        "Progress Note",
+        "Forms and Questionnaires > Assessment"
+      ],
+      "note": "EHR flowsheet data pages (measurement / vital sign data) are vitals."
+    },
+    "vitalsigndata": {
+      "label": "Vital Sign Data",
+      "standard": "Vitals",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Vitals"
+      ],
+      "partial": [
+        "Progress Note",
+        "Forms and Questionnaires > Assessment"
+      ],
+      "note": "EHR flowsheet data pages (measurement / vital sign data) are vitals."
+    },
+    "vitalsigns": {
+      "label": "Vital signs",
+      "standard": "Vitals",
+      "status": "mapped",
+      "full": [
+        "Progress Note > Vitals"
+      ],
+      "partial": [
+        "Progress Note",
+        "Forms and Questionnaires > Assessment"
+      ],
+      "note": "EHR flowsheet data pages (measurement / vital sign data) are vitals."
+    },
+    "webencounter": {
+      "label": "Web Encounter",
+      "standard": "Web Encounter",
+      "status": "mapped",
+      "full": [
+        "Patient Communication > Patient Message",
+        "Progress Note"
+      ],
+      "partial": [
+        "Patient Communication > Telephone Encounter"
+      ],
+      "note": "A portal message is Patient Message; an e-visit with assessment and plan is a Progress Note."
+    },
+    "woundtreatment": {
+      "label": "Wound treatment",
+      "standard": "Wound Care",
+      "status": "mapped",
+      "full": [
+        "Procedure Note > Wound Care"
+      ],
+      "partial": [
+        "Procedure Note"
+      ]
+    }
+  }
+}

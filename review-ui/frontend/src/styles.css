@@ -3611,6 +3611,105 @@ input {
   stroke: #a33b32;
 }
 
+/* Overall: pages by how many of the seven streams match (0..7), Good / Fair / Bad. */
+.accuracy-overall-card {
+  grid-column: span 2;
+}
+.accuracy-overall-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.accuracy-overall-donut {
+  width: 8rem;
+  height: 8rem;
+}
+.accuracy-overall-donut .accuracy-donut-seg {
+  stroke-width: 13;
+  cursor: default;
+}
+.accuracy-overall-donut .accuracy-donut-seg:hover {
+  filter: brightness(1.15);
+}
+.accuracy-overall-callout {
+  fill: #fff;
+  font-size: 6px;
+  font-weight: 700;
+  text-anchor: middle;
+  pointer-events: none;
+}
+.accuracy-match-good { stroke: var(--status-success-fg); background: var(--status-success-fg); }
+.accuracy-match-fair { stroke: var(--status-warning-fg); background: var(--status-warning-fg); }
+.accuracy-match-bad { stroke: var(--status-error-fg); background: var(--status-error-fg); }
+.accuracy-match-k6, .accuracy-match-k3, .accuracy-match-k1 { stroke-opacity: 0.75; opacity: 0.75; }
+.accuracy-match-k5, .accuracy-match-k0 { stroke-opacity: 0.55; opacity: 0.55; }
+.accuracy-overall-donut .accuracy-donut-seg.accuracy-match-k6,
+.accuracy-overall-donut .accuracy-donut-seg.accuracy-match-k5,
+.accuracy-overall-donut .accuracy-donut-seg.accuracy-match-k3,
+.accuracy-overall-donut .accuracy-donut-seg.accuracy-match-k1,
+.accuracy-overall-donut .accuracy-donut-seg.accuracy-match-k0 { opacity: 1; }
+.accuracy-overall-legend {
+  border-collapse: collapse;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-800);
+}
+.accuracy-overall-legend th {
+  color: var(--muted);
+  font-weight: 500;
+  padding: 0 0.35rem 0.1rem;
+  text-align: right;
+}
+.accuracy-overall-legend td {
+  padding: 0.05rem 0.35rem;
+  text-align: right;
+}
+.accuracy-overall-legend th:first-child,
+.accuracy-overall-legend td:first-child {
+  text-align: left;
+  white-space: nowrap;
+}
+.accuracy-overall-chip {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-right: 0.3rem;
+  border-radius: 2px;
+  vertical-align: -0.05rem;
+}
+.accuracy-overall-bands {
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+}
+.accuracy-overall-band {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.25rem 0.2rem;
+  border-radius: 10px;
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+.accuracy-overall-band strong {
+  font-size: 0.9rem;
+}
+.accuracy-overall-band small {
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+.accuracy-band-good { background: #eef5ec; color: var(--status-success-fg); }
+.accuracy-band-fair { background: #f8f1e3; color: var(--status-warning-fg); }
+.accuracy-band-bad { background: var(--status-error-bg); color: var(--status-error-fg); }
+@media (max-width: 640px) {
+  .accuracy-overall-card {
+    grid-column: 1 / -1;
+  }
+}
 .accuracy-note {
   margin: -0.15rem 0 0.7rem;
   color: var(--muted);

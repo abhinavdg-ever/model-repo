@@ -43,7 +43,10 @@ import {
   formatF1,
   formatPrecision,
   formatRecall,
-  partialBands,
+  MATCH_BANDS,
+  matchBand,
+  matchCounts,
+  OVERALL_STREAMS,
   scoreChart,
   sumRates,
   sumTallies,
@@ -328,7 +331,7 @@ function CompactScore({
 const SCORE_INFO =
   "Accuracy score = (Match + 0.5 × Partial) / Total, where Total = Match + Partial + No Match. Only Page Type has a Partial.";
 const OVERALL_SCORE_INFO =
-  "Accuracy score = Match / Total: full matches only, a Partial page (some features matching) scores 0.";
+  "Accuracy score = pages with all seven streams matching (7/7) / all scored pages.";
 const RATES_INFO =
   "The accuracy above counts every labelled page, Yes and No. Below it, Class 1 (the Yes pages) only; cases = the pages the ground truth calls Class 1. " +
   "Precision = TP / (TP + FP): share of the pipeline's Class 1 calls that were right. " +
@@ -358,18 +361,9 @@ function Donut({
   const radius = 36;
   const cases = rates ? classCases(rates) : 0;
   const circumference = 2 * Math.PI * radius;
-  // Overall splits its Partial pages by how many features matched, darkest = most.
-  const bands = tally.fullOnly ? partialBands(tally) : [];
   const segments = [
     { key: "yes", count: tally.yes, tone: "accuracy-donut-yes", opacity: 1 },
-    ...(bands.length
-      ? bands.map(([k, pages], index) => ({
-          key: `m${k}`,
-          count: pages,
-          tone: "accuracy-donut-maybe",
-          opacity: 1 - (0.6 * index) / Math.max(1, bands.length - 1),
-        }))
-      : [{ key: "maybe", count: tally.maybe, tone: "accuracy-donut-maybe", opacity: 1 }]),
+    { key: "maybe", count: tally.maybe, tone: "accuracy-donut-maybe", opacity: 1 },
     { key: "no", count: tally.no, tone: "accuracy-donut-no", opacity: 1 },
   ];
   let offset = 0;
@@ -417,18 +411,6 @@ function Donut({
       <p className="accuracy-distribution">
         <Distribution tally={tally} binary={binary} />
       </p>
-      {bands.length ? (
-        <p className="accuracy-distribution accuracy-bands">
-          {bands.map(([k, pages], index) => (
-            <Fragment key={k}>
-              {index > 0 ? " · " : null}
-              <span>
-                {k} matching {pages}
-              </span>
-            </Fragment>
-          ))}
-        </p>
-      ) : null}
       {rates ? (
         <div className="accuracy-class">
           {ratesLabel ? (
@@ -439,6 +421,116 @@ function Donut({
           <RatesGrid rates={rates} />
         </div>
       ) : null}
+    </figure>
+  );
+}
+
+const OVERALL_RULE =
+  "Seven streams per page: Member, DOS, Page Type (exact match only; a Partial is not a match), Provider Signature, Codability, Blank / Junk and Orientation. " +
+  "Each page counts how many of the seven match, 0 to 7; a stream with no ground-truth label does not count against the page. " +
+  "Accuracy = pages with 7 of 7 / all scored pages. Good = 5 to 7 matching, Fair = 3 or 4, Bad = 0 to 2.";
+
+function pct(count: number, total: number): string {
+  return total > 0 ? `${Math.round((100 * count) / total)}%` : "—";
+}
+
+/** Overall: one ring split by how many of the seven streams match (7 .. 0), each
+ * slice labelled with its k and its pages and share on hover; Good / Fair / Bad below. */
+function OverallDonut({ tally }: { tally: Tally }) {
+  const radius = 36;
+  const circumference = 2 * Math.PI * radius;
+  const counts = matchCounts(tally);
+  const total = tally.scored;
+  let offset = 0;
+  const slices = counts.flatMap(([k, pages]) => {
+    if (total === 0 || pages === 0) return [];
+    const length = (pages / total) * circumference;
+    const middle = ((offset + length / 2) / circumference) * 2 * Math.PI - Math.PI / 2;
+    const slice = { k, pages, length, start: offset, x: 50 + radius * Math.cos(middle), y: 50 + radius * Math.sin(middle) };
+    offset += length;
+    return [slice];
+  });
+  const band = (id: string) => counts.filter(([k]) => matchBand(k) === id).reduce((sum, [, pages]) => sum + pages, 0);
+  return (
+    <figure className="accuracy-donut-card accuracy-overall-card">
+      <InfoTip
+        className="accuracy-info-corner"
+        text={[...ruleSections("Overall", OVERALL_RULE), { title: "Accuracy score", lines: sentences(OVERALL_SCORE_INFO) }]}
+      />
+      <div className="accuracy-overall-body">
+        <svg
+          className="accuracy-donut accuracy-overall-donut"
+          viewBox="0 0 100 100"
+          role="img"
+          aria-label={`Overall ${percentLabel(tally)}: ${counts.map(([k, pages]) => `${k} of ${OVERALL_STREAMS} matching ${pages}`).join(", ")}`}
+        >
+          <circle className="accuracy-donut-track" cx="50" cy="50" r={radius} />
+          {slices.map((slice) => (
+            <circle
+              key={slice.k}
+              className={`accuracy-donut-seg accuracy-match-${matchBand(slice.k)} accuracy-match-k${slice.k}`}
+              cx="50"
+              cy="50"
+              r={radius}
+              strokeDasharray={slice.length >= circumference - 0.01 ? undefined : `${slice.length} ${circumference - slice.length}`}
+              strokeDashoffset={-slice.start}
+            >
+              <title>{`${slice.k}/${OVERALL_STREAMS} matching: ${slice.pages.toLocaleString()} ${slice.pages === 1 ? "page" : "pages"} (${pct(slice.pages, total)})`}</title>
+            </circle>
+          ))}
+          {slices
+            .filter((slice) => slice.length / circumference >= 0.05)
+            .map((slice) => (
+              <text key={`l${slice.k}`} className="accuracy-overall-callout" x={slice.x} y={slice.y + 1.6}>
+                {slice.k}
+              </text>
+            ))}
+          <text className="accuracy-donut-pct" x="50" y={total > 0 ? 51 : 54}>
+            {percentLabel(tally)}
+          </text>
+          {total > 0 ? (
+            <text className="accuracy-donut-caption" x="50" y="64">
+              {OVERALL_STREAMS}/{OVERALL_STREAMS}
+            </text>
+          ) : null}
+        </svg>
+        <table className="accuracy-overall-legend">
+          <thead>
+            <tr>
+              <th scope="col">Matching</th>
+              <th scope="col">Pages</th>
+              <th scope="col">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {counts.map(([k, pages]) => (
+              <tr key={k} title={`${k}/${OVERALL_STREAMS} matching: ${pages.toLocaleString()} pages (${pct(pages, total)})`}>
+                <td>
+                  <span className={`accuracy-overall-chip accuracy-match-${matchBand(k)} accuracy-match-k${k}`} aria-hidden="true" />
+                  {k}/{OVERALL_STREAMS}
+                </td>
+                <td>{pages.toLocaleString()}</td>
+                <td>{pct(pages, total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <figcaption>Overall</figcaption>
+      <p className="accuracy-distribution">
+        {total.toLocaleString()} {total === 1 ? "page" : "pages"} · all {OVERALL_STREAMS} matching on {tally.yes.toLocaleString()}
+      </p>
+      <div className="accuracy-overall-bands">
+        {MATCH_BANDS.map((item) => (
+          <div key={item.id} className={`accuracy-overall-band accuracy-band-${item.id}`} title={`${item.label}: ${item.min}–${item.max} of ${OVERALL_STREAMS} matching`}>
+            <span>
+              {item.label} ({item.min}–{item.max})
+            </span>
+            <strong>{pct(band(item.id), total)}</strong>
+            <small>{band(item.id).toLocaleString()} pages</small>
+          </div>
+        ))}
+      </div>
     </figure>
   );
 }
@@ -1094,14 +1186,10 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
               <strong>{overall.scored}</strong> {overall.scored === 1 ? "Page" : "Pages"}
             </p>
             <p className="accuracy-note">
-              Match counts as 1 and No Match as 0. Only Page Type has a Partial (0.5). Overall counts full matches only.
+              Match counts as 1 and No Match as 0. Only Page Type has a Partial (0.5). Overall = pages with all seven streams matching (7/7).
             </p>
             <div className="accuracy-donuts">
-              <Donut
-                label="Overall"
-                detail="Each page is judged on the features it is scored on (all seven, when labelled): every one matching = Match, none = No Match, 1 to 6 matching = Partial, shown by how many matched. A Page Type Partial is not a match. The accuracy counts full matches only. A feature with no ground-truth label does not count against the page"
-                tally={overall}
-              />
+              <OverallDonut tally={overall} />
               {METRICS.map((metric) =>
                 metric.comingSoon ? (
                   <figure key={metric.id} className="accuracy-donut-card accuracy-coming-soon" aria-label={`${metric.label}: coming soon`}>

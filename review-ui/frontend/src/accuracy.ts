@@ -58,7 +58,7 @@ export const METRICS: {
   {
     id: "pageType",
     label: "Page Type",
-    rule: "Scored on the pages the ground truth says are not blank / junk. Ground-truth page type matches the Final page type or subtype, or is an accepted label for its model type (else semantic similarity > 0.8): Match. Matches only the Extracted page type, or is a broader label: Partial. Neither: No Match. A page the pipeline called blank / junk has the type Blank/Junk: No Match",
+    rule: "Scored on the pages the ground truth says are not blank / junk. The client's label is mapped to our L1 > L2 > L3 (gtPageTypeCanon.json; the table is docs/gt_page_type_mapping.csv). Match (1): a full target is the start of our Final or Extracted path. Partial (0.5): a listed neighbour is, or our path has the same L1 (stops above the label's level, a sibling L3, another L2). Else No Match (0). Cover / index / fax / blank, NA and Misc labels are not scored. A label not in the mapping falls back to the accepted-label lists. A page the pipeline called blank / junk has the type Blank/Junk: No Match",
   },
   {
     id: "codeable",
@@ -84,12 +84,13 @@ export const METRICS: {
 /** The metrics with a score on screen (the chart table's columns). */
 export const LIVE_METRICS = METRICS.filter((metric) => !metric.comingSoon);
 
-/** The metrics a page's overall match is built from. */
+/** The metrics a page's overall match is built from: the seven streams. */
 const OVERALL_METRICS = METRICS.filter((metric) => metric.inOverall !== false);
+export const OVERALL_STREAMS = OVERALL_METRICS.length;
 
 /** yes = Match, maybe = Partial, no = No Match; na = Not Available (counted, not scored).
- * Overall only: ``matched[k]`` = Partial pages with k features matching, and ``fullOnly`` = the
- * accuracy counts full matches alone (a Partial scores 0, not 0.5). */
+ * Overall only: ``matched[k]`` = pages with k of the seven streams matching (0..7), and
+ * ``fullOnly`` = the accuracy counts full matches only (7 of 7; a Partial scores 0). */
 export type Tally = {
   yes: number;
   no: number;
@@ -290,12 +291,12 @@ function dosVerdict(bits: { dosFrom: GtBit[]; dosTo: GtBit[] }): Verdict | null 
   return grades.every((item) => item === "yes") ? "yes" : "no";
 }
 
-/** Matching the Final value is a full match (1). Matching only the Extracted
- * value, or a partial on either, is Partial (0.5). Neither is No Match (0). */
+/** Page type: the Final or the Extracted value matching is a full match (1), a
+ * partial on either is Partial (0.5), neither is No Match (0). */
 function finalOrExtracted(final: Verdict | null, extracted: Verdict | null): Verdict | null {
   if (final === null && extracted === null) return null;
-  if (final === "yes") return "yes";
-  if (extracted === "yes" || final === "maybe" || extracted === "maybe") return "maybe";
+  if (final === "yes" || extracted === "yes") return "yes";
+  if (final === "maybe" || extracted === "maybe") return "maybe";
   return "no";
 }
 
@@ -447,17 +448,17 @@ function pageScores(
   };
 }
 
-/** A page's overall match, over the metrics it is scored on (an unscored metric is
- * not a miss): every one matching is a Match, none is a No Match, anything between
- * is Partial. ``matches`` = how many matched (a Page Type Partial is not a match). */
+/** A page's overall match over the seven streams: ``matches`` = how many match (0..7).
+ * A Page Type Partial is not a match; a stream with no ground truth is not a miss.
+ * All seven = Match, none = No Match, anything between = Partial. */
 function overallVerdict(
   scores: Record<MetricId, Verdict | null>,
   applicable: typeof METRICS = OVERALL_METRICS,
 ): { verdict: Verdict; matches: number } | null {
-  const scored = applicable.filter((metric) => scores[metric.id] != null);
-  if (scored.length === 0) return null;
-  const matches = scored.filter((metric) => scores[metric.id] === "yes").length;
-  const verdict: Verdict = matches === scored.length ? "yes" : matches === 0 ? "no" : "maybe";
+  if (!applicable.some((metric) => scores[metric.id] != null)) return null;
+  const misses = applicable.filter((metric) => scores[metric.id] === "no" || scores[metric.id] === "maybe").length;
+  const matches = applicable.length - misses;
+  const verdict: Verdict = misses === 0 ? "yes" : matches === 0 ? "no" : "maybe";
   return { verdict, matches };
 }
 
@@ -571,9 +572,7 @@ export function scoreChart(
     const pageOverall = overallVerdict(scored.scores, scored.applicable);
     if (pageOverall) {
       add(overall, pageOverall.verdict);
-      if (pageOverall.verdict === "maybe") {
-        overall.matched![pageOverall.matches] = (overall.matched![pageOverall.matches] ?? 0) + 1;
-      }
+      overall.matched![pageOverall.matches] = (overall.matched![pageOverall.matches] ?? 0) + 1;
     }
     if (scored.blankJunk) {
       addRates(blankJunkRates, scored.blankJunk.expected, scored.blankJunk.predicted);
@@ -677,15 +676,24 @@ export function sumTallies(rows: Tally[]): Tally {
   return total;
 }
 
-/** Overall's Partial pages by how many features matched, most first: [[k, pages]]. */
-export function partialBands(tally: Tally): [number, number][] {
-  const out: [number, number][] = [];
+/** Overall: pages by how many of the seven streams match, [[k, pages]] for k = 7..0. */
+export function matchCounts(tally: Tally): [number, number][] {
   const matched = tally.matched ?? [];
-  for (let k = matched.length - 1; k >= 1; k -= 1) {
-    const pages = matched[k] ?? 0;
-    if (pages > 0) out.push([k, pages]);
-  }
-  return out;
+  return Array.from({ length: OVERALL_STREAMS + 1 }, (_, i) => {
+    const k = OVERALL_STREAMS - i;
+    return [k, matched[k] ?? 0] as [number, number];
+  });
+}
+
+/** Good = 5..7 streams matching, Fair = 3..4, Bad = 0..2. */
+export const MATCH_BANDS: { id: "good" | "fair" | "bad"; label: string; min: number; max: number }[] = [
+  { id: "good", label: "Good", min: 5, max: 7 },
+  { id: "fair", label: "Fair", min: 3, max: 4 },
+  { id: "bad", label: "Bad", min: 0, max: 2 },
+];
+
+export function matchBand(k: number): "good" | "fair" | "bad" {
+  return (MATCH_BANDS.find((band) => k >= band.min && k <= band.max) ?? MATCH_BANDS[2]).id;
 }
 
 export function formatDistribution(tally: Tally, binary = false): string {
