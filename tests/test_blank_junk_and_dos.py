@@ -997,3 +997,42 @@ class TestSignaturePageApartIsNotADuplicate:
         pages = [page(1, 1), page(2, 2), page(3, 3)]
         rows = _classify(pages, {1: body, 2: self._other(), 3: body}, {1, 2, 3})
         assert {r["page_id"]: r["flag"] for r in rows}[3] == "duplicate"
+
+
+def _words(n: int = 100, *, swap: str = "") -> str:
+    words = [f"term{i}" for i in range(n)]
+    if swap:
+        words[-1] = swap
+    return " ".join(words)
+
+
+class TestExactCopiesOnlyInPassOne:
+    """2026-10-26 (user): pass 1 removes only 100% copies; 98% and partials wait for pass 2."""
+
+    def test_exact_copy_is_a_duplicate(self):
+        rows = _classify([page(1, 1), page(2, 2)], {1: _words(), 2: _words()}, {1, 2}, exact_only=True)
+        assert {r["page_id"]: r["flag"] for r in rows}[2] == "duplicate"
+
+    def test_near_copy_waits_for_pass_two(self):
+        texts = {1: _words(), 2: _words(swap="changed")}
+        rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2}, exact_only=True)
+        assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)
+        rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2})
+        assert {r["page_id"]: r["flag"] for r in rows}[2] == "duplicate"
+
+
+class TestDifferentDosIsNotADuplicate:
+    """2026-10-26 (user): a >98% match with a different DOS is not a duplicate."""
+
+    def test_different_dates_are_not_duplicates(self):
+        texts = {1: _words(), 2: _words(swap="changed")}
+        dos = {1: frozenset({"2024-03-15"}), 2: frozenset({"2024-04-02"})}
+        rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2}, dos_by_id=dos)
+        assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)
+
+    def test_same_date_or_one_undated_still_duplicates(self):
+        texts = {1: _words(), 2: _words(swap="changed")}
+        for dos in ({1: frozenset({"2024-03-15"}), 2: frozenset({"2024-03-15"})},
+                    {1: frozenset({"2024-03-15"})}):
+            rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2}, dos_by_id=dos)
+            assert {r["page_id"]: r["flag"] for r in rows}[2] == "duplicate"

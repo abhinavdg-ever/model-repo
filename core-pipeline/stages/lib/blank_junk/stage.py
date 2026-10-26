@@ -38,15 +38,15 @@ Duplicate detection (after the verdict, among Main pages only -- never blank or 
   duplicate) -- except a contained pair whose larger page has more than
   ``duplicates.larger_kept_above_words`` (10) distinct words the smaller lacks: the
   larger page stays and the smaller is the duplicate (2026-10-22, user).
-* as the
-  original; on a tie, keep the **earlier** page -- except a contained pair with fewer
-  than ``duplicates.earlier_kept_below_words`` (10) distinct words different: the
-  **later** page is the duplicate (2026-10-22, user). The other is the duplicate
-  (or partial duplicate).
 * Blank pages and texts shorter than 300 normalized chars are never compared.
 * A signature or ending page (kv_extract's Electronic Signature in pass 2, or
   ``duplicates.signature_terms`` on the page) is not a duplicate of a look-alike with a
   Main page between them -- other notes, other DOSs (2026-10-26, user).
+* Two pages whose kv_extract DOS share no date are not duplicates or partials, however
+  alike their words (2026-10-26, user).
+* Pass 1 marks only exact copies: the same distinct words, lengths within 10%. Every
+  other rule above (98%, contained, word counts, partials, DOS, signature pages) runs in
+  pass 2 only (2026-10-26, user).
 * Prior-pass ``main`` pages are included as neighbors so pass 2 can still
   match a handwritten page to a printed one from pass 1.
 
@@ -266,6 +266,8 @@ def _classify(
     docling_pages: Optional[dict[int, dict[str, Any]]] = None,
     best_matches: Optional[dict[str, dict[str, Any]]] = None,
     signed_ids: Optional[set[int]] = None,
+    dos_by_id: Optional[dict[int, frozenset[str]]] = None,
+    exact_only: bool = False,
 ) -> list[dict[str, Any]]:
     """Classify ``todo`` pages, then look for duplicates among Main pages.
 
@@ -287,6 +289,12 @@ def _classify(
     canon's ``duplicates.signature_terms`` on the page) standing apart from its look-alike
     is not a duplicate: a pair with one is skipped when a Main page lies between them
     (another note, another DOS; 2026-10-26, user). Next to each other they still compare.
+
+    ``dos_by_id`` (pass 2: kv_extract's selected DOS per page): two pages that both have
+    a DOS and share none are never duplicates or partials (2026-10-26, user).
+
+    ``exact_only`` (pass 1): only exact copies -- the same distinct words, lengths within
+    10% -- are duplicates; no partials. The rest waits for pass 2 (2026-10-26, user).
     """
     prior = set(prior_main_ids or ())
     by_id: dict[int, dict[str, Any]] = {}
@@ -377,6 +385,9 @@ def _classify(
                 _main(pages[k]["id"]) for k in range(i + 1, j)
             ):
                 continue  # a signature / ending page apart from its look-alike
+            dates_a, dates_b = (dos_by_id or {}).get(pid), (dos_by_id or {}).get(nid)
+            if dates_a and dates_b and not dates_a & dates_b:
+                continue  # different dates of service: different visits
             words = word_overlap(texts.get(pid) or "", texts.get(nid) or "")
             is_contained = words.contained >= rules["contained_at"]
             # A contained pair scores 1.0; otherwise its overlap.
@@ -392,7 +403,11 @@ def _classify(
             # inside a much longer one is a partial at most.
             len_a, len_b = length[pid], length[nid]
             similar_length = min(len_a, len_b) >= rules["duplicate_min_length_ratio"] * max(len_a, len_b)
-            if similar_length and (
+            if exact_only:
+                if not (similar_length and words.different == 0):
+                    continue
+                kind = "duplicate"
+            elif similar_length and (
                 is_contained
                 or sim >= DUPLICATE_SIMILARITY_THRESHOLD
                 or (counts and words.different < rules["duplicate_below_words"])
@@ -614,6 +629,23 @@ def extracted_page_names(chart_name: str, *fields: str) -> set[str]:
     if staged is None:
         return set()
     return {page.name for page in staged if any(page.selected(field) for field in fields)}
+
+
+def extracted_dos(chart_name: str) -> dict[str, frozenset[str]]:
+    """Page name -> the dates of kv_extract's selected DOS on it (from and to, ISO form)."""
+    from stages.lib.extraction import staging
+    from stages.lib.extraction.util.dates import canonical_date
+
+    staged = staging.read(chart_name)
+    if staged is None:
+        return {}
+    out: dict[str, frozenset[str]] = {}
+    for page in staged:
+        dates = {canonical_date(value) for row in page.selected("dos")
+                 for value in (row.get("dos_from"), row.get("dos_to")) if value}
+        if dates:
+            out[page.name] = frozenset(dates)
+    return out
 
 
 def _page_inputs(
@@ -922,15 +954,20 @@ def _run_pass(
             inputs = _page_inputs(ctx, pass_no, quality)
         best_matches: dict[str, dict[str, Any]] = {}
         signed_ids: set[int] = set()
+        dos_by_id: dict[int, frozenset[str]] = {}
         if pass_no == 2:
             from stages.lib.continuity.signature import signed_page_names
 
             signed_names = signed_page_names(ctx.chart_name)
             signed_ids = {page["id"] for page in ctx.pages if page["page_name"] in signed_names}
+            staged_dos = extracted_dos(ctx.chart_name)
+            dos_by_id = {page["id"]: staged_dos[page["page_name"]]
+                         for page in ctx.pages if staged_dos.get(page["page_name"])}
         classified = _classify(
             ctx.pages, texts, ctx.todo, prior_main_ids=prior_mains,
             inputs=inputs, docling_pages=docling_pages, best_matches=best_matches,
-            signed_ids=signed_ids,
+            signed_ids=signed_ids, dos_by_id=dos_by_id,
+            exact_only=pass_no == 1,
         )
 
         with connect() as conn:
