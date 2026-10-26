@@ -1,9 +1,12 @@
 # A second review-ui for the client (own database, no ground truth)
 
 The client reviews charts and enters their own ground truth, without seeing ours.
-They get a second review-ui on the same VM: the same code, in its own folder, reading
-its own Postgres database. That database holds a copy of the pipeline's outputs and
-none of our ground truth.
+They get a second review-ui on the same VM, on **port 5001**: the same code, in its own
+folder, reading its own Postgres database. That database holds:
+
+- the pipeline's outputs for the charts **last run on or after 26 Oct 2026, 00:00 IST**,
+- **our users**, so the same usernames and passwords sign in,
+- **no ground truth**: nothing typed in Page Details, no CSV upload, no encounter review.
 
 ```
 VM (172.20.4.170)
@@ -12,8 +15,8 @@ VM (172.20.4.170)
 │     review-ui      :4000 / :4001 ──reads/writes──▶ imaging_outputs (our ground truth)
 │
 └── /opt/advantmed/client-review/                ← new folder, same git repo
-      review-ui      :4100 / :4101 ──reads/writes──▶ imaging_outputs_client
-                                                 (pipeline outputs copied in,
+      review-ui      :5000 / :5001 ──reads/writes──▶ imaging_outputs_client
+                                                 (charts run since 26 Oct, our users,
                                                   the client's ground truth only)
 ```
 
@@ -21,7 +24,7 @@ Nothing new to build. review-ui already runs on Postgres alone in Production Mod
 everything it writes is in the database: ground truth, encounter reviews, users and
 sign-ins. A second copy pointed at a second database is a separate system.
 
-Paths and ports here are examples; use your VM's layout. `$SRC` / `$DST` are the two
+Paths and ports here are examples; use your VM's layout. `SOURCE_DATABASE_URL` / `TARGET_DATABASE_URL` are the two
 connection strings (`postgresql://USER:PASSWORD@HOST:5432/imaging_outputs` and
 `…/imaging_outputs_client`). Keep the passwords out of shell history and out of git.
 
@@ -47,59 +50,59 @@ To update the client's screens later: `git pull` in this folder, then
 
 ### 2a. Create it, with the schema
 
-On the same Postgres server, or another one:
+On the same Postgres server, or another one (`TARGET_DATABASE_URL` as set in 2b):
 
 ```bash
 createdb -h HOST -U USER imaging_outputs_client
-psql "$DST" -f ../schema/v1.sql
+psql "$TARGET_DATABASE_URL" -f ../schema/v1.sql
 ```
 
 `v1.sql` is the whole current schema; the dated `changes_*.sql` files only upgrade an
 old database. It also seeds `pipeline_stage`, so that table's data is left out of the
 copy below.
 
-### 2b. Copy the pipeline outputs, without our ground truth
+### 2b. Copy the charts and the users
 
-Every table except these: our ground truth and reviews, our users, our deletion log, and
-the stage registry that `v1.sql` already seeded.
+`utilities/clone_client_db.py` does the copy.
 
-| Left out (data) | Why |
-|---|---|
-| `page_ground_truth`, `page_ground_truth_entry` | our ground truth (manual and bulk-uploaded) |
-| `encounter_review` | our encounter reviews |
-| `users`, `user_login` | our accounts and sign-ins; the client gets their own |
-| `chart_deletion` | our deletion log |
-| `pipeline_stage` | already seeded by `v1.sql` |
+- **Charts:** only those whose last run (`chart_list.updated_at`) is at or after the
+  cutoff. By default that is 26 Oct 2026 00:00, Asia/Kolkata; change it with
+  `--since "YYYY-MM-DD HH:MM"` and `--tz`.
+- **What is copied for each chart:** its pages, every pipeline result, its jobs and its
+  manifest rows. Ids are kept, so a page has the same `page_list.id` in both databases.
+- **Users:** merged in by username, so our passwords and roles work on 5001.
+- **Never copied:** `page_ground_truth` and `page_ground_truth_entry` (manual and
+  CSV-uploaded), `encounter_review`, `user_login`, `chart_deletion`.
 
-```bash
-pg_dump "$SRC" --data-only --no-owner --no-privileges -Fc -f /tmp/outputs.dump \
-  --exclude-table-data=page_ground_truth \
-  --exclude-table-data=page_ground_truth_entry \
-  --exclude-table-data=encounter_review \
-  --exclude-table-data=users \
-  --exclude-table-data=user_login \
-  --exclude-table-data=chart_deletion \
-  --exclude-table-data=pipeline_stage
-pg_restore --data-only --no-owner -d "$DST" /tmp/outputs.dump
-rm /tmp/outputs.dump
-```
-
-Ids are copied as they are, so a page has the same `page_list.id` in both databases. The
-refresh in section 5 depends on that.
-
-Check the copy:
+The script needs Python with psycopg. The core-pipeline image already has both, so run it
+from our folder, inside that container:
 
 ```bash
-psql "$DST" -c "SELECT
-  (SELECT count(*) FROM chart_list)        AS charts,
-  (SELECT count(*) FROM page_list)         AS pages,
-  (SELECT count(*) FROM imaging_final)     AS final_rows,
-  (SELECT count(*) FROM page_ground_truth) AS ground_truth;   -- must be 0"
+cd /opt/advantmed/advantmed-imaging-pipeline/core-pipeline
+export SOURCE_DATABASE_URL='postgresql://USER:PASSWORD@HOST:5432/imaging_outputs'
+export TARGET_DATABASE_URL='postgresql://USER:PASSWORD@HOST:5432/imaging_outputs_client'
+clone() { docker compose run --rm --no-deps -v "$PWD/../utilities:/app/utilities:ro" -e SOURCE_DATABASE_URL -e TARGET_DATABASE_URL api python /app/utilities/clone_client_db.py "$@"; }
+
+clone --dry-run    # how many charts and pages, by status; writes nothing
+clone              # the copy (refuses a target that already has charts)
 ```
 
-To give the client only some charts, delete the others in the client database after the
-copy, through its own review-ui (admin, Delete chart), or ask Claude Code for a filtered
-copy.
+If the database host is `localhost` on the VM, use `host.docker.internal` (or the VM's
+IP) in the two URLs, since the script runs inside a container. Prefix the `export` lines
+with a space to keep them out of shell history.
+
+The script prints a count per table and ends with the target's ground truth rows, which
+must be 0. Check the copy:
+
+```bash
+psql "$TARGET_DATABASE_URL" -c "SELECT
+  (SELECT count(*) FROM chart_list)              AS charts,
+  (SELECT min(updated_at) FROM chart_list)       AS earliest_run,   -- on or after the cutoff
+  (SELECT count(*) FROM page_list)               AS pages,
+  (SELECT count(*) FROM users)                   AS users,
+  (SELECT count(*) FROM page_ground_truth)       AS ground_truth,    -- 0
+  (SELECT count(*) FROM page_ground_truth_entry) AS ground_truth_csv -- 0"
+```
 
 ## 3. The client's review-ui
 
@@ -113,9 +116,9 @@ Blob block, so page images still load:
 
 ```ini
 # Its own ports, so it runs beside ours (docker-compose.yml reads them).
-BACKEND_PORT=4100
-FRONTEND_PORT=4101
-ALLOWED_ORIGINS=http://172.20.4.170:4101,http://localhost:4101
+BACKEND_PORT=5000
+FRONTEND_PORT=5001
+ALLOWED_ORIGINS=http://172.20.4.170:5001,http://localhost:5001
 
 # Database only: the client never sees our disk workspace.
 DATA_MODE=production
@@ -124,9 +127,10 @@ DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/imaging_outputs_client
 DATA_HOST_PATH=./data/empty
 PIPELINE_HOST_PATH=./data/empty
 
-# Its own sign-in secret: our tokens don't work here, theirs don't work on ours.
+# Its own sign-in secret: the same usernames and passwords work (the users were
+# copied), but a session from one instance does not open the other.
 AUTH_SECRET=<a new long random value>
-# No shared env admin account (or the client's own admin, not ours).
+# The same env admin account as ours, if you use one there; else leave empty.
 LOGIN_USERNAME=
 LOGIN_PASSWORD=
 
@@ -139,73 +143,52 @@ Then start it under its own Docker project name, so its containers never replace
 ```bash
 mkdir -p data/empty
 docker compose -p client-review up -d --build
-curl -fsS localhost:4100/health
+curl -fsS localhost:5000/health
 ```
 
-Open `http://172.20.4.170:4101`. If a firewall or NSG sits in front of the VM, open port
-4101 there; 4100 can stay internal.
+Open `http://172.20.4.170:5001`. If a firewall or NSG sits in front of the VM, open port
+5001 there; 5000 can stay internal.
 
-## 4. The client's accounts
+## 4. Accounts
 
-Their users exist only in their database. `--sql` needs plain `python3` only (no
-pipeline virtualenv in this folder): it asks for each password, prints the SQL with the
-password hashed, and `psql` runs it against the client database:
+Our users were copied, so everyone signs in as they do on ours. A user added or
+re-passworded on our side reaches 5001 at the next refresh (section 5). An account only
+the client should have is made against the client database alone. `--sql` needs plain
+`python3`: it asks for the password, prints the SQL with it hashed, and `psql` runs it.
 
 ```bash
 cd /opt/advantmed/client-review
-python3 utilities/create_user.py client.reviewer1 --name "Reviewer One" --role reviewer --sql > /tmp/u.sql
-python3 utilities/create_user.py client.lead --name "Client Lead" --role admin --sql >> /tmp/u.sql
-psql "$DST" -f /tmp/u.sql && rm /tmp/u.sql
+python3 utilities/create_user.py client.lead --name "Client Lead" --role reviewer --sql > /tmp/u.sql
+psql "$TARGET_DATABASE_URL" -f /tmp/u.sql && rm /tmp/u.sql
 ```
 
-Run it in your own terminal, since it prompts. Roles:
-`reviewer` enters ground truth, `viewer` only looks, `admin` can also delete charts. Give
-`admin` sparingly.
+Run it in your own terminal, since it prompts. Roles: `reviewer` enters ground truth,
+`viewer` only looks, `admin` can also delete charts.
 
 ## 5. Refreshing the outputs later
 
-The copy is a snapshot: new runs land only in our database. To bring new charts or
-re-runs across without losing what the client entered:
+The copy is a snapshot: new runs land only in our database. To bring them across:
 
-1. **Save the client's work** (their ground truth, reviews and users):
+```bash
+clone --dry-run --replace
+clone --replace
+```
 
-   ```bash
-   pg_dump "$DST" --data-only --no-owner -Fc -f /tmp/client_work.dump \
-     -t page_ground_truth -t page_ground_truth_entry -t encounter_review \
-     -t users -t user_login -t chart_deletion
-   ```
+`--replace` deletes the target's chart data and copies the charts run since the cutoff
+again (move the cutoff with `--since` if you want). Untouched: the client's ground
+truth, encounter reviews and client-only accounts. The client's ground truth is keyed by
+chart name and page number, not by pipeline row, so it lines up with the refreshed pages.
 
-2. **Recreate the database and copy the outputs again** (2a and 2b):
-
-   ```bash
-   docker compose -p client-review stop backend
-   dropdb -h HOST -U USER imaging_outputs_client && createdb -h HOST -U USER imaging_outputs_client
-   psql "$DST" -f ../schema/v1.sql
-   # … the pg_dump / pg_restore of 2b …
-   ```
-
-3. **Put the client's work back**, then restart:
-
-   ```bash
-   pg_restore --data-only --no-owner -d "$DST" /tmp/client_work.dump
-   docker compose -p client-review start backend
-   ```
-
-The client's ground truth points at pages by `page_list.id`, which the copy keeps.
-Re-running an existing chart keeps its page ids too. A chart deleted and re-ingested
-under new ids would orphan that chart's client ground truth, and step 3 then fails on
-that row: re-attach it by chart name and page number. Ask Claude Code for the query if
-it happens.
-
-Take a backup before each refresh (`pg_dump "$DST" -Fc -f client_backup_<date>.dump`).
+Take a backup before each refresh: `pg_dump "$TARGET_DATABASE_URL" -Fc -f client_backup_<date>.dump`.
 
 ## 6. Checks before handing it over
 
-- [ ] `SELECT count(*) FROM page_ground_truth` is 0 on the client database before the
-      client starts.
-- [ ] Signing in with one of our accounts on :4101 fails.
-- [ ] A chart opens on :4101 with images, and Page Details shows no ground truth.
-- [ ] A ground truth saved on :4101 appears in `imaging_outputs_client` and not in
+- [ ] `page_ground_truth` and `page_ground_truth_entry` are 0 on the client database
+      before the client starts.
+- [ ] Only charts run since the cutoff are listed on :5001.
+- [ ] Our usernames and passwords sign in on :5001.
+- [ ] A chart opens on :5001 with images, and Page Details shows no ground truth.
+- [ ] A ground truth saved on :5001 appears in `imaging_outputs_client` and not in
       `imaging_outputs`.
 - [ ] Our instance (:4001) is unchanged.
 - [ ] No Playground in the client's profile menu.
@@ -220,7 +203,7 @@ Take a backup before each refresh (`pg_dump "$DST" -Fc -f client_backup_<date>.d
   and core-pipeline up to 20. Keep the total under the server's `max_connections`
   (100 by default), or lower `DB_POOL_MAX` in the client `.env` (e.g. 10).
 - **Authentication covers ground-truth saves only** (CLAUDE.md §10): other routes are
-  open to anyone who can reach the port. Expose :4101 only to the client's network (an
+  open to anyone who can reach the port. Expose :5001 only to the client's network (an
   NSG rule on their IP range, or a VPN), not to the internet.
 - **One codebase:** both folders track the same `main`. Pull the client folder when you
   want the client to get a change, and only then.
