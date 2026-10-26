@@ -173,6 +173,18 @@ class TestAgreedPageType:
             if parent.startswith(f"{PN} > ") for l3 in l3s]
         assert {taxonomy.codeability_of(*path) for path in paths} == {"codeable"}
 
+    def test_the_users_codeability_calls(self):
+        """2026-10-26 (user): Operative Note Codable; Consent, Administrative and
+        Demographics Non-Codable; CT Angiography Codable; nothing left for review."""
+        space = taxonomy.label_space()
+        for l1, tag in (("Operative Note", "codeable"), ("Consent and Authorization", "non_codeable"),
+                        ("Administrative", "non_codeable"), ("Demographics", "non_codeable")):
+            assert {taxonomy.codeability_of(l1, l2) for l2 in space["L2"][l1]} == {tag}
+        assert taxonomy.codeability_of("Lab Report", "Radiology Report", "CT Angiography Report") == "codeable"
+        assert taxonomy.codeability_of("Lab Report", "Radiology Report", "CT Scan Report") == "non_codeable"
+        table = json.loads((CANON_DIR / "page_taxonomy.json").read_text(encoding="utf-8"))["codeability"]
+        assert "needs_review" not in table.values()
+
     def test_a_procedure_page_inside_an_operative_note_is_an_intra_operative_record(self):
         doc = [fp(1, "Operative Note", "Surgery Report", seq=1),
                fp(2, "Procedure Note", "Others", family="Procedure Note", seq=2, link="strong")]
@@ -194,7 +206,11 @@ class TestAgreedPageType:
         finals = [decide_final(p, doc) for p in doc]
         assert [f.codability for f in finals] == ["Codable", "Codable"]  # Intra-operative Record: the document's
 
-    def test_a_needs_review_path_takes_its_documents_codability(self):
+    def test_a_needs_review_path_takes_its_documents_codability(self, monkeypatch):
+        # No path is tagged needs_review since 2026-10-26 (user); the rule still holds.
+        real = taxonomy.codeability_of
+        monkeypatch.setattr(taxonomy, "codeability_of", lambda l1, l2=None, l3=None: (
+            "needs_review" if l2 == "Post-operative" else real(l1, l2, l3)))
         doc = [fp(1, "Operative Note", "Surgery Report", seq=1),
                fp(2, "Operative Note", "Post-operative", seq=2, link="strong", category="non_codeable")]
         final = decide_final(doc[1], doc)
@@ -206,7 +222,7 @@ class TestAgreedPageType:
         (f"{LAB} (Pathology Report)", "Biopsy Report", "Non-Codable"),  # the L3 decides
         (LAB, "Pathology Report", "Codable"),                          # no L3: the L2's tag
         ("Discharge Summary", "Others", "Discharge"),
-        ("Demographics", "Patient Information", "Codable"),
+        ("Demographics", "Patient Information", "Non-Codable"),
         ("Administrative", "Others", "Non-Codable"),
     ])
     def test_a_page_alone_reads_its_types_tag(self, page_type, page_subtype, codability):

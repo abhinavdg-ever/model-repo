@@ -57,7 +57,7 @@
    "name": "Problem List",
    "description": "A standing list of the patient's active or historical problems. Flat by design: the page type is the whole answer and no L2 adds anything.",
    "specialty": "",
-   "codeability": "needs_review",
+   "codeability": "non_codeable",
    "codeability_tag": "Context dependent (stand-alone vs in a note)",
    "notes": "Codeable when bound into a progress note, non-codeable standing alone. Decided after the continuity step."
   },
@@ -264,7 +264,7 @@
     "name": "Post-operative",
     "description": "Post-operative.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },
@@ -296,7 +296,7 @@
     "name": "Intra-operative Record",
     "description": "Intra-operative nursing / OR record: times, staff, positioning, counts.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },
@@ -304,7 +304,7 @@
     "name": "Implant Record",
     "description": "Implant log or sticker page: devices, lot numbers.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },
@@ -560,7 +560,7 @@
     "name": "Surgical Consent",
     "description": "Surgical Consent.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "non_codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },
@@ -568,7 +568,7 @@
     "name": "Transfusion Consent",
     "description": "Transfusion Consent.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "non_codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },
@@ -576,7 +576,7 @@
     "name": "Immunization Consent",
     "description": "Immunization Consent.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "non_codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },
@@ -592,7 +592,7 @@
     "name": "Release of Information",
     "description": "Release of Information.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "non_codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },
@@ -616,7 +616,7 @@
     "name": "Prior Authorization",
     "description": "Prior Authorization.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "non_codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },
@@ -650,7 +650,7 @@
     "name": "Patient Information",
     "description": "The patient's identity, contact and coverage details.",
     "specialty": "",
-    "codeability": "codeable",
+    "codeability": "non_codeable",
     "codeability_tag": "Codeable",
     "notes": ""
    },
@@ -658,7 +658,7 @@
     "name": "Face Sheet",
     "description": "The printed face sheet or registration page. Note that this overlaps Patient Demographics by design: both were asked for, and a face sheet is in practice the demographics page under another name.",
     "specialty": "",
-    "codeability": "codeable",
+    "codeability": "non_codeable",
     "codeability_tag": "Codeable",
     "notes": ""
    },
@@ -752,7 +752,7 @@
     "name": "Referral Order",
     "description": "Referral Order.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "non_codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },
@@ -778,7 +778,7 @@
     "name": "Diagnosis List/Index",
     "description": "A list or index of diagnoses, often coded, with no assessment.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "non_codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },
@@ -796,7 +796,7 @@
     "name": "Assessment",
     "description": "A structured assessment or evaluation: functional status, ADL and IADL, nutrition, occupational health, fitness for duty, annual wellness.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "non_codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },
@@ -804,7 +804,7 @@
     "name": "Questionnaire",
     "description": "A questionnaire, checklist or screening instrument completed about the patient: screening tests, preventive checklists, health maintenance, Mini-Cog and clock drawing, growth charts.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "non_codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },
@@ -812,7 +812,7 @@
     "name": "Others",
     "description": "A form that is neither clearly a questionnaire nor clearly an assessment.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "non_codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    }
@@ -906,7 +906,7 @@
     "name": "Billing & Invoices",
     "description": "Invoices, billing pages, superbills, charge sheets and estimates. Codeability here can depend on the ingest source rather than the page.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "non_codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },
@@ -914,7 +914,7 @@
     "name": "Patient Registration",
     "description": "Registration / intake demographics form for registration.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "non_codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },
@@ -1048,7 +1048,7 @@
     "name": "CT Angiography Report",
     "description": "CT Angiography Report. Imaging reports: plain film, CT, MRI, ultrasound, mammography, nuclear medicine, bone density. Angiography is held separately from plain CT and MR because it is a different protocol and a different code.",
     "specialty": "",
-    "codeability": "non_codeable",
+    "codeability": "codeable",
     "codeability_tag": "Non-Codeable",
     "notes": ""
    },

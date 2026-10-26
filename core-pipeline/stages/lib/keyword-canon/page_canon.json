@@ -5327,7 +5327,7 @@
         "L2": "Radiology Report",
         "L3": "CT Angiography Report"
       },
-      "codeability": "non_codeable",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "Cardiology",
       "lexicon": {
@@ -6231,7 +6231,7 @@
         "L2": "Triage Report",
         "L3": ""
       },
-      "codeability": "non_codeable",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -6273,7 +6273,7 @@
         "L2": "Triage Report",
         "L3": ""
       },
-      "codeability": "non_codeable",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "Emergency",
       "lexicon": {
@@ -7666,7 +7666,7 @@
         "L2": "Face Sheet",
         "L3": ""
       },
-      "codeability": "codeable",
+      "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -7707,7 +7707,7 @@
         "L2": "Patient Information",
         "L3": ""
       },
-      "codeability": "codeable",
+      "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -7751,7 +7751,7 @@
         "L2": "Patient Information",
         "L3": ""
       },
-      "codeability": "codeable",
+      "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -7783,7 +7783,7 @@
         "L2": "Patient Registration",
         "L3": ""
       },
-      "codeability": "codeable",
+      "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -8976,8 +8976,8 @@
         "L2": "Others",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "context",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -9012,8 +9012,8 @@
         "L2": "",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "context",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -9046,8 +9046,8 @@
         "L2": "Assessment",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "context",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -9083,8 +9083,8 @@
         "L2": "Assessment",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "context",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -9201,8 +9201,8 @@
         "L2": "Assessment",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "context",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -9237,8 +9237,8 @@
         "L2": "Assessment",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "context",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -9272,8 +9272,8 @@
         "L2": "Assessment",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "context",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -9305,8 +9305,8 @@
         "L2": "Questionnaire",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "context",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -9346,8 +9346,8 @@
         "L2": "Questionnaire",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "context",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -9409,8 +9409,8 @@
         "L2": "Questionnaire",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "context",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -9445,8 +9445,8 @@
         "L2": "Questionnaire",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "context",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -9482,8 +9482,8 @@
         "L2": "Questionnaire",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "context",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -9516,8 +9516,8 @@
         "L2": "Others",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "context",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -10046,8 +10046,8 @@
         "L2": "Billing & Invoices",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "source",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -10097,8 +10097,8 @@
         "L2": "Billing & Invoices",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "source",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -10131,8 +10131,8 @@
         "L2": "Billing & Invoices",
         "L3": ""
       },
-      "codeability": "needs_review",
-      "codeability_rule": "source",
+      "codeability": "non_codeable",
+      "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
         "title_terms": [
@@ -10685,7 +10685,7 @@
         "L2": "",
         "L3": ""
       },
-      "codeability": "needs_review",
+      "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -11048,7 +11048,7 @@
         "L2": "Post-operative",
         "L3": ""
       },
-      "codeability": "needs_review",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -11115,7 +11115,7 @@
         "L2": "Intra-operative Record",
         "L3": ""
       },
-      "codeability": "needs_review",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -11150,7 +11150,7 @@
         "L2": "Implant Record",
         "L3": ""
       },
-      "codeability": "needs_review",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -11671,7 +11671,7 @@
         "L2": "Referral Order",
         "L3": ""
       },
-      "codeability": "needs_review",
+      "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -11701,7 +11701,7 @@
         "L2": "",
         "L3": ""
       },
-      "codeability": "needs_review",
+      "codeability": "non_codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {

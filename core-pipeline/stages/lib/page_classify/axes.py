@@ -687,8 +687,8 @@ def gate(
         codeability, codeability_conf, sources[4] = entry["codeability"], family_conf, CANON
     elif fired is not None and not entry and fired.codeability:
         codeability, codeability_conf, sources[4] = fired.codeability, family_conf, RULE
-    if l1 in tax.ALWAYS_CODEABLE_L1:  # every Progress Note page (2026-10-26, user)
-        codeability, codeability_conf = "codeable", family_conf
+    if l1 in tax.L1_CODEABILITY:  # one tag for the whole family (2026-10-26, user)
+        codeability, codeability_conf = tax.L1_CODEABILITY[l1], family_conf
         sources[4] = sources[4] if sources[4] != "-" else CANON
 
     return AxesResult(

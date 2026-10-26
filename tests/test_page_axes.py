@@ -266,10 +266,10 @@ class TestCodeability:
         assert result.canon_page_type == "CT Scan Report"
         assert (result.codeability, result.codeability_rule) == ("non_codeable", "page_type_tag")
 
-    def test_a_context_rule_waits_for_the_document(self):
+    def test_a_former_context_type_is_non_codeable(self):
+        # 2026-10-26 (user): nothing is left for review; these page types are Non-Codable.
         result = axes.gate(None, {}, "CLINICAL SUMMARY\nproblems and medications reviewed\n")
-        assert result.codeability_rule == "context"
-        assert (result.codeability, result.codeability_confidence) == ("needs_review", None)
+        assert (result.codeability, result.codeability_rule) == ("non_codeable", "page_type_tag")
 
     def test_nothing_decided_means_needs_review(self):
         result = gate(raw(l1="Administrative", l1_p=0.15, second=0.1), text=NO_TERMS)

@@ -14,8 +14,15 @@ from typing import Any, Optional
 from stages.lib.canon_store import CANON_DIR, CanonFile
 
 PROGRESS_NOTE = "Progress Note"
-# Every Progress Note page is Codable, whatever its L2 / L3 (2026-10-26, user).
-ALWAYS_CODEABLE_L1 = frozenset({PROGRESS_NOTE})
+# Families whose every page takes one codeability, whatever its L2 / L3 (2026-10-26,
+# user), so a taxonomy refresh cannot bring an old tag back.
+L1_CODEABILITY = {
+    PROGRESS_NOTE: "codeable",
+    "Operative Note": "codeable",
+    "Consent and Authorization": "non_codeable",
+    "Administrative": "non_codeable",
+    "Demographics": "non_codeable",
+}
 
 # codability label -> page_classification.classification_category
 CATEGORY = {
@@ -63,8 +70,8 @@ def codeability_of(l1: Optional[str], l2: Optional[str] = None, l3: Optional[str
     L1, Others or Unknown."""
     if not l1 or l1 in ("Others", "Unknown"):
         return None
-    if l1 in ALWAYS_CODEABLE_L1:
-        return "codeable"
+    if l1 in L1_CODEABILITY:
+        return L1_CODEABILITY[l1]
     table = _TAXONOMY.get().get("codeability") or {}
     if l2 and l3 and f"{l1} > {l2} > {l3}" in table:
         return table[f"{l1} > {l2} > {l3}"]
