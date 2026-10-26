@@ -161,8 +161,17 @@ class TestAgreedPageType:
                   names=("Invoice", "Billing & Invoices", "Administrative"), l2="Billing & Invoices",
                   seq=3, link="strong")]
         med, bill = decide_final(doc[1], doc), decide_final(doc[2], doc)
-        assert (med.page_type, med.page_subtype, med.codability) == (PN, "Medication List", "Non-Codable")
-        assert (bill.page_type, bill.page_subtype) == (PN, "Others")
+        # Every Progress Note page is Codable (2026-10-26, user), the billing page too.
+        assert (med.page_type, med.page_subtype, med.codability) == (PN, "Medication List", "Codable")
+        assert (bill.page_type, bill.page_subtype, bill.codability) == (PN, "Others", "Codable")
+
+    def test_every_progress_note_path_is_codeable(self):
+        """2026-10-26 (user): all Progress Notes are Codable, whatever the L2 / L3."""
+        space = taxonomy.label_space()
+        paths = [(PN, None, None)] + [(PN, l2, None) for l2 in space["L2"][PN]] + [
+            (PN, parent.split(" > ")[1], l3) for parent, l3s in space["L3"].items()
+            if parent.startswith(f"{PN} > ") for l3 in l3s]
+        assert {taxonomy.codeability_of(*path) for path in paths} == {"codeable"}
 
     def test_a_procedure_page_inside_an_operative_note_is_an_intra_operative_record(self):
         doc = [fp(1, "Operative Note", "Surgery Report", seq=1),

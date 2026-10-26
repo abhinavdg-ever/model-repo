@@ -124,7 +124,7 @@
     "name": "Problem List",
     "description": "A problem list printed as a section inside a note, as opposed to a standalone problem list page, which is its own L1.",
     "specialty": "",
-    "codeability": "non_codeable",
+    "codeability": "codeable",
     "codeability_tag": "Non-Codeable",
     "notes": ""
    },
@@ -132,7 +132,7 @@
     "name": "Medication List",
     "description": "Medications and allergies as a section inside a note. A standalone medication page is Medication Record instead.",
     "specialty": "",
-    "codeability": "non_codeable",
+    "codeability": "codeable",
     "codeability_tag": "Non-Codeable",
     "notes": ""
    },
@@ -156,7 +156,7 @@
     "name": "Vitals",
     "description": "A note page dominated by vital signs.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },
@@ -172,7 +172,7 @@
     "name": "Questionnaire",
     "description": "A form or questionnaire bound into a note, which makes it part of that note. The same form standing alone is Forms and Questionnaires.",
     "specialty": "",
-    "codeability": "needs_review",
+    "codeability": "codeable",
     "codeability_tag": "Needs Review",
     "notes": ""
    },

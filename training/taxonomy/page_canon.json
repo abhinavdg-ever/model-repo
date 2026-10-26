@@ -32,7 +32,7 @@
         "L2": "",
         "L3": ""
       },
-      "codeability": "needs_review",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -589,7 +589,7 @@
         "L2": "",
         "L3": ""
       },
-      "codeability": "non_codeable",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -748,7 +748,7 @@
         "L2": "",
         "L3": ""
       },
-      "codeability": "non_codeable",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "Nursing",
       "lexicon": {
@@ -1238,7 +1238,7 @@
         "L2": "",
         "L3": ""
       },
-      "codeability": "non_codeable",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -1757,7 +1757,7 @@
         "L2": "",
         "L3": ""
       },
-      "codeability": "non_codeable",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -1847,7 +1847,7 @@
         "L2": "",
         "L3": ""
       },
-      "codeability": "non_codeable",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -10401,7 +10401,7 @@
         "L2": "Problem List",
         "L3": ""
       },
-      "codeability": "non_codeable",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -10430,7 +10430,7 @@
         "L2": "Medication List",
         "L3": ""
       },
-      "codeability": "non_codeable",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -10523,7 +10523,7 @@
         "L2": "Vitals",
         "L3": ""
       },
-      "codeability": "needs_review",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {
@@ -10592,7 +10592,7 @@
         "L2": "Questionnaire",
         "L3": ""
       },
-      "codeability": "needs_review",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "",
       "lexicon": {

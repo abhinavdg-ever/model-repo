@@ -14,6 +14,8 @@ from typing import Any, Optional
 from stages.lib.canon_store import CANON_DIR, CanonFile
 
 PROGRESS_NOTE = "Progress Note"
+# Every Progress Note page is Codable, whatever its L2 / L3 (2026-10-26, user).
+ALWAYS_CODEABLE_L1 = frozenset({PROGRESS_NOTE})
 
 # codability label -> page_classification.classification_category
 CATEGORY = {
@@ -61,6 +63,8 @@ def codeability_of(l1: Optional[str], l2: Optional[str] = None, l3: Optional[str
     L1, Others or Unknown."""
     if not l1 or l1 in ("Others", "Unknown"):
         return None
+    if l1 in ALWAYS_CODEABLE_L1:
+        return "codeable"
     table = _TAXONOMY.get().get("codeability") or {}
     if l2 and l3 and f"{l1} > {l2} > {l3}" in table:
         return table[f"{l1} > {l2} > {l3}"]

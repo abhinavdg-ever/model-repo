@@ -2459,7 +2459,7 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Superbill | Administrative | Administrative > Superbill | non_codeable |  | Superbill, Super Bill, Encounter Form |  | CPT, ICD-10, fee, charges, icd, modifier, units, encounter | procedure code, diagnosis code |
 | Administrative Form | Administrative Record | Administrative > Others | non_codeable |  |  | Administrative Form |  |  |
 | Policy Page | Administrative Record | Consent and Authorization > General Consent | non_codeable |  |  | Policy Page |  |  |
-| Social Report | Administrative Record | Progress Note | non_codeable |  |  | Social Report |  |  |
+| Social Report | Administrative Record | Progress Note | codeable |  |  | Social Report |  |  |
 | Allergies Report | Allergies Report | Lab Report > Lab Result > Allergy Testing Report | non_codeable |  | allergen, allergens | Allergies Report, allergy list | allergen, reaction, intolerance, ige, sensitization, class, kua, panel | Allergies, NKDA, severity |
 | Annual Assessments | Annual Assessments | Forms and Questionnaires > Assessment | needs_review |  |  | Annual Assessments, Annual Health Assessment, comprehensive assessment, health risk assessment (HRA), in-home assessment | review of systems, chronic conditions reviewed |  |
 | HouseCalls visit summary | Annual Assessments | Progress Note | codeable |  |  | HouseCalls visit summary, in-home assessment, health plan | HouseCalls, nurse practitioner, diagnoses confirmed |  |
@@ -2586,7 +2586,7 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Chemistry | Laboratory Data | Lab Report > Lab Result > Others | non_codeable |  |  | Chemistry | sodium, potassium, AST/ALT, reference range, H/L flags, collected, resulted | BMP, CMP, creatinine, BUN |
 | Glucose report | Laboratory Data | Lab Report > Lab Result > Glucose Report | non_codeable |  |  | Glucose report, glucose log | Blood glucose, fingerstick, glucometer, Dexcom, Libre, time in range | FSBS, CGM |
 | Hematology | Laboratory Data | Lab Report > Lab Result > Hematology Report | non_codeable |  | cbc, hematology | Hematology | hemoglobin, hematocrit, platelets, differential, reference range, wbc, rbc, mcv, mch, mchc, rdw, neutrophils, lymphocytes | CBC, WBC, MCV |
-| Laboratory Data | Laboratory Data | Progress Note | non_codeable |  |  | Laboratory Data, lab results, lab flow sheet, lab requisition | reference range, abnormal flag, collected, resulted, prothrombin time | result, units, INR |
+| Laboratory Data | Laboratory Data | Progress Note | codeable |  |  | Laboratory Data, lab results, lab flow sheet, lab requisition | reference range, abnormal flag, collected, resulted, prothrombin time | result, units, INR |
 | Microbiology | Laboratory Data | Lab Report > Lab Result > Microbiology Report | non_codeable |  | microbiology, culture | Microbiology | culture, sensitivity, susceptibility, organism, gram stain, colony count, urine/blood/wound culture, organisms, growth, gram, colonies, isolated, mic |  |
 | Urinalysis | Laboratory Data | Lab Report > Lab Result > Urinalysis Report | non_codeable |  | urinalysis | Urinalysis | urine dipstick, specific gravity, leukocyte esterase, nitrite, protein, urine, urinalysis, specific, gravity, ketones, leukocyte, casts, microscopic | UA, microscopic |
 | Allergy List | Laboratory Report | Lab Report > Lab Result > Allergy Testing Report | non_codeable |  |  | Allergy List |  |  |
@@ -2624,7 +2624,7 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Nuclear Medicine Report | Nuclear Medicine Report | Lab Report > Radiology Report > Nuclear Medicine Report | codeable | Radiology | scintigraphy | Nuclear Medicine Report | Nuclear medicine, radiotracer, Tc-99m, uptake, bone scan, thyroid scan, nuclear, technetium, scintigraphy, spect, pet | HIDA, PET |
 | SPECT report | Nuclear Medicine Report | Lab Report > Radiology Report > Nuclear Medicine Report | codeable | Radiology |  | SPECT report | SPECT, perfusion, gated, tracer, defect | ischemia, infarct |
 | Nurses Notes | Nursing Note | Progress Note | codeable | Nursing |  | Nurses Notes |  |  |
-| Nursing Note | Nursing Note | Progress Note | non_codeable | Nursing |  | Nursing Note, Nurse's note, nursing chart, home health visit, skilled nursing visit | vital signs, flowsheet | RN, LPN |
+| Nursing Note | Nursing Note | Progress Note | codeable | Nursing |  | Nursing Note, Nurse's note, nursing chart, home health visit, skilled nursing visit | vital signs, flowsheet | RN, LPN |
 | Antepartum Record | Obstetric and Gynecologic Record | Progress Note | codeable | Obstetrics and Gynecology |  | Antepartum Record |  |  |
 | Pap and HPV Report | Obstetric and Gynecologic Record | Lab Report > Diagnostic Study | codeable | Obstetrics and Gynecology |  | Pap and HPV Report |  |  |
 | Prenatal Record | Obstetric and Gynecologic Record | Progress Note | codeable | Obstetrics and Gynecology |  | Prenatal Record |  |  |
@@ -2676,7 +2676,7 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Nutrition assessment | Other Evaluation | Progress Note | codeable |  |  | Nutrition assessment, diet order | dietitian, weight loss, malnutrition, albumin, tube feeding, caloric needs | RD, BMI |
 | Other Evaluation | Other Evaluation | Forms and Questionnaires > Assessment | needs_review |  |  | Other Evaluation, initial evaluation, inpatient evaluation | re-evaluation, evaluated by | Evaluation, findings, goals |
 | Index Page | Page Artefact | Others | non_codeable |  |  | Index Page, encounter index, encounter list, document list | Index, procedure index, table of contents, page range |  |
-| Signature Page | Page Artefact | Progress Note | non_codeable |  |  | Signature Page |  |  |
+| Signature Page | Page Artefact | Progress Note | codeable |  |  | Signature Page |  |  |
 | Pain & Palliative Note | Pain & Palliative Note | Progress Note | codeable | Palliative Care |  | Pain & Palliative Note | pain management, chronic pain, epidural steroid injection, nerve block, palliative care, goals of care, code status, hospice, comfort care | pain scale |
 | Biopsy Report | Pathology Report | Lab Report > Pathology Report > Biopsy Report | codeable | Pathology | biopsy | Biopsy Report | histology, benign/malignant, margins, biopsy, gross, microscopic, tissue, fragments, stain | Biopsy, specimen, carcinoma, final diagnosis |
 | Cytology / molecular report | Pathology Report | Lab Report > Pathology Report > Molecular Diagnostics Report | codeable | Pathology | molecular | Cytology / molecular report, Cytology, molecular report | cytopathology, adequacy, Bethesda, molecular diagnostics, molecular, pcr, amplification, assay, detected, mutation | FNA, PCR, mutation, NGS, EGFR, KRAS |
@@ -2710,7 +2710,7 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Pathology Procedure | Procedure Note | Procedure Note > Pathology Procedure | codeable |  |  | Pathology Procedure | gross, grossing, cassettes, sections, fixed |  |
 | Procedure Note | Procedure Note | Procedure Note > Others | codeable |  |  | Procedure Note | indication, time-out, local anesthesia, complications: none | technique, tolerated well |
 | Procedure Note (class words) | Procedure Note | Procedure Note | codeable |  |  |  | procedure, performed, tolerated, session, treatment, administered |  |
-| Admission Record | Progress Note | Progress Note | needs_review |  |  | Admission Record | hpi, subjective, objective, assessment, plan, ros, exam, complaint, presents, interval, followup, counseled |  |
+| Admission Record | Progress Note | Progress Note | codeable |  |  | Admission Record | hpi, subjective, objective, assessment, plan, ros, exam, complaint, presents, interval, followup, counseled |  |
 | Assessment and Plan | Progress Note | Progress Note > Assessment and Plan | codeable |  |  |  | assessment, plan, continue, recommend, recommended, followup, monitor, discussed, counseled |  |
 | CC/HPI | Progress Note | Progress Note > CC/HPI | codeable |  |  |  | complaint, hpi, presents, onset, duration, illness, reports, denies, history |  |
 | F2F Evaluation Note | Progress Note | Progress Note | codeable |  |  | F2F Evaluation Note, F2F encounter | Face-to-face, home health certification, clinical findings support | DME |
@@ -2722,9 +2722,9 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Physician Note | Progress Note | Progress Note | codeable |  |  | Physician Note | electronically signed by | MD, DO, attending, assessment, plan |
 | Procedure List | Progress Note | Progress Note > Procedure List | codeable |  |  |  | procedure, performed, tolerated, indication, anesthetic, consent |  |
 | Progress Note | Progress Note | Progress Note | codeable |  |  | Progress Note, History & Physical | Subjective, Objective, Consultation, reason for consult, established patient | SOAP, Assessment, Plan, Chief Complaint, HPI, H&P, encounter, follow-up, interval history |
-| Progress Note > Medication List | Progress Note | Progress Note > Medication List | non_codeable |  |  |  | medications, allergies, tablet, capsule, dose, sig, refills, reconciliation |  |
-| Progress Note > Problem List | Progress Note | Progress Note > Problem List | non_codeable |  |  |  | problems, problem, resolved, onset, chronicity |  |
-| Progress Note > Questionnaire | Progress Note | Progress Note > Questionnaire | needs_review |  |  |  | questionnaire, screening, score, phq, gad, audit, responses |  |
+| Progress Note > Medication List | Progress Note | Progress Note > Medication List | codeable |  |  |  | medications, allergies, tablet, capsule, dose, sig, refills, reconciliation |  |
+| Progress Note > Problem List | Progress Note | Progress Note > Problem List | codeable |  |  |  | problems, problem, resolved, onset, chronicity |  |
+| Progress Note > Questionnaire | Progress Note | Progress Note > Questionnaire | codeable |  |  |  | questionnaire, screening, score, phq, gad, audit, responses |  |
 | Progress Note > Summary | Progress Note | Progress Note > Summary | codeable |  |  |  | summary, course, hospitalization, recap, overview |  |
 | Progress Note > Visit Diagnosis | Progress Note | Progress Note > Visit Diagnosis | codeable |  |  |  | diagnosis, diagnoses, icd, encounter, primary, secondary, assessed |  |
 | Signature | Progress Note | Progress Note > Signature | codeable |  |  |  | electronically, signed, attestation, attest, cosigned, authenticated, addendum |  |
@@ -2732,7 +2732,7 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Social History | Progress Note | Progress Note | codeable |  |  | Social History | social work, psychosocial, living situation, tobacco, alcohol, caregiver, support system |  |
 | Summary | Progress Note | Progress Note | codeable |  |  | Summary, encounter summary, summary of visit |  | summary of care |
 | Visit Diagnosis | Progress Note | Progress Note | codeable |  |  | Visit Diagnosis, Visit Diagnoses, encounter diagnoses, diagnoses this visit, diagnosis associated with visit | ICD-10 | primary diagnosis |
-| Vitals | Progress Note | Progress Note > Vitals | needs_review |  |  |  | vitals, bp, pulse, temperature, respiration, weight, height, bmi, spo2 |  |
+| Vitals | Progress Note | Progress Note > Vitals | codeable |  |  |  | vitals, bp, pulse, temperature, respiration, weight, height, bmi, spo2 |  |
 | Consultation Letter | Provider Letter | Provider Letter > Consultation Letter | non_codeable |  |  |  | consultation, consulted, recommendations, thank, opinion |  |
 | Provider Letter | Provider Letter | Provider Letter > Others | codeable |  |  | Provider Letter |  |  |
 | Provider Letter (class words) | Provider Letter | Provider Letter | non_codeable |  |  |  | dear, sincerely, regards, letter, colleague, thank |  |
@@ -2777,7 +2777,7 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Audiology Report | Specialty Note | Progress Note | codeable | Audiology |  | Audiology Report |  |  |
 | Nephrology Note | Specialty Note | Progress Note | codeable | Nephrology |  | Nephrology Note |  |  |
 | Oncology Note | Specialty Note | Progress Note | codeable | Oncology |  | Oncology Note |  |  |
-| Phone Note | Telephone Encounter | Progress Note | non_codeable |  |  | Phone Note, telephone note | spoke with patient, pt called, advised, call documented |  |
+| Phone Note | Telephone Encounter | Progress Note | codeable |  |  | Phone Note, telephone note | spoke with patient, pt called, advised, call documented |  |
 | Telephone Encounter | Telephone Encounter | Progress Note | codeable |  |  | Telephone Encounter, phone visit, telephone message, message taken by | call back number, triage call, nurse triage |  |
 | Acupuncture treatment record | Therapy | Procedure Note > Therapy Session | codeable |  |  | Acupuncture treatment record | Acupuncture, L.Ac, needles, points, meridian, therapy, therapist, session, goals, exercises, strengthening, gait, rehabilitation | session |
 | Chiropractic treatment note | Therapy | Procedure Note > Therapy Session | codeable | Orthopedics |  | Chiropractic treatment note | Chiropractic, D.C., subluxation, spinal manipulation, adjustment, cervical/lumbar |  |
