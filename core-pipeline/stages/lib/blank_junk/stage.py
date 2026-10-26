@@ -44,6 +44,8 @@ Duplicate detection (after the verdict, among Main pages only -- never blank or 
   **later** page is the duplicate (2026-10-22, user). The other is the duplicate
   (or partial duplicate).
 * Blank pages and texts shorter than 300 normalized chars are never compared.
+* A signature page is never compared, so never a duplicate (2026-10-26, user): kv_extract's
+  Electronic Signature (pass 2), or ``duplicates.signature_terms`` on the page.
 * Prior-pass ``main`` pages are included as neighbors so pass 2 can still
   match a handwritten page to a printed one from pass 1.
 
@@ -54,6 +56,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -261,6 +264,7 @@ def _classify(
     inputs: Optional[dict[int, "method.PageInputs"]] = None,
     docling_pages: Optional[dict[int, dict[str, Any]]] = None,
     best_matches: Optional[dict[str, dict[str, Any]]] = None,
+    signed_ids: Optional[set[int]] = None,
 ) -> list[dict[str, Any]]:
     """Classify ``todo`` pages, then look for duplicates among Main pages.
 
@@ -277,6 +281,10 @@ def _classify(
 
     ``best_matches`` (page name -> its highest match, see _write_votes) is filled
     for every page compared, including earlier-pass pages that get no row here.
+
+    A signature page (``signed_ids``: kv_extract's Electronic Signature, or the canon's
+    ``duplicates.signature_terms`` on the page) is never compared, so it is never a
+    duplicate or a partial (2026-10-26, user).
     """
     prior = set(prior_main_ids or ())
     by_id: dict[int, dict[str, Any]] = {}
@@ -289,17 +297,25 @@ def _classify(
         page_inputs.text = text
         scores = model_scores(text, docling=(docling_pages or {}).get(page_id)) if text.strip() else {}
         page_inputs.bert = scores.get("bert")
-        verdict = method.decide(page_inputs)
+        verdict = method.post_process(method.decide(page_inputs), page_inputs)
         by_id[page_id] = _row_for(
             page, code=verdict.code, reason=verdict.reason, confidence=verdict.confidence,
             votes=verdict.votes,
         )
+
+    signed = set(signed_ids or ())
+    terms = method.canon().raw.get("duplicates", {}).get("signature_terms") or []
+    signature_terms = (
+        re.compile("|".join(rf"\b{re.escape(term)}\b" for term in terms), re.IGNORECASE) if terms else None
+    )
 
     def _comparable(page_id: int) -> bool:
         """Main pages only (2026-10-22, user): blank and junk pages, and short texts,
         are never compared."""
         text = texts.get(page_id) or ""
         if not text_is_comparable(text):
+            return False
+        if page_id in signed or (signature_terms is not None and signature_terms.search(text)):
             return False
         if page_id in by_id:
             return by_id[page_id]["code"] == CODE_MAIN
@@ -578,6 +594,16 @@ def _body_ink(chart_name: str, page_name: str) -> tuple[Optional[bool], Optional
         return None, None
 
 
+def dated_page_names(chart_name: str) -> set[str]:
+    """Page names kv_extract selected a DOS on (staging/extraction.json)."""
+    from stages.lib.extraction import staging
+
+    staged = staging.read(chart_name)
+    if staged is None:
+        return set()
+    return {page.name for page in staged if page.selected("dos")}
+
+
 def _page_inputs(
     ctx: Any,
     pass_no: int,
@@ -589,6 +615,7 @@ def _page_inputs(
 ) -> dict[int, "method.PageInputs"]:
     """Everything method.decide needs per page except the text and the model scores."""
     signed: set[str] = set()
+    dated: set[str] = set()
     signature_known = False
     if pass_no == 2:
         from db.paths import imaging_csv
@@ -596,6 +623,7 @@ def _page_inputs(
 
         signed = signed_page_names(ctx.chart_name)
         signature_known = imaging_csv(ctx.chart_name, "provider_signature").is_file()
+        dated = dated_page_names(ctx.chart_name)
     top = float(method.canon().raw["short_page"]["top_fraction"])
     out: dict[int, method.PageInputs] = {}
     for page in ctx.pages:
@@ -612,6 +640,7 @@ def _page_inputs(
             hw_area_pct=float(area) if area is not None else None,
             signed=page["page_name"] in signed,
             signature_known=signature_known,
+            dated=page["page_name"] in dated,
             no_ink=str(q.get("hw_method") or "") in NO_INK_METHODS,
         )
         if pass_no == 2:
@@ -877,9 +906,16 @@ def _run_pass(
         else:
             inputs = _page_inputs(ctx, pass_no, quality)
         best_matches: dict[str, dict[str, Any]] = {}
+        signed_ids: set[int] = set()
+        if pass_no == 2:
+            from stages.lib.continuity.signature import signed_page_names
+
+            signed_names = signed_page_names(ctx.chart_name)
+            signed_ids = {page["id"] for page in ctx.pages if page["page_name"] in signed_names}
         classified = _classify(
             ctx.pages, texts, ctx.todo, prior_main_ids=prior_mains,
             inputs=inputs, docling_pages=docling_pages, best_matches=best_matches,
+            signed_ids=signed_ids,
         )
 
         with connect() as conn:

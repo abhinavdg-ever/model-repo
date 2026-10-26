@@ -312,3 +312,19 @@ class TestShortPage:
     def test_a_signature_comes_first_and_pass_1_never_runs_it(self):
         assert self.short(bert=bert(0.30), signed=True).rule == "R4"
         assert run(FILLER, pass_no=1, content_bottom=0.10, body_ink=False, bert=bert(0.30)).rule == "P1"
+
+
+class TestPostProcess:
+    """2026-10-26 (user): a page with a DOS extracted is never junk."""
+
+    def test_a_dated_page_the_ladder_junked_is_kept(self):
+        inputs = PageInputs(text=JUNK_TEXT, pass_no=2, bert=bert(0.99), dated=True)
+        verdict = method.post_process(decide(inputs), inputs)
+        assert verdict.code == classify.CODE_MAIN and verdict.rule == "DOS"
+        assert "dos_kept" in verdict.votes and 0 < verdict.confidence <= 1
+
+    def test_undated_junk_and_pass_1_are_unchanged(self):
+        for inputs in (PageInputs(text=JUNK_TEXT, pass_no=2, bert=bert(0.99)),
+                       PageInputs(text=JUNK_TEXT, pass_no=1, bert=bert(0.99), dated=True)):
+            verdict = decide(inputs)
+            assert method.post_process(verdict, inputs) is verdict

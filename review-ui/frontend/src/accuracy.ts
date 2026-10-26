@@ -697,9 +697,22 @@ export function matchBand(k: number): "good" | "fair" | "bad" {
   return (MATCH_BANDS.find((band) => k >= band.min && k <= band.max) ?? MATCH_BANDS[2]).id;
 }
 
+/** Overall: pages per band (Good / Fair / Bad). */
+export function bandCounts(tally: Tally): Record<"good" | "fair" | "bad", number> {
+  const out = { good: 0, fair: 0, bad: 0 };
+  (tally.matched ?? []).forEach((pages, k) => {
+    if (pages) out[matchBand(k)] += pages;
+  });
+  return out;
+}
+
 export function formatDistribution(tally: Tally, binary = false): string {
   const na = tally.na > 0 ? ` · Not Available ${tally.na}` : "";
   if (tally.scored === 0) return na ? na.slice(3) : "—";
+  if (tally.fullOnly && tally.matched) {
+    const bands = bandCounts(tally);
+    return MATCH_BANDS.map((band) => `${band.label} ${bands[band.id]}`).join(" · ") + na;
+  }
   if (binary) return `Match ${tally.yes} · No Match ${tally.no}${na}`;
   return `Match ${tally.yes} · Partial ${tally.maybe} · No Match ${tally.no}${na}`;
 }

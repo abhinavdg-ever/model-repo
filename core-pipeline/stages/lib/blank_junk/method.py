@@ -31,6 +31,9 @@ Signature (no signature phrases since 2026-10-21). The ladder, first rule that f
                     review; below 0.50 -> Main
     handwritten     a page more than 30% handwritten is never junked by R5: Main for review
 
+After the ladder (``post_process``, 2026-10-26, user):
+  DOS kept         pass 2: a page with a DOS extracted (kv_extract) is never junk -> Main
+
 So junk is decided in pass 1 by R1-R3 and DistilBERT's sure calls (p(junk) > 0.95); the rest
 of its junk calls wait for the Final OCR.
 Confidence: R1 1.0, R2 0.99, R3 0.90, R4 0.95, R6 0.95; R5 (and the pass-1 keep) DistilBERT's
@@ -88,7 +91,7 @@ HARD_JUNK_GROUPS = ("record_request", "roi_vendors", "invoice", "id_card")
 # with (almost) no text -- empty, a placeholder, a Visual page -- where DistilBERT has
 # nothing to read: their confidence is this strength. R4 and R6 back DistilBERT's
 # probability for their verdict; R5 is DistilBERT alone.
-RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.90, "R4": 0.95, "R6": 0.95}
+RULE_SUPPORT = {"R1": 1.0, "R2": 0.99, "R3": 0.90, "R4": 0.95, "R6": 0.95, "DOS": 0.95}
 NO_TEXT_RULES = ("R1", "R2", "R3")
 # Starts the reason of a pass-1 keep that is final: pass 2 does not judge that page again.
 FINAL_KEEP = "R5 keep (final)"
@@ -428,6 +431,7 @@ class PageInputs:
     hw_area_pct: Optional[float] = None
     signed: bool = False  # Electronic Signature present (kv_extract, provider_signature.csv)
     signature_known: bool = False  # the KV signature output was there to read
+    dated: bool = False  # a DOS extracted on the page (kv_extract's selected DOS); pass 2
     no_ink: bool = False  # the HW stage found no ink (blank_page / faint_marks_only)
     body_ink: Optional[bool] = None  # ink below the short-page band; None = not measured
     body_ink_fraction: Optional[float] = None  # the share of that band that is ink
@@ -667,3 +671,20 @@ def decide(inputs: PageInputs) -> Verdict:
         f"R5 DistilBERT p(junk) {p_junk:.3f} in [{review_at}, {junk_at}) -> Junk / {subtype} (review)",
         conf.under_bar(p_junk, junk_at),
     )
+
+
+DOS_KEEP_REASON = "DOS extracted on the page -> Main (a dated page is never junk)"
+
+
+def post_process(verdict: Verdict, inputs: PageInputs) -> Verdict:
+    """Rules after the ladder (2026-10-26, user): in pass 2 a page with a DOS extracted
+    (kv_extract's selected DOS) is never junk, whatever rule junked it. Blank stays Blank."""
+    if inputs.pass_no == 2 and inputs.dated and verdict.code not in (CODE_MAIN, CODE_BLANK):
+        verdict.votes["dos_kept"] = verdict.reason
+        verdict.votes["rule"] = "DOS"
+        bert = inputs.bert or {}
+        p_keep = float(bert["p_keep"]) if bert else None
+        p_junk = float(bert["p_junk"]) if bert else None
+        return Verdict(CODE_MAIN, rule_confidence(CODE_MAIN, "DOS", p_keep, p_junk), "DOS",
+                       f"{verdict.reason}; {DOS_KEEP_REASON}", verdict.votes)
+    return verdict

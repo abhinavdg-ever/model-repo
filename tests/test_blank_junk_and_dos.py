@@ -966,3 +966,18 @@ class TestWordOverlap:
         assert (rows[2]["flag"], rows[2]["duplicate_of"]) == ("duplicate", 1)
         assert rows[1]["flag"] == "not_blank_junk"
 
+
+
+class TestSignaturePageIsNeverADuplicate:
+    """2026-10-26 (user): a signature page is not compared, so never a duplicate."""
+
+    def test_signed_by_kv_extract(self):
+        body = _body()
+        rows = _classify([page(1, 1), page(2, 2)], {1: body, 2: body}, {1, 2}, signed_ids={2})
+        assert {r["page_id"]: r["flag"] for r in rows} == {1: "not_blank_junk", 2: "not_blank_junk"}
+        assert all(r["duplicate_of"] is None for r in rows)
+
+    def test_signature_wording_on_the_page(self):
+        body = _body() + " Electronically signed by the attending."
+        rows = _classify([page(1, 1), page(2, 2)], {1: body, 2: body}, {1, 2})
+        assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)

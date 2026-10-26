@@ -43,6 +43,7 @@ import {
   formatF1,
   formatPrecision,
   formatRecall,
+  bandCounts,
   MATCH_BANDS,
   matchBand,
   matchCounts,
@@ -450,7 +451,8 @@ function OverallDonut({ tally }: { tally: Tally }) {
     offset += length;
     return [slice];
   });
-  const band = (id: string) => counts.filter(([k]) => matchBand(k) === id).reduce((sum, [, pages]) => sum + pages, 0);
+  const bands = bandCounts(tally);
+  const band = (id: "good" | "fair" | "bad") => bands[id];
   return (
     <figure className="accuracy-donut-card accuracy-overall-card">
       <InfoTip
@@ -518,7 +520,7 @@ function OverallDonut({ tally }: { tally: Tally }) {
       </div>
       <figcaption>Overall</figcaption>
       <p className="accuracy-distribution">
-        {total.toLocaleString()} {total === 1 ? "page" : "pages"} · all {OVERALL_STREAMS} matching on {tally.yes.toLocaleString()}
+        <Distribution tally={tally} />
       </p>
       <div className="accuracy-overall-bands">
         {MATCH_BANDS.map((item) => (
