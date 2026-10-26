@@ -3443,10 +3443,19 @@ input {
   }
 }
 
+/* Flex, not a grid: Overall is wider than a metric card (donut + its 0..7 table) but
+   not two of them. */
 .accuracy-donuts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9.2rem, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.7rem;
+}
+.accuracy-donuts > .accuracy-donut-card {
+  flex: 1 1 9.6rem;
+  min-width: 0;
+}
+.accuracy-donuts > .accuracy-overall-card {
+  flex: 1.55 1 15rem;
 }
 
 .accuracy-donut-card {
@@ -3525,9 +3534,9 @@ input {
 }
 
 .accuracy-class-head {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   color: var(--brand-800);
   font-size: 0.68rem;
   font-weight: 600;
@@ -3613,9 +3622,47 @@ input {
 }
 
 /* Overall: pages by how many of the seven streams match (0..7), Good / Fair / Bad. */
+.accuracy-overall-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  /* Room for the card's ⓘ at the top right. */
+  padding: 0.5rem 0.9rem 0 0;
+}
 .accuracy-overall-donut {
-  width: 7rem;
-  height: 7rem;
+  flex: none;
+  width: 6.6rem;
+  height: 6.6rem;
+}
+.accuracy-overall-legend {
+  border-collapse: collapse;
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-800);
+}
+.accuracy-overall-legend th {
+  color: var(--muted);
+  font-weight: 500;
+  padding: 0 0.25rem 0.1rem;
+  text-align: right;
+}
+.accuracy-overall-legend td {
+  padding: 0.02rem 0.25rem;
+  text-align: right;
+}
+.accuracy-overall-legend th:first-child,
+.accuracy-overall-legend td:first-child {
+  text-align: left;
+  white-space: nowrap;
+}
+.accuracy-overall-chip {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-right: 0.25rem;
+  border-radius: 2px;
+  vertical-align: -0.05rem;
 }
 .accuracy-overall-donut .accuracy-donut-seg {
   stroke-width: 13;
@@ -3641,34 +3688,6 @@ input {
 .accuracy-overall-donut .accuracy-donut-seg.accuracy-match-k3,
 .accuracy-overall-donut .accuracy-donut-seg.accuracy-match-k1,
 .accuracy-overall-donut .accuracy-donut-seg.accuracy-match-k0 { opacity: 1; }
-.accuracy-overall-bands {
-  align-self: stretch;
-  display: grid;
-  gap: 0.2rem;
-  margin-top: 0.4rem;
-}
-.accuracy-overall-band {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: baseline;
-  column-gap: 0.3rem;
-  padding: 0.15rem 0.45rem;
-  border-radius: 8px;
-  font-size: 0.66rem;
-  line-height: 1.25;
-  text-align: left;
-}
-.accuracy-overall-band strong {
-  font-size: 0.78rem;
-}
-.accuracy-overall-band small {
-  grid-column: 1 / -1;
-  color: var(--muted);
-  font-size: 0.6rem;
-}
-.accuracy-band-good { background: #eef5ec; color: var(--status-success-fg); }
-.accuracy-band-fair { background: #f8f1e3; color: var(--status-warning-fg); }
-.accuracy-band-bad { background: var(--status-error-bg); color: var(--status-error-fg); }
 .accuracy-note {
   margin: -0.15rem 0 0.7rem;
   color: var(--muted);

@@ -43,8 +43,6 @@ import {
   formatF1,
   formatPrecision,
   formatRecall,
-  bandCounts,
-  MATCH_BANDS,
   matchBand,
   matchCounts,
   OVERALL_STREAMS,
@@ -436,8 +434,8 @@ function pct(count: number, total: number): string {
 }
 
 /** Overall: one ring split by how many of the seven streams match (7 .. 0), each
- * slice labelled with its k, its pages and share on hover; Good / Fair / Bad below.
- * One column wide, like the other cards. */
+ * slice labelled with its k, its pages and share on hover, and a 0..7 table beside it
+ * (the chip colours are Good / Fair / Bad). */
 function OverallDonut({ tally }: { tally: Tally }) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
@@ -452,8 +450,6 @@ function OverallDonut({ tally }: { tally: Tally }) {
     offset += length;
     return [slice];
   });
-  const bands = bandCounts(tally);
-  const band = (id: "good" | "fair" | "bad") => bands[id];
   return (
     <figure className="accuracy-donut-card accuracy-overall-card">
       <InfoTip
@@ -497,22 +493,29 @@ function OverallDonut({ tally }: { tally: Tally }) {
             </text>
           ) : null}
         </svg>
+        <table className="accuracy-overall-legend">
+          <thead>
+            <tr>
+              <th scope="col">Matching</th>
+              <th scope="col">Pages</th>
+              <th scope="col">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {counts.map(([k, pages]) => (
+              <tr key={k} title={`${k}/${OVERALL_STREAMS} matching: ${pages.toLocaleString()} pages (${pct(pages, total)})`}>
+                <td>
+                  <span className={`accuracy-overall-chip accuracy-match-${matchBand(k)} accuracy-match-k${k}`} aria-hidden="true" />
+                  {k}/{OVERALL_STREAMS}
+                </td>
+                <td>{pages.toLocaleString()}</td>
+                <td>{pct(pages, total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
       <figcaption>Overall</figcaption>
-      <p className="accuracy-distribution">
-        <Distribution tally={tally} />
-      </p>
-      <div className="accuracy-overall-bands">
-        {MATCH_BANDS.map((item) => (
-          <div key={item.id} className={`accuracy-overall-band accuracy-band-${item.id}`} title={`${item.label}: ${item.min}–${item.max} of ${OVERALL_STREAMS} matching`}>
-            <span>
-              {item.label} ({item.min}–{item.max})
-            </span>
-            <strong>{pct(band(item.id), total)}</strong>
-            <small>{band(item.id).toLocaleString()} pages</small>
-          </div>
-        ))}
-      </div>
     </figure>
   );
 }
