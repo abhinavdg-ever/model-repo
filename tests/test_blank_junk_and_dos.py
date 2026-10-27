@@ -1036,6 +1036,20 @@ class TestDifferentDosIsNotADuplicate:
         rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2}, dos_by_id=dos)
         assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)
 
+    def test_a_different_date_in_the_text_is_not_a_duplicate(self):
+        """2026-10-27 (user): the words that differ must not be dates either."""
+        texts = {1: _words() + " seen 03/15/2024", 2: _words() + " seen 04/02/2024"}
+        rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2})
+        assert all(r["flag"] == "not_blank_junk" and r["duplicate_of"] is None for r in rows)
+        # pass 1 too
+        rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2}, exact_only=True)
+        assert all(r["duplicate_of"] is None for r in rows)
+
+    def test_the_same_date_written_two_ways_still_duplicates(self):
+        texts = {1: _words() + " seen 3/5/2024", 2: _words(swap="changed") + " seen 03/05/2024"}
+        rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2})
+        assert {r["page_id"]: r["flag"] for r in rows}[2] == "duplicate"
+
     def test_same_date_or_one_undated_still_duplicates(self):
         texts = {1: _words(), 2: _words(swap="changed")}
         for dos in ({1: frozenset({"2024-03-15"}), 2: frozenset({"2024-03-15"})},

@@ -196,6 +196,15 @@ class WordOverlap:
         return self.words_a + self.words_b - 2 * self.shared
 
 
+@lru_cache(maxsize=4096)
+def page_dates(text: str) -> frozenset[str]:
+    """Every date written on the page, in ISO form ('5/3/2024' == '05/03/2024'). Two pages
+    whose dates differ are never duplicates (2026-10-27, user)."""
+    from stages.lib.extraction.util.dates import canonical_date, find_dates
+
+    return frozenset(canonical_date(match.group(1)) for match in find_dates(text or ""))
+
+
 def word_overlap(a: str, b: str) -> WordOverlap:
     wa, wb = unique_words(a or ""), unique_words(b or "")
     return WordOverlap(len(wa), len(wb), len(wa & wb))

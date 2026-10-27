@@ -107,6 +107,7 @@ from classify import (  # noqa: E402
     JUNK_CODES,
     classification_confidence,
     duplicate_char_count,
+    page_dates,
     text_is_comparable,
     word_overlap,
 )
@@ -291,7 +292,8 @@ def _classify(
     (another note, another DOS; 2026-10-26, user). Next to each other they still compare.
 
     ``dos_by_id`` (pass 2: kv_extract's selected DOS per page): two pages that both have
-    a DOS that differ in any date are never duplicates or partials (2026-10-26, user).
+    a DOS that differ in any date are never duplicates or partials (2026-10-26, user), nor
+    are two pages whose own text differs in any date (2026-10-27, user).
 
     ``exact_only`` (pass 1): only exact copies -- the same distinct words, lengths within
     10% -- are duplicates; no partials. The rest waits for pass 2 (2026-10-26, user).
@@ -388,6 +390,8 @@ def _classify(
             dates_a, dates_b = (dos_by_id or {}).get(pid), (dos_by_id or {}).get(nid)
             if dates_a and dates_b and dates_a != dates_b:
                 continue  # different dates of service: different visits (any date differs)
+            if page_dates(texts.get(pid) or "") != page_dates(texts.get(nid) or ""):
+                continue  # a date written on one page and not the other (2026-10-27, user)
             words = word_overlap(texts.get(pid) or "", texts.get(nid) or "")
             is_contained = words.contained >= rules["contained_at"]
             # A contained pair scores 1.0; otherwise its overlap.
