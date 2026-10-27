@@ -2790,36 +2790,25 @@ function SequencingTable({
     const values = pages.map(drafted).filter(Boolean);
     return seriesProblem(values, "") ?? seriesProblem(values, "J");
   })();
-  const { breaks } = sequenceBreaks(pages, (p) => sequenceNumber(shown(p)));
-  /** A J page agrees when the Algo. also has it blank / junk; a Main page by its breaks. */
+  const { breaks, compared } = sequenceBreaks(pages, (p) => sequenceNumber(shown(p)));
+  /** Exact match in order (2026-10-27, user): a Main page is a tick only when its Algo.
+   * sequence is the ground truth's number, so once the two part, every page after is a
+   * cross. A J page agrees when the Algo. also has it blank / junk. */
   const verdict = (p: ImagingPageResult): "match" | "break" | "mismatch" | null => {
     const value = shown(p);
     if (editing || !SEQUENCE_VALUE.test(value)) return null;
     const gtJunk = value.startsWith("J");
     if (gtJunk !== isJunkSequencePage(p)) return "mismatch";
     if (gtJunk) return "match";
-    if (sequenceNumber(p.actualSequence) == null) return null;
-    return breaks.has(p.pageNumber) ? "break" : "match";
+    const own = sequenceNumber(p.actualSequence);
+    if (own == null) return null;
+    return own === sequenceNumber(value) ? "match" : "break";
   };
-  // Accuracy = 1 − breaks / Main pages marked: Main against Main only. A J page, or a
-  // page that is J on one side and Main on the other, is marked but not counted (that is
-  // a blank / junk error, scored there).
-  const marks = editing
-    ? []
-    : pages
-        .filter((p) => !shown(p).startsWith("J") && !isJunkSequencePage(p))
-        .map(verdict)
-        .filter((mark) => mark != null);
-  const wrong = marks.filter((mark) => mark !== "match").length;
-  // The chart as a whole (2026-10-27, user): its sequence matches (1) only with no break;
-  // Break Rate = breaks / (pages − 1), the joins between Main pages.
-  const sequenceMatch = wrong === 0 ? 1 : 0;
-  const breakRate = marks.length > 1 ? Math.min(1, wrong / (marks.length - 1)) : wrong ? 1 : 0;
-  const firstBreak = editing
-    ? null
-    : [...pages]
-        .filter((p) => verdict(p) === "break")
-        .sort((a, b) => (sequenceNumber(a.actualSequence) ?? 0) - (sequenceNumber(b.actualSequence) ?? 0))[0] ?? null;
+  const marks = editing ? [] : pages.map(verdict).filter((mark) => mark != null);
+  // The chart (2026-10-27, user): in order only when every page matches; Break Rate =
+  // breaks / (Main pages − 1), the joins the Algo. got wrong; Accuracy = 1 − Break Rate.
+  const inOrder = marks.every((mark) => mark === "match");
+  const breakRate = compared > 1 ? Math.min(1, breaks.size / (compared - 1)) : breaks.size ? 1 : 0;
 
   async function save() {
     if (invalid || continuity || changed.length === 0) return;
@@ -2891,25 +2880,17 @@ function SequencingTable({
       {marks.length > 0 ? (
         <div className="sequence-break-summary">
           <p>
-            Sequence:{" "}
-            {sequenceMatch ? (
-              <span className="cmp-match">In order ✓</span>
-            ) : (
-              <span className="cmp-mismatch">
-                Broken sequence ✗{firstBreak ? ` (first break at page ${firstBreak.pageNumber})` : ""}
-              </span>
-            )}
-            {" · "}Sequence Match = <strong>{sequenceMatch}</strong>
+            Overall:{" "}
+            {inOrder ? <span className="cmp-match">In order ✓</span> : <span className="cmp-mismatch">Not in order ✗</span>}
+          </p>
+          <p>
+            Break Rate ={" "}
+            <span className={breaks.size ? "cmp-mismatch" : "cmp-match"}>{(100 * breakRate).toFixed(1)}%</span>{" "}
+            ({breaks.size} {breaks.size === 1 ? "break" : "breaks"} / {Math.max(compared - 1, 0)})
           </p>
           <p>
             Accuracy ={" "}
-            <span className={wrong ? "cmp-mismatch" : "cmp-match"}>
-              {(100 * (1 - wrong / marks.length)).toFixed(1)}%
-            </span>{" "}
-            ({wrong} {wrong === 1 ? "break" : "breaks"} / {marks.length} {marks.length === 1 ? "page" : "pages"})
-            {" · "}Break Rate ={" "}
-            <span className={wrong ? "cmp-mismatch" : "cmp-match"}>{(100 * breakRate).toFixed(1)}%</span>{" "}
-            ({wrong} / ({marks.length} pages − 1))
+            <span className={breaks.size ? "cmp-mismatch" : "cmp-match"}>{(100 * (1 - breakRate)).toFixed(1)}%</span>
           </p>
         </div>
       ) : null}
@@ -2962,7 +2943,7 @@ function SequencingTable({
                   <>
                     {shown(p)}
                     {mark === "match" ? <span className="cmp-match sequence-break-mark"> ✓</span> : null}
-                    {mark === "break" ? <span className="cmp-mismatch sequence-break-mark"> ✗ Break</span> : null}
+                    {mark === "break" ? <span className="cmp-mismatch sequence-break-mark"> ✗</span> : null}
                     {mark === "mismatch" ? (
                       <span
                         className="cmp-mismatch sequence-break-mark"
