@@ -304,11 +304,6 @@ export function EncounterReviewEditor({
       ) : null}
       {!loading && editing ? (
         <>
-          <datalist id="encounter-review-encounter-types">
-            {ENCOUNTER_TYPE_CHOICES.map((choice) => (
-              <option key={choice} value={choice} />
-            ))}
-          </datalist>
           <table className="imaging-summary-table imaging-documents-table encounter-review-table">
             <thead>
               <tr>
@@ -365,12 +360,15 @@ export function EncounterReviewEditor({
                       />
                     </td>
                     <td>
-                      <input
+                      {/* A short list: every option on focus, narrowed as you type. */}
+                      <SearchInput
                         className="encounter-review-input"
-                        list="encounter-review-encounter-types"
                         value={row.encounterType}
-                        aria-label={`Encounter ${index + 1} encounter type`}
-                        onChange={(e) => edit(row.key, "encounterType", e.target.value)}
+                        options={ENCOUNTER_TYPE_CHOICES}
+                        minChars={0}
+                        ariaLabel={`Encounter ${index + 1} encounter type`}
+                        warning="New Encounter Type"
+                        onChange={(value) => edit(row.key, "encounterType", value)}
                       />
                     </td>
                     {(["dosFrom", "dosTo"] as const).map((field) => (
