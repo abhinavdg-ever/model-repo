@@ -304,3 +304,13 @@ def test_a_surname_of_two_words_matches():
     assert filled["Detected_DOB"] == "09/07/1997"
     assert name_matches("LeBlanc, Jonathan", "Jonathan", "Le Blanc", "", "2")
     assert not name_matches("Doe, Mary", "Jonathan", "Le Blanc", "", "2")
+
+
+def test_a_nickname_matches_the_manifest_first_name():
+    """2026-10-27 (user): Bill for William, Bob for Robert (member_name_variants_canon.json)."""
+    from stages.lib.member.extractors.rule_based.name_common import name_matches
+
+    assert name_matches("Bill Smith", "William", "Smith", "", "2")
+    assert name_matches("Smith, Bobby", "Robert", "Smith", "", "2")
+    assert not name_matches("Bill Jones", "William", "Smith", "", "2")
+    assert not name_matches("Mary Smith", "William", "Smith", "", "2")

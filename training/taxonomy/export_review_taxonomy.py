@@ -9,7 +9,8 @@ Reads ``core-pipeline/stages/lib/keyword-canon/page_taxonomy.json`` (label_space
 Subtype the L2s of the L1 picked, and Specialty the specialties (2026-10-26, user). review-ui is built on its own, so
 it reads this copy rather than the pipeline's file. Also the Provider Credentials master list
 (2026-10-27, user): the client's reference list (provider_credentials_reference.json, codable
-and non-codable), then the extractor's (provider_credentials_canon.json), each once.
+and non-codable), then the extractor's (provider_credentials_canon.json), each once; and the
+member first-name variants (member_name_variants_canon.json).
 """
 from __future__ import annotations
 
@@ -43,6 +44,8 @@ def build() -> str:
         "L2": {l1: space["L2"].get(l1, []) for l1 in space["L1"]},
         "specialty": space["specialty"],
         "provider_credentials": credentials(),
+        # First-name variants (Bill = William) for the member match (2026-10-27, user).
+        "name_variants": json.loads((CANON / "member_name_variants_canon.json").read_text(encoding="utf-8"))["groups"],
     }
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 

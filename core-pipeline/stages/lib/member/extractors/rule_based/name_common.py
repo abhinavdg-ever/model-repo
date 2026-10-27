@@ -43,6 +43,31 @@ def member_keywords() -> MemberKeywords:
     return _KEYWORDS.get()
 
 
+def _build_variants(data: dict[str, Any]) -> dict[str, frozenset[str]]:
+    """Each name -> every name that is the same person (its groups joined)."""
+    out: dict[str, set[str]] = {}
+    for group in data.get("groups") or []:
+        names = {str(name).strip().casefold() for name in group if str(name).strip()}
+        for name in names:
+            out.setdefault(name, set()).update(names)
+    return {name: frozenset(same) for name, same in out.items()}
+
+
+# keyword-canon/member_name_variants_canon.json (2026-10-27, user): Bill = William, Bob = Robert.
+_VARIANTS: CanonFile[dict[str, frozenset[str]]] = CanonFile(
+    CANON_DIR / "member_name_variants_canon.json", _build_variants
+)
+
+
+def same_first_name(a: str, b: str) -> bool:
+    """Two first names that are one person by the variants canon (Bill and William)."""
+    try:
+        variants = _VARIANTS.get()
+    except Exception:  # a missing or broken canon file: exact names only
+        return False
+    return b.casefold() in variants.get(a.casefold(), frozenset())
+
+
 def is_non_name(token: str) -> bool:
     return token.casefold() in member_keywords().non_name
 
@@ -84,7 +109,10 @@ def is_full(token: str, name: str) -> bool:
         return False
     if token.casefold() == name.casefold():
         return True
-    return len(tokenize(name)) > 1 and _compact(token) == _compact(name)
+    if len(tokenize(name)) > 1:
+        return _compact(token) == _compact(name)
+    # A nickname of the name (Bill for William), by the variants canon.
+    return len(token) > 1 and same_first_name(token, name)
 
 
 def merge_compound(span: list[str], *names: str) -> list[str]:
