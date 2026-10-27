@@ -39,6 +39,7 @@ from app.core.schemas import (
     PageSequenceSave,
     EncounterReview,
     EncounterReviewSave,
+    ChartGroundTruth,
 )
 from app.services.blob_store import download_blob_bytes
 from app.services import ocr_search, playground, user_admin
@@ -66,6 +67,7 @@ from app.services.ground_truth import (
     upsert_page_ground_truth,
 )
 from app.services.encounter_review import load_encounter_review, save_encounter_review
+from app.services.chart_ground_truth import load_chart_ground_truth, save_chart_ground_truth
 from app.services.page_images import (
     bytes_to_display_jpeg,
     cached_derived_jpeg,
@@ -957,6 +959,45 @@ def save_folder_encounter_review(
     except Exception as exc:
         logger.warning("encounter review save failed: %s", exc)
         raise HTTPException(status_code=502, detail="Could not save the encounters") from exc
+
+
+@router.get("/folders/{folder_id}/chart-ground-truth", response_model=ChartGroundTruth)
+def get_folder_chart_ground_truth(
+    folder_id: str, settings: Settings = Depends(get_settings)
+) -> ChartGroundTruth:
+    """The reviewer's member decision for the chart (Rejection Rules tab)."""
+    if not database_url_usable(settings.database_url):
+        return ChartGroundTruth()
+    try:
+        return load_chart_ground_truth(settings.database_url, folder_id, settings.db_schema)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("chart ground truth read failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not read the member decision") from exc
+
+
+@router.put("/folders/{folder_id}/chart-ground-truth", response_model=ChartGroundTruth)
+def save_folder_chart_ground_truth(
+    folder_id: str,
+    body: ChartGroundTruth,
+    settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
+) -> ChartGroundTruth:
+    """Save the reviewer's member decision, Accept or Reject (empty clears it)."""
+    if not database_url_usable(settings.database_url):
+        raise HTTPException(status_code=503, detail="Database is not configured")
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in again to save the decision")
+    try:
+        return save_chart_ground_truth(
+            settings.database_url, folder_id, body, settings.db_schema, user_id=user.id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("chart ground truth save failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not save the member decision") from exc
 
 
 @router.post("/folders/{folder_id}/ground-truth", response_model=PageGroundTruth)

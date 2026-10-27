@@ -67,6 +67,8 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * chart_ground_truth (v1.sql, 2026-10-28): the reviewer's member Accept / Reject per chart
+--    (changes_2026-10-27.sql).
 --  * member_extraction_results.other_names (v1.sql, 2026-10-27): the people a page names
 --    who are not the manifest member (changes_2026-10-27.sql).
 --  * page_ground_truth.encounter_label (v1.sql, 2026-10-27): the page's encounter type as

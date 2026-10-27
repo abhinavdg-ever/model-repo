@@ -739,6 +739,25 @@ export function saveEncounterReview(
   });
 }
 
+/** The reviewer's chart-level ground truth: the member decision (Rejection Rules tab). */
+export type ChartGroundTruth = {
+  memberDecision?: "accept" | "reject" | null;
+  memberDecisionReason?: string | null;
+  savedAt?: string | null;
+  savedBy?: string | null;
+};
+
+export function getChartGroundTruth(folderId: string): Promise<ChartGroundTruth> {
+  return api(`/api/folders/${encodeURIComponent(folderId)}/chart-ground-truth`);
+}
+
+export function saveChartGroundTruth(folderId: string, body: ChartGroundTruth): Promise<ChartGroundTruth> {
+  return api(`/api/folders/${encodeURIComponent(folderId)}/chart-ground-truth`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
 export function getFolderExtraction(
   folderId: string,
   pageFile: string,

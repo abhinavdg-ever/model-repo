@@ -215,3 +215,17 @@ def test_every_page_details_cell_is_saved():
     details = panel.split("function PageDetails(")[1].split("function RejectionRulesTable(")[0]
     rows = set(re.findall(r'id: "(\w+)"', details))
     assert rows and rows <= persisted, sorted(rows - persisted)
+
+
+def test_the_member_decision_is_accept_or_reject():
+    """2026-10-28 (user): the reviewer's Accept / Reject per chart, as ground truth."""
+    import pytest
+
+    from app.services.chart_ground_truth import _CREATE_TABLE, _UPSERT, member_decision
+
+    assert member_decision("Accept") == "accept" and member_decision(" reject ") == "reject"
+    assert member_decision("") is None and member_decision(None) is None
+    with pytest.raises(ValueError):
+        member_decision("maybe")
+    assert "ON CONFLICT (chart_name)" in _UPSERT
+    assert "chart_name" in _CREATE_TABLE and "UNIQUE (chart_name)" in _CREATE_TABLE

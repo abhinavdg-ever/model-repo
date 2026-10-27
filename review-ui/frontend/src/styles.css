@@ -6524,3 +6524,53 @@ input {
 .member-rejection .imaging-rejection-table th:nth-child(n + 3) {
   width: 15%;
 }
+
+/* Rejection Rules: the reviewer's Accept / Reject (chart ground truth). */
+.member-decision-gt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+}
+
+.member-decision-label {
+  font-weight: 600;
+  color: var(--neutral-700);
+}
+
+.member-decision-btn {
+  padding: 0.2rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.member-decision-btn.is-accept {
+  color: var(--status-success-fg);
+}
+
+.member-decision-btn.is-reject {
+  color: #a33b32;
+}
+
+.member-decision-btn.is-accept.is-active {
+  background: var(--status-success-fg);
+  border-color: var(--status-success-fg);
+  color: #fff;
+}
+
+.member-decision-btn.is-reject.is-active {
+  background: #a33b32;
+  border-color: #a33b32;
+  color: #fff;
+}
+
+.member-decision-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

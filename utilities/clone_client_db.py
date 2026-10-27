@@ -35,7 +35,8 @@ role, active), so our sign-ins work and accounts made on the client side stay.
 Ground truth: not copied unless ``--with-ground-truth`` (2026-10-27, user). With it, our
 page_ground_truth rows of the chosen charts and their page_ground_truth_entry history are
 copied for every page the target has no ground truth on yet; a page the client already
-labelled keeps theirs. Who saved each one (user_id) is matched by username.
+labelled keeps theirs. Who saved each one (user_id) is matched by username. The chart's
+member decision (chart_ground_truth) comes too, for a chart the target has none for.
 
 Never copied: encounter_review, user_login, chart_deletion; pipeline_stage is seeded by
 v1.sql. The client's own ground truth is keyed by chart name and page number, so
@@ -377,7 +378,26 @@ def _copy_ground_truth(src, dst, chart_names: list[str]) -> tuple[int, int]:
     skipped = len(rows) - copied
     if skipped:
         print(f"ground truth: {skipped} pages kept the target's own (not overwritten)")
+    # The reviewer's member decision per chart (2026-10-28), when both databases have it.
+    if "chart_ground_truth" in _tables(src) and "chart_ground_truth" in _tables(dst):
+        for row in src.execute(
+            "SELECT chart_name, member_decision, member_decision_reason, user_id "
+            "FROM chart_ground_truth WHERE chart_name = ANY(%s)", (chart_names,),
+        ).fetchall():
+            dst.execute(
+                "INSERT INTO chart_ground_truth (chart_name, member_decision, member_decision_reason, user_id) "
+                "VALUES (%s, %s, %s, %s) ON CONFLICT (chart_name) DO NOTHING",
+                (row["chart_name"], row["member_decision"], row["member_decision_reason"],
+                 map_user_id(row["user_id"], source_names, target_ids)),
+            )
     return copied, entries
+
+
+def _tables(conn) -> set[str]:
+    rows = conn.execute(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()"
+    ).fetchall()
+    return {row["table_name"] for row in rows}
 
 
 if __name__ == "__main__":

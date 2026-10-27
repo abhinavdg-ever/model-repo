@@ -471,6 +471,25 @@ CREATE TRIGGER trg_encounter_review_updated_at
     BEFORE UPDATE ON encounter_review
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+-- The reviewer's chart-level ground truth (2026-10-28): the member decision, Accept or
+-- Reject, from review-ui's Rejection Rules tab. Keyed by chart name, like page ground truth,
+-- so a re-run (which re-creates the chart's rows) keeps it.
+CREATE TABLE chart_ground_truth (
+    id                      BIGSERIAL PRIMARY KEY,
+    chart_name              VARCHAR(150) NOT NULL,
+    member_decision         VARCHAR(10) CHECK (member_decision IS NULL OR
+                                               member_decision IN ('accept','reject')),
+    member_decision_reason  TEXT,
+    user_id                 BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_chart_ground_truth_chart_name UNIQUE (chart_name)
+);
+
+CREATE TRIGGER trg_chart_ground_truth_updated_at
+    BEFORE UPDATE ON chart_ground_truth
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 
 -- ---------------------------------------------------------------------
 -- PAGE-LEVEL RESULT TABLES

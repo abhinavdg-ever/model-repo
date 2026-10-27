@@ -211,6 +211,15 @@ class EncounterReviewSave(BaseModel):
     rows: list[EncounterReviewRow]
 
 
+class ChartGroundTruth(BaseModel):
+    """The reviewer's chart-level ground truth: the member decision (2026-10-28)."""
+
+    memberDecision: str | None = None  # accept / reject
+    memberDecisionReason: str | None = None
+    savedAt: str | None = None
+    savedBy: str | None = None
+
+
 class ImagingPageResult(BaseModel):
     """Per-page imaging fields from pipeline CSVs / Postgres (no fabricated dummy values)."""
 

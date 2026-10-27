@@ -1,7 +1,10 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
 import { CalendarDays, Check, ChevronLeft, ChevronRight, CircleMinus, Pencil, Save, X } from "lucide-react";
 import {
+  getChartGroundTruth,
+  saveChartGroundTruth,
   savePageGroundTruth,
+  type ChartGroundTruth,
   type ExtractionReviewResponse,
   type ImagingDocumentResponse,
   type ImagingManifestDetails,
@@ -2062,16 +2065,78 @@ function pageList(numbers: number[]): string {
  * pages, the pages whose name, DOB and Member ID match the manifest, and the pages that
  * match overall (the member's name with the DOB or the Member ID). Then the decision:
  * Reject at min(5, 10% of the pages) pages naming someone else and not matching. */
+/** The reviewer's Accept / Reject for the member, saved as chart ground truth
+ * (chart_ground_truth, 2026-10-28, user), with a tick when it agrees with the decision. */
+function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; decision: string }) {
+  const [saved, setSaved] = useState<ChartGroundTruth | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getChartGroundTruth(folderId)
+      .then((gt) => !cancelled && setSaved(gt))
+      .catch(() => !cancelled && setSaved({}));
+    return () => {
+      cancelled = true;
+    };
+  }, [folderId]);
+  async function choose(next: "accept" | "reject" | null) {
+    setSaving(true);
+    setError(null);
+    try {
+      setSaved(await saveChartGroundTruth(folderId, { memberDecision: next }));
+    } catch (err) {
+      setError(saveErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+  const current = saved?.memberDecision ?? null;
+  const agrees = current ? (current === "accept") === (decision === "Accept") : null;
+  return (
+    <div className="member-decision-gt">
+      <span className="member-decision-label">Ground truth:</span>
+      {(["accept", "reject"] as const).map((option) => (
+        <button
+          key={option}
+          type="button"
+          className={`member-decision-btn is-${option}${current === option ? " is-active" : ""}`}
+          aria-pressed={current === option}
+          disabled={saving || saved == null}
+          onClick={() => void choose(current === option ? null : option)}
+          title={current === option ? "Click again to clear" : undefined}
+        >
+          {option === "accept" ? "Accept" : "Reject"}
+        </button>
+      ))}
+      {agrees == null ? null : (
+        <span className={agrees ? "cmp-match" : "cmp-mismatch"}>
+          {agrees ? "✓ matches the decision" : "✕ differs from the decision"}
+        </span>
+      )}
+      {saved?.savedBy || saved?.savedAt ? (
+        <span className="member-rejection-role">
+          saved{saved.savedBy ? ` by ${saved.savedBy}` : ""}
+          {saved.savedAt ? ` ${saved.savedAt.slice(0, 16).replace("T", " ")}` : ""}
+        </span>
+      ) : null}
+      {error ? <span className="imaging-gt-hint">{error}</span> : null}
+    </div>
+  );
+}
+
 function MemberVerificationTable({
   rows,
   pages,
   manifest,
   verificationProcessed,
+  folderId,
 }: {
   rows: ImagingVerificationDetails[];
   pages: ImagingPageResult[];
   manifest?: ImagingManifestDetails | null;
   verificationProcessed: boolean;
+  folderId: string;
 }) {
   if (rows.length === 0) {
     return (
@@ -2172,6 +2237,7 @@ function MemberVerificationTable({
         {wrongPages.size === 1 ? "page" : "pages"} (Reject at {threshold} or more of {pages.length})
         {storedDecision && storedDecision !== decision ? ` · pipeline run said ${storedDecision} (re-run the member stage)` : ""}
       </p>
+      <MemberDecisionGroundTruth folderId={folderId} decision={decision} />
     </div>
   );
 }
@@ -2618,6 +2684,7 @@ export default function ImagingPanel({
           pages={document.pages}
           manifest={manifest}
           verificationProcessed={sections.verification}
+          folderId={document.folder_id}
         />
       </div>
     );
