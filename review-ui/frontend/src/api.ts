@@ -356,6 +356,8 @@ export type AppConfig = {
   playground_enabled?: boolean;
   playground_targets?: { label: string; url: string }[];
   playground_container?: string;
+  /** CLIENT_VIEW: Page Details shows Final only, headed Algorithm. */
+  client_view?: boolean;
 };
 
 export const OCR_TAB_LABELS: Record<OcrKind, string> = {

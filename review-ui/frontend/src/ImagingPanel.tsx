@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
 import { CalendarDays, Check, ChevronLeft, ChevronRight, CircleMinus, Pencil, Save, X } from "lucide-react";
 import {
   savePageGroundTruth,
@@ -43,6 +43,7 @@ import {
   type EncounterSeed,
 } from "./ReviewTables";
 import { properName } from "./properName";
+import { ClientViewContext } from "./clientView";
 
 const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
   member: false,
@@ -845,24 +846,29 @@ function CompareSection({
   withTruth?: boolean;
 }) {
   const truthColumn = !compact || withTruth;
+  // The client's copy: no Extracted column, and Final is headed Algorithm.
+  const finalOnly = useContext(ClientViewContext);
+  const finalHeading = finalOnly ? "Algorithm" : "Final";
   return (
     <section className="imaging-section">
       <div className="imaging-section-head">
         <h3 className="imaging-section-title">{title}</h3>
         {toolbar}
       </div>
-      <table className={`imaging-detail-table imaging-value-table${compact ? " is-compact" : ""}`}>
+      <table
+        className={`imaging-detail-table imaging-value-table${compact ? " is-compact" : ""}${finalOnly ? " is-final-only" : ""}`}
+      >
         {compact ? (
           <colgroup>
             <col className="col-field" />
-            <col className="col-extracted" />
+            {finalOnly ? null : <col className="col-extracted" />}
             <col className="col-processed" />
             {truthColumn ? <col className="col-gt" /> : null}
           </colgroup>
         ) : (
           <colgroup>
             <col className="col-field" />
-            <col className="col-extracted" />
+            {finalOnly ? null : <col className="col-extracted" />}
             <col className="col-processed" />
             <col className="col-confidence" />
             <col className="col-gap" />
@@ -873,15 +879,15 @@ function CompareSection({
           {compact ? (
             <tr>
               <th scope="col">Field</th>
-              <th scope="col">Extracted</th>
-              <th scope="col">Final</th>
+              {finalOnly ? null : <th scope="col">Extracted</th>}
+              <th scope="col">{finalHeading}</th>
               {truthColumn ? <th scope="col">Ground Truth</th> : null}
             </tr>
           ) : (
             <tr>
               <th scope="col">Field</th>
-              <th scope="col">Extracted</th>
-              <th scope="col">Final</th>
+              {finalOnly ? null : <th scope="col">Extracted</th>}
+              <th scope="col">{finalHeading}</th>
               <th scope="col">Confidence</th>
               <th className="gt-gap" aria-hidden="true" />
               <th scope="col" className="gt-shade">
@@ -894,9 +900,11 @@ function CompareSection({
           {rows.map((row) => (
             <tr key={row.id}>
               <th scope="row">{row.label}</th>
-              <td>
-                <ValueWithNote value={row.extracted} note={row.note} />
-              </td>
+              {finalOnly ? null : (
+                <td>
+                  <ValueWithNote value={row.extracted} note={row.note} />
+                </td>
+              )}
               <td>
                 <ValueWithNote value={row.processed} note={row.note} />
               </td>

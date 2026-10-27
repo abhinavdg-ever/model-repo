@@ -95,6 +95,9 @@ class Settings(BaseSettings):
     # off. The only place review-ui calls core-pipeline.
     core_pipeline_urls: str = "VM=http://172.20.4.170:8001,Local=http://localhost:8001"
     playground_container: str = "imaging-pipeline"
+    # The client's copy (CLIENT_VIEW=true, review-ui-client): Page Details shows only the
+    # Final values, headed Algorithm.
+    client_view: bool = False
 
     @field_validator("blob_auth_mode", mode="before")
     @classmethod

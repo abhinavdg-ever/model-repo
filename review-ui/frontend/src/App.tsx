@@ -11,6 +11,7 @@ import SearchView from "./SearchView";
 import LoginPage from "./LoginPage";
 import UserProfileMenu from "./UserProfileMenu";
 import { getAppConfig, type AppConfig, type OutputMode } from "./api";
+import { ClientViewContext } from "./clientView";
 import { clearSession, initialsOf, readSession, writeSession, type Session } from "./session";
 
 
@@ -275,6 +276,7 @@ export default function App() {
             onBack={() => navigate({ view: "landing" })}
           />
         ) : (
+          <ClientViewContext.Provider value={Boolean(appConfig?.client_view)}>
           <FolderViewer
             key={route.folderId}
             folderId={route.folderId}
@@ -294,6 +296,7 @@ export default function App() {
               navigate({ view: "folder", folderId: route.folderId, mode, from: route.from })
             }
           />
+          </ClientViewContext.Provider>
         )}
       </main>
     </div>

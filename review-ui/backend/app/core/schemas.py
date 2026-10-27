@@ -504,6 +504,8 @@ class AppConfigResponse(BaseModel):
     playground_enabled: bool = False
     playground_targets: list[dict[str, str]] = Field(default_factory=list)
     playground_container: str = ""
+    # CLIENT_VIEW: Page Details shows Final only, headed Algorithm.
+    client_view: bool = False
 
 
 class PlaygroundRun(BaseModel):

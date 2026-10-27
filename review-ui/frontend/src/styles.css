@@ -6427,3 +6427,55 @@ input {
   background: var(--brand-800);
   color: #fff;
 }
+
+/* The client's copy (CLIENT_VIEW): Field, Algorithm, Confidence, gap, Ground Truth.
+   Listed after the five-column widths, with one more class, so these win. */
+.imaging-detail-table.imaging-value-table.is-final-only {
+  max-width: calc(13.5rem + 2 * 12.5rem + 7.128rem + 0.55rem);
+}
+
+.imaging-detail-table.imaging-value-table.is-final-only .col-field,
+.imaging-detail-table.imaging-value-table.is-final-only thead th:nth-child(1),
+.imaging-detail-table.imaging-value-table.is-final-only tbody th {
+  width: 28%;
+}
+
+.imaging-detail-table.imaging-value-table.is-final-only .col-processed,
+.imaging-detail-table.imaging-value-table.is-final-only thead th:nth-child(2),
+.imaging-detail-table.imaging-value-table.is-final-only tbody td:nth-child(2) {
+  width: 30%;
+}
+
+.imaging-detail-table.imaging-value-table.is-final-only .col-confidence,
+.imaging-detail-table.imaging-value-table.is-final-only thead th:nth-child(3),
+.imaging-detail-table.imaging-value-table.is-final-only tbody td:nth-child(3) {
+  width: 14%;
+}
+
+.imaging-detail-table.imaging-value-table.is-final-only .col-gap,
+.imaging-detail-table.imaging-value-table.is-final-only th.gt-gap,
+.imaging-detail-table.imaging-value-table.is-final-only td.gt-gap {
+  width: 0.55rem;
+}
+
+.imaging-detail-table.imaging-value-table.is-final-only .col-gt,
+.imaging-detail-table.imaging-value-table.is-final-only th.gt-shade,
+.imaging-detail-table.imaging-value-table.is-final-only td.gt-shade {
+  width: 28%;
+}
+
+/* Its fullscreen pane: Field, Algorithm, Ground Truth. */
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact .col-field,
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact thead th:nth-child(1),
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact tbody th {
+  width: 34%;
+}
+
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact .col-processed,
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact thead th:nth-child(2),
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact tbody td:nth-child(2),
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact .col-gt,
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact thead th:nth-child(3),
+.imaging-detail-table.imaging-value-table.is-final-only.is-compact tbody td:nth-child(3) {
+  width: 33%;
+}

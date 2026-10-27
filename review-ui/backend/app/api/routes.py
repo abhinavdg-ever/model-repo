@@ -191,6 +191,7 @@ def app_config(request: Request) -> AppConfigResponse:
         playground_enabled=bool(settings.playground_targets),
         playground_targets=settings.playground_targets,
         playground_container=settings.playground_container.strip(),
+        client_view=settings.client_view,
     )
 
 
