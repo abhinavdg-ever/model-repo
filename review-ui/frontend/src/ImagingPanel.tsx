@@ -2088,7 +2088,7 @@ function MemberVerificationTable({
     return text && text.toUpperCase() !== "N/A" ? text : "";
   };
   // Pages the member stage read (it skips blank / junk / duplicate pages).
-  const checked = pages.filter((p) => p.memberPageStatus || read(p.memberName) || (p.memberOtherNames ?? []).length);
+  const checked = pages.filter((p) => p.memberPageStatus || read(p.memberName));
   const isMember = (name: string) => Boolean(name) && nameMatchesManifest(name, memberName);
   const dobMatch = (p: ImagingPageResult) => dobMatchesManifest(p.memberDob, manifest?.dob);
   const idMatch = (p: ImagingPageResult) =>
@@ -2098,28 +2098,20 @@ function MemberVerificationTable({
 
   type NameRow = { name: string; member: boolean; pages: ImagingPageResult[] };
   const member: NameRow = { name: memberName, member: true, pages: checked.filter(nameMatch) };
+  // Every name is the one Page Details shows for the page (its final Member Name), nothing
+  // else (2026-10-27, user): a page showing someone else is that name's, and a wrong-member
+  // page.
   const others = new Map<string, NameRow>();
   for (const page of checked) {
-    // A page whose name is the member's lists no other names: the extraction's pick beside
-    // it was the mistake (2026-10-27, user).
-    if (nameMatch(page)) continue;
-    for (const other of [read(page.memberName), ...(page.memberOtherNames ?? []).map((n) => n.trim())]) {
-      const key = folded(other);
-      if (!key || isMember(other)) continue;
-      const row = others.get(key) ?? { name: other, member: false, pages: [] };
-      if (!row.pages.includes(page)) row.pages.push(page);
-      others.set(key, row);
-    }
+    const shown = read(page.memberName);
+    const key = folded(shown);
+    if (!key || nameMatch(page)) continue;
+    const row = others.get(key) ?? { name: properName(shown) || shown, member: false, pages: [] };
+    row.pages.push(page);
+    others.set(key, row);
   }
   const nameRows = [member, ...[...others.values()].sort((x, y) => y.pages.length - x.pages.length)];
-  // A wrong-member page names someone else and carries none of the member: not the name,
-  // the DOB or the Member ID. A page with the member's DOB or ID beside another name (a
-  // spouse, an emergency contact) is the member's page (2026-10-27, user).
-  const wrongPages = new Set(
-    [...others.values()].flatMap((row) =>
-      row.pages.filter((p) => !nameMatch(p) && !dobMatch(p) && !idMatch(p)).map((p) => p.pageNumber),
-    ),
-  );
+  const wrongPages = new Set([...others.values()].flatMap((row) => row.pages.map((p) => p.pageNumber)));
   const matched = checked.filter(overall);
   const threshold = Math.max(1, Math.min(5, Math.ceil(pages.length * 0.1)));
   const decision = checked.length === 0 ? "Skipped" : wrongPages.size >= threshold ? "Reject" : "Accept";
