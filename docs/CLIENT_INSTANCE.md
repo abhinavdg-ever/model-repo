@@ -50,10 +50,7 @@ Keep the passwords out of shell history and out of git.
 
 ## 0. Runbook: new database, copy the charts, start the client UI
 
-Two machines, possibly the same one:
-
-- **Postgres server:** you log in to it, and `psql` runs there as the `postgres` user.
-- **App VM (172.20.4.170):** our core-pipeline and review-ui, and now the client UI.
+Step 1 is `psql` on the VM; the rest runs on the app VM (172.20.4.170).
 
 Replace these everywhere:
 
@@ -65,67 +62,26 @@ Replace these everywhere:
 
 The leading space on the `export` lines keeps passwords out of shell history.
 
-### Step 1. Postgres server: create the client database
+### Step 1. Create the database (psql on the VM)
 
-```bash
-# Get the schema files (the repo is public)
-mkdir -p ~/client-schema && cd ~/client-schema
-curl -fsSLO https://raw.githubusercontent.com/abhinavdg-ever/model-repo/main/schema/v1.sql
-curl -fsSLO https://raw.githubusercontent.com/abhinavdg-ever/model-repo/main/schema/changes_2026-10-27.sql
+```sql
+-- sudo -u postgres psql   (or however you open psql)
+CREATE DATABASE imaging_outputs_client OWNER DBUSER;
+\c imaging_outputs_client
+\i /path/to/schema/v1.sql
+\i /path/to/schema/changes_2026-10-27.sql
+SELECT count(*) FROM pipeline_stage;   -- 13
 
-# The database, owned by our app user
-sudo -u postgres psql -c "CREATE DATABASE imaging_outputs_client OWNER DBUSER"
-
-# The schema, applied AS that user so it owns every table (it asks for DBPASS)
-psql -h localhost -U DBUSER -d imaging_outputs_client -f v1.sql
-psql -h localhost -U DBUSER -d imaging_outputs_client -f changes_2026-10-27.sql
-psql -h localhost -U DBUSER -d imaging_outputs_client -c "SELECT count(*) FROM pipeline_stage"   # 13
+-- our database needs the new ground-truth columns too
+\c imaging_outputs
+\i /path/to/schema/changes_2026-10-27.sql
+\q
 ```
 
-`-h localhost -U DBUSER` asks for a password; if local password sign-in is not allowed,
-apply the schema as `postgres` and hand the tables over:
+No repo on that VM: `curl -fsSLO https://raw.githubusercontent.com/abhinavdg-ever/model-repo/main/schema/v1.sql`
+(and the same for `changes_2026-10-27.sql`), then `\i` them from that folder.
 
-```bash
-sudo -u postgres psql -d imaging_outputs_client -f v1.sql
-sudo -u postgres psql -d imaging_outputs_client -f changes_2026-10-27.sql
-sudo -u postgres psql -d imaging_outputs_client -c "REASSIGN OWNED BY postgres TO DBUSER"
-```
-
-### Step 2. Postgres server: bring our database up to date
-
-Our review-ui saves the new ground-truth fields too, so `imaging_outputs` needs the same
-columns. The file only adds columns; nothing is changed or deleted, and it is safe to run
-again.
-
-```bash
-psql -h localhost -U DBUSER -d imaging_outputs -f ~/client-schema/changes_2026-10-27.sql
-```
-
-### Step 3. Postgres server: let the app VM reach the new database, with room for it
-
-```bash
-HBA=$(sudo -u postgres psql -tAc "SHOW hba_file")
-sudo grep -vE '^\s*(#|$)' "$HBA"
-```
-
-If the line for the app VM names `imaging_outputs` in the database column (not `all`),
-copy that line with `imaging_outputs_client` in its place, then reload:
-
-```bash
-sudo nano "$HBA"
-sudo -u postgres psql -c "SELECT pg_reload_conf()"
-```
-
-Connections: the client UI uses at most 16. Check there is room:
-
-```bash
-sudo -u postgres psql -c "SHOW max_connections" -c "SELECT count(*) FROM pg_stat_activity"
-```
-
-The second number plus 16 must stay well under the first (usually 100). If not, raise
-`max_connections` in `postgresql.conf` and restart Postgres at a quiet time.
-
-### Step 4. App VM: the chart list
+### Step 2. App VM: the chart list
 
 A Notepad file, `charts.txt`: one chart name per line (the folder name, e.g.
 `52743839_44976074`). Blank lines and lines starting with `#` are skipped.
@@ -135,7 +91,7 @@ mkdir -p ~/client-charts
 # from your laptop:  scp charts.txt <user>@172.20.4.170:~/client-charts/
 ```
 
-### Step 5. App VM: copy the charts and our users
+### Step 3. App VM: copy the charts and our users
 
 ```bash
  export SOURCE_DATABASE_URL='postgresql://DBUSER:DBPASS@DBHOST:5432/imaging_outputs'
@@ -163,7 +119,7 @@ psql -h localhost -U DBUSER -d imaging_outputs_client -c "SELECT
   (SELECT count(*) FROM page_ground_truth) AS ground_truth"     -- ground_truth = 0
 ```
 
-### Step 6. App VM: the client UI in `~/ui-temp` (clearing the old one)
+### Step 4. App VM: the client UI in `~/ui-temp` (clearing the old one)
 
 ```bash
 # Anything on 5000 / 5001 now? Stop it (never ours on 4000 / 4001 / 8001)
@@ -195,7 +151,7 @@ CLIENT_VIEW=true
 Its `docker-compose.yml` fixes, whatever `.env` says: ports 5000 / 5001, the database
 only, no Playground, the Algorithm column only.
 
-### Step 7. App VM: start it
+### Step 5. App VM: start it
 
 ```bash
 cd ~/ui-temp
@@ -207,7 +163,7 @@ curl -fsS localhost:5000/health && echo OK
 Open **http://172.20.4.170:5001** and sign in with your usual username and password. In
 the firewall / NSG, open 5001 to the client's network only; 5000 stays internal.
 
-### Step 8. Checks before the three reviewers start
+### Step 6. Checks before the three reviewers start
 
 | Check | Expected |
 |---|---|
@@ -233,7 +189,7 @@ Add the names to `charts.txt` (or write a new file), then:
 # Postgres server: a backup first
 sudo -u postgres pg_dump -Fc -d imaging_outputs_client -f /tmp/client_backup_$(date +%F).dump
 
-# App VM: the exports and clone() from step 5, then
+# App VM: the exports and clone() from step 3, then
 clone --dry-run --charts-file /lists/charts.txt --update
 clone --charts-file /lists/charts.txt --update
 ```
@@ -267,12 +223,12 @@ psql "$TARGET_DATABASE_URL" -f /tmp/u.sql && rm /tmp/u.sql
 | Symptom | Fix |
 |---|---|
 | `clone`: "the target already has N charts" | add `--update` |
-| `clone`: "no schema / pipeline_stage" | step 1 was not run on `imaging_outputs_client` |
-| `clone` or the UI: `connection refused` / `no pg_hba.conf entry` | `DBHOST` is `localhost`, or step 3's line is missing |
-| `permission denied for table …` | the tables belong to `postgres`: the `REASSIGN OWNED` line in step 1 |
+| `clone`: "no schema / pipeline_stage" | step 1 was not run |
+| `clone` or the UI: `connection refused` / `no pg_hba.conf entry` | `DBHOST` is `localhost`, or `pg_hba.conf` names only `imaging_outputs`: add a line for `imaging_outputs_client`, reload |
+| `permission denied for table …` | the schema was applied as `postgres`: in the new DB run `REASSIGN OWNED BY postgres TO DBUSER;` |
 | Page loads, no charts or no sign-in | `DATABASE_URL` in `~/ui-temp/.env`; `docker compose logs backend` |
 | Pages show no images | the Azure lines are missing from `~/ui-temp/.env` |
-| Saving ground truth fails with a column error | `changes_2026-10-27.sql` (steps 1 and 2) |
+| Saving ground truth fails with a column error | `changes_2026-10-27.sql` was not run (step 1) |
 
 ### On the laptop: put a UI change into the client repo
 
