@@ -38,6 +38,9 @@ copied for every page the target has no ground truth on yet; a page the client a
 labelled keeps theirs. Who saved each one (user_id) is matched by username. The chart's
 member decision (chart_ground_truth) comes too, for a chart the target has none for.
 
+``--replace-ground-truth`` (with it): the target's ground truth of the chosen charts is deleted
+first and ours copied in its place -- the client's own labels on those charts are lost.
+
 Never copied: encounter_review, user_login, chart_deletion; pipeline_stage is seeded by
 v1.sql. The client's own ground truth is keyed by chart name and page number, so
 --replace leaves it in place.
@@ -213,6 +216,9 @@ def main() -> int:
                       help="delete just the chosen charts from the target and copy them again (re-runs)")
     parser.add_argument("--with-ground-truth", action="store_true",
                         help="also copy our ground truth of the chosen charts, on pages the target has none yet")
+    parser.add_argument("--replace-ground-truth", action="store_true",
+                        help="with --with-ground-truth: first DELETE the target's ground truth of the chosen "
+                             "charts (page labels, their history, the member decision), then copy ours")
     parser.add_argument("--dry-run", action="store_true", help="count what would be copied; change nothing")
     args = parser.parse_args()
 
@@ -222,6 +228,9 @@ def main() -> int:
         return 2
     if source_url == target_url:
         print("the source and the target are the same database", file=sys.stderr)
+        return 2
+    if args.replace_ground_truth and not args.with_ground_truth:
+        print("--replace-ground-truth needs --with-ground-truth", file=sys.stderr)
         return 2
     if args.by_id and not args.charts_file:
         print("--by-id needs --charts-file", file=sys.stderr)
@@ -322,6 +331,8 @@ def main() -> int:
         for table in ("chart_list", "manifest_member_list", "users", *CHART_TABLES):
             _reset_sequence(dst, table)
         if args.with_ground_truth:
+            if args.replace_ground_truth:
+                counts["ground_truth_deleted"] = _delete_ground_truth(dst, chosen)
             counts["page_ground_truth"], counts["page_ground_truth_entry"] = _copy_ground_truth(src, dst, chosen)
         ground_truth = dst.execute("SELECT count(*) AS n FROM page_ground_truth").fetchone()["n"]
 
@@ -332,6 +343,20 @@ def main() -> int:
     else:
         print(f"target ground truth rows: {ground_truth} (the client's own; none copied)")
     return 0
+
+
+def _delete_ground_truth(dst, chart_names: list[str]) -> int:
+    """The target's ground truth of these charts, gone (2026-10-28, user): page labels (their
+    history goes with them, ON DELETE CASCADE) and the member decision. Returns pages deleted."""
+    if not chart_names:
+        return 0
+    deleted = dst.execute(
+        "DELETE FROM page_ground_truth WHERE chart_name = ANY(%s)", (chart_names,)
+    ).rowcount
+    if "chart_ground_truth" in _tables(dst):
+        dst.execute("DELETE FROM chart_ground_truth WHERE chart_name = ANY(%s)", (chart_names,))
+    print(f"ground truth: deleted the target's labels on {deleted} pages of {len(chart_names)} charts")
+    return deleted
 
 
 def map_user_id(user_id, source_names: dict, target_ids: dict):
