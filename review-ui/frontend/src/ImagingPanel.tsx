@@ -2112,8 +2112,13 @@ function MemberVerificationTable({
     }
   }
   const nameRows = [member, ...[...others.values()].sort((x, y) => y.pages.length - x.pages.length)];
+  // A wrong-member page names someone else and carries none of the member: not the name,
+  // the DOB or the Member ID. A page with the member's DOB or ID beside another name (a
+  // spouse, an emergency contact) is the member's page (2026-10-27, user).
   const wrongPages = new Set(
-    [...others.values()].flatMap((row) => row.pages.filter((p) => !overall(p)).map((p) => p.pageNumber)),
+    [...others.values()].flatMap((row) =>
+      row.pages.filter((p) => !nameMatch(p) && !dobMatch(p) && !idMatch(p)).map((p) => p.pageNumber),
+    ),
   );
   const matched = checked.filter(overall);
   const threshold = Math.max(1, Math.min(5, Math.ceil(pages.length * 0.1)));
