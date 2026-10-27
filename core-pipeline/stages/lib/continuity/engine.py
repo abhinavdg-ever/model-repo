@@ -255,9 +255,12 @@ def _build(data: dict[str, Any]) -> Rules:
 
 
 _RULES: CanonFile[Rules] = CanonFile(CANON_DIR / "continuity_canon.json", _build)
-# DOS_DEFAULT_DATE: the one place the default date is set (the DOS stage reads it too).
+# The Final DOS of a non-visit document: DOS_NON_VISIT_DATE (2222-02-22, 2026-10-27, user),
+# set apart from DOS_DEFAULT_DATE (2222-02-02, a page with no date), which an older
+# dos_canon.json without it still gives.
 _DOS_DEFAULT: CanonFile[Optional[str]] = CanonFile(
-    CANON_DIR / "dos_canon.json", lambda data: str(data.get("DOS_DEFAULT_DATE") or "") or None
+    CANON_DIR / "dos_canon.json",
+    lambda data: str(data.get("DOS_NON_VISIT_DATE") or data.get("DOS_DEFAULT_DATE") or "") or None,
 )
 
 

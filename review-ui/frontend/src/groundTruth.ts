@@ -344,6 +344,9 @@ export const PAGE_L2_ALL: readonly string[] = ALL_L2;
 
 /** The Specialty ground-truth options. */
 export const SPECIALTY_CHOICES: readonly string[] = pageTaxonomy.specialty;
+/** The Provider Credentials master list: the client's reference list, then the
+ * extractor's (pageTaxonomy.json; 2026-10-27, user). */
+export const CREDENTIAL_CHOICES: readonly string[] = pageTaxonomy.provider_credentials;
 
 /** Our path, L1 first, from a composed page type split by ``splitPageType``:
  * ("Lab Report", "Diagnostic Study) (Echocardiogram Report") -> the three levels,

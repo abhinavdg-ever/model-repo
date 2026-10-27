@@ -297,7 +297,7 @@ class TestFinalValues:
     def test_a_stand_alone_non_visit_document_takes_the_default_dos(self):
         rows = assign([page(1, dos_from="2024-03-14", dos_trust=5, page_type="Patient Demographics"),
                        page(2, page_type="Patient Demographics", page_confidence=0.9)])
-        assert [r["final_dos_from"] for r in rows] == ["2222-02-02"] * 2
+        assert [r["final_dos_from"] for r in rows] == ["2222-02-22"] * 2
         assert "is not a visit" in rows[0]["evidence"]
 
     def test_a_non_visit_page_inside_a_visit_takes_the_visit_dos(self):
@@ -310,7 +310,7 @@ class TestFinalValues:
 
         finals = document_finals([{"page_type": "Clinical Summary", "page_subtype": "Problem List",
                                    "dos_from": "2024-01-01"}])
-        assert finals["dos_from"] == "2222-02-02" and finals["dos_default"]
+        assert finals["dos_from"] == "2222-02-22" and finals["dos_default"]
 
     def test_dos_is_the_first_dated_pages(self):
         from stages.lib.continuity.engine import document_finals
@@ -614,7 +614,7 @@ class TestEncounterSignals:
         assert gap(rows[1])["evidence"]["demographics_boundary"]
         assert rows[0]["document_seq"] != rows[1]["document_seq"]
         # Standing alone, the Demographics document takes the default DOS.
-        assert rows[0]["final_dos_from"] == "2222-02-02"
+        assert rows[0]["final_dos_from"] == "2222-02-22"
         assert rows[1]["final_dos_from"] == "2024-03-14"
 
     def test_consecutive_demographics_pages_stay_together(self):

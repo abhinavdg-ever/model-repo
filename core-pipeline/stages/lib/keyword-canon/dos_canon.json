@@ -2,6 +2,8 @@
   "note": "Date of service, per page. (1) Key/value: the DOS dates the extractor accepted (staging/extraction.json), never a print key's, grouped by their tier; the page takes the first group in kv_priority for its kind (page classification L1, page_kinds) and within it the highest score; weak dates need a score above weak_min_score; a discharge page pairs Admit (From) with Discharge (To). (2) Only when key/value has no date, a label below that starts within the first or last edge_words words of the page, with a date right after it (within label_reach_chars, only label_gap_words words between, so 'Visit Date: | DOB: 01/02/1960' is not a DOS; never a date after D:, T:, DD:, DT:, TD:, TT:, Dictated or Transcribed) — an encounter label wins, else admit is From and discharge To. (3) Other pages only: the dictated date, else the transcribed one. Otherwise no date. Edit labels here, not in dos_logic.py. Reloads on change.",
   "DOS_DEFAULT_DATE": "2222-02-02",
   "note_default": "DOS_DEFAULT_DATE is shown for a page with no date of its own (doc-level columns, review-ui downloads). It is never a page's Extracted DOS; it is the Final DOS of a stand-alone non-visit document (continuity_canon.json default_final_dos).",
+  "DOS_NON_VISIT_DATE": "2222-02-22",
+  "note_non_visit": "DOS_NON_VISIT_DATE is the Final DOS of a stand-alone non-visit document: Demographics, Patient Information, Problem List, Immunizations ... (continuity_canon.json default_final_dos). Set apart from DOS_DEFAULT_DATE (a page with no date) on 2026-10-27 (user). Each page's Extracted DOS is untouched; review-ui shows it beside the Final as (E: date).",
   "edge_words": 20,
   "label_reach_chars": 40,
   "label_gap_words": [

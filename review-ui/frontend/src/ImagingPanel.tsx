@@ -35,6 +35,7 @@ import {
   PAGE_L2_ALL,
   pageL2Choices,
   SPECIALTY_CHOICES,
+  CREDENTIAL_CHOICES,
 } from "./groundTruth";
 import { PAGE_SUBTYPE_CHOICES, PAGE_TYPE_CHOICES } from "./reviewChoices";
 import {
@@ -61,6 +62,9 @@ const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
 /** The DOS of a page with no date (DOS_DEFAULT_DATE in dos_canon.json). A business rule,
  * not a reading: it carries no confidence. */
 export const DEFAULT_DOS = "2222-02-02";
+/** The Final DOS of a stand-alone non-visit document (Demographics, Problem List ...):
+ * DOS_NON_VISIT_DATE in dos_canon.json (2026-10-27, user). */
+export const NON_VISIT_DOS = "2222-02-22";
 
 function text(value: string | null | undefined): string | null {
   return (value ?? "").trim() || null;
@@ -398,7 +402,7 @@ function fmtCodeable(
   const label = value != null && String(value).trim() !== "" ? String(value).trim() : "";
   if (label) return displayCodeable(label);
   const pt = pageType != null ? String(pageType).trim() : "";
-  if (!pt || pt === "Not Available") return "Not Sure";
+  if (!pt || pt === "Not Available") return NOT_FOUND;
   return NOT_FOUND;
 }
 
@@ -475,7 +479,8 @@ function blankJunkCompare(extracted: string, final: string) {
 /** The merged Page Type / Page Subtype ground truth takes either kind of name. */
 const PAGE_TYPE_AND_SUBTYPE_CHOICES = [...new Set([...PAGE_TYPE_CHOICES, ...PAGE_SUBTYPE_CHOICES])];
 const DUPLICATE_CHOICES = ["Yes", "Partial", "No"] as const;
-const CODEABLE_CHOICES = ["Codable", "Non-Codable", "Discharge", "Not Sure"] as const;
+// Codable or Non-Codable only (2026-10-27, user): no Not Sure, no Discharge.
+const CODEABLE_CHOICES = ["Codable", "Non-Codable"] as const;
 const TYPE_CHOICES = ["Printed", "Handwritten", "Form", "Visual", "Blank"] as const;
 /** The page quality grades (ocr_quality_results.quality_tag). */
 const QUALITY_CHOICES = ["High", "Medium", "Low"] as const;
@@ -501,7 +506,11 @@ const SKIPPED_ENTRY = "Skipped";
  * (2026-10-27, user). */
 const NOT_AVAILABLE_FIELDS = new Set(["page_type", "page_subtype", "specialty", "encounter", "quality"]);
 
+/** Yes, No or Skipped; no signature found is No (2026-10-27, user). */
+const SIGNATURE_FIELDS = new Set(["electronic_signature"]);
+
 function emptyLabel(fieldId: string): string {
+  if (SIGNATURE_FIELDS.has(fieldId)) return "No";
   return NOT_AVAILABLE_FIELDS.has(fieldId) ? NOT_AVAILABLE_ENTRY : NOT_FOUND;
 }
 
@@ -511,8 +520,10 @@ function newEntryWarning(fieldId: string, value: string, options: readonly strin
   const open = ENTRY_RULES[fieldId]?.open;
   const text = value.trim();
   if (!open || !text || CLEARED_ENTRY.has(text.toLowerCase())) return null;
-  if (exactOption(text, options) || exactOption(text, ENTRY_RULES[fieldId]?.choices ?? [])) return null;
-  return open;
+  const known = (part: string) => exactOption(part, options) || exactOption(part, ENTRY_RULES[fieldId]?.choices ?? []);
+  // Several credentials: each one is checked.
+  const parts = ENTRY_RULES[fieldId]?.multi ? text.split(/[,|]/).map((part) => part.trim()).filter(Boolean) : [text];
+  return parts.every((part) => known(part)) ? null : open;
 }
 
 function exactOption(value: string, options: readonly string[]): string | null {
@@ -550,6 +561,10 @@ function canonicalLabel(value: string): string | null {
 
 type EntryRule = {
   presence?: boolean;
+  /** Letters typed before a long list's matches drop down (default 2). */
+  minChars?: number;
+  /** Several values, comma-separated: the matches are for the one being typed. */
+  multi?: boolean;
   choices?: readonly string[];
   /** Any text is taken; one not in ``choices`` shows this warning (2026-10-27, user). */
   open?: string;
@@ -580,11 +595,13 @@ const ENTRY_RULES: Record<string, EntryRule> = {
   tilt: { kind: "text" },
   handwritten_area: { choices: HW_AREA_CHOICES },
   provider_name: { kind: "text" },
-  provider_credentials: { kind: "text" },
+  // The master list after one letter; several credentials, any text (2026-10-27, user).
+  provider_credentials: { kind: "text", choices: CREDENTIAL_CHOICES, open: "New Credential", minChars: 1, multi: true },
 };
 
 /** A listed choice, a real date, angle, or percent. Blank clears the cell. */
 function normalizeEntry(id: string, value: string): string | null {
+  if (SIGNATURE_FIELDS.has(id) && CLEARED_ENTRY.has(value.trim().toLowerCase())) return "No";
   if (CLEARED_ENTRY.has(value.trim().toLowerCase())) return "";
   if (value.trim().toLowerCase() === "skipped") return SKIPPED_ENTRY;
   const rule = ENTRY_RULES[id];
@@ -1097,11 +1114,14 @@ function GroundTruthCell({
     ? ["Yes", "No"]
     : row.choices ?? (kind === "degrees" && row.id === "orientation" ? ORIENTATION_CHOICES : []);
   const yesNoRow = row.presence || listed.every((option) => yesNo(option) != null);
-  const none = NOT_AVAILABLE_FIELDS.has(row.id)
-    ? [NOT_AVAILABLE_ENTRY]
-    : kind === "date" || kind === "text" || (yesNoRow && listed.length > 0)
-      ? [NOT_FOUND]
-      : [];
+  // Provider Signature: Yes, No, Skipped; Not Found is No (2026-10-27, user).
+  const none = SIGNATURE_FIELDS.has(row.id)
+    ? []
+    : NOT_AVAILABLE_FIELDS.has(row.id)
+      ? [NOT_AVAILABLE_ENTRY]
+      : kind === "date" || kind === "text" || (yesNoRow && listed.length > 0)
+        ? [NOT_FOUND]
+        : [];
   const values = listed.filter((option) => option !== SKIPPED_ENTRY && !none.includes(option));
   const extras = [...none, SKIPPED_ENTRY];
   // A long list puts them first, so they are not lost under its values.
@@ -1148,16 +1168,25 @@ function ChoiceMenu({
   const [text, setText] = useState(initial);
   const [typed, setTyped] = useState(false);
   const [invalid, setInvalid] = useState<string | null>(null);
-  const folded = text.trim().toLowerCase();
+  const rule = ENTRY_RULES[fieldId];
+  // Several values (credentials): match the one being typed, after the last comma.
+  const cut = rule?.multi ? Math.max(text.lastIndexOf(","), text.lastIndexOf("|")) + 1 : 0;
+  const head = text.slice(0, cut);
+  const folded = text.slice(cut).trim().toLowerCase();
   // A short list shows every option under the input; a long one is searched: its matches
-  // drop down once two letters are typed (2026-10-27, user).
+  // drop down once two letters are typed (one for credentials, 2026-10-27, user), those
+  // that start with them first.
   const inline = isDate || options.length < INLINE_OPTIONS_BELOW;
   const recos = inline
     ? options
-    : typed && folded.length >= 2
-      ? options.filter((option) => option.toLowerCase().includes(folded))
+    : typed && folded.length >= (rule?.minChars ?? 2)
+      ? [
+          ...options.filter((option) => option.toLowerCase().startsWith(folded)),
+          ...options.filter((option) => !option.toLowerCase().startsWith(folded) && option.toLowerCase().includes(folded)),
+        ].slice(0, 30)
       : [];
-  const pick = (option: string) => {
+  const pick = (picked: string) => {
+    const option = cut ? `${head.trimEnd()} ${picked}` : picked;
     setText(option);
     setTyped(false);
     setInvalid(null);
@@ -1545,6 +1574,14 @@ function dosCompareRow(
 ): CompareRow {
   const stored = side === "from" ? page.dosFrom : page.dosTo;
   const extracted = extractedDos(page, stored, processed, skipped);
+  const final =
+    extracted === SKIPPED || extracted === YET_TO_PROCESS
+      ? extracted
+      : finalDosValue(page, extracted, side, processed, skipped);
+  // A non-visit document's Final is 2222-02-22; the page's own date shows beside it as
+  // (E: date), and the ground truth matches either one (2026-10-27, user).
+  const ownDate = /^\d{4}-\d{2}-\d{2}/.test(extracted) && !extracted.startsWith("2222") ? extracted : "";
+  const nonVisit = final.startsWith(NON_VISIT_DOS) && Boolean(ownDate);
   const confidence = fmtConfidence(
     finalOr(page, "dos", page.dosConfidence),
     processed,
@@ -1554,9 +1591,8 @@ function dosCompareRow(
     id: side === "from" ? "dos_from" : "dos_to",
     label: side === "from" ? "DOS From" : "DOS To",
     extracted,
-    processed: extracted === SKIPPED || extracted === YET_TO_PROCESS
-      ? extracted
-      : finalDosValue(page, extracted, side, processed, skipped),
+    processed: nonVisit ? `${final} (E: ${ownDate})` : final,
+    ...(nonVisit ? { compare: (truth: string) => enteredMark(ownDate, final, truth, false) } : {}),
     confidence,
     truth,
     key: true,
@@ -1957,7 +1993,7 @@ function PageDetails({
             ...sameValue(
               credentialsShown,
               fmtConfidence(page.providerSignatureConfidence, Boolean(providerCredentials)),
-              { id: "provider_credentials", label: "Provider Credentials", key: true },
+              { id: "provider_credentials", label: "Provider Credentials", key: true, choices: CREDENTIAL_CHOICES },
             ),
             // Scored as the accuracy report scores it: any one credential shared
             // ('MD | NP' against 'MD, PhD') is a match.

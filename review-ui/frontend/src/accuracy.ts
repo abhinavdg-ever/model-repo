@@ -11,7 +11,7 @@ import {
   hasGroundTruth,
   type GtBit,
 } from "./groundTruth";
-import { DEFAULT_DOS, splitPageType } from "./ImagingPanel";
+import { DEFAULT_DOS, NON_VISIT_DOS, splitPageType } from "./ImagingPanel";
 
 export type Verdict = "yes" | "maybe" | "no";
 
@@ -383,7 +383,9 @@ function pageScores(
   // (From and To). No date in the ground truth matches when the Extracted or the Final DOS is
   // empty (either side matching is a Match).
   // The 2222-02-02 placeholder is no date.
-  const pipelineDated = Boolean(finalFrom || finalTo);
+  // A non-visit document's 2222-02-22 matches a labelled 2222-02-22 (or the page's own date
+  // does); against no labelled date it is no date either (2026-10-27, user).
+  const pipelineDated = Boolean(finalFrom || finalTo) && !finalFrom.startsWith(NON_VISIT_DOS);
   const extractedDated = Boolean(pipelineDate(page.dosFrom) || pipelineDate(page.dosTo));
   const gtDated = !blankOrJunk && (!noValue(page.groundTruth?.dosFrom) || !noValue(page.groundTruth?.dosTo));
   const dosCall: PresenceCall = gtDated

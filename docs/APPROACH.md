@@ -3172,12 +3172,12 @@ Encounter setting per visit. Evidence is ranked, not added up: the highest non-e
 
 #### demographics_break
 
-* **comment**: 2026-10-23 (user): a Demographics page never shares a document with another kind of page (a Progress Note, say). Every gap between a page of these types and a page of others is a break, whatever the score, and the final pass does not merge it back; consecutive Demographics pages stay together. Standing alone, the document takes default_final_dos (2222-02-02). Names are page names (page taxonomy L1 / L2 / L3 or canon page types) matched without case against every name of the page.
+* **comment**: 2026-10-23 (user): a Demographics page never shares a document with another kind of page (a Progress Note, say). Every gap between a page of these types and a page of others is a break, whatever the score, and the final pass does not merge it back; consecutive Demographics pages stay together. Standing alone, the document takes default_final_dos (2222-02-22). Names are page names (page taxonomy L1 / L2 / L3 or canon page types) matched without case against every name of the page.
 * **page_types**: Demographics, Patient Demographics, Patient Information, Patient Registration
 
 #### default_final_dos
 
-* **comment**: A stand-alone document of these pages (every page carrying a name listed here) is not a visit: its Final DOS is DOS_DEFAULT_DATE (dos_canon.json, 2222-02-02) on every page, whatever dates its pages carry. One of these pages inside a visit's document (a progress note with a problem-list page) takes the visit's DOS. Each page's Extracted DOS is untouched. Names are canon page types (page_canon.json) or L1 / L2 / L3 of page_taxonomy.json — matched without case against every name of the page (axes.names_of).
+* **comment**: A stand-alone document of these pages (every page carrying a name listed here) is not a visit: its Final DOS is DOS_NON_VISIT_DATE (dos_canon.json, 2222-02-22) on every page, whatever dates its pages carry. One of these pages inside a visit's document (a progress note with a problem-list page) takes the visit's DOS. Each page's Extracted DOS is untouched. Names are canon page types (page_canon.json) or L1 / L2 / L3 of page_taxonomy.json — matched without case against every name of the page (axes.names_of).
 * **page_types**: Patient Demographics, Patient Information, Patient Registration, Growth chart, Problem List, Immunizations, Immunization list, Demographics, Immunization, Immunization Record
 
 #### decision
