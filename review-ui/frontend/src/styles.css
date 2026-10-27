@@ -6525,13 +6525,14 @@ input {
   width: 15%;
 }
 
-/* Rejection Rules: the reviewer's Accept / Reject (chart ground truth). */
+/* Rejection Rules: the reviewer's Accept / Reject (chart ground truth), drawn like the
+   other ground-truth buttons; the chosen one is filled and carries a tick. */
 .member-decision-gt {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.45rem;
-  margin-top: 0.5rem;
+  margin-top: 0.6rem;
   font-size: 0.78rem;
 }
 
@@ -6541,21 +6542,9 @@ input {
 }
 
 .member-decision-btn {
-  padding: 0.2rem 0.7rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: #fff;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.member-decision-btn.is-accept {
-  color: var(--status-success-fg);
-}
-
-.member-decision-btn.is-reject {
-  color: #a33b32;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .member-decision-btn.is-accept.is-active {
@@ -6570,7 +6559,7 @@ input {
   color: #fff;
 }
 
-.member-decision-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
+/* Its Save / Discard sit right after the choice, not at the far right. */
+.member-decision-gt .imaging-gt-savebar {
+  margin-left: 0.4rem;
 }

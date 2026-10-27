@@ -2077,9 +2077,12 @@ function pageList(numbers: number[]): string {
  * match overall (the member's name with the DOB or the Member ID). Then the decision:
  * Reject at 2 x min(5, 10% of the pages) pages naming someone else, at most 10. */
 /** The reviewer's Accept / Reject for the member, saved as chart ground truth
- * (chart_ground_truth, 2026-10-28, user), with a tick when it agrees with the decision. */
+ * (chart_ground_truth, 2026-10-28, user). Like the other ground-truth cells: pick Accept or
+ * Reject, it reads "Accept ✓", then Save (floppy) or Discard; a tick when the saved answer
+ * agrees with the decision. */
 function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; decision: string }) {
   const [saved, setSaved] = useState<ChartGroundTruth | null>(null);
+  const [draft, setDraft] = useState<"accept" | "reject" | null | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -2091,19 +2094,24 @@ function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; d
       cancelled = true;
     };
   }, [folderId]);
-  async function choose(next: "accept" | "reject" | null) {
+  const stored = saved?.memberDecision ?? null;
+  const shown = draft === undefined ? stored : draft;
+  const dirty = draft !== undefined && draft !== stored;
+  async function save() {
+    if (!dirty) return;
     setSaving(true);
     setError(null);
     try {
-      setSaved(await saveChartGroundTruth(folderId, { memberDecision: next }));
+      setSaved(await saveChartGroundTruth(folderId, { memberDecision: draft ?? null }));
+      setDraft(undefined);
     } catch (err) {
       setError(saveErrorMessage(err));
     } finally {
       setSaving(false);
     }
   }
-  const current = saved?.memberDecision ?? null;
-  const agrees = current ? (current === "accept") === (decision === "Accept") : null;
+  const agrees = stored && !dirty ? (stored === "accept") === (decision === "Accept") : null;
+  const label = (value: "accept" | "reject") => (value === "accept" ? "Accept" : "Reject");
   return (
     <div className="member-decision-gt">
       <span className="member-decision-label">Ground truth:</span>
@@ -2111,24 +2119,47 @@ function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; d
         <button
           key={option}
           type="button"
-          className={`member-decision-btn is-${option}${current === option ? " is-active" : ""}`}
-          aria-pressed={current === option}
+          className={`imaging-gt-discard member-decision-btn is-${option}${shown === option ? " is-active" : ""}`}
+          aria-pressed={shown === option}
           disabled={saving || saved == null}
-          onClick={() => void choose(current === option ? null : option)}
-          title={current === option ? "Click again to clear" : undefined}
+          onClick={() => setDraft(shown === option ? null : option)}
+          title={shown === option ? "Click again to clear" : `Mark the member ${label(option)}`}
         >
-          {option === "accept" ? "Accept" : "Reject"}
+          {label(option)}
+          {shown === option ? <Check size={13} strokeWidth={2.6} aria-hidden="true" /> : null}
         </button>
       ))}
+      {dirty ? (
+        <span className="imaging-gt-savebar">
+          <button type="button" className="imaging-gt-save" aria-label="Save" title="Save" disabled={saving} onClick={() => void save()}>
+            <Save size={15} aria-hidden="true" />
+            {saving ? "Saving…" : "Save"}
+          </button>
+          <button
+            type="button"
+            className="imaging-gt-discard"
+            aria-label="Discard"
+            title="Discard"
+            disabled={saving}
+            onClick={() => {
+              setDraft(undefined);
+              setError(null);
+            }}
+          >
+            <CircleMinus size={15} aria-hidden="true" />
+            Discard
+          </button>
+        </span>
+      ) : null}
       {agrees == null ? null : (
         <span className={agrees ? "cmp-match" : "cmp-mismatch"}>
           {agrees ? "✓ matches the decision" : "✕ differs from the decision"}
         </span>
       )}
-      {saved?.savedBy || saved?.savedAt ? (
+      {!dirty && (saved?.savedBy || saved?.savedAt) ? (
         <span className="member-rejection-role">
-          saved{saved.savedBy ? ` by ${saved.savedBy}` : ""}
-          {saved.savedAt ? ` ${saved.savedAt.slice(0, 16).replace("T", " ")}` : ""}
+          saved{saved?.savedBy ? ` by ${saved.savedBy}` : ""}
+          {saved?.savedAt ? ` ${saved.savedAt.slice(0, 16).replace("T", " ")}` : ""}
         </span>
       ) : null}
       {error ? <span className="imaging-gt-hint">{error}</span> : null}
