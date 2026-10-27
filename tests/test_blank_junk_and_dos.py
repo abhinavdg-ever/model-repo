@@ -1056,3 +1056,25 @@ class TestDifferentDosIsNotADuplicate:
                     {1: frozenset({"2024-03-15"})}):
             rows = _classify([page(1, 1), page(2, 2)], texts, {1, 2}, dos_by_id=dos)
             assert {r["page_id"]: r["flag"] for r in rows}[2] == "duplicate"
+
+
+class TestSignedExactCopy:
+    """2026-10-27 (user): a page of more than 100 words with a signature, copied 100%, is
+    still a duplicate, even with a Main page between the two."""
+
+    def _rows(self, n_words: int):
+        signed = _words(n_words) + " electronically signed by"
+        other = " ".join(f"other{i}" for i in range(120))
+        texts = {1: signed, 2: other, 3: signed}
+        pages = [page(1, 1), page(2, 2), page(3, 3)]
+        return {r["page_id"]: r for r in _classify(pages, texts, {1, 2, 3}, signed_ids={1, 3})}
+
+    def test_an_exact_signed_copy_of_over_100_words_is_a_duplicate(self):
+        rows = self._rows(150)
+        assert rows[3]["flag"] == "duplicate" and rows[3]["duplicate_of"] == 1
+
+    def test_a_near_copy_of_a_signed_page_apart_is_not(self):
+        signed = _words(150) + " electronically signed by"
+        texts = {1: signed, 2: " ".join(f"other{i}" for i in range(120)), 3: signed.replace("term5 ", "changed ")}
+        rows = {r["page_id"]: r for r in _classify([page(1, 1), page(2, 2), page(3, 3)], texts, {1, 2, 3}, signed_ids={1, 3})}
+        assert rows[3]["duplicate_of"] is None

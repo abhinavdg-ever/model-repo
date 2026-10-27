@@ -47,7 +47,8 @@
     "signature_note": "2026-10-26 (user): a signature or ending page standing apart is not a duplicate: a pair with one (kv_extract's Electronic Signature in pass 2, or any signature_terms on the page) is skipped when a Main page lies between them (other notes, other DOSs). Side by side they still compare.",
     "pass_note": "2026-10-26 (user): pass 1 marks only exact copies (the same distinct words, lengths within 10%). The 98% / contained / word-count rules, partials, the DOS rule and the signature rule run in pass 2 only.",
     "dos_note": "2026-10-26 (user): two pages that both have a kv_extract DOS that differ in any date (from or to) are not duplicates or partials, however alike their words (pass 2).",
-    "text_dates_note": "Two pages whose own text differs in any date (dates compared in ISO form, so 5/3/2024 = 05/03/2024) are never duplicates or partials, in pass 1 and pass 2 (2026-10-27, user)."
+    "text_dates_note": "Two pages whose own text differs in any date (dates compared in ISO form, so 5/3/2024 = 05/03/2024) are never duplicates or partials, in pass 1 and pass 2 (2026-10-27, user).",
+    "signed_copy_note": "A signature / ending page apart from its look-alike (a Main page between) is not a duplicate, unless the two are exact copies (the same distinct words, lengths within 10%) of more than 100 words each: then it is (2026-10-27, user)."
   },
   "short_page": {
     "note": "Short page rule R6, pass 2, after R4 (signature) and before R5 (DistilBERT); restored 2026-10-21. Content that ends within the top 'top_fraction' (15%) of the page height, footer band and running stamps left out, with less than body_ink_max_fraction ink below -> JUNK / Others (confidence 0.95). Not when DistilBERT p(keep) > skip_keep_above (0.90), when the word boxes or the image cannot be read, or when R4 kept the page (docs/BLANK_JUNK_LOGIC.md).",

@@ -109,6 +109,7 @@ from classify import (  # noqa: E402
     duplicate_char_count,
     page_dates,
     text_is_comparable,
+    word_count,
     word_overlap,
 )
 import method  # noqa: E402
@@ -257,6 +258,11 @@ def _prior_main_ids(conn: Any, chart_id: int) -> set[int]:
     return {pid for pid, flag in existing.items() if flag == "not_blank_junk"}
 
 
+# A signature / ending page apart from its look-alike is still a duplicate when the two are
+# exact copies of more than this many words (2026-10-27, user).
+SIGNED_COPY_MIN_WORDS = 100
+
+
 def _classify(
     pages: list[dict[str, Any]],
     texts: dict[int, str],
@@ -383,16 +389,23 @@ def _classify(
             if not comparable[j]:
                 continue
             nid = pages[j]["id"]
-            if (_signature_page(pid) or _signature_page(nid)) and any(
-                _main(pages[k]["id"]) for k in range(i + 1, j)
-            ):
-                continue  # a signature / ending page apart from its look-alike
             dates_a, dates_b = (dos_by_id or {}).get(pid), (dos_by_id or {}).get(nid)
             if dates_a and dates_b and dates_a != dates_b:
                 continue  # different dates of service: different visits (any date differs)
             if page_dates(texts.get(pid) or "") != page_dates(texts.get(nid) or ""):
                 continue  # a date written on one page and not the other (2026-10-27, user)
             words = word_overlap(texts.get(pid) or "", texts.get(nid) or "")
+            if (_signature_page(pid) or _signature_page(nid)) and any(
+                _main(pages[k]["id"]) for k in range(i + 1, j)
+            ):
+                # A signature / ending page apart from its look-alike is not a duplicate,
+                # unless it is an exact copy of more than 100 words (2026-10-27, user).
+                exact = words.different == 0 and min(length[pid], length[nid]) >= (
+                    rules["duplicate_min_length_ratio"] * max(length[pid], length[nid])
+                )
+                if not (exact and min(word_count(texts.get(pid) or ""), word_count(texts.get(nid) or ""))
+                        > SIGNED_COPY_MIN_WORDS):
+                    continue
             is_contained = words.contained >= rules["contained_at"]
             # A contained pair scores 1.0; otherwise its overlap.
             sim = 1.0 if is_contained else words.overlap

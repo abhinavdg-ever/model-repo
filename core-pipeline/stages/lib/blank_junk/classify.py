@@ -197,6 +197,12 @@ class WordOverlap:
 
 
 @lru_cache(maxsize=4096)
+def word_count(text: str) -> int:
+    """All the words on the page, repeats included."""
+    return len(re.findall(r"\w+", text or ""))
+
+
+@lru_cache(maxsize=4096)
 def page_dates(text: str) -> frozenset[str]:
     """Every date written on the page, in ISO form ('5/3/2024' == '05/03/2024'). Two pages
     whose dates differ are never duplicates (2026-10-27, user)."""
