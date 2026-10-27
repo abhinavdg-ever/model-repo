@@ -386,7 +386,7 @@
     "Lab Report > Radiology Report > Brain MRI Report": "non_codeable",
     "Lab Report > Radiology Report > CT Angiography Report": "codeable",
     "Lab Report > Radiology Report > CT Scan Report": "non_codeable",
-    "Lab Report > Radiology Report > MR Angiography Report": "non_codeable",
+    "Lab Report > Radiology Report > MR Angiography Report": "codeable",
     "Lab Report > Radiology Report > MRI Report": "non_codeable",
     "Lab Report > Radiology Report > Mammogram Report": "non_codeable",
     "Lab Report > Radiology Report > Nuclear Medicine Report": "non_codeable",

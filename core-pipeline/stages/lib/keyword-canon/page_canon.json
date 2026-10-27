@@ -5470,7 +5470,7 @@
         "L2": "Radiology Report",
         "L3": "MR Angiography Report"
       },
-      "codeability": "non_codeable",
+      "codeability": "codeable",
       "codeability_rule": "page_type_tag",
       "specialty": "Neurology",
       "lexicon": {

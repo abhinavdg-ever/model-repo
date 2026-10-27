@@ -48,3 +48,17 @@ def test_the_date_and_the_list_both_filter():
     assert script.chart_filter(None, ["a"]) == ("chart_name = ANY(%s)", (["a"],))
     assert script.chart_filter(cutoff, ["a"]) == ("updated_at >= %s AND chart_name = ANY(%s)", (cutoff, ["a"]))
     assert script.chart_filter(None, None) == ("TRUE", ())
+
+
+def test_a_list_of_chart_ids(tmp_path):
+    """2026-10-27 (user): batches by chart_id as well as by chart name."""
+    import pytest
+
+    script = _script()
+    path = tmp_path / "ids.txt"
+    path.write_text("12\n7, 12\n", encoding="utf-8")
+    assert script.read_chart_ids(str(path)) == [12, 7]
+    assert script.chart_filter(None, [12, 7], by_id=True) == ("id = ANY(%s)", ([12, 7],))
+    path.write_text("12\n52743839_44976074\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        script.read_chart_ids(str(path))

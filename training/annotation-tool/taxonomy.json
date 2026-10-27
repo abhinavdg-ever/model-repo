@@ -1064,7 +1064,7 @@
     "name": "MR Angiography Report",
     "description": "MR Angiography Report. Imaging reports: plain film, CT, MRI, ultrasound, mammography, nuclear medicine, bone density. Angiography is held separately from plain CT and MR because it is a different protocol and a different code.",
     "specialty": "",
-    "codeability": "non_codeable",
+    "codeability": "codeable",
     "codeability_tag": "Non-Codeable",
     "notes": ""
    },

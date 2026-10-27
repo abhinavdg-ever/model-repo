@@ -187,9 +187,11 @@ clone              # the copy (refuses a target that already has charts)
 | Charts run on or after a date (default 26 Oct 2026 00:00 IST) | `clone --since "2026-11-01 00:00"` |
 | Exactly the charts in a list | `clone --charts-file /lists/charts.txt` |
 | Charts in the list **and** run since a date | `clone --charts-file /lists/charts.txt --since "2026-11-01 00:00"` |
+| A list of chart ids (`chart_list.id`) instead of names | `clone --charts-file /lists/ids.txt --by-id` |
 
 The list is a plain text file (Notepad is fine) in `~/client-charts/` on the VM: one chart
-name per line, as in our chart list (the folder name, e.g. `52743839_44976074`). Blank lines
+name per line, as in our chart list (the folder name, e.g. `52743839_44976074`), or one
+chart id per line with `--by-id`. Blank lines
 are skipped, a `#` starts a comment, and commas or spaces also separate names. With a list
 and no `--since`, the date is not checked. Names not in our database are printed and
 skipped. Always run the same command with `--dry-run` first.
@@ -200,12 +202,24 @@ How the charts land in the client database:
 |---|---|---|
 | (none) | must be empty, else it stops | copied |
 | `--add` | kept as they are | copied if not there yet; one already there is skipped (not updated) |
-| `--replace` | deleted (ground truth, reviews and accounts stay) | copied |
+| `--update` | kept, except the chosen ones | each chosen chart's old copy is deleted (matched by name) and its latest copied; a new one is added |
+| `--replace` | all deleted (ground truth, reviews and accounts stay) | copied |
 
 So to give the client more charts later, write their names in a file and run
 `clone --dry-run --charts-file /lists/more.txt --add`, then the same without `--dry-run`.
-To bring a chart that is already there up to its latest run, use `--replace` (with the full
-list or date you want the client to have).
+**Batches after re-runs** (the usual way to keep the client up to date): list the charts
+you re-ran, by name or by id, and run
+
+```bash
+clone --dry-run --charts-file /lists/batch-07.txt --update
+clone --charts-file /lists/batch-07.txt --update            # names
+clone --charts-file /lists/batch-07-ids.txt --by-id --update  # or chart ids
+```
+
+Only those charts change on the client side: their pages and results are replaced by our
+latest, the other charts stay, and the client's ground truth on them stays (it is keyed
+by chart name and page number). `--since` works with `--update` too (every chart re-run
+since a date).
 
 If the database host is `localhost` on the VM, use `host.docker.internal` (or the VM's
 IP) in the two URLs, since the script runs inside a container. Prefix the `export` lines

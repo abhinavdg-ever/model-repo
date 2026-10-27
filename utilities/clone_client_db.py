@@ -8,16 +8,21 @@ or the charts named in a list, our users (so the same sign-ins work), and no gro
     python utilities/clone_client_db.py --replace            # refresh: swap the chart data
     python utilities/clone_client_db.py --charts-file charts.txt          # only these charts
     python utilities/clone_client_db.py --charts-file charts.txt --add    # add them to the target
+    python utilities/clone_client_db.py --charts-file charts.txt --update # re-copy them (re-runs)
+    python utilities/clone_client_db.py --charts-file ids.txt --by-id --update  # the list holds chart_ids
     python utilities/clone_client_db.py --since "2026-11-01 00:00" --add  # add newer runs
 
 Which charts: ``--since`` (last run at or after it; default 2026-10-26 00:00 when no list
 is given) and / or ``--charts-file`` (a text file, one chart name per line; commas and
-spaces also separate, a ``#`` starts a comment). Both given: a chart must be in the list
-AND run since the date. Names in the list that are not in our database are printed.
+spaces also separate, a ``#`` starts a comment; ``--by-id``: chart_list ids instead of
+names). Both given: a chart must be in the list AND run since the date. Entries not in our
+database are printed.
 
-How they land: an empty target is filled; ``--replace`` deletes the target's chart data
+How they land: an empty target is filled; ``--replace`` deletes all the target's chart data
 first; ``--add`` keeps what the target has and copies only the chosen charts it does not
-have yet (a chart already there is skipped, not updated).
+have yet (one already there is skipped); ``--update`` deletes just the chosen charts from
+the target (matched by chart name) and copies them again, so a batch of re-run charts is
+brought up to date and every other chart is left alone. Ground truth is never touched.
 
 Needs SOURCE_DATABASE_URL (ours) and TARGET_DATABASE_URL (the client's, created with
 schema/v1.sql). "Last run" is chart_list.updated_at, which a run writes last.
@@ -122,16 +127,26 @@ def read_chart_list(path: str) -> list[str]:
     return names
 
 
-def chart_filter(cutoff: Optional[datetime], names: Optional[list[str]]) -> tuple[str, tuple]:
-    """The WHERE clause on chart_list choosing the charts, and its parameters."""
+def chart_filter(cutoff: Optional[datetime], names: Optional[list], by_id: bool = False) -> tuple[str, tuple]:
+    """The WHERE clause on chart_list choosing the charts, and its parameters. ``names`` are
+    chart names, or chart_list ids with ``by_id``."""
     clauses, params = [], []
     if cutoff is not None:
         clauses.append("updated_at >= %s")
         params.append(cutoff)
     if names is not None:
-        clauses.append("chart_name = ANY(%s)")
+        clauses.append(f"{'id' if by_id else 'chart_name'} = ANY(%s)")
         params.append(names)
     return (" AND ".join(clauses) or "TRUE"), tuple(params)
+
+
+def read_chart_ids(path: str) -> list[int]:
+    """chart_list ids from a list file (``read_chart_list``); a non-number is an error."""
+    entries = read_chart_list(path)
+    bad = [entry for entry in entries if not entry.isdigit()]
+    if bad:
+        raise SystemExit(f"--by-id: not chart ids: {', '.join(bad[:10])}")
+    return [int(entry) for entry in entries]
 
 
 def _describe(cutoff: Optional[datetime], names: Optional[list[str]]) -> str:
@@ -141,19 +156,20 @@ def _describe(cutoff: Optional[datetime], names: Optional[list[str]]) -> str:
     return " and ".join(parts)
 
 
-def _report_missing(src, names: Optional[list[str]]) -> None:
+def _report_missing(src, names: Optional[list], by_id: bool = False) -> None:
     if not names:
         return
-    found = {row["chart_name"] for row in src.execute(
-        "SELECT chart_name FROM chart_list WHERE chart_name = ANY(%s)", (names,)).fetchall()}
-    missing = [name for name in names if name not in found]
+    column = "id" if by_id else "chart_name"
+    found = {row[column] for row in src.execute(
+        f"SELECT {column} FROM chart_list WHERE {column} = ANY(%s)", (names,)).fetchall()}
+    missing = [str(name) for name in names if name not in found]
     if missing:
         print(f"not in our database ({len(missing)}): {', '.join(missing)}")
 
 
-def _dry_run(src, cutoff: Optional[datetime], names: Optional[list[str]]) -> int:
+def _dry_run(src, cutoff: Optional[datetime], names: Optional[list], by_id: bool = False) -> int:
     """What a copy would take from the source; reads only."""
-    where, params = chart_filter(cutoff, names)
+    where, params = chart_filter(cutoff, names, by_id)
     row = src.execute(
         "SELECT count(*) AS charts, min(updated_at) AS first_run, max(updated_at) AS last_run, "
         f"(SELECT count(*) FROM page_list p WHERE p.chart_id IN (SELECT id FROM chart_list WHERE {where})) AS pages, "
@@ -167,7 +183,7 @@ def _dry_run(src, cutoff: Optional[datetime], names: Optional[list[str]]) -> int
     total = src.execute("SELECT count(*) AS n FROM chart_list").fetchone()["n"]
     print(f"charts {_describe(cutoff, names)}: {row['charts']} of {total} charts, {row['pages']} pages, "
           f"{row['users']} users; by status {{{', '.join(f'{s['status']}: {s['n']}' for s in statuses)}}}")
-    _report_missing(src, names)
+    _report_missing(src, names, by_id)
     print(f"their last runs: {row['first_run']} .. {row['last_run']}; dry run, nothing written")
     return 0
 
@@ -180,11 +196,15 @@ def main() -> int:
     parser.add_argument("--tz", default="Asia/Kolkata", help="time zone of --since (default Asia/Kolkata)")
     parser.add_argument("--charts-file", default=None,
                         help="a text file of chart names, one per line: only these charts")
+    parser.add_argument("--by-id", action="store_true",
+                        help="--charts-file holds chart_list ids (chart_id) instead of chart names")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--replace", action="store_true",
                       help="refresh: delete the target's chart data first (ground truth and users stay)")
     mode.add_argument("--add", action="store_true",
                       help="keep the target's charts; copy only the chosen charts it does not have yet")
+    mode.add_argument("--update", action="store_true",
+                      help="delete just the chosen charts from the target and copy them again (re-runs)")
     parser.add_argument("--dry-run", action="store_true", help="count what would be copied; change nothing")
     args = parser.parse_args()
 
@@ -195,32 +215,41 @@ def main() -> int:
     if source_url == target_url:
         print("the source and the target are the same database", file=sys.stderr)
         return 2
-    names_wanted = read_chart_list(args.charts_file) if args.charts_file else None
+    if args.by_id and not args.charts_file:
+        print("--by-id needs --charts-file", file=sys.stderr)
+        return 2
+    names_wanted = (
+        (read_chart_ids(args.charts_file) if args.by_id else read_chart_list(args.charts_file))
+        if args.charts_file else None
+    )
     if names_wanted is not None and not names_wanted:
         print(f"{args.charts_file} names no charts", file=sys.stderr)
         return 2
     since = args.since or (None if names_wanted is not None else DEFAULT_SINCE)
     cutoff = datetime.fromisoformat(since).replace(tzinfo=ZoneInfo(args.tz)) if since else None
-    where, params = chart_filter(cutoff, names_wanted)
+    where, params = chart_filter(cutoff, names_wanted, args.by_id)
 
     if args.dry_run:
         with _connect(source_url) as src:
-            return _dry_run(src, cutoff, names_wanted)
+            return _dry_run(src, cutoff, names_wanted, args.by_id)
 
     with _connect(source_url) as src, _connect(target_url) as dst:
         charts = src.execute(
             f"SELECT id, chart_name, status FROM chart_list WHERE {where} ORDER BY id", params
         ).fetchall()
-        _report_missing(src, names_wanted)
+        _report_missing(src, names_wanted, args.by_id)
         existing = dst.execute("SELECT count(*) AS n FROM chart_list").fetchone()["n"]
-        if existing and not (args.replace or args.add):
-            print(f"the target already has {existing} charts: use --replace to refresh or --add to add",
+        if existing and not (args.replace or args.add or args.update):
+            print(f"the target already has {existing} charts: use --add, --update or --replace",
                   file=sys.stderr)
             return 1
+        # The target's charts by name (a chart re-created in ours may have a new id).
+        target_ids = {row["chart_name"]: row["id"] for row in dst.execute(
+            "SELECT id, chart_name FROM chart_list WHERE chart_name = ANY(%s)",
+            ([row["chart_name"] for row in charts],)).fetchall()}
         if args.add:
-            have = {row["id"] for row in dst.execute("SELECT id FROM chart_list").fetchall()}
-            skipped = [row["chart_name"] for row in charts if row["id"] in have]
-            charts = [row for row in charts if row["id"] not in have]
+            skipped = [row["chart_name"] for row in charts if row["chart_name"] in target_ids]
+            charts = [row for row in charts if row["chart_name"] not in target_ids]
             if skipped:
                 print(f"already in the target, skipped ({len(skipped)}): {', '.join(skipped)}")
         ids = [row["id"] for row in charts]
@@ -237,6 +266,13 @@ def main() -> int:
                 dst.execute(f"DELETE FROM {table}")
             dst.execute("DELETE FROM chart_list")
             dst.execute("DELETE FROM manifest_member_list")
+        if args.update and target_ids:
+            # Just these charts: their old rows go, the latest are copied below.
+            stale = list(target_ids.values())
+            for table in reversed(CHART_TABLES):
+                dst.execute(f"DELETE FROM {table} WHERE chart_id = ANY(%s)", (stale,))
+            dst.execute("DELETE FROM chart_list WHERE id = ANY(%s)", (stale,))
+            print(f"updating {len(stale)} charts already in the target")
 
         # Manifest rows the target already has (--add) stay as they are.
         kept = [row["id"] for row in dst.execute("SELECT id FROM manifest_member_list").fetchall()]

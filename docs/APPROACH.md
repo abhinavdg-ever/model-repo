@@ -338,7 +338,7 @@ Others L2. As of 2026-10-26 (user):
 |---|---|
 | Progress Note (every L2 / L3, Lab and Imaging Results and Medication List included) | Codable |
 | Operative Note, Procedure Note | Codable |
-| Lab Report > Radiology Report > CT Angiography Report | Codable |
+| Lab Report > Radiology Report > CT Angiography Report, MR Angiography Report | Codable |
 | Discharge Summary | Discharge |
 | Consent and Authorization, Administrative, Demographics | Non-Codable |
 | Every other path (the rest of Lab Report, Medication Record, Problem List, Forms, Orders, Letters, Communication, Immunization, Clinical Summary) | Non-Codable |
@@ -2641,7 +2641,7 @@ Counts: page_types 295, families 85, from_labels 106, with_starting_lexicon 191,
 | Lab Report > Radiology Report | Lab Report | Lab Report > Radiology Report | non_codeable |  | radiology |  | impression, findings, technique, comparison, contrast, indication, radiologist, views, dictated |  |
 | Lab Result | Lab Report | Lab Report > Lab Result | non_codeable |  |  |  | specimen, collected, reference, range, units, flag, accession, fasting, serum, plasma |  |
 | Laboratory Flow Sheet | Lab Report | Lab Report > Lab Result > Laboratory Flow Sheet | non_codeable |  | flowsheet | Laboratory Flow Sheet | flowsheet, trend, trends, cumulative |  |
-| MR Angiography Report | Lab Report | Lab Report > Radiology Report > MR Angiography Report | non_codeable | Neurology | mra | MR Angiography Report | mra, angiography, magnetic, resonance, vessels |  |
+| MR Angiography Report | Lab Report | Lab Report > Radiology Report > MR Angiography Report | codeable | Neurology | mra | MR Angiography Report | mra, angiography, magnetic, resonance, vessels |  |
 | Optical Coherence Tomography Report | Lab Report | Lab Report > Diagnostic Study > Optical Coherence Tomography Report | non_codeable |  | oct |  | oct, retinal, thickness, macula, rnfl, optic |  |
 | Sigmoidoscopy Report | Lab Report | Lab Report > Diagnostic Study > Sigmoidoscopy Report | non_codeable | Gastroenterology | sigmoidoscopy | Sigmoidoscopy Report | sigmoidoscopy, sigmoid, rectum, flexible |  |
 | Split Night Study Report | Lab Report | Lab Report > Diagnostic Study > Split Night Study Report | codeable | Sleep Study |  | Split Night Study Report | split, cpap, titration, diagnostic, ahi |  |

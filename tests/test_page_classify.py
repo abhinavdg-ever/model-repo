@@ -181,6 +181,8 @@ class TestAgreedPageType:
                         ("Administrative", "non_codeable"), ("Demographics", "non_codeable")):
             assert {taxonomy.codeability_of(l1, l2) for l2 in space["L2"][l1]} == {tag}
         assert taxonomy.codeability_of("Lab Report", "Radiology Report", "CT Angiography Report") == "codeable"
+        # 2026-10-27 (user): MR Angiography too.
+        assert taxonomy.codeability_of("Lab Report", "Radiology Report", "MR Angiography Report") == "codeable"
         assert taxonomy.codeability_of("Lab Report", "Radiology Report", "CT Scan Report") == "non_codeable"
         table = json.loads((CANON_DIR / "page_taxonomy.json").read_text(encoding="utf-8"))["codeability"]
         assert "needs_review" not in table.values()
