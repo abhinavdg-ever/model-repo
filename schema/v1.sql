@@ -381,7 +381,10 @@ CREATE TABLE page_ground_truth (
     member_id               TEXT,
     dos_from                TEXT,
     dos_to                  TEXT,
+    -- The client sheet's Encounter Type column holds the page type; the page's real
+    -- encounter type (Outpatient (F2F), Inpatient, ...) is encounter_label.
     encounter_type          TEXT,
+    encounter_label         TEXT,
     page_type               TEXT,
     page_subtype            TEXT,
     codeable                TEXT,

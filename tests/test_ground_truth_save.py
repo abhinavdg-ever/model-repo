@@ -131,7 +131,7 @@ def test_subtype_and_specialty_are_saved_and_read():
         _ground_truth_from_row,
     )
 
-    assert _MANUAL_COLUMNS[-2:] == ("page_subtype", "provider_specialty")
+    assert _MANUAL_COLUMNS[-5:-3] == ("page_subtype", "provider_specialty")
     assert {"page_subtype", "provider_specialty"} <= set(LABEL_COLUMNS)
     assert "'page_subtype'" in _COLUMNS and "'provider_specialty'" in _COLUMNS
     assert "page_subtype = EXCLUDED.page_subtype" in _UPSERT
@@ -141,3 +141,32 @@ def test_subtype_and_specialty_are_saved_and_read():
     assert (truth.pageSubtype, truth.specialty) == ("Wound Care Visit", "Podiatry")
     bulk = _ground_truth_from_labels(4, "4.jpg", {"page_subtype": "CC/HPI", "provider_specialty": "Cardiology"})
     assert (bulk.pageSubtype, bulk.specialty) == ("CC/HPI", "Cardiology")
+
+
+def test_encounter_tilt_and_quality_are_saved_and_read():
+    """2026-10-27 (user): Encounter Type, Tilt and Quality ground truth. The encounter type
+    goes to encounter_label: encounter_type holds the client sheet's page type."""
+    from app.services.ground_truth import (
+        _ADD_ENTRY_TABLE,
+        _COLUMNS,
+        _MANUAL_COLUMNS,
+        _UPSERT,
+        _ground_truth_from_labels,
+        _ground_truth_from_row,
+    )
+
+    assert _MANUAL_COLUMNS[-3:] == ("encounter_label", "tilt", "quality")
+    assert {"encounter_label", "tilt", "quality"} <= set(LABEL_COLUMNS)
+    for column in ("encounter_label", "tilt", "quality"):
+        assert f"'{column}'" in _COLUMNS
+        assert f"{column} = EXCLUDED.{column}" in _UPSERT
+    # One placeholder per inserted column, plus the entry's labels and user id.
+    inserted = _UPSERT.split("INSERT INTO page_ground_truth (")[1].split(")")[0]
+    values = _UPSERT.split(") VALUES (")[1].split(")")[0]
+    assert inserted.count(",") == values.count(",")
+    assert "ADD COLUMN IF NOT EXISTS encounter_label" in _ADD_ENTRY_TABLE
+    row = (4, "4.jpg", *([None] * 19), "Inpatient", "Slight tilt", "Low")
+    truth = _ground_truth_from_row(row)
+    assert (truth.encounterLabel, truth.tilt, truth.quality) == ("Inpatient", "Slight tilt", "Low")
+    bulk = _ground_truth_from_labels(4, "4.jpg", {"encounter_label": "Home", "tilt": "3", "quality": "High"})
+    assert (bulk.encounterLabel, bulk.tilt, bulk.quality) == ("Home", "3", "High")

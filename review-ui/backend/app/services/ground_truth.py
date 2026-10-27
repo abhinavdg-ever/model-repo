@@ -27,7 +27,10 @@ _COLUMNS = """
     to_jsonb(page_ground_truth) ->> 'member_id',
     to_jsonb(page_ground_truth) ->> 'provider_credentials',
     to_jsonb(page_ground_truth) ->> 'page_subtype',
-    to_jsonb(page_ground_truth) ->> 'provider_specialty'
+    to_jsonb(page_ground_truth) ->> 'provider_specialty',
+    to_jsonb(page_ground_truth) ->> 'encounter_label',
+    to_jsonb(page_ground_truth) ->> 'tilt',
+    to_jsonb(page_ground_truth) ->> 'quality'
 """
 
 _EMPTY = {"", "na", "n/a", "not found", "not available"}
@@ -54,6 +57,9 @@ CREATE INDEX IF NOT EXISTS idx_page_ground_truth_entry_page_ground_truth_id_entr
 -- users(id) reference; a database without it still saves, with the id unreferenced.
 ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS user_id BIGINT;
 ALTER TABLE page_ground_truth_entry ADD COLUMN IF NOT EXISTS user_id BIGINT;
+-- The page's encounter type (2026-10-27): encounter_type holds the client sheet's page
+-- type. schema/changes_2026-10-27.sql adds it too.
+ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS encounter_label TEXT;
 """
 
 # A page written before the entry table existed gets one entry holding its
@@ -152,7 +158,7 @@ LABEL_COLUMNS = (
     "encounter_type", "page_type", "codeable",
     "blank_page", "junk_page", "is_invoice", "page_sequence", "rotation",
     "is_visible", "rendering_provider", "provider_signature", "provider_credentials",
-    "page_subtype", "provider_specialty",
+    "page_subtype", "provider_specialty", "encounter_label", "tilt", "quality",
 )
 
 
@@ -243,6 +249,9 @@ def _ground_truth_from_row(row: tuple) -> PageGroundTruth:
         providerCredentials=row[18] if len(row) > 18 else None,
         pageSubtype=row[19] if len(row) > 19 else None,
         specialty=row[20] if len(row) > 20 else None,
+        encounterLabel=row[21] if len(row) > 21 else None,
+        tilt=row[22] if len(row) > 22 else None,
+        quality=row[23] if len(row) > 23 else None,
     )
 
 
@@ -263,6 +272,7 @@ INSERT INTO page_ground_truth (
     rotation, is_visible,
     rendering_provider, provider_signature, provider_credentials,
     page_subtype, provider_specialty,
+    encounter_label, tilt, quality,
     user_id
 ) VALUES (
     %s, %s, %s,
@@ -272,6 +282,7 @@ INSERT INTO page_ground_truth (
     %s, %s,
     %s, %s, %s,
     %s, %s,
+    %s, %s, %s,
     %s
 )
 ON CONFLICT (chart_name, page_number) DO UPDATE SET
@@ -294,6 +305,9 @@ ON CONFLICT (chart_name, page_number) DO UPDATE SET
     provider_credentials = EXCLUDED.provider_credentials,
     page_subtype = EXCLUDED.page_subtype,
     provider_specialty = EXCLUDED.provider_specialty,
+    encounter_label = EXCLUDED.encounter_label,
+    tilt = EXCLUDED.tilt,
+    quality = EXCLUDED.quality,
     user_id = EXCLUDED.user_id,
     updated_at = now()
 RETURNING
@@ -302,7 +316,8 @@ RETURNING
     encounter_type, page_type, codeable,
     blank_page, junk_page, is_invoice, page_sequence, rotation,
     is_visible, rendering_provider, provider_signature,
-    member_id, provider_credentials, page_subtype, provider_specialty
+    member_id, provider_credentials, page_subtype, provider_specialty,
+    encounter_label, tilt, quality
 ), e AS (
 INSERT INTO page_ground_truth_entry (page_ground_truth_id, entry_mode, labels, user_id)
 SELECT id, 'manual_entry', %s::jsonb, %s FROM g
@@ -313,7 +328,8 @@ SELECT
     encounter_type, page_type, codeable,
     blank_page, junk_page, is_invoice, page_sequence, rotation,
     is_visible, rendering_provider, provider_signature,
-    member_id, provider_credentials, page_subtype, provider_specialty
+    member_id, provider_credentials, page_subtype, provider_specialty,
+    encounter_label, tilt, quality
   FROM g
 """
 
@@ -325,6 +341,7 @@ _MANUAL_COLUMNS = (
     "rotation", "is_visible",
     "rendering_provider", "provider_signature", "provider_credentials",
     "page_subtype", "provider_specialty",
+    "encounter_label", "tilt", "quality",
 )
 
 
@@ -369,6 +386,9 @@ def upsert_page_ground_truth(
         clean_label(body.providerCredentials),
         clean_label(body.pageSubtype),
         clean_label(body.specialty),
+        clean_label(body.encounterLabel),
+        clean_label(body.tilt),
+        clean_label(body.quality),
     )
     labels = json.dumps(dict(zip(_MANUAL_COLUMNS, params[3:])))
     with connection(database_url, db_schema) as conn:
@@ -465,6 +485,9 @@ def _ground_truth_from_labels(
         providerCredentials=get("provider_credentials"),
         pageSubtype=get("page_subtype"),
         specialty=get("provider_specialty"),
+        encounterLabel=get("encounter_label"),
+        tilt=get("tilt"),
+        quality=get("quality"),
     )
 
 

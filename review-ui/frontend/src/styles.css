@@ -2864,9 +2864,8 @@ input {
 .imaging-sequencing-table td {
   width: 18%;
   padding: 0.35rem 0.5rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .imaging-rejection-table {
@@ -5850,6 +5849,10 @@ input {
   color: var(--text);
 }
 
+.sequence-break-summary p {
+  margin: 0 0 0.15rem;
+}
+
 .sequence-break-summary {
   margin: 0;
   font-size: 0.76rem;
@@ -6335,4 +6338,92 @@ input {
 
 .conf-flag {
   font-weight: 600;
+}
+
+/* Page Details: Extracted, Final and Confidence wrap inside their columns, never past
+   them (2026-10-27, user). */
+.imaging-detail-table.imaging-value-table tbody td {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+}
+
+.imaging-detail-table.imaging-value-table .conf-band {
+  white-space: normal;
+  max-width: 100%;
+}
+
+.imaging-value-table .value-with-note > span {
+  min-width: 0;
+}
+
+/* The DOS calendar: fixed to the window, placed inside it by DateCalendar. */
+.imaging-gt-calendar {
+  position: fixed;
+  z-index: 60;
+  width: 13.5rem;
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card, #fff);
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
+  font-size: 0.72rem;
+}
+
+.imaging-gt-calendar-head {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin-bottom: 0.3rem;
+}
+
+.imaging-gt-calendar-head span {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+  color: var(--brand-800);
+}
+
+.imaging-gt-calendar-head button,
+.imaging-gt-calendar-grid button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.45rem;
+  padding: 0 0.3rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.imaging-gt-calendar-head button:hover,
+.imaging-gt-calendar-grid button:hover {
+  border-color: var(--border);
+  background: var(--neutral-50);
+}
+
+.imaging-gt-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  text-align: center;
+}
+
+.imaging-gt-calendar-weekday {
+  color: var(--muted);
+  font-weight: 600;
+  padding: 0.1rem 0;
+}
+
+.imaging-gt-calendar-grid button.is-today {
+  border-color: var(--brand-800);
+}
+
+.imaging-gt-calendar-grid button.is-active {
+  background: var(--brand-800);
+  color: #fff;
 }

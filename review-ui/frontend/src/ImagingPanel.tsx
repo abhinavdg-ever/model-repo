@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
-import { Check, CircleMinus, Pencil, Save, X } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, CircleMinus, Pencil, Save, X } from "lucide-react";
 import {
   savePageGroundTruth,
   type ExtractionReviewResponse,
@@ -477,6 +477,8 @@ const PAGE_TYPE_AND_SUBTYPE_CHOICES = [...new Set([...PAGE_TYPE_CHOICES, ...PAGE
 const DUPLICATE_CHOICES = ["Yes", "Partial", "No"] as const;
 const CODEABLE_CHOICES = ["Codable", "Non-Codable", "Discharge", "Not Sure"] as const;
 const TYPE_CHOICES = ["Printed", "Handwritten", "Form", "Visual", "Blank"] as const;
+/** The page quality grades (ocr_quality_results.quality_tag). */
+const QUALITY_CHOICES = ["High", "Medium", "Low"] as const;
 
 /** Page type; a page classified before document type existed shows its old label. */
 function pageTypeOf(page: ImagingPageResult): string | null {
@@ -495,6 +497,13 @@ const INLINE_OPTIONS_BELOW = 10;
 /** A ground truth every Page Details cell takes (2026-10-26, user): the pipeline rightly
  * skipped the field on this page (a blank page has no DOS, a junk page no provider). */
 const SKIPPED_ENTRY = "Skipped";
+/** Labels, not values: an empty one reads Not Available, every other Not Found
+ * (2026-10-27, user). */
+const NOT_AVAILABLE_FIELDS = new Set(["page_type", "page_subtype", "specialty", "encounter", "quality"]);
+
+function emptyLabel(fieldId: string): string {
+  return NOT_AVAILABLE_FIELDS.has(fieldId) ? NOT_AVAILABLE_ENTRY : NOT_FOUND;
+}
 
 /** "New Type" / "New Subtype" / "New Specialty" for a typed value none of the listed
  * ones match; it is still saved (2026-10-27, user). */
@@ -561,11 +570,14 @@ const ENTRY_RULES: Record<string, EntryRule> = {
   page_subtype: { choices: PAGE_L2_ALL, open: "New Subtype" },
   specialty: { choices: SPECIALTY_CHOICES, open: "New Specialty" },
   codeable: { choices: CODEABLE_CHOICES },
+  encounter: { choices: ENCOUNTER_TYPE_CHOICES },
+  quality: { choices: QUALITY_CHOICES },
   visibility: { choices: VISIBILITY_CHOICES },
   dos_from: { kind: "date" },
   dos_to: { kind: "date" },
   orientation: { kind: "degrees" },
-  tilt: { kind: "degrees" },
+  // Any text (2026-10-27, user).
+  tilt: { kind: "text" },
   handwritten_area: { choices: HW_AREA_CHOICES },
   provider_name: { kind: "text" },
   provider_credentials: { kind: "text" },
@@ -669,9 +681,12 @@ function storedGroundTruth(gt: PageGroundTruth | null | undefined): Record<strin
     provider_name: (gt?.renderingProvider ?? "").trim(),
     provider_credentials: gtCredentials(gt),
     electronic_signature: gtSignature(gt),
-    quality: visibilityLabel(gt?.isVisible),
+    // Round-tripped only: no row edits it.
+    is_visible: visibilityLabel(gt?.isVisible),
+    quality: (gt?.quality ?? "").trim(),
     orientation: rotationLabel(gt?.rotation),
-    encounter: "",
+    tilt: (gt?.tilt ?? "").trim(),
+    encounter: (gt?.encounterLabel ?? "").trim(),
     dos_from: (gt?.dosFrom ?? "").trim(),
     dos_to: (gt?.dosTo ?? "").trim(),
     blank_junk: blankJunkLabel(gt),
@@ -698,7 +713,10 @@ function groundTruthBody(
     renderingProvider: cleanGt(values.provider_name),
     providerSignature: presenceStored(values.electronic_signature) || null,
     providerCredentials: cleanGt(values.provider_credentials),
-    isVisible: visibilityStored(values.quality ?? ""),
+    isVisible: visibilityStored(values.is_visible ?? ""),
+    quality: cleanGt(values.quality),
+    tilt: cleanGt(values.tilt),
+    encounterLabel: cleanGt(values.encounter),
     rotation: cleanGt((values.orientation ?? "").replace(/°$/, "")),
     // Page type ground truth is stored in Encounter Type (what accuracy reads).
     encounterType: pageType,
@@ -729,6 +747,9 @@ const PERSISTED_GT = new Set([
   "electronic_signature",
   "page_subtype",
   "specialty",
+  "quality",
+  "tilt",
+  "encounter",
 ]);
 
 const UNCOMPARED = new Set(["", "na", "n/a", "not found", "not available", "yet to process", "skipped"]);
@@ -992,7 +1013,7 @@ function GroundTruthCell({
     return (
       <span className="imaging-gt-slot">
         <span className={stored ? "imaging-gt-text" : "imaging-gt-copied"} title={stored || undefined}>
-          {stored || NOT_FOUND}
+          {stored || emptyLabel(row.id)}
         </span>
         {(stored || blankCross) && !row.noMark ? mark : null}
       </span>
@@ -1034,7 +1055,7 @@ function GroundTruthCell({
     </button>
   );
   if (!editing) {
-    const shown = stored || (offer ? copied : "") || NOT_FOUND;
+    const shown = stored || (offer ? copied : "") || emptyLabel(row.id);
     const dim = !stored && !row.key;
     return (
       <span className="imaging-gt-slot">
@@ -1045,18 +1066,19 @@ function GroundTruthCell({
     );
   }
 
-  // Every cell: its listed values, then the "no value" entries that fit it -- Not Found
-  // for a date or a name, Not Available for a page type -- and Skipped (2026-10-26, user).
+  // Every cell: its listed values, then the "no value" entry that fits it -- Not Found
+  // for a date, a name or a Yes / No, Not Available for a label -- and Skipped
+  // (2026-10-26, 2026-10-27, user).
   const kind = ENTRY_RULES[row.id]?.kind;
   const listed = row.presence
     ? ["Yes", "No"]
-    : row.choices ?? (kind === "degrees" ? ORIENTATION_CHOICES : []);
-  const none =
-    kind === "date" || kind === "text"
+    : row.choices ?? (kind === "degrees" && row.id === "orientation" ? ORIENTATION_CHOICES : []);
+  const yesNoRow = row.presence || listed.every((option) => yesNo(option) != null);
+  const none = NOT_AVAILABLE_FIELDS.has(row.id)
+    ? [NOT_AVAILABLE_ENTRY]
+    : kind === "date" || kind === "text" || (yesNoRow && listed.length > 0)
       ? [NOT_FOUND]
-      : ["page_type", "page_subtype", "specialty"].includes(row.id)
-        ? [NOT_AVAILABLE_ENTRY]
-        : [];
+      : [];
   const values = listed.filter((option) => option !== SKIPPED_ENTRY && !none.includes(option));
   const extras = [...none, SKIPPED_ENTRY];
   // A long list puts them first, so they are not lost under its values.
@@ -1097,8 +1119,9 @@ function ChoiceMenu({
   onDraft: (value: string) => void;
 }) {
   const isDate = ENTRY_RULES[fieldId]?.kind === "date";
-  // A date cell holds YYYY-MM-DD for the date chooser; a "no value" entry stays as typed.
-  const initial = isDate ? (canonicalDate(value) ?? (options.includes(value) ? value : "")) : value;
+  // A date cell holds YYYY-MM-DD, typed or picked; a "no value" entry stays as typed.
+  const initial = isDate ? (canonicalDate(value) ?? (options.includes(value) ? value : value.trim())) : value;
+  const [calendar, setCalendar] = useState(false);
   const [text, setText] = useState(initial);
   const [typed, setTyped] = useState(false);
   const [invalid, setInvalid] = useState<string | null>(null);
@@ -1143,9 +1166,10 @@ function ChoiceMenu({
         <input
           aria-label={`${label} ground truth`}
           aria-invalid={invalid ? true : undefined}
-          type={isDate && !options.includes(text) ? "date" : "text"}
+          type="text"
+          inputMode={isDate ? "numeric" : undefined}
           value={text}
-          placeholder={NOT_FOUND}
+          placeholder={isDate ? "YYYY-MM-DD" : emptyLabel(fieldId)}
           autoFocus
           onChange={(event) => {
             setText(event.target.value);
@@ -1154,15 +1178,33 @@ function ChoiceMenu({
             onDraft(event.target.value);
           }}
         />
+        {isDate ? (
+          <button
+            type="button"
+            className="imaging-gt-icon"
+            aria-label={`Choose ${label} on a calendar`}
+            aria-expanded={calendar}
+            title="Calendar"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setCalendar((open) => !open)}
+          >
+            <CalendarDays size={12} strokeWidth={2.4} aria-hidden="true" />
+          </button>
+        ) : null}
         {text !== initial ? <CellSaveButton label={label} onSave={commit} /> : null}
       </span>
+      {isDate && calendar ? (
+        <DateCalendar
+          value={canonicalDate(text)}
+          onPick={(date) => {
+            pick(date);
+            setCalendar(false);
+          }}
+          onClose={() => setCalendar(false)}
+        />
+      ) : null}
       {recos.length > 0 && inline ? (
         <div className="imaging-gt-options" role="listbox" aria-label={label}>
-          {isDate && options.includes(text) ? (
-            <button type="button" role="option" aria-selected={false} onClick={() => pick("")}>
-              Pick a date
-            </button>
-          ) : null}
           {recos.map((option) => (
             <button
               key={option}
@@ -1191,6 +1233,106 @@ function ChoiceMenu({
       {!invalid && newEntryWarning(fieldId, text, options) ? (
         <span className="imaging-gt-hint is-warning">{newEntryWarning(fieldId, text, options)}: not in the list</span>
       ) : null}
+    </div>
+  );
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function isoDay(year: number, month: number, day: number): string {
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/** A month calendar for a DOS cell, fixed to the window and kept inside it: below the
+ * cell, or above it when there is no room (2026-10-27, user). Picks YYYY-MM-DD. */
+function DateCalendar({
+  value,
+  onPick,
+  onClose,
+}: {
+  value: string | null;
+  onPick: (date: string) => void;
+  onClose: () => void;
+}) {
+  const start = value ? new Date(`${value}T00:00:00`) : new Date();
+  const [month, setMonth] = useState({ year: start.getFullYear(), month: start.getMonth() });
+  const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
+  const [place, setPlace] = useState<{ top: number; left: number } | null>(null);
+  useLayoutEffect(() => {
+    const cell = anchor?.parentElement;
+    if (!anchor || !cell) return;
+    const margin = 8;
+    const box = cell.getBoundingClientRect();
+    const width = anchor.offsetWidth;
+    const height = anchor.offsetHeight;
+    const below = box.bottom + 4;
+    const top = below + height + margin <= window.innerHeight ? below : Math.max(margin, box.top - height - 4);
+    const left = Math.min(Math.max(margin, box.left), window.innerWidth - width - margin);
+    setPlace({ top, left });
+  }, [anchor, month]);
+  useEffect(() => {
+    const close = (event: Event) => {
+      if (anchor && event.target instanceof Node && anchor.parentElement?.contains(event.target)) return;
+      onClose();
+    };
+    // Fixed to the window, so a scroll or resize would leave it behind its cell: close it.
+    document.addEventListener("mousedown", close);
+    window.addEventListener("resize", onClose);
+    window.addEventListener("scroll", onClose, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("resize", onClose);
+      window.removeEventListener("scroll", onClose, true);
+    };
+  }, [anchor, onClose]);
+  const step = (months: number) =>
+    setMonth(({ year, month: m }) => {
+      const next = new Date(year, m + months, 1);
+      return { year: next.getFullYear(), month: next.getMonth() };
+    });
+  const firstWeekday = new Date(month.year, month.month, 1).getDay();
+  const days = new Date(month.year, month.month + 1, 0).getDate();
+  const today = new Date();
+  const todayIso = isoDay(today.getFullYear(), today.getMonth(), today.getDate());
+  return (
+    <div
+      ref={setAnchor}
+      className="imaging-gt-calendar"
+      role="dialog"
+      aria-label="Choose a date"
+      style={place ? { top: place.top, left: place.left } : { visibility: "hidden" }}
+      onMouseDown={(event) => event.preventDefault()}
+    >
+      <div className="imaging-gt-calendar-head">
+        <button type="button" aria-label="Previous year" onClick={() => step(-12)}>«</button>
+        <button type="button" aria-label="Previous month" onClick={() => step(-1)}>
+          <ChevronLeft size={12} aria-hidden="true" />
+        </button>
+        <span>
+          {MONTHS[month.month]} {month.year}
+        </span>
+        <button type="button" aria-label="Next month" onClick={() => step(1)}>
+          <ChevronRight size={12} aria-hidden="true" />
+        </button>
+        <button type="button" aria-label="Next year" onClick={() => step(12)}>»</button>
+      </div>
+      <div className="imaging-gt-calendar-grid">
+        {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
+          <span key={`h${index}`} className="imaging-gt-calendar-weekday">{day}</span>
+        ))}
+        {Array.from({ length: firstWeekday }, (_, index) => (
+          <span key={`e${index}`} />
+        ))}
+        {Array.from({ length: days }, (_, index) => {
+          const iso = isoDay(month.year, month.month, index + 1);
+          const classes = [iso === value ? "is-active" : "", iso === todayIso ? "is-today" : ""].filter(Boolean).join(" ");
+          return (
+            <button key={iso} type="button" className={classes || undefined} onClick={() => onPick(iso)}>
+              {index + 1}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1669,7 +1811,9 @@ function PageDetails({
           sameValue(fmtQualityTag(page.pageQualityTag, qualityKnown), fmtConfidence(page.pageQualityConfidence, qualityKnown), {
             id: "quality",
             label: "Quality",
-            noGroundTruth: true,
+            choices: QUALITY_CHOICES,
+            // A placeholder grade today (CLAUDE.md section 3): labelled, not scored.
+            noMark: true,
           }),
           sameValue(fmtDegrees(page.orientationAngle, sections.rotation), fmtConfidence(page.measuredConfidences?.orientation, sections.rotation), {
             id: "orientation",
@@ -1679,6 +1823,7 @@ function PageDetails({
           sameValue(fmtDegrees(page.tiltAngle, sections.rotation), fmtConfidence(page.measuredConfidences?.tilt, sections.rotation), {
             id: "tilt",
             label: "Tilt (Text)",
+            noMark: true,
           }),
           sameValue(fmt(page.mirrored, sections.rotation), fmtConfidence(page.measuredConfidences?.mirrored, sections.rotation), {
             id: "mirrored",
@@ -1694,7 +1839,6 @@ function PageDetails({
           sameValue(fmt(page.encounterType, encounterKnown, skip), fmtConfidence(finalOr(page, "encounter_type", page.encounterConfidence), Boolean(sections.encounter), skip), {
             id: "encounter",
             label: "Encounter Type",
-            fixedNa: true,
             choices: ENCOUNTER_TYPE_CHOICES,
           }),
           dosCompareRow(page, "from", sections.dos, skipped, bits.dosFrom),
@@ -2606,6 +2750,15 @@ function SequencingTable({
         .map(verdict)
         .filter((mark) => mark != null);
   const wrong = marks.filter((mark) => mark !== "match").length;
+  // The chart as a whole (2026-10-27, user): its sequence matches (1) only with no break;
+  // Break Rate = breaks / (pages − 1), the joins between Main pages.
+  const sequenceMatch = wrong === 0 ? 1 : 0;
+  const breakRate = marks.length > 1 ? Math.min(1, wrong / (marks.length - 1)) : wrong ? 1 : 0;
+  const firstBreak = editing
+    ? null
+    : [...pages]
+        .filter((p) => verdict(p) === "break")
+        .sort((a, b) => (sequenceNumber(a.actualSequence) ?? 0) - (sequenceNumber(b.actualSequence) ?? 0))[0] ?? null;
 
   async function save() {
     if (invalid || continuity || changed.length === 0) return;
@@ -2675,13 +2828,29 @@ function SequencingTable({
         </p>
       ) : null}
       {marks.length > 0 ? (
-        <p className="sequence-break-summary">
-          Accuracy ={" "}
-          <span className={wrong ? "cmp-mismatch" : "cmp-match"}>
-            {(100 * (1 - wrong / marks.length)).toFixed(1)}%
-          </span>{" "}
-          ({wrong} {wrong === 1 ? "break" : "breaks"} / {marks.length} {marks.length === 1 ? "page" : "pages"})
-        </p>
+        <div className="sequence-break-summary">
+          <p>
+            Sequence:{" "}
+            {sequenceMatch ? (
+              <span className="cmp-match">In order ✓</span>
+            ) : (
+              <span className="cmp-mismatch">
+                Broken sequence ✗{firstBreak ? ` (first break at page ${firstBreak.pageNumber})` : ""}
+              </span>
+            )}
+            {" · "}Sequence Match = <strong>{sequenceMatch}</strong>
+          </p>
+          <p>
+            Accuracy ={" "}
+            <span className={wrong ? "cmp-mismatch" : "cmp-match"}>
+              {(100 * (1 - wrong / marks.length)).toFixed(1)}%
+            </span>{" "}
+            ({wrong} {wrong === 1 ? "break" : "breaks"} / {marks.length} {marks.length === 1 ? "page" : "pages"})
+            {" · "}Break Rate ={" "}
+            <span className={wrong ? "cmp-mismatch" : "cmp-match"}>{(100 * breakRate).toFixed(1)}%</span>{" "}
+            ({wrong} / ({marks.length} pages − 1))
+          </p>
+        </div>
       ) : null}
       {invalid ? (
         <div className="encounter-review-problem">

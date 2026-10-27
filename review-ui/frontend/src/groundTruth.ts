@@ -39,6 +39,12 @@ export type PageGroundTruth = {
   /** Free text (2026-10-27, user): page_subtype and provider_specialty. */
   pageSubtype?: string | null;
   specialty?: string | null;
+  /** Encounter type (2026-10-27, user): page_ground_truth.encounter_label, since
+   * encounter_type holds the page-type label of the client sheet. */
+  encounterLabel?: string | null;
+  tilt?: string | null;
+  /** High / Medium / Low. */
+  quality?: string | null;
 };
 
 export type GtBit = { label: string; mark: MatchMark };

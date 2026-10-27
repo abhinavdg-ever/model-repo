@@ -67,6 +67,9 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * page_ground_truth.encounter_label (v1.sql, 2026-10-27): the page's encounter type as
+--    entered in review-ui; encounter_type keeps the client sheet's page type
+--    (changes_2026-10-27.sql).
 --  * imaging_final.confidences / review_fields (v1.sql, 2026-10-25): every Final value's
 --    confidence on one scale and the values below the review line (changes_2026-10-25.sql).
 --  * Production Mode from Postgres only (v1.sql, 2026-10-25): encounter_type_results gains

@@ -164,6 +164,11 @@ class PageGroundTruth(BaseModel):
     # (the client sheet's Provider Specialty column).
     pageSubtype: str | None = None
     specialty: str | None = None
+    # The page's encounter type (page_ground_truth.encounter_label, 2026-10-27), tilt and
+    # quality (High / Medium / Low).
+    encounterLabel: str | None = None
+    tilt: str | None = None
+    quality: str | None = None
 
 
 class PageSequenceLabel(BaseModel):
