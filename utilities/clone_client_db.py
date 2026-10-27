@@ -32,8 +32,12 @@ pipeline_jobs and the charts' manifest_member_list rows; ids are kept, so a page
 same page_list.id in both databases. Users are merged by username (password, name,
 role, active), so our sign-ins work and accounts made on the client side stay.
 
-Never copied: page_ground_truth and page_ground_truth_entry (manual and CSV-uploaded
-ground truth), encounter_review, user_login, chart_deletion; pipeline_stage is seeded by
+Ground truth: not copied unless ``--with-ground-truth`` (2026-10-27, user). With it, our
+page_ground_truth rows of the chosen charts and their page_ground_truth_entry history are
+copied for every page the target has no ground truth on yet; a page the client already
+labelled keeps theirs. Who saved each one (user_id) is matched by username.
+
+Never copied: encounter_review, user_login, chart_deletion; pipeline_stage is seeded by
 v1.sql. The client's own ground truth is keyed by chart name and page number, so
 --replace leaves it in place.
 """
@@ -205,6 +209,8 @@ def main() -> int:
                       help="keep the target's charts; copy only the chosen charts it does not have yet")
     mode.add_argument("--update", action="store_true",
                       help="delete just the chosen charts from the target and copy them again (re-runs)")
+    parser.add_argument("--with-ground-truth", action="store_true",
+                        help="also copy our ground truth of the chosen charts, on pages the target has none yet")
     parser.add_argument("--dry-run", action="store_true", help="count what would be copied; change nothing")
     args = parser.parse_args()
 
@@ -231,7 +237,14 @@ def main() -> int:
 
     if args.dry_run:
         with _connect(source_url) as src:
-            return _dry_run(src, cutoff, names_wanted, args.by_id)
+            code = _dry_run(src, cutoff, names_wanted, args.by_id)
+            if args.with_ground_truth:
+                row = src.execute(
+                    "SELECT count(*) AS n FROM page_ground_truth WHERE chart_name IN "
+                    f"(SELECT chart_name FROM chart_list WHERE {where})", params,
+                ).fetchone()
+                print(f"ground truth: {row['n']} of our pages on these charts (copied where the target has none)")
+            return code
 
     with _connect(source_url) as src, _connect(target_url) as dst:
         charts = src.execute(
@@ -247,6 +260,7 @@ def main() -> int:
         target_ids = {row["chart_name"]: row["id"] for row in dst.execute(
             "SELECT id, chart_name FROM chart_list WHERE chart_name = ANY(%s)",
             ([row["chart_name"] for row in charts],)).fetchall()}
+        chosen = [row["chart_name"] for row in charts]
         if args.add:
             skipped = [row["chart_name"] for row in charts if row["chart_name"] in target_ids]
             charts = [row for row in charts if row["chart_name"] not in target_ids]
@@ -302,12 +316,68 @@ def main() -> int:
 
         for table in ("chart_list", "manifest_member_list", "users", *CHART_TABLES):
             _reset_sequence(dst, table)
+        if args.with_ground_truth:
+            counts["page_ground_truth"], counts["page_ground_truth_entry"] = _copy_ground_truth(src, dst, chosen)
         ground_truth = dst.execute("SELECT count(*) AS n FROM page_ground_truth").fetchone()["n"]
 
     for table, count in counts.items():
         print(f"  {table:30} {count}")
-    print(f"target ground truth rows: {ground_truth} (the client's own; none copied)")
+    if args.with_ground_truth:
+        print(f"target ground truth rows: {ground_truth} (ours copied where the page had none)")
+    else:
+        print(f"target ground truth rows: {ground_truth} (the client's own; none copied)")
     return 0
+
+
+def map_user_id(user_id, source_names: dict, target_ids: dict):
+    """Our user id as the target's id of the same username (None when it has none)."""
+    return target_ids.get(source_names.get(user_id)) if user_id is not None else None
+
+
+def _copy_ground_truth(src, dst, chart_names: list[str]) -> tuple[int, int]:
+    """Our ground truth of these charts into the target, page by page: a page the target
+    already has a row for is left as it is. Ids are the target's own; each copied row's
+    history (page_ground_truth_entry) follows it. Returns (rows copied, entries copied)."""
+    from psycopg.types.json import Jsonb
+
+    if not chart_names:
+        return 0, 0
+    source_names = {r["id"]: r["username"] for r in src.execute("SELECT id, username FROM users").fetchall()}
+    target_ids = {r["username"]: r["id"] for r in dst.execute("SELECT id, username FROM users").fetchall()}
+    target_columns = set(_columns(dst, "page_ground_truth"))
+    columns = [c for c in _columns(src, "page_ground_truth") if c in target_columns and c != "id"]
+    entry_target = set(_columns(dst, "page_ground_truth_entry"))
+    entry_columns = [c for c in _columns(src, "page_ground_truth_entry")
+                     if c in entry_target and c not in ("id", "page_ground_truth_id")]
+
+    def value(column, raw):
+        if column == "user_id":
+            return map_user_id(raw, source_names, target_ids)
+        return Jsonb(raw) if isinstance(raw, (dict, list)) else raw
+
+    rows = src.execute(
+        "SELECT * FROM page_ground_truth WHERE chart_name = ANY(%s) ORDER BY chart_name, page_number",
+        (chart_names,),
+    ).fetchall()
+    insert = (f"INSERT INTO page_ground_truth ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))}) "
+              "ON CONFLICT (chart_name, page_number) DO NOTHING RETURNING id")
+    insert_entry = (f"INSERT INTO page_ground_truth_entry (page_ground_truth_id, {', '.join(entry_columns)}) "
+                    f"VALUES (%s, {', '.join(['%s'] * len(entry_columns))})")
+    copied = entries = 0
+    for row in rows:
+        new = dst.execute(insert, tuple(value(c, row[c]) for c in columns)).fetchone()
+        if new is None:
+            continue  # the client labelled this page already
+        copied += 1
+        for entry in src.execute(
+            "SELECT * FROM page_ground_truth_entry WHERE page_ground_truth_id = %s ORDER BY id", (row["id"],)
+        ).fetchall():
+            dst.execute(insert_entry, (new["id"], *(value(c, entry[c]) for c in entry_columns)))
+            entries += 1
+    skipped = len(rows) - copied
+    if skipped:
+        print(f"ground truth: {skipped} pages kept the target's own (not overwritten)")
+    return copied, entries
 
 
 if __name__ == "__main__":

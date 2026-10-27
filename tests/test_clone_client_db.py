@@ -62,3 +62,15 @@ def test_a_list_of_chart_ids(tmp_path):
     path.write_text("12\n52743839_44976074\n", encoding="utf-8")
     with pytest.raises(SystemExit):
         script.read_chart_ids(str(path))
+
+
+def test_ground_truth_is_copied_only_when_asked():
+    """2026-10-27 (user): --with-ground-truth copies ours; a page the client labelled keeps
+    theirs (ON CONFLICT DO NOTHING), and who saved it is matched by username."""
+    script = _script()
+    source = (REPO / "utilities" / "clone_client_db.py").read_text(encoding="utf-8")
+    assert "--with-ground-truth" in source
+    assert "ON CONFLICT (chart_name, page_number) DO NOTHING" in source
+    assert script.map_user_id(7, {7: "asha"}, {"asha": 3}) == 3
+    assert script.map_user_id(7, {7: "asha"}, {}) is None
+    assert script.map_user_id(None, {}, {}) is None
