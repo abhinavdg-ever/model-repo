@@ -233,76 +233,142 @@ none gives General, whatever the later pages say.
 
 **Codeability (Extracted).** From the canon entry behind the decided path; a `context`
 rule leaves `needs_review`. This is the page's own view only: the codability the client
-gets is the **Final** one (3.2, step 6), read from the Final page type.
+gets is the **Final** one (3.2, step 8), read from the Final page type.
 
 **Progress Note L2.** Section tagging (`sections.json`, appendix G) names the content
 sections on the page; the dominant one is the L2.
 
 ### 3.2 Final: in the document [built]
 
-Run on continuity's documents, in this order:
-
-1. **The document's L1.** The first page's Extracted L1; if the first page is Others,
-   the weighted vote of the pages' L1s (weight = confidence) when one L1 holds the
-   majority. **Except a short packet decided by its last page [built 2026-10-25, user]**
-   (`page_arbitration.json` → `last_page_documents`): a document of at most **4 pages**
-   whose **last page is Consent and Authorization** (notice or intake pages, then the
-   signed consent) is consent on every page (`agreed_last_page`). Before that, such a
-   document absorbs the short documents right before it when their pages are all
-   consent, administrative, demographics or forms pages and the packet stays within
-   4 pages (continuity may have split the notice from its signature page). This joining
-   is for the page type only: DOS and encounter type keep continuity's documents.
-2. **Every page under that L1.** A page whose Extracted L1 differs takes the best L2 the
-   model gives **under the document's L1** (`by_L1`, already computed for every L1), or
-   the canon's best match under it, else **"L1 / Others"**.
-3. **Embedded families keep their own L2 inside a Progress Note.** A lab page or a
-   medication list inside an office note becomes Progress Note > **Lab and Imaging
-   Results** / **Medication List**. So a page Extracted as an independent *Lab Report >
-   Pathology Report* reads, in Final, *Progress Note > Lab and Imaging Results* when its
-   document is a Progress Note.
-4. **The context rules** of the taxonomy (appendix C), each reading the document:
-   * procedure_in_operative_document: a Procedure Note page bound into an operative
-     document is Operative Note > Intra-operative Record;
-   * admission_history_and_physical / inpatient_consultation: an H&P or consult is
-     Discharge Summary > History and Physical / Consultation Note **only** in an
-     inpatient or observation document; an office H&P stays Progress Note;
-   * clinical_summary: CCD, Summary of Care, Transition of Care, After Visit Summary or a
-     C-CDA header in the document title → Clinical Summary;
-   * discharge_diagnosis_page, notice_inside_consent_packet, combined_endoscopy,
-     telephone_encounter, dme_documents, interventional_radiology_procedure, superbill,
-     records_request, scheduling_form: as written in appendix C.
-5. **Others pages** never set a document's L1; they take the document's L1 with the
-   best L2 under it (step 2), else "L1 / Others".
-
-The placements inside a document are a table, `page_arbitration.json` → `final_placement`
-(today: inside a Progress Note, Lab Report → Lab and Imaging Results, Medication Record →
-Medication List, Problem List and Forms and Questionnaires to their Progress Note L2s;
-inside an Operative Note, Procedure Note → Intra-operative Record). A family with no
-entry there becomes "L1 / Others" **[decide: more placements]**.
-
-**Rules on the page itself [built]** (`page_rules.py`, `page_arbitration.json` →
-`axes_rules`), applied to the Extracted value: Clinical Summary by its title (CCD /
-Summary of Care / Transition of Care / C-CDA → Summary of Care (C-CDA); After Visit
-Summary → After-Visit Summary); Provider Letter > Records Request by title;
-Administrative > Superbill by title only (invoices carry codes too); Discharge Summary >
-History and Physical / Consultation Note for an H&P or consult page with hospital-stay
-evidence on the page (admission date, room / bed, admitting physician, observation or
-inpatient status).
-6. **Specialty** from the document's first page (General when it has none).
-7. **Codability from the Final page type [built 2026-10-25]**, never from the page's
-   own (Extracted) score: the codeability tag of the Final path in the taxonomy
-   (`page_taxonomy.json` → `codeability`, copied from the training taxonomy; appendix
-   A lists every tag). The deepest level decides: Lab Report (Pathology Report) /
-   Biopsy Report is Non-Codable (the L3's tag) although Pathology Report alone is
-   Codable; an L1 alone reads its Others L2. A path tagged needs_review (Operative Note >
-   Post-operative, Progress Note > Vitals, ...) takes the document's codability, the
-   Final tag of its first page, when that is decided; otherwise it is Non-Codable and
-   flagged for review. **No exceptions** (user, 2026-10-25): a lab page re-placed into a
-   Progress Note is Progress Note > Lab and Imaging Results and Codable, as that type is
-   tagged; a medication page placed there is Progress Note > Medication List,
-   Non-Codable by its own tag. A page with no Final L1 (Others) keeps its own.
-
+**Extracted** is the page alone (3.1). **Final** re-reads each page in the document it
+belongs to: the document's pages agree on one **L1**, and each page keeps its own place
+below it. Final is decided in the last stage, `imaging_final`
+(`core-pipeline/stages/lib/imaging_final/stage.py`), by `decide_final` in
+`page_classify/arbitration.py`, with its tables in `keyword-canon/page_arbitration.json`.
 Extracted is never overwritten: a reviewer and the accuracy report see both.
+
+**What Final starts from.** Each page's Extracted answer: L1, L2, L3, confidence, its best
+L2 under every other L1 (`under_l1`), and the L1 its title names (`title_l1`). The rules on
+the page itself (`page_rules.py`, `page_arbitration.json` → `axes_rules`) have already run
+on Extracted:
+* **Clinical Summary by title**: CCD / Summary of Care / Transition of Care / C-CDA →
+  Clinical Summary > Summary of Care (C-CDA); After Visit Summary → After-Visit Summary.
+* **Hospital stay**: a Progress Note page titled History and Physical or Consultation,
+  with stay evidence on the page (admission date, room / bed, admitting physician,
+  observation or inpatient status) → Discharge Summary > History and Physical /
+  Consultation Note.
+* **Lab guard**: a page that came out Progress Note but reads as a lab result (at least
+  two lab markers, or a panel title) → Lab Report.
+
+Blank, junk and duplicate pages (stages 3 and 7) belong to no document; they are handled
+at step 7.
+
+#### The steps, per page
+
+**1. The documents.** Continuity's documents (section 4), blank / junk / duplicate pages
+left out. One change for the page type only: a document whose **last page is Consent and
+Authorization** absorbs the documents right before it while the packet stays within
+**4 pages** and their pages are all Consent and Authorization, Administrative,
+Demographics or Forms and Questionnaires (`last_page_documents` → `joins`; continuity may
+have split a notice from its signed page). DOS and encounter type keep continuity's
+documents.
+
+**2. The document's L1** (`agree_document_type`), the first that applies:
+
+| Rule | When | Final `continuation_rule` |
+|---|---|---|
+| Last page | the document is at most 4 pages and its last page is Consent and Authorization | `agreed_last_page` |
+| First page | the first page has an L1 (not Others / Unknown) | `agreed_first_page` |
+| Vote | the first page is Others / Unknown: the pages' L1s weighted by confidence (0.5 when none), Others left out; one L1 must hold **at least 60 %** of the weight (`document_agreement.vote_min_share`); a tie goes to the first page's, else the earliest | `agreed_vote`, flagged for review |
+| No agreement | no L1 reaches 60 % | every page keeps its own type, flagged for review (`no_agreement`) |
+
+**3. A page of the agreed L1** keeps its own L2 and L3 (`agreed`).
+
+**4. A page of another L1** (or Others) is re-placed under the document's L1
+(`_names_under`), the first that applies:
+1. **`final_placement`**, the table of embedded pages:
+
+   | Document L1 | Page's own L1 | Final L2 |
+   |---|---|---|
+   | Progress Note | Lab Report | Lab and Imaging Results |
+   | Progress Note | Medication Record | Medication List |
+   | Progress Note | Problem List | Problem List |
+   | Progress Note | Forms and Questionnaires | Questionnaire |
+   | Operative Note | Procedure Note | Intra-operative Record |
+
+   So a page Extracted as *Lab Report > Pathology Report* reads, in Final, *Progress
+   Note > Lab and Imaging Results* when its document is a Progress Note.
+2. Inside a **Progress Note**, any other page: **Progress Note > Others** (a note's L2 is
+   its content section, which a foreign page does not have).
+3. Under any other L1: the L2 (and L3) the classifier gave the page under that L1
+   (`under_l1`: the model's, else the canon's).
+4. Its own L2 when the taxonomy has it under that L1.
+5. Otherwise **"L1 / Others"**. Never "L1 / L1".
+
+These pages are `continuation`; a page joined by a **weak** continuity link is flagged
+for review.
+
+**5. A page on its own** (no document, or a one-page document) keeps its own type
+(`no_change`), with one exception, **`embedded_same_page`**: a page of an embedded family
+(Lab Report, Medication Record, Immunization, Problem List, Order and Requisition;
+`inside_progress_note.embedded_families`) whose **title names Progress Note** becomes
+Progress Note with its step-4 L2 (Lab Report → Lab and Imaging Results; Immunization or
+Order and Requisition → Others).
+
+**6. Specialty**: every page of a document takes its **first page's** specialty
+(`encounter_specialties`), **General** when that page has none (never Unknown). A page
+outside a document keeps its own.
+
+**7. Blank, junk and duplicate pages.**
+* **Blank / junk**: no page type; the junk label (Blank, Invoice, Fax Cover ...) is the
+  subtype; **Non-Codable**.
+* **Duplicate**: Extracted takes its original's page type and stays Non-Codable (one copy
+  is coded). Final copies the original's Final content (`COPIED_FROM_REFERENCE`): page
+  type and subtype, specialty, codability, DOS, encounter type, member and provider
+  values. It keeps its own image values (quality, orientation), its Blank / Junk flag and
+  its position. `page_type_source` = `duplicate`, `duplicate_of_page_id` names the
+  original, followed through a chain of duplicates.
+
+**8. Codability from the Final page type, never from Extracted** (user, 2026-10-25):
+the codeability tag of the Final path in `page_taxonomy.json` → `codeability` (copied
+from the training taxonomy; appendix A); the deepest level decides, an L1 alone reads its
+Others L2. As of 2026-10-26 (user):
+
+| Family | Final codability |
+|---|---|
+| Progress Note (every L2 / L3, Lab and Imaging Results and Medication List included) | Codable |
+| Operative Note, Procedure Note | Codable |
+| Lab Report > Radiology Report > CT Angiography Report | Codable |
+| Discharge Summary | Discharge |
+| Consent and Authorization, Administrative, Demographics | Non-Codable |
+| Every other path (the rest of Lab Report, Medication Record, Problem List, Forms, Orders, Letters, Communication, Immunization, Clinical Summary) | Non-Codable |
+
+The family-wide rows are also fixed in code (`taxonomy.L1_CODEABILITY`), so a taxonomy
+refresh cannot bring back an old tag. **No path is "needs review" any more**; the rule is
+still there (such a path would take its document's codability, the Final tag of the page
+that set the L1, else Non-Codable flagged). A page with no Final L1 (Others / Unknown)
+keeps its own. `docs/codeability_review.xlsx` lists every path's tag.
+
+#### What is written
+
+Per page in `imaging_final` (and `imaging/<chart>_final.csv`): `page_type`,
+`page_subtype`, `specialty`, `codability`, `page_type_source` (page / continuation /
+embedded / duplicate), `continuation_rule` (no_change / agreed / agreed_first_page /
+agreed_vote / agreed_last_page / embedded_same_page / no_agreement) and `needs_review`.
+
+#### Taxonomy context rules: built and not built
+
+The taxonomy's context rules (appendix C) describe the document view. Where each stands:
+
+| Rule | Status |
+|---|---|
+| procedure_in_operative_document | **built**, as a `final_placement` entry (step 4) |
+| absorb_into_progress_note (lab, medication, problem list, forms inside a note) | **built**, `final_placement` (step 4) |
+| clinical_summary | **built** on the page (title rule), not from the document |
+| admission_history_and_physical / inpatient_consultation | **built** on the page (stay evidence on the page itself); evidence elsewhere in the admission is not read |
+| notice_inside_consent_packet | **built** as the last-page packet (steps 1–2) |
+| telephone_encounter, superbill, records_request | canon page types and title rules on the page; **no document rule** |
+| discharge_diagnosis_page, combined_endoscopy, dme_documents, interventional_radiology_procedure, scheduling_form | **not built [decide]** |
 
 ---
 
@@ -633,7 +699,7 @@ L2, because section tagging decides it):
   synthetic pages (`--with-mock`) train, never score; the notebook adds them by default.
 * **Four heads: L1, L2, L3, specialty.** Codeability is no longer learned (user,
   2026-10-25): the pipeline reads it from the taxonomy tag of the Final page type
-  (3.2 step 7). A model trained before then still has the fifth head and still loads.
+  (3.2 step 8). A model trained before then still has the fifth head and still loads.
 * Classes come from the taxonomy and the data, never from code: an L1 trains with ≥ 11
   pages, an L2 / L3 / specialty with ≥ 3; rarer ones fold (L1 → OTHER, L3 → Others) and
   are left to the keyword vote. With the new labels and the mock pages: 16 L1, 62 L2,
@@ -912,7 +978,7 @@ The path gate is gone (3.1); the vote keeps nearly every correct answer.
    the encounter model as a vote (5.1).
 3. **[built 2026-10-25]** the model and the keyword canon vote at every level (3.1):
    learned per-level term weights, strong terms, minimum 0.2, every candidate path kept;
-   Final codability from the Final type (3.2 step 7).
+   Final codability from the Final type (3.2 step 8).
 4. **[built 2026-10-25]** the trainers for the relabelled data: page axes with four
    heads and the small-class split / oversampling / weights; encounter on the page-level
    target; specialty gate 0.5 / 0.1; codability from the Final type with no exception.
