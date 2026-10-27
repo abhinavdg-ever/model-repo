@@ -11,6 +11,10 @@ REJECT = "Reject"
 
 MAX_WRONG_PAGES = 5
 WRONG_PAGE_RATIO = 0.10
+# A buffer on the V1 threshold (2026-10-28, user): twice the wrong-member pages to reject,
+# at most REJECT_MAX.
+REJECT_BUFFER = 2
+REJECT_MAX = 10
 
 
 def page_status(*, verified: bool, wrong_member: bool) -> str:
@@ -25,12 +29,13 @@ def page_status(*, verified: bool, wrong_member: bool) -> str:
 def reject_threshold(total_pages: int) -> int:
     """Wrong-member page count that rejects the document.
 
-    5 pages or 10% of the pages, whichever comes first (at least 1 page).
+    Twice (REJECT_BUFFER) 5 pages or 10% of the pages, whichever comes first (at least 1
+    page): 2 to 10, never more than REJECT_MAX (2026-10-28, user).
     """
     if total_pages <= 0:
-        return 1
+        return REJECT_BUFFER
     ratio_pages = math.ceil(total_pages * WRONG_PAGE_RATIO)
-    return max(1, min(MAX_WRONG_PAGES, ratio_pages))
+    return min(REJECT_MAX, REJECT_BUFFER * max(1, min(MAX_WRONG_PAGES, ratio_pages)))
 
 
 def count_wrong_member(page_statuses: list[str]) -> int:

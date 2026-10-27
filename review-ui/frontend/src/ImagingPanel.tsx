@@ -2058,13 +2058,13 @@ function pageList(numbers: number[]): string {
 /** Member verification as the rejection rule reads it (2026-10-27, user): the manifest
  * member -- the pages its name was found on and the pages that verified (name with DOB or
  * Member ID) -- then every other name the pages carry, and the chart's verdict: Reject at
- * min(5, 10% of the pages) wrong-member pages. */
+ * 2 x min(5, 10% of the pages) wrong-member pages, at most 10. */
 /** Member Verification (its own tab, 2026-10-27, user), with the manifest matching of the
  * accuracy and Page Details' (Yes) / (No) (memberMatch.ts) on the values the member stage
  * extracted: one row per name -- the manifest member, then every other name -- with its
  * pages, the pages whose name, DOB and Member ID match the manifest, and the pages that
  * match overall (the member's name with the DOB or the Member ID). Then the decision:
- * Reject at min(5, 10% of the pages) pages naming someone else and not matching. */
+ * Reject at 2 x min(5, 10% of the pages) pages naming someone else, at most 10. */
 /** The reviewer's Accept / Reject for the member, saved as chart ground truth
  * (chart_ground_truth, 2026-10-28, user), with a tick when it agrees with the decision. */
 function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; decision: string }) {
@@ -2178,7 +2178,8 @@ function MemberVerificationTable({
   const nameRows = [member, ...[...others.values()].sort((x, y) => y.pages.length - x.pages.length)];
   const wrongPages = new Set([...others.values()].flatMap((row) => row.pages.map((p) => p.pageNumber)));
   const matched = checked.filter(overall);
-  const threshold = Math.max(1, Math.min(5, Math.ceil(pages.length * 0.1)));
+  // As the member stage (what_if_rules, 2026-10-28, user): 2x min(5, 10% of the pages), at most 10.
+  const threshold = Math.min(10, 2 * Math.max(1, Math.min(5, Math.ceil(pages.length * 0.1))));
   const decision = checked.length === 0 ? "Skipped" : wrongPages.size >= threshold ? "Reject" : "Accept";
   const stored = (summary.finalStatus ?? "").toLowerCase();
   const storedDecision = stored === "failed" ? "Reject" : stored === "verified" ? "Accept" : null;

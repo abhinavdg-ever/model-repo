@@ -241,25 +241,26 @@ class TestClassifyPage:
 class TestRejectThreshold:
     @pytest.mark.parametrize(
         "pages,expected",
-        [(0, 1), (1, 1), (3, 1), (10, 1), (12, 2), (40, 4), (50, 5), (60, 5), (500, 5)],
+        [(0, 2), (1, 2), (3, 2), (10, 2), (12, 4), (40, 8), (50, 10), (60, 10), (500, 10)],
     )
-    def test_min_of_five_or_ten_percent(self, pages, expected):
+    def test_twice_the_min_of_five_or_ten_percent(self, pages, expected):
+        """2026-10-28 (user): a buffer of 2x on the V1 threshold, at most 10."""
         assert reject_threshold(pages) == expected
 
     def test_matches_the_documented_formula(self):
         for pages in range(1, 200):
-            assert reject_threshold(pages) == max(
+            assert reject_threshold(pages) == min(10, 2 * max(
                 1, min(5, math.ceil(pages * 0.10))
-            )
+            ))
 
 
 class TestDocumentDecision:
     def test_below_threshold_accepts(self):
-        statuses = [PAGE_WRONG_MEMBER] + [PAGE_VERIFIED] * 11
+        statuses = [PAGE_WRONG_MEMBER] * 3 + [PAGE_VERIFIED] * 9
         assert apply_what_if(statuses, 12) == ACCEPT
 
     def test_at_threshold_rejects(self):
-        statuses = [PAGE_WRONG_MEMBER] * 2 + [PAGE_VERIFIED] * 10
+        statuses = [PAGE_WRONG_MEMBER] * 4 + [PAGE_VERIFIED] * 8
         assert apply_what_if(statuses, 12) == REJECT
 
     def test_no_pages_rejects(self):
@@ -295,7 +296,7 @@ class TestVerifyRecord:
         exp = expected_from_manifest(manifest())
         pages = [{"page_no": 1, "page_name": "1.jpg", "text": "nothing"}]
         subset = verify_record("rec", pages, exp, "2", total_pages=100)
-        assert subset.reject_threshold == 5
+        assert subset.reject_threshold == 10
         assert subset.total_pages == 100
         assert subset.pages_checked == 1
 
