@@ -13,7 +13,7 @@ import {
   type StagedEncounter,
   savePageSequences,
 } from "./api";
-import { credentialsVerdict, noValue } from "./accuracy";
+import { asManifestMember, credentialsVerdict, noValue } from "./accuracy";
 import {
   duplicateDisplayConfidence,
   formatDuplicateLabel,
@@ -1548,6 +1548,7 @@ function sameValue(
     noMark: extra.noMark,
     key: extra.key,
     note: extra.note,
+    compare: extra.compare,
     id: extra.id,
     label: extra.label,
     extracted: value,
@@ -1628,9 +1629,11 @@ function PageDetails({
   onSaved,
   groundTruthLeave,
   compact = false,
+  manifest,
 }: {
   folderId: string;
   page: ImagingPageResult;
+  manifest?: ImagingManifestDetails | null;
   sections: ImagingSectionsProcessed;
   onSaved: (groundTruth: PageGroundTruth) => void;
   compact?: boolean;
@@ -1654,7 +1657,15 @@ function PageDetails({
   const skipped = isBlankJunkPage(page);
   const skip = skipped ? { skipped: true } : undefined;
   const memberConf = fmtConfidence(page.memberConfidence, sections.member, skip);
-  const bits = pageBits(page, sections);
+  // Scored against the manifest: a name or DOB that is not the member's counts as none
+  // (2026-10-27, user). The values shown stay as read.
+  const scoredPage = asManifestMember(page, manifest);
+  const bits = pageBits(scoredPage, sections);
+  const memberMark = (value: string | null | undefined) => (truth: string): "match" | "mismatch" | null => {
+    const side = yesNo(truth);
+    if (!side) return null;
+    return (side === "yes") === Boolean((value ?? "").trim()) ? "match" : "mismatch";
+  };
   const encounterKnown =
     Boolean(sections.encounter) ||
     (page.encounterType != null && String(page.encounterType).trim() !== "");
@@ -1835,6 +1846,7 @@ function PageDetails({
             truth: bits.memberName,
             presence: true,
             key: true,
+            compare: memberMark(scoredPage.memberName),
           }),
           sameValue(displayIsoDates(fmt(page.memberDob, sections.member, skip)), memberConf, {
             id: "dob",
@@ -1842,6 +1854,7 @@ function PageDetails({
             truth: bits.memberDob,
             presence: true,
             key: true,
+            compare: memberMark(scoredPage.memberDob),
           }),
           sameValue(fmt(page.memberId, sections.member, skip), memberConf, {
             id: "member_id",
@@ -2639,6 +2652,7 @@ export default function ImagingPanel({
       <PageDetails
         folderId={document.folder_id}
         page={currentPage}
+        manifest={manifest}
         sections={sections}
         compact={compact}
         groundTruthLeave={groundTruthLeave}

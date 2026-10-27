@@ -1,4 +1,4 @@
-import type {
+import type { ImagingManifestDetails,
   ImagingDocumentResponse,
   ImagingPageResult,
   ImagingSectionsProcessed,
@@ -13,6 +13,7 @@ import {
 } from "./groundTruth";
 import { DEFAULT_DOS, NON_VISIT_DOS, splitPageType } from "./ImagingPanel";
 import { scoreFinalOnly } from "./clientView";
+import { dobMatchesManifest, nameMatchesManifest } from "./memberMatch";
 
 export type Verdict = "yes" | "maybe" | "no";
 
@@ -566,6 +567,18 @@ function yesNo(value: string | null | undefined): "yes" | "no" | null {
   return null;
 }
 
+/** Member accuracy counts a name or DOB as found only when it is the manifest member's
+ * (2026-10-27, user): ground truth Yes against the member found is a match, No / Not Found
+ * against none (or someone else) too. Without a manifest the values count as read. */
+export function asManifestMember(page: ImagingPageResult, manifest: ImagingManifestDetails | null | undefined): ImagingPageResult {
+  if (!manifest?.member && !manifest?.dob) return page;
+  return {
+    ...page,
+    memberName: manifest.member && !nameMatchesManifest(page.memberName, manifest.member) ? null : page.memberName,
+    memberDob: manifest.dob && !dobMatchesManifest(page.memberDob, manifest.dob) ? null : page.memberDob,
+  };
+}
+
 export function scoreChart(
   chartId: string,
   chartName: string,
@@ -582,8 +595,9 @@ export function scoreChart(
   const signatureRates: ClassRates = { ...emptyRates(), credCases: 0, credMatch: 0 };
   const dosRates = emptyRates();
   const overall = emptyOverall();
-  for (const page of doc.pages) {
-    if (!hasGroundTruth(page.groundTruth)) continue;
+  for (const raw of doc.pages) {
+    if (!hasGroundTruth(raw.groundTruth)) continue;
+    const page = asManifestMember(raw, doc.manifest);
     const scored = pageScores(page, sections);
     for (const metric of METRICS) add(metrics[metric.id], scored.scores[metric.id]);
     addRates(signatureRates, scored.signature.expected, scored.signature.predicted);
