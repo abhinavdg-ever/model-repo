@@ -109,8 +109,7 @@ export function fillDocDosForDownload(pages: ImagingPageResult[]): ImagingPageRe
     });
 }
 
-type ImagingTab = "page" | "sequencing" | "encounter" | "doc" | "additional";
-type DocView = "values" | "rejection";
+type ImagingTab = "page" | "sequencing" | "encounter" | "doc" | "member" | "additional";
 
 type Props = {
   tab: ImagingTab;
@@ -2057,12 +2056,13 @@ function pageList(numbers: number[]): string {
  * member -- the pages its name was found on and the pages that verified (name with DOB or
  * Member ID) -- then every other name the pages carry, and the chart's verdict: Reject at
  * min(5, 10% of the pages) wrong-member pages. */
-/** Member verification as the rejection rule reads it, with the same manifest matching as
- * the accuracy and Page Details' (Yes) / (No) (memberMatch.ts, 2026-10-27, user): the
- * manifest member -- pages whose name is the member's, and those that also carry the
- * manifest DOB or Member ID -- then every other name and its pages, and the verdict: Reject
- * at min(5, 10% of the pages) pages naming someone else and not the member. */
-function RejectionRulesTable({
+/** Member Verification (its own tab, 2026-10-27, user), with the manifest matching of the
+ * accuracy and Page Details' (Yes) / (No) (memberMatch.ts) on the values the member stage
+ * extracted: one row per name -- the manifest member, then every other name -- with its
+ * pages, the pages whose name, DOB and Member ID match the manifest, and the pages that
+ * match overall (the member's name with the DOB or the Member ID). Then the decision:
+ * Reject at min(5, 10% of the pages) pages naming someone else and not matching. */
+function MemberVerificationTable({
   rows,
   pages,
   manifest,
@@ -2076,9 +2076,7 @@ function RejectionRulesTable({
   if (rows.length === 0) {
     return (
       <div className="ocr-empty">
-        {verificationProcessed
-          ? "No member verification summary for this chart."
-          : YET_TO_PROCESS}
+        {verificationProcessed ? "No member verification summary for this chart." : YET_TO_PROCESS}
       </div>
     );
   }
@@ -2092,36 +2090,41 @@ function RejectionRulesTable({
   // Pages the member stage read (it skips blank / junk / duplicate pages).
   const checked = pages.filter((p) => p.memberPageStatus || read(p.memberName) || (p.memberOtherNames ?? []).length);
   const isMember = (name: string) => Boolean(name) && nameMatchesManifest(name, memberName);
-  const idMatches = (value: string | null | undefined) =>
-    Boolean(read(value)) && Boolean(manifest?.memberId) && folded(read(value)) === folded(manifest?.memberId ?? "");
-  const memberFound = checked.filter((p) => isMember(read(p.memberName)));
-  const verified = memberFound.filter(
-    (p) => dobMatchesManifest(p.memberDob, manifest?.dob) || idMatches(p.memberId),
-  );
-  const verifiedSet = new Set(verified.map((p) => p.pageNumber));
-  const others = new Map<string, { name: string; pages: number[]; wrong: number[] }>();
-  const wrongPages = new Set<number>();
+  const dobMatch = (p: ImagingPageResult) => dobMatchesManifest(p.memberDob, manifest?.dob);
+  const idMatch = (p: ImagingPageResult) =>
+    Boolean(read(p.memberId)) && Boolean(manifest?.memberId) && folded(read(p.memberId)) === folded(manifest?.memberId ?? "");
+  const nameMatch = (p: ImagingPageResult) => isMember(read(p.memberName));
+  const overall = (p: ImagingPageResult) => nameMatch(p) && (dobMatch(p) || idMatch(p));
+
+  type NameRow = { name: string; member: boolean; pages: ImagingPageResult[] };
+  const member: NameRow = { name: memberName, member: true, pages: checked.filter(nameMatch) };
+  const others = new Map<string, NameRow>();
   for (const page of checked) {
-    const names = [read(page.memberName), ...(page.memberOtherNames ?? []).map((n) => n.trim())];
-    for (const other of names) {
+    for (const other of [read(page.memberName), ...(page.memberOtherNames ?? []).map((n) => n.trim())]) {
       const key = folded(other);
       if (!key || isMember(other)) continue;
-      const entry = others.get(key) ?? { name: other, pages: [], wrong: [] };
-      if (entry.pages.includes(page.pageNumber)) continue;
-      entry.pages.push(page.pageNumber);
-      // Someone else named on a page the member did not verify: a wrong-member page.
-      if (!verifiedSet.has(page.pageNumber)) {
-        entry.wrong.push(page.pageNumber);
-        wrongPages.add(page.pageNumber);
-      }
-      others.set(key, entry);
+      const row = others.get(key) ?? { name: other, member: false, pages: [] };
+      if (!row.pages.includes(page)) row.pages.push(page);
+      others.set(key, row);
     }
   }
-  const otherRows = [...others.values()].sort((x, y) => y.pages.length - x.pages.length);
+  const nameRows = [member, ...[...others.values()].sort((x, y) => y.pages.length - x.pages.length)];
+  const wrongPages = new Set(
+    [...others.values()].flatMap((row) => row.pages.filter((p) => !overall(p)).map((p) => p.pageNumber)),
+  );
+  const matched = checked.filter(overall);
   const threshold = Math.max(1, Math.min(5, Math.ceil(pages.length * 0.1)));
-  const verdict = checked.length === 0 ? "Skipped" : wrongPages.size >= threshold ? "Reject" : "Accept";
+  const decision = checked.length === 0 ? "Skipped" : wrongPages.size >= threshold ? "Reject" : "Accept";
   const stored = (summary.finalStatus ?? "").toLowerCase();
-  const storedVerdict = stored === "failed" ? "Reject" : stored === "verified" ? "Accept" : null;
+  const storedDecision = stored === "failed" ? "Reject" : stored === "verified" ? "Accept" : null;
+  const cell = (list: ImagingPageResult[]) =>
+    list.length ? (
+      <>
+        <strong>{list.length}</strong> <span className="member-rejection-role">({pageList(list.map((p) => p.pageNumber))})</span>
+      </>
+    ) : (
+      "0"
+    );
 
   return (
     <div className="member-rejection">
@@ -2129,56 +2132,47 @@ function RejectionRulesTable({
         <thead>
           <tr>
             <th scope="col">Name</th>
-            <th scope="col">Pages Found</th>
-            <th scope="col">Pages Matched</th>
             <th scope="col">Pages</th>
+            <th scope="col">Name Match</th>
+            <th scope="col">DOB Match</th>
+            <th scope="col">Member ID Match</th>
+            <th scope="col">Overall Match</th>
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td>
-              <strong>{fmt(memberName, verificationProcessed)}</strong>
-              <span className="member-rejection-role"> (manifest)</span>
-            </td>
-            <td>{memberFound.length}</td>
-            <td>
-              {verified.length} / {checked.length}
-            </td>
-            <td className="imaging-decision-reason">
-              {verified.length ? `Matched: ${pageList(verified.map((p) => p.pageNumber))}` : "None matched"}
-              {memberFound.length > verified.length
-                ? ` · Name only: ${pageList(memberFound.filter((p) => !verifiedSet.has(p.pageNumber)).map((p) => p.pageNumber))}`
-                : ""}
-            </td>
-          </tr>
-          {otherRows.map((other) => (
-            <tr key={other.name}>
+          {nameRows.map((row) => (
+            <tr key={`${row.member ? "m" : "o"}-${row.name}`}>
               <td>
-                {other.name}
-                <span className="member-rejection-role"> (other name)</span>
+                {row.member ? <strong>{fmt(row.name, verificationProcessed)}</strong> : row.name}
+                <span className="member-rejection-role"> {row.member ? "(manifest)" : "(other name)"}</span>
               </td>
-              <td>{other.pages.length}</td>
-              <td>{other.wrong.length ? `${other.wrong.length} wrong member` : "-"}</td>
-              <td className="imaging-decision-reason">{pageList(other.pages)}</td>
+              <td className="imaging-decision-reason">{cell(row.pages)}</td>
+              <td>{row.member ? cell(row.pages) : <span className="cmp-mismatch">No</span>}</td>
+              <td className="imaging-decision-reason">{cell(row.pages.filter(dobMatch))}</td>
+              <td className="imaging-decision-reason">
+                {manifest?.memberId ? cell(row.pages.filter(idMatch)) : <span className="member-rejection-role">no ID in manifest</span>}
+              </td>
+              <td className="imaging-decision-reason">
+                {row.member ? (
+                  cell(row.pages.filter(overall))
+                ) : (
+                  <span className={row.pages.some((p) => !overall(p)) ? "cmp-mismatch" : undefined}>
+                    {row.pages.filter((p) => !overall(p)).length} wrong member
+                  </span>
+                )}
+              </td>
             </tr>
           ))}
-          {otherRows.length === 0 ? (
-            <tr>
-              <td colSpan={4} className="encounter-review-empty">
-                No other names on the pages.
-              </td>
-            </tr>
-          ) : null}
         </tbody>
       </table>
       <p className="member-rejection-verdict">
-        Final verdict:{" "}
-        <strong className={verdict === "Reject" ? "cmp-mismatch" : verdict === "Accept" ? "cmp-match" : undefined}>
-          {verdict}
+        Final decision:{" "}
+        <strong className={decision === "Reject" ? "cmp-mismatch" : decision === "Accept" ? "cmp-match" : undefined}>
+          {decision}
         </strong>{" "}
-        · {wrongPages.size} wrong-member {wrongPages.size === 1 ? "page" : "pages"} (Reject at {threshold} or more of{" "}
-        {pages.length})
-        {storedVerdict && storedVerdict !== verdict ? ` · pipeline run said ${storedVerdict} (re-run the member stage)` : ""}
+        · {matched.length} of {checked.length} pages matched · {wrongPages.size} wrong-member{" "}
+        {wrongPages.size === 1 ? "page" : "pages"} (Reject at {threshold} or more of {pages.length})
+        {storedDecision && storedDecision !== decision ? ` · pipeline run said ${storedDecision} (re-run the member stage)` : ""}
       </p>
     </div>
   );
@@ -2359,174 +2353,140 @@ function encounterSeed(pages: ImagingPageResult[], encounters: StagedEncounter[]
 
 function DocSummary({
   pages,
-  verifications,
   sections,
-  manifest,
 }: {
   pages: ImagingPageResult[];
-  verifications: ImagingVerificationDetails[];
   sections: ImagingSectionsProcessed;
-  manifest?: ImagingManifestDetails | null;
 }) {
-  const [view, setView] = useState<DocView>("values");
   // Each page's own DOS, else the default 2222-02-02; never the previous page's.
   const rows = useMemo(() => withPageDos(pages, sections.dos), [pages, sections.dos]);
 
   return (
     <div className="imaging-doc-summary">
-      <div className="output-tabs imaging-doc-tabs" role="tablist" aria-label="Doc summary view">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "values"}
-          className={view === "values" ? "active" : ""}
-          onClick={() => setView("values")}
-        >
-          Values
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "rejection"}
-          className={view === "rejection" ? "active" : ""}
-          onClick={() => setView("rejection")}
-        >
-          Rejection Rules
-        </button>
-      </div>
-
-      {view === "rejection" ? (
-        <RejectionRulesTable
-          rows={verifications}
-          pages={pages}
-          manifest={manifest}
-          verificationProcessed={sections.verification}
-        />
-      ) : (
-        <table className="imaging-summary-table imaging-doc-table">
-          <thead>
-            <tr>
-              <th scope="col">Page #</th>
-              <th scope="col">Page</th>
-              <th scope="col">Extracted Name</th>
-              <th scope="col">Extracted DOB</th>
-              <th scope="col">Member ID</th>
-              <th scope="col">Type (Printed/HW)</th>
-              <th scope="col">Handwritten %</th>
-              <th scope="col">Visibility</th>
-              <th scope="col">Quality</th>
-              <th scope="col" title="How far the text sits rotated counter-clockwise from upright, as scanned">Orient.</th>
-              <th scope="col">Tilt</th>
-              <th scope="col">Mirrored</th>
-              <th scope="col">DOS From</th>
-              <th scope="col">DOS To</th>
-              <th scope="col">Is Blank or Junk?</th>
-              <th scope="col">Duplicate</th>
-              <th scope="col">Page Type</th>
-              <th scope="col">Page Subtype</th>
-              <th scope="col">Codable / Non-Codable</th>
-              <th scope="col">Current Sequence</th>
-              <th scope="col">Actual Sequence</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((p) => {
-              const skip = isBlankJunkPage(p) ? { skipped: true } : undefined;
-              const bits = pageBits(p, sections);
-              const pageParts = splitPageType(p.pageType);
-              const typeKnown = Boolean(sections.junk || sections.codeable);
-              return (
-              <tr key={`${p.pageNumber}-${p.fileName}`}>
-                <td>{p.pageNumber}</td>
-                <td className="imaging-mono">{p.fileName}</td>
-                <td>
-                  <GtCell text={fmt(p.memberName && properName(p.memberName), sections.member, skip)} bits={bits.memberName} />
-                  <ConfLine value={fmtConfidence(p.memberConfidence, sections.member, skip)} />
-                </td>
-                <td>
-                  <GtCell text={displayIsoDates(fmt(p.memberDob, sections.member, skip))} bits={bits.memberDob} />
-                </td>
-                <td>{fmt(p.memberId, sections.member, skip)}</td>
-                <td>{fmtHandwriting(pageTypeOf(p), sections.hw)}</td>
-                <td>{fmtHandwrittenArea(p.handwrittenAreaPct, sections.hw)}</td>
-                <td>{fmtVisibility(p.isVisible, sections.hw)}</td>
-                <td>
-                  {fmtQualityTag(
-                    p.pageQualityTag,
-                    sections.quality ?? sections.hw,
+      {/* Member verification has its own tab (2026-10-27, user). */}
+      <table className="imaging-summary-table imaging-doc-table">
+        <thead>
+          <tr>
+            <th scope="col">Page #</th>
+            <th scope="col">Page</th>
+            <th scope="col">Extracted Name</th>
+            <th scope="col">Extracted DOB</th>
+            <th scope="col">Member ID</th>
+            <th scope="col">Type (Printed/HW)</th>
+            <th scope="col">Handwritten %</th>
+            <th scope="col">Visibility</th>
+            <th scope="col">Quality</th>
+            <th scope="col" title="How far the text sits rotated counter-clockwise from upright, as scanned">Orient.</th>
+            <th scope="col">Tilt</th>
+            <th scope="col">Mirrored</th>
+            <th scope="col">DOS From</th>
+            <th scope="col">DOS To</th>
+            <th scope="col">Is Blank or Junk?</th>
+            <th scope="col">Duplicate</th>
+            <th scope="col">Page Type</th>
+            <th scope="col">Page Subtype</th>
+            <th scope="col">Codable / Non-Codable</th>
+            <th scope="col">Current Sequence</th>
+            <th scope="col">Actual Sequence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((p) => {
+            const skip = isBlankJunkPage(p) ? { skipped: true } : undefined;
+            const bits = pageBits(p, sections);
+            const pageParts = splitPageType(p.pageType);
+            const typeKnown = Boolean(sections.junk || sections.codeable);
+            return (
+            <tr key={`${p.pageNumber}-${p.fileName}`}>
+              <td>{p.pageNumber}</td>
+              <td className="imaging-mono">{p.fileName}</td>
+              <td>
+                <GtCell text={fmt(p.memberName && properName(p.memberName), sections.member, skip)} bits={bits.memberName} />
+                <ConfLine value={fmtConfidence(p.memberConfidence, sections.member, skip)} />
+              </td>
+              <td>
+                <GtCell text={displayIsoDates(fmt(p.memberDob, sections.member, skip))} bits={bits.memberDob} />
+              </td>
+              <td>{fmt(p.memberId, sections.member, skip)}</td>
+              <td>{fmtHandwriting(pageTypeOf(p), sections.hw)}</td>
+              <td>{fmtHandwrittenArea(p.handwrittenAreaPct, sections.hw)}</td>
+              <td>{fmtVisibility(p.isVisible, sections.hw)}</td>
+              <td>
+                {fmtQualityTag(
+                  p.pageQualityTag,
+                  sections.quality ?? sections.hw,
+                )}
+                <ConfLine value={fmtConfidence(p.pageQualityConfidence, sections.hw || sections.rotation)} />
+              </td>
+              <td>
+                <GtCell
+                  text={fmtDegrees(p.orientationAngle, sections.rotation)}
+                  bits={bits.rotation}
+                />
+              </td>
+              <td>{fmtDegrees(p.tiltAngle, sections.rotation)}</td>
+              <td>{fmt(p.mirrored, sections.rotation)}</td>
+              <td>
+                <GtCell text={displayIsoDates(fmt(p.dosFrom, sections.dos, skip))} bits={bits.dosFrom} />
+                <ConfLine value={fmtConfidence(p.dosConfidence, sections.dos, skip)} />
+              </td>
+              <td>
+                <GtCell text={displayIsoDates(fmt(p.dosTo, sections.dos, skip))} bits={bits.dosTo} />
+              </td>
+              <td>
+                <GtCell
+                  text={fmtBlankOrJunk(p.blankOrJunk, sections.junk, p)}
+                  bits={bits.blankJunk}
+                />
+              </td>
+              <td>
+                <ValueWithNote
+                  value={fmtDuplicate(p.isDuplicate, p.pageTypeConfidence, sections.junk, p.duplicateOf, p.isPartialDuplicate)}
+                />
+              </td>
+              <td>
+                <GtCell
+                  text={fmtPageType(pageParts.family, typeKnown)}
+                  bits={bits.pageType}
+                />
+                <ConfLine
+                  value={fmtConfidence(
+                    p.isDuplicate
+                      ? duplicateDisplayConfidence(p.isDuplicate, p.pageTypeConfidence, p.isPartialDuplicate, p.duplicateConfidence)
+                      : p.pageTypeConfidence,
+                    sections.junk,
                   )}
-                  <ConfLine value={fmtConfidence(p.pageQualityConfidence, sections.hw || sections.rotation)} />
-                </td>
-                <td>
-                  <GtCell
-                    text={fmtDegrees(p.orientationAngle, sections.rotation)}
-                    bits={bits.rotation}
-                  />
-                </td>
-                <td>{fmtDegrees(p.tiltAngle, sections.rotation)}</td>
-                <td>{fmt(p.mirrored, sections.rotation)}</td>
-                <td>
-                  <GtCell text={displayIsoDates(fmt(p.dosFrom, sections.dos, skip))} bits={bits.dosFrom} />
-                  <ConfLine value={fmtConfidence(p.dosConfidence, sections.dos, skip)} />
-                </td>
-                <td>
-                  <GtCell text={displayIsoDates(fmt(p.dosTo, sections.dos, skip))} bits={bits.dosTo} />
-                </td>
-                <td>
-                  <GtCell
-                    text={fmtBlankOrJunk(p.blankOrJunk, sections.junk, p)}
-                    bits={bits.blankJunk}
-                  />
-                </td>
-                <td>
-                  <ValueWithNote
-                    value={fmtDuplicate(p.isDuplicate, p.pageTypeConfidence, sections.junk, p.duplicateOf, p.isPartialDuplicate)}
-                  />
-                </td>
-                <td>
-                  <GtCell
-                    text={fmtPageType(pageParts.family, typeKnown)}
-                    bits={bits.pageType}
-                  />
-                  <ConfLine
-                    value={fmtConfidence(
-                      p.isDuplicate
-                        ? duplicateDisplayConfidence(p.isDuplicate, p.pageTypeConfidence, p.isPartialDuplicate, p.duplicateConfidence)
-                        : p.pageTypeConfidence,
-                      sections.junk,
-                    )}
-                  />
-                </td>
-                <td>
-                  <GtCell
-                    text={fmtPageType(pageParts.subtype, typeKnown)}
-                    bits={bits.pageType}
-                  />
-                </td>
-                <td>
-                  <GtCell
-                    text={fmtCodeable(
-                      p.isCodeable,
-                      p.pageType,
-                      Boolean(sections.codeable) ||
-                        (p.isCodeable != null && String(p.isCodeable).trim() !== ""),
-                    )}
-                    bits={bits.codeable}
-                  />
-                </td>
-                <td>{fmt(p.currentSequence ?? p.pageNumber, true)}</td>
-                <td>
-                  <GtCell
-                    text={fmt(p.actualSequence, Boolean(sections.sequencing), skip)}
-                    bits={bits.pageSequence}
-                  />
-                </td>
-              </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+                />
+              </td>
+              <td>
+                <GtCell
+                  text={fmtPageType(pageParts.subtype, typeKnown)}
+                  bits={bits.pageType}
+                />
+              </td>
+              <td>
+                <GtCell
+                  text={fmtCodeable(
+                    p.isCodeable,
+                    p.pageType,
+                    Boolean(sections.codeable) ||
+                      (p.isCodeable != null && String(p.isCodeable).trim() !== ""),
+                  )}
+                  bits={bits.codeable}
+                />
+              </td>
+              <td>{fmt(p.currentSequence ?? p.pageNumber, true)}</td>
+              <td>
+                <GtCell
+                  text={fmt(p.actualSequence, Boolean(sections.sequencing), skip)}
+                  bits={bits.pageSequence}
+                />
+              </td>
+            </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -2651,16 +2611,25 @@ export default function ImagingPanel({
     );
   }
 
+  if (tab === "member") {
+    return (
+      <div className="imaging-panel-stack">
+        <ManifestDetails manifest={manifest} />
+        <MemberVerificationTable
+          rows={verifications}
+          pages={document.pages}
+          manifest={manifest}
+          verificationProcessed={sections.verification}
+        />
+      </div>
+    );
+  }
+
   if (tab === "doc") {
     return (
       <div className="imaging-panel-stack">
         <ManifestDetails manifest={manifest} />
-        <DocSummary
-          pages={document.pages}
-          verifications={verifications}
-          sections={sections}
-          manifest={manifest}
-        />
+        <DocSummary pages={document.pages} sections={sections} />
       </div>
     );
   }
