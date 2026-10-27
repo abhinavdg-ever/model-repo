@@ -72,8 +72,35 @@ def is_label(token: str) -> bool:
     return token.casefold() in member_keywords().labels
 
 
+def _compact(text: str) -> str:
+    return re.sub(r"[^0-9a-z]", "", text.casefold())
+
+
 def is_full(token: str, name: str) -> bool:
-    return bool(name) and token.casefold() == name.casefold()
+    """The token is the whole name part. A part of several words ("Le Blanc", "De La Cruz")
+    also matches written as one ("LeBlanc"), and as its words side by side (merge_compound)
+    (2026-10-27, user)."""
+    if not name:
+        return False
+    if token.casefold() == name.casefold():
+        return True
+    return len(tokenize(name)) > 1 and _compact(token) == _compact(name)
+
+
+def merge_compound(span: list[str], *names: str) -> list[str]:
+    """The words of a multi-word name part, side by side in the span, as one token: "Le",
+    "Blanc" -> "Le Blanc", so the rules see the part whole."""
+    out = list(span)
+    for name in names:
+        words = [word.casefold() for word in tokenize(name or "")]
+        if len(words) < 2:
+            continue
+        i = 0
+        while i + len(words) <= len(out):
+            if [token.casefold() for token in out[i : i + len(words)]] == words:
+                out[i : i + len(words)] = [name]
+            i += 1
+    return out
 
 
 def is_initial(token: str, name: str) -> bool:
@@ -91,7 +118,13 @@ def _name_like(token: str) -> bool:
 
 
 def _touches(token: str, *names: str) -> bool:
-    return any(is_full(token, name) or is_initial(token, name) for name in names if name)
+    if any(is_full(token, name) or is_initial(token, name) for name in names if name):
+        return True
+    # A word of a multi-word part ("Blanc" of "Le Blanc") starts a span too.
+    return any(
+        len(tokenize(name)) > 1 and any(token.casefold() == word.casefold() for word in tokenize(name) if len(word) > 1)
+        for name in names if name
+    )
 
 
 def _extra_full(span: list[str], *names: str) -> list[str]:
@@ -109,6 +142,7 @@ def _extra_full(span: list[str], *names: str) -> list[str]:
 def classify_two_word_name(span: list[str], first: str, last: str) -> str:
     if not span or not first or not last:
         return NONE
+    span = merge_compound(span, first, last)
     first_full = any(is_full(token, first) for token in span)
     last_full = any(is_full(token, last) for token in span)
     first_init = (not first_full) and any(is_initial(token, first) for token in span)
@@ -131,6 +165,7 @@ def classify_three_word_name(span: list[str], first: str, middle: str, last: str
     names = [part for part in (first, middle, last) if part]
     if not span or len(names) < 3:
         return NONE
+    span = merge_compound(span, first, middle, last)
     full_count = sum(any(is_full(token, name) for token in span) for name in names)
     extras = _extra_full(span, first, middle, last)
     if full_count >= 3:

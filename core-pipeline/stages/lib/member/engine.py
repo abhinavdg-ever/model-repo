@@ -345,11 +345,12 @@ def trim_extracted_name(extracted: str, expected: dict[str, str]) -> str:
     last = (expected.get("DummyLastName") or "").strip()
     if not first or not last:
         return extracted
-    anchors = {part.casefold() for part in (first, middle, last) if part}
+    # Every word of every part: a part of several words ("Le Blanc") anchors on each.
+    anchors = {word.casefold() for part in (first, middle, last) if part for word in tokenize(part)}
     tokens = tokenize(raw)
     hits = [index for index, token in enumerate(tokens) if token.casefold() in anchors]
     found = {tokens[index].casefold() for index in hits}
-    if first.casefold() not in found or last.casefold() not in found:
+    if not all(word.casefold() in found for part in (first, last) for word in tokenize(part)):
         return extracted
     start, end = hits[0], hits[-1]
     if start == 0 and end == len(tokens) - 1:

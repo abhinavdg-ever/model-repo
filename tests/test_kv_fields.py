@@ -282,3 +282,25 @@ def test_a_page_without_the_member_lists_its_names():
     result = verify_record("c", [{"page_no": 1, "page_name": "1.png", "text": "DOB 03/15/1980", "staged": staged}],
                            expected, "2")
     assert result.pages[0].other_names == ["Mary Major"]
+
+
+def test_a_surname_of_two_words_matches():
+    """2026-10-27 (user): a manifest last name "Le Blanc" against "Le Blanc Jonathan" (and
+    "LeBlanc, Jonathan"); another patient on the page stays someone else."""
+    from stages.lib.member.extractors.rule_based.name_common import name_matches
+
+    staged = StagedPage(
+        "1.png",
+        {"fields": {"name": [
+            {"key": "Patient", "sentence": "Patient Details Patient: Le Blanc Jonathan of Birth: 09/07/1997",
+             "value": "", "accepted": False, "selected": False},
+            {"key": "Patient", "sentence": "Patient: Doe, Mary", "value": "Doe, Mary", "accepted": True, "selected": True},
+        ]}},
+    )
+    expected = {"DummyFirstName": "Jonathan", "DummyMiddleName": "", "DummyLastName": "Le Blanc",
+                "DummyDOB": "09/07/1997", "MemberID": ""}
+    filled, _people, _names = overlay_staged_fields(_empty_fields(), None, staged, expected, "2")
+    assert filled["Detected_Full_Name"] == "Le Blanc Jonathan"
+    assert filled["Detected_DOB"] == "09/07/1997"
+    assert name_matches("LeBlanc, Jonathan", "Jonathan", "Le Blanc", "", "2")
+    assert not name_matches("Doe, Mary", "Jonathan", "Le Blanc", "", "2")

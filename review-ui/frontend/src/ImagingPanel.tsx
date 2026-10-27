@@ -43,7 +43,7 @@ import {
   EncounterReviewEditor,
   type EncounterSeed,
 } from "./ReviewTables";
-import { properName } from "./properName";
+import { memberDisplayName, properName } from "./properName";
 import { ClientViewContext, scoreFinalOnly } from "./clientView";
 import { dobMatchesManifest, nameMatchesManifest } from "./memberMatch";
 
@@ -1404,7 +1404,7 @@ function ManifestDetails({ manifest }: { manifest: ImagingManifestDetails }) {
     <div className={`imaging-manifest-stack${finalOnly ? " is-final-only" : ""}`}>
       <div className="imaging-manifest-row" role="group" aria-label="Manifest details">
         <span>
-          <strong>Member Name:</strong> {fmt(manifest.member)}
+          <strong>Member Name:</strong> {fmt(manifest.member && memberDisplayName(manifest.member))}
         </span>
         <span>
           <strong>DOB:</strong> {fmt(manifest.dob)}
@@ -1848,7 +1848,7 @@ function PageDetails({
         title="Member Extraction"
         toolbar={saveBar}
         rows={[
-          sameValue(withMemberMatch(fmt(page.memberName && properName(page.memberName), sections.member, skip), page.memberName, scoredPage.memberName), memberConf, {
+          sameValue(withMemberMatch(fmt(page.memberName && memberDisplayName(page.memberName), sections.member, skip), page.memberName, scoredPage.memberName), memberConf, {
             id: "name",
             label: "Member Name",
             truth: bits.memberName,
@@ -2106,7 +2106,7 @@ function MemberVerificationTable({
     const shown = read(page.memberName);
     const key = folded(shown);
     if (!key || nameMatch(page)) continue;
-    const row = others.get(key) ?? { name: properName(shown) || shown, member: false, pages: [] };
+    const row = others.get(key) ?? { name: memberDisplayName(shown) || shown, member: false, pages: [] };
     row.pages.push(page);
     others.set(key, row);
   }
@@ -2143,7 +2143,7 @@ function MemberVerificationTable({
           {nameRows.map((row) => (
             <tr key={`${row.member ? "m" : "o"}-${row.name}`}>
               <td>
-                {row.member ? <strong>{fmt(row.name, verificationProcessed)}</strong> : row.name}
+                {row.member ? <strong>{fmt(memberDisplayName(row.name), verificationProcessed)}</strong> : row.name}
                 <span className="member-rejection-role"> {row.member ? "(manifest)" : "(other name)"}</span>
               </td>
               <td className="imaging-decision-reason">{cell(row.pages)}</td>
@@ -2399,7 +2399,7 @@ function DocSummary({
               <td>{p.pageNumber}</td>
               <td className="imaging-mono">{p.fileName}</td>
               <td>
-                <GtCell text={fmt(p.memberName && properName(p.memberName), sections.member, skip)} bits={bits.memberName} />
+                <GtCell text={fmt(p.memberName && memberDisplayName(p.memberName), sections.member, skip)} bits={bits.memberName} />
                 <ConfLine value={fmtConfidence(p.memberConfidence, sections.member, skip)} />
               </td>
               <td>

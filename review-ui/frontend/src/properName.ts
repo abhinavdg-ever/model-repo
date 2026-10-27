@@ -17,3 +17,13 @@ function properPart(part: string): string {
 export function properName(value: string): string {
   return value.replace(/[^\s,|]+/g, (word) => word.split("-").map(properPart).join("-"));
 }
+
+/** A member's name as shown, in proper case and without the comma (2026-10-27, user):
+ *  "Thompson, Patricia" -> "Patricia Thompson" (Last, First -> First Last). A name with no
+ *  comma, or several, keeps its order with the commas dropped. */
+export function memberDisplayName(value: string): string {
+  const proper = properName(value.trim());
+  const parts = proper.split(",").map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 2) return `${parts[1]} ${parts[0]}`;
+  return parts.join(" ");
+}
