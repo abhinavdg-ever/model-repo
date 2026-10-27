@@ -144,6 +144,19 @@ def test_a_no_ink_page_is_judged_in_pass_1_and_is_blank():
     assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")
 
 
+def test_a_page_typed_blank_is_judged_in_pass_1_and_is_blank_without_text():
+    # 2026-10-27 (user): Type (Printed/HW) = Blank is no longer "non-printed": pass 1 reads it,
+    # and with no text R1 calls it Blank (before, it reached pass 2 with no text and got no verdict).
+    from db.memory_store import MemoryStore
+
+    store = MemoryStore()
+    store.upsert_quality(chart_id=8, page_id=1, printed_or_handwritten="uncertain", document_type="blank",
+                         hw_method="convnext_page_tags")
+    assert store.non_printed_page_ids(8) == set()
+    verdict = run("", pass_no=1)
+    assert (verdict.code, verdict.rule) == (classify.CODE_BLANK, "R1")
+
+
 CARD_TEXT = (
     "Benefit Award Card # 8101 3360 3004 6207 For Pharmacist: 1-877-889-6510 "
     "Rx Claims: OptumRx UnitedHealthcare UCard Member ID 903710875-00 "

@@ -897,14 +897,15 @@ def non_printed_page_ids(conn: Any, chart_id: int) -> set[int]:
     """Handwritten / form / uncertain — prelim blank/junk pass 1 is skipped, and they go to
     final OCR whatever pass 1 says.
 
-    Not a page the HW stage found no ink on (``NO_INK_HW_METHODS``): pass 1 judges it (R1:
-    Blank) and final OCR then skips it. Before, such a page was skipped by pass 1, sent to
-    final OCR (billed), and skipped again by pass 2 for having no text: never Blank."""
+    Not a page the HW stage found no ink on (``NO_INK_HW_METHODS``), nor one typed Blank
+    (2026-10-27, user): pass 1 judges it (R1: no text -> Blank) and final OCR then skips it.
+    Before, such a page was skipped by pass 1, sent to final OCR (billed), and skipped again
+    by pass 2 for having no text: never Blank."""
     rows = conn.execute(
         f"""
         SELECT page_id FROM ocr_quality_results
          WHERE chart_id = %s
-           AND {_PAGE_TYPE_SQL} NOT IN ('', 'printed', 'visual')
+           AND {_PAGE_TYPE_SQL} NOT IN ('', 'printed', 'visual', 'blank')
            AND lower(coalesce(hw_method, '')) <> ALL(%s)
         """,
         (chart_id, sorted(NO_INK_HW_METHODS)),

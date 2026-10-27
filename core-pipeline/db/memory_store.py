@@ -746,7 +746,7 @@ class MemoryStore:
         return {
             pid
             for pid, row in self.get_quality_map(chart_id).items()
-            if page_type(row) and not is_printed_type(page_type(row))
+            if page_type(row) and not is_printed_type(page_type(row)) and page_type(row) != "blank"
             and str(row.get("hw_method") or "").lower() not in NO_INK_HW_METHODS
         }
 

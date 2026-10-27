@@ -930,8 +930,11 @@ def _run_pass(
                 reasons = get_blank_junk_reasons(conn, chart_id, pass_no=1)
                 kept = [pid for pid in ctx.todo if method.is_final_keep(reasons.get(pid))]
                 mark_skipped(conn, ctx, kept, "final_keep_pass1")
+                # A page typed Blank with no text is judged (R1: Blank, 2026-10-27, user);
+                # any other page without final OCR text waits for it.
                 no_text = [
-                    pid for pid in ctx.todo if not (texts.get(pid) or "").strip()
+                    pid for pid in ctx.todo
+                    if not (texts.get(pid) or "").strip() and page_type(quality.get(pid)) != "blank"
                 ]
                 mark_skipped(conn, ctx, no_text, "no_final_ocr_text")
 
