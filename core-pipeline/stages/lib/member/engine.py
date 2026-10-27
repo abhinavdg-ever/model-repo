@@ -43,7 +43,7 @@ from .extractors.ner_based.config import ner_enabled as NER_ENABLED
 from .extractors.ner_based.dob import extract_dob_ner
 from .extractors.ner_based.member_id import extract_member_id_ner
 from .extractors.ner_based.name import name_candidates, pick_name
-from .extractors.rule_based.dob import extract_dob
+from .extractors.rule_based.dob import date_parts_match, extract_dob
 from .extractors.rule_based.member_id import extract_member_id
 from .extractors.rule_based.name_common import tokenize
 from .extractors.rule_based.name_2_words import extract_name_2_words
@@ -95,6 +95,8 @@ class PageResult:
     page_verified: bool
     page_status: str          # V1 bucket: Verified / Wrong_Member / Not_Verified
     ner_names: list[str] = field(default_factory=list)
+    # The people the page names who are not the manifest member (2026-10-27).
+    other_names: list[str] = field(default_factory=list)
 
     @property
     def db_page_status(self) -> str:
@@ -399,37 +401,71 @@ def overlay_staged_fields(
     first = expected.get("DummyFirstName", "")
     middle = expected.get("DummyMiddleName", "")
     last = expected.get("DummyLastName", "")
-    ours = next(
+
+    def ours(value: str) -> bool:
+        return bool(name_mode) and name_matches(value, first, last, middle, name_mode)
+
+    # 2026-10-27 (user): before the extraction's selected value, look for the manifest
+    # member in every sentence it read, of every field, accepted or not -- the names in
+    # either order, with an initial for one of them (extract_full_name_rule). Found: that
+    # is the name. Else the rules' whole-page find when it is the member, else an accepted
+    # name that is the member, else the accepted / selected one.
+    sentences = [
+        row for field_rows in staged.fields.values() for row in field_rows
+        if str(row.get("sentence") or "").strip()
+    ]
+    in_sentence = next(
         (
-            row for row in names
-            if name_mode and name_matches(row["value"], first, last, middle, name_mode)
+            (found, row) for row in sentences
+            for found in [extract_full_name_rule(str(row["sentence"]), expected, name_mode)]
+            if is_present(found) and ours(found)
         ),
         None,
     )
-    pick = ours or (names[0] if names else None)
-    if pick is not None:
-        fields["Detected_Full_Name"] = pick["value"].strip()
-        fields["Detection_Source_Name"] = source(pick)
-        fields["ner_key_source_Name"] = pick.get("key") or ""
+    if in_sentence is not None:
+        found, row = in_sentence
+        fields["Detected_Full_Name"] = trim_extracted_name(found, expected).strip()
+        fields["Detection_Source_Name"] = "rule based"
+        fields["ner_key_source_Name"] = f"sentence: {row.get('key') or ''}"[:100]
+    elif not (is_present(fields.get("Detected_Full_Name", "")) and ours(fields["Detected_Full_Name"])):
+        pick = next((row for row in names if ours(row["value"])), None) or (names[0] if names else None)
+        if pick is not None:
+            fields["Detected_Full_Name"] = pick["value"].strip()
+            fields["Detection_Source_Name"] = source(pick)
+            fields["ner_key_source_Name"] = pick.get("key") or ""
 
+    # DOB and member ID the same way: the manifest's value in any sentence first.
+    dob_expected = expected.get("DummyDOB", "")
+    dob_sentence = next((row for row in sentences if date_parts_match(str(row["sentence"]), dob_expected)), None)
     dobs = chosen("dob")
-    dob_hit = next((row for row in dobs if dob_matches(row["value"], expected.get("DummyDOB", ""))), None)
-    dob_pick = dob_hit or (dobs[0] if dobs else None)
-    if dob_pick is not None:
-        fields["Detected_DOB"] = dob_text(dob_pick["value"])
-        fields["Detection_Source_DOB"] = source(dob_pick)
-        fields["ner_key_source_DOB"] = dob_pick.get("key") or ""
+    if dob_sentence is not None:
+        fields["Detected_DOB"] = dob_expected
+        fields["Detection_Source_DOB"] = "rule based"
+        fields["ner_key_source_DOB"] = f"sentence: {dob_sentence.get('key') or ''}"[:100]
+    elif not is_present(fields.get("Detected_DOB", "")):
+        dob_hit = next((row for row in dobs if dob_matches(row["value"], dob_expected)), None)
+        dob_pick = dob_hit or (dobs[0] if dobs else None)
+        if dob_pick is not None:
+            fields["Detected_DOB"] = dob_text(dob_pick["value"])
+            fields["Detection_Source_DOB"] = source(dob_pick)
+            fields["ner_key_source_DOB"] = dob_pick.get("key") or ""
 
-    ids = chosen("member_id")
-    id_hit = next(
-        (row for row in ids if member_id_matches(row["value"], expected.get("MemberID", ""))),
-        None,
+    id_expected = expected.get("MemberID", "")
+    id_sentence = next(
+        (row for row in sentences if is_present(extract_member_id(str(row["sentence"]), id_expected))), None
     )
-    id_pick = id_hit or (ids[0] if ids else None)
-    if id_pick is not None:
-        fields["Detected_MemberID"] = id_pick["value"].strip()
-        fields["Detection_Source_MemberID"] = source(id_pick)
-        fields["ner_key_source_MemberID"] = id_pick.get("key") or ""
+    ids = chosen("member_id")
+    if id_sentence is not None:
+        fields["Detected_MemberID"] = id_expected.strip()
+        fields["Detection_Source_MemberID"] = "rule based"
+        fields["ner_key_source_MemberID"] = f"sentence: {id_sentence.get('key') or ''}"[:100]
+    elif not is_present(fields.get("Detected_MemberID", "")):
+        id_hit = next((row for row in ids if member_id_matches(row["value"], id_expected)), None)
+        id_pick = id_hit or (ids[0] if ids else None)
+        if id_pick is not None:
+            fields["Detected_MemberID"] = id_pick["value"].strip()
+            fields["Detection_Source_MemberID"] = source(id_pick)
+            fields["ner_key_source_MemberID"] = id_pick.get("key") or ""
 
     found = [row["value"].strip() for row in names if not is_age_name(row["value"])]
     return fields, people, found
@@ -493,6 +529,18 @@ def verify_record(
             if name not in ner_names:
                 ner_names.append(name)
         status = classify_page(text, ner_names, expected, name_mode, page_ok)
+        from .extractors.rule_based.name_common import name_matches
+        others: list[str] = []
+        for name in ner_names:
+            cleaned = " ".join(name.split())
+            if not cleaned or is_age_name(cleaned) or cleaned.casefold() in {o.casefold() for o in others}:
+                continue
+            if name_mode and name_matches(
+                cleaned, expected.get("DummyFirstName", ""), expected.get("DummyLastName", ""),
+                expected.get("DummyMiddleName", ""), name_mode,
+            ):
+                continue
+            others.append(cleaned)
 
         results.append(
             PageResult(
@@ -510,6 +558,7 @@ def verify_record(
                 page_verified=page_ok,
                 page_status=status,
                 ner_names=ner_names,
+                other_names=others,
             )
         )
 

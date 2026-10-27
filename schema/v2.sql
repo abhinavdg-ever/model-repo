@@ -67,6 +67,8 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * member_extraction_results.other_names (v1.sql, 2026-10-27): the people a page names
+--    who are not the manifest member (changes_2026-10-27.sql).
 --  * page_ground_truth.encounter_label (v1.sql, 2026-10-27): the page's encounter type as
 --    entered in review-ui; encounter_type keeps the client sheet's page type
 --    (changes_2026-10-27.sql).

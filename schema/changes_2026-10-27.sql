@@ -29,3 +29,9 @@ ALTER TABLE dos_extraction_results
 ALTER TABLE dos_extraction_results
     ADD CONSTRAINT dos_extraction_results_extraction_method_check
     CHECK (extraction_method IS NULL OR extraction_method IN ('rules','llm','rules+llm','kv'));
+
+-- 4. member_extraction_results.other_names (2026-10-27): the people a page names who are not
+--    the manifest member, for review-ui's member rejection table. Until this runs the member
+--    stage writes the rest of the row and logs that the column is missing.
+ALTER TABLE member_extraction_results
+    ADD COLUMN IF NOT EXISTS other_names JSONB NOT NULL DEFAULT '[]'::jsonb;

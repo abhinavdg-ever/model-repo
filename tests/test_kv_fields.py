@@ -200,3 +200,68 @@ def test_the_best_date_without_a_model_is_the_rules_pick():
         {"key": "Visit", "value": "5/20/25", "score": 0.8, "accepted": False, "source": "same_line_shared"},
     ]
     assert StagedPage("4.png", {"fields": {"dos": rows}}).best("dos")["source"] == "same_line"
+
+
+def _empty_fields():
+    return {
+        "Detected_Full_Name": "N/A", "Detection_Source_Name": "", "ner_key_source_Name": "",
+        "Detected_DOB": "N/A", "Detection_Source_DOB": "", "ner_key_source_DOB": "",
+        "Detected_MemberID": "N/A", "Detection_Source_MemberID": "", "ner_key_source_MemberID": "",
+    }
+
+
+def test_the_manifest_name_in_any_sentence_beats_the_selected_value():
+    """2026-10-27 (user): before the selected value, look for the manifest member in every
+    sentence, in either order; a selected drug name must not become the member's name."""
+    staged = StagedPage(
+        "4.png",
+        {
+            "fields": {
+                "name": [
+                    {"key": "Patient Name", "sentence": "Patient Name: Public Jane once a day",
+                     "value": "", "accepted": False, "selected": False},
+                    {"key": "near:Acct", "sentence": "Trelegy Ellipta inhaler once a day",
+                     "value": "Trelegy Ellipta", "accepted": True, "selected": True},
+                ],
+                "dob": [{"key": "DOB", "sentence": "born 3/15/1980 in town", "value": "", "accepted": False}],
+                "member_id": [],
+            }
+        },
+    )
+    expected = {"DummyFirstName": "Jane", "DummyMiddleName": "", "DummyLastName": "Public",
+                "DummyDOB": "03/15/1980", "MemberID": ""}
+    filled, _people, names = overlay_staged_fields(_empty_fields(), None, staged, expected, "2")
+    assert filled["Detected_Full_Name"] == "Public Jane"
+    assert filled["ner_key_source_Name"] == "sentence: Patient Name"
+    assert filled["Detected_DOB"] == "03/15/1980"
+    assert names == ["Trelegy Ellipta"]
+
+
+def test_without_the_member_in_a_sentence_the_accepted_value_is_used():
+    staged = StagedPage(
+        "1.png",
+        {"fields": {"name": [{"key": "Patient", "sentence": "Patient: Mary Major", "value": "Mary Major",
+                              "accepted": True, "selected": True}]}},
+    )
+    expected = {"DummyFirstName": "Jane", "DummyMiddleName": "", "DummyLastName": "Public",
+                "DummyDOB": "", "MemberID": ""}
+    filled, _people, _names = overlay_staged_fields(_empty_fields(), None, staged, expected, "2")
+    assert filled["Detected_Full_Name"] == "Mary Major"
+
+
+def test_a_page_lists_the_names_that_are_not_the_member():
+    from stages.lib.member.engine import verify_record
+
+    expected = {"DummyFirstName": "Jane", "DummyMiddleName": "", "DummyLastName": "Public",
+                "DummyDOB": "03/15/1980", "MemberID": ""}
+    staged = StagedPage(
+        "1.png",
+        {"fields": {"name": [
+            {"key": "Patient", "sentence": "Patient: Mary Major", "value": "Mary Major", "accepted": True, "selected": True},
+            {"key": "Patient", "sentence": "Patient: Public, Jane", "value": "Public, Jane", "accepted": True, "selected": False},
+        ]}},
+    )
+    result = verify_record("c", [{"page_no": 1, "page_name": "1.png", "text": "DOB 03/15/1980", "staged": staged}],
+                           expected, "2")
+    page = result.pages[0]
+    assert page.page_verified and page.other_names == ["Mary Major"]

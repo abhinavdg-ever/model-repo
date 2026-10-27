@@ -96,7 +96,9 @@ _OVERLAY_SQL: dict[str, str] = {
     "member": """
                             SELECT p.page_name,
                                    m.extracted_name, m.extracted_dob, m.extracted_member_id,
-                                   m.confidence
+                                   m.confidence, m.page_status,
+                                   -- NULL until changes_2026-10-27.sql adds the column.
+                                   to_jsonb(m) -> 'other_names'
                             FROM member_extraction_results m
                             JOIN chart_list c ON c.id = m.chart_id
                             JOIN page_list p ON p.id = m.page_id
@@ -1138,7 +1140,7 @@ class PostgresFolderRepository(FolderRepository):
 
             with _skip_on_error("member", folder_id):
                 # Member extraction
-                for page_name, name, dob, mid, conf in rows["member"] or []:
+                for page_name, name, dob, mid, conf, member_status, other_names in rows["member"] or []:
                     if not page_name:
                         continue
                     fields = _ensure(str(page_name))
@@ -1147,6 +1149,9 @@ class PostgresFolderRepository(FolderRepository):
                     fields["memberId"] = mid
                     if conf is not None:
                         fields["memberConfidence"] = float(conf)
+                    fields["memberPageStatus"] = member_status
+                    if isinstance(other_names, list):
+                        fields["memberOtherNames"] = [str(n) for n in other_names if str(n).strip()]
 
             with _skip_on_error("dos", folder_id):
                 # DOS (Extracted): the DOS stage's own row per page, the same values it

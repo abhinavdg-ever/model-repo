@@ -406,18 +406,6 @@ function fmtCodeable(
   return NOT_FOUND;
 }
 
-function fmtPagesMatched(
-  v: ImagingVerificationDetails,
-  processed = true,
-): string {
-  if (!processed) return YET_TO_PROCESS;
-  if (v.pagesMatched != null && v.pagesChecked != null) {
-    return `${v.pagesMatched}/${v.pagesChecked}`;
-  }
-  if (v.pagesMatched != null) return String(v.pagesMatched);
-  return NOT_FOUND;
-}
-
 type CompareRow = {
   id: string;
   label: string;
@@ -2030,11 +2018,30 @@ function PageDetails({
   );
 }
 
+/** Page numbers as "1, 2, 5-7". */
+function pageList(numbers: number[]): string {
+  const sorted = [...new Set(numbers)].sort((x, y) => x - y);
+  const parts: string[] = [];
+  for (let i = 0; i < sorted.length; i += 1) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j += 1;
+    parts.push(j > i + 1 ? `${sorted[i]}-${sorted[j]}` : j === i + 1 ? `${sorted[i]}, ${sorted[j]}` : `${sorted[i]}`);
+    i = j;
+  }
+  return parts.join(", ");
+}
+
+/** Member verification as the rejection rule reads it (2026-10-27, user): the manifest
+ * member -- the pages its name was found on and the pages that verified (name with DOB or
+ * Member ID) -- then every other name the pages carry, and the chart's verdict: Reject at
+ * min(5, 10% of the pages) wrong-member pages. */
 function RejectionRulesTable({
   rows,
+  pages,
   verificationProcessed,
 }: {
   rows: ImagingVerificationDetails[];
+  pages: ImagingPageResult[];
   verificationProcessed: boolean;
 }) {
   if (rows.length === 0) {
@@ -2046,34 +2053,93 @@ function RejectionRulesTable({
       </div>
     );
   }
+  const summary = rows[0];
+  const checked = pages.filter((p) => p.memberPageStatus);
+  const folded = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
+  // The member's name was found when the page's name is not one of its other names.
+  const memberFound = checked.filter((p) => {
+    const name = folded(p.memberName ?? "");
+    if (!name || name === "n/a") return false;
+    return !(p.memberOtherNames ?? []).some((other) => folded(other) === name);
+  });
+  const verified = checked.filter((p) => p.memberPageStatus === "verified");
+  const wrong = checked.filter((p) => p.memberPageStatus === "wrong_member");
+  const others = new Map<string, { name: string; pages: number[]; wrong: number[] }>();
+  for (const page of checked) {
+    for (const other of page.memberOtherNames ?? []) {
+      const key = folded(other);
+      if (!key) continue;
+      const entry = others.get(key) ?? { name: other.trim(), pages: [], wrong: [] };
+      entry.pages.push(page.pageNumber);
+      if (page.memberPageStatus === "wrong_member") entry.wrong.push(page.pageNumber);
+      others.set(key, entry);
+    }
+  }
+  const otherRows = [...others.values()].sort((x, y) => y.pages.length - x.pages.length);
+  const threshold = Math.max(1, Math.min(5, Math.ceil(pages.length * 0.1)));
+  const status = (summary.finalStatus ?? "").toLowerCase();
+  const verdict =
+    status === "failed" ? "Reject" : status === "verified" ? "Accept" : fmt(summary.finalStatus, verificationProcessed);
+  const otherNamesKnown = pages.some((p) => p.memberOtherNames != null);
 
   return (
-    <table className="imaging-summary-table imaging-rejection-table">
-      <thead>
-        <tr>
-          <th scope="col">Component</th>
-          <th scope="col">Status</th>
-          <th scope="col">Matched Name</th>
-          <th scope="col">Pages</th>
-          <th scope="col">Conf.</th>
-          <th scope="col">Decision Reason</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((v, idx) => (
-          <tr key={`${v.finalStatus ?? "row"}-${idx}`}>
-            <td>Member Verification</td>
-            <td>{fmt(v.finalStatus, verificationProcessed)}</td>
-            <td>{fmt(v.matchedName, verificationProcessed)}</td>
-            <td>{fmtPagesMatched(v, verificationProcessed)}</td>
-            <td>{fmtConfidence(v.matchedConfidence, verificationProcessed)}</td>
+    <div className="member-rejection">
+      <table className="imaging-summary-table imaging-rejection-table">
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Pages Found</th>
+            <th scope="col">Pages Matched</th>
+            <th scope="col">Pages</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <strong>{fmt(summary.matchedName, verificationProcessed)}</strong>
+              <span className="member-rejection-role"> (manifest)</span>
+            </td>
+            <td>{memberFound.length}</td>
+            <td>
+              {verified.length} / {checked.length}
+            </td>
             <td className="imaging-decision-reason">
-              {fmt(v.decisionReason, verificationProcessed)}
+              {verified.length ? `Matched: ${pageList(verified.map((p) => p.pageNumber))}` : "None matched"}
+              {memberFound.length > verified.length
+                ? ` · Name only: ${pageList(memberFound.filter((p) => p.memberPageStatus !== "verified").map((p) => p.pageNumber))}`
+                : ""}
             </td>
           </tr>
-        ))}
-      </tbody>
-    </table>
+          {otherRows.map((other) => (
+            <tr key={other.name}>
+              <td>
+                {other.name}
+                <span className="member-rejection-role"> (other name)</span>
+              </td>
+              <td>{other.pages.length}</td>
+              <td>{other.wrong.length ? `${other.wrong.length} wrong member` : "-"}</td>
+              <td className="imaging-decision-reason">{pageList(other.pages)}</td>
+            </tr>
+          ))}
+          {otherRows.length === 0 ? (
+            <tr>
+              <td colSpan={4} className="encounter-review-empty">
+                {otherNamesKnown ? "No other names on the pages." : "Other names: re-run the member stage to list them."}
+              </td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+      <p className="member-rejection-verdict">
+        Final verdict:{" "}
+        <strong className={verdict === "Reject" ? "cmp-mismatch" : verdict === "Accept" ? "cmp-match" : undefined}>
+          {verdict}
+        </strong>{" "}
+        · {wrong.length} wrong-member {wrong.length === 1 ? "page" : "pages"} (Reject at {threshold} or more of{" "}
+        {pages.length}) · Conf {fmtConfidence(summary.matchedConfidence, verificationProcessed)}
+        {summary.decisionReason ? ` · ${summary.decisionReason}` : ""}
+      </p>
+    </div>
   );
 }
 
@@ -2289,6 +2355,7 @@ function DocSummary({
       {view === "rejection" ? (
         <RejectionRulesTable
           rows={verifications}
+          pages={pages}
           verificationProcessed={sections.verification}
         />
       ) : (

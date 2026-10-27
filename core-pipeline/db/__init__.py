@@ -1712,7 +1712,10 @@ def upsert_member_extraction(
     provided_dob: Optional[str],
     provided_external_member_id: Optional[str],
     matched_member_list_id: Optional[int],
+    other_names: Optional[list[str]] = None,
 ) -> None:
+    """One page's member row. ``other_names``: the people the page names who are not the
+    manifest member (2026-10-27), written when the table has the column."""
     conn.execute(
         """
         INSERT INTO member_extraction_results (
@@ -1756,6 +1759,24 @@ def upsert_member_extraction(
             matched_member_list_id,
         ),
     )
+    if _member_other_names_column(conn):
+        conn.execute(
+            "UPDATE member_extraction_results SET other_names = %s::jsonb WHERE page_id = %s",
+            (json.dumps(list(other_names or [])), page_id),
+        )
+
+
+_MEMBER_OTHER_NAMES: Optional[bool] = None
+
+
+def _member_other_names_column(conn: Any) -> bool:
+    """member_extraction_results.other_names exists (schema/changes_2026-10-27.sql). Read once."""
+    global _MEMBER_OTHER_NAMES
+    if _MEMBER_OTHER_NAMES is None:
+        _MEMBER_OTHER_NAMES = "other_names" in _table_columns(conn, "member_extraction_results")
+        if not _MEMBER_OTHER_NAMES:
+            logger.warning("member_extraction_results lacks other_names: run schema/changes_2026-10-27.sql")
+    return _MEMBER_OTHER_NAMES
 
 
 @_dispatch

@@ -155,6 +155,10 @@ export type ImagingPageResult = {
   memberDob: string | null;
   memberId: string | null;
   memberConfidence: number | null;
+  /** The member stage's page verdict: verified / wrong_member / not_verified. */
+  memberPageStatus?: string | null;
+  /** The people the page names who are not the manifest member. */
+  memberOtherNames?: string[] | null;
   handwrittenOrPrinted: string | null;
   handwrittenOrPrintedConfidence?: number | null;
   /** Printed | Handwritten | Form | Visual | Blank | Uncertain */

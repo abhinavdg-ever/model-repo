@@ -220,6 +220,10 @@ class ImagingPageResult(BaseModel):
     memberDob: str | None = None
     memberId: str | None = None
     memberConfidence: float | None = None
+    # The member stage's page verdict (verified / wrong_member / not_verified) and the people
+    # the page names who are not the manifest member (2026-10-27).
+    memberPageStatus: str | None = None
+    memberOtherNames: list[str] | None = None
     handwrittenOrPrinted: str | None = None
     handwrittenOrPrintedConfidence: float | None = None
     # Printed | Handwritten | Form | Visual | Blank | Uncertain

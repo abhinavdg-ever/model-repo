@@ -6483,3 +6483,19 @@ input {
 .imaging-detail-table.imaging-value-table.is-final-only.is-compact tbody td:nth-child(3) {
   width: 33%;
 }
+
+/* Member rejection table (2026-10-27): who is named where, and the verdict. */
+.member-rejection-role {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.member-rejection-verdict {
+  margin: 0.4rem 0 0;
+  font-size: 0.78rem;
+  color: var(--neutral-700);
+}
+
+.member-rejection .imaging-rejection-table td.imaging-decision-reason {
+  white-space: normal;
+}

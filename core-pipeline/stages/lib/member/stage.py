@@ -557,6 +557,7 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                         provided_name=manifest.get("member_name"),
                         provided_dob=provided_dob,
                         provided_external_member_id=manifest.get("external_member_id"),
+                        other_names=page.other_names,
                         matched_member_list_id=(
                             manifest.get("id") if page.page_verified else None
                         ),

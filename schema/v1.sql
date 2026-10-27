@@ -1001,6 +1001,8 @@ CREATE TABLE member_extraction_results (
                                    CHECK (page_status IS NULL OR page_status IN
                                           ('verified','wrong_member','not_verified')),
     page_verified                  BOOLEAN,
+    -- The people the page names who are not the manifest member (the rejection table).
+    other_names                    JSONB NOT NULL DEFAULT '[]'::jsonb,
 
     confidence                     NUMERIC(5,4),
     provided_name                  VARCHAR(255),
