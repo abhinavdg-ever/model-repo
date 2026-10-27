@@ -160,6 +160,9 @@ def resolved_blob_account_url(settings: Settings | None = None) -> str:
 
 # The same names core-pipeline takes for AZURE_STORAGE_AUTH.
 _MANAGED_IDENTITY_MODES = {"managed_identity", "managed-identity", "mi", "msi"}
+# An Entra app's client secret, used only when asked for by name (2026-10-27): core-pipeline
+# never uses one, and a stale AZURE_CLIENT_SECRET copied into .env broke every image.
+_CLIENT_SECRET_MODES = {"client_secret", "client-secret", "service_principal", "sp"}
 # A client secret's ID is a GUID; its Value is not. The ID is a common paste mistake and
 # Entra rejects it: "secret should be a Microsoft Entra application's client secret".
 _GUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
@@ -169,25 +172,27 @@ def _credential(settings: Settings):
     tenant = settings.azure_tenant_id.strip()
     client_id = settings.azure_client_id.strip()
     secret = settings.azure_client_secret.strip()
-    if settings.azure_storage_auth.strip().lower() in _MANAGED_IDENTITY_MODES:
+    auth = settings.azure_storage_auth.strip().lower()
+    if auth in _MANAGED_IDENTITY_MODES:
         # The VM's managed identity, as core-pipeline uses it (AZURE_CLIENT_ID = a
         # user-assigned identity; blank = system-assigned). No secret involved.
         from azure.identity import ManagedIdentityCredential
 
         return ManagedIdentityCredential(client_id=client_id) if client_id else ManagedIdentityCredential()
-    if secret and _GUID.match(secret):
-        logger.error(
-            "AZURE_CLIENT_SECRET is a GUID: that is the secret's ID, not its Value. Put the "
-            "Value in review-ui/.env, or set AZURE_STORAGE_AUTH=managed_identity on the VM."
-        )
-    if tenant and client_id and secret:
-        return ClientSecretCredential(
-            tenant_id=tenant,
-            client_id=client_id,
-            client_secret=secret,
-        )
-    # Managed Identity / Azure CLI / VS Code / environment credentials
-    return DefaultAzureCredential(exclude_interactive_browser_credential=True)
+    if auth in _CLIENT_SECRET_MODES:
+        if secret and _GUID.match(secret):
+            logger.error(
+                "AZURE_CLIENT_SECRET is a GUID: that is the secret's ID, not its Value. Put the "
+                "Value in review-ui/.env, or set AZURE_STORAGE_AUTH=managed_identity on the VM."
+            )
+        return ClientSecretCredential(tenant_id=tenant, client_id=client_id, client_secret=secret)
+    # entra (the default), as core-pipeline: managed identity (AZURE_CLIENT_ID names a
+    # user-assigned one), then az login / VS Code. No secret, even when one is in the
+    # environment, and no browser prompt.
+    kwargs: dict = {"exclude_interactive_browser_credential": True, "exclude_environment_credential": True}
+    if client_id:
+        kwargs["managed_identity_client_id"] = client_id
+    return DefaultAzureCredential(**kwargs)
 
 
 # Requests on the API's worker threads share one client. Its default HTTP pool keeps 10
@@ -233,9 +238,13 @@ def blob_auth_label(settings: Settings) -> str:
         return "connection string"
     if settings.azure_storage_account_key.strip():
         return "account key"
-    if settings.azure_tenant_id.strip() and settings.azure_client_id.strip() and settings.azure_client_secret.strip():
+    auth = settings.azure_storage_auth.strip().lower()
+    client_id = settings.azure_client_id.strip()
+    if auth in _MANAGED_IDENTITY_MODES:
+        return f"managed identity ({f'client_id={client_id}' if client_id else 'system-assigned'})"
+    if auth in _CLIENT_SECRET_MODES:
         return "entra app (client secret)"
-    return "entra (managed identity / az login)"
+    return f"entra (managed identity{f' client_id={client_id}' if client_id else ''} / az login)"
 
 
 def check_blob_access(settings: Settings) -> str:

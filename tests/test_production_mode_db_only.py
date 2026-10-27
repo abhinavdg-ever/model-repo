@@ -49,10 +49,25 @@ def test_review_ui_takes_the_vm_managed_identity(monkeypatch):
 def test_a_secret_id_pasted_as_the_secret_is_named(caplog):
     from app.services import blob_store
 
-    settings = Settings(azure_tenant_id="t", azure_client_id="c",
+    settings = Settings(azure_storage_auth="client_secret", azure_tenant_id="t", azure_client_id="c",
                         azure_client_secret="0f8e2482-e23a-4f7d-9a3b-1c2d3e4f5a6b")
     blob_store._credential(settings)
     assert "secret's ID, not its Value" in caplog.text
+
+
+def test_entra_signs_in_as_core_pipeline_and_never_with_the_secret(monkeypatch):
+    """2026-10-27 (user): a secret in .env broke images. entra = the managed identity
+    AZURE_CLIENT_ID names, then az login, as core-pipeline; the secret only in client_secret."""
+    from app.services import blob_store
+
+    made = []
+    monkeypatch.setattr(blob_store, "DefaultAzureCredential", lambda **kw: made.append(kw) or "dac")
+    monkeypatch.setattr(blob_store, "ClientSecretCredential", lambda **kw: (_ for _ in ()).throw(AssertionError("secret used")))
+    settings = Settings(azure_storage_auth="entra", azure_client_id="abc",
+                        azure_tenant_id="t", azure_client_secret="s")
+    assert blob_store._credential(settings) == "dac"
+    assert made == [{"exclude_interactive_browser_credential": True, "exclude_environment_credential": True,
+                     "managed_identity_client_id": "abc"}]
 
 
 def test_provider_rows_are_read_by_the_rule_that_wrote_them():
