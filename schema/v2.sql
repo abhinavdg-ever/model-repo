@@ -67,6 +67,8 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * idx_blank_junk_classification_duplicate_of_page_id, idx_imaging_final_duplicate_of_page_id
+--    (v1.sql, 2026-10-28): page deletes no longer scan those tables (changes_2026-10-27.sql).
 --  * chart_ground_truth (v1.sql, 2026-10-28): the reviewer's member Accept / Reject per chart
 --    (changes_2026-10-27.sql).
 --  * member_extraction_results.other_names (v1.sql, 2026-10-27): the people a page names

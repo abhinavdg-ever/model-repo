@@ -53,3 +53,11 @@ DROP TRIGGER IF EXISTS trg_chart_ground_truth_updated_at ON chart_ground_truth;
 CREATE TRIGGER trg_chart_ground_truth_updated_at
     BEFORE UPDATE ON chart_ground_truth
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- 6. Indexes on the two columns that point at page_list without one (2026-10-28). Deleting
+--    a page (a re-run, clone_client_db --update) checks them; without an index each page
+--    delete read the whole table, so re-copying 30 charts took very long.
+CREATE INDEX IF NOT EXISTS idx_blank_junk_classification_duplicate_of_page_id
+    ON blank_junk_classification(duplicate_of_page_id);
+CREATE INDEX IF NOT EXISTS idx_imaging_final_duplicate_of_page_id
+    ON imaging_final(duplicate_of_page_id);

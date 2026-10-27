@@ -615,6 +615,9 @@ CREATE TABLE blank_junk_classification (
 );
 CREATE INDEX idx_blank_junk_classification_chart_id ON blank_junk_classification(chart_id);
 CREATE INDEX idx_blank_junk_classification_page_id ON blank_junk_classification(page_id);
+-- Deleting a page checks this reference: without the index, every page delete reads the table.
+CREATE INDEX idx_blank_junk_classification_duplicate_of_page_id
+    ON blank_junk_classification(duplicate_of_page_id);
 CREATE UNIQUE INDEX idx_blank_junk_classification_one_final
     ON blank_junk_classification (page_id) WHERE is_final;
 
@@ -979,6 +982,8 @@ CREATE TABLE imaging_final (
 );
 CREATE INDEX idx_imaging_final_chart_id ON imaging_final(chart_id);
 CREATE INDEX idx_imaging_final_page_id ON imaging_final(page_id);
+-- Deleting a page checks this reference: without the index, every page delete reads the table.
+CREATE INDEX idx_imaging_final_duplicate_of_page_id ON imaging_final(duplicate_of_page_id);
 
 CREATE TRIGGER trg_imaging_final_updated_at
     BEFORE UPDATE ON imaging_final

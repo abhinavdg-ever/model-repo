@@ -291,6 +291,10 @@ def main() -> int:
                 dst.execute(f"DELETE FROM {table}")
             dst.execute("DELETE FROM chart_list")
             dst.execute("DELETE FROM manifest_member_list")
+        # A page delete checks every column pointing at page_list; these two had no index
+        # (v1.sql, 2026-10-28), so each deleted page read both tables whole. Made once.
+        for index, table, column in _DELETE_INDEXES:
+            dst.execute(f"CREATE INDEX IF NOT EXISTS {index} ON {table}({column})")
         if args.update and target_ids:
             # Just these charts: their old rows go, the latest are copied below.
             stale = list(target_ids.values())
@@ -343,6 +347,12 @@ def main() -> int:
     else:
         print(f"target ground truth rows: {ground_truth} (the client's own; none copied)")
     return 0
+
+
+_DELETE_INDEXES = (
+    ("idx_blank_junk_classification_duplicate_of_page_id", "blank_junk_classification", "duplicate_of_page_id"),
+    ("idx_imaging_final_duplicate_of_page_id", "imaging_final", "duplicate_of_page_id"),
+)
 
 
 def _delete_ground_truth(dst, chart_names: list[str]) -> int:
