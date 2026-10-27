@@ -6,7 +6,14 @@ import {
   type EncounterReview,
   type EncounterReviewRow,
 } from "./api";
-import { PAGE_TYPE_CHOICES } from "./reviewChoices";
+import { PAGE_L1_CHOICES } from "./groundTruth";
+import { SearchInput } from "./SearchInput";
+
+/** The main page type alone: "Progress Note (Wound Care Visit)" reads Progress Note
+ * (2026-10-27, user). */
+export function mainPageType(value: string | null | undefined): string {
+  return (value ?? "").replace(/\s*\(.*\)\s*$/, "").trim();
+}
 
 /** encounter_canon.json's settings, then the label for every other page type. */
 export const ENCOUNTER_TYPE_CHOICES = [
@@ -37,7 +44,7 @@ function toDraft(row: EncounterSeed): Draft {
     key: nextKey++,
     startPage: String(row.startPage),
     endPage: String(row.endPage),
-    pageType: row.pageType ?? "",
+    pageType: mainPageType(row.pageType),
     encounterType: row.encounterType ?? "",
     dosFrom: isoDate(row.dosFrom),
     dosTo: isoDate(row.dosTo),
@@ -297,11 +304,6 @@ export function EncounterReviewEditor({
       ) : null}
       {!loading && editing ? (
         <>
-          <datalist id="encounter-review-page-types">
-            {PAGE_TYPE_CHOICES.map((choice) => (
-              <option key={choice} value={choice} />
-            ))}
-          </datalist>
           <datalist id="encounter-review-encounter-types">
             {ENCOUNTER_TYPE_CHOICES.map((choice) => (
               <option key={choice} value={choice} />
@@ -352,12 +354,14 @@ export function EncounterReviewEditor({
                       </td>
                     ))}
                     <td>
-                      <input
+                      {/* Our L1s, searched as in Page Details: two letters, any text kept. */}
+                      <SearchInput
                         className="encounter-review-input"
-                        list="encounter-review-page-types"
                         value={row.pageType}
-                        aria-label={`Encounter ${index + 1} page type`}
-                        onChange={(e) => edit(row.key, "pageType", e.target.value)}
+                        options={["Junk", ...PAGE_L1_CHOICES]}
+                        ariaLabel={`Encounter ${index + 1} page type`}
+                        warning="New Type"
+                        onChange={(value) => edit(row.key, "pageType", value)}
                       />
                     </td>
                     <td>
@@ -459,7 +463,7 @@ function SavedEncounters({ rows }: { rows: EncounterReviewRow[] }) {
             <td>{index + 1}</td>
             <td>{row.startPage}</td>
             <td>{row.endPage}</td>
-            <td>{row.pageType ?? ""}</td>
+            <td>{mainPageType(row.pageType)}</td>
             <td>{row.encounterType ?? ""}</td>
             <td>{row.dosFrom ?? ""}</td>
             <td>{row.dosTo ?? ""}</td>

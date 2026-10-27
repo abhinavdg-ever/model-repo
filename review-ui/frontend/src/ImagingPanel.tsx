@@ -2101,7 +2101,8 @@ function documentRows(pages: ImagingPageResult[], encounters: StagedEncounter[] 
       seq,
       startPage: first.pageNumber,
       endPage: members[members.length - 1].pageNumber,
-      pageType: text(first.finalPageType) ?? text(first.pageType),
+      // The main type only, no "(Subtype)" (2026-10-27, user).
+      pageType: text(splitPageType(text(first.finalPageType) ?? text(first.pageType)).family),
       encounterType:
         text(staged.get(seq)?.encounter_label)
         ?? members.map((page) => text(page.encounterType)).find(Boolean)
