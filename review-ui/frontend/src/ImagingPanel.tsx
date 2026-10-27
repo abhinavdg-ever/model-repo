@@ -1004,7 +1004,9 @@ function GroundTruthCell({
   const stored = row.presence ? presenceStored(value) : value.trim();
   // A page nobody has labelled offers the pipeline's value; a Yes / No Final ("Provider
   // Signature: No") is offered as itself, not as "a value was found".
-  const processedSide = yesNo(row.processed);
+  // "Carl Rogers (Yes)" / "Trelegy Ellipta (No)": the bracket says whether it is the member.
+  const memberSide = /\((yes|no)\)$/i.exec(row.processed.trim())?.[1];
+  const processedSide = memberSide ? yesNo(memberSide) : yesNo(row.processed);
   const copied = !suggest
     ? ""
     : row.presence
@@ -1661,6 +1663,12 @@ function PageDetails({
   // (2026-10-27, user). The values shown stay as read.
   const scoredPage = asManifestMember(page, manifest);
   const bits = pageBits(scoredPage, sections);
+  // A value read is followed by whether it is the manifest member's: "Carl Rogers (Yes)",
+  // "Trelegy Ellipta (No)" (2026-10-27, user). Nothing is added to Not Found / Skipped.
+  const withMemberMatch = (shown: string, read: string | null | undefined, member: string | null | undefined) =>
+    (read ?? "").trim() && (manifest?.member || manifest?.dob) && valueFound(shown)
+      ? `${shown} (${(member ?? "").trim() ? "Yes" : "No"})`
+      : shown;
   const memberMark = (value: string | null | undefined) => (truth: string): "match" | "mismatch" | null => {
     const side = yesNo(truth);
     if (!side) return null;
@@ -1840,7 +1848,7 @@ function PageDetails({
         title="Member Extraction"
         toolbar={saveBar}
         rows={[
-          sameValue(fmt(page.memberName && properName(page.memberName), sections.member, skip), memberConf, {
+          sameValue(withMemberMatch(fmt(page.memberName && properName(page.memberName), sections.member, skip), page.memberName, scoredPage.memberName), memberConf, {
             id: "name",
             label: "Member Name",
             truth: bits.memberName,
@@ -1848,7 +1856,7 @@ function PageDetails({
             key: true,
             compare: memberMark(scoredPage.memberName),
           }),
-          sameValue(displayIsoDates(fmt(page.memberDob, sections.member, skip)), memberConf, {
+          sameValue(withMemberMatch(displayIsoDates(fmt(page.memberDob, sections.member, skip)), page.memberDob, scoredPage.memberDob), memberConf, {
             id: "dob",
             label: "Member DOB",
             truth: bits.memberDob,
