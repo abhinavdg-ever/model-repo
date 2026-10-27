@@ -416,6 +416,24 @@ def _build_lock(key: tuple[str, str, str]) -> threading.Lock:
         return _build_locks.setdefault(key, threading.Lock())
 
 
+# Each chart's manifest member: its first row, as the external_member_id column of _SELECT.
+_MANIFEST_MEMBERS = """
+SELECT DISTINCT ON (mm.record_id) mm.record_id, mm.member_name, mm.member_dob
+  FROM manifest_member_list mm
+ WHERE mm.record_id = ANY(%s)
+ ORDER BY mm.record_id, mm.id
+"""
+
+
+def _iso(value: object) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()[:10]
+    text = str(value).strip()
+    return text or None
+
+
 def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyReportResponse:
     if not database_url_usable(settings.database_url):
         raise RuntimeError("database is not configured")
@@ -430,6 +448,10 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
             rows = cur.fetchall()
             cur.execute(_DUPLICATES, (names,))
             duplicates = {(str(chart), str(page)): str(original) for chart, page, original in cur.fetchall()}
+            # The manifest member of each chart: member accuracy scores a name or DOB as
+            # found only when it is this member's (2026-10-27, user).
+            cur.execute(_MANIFEST_MEMBERS, (names,))
+            members = {str(chart): (_text(name), _iso(dob)) for chart, name, dob in cur.fetchall()}
         if source == "bulk_upload":
             rows = _with_bulk_labels(
                 rows, latest_bulk_labels(conn, settings.database_url, names, settings.db_schema)
@@ -475,7 +497,11 @@ def _build_report(settings: Settings, source: GroundTruthSource) -> AccuracyRepo
             rrMethod=folder.rr_method,
             document=ImagingDocumentResponse(
                 folder_id=folder.id,
-                manifest=ImagingManifestDetails(memberId=manifests.get(folder.id)),
+                manifest=ImagingManifestDetails(
+                    member=members.get(folder.id, (None, None))[0],
+                    dob=members.get(folder.id, (None, None))[1],
+                    memberId=manifests.get(folder.id),
+                ),
                 pages=pages.get(folder.id, []),
                 sectionsProcessed=sections.get(folder.id, ImagingSectionsProcessed()),
             ),
