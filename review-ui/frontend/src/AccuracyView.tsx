@@ -28,6 +28,7 @@ import {
 } from "./columnFilter";
 import { formatRunAfter as fmtRunAfter, ranAfter, RunAfterForm } from "./runAfter";
 import { readGroundTruthSource } from "./groundTruthSource";
+import { scoreFinalOnly } from "./clientView";
 import {
   LIVE_METRICS,
   METRICS,
@@ -860,8 +861,13 @@ function compareRows(a: ChartAccuracy, b: ChartAccuracy, key: SortKey, dir: Sort
  * Back from a chart) shows them at once while a fresh copy loads behind them. */
 let lastRows: { source: string; rows: ChartAccuracy[] } | null = null;
 
+/** The cache holds rows scored one way: the ground-truth source and Final only or not. */
+function scoringKey(): string {
+  return `${readGroundTruthSource()}|${scoreFinalOnly() ? "final" : "better"}`;
+}
+
 export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) {
-  const cached = lastRows?.source === readGroundTruthSource() ? lastRows.rows : null;
+  const cached = lastRows?.source === scoringKey() ? lastRows.rows : null;
   const [allRows, setRows] = useState<ChartAccuracy[]>(cached ?? []);
   // Nothing to show yet: the full Calculating panel. Cached rows on screen: a small note.
   const [loading, setLoading] = useState(cached === null);
@@ -1008,7 +1014,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const showing = lastRows?.source === readGroundTruthSource();
+      const showing = lastRows?.source === scoringKey();
       if (showing) setRefreshing(true);
       else setLoading(true);
       setError(null);
@@ -1035,7 +1041,7 @@ export default function AccuracyView({ onBack, onOpenChart, chartHref }: Props) 
         }
         scored.sort((a, b) => a.chartName.localeCompare(b.chartName));
         if (!cancelled) {
-          lastRows = { source: readGroundTruthSource(), rows: scored };
+          lastRows = { source: scoringKey(), rows: scored };
           setRows(scored);
         }
       } catch (err) {

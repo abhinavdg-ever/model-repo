@@ -11,7 +11,7 @@ import SearchView from "./SearchView";
 import LoginPage from "./LoginPage";
 import UserProfileMenu from "./UserProfileMenu";
 import { getAppConfig, type AppConfig, type OutputMode } from "./api";
-import { ClientViewContext } from "./clientView";
+import { ClientViewContext, scoreFinalOnly, setFinalOnlyChoice, setScoreFinalOnly, setScoringAdmin } from "./clientView";
 import { clearSession, initialsOf, readSession, writeSession, type Session } from "./session";
 
 
@@ -108,6 +108,11 @@ export default function App() {
     parsePath(window.location.pathname, window.location.search),
   );
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
+  // Charts are scored only once /api/config says whether this is the client's copy.
+  const [configReady, setConfigReady] = useState(false);
+  // Bumped when an admin switches "Accuracy on Final only": the views re-score.
+  const [scoring, setScoring] = useState(0);
+  setScoringAdmin(isAdmin);
   const leaveGuard = useRef<((run: () => void) => void) | null>(null);
 
   function guardedNavigate(next: Route) {
@@ -131,10 +136,15 @@ export default function App() {
     let cancelled = false;
     getAppConfig()
       .then((cfg) => {
-        if (!cancelled) setAppConfig(cfg);
+        if (cancelled) return;
+        setScoreFinalOnly(Boolean(cfg.client_view));
+        setAppConfig(cfg);
+        setConfigReady(true);
       })
       .catch(() => {
-        if (!cancelled) setAppConfig(null);
+        if (cancelled) return;
+        setAppConfig(null);
+        setConfigReady(true);
       });
     return () => {
       cancelled = true;
@@ -220,12 +230,25 @@ export default function App() {
             onOpenPlayground={isAdmin ? () => guardedNavigate({ view: "playground" }) : undefined}
             onOpenUsers={isAdmin ? () => guardedNavigate({ view: "users" }) : undefined}
             onOpenSearch={isAdmin ? () => guardedNavigate({ view: "search" }) : undefined}
+            finalOnly={scoreFinalOnly()}
+            onToggleFinalOnly={
+              isAdmin
+                ? (on) => {
+                    setFinalOnlyChoice(on);
+                    setScoring((n) => n + 1);
+                  }
+                : undefined
+            }
             onLogout={handleLogout}
           />
         </div>
       </header>
-      <main className="main">
-        {route.view === "landing" ? (
+      <main className="main" key={`scoring-${scoring}`}>
+        {!configReady ? (
+          <div className="workspace">
+            <p className="accuracy-note">Loading…</p>
+          </div>
+        ) : route.view === "landing" ? (
           <LandingPage
             onView={(folderId, mode = "ocr") =>
               navigate({ view: "folder", folderId, mode })

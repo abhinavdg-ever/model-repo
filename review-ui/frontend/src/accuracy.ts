@@ -12,6 +12,7 @@ import {
   type GtBit,
 } from "./groundTruth";
 import { DEFAULT_DOS, NON_VISIT_DOS, splitPageType } from "./ImagingPanel";
+import { scoreFinalOnly } from "./clientView";
 
 export type Verdict = "yes" | "maybe" | "no";
 
@@ -294,6 +295,7 @@ function dosVerdict(bits: { dosFrom: GtBit[]; dosTo: GtBit[] }): Verdict | null 
 /** Page type: the Final or the Extracted value matching is a full match (1), a
  * partial on either is Partial (0.5), neither is No Match (0). */
 function finalOrExtracted(final: Verdict | null, extracted: Verdict | null): Verdict | null {
+  if (scoreFinalOnly()) return final;
   if (final === null && extracted === null) return null;
   if (final === "yes" || extracted === "yes") return "yes";
   if (final === "maybe" || extracted === "maybe") return "maybe";
@@ -302,6 +304,7 @@ function finalOrExtracted(final: Verdict | null, extracted: Verdict | null): Ver
 
 /** Match when the Final or the Extracted value matches, else No Match: no Partial. */
 function finalOrExtractedMatch(final: Verdict | null, extracted: Verdict | null): Verdict | null {
+  if (scoreFinalOnly()) return final === null ? null : final === "yes" ? "yes" : "no";
   if (final === null && extracted === null) return null;
   return final === "yes" || extracted === "yes" ? "yes" : "no";
 }
@@ -388,7 +391,20 @@ function pageScores(
   const pipelineDated = Boolean(finalFrom || finalTo) && !finalFrom.startsWith(NON_VISIT_DOS);
   const extractedDated = Boolean(pipelineDate(page.dosFrom) || pipelineDate(page.dosTo));
   const gtDated = !blankOrJunk && (!noValue(page.groundTruth?.dosFrom) || !noValue(page.groundTruth?.dosTo));
-  const dosCall: PresenceCall = gtDated
+  const finalOnly = scoreFinalOnly();
+  const dosCall: PresenceCall = finalOnly
+    ? gtDated
+      ? {
+          expected: true,
+          predicted: pipelineDated || (finalFrom.startsWith(NON_VISIT_DOS) && extractedDated),
+          // A non-visit Final shows the page's own date beside it (E:): either matches.
+          verdict:
+            dosVerdict(finalBits) === "yes" || (finalFrom.startsWith(NON_VISIT_DOS) && dosVerdict(bits) === "yes")
+              ? "yes"
+              : "no",
+        }
+      : { expected: false, predicted: pipelineDated, verdict: pipelineDated ? "no" : "yes" }
+    : gtDated
     ? {
         expected: true,
         predicted: pipelineDated || extractedDated,

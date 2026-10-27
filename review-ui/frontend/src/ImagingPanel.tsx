@@ -44,7 +44,7 @@ import {
   type EncounterSeed,
 } from "./ReviewTables";
 import { properName } from "./properName";
-import { ClientViewContext } from "./clientView";
+import { ClientViewContext, scoreFinalOnly } from "./clientView";
 
 const DEFAULT_SECTIONS: ImagingSectionsProcessed = {
   member: false,
@@ -837,9 +837,10 @@ function enteredMark(
   truth: string,
   presence: boolean,
 ): "match" | "partial" | "mismatch" | null {
-  // Either the Final or the Extracted value matching is a match (2026-10-26, user).
+  // Either the Final or the Extracted value matching is a match (2026-10-26, user); the
+  // client's copy scores the Final alone (2026-10-27, user).
   const againstFinal = groundTruthMark(final, truth, presence);
-  if (againstFinal !== "mismatch") return againstFinal;
+  if (againstFinal !== "mismatch" || scoreFinalOnly()) return againstFinal;
   return groundTruthMark(extracted, truth, presence) === "match" ? "match" : "mismatch";
 }
 
@@ -1489,6 +1490,8 @@ function better(a: GtBit[], b: GtBit[]): GtBit[] {
 function pageBits(page: ImagingPageResult, sections: ImagingSectionsProcessed) {
   const bits = extractedBits(page, sections);
   if (!page.finalDosFrom && !page.finalDosTo && !page.finalCodeable) return bits;
+  // The client's copy: the Final alone (scoreFinalOnly).
+  const pick = scoreFinalOnly() ? (_own: GtBit[], final: GtBit[]) => final : better;
   const finalBits = groundTruthBits({
     ...extractedInput(page, sections),
     dosFrom: page.finalDosFrom || page.dosFrom,
@@ -1497,9 +1500,9 @@ function pageBits(page: ImagingPageResult, sections: ImagingSectionsProcessed) {
   });
   return {
     ...bits,
-    dosFrom: better(bits.dosFrom, finalBits.dosFrom),
-    dosTo: better(bits.dosTo, finalBits.dosTo),
-    codeable: better(bits.codeable, finalBits.codeable),
+    dosFrom: pick(bits.dosFrom, finalBits.dosFrom),
+    dosTo: pick(bits.dosTo, finalBits.dosTo),
+    codeable: pick(bits.codeable, finalBits.codeable),
   };
 }
 
@@ -1592,7 +1595,16 @@ function dosCompareRow(
     label: side === "from" ? "DOS From" : "DOS To",
     extracted,
     processed: nonVisit ? `${final} (E: ${ownDate})` : final,
-    ...(nonVisit ? { compare: (truth: string) => enteredMark(ownDate, final, truth, false) } : {}),
+    // Both dates are in the Final cell, so either matches, in the client's copy too.
+    ...(nonVisit
+      ? {
+          compare: (truth: string) => {
+            const againstFinal = groundTruthMark(final, truth, false);
+            if (againstFinal === "match") return againstFinal;
+            return groundTruthMark(ownDate, truth, false) === "match" ? "match" : againstFinal;
+          },
+        }
+      : {}),
     confidence,
     truth,
     key: true,
@@ -1943,6 +1955,7 @@ function PageDetails({
             compare: (truth: string) => {
               if (!truth.trim() || !pageTypeKnown) return null;
               const final = pageTypeVerdict(truth, finalParts.family, finalParts.subtype, page.pageTypeSemantic);
+              if (scoreFinalOnly()) return final === "match" || final === "partial" || final === "mismatch" ? final : null;
               const own = pageTypeVerdict(truth, pageParts.family, pageParts.subtype, page.pageTypeSemantic);
               if (final === "match" || own === "match") return "match";
               if (final === "partial" || own === "partial") return "partial";

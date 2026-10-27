@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FlaskConical, FolderOpen, History, LogOut, Search, Users } from "lucide-react";
+import { FlaskConical, FolderOpen, History, LogOut, Search, Target, Users } from "lucide-react";
 import { roleLabel } from "./UsersView";
 
 type Props = {
@@ -17,6 +17,9 @@ type Props = {
   /** Admins only: given, the menu offers Search (a word in the Tesseract OCR). */
   onOpenSearch?: () => void;
   onOpenHistory?: () => void;
+  /** Admins only: given, the menu offers "Accuracy on Final only: Yes / No". */
+  finalOnly?: boolean;
+  onToggleFinalOnly?: (on: boolean) => void;
   onLogout: () => void;
 };
 
@@ -30,6 +33,8 @@ export default function UserProfileMenu({
   onOpenPlayground,
   onOpenUsers,
   onOpenSearch,
+  finalOnly = false,
+  onToggleFinalOnly,
   onLogout,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -104,6 +109,23 @@ export default function UserProfileMenu({
               File Viewer
             </button>
           )}
+
+          {onToggleFinalOnly ? (
+            <button
+              type="button"
+              className="user-menu-item"
+              role="menuitemcheckbox"
+              aria-checked={finalOnly}
+              title="Score the Accuracy view, its download and the page marks on the Final value alone (Yes) or the better of Final and Extracted (No)"
+              onClick={() => {
+                setOpen(false);
+                onToggleFinalOnly(!finalOnly);
+              }}
+            >
+              <Target size={14} aria-hidden="true" />
+              Accuracy on Final only: <strong>{finalOnly ? "Yes" : "No"}</strong>
+            </button>
+          ) : null}
 
           {onOpenPlayground && currentView !== "playground" ? (
             <button
