@@ -211,6 +211,20 @@ def _pooled_session():
     return session
 
 
+# Page images in one GET (up to 64 MB) rather than 4 MB chunks, with the SDK's own retries
+# on a dropped connection and room for a slow read: a broken chunked read surfaced as
+# "Unable to stream download" (2026-10-27).
+_CLIENT_KWARGS = {
+    "max_single_get_size": 64 * 1024 * 1024,
+    "max_chunk_get_size": 8 * 1024 * 1024,
+    "retry_total": 5,
+    "retry_connect": 3,
+    "retry_read": 3,
+    "connection_timeout": 20,
+    "read_timeout": 120,
+}
+
+
 @lru_cache
 def _blob_service_client() -> BlobServiceClient:
     settings = get_settings()
@@ -221,12 +235,16 @@ def _blob_service_client() -> BlobServiceClient:
         )
     connection_string = settings.azure_storage_connection_string.strip()
     if connection_string:
-        return BlobServiceClient.from_connection_string(connection_string, session=_pooled_session())
+        return BlobServiceClient.from_connection_string(
+            connection_string, session=_pooled_session(), **_CLIENT_KWARGS
+        )
     account_key = settings.azure_storage_account_key.strip()
     if account_key:
-        return BlobServiceClient(account_url=account_url, credential=account_key, session=_pooled_session())
+        return BlobServiceClient(
+            account_url=account_url, credential=account_key, session=_pooled_session(), **_CLIENT_KWARGS
+        )
     return BlobServiceClient(
-        account_url=account_url, credential=_credential(settings), session=_pooled_session()
+        account_url=account_url, credential=_credential(settings), session=_pooled_session(), **_CLIENT_KWARGS
     )
 
 
@@ -340,6 +358,7 @@ def download_blob_at(
                 transient = status in {408, 429, 500, 502, 503, 504} or status is None
                 if not transient or attempt >= 3:
                     raise
+                logger.warning("blob %s/%s: attempt %d failed (%s); retrying", container, key, attempt, exc)
                 time.sleep(0.5 * attempt)
         assert last_exc is not None
         raise last_exc
