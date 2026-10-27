@@ -531,7 +531,13 @@ def verify_record(
         status = classify_page(text, ner_names, expected, name_mode, page_ok)
         from .extractors.rule_based.name_common import name_matches
         others: list[str] = []
-        for name in ner_names:
+        # A page whose name is the member's lists no other names: the extraction's pick
+        # beside it (a drug name read as the patient) was the mistake (2026-10-27, user).
+        member_on_page = bool(name_mode) and is_present(fields["Detected_Full_Name"]) and name_matches(
+            fields["Detected_Full_Name"], expected.get("DummyFirstName", ""), expected.get("DummyLastName", ""),
+            expected.get("DummyMiddleName", ""), name_mode,
+        )
+        for name in [] if member_on_page else ner_names:
             cleaned = " ".join(name.split())
             if not cleaned or is_age_name(cleaned) or cleaned.casefold() in {o.casefold() for o in others}:
                 continue

@@ -264,4 +264,21 @@ def test_a_page_lists_the_names_that_are_not_the_member():
     result = verify_record("c", [{"page_no": 1, "page_name": "1.png", "text": "DOB 03/15/1980", "staged": staged}],
                            expected, "2")
     page = result.pages[0]
-    assert page.page_verified and page.other_names == ["Mary Major"]
+    # The member is on the page: no other names (2026-10-27, user).
+    assert page.page_verified and page.other_names == []
+
+
+def test_a_page_without_the_member_lists_its_names():
+    from stages.lib.member.engine import verify_record
+
+    expected = {"DummyFirstName": "Jane", "DummyMiddleName": "", "DummyLastName": "Public",
+                "DummyDOB": "03/15/1980", "MemberID": ""}
+    staged = StagedPage(
+        "1.png",
+        {"fields": {"name": [
+            {"key": "Patient", "sentence": "Patient: Mary Major", "value": "Mary Major", "accepted": True, "selected": True},
+        ]}},
+    )
+    result = verify_record("c", [{"page_no": 1, "page_name": "1.png", "text": "DOB 03/15/1980", "staged": staged}],
+                           expected, "2")
+    assert result.pages[0].other_names == ["Mary Major"]

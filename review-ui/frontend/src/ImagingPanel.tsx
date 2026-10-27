@@ -2100,6 +2100,9 @@ function MemberVerificationTable({
   const member: NameRow = { name: memberName, member: true, pages: checked.filter(nameMatch) };
   const others = new Map<string, NameRow>();
   for (const page of checked) {
+    // A page whose name is the member's lists no other names: the extraction's pick beside
+    // it was the mistake (2026-10-27, user).
+    if (nameMatch(page)) continue;
     for (const other of [read(page.memberName), ...(page.memberOtherNames ?? []).map((n) => n.trim())]) {
       const key = folded(other);
       if (!key || isMember(other)) continue;
