@@ -429,7 +429,11 @@ def overlay_staged_fields(
         fields["Detection_Source_Name"] = "rule based"
         fields["ner_key_source_Name"] = f"sentence: {row.get('key') or ''}"[:100]
     elif not (is_present(fields.get("Detected_Full_Name", "")) and ours(fields["Detected_Full_Name"])):
-        pick = next((row for row in names if ours(row["value"])), None) or (names[0] if names else None)
+        from .name_filter import looks_like_person
+
+        # Not the member: only a name that is a person at all (name_filter, 2026-10-28).
+        people_names = [row for row in names if looks_like_person(str(row.get("value") or ""))]
+        pick = next((row for row in names if ours(row["value"])), None) or (people_names[0] if people_names else None)
         if pick is not None:
             fields["Detected_Full_Name"] = pick["value"].strip()
             fields["Detection_Source_Name"] = source(pick)
@@ -468,7 +472,12 @@ def overlay_staged_fields(
             fields["Detection_Source_MemberID"] = source(id_pick)
             fields["ner_key_source_MemberID"] = id_pick.get("key") or ""
 
-    found = [row["value"].strip() for row in names if not is_age_name(row["value"])]
+    from .name_filter import looks_like_person
+
+    found = [
+        row["value"].strip() for row in names
+        if not is_age_name(row["value"]) and (ours(row["value"]) or looks_like_person(row["value"]))
+    ]
     return fields, people, found
 
 
@@ -507,8 +516,16 @@ def verify_record(
             fields["Detected_Full_Name"], expected
         )
         from stages.lib.member.extractors.ner_based.name import is_age_name
+        from .extractors.rule_based.name_common import name_matches as _is_member
+        from .name_filter import looks_like_person
 
-        if is_age_name(fields["Detected_Full_Name"]):
+        shown = fields["Detected_Full_Name"]
+        # A phrase that is not a person ("Elderly Woman") is no name (name_filter, 2026-10-28).
+        not_a_person = is_present(shown) and not looks_like_person(shown) and not (
+            name_mode and _is_member(shown, expected.get("DummyFirstName", ""), expected.get("DummyLastName", ""),
+                                     expected.get("DummyMiddleName", ""), name_mode)
+        )
+        if is_age_name(shown) or not_a_person:
             fields["Detected_Full_Name"] = "N/A"
             fields["Detection_Source_Name"] = ""
             fields["ner_key_source_Name"] = ""
@@ -542,6 +559,8 @@ def verify_record(
             cleaned = " ".join(name.split())
             if not cleaned or is_age_name(cleaned) or cleaned.casefold() in {o.casefold() for o in others}:
                 continue
+            if not looks_like_person(cleaned):
+                continue  # "Sars Cov 2", "Dear Ms": not a person (name_filter)
             if name_mode and name_matches(
                 cleaned, expected.get("DummyFirstName", ""), expected.get("DummyLastName", ""),
                 expected.get("DummyMiddleName", ""), name_mode,

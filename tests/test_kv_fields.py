@@ -314,3 +314,29 @@ def test_a_nickname_matches_the_manifest_first_name():
     assert name_matches("Smith, Bobby", "Robert", "Smith", "", "2")
     assert not name_matches("Bill Jones", "William", "Smith", "", "2")
     assert not name_matches("Mary Smith", "William", "Smith", "", "2")
+
+
+def test_phrases_that_are_not_people_are_dropped():
+    """2026-10-28 (user): no model -- digits, a word run into a credential, or every word a
+    common / clinical word."""
+    from stages.lib.member.name_filter import looks_like_person
+
+    for junk in ["Sars Cov 2", "Amy N MDOccurred", "Elderly Woman", "Dear Ms", "Vitamin D Deficiency",
+                 "Visual Inspection"]:
+        assert not looks_like_person(junk), junk
+    for name in ["Alice M Green", "Hoing Amy N", "Dylan Green", "Le Blanc Jonathan", "Thompson, Patricia",
+                 "McDonald Ronald", "JOHN SMITH"]:
+        assert looks_like_person(name), name
+
+
+def test_a_junk_phrase_is_not_the_page_name():
+    staged = StagedPage(
+        "1.png",
+        {"fields": {"name": [
+            {"key": "Patient", "sentence": "Dear Ms,", "value": "Dear Ms", "accepted": True, "selected": True},
+        ]}},
+    )
+    expected = {"DummyFirstName": "Jane", "DummyMiddleName": "", "DummyLastName": "Public",
+                "DummyDOB": "", "MemberID": ""}
+    filled, _people, names = overlay_staged_fields(_empty_fields(), None, staged, expected, "2")
+    assert filled["Detected_Full_Name"] == "N/A" and names == []

@@ -16,7 +16,7 @@ import {
   type StagedEncounter,
   savePageSequences,
 } from "./api";
-import { asManifestMember, credentialsVerdict, noValue } from "./accuracy";
+import { asManifestMember, credentialsVerdict, memberPipeline, memberTruth, noValue } from "./accuracy";
 import {
   duplicateDisplayConfidence,
   formatDuplicateLabel,
@@ -591,8 +591,12 @@ const ENTRY_RULES: Record<string, EntryRule> = {
 };
 
 /** A listed choice, a real date, angle, or percent. Blank clears the cell. */
+/** Yes / No / Not Found are three answers here (2026-10-28, user). */
+const MEMBER_FIELDS = new Set(["name", "dob", "member_id"]);
+
 function normalizeEntry(id: string, value: string): string | null {
   if (SIGNATURE_FIELDS.has(id) && CLEARED_ENTRY.has(value.trim().toLowerCase())) return "No";
+  if (MEMBER_FIELDS.has(id) && value.trim().toLowerCase() === "not found") return NOT_FOUND;
   if (CLEARED_ENTRY.has(value.trim().toLowerCase())) return "";
   if (value.trim().toLowerCase() === "skipped") return SKIPPED_ENTRY;
   const rule = ENTRY_RULES[id];
@@ -789,6 +793,11 @@ function presenceStored(value: string | null | undefined): string {
   const side = yesNo(value);
   if (side === "yes") return "Yes";
   if (side === "no") return "No";
+  // Member Name / DOB / ID: Not Found (none on the page) is its own answer, not No
+  // (2026-10-28, user); Skipped is kept too.
+  const folded = (value ?? "").trim().toLowerCase();
+  if (folded === "not found") return NOT_FOUND;
+  if (folded === "skipped") return SKIPPED_ENTRY;
   return "";
 }
 
@@ -1672,11 +1681,13 @@ function PageDetails({
     (read ?? "").trim() && (manifest?.member || manifest?.dob) && valueFound(shown)
       ? `${shown} (${(member ?? "").trim() ? "Yes" : "No"})`
       : shown;
-  const memberMark = (value: string | null | undefined) => (truth: string): "match" | "mismatch" | null => {
-    const side = yesNo(truth);
-    if (!side) return null;
-    return (side === "yes") === Boolean((value ?? "").trim()) ? "match" : "mismatch";
-  };
+  // Yes / No / Not Found against the page as read (2026-10-28, user).
+  const memberMark = (member: string | null | undefined, read: string | null | undefined) =>
+    (truth: string): "match" | "mismatch" | null => {
+      const side = memberTruth(truth);
+      if (!side) return null;
+      return side === memberPipeline(read, Boolean((member ?? "").trim()), skipped) ? "match" : "mismatch";
+    };
   const encounterKnown =
     Boolean(sections.encounter) ||
     (page.encounterType != null && String(page.encounterType).trim() !== "");
@@ -1857,7 +1868,7 @@ function PageDetails({
             truth: bits.memberName,
             presence: true,
             key: true,
-            compare: memberMark(scoredPage.memberName),
+            compare: memberMark(scoredPage.memberName, page.memberName),
           }),
           sameValue(withMemberMatch(displayIsoDates(fmt(page.memberDob, sections.member, skip)), page.memberDob, scoredPage.memberDob), memberConf, {
             id: "dob",
@@ -1865,7 +1876,7 @@ function PageDetails({
             truth: bits.memberDob,
             presence: true,
             key: true,
-            compare: memberMark(scoredPage.memberDob),
+            compare: memberMark(scoredPage.memberDob, page.memberDob),
           }),
           sameValue(fmt(page.memberId, sections.member, skip), memberConf, {
             id: "member_id",

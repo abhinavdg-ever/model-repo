@@ -229,3 +229,12 @@ def test_the_member_decision_is_accept_or_reject():
         member_decision("maybe")
     assert "ON CONFLICT (chart_name)" in _UPSERT
     assert "chart_name" in _CREATE_TABLE and "UNIQUE (chart_name)" in _CREATE_TABLE
+
+
+def test_member_not_found_is_its_own_answer():
+    """2026-10-28 (user): Member Name / DOB take Yes, No (someone else's) and Not Found (none)."""
+    from app.services.ground_truth import yes_no_label
+
+    assert yes_no_label("Not Found") == "Not Found"
+    assert yes_no_label("no") == "No" and yes_no_label("Skipped") == "Skipped"
+    assert yes_no_label("") is None and yes_no_label("NA") is None

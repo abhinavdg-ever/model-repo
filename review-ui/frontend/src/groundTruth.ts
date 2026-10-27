@@ -533,6 +533,9 @@ export function gtSignature(gt: PageGroundTruth | null | undefined): "Yes" | "No
 /** True when at least one ground-truth cell on the page holds a value. */
 export function hasGroundTruth(gt: PageGroundTruth | null | undefined): boolean {
   if (!gt) return false;
+  // Member Name / DOB "Not Found" and "Skipped" are answers (2026-10-28, user).
+  const answered = (value: string | null | undefined) => /^(not found|skipped)$/i.test((value ?? "").trim());
+  if (answered(gt.memberName) || answered(gt.memberDob)) return true;
   return LABEL_FIELDS.some((field) => !missing(gt[field] as string | null | undefined));
 }
 

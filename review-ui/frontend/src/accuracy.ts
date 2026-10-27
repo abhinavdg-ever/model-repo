@@ -234,11 +234,46 @@ function found(value: string | null | undefined): boolean {
 
 /** Name and DOB on every page: [Name, DOB] as the ground truth has them (Yes is Yes; No,
  * NA, blank or anything else is No) and as the pipeline found them (extracted or not). */
-function memberCall(page: ImagingPageResult): { expected: [boolean, boolean]; predicted: [boolean, boolean] } {
+/** Yes / No / Not Found, as Page Details' Member Name and DOB take them (2026-10-28,
+ * user): Yes = the member's, No = one is there but not the member's, Not Found = none. */
+export type MemberSide = "yes" | "no" | "not_found" | "skipped";
+
+export function memberTruth(value: string | null | undefined): MemberSide | null {
+  const folded = text(value).toLowerCase();
+  if (folded === "not found") return "not_found";
+  if (folded === "skipped") return "skipped";
+  const side = yesNo(value);
+  return side === "yes" ? "yes" : side === "no" ? "no" : null;
+}
+
+/** The pipeline's side: its value is the manifest member's (Yes), someone else's (No), or
+ * there is none (Not Found). ``matches`` says whether the value is the member's. */
+export function memberPipeline(value: string | null | undefined, matches: boolean, skipped = false): MemberSide {
+  // A blank / junk page: the member stage skipped it, as a Skipped label says (2026-10-28).
+  if (skipped) return "skipped";
+  if (!found(value)) return "not_found";
+  return matches ? "yes" : "no";
+}
+
+function memberCall(
+  page: ImagingPageResult,
+  manifest?: ImagingManifestDetails | null,
+): { expected: [boolean, boolean]; predicted: [boolean, boolean]; verdict: Verdict | null } {
   const gt = page.groundTruth;
+  const nameIsMember = !manifest?.member || nameMatchesManifest(page.memberName, manifest.member);
+  const dobIsMember = !manifest?.dob || dobMatchesManifest(page.memberDob, manifest.dob);
+  const truth = [memberTruth(gt?.memberName), memberTruth(gt?.memberDob)];
+  const skipped = page.isDuplicate !== true && (page.blankOrJunk ?? "").trim().toLowerCase().startsWith("yes");
+  const piped = [
+    memberPipeline(page.memberName, nameIsMember, skipped),
+    memberPipeline(page.memberDob, dobIsMember, skipped),
+  ];
+  // Each labelled field must agree; an unlabelled one is not scored; none labelled, no score.
+  const labelled = truth.map((side, index) => [side, piped[index]] as const).filter(([side]) => side != null);
   return {
-    expected: [yesNo(gt?.memberName) === "yes", yesNo(gt?.memberDob) === "yes"],
-    predicted: [found(page.memberName), found(page.memberDob)],
+    expected: [truth[0] === "yes", truth[1] === "yes"],
+    predicted: [piped[0] === "yes", piped[1] === "yes"],
+    verdict: labelled.length === 0 ? null : labelled.every(([side, pipe]) => side === pipe) ? "yes" : "no",
   };
 }
 
@@ -313,6 +348,8 @@ function finalOrExtractedMatch(final: Verdict | null, extracted: Verdict | null)
 function pageScores(
   page: ImagingPageResult,
   sections: ImagingSectionsProcessed,
+  manifest?: ImagingManifestDetails | null,
+  read: ImagingPageResult = page,
 ): {
   scores: Record<MetricId, Verdict | null>;
   blankJunk: ReturnType<typeof blankJunkCall>;
@@ -370,9 +407,9 @@ function pageScores(
   // Name and DOB on every page: the ground truth's Yes is Yes, anything else (No, NA,
   // blank) is No; the pipeline's is whether it extracted one. Both right = Match, else
   // No Match. Member ID has no ground truth.
-  const memberCalls = memberCall(page);
-  const memberRight = memberCalls.expected.filter((value, index) => value === memberCalls.predicted[index]).length;
-  const member: Verdict = memberRight === 2 ? "yes" : "no";
+  // Against the page as read (its own name / DOB), not the manifest-filtered copy.
+  const memberCalls = memberCall(read, manifest);
+  const member: Verdict | null = memberCalls.verdict;
   const blankJunkCalls = blankJunkCall(bits.blankJunk);
 
   const truth = page.groundTruth ? blankJunkTruth(page.groundTruth) : null;
@@ -598,7 +635,7 @@ export function scoreChart(
   for (const raw of doc.pages) {
     if (!hasGroundTruth(raw.groundTruth)) continue;
     const page = asManifestMember(raw, doc.manifest);
-    const scored = pageScores(page, sections);
+    const scored = pageScores(page, sections, doc.manifest, raw);
     for (const metric of METRICS) add(metrics[metric.id], scored.scores[metric.id]);
     addRates(signatureRates, scored.signature.expected, scored.signature.predicted);
     if (scored.signature.credCase) signatureRates.credCases = (signatureRates.credCases ?? 0) + 1;

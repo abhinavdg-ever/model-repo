@@ -144,6 +144,10 @@ def clean_label(value: str | None) -> str | None:
 def yes_no_label(value: str | None) -> str | None:
     """Member name, DOB, member id, and provider signature are only Yes or No, or
     Skipped (the pipeline rightly skipped the page; 2026-10-26, user)."""
+    raw = (value or "").strip().casefold()
+    # Not Found (nothing on the page) is its own answer, not No and not empty (2026-10-28).
+    if raw == "not found":
+        return "Not Found"
     text = clean_label(value)
     if text is None:
         return None
