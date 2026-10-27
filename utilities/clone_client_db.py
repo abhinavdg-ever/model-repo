@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import time
 import re
 import sys
 from datetime import datetime
@@ -301,7 +302,10 @@ def main() -> int:
         counts = {"chart_list": _copy(src, dst, "chart_list", "id = ANY(%s)", (ids,)),
                   "manifest_member_list": manifest}
         for table in CHART_TABLES:
+            started = time.monotonic()
             counts[table] = _copy(src, dst, table, "chart_id = ANY(%s)", (ids,))
+            # Where the time goes: OCR text is most of it.
+            print(f"  copied {table:30} {counts[table]:>8} rows in {time.monotonic() - started:6.1f} s", flush=True)
 
         # Users: the same sign-ins, merged by username; accounts made on the client side stay.
         users = src.execute(f"SELECT username, {', '.join(USER_FIELDS)} FROM users").fetchall()
@@ -364,17 +368,38 @@ def _copy_ground_truth(src, dst, chart_names: list[str]) -> tuple[int, int]:
               "ON CONFLICT (chart_name, page_number) DO NOTHING RETURNING id")
     insert_entry = (f"INSERT INTO page_ground_truth_entry (page_ground_truth_id, {', '.join(entry_columns)}) "
                     f"VALUES (%s, {', '.join(['%s'] * len(entry_columns))})")
-    copied = entries = 0
-    for row in rows:
-        new = dst.execute(insert, tuple(value(c, row[c]) for c in columns)).fetchone()
-        if new is None:
-            continue  # the client labelled this page already
-        copied += 1
-        for entry in src.execute(
-            "SELECT * FROM page_ground_truth_entry WHERE page_ground_truth_id = %s ORDER BY id", (row["id"],)
-        ).fetchall():
-            dst.execute(insert_entry, (new["id"], *(value(c, entry[c]) for c in entry_columns)))
-            entries += 1
+    # In batches, not a round trip per page (2026-10-28): the pages the target already has
+    # are left out up front, the rest go in one executemany, their history in another.
+    have = {
+        (r["chart_name"], r["page_number"]) for r in dst.execute(
+            "SELECT chart_name, page_number FROM page_ground_truth WHERE chart_name = ANY(%s)", (chart_names,)
+        ).fetchall()
+    }
+    fresh = [row for row in rows if (row["chart_name"], row["page_number"]) not in have]
+    new_ids: dict[int, int] = {}
+    if fresh:
+        with dst.cursor() as cur:
+            cur.executemany(insert, [tuple(value(c, row[c]) for c in columns) for row in fresh], returning=True)
+            for row in fresh:
+                made = cur.fetchone()
+                if made is not None:
+                    new_ids[row["id"]] = made["id"]
+                if not cur.nextset():
+                    break
+    copied = len(new_ids)
+    entries = 0
+    if new_ids:
+        history = src.execute(
+            "SELECT * FROM page_ground_truth_entry WHERE page_ground_truth_id = ANY(%s) ORDER BY id",
+            (list(new_ids),),
+        ).fetchall()
+        if history:
+            with dst.cursor() as cur:
+                cur.executemany(insert_entry, [
+                    (new_ids[entry["page_ground_truth_id"]], *(value(c, entry[c]) for c in entry_columns))
+                    for entry in history
+                ])
+            entries = len(history)
     skipped = len(rows) - copied
     if skipped:
         print(f"ground truth: {skipped} pages kept the target's own (not overwritten)")
