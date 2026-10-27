@@ -6499,3 +6499,28 @@ input {
 .member-rejection .imaging-rejection-table td.imaging-decision-reason {
   white-space: normal;
 }
+
+/* Rejection Rules: fixed column widths; names and page lists wrap (2026-10-27, user). */
+.member-rejection .imaging-rejection-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.member-rejection .imaging-rejection-table th,
+.member-rejection .imaging-rejection-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.member-rejection .imaging-rejection-table th:nth-child(1) {
+  width: 24%;
+}
+
+.member-rejection .imaging-rejection-table th:nth-child(2) {
+  width: 16%;
+}
+
+.member-rejection .imaging-rejection-table th:nth-child(n + 3) {
+  width: 15%;
+}

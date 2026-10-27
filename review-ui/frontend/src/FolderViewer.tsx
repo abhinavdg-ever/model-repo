@@ -1699,7 +1699,7 @@ export default function FolderViewer({
                     className={imagingTab === "member" ? "active" : ""}
                     onClick={() => openImagingTab("member")}
                   >
-                    Member Verification
+                    Rejection Rules
                   </button>
                   <button
                     type="button"
