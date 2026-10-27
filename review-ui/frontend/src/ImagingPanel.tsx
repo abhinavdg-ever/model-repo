@@ -2147,20 +2147,18 @@ function MemberVerificationTable({
                 <span className="member-rejection-role"> {row.member ? "(manifest)" : "(other name)"}</span>
               </td>
               <td className="imaging-decision-reason">{cell(row.pages)}</td>
-              <td>{row.member ? cell(row.pages) : <span className="cmp-mismatch">No</span>}</td>
-              <td className="imaging-decision-reason">{cell(row.pages.filter(dobMatch))}</td>
+              {/* An other name: only the pages it is on (2026-10-27, user). The member's DOB and
+                  Member ID: every page carrying them, with or without the name. */}
+              <td>{row.member ? cell(row.pages) : null}</td>
+              <td className="imaging-decision-reason">{row.member ? cell(checked.filter(dobMatch)) : null}</td>
               <td className="imaging-decision-reason">
-                {manifest?.memberId ? cell(row.pages.filter(idMatch)) : <span className="member-rejection-role">no ID in manifest</span>}
-              </td>
-              <td className="imaging-decision-reason">
-                {row.member ? (
-                  cell(row.pages.filter(overall))
+                {!row.member ? null : manifest?.memberId ? (
+                  cell(checked.filter(idMatch))
                 ) : (
-                  <span className={row.pages.some((p) => !overall(p)) ? "cmp-mismatch" : undefined}>
-                    {row.pages.filter((p) => !overall(p)).length} wrong member
-                  </span>
+                  <span className="member-rejection-role">no ID in manifest</span>
                 )}
               </td>
+              <td className="imaging-decision-reason">{row.member ? cell(row.pages.filter(overall)) : null}</td>
             </tr>
           ))}
         </tbody>
