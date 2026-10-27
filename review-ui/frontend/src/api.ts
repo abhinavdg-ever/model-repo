@@ -608,7 +608,19 @@ const DUPLICATE_COPIED: (keyof ImagingPageResult)[] = [
 
 /** 2026-10-26 (user): a duplicate page shows, and is scored on, its original's values
  * (the stages after blank / junk skip duplicates, so it has none of its own). */
+/** A page with no Blank / Junk verdict whose Type (Printed/HW) is Blank reads
+ * "Yes (Blank)", on the page and in the accuracy report (2026-10-27, user): the image
+ * stage saw no ink, so the blank / junk stage had no text to judge. */
+function withBlankFromType(page: ImagingPageResult): ImagingPageResult {
+  if (String(page.blankOrJunk ?? "").trim()) return page;
+  const type = String(page.documentType || page.handwrittenOrPrinted || "").trim().toLowerCase();
+  return type === "blank" ? { ...page, blankOrJunk: "Yes (Blank)" } : page;
+}
+
 export function withDuplicateValues(doc: ImagingDocumentResponse): ImagingDocumentResponse {
+  doc = doc.pages.some((page) => withBlankFromType(page) !== page)
+    ? { ...doc, pages: doc.pages.map(withBlankFromType) }
+    : doc;
   const byName = new Map(doc.pages.map((page) => [page.fileName, page]));
   let changed = false;
   const pages = doc.pages.map((page) => {
