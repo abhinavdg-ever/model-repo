@@ -267,7 +267,6 @@ function ConfidenceCell({ text }: { text: string }) {
   return (
     <span className={`conf-band conf-${band}`} title={band === "review" ? "Below 50%: review this value" : band}>
       {text}
-      {band === "review" ? <span className="conf-flag"> · Review</span> : null}
     </span>
   );
 }
@@ -1379,8 +1378,10 @@ function CellSaveButton({ label, onSave }: { label: string; onSave: () => void }
 }
 
 function ManifestDetails({ manifest }: { manifest: ImagingManifestDetails }) {
+  // The client's copy: the bar is as wide as its narrower Page Details table.
+  const finalOnly = useContext(ClientViewContext);
   return (
-    <div className="imaging-manifest-stack">
+    <div className={`imaging-manifest-stack${finalOnly ? " is-final-only" : ""}`}>
       <div className="imaging-manifest-row" role="group" aria-label="Manifest details">
         <span>
           <strong>Member Name:</strong> {fmt(manifest.member)}
