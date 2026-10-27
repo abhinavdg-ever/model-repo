@@ -27,8 +27,8 @@ brought up to date and every other chart is left alone. Ground truth is never to
 Needs SOURCE_DATABASE_URL (ours) and TARGET_DATABASE_URL (the client's, created with
 schema/v1.sql). "Last run" is chart_list.updated_at, which a run writes last.
 
-Copied, for the chosen charts only: chart_list, page_list, every pipeline result table,
-pipeline_jobs and the charts' manifest_member_list rows; ids are kept, so a page is the
+Copied, for the chosen charts only: chart_list, page_list, every pipeline result table
+review-ui reads (not pipeline_jobs) and the charts' manifest_member_list rows; ids are kept, so a page is the
 same page_list.id in both databases. Users are merged by username (password, name,
 role, active), so our sign-ins work and accounts made on the client side stay.
 
@@ -73,8 +73,10 @@ CHART_TABLES = (
     "imaging_final",
     "member_extraction_results",
     "member_verification_summary",
-    "pipeline_jobs",
 )
+# Chart-linked tables review-ui never reads: not copied (2026-10-28, user: only what the
+# screens need). A chart's old rows in them go with it (ON DELETE CASCADE).
+NOT_COPIED = ("pipeline_jobs",)
 USER_FIELDS = ("name", "email", "role", "password_hash", "is_active")
 DEFAULT_SINCE = "2026-10-26 00:00"
 

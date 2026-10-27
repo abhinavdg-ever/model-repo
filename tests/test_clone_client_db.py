@@ -20,9 +20,16 @@ def _tables() -> dict[str, str]:
     return {m.group(1): m.group(2) for m in re.finditer(r"CREATE TABLE (\w+) \((.*?)\n\);", sql, re.S)}
 
 
-def test_every_chart_linked_table_is_copied():
+def test_every_chart_linked_table_review_ui_reads_is_copied():
+    """2026-10-28 (user): only the tables the screens need; pipeline_jobs is not read."""
+    script = _script()
     linked = {name for name, body in _tables().items() if re.search(r"^\s+chart_id\s", body, re.M)}
-    assert linked == set(_script().CHART_TABLES)
+    assert linked == set(script.CHART_TABLES) | set(script.NOT_COPIED)
+    backend = "\n".join(p.read_text(encoding="utf-8") for p in (REPO / "review-ui" / "backend" / "app").rglob("*.py"))
+    for table in script.CHART_TABLES:
+        assert re.search(rf"\b{table}\b", backend), f"{table} is copied but review-ui never reads it"
+    for table in script.NOT_COPIED:
+        assert not re.search(rf"\b{table}\b", backend), f"review-ui reads {table}: copy it"
 
 
 def test_ground_truth_is_never_copied():
