@@ -30,6 +30,81 @@ connection strings (`postgresql://USER:PASSWORD@HOST:5432/imaging_outputs` and
 
 ---
 
+## 0. Quick start: every command, in order
+
+Run these on the VM, as the user that runs our Docker containers. Replace the four
+CAPITALISED values first: `DBUSER`, `DBPASS`, `DBHOST` (the Postgres server; from inside a
+container use the VM's IP, not `localhost`) and `VMIP` (172.20.4.170). Sections 1–7 explain
+each step.
+
+```bash
+# 1. A second copy of the code, in its own folder
+sudo mkdir -p /opt/advantmed/client-review && sudo chown "$USER" /opt/advantmed/client-review
+git clone https://github.com/abhinavdg-ever/model-repo.git /opt/advantmed/client-review
+
+# 2. The connection strings (the leading space keeps them out of shell history)
+ export SOURCE_DATABASE_URL='postgresql://DBUSER:DBPASS@DBHOST:5432/imaging_outputs'
+ export TARGET_DATABASE_URL='postgresql://DBUSER:DBPASS@DBHOST:5432/imaging_outputs_client'
+
+# 3. The client's database, with the schema (no psql on the VM? see section 2a)
+psql "$SOURCE_DATABASE_URL" -c 'CREATE DATABASE imaging_outputs_client'
+psql "$TARGET_DATABASE_URL" -f /opt/advantmed/client-review/schema/v1.sql
+
+# 4. Copy the charts run since 26 Oct 00:00 IST, and our users; no ground truth
+cd /opt/advantmed/advantmed-imaging-pipeline/core-pipeline       # OUR folder: its image has psycopg
+clone() { docker compose run --rm --no-deps -v "$PWD/../utilities:/app/utilities:ro" \
+  -e SOURCE_DATABASE_URL -e TARGET_DATABASE_URL api python /app/utilities/clone_client_db.py "$@"; }
+clone --dry-run        # counts only: check the charts and pages look right
+clone                  # the copy; ends with "target ground truth rows: 0"
+
+# 5. The client's review-ui settings
+cd /opt/advantmed/client-review/review-ui
+cp .env.example .env
+mkdir -p data/empty
+```
+
+Edit `/opt/advantmed/client-review/review-ui/.env` and set exactly these (the rest stays as in
+**our** `review-ui/.env`, so copy the `BLOB_*` / Azure lines from there for page images):
+
+```ini
+BACKEND_PORT=5000
+FRONTEND_PORT=5001
+ALLOWED_ORIGINS=http://VMIP:5001,http://localhost:5001
+DATA_MODE=production
+DATABASE_URL=postgresql://DBUSER:DBPASS@DBHOST:5432/imaging_outputs_client
+DATA_HOST_PATH=./data/empty
+PIPELINE_HOST_PATH=./data/empty
+AUTH_SECRET=<output of: openssl rand -hex 32>
+CORE_PIPELINE_URLS=
+DB_POOL_MAX=10
+```
+
+`CORE_PIPELINE_URLS=` left empty turns the Playground off, so nobody on 5001 can start a
+pipeline run (needs this repo at or after 27 Oct 2026; older checkouts filled in a default).
+
+```bash
+# 6. Start it under its own project name, so it never replaces our containers
+docker compose -p client-review up -d --build
+curl -fsS localhost:5000/health && echo OK
+
+# 7. Open http://VMIP:5001 and sign in with your usual username and password.
+#    Open port 5001 on the VM's firewall / NSG to the client's network only.
+```
+
+**Refresh later** (new runs since the copy): `pg_dump` the client DB first, then in our
+`core-pipeline` folder define `clone` again (step 4) and run `clone --replace`. The client's
+ground truth stays. **Update the screens**: `git pull` in `/opt/advantmed/client-review`, then
+step 6 again. **Stop it**: `docker compose -p client-review down` in its `review-ui` folder
+(ours keeps running).
+
+| Check | Expected |
+|---|---|
+| `docker ps` | `client-review-backend-1` on 5000, `client-review-frontend-1` on 5001, plus ours on 4000 / 4001 |
+| :5001 chart list | only charts run since the cutoff |
+| :5001 Page Details | no ground truth on any page |
+| :5001 profile menu | no Playground |
+| A ground truth saved on :5001 | in `imaging_outputs_client`, not in `imaging_outputs` |
+
 ## 1. The folder
 
 Clone the repo again into its own folder. Don't copy the working tree (CLAUDE.md §8).
@@ -53,9 +128,21 @@ To update the client's screens later: `git pull` in this folder, then
 On the same Postgres server, or another one (`TARGET_DATABASE_URL` as set in 2b):
 
 ```bash
-createdb -h HOST -U USER imaging_outputs_client
-psql "$TARGET_DATABASE_URL" -f ../schema/v1.sql
+psql "$SOURCE_DATABASE_URL" -c 'CREATE DATABASE imaging_outputs_client'
+psql "$TARGET_DATABASE_URL" -f /opt/advantmed/client-review/schema/v1.sql
 ```
+
+No `psql` on the VM: run it from the Postgres image instead (same two commands):
+
+```bash
+docker run --rm -v /opt/advantmed/client-review/schema:/schema:ro postgres:16 \
+  psql "$SOURCE_DATABASE_URL" -c 'CREATE DATABASE imaging_outputs_client'
+docker run --rm -v /opt/advantmed/client-review/schema:/schema:ro postgres:16 \
+  psql "$TARGET_DATABASE_URL" -f /schema/v1.sql
+```
+
+The database user needs the right to create databases; if it lacks it, ask whoever runs
+the Postgres server to create `imaging_outputs_client` owned by that user.
 
 `v1.sql` is the whole current schema; the dated `changes_*.sql` files only upgrade an
 old database. It also seeds `pipeline_stage`, so that table's data is left out of the
@@ -134,8 +221,9 @@ AUTH_SECRET=<a new long random value>
 LOGIN_USERNAME=
 LOGIN_PASSWORD=
 
-# No Playground: the client cannot start pipeline runs.
+# No Playground: the client cannot start pipeline runs (empty turns it off).
 CORE_PIPELINE_URLS=
+DB_POOL_MAX=10
 ```
 
 Then start it under its own Docker project name, so its containers never replace ours:

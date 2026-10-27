@@ -315,12 +315,21 @@ export const PAGE_L1_CHOICES: readonly string[] = pageTaxonomy.L1;
 const PAGE_L2 = pageTaxonomy.L2 as Record<string, string[]>;
 const OUR_L1 = new Set(PAGE_L1_CHOICES.map((name) => acceptKey(name)).filter((name) => name !== "others"));
 
-/** The L2s of the L1 named ``l1`` (any spelling); none when it is not one of ours. */
+const ALL_L2: readonly string[] = [...new Set(Object.values(PAGE_L2).flat())].sort((a, b) => a.localeCompare(b));
+
+/** The Page Subtype options: the L2s of the L1 named ``l1`` (any spelling), or every L2
+ * while no L1 of ours is picked. */
 export function pageL2Choices(l1: string | null | undefined): readonly string[] {
   const key = acceptKey(text(l1));
   const name = PAGE_L1_CHOICES.find((candidate) => acceptKey(candidate) === key);
-  return name ? PAGE_L2[name] ?? [] : [];
+  return name ? PAGE_L2[name] ?? [] : ALL_L2;
 }
+
+/** Every L2, for checking a typed Page Subtype. */
+export const PAGE_L2_ALL: readonly string[] = ALL_L2;
+
+/** The Specialty ground-truth options. */
+export const SPECIALTY_CHOICES: readonly string[] = pageTaxonomy.specialty;
 
 /** Our path, L1 first, from a composed page type split by ``splitPageType``:
  * ("Lab Report", "Diagnostic Study) (Echocardiogram Report") -> the three levels,

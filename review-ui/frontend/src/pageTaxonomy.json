@@ -155,5 +155,41 @@
       "Others"
     ],
     "Others": []
-  }
+  },
+  "specialty": [
+    "Anesthesia",
+    "Audiology",
+    "Behavioral Health",
+    "Cardiology",
+    "Critical Care",
+    "Dermatology",
+    "Dialysis",
+    "Emergency",
+    "Gastroenterology",
+    "Home Health",
+    "Infusion",
+    "Nephrology",
+    "Neurology",
+    "Nursing",
+    "Nutrition",
+    "Obstetrics and Gynecology",
+    "Occupational Health",
+    "Oncology",
+    "Ophthalmology",
+    "Orthopedics",
+    "Palliative Care",
+    "Pathology",
+    "Podiatry",
+    "Primary Care",
+    "Pulmonology",
+    "Radiology",
+    "Rehabilitation",
+    "Sleep Study",
+    "Surgery",
+    "Urology",
+    "Wound Care",
+    "Pain Management",
+    "Others",
+    "Unknown"
+  ]
 }

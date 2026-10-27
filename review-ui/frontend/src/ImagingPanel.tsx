@@ -32,7 +32,9 @@ import {
   type GtBit,
   GT_PAGE_TYPE_LABELS,
   PAGE_L1_CHOICES,
+  PAGE_L2_ALL,
   pageL2Choices,
+  SPECIALTY_CHOICES,
 } from "./groundTruth";
 import { PAGE_SUBTYPE_CHOICES, PAGE_TYPE_CHOICES } from "./reviewChoices";
 import {
@@ -428,8 +430,8 @@ type CompareRow = {
   fixedNa?: boolean;
   /** A ground-truth cell that only reads this (no entry yet), e.g. "Not Available". */
   fixedText?: string;
-  /** Page Subtype: the L2s of the L1 in this row's ground truth, for reference (not saved);
-   * ``fixedText`` until one of our L1s is there. */
+  /** Page Subtype: its options are the L2s of the L1 in this row's ground truth (every L2
+   * until one of ours is there). */
   l2Of?: string;
   /** This row has no ground-truth cell. */
   noGroundTruth?: boolean;
@@ -544,6 +546,8 @@ const ENTRY_RULES: Record<string, EntryRule> = {
   duplicate: { choices: DUPLICATE_CHOICES },
   // The menu offers our L1s; a client label or older name saved before still validates.
   page_type: { choices: [...PAGE_L1_CHOICES, ...GT_PAGE_TYPE_LABELS, ...PAGE_TYPE_AND_SUBTYPE_CHOICES] },
+  page_subtype: { choices: PAGE_L2_ALL },
+  specialty: { choices: SPECIALTY_CHOICES },
   codeable: { choices: CODEABLE_CHOICES },
   visibility: { choices: VISIBILITY_CHOICES },
   dos_from: { kind: "date" },
@@ -660,7 +664,9 @@ function storedGroundTruth(gt: PageGroundTruth | null | undefined): Record<strin
     dos_to: (gt?.dosTo ?? "").trim(),
     blank_junk: blankJunkLabel(gt),
     page_type: spellCodeable(pageType),
-    page_subtype: spellCodeable(pageType),
+    // Not stored yet: entered on the page, kept until it is left (2026-10-26, user).
+    page_subtype: "",
+    specialty: "",
     codeable: spellCodeable((gt?.codeable ?? "").trim()),
   };
   // An uploaded NA is an empty cell: it shows as Not Found and is not scored.
@@ -866,11 +872,8 @@ function CompareSection({
                 className={compact ? (row.gtRowSpan ? "gt-merged" : undefined) : `gt-shade${row.gtRowSpan ? " gt-merged" : ""}`}
                 rowSpan={row.gtRowSpan}
               >
-                {row.l2Of && pageL2Choices(values[row.l2Of]).length > 0 ? (
-                  <SubtypeReference key={values[row.l2Of]} l1={values[row.l2Of] ?? ""} readOnly={compact} />
-                ) : (
                 <GroundTruthCell
-                  row={row}
+                  row={row.l2Of ? { ...row, choices: pageL2Choices(values[row.l2Of]) } : row}
                   readOnly={compact}
                   editing={editingId === row.id}
                   value={values[row.id] ?? ""}
@@ -883,7 +886,6 @@ function CompareSection({
                   onDraft={onDraft}
                   onStartEdit={() => onStartEdit(row.id)}
                 />
-                )}
               </td>
               </>
               )}
@@ -1035,7 +1037,11 @@ function GroundTruthCell({
     ? ["Yes", "No"]
     : row.choices ?? (kind === "degrees" ? ORIENTATION_CHOICES : []);
   const none =
-    kind === "date" || kind === "text" ? [NOT_FOUND] : row.id === "page_type" ? [NOT_AVAILABLE_ENTRY] : [];
+    kind === "date" || kind === "text"
+      ? [NOT_FOUND]
+      : ["page_type", "page_subtype", "specialty"].includes(row.id)
+        ? [NOT_AVAILABLE_ENTRY]
+        : [];
   const values = listed.filter((option) => option !== SKIPPED_ENTRY && !none.includes(option));
   const extras = [...none, SKIPPED_ENTRY];
   // A long list puts them first, so they are not lost under its values.
@@ -1082,13 +1088,14 @@ function ChoiceMenu({
   const [typed, setTyped] = useState(false);
   const [invalid, setInvalid] = useState<string | null>(null);
   const folded = text.trim().toLowerCase();
-  // A short list shows every option under the input; a long one every value on opening,
-  // narrowed by typing.
+  // A short list shows every option under the input; a long one is searched: its matches
+  // drop down once two letters are typed (2026-10-27, user).
   const inline = isDate || options.length < INLINE_OPTIONS_BELOW;
-  const recos =
-    !inline && typed && folded.length >= 1
+  const recos = inline
+    ? options
+    : typed && folded.length >= 2
       ? options.filter((option) => option.toLowerCase().includes(folded))
-      : options;
+      : [];
   const pick = (option: string) => {
     setText(option);
     setTyped(false);
@@ -1167,37 +1174,6 @@ function ChoiceMenu({
       ) : null}
       {invalid ? <span className="imaging-gt-hint">{invalid}</span> : null}
     </div>
-  );
-}
-
-/** Page Subtype once an L1 is in Page Type: that L1's L2s to pick from, for reference.
- * Not saved -- there is no subtype ground truth yet (2026-10-26, user). */
-function SubtypeReference({ l1, readOnly }: { l1: string; readOnly: boolean }) {
-  const [choice, setChoice] = useState("");
-  const options = pageL2Choices(l1);
-  if (readOnly) {
-    return (
-      <span className="imaging-gt-slot">
-        <span className="imaging-gt-copied">{NOT_AVAILABLE_ENTRY}</span>
-      </span>
-    );
-  }
-  return (
-    <span className="imaging-gt-slot">
-      <select
-        aria-label={`Page Subtype under ${l1} (not saved)`}
-        title="The L2s of the Page Type picked, for reference: not saved yet"
-        value={choice}
-        onChange={(event) => setChoice(event.target.value)}
-      >
-        <option value="">{NOT_AVAILABLE_ENTRY}</option>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    </span>
   );
 }
 
@@ -1754,7 +1730,8 @@ function PageDetails({
             ...sameValue(fmtPageType(pageParts.subtype, pageTypeKnown), fmtConfidence(page.subtypeConfidence, pageTypeKnown), {
               id: "page_subtype",
               label: "Page Subtype",
-              fixedText: NOT_AVAILABLE_ENTRY,
+              choices: PAGE_L2_ALL,
+              noMark: true,
             }),
             processed: fmtPageType(finalParts.subtype, pageTypeKnown),
             l2Of: "page_type",
@@ -1763,7 +1740,8 @@ function PageDetails({
             ...sameValue(fmt(page.specialty, pageTypeKnown), fmtConfidence(finalOr(page, "specialty", page.specialtyConfidence), pageTypeKnown), {
               id: "specialty",
               label: "Specialty",
-              fixedText: NOT_AVAILABLE_ENTRY,
+              choices: SPECIALTY_CHOICES,
+              noMark: true,
             }),
             processed: fmt(page.finalSpecialty ?? page.specialty, pageTypeKnown),
           },
