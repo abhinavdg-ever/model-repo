@@ -48,7 +48,231 @@ Keep the passwords out of shell history and out of git.
 
 ---
 
-## 0. Quick start: every command, in order
+## 0. Runbook: new database, copy the charts, start the client UI
+
+Two machines, possibly the same one:
+
+- **Postgres server:** you log in to it, and `psql` runs there as the `postgres` user.
+- **App VM (172.20.4.170):** our core-pipeline and review-ui, and now the client UI.
+
+Replace these everywhere:
+
+| Placeholder | Means |
+|---|---|
+| `DBUSER` | the database user our core-pipeline uses (in `core-pipeline/.env` → `DATABASE_URL`) |
+| `DBPASS` | its password |
+| `DBHOST` | the Postgres server's IP as the app VM reaches it, never `localhost` |
+
+The leading space on the `export` lines keeps passwords out of shell history.
+
+### Step 1. Postgres server: create the client database
+
+```bash
+# Get the schema files (the repo is public)
+mkdir -p ~/client-schema && cd ~/client-schema
+curl -fsSLO https://raw.githubusercontent.com/abhinavdg-ever/model-repo/main/schema/v1.sql
+curl -fsSLO https://raw.githubusercontent.com/abhinavdg-ever/model-repo/main/schema/changes_2026-10-27.sql
+
+# The database, owned by our app user
+sudo -u postgres psql -c "CREATE DATABASE imaging_outputs_client OWNER DBUSER"
+
+# The schema, applied AS that user so it owns every table (it asks for DBPASS)
+psql -h localhost -U DBUSER -d imaging_outputs_client -f v1.sql
+psql -h localhost -U DBUSER -d imaging_outputs_client -f changes_2026-10-27.sql
+psql -h localhost -U DBUSER -d imaging_outputs_client -c "SELECT count(*) FROM pipeline_stage"   # 13
+```
+
+`-h localhost -U DBUSER` asks for a password; if local password sign-in is not allowed,
+apply the schema as `postgres` and hand the tables over:
+
+```bash
+sudo -u postgres psql -d imaging_outputs_client -f v1.sql
+sudo -u postgres psql -d imaging_outputs_client -f changes_2026-10-27.sql
+sudo -u postgres psql -d imaging_outputs_client -c "REASSIGN OWNED BY postgres TO DBUSER"
+```
+
+### Step 2. Postgres server: bring our database up to date
+
+Our review-ui saves the new ground-truth fields too, so `imaging_outputs` needs the same
+columns. The file only adds columns; nothing is changed or deleted, and it is safe to run
+again.
+
+```bash
+psql -h localhost -U DBUSER -d imaging_outputs -f ~/client-schema/changes_2026-10-27.sql
+```
+
+### Step 3. Postgres server: let the app VM reach the new database, with room for it
+
+```bash
+HBA=$(sudo -u postgres psql -tAc "SHOW hba_file")
+sudo grep -vE '^\s*(#|$)' "$HBA"
+```
+
+If the line for the app VM names `imaging_outputs` in the database column (not `all`),
+copy that line with `imaging_outputs_client` in its place, then reload:
+
+```bash
+sudo nano "$HBA"
+sudo -u postgres psql -c "SELECT pg_reload_conf()"
+```
+
+Connections: the client UI uses at most 16. Check there is room:
+
+```bash
+sudo -u postgres psql -c "SHOW max_connections" -c "SELECT count(*) FROM pg_stat_activity"
+```
+
+The second number plus 16 must stay well under the first (usually 100). If not, raise
+`max_connections` in `postgresql.conf` and restart Postgres at a quiet time.
+
+### Step 4. App VM: the chart list
+
+A Notepad file, `charts.txt`: one chart name per line (the folder name, e.g.
+`52743839_44976074`). Blank lines and lines starting with `#` are skipped.
+
+```bash
+mkdir -p ~/client-charts
+# from your laptop:  scp charts.txt <user>@172.20.4.170:~/client-charts/
+```
+
+### Step 5. App VM: copy the charts and our users
+
+```bash
+ export SOURCE_DATABASE_URL='postgresql://DBUSER:DBPASS@DBHOST:5432/imaging_outputs'
+ export TARGET_DATABASE_URL='postgresql://DBUSER:DBPASS@DBHOST:5432/imaging_outputs_client'
+
+cd /opt/advantmed/advantmed-imaging-pipeline && git pull      # the copy script; restart nothing
+cd core-pipeline                                              # its image has psycopg
+clone() { docker compose run --rm --no-deps -v "$PWD/../utilities:/app/utilities:ro" \
+  -v "$HOME/client-charts:/lists:ro" \
+  -e SOURCE_DATABASE_URL -e TARGET_DATABASE_URL api python /app/utilities/clone_client_db.py "$@"; }
+
+clone --dry-run --charts-file /lists/charts.txt --update      # counts only
+clone --charts-file /lists/charts.txt --update                # the copy
+```
+
+Copied: each listed chart with its pages, every pipeline result and its manifest rows, and
+our users (same usernames and passwords). Never copied: ground truth. Names not in our
+database are printed and skipped. Then, on the Postgres server:
+
+```bash
+psql -h localhost -U DBUSER -d imaging_outputs_client -c "SELECT
+  (SELECT count(*) FROM chart_list)        AS charts,
+  (SELECT count(*) FROM page_list)         AS pages,
+  (SELECT count(*) FROM users)             AS users,
+  (SELECT count(*) FROM page_ground_truth) AS ground_truth"     -- ground_truth = 0
+```
+
+### Step 6. App VM: the client UI in `~/ui-temp` (clearing the old one)
+
+```bash
+# Anything on 5000 / 5001 now? Stop it (never ours on 4000 / 4001 / 8001)
+docker ps --format '{{.Names}}  {{.Ports}}' | grep -E ':500[01]->' || echo "5000/5001 free"
+(cd ~/ui-temp 2>/dev/null && docker compose down) || true
+rm -rf ~/ui-temp
+
+git clone https://github.com/abhinavdg-ever/ui-temp.git ~/ui-temp
+# or from DevOps:
+# git clone -b imaging-client-ui "https://AdvantmedDevOps@dev.azure.com/AdvantmedDevOps/AI%20Project%20POC/_git/AI%20Project%20POC" ~/ui-temp
+cd ~/ui-temp
+cp .env.example .env
+mkdir -p data/empty
+nano .env
+```
+
+Set in `.env`:
+
+```ini
+DATABASE_URL=postgresql://DBUSER:DBPASS@DBHOST:5432/imaging_outputs_client
+ALLOWED_ORIGINS=http://172.20.4.170:5001,http://localhost:5001
+AUTH_SECRET=<the output of: openssl rand -hex 32>
+DB_POOL_MIN=12
+DB_POOL_MAX=16
+CLIENT_VIEW=true
+# Page images: copy every AZURE_STORAGE_* and AZURE_* line from our review-ui/.env
+```
+
+Its `docker-compose.yml` fixes, whatever `.env` says: ports 5000 / 5001, the database
+only, no Playground, the Algorithm column only.
+
+### Step 7. App VM: start it
+
+```bash
+cd ~/ui-temp
+docker compose up -d --build
+docker ps --format '{{.Names}}  {{.Ports}}' | grep client-review    # backend :5000, frontend :5001
+curl -fsS localhost:5000/health && echo OK
+```
+
+Open **http://172.20.4.170:5001** and sign in with your usual username and password. In
+the firewall / NSG, open 5001 to the client's network only; 5000 stays internal.
+
+### Step 8. Checks before the three reviewers start
+
+| Check | Expected |
+|---|---|
+| Chart list on :5001 | only the charts in `charts.txt` |
+| Page Details | Field · Algorithm · Confidence · Ground Truth, none filled in |
+| Profile menu | no Playground |
+| A ground truth saved on :5001 | in `imaging_outputs_client`, not in `imaging_outputs` (query below) |
+| Our UI on :4001 | unchanged |
+
+```bash
+# Postgres server: the latest saves on the client side
+psql -h localhost -U DBUSER -d imaging_outputs_client -c "SELECT chart_name, page_number,
+  encounter_label, quality, updated_at FROM page_ground_truth ORDER BY updated_at DESC LIMIT 5"
+```
+
+Split the work by chart: two saves of the same page at the same moment keep the later one.
+
+### Later: more charts, or charts re-run
+
+Add the names to `charts.txt` (or write a new file), then:
+
+```bash
+# Postgres server: a backup first
+sudo -u postgres pg_dump -Fc -d imaging_outputs_client -f /tmp/client_backup_$(date +%F).dump
+
+# App VM: the exports and clone() from step 5, then
+clone --dry-run --charts-file /lists/charts.txt --update
+clone --charts-file /lists/charts.txt --update
+```
+
+| Chart in the list | In the client DB already? | Result |
+|---|---|---|
+| new | no | copied |
+| re-run since the last copy | yes | its old copy deleted, our latest copied |
+| not in the list | | left as it is |
+
+The client's ground truth always stays. The UI shows the new data at once; nothing to
+restart. Use `--add` instead of `--update` to never re-copy a chart that is already there.
+
+### Later: new screens, stopping, a client-only account
+
+```bash
+# App VM: after a UI change is synced and pushed (laptop steps below)
+cd ~/ui-temp && git pull && docker compose up -d --build
+
+# App VM: stop the client UI (ours keeps running)
+cd ~/ui-temp && docker compose down
+
+# An account only the client has (it asks for the password)
+cd /opt/advantmed/advantmed-imaging-pipeline
+python3 utilities/create_user.py client.lead --name "Client Lead" --role reviewer --sql > /tmp/u.sql
+psql "$TARGET_DATABASE_URL" -f /tmp/u.sql && rm /tmp/u.sql
+```
+
+### If something goes wrong
+
+| Symptom | Fix |
+|---|---|
+| `clone`: "the target already has N charts" | add `--update` |
+| `clone`: "no schema / pipeline_stage" | step 1 was not run on `imaging_outputs_client` |
+| `clone` or the UI: `connection refused` / `no pg_hba.conf entry` | `DBHOST` is `localhost`, or step 3's line is missing |
+| `permission denied for table …` | the tables belong to `postgres`: the `REASSIGN OWNED` line in step 1 |
+| Page loads, no charts or no sign-in | `DATABASE_URL` in `~/ui-temp/.env`; `docker compose logs backend` |
+| Pages show no images | the Azure lines are missing from `~/ui-temp/.env` |
+| Saving ground truth fails with a column error | `changes_2026-10-27.sql` (steps 1 and 2) |
 
 ### On the laptop: put a UI change into the client repo
 
@@ -64,92 +288,7 @@ git add -A && git commit -m "Sync review-ui at <commit>" && git push
 Only `backend/` and `frontend/` are copied. The client repo's own `docker-compose.yml`,
 `.env.example` and `README.md` are kept. Nothing reaches the client until you sync and push.
 
-### On the VM: the database (psql)
-
-Open `psql` against the Postgres server as a user that may create databases (the same
-user as our `core-pipeline/.env`):
-
-```sql
-CREATE DATABASE imaging_outputs_client;
-\c imaging_outputs_client
-\i /opt/advantmed/advantmed-imaging-pipeline/schema/v1.sql
-SELECT stage_name, pass_no, seq FROM pipeline_stage ORDER BY seq;   -- 13 rows
-\q
-```
-
-`\i` takes the schema from **our** checkout; `git pull` there first so it is current. If
-that user cannot create databases, a Postgres admin runs
-`CREATE DATABASE imaging_outputs_client OWNER <that user>;`, then you run the `\c` and
-`\i` lines. No `psql` on the VM: see section 2a.
-
-### On the VM: copy the charts and our users
-
-```bash
-# The connection strings (the leading space keeps them out of shell history)
- export SOURCE_DATABASE_URL='postgresql://DBUSER:DBPASS@DBHOST:5432/imaging_outputs'
- export TARGET_DATABASE_URL='postgresql://DBUSER:DBPASS@DBHOST:5432/imaging_outputs_client'
-
-cd /opt/advantmed/advantmed-imaging-pipeline/core-pipeline       # OUR folder: its image has psycopg
-mkdir -p ~/client-charts      # chart lists (.txt) go here; the container sees it as /lists
-clone() { docker compose run --rm --no-deps -v "$PWD/../utilities:/app/utilities:ro" \
-  -v "$HOME/client-charts:/lists:ro" \
-  -e SOURCE_DATABASE_URL -e TARGET_DATABASE_URL api python /app/utilities/clone_client_db.py "$@"; }
-clone --dry-run        # counts only: check the charts and pages look right
-clone                  # the copy; ends with "target ground truth rows: 0"
-# Other choices of charts (section 2c): --since "YYYY-MM-DD HH:MM", --charts-file /lists/charts.txt
-```
-
-`DBHOST` is the Postgres server's IP: the script runs inside a container, where
-`localhost` is the container itself.
-
-### On the VM: the client UI in `~/ui-temp` (clearing what is there)
-
-```bash
-# 1. Stop whatever runs on 5000 / 5001 now, and remove the old folder
-docker ps --format '{{.Names}}  {{.Ports}}' | grep -E ':500[01]->' || echo "nothing on 5000/5001"
-(cd ~/ui-temp 2>/dev/null && docker compose down) || true
-rm -rf ~/ui-temp
-
-# 2. A fresh checkout of the client repo
-git clone https://github.com/abhinavdg-ever/ui-temp.git ~/ui-temp
-cd ~/ui-temp
-cp .env.example .env
-mkdir -p data/empty
-```
-
-If step 1 still lists a container on 5000 or 5001, stop it by name
-(`docker stop <name> && docker rm <name>`). **Never** stop ours on 4000 / 4001 / 8001.
-
-Edit `~/ui-temp/.env`:
-
-```ini
-DATABASE_URL=postgresql://DBUSER:DBPASS@DBHOST:5432/imaging_outputs_client
-ALLOWED_ORIGINS=http://172.20.4.170:5001,http://localhost:5001
-AUTH_SECRET=<output of: openssl rand -hex 32>
-# Page images: copy the AZURE_STORAGE_* / AZURE_* lines from our review-ui/.env
-```
-
-```bash
-# 3. Start it (project "client-review", fixed in its docker-compose.yml)
-docker compose up -d --build
-curl -fsS localhost:5000/health && echo OK
-
-# 4. Open http://172.20.4.170:5001 and sign in with your usual username and password.
-#    Open port 5001 on the VM's firewall / NSG to the client's network only.
-```
-
-**Update the screens** (after a sync and push from the laptop):
-`cd ~/ui-temp && git pull && docker compose up -d --build`. **More charts or re-runs**:
-`clone --add` / `clone --update` (section 2c). **Stop it**: `docker compose down` in
-`~/ui-temp` (ours keeps running).
-
-| Check | Expected |
-|---|---|
-| `docker ps` | `client-review-backend-1` on 5000, `client-review-frontend-1` on 5001, plus ours on 4000 / 4001 |
-| :5001 chart list | only the copied charts |
-| :5001 Page Details | no ground truth on any page |
-| :5001 profile menu | no Playground |
-| A ground truth saved on :5001 | in `imaging_outputs_client`, not in `imaging_outputs` |
+---
 
 ## 1. The client repository
 
