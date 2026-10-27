@@ -39,7 +39,7 @@ What the client folder fixes, whatever its `.env` says (`docker-compose.yml` the
 | Ports | 5000 (API) / 5001 (web) by default |
 | Data | Postgres only (`DATA_MODE=production`); the disk folders are empty |
 | Playground | off (`CORE_PIPELINE_URLS` is empty), so nobody on 5001 can start a run |
-| Connections | at most 10 (`DB_POOL_MAX`) |
+| Connections | 12 kept open, at most 16 (`DB_POOL_MIN` / `DB_POOL_MAX`): 3 reviewers at once |
 
 Paths here are examples; use your VM's layout. `SOURCE_DATABASE_URL` /
 `TARGET_DATABASE_URL` are the two connection strings
@@ -356,6 +356,13 @@ Take a backup before each refresh: `pg_dump "$TARGET_DATABASE_URL" -Fc -f client
   they enter ground truth), Manual Review.
 - **Accuracy and Manual Review** score against the client's own ground truth only. With
   none entered yet, the Accuracy view has nothing to score.
+- **Three reviewers at once:** the client UI keeps 12 connections open and uses at most
+  16, so three people opening charts together never wait for one. Every save is one
+  transaction, and two reviewers on different pages never touch each other's rows. Two
+  saving the **same page** at the same moment: the later save wins for that page, so
+  split the work by chart. Check the server has room before handing it over:
+  `psql "$TARGET_DATABASE_URL" -c "SHOW max_connections" -c "SELECT count(*) FROM pg_stat_activity"`
+  (the second number plus 16 must stay well under the first).
 - **Postgres connections:** each review-ui keeps up to `DB_POOL_MAX` (20) connections,
   and core-pipeline up to 20. Keep the total under the server's `max_connections`
   (100 by default), or lower `DB_POOL_MAX` in the client `.env` (e.g. 10).

@@ -45,6 +45,11 @@ export type PageGroundTruth = {
   tilt?: string | null;
   /** High / Medium / Low. */
   quality?: string | null;
+  mirrored?: string | null;
+  printedOrHandwritten?: string | null;
+  isDuplicate?: string | null;
+  /** The Handwritten % band, as picked (page_ground_truth.handwritten_pct). */
+  handwrittenPct?: string | null;
 };
 
 export type GtBit = { label: string; mark: MatchMark };

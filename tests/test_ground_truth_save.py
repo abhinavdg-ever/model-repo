@@ -47,6 +47,7 @@ def test_a_manual_save_records_exactly_the_columns_it_sets():
     """The manual_entry labels pair each saved value with its column, in the
     upsert's parameter order."""
     import re
+    from pathlib import Path
 
     from app.services.ground_truth import _MANUAL_COLUMNS, _UPSERT
 
@@ -131,7 +132,7 @@ def test_subtype_and_specialty_are_saved_and_read():
         _ground_truth_from_row,
     )
 
-    assert _MANUAL_COLUMNS[-5:-3] == ("page_subtype", "provider_specialty")
+    assert _MANUAL_COLUMNS[-9:-7] == ("page_subtype", "provider_specialty")
     assert {"page_subtype", "provider_specialty"} <= set(LABEL_COLUMNS)
     assert "'page_subtype'" in _COLUMNS and "'provider_specialty'" in _COLUMNS
     assert "page_subtype = EXCLUDED.page_subtype" in _UPSERT
@@ -155,7 +156,7 @@ def test_encounter_tilt_and_quality_are_saved_and_read():
         _ground_truth_from_row,
     )
 
-    assert _MANUAL_COLUMNS[-3:] == ("encounter_label", "tilt", "quality")
+    assert _MANUAL_COLUMNS[-7:-4] == ("encounter_label", "tilt", "quality")
     assert {"encounter_label", "tilt", "quality"} <= set(LABEL_COLUMNS)
     for column in ("encounter_label", "tilt", "quality"):
         assert f"'{column}'" in _COLUMNS
@@ -170,3 +171,47 @@ def test_encounter_tilt_and_quality_are_saved_and_read():
     assert (truth.encounterLabel, truth.tilt, truth.quality) == ("Inpatient", "Slight tilt", "Low")
     bulk = _ground_truth_from_labels(4, "4.jpg", {"encounter_label": "Home", "tilt": "3", "quality": "High"})
     assert (bulk.encounterLabel, bulk.tilt, bulk.quality) == ("Home", "3", "High")
+
+
+def test_mirrored_type_and_duplicate_are_saved_and_read():
+    """2026-10-27 (user): Mirrored, Type (Printed/HW) and Is Duplicate ground truth, in
+    page_ground_truth.mirrored, printed_or_handwritten and is_duplicate."""
+    from app.services.ground_truth import (
+        _COLUMNS,
+        _MANUAL_COLUMNS,
+        _UPSERT,
+        _ground_truth_from_labels,
+        _ground_truth_from_row,
+    )
+
+    columns = ("mirrored", "printed_or_handwritten", "is_duplicate")
+    assert _MANUAL_COLUMNS[-4:-1] == columns
+    assert set(columns) <= set(LABEL_COLUMNS)
+    for column in columns:
+        assert f"'{column}'" in _COLUMNS
+        assert f"{column} = EXCLUDED.{column}" in _UPSERT
+    inserted = _UPSERT.split("INSERT INTO page_ground_truth (")[1].split(")")[0]
+    values = _UPSERT.split(") VALUES (")[1].split(")")[0]
+    assert inserted.count(",") == values.count(",")
+    row = (4, "4.jpg", *([None] * 22), "No", "Handwritten", "Partial")
+    truth = _ground_truth_from_row(row)
+    assert (truth.mirrored, truth.printedOrHandwritten, truth.isDuplicate) == ("No", "Handwritten", "Partial")
+    bulk = _ground_truth_from_labels(4, "4.jpg", dict(zip(columns, ("Yes", "Form", "Yes"))))
+    assert (bulk.mirrored, bulk.printedOrHandwritten, bulk.isDuplicate) == ("Yes", "Form", "Yes")
+
+
+def test_every_page_details_cell_is_saved():
+    """2026-10-27 (user): every input is saved. Each editable Page Details row has a key the
+    save request sends, and the save writes handwritten_pct and is_visible."""
+    import re
+    from pathlib import Path
+
+    from app.services.ground_truth import _MANUAL_COLUMNS, _ground_truth_from_row
+
+    assert _MANUAL_COLUMNS[-1] == "handwritten_pct" and "is_visible" in _MANUAL_COLUMNS
+    assert _ground_truth_from_row((4, "4.jpg", *([None] * 25), "Low (<10%)")).handwrittenPct == "Low (<10%)"
+    panel = (Path(__file__).resolve().parents[1] / "review-ui/frontend/src/ImagingPanel.tsx").read_text(encoding="utf-8")
+    persisted = set(re.findall(r'^  "(\w+)",$', panel.split("const PERSISTED_GT = new Set([")[1].split("]);")[0], re.M))
+    details = panel.split("function PageDetails(")[1].split("function RejectionRulesTable(")[0]
+    rows = set(re.findall(r'id: "(\w+)"', details))
+    assert rows and rows <= persisted, sorted(rows - persisted)

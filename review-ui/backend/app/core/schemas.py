@@ -169,6 +169,12 @@ class PageGroundTruth(BaseModel):
     encounterLabel: str | None = None
     tilt: str | None = None
     quality: str | None = None
+    # Mirrored (Yes / No), Type (Printed, Handwritten, ...) and Is Duplicate (Yes /
+    # Partial / No), 2026-10-27.
+    mirrored: str | None = None
+    printedOrHandwritten: str | None = None
+    isDuplicate: str | None = None
+    handwrittenPct: str | None = None
 
 
 class PageSequenceLabel(BaseModel):

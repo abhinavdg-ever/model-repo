@@ -632,16 +632,20 @@ function yesNo(value: string | null | undefined): "yes" | "no" | null {
   return null;
 }
 
+/** page_ground_truth.is_visible holds Yes / No; the cell offers Visible / Not visible. */
 function visibilityLabel(value: string | null | undefined): string {
-  if (yesNo(value) === "yes") return "Good Visibility";
-  return "";
+  const side = yesNo(value);
+  if (side === "yes") return "Visible";
+  if (side === "no") return "Not visible";
+  return (value ?? "").trim();
 }
 
 function visibilityStored(shown: string): string | null {
   const text = cleanGt(shown);
   if (!text) return null;
-  if (text.toLowerCase() === "good visibility") return "Yes";
-  if (text.toLowerCase() === "bad visibility") return "No";
+  const folded = text.toLowerCase();
+  if (folded === "visible" || folded === "good visibility") return "Yes";
+  if (folded === "not visible" || folded === "bad visibility") return "No";
   return text;
 }
 
@@ -682,12 +686,15 @@ function storedGroundTruth(gt: PageGroundTruth | null | undefined): Record<strin
     provider_name: (gt?.renderingProvider ?? "").trim(),
     provider_credentials: gtCredentials(gt),
     electronic_signature: gtSignature(gt),
-    // Round-tripped only: no row edits it.
-    is_visible: visibilityLabel(gt?.isVisible),
+    visibility: visibilityLabel(gt?.isVisible),
+    handwritten_area: (gt?.handwrittenPct ?? "").trim(),
     quality: (gt?.quality ?? "").trim(),
     orientation: rotationLabel(gt?.rotation),
     tilt: (gt?.tilt ?? "").trim(),
     encounter: (gt?.encounterLabel ?? "").trim(),
+    mirrored: (gt?.mirrored ?? "").trim(),
+    handwriting: (gt?.printedOrHandwritten ?? "").trim(),
+    duplicate: (gt?.isDuplicate ?? "").trim(),
     dos_from: (gt?.dosFrom ?? "").trim(),
     dos_to: (gt?.dosTo ?? "").trim(),
     blank_junk: blankJunkLabel(gt),
@@ -714,10 +721,14 @@ function groundTruthBody(
     renderingProvider: cleanGt(values.provider_name),
     providerSignature: presenceStored(values.electronic_signature) || null,
     providerCredentials: cleanGt(values.provider_credentials),
-    isVisible: visibilityStored(values.is_visible ?? ""),
+    isVisible: visibilityStored(values.visibility ?? ""),
+    handwrittenPct: cleanGt(values.handwritten_area),
     quality: cleanGt(values.quality),
     tilt: cleanGt(values.tilt),
     encounterLabel: cleanGt(values.encounter),
+    mirrored: cleanGt(values.mirrored),
+    printedOrHandwritten: cleanGt(values.handwriting),
+    isDuplicate: cleanGt(values.duplicate),
     rotation: cleanGt((values.orientation ?? "").replace(/°$/, "")),
     // Page type ground truth is stored in Encounter Type (what accuracy reads).
     encounterType: pageType,
@@ -751,6 +762,11 @@ const PERSISTED_GT = new Set([
   "quality",
   "tilt",
   "encounter",
+  "mirrored",
+  "handwriting",
+  "duplicate",
+  "visibility",
+  "handwritten_area",
 ]);
 
 const UNCOMPARED = new Set(["", "na", "n/a", "not found", "not available", "yet to process", "skipped"]);

@@ -30,7 +30,11 @@ _COLUMNS = """
     to_jsonb(page_ground_truth) ->> 'provider_specialty',
     to_jsonb(page_ground_truth) ->> 'encounter_label',
     to_jsonb(page_ground_truth) ->> 'tilt',
-    to_jsonb(page_ground_truth) ->> 'quality'
+    to_jsonb(page_ground_truth) ->> 'quality',
+    to_jsonb(page_ground_truth) ->> 'mirrored',
+    to_jsonb(page_ground_truth) ->> 'printed_or_handwritten',
+    to_jsonb(page_ground_truth) ->> 'is_duplicate',
+    to_jsonb(page_ground_truth) ->> 'handwritten_pct'
 """
 
 _EMPTY = {"", "na", "n/a", "not found", "not available"}
@@ -60,6 +64,11 @@ ALTER TABLE page_ground_truth_entry ADD COLUMN IF NOT EXISTS user_id BIGINT;
 -- The page's encounter type (2026-10-27): encounter_type holds the client sheet's page
 -- type. schema/changes_2026-10-27.sql adds it too.
 ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS encounter_label TEXT;
+-- In v1.sql already; a database made before them still saves.
+ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS mirrored TEXT;
+ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS printed_or_handwritten TEXT;
+ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS is_duplicate TEXT;
+ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS handwritten_pct TEXT;
 """
 
 # A page written before the entry table existed gets one entry holding its
@@ -159,6 +168,7 @@ LABEL_COLUMNS = (
     "blank_page", "junk_page", "is_invoice", "page_sequence", "rotation",
     "is_visible", "rendering_provider", "provider_signature", "provider_credentials",
     "page_subtype", "provider_specialty", "encounter_label", "tilt", "quality",
+    "mirrored", "printed_or_handwritten", "is_duplicate", "handwritten_pct",
 )
 
 
@@ -252,6 +262,10 @@ def _ground_truth_from_row(row: tuple) -> PageGroundTruth:
         encounterLabel=row[21] if len(row) > 21 else None,
         tilt=row[22] if len(row) > 22 else None,
         quality=row[23] if len(row) > 23 else None,
+        mirrored=row[24] if len(row) > 24 else None,
+        printedOrHandwritten=row[25] if len(row) > 25 else None,
+        isDuplicate=row[26] if len(row) > 26 else None,
+        handwrittenPct=row[27] if len(row) > 27 else None,
     )
 
 
@@ -273,6 +287,7 @@ INSERT INTO page_ground_truth (
     rendering_provider, provider_signature, provider_credentials,
     page_subtype, provider_specialty,
     encounter_label, tilt, quality,
+    mirrored, printed_or_handwritten, is_duplicate, handwritten_pct,
     user_id
 ) VALUES (
     %s, %s, %s,
@@ -283,6 +298,7 @@ INSERT INTO page_ground_truth (
     %s, %s, %s,
     %s, %s,
     %s, %s, %s,
+    %s, %s, %s, %s,
     %s
 )
 ON CONFLICT (chart_name, page_number) DO UPDATE SET
@@ -308,6 +324,10 @@ ON CONFLICT (chart_name, page_number) DO UPDATE SET
     encounter_label = EXCLUDED.encounter_label,
     tilt = EXCLUDED.tilt,
     quality = EXCLUDED.quality,
+    mirrored = EXCLUDED.mirrored,
+    printed_or_handwritten = EXCLUDED.printed_or_handwritten,
+    is_duplicate = EXCLUDED.is_duplicate,
+    handwritten_pct = EXCLUDED.handwritten_pct,
     user_id = EXCLUDED.user_id,
     updated_at = now()
 RETURNING
@@ -317,7 +337,8 @@ RETURNING
     blank_page, junk_page, is_invoice, page_sequence, rotation,
     is_visible, rendering_provider, provider_signature,
     member_id, provider_credentials, page_subtype, provider_specialty,
-    encounter_label, tilt, quality
+    encounter_label, tilt, quality,
+    mirrored, printed_or_handwritten, is_duplicate, handwritten_pct
 ), e AS (
 INSERT INTO page_ground_truth_entry (page_ground_truth_id, entry_mode, labels, user_id)
 SELECT id, 'manual_entry', %s::jsonb, %s FROM g
@@ -329,7 +350,8 @@ SELECT
     blank_page, junk_page, is_invoice, page_sequence, rotation,
     is_visible, rendering_provider, provider_signature,
     member_id, provider_credentials, page_subtype, provider_specialty,
-    encounter_label, tilt, quality
+    encounter_label, tilt, quality,
+    mirrored, printed_or_handwritten, is_duplicate, handwritten_pct
   FROM g
 """
 
@@ -342,6 +364,7 @@ _MANUAL_COLUMNS = (
     "rendering_provider", "provider_signature", "provider_credentials",
     "page_subtype", "provider_specialty",
     "encounter_label", "tilt", "quality",
+    "mirrored", "printed_or_handwritten", "is_duplicate", "handwritten_pct",
 )
 
 
@@ -389,6 +412,10 @@ def upsert_page_ground_truth(
         clean_label(body.encounterLabel),
         clean_label(body.tilt),
         clean_label(body.quality),
+        clean_label(body.mirrored),
+        clean_label(body.printedOrHandwritten),
+        clean_label(body.isDuplicate),
+        clean_label(body.handwrittenPct),
     )
     labels = json.dumps(dict(zip(_MANUAL_COLUMNS, params[3:])))
     with connection(database_url, db_schema) as conn:
@@ -488,6 +515,10 @@ def _ground_truth_from_labels(
         encounterLabel=get("encounter_label"),
         tilt=get("tilt"),
         quality=get("quality"),
+        mirrored=get("mirrored"),
+        printedOrHandwritten=get("printed_or_handwritten"),
+        isDuplicate=get("is_duplicate"),
+        handwrittenPct=get("handwritten_pct"),
     )
 
 
