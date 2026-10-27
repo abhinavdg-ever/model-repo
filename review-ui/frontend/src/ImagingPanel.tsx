@@ -2282,7 +2282,7 @@ function DocSummary({
           <thead>
             <tr>
               <th scope="col">Page #</th>
-              <th scope="col">File</th>
+              <th scope="col">Page</th>
               <th scope="col">Extracted Name</th>
               <th scope="col">Extracted DOB</th>
               <th scope="col">Member ID</th>
@@ -2905,7 +2905,7 @@ function SequencingTable({
         <thead>
           <tr>
             <th scope="col">S.No</th>
-            <th scope="col">File</th>
+            <th scope="col">Page</th>
             <th scope="col">Original Sequence</th>
             <th scope="col">Algo. Sequence</th>
             <th scope="col">Ground Truth</th>
