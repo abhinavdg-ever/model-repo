@@ -118,3 +118,26 @@ def test_provider_credentials_come_from_the_database_row():
     page = accuracy_cache._page(row, extra)
     assert (page.providerName, page.providerCredentials) == ("Ramsey Luce", "RN")
     assert page.groundTruth.providerCredentials == "MD"
+
+
+def test_subtype_and_specialty_are_saved_and_read():
+    """2026-10-27 (user): Page Subtype and Specialty ground truth, free text, stored in
+    page_subtype and provider_specialty."""
+    from app.services.ground_truth import (
+        _COLUMNS,
+        _MANUAL_COLUMNS,
+        _UPSERT,
+        _ground_truth_from_labels,
+        _ground_truth_from_row,
+    )
+
+    assert _MANUAL_COLUMNS[-2:] == ("page_subtype", "provider_specialty")
+    assert {"page_subtype", "provider_specialty"} <= set(LABEL_COLUMNS)
+    assert "'page_subtype'" in _COLUMNS and "'provider_specialty'" in _COLUMNS
+    assert "page_subtype = EXCLUDED.page_subtype" in _UPSERT
+    assert "provider_specialty = EXCLUDED.provider_specialty" in _UPSERT
+    row = (4, "4.jpg", *([None] * 17), "Wound Care Visit", "Podiatry")
+    truth = _ground_truth_from_row(row)
+    assert (truth.pageSubtype, truth.specialty) == ("Wound Care Visit", "Podiatry")
+    bulk = _ground_truth_from_labels(4, "4.jpg", {"page_subtype": "CC/HPI", "provider_specialty": "Cardiology"})
+    assert (bulk.pageSubtype, bulk.specialty) == ("CC/HPI", "Cardiology")

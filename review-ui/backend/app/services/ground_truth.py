@@ -25,7 +25,9 @@ _COLUMNS = """
     to_jsonb(page_ground_truth) ->> 'rendering_provider',
     to_jsonb(page_ground_truth) ->> 'provider_signature',
     to_jsonb(page_ground_truth) ->> 'member_id',
-    to_jsonb(page_ground_truth) ->> 'provider_credentials'
+    to_jsonb(page_ground_truth) ->> 'provider_credentials',
+    to_jsonb(page_ground_truth) ->> 'page_subtype',
+    to_jsonb(page_ground_truth) ->> 'provider_specialty'
 """
 
 _EMPTY = {"", "na", "n/a", "not found", "not available"}
@@ -150,6 +152,7 @@ LABEL_COLUMNS = (
     "encounter_type", "page_type", "codeable",
     "blank_page", "junk_page", "is_invoice", "page_sequence", "rotation",
     "is_visible", "rendering_provider", "provider_signature", "provider_credentials",
+    "page_subtype", "provider_specialty",
 )
 
 
@@ -238,6 +241,8 @@ def _ground_truth_from_row(row: tuple) -> PageGroundTruth:
         providerSignature=row[16] if len(row) > 16 else None,
         memberId=row[17] if len(row) > 17 else None,
         providerCredentials=row[18] if len(row) > 18 else None,
+        pageSubtype=row[19] if len(row) > 19 else None,
+        specialty=row[20] if len(row) > 20 else None,
     )
 
 
@@ -257,6 +262,7 @@ INSERT INTO page_ground_truth (
     blank_page, junk_page, is_invoice,
     rotation, is_visible,
     rendering_provider, provider_signature, provider_credentials,
+    page_subtype, provider_specialty,
     user_id
 ) VALUES (
     %s, %s, %s,
@@ -265,6 +271,7 @@ INSERT INTO page_ground_truth (
     %s, %s, %s,
     %s, %s,
     %s, %s, %s,
+    %s, %s,
     %s
 )
 ON CONFLICT (chart_name, page_number) DO UPDATE SET
@@ -285,6 +292,8 @@ ON CONFLICT (chart_name, page_number) DO UPDATE SET
     rendering_provider = EXCLUDED.rendering_provider,
     provider_signature = EXCLUDED.provider_signature,
     provider_credentials = EXCLUDED.provider_credentials,
+    page_subtype = EXCLUDED.page_subtype,
+    provider_specialty = EXCLUDED.provider_specialty,
     user_id = EXCLUDED.user_id,
     updated_at = now()
 RETURNING
@@ -293,7 +302,7 @@ RETURNING
     encounter_type, page_type, codeable,
     blank_page, junk_page, is_invoice, page_sequence, rotation,
     is_visible, rendering_provider, provider_signature,
-    member_id, provider_credentials
+    member_id, provider_credentials, page_subtype, provider_specialty
 ), e AS (
 INSERT INTO page_ground_truth_entry (page_ground_truth_id, entry_mode, labels, user_id)
 SELECT id, 'manual_entry', %s::jsonb, %s FROM g
@@ -304,7 +313,7 @@ SELECT
     encounter_type, page_type, codeable,
     blank_page, junk_page, is_invoice, page_sequence, rotation,
     is_visible, rendering_provider, provider_signature,
-    member_id, provider_credentials
+    member_id, provider_credentials, page_subtype, provider_specialty
   FROM g
 """
 
@@ -315,6 +324,7 @@ _MANUAL_COLUMNS = (
     "blank_page", "junk_page", "is_invoice",
     "rotation", "is_visible",
     "rendering_provider", "provider_signature", "provider_credentials",
+    "page_subtype", "provider_specialty",
 )
 
 
@@ -330,7 +340,7 @@ def upsert_page_ground_truth(
 
     A later manual save of the same page hits the same
     ``(chart_name, page_number)`` key. Columns this screen does not edit
-    (page sequence, specialty, deleted level, source path) are left as they are.
+    (page sequence, deleted level, source path) are left as they are.
     The save is also appended to page_ground_truth_entry as a manual_entry. ``user_id``
     (the signed-in user) is stored on both.
     """
@@ -357,6 +367,8 @@ def upsert_page_ground_truth(
         clean_label(body.renderingProvider),
         yes_no_label(body.providerSignature),
         clean_label(body.providerCredentials),
+        clean_label(body.pageSubtype),
+        clean_label(body.specialty),
     )
     labels = json.dumps(dict(zip(_MANUAL_COLUMNS, params[3:])))
     with connection(database_url, db_schema) as conn:
@@ -451,6 +463,8 @@ def _ground_truth_from_labels(
         renderingProvider=get("rendering_provider"),
         providerSignature=get("provider_signature"),
         providerCredentials=get("provider_credentials"),
+        pageSubtype=get("page_subtype"),
+        specialty=get("provider_specialty"),
     )
 
 

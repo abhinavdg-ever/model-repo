@@ -160,6 +160,10 @@ class PageGroundTruth(BaseModel):
     # Yes / No. Older rows hold credentials here (before providerCredentials was saved).
     providerSignature: str | None = None
     providerCredentials: str | None = None
+    # Free text, any L2 / specialty (2026-10-27, user): page_subtype and provider_specialty
+    # (the client sheet's Provider Specialty column).
+    pageSubtype: str | None = None
+    specialty: str | None = None
 
 
 class PageSequenceLabel(BaseModel):

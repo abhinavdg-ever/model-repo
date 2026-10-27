@@ -268,6 +268,9 @@ export type PageGroundTruth = {
   /** Yes / No. Older rows hold credentials here. */
   providerSignature?: string | null;
   providerCredentials?: string | null;
+  /** Free text (2026-10-27, user): page_subtype and provider_specialty. */
+  pageSubtype?: string | null;
+  specialty?: string | null;
 };
 
 export type ImagingManifestDetails = {

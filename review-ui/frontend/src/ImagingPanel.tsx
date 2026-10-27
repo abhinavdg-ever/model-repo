@@ -496,6 +496,16 @@ const INLINE_OPTIONS_BELOW = 10;
  * skipped the field on this page (a blank page has no DOS, a junk page no provider). */
 const SKIPPED_ENTRY = "Skipped";
 
+/** "New Type" / "New Subtype" / "New Specialty" for a typed value none of the listed
+ * ones match; it is still saved (2026-10-27, user). */
+function newEntryWarning(fieldId: string, value: string, options: readonly string[]): string | null {
+  const open = ENTRY_RULES[fieldId]?.open;
+  const text = value.trim();
+  if (!open || !text || CLEARED_ENTRY.has(text.toLowerCase())) return null;
+  if (exactOption(text, options) || exactOption(text, ENTRY_RULES[fieldId]?.choices ?? [])) return null;
+  return open;
+}
+
 function exactOption(value: string, options: readonly string[]): string | null {
   const folded = value.trim().toLowerCase();
   return options.find((option) => option.toLowerCase() === folded) ?? null;
@@ -532,6 +542,8 @@ function canonicalLabel(value: string): string | null {
 type EntryRule = {
   presence?: boolean;
   choices?: readonly string[];
+  /** Any text is taken; one not in ``choices`` shows this warning (2026-10-27, user). */
+  open?: string;
   kind?: "date" | "degrees" | "text";
 };
 
@@ -545,9 +557,9 @@ const ENTRY_RULES: Record<string, EntryRule> = {
   blank_junk: { choices: BLANK_JUNK_CHOICES },
   duplicate: { choices: DUPLICATE_CHOICES },
   // The menu offers our L1s; a client label or older name saved before still validates.
-  page_type: { choices: [...PAGE_L1_CHOICES, ...GT_PAGE_TYPE_LABELS, ...PAGE_TYPE_AND_SUBTYPE_CHOICES] },
-  page_subtype: { choices: PAGE_L2_ALL },
-  specialty: { choices: SPECIALTY_CHOICES },
+  page_type: { choices: [...PAGE_L1_CHOICES, ...GT_PAGE_TYPE_LABELS, ...PAGE_TYPE_AND_SUBTYPE_CHOICES], open: "New Type" },
+  page_subtype: { choices: PAGE_L2_ALL, open: "New Subtype" },
+  specialty: { choices: SPECIALTY_CHOICES, open: "New Specialty" },
   codeable: { choices: CODEABLE_CHOICES },
   visibility: { choices: VISIBILITY_CHOICES },
   dos_from: { kind: "date" },
@@ -566,7 +578,7 @@ function normalizeEntry(id: string, value: string): string | null {
   const rule = ENTRY_RULES[id];
   if (!rule) return value.trim();
   if (rule.presence) return exactOption(value, YES_NO_CHOICES);
-  if (rule.choices) return exactOption(value, rule.choices);
+  if (rule.choices) return exactOption(value, rule.choices) ?? (rule.open ? canonicalLabel(value) : null);
   if (rule.kind === "date") return canonicalDate(value);
   if (rule.kind === "degrees") return canonicalDegrees(value);
   return canonicalLabel(value);
@@ -664,9 +676,8 @@ function storedGroundTruth(gt: PageGroundTruth | null | undefined): Record<strin
     dos_to: (gt?.dosTo ?? "").trim(),
     blank_junk: blankJunkLabel(gt),
     page_type: spellCodeable(pageType),
-    // Not stored yet: entered on the page, kept until it is left (2026-10-26, user).
-    page_subtype: "",
-    specialty: "",
+    page_subtype: (gt?.pageSubtype ?? "").trim(),
+    specialty: (gt?.specialty ?? "").trim(),
     codeable: spellCodeable((gt?.codeable ?? "").trim()),
   };
   // An uploaded NA is an empty cell: it shows as Not Found and is not scored.
@@ -696,6 +707,8 @@ function groundTruthBody(
     ...blankJunkStored(values.blank_junk ?? ""),
     pageType,
     codeable: cleanGt(values.codeable),
+    pageSubtype: cleanGt(values.page_subtype),
+    specialty: cleanGt(values.specialty),
     pageSequence: page.groundTruth?.pageSequence ?? null,
   };
 }
@@ -714,6 +727,8 @@ const PERSISTED_GT = new Set([
   "provider_name",
   "provider_credentials",
   "electronic_signature",
+  "page_subtype",
+  "specialty",
 ]);
 
 const UNCOMPARED = new Set(["", "na", "n/a", "not found", "not available", "yet to process", "skipped"]);
@@ -1173,6 +1188,9 @@ function ChoiceMenu({
         </ul>
       ) : null}
       {invalid ? <span className="imaging-gt-hint">{invalid}</span> : null}
+      {!invalid && newEntryWarning(fieldId, text, options) ? (
+        <span className="imaging-gt-hint is-warning">{newEntryWarning(fieldId, text, options)}: not in the list</span>
+      ) : null}
     </div>
   );
 }
