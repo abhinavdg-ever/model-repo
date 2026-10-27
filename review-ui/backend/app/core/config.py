@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     db_pool_max: int = 20
     # Seconds a request waits for a free pooled connection.
     db_pool_wait_sec: float = 10.0
+    # Seconds one new connection may take (DB_CONNECT_TIMEOUT_SEC). 3 was too short from a
+    # laptop over VPN while the pool opened its DB_POOL_MIN connections at once.
+    db_connect_timeout_sec: int = 10
     api_host: str = "127.0.0.1"
     api_port: int = 8002
     allowed_origins: str = "http://127.0.0.1:5174,http://localhost:5174"

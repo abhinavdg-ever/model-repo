@@ -17,7 +17,7 @@ from typing import Iterator
 
 logger = logging.getLogger("review_ui.db")
 
-CONNECT_TIMEOUT_SEC = 3
+CONNECT_TIMEOUT_SEC = 10  # default; DB_CONNECT_TIMEOUT_SEC in .env sets it
 # Pool size and wait: DB_POOL_MIN / DB_POOL_MAX / DB_POOL_WAIT_SEC in
 # review-ui/.env (Settings; 1, 20 and 10 s by default). While core-pipeline writes, reads slow
 # down and a busy page holds several connections at once; 10 ran out.
@@ -55,8 +55,11 @@ def valid_schema(db_schema: str | None) -> str:
 
 
 def _connect_kwargs(schema: str) -> dict[str, object]:
+    from app.core.config import get_settings
+
+    timeout = getattr(get_settings(), "db_connect_timeout_sec", CONNECT_TIMEOUT_SEC) or CONNECT_TIMEOUT_SEC
     return {
-        "connect_timeout": CONNECT_TIMEOUT_SEC,
+        "connect_timeout": max(1, int(timeout)),
         "options": f"-c search_path={schema}",
     }
 
