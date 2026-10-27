@@ -52,10 +52,13 @@ psql "$TARGET_DATABASE_URL" -f /opt/advantmed/client-review/schema/v1.sql
 
 # 4. Copy the charts run since 26 Oct 00:00 IST, and our users; no ground truth
 cd /opt/advantmed/advantmed-imaging-pipeline/core-pipeline       # OUR folder: its image has psycopg
+mkdir -p ~/client-charts      # chart lists (.txt) go here; the container sees it as /lists
 clone() { docker compose run --rm --no-deps -v "$PWD/../utilities:/app/utilities:ro" \
+  -v "$HOME/client-charts:/lists:ro" \
   -e SOURCE_DATABASE_URL -e TARGET_DATABASE_URL api python /app/utilities/clone_client_db.py "$@"; }
 clone --dry-run        # counts only: check the charts and pages look right
 clone                  # the copy; ends with "target ground truth rows: 0"
+# Other choices of charts (section 2c): --since "YYYY-MM-DD HH:MM", --charts-file /lists/charts.txt
 
 # 5. The client's review-ui settings
 cd /opt/advantmed/client-review/review-ui
@@ -168,11 +171,41 @@ from our folder, inside that container:
 cd /opt/advantmed/advantmed-imaging-pipeline/core-pipeline
 export SOURCE_DATABASE_URL='postgresql://USER:PASSWORD@HOST:5432/imaging_outputs'
 export TARGET_DATABASE_URL='postgresql://USER:PASSWORD@HOST:5432/imaging_outputs_client'
-clone() { docker compose run --rm --no-deps -v "$PWD/../utilities:/app/utilities:ro" -e SOURCE_DATABASE_URL -e TARGET_DATABASE_URL api python /app/utilities/clone_client_db.py "$@"; }
+mkdir -p ~/client-charts      # chart lists (.txt) go here; the container sees it as /lists
+clone() { docker compose run --rm --no-deps -v "$PWD/../utilities:/app/utilities:ro" \
+  -v "$HOME/client-charts:/lists:ro" \
+  -e SOURCE_DATABASE_URL -e TARGET_DATABASE_URL api python /app/utilities/clone_client_db.py "$@"; }
 
 clone --dry-run    # how many charts and pages, by status; writes nothing
 clone              # the copy (refuses a target that already has charts)
 ```
+
+### 2c. Choosing the charts: a date, a list, or both
+
+| You want | Run |
+|---|---|
+| Charts run on or after a date (default 26 Oct 2026 00:00 IST) | `clone --since "2026-11-01 00:00"` |
+| Exactly the charts in a list | `clone --charts-file /lists/charts.txt` |
+| Charts in the list **and** run since a date | `clone --charts-file /lists/charts.txt --since "2026-11-01 00:00"` |
+
+The list is a plain text file (Notepad is fine) in `~/client-charts/` on the VM: one chart
+name per line, as in our chart list (the folder name, e.g. `52743839_44976074`). Blank lines
+are skipped, a `#` starts a comment, and commas or spaces also separate names. With a list
+and no `--since`, the date is not checked. Names not in our database are printed and
+skipped. Always run the same command with `--dry-run` first.
+
+How the charts land in the client database:
+
+| Flag | The target's existing charts | The chosen charts |
+|---|---|---|
+| (none) | must be empty, else it stops | copied |
+| `--add` | kept as they are | copied if not there yet; one already there is skipped (not updated) |
+| `--replace` | deleted (ground truth, reviews and accounts stay) | copied |
+
+So to give the client more charts later, write their names in a file and run
+`clone --dry-run --charts-file /lists/more.txt --add`, then the same without `--dry-run`.
+To bring a chart that is already there up to its latest run, use `--replace` (with the full
+list or date you want the client to have).
 
 If the database host is `localhost` on the VM, use `host.docker.internal` (or the VM's
 IP) in the two URLs, since the script runs inside a container. Prefix the `export` lines
@@ -263,7 +296,8 @@ clone --replace
 ```
 
 `--replace` deletes the target's chart data and copies the charts run since the cutoff
-again (move the cutoff with `--since` if you want). Untouched: the client's ground
+again (move the cutoff with `--since`, or pass the list with `--charts-file`). To add new
+charts without touching the ones there, use `--add` instead (section 2c). Untouched: the client's ground
 truth, encounter reviews and client-only accounts. The client's ground truth is keyed by
 chart name and page number, not by pipeline row, so it lines up with the refreshed pages.
 

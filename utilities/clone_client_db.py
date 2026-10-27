@@ -1,10 +1,23 @@
 #!/usr/bin/env python3
 """Fill the client's review database from ours: the charts last run on or after a cutoff,
-our users (so the same sign-ins work), and no ground truth (docs/CLIENT_INSTANCE.md).
+or the charts named in a list, our users (so the same sign-ins work), and no ground truth
+(docs/CLIENT_INSTANCE.md).
 
     python utilities/clone_client_db.py --dry-run            # what would be copied
     python utilities/clone_client_db.py                      # copy into an empty target
     python utilities/clone_client_db.py --replace            # refresh: swap the chart data
+    python utilities/clone_client_db.py --charts-file charts.txt          # only these charts
+    python utilities/clone_client_db.py --charts-file charts.txt --add    # add them to the target
+    python utilities/clone_client_db.py --since "2026-11-01 00:00" --add  # add newer runs
+
+Which charts: ``--since`` (last run at or after it; default 2026-10-26 00:00 when no list
+is given) and / or ``--charts-file`` (a text file, one chart name per line; commas and
+spaces also separate, a ``#`` starts a comment). Both given: a chart must be in the list
+AND run since the date. Names in the list that are not in our database are printed.
+
+How they land: an empty target is filled; ``--replace`` deletes the target's chart data
+first; ``--add`` keeps what the target has and copies only the chosen charts it does not
+have yet (a chart already there is skipped, not updated).
 
 Needs SOURCE_DATABASE_URL (ours) and TARGET_DATABASE_URL (the client's, created with
 schema/v1.sql). "Last run" is chart_list.updated_at, which a run writes last.
@@ -23,8 +36,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from datetime import datetime
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 # Parents first: chart_list and manifest_member_list, then page_list, then the rest.
@@ -47,6 +62,7 @@ CHART_TABLES = (
     "pipeline_jobs",
 )
 USER_FIELDS = ("name", "email", "role", "password_hash", "is_active")
+DEFAULT_SINCE = "2026-10-26 00:00"
 
 
 def _connect(url: str):
@@ -94,32 +110,81 @@ def _reset_sequence(dst, table: str) -> None:
     )
 
 
-def _dry_run(src, cutoff: datetime) -> int:
+def read_chart_list(path: str) -> list[str]:
+    """Chart names from a text file: one per line (commas and spaces also separate), blank
+    lines skipped, ``#`` starts a comment; order kept, repeats dropped."""
+    names: list[str] = []
+    with open(path, encoding="utf-8-sig") as handle:
+        for line in handle:
+            for name in re.split(r"[,\s]+", line.split("#", 1)[0]):
+                if name and name not in names:
+                    names.append(name)
+    return names
+
+
+def chart_filter(cutoff: Optional[datetime], names: Optional[list[str]]) -> tuple[str, tuple]:
+    """The WHERE clause on chart_list choosing the charts, and its parameters."""
+    clauses, params = [], []
+    if cutoff is not None:
+        clauses.append("updated_at >= %s")
+        params.append(cutoff)
+    if names is not None:
+        clauses.append("chart_name = ANY(%s)")
+        params.append(names)
+    return (" AND ".join(clauses) or "TRUE"), tuple(params)
+
+
+def _describe(cutoff: Optional[datetime], names: Optional[list[str]]) -> str:
+    parts = [f"run since {cutoff.isoformat()}"] if cutoff is not None else []
+    if names is not None:
+        parts.append(f"in the list of {len(names)}")
+    return " and ".join(parts)
+
+
+def _report_missing(src, names: Optional[list[str]]) -> None:
+    if not names:
+        return
+    found = {row["chart_name"] for row in src.execute(
+        "SELECT chart_name FROM chart_list WHERE chart_name = ANY(%s)", (names,)).fetchall()}
+    missing = [name for name in names if name not in found]
+    if missing:
+        print(f"not in our database ({len(missing)}): {', '.join(missing)}")
+
+
+def _dry_run(src, cutoff: Optional[datetime], names: Optional[list[str]]) -> int:
     """What a copy would take from the source; reads only."""
+    where, params = chart_filter(cutoff, names)
     row = src.execute(
         "SELECT count(*) AS charts, min(updated_at) AS first_run, max(updated_at) AS last_run, "
-        "(SELECT count(*) FROM page_list p JOIN chart_list c ON c.id = p.chart_id WHERE c.updated_at >= %s) AS pages, "
+        f"(SELECT count(*) FROM page_list p WHERE p.chart_id IN (SELECT id FROM chart_list WHERE {where})) AS pages, "
         "(SELECT count(*) FROM users) AS users "
-        "FROM chart_list WHERE updated_at >= %s",
-        (cutoff, cutoff),
+        f"FROM chart_list WHERE {where}",
+        params + params,
     ).fetchone()
     statuses = src.execute(
-        "SELECT status, count(*) AS n FROM chart_list WHERE updated_at >= %s GROUP BY status ORDER BY status", (cutoff,)
+        f"SELECT status, count(*) AS n FROM chart_list WHERE {where} GROUP BY status ORDER BY status", params
     ).fetchall()
     total = src.execute("SELECT count(*) AS n FROM chart_list").fetchone()["n"]
-    print(f"cutoff {cutoff.isoformat()}: {row['charts']} of {total} charts, {row['pages']} pages, "
+    print(f"charts {_describe(cutoff, names)}: {row['charts']} of {total} charts, {row['pages']} pages, "
           f"{row['users']} users; by status {{{', '.join(f'{s['status']}: {s['n']}' for s in statuses)}}}")
+    _report_missing(src, names)
     print(f"their last runs: {row['first_run']} .. {row['last_run']}; dry run, nothing written")
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--since", default="2026-10-26 00:00",
-                        help="charts last run at or after this local time (default 2026-10-26 00:00)")
+    parser.add_argument("--since", default=None,
+                        help="charts last run at or after this local time "
+                             f"(default {DEFAULT_SINCE} when no --charts-file is given)")
     parser.add_argument("--tz", default="Asia/Kolkata", help="time zone of --since (default Asia/Kolkata)")
-    parser.add_argument("--replace", action="store_true",
-                        help="refresh: delete the target's chart data first (ground truth and users stay)")
+    parser.add_argument("--charts-file", default=None,
+                        help="a text file of chart names, one per line: only these charts")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--replace", action="store_true",
+                      help="refresh: delete the target's chart data first (ground truth and users stay)")
+    mode.add_argument("--add", action="store_true",
+                      help="keep the target's charts; copy only the chosen charts it does not have yet")
     parser.add_argument("--dry-run", action="store_true", help="count what would be copied; change nothing")
     args = parser.parse_args()
 
@@ -130,27 +195,40 @@ def main() -> int:
     if source_url == target_url:
         print("the source and the target are the same database", file=sys.stderr)
         return 2
-    cutoff = datetime.fromisoformat(args.since).replace(tzinfo=ZoneInfo(args.tz))
+    names_wanted = read_chart_list(args.charts_file) if args.charts_file else None
+    if names_wanted is not None and not names_wanted:
+        print(f"{args.charts_file} names no charts", file=sys.stderr)
+        return 2
+    since = args.since or (None if names_wanted is not None else DEFAULT_SINCE)
+    cutoff = datetime.fromisoformat(since).replace(tzinfo=ZoneInfo(args.tz)) if since else None
+    where, params = chart_filter(cutoff, names_wanted)
 
     if args.dry_run:
         with _connect(source_url) as src:
-            return _dry_run(src, cutoff)
+            return _dry_run(src, cutoff, names_wanted)
 
     with _connect(source_url) as src, _connect(target_url) as dst:
         charts = src.execute(
-            "SELECT id, chart_name, status FROM chart_list WHERE updated_at >= %s ORDER BY id", (cutoff,)
+            f"SELECT id, chart_name, status FROM chart_list WHERE {where} ORDER BY id", params
         ).fetchall()
+        _report_missing(src, names_wanted)
+        existing = dst.execute("SELECT count(*) AS n FROM chart_list").fetchone()["n"]
+        if existing and not (args.replace or args.add):
+            print(f"the target already has {existing} charts: use --replace to refresh or --add to add",
+                  file=sys.stderr)
+            return 1
+        if args.add:
+            have = {row["id"] for row in dst.execute("SELECT id FROM chart_list").fetchall()}
+            skipped = [row["chart_name"] for row in charts if row["id"] in have]
+            charts = [row for row in charts if row["id"] not in have]
+            if skipped:
+                print(f"already in the target, skipped ({len(skipped)}): {', '.join(skipped)}")
         ids = [row["id"] for row in charts]
         names = [row["chart_name"] for row in charts]
         statuses: dict[str, int] = {}
         for row in charts:
             statuses[row["status"]] = statuses.get(row["status"], 0) + 1
-        print(f"cutoff {cutoff.isoformat()}: {len(ids)} charts {statuses}")
-
-        existing = dst.execute("SELECT count(*) AS n FROM chart_list").fetchone()["n"]
-        if existing and not args.replace:
-            print(f"the target already has {existing} charts: use --replace to refresh", file=sys.stderr)
-            return 1
+        print(f"charts {_describe(cutoff, names_wanted)}: copying {len(ids)} {statuses}")
         if not dst.execute("SELECT count(*) AS n FROM pipeline_stage").fetchone()["n"]:
             print("the target has no schema / pipeline_stage: run schema/v1.sql on it first", file=sys.stderr)
             return 1
@@ -160,12 +238,14 @@ def main() -> int:
             dst.execute("DELETE FROM chart_list")
             dst.execute("DELETE FROM manifest_member_list")
 
+        # Manifest rows the target already has (--add) stay as they are.
+        kept = [row["id"] for row in dst.execute("SELECT id FROM manifest_member_list").fetchall()]
         manifest = _copy(
             src, dst, "manifest_member_list",
-            "record_id = ANY(%s) OR id IN (SELECT matched_member_list_id FROM member_verification_summary "
+            "(record_id = ANY(%s) OR id IN (SELECT matched_member_list_id FROM member_verification_summary "
             "WHERE chart_id = ANY(%s) UNION SELECT matched_member_list_id FROM member_extraction_results "
-            "WHERE chart_id = ANY(%s))",
-            (names, ids, ids),
+            "WHERE chart_id = ANY(%s))) AND NOT id = ANY(%s)",
+            (names, ids, ids, kept),
         )
         counts = {"chart_list": _copy(src, dst, "chart_list", "id = ANY(%s)", (ids,)),
                   "manifest_member_list": manifest}

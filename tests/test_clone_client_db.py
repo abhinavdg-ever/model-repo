@@ -29,3 +29,22 @@ def test_ground_truth_is_never_copied():
     copied = set(_script().CHART_TABLES) | {"chart_list", "manifest_member_list", "users"}
     assert not copied & {"page_ground_truth", "page_ground_truth_entry", "encounter_review", "user_login", "chart_deletion"}
     assert {"page_ground_truth", "page_ground_truth_entry"} <= set(_tables())
+
+
+def test_a_chart_list_file_reads_one_name_per_line(tmp_path):
+    """2026-10-27 (user): move the charts named in a notepad file."""
+    path = tmp_path / "charts.txt"
+    path.write_text("﻿52743839_44976074\n\n# a comment\n45726104_1, 45726104_2  # trailing note\n52743839_44976074\n",
+                    encoding="utf-8")
+    assert _script().read_chart_list(str(path)) == ["52743839_44976074", "45726104_1", "45726104_2"]
+
+
+def test_the_date_and_the_list_both_filter():
+    from datetime import datetime, timezone
+
+    script = _script()
+    cutoff = datetime(2026, 10, 26, tzinfo=timezone.utc)
+    assert script.chart_filter(cutoff, None) == ("updated_at >= %s", (cutoff,))
+    assert script.chart_filter(None, ["a"]) == ("chart_name = ANY(%s)", (["a"],))
+    assert script.chart_filter(cutoff, ["a"]) == ("updated_at >= %s AND chart_name = ANY(%s)", (cutoff, ["a"]))
+    assert script.chart_filter(None, None) == ("TRUE", ())
