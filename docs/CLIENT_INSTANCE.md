@@ -1,56 +1,94 @@
 # A second review-ui for the client (own database, no ground truth)
 
 The client reviews charts and enters their own ground truth, without seeing ours.
-They get a second review-ui on the same VM, on **port 5001**: the same code, in its own
-folder, reading its own Postgres database. That database holds:
+They get a second review-ui on the same VM, on **port 5001** (API on 5000), reading its
+own Postgres database. That database holds:
 
-- the pipeline's outputs for the charts **last run on or after 26 Oct 2026, 00:00 IST**,
+- the pipeline's outputs for the charts **last run on or after 26 Oct 2026, 00:00 IST**
+  (or the charts you list),
 - **our users**, so the same usernames and passwords sign in,
 - **no ground truth**: nothing typed in Page Details, no CSV upload, no encounter review.
 
+The client UI lives in its **own repository**,
+[`abhinavdg-ever/ui-temp`](https://github.com/abhinavdg-ever/ui-temp). Everything else
+(the pipeline, the copy script, the schema, this doc) stays in this one.
+
 ```
+Laptop
+├── advantmed-imaging-pipeline/          ← this repo (model-repo)
+│     review-ui/                         ← where UI changes are made
+│     review-ui-client/                  ← a checkout of ui-temp (git-ignored here)
+│         utilities/sync_client_ui.sh copies review-ui → review-ui-client
+
 VM (172.20.4.170)
 ├── /opt/advantmed/advantmed-imaging-pipeline/   ← ours (as today)
 │     core-pipeline  :8001 ──writes──▶ imaging_outputs
 │     review-ui      :4000 / :4001 ──reads/writes──▶ imaging_outputs (our ground truth)
 │
-└── /opt/advantmed/client-review/                ← new folder, same git repo
-      review-ui      :5000 / :5001 ──reads/writes──▶ imaging_outputs_client
-                                                 (charts run since 26 Oct, our users,
+└── ~/ui-temp/                                   ← a checkout of ui-temp
+      client-review  :5000 / :5001 ──reads/writes──▶ imaging_outputs_client
+                                                 (charts copied from ours, our users,
                                                   the client's ground truth only)
 ```
 
-Nothing new to build. review-ui already runs on Postgres alone in Production Mode, and
-everything it writes is in the database: ground truth, encounter reviews, users and
-sign-ins. A second copy pointed at a second database is a separate system.
+What the client folder fixes, whatever its `.env` says (`docker-compose.yml` there):
 
-Paths and ports here are examples; use your VM's layout. `SOURCE_DATABASE_URL` / `TARGET_DATABASE_URL` are the two
-connection strings (`postgresql://USER:PASSWORD@HOST:5432/imaging_outputs` and
-`…/imaging_outputs_client`). Keep the passwords out of shell history and out of git.
+| Setting | Value |
+|---|---|
+| Docker project | `client-review`, so its containers never replace ours |
+| Ports | 5000 (API) / 5001 (web) by default |
+| Data | Postgres only (`DATA_MODE=production`); the disk folders are empty |
+| Playground | off (`CORE_PIPELINE_URLS` is empty), so nobody on 5001 can start a run |
+| Connections | at most 10 (`DB_POOL_MAX`) |
+
+Paths here are examples; use your VM's layout. `SOURCE_DATABASE_URL` /
+`TARGET_DATABASE_URL` are the two connection strings
+(`postgresql://USER:PASSWORD@HOST:5432/imaging_outputs` and `…/imaging_outputs_client`).
+Keep the passwords out of shell history and out of git.
 
 ---
 
 ## 0. Quick start: every command, in order
 
-Run these on the VM, as the user that runs our Docker containers. Replace the four
-CAPITALISED values first: `DBUSER`, `DBPASS`, `DBHOST` (the Postgres server; from inside a
-container use the VM's IP, not `localhost`) and `VMIP` (172.20.4.170). Sections 1–7 explain
-each step.
+### On the laptop: put a UI change into the client repo
 
 ```bash
-# 1. A second copy of the code, in its own folder
-sudo mkdir -p /opt/advantmed/client-review && sudo chown "$USER" /opt/advantmed/client-review
-git clone https://github.com/abhinavdg-ever/model-repo.git /opt/advantmed/client-review
+cd "/Volumes/Extreme SSD/Advantmed/advantmed-imaging-pipeline"
+# once: git clone https://github.com/abhinavdg-ever/ui-temp.git review-ui-client
+git commit ...                       # commit the review-ui change here first
+utilities/sync_client_ui.sh          # copies the committed review-ui/backend + frontend
+cd review-ui-client
+git add -A && git commit -m "Sync review-ui at <commit>" && git push
+```
 
-# 2. The connection strings (the leading space keeps them out of shell history)
+Only `backend/` and `frontend/` are copied. The client repo's own `docker-compose.yml`,
+`.env.example` and `README.md` are kept. Nothing reaches the client until you sync and push.
+
+### On the VM: the database (psql)
+
+Open `psql` against the Postgres server as a user that may create databases (the same
+user as our `core-pipeline/.env`):
+
+```sql
+CREATE DATABASE imaging_outputs_client;
+\c imaging_outputs_client
+\i /opt/advantmed/advantmed-imaging-pipeline/schema/v1.sql
+SELECT stage_name, pass_no, seq FROM pipeline_stage ORDER BY seq;   -- 13 rows
+\q
+```
+
+`\i` takes the schema from **our** checkout; `git pull` there first so it is current. If
+that user cannot create databases, a Postgres admin runs
+`CREATE DATABASE imaging_outputs_client OWNER <that user>;`, then you run the `\c` and
+`\i` lines. No `psql` on the VM: see section 2a.
+
+### On the VM: copy the charts and our users
+
+```bash
+# The connection strings (the leading space keeps them out of shell history)
  export SOURCE_DATABASE_URL='postgresql://DBUSER:DBPASS@DBHOST:5432/imaging_outputs'
  export TARGET_DATABASE_URL='postgresql://DBUSER:DBPASS@DBHOST:5432/imaging_outputs_client'
 
-# 3. The client's database, with the schema (no psql on the VM? see section 2a)
-psql "$SOURCE_DATABASE_URL" -c 'CREATE DATABASE imaging_outputs_client'
-psql "$TARGET_DATABASE_URL" -f /opt/advantmed/client-review/schema/v1.sql
-
-# 4. Copy the charts run since 26 Oct 00:00 IST, and our users; no ground truth
 cd /opt/advantmed/advantmed-imaging-pipeline/core-pipeline       # OUR folder: its image has psycopg
 mkdir -p ~/client-charts      # chart lists (.txt) go here; the container sees it as /lists
 clone() { docker compose run --rm --no-deps -v "$PWD/../utilities:/app/utilities:ro" \
@@ -59,88 +97,98 @@ clone() { docker compose run --rm --no-deps -v "$PWD/../utilities:/app/utilities
 clone --dry-run        # counts only: check the charts and pages look right
 clone                  # the copy; ends with "target ground truth rows: 0"
 # Other choices of charts (section 2c): --since "YYYY-MM-DD HH:MM", --charts-file /lists/charts.txt
+```
 
-# 5. The client's review-ui settings
-cd /opt/advantmed/client-review/review-ui
+`DBHOST` is the Postgres server's IP: the script runs inside a container, where
+`localhost` is the container itself.
+
+### On the VM: the client UI in `~/ui-temp` (clearing what is there)
+
+```bash
+# 1. Stop whatever runs on 5000 / 5001 now, and remove the old folder
+docker ps --format '{{.Names}}  {{.Ports}}' | grep -E ':500[01]->' || echo "nothing on 5000/5001"
+(cd ~/ui-temp 2>/dev/null && docker compose down) || true
+rm -rf ~/ui-temp
+
+# 2. A fresh checkout of the client repo
+git clone https://github.com/abhinavdg-ever/ui-temp.git ~/ui-temp
+cd ~/ui-temp
 cp .env.example .env
 mkdir -p data/empty
 ```
 
-Edit `/opt/advantmed/client-review/review-ui/.env` and set exactly these (the rest stays as in
-**our** `review-ui/.env`, so copy the `BLOB_*` / Azure lines from there for page images):
+If step 1 still lists a container on 5000 or 5001, stop it by name
+(`docker stop <name> && docker rm <name>`). **Never** stop ours on 4000 / 4001 / 8001.
+
+Edit `~/ui-temp/.env`:
 
 ```ini
-BACKEND_PORT=5000
-FRONTEND_PORT=5001
-ALLOWED_ORIGINS=http://VMIP:5001,http://localhost:5001
-DATA_MODE=production
 DATABASE_URL=postgresql://DBUSER:DBPASS@DBHOST:5432/imaging_outputs_client
-DATA_HOST_PATH=./data/empty
-PIPELINE_HOST_PATH=./data/empty
+ALLOWED_ORIGINS=http://172.20.4.170:5001,http://localhost:5001
 AUTH_SECRET=<output of: openssl rand -hex 32>
-CORE_PIPELINE_URLS=
-DB_POOL_MAX=10
+# Page images: copy the AZURE_STORAGE_* / AZURE_* lines from our review-ui/.env
 ```
 
-`CORE_PIPELINE_URLS=` left empty turns the Playground off, so nobody on 5001 can start a
-pipeline run (needs this repo at or after 27 Oct 2026; older checkouts filled in a default).
-
 ```bash
-# 6. Start it under its own project name, so it never replaces our containers
-docker compose -p client-review up -d --build
+# 3. Start it (project "client-review", fixed in its docker-compose.yml)
+docker compose up -d --build
 curl -fsS localhost:5000/health && echo OK
 
-# 7. Open http://VMIP:5001 and sign in with your usual username and password.
+# 4. Open http://172.20.4.170:5001 and sign in with your usual username and password.
 #    Open port 5001 on the VM's firewall / NSG to the client's network only.
 ```
 
-**Refresh later** (new runs since the copy): `pg_dump` the client DB first, then in our
-`core-pipeline` folder define `clone` again (step 4) and run `clone --replace`. The client's
-ground truth stays. **Update the screens**: `git pull` in `/opt/advantmed/client-review`, then
-step 6 again. **Stop it**: `docker compose -p client-review down` in its `review-ui` folder
-(ours keeps running).
+**Update the screens** (after a sync and push from the laptop):
+`cd ~/ui-temp && git pull && docker compose up -d --build`. **More charts or re-runs**:
+`clone --add` / `clone --update` (section 2c). **Stop it**: `docker compose down` in
+`~/ui-temp` (ours keeps running).
 
 | Check | Expected |
 |---|---|
 | `docker ps` | `client-review-backend-1` on 5000, `client-review-frontend-1` on 5001, plus ours on 4000 / 4001 |
-| :5001 chart list | only charts run since the cutoff |
+| :5001 chart list | only the copied charts |
 | :5001 Page Details | no ground truth on any page |
 | :5001 profile menu | no Playground |
 | A ground truth saved on :5001 | in `imaging_outputs_client`, not in `imaging_outputs` |
 
-## 1. The folder
+## 1. The client repository
 
-Clone the repo again into its own folder. Don't copy the working tree (CLAUDE.md §8).
+`ui-temp` holds only the review UI:
 
-```bash
-sudo mkdir -p /opt/advantmed/client-review && sudo chown "$USER" /opt/advantmed/client-review
-git clone https://github.com/abhinavdg-ever/model-repo.git /opt/advantmed/client-review
-cd /opt/advantmed/client-review/review-ui
+```
+ui-temp/
+├── backend/            copied from review-ui/backend by utilities/sync_client_ui.sh
+├── frontend/           copied from review-ui/frontend
+├── docker-compose.yml  the client's own: ports, project name, no Playground
+├── .env.example
+├── README.md
+└── data/empty/         mounted where our disk workspace would be
 ```
 
-The client only needs review-ui. Never start `core-pipeline` from this folder: the
-pipeline keeps writing to our database, and the client copy is a snapshot (section 5).
+Don't edit `backend/` or `frontend/` there: the next sync overwrites them. Make the
+change in this repo's `review-ui/`, commit it, then sync. The script copies what is
+committed at `HEAD`, so a half-finished change never reaches the client.
 
-To update the client's screens later: `git pull` in this folder, then
-`docker compose up -d --build` (section 3). Their data is not touched.
+Never start `core-pipeline` for the client. The pipeline keeps writing to our database,
+and the client database is a copy (section 5).
 
 ## 2. The database
 
 ### 2a. Create it, with the schema
 
-On the same Postgres server, or another one (`TARGET_DATABASE_URL` as set in 2b):
+With `psql`, as in section 0. Or from a shell:
 
 ```bash
 psql "$SOURCE_DATABASE_URL" -c 'CREATE DATABASE imaging_outputs_client'
-psql "$TARGET_DATABASE_URL" -f /opt/advantmed/client-review/schema/v1.sql
+psql "$TARGET_DATABASE_URL" -f /opt/advantmed/advantmed-imaging-pipeline/schema/v1.sql
 ```
 
 No `psql` on the VM: run it from the Postgres image instead (same two commands):
 
 ```bash
-docker run --rm -v /opt/advantmed/client-review/schema:/schema:ro postgres:16 \
+docker run --rm -v /opt/advantmed/advantmed-imaging-pipeline/schema:/schema:ro postgres:16 \
   psql "$SOURCE_DATABASE_URL" -c 'CREATE DATABASE imaging_outputs_client'
-docker run --rm -v /opt/advantmed/client-review/schema:/schema:ro postgres:16 \
+docker run --rm -v /opt/advantmed/advantmed-imaging-pipeline/schema:/schema:ro postgres:16 \
   psql "$TARGET_DATABASE_URL" -f /schema/v1.sql
 ```
 
@@ -240,49 +288,22 @@ psql "$TARGET_DATABASE_URL" -c "SELECT
 
 ## 3. The client's review-ui
 
-```bash
-cd /opt/advantmed/client-review/review-ui
-cp .env.example .env
-```
+Section 0 has the commands. What its `.env` needs:
 
-Set these in the new `.env`. Everything else stays as in our `.env`, including the Azure
-Blob block, so page images still load:
+| Setting | Value |
+|---|---|
+| `DATABASE_URL` | the client database, `…/imaging_outputs_client` |
+| `ALLOWED_ORIGINS` | the address the client's browser uses, `http://172.20.4.170:5001` |
+| `AUTH_SECRET` | a new long random value: the same usernames and passwords work (the users were copied), but a session from our UI does not open this one |
+| `AZURE_STORAGE_*`, `AZURE_*` | as in our `review-ui/.env`, so page images load |
+| `LOGIN_USERNAME` / `LOGIN_PASSWORD` | the same env admin as ours if you use one, else empty |
+| `BACKEND_PORT` / `FRONTEND_PORT` | only to move off 5000 / 5001 |
+| `SEMANTIC_MODEL_HOST_PATH` | optional: our `core-pipeline/models/semantic-model`, for Accuracy's semantic page-type match |
 
-```ini
-# Its own ports, so it runs beside ours (docker-compose.yml reads them).
-BACKEND_PORT=5000
-FRONTEND_PORT=5001
-ALLOWED_ORIGINS=http://172.20.4.170:5001,http://localhost:5001
+`DATA_MODE`, the empty disk folders and the Playground switch are set in its
+`docker-compose.yml`, not in `.env`, so a copied `.env` cannot turn them back on.
 
-# Database only: the client never sees our disk workspace.
-DATA_MODE=production
-DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/imaging_outputs_client
-# An empty folder: Local mode (top bar) shows nothing.
-DATA_HOST_PATH=./data/empty
-PIPELINE_HOST_PATH=./data/empty
-
-# Its own sign-in secret: the same usernames and passwords work (the users were
-# copied), but a session from one instance does not open the other.
-AUTH_SECRET=<a new long random value>
-# The same env admin account as ours, if you use one there; else leave empty.
-LOGIN_USERNAME=
-LOGIN_PASSWORD=
-
-# No Playground: the client cannot start pipeline runs (empty turns it off).
-CORE_PIPELINE_URLS=
-DB_POOL_MAX=10
-```
-
-Then start it under its own Docker project name, so its containers never replace ours:
-
-```bash
-mkdir -p data/empty
-docker compose -p client-review up -d --build
-curl -fsS localhost:5000/health
-```
-
-Open `http://172.20.4.170:5001`. If a firewall or NSG sits in front of the VM, open port
-5001 there; 5000 can stay internal.
+If a firewall or NSG sits in front of the VM, open port 5001 there; 5000 can stay internal.
 
 ## 4. Accounts
 
@@ -292,7 +313,7 @@ the client should have is made against the client database alone. `--sql` needs 
 `python3`: it asks for the password, prints the SQL with it hashed, and `psql` runs it.
 
 ```bash
-cd /opt/advantmed/client-review
+cd /opt/advantmed/advantmed-imaging-pipeline
 python3 utilities/create_user.py client.lead --name "Client Lead" --role reviewer --sql > /tmp/u.sql
 psql "$TARGET_DATABASE_URL" -f /tmp/u.sql && rm /tmp/u.sql
 ```
@@ -341,5 +362,6 @@ Take a backup before each refresh: `pg_dump "$TARGET_DATABASE_URL" -Fc -f client
 - **Authentication covers ground-truth saves only** (CLAUDE.md §10): other routes are
   open to anyone who can reach the port. Expose :5001 only to the client's network (an
   NSG rule on their IP range, or a VPN), not to the internet.
-- **One codebase:** both folders track the same `main`. Pull the client folder when you
-  want the client to get a change, and only then.
+- **Two repositories, one codebase:** the client UI is a copy of our `review-ui`. It
+  changes only when you run `utilities/sync_client_ui.sh`, push `ui-temp`, and
+  `git pull` on the VM.
