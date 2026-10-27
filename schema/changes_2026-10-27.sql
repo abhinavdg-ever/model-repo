@@ -20,3 +20,12 @@ ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS printed_or_handwritten TE
 ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS handwritten_pct TEXT;
 ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS is_duplicate TEXT;
 ALTER TABLE page_ground_truth ADD COLUMN IF NOT EXISTS is_visible TEXT;
+
+-- 3. dos_extraction_results.extraction_method allows 'kv' (the DOS stage writes it). Our
+--    databases had this from temp_changes_to_db.sql; v1.sql lacked it until 2026-10-27, so a
+--    database built from v1.sql refused the client copy's DOS rows.
+ALTER TABLE dos_extraction_results
+    DROP CONSTRAINT IF EXISTS dos_extraction_results_extraction_method_check;
+ALTER TABLE dos_extraction_results
+    ADD CONSTRAINT dos_extraction_results_extraction_method_check
+    CHECK (extraction_method IS NULL OR extraction_method IN ('rules','llm','rules+llm','kv'));

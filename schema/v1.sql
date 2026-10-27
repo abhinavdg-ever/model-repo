@@ -646,8 +646,9 @@ CREATE TABLE dos_extraction_results (
                                     (jsonb_array_length(dates)) STORED,
 
     extraction_method               VARCHAR(20)
+                                    -- 'kv': a date the key/value ranker supplied.
                                     CHECK (extraction_method IS NULL OR extraction_method IN
-                                          ('rules','llm','rules+llm')),
+                                          ('rules','llm','rules+llm','kv')),
     confidence                      NUMERIC(5,4),
     created_at                      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at                      TIMESTAMPTZ NOT NULL DEFAULT now(),

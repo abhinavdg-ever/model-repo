@@ -110,7 +110,7 @@
 --    axes. Existing databases:
 --      ALTER TABLE imaging_final ADD COLUMN IF NOT EXISTS specialty VARCHAR(100);
 --  * dos_extraction_results.extraction_method also allows 'kv' (a date the
---    key/value ranker supplied). The CHECK is widened below; v1.sql is unchanged.
+--    key/value ranker supplied). In v1.sql since 2026-10-27; widened below for older databases.
 --  * pipeline_stage gains kv_extract (seq 56), after section_headers.
 --  * provider_signature_results follows the electronic-signature extractor
 --    (key, region, scale, sentence, ner text, provider name, signature date
