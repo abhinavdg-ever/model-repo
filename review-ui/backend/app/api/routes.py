@@ -947,7 +947,7 @@ def put_folder_review(
     if user.role == "viewer":
         raise HTTPException(status_code=403, detail="Viewers cannot mark a chart Reviewed")
     if not body.reviewed and user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only an admin can clear the Reviewed mark")
+        raise HTTPException(status_code=403, detail="Reach out to an Admin to enable review")
     try:
         saved = set_chart_review(
             settings.database_url, folder_id, body.reviewed, settings.db_schema, user_id=user.id

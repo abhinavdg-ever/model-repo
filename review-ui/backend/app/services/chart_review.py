@@ -131,7 +131,7 @@ def ensure_not_frozen(database_url: str, folder_id: str, db_schema: str = "publi
     if review.reviewed:
         raise ChartFrozen(
             f"This chart was marked Reviewed by {review.reviewedBy or 'a reviewer'}: "
-            "its ground truth is frozen. An admin can clear the mark in History."
+            "its ground truth is frozen. Reach out to an Admin to enable review."
         )
 
 

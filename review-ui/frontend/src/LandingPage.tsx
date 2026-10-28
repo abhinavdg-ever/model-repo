@@ -936,7 +936,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                           title={
                             folder.reviewed
                               ? `Reviewed by ${folder.reviewed_by || "a reviewer"} on ${formatIst(folder.reviewed_at)}` +
-                                (isAdmin ? ". Click to clear the mark." : "")
+                                (isAdmin ? ". Click to clear the mark." : ". Reach out to an Admin to enable review.")
                               : canMarkReviewed
                                 ? "Mark Reviewed: freezes this chart's ground truth"
                                 : "Not reviewed"
@@ -1084,7 +1084,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
               ) : (
                 <>
                   <strong>{reviewTarget.name}</strong>: its ground truth (page labels, page sequence,
-                  encounters and the member decision) is frozen. Only an admin can clear the mark.
+                  encounters and the member decision) is frozen. To edit it again, reach out to an Admin to enable review.
                 </>
               )}
             </p>

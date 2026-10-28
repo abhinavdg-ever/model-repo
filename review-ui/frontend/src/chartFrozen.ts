@@ -12,7 +12,8 @@ export function useChartFrozen(): ChartReview | null {
   return review?.reviewed ? review : null;
 }
 
-/** "Reviewed by X on 28 Oct 2026, 02:45 pm IST: ground truth is frozen." */
+/** "Chart reviewed by X on 28 Oct 2026, 02:45 pm IST: its ground truth is frozen. Reach out to
+ * an Admin to enable review." */
 export function frozenNote(review: ChartReview): string {
-  return `Chart reviewed by ${review.reviewedBy || "a reviewer"} on ${formatIst(review.reviewedAt)}: its ground truth is frozen. An admin can clear the mark in History.`;
+  return `Chart reviewed by ${review.reviewedBy || "a reviewer"} on ${formatIst(review.reviewedAt)}: its ground truth is frozen. Reach out to an Admin to enable review.`;
 }
