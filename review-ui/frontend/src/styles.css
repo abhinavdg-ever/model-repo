@@ -6724,6 +6724,10 @@ input {
   font-size: 0.8rem;
 }
 
+.gt-banner.is-final-only {
+  max-width: calc(13.5rem + 2 * 12.5rem + 7.128rem + 0.55rem + 4rem);
+}
+
 .gt-banner.is-reviewed {
   border-color: var(--brand-200);
   background: var(--brand-50);

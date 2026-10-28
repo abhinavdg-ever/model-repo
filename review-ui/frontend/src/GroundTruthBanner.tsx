@@ -7,6 +7,7 @@ import {
   type GroundTruthUpdate,
 } from "./api";
 import { ChartReviewContext, SetChartReviewContext } from "./chartFrozen";
+import { ClientViewContext } from "./clientView";
 import { formatIst } from "./istTime";
 import { readSession } from "./session";
 
@@ -27,6 +28,8 @@ export function lastUpdatedText(update: GroundTruthUpdate | undefined): string {
 export default function GroundTruthBanner({ folderId, tab }: { folderId: string; tab: GroundTruthTab }) {
   const review = useContext(ChartReviewContext);
   const onReviewChange = useContext(SetChartReviewContext);
+  // Include Extracted: No (and the client's copy): as wide as the narrower Page Details.
+  const finalOnly = useContext(ClientViewContext);
   const [updates, setUpdates] = useState<ChartGroundTruthUpdates | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -74,7 +77,7 @@ export default function GroundTruthBanner({ folderId, tab }: { folderId: string;
   }
 
   return (
-    <div className={`gt-banner${reviewed ? " is-reviewed" : ""}`} role="status">
+    <div className={`gt-banner${reviewed ? " is-reviewed" : ""}${finalOnly ? " is-final-only" : ""}`} role="status">
       <div className="gt-banner-line">{lastUpdatedText(updates?.[tab])}</div>
       {reviewed ? (
         <div className="gt-banner-line gt-banner-review">
