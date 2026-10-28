@@ -113,17 +113,17 @@ export default function UserProfileMenu({
           {onToggleFinalOnly ? (
             <button
               type="button"
-              className="user-menu-item"
-              role="menuitemcheckbox"
+              className="user-menu-item user-menu-switch-row"
+              role="switch"
               aria-checked={finalOnly}
-              title="Score the Accuracy view, its download and the page marks on the Final value alone (Yes) or the better of Final and Extracted (No)"
-              onClick={() => {
-                setOpen(false);
-                onToggleFinalOnly(!finalOnly);
-              }}
+              title="On: Accuracy and the page marks score the Final value alone. Off: the better of Final and Extracted."
+              onClick={() => onToggleFinalOnly(!finalOnly)}
             >
               <Target size={14} aria-hidden="true" />
-              Accuracy on Final only: <strong>{finalOnly ? "Yes" : "No"}</strong>
+              <span className="user-menu-switch-label">Accuracy on Final only</span>
+              <span className={`user-menu-switch${finalOnly ? " is-on" : ""}`} aria-hidden="true">
+                <span className="user-menu-switch-knob" />
+              </span>
             </button>
           ) : null}
 

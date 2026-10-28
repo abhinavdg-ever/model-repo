@@ -12,10 +12,25 @@ function properPart(part: string): string {
     .replace(/(^|['’.])([a-z])/g, (_, before: string, first: string) => before + first.toUpperCase());
 }
 
+/** A name without the stray marks OCR leaves at either end ("→ Sameera T Raza", "- John
+ *  Smith:", "(Mary Jones)"): letters and digits are kept, and a closing period after an
+ *  initial or a credential ("Bridgett A.", "Jr.") (2026-10-28, user). */
+export function trimName(value: string): string {
+  return value
+    .replace(/^[^\p{L}\p{N}]+/u, "")
+    .replace(/[^\p{L}\p{N}.]+$/u, "")
+    .replace(/(^|[^.])\.+$/u, (_match, before: string, offset: number, whole: string) => {
+      // Keep one period after a short word (an initial, "Jr", "MD"); drop it after a long one.
+      const last = whole.slice(0, offset + before.length).split(/\s+/).pop() ?? "";
+      return last.length <= 3 ? `${before}.` : before;
+    });
+}
+
 /** A person's name in proper case: "WATSON, JOYCE" -> "Watson, Joyce", "o'neil-SMITH" ->
- *  "O'Neil-Smith". Separators (",", "|") and mixed-case spellings are kept. */
+ *  "O'Neil-Smith". Separators (",", "|") and mixed-case spellings are kept; stray marks at
+ *  either end are dropped (trimName). */
 export function properName(value: string): string {
-  return value.replace(/[^\s,|]+/g, (word) => word.split("-").map(properPart).join("-"));
+  return trimName(value).replace(/[^\s,|]+/g, (word) => word.split("-").map(properPart).join("-"));
 }
 
 /** A member's name as shown, in proper case and without the comma (2026-10-27, user):

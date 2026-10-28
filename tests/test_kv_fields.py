@@ -340,3 +340,17 @@ def test_a_junk_phrase_is_not_the_page_name():
                 "DummyDOB": "", "MemberID": ""}
     filled, _people, names = overlay_staged_fields(_empty_fields(), None, staged, expected, "2")
     assert filled["Detected_Full_Name"] == "N/A" and names == []
+
+
+def test_names_lose_stray_marks_at_either_end():
+    """2026-10-28 (user): "→ Sameera T Raza" and the like."""
+    from stages.lib.names import trim_name, trim_signers
+
+    assert trim_name("→ Sameera T Raza") == "Sameera T Raza"
+    assert trim_name("- John Smith:") == "John Smith"
+    assert trim_name("(Mary Jones)") == "Mary Jones"
+    assert trim_name("Bridgett A.") == "Bridgett A."
+    assert trim_name("Smith Jr.") == "Smith Jr."
+    assert trim_name("O'Neil-Smith.") == "O'Neil-Smith"
+    assert trim_name(None) is None
+    assert trim_signers([{"name": "• Ann Lee •", "credentials": "MD"}]) == [{"name": "Ann Lee", "credentials": "MD"}]

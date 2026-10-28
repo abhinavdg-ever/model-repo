@@ -512,9 +512,11 @@ def verify_record(
         fields, people, kv_names = overlay_staged_fields(
             fields, people, page.get("staged"), expected, name_mode
         )
-        fields["Detected_Full_Name"] = trim_extracted_name(
+        from stages.lib.names import trim_name
+
+        fields["Detected_Full_Name"] = trim_name(trim_extracted_name(
             fields["Detected_Full_Name"], expected
-        )
+        )) or "N/A"
         from stages.lib.member.extractors.ner_based.name import is_age_name
         from .extractors.rule_based.name_common import name_matches as _is_member
         from .name_filter import looks_like_person
