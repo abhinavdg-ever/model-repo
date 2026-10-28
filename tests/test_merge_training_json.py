@@ -83,3 +83,35 @@ def test_no_page_text_is_printed(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "SECRET" not in out
     assert not (tmp_path / "o.jsonl").exists()
+
+
+def v29(image, text, l1="Progress Note", l2="Assessment and Plan", size=100, **extra):
+    """A taxonomy v29.2 record, as the annotation tool writes it: no model_type."""
+    return {"image": image, "text": text, "L1": l1, "L2": l2, "L3": "", "specialty": "Cardiology",
+            "codeability": "codeable", "file_size": size, **extra}
+
+
+def test_v29_records_with_no_model_type_are_kept(tmp_path):
+    """2026-10-28: every v29.2 record was dropped for lacking model_type."""
+    a = write(tmp_path / "a.jsonl", [v29("1.jpg", "made up one"), v29("2.jpg", "made up two", l1="Lab Report")])
+    records, report = merge_json.merge([a])
+    assert [r["image"] for r in records] == ["1.jpg", "2.jpg"] and report.missing_fields == 0
+
+
+def test_a_record_with_neither_l1_nor_model_type_is_dropped(tmp_path):
+    a = write(tmp_path / "a.jsonl", [{"image": "1.jpg", "text": "made up", "L2": "Vitals"}])
+    records, report = merge_json.merge([a])
+    assert records == [] and report.missing_fields == 1
+
+
+def test_a_changed_l2_counts_as_a_label_change(tmp_path):
+    a = write(tmp_path / "a.jsonl", [v29("1.jpg", "made up")])
+    b = write(tmp_path / "b.jsonl", [v29("1.jpg", "made up", l2="Vitals")])
+    records, report = merge_json.merge([a, b])
+    assert report.label_changes == 1 and records[0]["L2"] == "Vitals"
+
+
+def test_an_l1_outside_the_v29_taxonomy_is_counted():
+    known = merge_json.load_model_types(merge_json.DEFAULT_AXES_TAXONOMY, merge_json.DEFAULT_TAXONOMY)
+    assert "Progress Note" in known and "Lab Report" in known
+    assert "Not An L1" not in known

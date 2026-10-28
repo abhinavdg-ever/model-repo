@@ -17,8 +17,12 @@ Inputs are read in the order given (a folder: its *.jsonl files, sorted).
 * **Identical text under different names** — very likely the same page twice,
   which would sit on both sides of the train / validation split — reported;
   dropped only with ``--drop-duplicate-text`` (the first one is kept).
-* Records without ``image``, ``text`` or ``model_type`` are dropped and counted.
-  Model types not in ``page_taxonomy.json`` are counted by name (not dropped).
+* Records without ``image``, ``text`` or a label are dropped and counted. The label is
+  ``L1`` (taxonomy v29.2: L1 / L2 / L3 / specialty / codeability, the annotation tool's
+  records today) or ``model_type`` (older records). Before 2026-10-28 every v29.2 record
+  was dropped here for having no ``model_type``.
+  An L1 not in ``training/bert-training/taxonomy.json``, or a model type not in
+  ``page_taxonomy.json``, is counted by name (not dropped).
 
 Page text is patient data: only counts and file names are printed. The output
 is written atomically; it may be one of the inputs (all inputs are read first).
@@ -39,8 +43,21 @@ from typing import Any, Optional
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_TAXONOMY = REPO / "core-pipeline" / "stages" / "lib" / "keyword-canon" / "page_taxonomy.json"
-LABELS = ("model_type", "page_type", "page_subtype")
-REQUIRED = ("image", "text", "model_type")
+# The v29.2 taxonomy the page-axes model trains on (its L1 list).
+DEFAULT_AXES_TAXONOMY = REPO / "training" / "bert-training" / "taxonomy.json"
+LABELS = ("L1", "L2", "L3", "specialty", "codeability", "model_type", "page_type", "page_subtype")
+REQUIRED = ("image", "text")
+# One of these is the record's label: L1 (v29.2) or model_type (older records).
+LABEL_KEYS = ("L1", "model_type")
+
+
+def label_of(record: dict[str, Any]) -> Optional[str]:
+    """The record's top label: its L1 (v29.2), else its model_type."""
+    for key in LABEL_KEYS:
+        value = record.get(key)
+        if value:
+            return str(value)
+    return None
 
 
 @dataclass
@@ -92,7 +109,8 @@ def read_records(path: Path, report: Report) -> list[dict[str, Any]]:
             except ValueError:
                 report.bad_lines[str(path)] += 1
                 continue
-            if not isinstance(record, dict) or any(not record.get(k) for k in REQUIRED):
+            if (not isinstance(record, dict) or any(not record.get(k) for k in REQUIRED)
+                    or label_of(record) is None):
                 report.missing_fields += 1
                 continue
             records.append(record)
@@ -133,8 +151,9 @@ def merge(files: list[Path], *, drop_duplicate_text: bool = False,
                 report.duplicate_text_dropped += 1
                 continue
         by_text.setdefault(digest, str(record["image"]))
-        if model_types is not None and record["model_type"] not in model_types:
-            report.unknown_model_types[record["model_type"]] += 1
+        label = label_of(record)
+        if model_types is not None and label not in model_types:
+            report.unknown_model_types[label] += 1
         out.append(record)
     report.written = len(out)
     return out, report
@@ -153,11 +172,18 @@ def write_atomic(path: Path, records: list[dict[str, Any]]) -> None:
         raise
 
 
-def load_model_types(path: Optional[Path]) -> Optional[set[str]]:
-    if path is None or not path.is_file():
-        return None
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return {m["model_type"] for m in data.get("model_types") or []}
+def load_model_types(*paths: Optional[Path]) -> Optional[set[str]]:
+    """The known top labels: model types of a page_taxonomy.json and L1 names of a v29.2
+    taxonomy.json, from whichever of ``paths`` exist; None when none does."""
+    known: Optional[set[str]] = None
+    for path in paths:
+        if path is None or not path.is_file():
+            continue
+        data = json.loads(path.read_text(encoding="utf-8"))
+        known = known or set()
+        known |= {m["model_type"] for m in data.get("model_types") or []}
+        known |= {l1["name"] for l1 in data.get("L1") or [] if isinstance(l1, dict) and l1.get("name")}
+    return known
 
 
 def print_report(report: Report, out: Path, dry_run: bool) -> None:
@@ -167,7 +193,7 @@ def print_report(report: Report, out: Path, dry_run: bool) -> None:
     for name, count in report.bad_lines.items():
         print(f"  {count} line(s) in {name} are not JSON and were skipped")
     if report.missing_fields:
-        print(f"Dropped {report.missing_fields} record(s) without image, text or model_type")
+        print(f"Dropped {report.missing_fields} record(s) without image, text or a label (L1 / model_type)")
     print(f"Same page in more than one file: {report.same_page_replaced} "
           f"(kept the later; {report.label_changes} with different labels)")
     if report.same_name_other_file:
@@ -182,7 +208,7 @@ def print_report(report: Report, out: Path, dry_run: bool) -> None:
         for first, later in report.duplicate_text[:20]:
             print(f"  {first}  =  {later}")
     if report.unknown_model_types:
-        print("Model types not in page_taxonomy.json (kept):")
+        print("Labels not in the taxonomy (kept):")
         for name, count in report.unknown_model_types.most_common():
             print(f"  {count:6d}  {name}")
     verb = "Would write" if dry_run else "Wrote"
@@ -196,8 +222,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--out", type=Path, required=True, help="merged training_data.jsonl to write")
     parser.add_argument("--drop-duplicate-text", action="store_true",
                         help="drop a record whose text is identical to an earlier one under another name")
-    parser.add_argument("--taxonomy", type=Path, default=DEFAULT_TAXONOMY,
-                        help="page_taxonomy.json to check model types against")
+    parser.add_argument("--taxonomy", type=Path, default=None,
+                        help="taxonomy to check labels against (default: the v29.2 taxonomy.json "
+                             "for L1 and page_taxonomy.json for model types)")
     parser.add_argument("--dry-run", action="store_true", help="report only; write nothing")
     args = parser.parse_args(argv)
 
@@ -206,7 +233,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         parser.error("no input files")
     out = args.out.expanduser()
     records, report = merge(files, drop_duplicate_text=args.drop_duplicate_text,
-                            model_types=load_model_types(args.taxonomy))
+                            model_types=load_model_types(args.taxonomy) if args.taxonomy
+                            else load_model_types(DEFAULT_AXES_TAXONOMY, DEFAULT_TAXONOMY))
     if not args.dry_run:
         write_atomic(out, records)
     print_report(report, out, args.dry_run)
