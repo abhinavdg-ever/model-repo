@@ -2179,12 +2179,6 @@ function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; d
           {agrees ? "✓ matches the decision" : "✕ differs from the decision"}
         </span>
       )}
-      {!dirty && (saved?.savedBy || saved?.savedAt) ? (
-        <span className="member-rejection-role">
-          saved{saved?.savedBy ? ` by ${saved.savedBy}` : ""}
-          {saved?.savedAt ? ` on ${formatIst(saved.savedAt)}` : ""}
-        </span>
-      ) : null}
       {error ? <span className="imaging-gt-hint">{error}</span> : null}
     </div>
   );

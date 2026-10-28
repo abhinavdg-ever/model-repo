@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { formatIst } from "./istTime";
 import { frozenNote, useChartFrozen } from "./chartFrozen";
 import { CircleMinus, Copy, ListPlus, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import {
@@ -144,14 +143,6 @@ function isEmptyDraft(draft: Draft): boolean {
     .every((value) => !value.trim());
 }
 
-function savedNote(review: EncounterReview | null): string {
-  if (!review || review.rows.length === 0) return "";
-  const when = formatIst(review.savedAt, "");
-  return ["Saved", review.savedBy ? `by ${review.savedBy}` : "", when ? `on ${when}` : ""]
-    .filter(Boolean)
-    .join(" ");
-}
-
 /** Ground-truth encounters (the Encounter tab's Ground Truth subtab): page ranges with
  * page type, encounter type and DOS, saved to encounter_review. The saved rows are shown
  * read-only (empty when nothing is saved); Edit opens them as inputs, starting from the
@@ -251,7 +242,7 @@ export function EncounterReviewEditor({
           {loading
             ? "Loading…"
             : !copied
-              ? savedNote(review)
+              ? ""
               : editing
                 ? "Nothing saved yet: copied from the Algorithm encounters."
                 : "Nothing saved yet."}

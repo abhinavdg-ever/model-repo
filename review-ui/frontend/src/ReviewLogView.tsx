@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, RefreshCw } from "lucide-react";
+import { ArrowLeft, CheckCircle2, RefreshCw, Search } from "lucide-react";
 import PageMessage from "./PageMessage";
 import { errorDetail, getReviewLog, type ReviewLogEntry, type ReviewLogResponse } from "./api";
 import { formatIstPlain } from "./istTime";
@@ -137,7 +137,7 @@ export default function ReviewLogView({ onBack, isAdmin, chartHref }: Props) {
       <section className="accuracy-section" aria-label="Review log">
         <div className="review-log-toolbar">
           {isAdmin ? (
-            <label className="review-log-who">
+            <label className="landing-select-wrap">
               <span>User</span>
               <select value={who} onChange={(e) => setWho(e.target.value)}>
                 <option value={SELF}>Me</option>
@@ -150,13 +150,16 @@ export default function ReviewLogView({ onBack, isAdmin, chartHref }: Props) {
               </select>
             </label>
           ) : null}
-          <input
-            className="review-log-search"
-            type="search"
-            placeholder="Search chart, page, field…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
+          <label className="landing-search review-log-search">
+            <Search size={14} aria-hidden="true" />
+            <input
+              type="search"
+              placeholder="Search chart, page, field…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search the review log"
+            />
+          </label>
           <span className="review-log-count">
             {rows.length} {rows.length === 1 ? "save" : "saves"} · {pages} {pages === 1 ? "page" : "pages"}
           </span>

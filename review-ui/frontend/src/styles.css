@@ -6619,20 +6619,8 @@ input {
   gap: 0.6rem;
 }
 
-.review-log-who {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
 .review-log-search {
-  flex: 1;
-  min-width: 12rem;
   max-width: 24rem;
-  padding: 0.35rem 0.6rem;
-  border: 1px solid var(--neutral-300, #c9cfc6);
-  border-radius: 6px;
-  font: inherit;
 }
 
 .review-log-count {
