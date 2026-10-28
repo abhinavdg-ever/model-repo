@@ -1,4 +1,4 @@
-import { Fragment, useState, type FormEvent } from "react";
+import { Fragment, useState, type FormEvent, type MouseEvent } from "react";
 import { formatIstShort } from "./istTime";
 import { ArrowLeft, ChevronDown, ChevronRight, History, Search, X } from "lucide-react";
 import PageMessage from "./PageMessage";
@@ -75,6 +75,13 @@ function Snippet({ s }: { s: OcrSearchSnippet }) {
 
 /** Admins only: find a word or phrase in every page's preliminary OCR (Tesseract) text
  * and in the pages' section headers, one table row per chart. */
+/** A new tab by window.open, not a target=_blank link: the sign-in is per tab
+ * (sessionStorage), and only a window.open tab gets a copy of it. */
+function openInNewTab(event: MouseEvent<HTMLAnchorElement>, href: string) {
+  event.preventDefault();
+  window.open(href, "_blank");
+}
+
 export default function SearchView({ onBack, chartHref }: Props) {
   const [history, setHistory] = useState<Searched[]>(readHistory);
   const [selected, setSelected] = useState<string | null>(() => history.find((h) => answers.has(h.id))?.id ?? null);
@@ -164,10 +171,11 @@ export default function SearchView({ onBack, chartHref }: Props) {
     return (
       <a
         href={chartHref(chart.chart, first)}
-        target="_blank"
-        rel="noopener noreferrer"
         title={first ? `Open at page ${first}, the first hit, in a new tab` : "Open in a new tab"}
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          openInNewTab(e, chartHref(chart.chart, first));
+        }}
       >
         {chart.chart}
       </a>
@@ -177,7 +185,11 @@ export default function SearchView({ onBack, chartHref }: Props) {
   function pageLink(chart: string, pageNumber: number | null | undefined, pageName: string) {
     if (pageNumber == null) return <>{pageName}</>;
     return (
-      <a href={chartHref(chart, pageNumber)} target="_blank" rel="noopener noreferrer" title={`Open page ${pageNumber} in a new tab`}>
+      <a
+        href={chartHref(chart, pageNumber)}
+        title={`Open page ${pageNumber} in a new tab`}
+        onClick={(e) => openInNewTab(e, chartHref(chart, pageNumber))}
+      >
         {pageNumber}
       </a>
     );
