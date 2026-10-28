@@ -141,3 +141,32 @@ def test_encounter_changes_lists_each_encounter_added_removed_or_changed():
         {"field": "encounter", "before": None, "after": "Pages 4–6 · Lab Report"},
     ]
     assert encounter_changes(after, after) == []
+
+
+def test_the_log_lists_only_values_that_changed():
+    # The client sheet as loaded: Page Type is Accept / Unaccept, the page type is in
+    # Encounter Type, Provider Signature holds the credentials, TRUE / NO spellings.
+    sheet = {
+        "page_type": "Accept", "encounter_type": "Progress Note", "provider_signature": "MD",
+        "is_visible": "TRUE", "blank_page": "NO", "junk_page": None, "dos_from": "2025-03-24",
+    }
+    save = {
+        "page_type": "Progress Note", "encounter_type": "Progress Note", "provider_signature": "Yes",
+        "provider_credentials": "MD", "is_visible": "Yes", "blank_page": "No", "junk_page": "No",
+        "dos_from": "2026-03-24",
+    }
+    rows = [
+        _row(1, 10, 33, "bulk_upload", sheet, 0, None, None),
+        _row(2, 10, 33, "manual_entry", save, 5, 7, "Asha"),
+    ]
+    [item] = log_entries(rows, user_id=7, all_users=False)
+    assert item.fields == [{"field": "dos_from", "before": "2025-03-24", "after": "2026-03-24"}]
+
+
+def test_a_real_page_type_change_shows_from_encounter_type():
+    rows = [
+        _row(1, 10, 10, "bulk_upload", {"page_type": "Unaccept", "encounter_type": "Progress Note"}, 0, None, None),
+        _row(2, 10, 10, "manual_entry", {"page_type": "Unaccept", "encounter_type": "Web Encounter"}, 5, 7, "Asha"),
+    ]
+    [item] = log_entries(rows, user_id=7, all_users=False)
+    assert item.fields == [{"field": "encounter_type", "before": "Progress Note", "after": "Web Encounter"}]

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, RefreshCw, RotateCcw, Search } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, RefreshCw, RotateCcw, Search } from "lucide-react";
 import PageMessage from "./PageMessage";
 import { errorDetail, getReviewLog, type ReviewLogEntry, type ReviewLogResponse } from "./api";
 import { formatIstPlain } from "./istTime";
@@ -56,6 +56,14 @@ function shownFields(entry: ReviewLogEntry): Shown[] {
   return [...seen.values()];
 }
 
+const PAGE_SIZE = 10;
+
+/** First, last, and the pages around ``page``: 1 … 4 5 6 … 12. */
+function pageWindow(page: number, totalPages: number): number[] {
+  const out = new Set([1, totalPages, page - 1, page, page + 1]);
+  return [...out].filter((n) => n >= 1 && n <= totalPages).sort((a, b) => a - b);
+}
+
 const SELF = "self";
 const EVERYONE = "all";
 
@@ -69,6 +77,7 @@ export default function ReviewLogView({ onBack, isAdmin, chartHref }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [reload, setReload] = useState(0);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +122,12 @@ export default function ReviewLogView({ onBack, isAdmin, chartHref }: Props) {
         shownFields(item).some((f) => f.label.toLowerCase().includes(q)),
     );
   }, [data, query]);
+
+  // A new search, user or refresh starts again at the first page.
+  useEffect(() => setPage(1), [query, who, reload]);
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const current = Math.min(page, totalPages);
+  const shownRows = rows.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
 
   const showUser = who === EVERYONE;
   const pages = new Set(rows.filter((r) => r.action === "edit").map((r) => `${r.chartName}|${r.pageNumber}`)).size;
@@ -206,7 +221,7 @@ export default function ReviewLogView({ onBack, isAdmin, chartHref }: Props) {
                   </td>
                 </tr>
               ) : (
-                rows.map((item, index) => {
+                shownRows.map((item, index) => {
                   const fields = shownFields(item);
                   return (
                     <tr key={`${item.at}-${item.chartName}-${item.pageNumber}-${index}`}>
@@ -253,6 +268,47 @@ export default function ReviewLogView({ onBack, isAdmin, chartHref }: Props) {
             </tbody>
           </table>
         </div>
+        {rows.length > PAGE_SIZE ? (
+          <div className="landing-pagination" aria-label="Review log pagination">
+            <span className="landing-pagination-meta">
+              {(current - 1) * PAGE_SIZE + 1}–{Math.min(current * PAGE_SIZE, rows.length)} of {rows.length}
+            </span>
+            <div className="landing-pagination-controls">
+              <button
+                type="button"
+                className="landing-page-btn"
+                disabled={current <= 1}
+                onClick={() => setPage(current - 1)}
+                aria-label="Previous page"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              {pageWindow(current, totalPages).map((n, idx, all) => (
+                <span key={n} className="landing-page-num-wrap">
+                  {idx > 0 && n - all[idx - 1] > 1 ? <span className="landing-page-ellipsis">…</span> : null}
+                  <button
+                    type="button"
+                    className={`landing-page-num${n === current ? " active" : ""}`}
+                    onClick={() => setPage(n)}
+                    aria-label={`Page ${n}`}
+                    aria-current={n === current ? "page" : undefined}
+                  >
+                    {n}
+                  </button>
+                </span>
+              ))}
+              <button
+                type="button"
+                className="landing-page-btn"
+                disabled={current >= totalPages}
+                onClick={() => setPage(current + 1)}
+                aria-label="Next page"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
     </div>
   );

@@ -258,8 +258,35 @@ SELECT e.id, g.id, g.chart_name, g.page_number, e.entry_mode, e.labels, e.create
 """
 
 
-def _same(a: object, b: object) -> bool:
-    return (_text(a) or "") == (_text(b) or "")
+_YES = {"yes", "y", "true", "1"}
+_NO = {"no", "n", "false", "0"}
+# Page Details shows these empty as No and a save writes No: not a change.
+_EMPTY_IS_NO = {"provider_signature", "blank_page", "junk_page", "is_invoice"}
+
+
+def _canon(field: str, value: object) -> str:
+    """A label as compared in the log, so it lists only values that changed: case and
+    Yes / TRUE / Y spellings fold together, and an empty Signature or Blank / Junk is No.
+    The client sheet's Provider Signature holds the credentials ("MD"): signed, so Yes."""
+    text = (_text(value) or "").casefold()
+    if not text and field in _EMPTY_IS_NO:
+        return "no"
+    if text in _YES:
+        return "yes"
+    if text in _NO:
+        return "no"
+    if field == "provider_signature" and text:
+        return "yes"
+    return text
+
+
+def _same(field: str, a: object, b: object, before: dict | None = None) -> bool:
+    if field == "provider_credentials" and not _text(a) and before is not None:
+        # Credentials the sheet kept in Provider Signature, now in their own column.
+        signature = (_text(before.get("provider_signature")) or "").casefold()
+        if signature and signature not in _YES | _NO:
+            a = before.get("provider_signature")
+    return _canon(field, a) == _canon(field, b)
 
 
 def log_entries(rows, *, user_id: int | None, all_users: bool) -> list[ReviewLogEntry]:
@@ -276,7 +303,10 @@ def log_entries(rows, *, user_id: int | None, all_users: bool) -> list[ReviewLog
         changed = [
             {"field": key, "before": _text(before.get(key)), "after": _text(value)}
             for key, value in labels.items()
-            if not _same(before.get(key), value)
+            # page_type beside encounter_type is the client sheet's Accept / Unaccept;
+            # Page Details' page type is encounter_type.
+            if not (key == "page_type" and "encounter_type" in labels)
+            and not _same(key, before.get(key), value, before)
         ]
         before.update(labels)
         if mode != "manual_entry" or (not all_users and entry_user != user_id):

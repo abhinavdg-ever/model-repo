@@ -749,7 +749,9 @@ function groundTruthBody(
     dosFrom: cleanGt(values.dos_from),
     dosTo: cleanGt(values.dos_to),
     ...blankJunkStored(values.blank_junk ?? ""),
-    pageType,
+    // The client sheet's Page Type column is Accept / Unaccept, not a page type: kept as
+    // loaded. A page with none gets the page type, as before.
+    pageType: cleanGt(page.groundTruth?.pageType) ?? pageType,
     codeable: cleanGt(values.codeable),
     pageSubtype: cleanGt(values.page_subtype),
     specialty: cleanGt(values.specialty),
