@@ -67,6 +67,9 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * chart_review_entry (v1.sql, 2026-10-28): every chart-level review action, append-only
+--    -- Reviewed marked and cleared, member decision, encounters -- for the Review Log
+--    (changes_2026-10-28.sql).
 --  * chart_review, idx_page_ground_truth_entry_user_id_entry_mode (v1.sql, 2026-10-28): a
 --    chart marked Reviewed freezes its ground truth; the per-user Review Log
 --    (changes_2026-10-28.sql).

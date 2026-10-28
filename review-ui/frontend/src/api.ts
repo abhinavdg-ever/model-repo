@@ -1049,7 +1049,9 @@ export type ReviewLogEntry = {
   pageNumber: number | null;
   at: string;
   user: string | null;
-  action: "edit" | "reviewed";
+  /** edit: a page save. The rest are chart-level (pageNumber null): Reviewed marked or
+   * cleared, the member decision, the encounters. */
+  action: "edit" | "reviewed" | "review_cleared" | "member_decision" | "encounters";
   fields: { field: string; before: string | null; after: string | null }[];
 };
 

@@ -136,9 +136,12 @@ def save_encounter_review(
                 f"pages {before.startPage}–{before.endPage} and "
                 f"{after.startPage}–{after.endPage} overlap"
             )
+    from app.services.chart_review import record_entry
+
     with connection(database_url, db_schema) as conn:
         has_users = _ensure_table(conn, database_url, db_schema)
         with conn.cursor() as cur:
+            before = _read(cur, chart, has_users).rows
             cur.execute("DELETE FROM encounter_review WHERE chart_name = %s", (chart,))
             for seq, row in enumerate(ordered, start=1):
                 cur.execute(
@@ -154,4 +157,28 @@ def save_encounter_review(
                         clean_label(row.dosFrom), clean_label(row.dosTo), user_id,
                     ),
                 )
-            return _read(cur, chart, has_users)
+            saved = _read(cur, chart, has_users)
+        changed = encounter_changes(before, saved.rows)
+        if changed:
+            record_entry(conn, database_url, db_schema, chart, "encounters", changed, user_id=user_id)
+        return saved
+
+
+def _encounter_text(row: EncounterReviewRow) -> str:
+    """'Pages 3–5 · Progress Note · Office Visit · 2024-01-01–2024-01-01'."""
+    pages = f"Pages {row.startPage}" if row.startPage == row.endPage else f"Pages {row.startPage}–{row.endPage}"
+    dos = "–".join(dict.fromkeys(v for v in (row.dosFrom, row.dosTo) if v))
+    return " · ".join(part for part in (pages, row.pageType, row.encounterType, dos) if part)
+
+
+def encounter_changes(
+    before: list[EncounterReviewRow], after: list[EncounterReviewRow]
+) -> list[dict[str, str | None]]:
+    """For the Review Log: each encounter added, removed or changed, keyed by its page range."""
+    old = {(r.startPage, r.endPage): _encounter_text(r) for r in before}
+    new = {(r.startPage, r.endPage): _encounter_text(r) for r in after}
+    return [
+        {"field": "encounter", "before": old.get(key), "after": new.get(key)}
+        for key in sorted(old.keys() | new.keys())
+        if old.get(key) != new.get(key)
+    ]

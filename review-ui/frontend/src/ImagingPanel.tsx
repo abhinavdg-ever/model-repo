@@ -2101,11 +2101,12 @@ function pageList(numbers: number[]): string {
 /** The reviewer's Accept / Reject for the member, saved as chart ground truth
  * (chart_ground_truth, 2026-10-28, user). Like the other ground-truth cells: pick Accept or
  * Reject, it reads "Accept ✓", then Save (floppy) or Discard; a tick when the saved answer
- * agrees with the decision. */
+ * agrees with the decision. Once saved it is read only until the pen opens it again. */
 function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; decision: string }) {
   const frozen = useChartFrozen();
   const [saved, setSaved] = useState<ChartGroundTruth | null>(null);
   const [draft, setDraft] = useState<"accept" | "reject" | null | undefined>(undefined);
+  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -2120,6 +2121,8 @@ function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; d
   const stored = saved?.memberDecision ?? null;
   const shown = draft === undefined ? stored : draft;
   const dirty = draft !== undefined && draft !== stored;
+  // A saved answer shows alone, with the pen; none saved yet: both choices.
+  const choosing = !stored || editing;
   async function save() {
     if (!dirty) return;
     setSaving(true);
@@ -2127,6 +2130,7 @@ function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; d
     try {
       setSaved(await saveChartGroundTruth(folderId, { memberDecision: draft ?? null }));
       setDraft(undefined);
+      setEditing(false);
     } catch (err) {
       setError(saveErrorMessage(err));
     } finally {
@@ -2138,7 +2142,25 @@ function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; d
   return (
     <div className="member-decision-gt">
       <span className="member-decision-label">Ground truth:</span>
-      {(["accept", "reject"] as const).map((option) => (
+      {choosing ? null : (
+        <>
+          <span className={`imaging-gt-discard member-decision-btn is-${stored} is-active is-static`}>
+            {label(stored as "accept" | "reject")}
+            <Check size={13} strokeWidth={2.6} aria-hidden="true" />
+          </span>
+          <button
+            type="button"
+            className="imaging-gt-pen"
+            aria-label="Edit the member decision"
+            title={frozen ? frozenNote(frozen) : "Edit"}
+            disabled={Boolean(frozen)}
+            onClick={() => setEditing(true)}
+          >
+            <Pencil size={11} strokeWidth={2.4} aria-hidden="true" />
+          </button>
+        </>
+      )}
+      {!choosing ? null : (["accept", "reject"] as const).map((option) => (
         <button
           key={option}
           type="button"
@@ -2166,6 +2188,7 @@ function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; d
             disabled={saving}
             onClick={() => {
               setDraft(undefined);
+              setEditing(false);
               setError(null);
             }}
           >
@@ -2173,6 +2196,18 @@ function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; d
             Discard
           </button>
         </span>
+      ) : editing ? (
+        <button
+          type="button"
+          className="imaging-gt-discard"
+          onClick={() => {
+            setEditing(false);
+            setError(null);
+          }}
+        >
+          <X size={14} aria-hidden="true" />
+          Cancel
+        </button>
       ) : null}
       {agrees == null ? null : (
         <span className={agrees ? "cmp-match" : "cmp-mismatch"}>

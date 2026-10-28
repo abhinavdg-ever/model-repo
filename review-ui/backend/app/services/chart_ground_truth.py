@@ -106,10 +106,34 @@ def save_chart_ground_truth(
     *,
     user_id: int | None = None,
 ) -> ChartGroundTruth:
+    from app.services.chart_review import record_entry
+
     chart = _chart_name(folder_id)
     decision = member_decision(body.memberDecision)
+    reason = clean_label(body.memberDecisionReason)
     with connection(database_url, db_schema) as conn:
         _ensure_table(conn, database_url, db_schema)
         with conn.cursor() as cur:
-            cur.execute(_UPSERT, (chart, decision, clean_label(body.memberDecisionReason), user_id))
+            cur.execute(
+                "SELECT member_decision, member_decision_reason FROM chart_ground_truth "
+                "WHERE chart_name = %s",
+                (chart,),
+            )
+            before = cur.fetchone() or (None, None)
+            cur.execute(_UPSERT, (chart, decision, reason, user_id))
+        # The Review Log: what the save changed, Accept / Reject as the tab shows them.
+        changed = [
+            {"field": field, "before": shown(old), "after": shown(new)}
+            for field, old, new, shown in (
+                ("member_decision", before[0], decision, _decision_label),
+                ("member_decision_reason", before[1], reason, lambda v: v),
+            )
+            if (old or None) != (new or None)
+        ]
+        if changed:
+            record_entry(conn, database_url, db_schema, chart, "member_decision", changed, user_id=user_id)
     return load_chart_ground_truth(database_url, folder_id, db_schema)
+
+
+def _decision_label(value: str | None) -> str | None:
+    return value.capitalize() if value else None

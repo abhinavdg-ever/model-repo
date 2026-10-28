@@ -226,15 +226,16 @@ class ChartReview(BaseModel):
 
 
 class ReviewLogEntry(BaseModel):
-    """One ground-truth save by a user (page_ground_truth_entry, manual_entry), or a chart
-    they marked Reviewed (pageNumber None). ``fields`` are the page_ground_truth columns the
+    """One ground-truth save by a user (page_ground_truth_entry, manual_entry), or a
+    chart-level action (chart_review_entry; pageNumber None): Reviewed marked or cleared,
+    member decision, encounters. ``fields`` are the page_ground_truth columns the
     save changed, each with its value before and after."""
 
     chartName: str
     pageNumber: int | None = None
     at: str
     user: str | None = None
-    action: str = "edit"  # edit | reviewed
+    action: str = "edit"  # edit | reviewed | review_cleared | member_decision | encounters
     fields: list[dict[str, str | None]] = []
 
 

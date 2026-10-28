@@ -6559,6 +6559,11 @@ input {
   color: #fff;
 }
 
+/* A saved member decision: read only until the pen opens it. */
+.member-decision-btn.is-static {
+  cursor: default;
+}
+
 /* Its Save / Discard sit right after the choice, not at the far right. */
 .member-decision-gt .imaging-gt-savebar {
   margin-left: 0.4rem;
@@ -6650,6 +6655,14 @@ input {
   align-items: center;
   gap: 0.3rem;
   color: var(--brand-800);
+  font-weight: 600;
+}
+
+.review-log-cleared {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--status-warning-fg);
   font-weight: 600;
 }
 

@@ -507,6 +507,29 @@ CREATE TRIGGER trg_chart_review_updated_at
     BEFORE UPDATE ON chart_review
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+-- Every chart-level review action, append-only (review-ui's Review Log, 2026-10-28): a
+-- chart marked Reviewed ('reviewed') and the mark cleared ('review_cleared'), a member
+-- decision saved ('member_decision'), the encounters saved ('encounters'). ``fields`` holds
+-- what changed, [{"field", "before", "after"}]. Page saves are in page_ground_truth_entry.
+CREATE TABLE chart_review_entry (
+    id                      BIGSERIAL PRIMARY KEY,
+    chart_name              VARCHAR(150) NOT NULL,
+    action                  VARCHAR(30) NOT NULL
+                            CHECK (action IN ('reviewed', 'review_cleared',
+                                              'member_decision', 'encounters')),
+    fields                  JSONB NOT NULL DEFAULT '[]'::jsonb,
+    user_id                 BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_chart_review_entry_chart_name ON chart_review_entry(chart_name);
+CREATE INDEX idx_chart_review_entry_user_id ON chart_review_entry(user_id);
+
+CREATE TRIGGER trg_chart_review_entry_updated_at
+    BEFORE UPDATE ON chart_review_entry
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 -- The review log reads one user's saves (review-ui's Review Log, 2026-10-28).
 CREATE INDEX idx_page_ground_truth_entry_user_id_entry_mode
     ON page_ground_truth_entry(user_id, entry_mode);

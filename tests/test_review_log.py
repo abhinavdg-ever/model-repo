@@ -89,3 +89,55 @@ def test_reviewed_fields_ride_on_the_page_and_the_chart_list():
     assert truth.reviewedBy == "Asha"
     row = FolderSummary(id="c", name="c", reviewed=True, reviewed_by="Asha")
     assert row.reviewed and row.reviewed_by == "Asha"
+
+
+def test_chart_review_entry_is_in_the_schema_and_the_changes_file():
+    v1 = (REPO_ROOT / "schema" / "v1.sql").read_text(encoding="utf-8")
+    assert "CREATE TABLE chart_review_entry (" in v1
+    assert "CREATE TRIGGER trg_chart_review_entry_updated_at" in v1
+    changes = (REPO_ROOT / "schema" / "changes_2026-10-28.sql").read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS chart_review_entry" in changes
+    from app.services.chart_review import _CREATE_ENTRY_TABLE
+
+    for action in ("'reviewed'", "'review_cleared'", "'member_decision'", "'encounters'"):
+        assert action in v1.split("CREATE TABLE chart_review_entry (")[1].split(");")[0]
+        assert action in _CREATE_ENTRY_TABLE
+
+
+def test_marking_and_clearing_a_review_are_both_logged_and_the_log_reads_them():
+    import inspect
+
+    from app.services import chart_review
+
+    body = inspect.getsource(chart_review.set_chart_review)
+    assert '"reviewed" if reviewed else "review_cleared"' in body
+    assert "RETURNING id" in body  # a no-op mark or clear is not logged
+    assert "FROM chart_review_entry r" in inspect.getsource(chart_review.review_log)
+
+
+def test_member_decision_and_encounter_saves_are_logged():
+    import inspect
+
+    from app.services import chart_ground_truth, encounter_review
+
+    assert '"member_decision", changed' in inspect.getsource(chart_ground_truth.save_chart_ground_truth)
+    assert '"encounters", changed' in inspect.getsource(encounter_review.save_encounter_review)
+
+
+def test_encounter_changes_lists_each_encounter_added_removed_or_changed():
+    from app.core.schemas import EncounterReviewRow
+    from app.services.encounter_review import encounter_changes
+
+    def row(start, end, page_type, dos=None):
+        return EncounterReviewRow(
+            seq=1, startPage=start, endPage=end, pageType=page_type, encounterType=None,
+            dosFrom=dos, dosTo=dos,
+        )
+
+    before = [row(1, 2, "Progress Note", "2024-01-01"), row(3, 3, "Lab Report")]
+    after = [row(1, 2, "Progress Note", "2024-01-01"), row(3, 3, "Radiology"), row(4, 6, "Lab Report")]
+    assert encounter_changes(before, after) == [
+        {"field": "encounter", "before": "Pages 3 · Lab Report", "after": "Pages 3 · Radiology"},
+        {"field": "encounter", "before": None, "after": "Pages 4–6 · Lab Report"},
+    ]
+    assert encounter_changes(after, after) == []
