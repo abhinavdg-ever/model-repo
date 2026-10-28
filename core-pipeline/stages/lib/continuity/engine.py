@@ -78,11 +78,13 @@ DECIDED_BY = (
 @dataclass(frozen=True)
 class Line:
     """One line of page text, lower-cased, with its vertical extent as a fraction of the
-    page height when the OCR gave one."""
+    page height when the OCR gave one. ``raw`` keeps the line as read (case kept): only
+    starts_mid_thought needs the case, which the lower-cased text has lost."""
 
     text: str
     top: Optional[float] = None
     bottom: Optional[float] = None
+    raw: str = ""
 
 
 @dataclass
@@ -282,7 +284,7 @@ def normalize(text: str) -> str:
 
 
 def text_lines(text: str) -> list[Line]:
-    return [Line(normalize(line)) for line in (text or "").splitlines() if line.strip()]
+    return [Line(normalize(line), raw=line.strip()) for line in (text or "").splitlines() if line.strip()]
 
 
 def head(page: PageInput, rules: Rules) -> list[str]:
@@ -525,7 +527,8 @@ def score_gap(
         P["same_footer_line"] = pts("same_footer_line")
     shared = furniture([l.text for l in a.lines], [l.text for l in b.lines], min_chars)
     a_rest = [t for t in a_body_text if normalized_line(t) not in shared]
-    b_rest = [t for t in b_body_text if normalized_line(t) not in shared]
+    b_rest_lines = [l for l in b_body if normalized_line(l.text) not in shared]
+    b_rest = [l.text for l in b_rest_lines]
     tail, top = tail_block(a_rest, rules.semantic.tail_nth_word), head_block(b_rest, rules.semantic.tail_nth_word)
     if tail and top:
         sem = rules.semantic
@@ -536,7 +539,9 @@ def score_gap(
             # Tie-breakers only beside a wording signal that already fires.
             if a_rest and cut_mid_sentence(a_rest[-1]):
                 E["cut_mid_sentence"] = pts("cut_mid_sentence")
-            if b_rest and starts_mid_thought(b_rest[0]):
+            # On the line as read: every lower-cased line would start lower case
+            # (2026-10-28, the signal fired on nearly every gap).
+            if b_rest_lines and starts_mid_thought(b_rest_lines[0].raw):
                 O["starts_mid_thought"] = pts("starts_mid_thought")
         if word >= 0.05:
             P["wording_word"] = round(pts("wording_word") * word, 2)

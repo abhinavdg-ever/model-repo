@@ -54,9 +54,10 @@ def lines_from_final2(page: dict[str, Any]) -> list[Line]:
     out = []
     for line in meta.get("lines") or []:
         extent = _extent(line.get("polygon"), height)
-        text = normalize(str(line.get("content") or ""))
+        raw = str(line.get("content") or "").strip()
+        text = normalize(raw)
         if extent and text:
-            out.append(Line(text, *extent))
+            out.append(Line(text, *extent, raw=raw))
     return sorted(out, key=lambda l: (l.top, l.bottom))
 
 
@@ -88,9 +89,10 @@ def lines_from_final1(page: dict[str, Any]) -> list[Line]:
     out = []
     for group in grouped:
         group.sort(key=lambda w: w[2])
-        text = normalize(" ".join(w[3] for w in group))
+        raw = " ".join(w[3] for w in group)
+        text = normalize(raw)
         if text:
-            out.append(Line(text, min(w[0] for w in group), max(w[1] for w in group)))
+            out.append(Line(text, min(w[0] for w in group), max(w[1] for w in group), raw=raw))
     return out
 
 

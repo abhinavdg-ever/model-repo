@@ -621,3 +621,29 @@ class TestEncounterSignals:
         demo = dict(page_type="Demographics", names=("Patient Demographics", "Demographics"))
         rows = assign([bare(1, printed=(1, 2), **demo), bare(2, printed=(2, 2), **demo)])
         assert rows[0]["document_seq"] == rows[1]["document_seq"]
+
+
+class TestStartsMidThought:
+    """2026-10-28: lines are lower-cased for matching, so the check ran on lower-case text
+    and fired on nearly every gap with shared wording. It now reads the line as written."""
+
+    def _gap(self, first_line_as_read):
+        a = page(1, "the patient reports chest pain radiating to the left arm since monday evening")
+        b = page(2, f"{first_line_as_read}\nchest pain radiating to the left arm eased on monday evening")
+        b.lines = [dataclasses.replace(l, raw=first_line_as_read) if l.text == first_line_as_read.lower() else l
+                   for l in b.lines]
+        return gap(assign([a, b])[1])
+
+    def test_a_capitalised_first_line_does_not_fire(self):
+        g = self._gap("Assessment and plan reviewed with the patient today")
+        assert "wording_char" in g["pair"]
+        assert "starts_mid_thought" not in g["opening"]
+
+    def test_a_lower_case_first_line_fires(self):
+        g = self._gap("and was advised to continue the current medication")
+        assert "wording_char" in g["pair"]
+        assert "starts_mid_thought" in g["opening"]
+
+    def test_text_lines_keep_the_case_as_read(self):
+        line = text_lines("  Chest Pain  \n")[0]
+        assert (line.text, line.raw) == ("chest pain", "Chest Pain")
