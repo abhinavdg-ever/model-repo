@@ -23,6 +23,7 @@ export type FolderSummary = {
   /** Marked Reviewed in History: the chart's ground truth is frozen. */
   reviewed?: boolean;
   reviewed_by?: string | null;
+  reviewed_by_id?: number | null;
   reviewed_at?: string | null;
   on_disk?: boolean;
   /** Chart metadata (manifest / metadata CSV). */
@@ -692,14 +693,39 @@ export function getAccuracyReport(fresh = false): Promise<{ charts: AccuracyChar
 }
 
 
+/** Fired on window after a ground-truth save succeeds (detail: the folder id), so the
+ * "Last Updated By" banner reloads. */
+export const GROUND_TRUTH_SAVED = "ground-truth-saved";
+
+function announceSave<T>(folderId: string, saved: Promise<T>): Promise<T> {
+  return saved.then((result) => {
+    window.dispatchEvent(new CustomEvent(GROUND_TRUTH_SAVED, { detail: folderId }));
+    return result;
+  });
+}
+
+/** Who last changed one ground-truth tab: a user's save, or (bulk) the spreadsheet load. */
+export type GroundTruthUpdate = { bulk: boolean; by?: string | null; at?: string | null };
+
+export type ChartGroundTruthUpdates = {
+  page: GroundTruthUpdate;
+  encounter: GroundTruthUpdate;
+  sequencing: GroundTruthUpdate;
+  member: GroundTruthUpdate;
+};
+
+export function getGroundTruthUpdates(folderId: string): Promise<ChartGroundTruthUpdates> {
+  return api(`/api/folders/${encodeURIComponent(folderId)}/ground-truth/updates`);
+}
+
 export function savePageGroundTruth(
   folderId: string,
   body: PageGroundTruth,
 ): Promise<PageGroundTruth> {
-  return api(`/api/folders/${encodeURIComponent(folderId)}/ground-truth`, {
+  return announceSave(folderId, api(`/api/folders/${encodeURIComponent(folderId)}/ground-truth`, {
     method: "POST",
     body: JSON.stringify(body),
-  });
+  }));
 }
 
 /** Set the ground-truth actual sequence of the given pages; returns the chart's
@@ -708,10 +734,10 @@ export function savePageSequences(
   folderId: string,
   pages: { pageNumber: number; sourcePageId?: string | null; pageSequence: string | null }[],
 ): Promise<PageGroundTruth[]> {
-  return api(`/api/folders/${encodeURIComponent(folderId)}/ground-truth/sequence`, {
+  return announceSave(folderId, api(`/api/folders/${encodeURIComponent(folderId)}/ground-truth/sequence`, {
     method: "PUT",
     body: JSON.stringify({ pages }),
-  });
+  }));
 }
 
 /** A reviewer's encounter: a page range and its values. Not ground truth. */
@@ -740,10 +766,10 @@ export function saveEncounterReview(
   folderId: string,
   rows: EncounterReviewRow[],
 ): Promise<EncounterReview> {
-  return api(`/api/folders/${encodeURIComponent(folderId)}/encounter-review`, {
+  return announceSave(folderId, api(`/api/folders/${encodeURIComponent(folderId)}/encounter-review`, {
     method: "PUT",
     body: JSON.stringify({ rows }),
-  });
+  }));
 }
 
 /** The reviewer's chart-level ground truth: the member decision (Rejection Rules tab). */
@@ -759,10 +785,10 @@ export function getChartGroundTruth(folderId: string): Promise<ChartGroundTruth>
 }
 
 export function saveChartGroundTruth(folderId: string, body: ChartGroundTruth): Promise<ChartGroundTruth> {
-  return api(`/api/folders/${encodeURIComponent(folderId)}/chart-ground-truth`, {
+  return announceSave(folderId, api(`/api/folders/${encodeURIComponent(folderId)}/chart-ground-truth`, {
     method: "PUT",
     body: JSON.stringify(body),
-  });
+  }));
 }
 
 export function getFolderExtraction(
@@ -999,6 +1025,7 @@ export async function downloadManualReviewSummary(input: ManualReviewInput, repo
 export type ChartReview = {
   reviewed: boolean;
   reviewedBy?: string | null;
+  reviewedById?: number | null;
   reviewedAt?: string | null;
 };
 
@@ -1006,7 +1033,8 @@ export function getChartReview(folderId: string): Promise<ChartReview> {
   return api(`/api/folders/${encodeURIComponent(folderId)}/review`);
 }
 
-/** Mark the chart Reviewed (reviewers, admins) or clear the mark (admins). */
+/** Mark the chart Reviewed (reviewers, admins) or clear the mark (admins, or whoever
+ * marked it). */
 export function setChartReview(folderId: string, reviewed: boolean): Promise<ChartReview> {
   return api(`/api/folders/${encodeURIComponent(folderId)}/review`, {
     method: "PUT",

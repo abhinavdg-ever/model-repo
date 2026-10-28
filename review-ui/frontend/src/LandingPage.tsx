@@ -353,7 +353,11 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   const skipFilterPageReset = useRef(true);
   const isAdmin = readSession()?.user.role === "admin";
   const canMarkReviewed = readSession()?.user.role !== "viewer";
-  // Mark Reviewed (freezes the chart's ground truth) / clear it (admins), after a confirm.
+  const myId = readSession()?.user.id ?? null;
+  // Admins, or the user who marked it, may clear a chart's Reviewed mark.
+  const canClearReview = (folder: FolderSummary) =>
+    isAdmin || (myId != null && folder.reviewed_by_id === myId);
+  // Mark Reviewed (freezes the chart's ground truth) / clear it, after a confirm.
   const [reviewTarget, setReviewTarget] = useState<FolderSummary | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
@@ -512,7 +516,13 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
       setFolders((rows) =>
         rows.map((row) =>
           row.id === reviewTarget.id
-            ? { ...row, reviewed: saved.reviewed, reviewed_by: saved.reviewedBy ?? null, reviewed_at: saved.reviewedAt ?? null }
+            ? {
+                ...row,
+                reviewed: saved.reviewed,
+                reviewed_by: saved.reviewedBy ?? null,
+                reviewed_by_id: saved.reviewedById ?? null,
+                reviewed_at: saved.reviewedAt ?? null,
+              }
             : row,
         ),
       );
@@ -928,7 +938,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                         <button
                           type="button"
                           className={`reviewed-btn${folder.reviewed ? " is-reviewed" : ""}`}
-                          disabled={folder.reviewed ? !isAdmin : !canMarkReviewed}
+                          disabled={folder.reviewed ? !canClearReview(folder) : !canMarkReviewed}
                           onClick={() => {
                             setReviewError(null);
                             setReviewTarget(folder);
@@ -936,7 +946,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                           title={
                             folder.reviewed
                               ? `Reviewed by ${folder.reviewed_by || "a reviewer"} on ${formatIst(folder.reviewed_at)}` +
-                                (isAdmin ? ". Click to clear the mark." : ". Reach out to an Admin to enable review.")
+                                (canClearReview(folder) ? ". Click to clear the mark." : ". Reach out to an Admin to enable review.")
                               : canMarkReviewed
                                 ? "Mark Reviewed: freezes this chart's ground truth"
                                 : "Not reviewed"

@@ -78,11 +78,11 @@ def reviewed_charts(database_url: str, db_schema: str = "public") -> dict[str, C
         _ensure_table(conn, database_url, db_schema)
         with conn.cursor() as cur:
             who = _who(_has_users(cur), "r")
-            cur.execute(f"SELECT r.chart_name, {who}, r.updated_at FROM chart_review r")
+            cur.execute(f"SELECT r.chart_name, {who}, r.updated_at, r.user_id FROM chart_review r")
             rows = cur.fetchall()
     return {
-        str(name): ChartReview(reviewed=True, reviewedBy=by, reviewedAt=_iso(at))
-        for name, by, at in rows
+        str(name): ChartReview(reviewed=True, reviewedBy=by, reviewedAt=_iso(at), reviewedById=uid)
+        for name, by, at, uid in rows
     }
 
 
@@ -93,12 +93,13 @@ def load_chart_review(database_url: str, folder_id: str, db_schema: str = "publi
         with conn.cursor() as cur:
             who = _who(_has_users(cur), "r")
             cur.execute(
-                f"SELECT {who}, r.updated_at FROM chart_review r WHERE r.chart_name = %s", (chart,)
+                f"SELECT {who}, r.updated_at, r.user_id FROM chart_review r WHERE r.chart_name = %s",
+                (chart,),
             )
             row = cur.fetchone()
     if row is None:
         return ChartReview()
-    return ChartReview(reviewed=True, reviewedBy=row[0], reviewedAt=_iso(row[1]))
+    return ChartReview(reviewed=True, reviewedBy=row[0], reviewedAt=_iso(row[1]), reviewedById=row[2])
 
 
 def set_chart_review(

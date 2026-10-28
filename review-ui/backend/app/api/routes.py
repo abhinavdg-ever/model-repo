@@ -13,6 +13,7 @@ from app.adapters.base import FolderRepository
 from app.adapters.factory import get_repository, request_is_production
 from app.core.config import ROOT_DIR, Settings, get_settings
 from app.core.schemas import (
+    ChartGroundTruthUpdates,
     ChartReview,
     ReviewLogResponse,
     LoginRequest,
@@ -70,6 +71,7 @@ from app.services.ground_truth import (
 )
 from app.services.encounter_review import load_encounter_review, save_encounter_review
 from app.services.chart_ground_truth import load_chart_ground_truth, save_chart_ground_truth
+from app.services.ground_truth_updates import ground_truth_updates
 from app.services.chart_review import (
     ChartFrozen,
     ensure_not_frozen,
@@ -939,19 +941,23 @@ def put_folder_review(
     user: SignedInUser | None = Depends(current_user),
 ) -> ChartReview:
     """Mark the chart Reviewed (reviewers and admins), freezing its ground truth; or clear
-    the mark (admins only)."""
+    the mark (admins, or the user who marked it)."""
     if not database_url_usable(settings.database_url):
         raise HTTPException(status_code=503, detail="Database is not configured")
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in again to mark the chart")
     if user.role == "viewer":
         raise HTTPException(status_code=403, detail="Viewers cannot mark a chart Reviewed")
-    if not body.reviewed and user.role != "admin":
-        raise HTTPException(status_code=403, detail="Reach out to an Admin to enable review")
     try:
+        if not body.reviewed and user.role != "admin":
+            marked = load_chart_review(settings.database_url, folder_id, settings.db_schema)
+            if marked.reviewedById is None or marked.reviewedById != user.id:
+                raise HTTPException(status_code=403, detail="Reach out to an Admin to enable review")
         saved = set_chart_review(
             settings.database_url, folder_id, body.reviewed, settings.db_schema, user_id=user.id
         )
+    except HTTPException:
+        raise
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -959,6 +965,22 @@ def put_folder_review(
         raise HTTPException(status_code=502, detail="Could not save the review mark") from exc
     logger.info("chart %s %s by %s", folder_id, "marked Reviewed" if body.reviewed else "unmarked", user.username)
     return saved
+
+
+@router.get("/folders/{folder_id}/ground-truth/updates", response_model=ChartGroundTruthUpdates)
+def get_folder_ground_truth_updates(
+    folder_id: str, settings: Settings = Depends(get_settings)
+) -> ChartGroundTruthUpdates:
+    """Who last updated each ground-truth tab (a user, or the bulk upload), and when."""
+    if not database_url_usable(settings.database_url):
+        return ChartGroundTruthUpdates()
+    try:
+        return ground_truth_updates(settings.database_url, folder_id, settings.db_schema)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("ground truth updates read failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not read the last update") from exc
 
 
 @router.get("/review-log", response_model=ReviewLogResponse)

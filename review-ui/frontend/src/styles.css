@@ -6709,3 +6709,66 @@ input {
   color: var(--brand-800);
   font-size: 0.8rem;
 }
+
+/* Last Updated By banner: Page Details, Encounter, Sequencing, Rejection Rules. */
+.gt-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0 0 0.5rem;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--neutral-200);
+  border-radius: 6px;
+  background: var(--neutral-50);
+  color: var(--neutral-700);
+  font-size: 0.8rem;
+}
+
+.gt-banner.is-reviewed {
+  border-color: var(--brand-200);
+  background: var(--brand-50);
+}
+
+.gt-banner-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.gt-banner-review {
+  color: var(--brand-800);
+  font-weight: 600;
+}
+
+.gt-banner-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 400;
+}
+
+.gt-banner button {
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--brand-400);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--brand-700);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.gt-banner button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.gt-banner-hint {
+  font-weight: 400;
+  color: var(--neutral-600);
+}
+
+.gt-banner-error {
+  color: var(--status-error-fg);
+}

@@ -59,7 +59,7 @@ import FullscreenPageChrome from "./FullscreenPageChrome";
 import PageJump from "./PageJump";
 import { blankJunkTruth } from "./groundTruth";
 import { useImagePan } from "./useImagePan";
-import { ChartReviewContext } from "./chartFrozen";
+import { ChartReviewContext, SetChartReviewContext } from "./chartFrozen";
 import { usePageViewerHotkeys } from "./usePageViewerHotkeys";
 import { loadEncounterReview } from "./ReviewTables";
 import type { ChartRef } from "./chartSequence";
@@ -1243,6 +1243,7 @@ export default function FolderViewer({
 
   return (
     <ChartReviewContext.Provider value={chartReview}>
+    <SetChartReviewContext.Provider value={setChartReview}>
     <div className="workspace">
       {showBootOverlay ? (
         <div className="chart-boot-overlay" role="status" aria-live="polite" aria-busy="true">
@@ -1886,6 +1887,7 @@ export default function FolderViewer({
       )}
       {isFullscreen ? null : leaveModal}
     </div>
+    </SetChartReviewContext.Provider>
     </ChartReviewContext.Provider>
   );
 }

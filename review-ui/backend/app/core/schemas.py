@@ -29,6 +29,7 @@ class FolderSummary(BaseModel):
     # Marked Reviewed in History (chart_review): its ground truth is frozen.
     reviewed: bool = False
     reviewed_by: str | None = None
+    reviewed_by_id: int | None = None
     reviewed_at: datetime | None = None
     # True when the chart folder exists under the review-ui data root.
     on_disk: bool = False
@@ -220,6 +221,7 @@ class ChartReview(BaseModel):
 
     reviewed: bool = False
     reviewedBy: str | None = None
+    reviewedById: int | None = None  # who marked it: they (or an admin) may clear the mark
     reviewedAt: str | None = None  # UTC ISO; the UI shows IST
 
 
@@ -244,6 +246,25 @@ class ReviewLogResponse(BaseModel):
 
 class EncounterReviewSave(BaseModel):
     rows: list[EncounterReviewRow]
+
+
+class GroundTruthUpdate(BaseModel):
+    """Who last changed one part of a chart's ground truth, and when: a manual save
+    (by = the user) or, when none was made since, the spreadsheet load (bulk)."""
+
+    bulk: bool = False
+    by: str | None = None
+    at: str | None = None  # UTC ISO; the UI shows IST
+
+
+class ChartGroundTruthUpdates(BaseModel):
+    """Last update of each ground-truth tab: Page Details, Encounter, Sequencing and
+    Rejection Rules (the member decision)."""
+
+    page: GroundTruthUpdate = GroundTruthUpdate()
+    encounter: GroundTruthUpdate = GroundTruthUpdate()
+    sequencing: GroundTruthUpdate = GroundTruthUpdate()
+    member: GroundTruthUpdate = GroundTruthUpdate()
 
 
 class ChartGroundTruth(BaseModel):

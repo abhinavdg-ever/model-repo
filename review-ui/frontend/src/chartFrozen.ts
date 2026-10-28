@@ -7,6 +7,9 @@ import { formatIst } from "./istTime";
  * read only; the server refuses a save too. */
 export const ChartReviewContext = createContext<ChartReview | null>(null);
 
+/** Replaces the open chart's Reviewed mark after the banner clears it. */
+export const SetChartReviewContext = createContext<((review: ChartReview) => void) | null>(null);
+
 export function useChartFrozen(): ChartReview | null {
   const review = useContext(ChartReviewContext);
   return review?.reviewed ? review : null;

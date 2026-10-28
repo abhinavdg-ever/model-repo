@@ -1,6 +1,7 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
 import { formatIst } from "./istTime";
 import { frozenNote, useChartFrozen } from "./chartFrozen";
+import GroundTruthBanner from "./GroundTruthBanner";
 import { CalendarDays, Check, ChevronLeft, ChevronRight, CircleMinus, Pencil, Save, X } from "lucide-react";
 import {
   getChartGroundTruth,
@@ -1869,7 +1870,7 @@ function PageDetails({
 
   return (
     <div className="imaging-page-details">
-      {frozen ? <p className="page-frozen-note">{frozenNote(frozen)}</p> : null}
+      {compact && frozen ? <p className="page-frozen-note">{frozenNote(frozen)}</p> : null}
       {page.groundTruth?.reviewedBy || page.groundTruth?.reviewedAt ? (
         // The page's last manual save; the server keeps GMT, shown in IST.
         <p className="page-last-review">
@@ -2711,6 +2712,7 @@ export default function ImagingPanel({
     return (
       <div className="imaging-panel-stack">
         <ManifestDetails manifest={manifest} />
+        <GroundTruthBanner folderId={document.folder_id} tab="sequencing" />
         <SequencingTable
           folderId={document.folder_id}
           pages={seqRows}
@@ -2729,6 +2731,7 @@ export default function ImagingPanel({
     return (
       <div className="imaging-panel-stack">
         <ManifestDetails manifest={manifest} />
+        <GroundTruthBanner folderId={document.folder_id} tab="encounter" />
         <EncounterIdentification
           key={document.folder_id}
           folderId={document.folder_id}
@@ -2744,6 +2747,7 @@ export default function ImagingPanel({
     return (
       <div className="imaging-panel-stack">
         <ManifestDetails manifest={manifest} />
+        <GroundTruthBanner folderId={document.folder_id} tab="member" />
         <MemberVerificationTable
           rows={verifications}
           pages={document.pages}
@@ -2768,6 +2772,7 @@ export default function ImagingPanel({
     return (
       <div className="imaging-panel-stack">
         <ManifestDetails manifest={manifest} />
+        <GroundTruthBanner folderId={document.folder_id} tab="page" />
         <div className="ocr-empty">
           {currentFileName
             ? `No imaging row for ${currentFileName}.`
@@ -2780,6 +2785,7 @@ export default function ImagingPanel({
   return (
     <div className="imaging-panel-stack">
       {compact ? null : <ManifestDetails manifest={manifest} />}
+      {compact ? null : <GroundTruthBanner folderId={document.folder_id} tab="page" />}
       <PageDetails
         folderId={document.folder_id}
         page={currentPage}

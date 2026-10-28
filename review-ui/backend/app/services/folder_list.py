@@ -445,5 +445,6 @@ def _review_fields(review) -> dict:
     return {
         "reviewed": True,
         "reviewed_by": review.reviewedBy,
+        "reviewed_by_id": review.reviewedById,
         "reviewed_at": review.reviewedAt,
     }
