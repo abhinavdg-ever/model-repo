@@ -20,6 +20,10 @@ export type FolderSummary = {
   run_id?: string | null;
   batch_id?: string | null;
   ground_truth_available?: boolean;
+  /** Marked Reviewed in History: the chart's ground truth is frozen. */
+  reviewed?: boolean;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
   on_disk?: boolean;
   /** Chart metadata (manifest / metadata CSV). */
   project_scope?: string | null;
@@ -286,6 +290,9 @@ export type PageGroundTruth = {
   isDuplicate?: string | null;
   /** The Handwritten % band, as picked (page_ground_truth.handwritten_pct). */
   handwrittenPct?: string | null;
+  /** The page's last manual save: who, and when (GMT ISO; shown in IST). Read only. */
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
 };
 
 export type ImagingManifestDetails = {
@@ -986,4 +993,51 @@ export async function downloadManualReviewSummary(input: ManualReviewInput, repo
   });
   if (!res.ok) throw new Error(await errorText(res));
   return res.blob();
+}
+
+/** A chart marked Reviewed: its ground truth is frozen until an admin clears the mark. */
+export type ChartReview = {
+  reviewed: boolean;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+};
+
+export function getChartReview(folderId: string): Promise<ChartReview> {
+  return api(`/api/folders/${encodeURIComponent(folderId)}/review`);
+}
+
+/** Mark the chart Reviewed (reviewers, admins) or clear the mark (admins). */
+export function setChartReview(folderId: string, reviewed: boolean): Promise<ChartReview> {
+  return api(`/api/folders/${encodeURIComponent(folderId)}/review`, {
+    method: "PUT",
+    body: JSON.stringify({ reviewed }),
+  });
+}
+
+/** One ground-truth save (or a chart marked Reviewed: pageNumber null). ``fields`` are the
+ * page_ground_truth columns the save changed. */
+export type ReviewLogEntry = {
+  chartName: string;
+  pageNumber: number | null;
+  at: string;
+  user: string | null;
+  action: "edit" | "reviewed";
+  fields: { field: string; before: string | null; after: string | null }[];
+};
+
+export type ReviewLogResponse = {
+  items: ReviewLogEntry[];
+  total: number;
+  /** Admins asking for everyone's log: the users to pick from. */
+  users: { id: number; name: string }[];
+};
+
+/** The signed-in user's review log; admins may ask for one user's or everyone's. */
+export function getReviewLog(opts: { userId?: number | null; allUsers?: boolean; limit?: number; offset?: number } = {}): Promise<ReviewLogResponse> {
+  const q = new URLSearchParams();
+  if (opts.userId != null) q.set("user_id", String(opts.userId));
+  if (opts.allUsers) q.set("all_users", "true");
+  q.set("limit", String(opts.limit ?? 500));
+  if (opts.offset) q.set("offset", String(opts.offset));
+  return api(`/api/review-log?${q.toString()}`);
 }

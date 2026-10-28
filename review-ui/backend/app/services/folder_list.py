@@ -27,6 +27,7 @@ from app.services.chart_metadata import chart_metadata_map
 
 # The metadata filters' option for a chart with no value.
 BLANK_OPTION = "(Blank)"
+from app.services.chart_review import reviewed_charts
 from app.services.ground_truth import charts_with_ground_truth
 from app.services.db import connection
 
@@ -414,11 +415,17 @@ def build_folder_list(
             disk_rows = list_disk_folder_names_light(data_root)
         merged = merge_db_and_disk(db_rows, disk_rows)
         have = charts_with_ground_truth(database_url, db_schema)
+        try:
+            reviewed = reviewed_charts(database_url, db_schema)
+        except Exception as exc:
+            logger.warning("chart_review lookup failed: %s", exc)
+            reviewed = {}
         on_disk = {row.id for row in disk_rows}
         merged = [
             row.model_copy(update={
                 "ground_truth_available": row.name in have,
                 "on_disk": row.id in on_disk,
+                **_review_fields(reviewed.get(row.name)),
             })
             for row in merged
         ]
@@ -429,3 +436,14 @@ def build_folder_list(
     if not rows and data_root is not None:
         rows = list_disk_folder_names_light(data_root)
     return filter_sort_page(with_metadata(rows), params)
+
+
+def _review_fields(review) -> dict:
+    """FolderSummary's reviewed / reviewed_by / reviewed_at from a ChartReview."""
+    if review is None:
+        return {}
+    return {
+        "reviewed": True,
+        "reviewed_by": review.reviewedBy,
+        "reviewed_at": review.reviewedAt,
+    }

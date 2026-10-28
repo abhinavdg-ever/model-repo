@@ -6564,12 +6564,13 @@ input {
   margin-left: 0.4rem;
 }
 
-/* Profile menu: an on / off switch (Accuracy on Final only, 2026-10-28, user). */
-.user-menu-switch-row {
+/* Profile menu: Include Extracted Yes / No (2026-10-28, user). */
+.include-extracted-row {
   display: flex;
   align-items: center;
   gap: 0.45rem;
   width: 100%;
+  cursor: default;
 }
 
 .user-menu-switch-label {
@@ -6577,32 +6578,134 @@ input {
   text-align: left;
 }
 
-.user-menu-switch {
-  position: relative;
+.include-extracted {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
   flex: none;
-  width: 2rem;
-  height: 1.1rem;
+  border: 1px solid var(--neutral-300, #c9cfc6);
   border-radius: 999px;
-  background: var(--neutral-300, #c9cfc6);
-  transition: background 0.15s;
+  overflow: hidden;
+  font-size: 0.78rem;
 }
 
-.user-menu-switch.is-on {
+.include-extracted-option {
+  border: 0;
+  background: transparent;
+  padding: 0.15rem 0.55rem;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.include-extracted-option.is-active {
   background: var(--brand-800);
+  color: #fff;
 }
 
-.user-menu-switch-knob {
-  position: absolute;
-  top: 0.15rem;
-  left: 0.15rem;
-  width: 0.8rem;
-  height: 0.8rem;
+.include-extracted-option:disabled {
+  cursor: default;
+}
+
+.include-extracted-option:disabled:not(.is-active) {
+  opacity: 0.55;
+}
+
+/* Review Log (2026-10-28, user). */
+.review-log-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.review-log-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.review-log-search {
+  flex: 1;
+  min-width: 12rem;
+  max-width: 24rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--neutral-300, #c9cfc6);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.review-log-count {
+  color: var(--neutral-700, #4a5246);
+  font-size: 0.82rem;
+}
+
+.review-log-fields {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.review-log-before {
+  color: var(--neutral-600, #6b7367);
+  text-decoration: line-through;
+}
+
+.review-log-after {
+  font-weight: 600;
+}
+
+.review-log-reviewed {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--brand-800);
+  font-weight: 600;
+}
+
+/* History: the Reviewed mark per chart, and Last Reviewed By in Page Details. */
+.reviewed-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border: 1px solid var(--neutral-300, #c9cfc6);
   border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-  transition: left 0.15s;
+  background: transparent;
+  color: var(--neutral-500, #8a9286);
+  cursor: pointer;
 }
 
-.user-menu-switch.is-on .user-menu-switch-knob {
-  left: 1.05rem;
+.reviewed-btn.is-reviewed {
+  background: var(--brand-800);
+  border-color: var(--brand-800);
+  color: #fff;
+}
+
+.reviewed-btn:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.landing-col-reviewed {
+  text-align: center;
+  width: 4.5rem;
+}
+
+.page-last-review {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--neutral-700, #4a5246);
+}
+
+.page-frozen-note {
+  margin: 0 0 0.5rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  background: var(--brand-50, #eef4ec);
+  color: var(--brand-800);
+  font-size: 0.8rem;
 }

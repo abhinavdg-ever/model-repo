@@ -13,8 +13,12 @@ type Pan = { x: number; y: number };
  * Works at any zoom — including 100% — so the split viewer matches fullscreen.
  * Wire stageProps onto the page-stage (and wrap if overlays sit above the img)
  * and imageStyle onto the image or pan wrapper.
+ *
+ * ``keepHorizontal``: a new resetKey (the next page) keeps the left / right offset and
+ * only re-centres vertically, so a reader who moved to one side of a page stays there for
+ * the rest of the chart (fullscreen, 2026-10-28, user).
  */
-export function useImagePan(zoom: number, resetKey?: string | number) {
+export function useImagePan(zoom: number, resetKey?: string | number, keepHorizontal = false) {
   const [pan, setPan] = useState<Pan>({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const panRef = useRef<Pan>({ x: 0, y: 0 });
@@ -30,9 +34,12 @@ export function useImagePan(zoom: number, resetKey?: string | number) {
     syncPan({ x: 0, y: 0 });
   }, [syncPan]);
 
+  const keepHorizontalRef = useRef(keepHorizontal);
+  keepHorizontalRef.current = keepHorizontal;
   useEffect(() => {
-    resetPan();
-  }, [resetKey, resetPan]);
+    if (keepHorizontalRef.current) syncPan({ x: panRef.current.x, y: 0 });
+    else resetPan();
+  }, [resetKey, resetPan, syncPan]);
 
   // Window-level move/up so drag keeps working even if the pointer leaves the stage
   useEffect(() => {

@@ -13,6 +13,8 @@ from app.adapters.base import FolderRepository
 from app.adapters.factory import get_repository, request_is_production
 from app.core.config import ROOT_DIR, Settings, get_settings
 from app.core.schemas import (
+    ChartReview,
+    ReviewLogResponse,
     LoginRequest,
     LoginResponse,
     SignedInUserResponse,
@@ -68,6 +70,13 @@ from app.services.ground_truth import (
 )
 from app.services.encounter_review import load_encounter_review, save_encounter_review
 from app.services.chart_ground_truth import load_chart_ground_truth, save_chart_ground_truth
+from app.services.chart_review import (
+    ChartFrozen,
+    ensure_not_frozen,
+    load_chart_review,
+    review_log,
+    set_chart_review,
+)
 from app.services.page_images import (
     bytes_to_display_jpeg,
     cached_derived_jpeg,
@@ -898,6 +907,91 @@ def reset_user_password(
     return changed
 
 
+def _refuse_if_frozen(settings: Settings, folder_id: str) -> None:
+    """409 when the chart is marked Reviewed: its ground truth is frozen."""
+    try:
+        ensure_not_frozen(settings.database_url, folder_id, settings.db_schema)
+    except ChartFrozen as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/folders/{folder_id}/review", response_model=ChartReview)
+def get_folder_review(folder_id: str, settings: Settings = Depends(get_settings)) -> ChartReview:
+    """Whether the chart is marked Reviewed (its ground truth frozen), by whom and when."""
+    if not database_url_usable(settings.database_url):
+        return ChartReview()
+    try:
+        return load_chart_review(settings.database_url, folder_id, settings.db_schema)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("chart review read failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not read the review mark") from exc
+
+
+@router.put("/folders/{folder_id}/review", response_model=ChartReview)
+def put_folder_review(
+    folder_id: str,
+    body: ChartReview,
+    settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
+) -> ChartReview:
+    """Mark the chart Reviewed (reviewers and admins), freezing its ground truth; or clear
+    the mark (admins only)."""
+    if not database_url_usable(settings.database_url):
+        raise HTTPException(status_code=503, detail="Database is not configured")
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in again to mark the chart")
+    if user.role == "viewer":
+        raise HTTPException(status_code=403, detail="Viewers cannot mark a chart Reviewed")
+    if not body.reviewed and user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only an admin can clear the Reviewed mark")
+    try:
+        saved = set_chart_review(
+            settings.database_url, folder_id, body.reviewed, settings.db_schema, user_id=user.id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("chart review save failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not save the review mark") from exc
+    logger.info("chart %s %s by %s", folder_id, "marked Reviewed" if body.reviewed else "unmarked", user.username)
+    return saved
+
+
+@router.get("/review-log", response_model=ReviewLogResponse)
+def get_review_log(
+    settings: Settings = Depends(get_settings),
+    user: SignedInUser | None = Depends(current_user),
+    user_id: int | None = Query(default=None, description="Admins: one user's log"),
+    all_users: bool = Query(default=False, description="Admins: everyone's log"),
+    limit: int = Query(default=200, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
+) -> ReviewLogResponse:
+    """The signed-in user's ground-truth saves, newest first. An admin may ask for another
+    user's (user_id) or everyone's (all_users)."""
+    if not database_url_usable(settings.database_url):
+        raise HTTPException(status_code=503, detail="Database is not configured")
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to see your review log")
+    admin = user.role == "admin"
+    who = user_id if admin and user_id is not None else user.id
+    try:
+        return review_log(
+            settings.database_url,
+            settings.db_schema,
+            user_id=who,
+            all_users=admin and all_users,
+            limit=limit,
+            offset=offset,
+        )
+    except Exception as exc:
+        logger.warning("review log read failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not read the review log") from exc
+
+
 @router.put("/folders/{folder_id}/ground-truth/sequence", response_model=list[PageGroundTruth])
 def save_folder_page_sequences(
     folder_id: str,
@@ -911,6 +1005,7 @@ def save_folder_page_sequences(
         raise HTTPException(status_code=503, detail="Database is not configured")
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in again to save ground truth")
+    _refuse_if_frozen(settings, folder_id)
     try:
         saved = save_page_sequences(
             settings.database_url, folder_id, body.pages, settings.db_schema, user_id=user.id
@@ -950,6 +1045,7 @@ def save_folder_encounter_review(
         raise HTTPException(status_code=503, detail="Database is not configured")
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in again to save encounters")
+    _refuse_if_frozen(settings, folder_id)
     try:
         return save_encounter_review(
             settings.database_url, folder_id, body.rows, settings.db_schema, user_id=user.id
@@ -989,6 +1085,7 @@ def save_folder_chart_ground_truth(
         raise HTTPException(status_code=503, detail="Database is not configured")
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in again to save the decision")
+    _refuse_if_frozen(settings, folder_id)
     try:
         return save_chart_ground_truth(
             settings.database_url, folder_id, body, settings.db_schema, user_id=user.id
@@ -1013,6 +1110,7 @@ def save_folder_ground_truth(
         raise HTTPException(status_code=503, detail="Database is not configured")
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in again to save ground truth")
+    _refuse_if_frozen(settings, folder_id)
     try:
         saved = upsert_page_ground_truth(
             settings.database_url,

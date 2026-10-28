@@ -229,15 +229,36 @@ def ground_truth_by_page(
                     (chart_name,),
                 )
                 rows = cur.fetchall()
+            reviews = _last_reviews(conn, database_url, chart_name, db_schema)
     except Exception as exc:
         logger.warning("page_ground_truth page lookup failed: %s", exc)
         return {}
 
     out: dict[int, PageGroundTruth] = {}
     for row in rows:
-        parsed = _ground_truth_from_row(row)
+        parsed = _with_review(_ground_truth_from_row(row), reviews)
         out[parsed.pageNumber] = parsed
     return out
+
+
+def _last_reviews(conn, database_url: str, chart: str, db_schema: str) -> dict[int, tuple[str | None, str | None]]:
+    """Each page's last manual save (who, when); empty when it cannot be read, so the
+    labels still show."""
+    from app.services.chart_review import last_reviews
+
+    try:
+        return last_reviews(conn, database_url, chart, db_schema)
+    except Exception as exc:
+        logger.warning("last review lookup failed: %s", exc)
+        conn.rollback()
+        return {}
+
+
+def _with_review(truth: PageGroundTruth, reviews: dict[int, tuple[str | None, str | None]]) -> PageGroundTruth:
+    hit = reviews.get(truth.pageNumber)
+    if not hit:
+        return truth
+    return truth.model_copy(update={"reviewedBy": hit[0], "reviewedAt": hit[1]})
 
 
 def _ground_truth_from_row(row: tuple) -> PageGroundTruth:
@@ -427,9 +448,11 @@ def upsert_page_ground_truth(
         with conn.cursor() as cur:
             cur.execute(_UPSERT, (*params, user_id, labels, user_id))
             row = cur.fetchone()
-    if row is None:
-        raise RuntimeError("ground truth upsert returned no row")
-    return _ground_truth_from_row(row)
+        if row is None:
+            raise RuntimeError("ground truth upsert returned no row")
+        conn.commit()
+        reviews = _last_reviews(conn, database_url, chart, db_schema)
+    return _with_review(_ground_truth_from_row(row), reviews)
 
 
 _UPSERT_SEQUENCE = """

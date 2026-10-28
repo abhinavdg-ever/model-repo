@@ -8,6 +8,7 @@ import ManualReviewView from "./ManualReviewView";
 import PlaygroundView from "./PlaygroundView";
 import UsersView from "./UsersView";
 import SearchView from "./SearchView";
+import ReviewLogView from "./ReviewLogView";
 import LoginPage from "./LoginPage";
 import UserProfileMenu from "./UserProfileMenu";
 import { getAppConfig, type AppConfig, type OutputMode } from "./api";
@@ -23,7 +24,8 @@ type Route =
   | { view: "manual-review" }
   | { view: "playground" }
   | { view: "users" }
-  | { view: "search" };
+  | { view: "search" }
+  | { view: "review-log" };
 
 function parseMode(raw: string | null): OutputMode {
   return raw === "imaging" ? "imaging" : "ocr";
@@ -49,6 +51,9 @@ function parsePath(pathname: string, search: string): Route {
   }
   if (pathname === "/search" || pathname === "/search/") {
     return { view: "search" };
+  }
+  if (pathname === "/review-log" || pathname === "/review-log/") {
+    return { view: "review-log" };
   }
   const fileMatch = pathname.match(/^\/file-viewer(?:\/([^/]+))?\/?$/);
   if (fileMatch) {
@@ -85,6 +90,7 @@ function pathFor(route: Route): string {
   if (route.view === "playground") return "/playground";
   if (route.view === "users") return "/users";
   if (route.view === "search") return "/search";
+  if (route.view === "review-log") return "/review-log";
   if (route.view === "file-viewer") {
     return route.folderId
       ? `/file-viewer/${encodeURIComponent(route.folderId)}`
@@ -110,7 +116,7 @@ export default function App() {
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   // Charts are scored only once /api/config says whether this is the client's copy.
   const [configReady, setConfigReady] = useState(false);
-  // Bumped when an admin switches "Accuracy on Final only": the views re-score.
+  // Bumped when an admin switches "Include Extracted" (profile menu): the views re-score.
   const [scoring, setScoring] = useState(0);
   setScoringAdmin(isAdmin);
   const leaveGuard = useRef<((run: () => void) => void) | null>(null);
@@ -230,11 +236,12 @@ export default function App() {
             onOpenPlayground={isAdmin ? () => guardedNavigate({ view: "playground" }) : undefined}
             onOpenUsers={isAdmin ? () => guardedNavigate({ view: "users" }) : undefined}
             onOpenSearch={isAdmin ? () => guardedNavigate({ view: "search" }) : undefined}
-            finalOnly={scoreFinalOnly()}
-            onToggleFinalOnly={
+            onOpenReviewLog={() => guardedNavigate({ view: "review-log" })}
+            includeExtracted={!scoreFinalOnly()}
+            onToggleIncludeExtracted={
               isAdmin
                 ? (on) => {
-                    setFinalOnlyChoice(on);
+                    setFinalOnlyChoice(!on);
                     setScoring((n) => n + 1);
                   }
                 : undefined
@@ -293,13 +300,19 @@ export default function App() {
               <p className="accuracy-note">This page is for admins only.</p>
             </div>
           )
+        ) : route.view === "review-log" ? (
+          <ReviewLogView
+            isAdmin={isAdmin}
+            onBack={() => navigate({ view: "landing" })}
+            chartHref={(folderId, page) => pathFor({ view: "folder", folderId, mode: "imaging", page })}
+          />
         ) : route.view === "file-viewer" ? (
           <FileViewer
             initialFolderId={route.folderId ?? null}
             onBack={() => navigate({ view: "landing" })}
           />
         ) : (
-          <ClientViewContext.Provider value={Boolean(appConfig?.client_view)}>
+          <ClientViewContext.Provider value={Boolean(appConfig?.client_view) || scoreFinalOnly()}>
           <FolderViewer
             key={route.folderId}
             folderId={route.folderId}

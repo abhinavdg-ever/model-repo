@@ -26,6 +26,10 @@ class FolderSummary(BaseModel):
     run_id: str | None = None
     batch_id: str | None = None
     ground_truth_available: bool = False
+    # Marked Reviewed in History (chart_review): its ground truth is frozen.
+    reviewed: bool = False
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
     # True when the chart folder exists under the review-ui data root.
     on_disk: bool = False
     # Chart metadata (manifest_member_list / metadata CSV): Scope, Source, Measure, Retrieval.
@@ -175,6 +179,10 @@ class PageGroundTruth(BaseModel):
     printedOrHandwritten: str | None = None
     isDuplicate: str | None = None
     handwrittenPct: str | None = None
+    # The page's last manual save (page_ground_truth_entry): who, and when (UTC ISO; the
+    # UI shows IST). Read only: a save ignores them.
+    reviewedBy: str | None = None
+    reviewedAt: str | None = None
 
 
 class PageSequenceLabel(BaseModel):
@@ -205,6 +213,33 @@ class EncounterReview(BaseModel):
     rows: list[EncounterReviewRow] = []
     savedAt: str | None = None
     savedBy: str | None = None
+
+
+class ChartReview(BaseModel):
+    """A chart marked Reviewed (chart_review): its ground truth is frozen while marked."""
+
+    reviewed: bool = False
+    reviewedBy: str | None = None
+    reviewedAt: str | None = None  # UTC ISO; the UI shows IST
+
+
+class ReviewLogEntry(BaseModel):
+    """One ground-truth save by a user (page_ground_truth_entry, manual_entry), or a chart
+    they marked Reviewed (pageNumber None). ``fields`` are the page_ground_truth columns the
+    save changed, each with its value before and after."""
+
+    chartName: str
+    pageNumber: int | None = None
+    at: str
+    user: str | None = None
+    action: str = "edit"  # edit | reviewed
+    fields: list[dict[str, str | None]] = []
+
+
+class ReviewLogResponse(BaseModel):
+    items: list[ReviewLogEntry]
+    total: int = 0
+    users: list[dict[str, str | int]] = []
 
 
 class EncounterReviewSave(BaseModel):

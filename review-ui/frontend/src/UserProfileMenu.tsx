@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FlaskConical, FolderOpen, History, LogOut, Search, Target, Users } from "lucide-react";
+import { ClipboardList, FlaskConical, FolderOpen, History, Layers, LogOut, Search, Users } from "lucide-react";
 import { roleLabel } from "./UsersView";
 
 type Props = {
@@ -8,7 +8,7 @@ type Props = {
   /** The signed-in user's role, shown under the name (Admin / Reviewer / Viewer). */
   role?: string;
   /** "file-viewer" shows a History link; otherwise a File Viewer link */
-  currentView?: "landing" | "folder" | "file-viewer" | "accuracy" | "manual-review" | "playground" | "users" | "search";
+  currentView?: "landing" | "folder" | "file-viewer" | "accuracy" | "manual-review" | "playground" | "users" | "search" | "review-log";
   onOpenFileViewer?: () => void;
   /** Admins only: given, the menu offers the Playground. */
   onOpenPlayground?: () => void;
@@ -17,9 +17,13 @@ type Props = {
   /** Admins only: given, the menu offers Search (a word in the Tesseract OCR). */
   onOpenSearch?: () => void;
   onOpenHistory?: () => void;
-  /** Admins only: given, the menu offers "Accuracy on Final only: Yes / No". */
-  finalOnly?: boolean;
-  onToggleFinalOnly?: (on: boolean) => void;
+  /** Every user: their own history of ground-truth saves. */
+  onOpenReviewLog?: () => void;
+  /** Include Extracted: Yes scores on the better of Final and Extracted; No on the Final
+   * alone, and every tab hides the Extracted values, as the client's copy does. */
+  includeExtracted?: boolean;
+  /** Admins only: given, the menu's Yes / No can be switched; otherwise it shows the setting. */
+  onToggleIncludeExtracted?: (on: boolean) => void;
   onLogout: () => void;
 };
 
@@ -33,8 +37,9 @@ export default function UserProfileMenu({
   onOpenPlayground,
   onOpenUsers,
   onOpenSearch,
-  finalOnly = false,
-  onToggleFinalOnly,
+  onOpenReviewLog,
+  includeExtracted = true,
+  onToggleIncludeExtracted,
   onLogout,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -110,20 +115,47 @@ export default function UserProfileMenu({
             </button>
           )}
 
-          {onToggleFinalOnly ? (
+          <div
+            className="user-menu-item include-extracted-row"
+            role="group"
+            aria-label="Include Extracted"
+            title="Yes: scored on the better of Final and Extracted. No: on the Final alone, and the Extracted values are hidden (as the client's copy shows them)."
+          >
+            <Layers size={14} aria-hidden="true" />
+            <span className="user-menu-switch-label">Include Extracted</span>
+            <span className="include-extracted">
+              {(["Yes", "No"] as const).map((choice) => {
+                const on = choice === "Yes";
+                return (
+                  <button
+                    key={choice}
+                    type="button"
+                    className={`include-extracted-option${includeExtracted === on ? " is-active" : ""}`}
+                    aria-pressed={includeExtracted === on}
+                    disabled={!onToggleIncludeExtracted}
+                    onClick={() => {
+                      if (includeExtracted !== on) onToggleIncludeExtracted?.(on);
+                    }}
+                  >
+                    {choice}
+                  </button>
+                );
+              })}
+            </span>
+          </div>
+
+          {onOpenReviewLog && currentView !== "review-log" ? (
             <button
               type="button"
-              className="user-menu-item user-menu-switch-row"
-              role="switch"
-              aria-checked={finalOnly}
-              title="On: Accuracy and the page marks score the Final value alone. Off: the better of Final and Extracted."
-              onClick={() => onToggleFinalOnly(!finalOnly)}
+              className="user-menu-item"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onOpenReviewLog();
+              }}
             >
-              <Target size={14} aria-hidden="true" />
-              <span className="user-menu-switch-label">Accuracy on Final only</span>
-              <span className={`user-menu-switch${finalOnly ? " is-on" : ""}`} aria-hidden="true">
-                <span className="user-menu-switch-knob" />
-              </span>
+              <ClipboardList size={14} aria-hidden="true" />
+              Review Log
             </button>
           ) : null}
 

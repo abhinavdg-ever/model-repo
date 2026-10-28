@@ -10,8 +10,9 @@ let admin = false;
 
 /** Accuracy on the Final values alone, or the better of Final and Extracted (2026-10-27,
  * user). The client's copy defaults to Final only, ours to the better of the two; an admin
- * can switch it in the profile menu (remembered in this browser). Set from /api/config
- * before any chart is shown. */
+ * switches it with "Include Extracted: Yes / No" in the profile menu (remembered in this
+ * browser). No also hides the Extracted column in Page Details, as the client's copy does
+ * (2026-10-28, user). Set from /api/config before any chart is shown. */
 export function setScoreFinalOnly(on: boolean): void {
   byDefault = on;
 }

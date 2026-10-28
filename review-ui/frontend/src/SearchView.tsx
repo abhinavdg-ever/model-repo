@@ -1,4 +1,5 @@
 import { Fragment, useState, type FormEvent } from "react";
+import { formatIstShort } from "./istTime";
 import { ArrowLeft, ChevronDown, ChevronRight, History, Search, X } from "lucide-react";
 import PageMessage from "./PageMessage";
 import { errorDetail, searchOcr, type OcrSearchChart, type OcrSearchResult, type OcrSearchSnippet } from "./api";
@@ -59,10 +60,7 @@ function plural(n: number, word: string): string {
 }
 
 function fmtAt(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? ""
-    : new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: true }).format(d);
+  return formatIstShort(iso);
 }
 
 function Snippet({ s }: { s: OcrSearchSnippet }) {

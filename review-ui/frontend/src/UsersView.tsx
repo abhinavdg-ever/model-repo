@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatIst } from "./istTime";
 import { ArrowLeft, Eye, EyeOff, KeyRound, UserPlus } from "lucide-react";
 import PageMessage from "./PageMessage";
 import {
@@ -266,7 +267,7 @@ export default function UsersView({ onBack }: Props) {
                 <td>{u.name}</td>
                 <td>{roleLabel(u.role)}</td>
                 <td>{u.isActive ? "Yes" : "No"}</td>
-                <td>{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : "Never"}</td>
+                <td>{formatIst(u.lastLoginAt, "Never")}</td>
               </tr>
             ))}
           </tbody>

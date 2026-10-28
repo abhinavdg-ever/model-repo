@@ -490,6 +490,27 @@ CREATE TRIGGER trg_chart_ground_truth_updated_at
     BEFORE UPDATE ON chart_ground_truth
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+-- A chart marked Reviewed in review-ui's History (2026-10-28). While the row exists the
+-- chart's ground truth is frozen: review-ui refuses page labels, page sequence, encounters
+-- and the member decision until an admin clears the mark (deletes the row). Keyed by chart
+-- name, like page ground truth, so a re-run keeps it.
+CREATE TABLE chart_review (
+    id                      BIGSERIAL PRIMARY KEY,
+    chart_name              VARCHAR(150) NOT NULL,
+    user_id                 BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_chart_review_chart_name UNIQUE (chart_name)
+);
+
+CREATE TRIGGER trg_chart_review_updated_at
+    BEFORE UPDATE ON chart_review
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- The review log reads one user's saves (review-ui's Review Log, 2026-10-28).
+CREATE INDEX idx_page_ground_truth_entry_user_id_entry_mode
+    ON page_ground_truth_entry(user_id, entry_mode);
+
 
 -- ---------------------------------------------------------------------
 -- PAGE-LEVEL RESULT TABLES

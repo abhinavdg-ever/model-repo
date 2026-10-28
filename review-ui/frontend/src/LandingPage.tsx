@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { formatIst, formatIstPlain } from "./istTime";
 import {
   CalendarClock,
   ChevronLeft,
@@ -14,11 +15,14 @@ import {
   Search,
   Trash2,
   CheckCircle2,
+  BadgeCheck,
   X,
 } from "lucide-react";
 import { readSession } from "./session";
 import {
   deleteFolder,
+  errorDetail,
+  setChartReview,
   formatBatchLabel,
   formatRunLabel,
   getFolderImaging,
@@ -182,18 +186,7 @@ type Props = {
 };
 
 function fmtUpdated(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-IN", {
-    timeZone: "Asia/Kolkata",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  }).format(d);
+  return formatIstPlain(iso);
 }
 
 function statusClass(status: OcrRunStatus): string {
@@ -359,6 +352,11 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   const [metaOptions, setMetaOptions] = useState<Record<string, string[]>>({});
   const skipFilterPageReset = useRef(true);
   const isAdmin = readSession()?.user.role === "admin";
+  const canMarkReviewed = readSession()?.user.role !== "viewer";
+  // Mark Reviewed (freezes the chart's ground truth) / clear it (admins), after a confirm.
+  const [reviewTarget, setReviewTarget] = useState<FolderSummary | null>(null);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   // The in-app "are you sure" for an admin's Delete, and the note after it.
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; pages: number } | null>(null);
@@ -502,6 +500,33 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
   function askDelete(id: string, name: string, pages: number) {
     setDeleteError(null);
     setDeleteTarget({ id, name, pages });
+  }
+
+  async function confirmReview() {
+    if (!reviewTarget) return;
+    const marking = !reviewTarget.reviewed;
+    setReviewBusy(true);
+    setReviewError(null);
+    try {
+      const saved = await setChartReview(reviewTarget.id, marking);
+      setFolders((rows) =>
+        rows.map((row) =>
+          row.id === reviewTarget.id
+            ? { ...row, reviewed: saved.reviewed, reviewed_by: saved.reviewedBy ?? null, reviewed_at: saved.reviewedAt ?? null }
+            : row,
+        ),
+      );
+      setNotice(
+        marking
+          ? `Chart ${reviewTarget.name} marked Reviewed. Its ground truth is frozen.`
+          : `Chart ${reviewTarget.name}: Reviewed mark cleared. Its ground truth can be edited again.`,
+      );
+      setReviewTarget(null);
+    } catch (err) {
+      setReviewError(errorDetail(err, "Could not save the review mark"));
+    } finally {
+      setReviewBusy(false);
+    }
   }
 
   async function confirmDelete() {
@@ -808,6 +833,9 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                     </span>
                   </th>
                   <th title="Client page labels loaded for this chart">Ground Truth</th>
+                  <th className="landing-col-reviewed" title="Marked Reviewed: the chart's ground truth is frozen">
+                    Reviewed
+                  </th>
                   <th className={runAfter ? "is-filtered" : undefined}>
                     <span className="column-th">
                       <button
@@ -842,7 +870,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
               <tbody>
                 {loading && folders.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="landing-history-empty">
+                    <td colSpan={9} className="landing-history-empty">
                       <div className="landing-empty-state">
                         <div className="landing-empty-icon">
                           <RefreshCw size={18} />
@@ -853,7 +881,7 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                   </tr>
                 ) : total === 0 ? (
                   <tr>
-                    <td colSpan={8} className="landing-history-empty">
+                    <td colSpan={9} className="landing-history-empty">
                       <div className="landing-empty-state">
                         <div className="landing-empty-icon">
                           <Inbox size={18} />
@@ -895,6 +923,29 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
                       </td>
                       <td className="landing-col-num">
                         {folder.ground_truth_available ? "Yes" : "No"}
+                      </td>
+                      <td className="landing-col-reviewed">
+                        <button
+                          type="button"
+                          className={`reviewed-btn${folder.reviewed ? " is-reviewed" : ""}`}
+                          disabled={folder.reviewed ? !isAdmin : !canMarkReviewed}
+                          onClick={() => {
+                            setReviewError(null);
+                            setReviewTarget(folder);
+                          }}
+                          title={
+                            folder.reviewed
+                              ? `Reviewed by ${folder.reviewed_by || "a reviewer"} on ${formatIst(folder.reviewed_at)}` +
+                                (isAdmin ? ". Click to clear the mark." : "")
+                              : canMarkReviewed
+                                ? "Mark Reviewed: freezes this chart's ground truth"
+                                : "Not reviewed"
+                          }
+                          aria-label={folder.reviewed ? `${folder.name}: reviewed` : `Mark ${folder.name} Reviewed`}
+                          aria-pressed={Boolean(folder.reviewed)}
+                        >
+                          <BadgeCheck size={15} aria-hidden="true" />
+                        </button>
                       </td>
                       <td className="landing-col-updated">
                         {fmtUpdated(folder.last_updated_at)}
@@ -990,6 +1041,81 @@ export default function LandingPage({ onView, onOpenAccuracy, onOpenManualReview
           )}
         </section>
       </div>
+
+      {reviewTarget ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            if (!reviewBusy) setReviewTarget(null);
+          }}
+        >
+          <div
+            className="modal-card"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="review-chart-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-card-header">
+              <div className="blob-auth-title-row">
+                <BadgeCheck size={18} aria-hidden="true" />
+                <h2 id="review-chart-title">
+                  {reviewTarget.reviewed ? "Clear the Reviewed mark?" : "Mark chart Reviewed?"}
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setReviewTarget(null)}
+                disabled={reviewBusy}
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="blob-auth-copy">
+              {reviewTarget.reviewed ? (
+                <>
+                  <strong>{reviewTarget.name}</strong> was marked Reviewed by{" "}
+                  {reviewTarget.reviewed_by || "a reviewer"} on {formatIst(reviewTarget.reviewed_at)}. Clearing
+                  the mark lets its ground truth be edited again.
+                </>
+              ) : (
+                <>
+                  <strong>{reviewTarget.name}</strong>: its ground truth (page labels, page sequence,
+                  encounters and the member decision) is frozen. Only an admin can clear the mark.
+                </>
+              )}
+            </p>
+            {reviewError ? (
+              <div className="error-banner" style={{ marginTop: "0.75rem" }}>
+                {reviewError}
+              </div>
+            ) : null}
+            <div className="download-results-actions">
+              <button
+                type="button"
+                className="landing-file-viewer-btn"
+                onClick={() => setReviewTarget(null)}
+                disabled={reviewBusy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="landing-file-viewer-btn landing-file-viewer-btn-primary"
+                onClick={() => void confirmReview()}
+                disabled={reviewBusy}
+                autoFocus
+              >
+                <BadgeCheck size={15} aria-hidden="true" />
+                {reviewBusy ? "Saving…" : reviewTarget.reviewed ? "Clear mark" : "Mark Reviewed"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {deleteTarget ? (
         <div

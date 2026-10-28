@@ -1,4 +1,6 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
+import { formatIst } from "./istTime";
+import { frozenNote, useChartFrozen } from "./chartFrozen";
 import { CalendarDays, Check, ChevronLeft, ChevronRight, CircleMinus, Pencil, Save, X } from "lucide-react";
 import {
   getChartGroundTruth,
@@ -859,6 +861,7 @@ function CompareSection({
   toolbar,
   compact = false,
   withTruth = true,
+  readOnly = false,
 }: {
   title: string;
   rows: CompareRow[];
@@ -872,13 +875,15 @@ function CompareSection({
   saving: boolean;
   verdicts: Record<string, "accept" | "enter">;
   toolbar?: ReactNode;
-  /** The fullscreen pane: Field / Extracted / Final / Ground Truth side by side,
-   * no gap, read-only. */
+  /** The fullscreen pane: Field / Extracted / Final / Ground Truth side by side, no gap.
+   * Editable like the side pane (2026-10-28, user). */
   compact?: boolean;
-  /** Compact only: false drops the Ground Truth column (the page has none). */
+  /** Compact and read only: false drops the Ground Truth column (the page has none). */
   withTruth?: boolean;
+  /** The chart is marked Reviewed: the ground truth shows, nothing to edit. */
+  readOnly?: boolean;
 }) {
-  const truthColumn = !compact || withTruth;
+  const truthColumn = !compact || withTruth || !readOnly;
   // The client's copy: no Extracted column, and Final is headed Algorithm.
   const finalOnly = useContext(ClientViewContext);
   const finalHeading = finalOnly ? "Algorithm" : "Final";
@@ -951,7 +956,7 @@ function CompareSection({
               >
                 <GroundTruthCell
                   row={row.l2Of ? { ...row, choices: pageL2Choices(values[row.l2Of]) } : row}
-                  readOnly={compact}
+                  readOnly={readOnly}
                   editing={editingId === row.id}
                   value={values[row.id] ?? ""}
                   saving={saving}
@@ -1052,7 +1057,7 @@ function GroundTruthCell({
       <span className="imaging-gt-mark gt-mismatch" aria-label="No">✕</span>
     ) : null;
   if (readOnly) {
-    // The fullscreen pane: the saved ground truth and its mark, nothing to edit.
+    // A chart marked Reviewed: the saved ground truth and its mark, nothing to edit.
     return (
       <span className="imaging-gt-slot">
         <span className={stored ? "imaging-gt-text" : "imaging-gt-copied"} title={stored || undefined}>
@@ -1653,6 +1658,7 @@ function PageDetails({
   compact?: boolean;
   groundTruthLeave?: MutableRefObject<GroundTruthLeave | null>;
 }) {
+  const frozen = useChartFrozen();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1787,14 +1793,21 @@ function PageDetails({
     };
   }, [groundTruthLeave]);
 
-  // Compact pane: a page nobody has labelled shows Field / Final only.
+  // A page nobody has labelled offers the pipeline's values; read only (a chart marked
+  // Reviewed), the compact pane shows Field / Final only.
   const withTruth = Object.entries(page.groundTruth ?? {}).some(
     ([key, value]) =>
-      key !== "pageNumber" && key !== "sourcePageId" && value != null && String(value).trim() !== "",
+      key !== "pageNumber" &&
+      key !== "sourcePageId" &&
+      key !== "reviewedBy" &&
+      key !== "reviewedAt" &&
+      value != null &&
+      String(value).trim() !== "",
   );
   const sectionProps = {
     compact,
     withTruth,
+    readOnly: Boolean(frozen),
     values,
     editingId,
     saving,
@@ -1856,6 +1869,14 @@ function PageDetails({
 
   return (
     <div className="imaging-page-details">
+      {frozen ? <p className="page-frozen-note">{frozenNote(frozen)}</p> : null}
+      {page.groundTruth?.reviewedBy || page.groundTruth?.reviewedAt ? (
+        // The page's last manual save; the server keeps GMT, shown in IST.
+        <p className="page-last-review">
+          Last Reviewed By: <strong>{page.groundTruth.reviewedBy || "Unknown"}</strong>
+          {page.groundTruth.reviewedAt ? ` on ${formatIst(page.groundTruth.reviewedAt)}` : ""}
+        </p>
+      ) : null}
       {saveError ? <p className="imaging-gt-error">{saveError}</p> : null}
       <CompareSection
         {...sectionProps}
@@ -2081,6 +2102,7 @@ function pageList(numbers: number[]): string {
  * Reject, it reads "Accept ✓", then Save (floppy) or Discard; a tick when the saved answer
  * agrees with the decision. */
 function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; decision: string }) {
+  const frozen = useChartFrozen();
   const [saved, setSaved] = useState<ChartGroundTruth | null>(null);
   const [draft, setDraft] = useState<"accept" | "reject" | null | undefined>(undefined);
   const [saving, setSaving] = useState(false);
@@ -2121,9 +2143,9 @@ function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; d
           type="button"
           className={`imaging-gt-discard member-decision-btn is-${option}${shown === option ? " is-active" : ""}`}
           aria-pressed={shown === option}
-          disabled={saving || saved == null}
+          disabled={saving || saved == null || Boolean(frozen)}
           onClick={() => setDraft(shown === option ? null : option)}
-          title={shown === option ? "Click again to clear" : `Mark the member ${label(option)}`}
+          title={frozen ? frozenNote(frozen) : shown === option ? "Click again to clear" : `Mark the member ${label(option)}`}
         >
           {label(option)}
           {shown === option ? <Check size={13} strokeWidth={2.6} aria-hidden="true" /> : null}
@@ -2159,7 +2181,7 @@ function MemberDecisionGroundTruth({ folderId, decision }: { folderId: string; d
       {!dirty && (saved?.savedBy || saved?.savedAt) ? (
         <span className="member-rejection-role">
           saved{saved?.savedBy ? ` by ${saved.savedBy}` : ""}
-          {saved?.savedAt ? ` ${saved.savedAt.slice(0, 16).replace("T", " ")}` : ""}
+          {saved?.savedAt ? ` on ${formatIst(saved.savedAt)}` : ""}
         </span>
       ) : null}
       {error ? <span className="imaging-gt-hint">{error}</span> : null}
@@ -2958,6 +2980,7 @@ function SequencingTable({
   onSaved: (page: ImagingPageResult, groundTruth: PageGroundTruth) => void;
 }) {
   const sequencingProcessed = Boolean(sections.sequencing);
+  const frozen = useChartFrozen();
   const stored = (p: ImagingPageResult) => normalizeSequence(p.groundTruth?.pageSequence);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<number, string>>({});
@@ -3068,7 +3091,13 @@ function SequencingTable({
               </button>
             </>
           ) : (
-            <button type="button" className="imaging-gt-discard" onClick={startEdit} title="Edit the ground truth">
+            <button
+              type="button"
+              className="imaging-gt-discard"
+              onClick={startEdit}
+              disabled={Boolean(frozen)}
+              title={frozen ? frozenNote(frozen) : "Edit the ground truth"}
+            >
               <Pencil size={14} aria-hidden="true" />
               Edit
             </button>

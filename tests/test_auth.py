@@ -82,6 +82,7 @@ def test_saving_ground_truth_needs_a_signed_in_user(monkeypatch) -> None:
     monkeypatch.setattr(routes, "upsert_page_ground_truth", fake_upsert)
     monkeypatch.setattr(routes, "database_url_usable", lambda url: True)
     monkeypatch.setattr(routes, "clear_report_cache", lambda: None)
+    monkeypatch.setattr(routes, "ensure_not_frozen", lambda *args: None)  # not marked Reviewed
     try:
         client = TestClient(app)
         assert client.post("/api/folders/c1/ground-truth", json={"pageNumber": 1}).status_code == 401

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { formatIst } from "./istTime";
+import { frozenNote, useChartFrozen } from "./chartFrozen";
 import { CircleMinus, Copy, ListPlus, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import {
   getEncounterReview,
@@ -144,7 +146,7 @@ function isEmptyDraft(draft: Draft): boolean {
 
 function savedNote(review: EncounterReview | null): string {
   if (!review || review.rows.length === 0) return "";
-  const when = review.savedAt ? new Date(review.savedAt).toLocaleString() : "";
+  const when = formatIst(review.savedAt, "");
   return ["Saved", review.savedBy ? `by ${review.savedBy}` : "", when ? `on ${when}` : ""]
     .filter(Boolean)
     .join(" ");
@@ -164,6 +166,7 @@ export function EncounterReviewEditor({
   seed: EncounterSeed[];
   pageCount: number;
 }) {
+  const frozen = useChartFrozen();
   const [review, setReview] = useState<EncounterReview | null>(null);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [dirty, setDirty] = useState(false);
@@ -258,6 +261,8 @@ export function EncounterReviewEditor({
             <button
               type="button"
               className="imaging-gt-discard"
+              disabled={Boolean(frozen)}
+              title={frozen ? frozenNote(frozen) : undefined}
               onClick={() => {
                 startFrom(review);
                 setError(null);

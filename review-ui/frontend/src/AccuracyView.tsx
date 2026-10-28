@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { formatIstPlain } from "./istTime";
 import { createPortal } from "react-dom";
 import {
   ArrowLeft,
@@ -71,18 +72,7 @@ function percentLabel(tally: Tally): string {
 }
 
 function fmtUpdated(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-IN", {
-    timeZone: "Asia/Kolkata",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  }).format(d);
+  return formatIstPlain(iso);
 }
 
 /** Date on one line, time under it, so the column stays narrow. */

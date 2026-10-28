@@ -19,6 +19,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import {
+  getChartReview,
   getFolder,
   getFolderExtractionPages,
   getFolderImaging,
@@ -26,6 +27,7 @@ import {
   OCR_TAB_LABELS,
   pageImageUrl,
   retryPageImages,
+  type ChartReview,
   type ExtractionPagesResponse,
   type ExtractionReviewResponse,
   type FolderDetail,
@@ -57,6 +59,7 @@ import FullscreenPageChrome from "./FullscreenPageChrome";
 import PageJump from "./PageJump";
 import { blankJunkTruth } from "./groundTruth";
 import { useImagePan } from "./useImagePan";
+import { ChartReviewContext } from "./chartFrozen";
 import { usePageViewerHotkeys } from "./usePageViewerHotkeys";
 import { loadEncounterReview } from "./ReviewTables";
 import type { ChartRef } from "./chartSequence";
@@ -258,6 +261,12 @@ export default function FolderViewer({
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
   const [leaveBusy, setLeaveBusy] = useState(false);
   const groundTruthLeave = useRef<GroundTruthLeave | null>(null);
+  // The fullscreen drawer's Page Details edits too (2026-10-28, user), with its own guard;
+  // edits left unsaved when fullscreen closes are kept here until Save / Discard.
+  const fsGroundTruthLeave = useRef<GroundTruthLeave | null>(null);
+  const strandedLeave = useRef<GroundTruthLeave | null>(null);
+  // Marked Reviewed in History: the chart's ground truth is frozen.
+  const [chartReview, setChartReview] = useState<ChartReview | null>(null);
   const pageIndexRef = useRef(0);
   const [outputExpanded, setOutputExpanded] = useState(false);
   const [imageNaturalSize, setImageNaturalSize] = useState<{ w: number; h: number } | null>(
@@ -279,12 +288,13 @@ export default function FolderViewer({
   const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null);
   const pageStageRef = useRef<HTMLDivElement>(null);
   const pageImageRef = useRef<HTMLImageElement>(null);
+  // Fullscreen: a left / right pan stays for the rest of the chart, as the zoom does.
   const {
     resetPan,
     imageStyle,
     stageProps,
     stageClassName,
-  } = useImagePan(zoom, `${folderId}:${pageIndex}:${showCorrected ? "c" : "o"}`);
+  } = useImagePan(zoom, `${folderId}:${pageIndex}:${showCorrected ? "c" : "o"}`, isFullscreen);
 
   function resetZoom() {
     setZoom(1);
@@ -422,6 +432,11 @@ export default function FolderViewer({
   useEffect(() => {
     function onFsChange() {
       const on = document.fullscreenElement === pageStageRef.current;
+      // Leaving fullscreen closes the drawer: its unsaved ground truth asks Save / Discard.
+      if (!on && fsGroundTruthLeave.current?.dirty) {
+        strandedLeave.current = fsGroundTruthLeave.current;
+        setPendingLeave(() => () => undefined);
+      }
       setIsFullscreen(on);
       // Entering fullscreen always starts at 100%; zoom then persists across pages.
       if (on) {
@@ -454,13 +469,33 @@ export default function FolderViewer({
     // Looked up once per chart: the viewer remounts on a new folderId.
   }, []);
 
+  /** The editor holding unsaved ground truth: one left behind by fullscreen closing, the
+   * fullscreen drawer, or the side pane. */
+  function dirtyLeave(): GroundTruthLeave | null {
+    for (const ref of [strandedLeave, fsGroundTruthLeave, groundTruthLeave]) {
+      if (ref.current?.dirty) return ref.current;
+    }
+    return null;
+  }
+
   function guardLeave(run: () => void) {
-    if (!groundTruthLeave.current?.dirty) {
+    if (!dirtyLeave()) {
       run();
       return;
     }
     setPendingLeave(() => run);
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    setChartReview(null);
+    getChartReview(folderId)
+      .then((review) => !cancelled && setChartReview(review))
+      .catch(() => !cancelled && setChartReview(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [folderId]);
 
   function goToPage(idx: number | ((i: number) => number)) {
     const current = pageIndexRef.current;
@@ -953,16 +988,18 @@ export default function FolderViewer({
   async function acceptLeave() {
     if (!pendingLeave) return;
     setLeaveBusy(true);
-    const ok = await (groundTruthLeave.current?.accept() ?? Promise.resolve(true));
+    const ok = await (dirtyLeave()?.accept() ?? Promise.resolve(true));
     setLeaveBusy(false);
     if (!ok) return;
+    strandedLeave.current = null;
     const run = pendingLeave;
     setPendingLeave(null);
     run();
   }
 
   function discardLeave() {
-    groundTruthLeave.current?.discard();
+    dirtyLeave()?.discard();
+    strandedLeave.current = null;
     const run = pendingLeave;
     setPendingLeave(null);
     run?.();
@@ -1176,7 +1213,36 @@ export default function FolderViewer({
     onExitFullscreen: exitFullscreen,
   });
 
+  // In fullscreen it sits on the page stage: a press on it must not start a pan.
+  const leaveModal = pendingLeave ? (
+        <div className="modal-backdrop" role="presentation" onPointerDown={(e) => e.stopPropagation()}>
+          <div
+            className="modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="gt-leave-title"
+          >
+            <h2 id="gt-leave-title" className="gt-leave-title">Unsaved ground truth</h2>
+            <p className="gt-leave-copy">
+              These changes have not been saved.
+            </p>
+            <div className="gt-leave-actions">
+              <button type="button" className="gt-leave-btn primary" disabled={leaveBusy} onClick={() => void acceptLeave()}>
+                Save
+              </button>
+              <button type="button" className="gt-leave-btn" disabled={leaveBusy} onClick={discardLeave}>
+                Discard
+              </button>
+              <button type="button" className="gt-leave-btn" disabled={leaveBusy} onClick={() => setPendingLeave(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null;
+
   return (
+    <ChartReviewContext.Provider value={chartReview}>
     <div className="workspace">
       {showBootOverlay ? (
         <div className="chart-boot-overlay" role="status" aria-live="polite" aria-busy="true">
@@ -1455,6 +1521,8 @@ export default function FolderViewer({
                   {loadingFolder ? "Loading pages…" : "No pages in this chart"}
                 </div>
               )}
+              {/* Inside the fullscreen element, or the prompt would not show. */}
+              {isFullscreen ? leaveModal : null}
               {isFullscreen ? (
                 <FullscreenPageChrome
                   pageIndex={pageIndex}
@@ -1507,6 +1575,7 @@ export default function FolderViewer({
                         currentPage={imagingPage}
                         currentFileName={page?.filename ?? null}
                         extraction={extraction}
+                        groundTruthLeave={fsGroundTruthLeave}
                         onGroundTruthSaved={keepSavedGroundTruth}
                       />
                     </div>
@@ -1815,32 +1884,8 @@ export default function FolderViewer({
           </section>
         </div>
       )}
-      {pendingLeave ? (
-        <div className="modal-backdrop" role="presentation">
-          <div
-            className="modal-card"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="gt-leave-title"
-          >
-            <h2 id="gt-leave-title" className="gt-leave-title">Unsaved ground truth</h2>
-            <p className="gt-leave-copy">
-              These changes have not been saved.
-            </p>
-            <div className="gt-leave-actions">
-              <button type="button" className="gt-leave-btn primary" disabled={leaveBusy} onClick={() => void acceptLeave()}>
-                Save
-              </button>
-              <button type="button" className="gt-leave-btn" disabled={leaveBusy} onClick={discardLeave}>
-                Discard
-              </button>
-              <button type="button" className="gt-leave-btn" disabled={leaveBusy} onClick={() => setPendingLeave(null)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {isFullscreen ? null : leaveModal}
     </div>
+    </ChartReviewContext.Provider>
   );
 }

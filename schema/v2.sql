@@ -67,6 +67,9 @@
 --
 -- WHAT CHANGED
 -- ---------------------------------------------------------------------
+--  * chart_review, idx_page_ground_truth_entry_user_id_entry_mode (v1.sql, 2026-10-28): a
+--    chart marked Reviewed freezes its ground truth; the per-user Review Log
+--    (changes_2026-10-28.sql).
 --  * idx_blank_junk_classification_duplicate_of_page_id, idx_imaging_final_duplicate_of_page_id
 --    (v1.sql, 2026-10-28): page deletes no longer scan those tables (changes_2026-10-27.sql).
 --  * chart_ground_truth (v1.sql, 2026-10-28): the reviewer's member Accept / Reject per chart
