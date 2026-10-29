@@ -6753,6 +6753,10 @@ input {
   font-weight: 600;
 }
 
+.gt-banner-sep {
+  color: var(--neutral-400);
+}
+
 .gt-banner-review {
   color: var(--brand-800);
   font-weight: 600;

@@ -105,9 +105,10 @@ export default function GroundTruthBanner({
       <div className="gt-banner-line">
         {reviewed ? (
           <span className="gt-banner-locked" title="Marked Reviewed: the ground truth cannot be edited">
-            <Lock size={12} aria-hidden="true" /> Locked
+            <Lock size={12} aria-hidden="true" /> Locked on {formatIst(reviewed.reviewedAt)}
           </span>
         ) : null}
+        {reviewed ? <span className="gt-banner-sep" aria-hidden="true">|</span> : null}
         <span>{lastUpdatedText(update ?? updates?.[tab])}</span>
       </div>
       {reviewed ? (
