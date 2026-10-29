@@ -414,6 +414,8 @@ def run(chart_id: int, *, force: bool = False) -> dict[str, Any]:
                 if row.get(key) in (None, "", []) and key != "document_seq":
                     row[key] = reference[key]
             row["duplicate_of_page_id"] = original
+            # Not a duplicate: the page-type row's duplicate_flag was written before the check.
+            row["is_duplicate"] = False
 
         # Below the review line anywhere: the page needs review (2026-10-25, user).
         for row in rows.values():

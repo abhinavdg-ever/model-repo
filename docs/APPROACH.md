@@ -1,11 +1,15 @@
-# Page type, continuity, specialty and encounter: the approach
+# Page type, date of service, duplicates, continuity, specialty and encounter: the approach
 
 Taxonomy **v29.2** (the version lives inside the files, as `version` /
 `taxonomy_version`; no file or folder name carries a version). Written 2026-10-28;
-replaces the 2026-10-25 version of this document.
+replaces the 2026-10-25 version of this document. Updated 2026-10-29: date of service
+(section 3A) and duplicate pages (section 4A) added; sections 1, 5, 6 and 8 brought in
+line with them. The new sections carry letters so every existing section number and
+cross-reference stays as it was.
 
 This is the one document for how a chart's pages get their page type (L1 / L2 / L3),
-how pages are grouped into documents (continuity), how each page's **Final** page
+how each page's date of service is read, how duplicate pages are found, how pages are
+grouped into documents (continuity), how each page's **Final** page
 type, subtype (Codable / Non-Codable / Discharge) and specialty are decided from its
 document, and how encounter type and page order follow. It describes what the code
 does today, with the thresholds, weights and formulas taken from the code and the
@@ -40,11 +44,19 @@ document (described, not changed: this document changes no code).
     3.8 Canon entry and Extracted codeability · 3.9 Extracted specialty ·
     3.10 Confidence · 3.11 Others and every fallback · 3.12 What is written ·
     3.13 Worked examples (6)
+* [3A. Date of service: the Extracted DOS per page, the Final DOS per document](#3a-date-of-service-the-extracted-dos-per-page-the-final-dos-per-document)
+  * 3A.1 Which pages, which text · 3A.2 Key/value candidates · 3A.3 The page's
+    Extracted DOS · 3A.4 What is written · 3A.5 The two placeholder dates
+    (2222-02-02, 2222-02-22) · 3A.6 The Final DOS (worked example)
 * [4. Continuity: where one document ends and the next begins](#4-continuity-where-one-document-ends-and-the-next-begins)
   * 4.1 Overview · 4.2 Inputs per page · 4.3 Bands and layout · 4.4 Every signal ·
     4.5 Deciding a gap · 4.6 Rules that override the score · 4.7 Building documents ·
     4.8 The final pass · 4.9 Tags, links and labels · 4.10 Worked example (8 pages) ·
     4.11 What is stored · 4.12 Not built yet
+* [4A. Duplicate pages](#4a-duplicate-pages)
+  * 4A.1 Which pages are compared · 4A.2 Duplicate, partial, neither · 4A.3 Which
+    page is the duplicate · 4A.4 The encounter check (continuity) · 4A.5 Final values
+    (worked example)
 * [5. Final page type, subtype and specialty](#5-final-page-type-subtype-and-specialty)
   * 5.1 What Final starts from · 5.2 The documents used · 5.3 The document's L1 ·
     5.4 Placing each page · 5.5 A page alone · 5.6 Subtype: codability ·
@@ -68,7 +80,22 @@ document (described, not changed: this document changes no code).
 
 ## What changed from the 2026-10-25 version
 
-Every claim of the old document was checked against the code. Where they disagreed,
+**2026-10-29.** Two sections added and the rest checked against the code again:
+
+| # | Change | Where |
+|---|---|---|
+| a | **Date of service** written up (3A): the Extracted DOS per page (admit / discharge, key/value tier order by the page's L1, edge keyword, dictated date), the Final DOS per continuity document, and the two placeholders: **2222-02-02** = a page with no date, **2222-02-22** = a non-visit document (Demographics, Problem List ...), shown "2222-02-22 (E: own date)" with either date matching the ground truth | `dos/dos_logic.py`, `continuity/engine.document_finals`, `imaging_final.run` |
+| b | **Duplicate pages** written up (4A): pass 1 exact copies only; pass 2 the 98% / contained / word-count rules and partials; never across different dates or a signature page apart | `blank_junk/stage._classify` |
+| c | The page with **less content** is the duplicate (fewer distinct words, then less text; the later page when level). Was: the later page, unless a contained pair's larger page added more than 10 words | `blank_junk/stage._classify` |
+| d | A duplicate is **not junk**: Blank / Junk "No", Duplicate "Duplicate (To Page N)"; it takes its original's values in `imaging_final` | `blank_junk/classify.py`, review-ui `duplicateLabel.ts` |
+| e | **Continuity checks a far copy encounter against encounter** (Progress Note / Discharge Summary originals only): above 98% the encounter is a duplicate and its partials become duplicates; 98% or below the copies are Main pages again, "No (Duplicate Content, Page N)", filling empty values from the original | `continuity/duplicates.review`, `continuity/stage._review_duplicates`, `imaging_final.run` |
+| f | 6.1: a duplicate-content page is not skipped by the encounter stage; 8: DOS confidences added to the per-module table | `encounter/stage.run`, `dos/dos_logic.py` |
+| g | `imaging_final.is_duplicate` is false on a duplicate-content page (the page type row's `duplicate_flag` was written before continuity; fixed) | `imaging_final.run` (4A.5) |
+
+Sections 3, 5 and 6 otherwise still match the code: nothing in `page_classify/`,
+`encounter/` or `page_arbitration.json` has changed since 2026-10-28.
+
+**2026-10-28.** Every claim of the old document was checked against the code. Where they disagreed,
 this edition follows the code. The differences:
 
 | # | Old document said | The code does | Where |
@@ -114,16 +141,16 @@ document is about are in bold:
 |---|---|---|---|
 | 10 | `ocr_quality` | page image | rotation, handwriting (`printed_or_handwritten`, `hw_confidence`), page tag (`document_type`) |
 | 20 | `ocr_prelim` | page image | Tesseract text |
-| 30 | `blank_junk` pass 1 | Tesseract text | exact duplicates, printed blank / junk |
+| 30 | `blank_junk` pass 1 | Tesseract text | printed blank / junk; duplicates: exact copies only (4A) |
 | 40 | `ocr_final1` | page image | Docling / RapidOCR text + word polygons (`ocr/<chart>_final1.json`) |
 | 50 | `ocr_final2` | page image | Azure Document Intelligence text + line polygons (`ocr/<chart>_final2.json`) |
 | 55 | `section_headers` | Final 1 / Final 2 JSON | `section_headers`, `section_header_candidates` in those JSONs |
 | 56 | `kv_extract` | best text | `staging/extraction.json`: DOS rows with their tier, page numbers, e-signatures, visit IDs, headings |
-| 60 | `blank_junk` pass 2 | best text | final Main / Blank / Junk / Duplicate verdict |
+| 60 | `blank_junk` pass 2 | best text | final Main / Blank / Junk / Duplicate verdict; duplicates and partial duplicates (4A) |
 | 70 | `member_verify` | best text | member rows |
 | 75 | **`page_subtype`** | best text, OCR headings | **Extracted L1 / L2 / L3, specialty, codeability** (`page_classification`, `staging/page_classification.json`) |
-| 80 | `dos_extract` | text, Extracted subtype | each page's DOS |
-| 87 | **`continuity`** | everything above | **documents** (`page_continuity_results`, `staging/continuity.json`, `continuity_detail.json`) |
+| 80 | **`dos_extract`** | key/value DOS rows, text, Extracted L1 | **each page's Extracted DOS** (`dos_extraction_results`; section 3A) |
+| 87 | **`continuity`** | everything above | **documents** (`page_continuity_results`, `staging/continuity.json`, `continuity_detail.json`); then the duplicate encounter check, which can revise blank / junk verdicts (4A.4) |
 | 90 | **`encounter_type`** | Extracted L1, text, documents, encounter model | encounter per document (`encounter_type_results`; `encounters` in `continuity.json`) |
 | 95 | `page_sequencing` | text, page numbers, documents | suggested reading order |
 | 100 | **`imaging_final`** | every table above | **Final page type, subtype (codability), specialty**, DOS, encounter, confidences (`imaging_final`, `imaging/<chart>_final.csv`) |
@@ -718,6 +745,194 @@ are close: a reviewer should look). Page type 0.438 × 0.85 = **0.373 → review
 model agreeing at 0.8 the L1 would read backed(0.8, 0.438) ≈ 0.84.
 
 ---
+## 3A. Date of service: the Extracted DOS per page, the Final DOS per document
+
+Two answers, as for the page type. The **Extracted DOS** is the page's own date, read
+from the page alone (stage `dos_extract`, seq 80). The **Final DOS** is the document's,
+set once continuity has grouped the pages (stage `imaging_final`, seq 100). Code:
+`core-pipeline/stages/lib/dos/stage.py: run` and `dos/dos_logic.py:
+detect_dos_per_page`, settings `keyword-canon/dos_canon.json` (reloads on change); the
+key/value candidates come from `kv_extract` (`stages/lib/extraction/dos/extract.py`,
+labels `extraction/dos/keys.json`). `docs/DOS_LOGIC.md` has every label and example;
+this section is the logic, with the settings read from the code on 2026-10-29. There is
+no LLM.
+
+```
+ OCR words ──▶ spaced dates merged ──▶ kv_extract: label → date pairs, tier, rule score,
+                                       LightGBM score  ──▶ staging/extraction.json
+                                                              │
+ page L1 (page_subtype) ──▶ page kind ─────────────▶ dos_extract, per page, first that gives a date:
+                                                      0. discharge page: Admit + Discharge pair
+                                                      1. key/value date, tier order of the kind
+                                                      2. edge keyword (first / last 20 words)
+                                                      3. other pages: dictated, else transcribed
+                                                              │
+                                     dos_extraction_results, imaging/<chart>_dos.csv  (Extracted)
+                                                              │
+                         continuity: same / different DOS points (4.4) ──▶ documents
+                                                              │
+                         imaging_final: document_finals ──▶ Final DOS on every page  (Final)
+```
+
+### 3A.1 Which pages, and which text
+
+* Pages whose final blank / junk flag is blank, junk or duplicate are skipped (reason
+  `blank_junk`) and get no DOS row (`_support.BJ_EXCLUDE`). A partial duplicate is a
+  Main page and gets its own. Every other page gets exactly one row, dated or not.
+* The key/value extraction reads the OCR **words** with their boxes. Words that together
+  form exactly a numeric date are merged first (`05` `/` `20` `/` `2025` → `05/20/2025`;
+  `extraction/util/geometry.merge_spaced_dates`); a date written with spaces only
+  (`06 12 24`) is never read.
+* The edge keyword reads the page **text**: Final 2, else Final 1, else Tesseract (never
+  Tesseract for a handwritten, mixed or low-quality page). A page with no Final 2 text
+  also tries its Tesseract text when the chosen text gave nothing (Docling can drop the
+  top banner; `source` `edge_tesseract`).
+* **Page kind** = the page's Extracted **L1** (section 3, `axes.family_of`;
+  `dos_canon.json → page_kinds`): Discharge Summary → *discharge*, Lab Report → *lab*,
+  anything else or no classification → *other*. Text on the page does not decide it.
+
+### 3A.2 Key/value candidates (`kv_extract`)
+
+Each DOS label found among the OCR words is paired with a date and given a **tier**
+(`keys.json`):
+
+| Tier | Labels (examples) |
+|---|---|
+| service | DOS, Date of Service, Visit Date, Encounter Date, Exam Date, Appt Date, Order Date, Date of Admission ... |
+| collected | Collected, Collection Date, Date Collected, Specimen Collected |
+| admit / discharge | Admit Date, Admission Date / Discharge Date, Discharged |
+| received | Received, Date Received, Specimen Received |
+| weak | Date, Report Date, Service, Chief Complaint ... |
+| printed | Printed, Print Date, Date Printed: read, then **rejected** (never a DOS) |
+| keyless | no label: a date in the header or footer band |
+
+The date belongs to the label on the same line after it (score 0.92 − 0.12 per word
+between, at least 0.55), after "at / on / dated" (0.60), on the next line when the label
+ends in `-` or `:` (0.85), below it within 4 lines or under a table column header (0.80).
+A weak, received or printed label allows one word between it and its date, every other
+label six (`_WEAK_GAP_WORDS`, `_MAX_GAP_WORDS`). Eliminated: a year before 2000 or after
+next year (`_MIN_YEAR`), the member's DOB read on the page, a date already taken by
+another label. A LightGBM ranker scores every pair (`model_score`); its own pick is taken
+at any score (`extraction/util/config.SELECT_THRESHOLDS = {"dos": 0.0}`). Everything goes
+to `staging/extraction.json → fields.dos`.
+
+### 3A.3 The page's Extracted DOS
+
+`detect_dos_per_page`, the first step that gives a date:
+
+| Step | Applies to | Date |
+|---|---|---|
+| 0. Admit / Discharge | *discharge* pages | From = the best-scored admit date, To = the best discharge date on or after it; one alone is both. An edge Admit / Discharge label fills a missing side (`admit_discharge_date`) |
+| 1. Key/value | every page | the first **priority group** of the page kind that has a date, and within it the highest score (the model's, else the rules'), then page order (`kv_page_date`) |
+| 2. Edge keyword | no key/value date | a label starting in the page's first or last **20** words (`edge_words`), its date within **40** characters (`label_reach_chars`) with only *at, on, of, from, is, time, date, dt* between. An encounter label wins (top edge before bottom; a written range keeps both ends); else admit = From and the first discharge on or after it = To; else a discharge date alone |
+| 3. Dictated, then transcribed | *other* pages only | the date after `D:` / `DD:` / Dictated, else after `T:` / `DT:` / `TD:` / `TT:` / Transcribed |
+| — | nothing found | no Extracted DOS |
+
+Priority groups (`kv_priority`; groups are the tiers `kv_extract` wrote):
+
+| Kind | Order, first group present wins |
+|---|---|
+| discharge | admit + discharge → service → weak → dt / dd → keyless |
+| lab | collected → received → Report Date → service → weak → dt / dd → keyless → admit + discharge |
+| other | service → weak → dt / dd → keyless → admit + discharge |
+
+* "dt / dd" are the weak keys in `weak_last_keys`; "Report Date" is its own group on lab
+  pages only, a weak key elsewhere.
+* Only a weak key's date (dt, dd and Report Date included) needs a score above
+  `weak_min_score` (**0.3**); every other tier counts at any score, so a service date
+  scored 0.20 beats a weak date scored 0.95.
+* The admit + discharge group at the end of lab and other pages keeps a stay on a page
+  the classifier did not call a Discharge Summary; when it is chosen the page takes the
+  pair.
+* **A print date is never a DOS.** Every date in a print stamp (the word print / printed
+  / prints with a date within 50 characters on its line, in the final text, the Tesseract
+  text or a print key's sentence; `print_dates`) and every print key's date is dropped
+  from the key/value dates, the edge labels and the dictated date, and a range never ends
+  on one.
+* A date after `D:` / `T:` / Dictated / Transcribed is never taken by the edge keyword:
+  it is when the note was dictated or typed (step 3 is the only place it counts).
+
+**Confidence** (`stages/lib/confidence.py`, section 8):
+
+| Source | Confidence |
+|---|---|
+| key/value, model-scored | backed(model score, rule score), × `conflict` (0.8) when another date of the same group scores ≥ 80% of it |
+| key/value, no score (old staging) | `confidence.kv` 0.90 × `no_model` = 0.765 |
+| edge keyword | `confidence.edge` 0.80 × `no_model` = **0.68** |
+| admit + discharge | the **weaker** side's (an edge side counts 0.68) |
+| dictated / transcribed | `confidence.dictation` 0.50 × `no_model` × `fallback` = **0.26** (review) |
+
+### 3A.4 What is written per page
+
+`dos_extraction_results` (one row per page, `db.upsert_dos`) and
+`imaging/<chart>_dos.csv`: `date_of_service_from` / `_to` = the Extracted DOS (NULL when
+none); `dates` = a one-element JSON array (or `[]`); `confidence`; `extraction_method`
+`kv` (a key/value date, the admit / discharge pair included) or `rules`; `match_type`
+(`kv`, `edge_keyword`, `edge_keyword_tesseract`, `admit_discharge`, `dictation_date`,
+`admit_discharge_pair` when From ≠ To, `no_date_found`).
+
+The `*_doclevel` columns are **not** document-level despite the name: they hold the
+page's own date, else the placeholder **2222-02-02**.
+
+### 3A.5 The two placeholder dates
+
+| Date | Setting | Means | Where it appears |
+|---|---|---|---|
+| **2222-02-02** | `DOS_DEFAULT_DATE` | a page with **no date** of its own | the `*_doclevel` columns and review-ui downloads. Never an Extracted DOS. The encounter stage (`encounter_classify.visit_date`) and review-ui's accuracy treat it as no date |
+| **2222-02-22** | `DOS_NON_VISIT_DATE` | a **non-visit document**: Demographics, Patient Information, Patient Registration, Problem List, Immunizations, Growth chart ... (`continuity_canon.json → default_final_dos`) | the Final DOS of every page of such a document (3A.6). review-ui shows the page's own date beside it, **"2222-02-22 (E: 2024-03-15)"** (E = Extracted), and a ground truth of **either** date matches. With no date of its own the page shows 2222-02-22 alone |
+
+The two were one date (2222-02-02) until 2026-10-27; `continuity.engine._DOS_DEFAULT`
+still falls back to `DOS_DEFAULT_DATE` for a `dos_canon.json` without
+`DOS_NON_VISIT_DATE`.
+
+### 3A.6 The Final DOS
+
+**Continuity uses the Extracted DOS to group** (4.4): a date that differs from the open
+document's first dated page is a break worth the lower trust of the two dates
+(`dos_trust` by the date's tier: 5 for service / admit / discharge, 3 for collected /
+received / weak / printed and for a date the staging does not explain (an edge keyword or
+dictated date), 2 for keyless); the same date joins by the same points (`same_dos`).
+Decisive only at 5. It never reads a Final value.
+
+**`continuity.engine.document_finals`** then decides the document's date, called by
+`imaging_final.run` on each continuity document (Main pages only: blank, junk and
+duplicate pages are left out), the first that applies:
+
+1. **Non-visit document.** When **every** page carries a `default_final_dos` name (any
+   of its canon page type, L3, L2, L1; `uses_default_final_dos`), every page's Final DOS
+   is **2222-02-22**, whatever dates the pages carry (`dos_default` true). A Problem List
+   page *inside* a visit's document takes the visit's DOS instead.
+2. **Otherwise** every page takes the **first dated page's** From, and its To (else its
+   From). That is the first page's date when it is dated, a later page's when the
+   document opens undated.
+3. No page of the document is dated: no Final DOS.
+
+How `imaging_final` carries it:
+
+| Page | Final DOS | `dos_source` | DOS confidence |
+|---|---|---|---|
+| in a continuity document | the document's (above) | `document` | the dated page's Extracted confidence; none for 2222-02-22 (a business rule, nothing to doubt) |
+| in no document | its own Extracted DOS | `page` | its own |
+| a duplicate | its original's Final DOS (`COPIED_FROM_REFERENCE`) | `duplicate` | the original's |
+| a duplicate-content page (4A.4) | its document's; when that is empty, its original's | `document`; NULL when taken from the original | its document's |
+| no date anywhere | empty | NULL | none |
+
+The Extracted DOS is never overwritten: a reviewer and the accuracy report see both.
+review-ui scores a page **Match** when every labelled date matches the Final DOS,
+**Partial** when it matches only the Extracted DOS; a blank / junk page is not scored
+for DOS.
+
+**Worked example.** A five-page chart, page L1s and Extracted dates:
+
+| Page | Extracted L1 | Extracted DOS (source) | Continuity | Final DOS |
+|---|---|---|---|---|
+| 1 | Demographics | — | document 1 (Demographics always stands alone) | **2222-02-22** (non-visit) |
+| 2 | Progress Note | — (no label on the page) | document 2 opens | **2024-03-14** (page 3's) |
+| 3 | Progress Note | 2024-03-14 (`kv`, Date of Service) | joins (same document) | 2024-03-14 |
+| 4 | Lab Report | 2024-03-12 (`kv`, Collected) | breaks? A collected date is trust 3, so a different date is +3, not decisive: the other signals decide | 2024-03-14 when joined; 2024-03-12 when it is its own document |
+| 5 | Problem List | 2024-01-05 (`edge`) | its own document (say) | **2222-02-22**; review-ui shows "2222-02-22 (E: 2024-01-05)" and a ground truth of either date matches |
+
+---
 ## 4. Continuity: where one document ends and the next begins
 
 Stage `continuity` (`core-pipeline/stages/lib/continuity/stage.py: run`), engine
@@ -756,7 +971,7 @@ between the pages either side of them (a blank adds +1).
 
 | Field | Source |
 |---|---|
-| `kind` | blank_junk pass-2 flag: main / blank / junk / duplicate |
+| `kind` | blank_junk final flag: main / blank / junk / duplicate (an earlier run's duplicate-content page counts as duplicate and is checked again, 4A.4) |
 | `text` | best OCR text (blank and duplicate pages: none; pages settled in pass 1: Tesseract only) |
 | `lines` with `top` / `bottom` | Final 2 line polygons (preferred), else Final 1 word polygons grouped into lines (`layout.lines_from_final1`: a word joins the line whose vertical middle it overlaps), else the text's lines with no position (`layout.page_layout`) |
 | `section_headers` | the OCR JSON's matched section headers (with `top`) + the extraction's accepted `heading_heron` section rows |
@@ -883,7 +1098,9 @@ segment. Junk runs (`_junk_runs`): consecutive junk pages (blanks and duplicates
 between do not break a run) with the run's mean junk confidence. A single junk page is
 transparent: when it sits between two pages of one document it is inside it; when it
 sits at a break it **ends the document before it** (`_rows`). A blank page between two
-documents belongs to neither. A duplicate joins its original's document.
+documents belongs to neither. A duplicate joins its original's document. Once the
+documents are built, the duplicate encounter check (4A.4) may make a far copy a Main page
+again, or a partial a duplicate; the documents are then assigned again.
 
 ### 4.8 The final pass
 
@@ -1036,6 +1253,173 @@ The 2026-10-25 design, unchanged, still not in `engine.SIGNALS`:
   size): shared zones −2 (`same_layout`), a changed template +2 (`layout_change`), a
   changed page size +1. Not for handwritten, visual, form pages or pages under 8 lines.
 * **Measuring the weights** (S3): every "assumed" weight above.
+
+---
+## 4A. Duplicate pages
+
+A duplicate is a page whose content is already in the chart (the same fax page sent
+twice, a note printed again). It is found in three places: the blank / junk stage marks
+it on its words (pass 1 exact copies, pass 2 the rest), continuity checks a far copy
+encounter against encounter, and `imaging_final` gives it its original's values. Code:
+`core-pipeline/stages/lib/blank_junk/stage.py: _classify` (rules in its module
+docstring), `blank_junk/classify.py: word_overlap`, settings
+`keyword-canon/blank_junk_context_canon.json → duplicates`;
+`stages/lib/continuity/duplicates.py: review`, called from
+`continuity/stage.py: _review_duplicates`.
+
+```
+ blank_junk pass 1 (Tesseract text) ─▶ exact copies only
+ blank_junk pass 2 (best text)       ─▶ duplicate · partial · neither      (on distinct words)
+        │   a duplicate is not junk: Blank / Junk "No", Duplicate "Duplicate (To Page N)"
+        ▼
+ later stages skip duplicates (page type copies its original's, no DOS, no encounter)
+        ▼
+ continuity: a far copy of a Progress Note / Discharge Summary page
+             ── its encounter averages > 98% against the original's document → a duplicate encounter
+                                                                             (partials become duplicates)
+             ── ≤ 98%  → Main page again: "No (Duplicate Content, Page N)"
+        ▼
+ imaging_final: a duplicate copies its original's Final values;
+                a duplicate-content page fills its empty values from its original
+```
+
+### 4A.1 Which pages are compared
+
+* **Main pages only**, after the blank / junk verdict: blank and junk pages are never
+  compared. Pages already Main from an earlier pass take part as neighbours, so pass 2
+  can match a handwritten page to a printed one settled in pass 1.
+* Pages under **300** characters (whitespace stripped; `DUPLICATE_MIN_CHARS`) are never
+  compared: a short page shares too much with unrelated pages.
+* Each page is compared with the pages **after** it, up to **25 pages or 10% of the
+  chart, whichever is more** (`classify.duplicate_window`), each pair once.
+* Comparison is on **distinct words** as read, everything on the page included
+  (headers, footers), lower-cased (`unique_words`):
+  * **overlap** = shared distinct words / all distinct words of the two pages;
+  * **contained** = the share of the smaller page's distinct words found on the other;
+  * **different** = distinct words on only one of the two pages, both sides added.
+
+### 4A.2 Duplicate, partial, neither (pass 2)
+
+| Verdict | When | Result |
+|---|---|---|
+| **Duplicate** | lengths within **10%** (`duplicate_min_length_ratio` 0.90, whitespace-stripped characters), **and** (contained 100% (`contained_at`), **or** overlap **≥ 98%**, **or** fewer than **8** distinct words different) | flag `duplicate`, `duplicate_of_page_id` = the original. UI: Blank / Junk **"No"**, Duplicate **"Duplicate (To Page N)"** |
+| **Partial** | not a duplicate, and overlap **95–98%**, or fewer than **15** distinct words different (no length test) | the page **stays Main** with `duplicate_of_page_id` set and its own verdict; UI "Partial (To Page N)" |
+| Neither | anything else | — |
+
+The word counts (8, 15) count only when overlap is at least **80%**
+(`count_rule_min_overlap`): two short unrelated pages also differ in few words. The
+best match's similarity (1.0 for a contained pair, else the overlap) is stored as
+`duplicate_confidence` and in `staging/blank_junk.json`; review-ui's Duplicate
+confidence is built from it (50% at 95% alike, rising to 100% at 100%).
+
+**Never a duplicate or partial**, however alike the words:
+
+* two pages whose kv_extract DOS (`staging/extraction.json`) differ in **any** date,
+  from or to (pass 2);
+* two pages whose own text differs in any written date, compared in ISO form so
+  `5/3/2024` = `05/03/2024` (`classify.page_dates`; both passes);
+* a **signature or ending page** (kv_extract's Electronic Signature in pass 2, or a
+  `duplicates.signature_terms` phrase on the page: "electronically signed", "signed by",
+  "end of note", "attestation" ...) with **another Main page between it and its
+  look-alike**: different notes end alike. Side by side they still compare.
+  **Exception**: an exact signed copy (the same distinct words, lengths within 10%) of
+  **more than 100 words** on each page is still a duplicate (`SIGNED_COPY_MIN_WORDS`).
+
+**Pass 1** (Tesseract text) marks **exact copies only**: the same distinct words,
+lengths within 10%. No partials. The 98% / contained / word-count rules, partials and
+the kv_extract DOS rule wait for pass 2. The written-date rule and the signature rule
+(by its phrases; kv_extract's signatures are pass 2 only) already apply in pass 1, so an
+exact signed copy of 100 words or fewer with a Main page between is left to pass 2. The
+canon's `pass_note` says the signature rule is pass 2 only; the code applies its phrases
+in both passes.
+
+### 4A.3 Which page is the duplicate
+
+**The page with less content is the duplicate** (2026-10-29, user): fewer distinct
+words, then less text (whitespace-stripped characters); **the later page when the two
+are level**. The other page is the original. Chains are followed to the first original
+(`_ultimate_original`), so three copies of one page all point at the same page.
+(`larger_kept_above_words` is no longer read.)
+
+**A duplicate is not junk** (2026-10-29, user). Its flag stays `duplicate` in
+`blank_junk_classification`, but review-ui shows Blank / Junk "No" and Duplicate
+"Duplicate (To Page N)", and accuracy scores it on its original's values. Every stage
+after blank / junk skips it like a blank or junk page (`_support.BJ_EXCLUDE`): the page
+type stage copies its original's page type (3.12), and DOS, member and encounter give it
+nothing of its own. Continuity treats it as transparent (4.1) and joins it to its
+original's document.
+
+### 4A.4 The encounter check (continuity)
+
+Two copies of a progress note page may be one visit scanned twice, or the same template
+text in two different visits. After `assign` has built the documents, `duplicates.review`
+looks at every duplicate, the first that applies:
+
+1. **The same encounter: stays a duplicate.** The copy is within **3 pages** of its
+   original (`NEAR_PAGES`), or both pages have the **same extracted (kv_extract) DOS**.
+2. **Other page types: stay duplicates.** Only an original whose **family** (Extracted
+   L1) is **Progress Note** or **Discharge Summary** (`ENCOUNTER_FAMILIES`) is checked.
+3. **Otherwise the two encounters are compared.**
+   * The **copy's encounter**: the document it sits in by position (the Main pages
+     before and after it belong to one document; its copies, partials and blanks among
+     them included); a copy between documents is the **run** of copies, partials and
+     blank pages around it.
+   * The **anchor**: the original's document (the original alone when it has none).
+   * Each non-blank page of the copy's encounter scores its **best** distinct-word
+     overlap against the anchor's pages (1.0 when its words are all on one), and the
+     scores are **averaged**.
+   * **Above 98%**: the whole encounter is a copy. Its duplicates stay, and its
+     **partial** duplicates of anchor pages **become duplicates** (reason "a duplicate
+     encounter; was a partial duplicate").
+   * **98% or below**: only the page was copied. Each duplicate of an anchor page in the
+     encounter becomes a **Main page again**: flag `not_blank_junk`,
+     `duplicate_of_page_id` kept, reason starting **`duplicate_content_of_page_id:<id>`**.
+     review-ui shows Duplicate **"No (Duplicate Content, Page N)"**.
+
+A page demoted by one check is never promoted by another. When anything changed, the
+verdicts are revised in place (`db.revise_blank_junk_final`), the junk CSV is rewritten
+and the documents are assigned again: a demoted page now counts as a Main page with its
+original's page type, names and DOS (the stages before continuity skipped it). On a
+re-run, a duplicate-content page is checked again as a duplicate; if the check no longer
+demotes it, it is a duplicate again.
+
+### 4A.5 What the Final values are
+
+* **Duplicate**: `imaging_final` copies its original's Final values
+  (`COPIED_FROM_REFERENCE`: member, `document_seq`, page type, subtype, specialty, model
+  type, codability, category, continuation rule, needs_review, DOS, encounter type,
+  provider and signature values) and their confidences; it keeps its own image values,
+  blank / junk flag, handwriting and blank / junk confidences and `seq`.
+  `page_type_source` = `dos_source` = `duplicate`, `duplicate_of_page_id` = the original
+  (5.8).
+* **Duplicate content**: a Main page in its own continuity document, so it takes its
+  document's Final page type, DOS and encounter like any page; every value it still has
+  none of is filled from its original (`document_seq` excepted), and
+  `duplicate_of_page_id` names the original.
+* **Partial**: a Main page with its own values; `duplicate_of_page_id` is not carried to
+  `imaging_final`.
+
+`imaging_final.is_duplicate` is `flag == "duplicate"` **or** the page classification
+row's `duplicate_flag`, except on a duplicate-content page: the page type stage ran before
+continuity, when the page was still a duplicate, so imaging_final sets `is_duplicate` false
+there itself (fixed 2026-10-29).
+
+**Worked example.** A 40-page chart (window 25). Page 6 and page 31 are Progress Note
+pages with 412 and 409 distinct words, 405 shared: overlap 405 / 416 = 97.4%, contained
+405 / 409 = 99.0%, 11 different, lengths within 10%. Neither is a signature page, no
+written date differs, neither has a kv_extract DOS.
+
+* Pass 2: not contained, overlap < 98%, 11 ≥ 8 → not a duplicate; overlap ≥ 95% →
+  **partial**. Page 31 has fewer distinct words → "Partial (To Page 6)", still Main.
+* Had page 31's 409 words all been on page 6 (contained 100%), it would be a
+  **duplicate**: Blank / Junk "No", "Duplicate (To Page 6)".
+* Continuity, for that duplicate: 25 pages apart, no DOS to compare, page 6 a Progress
+  Note → page 31's encounter (its document by position, pages 30–33) is compared with
+  page 6's document (pages 5–8). Say pages 30–33 score 0.62, 1.00, 0.55, 0.40 → average
+  0.64 ≤ 0.98 → page 31 is a **Main page again**, "No (Duplicate Content, Page 6)", in
+  the document of pages 30–33 with that document's DOS and encounter. Had every page of
+  the encounter matched pages 5–8 (average above 0.98), page 31 would stay a duplicate
+  and any partial duplicates among them of pages 5–8 would become duplicates.
 
 ---
 ## 5. Final page type, subtype and specialty
@@ -1192,13 +1576,20 @@ reads that key (S12).
   continuation rule, needs_review, DOS, encounter type, provider and signature values;
   keeps its own image values, its blank / junk flag and its `seq`.
   `page_type_source` = `dos_source` = `duplicate`, `duplicate_of_page_id` names the
-  original. Content confidences are the original's.
+  original. Content confidences are the original's. A duplicate is not junk: review-ui
+  shows Blank / Junk "No" (4A.3).
+* **Duplicate content** (continuity's encounter check made the copy a Main page again,
+  4A.4): an ordinary page of its continuity document, so it takes the document's page
+  type, DOS and encounter; values it has none of are filled from its original;
+  `duplicate_of_page_id` names the original.
 
 ### 5.9 DOS and encounter carried
 
 `continuity.engine.document_finals` on each continuity document (Main pages only):
 **DOS** = the first dated page's (`dos_source` document); a stand-alone document whose
-every page is a `default_final_dos` type takes the non-visit date **2222-02-22**.
+every page is a `default_final_dos` type takes the non-visit date **2222-02-22**
+(review-ui: "2222-02-22 (E: own date)"). The whole DOS logic, Extracted and Final, is
+section 3A.
 **Encounter type** = the document's first page's stored encounter type, which is the
 encounter's decision (section 6). A page outside a document keeps its own.
 
@@ -1287,9 +1678,12 @@ Summary / Depart/Discharge Note; page 3 Extracted Progress Note / Others. No
 e.g. Consultation Note → **Discharge Summary / Consultation Note**, codability
 **Discharge** (was Codable). Specialty of every page: the first page's.
 
-**7. A duplicate.** Page 12 is "Duplicate (To Page 4)": Extracted takes page 4's page
-type (and stays Non-Codable); Final copies page 4's Final page type, subtype,
-codability, specialty, DOS and encounter; `page_type_source` duplicate.
+**7. A duplicate.** Page 12 is "Duplicate (To Page 4)" (Blank / Junk "No"): Extracted
+takes page 4's page type (and stays Non-Codable); Final copies page 4's Final page type,
+subtype, codability, specialty, DOS and encounter; `page_type_source` duplicate. Had page
+12 been a far copy of a Progress Note page whose encounter is not a copy (4A.4), it would
+be a Main page of its own document, "No (Duplicate Content, Page 4)", with that
+document's Final values.
 
 ### 5.13 Context rules: built and not built
 
@@ -1323,7 +1717,9 @@ label for tele is "Outpatient (Tele)".
 
 `group_visits`: when continuity has run, one encounter per continuity document
 (consecutive pages with the same `document_seq`); otherwise runs of pages sharing a
-date. Blank / junk / duplicate pages are skipped. The encounter's **family** is its
+date. Blank / junk / duplicate pages are skipped; a duplicate-content page (4A.4) is a
+Main page by then and votes, with the page type it copied from its original. The
+encounter's **family** is its
 first page's **Extracted** L1 (`encounter_family`; a page decided Others has none, so
 the next page with one counts).
 
@@ -1470,6 +1866,8 @@ Per module, as used in sections 3–6:
 | Continuity gap | \|2σ(score / 2) − 1\| | a decisive signal or rule holds it at ≥ 0.90 | sub-scores or decisive signals disagreeing × conflict; a rule against the score 0.9 × 0.7; a final-pass reversal: backed((1 − c)/2, 0.9) × overturned |
 | Encounter page vote | the model's p for the setting, normalised over the settings | tier 1 support 1.0, tier 2 0.8 (0.6 in conflict), a confirm word 0.5 | the model's own answer (≥ 0.5) another setting × 0.7; a family default × fallback; no model: support × no_model |
 | Encounter | the first page's vote, or share of the weight × the voters' mean confidence | — | another page with evidence disagreeing × conflict |
+| Extracted DOS (3A.3) | the key/value model score (no score: 0.90 × no_model) | the rules' score for the same date | another date of the same priority group ≥ 80% as strong × conflict; edge keyword 0.80 × no_model = 0.68; dictated date 0.50 × no_model × fallback = 0.26; a stay: its weaker side |
+| Final DOS | the document's dated page's | — | none for 2222-02-22 (a business rule) |
 | Final page type, codability | the deciding page's | — | another page of the document ≥ 0.80 sure of another L1 × conflict |
 | Final specialty, encounter | the document's first page's | — | — |
 
