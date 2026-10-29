@@ -56,7 +56,7 @@ function shownFields(entry: ReviewLogEntry): Shown[] {
   return [...seen.values()];
 }
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 20;
 
 /** First, last, and the pages around ``page``: 1 … 4 5 6 … 12. */
 function pageWindow(page: number, totalPages: number): number[] {
